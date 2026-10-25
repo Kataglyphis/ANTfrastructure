@@ -78,6 +78,7 @@ t_assert_fails test -e "$_work/absent.png"
 t_assert_ok test -s "$_work/no-icon.desktop"
 
 t_case 'bundle staging preserves hidden files, executable bits and symlinks'
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 mkdir -p "$_work/payload"
 printf '#!/bin/sh\nexit 0\n' > "$_work/payload/runner"
 chmod +x "$_work/payload/runner"

@@ -29,7 +29,7 @@ def main() -> None:
     if mode == "inventory":
         for version in payload:
             tags = ",".join(version_tags(version))
-            print("%s\t%s\t%s\t%s" % (version["id"], version["name"], version["created_at"], tags))
+            print(f"{version['id']}\t{version['name']}\t{version['created_at']}\t{tags}")
     elif mode == "tag-count":
         print(len(version_tags(payload)))
     else:

@@ -8,7 +8,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections.abc import Iterator, Mapping
 from pathlib import Path
+from subprocess import CompletedProcess
+from typing import TypedDict
 
 TESTS = Path(__file__).resolve().parent
 SCRIPTS = Path(sys.argv.pop(1)).resolve()
@@ -80,8 +83,16 @@ SCENARIOS = {
     ),
 }
 
+class CaptureResult(TypedDict):
+    status: int
+    stdout: str
+    stderr: str
+    trace: str
+    state: str
+    files: list[str]
 
-def function_source(scripts, api):
+
+def function_source(scripts: Path, api: str) -> str:
     module, function = (
         ("gcc.sh", "stage_cross_gcc_sysroot_libs")
         if api == "gcc"
@@ -105,7 +116,7 @@ def function_source(scripts, api):
     return result.stdout
 
 
-def plant_sources(work, api, scenario):
+def plant_sources(work: Path, api: str, scenario: str) -> Path:
     source = work / ("usr/fixture-target/lib" if api == "gcc" else "usr/include")
     if scenario == "missing-source":
         return source
@@ -125,7 +136,7 @@ def plant_sources(work, api, scenario):
     return source
 
 
-def plant_destinations(work, api, scenario, source):
+def plant_destinations(work: Path, api: str, scenario: str, source: Path) -> None:
     destination = work / (
         "prefix/fixture-target/lib" if api == "gcc" else "usr/fixture-target/include"
     )
@@ -142,8 +153,8 @@ def plant_destinations(work, api, scenario, source):
             target.write_text("keep")
 
 
-def snapshot(work):
-    result = []
+def snapshot(work: Path) -> list[str]:
+    result: list[str] = []
     for root in (work / "usr", work / "prefix"):
         for path in sorted(root.rglob("*")):
             relative = str(path.relative_to(work))
@@ -156,7 +167,9 @@ def snapshot(work):
     return result
 
 
-def capture_case(scripts, api, scenario, context, function):
+def capture_case(
+    scripts: Path, api: str, scenario: str, context: str, function: str
+) -> CaptureResult:
     with tempfile.TemporaryDirectory(prefix="ant-guarded-links-") as temporary:
         work = Path(temporary)
         source = plant_sources(work, api, scenario)
@@ -211,8 +224,8 @@ def capture_case(scripts, api, scenario, context, function):
         }
 
 
-def capture(scripts):
-    result = {}
+def capture(scripts: Path) -> dict[str, CaptureResult]:
+    result: dict[str, CaptureResult] = {}
     for api, scenarios in SCENARIOS.items():
         function = function_source(scripts, api)
         for scenario in scenarios:
@@ -223,7 +236,7 @@ def capture(scripts):
     return result
 
 
-def plant_module_bundle(root, scripts, layout, module):
+def plant_module_bundle(root: Path, scripts: Path, layout: str, module: str) -> tuple[Path, Path]:
     base = root / ("linux/scripts" if layout == "repo" else "installed")
     toolchain = base / ("02-toolchain" if layout == "repo" else "toolchain")
     core = base / ("01-core" if layout == "repo" else "core")
@@ -243,7 +256,9 @@ def plant_module_bundle(root, scripts, layout, module):
     return toolchain / module, core
 
 
-def import_bundle(path, context, env=None):
+def import_bundle(
+    path: Path, context: str, env: Mapping[str, str] | None = None
+) -> CompletedProcess[str]:
     command = "unset -f source_toolchain_required; download_file() { :; }; "
     command += (
         'source "$1"; echo imported'
@@ -260,7 +275,9 @@ def import_bundle(path, context, env=None):
     )
 
 
-def broken_bundle_imports(path, core):
+def broken_bundle_imports(
+    path: Path, core: Path
+) -> Iterator[tuple[str, str, CompletedProcess[str]]]:
     original = (core / "path-helpers.sh").read_bytes()
     for defect in ("missing-file", "missing-export", "stale-guard"):
         (core / "path-helpers.sh").write_bytes(original)
@@ -277,7 +294,7 @@ def broken_bundle_imports(path, core):
 
 
 class GuardedLinks(unittest.TestCase):
-    def test_original_receipts(self):
+    def test_original_receipts(self) -> None:
         expected = json.loads(
             Path(__file__).with_name("guarded-link-receipts.json").read_text()
         )
@@ -286,7 +303,7 @@ class GuardedLinks(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(receipt, actual[name])
 
-    def test_lazy_sudo_and_destination_guard(self):
+    def test_lazy_sudo_and_destination_guard(self) -> None:
         command = r"""set -u
 source "$1"
 ln() { printf 'LN:%s:%s:%s' "$1" "$2" "$3"; }
@@ -331,7 +348,7 @@ path_symlink_missing '/missing source' "$2/absent" -s optional
             self.assertEqual(1, result.returncode)
             self.assertIn("SUDO: unbound variable", result.stderr)
 
-    def test_copied_required_companions(self):
+    def test_copied_required_companions(self) -> None:
         for layout in ("repo", "installed"):
             for module in ("gcc.sh", "vulkan.sh"):
                 with (
@@ -366,7 +383,7 @@ path_symlink_missing '/missing source' "$2/absent" -s optional
                         self.assertNotIn("POISON", failed.stdout)
                         self.assertNotIn("imported", failed.stdout)
 
-    def test_old_bootstrap_dispatcher(self):
+    def test_old_bootstrap_dispatcher(self) -> None:
         diagnostic = "ERROR: bootstrap.sh does not provide source_toolchain_required\n"
         for layout in ("repo", "installed"):
             for module in ("gcc.sh", "vulkan.sh"):
@@ -390,7 +407,7 @@ path_symlink_missing '/missing source' "$2/absent" -s optional
                         self.assertEqual(diagnostic, failed.stderr)
                         self.assertEqual("", failed.stdout)
 
-    def test_fresh_docker_closures(self):
+    def test_fresh_docker_closures(self) -> None:
         docker = SCRIPTS.parent
         toolchain = (docker / "Dockerfile.toolchain").read_text()
         runs = toolchain.split("\nRUN ")
@@ -423,7 +440,7 @@ path_symlink_missing '/missing source' "$2/absent" -s optional
         self.assertIn(fresh, torch)
         self.assertLess(torch.index(fresh), torch.index("\nRUN "))
 
-    def test_independent_link_policies(self):
+    def test_independent_link_policies(self) -> None:
         actual = capture(SCRIPTS)
         self.assertIn("ln\n-sfn\n", actual["gcc:fresh:strict"]["trace"])
         self.assertIn("ln\n-s\n", actual["vulkan:fresh:strict"]["trace"])

@@ -10,6 +10,8 @@ import posixpath
 import re
 import subprocess
 import sys
+from collections.abc import Sequence
+from typing import Any, Literal, TypeAlias
 from urllib.parse import quote, unquote
 
 from markdown_it import MarkdownIt
@@ -31,6 +33,9 @@ RUST_TOC_END = "</section>"
 RUST_SIDEBAR = '<div class="sidebar-elems">'
 RUST_TOPBAR = re.compile(r'(<rustdoc-topbar><h2><a href="#">).*?(</a>)', re.DOTALL)
 FLAVORS = ("dartdoc", "rustdoc")
+Flavor: TypeAlias = Literal["dartdoc", "rustdoc"]
+Heading: TypeAlias = tuple[int, str, str]
+Link: TypeAlias = tuple[str, str]
 NAV_MARKER = "kg-md-nav-section"
 FOOTER_MARKER = "kg-doc-footer-links"
 # The family links every repository on develop: docs/repository-family.md#the-readme-rule
@@ -43,7 +48,7 @@ GITHUB_REMOTE = re.compile(
 )
 
 
-def load_config(path):
+def load_config(path: str | os.PathLike[str]) -> dict[str, Any]:
     """Parse the tab-separated config: title_suffix, footer_title, project_root, repo_url, flavor, shell, guide, footer."""
     config = {"title_suffix": "", "footer_title": "", "project_root": "", "repo_url": "",
               "flavor": "dartdoc", "shell": "index.html", "guides": [], "sources": {}, "footer": []}
@@ -83,7 +88,7 @@ def origin_url(root: str) -> str:
     return github_url(out.stdout) if out.returncode == 0 else ""
 
 
-def submodule_urls(root: str):
+def submodule_urls(root: str) -> list[Link]:
     """[(path, GitHub URL)] from <root>/.gitmodules, longest path first; a non-GitHub one is left out."""
     gitmodules = pathlib.Path(root) / ".gitmodules"
     if not root or not gitmodules.is_file():
@@ -108,11 +113,17 @@ def repo_path(root: str, source: str) -> str:
 class LinkTargets:
     """Where a relative link in a guide goes: the guide rendered from it, or the file or folder on GitHub."""
 
-    def __init__(self, guide_pages: dict, repo_url: str = "", submodules=(), project_root: str = "",
-                 site_root: str = "") -> None:
+    def __init__(
+        self,
+        guide_pages: dict[str, str],
+        repo_url: str = "",
+        submodules: Sequence[Link] | None = None,
+        project_root: str = "",
+        site_root: str = "",
+    ) -> None:
         self.guide_pages = guide_pages
         self.repo_url = repo_url.rstrip("/")
-        self.submodules = list(submodules)
+        self.submodules = list(submodules or ())
         self.project_root = project_root
         self.site_root = site_root
 
@@ -164,7 +175,7 @@ def slugify(value: str) -> str:
 def rewrite_md_links(rendered_html: str, links: LinkTargets, source_rel: str) -> str:
     """Point every relative link, anchor kept, at its guide page or, failing that, at GitHub."""
 
-    def repl(match) -> str:
+    def repl(match: re.Match[str]) -> str:
         prefix, href, suffix = match.group(1), match.group(2), match.group(3)
         if NOT_A_REPO_PATH.match(href):
             return match.group(0)
@@ -174,7 +185,7 @@ def rewrite_md_links(rendered_html: str, links: LinkTargets, source_rel: str) ->
     return re.sub(r'(href\s*=\s*["\'])([^"\']+)(["\'])', repl, rendered_html)
 
 
-def extract_headings(markdown_text: str):
+def extract_headings(markdown_text: str) -> list[Heading]:
     headings = []
     tokens = RENDERER.parse(markdown_text)
     for i, token in enumerate(tokens):
@@ -187,7 +198,7 @@ def extract_headings(markdown_text: str):
     return headings
 
 
-def add_heading_ids(rendered_html: str, headings) -> str:
+def add_heading_ids(rendered_html: str, headings: Sequence[Heading]) -> str:
     """Give each heading the anchor the table of contents links to."""
     cursor = 0
     for level, _title, anchor in headings:
@@ -201,7 +212,7 @@ def add_heading_ids(rendered_html: str, headings) -> str:
     return rendered_html
 
 
-def build_toc(headings) -> str:
+def build_toc(headings: Sequence[Heading]) -> str:
     if not headings:
         return ""
     items = [
@@ -214,7 +225,7 @@ def build_toc(headings) -> str:
     )
 
 
-def build_rustdoc_toc(nav_title: str, headings) -> str:
+def build_rustdoc_toc(nav_title: str, headings: Sequence[Heading]) -> str:
     """rustdoc's sidebar contents: the guide's title, then each ## heading with its ### headings."""
     sections = []
     for level, title, anchor in headings:
@@ -242,8 +253,16 @@ def _splice(page: str, start: str, end: str, replacement: str, where: str) -> st
     return page[:start_idx] + replacement + page[end_idx:]
 
 
-def render_guide_page(shell, nav_title: str, suffix: str, md_text: str, links, slug, source_rel,
-                      flavor: str = "dartdoc") -> str:
+def render_guide_page(
+    shell: str,
+    nav_title: str,
+    suffix: str,
+    md_text: str,
+    links: LinkTargets,
+    slug: str,
+    source_rel: str,
+    flavor: Flavor = "dartdoc",
+) -> str:
     headings = extract_headings(md_text)
     body = add_heading_ids(rewrite_md_links(RENDERER.render(md_text), links, source_rel), headings)
     title = f"{nav_title} - {suffix}" if suffix else nav_title
@@ -265,7 +284,12 @@ def render_guide_page(shell, nav_title: str, suffix: str, md_text: str, links, s
                    f"guide-{slug}.html (right sidebar)")
 
 
-def sidebar_nav(guide_dir: pathlib.Path, page_path: pathlib.Path, guides, flavor: str = "dartdoc") -> str:
+def sidebar_nav(
+    guide_dir: pathlib.Path,
+    page_path: pathlib.Path,
+    guides: Sequence[Link],
+    flavor: Flavor = "dartdoc",
+) -> str:
     """The guides block, 'Markdown Guides' or rustdoc's 'Guides', with every href relative to the page holding it."""
     links = []
     for slug, label in guides:
@@ -282,7 +306,12 @@ def sidebar_nav(guide_dir: pathlib.Path, page_path: pathlib.Path, guides, flavor
     return "\n".join([f'      <li class="section-title {NAV_MARKER}">Markdown Guides</li>', *items])
 
 
-def inject_sidebar_nav(text: str, nav_html: str, where, flavor: str = "dartdoc") -> str:
+def inject_sidebar_nav(
+    text: str,
+    nav_html: str,
+    where: str | os.PathLike[str],
+    flavor: Flavor = "dartdoc",
+) -> str:
     """Hang the guide nav off dartdoc's left sidebar's first `<ol>` or atop rustdoc's sidebar; else skip the page."""
     if NAV_MARKER in text or not nav_html:
         return text
@@ -298,7 +327,7 @@ def inject_sidebar_nav(text: str, nav_html: str, where, flavor: str = "dartdoc")
     return text[: at + 1] + nav_html + "\n" + text[at + 1 :]
 
 
-def inject_footer(text: str, footer_html: str, where) -> str:
+def inject_footer(text: str, footer_html: str, where: str | os.PathLike[str]) -> str:
     if FOOTER_MARKER in text or not footer_html:
         return text
     if "</footer>" in text:
@@ -311,7 +340,7 @@ def inject_footer(text: str, footer_html: str, where) -> str:
     raise SystemExit(f"{where}: neither '</footer>' nor '</body>' to attach the footer to.")
 
 
-def build_footer(title: str, links) -> str:
+def build_footer(title: str, links: Sequence[Link]) -> str:
     if not title and not links:
         return ""
     anchors = [f'    <a href="{html.escape(url)}">{html.escape(label)}</a>' for label, url in links]
@@ -325,7 +354,7 @@ def build_footer(title: str, links) -> str:
     )
 
 
-def main(argv) -> int:
+def main(argv: Sequence[str]) -> int:
     if len(argv) != 3:
         raise SystemExit(f"usage: {argv[0]} <site dir> <config file>")
     root = pathlib.Path(argv[1])

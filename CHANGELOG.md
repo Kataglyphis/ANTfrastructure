@@ -15,6 +15,79 @@
 
 ## 2026-10-25 — Quality debt cleanup
 
+- Require owned repositories to reuse or extend functionality from their shared repositories and submodules before adding another implementation.
+- Add a WSL2 quality runner that installs pinned tools and runs Linux preflight, mutation proofs and PowerShell checks with logs under ignored `logs/`.
+- Use the fixture server's free port for the dead-site browser check, because Chrome blocks port 9 before it can report connection refusal.
+- Close stdin for mutation test children so inherited terminal input cannot stall proofs; save Windows harness proof JSON under ignored `logs/code-quality/`.
+- Share child-process cleanup in the shell test harness and use it in both lifecycle and browser fixtures.
+- Keep Gitleaks out of ignored test logs and Python bytecode, with planted-secret tests for both paths.
+- Remove the test-only `VULKAN_FIXTURE` knob so the env-knob registry stays strict without an allowlist.
+- Declare the version-bump mutation family and refresh the derived mutation totals.
+- Add fatal Ruff parameter and return coverage for the WebDAV downloader, gateway log-tail tests, chain PID receipts and log-dir consumer tests, with per-file missing-annotation and scope mutation proofs.
+- Check the Jetson webcam app against the assembled torch venv and route all five dependency-specific Python sources through their strict workflow or build gates.
+- Type the validator probe, runtime child-stop, wheel tag resolution and runtime SDK help tests; move their signatures into fatal Ruff checks with per-file missing-annotation and scope mutation proofs.
+- Add strict Ruff signatures for triplet query receipts, advertised-version verification, CLI help exits and image-reference behavior, with per-file missing-annotation and scope mutation proofs.
+- Type native smoke dispatch, nerdctl service receipts, binfmt probe controls and native GCC environment tests; enforce their signatures with per-file failure and scope mutation proofs.
+- Type the Dockerfile ENV ordering verifier, image-consumer bootstrap, NPM transport and Python provider context helpers; add each to fatal Ruff annotation coverage with mutation proofs.
+- Add strict parameter and return checks for serving stack tests, the LLM network guard, libcamera report tests and consumer quality wiring tests, with missing-annotation and scope mutations.
+- Type the embedded Python extractor, Corrosion fixture, sudo-policy closure tests and wheel archive transport receipts; enforce their Ruff signatures with mutations.
+- Add fatal Ruff annotations for WebDAV download, Meson provider, Flutter trace-summary and wheelhouse manifest helpers, with per-file scope mutations.
+- Type the Flutter web artifact checker, add it to the fatal Ruff parameter and return gate, and prove strict scope with fixture and mutation checks.
+- Annotate the chain ORT, sudo policy and raw pin reader test helpers, expanding the fatal Ruff parameter and return gate with strict-scope mutations and regression tests.
+- Type the gateway E2E fixture, HTTP client and operations tests, extending strict Ruff coverage across the gateway suite.
+- Type the cross-active registration contract fixture and enforce its signatures in the strict Ruff gate with a mutation proof.
+- Type the mocked compiler candidate tests and add their signatures to the fatal Ruff scope with a mutation proof.
+- Type the media file-set receipt fixtures and enforce their signatures in Ruff, with a strict-scope mutation.
+- Run the ShellCheck warning ratchet in bounded Windows batches and merge each JSON result, avoiding CreateProcess command-line overflow while preserving source following.
+- Add a ShellCheck-free Windows batching test and a mutation proof for the batch loop.
+- Clear the venv version probe's percent-formatting findings and narrow import, metadata, lock and OpenCV exception handling; malformed present locks now fail, with 15 probe regression tests.
+- Add the venv version probe's parameters and public returns to the fatal Ruff annotation gate.
+- Consolidate runtime venv status parsing, shrink the smoke script's frozen size by one line, and keep its measured size record current.
+- Convert all 26 Renovate audit formatting findings to equivalent f-strings; correct the venv probe's build-pin type, and enforce annotations for the GStreamer metadata helper and data-lock fetcher with per-file failure checks.
+- Keep unexpected GenAI configuration exceptions fatal, prove they cannot print a green sentinel, and document the smoke's known-error contract.
+- Make the TVM codegen smoke skip only a missing import; unexpected initialization errors now fail, with a regression proof.
+- Make the Flutter browser smoke treat Playwright errors as failures and propagate unexpected Python bugs; add regression coverage for both outcomes.
+- Make Debian app dependency discovery fail when readelf or ldconfig fails; keep dpkg's no-owner result explicit and regression-tested.
+- Restrict version-bump checksum fallbacks to network and invalid-JSON failures; propagate unexpected helper errors and cover all fallback paths with offline fixtures.
+- Make the runtime VENV-SET metadata probe fail on malformed installed requirements instead of converting the error into an unavailable skip; add a regression assertion and document its verdict.
+- Clear equivalent format findings in the doc-number checker, OCI layer extractor and consumer quality wiring checker; refresh the derived mutation counts.
+- Clear the ORT venv census's percent-format findings; report known filesystem and wheel errors while letting unexpected bugs retain their traceback, with source and Windows-stage regression coverage.
+- Type the shared ORT venv census and enforce its parameters and public return in Ruff, with per-file failure and strict ty coverage.
+- Type the complexity scanner, make its 33-file Ruff signature scope fatal, and convert its file reads and subprocess status checks to explicit resource and failure handling.
+- Type the code-size scanner and add its parameter and public return annotations to the strict Ruff gate, with a fixture that fails on missing annotations.
+- Type the comment-size verifier and add it to the strict Ruff parameter and public-return gate, with a per-file failure fixture.
+- Type the ShellCheck warning ratchet and add it to the strict Ruff parameter and public-return gate, with a per-file failure fixture.
+- Type the shared gate-scope helper and enforce its signatures in Ruff with the same per-file regression gate.
+- Type the Dart documentation renderer, including heading, navigation and submodule-link shapes, and enforce its API signatures in Ruff.
+- Type the fleet dependency test graph and receipts, and enforce its fixture helpers and tests through the strict Ruff gate.
+- Type the free-threaded sysconfig tool discovery and repair path, and add it to the per-file strict Ruff signature gate.
+- Split the gateway fake lane handler out of its factory so the helper stays under the 80-line function limit without a freeze exception.
+- Type the trailing-conditional verifier and extend its fatal Ruff parameter and public-return scope, with a per-file failure fixture.
+- Type the manifest annotation reader and enforce its parameters and public return through the same strict Ruff scope.
+- Add the lint-scope initialization tests to the strict Ruff annotation scope after typing their test methods.
+- Type the Flutter fallback-font checker and add it to strict Ruff annotation enforcement and the ty quality scope.
+- Type three workflow, ONNX receipt and callback-scope test helpers and make all three fail the strict Ruff annotation gate when untyped.
+- Fully type the gateway routing end-to-end tests and add their signatures to the strict Ruff gate with per-file regressions.
+- Type the gateway harness, shaping tests and fake lane, validate decoded JSON shapes, and enforce signatures in Ruff with a failing fixture.
+- Type the apt update selection test helpers and enforce their signatures in the Ruff gate with a per-file regression fixture.
+- Type the guarded-link test helpers and enforce their signatures in the same fatal Ruff scope with a per-file regression fixture.
+- Type image-acceptance test helpers and enforce their signatures with the same missing-annotation regression gate.
+- Type the version-bump driver's lookup and reporting helpers and add it to fatal Ruff annotation checks.
+- Type the Flutter browser smoke callbacks, make the HTTP response callback return explicitly, and test its error recording.
+- Type the header-discovery receipt fixture inputs and results and enforce them through the Ruff signature regression gate.
+- Type the QNN query fixture inputs and receipts, and enforce their signatures with the strict Ruff and ty gates.
+- Type the workflow conventions parser and findings, and enforce its signatures through Ruff with the existing ty coverage.
+- Type the built-site link parser and graph checks, and enforce its signatures in Ruff with the existing ty coverage.
+- Type the shared quality-allow readers and verdict helpers, preserving string and tuple keys under Ruff and ty.
+- Type the media pin advisory fixtures and make missing source functions fail with a clear fixture error.
+- Type the directory-visitor scenario generator, receipts and Docker closure checks in the strict annotation gate.
+- Type the verified-installer shell receipts and copied-import checks in the strict annotation gate.
+- Type the toolchain download-loader scenario builder and receipts, enforcing its signatures through Ruff.
+- Normalize Windows Ruff source-map paths so shell-heredoc findings still point to their source file and line.
+- Force UTF-8 in the Windows source-map relabeler so non-ASCII Ruff findings remain readable under cp1252.
+- Annotate `ort_census_probe.py`, clear its 91 missing parameter and return types, and move it into the fatal 32-file Ruff signature gate.
+- Fully type `verify_dead_functions.py`, clear its 16 UP031, three unused-noqa and subprocess-check findings, and make its ANN001/ANN201 checks fatal across 32 files.
+- Annotate `verify_image_env.py`, clear its 20 Ruff UP031 findings, and extend fatal ANN001/ANN201 checks to 30 files. Its every-path signature fixture and 60 image-env assertions pass.
 - Repair the Linux preflight failure caused by two reusable-lane test predicates ending on bare conditions; spell out their success and failure returns and keep the trailing-conditional gate clean.
 - Annotate the mutation verifier, gate registry and image acceptance driver; clear 248 Ruff ANN001/ANN201 findings and enforce both rules on 29 files, with a failing fixture for each selected path. Clear 118 UP031 findings across the workflow checker, consumer inventory and Renovate planner, plus one PIE810 finding; keep their verdict fixtures and updated mutation recipes green.
 - Resolve another 180 Ruff parameter and public-return findings in consumer inventory and the image bump tool; enforce ANN001/ANN201 on 26 fully annotated files.
@@ -25,6 +98,15 @@
 - Check the WebDAV downloader against the exact pinned client source commit in Linux x64 CI, without installing runtime dependencies; keep its fatal report under ignored logs and prove wrong calls and missing source fail.
 
 - Add a locked `quality/` uv project for the Python analysis environment and expand fatal ty checks from 129 to 140 of 146 tracked files; keep the remaining image-only and private imports visible in ignored reports.
+- Type the Ansible status report and add it to the fatal Ruff parameter and public-return gate, with a scope mutation proof.
+- Type the Jetson webcam's frame handoff, inference helpers and request handler, and enforce the signatures in Ruff with a scope mutation proof.
+- Give the smoke query contract suite explicit case tuple types and enforce its helpers in Ruff with a scope mutation proof.
+- Add explicit receipt types to the Clang job policy suite and enforce its helpers in Ruff with a scope mutation proof.
+- Type the Flutter performance reporter's CLI and JSON boundary, and prove its strict Ruff scope with a mutation.
+- Type the binfmt probe receipt helpers and enforce their signatures in Ruff with a scope mutation proof.
+- Type the Meson dispatch fixture's case rows, subprocess captures and receipts, and keep it in the fatal Ruff scope with a mutation proof.
+- Share the typed receipt boundary between the host and target Cargo fixtures, and enforce both suites in Ruff with mutations.
+- Type the host Python pin fixtures and enforce their helpers and test methods in Ruff with a scope mutation proof.
 - Resolve all 20 missing variadic parameter annotations and make Ruff ANN002 and ANN003 fatal across every tracked Python file, with failing fixtures and mutation proofs.
 - Annotate 195 private returns in Renovate Python scripts and all Linux quality verifiers; make their Ruff ANN202 findings fatal, with selector and scope mutation proofs.
 - Resolve the remaining 108 private returns and make Ruff ANN202 fatal across all 146 tracked Python files; annotate the Renovate CMake parser's 50 parameters and two public returns and enforce both rules there.

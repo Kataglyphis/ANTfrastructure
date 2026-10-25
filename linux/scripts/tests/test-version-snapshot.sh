@@ -12,7 +12,11 @@ export REPO
 # _farm <path>...: a symlink farm (a full copy is 8 GB) with the named paths, and sync_versions.py, as real copies.
 _farm() {
   ROOTS="${_roots}" python3 - "$@" <<'PY'
-import os, shutil, sys, tempfile
+import os
+import shutil
+import sys
+import tempfile
+
 repo = os.environ["REPO"]
 root = tempfile.mkdtemp(dir=os.environ["ROOTS"])
 

@@ -3,6 +3,7 @@ front of three fake lanes this process owns. Opt-in (GATEWAY_E2E=1): it needs a
 container engine and the image, and it runs for about a minute.
 """
 import os
+from collections.abc import Iterator
 
 import pytest
 from gw_fake_lane import FakeLane
@@ -12,7 +13,7 @@ ENABLED = os.environ.get("GATEWAY_E2E") == "1"
 
 
 @pytest.fixture(scope="session")
-def gateway(tmp_path_factory):
+def gateway(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Gateway]:
     if not ENABLED:
         pytest.skip("gateway e2e is opt-in: GATEWAY_E2E=1 (needs nerdctl or docker and the pinned image)")
     lanes = {n: FakeLane(n).start() for n in ("npu", "gpu", "cpu")}
@@ -29,7 +30,7 @@ def gateway(tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
-def fresh(gateway):
+def fresh(gateway: Gateway) -> Iterator[Gateway]:
     for lane in gateway.lanes.values():
         lane.reset()
     gateway.log.mark()

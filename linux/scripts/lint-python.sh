@@ -99,7 +99,7 @@ fi
 # Maps a probe__2.py:1: finding back to the shell file and its real line.
 _name_sources() {
   # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
-  ${_LINT_PY} - "${_EMB_MAP:-/dev/null}" "$1" <<'EMBPY'
+  PYTHONIOENCODING=utf-8 ${_LINT_PY} - "${_EMB_MAP:-/dev/null}" "$1" <<'EMBPY'
 import re
 import sys
 
@@ -109,19 +109,19 @@ try:
         for row in fh:
             tmp, _, where = row.rstrip("\n").partition("\t")
             if tmp and where:
-                table[tmp] = where
+                table[tmp.replace("\\", "/")] = where
 except OSError:
     pass
 
 
 def relabel(hit):
-    where = table.get(hit.group(1))
+    where = table.get(hit.group(1).replace("\\", "/"))
     if where is None:
         return hit.group(0)
     exact = re.match(r"(.*):(\d+)$", where)
     if exact:
-        return "%s:%d" % (exact.group(1), int(exact.group(2)) + int(hit.group(2)))
-    return "%s line %s" % (where, hit.group(2))
+        return f"{exact.group(1)}:{int(exact.group(2)) + int(hit.group(2))}"
+    return f"{where} line {hit.group(2)}"
 
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")

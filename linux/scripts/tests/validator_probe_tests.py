@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[3]
 SUBJECT = Path(sys.argv.pop(1)).resolve()
@@ -113,7 +114,7 @@ VERSION_CASES = {
 }
 
 
-def functions(file):
+def functions(file: Path) -> str:
     text = file.read_text()
     names = [n for n in FUNCTIONS if n + "() {" in text]
     command = 'source "$1/linux/scripts/tests/test-harness.sh"; shift; file="$1"; shift; for fn in "$@"; do t_fn_src "$file" "$fn" || exit; done'
@@ -125,7 +126,14 @@ def functions(file):
     ).stdout
 
 
-def one(file, source, operation, case, context, version):
+def one(
+    file: Path,
+    source: str,
+    operation: str,
+    case: dict[str, str],
+    context: str,
+    version: bool,
+) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="ant-validator-case-") as directory:
         work = Path(directory)
         script = work / "functions.sh"
@@ -183,30 +191,37 @@ def one(file, source, operation, case, context, version):
             check=False,
             timeout=10,
         )
-        normalize = lambda s: s.replace(str(work), "WORK")
-        files = []
-        for path in sorted((work / "tmp").rglob("*")):
-            if path.is_file():
-                files.append([str(path.relative_to(work)), path.read_text()])
-        return {
-            "status": result.returncode,
-            "stdout": normalize(result.stdout),
-            "stderr": normalize(result.stderr),
-            "trace": normalize((work / "trace").read_text())
-            if (work / "trace").exists()
-            else "",
-            "pipeline_calls": {
-                tool: normalize((work / ("pipeline-" + tool)).read_text())
-                if (work / ("pipeline-" + tool)).exists()
-                else ""
-                for tool in ("readelf", "head", "grep")
-            },
-            "state": (work / "state").read_text().replace(str(work), "WORK"),
-            "remaining": files,
-        }
+        return result_receipt(result, work)
 
 
-def capture(file):
+def result_receipt(
+    result: subprocess.CompletedProcess[str], work: Path
+) -> dict[str, Any]:
+    normalize = lambda value: value.replace(str(work), "WORK")
+    files = [
+        [str(path.relative_to(work)), path.read_text()]
+        for path in sorted((work / "tmp").rglob("*"))
+        if path.is_file()
+    ]
+    return {
+        "status": result.returncode,
+        "stdout": normalize(result.stdout),
+        "stderr": normalize(result.stderr),
+        "trace": normalize((work / "trace").read_text())
+        if (work / "trace").exists()
+        else "",
+        "pipeline_calls": {
+            tool: normalize((work / ("pipeline-" + tool)).read_text())
+            if (work / ("pipeline-" + tool)).exists()
+            else ""
+            for tool in ("readelf", "head", "grep")
+        },
+        "state": (work / "state").read_text().replace(str(work), "WORK"),
+        "remaining": files,
+    }
+
+
+def capture(file: Path) -> dict[str, dict[str, Any]]:
     source = functions(file)
     results = {}
     for operation, cases, version in [
@@ -224,7 +239,7 @@ def capture(file):
 
 
 class ValidatorProbes(unittest.TestCase):
-    def test_original_receipts(self):
+    def test_original_receipts(self: "ValidatorProbes") -> None:
         expected = json.loads(
             Path(__file__).with_name("validator-probe-receipts.json").read_text()
         )
@@ -233,7 +248,7 @@ class ValidatorProbes(unittest.TestCase):
             with self.subTest(case=name):
                 self.assertEqual(receipt, actual[name])
 
-    def test_probe_callback_errexit(self):
+    def test_probe_callback_errexit(self: "ValidatorProbes") -> None:
         with tempfile.TemporaryDirectory(prefix="ant-validator-callback-") as temporary:
             source = Path(temporary) / "functions.sh"
             source.write_text(functions(SUBJECT))
@@ -254,7 +269,7 @@ _vc_source_fixture write_fixture probe_fixture
             self.assertEqual(1, result.returncode)
             self.assertEqual("before", result.stdout)
 
-    def test_independent_policies(self):
+    def test_independent_policies(self: "ValidatorProbes") -> None:
         actual = capture(SUBJECT)
         gcc = "_smoke_gcc_sanitizers:"
         fuzz = "_smoke_clang_libfuzzer:"

@@ -16,13 +16,13 @@ SCRIPTS = (
 )
 
 
-def fn(text, name):
-    return (
-        re.search(
-            r"^" + re.escape(name) + r"\(\) \{\n.*?^\}", text, re.MULTILINE | re.DOTALL
-        ).group()
-        + "\n"
+def fn(text: str, name: str) -> str:
+    match = re.search(
+        r"^" + re.escape(name) + r"\(\) \{\n.*?^\}", text, re.MULTILINE | re.DOTALL
     )
+    if match is None:
+        raise ValueError(f"function {name!r} is absent from the source")
+    return match.group() + "\n"
 
 
 ff_text = (SCRIPTS / "03-media/build/ffmpeg/build-ffmpeg.sh").read_text()
@@ -37,7 +37,7 @@ helper = (
 )
 
 
-def gst(text):
+def gst(text: str) -> str:
     return (
         text[
             text.index("# The onnx plugin link") : text.index(
@@ -64,7 +64,14 @@ PIN_CALLED=0
 """
 
 
-def provider_setup(phase, provider, command_alias, missing, status, cross):
+def provider_setup(
+    phase: str,
+    provider: str,
+    command_alias: bool,
+    missing: bool,
+    status: int,
+    cross: int,
+) -> str:
     code = base + f"PIN_RC={status} CROSS={cross}\n"
     if command_alias:
         code += 'command_early() { LOOKUP_PHASE=early; LOOKUP_ARGV="$*"; builtin command -v pin_target_libstdcxx; }\ncommand_late() { LOOKUP_PHASE=late; LOOKUP_ARGV="$*"; builtin command -v pin_target_libstdcxx; }\nalias command=\'command_early "$@"\'\n'
@@ -81,7 +88,9 @@ def provider_setup(phase, provider, command_alias, missing, status, cross):
     return code
 
 
-def caller_source(subject, phase, provider, cross, module_path):
+def caller_source(
+    subject: str, phase: str, provider: str, cross: int, module_path: Path
+) -> tuple[str, str]:
     code = ""
     late = (
         "alias pin_target_libstdcxx='late_pin \"$@\"'\n"
@@ -107,18 +116,18 @@ def caller_source(subject, phase, provider, cross, module_path):
 
 
 def run(
-    subject,
-    strict,
-    context,
-    phase,
-    provider,
-    status,
-    cross,
-    command_alias=False,
-    missing=False,
-    target=("riscv64", ""),
-    trace=False,
-):
+    subject: str,
+    strict: bool,
+    context: str,
+    phase: str,
+    provider: str,
+    status: int,
+    cross: int,
+    command_alias: bool = False,
+    missing: bool = False,
+    target: tuple[str, str] = ("riscv64", ""),
+    trace: bool = False,
+) -> list[int | str]:
     code = provider_setup(phase, provider, command_alias, missing, status, cross)
     code += (
         "TARGET_ARCH="
@@ -156,8 +165,26 @@ def run(
     return receipt + [calls] if trace else receipt
 
 
+def stdout(receipt: list[int | str]) -> str:
+    value = receipt[1]
+    if not isinstance(value, str):
+        raise TypeError("the command receipt has no stdout string")
+    return value
+
+
+def stderr(receipt: list[int | str]) -> str:
+    value = receipt[2]
+    if not isinstance(value, str):
+        raise TypeError("the command receipt has no stderr string")
+    return value
+
+
 class PinAdvisoryTests(unittest.TestCase):
-    def test_original_receipts(self):
+    def test_missing_source_function_names_the_fixture_error(self) -> None:
+        with self.assertRaisesRegex(ValueError, "absent from the source"):
+            fn("source with no shell function", "media_pin_target")
+
+    def test_original_receipts(self) -> None:
         rows = json.loads(
             Path(__file__).with_name("media-pin-advisory-receipts.json").read_text()
         )
@@ -167,19 +194,19 @@ class PinAdvisoryTests(unittest.TestCase):
                 subject, *args = row["case"]
                 self.assertEqual(row["receipt"], run(subject, *args))
 
-    def test_literal_alias_arguments_and_scope(self):
+    def test_literal_alias_arguments_and_scope(self) -> None:
         for subject in ["ff", "gst"]:
             result = run(subject, True, "direct", "before", "alias", 23, 1, True)
             self.assertEqual(0, result[0])
             prefix = "cfg tail [*] " if subject == "ff" else "1.2.3 /prefix [*] "
             self.assertIn(
-                "LOOKUP:late:<" + prefix + " -v pin_target_libstdcxx>", result[1]
+                "LOOKUP:late:<" + prefix + " -v pin_target_libstdcxx>", stdout(result)
             )
-            self.assertIn("PIN:<late>:", result[1])
-            self.assertIn(":SCOPE:<UNSET>", result[1])
-            self.assertEqual("ARCH\n" * 3 if subject == "ff" else "", result[2])
+            self.assertIn("PIN:<late>:", stdout(result))
+            self.assertIn(":SCOPE:<UNSET>", stdout(result))
+            self.assertEqual("ARCH\n" * 3 if subject == "ff" else "", stderr(result))
 
-    def test_pin_target_query_is_lazy(self):
+    def test_pin_target_query_is_lazy(self) -> None:
         for provider, cross in itertools.product(
             ["function", "alias", "missing"], [0, 1]
         ):
@@ -189,7 +216,7 @@ class PinAdvisoryTests(unittest.TestCase):
             expected = 0 if not cross else (2 if provider == "missing" else 3)
             self.assertEqual(expected, result[3])
 
-    def test_gstreamer_target_fallback_and_amd64_gate(self):
+    def test_gstreamer_target_fallback_and_amd64_gate(self) -> None:
         for target, fallback, selected in [
             ("arm64", "riscv64", "arm64"),
             ("", "arm64", "arm64"),
@@ -209,11 +236,11 @@ class PinAdvisoryTests(unittest.TestCase):
             )
             self.assertEqual(0, result[0])
             if selected is None:
-                self.assertNotIn("PIN:<", result[1])
+                self.assertNotIn("PIN:<", stdout(result))
             else:
-                self.assertIn("PIN:<function>:<" + selected + ">", result[1])
+                self.assertIn("PIN:<function>:<" + selected + ">", stdout(result))
 
-    def test_old_owner_fails_only_when_selected(self):
+    def test_old_owner_fails_only_when_selected(self) -> None:
         for subject, cross, context in itertools.product(
             ["ff", "gst"], [0, 1], ["direct", "conditional"]
         ):
@@ -230,14 +257,14 @@ class PinAdvisoryTests(unittest.TestCase):
             self.assertEqual(
                 bool(cross),
                 "ERROR: runtime pinning requires media_pin_target_libstdcxx_if_available from media common.sh"
-                in result[2],
+                in stderr(result),
             )
             if not cross:
                 self.assertEqual(0, result[0])
-                self.assertIn("STATUS:0 PIN:0", result[1])
+                self.assertIn("STATUS:0 PIN:0", stdout(result))
             elif subject == "ff" and context == "conditional":
-                self.assertIn("STATUS:1 PIN:0", result[1])
-            self.assertNotIn("PIN:<", result[1])
+                self.assertIn("STATUS:1 PIN:0", stdout(result))
+            self.assertNotIn("PIN:<", stdout(result))
             if cross and (subject == "gst" or context == "direct"):
                 self.assertEqual(1, result[0])
 

@@ -8,9 +8,8 @@ import re
 import sys
 from pathlib import Path
 
-
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import gate_scope  # noqa: E402
+import gate_scope
 
 ROOT = Path(__file__).resolve().parents[2]
 # log()/info() reach fd 1; warn()/err()/die() reach fd 2 and are therefore safe.

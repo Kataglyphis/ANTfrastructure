@@ -48,7 +48,10 @@ t_assert_eq "sha256:abc" "$(_ancestry_digest_of "sha256:abc")"
 _mk_inspect_json() {
   local annotations="$1"
   python3 - "${annotations}" <<'PY'
-import base64, json, sys
+import base64
+import json
+import sys
+
 manifest = {"schemaVersion": 2, "layers": []}
 ann = json.loads(sys.argv[1])
 if ann:

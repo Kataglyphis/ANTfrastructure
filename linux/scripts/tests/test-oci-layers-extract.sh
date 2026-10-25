@@ -17,7 +17,13 @@ umask 022
 # _layout <dir> <scenario> [link target]: a skopeo dir: layout whose layers the scenario's Python writes, bottom first.
 _layout() {
   python3 - "$@" <<'PY'
-import hashlib, io, json, os, sys, tarfile
+import hashlib
+import io
+import json
+import os
+import sys
+import tarfile
+
 out, scenario = sys.argv[1], sys.argv[2]
 os.makedirs(out)
 layers = []
@@ -74,8 +80,8 @@ elif scenario == "same-layer-link":
     layer([("usr/lib/x/esc", "sym", "/tmp"), ("usr/lib/x/esc/pwned", "file", "3")])
 elif scenario == "device":
     layer([("usr/lib/x/null", "dev")])
-json.dump({"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json", "layers": layers},
-          open(os.path.join(out, "manifest.json"), "w"))
+with open(os.path.join(out, "manifest.json"), "w") as fh:
+    json.dump({"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json", "layers": layers}, fh)
 PY
 }
 

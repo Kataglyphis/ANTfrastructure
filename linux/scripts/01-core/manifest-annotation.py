@@ -7,17 +7,18 @@ import base64
 import binascii
 import json
 import sys
+from typing import NoReturn
 
 EXIT_BAD_INPUT = 1
 EXIT_ABSENT = 2
 
 
-def fail(msg, code=EXIT_BAD_INPUT):
+def fail(msg: str, code: int = EXIT_BAD_INPUT) -> NoReturn:
     print(f"ERROR: manifest-annotation.py: {msg}", file=sys.stderr)
     sys.exit(code)
 
 
-def main():
+def main() -> None:
     if len(sys.argv) != 2:
         fail("usage: manifest-annotation.py <annotation-key>")
     key = sys.argv[1]

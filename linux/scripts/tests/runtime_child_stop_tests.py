@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 @lru_cache
-def extract(file, fn):
+def extract(file: Path, fn: str) -> str:
     return subprocess.run(
         [
             "bash",
@@ -29,7 +29,15 @@ def extract(file, fn):
     ).stdout
 
 
-def receipt(subject, k, w, status, dry, conditional, pid):
+def receipt(
+    subject: str,
+    k: int,
+    w: int,
+    status: int,
+    dry: int,
+    conditional: int,
+    pid: str,
+) -> list[int | str]:
     runtime = ROOT / "linux/scripts/01-core/runtime-build-fns.sh"
     chain = ROOT / "linux/scripts/build-cross-chain.sh"
     code = (
@@ -89,7 +97,7 @@ command_probe() { printf 'command\\n'; return "$STATUS"; }
 
 
 class ChildStopTests(unittest.TestCase):
-    def test_missing_api_refuses_before_spawning(self):
+    def test_missing_api_refuses_before_spawning(self: "ChildStopTests") -> None:
         core = ROOT / "linux/scripts/01-core/parallel-loop.sh"
         runtime = ROOT / "linux/scripts/01-core/runtime-build-fns.sh"
         chain = ROOT / "linux/scripts/build-cross-chain.sh"
@@ -142,7 +150,7 @@ _runtime_heartbeat() { printf 'unexpected spawn\n'; }
                 else:
                     self.assertEqual("", result.stderr)
 
-    def test_timer_fixture_companion(self):
+    def test_timer_fixture_companion(self: "ChildStopTests") -> None:
         code = r"""
 source "$1/linux/scripts/tests/test-harness.sh"
 source "$1/linux/scripts/tests/runtime-flow-fixtures.sh"
@@ -165,7 +173,7 @@ declare -F parallel_require_child_stop parallel_stop_child_advisory _runtime_tim
             (result.returncode, result.stdout, result.stderr),
         )
 
-    def test_original_receipts(self):
+    def test_original_receipts(self: "ChildStopTests") -> None:
         expected = json.loads(
             Path(__file__).with_name("runtime-child-stop-receipts.json").read_text()
         )

@@ -12,8 +12,8 @@ import sys
 from typing import TypedDict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from quality_allow import check_keys, load_keys  # noqa: E402
-from verify_code_size import scan, shell_functions  # noqa: E402
+from quality_allow import check_keys, load_keys
+from verify_code_size import scan, shell_functions
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -96,7 +96,7 @@ def run_checks(text: str) -> list[RunCheck]:
                 break
             except ValueError:
                 if i >= len(lines):
-                    raise SystemExit("preflight.sh: unterminated run_check command for %s" % m.group(1))
+                    raise SystemExit(f"preflight.sh: unterminated run_check command for {m.group(1)}")
                 cmd += "\n" + lines[i]
                 i += 1
         found.append((m.group(1), m.group(2), tokens, cmd))
@@ -107,7 +107,7 @@ def run_checks(text: str) -> list[RunCheck]:
     for slug, entries in per_slug.items():
         real = [e for e in entries if "MISSING" not in e[3]] if len(entries) > 1 else entries
         if len(real) != 1:
-            raise SystemExit("preflight.sh: %d run_check lines for %s, cannot pick one" % (len(real), slug))
+            raise SystemExit(f"preflight.sh: {len(real)} run_check lines for {slug}, cannot pick one")
         out.append(real[0])
     return out
 
@@ -230,13 +230,13 @@ def _id_verdict(e: MutationEntry, known: set[str], owners: dict[str, set[str]],
     """Why a mutation id credits no gate, or None when it does or its prefix is a family."""
     slug, target = id_slug(e), e["target"]
     names = ", ".join(sorted(s for s, fs in owners.items() if target in fs))
-    holds = "owned by %s" % names if names else "owned by no gate"
+    holds = f"owned by {names}" if names else "owned by no gate"
     if slug in known:
         if target in owners[slug] or e["id"] in credited.get(slug, ()):
             return None
-        return "%s does not own %s -- %s" % (slug, target, holds)
+        return f"{slug} does not own {target} -- {holds}"
     if target in files:
-        return "prefix names no preflight slug, and %s is %s" % (target, holds)
+        return f"prefix names no preflight slug, and {target} is {holds}"
     return None
 
 
@@ -329,8 +329,7 @@ def rows() -> list[GateRow]:
     order = known_slugs(text)
     checks = {c[0]: c for c in run_checks(text)}
     if set(order) != set(checks):
-        raise SystemExit("preflight.sh: KNOWN_SLUGS and run_check disagree: %s"
-                         % sorted(set(order) ^ set(checks)))
+        raise SystemExit(f"preflight.sh: KNOWN_SLUGS and run_check disagree: {sorted(set(order) ^ set(checks))}")
     defs = shell_defs()
     tests = suites()
     entries = mutation_entries()
@@ -341,7 +340,7 @@ def rows() -> list[GateRow]:
         _s, name, tokens, cmd = checks[slug]
         rel, extent, needle = resolve_script(tokens, cmd, defs, preflight_rel)
         if rel is None or needle is None:
-            raise SystemExit("preflight.sh: no script resolves for slug %s: %s" % (slug, cmd))
+            raise SystemExit(f"preflight.sh: no script resolves for slug {slug}: {cmd}")
         body = script_text(rel, extent)
         files = own_files(rel, body)
         suite_names = [t for t, txt in tests.items() if mentions(needle, txt)]
@@ -410,20 +409,22 @@ def main() -> int:
     if args.write:
         with open(REGISTRY, "w", encoding="utf-8") as fh:
             fh.write(text)
-        print("  wrote %s (%d slugs)" % (reg_rel, len(table)))
+        print(f"  wrote {reg_rel} ({len(table)} slugs)")
     unproven = {r["slug"] for r in table if r["proof"] == UNPROVEN}
     frozen = load_keys(ALLOW)
     frozen_ids = {k for k in frozen if k.startswith(ID_FREEZE)}
     frozen_families = {k for k in frozen if k.startswith(FAMILY)}
     off_convention, families = id_verdicts(table)
-    print("  %d slugs; %d proven; %d unproven, %d frozen in %s"
-          % (len(table), len(table) - len(unproven), len(unproven),
-             len(frozen - frozen_ids - frozen_families), os.path.basename(ALLOW)))
+    print(
+        f"  {len(table)} slugs; {len(table) - len(unproven)} proven; {len(unproven)} "
+        f"unproven, {len(frozen - frozen_ids - frozen_families)} frozen in {os.path.basename(ALLOW)}"
+    )
     if off_convention or frozen_ids:
-        print("  %d mutation id(s) off-convention, %d frozen"
-              % (len(off_convention), len(frozen_ids)))
-    print("  %d mutation id(s) in %d descriptive famil(ies), %d declared"
-          % (sum(families.values()), len(families), len(frozen_families)))
+        print(f"  {len(off_convention)} mutation id(s) off-convention, {len(frozen_ids)} frozen")
+    print(
+        f"  {sum(families.values())} mutation id(s) in {len(families)} descriptive famil(ies), "
+        f"{len(frozen_families)} declared"
+    )
     sys.stdout.flush()
     scripts = {r["slug"]: r["script"] for r in table}
     rc = check_keys(unproven, frozen - frozen_ids - frozen_families,
@@ -431,25 +432,24 @@ def main() -> int:
                     "mutations.json entry targeting it:",
                     "STALE entr(ies) -- the slug is proven now, delete the line "
                     "(the list only ratchets down):",
-                    lambda k: "%s  (%s)" % (k, scripts.get(k, "?")))
+                    lambda k: "{}  ({})".format(k, scripts.get(k, "?")))
     rc = check_keys(off_convention, frozen_ids,
                     "mutations.json id(s) pinning a file under a prefix that cannot own it "
                     "-- rename to <owning-slug>.<kebab> so the registry can credit them:",
                     "STALE mutation-id freeze(s) -- the id is renamed or gone, delete the line:",
-                    lambda k: "%s  (%s)" % (k, off_convention[k])) or rc
+                    lambda k: f"{k}  ({off_convention[k]})") or rc
     rc = check_keys(families, frozen_families,
                     "mutations.json id(s) whose prefix is neither a preflight slug nor a declared "
                     "descriptive family -- rename to <owning-slug>.<kebab>, or declare the family:",
                     "STALE mutation-family declaration(s) -- no id carries the prefix any more, "
                     "delete the line:",
-                    lambda k: "%s  (%d id(s))" % (k, families[k])) or rc
+                    lambda k: f"{k}  ({families[k]} id(s))") or rc
     current = _read(REGISTRY) if os.path.isfile(REGISTRY) else ""
     if current != text:
         rc = 1
-        sys.stderr.write("FAIL: %s is stale -- run: python3 linux/scripts/verify_gate_registry.py --write\n"
-                         % reg_rel)
+        sys.stderr.write(f"FAIL: {reg_rel} is stale -- run: python3 linux/scripts/verify_gate_registry.py --write\n")
     if rc == 0:
-        print("OK: every slug is proven or frozen, and %s is current" % reg_rel)
+        print(f"OK: every slug is proven or frozen, and {reg_rel} is current")
     return rc
 
 

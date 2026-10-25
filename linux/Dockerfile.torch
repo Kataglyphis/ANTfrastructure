@@ -218,15 +218,17 @@ ENV PYTHON_WHEELS_FREE_THREADED=/opt/wheels-free-threaded
 # /opt/venv is root-owned; no .pyc writes also keeps the image runnable --read-only.
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# The x64 venv resolves all probe imports; foreign-arch runtime policy can omit cv2.
+# The x64 venv resolves both build probes without importing them at runtime.
 RUN --mount=type=bind,source=linux/scripts/06-packaging/check-venv-probe-types.sh,target=/tmp/venv-probe-ty/check.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/load-ty-tool.sh,target=/tmp/venv-probe-ty/load-ty-tool.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/venv-probe-ty/load-versions-env.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/tool-pins.env,target=/tmp/venv-probe-ty/tool-pins.env,ro \
+    --mount=type=bind,source=linux/jetson-webcam/app.py,target=/tmp/venv-probe-ty/jetson-webcam-app.py,ro \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     set -eu; \
     case "${TARGETARCH:?}" in \
-      amd64) bash /tmp/venv-probe-ty/check.sh /opt/venv /opt/scripts/packaging/venv-version-probe.py /tmp/venv-probe-ty/tool-pins.env ;; \
+      amd64) bash /tmp/venv-probe-ty/check.sh /opt/venv /opt/scripts/packaging/venv-version-probe.py /tmp/venv-probe-ty/tool-pins.env && \
+             bash /tmp/venv-probe-ty/check.sh /opt/venv /tmp/venv-probe-ty/jetson-webcam-app.py /tmp/venv-probe-ty/tool-pins.env ;; \
       arm64|riscv64) echo "INFO: venv probe ty gate runs on amd64; runtime imports stay under per-arch smokes" ;; \
       *) echo "Unsupported target arch for venv probe ty gate: ${TARGETARCH}" >&2; exit 2 ;; \
     esac

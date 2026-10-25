@@ -46,6 +46,20 @@ t_assert_eq "0" "$(t_rc bash "${GATE}" "${clean}")" \
   "the gate must be able to be green, or the red below proves only that it is broken"
 t_assert_contains "$(t_out bash "${GATE}" "${clean}")" "secret scan: clean"
 
+t_case "generated logs are excluded from the source scan"
+logs="$(_dir clean)"
+mkdir -p "${logs}/logs"
+printf 'GITHUB_TOKEN=%s\n' "${_SECRET}" > "${logs}/logs/test.log"
+t_assert_eq "0" "$(t_rc bash "${GATE}" "${logs}")" \
+  "ignored logs contain synthetic test credentials and are never shipped"
+
+t_case "Python bytecode caches are excluded from the source scan"
+cache="$(_dir clean)"
+mkdir -p "${cache}/package/__pycache__"
+printf 'GITHUB_TOKEN=%s\n' "${_SECRET}" > "${cache}/package/__pycache__/generated.pyc"
+t_assert_eq "0" "$(t_rc bash "${GATE}" "${cache}")" \
+  "ignored bytecode is generated output, not source"
+
 t_case "a planted credential FAILS the gate"
 leaky="$(_dir leaky)"
 _out="$(t_out bash "${GATE}" "${leaky}")"

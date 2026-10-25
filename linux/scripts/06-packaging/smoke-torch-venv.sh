@@ -97,8 +97,10 @@ assert_pinned_versions() {
 # riscv64 never runs uv sync, so each absence there needs an EXEMPT line with a reason. docs/riscv64-venv-parity.md
 _stv_probe_app_venv_parity() {
   "${PY}" - <<'PYEOF'
-import os, platform, sys
 import importlib.metadata as M
+import os
+import platform
+import sys
 
 _MACHINE_TO_ARCH = {"x86_64": "amd64", "amd64": "amd64",
                     "aarch64": "arm64", "arm64": "arm64", "riscv64": "riscv64"}
@@ -141,28 +143,26 @@ fails, exempted, stale = [], [], []
 for dist, extra in REQUIRED:
     try:
         installed = M.version(dist)
-    except Exception:
+    except M.PackageNotFoundError:
         installed = None
     why = EXEMPT.get((dist, ARCH))
     if installed is not None:
         if why:
             stale.append(dist)
-            print("  ??  %-20s %s is INSTALLED but listed EXEMPT on %s -- delete the line"
-                  % (dist, installed, ARCH))
+            print(f"  ??  {dist:<20} {installed} is INSTALLED but listed EXEMPT on {ARCH} -- delete the line")
         else:
-            print("  OK  %-20s %-14s (extra %s)" % (dist, installed, extra))
+            print(f"  OK  {dist:<20} {installed:<14} (extra {extra})")
     elif why:
         exempted.append(dist)
-        print("  ~~  %-20s absent on %s BY DECISION -- %s" % (dist, ARCH, why))
+        print(f"  ~~  {dist:<20} absent on {ARCH} BY DECISION -- {why}")
     else:
         fails.append(dist)
-        print("  XX  %-20s MISSING -- extra %s must deliver it on %s" % (dist, extra, ARCH))
+        print(f"  XX  {dist:<20} MISSING -- extra {extra} must deliver it on {ARCH}")
 
 if exempted:
-    print("APP-PARITY: %d documented exemption(s) on %s: %s"
-          % (len(exempted), ARCH, ", ".join(exempted)))
+    print(f"APP-PARITY: {len(exempted)} documented exemption(s) on {ARCH}: {', '.join(exempted)}")
 if fails:
-    print("APP-PARITY: FAIL (%d missing)" % len(fails))
+    print(f"APP-PARITY: FAIL ({len(fails)} missing)")
     sys.exit(1)
 print("APP-PARITY: PASS")
 PYEOF
@@ -191,11 +191,13 @@ assert_app_venv_parity() {
 assert_tvm_codegen() {
   local out rc
   if out="$("${PY}" - 2>&1 <<'PYEOF'
-import os, sys
+import os
+import sys
+
 try:
     import tvm
-except Exception as e:
-    print("TVM-CODEGEN SKIP: tvm not importable (%s)" % e)
+except ImportError as e:
+    print(f"TVM-CODEGEN SKIP: tvm not importable ({e})")
     sys.exit(3)
 if not os.path.exists(os.path.join(os.path.dirname(tvm.__file__), "lib", "libtvm_compiler.so")):
     print("TVM-CODEGEN SKIP: a runtime-only tvm, no libtvm_compiler.so")
@@ -205,13 +207,14 @@ if tvm.base._RUNTIME_ONLY:
     sys.exit(1)
 llvm = str(tvm.support.libinfo().get("USE_LLVM", "OFF"))
 if llvm.upper() in ("", "OFF", "0", "FALSE"):
-    print("TVM-CODEGEN SKIP: built without LLVM (USE_LLVM=%s)" % llvm)
+    print(f"TVM-CODEGEN SKIP: built without LLVM (USE_LLVM={llvm})")
     sys.exit(3)
 from tvm import te
+
 a = te.placeholder((8,), name="a")
 f = te.create_prim_func([a, te.compute((8,), lambda i: a[i] * 2.0, name="b")])
 (tvm.compile if hasattr(tvm, "compile") else tvm.build)(f, target="llvm")
-print("TVM-CODEGEN OK: one PrimFunc compiled for llvm (USE_LLVM=%s)" % llvm)
+print(f"TVM-CODEGEN OK: one PrimFunc compiled for llvm (USE_LLVM={llvm})")
 PYEOF
   )"; then rc=0; else rc=$?; fi
   case "${rc}:${out}" in
@@ -233,6 +236,7 @@ _stv_compute_battery() {
   if [ "${STV_COMPUTE}" = "1" ]; then
     if "${PY}" - <<'STV_PY' 2>/dev/null
 import torch
+
 torch.manual_seed(0)
 x = torch.randn(8, 4, requires_grad=True)
 m = torch.nn.Linear(4, 2)
@@ -247,6 +251,7 @@ STV_PY
 import torch
 from torchvision.ops import nms
 from torchvision.transforms import v2
+
 b = torch.tensor([[0.,0.,10.,10.],[1.,1.,11.,11.],[50.,50.,60.,60.]])
 assert nms(b, torch.tensor([0.9,0.8,0.7]), 0.5).numel() == 2   # exercises torchvision._C
 assert v2.Resize((8,8))(torch.zeros(3,16,16)).shape == (3,8,8)

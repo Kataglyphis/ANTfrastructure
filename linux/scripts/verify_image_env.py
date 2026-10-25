@@ -9,15 +9,16 @@ import ipaddress
 import os
 import re
 import sys
+from collections.abc import Iterable, Iterator
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 _HOST_ADDRESS = (r"WEBDAV_\w+|REDIS\w*|MEMCACHED\w*|GCS_\w+|AZURE_\w+|S3_\w+|OSS_\w+|"
                  r"COS_\w+|GHA_\w+|BUCKET|ENDPOINT|REGION")
 # The sccache names whose value is a host, a bucket or a region.
-BUILD_HOST_ADDRESS_NAME = re.compile(r"^SCCACHE_(?:%s)$" % _HOST_ADDRESS, re.IGNORECASE)
+BUILD_HOST_ADDRESS_NAME = re.compile(rf"^SCCACHE_(?:{_HOST_ADDRESS})$", re.IGNORECASE)
 # Every sccache remote backend and host-layout knob; local defaults like SCCACHE_DIR are allowed.
-BUILD_HOST_NAME = re.compile(r"^SCCACHE_(?:%s|MULTILEVEL_CHAIN|FORCE_LOCAL)$" % _HOST_ADDRESS, re.IGNORECASE)
+BUILD_HOST_NAME = re.compile(rf"^SCCACHE_(?:{_HOST_ADDRESS}|MULTILEVEL_CHAIN|FORCE_LOCAL)$", re.IGNORECASE)
 # The S3 level's key reaches a RUN only as a BuildKit secret; as a variable it would publish with the image.
 CREDENTIAL_NAME = re.compile(r"^AWS_(?:ACCESS_KEY_ID|SECRET_ACCESS_KEY|SESSION_TOKEN)$", re.IGNORECASE)
 PRIVATE_V4 = tuple(ipaddress.ip_network(n) for n in
@@ -29,13 +30,13 @@ TRAIL = set(" \t,;\"')]")
 AUTHORITY = re.compile(r"//(?:[^/@\s]*@)?$")
 REF = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)")
 # Only a compiling RUN mounts both dirs; either alone is a probe that starts no sccache server.
-SCCACHE_MOUNTS = tuple(re.compile(r"--mount=[^\s]*target=C:\\%s(?=[,\s]|$)" % d, re.IGNORECASE)
+SCCACHE_MOUNTS = tuple(re.compile(rf"--mount=[^\s]*target=C:\\{d}(?=[,\s]|$)", re.IGNORECASE)
                        for d in ("sccache", "sccache-logs"))
 # The WebDAV level reaches a compile only through this mount; an ARG would write the endpoint into the history.
 ENDPOINT_SECRET = re.compile(r"--mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT(?=\s|$)")
 
 
-def _host_position(value, start, end, name) -> bool:
+def _host_position(value: str, start: int, end: int, name: str) -> bool:
     """Is value[start:end] an address, or a version/path fragment that looks like one?"""
     before, after = value[:start], value[end:end + 1]
     if AUTHORITY.search(before) or before.endswith(("\\\\", "@")):
@@ -49,7 +50,7 @@ def _host_position(value, start, end, name) -> bool:
     return "VERSION" not in name.upper()  # CUDA_..._CURAND_VERSION=10.4.4.72
 
 
-def leak_reasons(name, value):
+def leak_reasons(name: str, value: str) -> list[str]:
     """Why NAME=VALUE must not ship in a published image; [] when it may."""
     reasons = []
     if BUILD_HOST_NAME.match(name):
@@ -59,7 +60,7 @@ def leak_reasons(name, value):
     return reasons + address_reasons(name, value)
 
 
-def address_reasons(name, value):
+def address_reasons(name: str, value: str) -> list[str]:
     """The RFC1918/link-local addresses VALUE carries in a host position."""
     reasons = []
     for m in IPV4.finditer(value):
@@ -68,13 +69,13 @@ def address_reasons(name, value):
         except ValueError:
             continue
         if any(addr in net for net in PRIVATE_V4) and _host_position(value, m.start(1), m.end(1), name):
-            reasons.append("RFC1918/link-local address %s" % m.group(1))
+            reasons.append(f"RFC1918/link-local address {m.group(1)}")
     for m in IPV6_LINK_LOCAL.finditer(value):
-        reasons.append("link-local address %s" % m.group(1))
+        reasons.append(f"link-local address {m.group(1)}")
     return reasons
 
 
-def check_env_lines(lines, label):
+def check_env_lines(lines: Iterable[str], label: str) -> tuple[int, list[str]]:
     """(checked, findings) over NAME=VALUE lines; blanks and comments are skipped."""
     checked, findings = 0, []
     for raw in lines:
@@ -84,11 +85,11 @@ def check_env_lines(lines, label):
         name, _, value = line.partition("=")
         checked += 1
         for why in leak_reasons(name.strip(), value):
-            findings.append("%s: %s=%s -- %s" % (label, name.strip(), value, why))
+            findings.append(f"{label}: {name.strip()}={value} -- {why}")
     return checked, findings
 
 
-def _escape_char(lines) -> str:
+def _escape_char(lines: Iterable[str]) -> str:
     """The `# escape=` parser directive, or the default backslash."""
     for line in lines:
         m = re.match(r"^#\s*escape\s*=\s*(\S)\s*$", line.strip())
@@ -99,7 +100,7 @@ def _escape_char(lines) -> str:
     return "\\"
 
 
-def instructions(path):
+def instructions(path: str | os.PathLike[str]) -> Iterator[tuple[int, str]]:
     """(line, text) per instruction, joined by the file's escape char, interior comments dropped as BuildKit does."""
     with open(path, encoding="utf-8", errors="replace") as fh:
         lines = fh.read().splitlines()
@@ -122,7 +123,7 @@ def instructions(path):
         yield start, " ".join(t.strip() for t in buf if t.strip())
 
 
-def _tokens(body) -> list[str]:
+def _tokens(body: str) -> list[str]:
     out, cur, quote = [], "", ""
     for char in body:
         if quote:
@@ -143,13 +144,13 @@ def _tokens(body) -> list[str]:
     return out
 
 
-def _unquote(value) -> str:
+def _unquote(value: str) -> str:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
         return value[1:-1]
     return value
 
 
-def _pairs(body, legacy) -> list[tuple[str, str | None]]:
+def _pairs(body: str, legacy: bool) -> list[tuple[str, str | None]]:
     """(KEY, VALUE or None) pairs of an ENV/ARG body; `legacy` accepts `ENV KEY value`."""
     toks = _tokens(body)
     if legacy and toks and "=" not in toks[0]:
@@ -157,40 +158,41 @@ def _pairs(body, legacy) -> list[tuple[str, str | None]]:
     return [(t.split("=", 1)[0], _unquote(t.split("=", 1)[1]) if "=" in t else None) for t in toks]
 
 
-def _scan_arg(where, body) -> list[str]:
+def _scan_arg(where: str, body: str) -> list[str]:
     findings = []
     for key, value in _pairs(body, legacy=False):
         if BUILD_HOST_ADDRESS_NAME.match(key) or CREDENTIAL_NAME.match(key):
-            findings.append("%s: ARG %s -- BuildKit writes an ARG's value into the image history; "
-                            "mount it as a secret (--mount=type=secret,id=%s,env=%s)" % (where, key, key.lower(), key))
-        findings += ["%s: ARG %s default carries a %s" % (where, key, why)
+            findings.append(f"{where}: ARG {key} -- BuildKit writes an ARG's value into the image history; "
+                            f"mount it as a secret (--mount=type=secret,id={key.lower()},env={key})")
+        findings += [f"{where}: ARG {key} default carries a {why}"
                      for why in address_reasons(key, value or "")]
     return findings
 
 
-def _scan_env(where, body) -> list[str]:
+def _scan_env(where: str, body: str) -> list[str]:
     findings = []
     for key, value in _pairs(body, legacy=True):
-        findings += ["%s: ENV %s -- %s" % (where, key, why) for why in leak_reasons(key, value or "")]
-        findings += ["%s: ENV %s expands the build-host ARG ${%s} into the image" % (where, key, ref)
+        findings += [f"{where}: ENV {key} -- {why}" for why in leak_reasons(key, value or "")]
+        findings += [f"{where}: ENV {key} expands the build-host ARG ${{{ref}}} into the image"
                      for ref in REF.findall(value or "") if BUILD_HOST_NAME.match(ref)]
     return findings
 
 
-def _scan_run(where, body) -> list[str]:
+def _scan_run(where: str, body: str) -> list[str]:
     if all(m.search(body) for m in SCCACHE_MOUNTS) and not ENDPOINT_SECRET.search(body):
-        return ["%s: RUN compiles through sccache (it mounts C:\\sccache and C:\\sccache-logs) but "
-                "does not mount the secret sccache_webdav_endpoint as SCCACHE_WEBDAV_ENDPOINT "
-                "-- the endpoint never reaches this compile" % where]
+        message = (f"{where}: RUN compiles through sccache (it mounts C:\\sccache and C:\\sccache-logs) but "
+                   "does not mount the secret sccache_webdav_endpoint as SCCACHE_WEBDAV_ENDPOINT "
+                   "-- the endpoint never reaches this compile")
+        return [message]
     return []
 
 
-def scan_dockerfile(path, rel):
+def scan_dockerfile(path: str, rel: str) -> list[str]:
     findings = []
     for line, text in instructions(path):
         head, _, body = text.partition(" ")
         head = head.upper()
-        where = "%s:%d" % (rel, line)
+        where = f"{rel}:{line}"
         if head == "ARG":
             findings += _scan_arg(where, body)
         elif head == "ENV":
@@ -200,7 +202,7 @@ def scan_dockerfile(path, rel):
     return findings
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--env-file", help="NAME=VALUE lines of a built image's config; - for stdin")
@@ -218,31 +220,30 @@ def main(argv):
                 lines = fh.readlines()
         checked, findings = check_env_lines(lines, args.label)
         if checked < args.min_vars:
-            sys.stderr.write("FAIL: %s: read %d variable(s), need >= %d -- refusing a pass over "
-                             "an environment that was never read\n" % (args.label, checked, args.min_vars))
+            sys.stderr.write(f"FAIL: {args.label}: read {checked} variable(s), need >= {args.min_vars} "
+                             "-- refusing a pass over an environment that was never read\n")
             return 1
         for f in findings:
-            sys.stderr.write("LEAK %s\n" % f)
+            sys.stderr.write(f"LEAK {f}\n")
         if findings:
-            sys.stderr.write("\nIMAGE ENV GATE FAILED: %d build-host setting(s) in %s\n"
-                             % (len(findings), args.label))
+            sys.stderr.write(f"\nIMAGE ENV GATE FAILED: {len(findings)} build-host setting(s) in {args.label}\n")
             return 1
-        print("  ok: image env (%d variable(s) in %s, no build-host setting)" % (checked, args.label))
+        print(f"  ok: image env ({checked} variable(s) in {args.label}, no build-host setting)")
         return 0
 
     findings = []
     for rel in args.dockerfile:
         path = rel if os.path.isabs(rel) else os.path.join(ROOT, rel)
         if not os.path.isfile(path):
-            findings.append("%s: not a file" % rel)
+            findings.append(f"{rel}: not a file")
             continue
         findings.extend(scan_dockerfile(path, rel))
     for f in findings:
-        sys.stderr.write("%s\n" % f)
+        sys.stderr.write(f"{f}\n")
     if findings:
-        sys.stderr.write("\nIMAGE-ENV LINT FAILED (%d finding(s))\n" % len(findings))
+        sys.stderr.write(f"\nIMAGE-ENV LINT FAILED ({len(findings)} finding(s))\n")
         return 1
-    print("  ok: image env (%d Dockerfile(s), no build-host setting)" % len(args.dockerfile))
+    print(f"  ok: image env ({len(args.dockerfile)} Dockerfile(s), no build-host setting)")
     return 0
 
 

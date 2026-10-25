@@ -11,7 +11,7 @@ import zipfile
 NATIVE_EXT = ".pyd" if os.name == "nt" else ".so"
 
 
-def files(name, version, pkg, payload):
+def files(name: str, version: str, pkg: str, payload: str) -> dict[str, bytes]:
     info = f"{name.replace('-', '_')}-{version}.dist-info"
     body = {
         pkg + "/__init__.py": b"raise ImportError('built for another interpreter')\n" if payload == "broken" else b"",
@@ -23,7 +23,7 @@ def files(name, version, pkg, payload):
     return body
 
 
-def wheel(out, name, version, pkg, payload):
+def wheel(out: str, name: str, version: str, pkg: str, payload: str) -> None:
     v = f"{sys.version_info[0]}{sys.version_info[1]}"
     abi = "cp" + v + ("t" if sysconfig.get_config_var("Py_GIL_DISABLED") else "")
     plat = sysconfig.get_platform().replace("-", "_").replace(".", "_")
@@ -33,7 +33,7 @@ def wheel(out, name, version, pkg, payload):
             z.writestr(member, data)
 
 
-def pypi(site, name, version, pkg, payload):
+def pypi(site: str, name: str, version: str, pkg: str, payload: str) -> None:
     for member, data in files(name, version, pkg, payload).items():
         target = os.path.join(site, *member.split("/"))
         os.makedirs(os.path.dirname(target), exist_ok=True)
@@ -41,23 +41,23 @@ def pypi(site, name, version, pkg, payload):
             fh.write(data)
 
 
-def reset(*dirs: str):
+def reset(*dirs: str) -> None:
     for d in dirs:
         shutil.rmtree(d, ignore_errors=True)
         os.makedirs(d)
 
 
-def site_of(python):
+def site_of(python: str) -> str:
     code = "import sysconfig; print(sysconfig.get_path('purelib'))"
     return subprocess.check_output([python, "-c", code], text=True).strip()
 
 
-def dist_name(site, entry):
+def dist_name(site: str, entry: str) -> str:
     with open(os.path.join(site, entry, "METADATA")) as fh:
         return next(line.split(":", 1)[1].strip() for line in fh if line.startswith("Name:"))
 
 
-def uninstall(site, names):
+def uninstall(site: str, names: list[str]) -> None:
     wanted = {n.replace("_", "-").lower() for n in names}
     for entry in sorted(os.listdir(site)):
         if not entry.endswith(".dist-info") or dist_name(site, entry).replace("_", "-").lower() not in wanted:
@@ -70,7 +70,7 @@ def uninstall(site, names):
         shutil.rmtree(os.path.join(site, entry), ignore_errors=True)
 
 
-def uv(argv):
+def uv(argv: list[str]) -> int:
     with open(os.environ["STUB_UV_LOG"], "a") as log:
         log.write("uv " + " ".join(argv) + "\n")
     if argv[:1] == ["sync"]:
@@ -97,7 +97,7 @@ def uv(argv):
     return 0
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     cmd, args = argv[1], argv[2:]
     if cmd == "uv":
         return uv(args)

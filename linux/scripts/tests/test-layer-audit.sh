@@ -10,7 +10,12 @@ mkdir -p "${_work}/blobs"
 
 # Two layers, base first: L0 holds a 1000-byte file that L1 deletes and a 10-byte file that L1 replaces.
 python3 - "${_work}" <<'PY'
-import io, os, sys, tarfile, json
+import io
+import json
+import os
+import sys
+import tarfile
+
 work = sys.argv[1]
 def layer(name, entries):
     path = os.path.join(work, 'blobs', name)
@@ -21,7 +26,8 @@ def layer(name, entries):
     return {'digest': 'sha256:' + name, 'size': os.path.getsize(path)}
 l0 = layer('l0' * 32, [('opt/a.bin', b'x' * 1000), ('opt/keep.txt', b'y' * 10)])
 l1 = layer('l1' * 32, [('opt/.wh.a.bin', b''), ('usr/new.txt', b'z' * 500), ('opt/keep.txt', b'w' * 20)])
-json.dump({'Manifest': {'layers': [l0, l1]}}, open(os.path.join(work, 'manifest.json'), 'w'))
+with open(os.path.join(work, 'manifest.json'), 'w') as fh:
+    json.dump({'Manifest': {'layers': [l0, l1]}}, fh)
 PY
 
 t_case "the live image holds the newest versions only; deleted and replaced bytes are reported as dead"

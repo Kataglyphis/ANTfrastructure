@@ -79,9 +79,9 @@ import sys
 path = sys.argv[1]
 with open(path, encoding="utf-8") as fh:
     n = len(json.load(fh).get("packages", []))
-print("%s: %d packages catalogued" % (path, n))
+print(f"{path}: {n} packages catalogued")
 if n < 50:
-    raise SystemExit("only %d packages catalogued -- refusing to publish" % n)
+    raise SystemExit(f"only {n} packages catalogued -- refusing to publish")
 PY
 
 # The two-SBOM claim, checked against a real scan instead of asserted in prose.

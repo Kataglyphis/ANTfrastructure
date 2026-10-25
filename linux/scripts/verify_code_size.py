@@ -8,12 +8,11 @@ import ast
 import os
 import re
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from quality_allow import check_counts, load_counts  # noqa: E402
-
-import gate_scope  # noqa: E402
+import gate_scope
+from quality_allow import check_counts, load_counts
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -28,8 +27,8 @@ SCAN = ("linux/scripts", "linux/host-config", "docs/scripts", "linux/llm-stack")
 FLAT_SCAN = ("linux",)
 # Directories never walked.
 SKIP_DIRS = {".git", "__pycache__", "patches"}
-def _is_subject(fn) -> bool:
-    return fn.endswith(".sh") or fn.endswith(".py") or fn.startswith("Dockerfile")
+def _is_subject(fn: str) -> bool:
+    return fn.endswith((".sh", ".py")) or fn.startswith("Dockerfile")
 # DEF_HEAD is unanchored (verify_dead_functions.py shares it); DEF is the column-0 form.
 DEF_HEAD = r"(?:function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\(\))?|([A-Za-z_][A-Za-z0-9_]*)\(\))\s*\{"
 DEF = re.compile("^" + DEF_HEAD)
@@ -39,7 +38,7 @@ HEREDOC = re.compile(r"(?<!<)<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 QUOTE = {"'": "sq", '"': "dq"}
 
 
-def _arith_open(line, i) -> int:
+def _arith_open(line: str, i: int) -> int:
     """Length of an arithmetic opener at `i`: 3 for `$((`, 2 for a delimited `((`, else 0."""
     if line.startswith("$((", i):
         return 3
@@ -48,7 +47,7 @@ def _arith_open(line, i) -> int:
     return 0
 
 
-def _skip_quoted(line, i, stack, out) -> int:
+def _skip_quoted(line: str, i: int, stack: list[str], out: list[str]) -> int:
     """Advance one char inside '...' or "..."; a $( inside "..." re-enters code."""
     c, top = line[i], stack[-1]
     if top == "dq" and c == "\\":
@@ -67,7 +66,7 @@ def _skip_quoted(line, i, stack, out) -> int:
     return i + 1
 
 
-def _open_group(line, i, stack, out) -> int:
+def _open_group(line: str, i: int, stack: list[str], out: list[str]) -> int:
     """Push the $((, ((, $( or ( group opened at `i`; the next index, or 0 when the char is plain code."""
     n = _arith_open(line, i)
     if n:
@@ -83,7 +82,7 @@ def _open_group(line, i, stack, out) -> int:
     return 0
 
 
-def _close_group(line, i, stack) -> int:
+def _close_group(line: str, i: int, stack: list[str]) -> int:
     """Pop the group closed by the ')' at `i`; return the next index past a `))`, else 0."""
     top = stack[-1] if stack else None
     if top == "arith" and line.startswith("))", i):
@@ -94,7 +93,7 @@ def _close_group(line, i, stack) -> int:
     return 0
 
 
-def _code_char(line, i, stack, out, docs) -> int:
+def _code_char(line: str, i: int, stack: list[str], out: list[str], docs: list[str]) -> int:
     """Advance one char of code, -1 at a comment; a heredoc operator records its terminator in `docs`."""
     c = line[i]
     if c == "#" and (i == 0 or line[i - 1] in " \t;(|&"):
@@ -123,7 +122,7 @@ def _code_char(line, i, stack, out, docs) -> int:
     return i + 1
 
 
-def strip_line(line, stack):
+def strip_line(line: str, stack: list[str]) -> tuple[str, list[str]]:
     """(code, heredoc_terminators) for one line; `stack` carries quote and $( ) context across lines."""
     out, docs, i = [], [], 0
     while 0 <= i < len(line):
@@ -134,7 +133,7 @@ def strip_line(line, stack):
     return "".join(out), docs
 
 
-def code_lines(lines):
+def code_lines(lines: Iterable[str]) -> list[str]:
     """One line out per line in, with comments, quoted text and heredoc bodies blanked."""
     stack, pending, out = [], [], []
     for line in lines:
@@ -149,12 +148,12 @@ def code_lines(lines):
     return out
 
 
-def _rel(path, root) -> str:
+def _rel(path: str, root: str) -> str:
     """Posix-spelled relpath, since allowlist keys never carry Windows backslashes."""
     return os.path.relpath(path, root).replace(os.sep, "/")
 
 
-def _walk_scan(root, tops, match) -> Iterator[tuple[str, str]]:
+def _walk_scan(root: str, tops: Sequence[str], match: Callable[[str], bool]) -> Iterator[tuple[str, str]]:
     """Yield (path, relpath) for every file under `tops` whose name `match` accepts."""
     for top in tops:
         for base, dirs, names in os.walk(os.path.join(root, top)):
@@ -165,7 +164,7 @@ def _walk_scan(root, tops, match) -> Iterator[tuple[str, str]]:
                     yield path, _rel(path, root)
 
 
-def _flat_scan(root, tops, match) -> Iterator[tuple[str, str]]:
+def _flat_scan(root: str, tops: Sequence[str], match: Callable[[str], bool]) -> Iterator[tuple[str, str]]:
     """Yield (path, relpath) for the files sitting directly IN `tops` -- no recursion."""
     for top in tops:
         d = os.path.join(root, top)
@@ -175,18 +174,20 @@ def _flat_scan(root, tops, match) -> Iterator[tuple[str, str]]:
                 yield path, _rel(path, root)
 
 
-def _tracked_scan(root, match) -> Iterator[tuple[str, str]]:
+def _tracked_scan(root: str, match: Callable[[str], bool]) -> Iterator[tuple[str, str]]:
     """(path, rel) for every tracked file gate_scope admits whose basename `match` accepts."""
     for rel in gate_scope.tracked(root, ["*"]):
         if match(os.path.basename(rel)):
             yield os.path.join(root, rel), rel
 
-def _under(rel, tops) -> bool:
+def _under(rel: str, tops: Sequence[str]) -> bool:
     """True when `rel` is one of `tops` or lives inside one."""
     return any(rel == t or rel.startswith(t.rstrip("/") + "/") for t in tops)
 
 
-def subjects(root, match, tops=None):
+def subjects(
+    root: str | None, match: Callable[[str], bool], tops: Sequence[str] | None = None
+) -> Iterator[tuple[str, str]]:
     """(path, relpath) scan set: SCAN walked under the hub, the tracked set elsewhere, which `tops` only filters."""
     root = os.path.abspath(root or ROOT)
     if root == os.path.abspath(ROOT):
@@ -195,15 +196,18 @@ def subjects(root, match, tops=None):
             if not tops or _under(rel, tops))
 
 
-def scan(*suffixes: str, root=None, tops=None):
+def scan(
+    *suffixes: str, root: str | None = None, tops: Sequence[str] | None = None
+) -> Iterator[tuple[str, str]]:
     """(path, relpath) per scan-set file ending in `suffixes`; with no root, sibling gates get the hub corpus."""
     return subjects(root, lambda fn: fn.endswith(suffixes), tops)
 
 
-def shell_functions(path, rel):
+def shell_functions(path: str, rel: str) -> Iterator[tuple[str, str, int, list[str]]]:
     """(rel, name, start_line, body_lines) per shell function, braces counted over code_lines only."""
     try:
-        lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
+        with open(path, encoding="utf-8", errors="replace") as source:
+            lines = source.read().splitlines()
     except OSError:
         return
     code = code_lines(lines)
@@ -219,26 +223,28 @@ def shell_functions(path, rel):
                 break
 
 
-def functions(root=None, tops=None):
+def functions(
+    root: str | None = None, tops: Sequence[str] | None = None
+) -> Iterator[tuple[str, str, int]]:
     """Yield (relpath, name, line_count) for every shell or Python function found."""
     for path, rel in subjects(root, lambda fn: fn.endswith((".py", ".sh")), tops):
         if rel.endswith(".py"):
-            for item in _py_functions(path, rel):
-                yield item
+            yield from _py_functions(path, rel)
         else:
             for _rel, name, _start, body in shell_functions(path, rel):
                 yield rel, name, len(body)
 
 
-def _line_count(path) -> int | None:
+def _line_count(path: str) -> int | None:
     """The file's line count, or None when it cannot be read."""
     try:
-        return sum(1 for _ in open(path, encoding="utf-8", errors="replace"))
+        with open(path, encoding="utf-8", errors="replace") as source:
+            return sum(1 for _ in source)
     except OSError:
         return None
 
 
-def files(root=None, tops=None):
+def files(root: str | None = None, tops: Sequence[str] | None = None) -> Iterator[tuple[str, int]]:
     """Yield (relpath, line_count) for every file graded as a whole."""
     root = os.path.abspath(root or ROOT)
     for path, rel in subjects(root, _is_subject, tops):
@@ -254,15 +260,16 @@ def files(root=None, tops=None):
             yield rel, n
 
 
-def _py_functions(path, rel) -> Iterator[tuple[str, str, int]]:
+def _py_functions(path: str, rel: str) -> Iterator[tuple[str, str, int]]:
     """Yield (rel, qualified_name, line_count) for every def/async def."""
     try:
-        tree = ast.parse(open(path, encoding="utf-8", errors="replace").read())
+        with open(path, encoding="utf-8", errors="replace") as source:
+            tree = ast.parse(source.read())
     except (OSError, SyntaxError):
         return
     stack = []
 
-    def walk(node, prefix) -> None:
+    def walk(node: ast.AST, prefix: str) -> None:
         for child in ast.iter_child_nodes(node):
             if isinstance(child, ast.ClassDef):
                 walk(child, prefix + child.name + ".")
@@ -272,11 +279,10 @@ def _py_functions(path, rel) -> Iterator[tuple[str, str, int]]:
                     stack.append((rel, prefix + child.name, end - child.lineno + 1))
                 walk(child, prefix + child.name + ".")
     walk(tree, "")
-    for item in stack:
-        yield item
+    yield from stack
 
 
-def main():
+def main() -> int:
     ap = argparse.ArgumentParser(description="Keep function and file sizes honest.")
     ap.add_argument("--root", default=None,
                     help="the tree to grade (default: this repo)")
@@ -301,13 +307,13 @@ def main():
     file_allow = args.file_allow or (FILE_ALLOW if hub
                                      else os.path.join(root, "file-size.allow"))
 
-    print("=== code size gate (functions > %d, files > %d) ===" % (LIMIT, FILE_LIMIT))
+    print(f"=== code size gate (functions > {LIMIT}, files > {FILE_LIMIT}) ===")
     if not hub:
-        print("  root:       %s" % root)
-        print("  fn-allow:   %s" % fn_allow)
-        print("  file-allow: %s" % file_allow)
+        print(f"  root:       {root}")
+        print(f"  fn-allow:   {fn_allow}")
+        print(f"  file-allow: {file_allow}")
     # A redefined name keeps its longest body, so a short redefinition cannot hide the offender.
-    longest: dict = {}
+    longest: dict[tuple[str, str], int] = {}
     for f, n, c in functions(root, args.scan):
         longest[(f, n)] = max(c, longest.get((f, n), 0))
     rc = check_counts("functions", sorted(longest.items()),

@@ -5,6 +5,7 @@
 
 Usage: develop_red.py [--dry-run] [--replay FILE] [--now ISO]; see docs/github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,11 +40,11 @@ class Client:
 
     def call(self, method: str, path: str, body: dict | None = None) -> Any:
         if method != "GET" and (self.dry_run or self.replay is not None):
-            print("dry-run: %s %s %s" % (method, path, json.dumps(body, sort_keys=True)))
+            print(f"dry-run: {method} {path} {json.dumps(body, sort_keys=True)}")
             return {}
         if self.replay is not None:
             if path not in self.replay:
-                raise SystemExit("replay has no answer for GET %s" % path)
+                raise SystemExit(f"replay has no answer for GET {path}")
             return self.replay[path]
         data = None if body is None else json.dumps(body).encode()
         req = urllib.request.Request(API + path, data=data, method=method)
@@ -57,13 +58,16 @@ class Client:
 
 def family_repos(client: Client) -> list[str]:
     """The family is the owner's own repositories on develop; forks and archived ones follow none of it."""
-    repos = client.call("GET", "/users/%s/repos?type=owner&per_page=100" % OWNER)
-    return sorted(r["name"] for r in repos
-                  if not r["fork"] and not r["archived"] and r["default_branch"] == "develop")
+    repos = client.call("GET", f"/users/{OWNER}/repos?type=owner&per_page=100")
+    return sorted(
+        r["name"]
+        for r in repos
+        if not r["fork"] and not r["archived"] and r["default_branch"] == "develop"
+    )
 
 
 def decisive_runs(client: Client, repo: str) -> dict[int, list[dict]]:
-    path = "/repos/%s/%s/actions/runs?branch=develop&status=completed&per_page=100" % (OWNER, repo)
+    path = f"/repos/{OWNER}/{repo}/actions/runs?branch=develop&status=completed&per_page=100"
     by_workflow: dict[int, list[dict]] = {}
     for run in client.call("GET", path)["workflow_runs"]:
         if run["event"] in EVENTS and run["conclusion"] in RED | GREEN:
@@ -77,8 +81,7 @@ def run_jobs(client: Client, repo: str, run_id: int) -> dict[str, str]:
     jobs: dict[str, str] = {}
     page, fetched = 1, 0
     while True:
-        path = "/repos/%s/%s/actions/runs/%d/jobs?filter=latest&per_page=100&page=%d" % (
-            OWNER, repo, run_id, page)
+        path = f"/repos/{OWNER}/{repo}/actions/runs/{run_id}/jobs?filter=latest&per_page=100&page={page}"
         data = client.call("GET", path)
         for job in data["jobs"]:
             if jobs.get(job["name"]) not in RED:
@@ -105,7 +108,11 @@ def issue_state(issue: dict | None) -> dict:
         return {"open": False, "seen": "", "red": {}}
     mark = json.loads(issue["body"].split(MARK, 1)[1].split(" -->", 1)[0])
     is_open = issue["state"] == "open"
-    return {"open": is_open, "seen": mark["seen"], "red": mark["red"] if is_open else {}}
+    return {
+        "open": is_open,
+        "seen": mark["seen"],
+        "red": mark["red"] if is_open else {},
+    }
 
 
 def window(runs: list[dict], state: dict, now: dt.datetime) -> list[dict]:
@@ -114,14 +121,19 @@ def window(runs: list[dict], state: dict, now: dt.datetime) -> list[dict]:
         return [r for r in runs if r["updated_at"] > state["seen"]][:WALK]
     floor = max(state["seen"], (now - LOOKBACK).strftime(ISO))
     # The newest run counts however old it is, so a lane red before this watch existed is found.
-    newer = [r for r in runs if r["updated_at"] > floor
-             or (r is runs[0] and r["updated_at"] > state["seen"])]
+    newer = [
+        r
+        for r in runs
+        if r["updated_at"] > floor or (r is runs[0] and r["updated_at"] > state["seen"])
+    ]
     if not any(r["conclusion"] in RED for r in newer):
         return []
     return newer[:WALK]
 
 
-def verdict(state: dict, walked: list[dict], jobs_of: Callable[[dict[str, Any]], dict[str, str]]) -> dict:
+def verdict(
+    state: dict, walked: list[dict], jobs_of: Callable[[dict[str, Any]], dict[str, str]]
+) -> dict:
     """The newest run that ran a job decides it; an older re-run never overrides a newer red."""
     red = dict(state["red"])
     decided: set[str] = set()
@@ -133,54 +145,89 @@ def verdict(state: dict, walked: list[dict], jobs_of: Callable[[dict[str, Any]],
             if conclusion in GREEN:
                 red.pop(job, None)
             else:
-                red[job] = {"run": run["id"], "url": run["html_url"], "sha": run["head_sha"][:8]}
+                red[job] = {
+                    "run": run["id"],
+                    "url": run["html_url"],
+                    "sha": run["head_sha"][:8],
+                }
     seen = max([state["seen"]] + [r["updated_at"] for r in walked])
     return {"open": state["open"], "seen": seen, "red": red}
 
 
 def body(repo: str, newest: dict, workflow_id: int, new: dict) -> str:
-    lines = ["`develop` of [%s](https://github.com/%s/%s) is red in **%s** (`%s`):" % (
-        repo, OWNER, repo, newest["name"], newest["path"]), ""]
+    lines = [
+        (
+            f"`develop` of [{repo}](https://github.com/{OWNER}/{repo}) "
+            f"is red in **{newest['name']}** (`{newest['path']}`):"
+        ),
+        "",
+    ]
     for job, ref in sorted(new["red"].items()):
-        lines.append("- `%s`: last failed in [run %d](%s) at `%s`" % (job, ref["run"], ref["url"], ref["sha"]))
-    mark = {"repo": repo, "workflow_id": workflow_id, "seen": new["seen"], "red": new["red"]}
-    lines += ["", ("Closes itself once each job above passed on `develop` again (`develop-red.yml`). "
-                   "A job that was renamed or removed never passes again: close the issue by hand."),
-              "", MARK + json.dumps(mark, sort_keys=True) + " -->"]
+        lines.append(
+            f"- `{job}`: last failed in [run {ref['run']}]({ref['url']}) at `{ref['sha']}`"
+        )
+    mark = {
+        "repo": repo,
+        "workflow_id": workflow_id,
+        "seen": new["seen"],
+        "red": new["red"],
+    }
+    lines += [
+        "",
+        (
+            "Closes itself once each job above passed on `develop` again (`develop-red.yml`). "
+            "A job that was renamed or removed never passes again: close the issue by hand."
+        ),
+        "",
+        MARK + json.dumps(mark, sort_keys=True) + " -->",
+    ]
     return "\n".join(lines)
 
 
-def settle(client: Client, repo: str, runs: list[dict], issue: dict | None, now: dt.datetime) -> None:
+def settle(
+    client: Client, repo: str, runs: list[dict], issue: dict | None, now: dt.datetime
+) -> None:
     state = issue_state(issue)
     walked = window(runs, state, now)
     if not walked:
         return
     new = verdict(state, walked, lambda run: run_jobs(client, repo, run["id"]))
-    title = "develop is red: %s · %s" % (repo, runs[0]["name"])
+    title = f"develop is red: {repo} · {runs[0]['name']}"
     text = body(repo, runs[0], runs[0]["workflow_id"], new)
-    issues = "/repos/%s/%s/issues" % (OWNER, HUB)
+    issues = f"/repos/{OWNER}/{HUB}/issues"
     if not state["open"]:
         if new["red"]:
-            client.call("POST", issues, {"title": title, "body": text, "labels": [LABEL]})
-            print("opened: %s" % title)
+            client.call(
+                "POST", issues, {"title": title, "body": text, "labels": [LABEL]}
+            )
+            print(f"opened: {title}")
         return
     if issue is None:
         raise RuntimeError("an open issue has no issue record")
-    path = "%s/%d" % (issues, issue["number"])
+    path = f"{issues}/{issue['number']}"
     if not new["red"]:
-        client.call("POST", path + "/comments", {"body": "Green again: every job passed on develop, "
-                                                 "last in %s." % walked[0]["html_url"]})
-        client.call("PATCH", path, {"state": "closed", "state_reason": "completed", "body": text})
-        print("closed: %s" % title)
+        client.call(
+            "POST",
+            path + "/comments",
+            {
+                "body": "Green again: every job passed on develop, "
+                f"last in {walked[0]['html_url']}."
+            },
+        )
+        client.call(
+            "PATCH",
+            path,
+            {"state": "closed", "state_reason": "completed", "body": text},
+        )
+        print(f"closed: {title}")
     elif new != state:
         client.call("PATCH", path, {"title": title, "body": text})
-        print("updated: %s" % title)
+        print(f"updated: {title}")
 
 
 def latest_issues(client: Client) -> dict[tuple[str, int], dict]:
     """The newest develop-red issue per workflow; a closed one marks how far the watch already looked."""
-    path = "/repos/%s/%s/issues?labels=%s&state=all&sort=created&direction=desc&per_page=100" % (
-        OWNER, HUB, LABEL)
+    path = f"/repos/{OWNER}/{HUB}/issues?labels={LABEL}&state=all&sort=created&direction=desc&per_page=100"
     found: dict[tuple[str, int], dict] = {}
     for issue in client.call("GET", path):
         if "pull_request" in issue or MARK not in (issue.get("body") or ""):
@@ -192,9 +239,15 @@ def latest_issues(client: Client) -> dict[tuple[str, int], dict]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--dry-run", action="store_true", help="print the writes instead of making them")
-    parser.add_argument("--replay", help="JSON file mapping each GET path to its answer (tests)")
-    parser.add_argument("--now", help="the current time as %s (tests)" % ISO.replace("%", "%%"))
+    parser.add_argument(
+        "--dry-run", action="store_true", help="print the writes instead of making them"
+    )
+    parser.add_argument(
+        "--replay", help="JSON file mapping each GET path to its answer (tests)"
+    )
+    parser.add_argument(
+        "--now", help=f"the current time as {ISO.replace('%', '%%')} (tests)"
+    )
     args = parser.parse_args(argv)
     replay = None
     if args.replay:
@@ -202,8 +255,11 @@ def main(argv: list[str] | None = None) -> int:
             replay = json.load(handle)
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
     client = Client(token, args.dry_run, replay)
-    now = (dt.datetime.strptime(args.now, ISO).replace(tzinfo=dt.timezone.utc) if args.now
-           else dt.datetime.now(dt.timezone.utc))
+    now = (
+        dt.datetime.strptime(args.now, ISO).replace(tzinfo=dt.UTC)
+        if args.now
+        else dt.datetime.now(dt.UTC)
+    )
     issues = latest_issues(client)
     repos, watched = family_repos(client), 0
     for repo in repos:
@@ -211,7 +267,9 @@ def main(argv: list[str] | None = None) -> int:
             settle(client, repo, runs, issues.get((repo, workflow_id)), now)
             watched += 1
     # A silent run must still say what it read, or a token that sees nothing looks like a green family.
-    print("watched: %d workflow(s) in %d repositories: %s" % (watched, len(repos), " ".join(repos)))
+    print(
+        f"watched: {watched} workflow(s) in {len(repos)} repositories: {' '.join(repos)}"
+    )
     return 0
 
 

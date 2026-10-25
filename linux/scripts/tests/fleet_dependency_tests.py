@@ -3,21 +3,33 @@
 import itertools
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from collections.abc import Iterator
 from pathlib import Path
+from typing import TypeAlias, cast
 
 ROOT = Path(__file__).resolve().parents[3]
 SUBJECT = Path(sys.argv.pop(1)).resolve()
+Case: TypeAlias = tuple[str, str, int, str, list[str], list[str], list[str]]
+Receipt: TypeAlias = list[int | str]
+BASH = shutil.which("bash") or "bash"
 DRIVER = r"""set -u
 source "$1"; shift
-mode="$1"; strict="$2"; context="$3"; ifsmode="$4"; index="$5"; target="$6"; n="$7"; shift 7
+IFS= read -r -d '' mode
+IFS= read -r -d '' strict
+IFS= read -r -d '' context
+IFS= read -r -d '' ifsmode
+IFS= read -r -d '' index
+IFS= read -r -d '' target
+IFS= read -r -d '' n
 OWN_IDS=(); OWN_NAMES=(); OWN_DEPS=(); CYCLES=()
-for ((i=0;i<n;i++));do OWN_IDS+=("$1");shift;done
-for ((i=0;i<n;i++));do OWN_NAMES+=("$1");shift;done
-for ((i=0;i<n;i++));do OWN_DEPS+=("$1");shift;done
+for ((i=0;i<n;i++));do IFS= read -r -d '' item; OWN_IDS+=("$item");done
+for ((i=0;i<n;i++));do IFS= read -r -d '' item; OWN_NAMES+=("$item");done
+for ((i=0;i<n;i++));do IFS= read -r -d '' item; OWN_DEPS+=("$item");done
 case "$ifsmode" in comma) IFS=,;; unset) unset IFS;; esac
 BASH_REMATCH=(seed stable)
 _FLEET_FIXTURE_STEPS=0
@@ -36,7 +48,7 @@ for entry in "${BASH_REMATCH[@]}";do printf '%s\0' "$entry";done
 """
 
 
-def cases():
+def cases() -> Iterator[Case]:
     ids = ["a", "b", "c"]
     names = ["Alpha", "Beta", "Gamma"]
     edges = list(itertools.permutations(range(3), 2))
@@ -79,11 +91,11 @@ def cases():
                 )
 
 
-def functions(subject):
+def functions(subject: Path) -> bytes:
     script = 'source "$1"\nfor name in fleet_has_dep add_dep own_index close_deps find_cycles; do if grep -Eq "^${name}\\(\\)" "$2"; then t_fn_src "$2" "$name"; fi; done'
     r = subprocess.run(
         [
-            "bash",
+            BASH,
             "-c",
             script,
             "fleet-test",
@@ -96,7 +108,7 @@ def functions(subject):
     return r.stdout
 
 
-def records(subject):
+def records(subject: Path) -> Iterator[tuple[str, Receipt]]:
     with tempfile.TemporaryDirectory(prefix="ant-fleet-deps-") as td:
         fn = Path(td) / "functions.sh"
         fn.write_bytes(functions(subject))
@@ -111,7 +123,18 @@ def records(subject):
                 yield f"{strict}:{context}:{index}", value
 
 
-def run(fn, mode, strict, context, ifsmode, slot, target, ids, names, deps):
+def run(
+    fn: Path,
+    mode: str,
+    strict: str,
+    context: str,
+    ifsmode: str,
+    slot: int,
+    target: str,
+    ids: list[str],
+    names: list[str],
+    deps: list[str],
+) -> Receipt:
     args = [
         mode,
         strict,
@@ -124,9 +147,11 @@ def run(fn, mode, strict, context, ifsmode, slot, target, ids, names, deps):
         *names,
         *deps,
     ]
+    wire = b"\0".join(value.encode() for value in args) + b"\0"
     result = subprocess.run(
-        ["bash", "-c", DRIVER, "fleet-fixture", str(fn), *args],
+        [BASH, "-c", DRIVER, "fleet-fixture", str(fn)],
         capture_output=True,
+        input=wire,
         env={**os.environ, "LC_ALL": "C"},
         check=False,
     )
@@ -137,19 +162,19 @@ def run(fn, mode, strict, context, ifsmode, slot, target, ids, names, deps):
     ]
 
 
-def state(receipt):
-    fields = bytes.fromhex(receipt[1]).decode().split("\0")[:-1]
+def state(receipt: Receipt) -> tuple[int, list[str], list[str], list[str]]:
+    fields = bytes.fromhex(cast(str, receipt[1])).decode().split("\0")[:-1]
     status = int(fields.pop(0))
-    arrays = []
+    arrays: list[list[str]] = []
     for _ in range(3):
         count = int(fields.pop(0))
         arrays.append(fields[:count])
         del fields[:count]
-    return status, *arrays
+    return status, arrays[0], arrays[1], arrays[2]
 
 
 class FleetDependencyTests(unittest.TestCase):
-    def test_original_receipts(self):
+    def test_original_receipts(self) -> None:
         expected = json.loads(
             Path(__file__).with_name("fleet-dependency-receipts.json").read_text()
         )
@@ -159,7 +184,7 @@ class FleetDependencyTests(unittest.TestCase):
             visited.add(key)
         self.assertEqual(set(expected), visited)
 
-    def test_independent_graph_expectations(self):
+    def test_independent_graph_expectations(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             fn = Path(td) / "functions.sh"
             fn.write_bytes(functions(SUBJECT))
@@ -208,7 +233,7 @@ class FleetDependencyTests(unittest.TestCase):
                 self.assertEqual(0, receipt[0], receipt[2])
                 self.assertEqual([expected, " ", " "], state(receipt)[1])
 
-    def test_nonconvergence_cannot_hang_the_fixture(self):
+    def test_nonconvergence_cannot_hang_the_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             fn = Path(td) / "functions.sh"
             fn.write_text("close_deps() { while :; do :; done; }\n")

@@ -21,7 +21,7 @@ DocPair: TypeAlias = tuple[DocUnit, DocUnit]
 AllowedPair: TypeAlias = tuple[int, DocUnit, DocUnit, str]
 Finding: TypeAlias = tuple[int, DocUnit, DocUnit, tuple[int, str] | None]
 HubPair: TypeAlias = tuple[int, DocUnit, DocUnit]
-AllowKey: TypeAlias = frozenset[str] | tuple[str, str]
+AllowKey: TypeAlias = frozenset[str] | tuple[str, ...]
 
 # HUB_ROOT is where the gate lives, REPO_ROOT the tree it grades (--root): docs/code-quality-tooling.md#the-scan-root-contract
 HUB_ROOT = Path(__file__).resolve().parents[2]
@@ -31,8 +31,8 @@ ALLOW_FILE = Path(__file__).with_name("doc-dupes.allow")
 ALLOW_FMT = "a | b | budget | reason"
 
 sys.path.insert(0, str(HUB_ROOT / "linux" / "scripts"))
-from quality_allow import iter_rows  # noqa: E402
-import gate_scope  # noqa: E402
+import gate_scope
+from quality_allow import iter_rows
 
 ROOT_DOCS = ("README.md", "AGENTS.md")
 

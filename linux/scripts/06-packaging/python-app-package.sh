@@ -82,10 +82,16 @@ icon_size() { python3 -c 'import struct, sys; d = open(sys.argv[1], "rb").read(2
 # The packages owning the sonames left to the host, and libc6: unversioned when the bundle carries its glibc, else at the newest GLIBC_ any ELF asks for.
 deb_depends() {
   python3 - "${BUNDLE}" <<'PY'
-import json, os, re, subprocess, sys
+import json
+import os
+import re
+import subprocess
+import sys
+
 bundle = sys.argv[1]
 # What the bundle builder waived on purpose (the chain ORT's DNNL provider without oneDNN) is no dependency.
-manifest = json.load(open(os.path.join(bundle, "bundle.json")))
+with open(os.path.join(bundle, "bundle.json"), encoding="utf-8") as source:
+    manifest = json.load(source)
 waived = set(manifest.get("unresolved_allowed", []))
 names, needed, glibc = set(waived), set(), (2, 17)
 for root, _, files in os.walk(bundle):
@@ -99,13 +105,13 @@ for root, _, files in os.walk(bundle):
         with open(path, "rb") as fh:
             if fh.read(4) != b"\x7fELF":
                 continue
-        dyn = subprocess.run(["readelf", "-dW", path], capture_output=True, text=True).stdout
+        dyn = subprocess.run(["readelf", "-dW", path], capture_output=True, check=True, text=True).stdout
         # An $ORIGIN/../lib/... entry (python-build-standalone's python3) names a bundled file by path.
         needed.update(n for n in re.findall(r"\(NEEDED\)\s+Shared library: \[([^\]]+)\]", dyn) if n.rsplit("/", 1)[-1] not in names)
-        ver = subprocess.run(["readelf", "-VW", path], capture_output=True, text=True).stdout
+        ver = subprocess.run(["readelf", "-VW", path], capture_output=True, check=True, text=True).stdout
         for v in re.findall(r"GLIBC_(\d+)\.(\d+)", ver):
             glibc = max(glibc, (int(v[0]), int(v[1])))
-cache = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True).stdout
+cache = subprocess.run(["ldconfig", "-p"], capture_output=True, check=True, text=True).stdout
 packages, missing = {"libc6"}, []
 for soname in sorted(needed):
     m = re.search(r"^\s*" + re.escape(soname) + r" \(.*?\) => (\S+)$", cache, re.MULTILINE)
@@ -114,7 +120,7 @@ for soname in sorted(needed):
     candidates = [path, "/usr" + path if path.startswith("/lib") else "", os.path.realpath(path) if path else ""]
     owner = ""
     for candidate in filter(None, candidates):
-        found = subprocess.run(["dpkg", "-S", candidate], capture_output=True, text=True)
+        found = subprocess.run(["dpkg", "-S", candidate], capture_output=True, check=False, text=True)
         if found.returncode == 0:
             owner = found.stdout.split(":")[0]
             break

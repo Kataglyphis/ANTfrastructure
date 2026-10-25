@@ -44,6 +44,10 @@ per-value allowlists is the wrong repair.
 paths = ['''^out/''']
 
 [[allowlists]]
+description = "Git-ignored test logs and Python bytecode are generated artifacts, not source."
+paths = ['''^logs/''', '''(^|/)__pycache__/''']
+
+[[allowlists]]
 description = """
 The theme's package-data file name "logo-t3-wireframe.png" in DocumANTation's
 sphinx-kataglyphis-theme/pyproject.toml: generic-api-key reads the string after

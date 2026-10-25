@@ -9,11 +9,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from gw_client import call
+from gw_harness import Gateway
 
 BIG = "x" * 12000  # ~4000 tokens at 3 bytes/token: over the 3900 budget on its own
 
 
-def test_models_is_static_open_and_touches_no_lane(gateway):
+def test_models_is_static_open_and_touches_no_lane(gateway: Gateway) -> None:
     reply = call(gateway.port, "/v1/models", method="GET")
     assert reply.status == 200
     assert [m["id"] for m in reply.json()["data"]] == ["chat", "chat-long", "agent"]
@@ -21,7 +22,7 @@ def test_models_is_static_open_and_touches_no_lane(gateway):
     assert all(not lane.requests for lane in gateway.lanes.values()), "a lane was probed"
 
 
-def test_gateway_info_reports_what_is_mounted(gateway):
+def test_gateway_info_reports_what_is_mounted(gateway: Gateway) -> None:
     info = call(gateway.port, "/gateway/info", method="GET").json()
     rendered = gateway.live("render.json")
     for key in ("config_sha256", "restart_sha256", "boot_config_sha256", "lua_sha256", "image"):
@@ -31,7 +32,7 @@ def test_gateway_info_reports_what_is_mounted(gateway):
     assert list(info["prompts_sha256"]) == ["tool-disambiguation"]
 
 
-def test_an_unknown_model_is_an_openai_404(gateway):
+def test_an_unknown_model_is_an_openai_404(gateway: Gateway) -> None:
     reply = gateway.post("nope")
     assert reply.status == 404
     assert reply.json()["error"]["code"] == "model_not_found"
@@ -43,7 +44,7 @@ def test_an_unknown_model_is_an_openai_404(gateway):
 
 @pytest.mark.parametrize("key, status", [(None, 401), ("not-a-key-at-all-0000", 401),
                                          ("webui", 200), ("lab", 200), ("agent", 200)])
-def test_every_client_has_its_own_key(gateway, key, status):
+def test_every_client_has_its_own_key(gateway: Gateway, key: str | None, status: int) -> None:
     reply = gateway.post("chat", key=key)
     assert reply.status == status
     assert gateway.counts()["npu"] == (1 if status == 200 else 0)
@@ -54,7 +55,7 @@ def test_every_client_has_its_own_key(gateway, key, status):
         assert line["consumer"] == key
 
 
-def test_the_lane_never_sees_the_client_key(gateway):
+def test_the_lane_never_sees_the_client_key(gateway: Gateway) -> None:
     gateway.post("chat")
     (req,) = gateway.requests("npu")
     assert req.headers.get("authorization") == "Bearer unused"
@@ -62,7 +63,7 @@ def test_the_lane_never_sees_the_client_key(gateway):
     assert req.headers.get("x-consumer-username") == "lab", "key-auth names the client upstream"
 
 
-def test_raw_routes_are_for_the_lab_key_only(gateway):
+def test_raw_routes_are_for_the_lab_key_only(gateway: Gateway) -> None:
     assert gateway.post("raw-npu", key="webui").status == 403
     assert gateway.counts()["npu"] == 0
     reply = gateway.post("raw-npu")
@@ -71,7 +72,7 @@ def test_raw_routes_are_for_the_lab_key_only(gateway):
 
 @pytest.mark.parametrize("model, lane", [("chat", "npu"), ("chat-long", "gpu"), ("agent", "cpu"),
                                          ("raw-npu", "npu"), ("raw-gpu", "gpu"), ("raw-cpu", "cpu")])
-def test_each_alias_goes_to_its_lane_once(gateway, model, lane):
+def test_each_alias_goes_to_its_lane_once(gateway: Gateway, model: str, lane: str) -> None:
     reply = gateway.post(model)
     assert reply.status == 200
     assert reply.headers["x-gw-lane"] == lane
@@ -85,22 +86,24 @@ def test_each_alias_goes_to_its_lane_once(gateway, model, lane):
     assert reply.json()["model"] == gateway.lanes_models[lane], "replies carry the lane's model id"
 
 
-def test_a_route_above_the_stock_600s_cap_loads(gateway):
+def test_a_route_above_the_stock_600s_cap_loads(gateway: Gateway) -> None:
     assert gateway.route("agent")["plugins"]["ai-proxy-multi"]["timeout"] == 1800000
     assert gateway.post("agent").status == 200
 
 
-def test_a_large_request_goes_to_the_gpu_before_anything_is_sent(gateway):
+def test_a_large_request_goes_to_the_gpu_before_anything_is_sent(gateway: Gateway) -> None:
     reply = gateway.post("chat", messages=[{"role": "user", "content": BIG}], max_tokens=100)
     assert reply.status == 200
     assert (reply.headers["x-gw-lane"], reply.headers["x-gw-rerouted"]) == ("gpu", "presend")
     assert gateway.counts() == {"npu": 0, "gpu": 1, "cpu": 0}
     (line,) = gateway.log.lines()
     assert (line["route_id"], line["lane"], line["rerouted"]) == ("chat-presend", "gpu", "presend")
-    assert line["est_tokens"] > 3900
+    estimated_tokens = line["est_tokens"]
+    assert isinstance(estimated_tokens, int)
+    assert estimated_tokens > 3900
 
 
-def test_the_estimate_counts_the_reply_reserve(gateway):
+def test_the_estimate_counts_the_reply_reserve(gateway: Gateway) -> None:
     small = gateway.post("chat", max_tokens=100)
     assert small.headers["x-gw-lane"] == "npu"
     big_reply = gateway.post("chat", max_tokens=3950)
@@ -109,7 +112,7 @@ def test_the_estimate_counts_the_reply_reserve(gateway):
 
 
 @pytest.mark.parametrize("stream", [False, True])
-def test_an_npu_overflow_goes_to_the_gpu_exactly_once(gateway, stream):
+def test_an_npu_overflow_goes_to_the_gpu_exactly_once(gateway: Gateway, stream: bool) -> None:
     reply = gateway.post("chat", stream=stream, fake={"npu": "overflow"})
     assert reply.status == 200
     assert (reply.headers["x-gw-lane"], reply.headers["x-gw-rerouted"]) == ("gpu", "overflow")
@@ -121,35 +124,35 @@ def test_an_npu_overflow_goes_to_the_gpu_exactly_once(gateway, stream):
     assert (line["lane"], line["rerouted"], line["status"]) == ("gpu", "overflow", 200)
 
 
-def test_a_second_overflow_is_not_retried(gateway):
+def test_a_second_overflow_is_not_retried(gateway: Gateway) -> None:
     reply = gateway.post("chat", fake={"npu": "overflow", "gpu": "overflow"})
     assert reply.status == 400
     assert reply.json()["error"]["code"] == "context_length_exceeded"
     assert gateway.counts() == {"npu": 1, "gpu": 1, "cpu": 0}
 
 
-def test_another_npu_400_reaches_the_client_unchanged(gateway):
+def test_another_npu_400_reaches_the_client_unchanged(gateway: Gateway) -> None:
     reply = gateway.post("chat", fake={"npu": "badreq"})
     assert reply.status == 400
     assert reply.json()["error"]["code"] == "invalid_value"
     assert gateway.counts() == {"npu": 1, "gpu": 0, "cpu": 0}
 
 
-def test_an_overflow_on_the_raw_route_is_not_rerouted(gateway):
+def test_an_overflow_on_the_raw_route_is_not_rerouted(gateway: Gateway) -> None:
     reply = gateway.post("raw-npu", fake={"npu": "overflow"})
     assert reply.status == 400
     assert gateway.counts() == {"npu": 1, "gpu": 0, "cpu": 0}
 
 
 @pytest.mark.parametrize("fault", ["reset", "status=500", "crash"])
-def test_a_failed_npu_before_the_reply_starts_falls_back_once(gateway, fault):
+def test_a_failed_npu_before_the_reply_starts_falls_back_once(gateway: Gateway, fault: str) -> None:
     reply = gateway.post("chat", fake={"npu": fault})
     assert reply.status == 200
     assert (reply.headers["x-gw-lane"], reply.headers["x-gw-rerouted"]) == ("gpu", "fallback")
     assert gateway.counts() == {"npu": 1, "gpu": 1, "cpu": 0}
 
 
-def test_a_lane_that_dies_mid_stream_is_not_retried(gateway):
+def test_a_lane_that_dies_mid_stream_is_not_retried(gateway: Gateway) -> None:
     reply = gateway.post("chat", stream=True, fake={"npu": "crash=2"})
     assert reply.status == 200 and reply.headers["x-gw-lane"] == "npu"
     events = reply.sse()
@@ -159,14 +162,14 @@ def test_a_lane_that_dies_mid_stream_is_not_retried(gateway):
     assert line["aborted"] == "read_error"
 
 
-def test_the_npu_times_out_at_its_own_timeout_and_is_not_retried(gateway):
+def test_the_npu_times_out_at_its_own_timeout_and_is_not_retried(gateway: Gateway) -> None:
     reply = gateway.post("chat", fake={"npu": "hold=3.5"})
     assert reply.status == 504
     assert 1.8 < reply.elapsed < 3.2, "the NPU's 2 s, not the route's 6 s"
     assert gateway.counts() == {"npu": 1, "gpu": 0, "cpu": 0}
 
 
-def test_the_gpu_waits_out_a_long_first_byte(gateway):
+def test_the_gpu_waits_out_a_long_first_byte(gateway: Gateway) -> None:
     reply = gateway.post("chat-long", fake={"gpu": "hold=4"})
     assert reply.status == 200
     assert reply.elapsed > 3.9
@@ -175,14 +178,14 @@ def test_the_gpu_waits_out_a_long_first_byte(gateway):
 
 # --- R5: nothing is ever sent twice, nothing is capped ---------------------------------------
 
-def test_the_fallback_attempt_gets_the_gpu_timeout(gateway):
+def test_the_fallback_attempt_gets_the_gpu_timeout(gateway: Gateway) -> None:
     reply = gateway.post("chat", fake={"npu": "overflow", "gpu": "hold=3"})
     assert reply.status == 200 and reply.headers["x-gw-lane"] == "gpu"
     assert reply.elapsed > 2.9, "the GPU attempt ran on its own 6 s, not the NPU's 2 s"
     assert gateway.counts() == {"npu": 1, "gpu": 1, "cpu": 0}
 
 
-def test_two_failing_lanes_are_one_attempt_each(gateway):
+def test_two_failing_lanes_are_one_attempt_each(gateway: Gateway) -> None:
     reply = gateway.post("chat", fake={"npu": "status=500", "gpu": "status=502"})
     assert reply.status == 502, "the client gets the last lane's answer"
     assert gateway.counts() == {"npu": 1, "gpu": 1, "cpu": 0}
@@ -191,7 +194,7 @@ def test_two_failing_lanes_are_one_attempt_each(gateway):
 @pytest.mark.parametrize("model, lane, fault", [
     ("chat-long", "gpu", "status=500"), ("agent", "cpu", "reset"), ("raw-npu", "npu", "status=503"),
     ("chat-long", "gpu", "overflow")])
-def test_a_single_lane_route_never_retries(gateway, model, lane, fault):
+def test_a_single_lane_route_never_retries(gateway: Gateway, model: str, lane: str, fault: str) -> None:
     reply = gateway.post(model, fake={lane: fault})
     assert reply.status >= 400
     expect = {"npu": 0, "gpu": 0, "cpu": 0}
@@ -199,14 +202,14 @@ def test_a_single_lane_route_never_retries(gateway, model, lane, fault):
     assert gateway.counts() == expect
 
 
-def test_a_lane_429_is_neither_retried_nor_rerouted(gateway):
+def test_a_lane_429_is_neither_retried_nor_rerouted(gateway: Gateway) -> None:
     reply = gateway.post("chat", fake={"npu": "status=429"})
     assert reply.status == 429
     assert gateway.counts() == {"npu": 1, "gpu": 0, "cpu": 0}
 
 
 @pytest.mark.parametrize("model, lane", [("chat", "npu"), ("chat-long", "gpu")])
-def test_concurrent_requests_are_never_capped_or_queued_away(gateway, model, lane):
+def test_concurrent_requests_are_never_capped_or_queued_away(gateway: Gateway, model: str, lane: str) -> None:
     fake = {lane: "hold=0.5"}
     with ThreadPoolExecutor(max_workers=8) as pool:
         replies = list(pool.map(lambda _: gateway.post(model, fake=fake), range(8)))
@@ -215,7 +218,7 @@ def test_concurrent_requests_are_never_capped_or_queued_away(gateway, model, lan
     assert max(r.elapsed for r in replies) < 3.0, "all eight ran at once"
 
 
-def test_a_stream_that_dies_before_its_first_event_falls_back_once(gateway):
+def test_a_stream_that_dies_before_its_first_event_falls_back_once(gateway: Gateway) -> None:
     reply = gateway.post("chat", stream=True, fake={"npu": "crash=0"})
     assert reply.status == 200
     assert (reply.headers["x-gw-lane"], reply.headers["x-gw-rerouted"]) == ("gpu", "fallback")
@@ -223,7 +226,7 @@ def test_a_stream_that_dies_before_its_first_event_falls_back_once(gateway):
     assert gateway.counts() == {"npu": 1, "gpu": 1, "cpu": 0}
 
 
-def test_a_client_that_hangs_up_mid_stream_frees_the_lane(gateway):
+def test_a_client_that_hangs_up_mid_stream_frees_the_lane(gateway: Gateway) -> None:
     conn = http.client.HTTPConnection("127.0.0.1", gateway.port, timeout=10)
     body = {"model": "chat-long", "stream": True, "messages": [{"role": "user", "content": "hi"}]}
     conn.request("POST", "/v1/chat/completions", body=json.dumps(body).encode(),

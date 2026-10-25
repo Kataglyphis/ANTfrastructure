@@ -129,8 +129,9 @@ done
 
 t_case 'per-file build inputs and the SDK COPY retain the bootstrap companion'
 t_assert_ok python3 - "${DOCKER_ROOT}" <<'PYTHON'
-from pathlib import Path
 import sys
+from pathlib import Path
+
 root = Path(sys.argv[1])
 checks = [('base', '01-core/base-image.sh', 6), ('toolchain', '02-toolchain/setup-dependencies.sh', 2)]
 for name, entry, expected in checks:

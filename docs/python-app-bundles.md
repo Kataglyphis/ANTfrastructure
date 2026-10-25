@@ -273,6 +273,8 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
     the bundle leaves to the host, and `libc6`, unversioned since the bundle carries its glibc
     (`bundle.json`'s `glibc`; a bundle without it asks for the newest `GLIBC_` any ELF needs). A soname that no installed package provides fails the build. The builder's
     waived sonames (`unresolved_allowed` in `bundle.json`) are skipped.
+  - `readelf` and `ldconfig` must succeed before the dependency list is accepted; only a nonzero
+    `dpkg -S` result means that a soname has no package owner.
   - `Maintainer` comes from `app.json`'s `maintainer`. Without one it is
     `<publisher> <noreply@invalid>`, which says plainly that no address was given.
 - **AppImage:** `AppRun` starts `gui_script`. Started through a symlink named after another

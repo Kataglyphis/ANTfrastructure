@@ -100,7 +100,7 @@ for artifact in "$WHEELS_DIR"/*; do printf 'ARTIFACT:%s:' "${artifact##*/}"; cat
 """
 
 
-def alias_controls(definitions):
+def alias_controls(definitions: str) -> int:
     checks = 0
     for phase, scope, outcome, prefix_alias in itertools.product(
         ("before", "after"),
@@ -151,7 +151,7 @@ def alias_controls(definitions):
     return checks
 
 
-def main():
+def main() -> None:
     chunks = []
     for leaf, names in SOURCES.items():
         extraction = subprocess.run(

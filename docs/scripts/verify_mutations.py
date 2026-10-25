@@ -61,7 +61,7 @@ def _git_ignored(src: str) -> set[str]:
         proc = subprocess.run(
             ["git", "-C", src, "ls-files", "--others", "--ignored",
              "--exclude-standard", "--directory", "-z"],
-            capture_output=True, text=True, timeout=120)
+            capture_output=True, text=True, timeout=120, check=False)
         out = ({os.path.normpath(os.path.join(src, rel))
                 for rel in proc.stdout.split("\0") if rel}
                if proc.returncode == 0 else set())
@@ -100,8 +100,8 @@ def mirror_tree(src: str, dst: str) -> str:
                 shutil.copy2(path, os.path.join(here, name), follow_symlinks=False)
             except OSError as e:
                 raise SystemExit(
-                    "mirror_tree: could not copy %s: %s -- refusing to run the gate "
-                    "on an incomplete copy (is the temp filesystem full?)" % (path, e))
+                    f"mirror_tree: could not copy {path}: {e} -- refusing to run the gate "
+                    "on an incomplete copy (is the temp filesystem full?)")
     return dst
 
 
@@ -112,9 +112,9 @@ def load(path: str) -> list[MutationEntry]:
     for m in data:
         for key in ("id", "target", "find", "replace", "test", "why"):
             if key not in m:
-                raise SystemExit("manifest entry missing %r: %r" % (key, m))
+                raise SystemExit(f"manifest entry missing {key!r}: {m!r}")
         if m["id"] in seen:
-            raise SystemExit("duplicate mutation id: %s" % m["id"])
+            raise SystemExit("duplicate mutation id: {}".format(m["id"]))
         seen.add(m["id"])
     return data
 
@@ -125,7 +125,7 @@ def changed_files(base: str = "origin/main") -> set[str]:
     for cmd in (["git", "diff", "--name-only", base + "...HEAD"],
                 ["git", "diff", "--cached", "--name-only"],
                 ["git", "diff", "--name-only"]):
-        out = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+        out = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=False)
         if out.returncode == 0:
             touched |= set(out.stdout.split())
     return touched
@@ -204,7 +204,8 @@ def _timeout_result(
 
 def _run_test(cmd: str, root: str, timeout: float) -> tuple[int | None, bool, str]:
     """Run one test command, killing its whole process tree when it ends or times out; returns (returncode, timed_out, output)."""
-    proc = subprocess.Popen(cmd, shell=True, cwd=root, stdout=subprocess.PIPE,
+    proc = subprocess.Popen(cmd, shell=True, cwd=root, stdin=subprocess.DEVNULL,
+                            stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, start_new_session=True)
     with _LIVE_LOCK:
         _LIVE_GROUPS.add(proc.pid)
@@ -246,15 +247,13 @@ def passes(cmd: str, root: str, timeout: float) -> tuple[bool | None, str | None
     """Run one test command unmutated; returns (ok, why), ok None for a host skip. A timeout is not a pass."""
     rc, timed_out, output = _run_test(cmd, root, timeout)
     if timed_out:
-        leader = "still running" if rc is None else "exited rc=%s" % rc
-        return False, "timed out after %ss (a timeout is not a pass); leader %s; output excerpt: %s" % (
-            timeout, leader, _output_excerpt(output))
+        leader = "still running" if rc is None else f"exited rc={rc}"
+        return False, f"timed out after {timeout}s (a timeout is not a pass); leader {leader}; output excerpt: {_output_excerpt(output)}"
     if rc == 77 and HOST_MAY_SKIP:
         skip = [l.strip() for l in output.splitlines() if "SKIP [" in l][:1]
         return None, (skip or ["the suite exited 77"])[0]
     if rc != 0:
-        return False, "exited rc=%s; output excerpt: %s" % (
-            rc, _output_excerpt(output))
+        return False, f"exited rc={rc}; output excerpt: {_output_excerpt(output)}"
     return True, None
 
 
@@ -309,8 +308,10 @@ class Report:
     def summary(self, entries: Sequence[MutationEntry]) -> None:
         failed = [e["id"] for e in entries if e["id"] in self.failed]
         if failed:
-            say("FAILED: %d of %d entr(ies), in manifest order: %s"
-                % (len(failed), len(entries), ", ".join(failed)))
+            say(
+                f"FAILED: {len(failed)} of {len(entries)} entr(ies), in manifest order: "
+                f"{', '.join(failed)}"
+            )
 
 
 def say(text: str) -> None:
@@ -345,7 +346,7 @@ def applicable(entry: MutationEntry, root: str) -> tuple[str | None, str | None,
     if hits == 0:
         return original, None, "find text not present -- the mutation is stale"
     if hits > 1:
-        return original, None, "find text matches %d times -- ambiguous, name one edit" % hits
+        return original, None, f"find text matches {hits} times -- ambiguous, name one edit"
     mutated = original.replace(find, replace, 1)
     if mutated == original:
         return original, None, "replace is a no-op"
@@ -359,7 +360,7 @@ def run_stale(entries: Iterable[MutationEntry], root: str) -> int:
         _original, mutated, why = applicable(e, root)
         if mutated is None:
             rc = 1
-            sys.stderr.write("FAIL: %s -- %s (%s)\n" % (e["id"], why, e["target"]))
+            sys.stderr.write("FAIL: {} -- {} ({})\n".format(e["id"], why, e["target"]))
     return rc
 
 
@@ -372,15 +373,14 @@ def apply_and_run(entry: MutationEntry, root: str) -> tuple[bool, bool, str | No
     if original is None:
         raise RuntimeError("applicable returned mutated text without an original")
 
-    backup = tempfile.NamedTemporaryFile("wb", delete=False)
-    backup.write(original.encode("utf-8"))
-    backup.close()
+    with tempfile.NamedTemporaryFile("wb", delete=False) as backup:
+        backup.write(original.encode("utf-8"))
     try:
         write_exact(target, mutated)
         rc, timed_out, output = _run_test(entry["test"], root, entry.get("timeout", 300))
         if timed_out:
             return True, True, "test timed out (counts as failing)", 0
-        return True, rc != 0, "exit %d" % rc, host_skips(output)
+        return True, rc != 0, f"exit {rc}", host_skips(output)
     finally:
         shutil.copyfile(backup.name, target)
         os.unlink(backup.name)
@@ -403,30 +403,31 @@ def run_entries(
         report.entry(e["id"])
         base_ok, base_why = baseline_ok(e, args.root, baselines)
         if base_ok is None:
-            report.skip("  skip    %-34s %s\n" % (e["id"], base_why))
+            report.skip(f"  skip    {e['id']:<34} {base_why}\n")
             continue
         if not base_ok:
             rc = 1
             report.err(
-                "FAIL: %s -- baseline test already fails unmutated (vacuous bite)\n"
-                "      test:   %s\n"
-                "      why:    %s\n" % (e["id"], e["test"], base_why))
+                "FAIL: {} -- baseline test already fails unmutated (vacuous bite)\n"
+                "      test:   {}\n"
+                "      why:    {}\n".format(e["id"], e["test"], base_why))
             continue
         applied, failed, detail, now_skips = apply_and_run(e, args.root)
         if not applied:
             rc = 1
-            report.err("FAIL: %s -- %s (%s)\n" % (e["id"], detail, e["target"]))
+            report.err("FAIL: {} -- {} ({})\n".format(e["id"], detail, e["target"]))
         elif failed:
-            report.out("  bites   %-34s %s\n" % (e["id"], e["why"]))
+            report.out(f"  bites   {e['id']:<34} {e['why']}\n")
         elif HOST_MAY_SKIP and now_skips:
-            report.skip("  skip    %-34s survived where this host skips %d case(s) of its suite; Linux grades it\n"
-                        % (e["id"], now_skips))
+            report.skip(
+                f"  skip    {e['id']:<34} survived where this host skips {now_skips} case(s) "
+                "of its suite; Linux grades it\n"
+            )
         else:
             rc = 1
             report.err(
-                "FAIL: %s SURVIVED -- the tests pass with this guarantee removed.\n"
-                "      target: %s\n      test:   %s\n      meaning: %s\n"
-                % (e["id"], e["target"], e["test"], e["why"]))
+                "FAIL: {} SURVIVED -- the tests pass with this guarantee removed.\n"
+                "      target: {}\n      test:   {}\n      meaning: {}\n".format(e["id"], e["target"], e["test"], e["why"]))
     return rc
 
 
@@ -474,8 +475,10 @@ def run_shards(
     cap = mirror_cap(size, shutil.disk_usage(args.root).free)
     jobs = max(1, min(args.jobs, len(entries), cap))
     if jobs < min(args.jobs, len(entries)):
-        say("  --jobs %d capped at %d: mirrors of %d MB each fit a quarter of the free space under %s"
-            % (args.jobs, jobs, size // 2**20, os.path.dirname(args.root)))
+        say(
+            f"  --jobs {args.jobs} capped at {jobs}: mirrors of {size // 2**20} MB each "
+            f"fit a quarter of the free space under {os.path.dirname(args.root)}"
+        )
     todo: queue.Queue[MutationEntry] = queue.Queue()
     for e in entries:
         todo.put(e)
@@ -485,7 +488,7 @@ def run_shards(
     def shard(n: int, root: str) -> int:
         if n:
             mirror_tree(src, root)
-        return run_shard(args, _drain(todo), root, report, baselines, "[%d/%d] " % (n + 1, jobs))
+        return run_shard(args, _drain(todo), root, report, baselines, f"[{n + 1}/{jobs}] ")
 
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
@@ -505,12 +508,14 @@ def select_only(
     known = {e["id"] for e in entries}
     unknown = [o for o in only if o not in known]
     if unknown:
-        sys.stderr.write("ERROR: --only names %d id(s) not in %s: %s\n"
-                         % (len(unknown), manifest, ", ".join(sorted(unknown))))
+        sys.stderr.write(
+            f"ERROR: --only names {len(unknown)} id(s) not in {manifest}: "
+            f"{', '.join(sorted(unknown))}\n"
+        )
         if any("*" in o or "?" in o for o in unknown):
             sys.stderr.write("       --only takes exact ids, not globs. Pass"
                              " each id explicitly, or use --changed.\n")
-        sys.stderr.write("       %d id(s) are declared.\n" % len(known))
+        sys.stderr.write(f"       {len(known)} id(s) are declared.\n")
         raise SystemExit(2)
     return [e for e in entries if e["id"] in set(only)]
 
@@ -524,7 +529,7 @@ def select_shard(entries: list[MutationEntry], spec: str | None) -> list[Mutatio
     except ValueError:
         k, n = -1, 0
     if not 0 <= k < n:
-        sys.stderr.write("ERROR: --shard takes K/N with 0 <= K < N, got %r\n" % spec)
+        sys.stderr.write(f"ERROR: --shard takes K/N with 0 <= K < N, got {spec!r}\n")
         raise SystemExit(2)
     return entries[k::n]
 
@@ -563,16 +568,16 @@ def main() -> int:
     args = ap.parse_args()
 
     entries = select(args)
-    scope = " (shard %s: %d entr(ies))" % (args.shard, len(entries)) if args.shard else ""
+    scope = f" (shard {args.shard}: {len(entries)} entr(ies))" if args.shard else ""
     if args.stale_check:
-        say("=== mutation staleness: does every recorded edit still apply?%s ===" % scope)
-        say("  %d entr(ies), no test run" % len(entries))
+        say(f"=== mutation staleness: does every recorded edit still apply?{scope} ===")
+        say(f"  {len(entries)} entr(ies), no test run")
         rc = run_stale(entries, args.root)
         if rc == 0:
             say("OK: every recorded mutation still applies to its target")
         return rc
 
-    say("=== mutation gate: can these tests fail?%s ===" % scope)
+    say(f"=== mutation gate: can these tests fail?{scope} ===")
     if not entries:
         say("  nothing selected")
         return 0
@@ -590,8 +595,10 @@ def main() -> int:
             shutil.rmtree(workspace, ignore_errors=True)
     report.summary(entries)
     if rc == 0 and report.skipped:
-        say("OK: every mutation this host can run is caught; %d skipped here (listed above), Linux proves them"
-            % len(report.skipped))
+        say(
+            f"OK: every mutation this host can run is caught; {len(report.skipped)} "
+            "skipped here (listed above), Linux proves them"
+        )
     elif rc == 0:
         say("OK: every recorded mutation is caught by its tests")
     return rc

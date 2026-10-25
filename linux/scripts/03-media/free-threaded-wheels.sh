@@ -212,22 +212,27 @@ ft_soabi_gate() {
     want="$("${FT_PYTHON:?ft_python_resolve first}" -I -c 'import sysconfig; print(sysconfig.get_config_var("EXT_SUFFIX"))')" || return 1
   fi
   out="$("${FT_PYTHON:-python3}" -I - "${wheel}" "${want}" <<'PY'
-import re, sys, zipfile
+import re
+import sys
+import zipfile
+
 wheel, want = sys.argv[1], sys.argv[2]
 m = re.fullmatch(r"\.cpython-(\d+)t-([^-.]+)-[^.]+\.so", want)
 if not m:
-    sys.exit("the expected suffix %s is not a free-threaded one" % want)
+    sys.exit(f"the expected suffix {want} is not a free-threaded one")
 tag, machine = "cp" + m.group(1), m.group(2)
 parts = wheel.rsplit("/", 1)[-1][:-4].split("-")
 if len(parts) < 5 or not wheel.endswith(".whl"):
-    sys.exit("%s is no wheel file name" % wheel)
-bad = [] if parts[-3:-1] == [tag, tag + "t"] else ["the name is %s-%s, not %s-%st" % (parts[-3], parts[-2], tag, tag)]
+    sys.exit(f"{wheel} is no wheel file name")
+bad = [] if parts[-3:-1] == [tag, tag + "t"] else [
+    f"the name is {parts[-3]}-{parts[-2]}, not {tag}-{tag}t"
+]
 if not all(p.endswith("_" + machine) for p in parts[-1].split(".")):
-    bad.append("the platform tag is %s, not one for %s" % (parts[-1], machine))
+    bad.append(f"the platform tag is {parts[-1]}, not one for {machine}")
 for name in zipfile.ZipFile(wheel).namelist():
     base = name.rsplit("/", 1)[-1]
     if base.endswith(".abi3.so") or (re.search(r"\.cpython-\d+t?-", base) and base.endswith(".so") and not base.endswith(want)):
-        bad.append("%s is not %s" % (name, want))
+        bad.append(f"{name} is not {want}")
 print("\n".join(bad))
 PY
 )" || return 1

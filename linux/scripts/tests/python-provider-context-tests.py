@@ -76,13 +76,13 @@ SUBJECTS = {
 }
 
 
-def function(text, name):
+def function(text: str, name: str) -> str:
     match = re.search(r"^" + re.escape(name) + r"\(\) \{\n.*?^\}", text, re.MULTILINE | re.DOTALL)
     assert match is not None, name
     return match.group() + "\n"
 
 
-def check_original_receipts(scripts):
+def check_original_receipts(scripts: Path) -> int:
     rows = json.loads((TESTS / "python-provider-context-receipts.json").read_text())
     assert len(rows) == 48
     worker = ALIAS_WORKER
@@ -145,7 +145,7 @@ exit "$rc"
 '''
 
 
-def check_cold_owner(scripts, case):
+def check_cold_owner(scripts: Path, case: tuple[str, str, int, str]) -> None:
     subject, mode, strict, context = case
     with tempfile.TemporaryDirectory(prefix="python-cold-owner-") as directory:
         work = Path(directory)
@@ -181,7 +181,7 @@ def check_cold_owner(scripts, case):
             assert "platform.sh" in result.stderr, (case, result)
 
 
-def main():
+def main() -> None:
     scripts = Path(sys.argv[1]).resolve()
     count = check_original_receipts(scripts)
     cold = list(itertools.product(SUBJECTS, ("complete", "old", "partial", "missing-platform", "guarded"),

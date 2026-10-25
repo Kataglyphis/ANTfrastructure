@@ -9,13 +9,11 @@ import re
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from quality_allow import check_keys, load_keys  # noqa: E402
-
-import gate_scope  # noqa: E402
-from verify_code_size import DEF_HEAD, ROOT, scan, shell_functions  # noqa: E402
+import gate_scope
+from quality_allow import check_keys, load_keys
+from verify_code_size import DEF_HEAD, ROOT, scan, shell_functions
 
 HUB = os.path.abspath(ROOT)
 ALLOW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dead-functions.allow")
@@ -35,25 +33,25 @@ SOURCED = re.compile(r"(?:^|[^\w.])(?:\.|source|source_module\w*)\s+\S", re.MULT
 GRADED = HUB
 
 
-def _rel(path) -> str:
+def _rel(path: str | os.PathLike[str]) -> str:
     """Posix-spelled relpath, since allowlist and corpus keys never carry Windows backslashes."""
     return os.path.relpath(path, GRADED).replace(os.sep, "/")
 
 
-def _kept(path) -> bool:
+def _kept(path: str | os.PathLike[str]) -> bool:
     return _rel(path) not in SKIP_RELS
 
 
-def _code(text) -> str:
+def _code(text: str) -> str:
     return HEAD.sub("", COMMENT.sub("", text))
 
 
-def _tracked(root) -> Iterator[str]:
+def _tracked(root: str) -> Iterator[str]:
     """Every tracked path outside the excluded tops; ls-files keeps submodules and build output out."""
     out = subprocess.run(["git", "-C", root, "ls-files", "-z"],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, check=False)
     if out.returncode != 0:
-        sys.stderr.write("ERROR: %s is not a git checkout; --root must be one\n" % root)
+        sys.stderr.write(f"ERROR: {root} is not a git checkout; --root must be one\n")
         raise SystemExit(2)
     for rel in sorted(p for p in out.stdout.split("\0") if p):
         head = rel.split("/", 1)[0]
@@ -62,31 +60,31 @@ def _tracked(root) -> Iterator[str]:
         yield rel
 
 
-def _size(path) -> int:
+def _size(path: str | os.PathLike[str]) -> int:
     try:
         return os.path.getsize(path)
     except OSError:
         return 0
 
 
-def _outside(rel) -> bool:
+def _outside(rel: str) -> bool:
     """Is this path under SKIP_DIRS or SKIP_RELS, which the hub's own walk also skips?"""
     return (bool(set(rel.split("/")[:-1]) & SKIP_DIRS)
             or any(rel == skip or rel.startswith(skip + "/") for skip in SKIP_RELS))
 
 
-def _corpus_rel(rel) -> bool:
+def _corpus_rel(rel: str) -> bool:
     """Is this path corpus text: not a doc, patch or allow file, and not skipped?"""
     return not rel.endswith(SKIP_SUFFIXES) and not _outside(rel)
 
 
-def oversized():
+def oversized() -> list[str]:
     """Corpus files CORPUS_BYTES kept out, reported because the verdict did not read them."""
     return sorted(rel for rel in _tracked(GRADED)
                   if _corpus_rel(rel) and _size(os.path.join(GRADED, rel)) > CORPUS_BYTES)
 
 
-def def_files(root):
+def def_files(root: str) -> Iterator[tuple[str, str]]:
     """(path, relpath) per graded shell file, never narrowed by size: an unseen definition is dead code let in."""
     if root == HUB:
         return scan(".sh")
@@ -118,12 +116,12 @@ def _tracked_corpus() -> Iterator[tuple[str, str]]:
             yield path, rel
 
 
-def corpus():
+def corpus() -> Iterator[tuple[str, str]]:
     """(path, relpath) for every file whose text may NAME a function."""
     return _walk_corpus() if GRADED == HUB else _tracked_corpus()
 
 
-def texts():
+def texts() -> dict[str, str]:
     """relpath -> text for every corpus file that reads as UTF-8."""
     out = {}
     for path, rel in corpus():
@@ -135,17 +133,17 @@ def texts():
     return out
 
 
-def self_mentions():
+def self_mentions() -> Counter[str]:
     """Name -> times its own bodies name it, since recursion or printing its name is not a call."""
     own = Counter()
     for path, rel in def_files(GRADED):
         for _rel, name, _start, body in shell_functions(path, rel):
-            own[name] += len(re.findall(r"\b%s\b" % re.escape(name),
+            own[name] += len(re.findall(rf"\b{re.escape(name)}\b",
                                         _code("\n".join(body))))
     return own
 
 
-def mentions(corpus_texts):
+def mentions(corpus_texts: Mapping[str, str]) -> Counter[str]:
     """Identifier -> occurrences, comments, definition heads and self-mentions removed."""
     seen = Counter()
     for text in corpus_texts.values():
@@ -154,14 +152,14 @@ def mentions(corpus_texts):
     return seen
 
 
-def definitions():
+def definitions() -> list[tuple[str, str]]:
     """(file, name) for every shell function defined in the graded tree."""
     return sorted({(rel, name)
                    for path, rel in def_files(GRADED)
                    for _rel, name, _start, _body in shell_functions(path, rel)})
 
 
-def dead(seen):
+def dead(seen: Counter[str]) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """(all (file, name) shell definitions, the subset nothing else names)."""
     defined = definitions()
     return defined, [(rel, name) for rel, name in defined if not seen[name]]
@@ -175,17 +173,17 @@ def _definers() -> dict[str, set[str]]:
     return out
 
 
-def _names_of(corpus_texts) -> dict[str, set[str]]:
+def _names_of(corpus_texts: Mapping[str, str]) -> dict[str, set[str]]:
     return {rel: set(WORD.findall(_code(text))) for rel, text in corpus_texts.items()}
 
 
-def unlinked(corpus_texts):
+def unlinked(corpus_texts: Mapping[str, str]) -> list[tuple[str, str]]:
     """Masked definitions provably uncalled; see docs/code-quality-tooling.md § The unlinked-definer arm."""
     definers = _definers()
     names = _names_of(corpus_texts)
     readers = {}
 
-    def reads(rel) -> set[str]:
+    def reads(rel: str) -> set[str]:
         if rel not in readers:
             base = os.path.basename(rel)
             readers[rel] = {rel} | {o for o, text in corpus_texts.items() if base in text}
@@ -195,7 +193,7 @@ def unlinked(corpus_texts):
     for rel, name in definitions():
         peers = definers[name] - {rel}
         text = corpus_texts.get(rel)
-        if not peers or text is None or re.search(r"\b%s\b" % name, _code(text)):
+        if not peers or text is None or re.search(rf"\b{name}\b", _code(text)):
             continue
         if any(o != rel and name in words and o not in definers[name]
                for o, words in names.items()):
@@ -206,19 +204,21 @@ def unlinked(corpus_texts):
     return rows
 
 
-def _isolated(rel, corpus_texts) -> bool:
+def _isolated(rel: str, corpus_texts: Mapping[str, str]) -> bool:
     if SOURCED.search(corpus_texts.get(rel, "")):
         return False
     base = os.path.basename(rel)
     return not any(base in text for other, text in corpus_texts.items() if other != rel)
 
 
-def census(corpus_texts):
+def census(
+    corpus_texts: Mapping[str, str],
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]], int, int]:
     """(isolated rows, same-name shared rows, considered count, unlinked count) over self-unnamed definitions."""
     considered = []
     for rel, name in definitions():
         text = corpus_texts.get(rel)
-        if text is None or re.search(r"\b%s\b" % name, _code(text)):
+        if text is None or re.search(rf"\b{name}\b", _code(text)):
             continue
         considered.append((rel, name))
     definers = Counter(name for _, name in definitions())
@@ -227,51 +227,55 @@ def census(corpus_texts):
             len(considered), len(unlinked(corpus_texts)))
 
 
-def _where(allow_path=None) -> None:
+def _where(allow_path: str | None = None) -> None:
     """Under a foreign root, name the tree, the freeze file and what the corpus skipped; silent for the hub."""
     if GRADED == HUB:
         return
-    print("  root: %s" % GRADED)
+    print(f"  root: {GRADED}")
     if allow_path:
-        print("  allow: %s" % allow_path)
+        print(f"  allow: {allow_path}")
     big = oversized()
     if big:
-        print("  %d tracked file(s) over %d KiB not read as corpus text -- an asset is "
-              "not a call site (e.g. %s)"
-              % (len(big), CORPUS_BYTES >> 10, ", ".join(big[:3])))
+        print(f"  {len(big)} tracked file(s) over {CORPUS_BYTES >> 10} KiB not read as corpus text -- an asset is "
+              f"not a call site (e.g. {', '.join(big[:3])})")
 
 
-def report_census(rows, shared, considered, unlinked_count):
+def report_census(
+    rows: list[tuple[str, str]],
+    shared: list[tuple[str, str]],
+    considered: int,
+    unlinked_count: int,
+) -> int:
     print("=== dead function census (advisory, not a gate) ===")
     _where()
-    print("  %d definition(s) their own file never names again; %d of those in a file "
-          "that sources nothing and that nothing else names; %d share their name with "
-          "another file's definition, %d of them unlinked from every other definer "
-          "and failed by the gate"
-          % (considered, len(rows), len(shared), unlinked_count))
+    print(f"  {considered} definition(s) their own file never names again; {len(rows)} of those in a file "
+          f"that sources nothing and that nothing else names; {len(shared)} share their name with "
+          f"another file's definition, {unlinked_count} of them unlinked from every other definer "
+          "and failed by the gate")
     for rel, name in rows:
-        print("  %s\t%s" % (rel, name))
+        print(f"  {rel}\t{name}")
     if not rows:
         print("  none -- every candidate sits in a sourced or externally named file")
-    print("  masked (%d) -- the gate's live verdict for these comes from a same-named "
-          "definition in another file, not from a call it can see:" % len(shared))
+    print(f"  masked ({len(shared)}) -- the gate's live verdict for these comes from a same-named "
+          "definition in another file, not from a call it can see:")
     for rel, name in shared:
-        print("  %s\t%s" % (rel, name))
+        print(f"  {rel}\t{name}")
     if not shared:
         print("  none -- every candidate owns its name in the corpus")
     return 0
 
 
-def _stale_note(key, corpus_texts) -> str:
+def _stale_note(key: str, corpus_texts: Mapping[str, str]) -> str:
     hit = disarmer(key, corpus_texts)
     if not hit:
         return ""
-    return ("  [unlinked arm DISARMED by %s, which now names both %s and %s -- the "
-            "function is not called again]" % (hit[0], os.path.basename(key.split("\t")[0]),
-                                               os.path.basename(hit[1])))
+    rel, _, _ = key.partition("\t")
+    return (f"  [unlinked arm DISARMED by {hit[0]}, which now names both "
+            f"{os.path.basename(rel)} and {os.path.basename(hit[1])} -- "
+            "the function is not called again]")
 
 
-def disarmer(key, corpus_texts):
+def disarmer(key: str, corpus_texts: Mapping[str, str]) -> tuple[str, str] | None:
     """The corpus file now naming two definers' basenames, which stales the row without a call, or None."""
     rel, _, name = key.partition("\t")
     peers = _definers().get(name, set()) - {rel}
@@ -285,7 +289,7 @@ def disarmer(key, corpus_texts):
     return None
 
 
-def main(argv):
+def main(argv: Sequence[str]) -> int:
     ap = argparse.ArgumentParser(description="Fail on new dead shell functions.")
     ap.add_argument("--root", default=None,
                     help="the tree to grade (default: this repo)")
@@ -309,15 +313,15 @@ def main(argv):
     if args.census:
         return report_census(*census(corpus_texts))
     defined, found = dead(mentions(corpus_texts))
-    scoped = {"%s\t%s" % k for k in unlinked(corpus_texts)}
+    scoped = {f"{rel}\t{name}" for rel, name in unlinked(corpus_texts)}
+    found_keys = {f"{rel}\t{name}" for rel, name in found}
     allow = load_keys(allow_path)
     print("=== dead function gate ===")
     _where(allow_path)
-    print("  %d shell functions; %d named nowhere else, %d more unlinked from every "
-          "other definer of their name; %d frozen in %s"
-          % (len(defined), len(found), len(scoped - {"%s\t%s" % k for k in found}),
-             len(allow), os.path.basename(allow_path)))
-    rc = check_keys({"%s\t%s" % k for k in found} | scoped, allow,
+    print(f"  {len(defined)} shell functions; {len(found)} named nowhere else, "
+          f"{len(scoped - found_keys)} more unlinked from every "
+          f"other definer of their name; {len(allow)} frozen in {os.path.basename(allow_path)}")
+    rc = check_keys(found_keys | scoped, allow,
                     "NEW dead function(s) -- nothing outside a comment names them. Delete the\n"
                     "function, or freeze it in dead-functions.allow naming the dispatch site:",
                     "STALE entr(ies) -- the function is called again or gone, delete the line.\n"

@@ -496,7 +496,8 @@ what the *build* claims. These read the *shipped bytes*. Both live in
 (`run_shipped_truth_probe`, ~13 s per image (measured on arm64; the three gates together ~15 s), no network, no host state).
 
 **Why one probe that only prints facts.** The probe emits `ADV`/`HAVE`/`PKG`/
-`REQ`/`DANG` lines and an `RTPROBE_DONE` marker; every verdict is reached
+`REQ`/`DANG` lines, explicit `VENV ABSENT` or `VENV ERROR` status when needed,
+and an `RTPROBE_DONE` marker; every verdict is reached
 afterwards on the host by `_advert_verdicts` and `_venv_set_verdicts`, which are
 pure `text in → verdict lines out`. That split is deliberate: the judging code
 can be driven from a *recorded* probe capture, so its failure paths are provable
@@ -551,6 +552,11 @@ needs no configuration at all: any **dangling edge** — an unconditional
 requirement of an installed distribution that is not installed — fails, which is
 what covers the transitive tail the extras graph cannot see.
 
+Missing `packaging` or an uninstalled app distribution emits `VENV ABSENT`, an explicit
+unavailable skip. A crashed probe or invalid installed requirement emits `VENV ERROR` and fails
+the gate; malformed metadata must never discard requirement edges and look like an unavailable
+comparison.
+
 Documented divergences go in `_venv_pkg_exempt`, keyed `<arch>:<extra>:<pkg>`
 (`DEP` for a dangling edge) and following `_parity_exempt`'s contract exactly:
 listed = reviewed, and an arm whose package turns out to be **present** fails and
@@ -588,6 +594,7 @@ locally-built `latest-cross-arm64`/`-riscv64` wrappers:
 | recorded probe, `PKG opencv-python` added | B **fails**: the documented exemption no longer applies, message names the arm to delete |
 | recorded probe, `REQ docs …` removed | B **fails**: refuses to assert an empty extra |
 | recorded probe, `VENV ABSENT` injected | B prints a loud `SKIP` (never a pass) |
+| recorded probe, `VENV ERROR` injected | B **fails**: a broken metadata probe cannot become an unavailable skip |
 
 ##### E. ORT single source
 
@@ -1155,6 +1162,7 @@ metadata (source-built lib vs locked wheel; the build pin governs). Also
 asserts the torch/vision build VARIANT (+cpu/+cu130/+rocm7.1) matches
 PYTORCH_EXTRA and that OpenCV's major matches OPENCV_VERSION, and runs the
 cv2 media backends for real (SMOKE-DEPTH a).
+TVM codegen skips only when the module import is absent; unexpected initialization errors fail the smoke.
 
 ### smoke-media: the mandatory-plugin gate and its build-sandbox deferrals
 
@@ -1940,13 +1948,22 @@ TVM availability, backend configuration, and actual GStreamer/FFmpeg frame deliv
 still owns pin forwarding and the final smoke verdict. The package Dockerfile copies both files;
 a sandbox that copies the smoke must also copy its probe. A missing probe fails the smoke.
 
+The probe falls back from an unavailable module import only for `ImportError` and `OSError`, and
+from distribution metadata only when the package is absent. A broken module import or unexpected
+runtime error escapes and fails the smoke. An existing `UVLOCK` that cannot be read or parsed is
+fatal; an absent optional lock still leaves build-pinned packages checked. Known OpenCV import
+and API errors become a failure verdict when OpenCV is required, or a visible optional diagnostic
+when it is not. Media errors fail the smoke; unrelated programming errors escape rather than being
+reported as an optional missing library.
+
 GStreamer's `setup-gstreamer.sh` runs its sibling `gst-python-build-config.py` with the host
 Python to generate Meson's target metadata. The GStreamer directory mount supplies both files.
 Its JSON remains byte-identical, including the optional dynamic-libpython field and target ABI.
 The existing shell failure path still removes incomplete output before continuing without it.
 
 `test-python-probes.sh` covers build-pin authority, architecture-specific tolerance matching,
-required TVM, actual media failures, and target metadata. `test-smoke-arch-parity.sh` exercises
+expected import fallback, malformed locks, required TVM, OpenCV failure reporting, actual media
+failures, and target metadata. `test-smoke-arch-parity.sh` exercises
 the shell-to-probe handoff and refuses a missing drift table. These tests use stub packages;
 they do not replace the image smoke against shipped libraries.
 

@@ -96,8 +96,9 @@ printf '%s\n' libfirst.so libdup.so libdup.so libfirst.so libdup.so libdup.so li
 t_assert_rc 0 cmp "$work/expected-direct" "$work/out"
 t_record_fixture_receipt "$receipt" direct "$status" "$(vmr_bytes "$work/out")" "$(vmr_bytes "$work/err")"
 python3 - "$subject" "$work/reports.sh" <<'PY'
-from pathlib import Path
 import sys
+from pathlib import Path
+
 source=Path(sys.argv[1]).read_text()
 blocks=[]
 for name, marker, end in (

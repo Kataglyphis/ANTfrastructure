@@ -19,7 +19,11 @@ export TOK REPO TAG
 
 printf '[manifest-freshness] %s:%s\n' "${REPO}" "${TAG}"
 python3 - <<'PY'
-import json, os, subprocess, sys
+import json
+import os
+import subprocess
+import sys
+
 TOK=os.environ["TOK"]; REPO=os.environ["REPO"]; TAG=os.environ["TAG"]
 ACC=("application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json,"
      "application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json")
@@ -27,7 +31,7 @@ def reg(path, accept=ACC, head=False):
     c=["curl","-sfL","-H",f"Authorization: Bearer {TOK}","-H",f"Accept: {accept}"]
     if head: c += ["-o","/dev/null","-D","-"]
     c.append(f"https://ghcr.io/v2/{REPO}{path}")
-    r=subprocess.run(c,capture_output=True)
+    r=subprocess.run(c,capture_output=True,check=False)
     return r.stdout if r.returncode==0 else b""
 
 idx=reg(f"/manifests/{TAG}")
@@ -64,7 +68,14 @@ for m in kids:
         cfg=json.loads(man)["config"]["digest"]
         labels=json.loads(reg(f"/blobs/{cfg}","*/*")).get("config",{}).get("Labels") or {}
         runids[arch]=labels.get("org.kataglyphis.run-id")
-    except Exception:
+    except (
+        OSError,
+        subprocess.SubprocessError,
+        json.JSONDecodeError,
+        KeyError,
+        TypeError,
+        AttributeError,
+    ):
         runids[arch]=None
 
 uniq={v for v in runids.values() if v}

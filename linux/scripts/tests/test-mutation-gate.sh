@@ -41,6 +41,7 @@ _posix_host() {
 }
 
 _gate() { TMPDIR="${_tmp}" "${PY}" "${GATE}" --manifest "${_work}/m.json" --root "${_work}" --in-place "$@"; }
+_gate_with_input() { printf 'caller input must not reach tests\n' | TMPDIR="${_tmp}" "${PY}" "${GATE}" --manifest "${_work}/m.json" --root "${_work}" --in-place; }
 _run() { t_out _gate; }
 _rc()  { t_rc _gate; }
 
@@ -54,6 +55,19 @@ t_case "a mutation the tests catch is reported as biting"
 _fixture "GUARD=on" "GUARD=off" yes
 t_assert_contains "$(_run)" "bites" "the guarded test must go red"
 t_assert_eq "0" "$(_rc)" "a caught mutation is the healthy case"
+
+t_case "mutation test children cannot consume caller stdin"
+_fixture "GUARD=on" "GUARD=off" yes .
+cat > "${_work}/t.sh" <<'EOF'
+if IFS= read -r leaked; then
+  printf 'test inherited stdin: %s\n' "${leaked}" >&2
+  exit 2
+fi
+grep -q 'GUARD=on' ./subject.sh
+EOF
+_out="$(t_out _gate_with_input)"
+t_assert_contains "${_out}" "bites" "a test process must see EOF, not the caller's input"
+t_assert_eq "0" "$(t_rc _gate_with_input)" "inherited input must not turn a baseline into a false failure"
 
 t_case "a mutation the tests SURVIVE is the whole point, and fails the gate"
 _fixture "GUARD=on" "GUARD=off" no

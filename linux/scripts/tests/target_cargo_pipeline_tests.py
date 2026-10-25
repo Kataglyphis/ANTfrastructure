@@ -8,10 +8,12 @@ import subprocess
 import sys
 import tempfile
 
-from host_cargo_preparation_tests import extract
+from host_cargo_preparation_tests import Capture, extract
 
 SCRIPTS = pathlib.Path(sys.argv[1]).resolve()
 TESTS = pathlib.Path(__file__).parent
+Case = tuple[str, str, str, str, str, str, str, str]
+Parts = tuple[str, dict[str, str], str, str]
 
 
 WORKER = r"""
@@ -98,7 +100,7 @@ builtin printf 'TAIL:%s\n' "$status"
 """
 
 
-def definitions():
+def definitions() -> Parts:
     rust = extract("01-core/cross-env.sh", ["cross_collect_target_rust_env"])
     helpers = {
         name: extract("01-core/compiler-resolution.sh", [name])
@@ -126,7 +128,12 @@ def definitions():
     return rust, helpers, gst, rice[start:end] + "\nbuiltin printf 'SOURCE_TAIL\\n'\n"
 
 
-def capture(parts, row, missing=None, observe_return=False):
+def capture(
+    parts: Parts,
+    row: Case,
+    missing: str | None = None,
+    observe_return: bool = False,
+) -> Capture:
     rust, helpers, gst, rice = parts
     body = (
         WORKER.replace(" builtin printf 'OPERATION_TAIL\\n'\n", "")
@@ -151,7 +158,7 @@ def capture(parts, row, missing=None, observe_return=False):
             timeout=5,
         )
 
-        def clean(data) -> str:
+        def clean(data: bytes) -> str:
             return re.sub(
                 r": line \d+:",
                 ": line [LINE]:",
@@ -167,7 +174,7 @@ def capture(parts, row, missing=None, observe_return=False):
         }
 
 
-def cold_contract(parts):
+def cold_contract(parts: Parts) -> int:
     checks = 0
     for role, target, context, strict, missing in itertools.product(
         ("gst", "rice"),
@@ -191,7 +198,7 @@ def cold_contract(parts):
     return checks
 
 
-def result_contract(parts):
+def result_contract(parts: Parts) -> int:
     checks = 0
     for context, strict, aliases in itertools.product(
         ("direct", "conditional"), ("relaxed", "strict"), ("none", "prefix")
@@ -236,7 +243,7 @@ def result_contract(parts):
     return checks
 
 
-def arch_scope_contract(parts):
+def arch_scope_contract(parts: Parts) -> int:
     checks = 0
     for context, strict, aliases in itertools.product(
         ("direct", "conditional"), ("relaxed", "strict"), ("none", "prefix")
@@ -261,7 +268,7 @@ def arch_scope_contract(parts):
     return checks
 
 
-def owner_export_contract():
+def owner_export_contract() -> int:
     process = subprocess.run(
         [
             "bash",
@@ -282,7 +289,7 @@ def owner_export_contract():
     return 3
 
 
-def main():
+def main() -> None:
     parts = definitions()
     frozen = json.loads((TESTS / "target-cargo-pipeline-receipts.json").read_text())
     assert len(frozen["cases"]) == 1728, "every independent original case must remain"

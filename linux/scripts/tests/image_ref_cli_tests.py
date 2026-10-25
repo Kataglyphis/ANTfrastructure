@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 CORE = Path(sys.argv.pop(1)).resolve()
 REFERENCE = "registry.example:5443/repo with spaces:tag"
@@ -55,12 +56,12 @@ CASES = [
 ]
 
 
-def normalize(text, root):
+def normalize(text: str, root: Path) -> str:
     text = text.replace(str(root), "ROOT")
     return re.sub(r"^.*?: line \d+:", "SOURCE: line @LINE@:", text, flags=re.MULTILINE)
 
 
-def run_case(core, api, config):
+def run_case(core: Path, api: str, config: dict[str, Any]) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="ant-image-cli-") as directory:
         root = Path(directory)
         bundle = root / "copied core"
@@ -141,7 +142,7 @@ def run_case(core, api, config):
         }
 
 
-def receipts(core):
+def receipts(core: Path) -> dict[str, dict[str, Any]]:
     return {
         f"{api}:{name}": run_case(core, api, config)
         for api in ("image_exists", "registry_pin_ref")
@@ -150,7 +151,7 @@ def receipts(core):
 
 
 class ImageRefPolicy(unittest.TestCase):
-    def test_toolchain_mount_closure(self):
+    def test_toolchain_mount_closure(self: "ImageRefPolicy") -> None:
         dockerfile = CORE.parent.parent / "Dockerfile.toolchain"
         text = dockerfile.read_text()
         runs = re.split(r"(?m)^RUN ", text)[1:]
@@ -164,7 +165,7 @@ class ImageRefPolicy(unittest.TestCase):
                 run,
             )
 
-    def test_original_receipts(self):
+    def test_original_receipts(self: "ImageRefPolicy") -> None:
         expected = json.loads(
             Path(__file__).with_name("image-ref-cli-receipts.json").read_text()
         )
@@ -173,7 +174,9 @@ class ImageRefPolicy(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(receipt, actual[name])
 
-    def test_missing_companions_fail_during_conditional_import(self):
+    def test_missing_companions_fail_during_conditional_import(
+        self: "ImageRefPolicy",
+    ) -> None:
         for library in ("build-helpers.sh", "digest-pinning.sh"):
             with (
                 self.subTest(library=library),

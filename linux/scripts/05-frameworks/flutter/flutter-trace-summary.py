@@ -3,18 +3,21 @@ import argparse
 import collections
 import json
 import sys
+from typing import Any
+
+Span = tuple[Any, Any, Any, Any, tuple[Any, Any]]
 
 UI_FRAME = "Animator::BeginFrame"
 RASTER_FRAME = "GPURasterizer::Draw"
 
 
-def load_events(path):
+def load_events(path: str) -> list[dict[str, Any]]:
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
     return data["traceEvents"] if isinstance(data, dict) else data
 
 
-def spans(events):
+def spans(events: list[dict[str, Any]]) -> list[Span]:
     """Every B/E pair and X event as (start, duration, self time, name, thread), self time net of direct children."""
     marks = []
     for i, e in enumerate(events):
@@ -47,7 +50,7 @@ def spans(events):
     return out
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("timeline", help="e.g. build/start_up_timeline.json from flutter run --profile --trace-startup")
     parser.add_argument("--top", type=int, default=10, help="rows per table")
@@ -59,7 +62,7 @@ def main():
         return 1
     t0 = min(s[0] for s in all_spans)
 
-    def frames(name) -> list[tuple[float, float, float, str | None, tuple[int | None, int | None]]]:
+    def frames(name: str) -> list[Span]:
         return sorted((s for s in all_spans if s[3] == name), key=lambda s: -s[1])
 
     for title, name in (("UI frames", UI_FRAME), ("Raster frames", RASTER_FRAME)):

@@ -4,6 +4,7 @@ import json
 import pathlib
 import statistics
 import sys
+from typing import Any
 
 DEFAULT_CURRENT = pathlib.Path("logs/perf/frontend.json")
 DEFAULT_HISTORY = pathlib.Path("logs/perf/baseline")
@@ -24,12 +25,12 @@ GATED = {"average_frame_build_time_millis", "90th_percentile_frame_build_time_mi
 MIN_HISTORY_TO_FAIL = 3
 
 
-def load(path):
+def load(path: str | pathlib.Path) -> Any:
     p = pathlib.Path(path)
     return json.loads(p.read_text()) if p.is_file() else {}
 
 
-def history(path):
+def history(path: str | pathlib.Path) -> list[Any]:
     """Earlier runs: every *.json in a directory, or a single file."""
     p = pathlib.Path(path)
     if p.is_dir():
@@ -37,7 +38,13 @@ def history(path):
     return [load(p)] if p.is_file() else []
 
 
-def judge(name, key, value, earlier, args):
+def judge(
+    name: str,
+    key: str,
+    value: float | None,
+    earlier: list[float],
+    args: argparse.Namespace,
+) -> tuple[str, str | None]:
     """One table cell, and a failure message when the value is far over the median of `earlier`."""
     if value is None:
         return "-", None
@@ -57,7 +64,7 @@ def judge(name, key, value, earlier, args):
     return cell, None
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("current", nargs="?", default=str(DEFAULT_CURRENT))
     parser.add_argument("history", nargs="?", default=str(DEFAULT_HISTORY), help="a directory of earlier runs' JSON, or one file")

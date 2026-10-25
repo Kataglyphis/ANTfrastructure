@@ -258,11 +258,14 @@ resolve_target_python_sysconfig_export() {
         cp -f "${dir}/${name}.py" "${sysdir}/" || return 1
     else
         "${BUILD_PYTHON:-${MEDIA_HOST_PYTHON:-python3}}" - "${sysdir}/${name}.py" "${target_triplet}" <<'PY' || return 1
-import pprint, sys, sysconfig
+import pprint
+import sys
+import sysconfig
+
 out, triplet = sys.argv[1], sys.argv[2]
 mm = "".join(str(part) for part in sys.version_info[:2])
 data = dict(sysconfig.get_config_vars())
-data["SOABI"] = "cpython-%s-%s" % (mm, triplet)
+data["SOABI"] = f"cpython-{mm}-{triplet}"
 data["EXT_SUFFIX"] = "." + data["SOABI"] + ".so"
 data["MULTIARCH"] = triplet
 with open(out, "w") as fh:

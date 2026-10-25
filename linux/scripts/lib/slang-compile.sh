@@ -31,7 +31,8 @@ _slang_compile_output_root() {
 # Manifest reader: python3, not jq (absent from the image); the one place that touches the schema.
 slang_compile_manifest_query() {
   python3 - "${SLANG_COMPILE_MANIFEST}" "$@" <<'PY'
-import json, sys
+import json
+import sys
 from pathlib import Path
 
 manifest_path, query = sys.argv[1], sys.argv[2]
@@ -72,10 +73,12 @@ PY
 # <file>; every member of an IO struct needs @builtin or @location. Prints offenders, non-zero if any.
 slang_compile_wgsl_varyings_are_located() {
   python3 - "$1" <<'PY'
-import re, sys
+import re
+import sys
 
 path = sys.argv[1]
-lines = open(path, encoding="utf-8").read().splitlines()
+with open(path, encoding="utf-8") as source:
+    lines = source.read().splitlines()
 member = re.compile(r"^\s*((?:@\w+\([^)]*\)\s*)*)([A-Za-z_]\w*)\s*:\s*\S.*?,?\s*$")
 offenders = []
 index = 0
@@ -134,10 +137,12 @@ slang_compile_resolve_slangc() {
 slang_compile_newest_source_stamp() {
   { find "${SLANG_COMPILE_SOURCE_ROOT}" "${SLANG_COMPILE_EXTRA_SOURCE_ROOTS[@]}" -type f -name '*.slang' -printf '%T@\n'
     python3 - "${SLANG_COMPILE_MANIFEST}" <<'PY_MANIFEST'
-import json, sys
+import json
+import sys
 from pathlib import Path
+
 path = Path(sys.argv[1])
-owner = json.loads(path.read_text()).get("wgslManifest")
+owner = json.loads(path.read_text(encoding="utf-8")).get("wgslManifest")
 if owner:
     print((path.parent / owner).stat().st_mtime)
 PY_MANIFEST

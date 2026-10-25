@@ -23,10 +23,10 @@ with open(path, encoding="utf-8", newline="") as fh:
     lines = fh.read().split("\n")
 kind, found, why = renovate_locator.resolve(mgr, lines, dep, old, new, 1)
 if kind != "EDIT":
-    print("%s %s" % (kind, why))
+    print(f"{kind} {why}")
 for site in found:
     raw = lines[site.line]
-    print("%d %s" % (site.line + 1, raw[:site.start] + new + raw[site.end:]))
+    print(f"{site.line + 1} {raw[:site.start] + new + raw[site.end:]}")
 PY
 }
 
@@ -225,7 +225,7 @@ import renovate_audit
 
 TEXT = "ruff==0.9.0 \\\n  --hash=sha256:abc\n"
 one = renovate_audit.parse_requirements(TEXT)[0]
-print("spec %s | opts %s" % (one["spec"], one["opts"]), end="")
+print(f"spec {one['spec']} | opts {one['opts']}", end="")
 PY
 )" "the digest is a second thing about the requirement, not part of its version"
 
@@ -260,10 +260,10 @@ import sys
 
 out, depth = sys.argv[1], int(sys.argv[2])
 deep = "[" * depth + "]" * depth
-tail = '1.6.0", "x": %s, "y": "yes' % deep
+tail = f'1.6.0", "x": {deep}, "y": "yes'
 plan = [{"file": "package.json", "line": 3,
          "old": '    "left-pad": "1.1.0"',
-         "new": '    "left-pad": "%s"' % tail,
+         "new": f'    "left-pad": "{tail}"',
          "manager": "npm", "dep": "left-pad", "cur": "1.1.0", "next": tail}]
 with open(out, "w", encoding="utf-8") as fh:
     json.dump(plan, fh)

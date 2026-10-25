@@ -61,7 +61,7 @@ def _problems(table: dict) -> list[str]:
 
 def read_table(pyproject: str) -> tuple[int, dict | str]:
     """(0, the table with its defaults), (1, why there is none) or (2, why it is invalid)."""
-    import tomllib  # noqa: PLC0415 -- run executes on interpreters this import need not exist on
+    import tomllib
 
     path = Path(pyproject)
     if not path.is_file():
@@ -131,18 +131,18 @@ def run(sites: list[str], args: list[str]) -> int:
     if not sysconfig.get_config_var("Py_GIL_DISABLED"):
         print(f"ERROR: {sys.executable} is not a free-threaded interpreter", file=sys.stderr)
         return 2
-    if sys._is_gil_enabled():  # noqa: SLF001 -- the documented free-threading probe
+    if sys._is_gil_enabled():
         print("ERROR: the GIL is enabled before any test (-X gil=1 or PYTHON_GIL=1?)", file=sys.stderr)
         return 2
     # As python -m pytest: the run directory, not this script's, leads sys.path unless -I dropped both.
     if not sys.flags.safe_path:
         sys.path[0] = os.getcwd()
     prepend_sites(sites, 0 if sys.flags.safe_path else 1)
-    import pytest  # noqa: PLC0415 -- after the sites, which may be where pytest lives
+    import pytest
 
     code = int(pytest.main(["-p", "no:cacheprovider", *args]))
     version = ".".join(map(str, sys.version_info[:3]))
-    if sys._is_gil_enabled():  # noqa: SLF001
+    if sys._is_gil_enabled():
         print(f"ERROR: the GIL was enabled during the tests on free-threaded {version}; the warnings summary names the module",
               file=sys.stderr)
         return code or 1

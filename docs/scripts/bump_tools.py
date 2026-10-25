@@ -9,7 +9,6 @@ from collections.abc import Callable
 
 import bump_versions as bv  # tests patch names on bump_versions; every call reads them through it
 
-
 SpecResult = tuple[str, dict[str, str]]
 
 

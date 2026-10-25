@@ -10,12 +10,12 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import gate_scope  # noqa: E402
-from quality_allow import check_counts, load_counts  # noqa: E402
-from verify_code_size import ROOT, code_lines, scan, shell_functions  # noqa: E402
+import gate_scope
+from quality_allow import check_counts, load_counts
+from verify_code_size import ROOT, code_lines, scan, shell_functions
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ALLOW = os.path.join(HERE, "code-complexity.allow")
@@ -36,9 +36,11 @@ METRICS = ("cc", "nesting")
 PY_DEF = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 PY_BRANCH = (ast.If, ast.IfExp, ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith)
 PY_BLOCK = PY_BRANCH + (ast.Try, ast.Match)
+CaseFrame = list[int | str]
+Scan = Callable[[str], Iterable[tuple[str, str]]]
 
 
-def shell_code(body_lines):
+def shell_code(body_lines: Sequence[str]) -> str:
     """The code text of a function: heredoc bodies dropped, comments and quotes blanked."""
     return "\n".join(code_lines(body_lines))
 
@@ -50,7 +52,7 @@ class _Walker:
         self.cc, self.depth, self.top, self.parens, self.frames = 1, 0, 0, 0, []
         self.cmd = True
 
-    def word(self, tok, delimited) -> str:
+    def word(self, tok: str, delimited: bool) -> str:
         """A reserved word out of command position, or a glued `}` as in `${x:-$(cmd)}`, is ordinary text."""
         if tok in KEYWORDS and not self.cmd:
             return ""
@@ -58,14 +60,14 @@ class _Walker:
             return ""
         return tok
 
-    def frame(self) -> list[int | str] | None:
+    def frame(self) -> CaseFrame | None:
         return self.frames[-1] if self.frames else None
 
-    def arm_opens(self, tok) -> bool:
+    def arm_opens(self, tok: str) -> bool:
         f = self.frame()
         return tok == ")" and f is not None and f[1] == "pattern" and self.parens == f[0]
 
-    def paren_delta(self, tok, arm) -> int:
+    def paren_delta(self, tok: str, arm: bool) -> int:
         f = self.frame()
         if tok in ("(", "$(") and not (f and f[1] == "pattern"):
             return 1
@@ -73,7 +75,7 @@ class _Walker:
             return -1
         return 0
 
-    def case_state(self, tok, arm) -> None:
+    def case_state(self, tok: str, arm: bool) -> None:
         f = self.frame()
         if tok == "case":
             self.frames.append([self.parens, "word"])
@@ -86,7 +88,7 @@ class _Walker:
         elif tok in CASE_END or (tok == "in" and f[1] == "word"):
             f[1] = "pattern"
 
-    def feed(self, raw, delimited) -> None:
+    def feed(self, raw: str, delimited: bool) -> None:
         cmd, tok = self.cmd, self.word(raw, delimited)
         arm = self.arm_opens(tok)
         self.cc += tok in BRANCH or arm
@@ -97,7 +99,7 @@ class _Walker:
         self.cmd = tok in CMD_OPS or arm or (cmd and tok in CMD_KW)
 
 
-def shell_metrics(body_lines):
+def shell_metrics(body_lines: Sequence[str]) -> tuple[int, int]:
     """(cyclomatic complexity, nesting depth) of one shell function body."""
     w = _Walker()
     code = shell_code(body_lines)
@@ -106,7 +108,7 @@ def shell_metrics(body_lines):
     return w.cc, max(w.top - 1, 0)
 
 
-def _py_paths(node) -> int:
+def _py_paths(node: ast.AST) -> int:
     """Decision points one AST node contributes."""
     if isinstance(node, PY_BRANCH):
         return 1
@@ -121,11 +123,11 @@ def _py_paths(node) -> int:
     return 0
 
 
-def py_metrics(node):
+def py_metrics(node: ast.AST) -> tuple[int, int]:
     """(cyclomatic complexity, nesting depth) of one def, nested defs excluded; an elif keeps its parent's depth."""
     cc, top = 1, 0
 
-    def walk(n, depth) -> None:
+    def walk(n: ast.AST, depth: int) -> None:
         nonlocal cc, top
         for child in ast.iter_child_nodes(n):
             if isinstance(child, PY_DEF):
@@ -139,14 +141,15 @@ def py_metrics(node):
     return cc, top
 
 
-def py_functions(path, rel):
+def py_functions(path: str, rel: str) -> Iterator[tuple[str, str, int, int]]:
     """Yield (rel, qualified_name, cc, nesting) for every def in one Python file."""
     try:
-        tree = ast.parse(open(path, encoding="utf-8", errors="replace").read())
+        with open(path, encoding="utf-8", errors="replace") as source:
+            tree = ast.parse(source.read())
     except (OSError, SyntaxError):
         return
 
-    def walk(node, prefix) -> Iterator[tuple[str, str, int, int]]:
+    def walk(node: ast.AST, prefix: str) -> Iterator[tuple[str, str, int, int]]:
         for child in ast.iter_child_nodes(node):
             if isinstance(child, ast.ClassDef):
                 yield from walk(child, prefix + child.name + ".")
@@ -156,13 +159,13 @@ def py_functions(path, rel):
     yield from walk(tree, "")
 
 
-def _tracked(root, *suffixes: str) -> Iterator[tuple[str, str]]:
+def _tracked(root: str, *suffixes: str) -> Iterator[tuple[str, str]]:
     """Yield (path, rel) per tracked file with one of `suffixes`; ls-files keeps submodules and build output out."""
     out = subprocess.run(["git", "-C", root, "ls-files", "-z", "--"]
                          + ["*" + s for s in suffixes],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, check=False)
     if out.returncode != 0:
-        sys.stderr.write("ERROR: %s is not a git checkout; --root must be one\n" % root)
+        sys.stderr.write(f"ERROR: {root} is not a git checkout; --root must be one\n")
         raise SystemExit(2)
     for rel in sorted(out.stdout.split("\0")):
         head = rel.split("/", 1)[0]
@@ -170,14 +173,14 @@ def _tracked(root, *suffixes: str) -> Iterator[tuple[str, str]]:
             yield os.path.join(root, rel), rel
 
 
-def scanner(root):
+def scanner(root: str) -> Scan:
     """The (path, rel) source: verify_code_size's walk under the hub, every tracked file elsewhere."""
     if root == os.path.abspath(ROOT):
         return scan
     return functools.partial(_tracked, root)
 
 
-def measure(scan):
+def measure(scan: Scan) -> Iterator[tuple[str, str, int, int]]:
     """Yield (rel, name, cc, nesting) for every function `scan` reaches."""
     for path, rel in scan(".sh"):
         for _rel, name, _start, body in shell_functions(path, rel):
@@ -186,19 +189,20 @@ def measure(scan):
         yield from py_functions(path, rel)
 
 
-def check_rows(frozen, allow_name):
+def check_rows(frozen: dict[tuple[str, ...], int], allow_name: str) -> int:
     """1 if any frozen key is not `<path> | <function> | cc|nesting`, naming each bad row."""
     rc = 0
     for key in sorted(frozen):
         if key[2] not in METRICS:
             rc = 1
-            sys.stderr.write("FAIL: %s row '%s' must name a metric column (%s).\n"
-                             % (allow_name, " | ".join(key),
-                                " or ".join(METRICS)))
+            sys.stderr.write(
+                f"FAIL: {allow_name} row '{' | '.join(key)}' must name a metric column "
+                f"({' or '.join(METRICS)}).\n"
+            )
     return rc
 
 
-def main():
+def main() -> int:
     ap = argparse.ArgumentParser(description="Complexity and nesting of every shell and "
                                              "Python function, under the allow contract.")
     ap.add_argument("--root", default=None,
@@ -218,10 +222,10 @@ def main():
                            else os.path.join(root, "code-complexity.allow"))
     allow_name = os.path.basename(allow)
 
-    print("=== code complexity gate (cc > %d, nesting > %d) ===" % (CC_LIMIT, NEST_LIMIT))
+    print(f"=== code complexity gate (cc > {CC_LIMIT}, nesting > {NEST_LIMIT}) ===")
     if root != os.path.abspath(ROOT):
-        print("  root: %s" % root)
-        print("  allow: %s" % allow)
+        print(f"  root: {root}")
+        print(f"  allow: {allow}")
     worst = {}
     for rel, name, cc, nest in measure(scanner(root)):
         was = worst.get((rel, name), (0, 0))

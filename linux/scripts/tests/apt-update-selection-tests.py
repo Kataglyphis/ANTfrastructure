@@ -9,7 +9,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections.abc import Sequence
 from pathlib import Path
+from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS = (
@@ -85,17 +87,41 @@ ADAPTERS = {
     ),
 }
 
+type FunctionCase = tuple[str, Sequence[str], Sequence[str], str, bool, int, bool, str]
 
-def function(text, name):
-    return (
-        re.search(
-            r"^" + re.escape(name) + r"\(\) \{\n.*?^\}", text, re.MULTILINE | re.DOTALL
-        ).group()
-        + "\n"
+
+class BashResult(TypedDict):
+    rc: int
+    out: str
+    err: str
+    guard: str
+
+
+class FunctionResult(TypedDict):
+    rc: int
+    out: str
+    err: str
+    trace: str
+
+
+class PhysicalResult(TypedDict):
+    rc: int
+    out: str
+    err: str
+    guard: str
+    state: str
+
+
+def function(text: str, name: str) -> str:
+    match = re.search(
+        r"^" + re.escape(name) + r"\(\) \{\n.*?^\}", text, re.MULTILINE | re.DOTALL
     )
+    if match is None:
+        raise ValueError(f"Bash function is missing: {name}")
+    return match.group() + "\n"
 
 
-def invoke_bash(work, body):
+def invoke_bash(work: Path, body: str) -> BashResult:
     guard = work / "guard"
     guard.write_text("")
     code = "GUARD_LOG=" + shlex.quote(str(guard)) + "\n" + GUARD + "\n" + body
@@ -118,11 +144,11 @@ def invoke_bash(work, body):
     }
 
 
-def require_isolation(result):
+def require_isolation(result: BashResult) -> None:
     assert "FORBIDDEN:" not in result["guard"], result
 
 
-def private_tree(work, owner=APT):
+def private_tree(work: Path, owner: str = APT) -> tuple[Path, Path]:
     core = work / "scripts/01-core"
     core.mkdir(parents=True)
     (core / "cross-apt.sh").write_text(owner)
@@ -132,7 +158,7 @@ def private_tree(work, owner=APT):
     return core, directory
 
 
-def function_definitions(work, order, aliases, owner):
+def function_definitions(work: Path, order: Sequence[str], aliases: bool, owner: str) -> str:
     code = ""
     for index, subject in enumerate(order):
         phase = "a" if index == 0 else "b"
@@ -159,7 +185,7 @@ def function_definitions(work, order, aliases, owner):
     return code
 
 
-def function_case(case):
+def function_case(case: FunctionCase) -> FunctionResult:
     subject, args, order, provider, aliases, status, strict, context = case
     with tempfile.TemporaryDirectory(prefix="ant apt function ") as directory:
         work = Path(directory)
@@ -196,12 +222,17 @@ def function_case(case):
         code += 'printf "STATUS:%s UPDATED:%s LOOKUPS:%s\\n" "$status" "$_CROSS_ENV_APT_UPDATED" "$LOOKUP_COUNT"\ndeclare -p extra_args\n'
         result = invoke_bash(work, code)
         require_isolation(result)
-        return {key: result[key] for key in ("rc", "out", "err")} | {
-            "trace": trace.read_text()
+        return {
+            "rc": result["rc"],
+            "out": result["out"],
+            "err": result["err"],
+            "trace": trace.read_text(),
         }
 
 
-def physical_files(work, consumer, owner, layout, sdk_owner=None):
+def physical_files(
+    work: Path, consumer: str, owner: str | None, layout: str, sdk_owner: str | None = None
+) -> Path:
     core, gst_directory = private_tree(work)
     target = core / "cross-apt.sh"
     target.unlink()
@@ -229,7 +260,10 @@ def physical_files(work, consumer, owner, layout, sdk_owner=None):
     return module
 
 
-def physical_setup(work, consumer, strict, stale, readonly, loaded, alias):
+def physical_setup(
+    work: Path, consumer: str, strict: bool, stale: bool, readonly: bool,
+    loaded: str | None, alias: bool,
+) -> str:
     code = ("set -e\n" if strict else "set +e\n") + PHYSICAL_WORKER
     code += (
         "_CROSS_APT_SOURCES_DIR="
@@ -254,17 +288,17 @@ def physical_setup(work, consumer, strict, stale, readonly, loaded, alias):
 
 
 def physical_case(
-    consumer,
-    owner=APT,
-    context="conditional",
-    strict=True,
-    stale=False,
-    layout="repo",
-    readonly=False,
-    loaded="seed",
-    alias=False,
-    sdk_owner=None,
-):
+    consumer: str,
+    owner: str | None = APT,
+    context: str = "conditional",
+    strict: bool = True,
+    stale: bool = False,
+    layout: str = "repo",
+    readonly: bool = False,
+    loaded: str | None = "seed",
+    alias: bool = False,
+    sdk_owner: str | None = None,
+) -> PhysicalResult:
     with tempfile.TemporaryDirectory(prefix="ant apt physical ") as directory:
         work = Path(directory)
         module = physical_files(work, consumer, owner, layout, sdk_owner)
@@ -286,13 +320,13 @@ def physical_case(
             code += 'if declare -F apt_update_select >/dev/null; then printf "API:1\\n"; else printf "API:0\\n"; fi\n'
         result = invoke_bash(work, code)
         require_isolation(result)
-        result["state"] = (work / "state").read_text()
+        state = (work / "state").read_text()
         if consumer != "normal":
-            assert "PROVIDER_SAME:yes" in result["state"], result
-        return result
+            assert "PROVIDER_SAME:yes" in state, result
+        return {**result, "state": state}
 
 
-def cold_owners():
+def cold_owners() -> dict[str, str | None]:
     helper = function(APT, "apt_update_select")
     return {
         "good": APT,
@@ -312,7 +346,7 @@ def cold_owners():
 
 
 class AptUpdateSelectionTests(unittest.TestCase):
-    def test_original_receipts(self):
+    def test_original_receipts(self) -> None:
         frozen = json.loads(
             Path(__file__).with_name("apt-update-selection-receipts.json").read_text()
         )
@@ -321,16 +355,16 @@ class AptUpdateSelectionTests(unittest.TestCase):
             with self.subTest(case=row["case"]):
                 self.assertEqual(row["receipt"], function_case(row["case"]))
 
-    def test_defaults_and_parent_state(self):
+    def test_defaults_and_parent_state(self) -> None:
         for subject, argument in [("apt", "<-y>"), ("gst", "")]:
             result = function_case(
-                [subject, [], ["apt", "gst"], "missing", False, 0, True, "direct"]
+                (subject, (), ("apt", "gst"), "missing", False, 0, True, "direct")
             )
             self.assertEqual(0, result["rc"])
             self.assertIn("<apt><function><update>" + argument + "\n", result["trace"])
             self.assertIn("STATUS:0 UPDATED:system LOOKUPS:1", result["out"])
 
-    def test_physical_positive_owners(self):
+    def test_physical_positive_owners(self) -> None:
         for consumer, context, strict in itertools.product(
             ["normal", "gst"], ["direct", "conditional"], [False, True]
         ):
@@ -347,7 +381,7 @@ class AptUpdateSelectionTests(unittest.TestCase):
                 self.assertEqual("PROVIDED\n", result["guard"])
                 self.assertIn("STATE:seed:seed:called", result["state"])
 
-    def test_helper_mode_is_scope_neutral(self):
+    def test_helper_mode_is_scope_neutral(self) -> None:
         for context, strict, loaded in itertools.product(
             ["direct", "conditional"], [False, True], [None, "seed"]
         ):
@@ -365,7 +399,7 @@ class AptUpdateSelectionTests(unittest.TestCase):
                 result["state"],
             )
 
-    def test_gstreamer_mode_precedes_owner_initialization(self):
+    def test_gstreamer_mode_precedes_owner_initialization(self) -> None:
         for context, strict, alias, layout in itertools.product(
             ["direct", "conditional"],
             [False, True],
@@ -386,7 +420,7 @@ class AptUpdateSelectionTests(unittest.TestCase):
             self.assertIn("SOURCE:0 STUBS:0", result["out"])
             self.assertIn("STATE:unset:seed:called", result["state"])
 
-    def test_repository_helper_preserves_old_sdk_provider(self):
+    def test_repository_helper_preserves_old_sdk_provider(self) -> None:
         sdk = "SDK_PROVIDER=corrupted\ncurl forbidden\n"
         for context, strict, alias in itertools.product(
             ["direct", "conditional"], [False, True], [False, True]
@@ -405,7 +439,7 @@ class AptUpdateSelectionTests(unittest.TestCase):
             self.assertIn("SOURCE:0 STUBS:0", result["out"])
             self.assertIn("STATE:unset:seed:called", result["state"])
 
-    def test_cold_owners_fail_before_update(self):
+    def test_cold_owners_fail_before_update(self) -> None:
         for (name, owner), context, strict, stale, layout in itertools.product(
             cold_owners().items(),
             ["direct", "conditional"],
@@ -447,7 +481,7 @@ class AptUpdateSelectionTests(unittest.TestCase):
                     self.assertIn("STATE:seed:seed:seed", result["state"])
                     self.assertNotIn("SOURCE:0", result["out"])
 
-    def test_raw_unset_failure_status(self):
+    def test_raw_unset_failure_status(self) -> None:
         for consumer, context, strict in itertools.product(
             ["helper", "gst"], ["direct", "conditional"], [False, True]
         ):
@@ -463,7 +497,7 @@ class AptUpdateSelectionTests(unittest.TestCase):
                 self.assertEqual(0, result["rc"])
                 self.assertIn("SOURCE:1 STUBS:0", result["out"])
 
-    def test_physical_sdk_prefix_alias(self):
+    def test_physical_sdk_prefix_alias(self) -> None:
         for context, layout in itertools.product(
             ["direct", "conditional"], ["repo", "installed"]
         ):
@@ -474,7 +508,7 @@ class AptUpdateSelectionTests(unittest.TestCase):
             self.assertIn("SOURCE:0 STUBS:0", result["out"])
             self.assertIn("STATE:seed:seed:called", result["state"])
 
-    def test_source_only_guard_uses_execution_identity(self):
+    def test_source_only_guard_uses_execution_identity(self) -> None:
         with tempfile.TemporaryDirectory(
             prefix="ant apt execution identity "
         ) as directory:
@@ -494,7 +528,7 @@ class AptUpdateSelectionTests(unittest.TestCase):
             "ERROR: --ant-source-apt-update-only must be sourced\n", result["err"]
         )
 
-    def test_tool_boundaries_cannot_be_masked(self):
+    def test_tool_boundaries_cannot_be_masked(self) -> None:
         for body in [
             "if absent_unstubbed_tool; then :; else :; fi; printf MASKED",
             "if command apt-get update; then :; else :; fi; printf MASKED",

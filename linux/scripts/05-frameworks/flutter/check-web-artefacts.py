@@ -16,7 +16,7 @@ VERSIONS_ENV = pathlib.Path(__file__).resolve().parents[2] / "01-core" / "versio
 ICON_DIRS = ("web", "android/app/src/main/res")
 
 
-def pins():
+def pins() -> dict[str, str]:
     """KEY=VALUE lines of the hub's versions.env."""
     found = {}
     for line in VERSIONS_ENV.read_text(encoding="utf-8").splitlines():
@@ -26,7 +26,7 @@ def pins():
     return found
 
 
-def check_title(root):
+def check_title(root: pathlib.Path) -> list[str]:
     index, manifest = root / "web/index.html", root / "web/manifest.json"
     if not index.is_file() or not manifest.is_file():
         return []
@@ -39,7 +39,7 @@ def check_title(root):
     return []
 
 
-def check_sqlite(root, pinned):
+def check_sqlite(root: pathlib.Path, pinned: dict[str, str]) -> list[str]:
     wasm = root / "web/sqlite3.wasm"
     if not wasm.is_file():
         return []
@@ -61,7 +61,7 @@ def check_sqlite(root, pinned):
     return problems
 
 
-def check_icons(root):
+def check_icons(root: pathlib.Path) -> list[str]:
     deep = []
     for d in ICON_DIRS:
         for png in sorted((root / d).rglob("*.png")) if (root / d).is_dir() else []:
@@ -77,7 +77,7 @@ def check_icons(root):
     ]
 
 
-def icon_refs(root):
+def icon_refs(root: pathlib.Path) -> list[tuple[str, str, str]]:
     """The icons web/manifest.json and web/index.html name: (file, value, path on the site)."""
     refs = []
     manifest, index = root / "web/manifest.json", root / "web/index.html"
@@ -90,7 +90,7 @@ def icon_refs(root):
     return [(where, value, urllib.parse.urlsplit(value).path if "://" in value else "/" + value.removeprefix("./")) for where, value in refs]
 
 
-def check_icon_paths(root, icons_dir):
+def check_icon_paths(root: pathlib.Path, icons_dir: str) -> list[str]:
     """Each relative icon reference on disk, the manifest's under --icons-dir; on Apache, nothing under /icons/."""
     problems = []
     for where, value, site in icon_refs(root):
@@ -111,7 +111,7 @@ def check_icon_paths(root, icons_dir):
     return problems
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo-root", default=".", help="the Flutter app's root (default: the current directory)")
     parser.add_argument("--icons-dir", default="icons", help="the directory under web/ that holds the manifest's icons (default: icons)")

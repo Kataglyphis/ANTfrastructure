@@ -456,6 +456,14 @@
   "why": "splitting through a quote misreads prose as a delete"
  },
  {
+  "id": "delete-guard.unexpected-json-errors-propagate",
+  "target": ".claude/hooks/guard-destructive-deletes.py",
+  "find": "    except json.JSONDecodeError:",
+  "replace": "    except Exception:",
+  "test": "bash linux/scripts/tests/test-delete-guard.sh",
+  "why": "invalid hook JSON stays non-blocking while unexpected parser failures remain visible"
+ },
+ {
   "id": "mutations.survivor-must-fail",
   "target": "docs/scripts/verify_mutations.py",
   "find": "        if not applied:\n            rc = 1",
@@ -778,10 +786,18 @@
  {
   "id": "wheels.ort-census-crash-fails",
   "target": "linux/scripts/03-media/runtime/ort-venv-census.py",
-  "find": "        findings, chain = [\"the census could not complete: %s: %s\" % (type(exc).__name__, exc)], []",
-  "replace": "        findings, chain = [], []",
+  "find": "        findings, chain = (\n            [f\"the census could not complete: {type(exc).__name__}: {exc!s}\"],\n            [],\n        )",
+  "replace": "        findings, chain = (\n            [],\n            [],\n        )",
   "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
   "why": "a census that could not look must never print PASS"
+ },
+ {
+  "id": "wheels.ort-census-unexpected-error-fatal",
+  "target": "linux/scripts/03-media/runtime/ort-venv-census.py",
+  "find": "    except CENSUS_FAILURES as exc:",
+  "replace": "    except Exception as exc:",
+  "test": "bash linux/scripts/tests/test-ort-venv-census.sh",
+  "why": "only known filesystem and wheel-format failures get a census sentinel; implementation bugs must keep their traceback and fail without a verdict"
  },
  {
   "id": "wheels.ort-chain-wheel-fatal",
@@ -912,6 +928,14 @@
   "why": "VENV-SET must use the flavour-aware match, or every nvidia image reports MISS ml-ai onnxruntime-genai"
  },
  {
+  "id": "probe.venv-metadata-error-fatal",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "  status=\"$(printf '%s\\n' \"${_SHIPPED_TRUTH_PROBE}\" | sed -n 's/^VENV ERROR /ERROR /p' | head -1)\"",
+  "replace": "  status=\"\"",
+  "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+  "why": "a failed or malformed metadata probe must fail VENV-SET instead of passing with discarded requirement edges"
+ },
+ {
   "id": "probe.genai-bind-flavour",
   "target": "linux/scripts/06-packaging/smoke-common.sh",
   "find": "        if re.fullmatch(r\"onnxruntime-genai(-[a-z0-9-]+)?\", name):",
@@ -922,10 +946,18 @@
  {
   "id": "probe.genai-tier1-flavour",
   "target": "linux/scripts/06-packaging/smoke-common.sh",
-  "find": "        version = genai_dist_version()",
-  "replace": "        version = None",
+  "find": "    version = genai_dist_version()",
+  "replace": "    version = None",
   "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
   "why": "tier 1's metadata fallback must read a flavoured GenAI's version too"
+ },
+ {
+  "id": "probe.genai-unexpected-config-exception",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "    except (OSError, RuntimeError, ValueError) as exc:",
+  "replace": "    except Exception as exc:",
+  "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+  "why": "an unexpected Config exception must fail loudly instead of counting as proof that native code rejected the model path"
  },
  {
   "id": "wheels.partition-arg-order",
@@ -1632,6 +1664,14 @@
   "why": "a failing four-way verdict must reach the exit code, not just the log"
  },
  {
+  "id": "shellcheck-warnings.windows-argument-batches",
+  "target": "linux/scripts/verify_shellcheck_warnings.py",
+  "find": "    for batch in shellcheck_batches(shellcheck, files, limit):",
+  "replace": "    for batch in (files,):",
+  "test": "bash linux/scripts/tests/test-shellcheck-batching.sh",
+  "why": "Windows must split long ShellCheck argv while preserving every file and warning result."
+ },
+ {
   "id": "shellcheck-warnings.level-filter",
   "target": "linux/scripts/verify_shellcheck_warnings.py",
   "find": "        if c.get(\"level\") != \"warning\" or (only is not None and c[\"file\"] not in only):",
@@ -1642,10 +1682,10 @@
  {
   "id": "shellcheck-warnings.x-follow-sources",
   "target": "linux/scripts/verify_shellcheck_warnings.py",
-  "find": "[shellcheck, \"-x\", \"-f\", \"json1\", \"-S\", \"warning\", *files]",
-  "replace": "[shellcheck, \"-f\", \"json1\", \"-S\", \"warning\", *files]",
-  "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
-  "why": "without -x a source= directive is followed only when its target is also an input, so --files counts differ from the whole-set counts"
+  "find": "SHELLCHECK_ARGUMENTS = (\"-x\", \"-f\", \"json1\", \"-S\", \"warning\")",
+  "replace": "SHELLCHECK_ARGUMENTS = (\"-f\", \"json1\", \"-S\", \"warning\")",
+  "test": "bash linux/scripts/tests/test-shellcheck-batching.sh",
+  "why": "every bounded invocation must keep -x so source directives retain the same analysis"
  },
  {
   "id": "shellcheck-warnings.files-count-filter",
@@ -1690,8 +1730,8 @@
  {
   "id": "shellcheck-warnings.keep-reason",
   "target": "linux/scripts/verify_shellcheck_warnings.py",
-  "find": "old.get(key, (0, \"baseline %s, not yet reviewed\" % today))[1]",
-  "replace": "(0, \"baseline %s, not yet reviewed\" % today)[1]",
+  "find": "old.get(key, (0, f\"baseline {today}, not yet reviewed\"))[1]",
+  "replace": "(0, f\"baseline {today}, not yet reviewed\")[1]",
   "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
   "why": "--write-baseline must keep a reviewed reason, or every rewrite erases the review"
  },
@@ -1714,8 +1754,8 @@
  {
   "id": "shellcheck-warnings.json-exit2",
   "target": "linux/scripts/verify_shellcheck_warnings.py",
-  "find": "                         % (proc.returncode, proc.stderr))\n        raise SystemExit(2)",
-  "replace": "                         % (proc.returncode, proc.stderr))\n        return counts",
+  "find": "        raise SystemExit(2)\n    for c in comments:",
+  "replace": "        return counts\n    for c in comments:",
   "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
   "why": "shellcheck output that is not json1 must be exit 2, not zero findings"
  },
@@ -2034,7 +2074,7 @@
  {
   "id": "gate-registry.off-convention-loud",
   "target": "linux/scripts/verify_gate_registry.py",
-  "find": "    if target in files:\n        return \"prefix names no preflight slug, and %s is %s\" % (target, holds)",
+  "find": "    if target in files:\n        return f\"prefix names no preflight slug, and {target} is {holds}\"",
   "replace": "    if False:\n        return \"prefix names no preflight slug, and %s is %s\" % (target, holds)",
   "test": "bash linux/scripts/tests/test-gate-registry.sh",
   "why": "an id pinning a gate's own file under a non-slug prefix must be renamed to that gate, not filed away as a descriptive family where the gate loses the proof"
@@ -2610,7 +2650,7 @@
  {
   "id": "gate-registry.wrong-prefix-loud",
   "target": "linux/scripts/verify_gate_registry.py",
-  "find": "        return \"%s does not own %s -- %s\" % (slug, target, holds)",
+  "find": "        return f\"{slug} does not own {target} -- {holds}\"",
   "replace": "        return None",
   "test": "bash linux/scripts/tests/test-gate-registry.sh",
   "why": "a prefix naming a real slug is a claim of ownership; unchecked, a typo'd or copied prefix silently stops proving anything"
@@ -3090,8 +3130,8 @@
  {
   "id": "probe.tree-arch-machine-word",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "        key = EM.get(int.from_bytes(head[18:20], order), \"EM%d\" % int.from_bytes(head[18:20], order))",
-  "replace": "        key = EM.get(int.from_bytes(head[16:18], order), \"EM%d\" % int.from_bytes(head[16:18], order))",
+  "find": "        machine_id = int.from_bytes(head[18:20], order)",
+  "replace": "        machine_id = int.from_bytes(head[16:18], order)",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "reading e_type instead of e_machine makes every tree read the same, so the fixture proves it is the machine word that is read"
  },
@@ -3714,8 +3754,8 @@
  {
   "id": "dockerfile-lint.env-order-missing-target",
   "target": "linux/scripts/verify_dockerfile_env_order.py",
-  "find": "            sys.stderr.write(\"FAIL: not a file: %s\\n\" % rel)\n            bad += 1",
-  "replace": "            sys.stderr.write(\"FAIL: not a file: %s\\n\" % rel)",
+  "find": "            sys.stderr.write(f\"FAIL: not a file: {rel}\\n\")\n            bad += 1",
+  "replace": "            sys.stderr.write(f\"FAIL: not a file: {rel}\\n\")",
   "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
   "why": "a mistyped path that only prints scans nothing and still says ok -- the gate would silently cover fewer Dockerfiles every rename"
  },
@@ -5594,15 +5634,15 @@
  {
   "id": "dead-functions.unlinked-arm-wired",
   "target": "linux/scripts/verify_dead_functions.py",
-  "find": "found} | scoped, allow,",
-  "replace": "found}, allow,",
+  "find": "found_keys | scoped, allow,",
+  "replace": "found_keys, allow,",
   "test": "bash linux/scripts/tests/test-dead-functions.sh",
   "why": "the unlinked-definer arm must actually reach check_keys; dropping the union leaves the gate exactly as blind as before"
  },
  {
   "id": "dead-functions.unlinked-own-file-mention",
   "target": "linux/scripts/verify_dead_functions.py",
-  "find": "if not peers or text is None or re.search(r\"\\b%s\\b\" % name, _code(text)):",
+  "find": "if not peers or text is None or re.search(rf\"\\b{name}\\b\", _code(text)):",
   "replace": "if not peers or text is None or False:",
   "test": "bash linux/scripts/tests/test-dead-functions.sh",
   "why": "a definition its own file names again was never a candidate; without this the arm fails live code"
@@ -9718,8 +9758,8 @@
  {
   "id": "ort-census.manifest-follow-rehash",
   "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
-  "find": "return \"%s  %s!%s\\n\" % (got, hits[0], member), None",
-  "replace": "return \"%s  %s!%s\\n\" % (sha, hits[0], member), None",
+  "find": "    return f\"{got}  {hits[0]}!{member}\\n\", None",
+  "replace": "    return f\"{sha}  {hits[0]}!{member}\\n\", None",
   "test": "bash linux/scripts/tests/test-ort-census.sh",
   "why": "follow re-hashes the rewritten member: the as-built sha leaves a stripped cross venv ORT STALE"
  },
@@ -12678,7 +12718,7 @@
  {
   "id": "riscv64-cross.extract-refuses-climbing-members",
   "target": "linux/scripts/02-toolchain/oci-layers-extract.py",
-  "find": "            raise ExtractError(\"member %r climbs out of the image root\" % name)",
+  "find": "            raise ExtractError(f\"member {name!r} climbs out of the image root\")",
   "replace": "            continue",
   "test": "bash linux/scripts/tests/test-oci-layers-extract.sh",
   "why": "a '..' member read as a path instead of refused is a registry blob choosing where on the runner it writes"
@@ -16198,8 +16238,8 @@
  {
   "id": "develop-red.forks-are-not-family",
   "target": "linux/scripts/develop_red.py",
-  "find": "if not r[\"fork\"] and not r[\"archived\"] and r[\"default_branch\"] == \"develop\")",
-  "replace": "if True)",
+  "find": "        if not r[\"fork\"] and not r[\"archived\"] and r[\"default_branch\"] == \"develop\"",
+  "replace": "        if True",
   "test": "bash linux/scripts/tests/test-develop-red.sh",
   "why": "a fork or an archived repository follows none of the family's rules; watched, its red default branch files issues nobody will act on"
  },
@@ -16942,8 +16982,8 @@
  {
   "id": "mutations.work-queue",
   "target": "docs/scripts/verify_mutations.py",
-  "find": "        return run_shard(args, _drain(todo), root, report, baselines, \"[%d/%d] \" % (n + 1, jobs))",
-  "replace": "        return run_shard(args, entries[n::jobs], root, report, baselines, \"[%d/%d] \" % (n + 1, jobs))",
+  "find": "        return run_shard(args, _drain(todo), root, report, baselines, f\"[{n + 1}/{jobs}] \")",
+  "replace": "        return run_shard(args, entries[n::jobs], root, report, baselines, f\"[{n + 1}/{jobs}] \")",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "dealt round-robin, two slow entries can land on one mirror while the others idle"
  },
@@ -17262,8 +17302,8 @@
  {
   "id": "probe.venv-ty-dockerfile-invocation",
   "target": "linux/Dockerfile.torch",
-  "find": "amd64) bash /tmp/venv-probe-ty/check.sh /opt/venv /opt/scripts/packaging/venv-version-probe.py /tmp/venv-probe-ty/tool-pins.env ;;",
-  "replace": "amd64) true ;;",
+  "find": "      amd64) bash /tmp/venv-probe-ty/check.sh /opt/venv /opt/scripts/packaging/venv-version-probe.py /tmp/venv-probe-ty/tool-pins.env && \\",
+  "replace": "      amd64) true && \\",
   "test": "bash linux/scripts/tests/test-venv-probe-types.sh",
   "why": "the built x64 venv must actually run the pinned type gate against its copied probe"
  },
@@ -18408,7 +18448,7 @@
   "target": "windows/scripts/tests/TestHarness.psm1",
   "find": "-ArgumentList $ArgumentList\n        try",
   "replace": "-ArgumentList @()\n        try",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness.lifted-module-arguments-result.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness.lifted-module-arguments-result.json\")); assert d[\"Total\"] >= 9 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/code-quality/harness-lifted-module-arguments.json && python3 -c 'import json; d=json.load(open(\"logs/code-quality/harness-lifted-module-arguments.json\")); assert d[\"Total\"] >= 9 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
   "why": "Lifted module fixtures preserve constructor arguments, body arguments and module cleanup."
  },
  {
@@ -18416,7 +18456,7 @@
   "target": "windows/scripts/tests/TestHarness.psm1",
   "find": "& $mutantBody @BodyArgumentList",
   "replace": "& $mutantBody",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness.lifted-body-arguments-result.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness.lifted-body-arguments-result.json\")); assert d[\"Total\"] >= 9 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/code-quality/harness-lifted-body-arguments.json && python3 -c 'import json; d=json.load(open(\"logs/code-quality/harness-lifted-body-arguments.json\")); assert d[\"Total\"] >= 9 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
   "why": "Lifted module fixtures preserve constructor arguments, body arguments and module cleanup."
  },
  {
@@ -18424,7 +18464,7 @@
   "target": "windows/scripts/tests/TestHarness.psm1",
   "find": "finally { Remove-Module $m -Force }",
   "replace": "finally { }",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness.lifted-cleanup-result.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness.lifted-cleanup-result.json\")); assert d[\"Total\"] >= 9 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/code-quality/harness-lifted-cleanup.json && python3 -c 'import json; d=json.load(open(\"logs/code-quality/harness-lifted-cleanup.json\")); assert d[\"Total\"] >= 9 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
   "why": "Lifted module fixtures preserve constructor arguments, body arguments and module cleanup."
  },
  {
@@ -20000,7 +20040,7 @@
   "target": "windows/scripts/tests/TestHarness.psm1",
   "find": "    Assert-Equal ([Convert]::ToHexString([Text.Encoding]::ASCII.GetBytes($Expected))) ([Convert]::ToHexString([IO.File]::ReadAllBytes($Path)))",
   "replace": "    $null = $Path",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness-batch-byte-verdict.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness-batch-byte-verdict.json\")); assert d[\"Total\"] == 45 and d[\"Passed\"] == 45 and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/code-quality/harness-batch-byte-verdict.json && python3 -c 'import json; d=json.load(open(\"logs/code-quality/harness-batch-byte-verdict.json\")); assert d[\"Total\"] == 45 and d[\"Passed\"] == 45 and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
   "why": "The byte verdict must reject changed caller lines and requested exit codes rather than let writer mutants survive."
  },
  {
@@ -21637,8 +21677,8 @@
  {
   "id": "lib.genai-exception-records-failure",
   "target": "linux/scripts/06-packaging/smoke-common.sh",
-  "find": "    fails.append(\"%s raised %s: %s\" % (operation, type(exc).__name__, exc))",
-  "replace": "    pass",
+  "find": "def record_exception(operation, exc):\n    fails.append(f\"{operation} raised {type(exc).__name__}: {exc!s}\")",
+  "replace": "def record_exception(operation, exc):\n    pass",
   "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
   "why": "Every native or generation exception must reach the failing aggregate summary."
  },
@@ -21661,8 +21701,8 @@
  {
   "id": "lib.genai-exception-str-format",
   "target": "linux/scripts/06-packaging/smoke-common.sh",
-  "find": "    fails.append(\"%s raised %s: %s\" % (operation, type(exc).__name__, exc))",
-  "replace": "    fails.append(f\"{operation} raised {type(exc).__name__}: {exc}\")",
+  "find": "def record_exception(operation, exc):\n    fails.append(f\"{operation} raised {type(exc).__name__}: {exc!s}\")",
+  "replace": "def record_exception(operation, exc):\n    fails.append(f\"{operation} raised {type(exc).__name__}: {exc}\")",
   "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
   "why": "Exception diagnostics preserve str conversion without invoking custom exception __format__."
  },
@@ -22275,7 +22315,7 @@
  {
   "id": "lib.lifecycle-fixture-sibling-reaped",
   "target": "linux/scripts/tests/test-chain-lifecycle.sh",
-  "find": "_stop_lifecycle_children \"${_sib_pid}\"",
+  "find": "t_stop_children \"${_sib_pid}\"",
   "replace": ":",
   "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
   "why": "The independent fixture stop must reap its live sibling before clearing ownership; EXIT still cleans up a failed proof."
@@ -27393,6 +27433,382 @@
   "why": "Framework Python scripts must remain in the strict Linux type scope."
  },
  {
+  "id": "python-types.flutter-web-artifact-type-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/05-frameworks/flutter/check-web-artefacts.py' \\",
+  "replace": "  'linux/scripts/05-frameworks/flutter/subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The Flutter web artifact checker must remain in the fatal ty quality scope."
+ },
+ {
+  "id": "python-types.flutter-web-artifact-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/05-frameworks/flutter/check-web-artefacts.py' \\",
+  "replace": "  'linux/scripts/05-frameworks/flutter/subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The Flutter web artifact checker must remain in the fatal Ruff parameter and public-return scope."
+ },
+ {
+  "id": "python-types.chain-ort-fixture-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/chain-ort-fixtures.py' \\",
+  "replace": "  'linux/scripts/tests/subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The chain ORT fixture must retain fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.sudo-policy-test-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/sudo-policy-tests.py' \\",
+  "replace": "  'linux/scripts/tests/subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The sudo policy test helpers must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.raw-pin-reader-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/raw_pin_reader_tests.py' \\",
+  "replace": "  'linux/scripts/tests/subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The raw pin reader test must retain fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.gateway-e2e-client-and-ops-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/llm-stack/tests/gateway_e2e/conftest.py' \\\n  'linux/llm-stack/tests/gateway_e2e/gw_client.py' \\\n  'linux/llm-stack/tests/gateway_e2e/test_e2e_ops.py' \\\n  'linux/llm-stack/tests/gateway_e2e/test_e2e_routing.py' \\",
+  "replace": "  'linux/llm-stack/tests/gateway_e2e/subject.py' \\\n  'linux/llm-stack/tests/gateway_e2e/subject.py' \\\n  'linux/llm-stack/tests/gateway_e2e/subject.py' \\\n  'linux/llm-stack/tests/gateway_e2e/test_e2e_routing.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The gateway E2E fixture, HTTP client and operations tests must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.cross-active-registration-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/cross_active_registration_tests.py' \\",
+  "replace": "  'linux/scripts/tests/subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The cross-active registration fixture must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.compiler-candidate-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/compiler_candidate_tests.py' \\",
+  "replace": "  'linux/scripts/tests/subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The mocked compiler candidate test must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.media-file-set-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/media_file_set_tests.py' \\",
+  "replace": "  'linux/scripts/tests/subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The media file-set fixture must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.host-python-pins-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/host_python_pin_tests.py' \\",
+  "replace": "  'linux/scripts/tests/host_python_pin_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Host Python pin receipts and policy tests must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.validator-probe-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/validator_probe_tests.py' \\",
+  "replace": "  'linux/scripts/tests/validator_probe_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Validator probe receipts and test methods must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.runtime-child-stop-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/runtime_child_stop_tests.py' \\",
+  "replace": "  'linux/scripts/tests/runtime_child_stop_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Runtime child-stop receipts and tests must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.wheel-tag-resolution-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/wheel_tag_resolution_tests.py' \\",
+  "replace": "  'linux/scripts/tests/wheel_tag_resolution_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Wheel tag resolution rows and captures must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.runtime-sdk-help-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/runtime_sdk_help_tests.py' \\",
+  "replace": "  'linux/scripts/tests/runtime_sdk_help_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Runtime SDK help tests and fixture helpers must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.triplet-query-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/triplet_query_tests.py' \\",
+  "replace": "  'linux/scripts/tests/triplet_query_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Triplet query cases, captures and API contract must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.advertised-keys-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/verify_advertised_keys.py' \\",
+  "replace": "  'linux/scripts/verify_advertised_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Advertised version-key verification helpers must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.cli-help-exit-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/cli_help_exit_tests.py' \\",
+  "replace": "  'linux/scripts/tests/cli_help_exit_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "CLI help exit fixtures and receipt methods must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.image-ref-cli-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/image_ref_cli_tests.py' \\",
+  "replace": "  'linux/scripts/tests/image_ref_cli_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Image-reference CLI receipts and test methods must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.smoke-native-dispatch-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/smoke_native_dispatch_tests.py' \\",
+  "replace": "  'linux/scripts/tests/smoke_native_dispatch_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Native smoke dispatch fixtures and callbacks must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.nerdctl-service-receipt-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/nerdctl_service_receipt_tests.py' \\",
+  "replace": "  'linux/scripts/tests/nerdctl_service_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Nerdctl service section receipts must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.binfmt-probe-controls-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/binfmt_probe_controls.py' \\",
+  "replace": "  'linux/scripts/tests/binfmt_probe_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Binfmt mutation controls must retain typed process and receipt callbacks in the fatal Ruff scope."
+ },
+ {
+  "id": "python-types.native-gcc-environment-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/native_gcc_env_tests.py' \\",
+  "replace": "  'linux/scripts/tests/native_gcc_env_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Native GCC environment receipts and tests must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.dockerfile-env-order-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/verify_dockerfile_env_order.py' \\",
+  "replace": "  'linux/scripts/verify_dockerfile_env_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Dockerfile ENV ordering parser helpers must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.image-consumer-bootstrap-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/test-image-consumer-bootstrap.py' \\",
+  "replace": "  'linux/scripts/tests/image-consumer-bootstrap-subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Image consumer bootstrap setup and test helpers must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.npm-python-transport-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/npm_python_transport_tests.py' \\",
+  "replace": "  'linux/scripts/tests/npm_python_transport_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "NPM Python transport fixtures and tests must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.python-provider-context-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/python-provider-context-tests.py' \\",
+  "replace": "  'linux/scripts/tests/python-provider-context-subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Python provider context receipts and copied-owner controls must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.serving-stack-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/llm-stack/tests/test_serving_stack.py' \\",
+  "replace": "  'linux/llm-stack/tests/serving-stack-subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Serving stack contract tests must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.llm-network-guard-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/llm-stack/tests/conftest.py' \\",
+  "replace": "  'linux/llm-stack/tests/network-guard-subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The LLM test network guard must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.libcamera-report-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/libcamera-report-tests.py' \\",
+  "replace": "  'linux/scripts/tests/libcamera-report-subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Libcamera report receipts and dynamic scope checks must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.consumer-quality-wiring-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/consumer_quality_wiring_tests.py' \\",
+  "replace": "  'linux/scripts/tests/consumer_quality_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Consumer quality wiring fixtures and failure tests must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.embedded-python-extractor-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/extract_embedded_python.py' \\",
+  "replace": "  'linux/scripts/extract_embedded_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Embedded Python extraction helpers must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.corrosion-toolchain-test-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/test-corrosion-toolchain.py' \\",
+  "replace": "  'linux/scripts/tests/corrosion-toolchain-subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Corrosion toolchain fixtures must keep their configure and test methods in fatal Ruff annotation coverage."
+ },
+ {
+  "id": "python-types.sudo-policy-closure-test-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/sudo_policy_closure_tests.py' \\",
+  "replace": "  'linux/scripts/tests/sudo_policy_closure_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Sudo policy closure tests must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.wheel-archive-transport-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/wheel_archive_transport_tests.py' \\",
+  "replace": "  'linux/scripts/tests/wheel_archive_transport_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Wheel archive transport receipts and helpers must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.webdav-download-test-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/webdav_download_tests.py' \\",
+  "replace": "  'linux/scripts/tests/webdav_download_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "WebDAV client receipt tests must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.meson-bound-provider-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/meson_bound_provider_tests.py' \\",
+  "replace": "  'linux/scripts/tests/meson_bound_provider_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Meson provider binding receipts must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.flutter-trace-summary-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/05-frameworks/flutter/flutter-trace-summary.py' \\",
+  "replace": "  'linux/scripts/05-frameworks/flutter/flutter-trace-subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Flutter trace summary parsing and span reporting must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.wheelhouse-manifest-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/wheelhouse_manifest_tests.py' \\",
+  "replace": "  'linux/scripts/tests/wheelhouse_manifest_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Wheelhouse manifest receipts and methods must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.host-cargo-preparation-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/host_cargo_preparation_tests.py' \\",
+  "replace": "  'linux/scripts/tests/host_cargo_preparation_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The host Cargo fixture's shared capture contract must stay under fatal parameter and public-return checks."
+ },
+ {
+  "id": "python-types.target-cargo-pipeline-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/target_cargo_pipeline_tests.py' \\",
+  "replace": "  'linux/scripts/tests/target_cargo_pipeline_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The target Cargo pipeline receipt fixture must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.meson-dispatch-test-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/meson_dispatch_tests.py' \\",
+  "replace": "  'linux/scripts/tests/meson_dispatch_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The Meson dispatch fixture must keep typed case rows and capture results inside the fatal Ruff scope."
+ },
+ {
+  "id": "python-types.binfmt-probe-test-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/binfmt_probe_tests.py' \\",
+  "replace": "  'linux/scripts/tests/binfmt_probe_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The binfmt probe test's subprocess receipts and helpers must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.frontend-perf-report-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/05-frameworks/flutter/frontend-perf-report.py' \\",
+  "replace": "  'linux/scripts/05-frameworks/flutter/subject-report.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The frontend performance reporter must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.clang-job-policy-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/clang_job_policy_tests.py' \\",
+  "replace": "  'linux/scripts/tests/clang_job_subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The Clang job policy receipt fixture must keep its explicit types in the fatal Ruff scope."
+ },
+ {
+  "id": "python-types.smoke-query-contract-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/tests/smoke-query-contract-tests.py' \\",
+  "replace": "  'linux/scripts/tests/smoke-query-no-contract-tests.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The smoke query contract suite must keep its case shapes and helper signatures in the fatal Ruff scope."
+ },
+ {
+  "id": "python-types.jetson-webcam-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/jetson-webcam/app.py' \\",
+  "replace": "  'linux/jetson-webcam/subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The Jetson webcam's threaded frame transport and HTTP entry points must keep fatal parameter and public-return annotations."
+ },
+ {
+  "id": "python-types.ansible-status-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/ansible/scripts/ansible_run_status.py' \\",
+  "replace": "  'linux/ansible/scripts/subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The Ansible status report must keep fatal parameter and public-return annotations."
+ },
+ {
   "id": "python-types.windows-scope",
   "target": "linux/scripts/lint-python-types.sh",
   "find": "'windows/scripts/certificates/*.py'",
@@ -27427,8 +27843,8 @@
  {
   "id": "python-types.markdown-parser-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "'linux/scripts/lib/dartdoc-guides.py'",
-  "replace": "'linux/scripts/lib/no-dartdoc-guides.py'",
+  "find": "  'linux/scripts/lib/dartdoc-guides.py' \\",
+  "replace": "  'linux/scripts/lib/no-dartdoc-guides.py' \\",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The Markdown parser helper must remain in the strict type scope."
  },
@@ -27574,7 +27990,7 @@
   "find": "--select ANN001,ANN201 --output-format concise",
   "replace": "--select ANN201 --output-format concise",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-   "why": "Missing parameter types in all 29 selected Python files must fail the strict Ruff gate."
+   "why": "Missing parameter types in all 37 selected Python files must fail the strict Ruff gate."
  },
  {
   "id": "python-types.public-return-annotation-gate",
@@ -27582,7 +27998,7 @@
   "find": "--select ANN001,ANN201 --output-format concise",
   "replace": "--select ANN001 --output-format concise",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-   "why": "Missing public return types in all 29 selected Python files must fail the strict Ruff gate."
+   "why": "Missing public return types in all 37 selected Python files must fail the strict Ruff gate."
  },
  {
   "id": "python-types.parameter-return-file-scope",
@@ -27590,7 +28006,47 @@
   "find": "'docs/scripts/verify_code_dupes.py' 'docs/scripts/verify_doc_dupes.py'",
   "replace": "'docs/scripts/verify_code_dupes.py' 'docs/scripts/subject.py'",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-   "why": "All 29 typed Python files must remain in the strict parameter and public-return scope."
+   "why": "All 37 typed Python files must remain in the strict parameter and public-return scope."
+ },
+ {
+  "id": "python-types.complexity-file-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/verify_code_complexity.py'",
+  "replace": "'linux/scripts/subject.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The complexity scanner must remain in the strict parameter and public-return scope."
+ },
+ {
+  "id": "python-types.venv-probe-file-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/06-packaging/venv-version-probe.py' \\",
+  "replace": "  'linux/scripts/06-packaging/subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The runtime venv version probe must remain in the fatal parameter and public-return scope."
+ },
+ {
+  "id": "python-types.data-lock-fetcher-file-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/lib/fetch-data-lock.py' \\",
+  "replace": "  'linux/scripts/lib/subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The SHA-256 data-lock fetcher must remain in the fatal parameter and public-return scope."
+ },
+ {
+  "id": "python-types.gstreamer-metadata-file-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/03-media/build/gstreamer/common/gst-python-build-config.py' \\",
+  "replace": "  'linux/scripts/03-media/build/gstreamer/common/subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The GStreamer metadata helper must remain in the fatal parameter and public-return scope."
+ },
+ {
+  "id": "python-types.ort-census-file-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/03-media/runtime/ort-venv-census.py' \\",
+  "replace": "  'linux/scripts/03-media/runtime/subject.py' \\",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The shared Linux and Windows ORT census must keep strict parameter and public-return annotations."
  },
  {
   "id": "python-types.docs-conf-file-scope",
@@ -27607,5 +28063,149 @@
   "replace": "--extra-search-path \"${ROOT}/docs/scripts\"",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The strict docs type gate must resolve the pinned theme source instead of reporting its import as unresolved."
+ },
+ {
+  "id": "python-types.chain-sibling-pid-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/tests/chain_sibling_pid_tests.py'",
+  "replace": "'linux/scripts/subject.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Chain sibling PID receipts must remain in the fatal parameter and public-return annotation scope."
+ },
+ {
+  "id": "python-types.log-dir-consumer-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/tests/log_dir_consumer_tests.py'",
+  "replace": "'linux/scripts/subject.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Log-directory consumer receipts must remain in the fatal parameter and public-return annotation scope."
+ },
+ {
+  "id": "python-types.gateway-logtail-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/llm-stack/tests/test_gateway_logtail.py'",
+  "replace": "'linux/scripts/subject.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Gateway log-tail tests must remain in the fatal parameter and public-return annotation scope."
+ },
+ {
+  "id": "python-types.webdav-downloader-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/verify_consumer_inventory.py' 'linux/scripts/verify_package_names.py' \\\n  'linux/scripts/01-core/download-webdav-files.py' \\\n  'linux/llm-stack/gateway/render_apisix.py'",
+  "replace": "'linux/scripts/verify_consumer_inventory.py' 'linux/scripts/verify_package_names.py' \\\n  'linux/scripts/subject.py' \\\n  'linux/llm-stack/gateway/render_apisix.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The WebDAV downloader must remain in the fatal parameter and public-return annotation scope."
+ },
+ {
+  "id": "python-types.docs-conf-report-partition",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'docs/conf.py'",
+  "replace": "  'docs/scripts/subject.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The docs configuration must stay in its theme-aware type gate instead of the generic report environment."
+ },
+ {
+  "id": "python-types.jetson-app-report-partition",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "linux_environment_checked_files=(\n  'docs/conf.py'\n  'linux/jetson-webcam/app.py'",
+  "replace": "linux_environment_checked_files=(\n  'docs/conf.py'\n  'linux/scripts/subject.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The Jetson app must stay in the assembled runtime type gate instead of the generic report environment."
+ },
+ {
+  "id": "python-types.webdav-report-partition",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/jetson-webcam/app.py'\n  'linux/scripts/01-core/download-webdav-files.py'\n  'linux/scripts/06-packaging/venv-version-probe.py'",
+  "replace": "  'linux/jetson-webcam/app.py'\n  'linux/scripts/subject.py'\n  'linux/scripts/06-packaging/venv-version-probe.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The WebDAV downloader must stay in its pinned-client type gate instead of the generic report environment."
+ },
+ {
+  "id": "python-types.venv-probe-report-partition",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/01-core/download-webdav-files.py'\n  'linux/scripts/06-packaging/venv-version-probe.py'\n)",
+  "replace": "  'linux/scripts/01-core/download-webdav-files.py'\n  'linux/scripts/subject.py'\n)",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The runtime venv probe must stay in its assembled environment type gate instead of the generic report."
+ },
+ {
+  "id": "python-types.litert-report-partition",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "windows_environment_checked_files=('windows/scripts/build/litert-wheel-smoke.py')",
+  "replace": "windows_environment_checked_files=('windows/scripts/subject.py')",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The LiteRT smoke must stay in its installed-wheel type gate instead of the generic Windows report."
+ },
+ {
+  "id": "python-types.dedicated-source-existence",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  [ -f \"$file\" ] || {",
+  "replace": "  true || {",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "A file removed from an environment-specific type gate must fail before the common report skips it."
+ },
+ {
+  "id": "python-types.jetson-build-source-mount",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "source=linux/jetson-webcam/app.py,target=/tmp/venv-probe-ty/jetson-webcam-app.py,ro",
+  "replace": "source=linux/jetson-webcam/subject.py,target=/tmp/venv-probe-ty/jetson-webcam-app.py,ro",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The Jetson app must be mounted into the runtime dependency type gate."
+ },
+ {
+  "id": "python-types.jetson-build-typecheck",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "bash /tmp/venv-probe-ty/check.sh /opt/venv /tmp/venv-probe-ty/jetson-webcam-app.py",
+  "replace": "bash /tmp/venv-probe-ty/check.sh /opt/venv /tmp/venv-probe-ty/subject.py",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The Jetson app must be type-checked against the assembled torch environment."
+ },
+ {
+  "id": "python-lint.utf8-diagnostic-output",
+  "target": "linux/scripts/lint-python.sh",
+  "find": "  PYTHONIOENCODING=utf-8 ${_LINT_PY} - \"${_EMB_MAP:-/dev/null}\" \"$1\" <<'EMBPY'",
+  "replace": "  ${_LINT_PY} - \"${_EMB_MAP:-/dev/null}\" \"$1\" <<'EMBPY'",
+  "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+  "why": "Windows Python can inherit cp1252 and fail to print non-ASCII Ruff source lines unless the relabeler explicitly uses UTF-8."
+ },
+ {
+  "id": "version-bump.checksum-network-only",
+  "target": "docs/scripts/bump_fetch.py",
+  "find": "        except OSError:\n            text = None\n        if text is None:",
+  "replace": "        except Exception:\n            text = None\n        if text is None:",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "a checksum mirror's network failure may fall through, but a parser bug must not masquerade as a missing checksum"
+ },
+ {
+  "id": "version-bump.release-api-fallback-narrow",
+  "target": "docs/scripts/bump_fetch.py",
+  "find": "    except (OSError, json.JSONDecodeError):\n        rel = None",
+  "replace": "    except Exception:\n        rel = None",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "only an unavailable or invalid-JSON release API response may trigger the large asset-hash fallback"
+ },
+ {
+  "id": "version-bump.artifact-probe-network-only",
+  "target": "docs/scripts/bump_fetch.py",
+  "find": "    except OSError:\n        return False",
+  "replace": "    except Exception:\n        return False",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "an unavailable artifact endpoint is a negative candidate, but an implementation error must not be treated as absence"
+ },
+ {
+  "id": "gitleaks.ignored-logs-excluded",
+  "target": ".gitleaks.toml",
+  "find": "paths = ['''^logs/''', '''(^|/)__pycache__/''']",
+  "replace": "paths = ['''(^|/)__pycache__/''']",
+  "test": "bash linux/scripts/tests/test-secret-scan.sh",
+  "why": "ignored test logs hold synthetic credentials and must not be mistaken for source"
+ },
+ {
+  "id": "gitleaks.python-bytecode-excluded",
+  "target": ".gitleaks.toml",
+  "find": "paths = ['''^logs/''', '''(^|/)__pycache__/''']",
+  "replace": "paths = ['''^logs/''']",
+  "test": "bash linux/scripts/tests/test-secret-scan.sh",
+  "why": "ignored Python bytecode caches can contain scanner-shaped bytes but are not source"
  }
 ]

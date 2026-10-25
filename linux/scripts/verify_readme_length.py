@@ -9,7 +9,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import gate_scope  # noqa: E402
+import gate_scope
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -33,18 +33,18 @@ def main() -> int:
     except gate_scope.ScopeError as exc:
         return gate_scope.die(exc)
     readme = os.path.join(root, "README.md")
-    print("=== README length (at most %d lines) ===" % LIMIT, flush=True)
+    print(f"=== README length (at most {LIMIT} lines) ===", flush=True)
     if not os.path.isfile(readme):
-        sys.stderr.write("FAIL: no README.md at %s; every repository has one (the README rule: %s)\n"
-                         % (root, RULE))
+        sys.stderr.write(f"FAIL: no README.md at {root}; every repository has one (the README rule: {RULE})\n")
         return 1
     count = count_lines(readme)
     if count > LIMIT:
-        sys.stderr.write("FAIL: README.md is %d lines, over the %d the README rule allows, badges included.\n"
-                         "      Move procedures, tables and history to docs/ and link them: %s\n"
-                         % (count, LIMIT, RULE))
+        sys.stderr.write(
+            f"FAIL: README.md is {count} lines, over the {LIMIT} the README rule allows, badges included.\n"
+            f"      Move procedures, tables and history to docs/ and link them: {RULE}\n"
+        )
         return 1
-    print("OK: README.md is %d lines" % count)
+    print(f"OK: README.md is {count} lines")
     return 0
 
 

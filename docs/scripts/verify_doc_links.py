@@ -55,9 +55,9 @@ def _ignored_paths(paths: list) -> set:
         proc = subprocess.run(
             ["git", "check-ignore", "--stdin"],
             input="\n".join(str(p) for p in paths),
-            capture_output=True, text=True, cwd=REPO_ROOT, timeout=60,
+            capture_output=True, text=True, cwd=REPO_ROOT, timeout=60, check=False,
         )
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return _static_ignores(paths)
     if proc.returncode not in (0, 1):
         # 0 = some ignored, 1 = none; anything else means git could not answer.
@@ -82,8 +82,8 @@ CODE_POINTER = re.compile(
 )
 
 sys.path.insert(0, str(HUB_ROOT / "linux" / "scripts"))
-from quality_allow import load_keys  # noqa: E402
-import gate_scope  # noqa: E402
+import gate_scope
+from quality_allow import load_keys
 
 MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$", re.MULTILINE)
@@ -126,7 +126,7 @@ def strip_fenced(text: str) -> str:
 
 
 class Doc:
-    __slots__ = ("path", "rel", "raw", "body", "anchors", "headings", "is_archive")
+    __slots__ = ("anchors", "body", "headings", "is_archive", "path", "raw", "rel")
 
     def __init__(self, path: Path) -> None:
         self.path = path

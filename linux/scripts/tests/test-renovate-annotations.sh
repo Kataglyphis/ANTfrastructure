@@ -20,8 +20,13 @@ import json
 import re
 import sys
 
-cfg = json.load(open(sys.argv[1], encoding="utf-8"))
-body = "\n".join(open(f, encoding="utf-8").read() for f in sys.argv[3:])
+with open(sys.argv[1], encoding="utf-8") as source:
+    cfg = json.load(source)
+body_parts = []
+for path in sys.argv[3:]:
+    with open(path, encoding="utf-8") as source:
+        body_parts.append(source.read())
+body = "\n".join(body_parts)
 pats = [m for cm in cfg.get("customManagers", []) for m in cm["matchStrings"]]
 # Python spells a named group (?P<x>...); JavaScript (?<x>...). The rest of the
 # syntax these patterns use is common to both, so the translation is this one
@@ -44,14 +49,16 @@ def readable(groups):
 found, unreadable = [], []
 for pat in pats:
     for m in re.finditer(pat.replace("(?<", "(?P<"), body):
-        found.append("%s=%s" % (m.group("depName"), m.group("currentValue")))
+        found.append(f"{m.group('depName')}={m.group('currentValue')}")
         groups = m.groupdict()
         if not groups.get("currentDigest") and not readable(groups):
-            unreadable.append("%s=%s (versioning %s)" % (
-                groups["depName"], groups["currentValue"], groups.get("versioning") or "semver"))
+            unreadable.append(
+                f"{groups['depName']}={groups['currentValue']} "
+                f"(versioning {groups.get('versioning') or 'semver'})"
+            )
 written = len(re.findall(r"^# renovate: ", body, re.MULTILINE))
 if sys.argv[2] == "count":
-    print("%d %d" % (written, len(found)))
+    print(f"{written} {len(found)}")
 elif sys.argv[2] == "unreadable":
     print("\n".join(unreadable))
 else:
@@ -101,7 +108,8 @@ import json
 import re
 import sys
 
-cfg = json.load(open(sys.argv[1], encoding="utf-8"))
+with open(sys.argv[1], encoding="utf-8") as source:
+    cfg = json.load(source)
 pats = [p.strip("/") for cm in cfg.get("customManagers", []) for p in cm["managerFilePatterns"]]
 print("ok" if pats and all(re.search(p, sys.argv[2]) for p in pats) else "missed by " + " ".join(pats))
 PY

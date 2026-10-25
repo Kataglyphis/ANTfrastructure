@@ -11,6 +11,7 @@ import re
 import shutil
 import sys
 import urllib.request
+from collections.abc import Sequence
 from pathlib import Path
 from types import ModuleType
 
@@ -45,7 +46,7 @@ def engine_paths(data: Path) -> list[str]:
     return re.findall(r"NotoFont\(\s*'[^']+',\s*'([^']+)'", data.read_text(encoding="utf-8"))
 
 
-def check_against_engine(rows, requested: list[str]) -> list[str]:
+def check_against_engine(rows: Sequence[tuple[str, str, str]], requested: list[str]) -> list[str]:
     """A lock row the engine never requests, or a chunk of a locked family the lock lacks."""
     problems = []
     locked = set()
@@ -72,7 +73,7 @@ def print_lock(families: list[str], requested: list[str]) -> int:
         return 2
     for rel in wanted:
         # The URL is the constant GSTATIC plus a path from the engine's own list.
-        with urllib.request.urlopen(GSTATIC + rel, timeout=60) as response:  # noqa: S310  # nosec B310
+        with urllib.request.urlopen(GSTATIC + rel, timeout=60) as response:  # nosec B310
             sha = hashlib.sha256(response.read()).hexdigest()
         sys.stdout.write(f"{sha}  {rel.rsplit('/', 1)[-1]}  {GSTATIC}{rel}\n")
     return 0
@@ -93,7 +94,13 @@ def default_cache() -> Path:
     return Path(os.getenv("XDG_CACHE_HOME") or Path.home() / ".cache") / "kataglyphis-fonts"
 
 
-def place(lock, rows, dest: Path, cache: Path, store: Path | None) -> None:
+def place(
+    lock: ModuleType,
+    rows: Sequence[tuple[str, str, str]],
+    dest: Path,
+    cache: Path,
+    store: Path | None,
+) -> None:
     """Every row at <dest>/<family>/<version>/<file>: from the read-only store where it holds the file, else through the cache."""
     pending = []
     for sha, name, url in rows:

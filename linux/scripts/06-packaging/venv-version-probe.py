@@ -1,31 +1,47 @@
 #!/usr/bin/env python3
 """Check installed venv versions and media behavior; see docs/cross-build-verification.md#smoke-torch-venv-what-the-venv-assertions-cover."""
+
 import importlib
 import os
 import platform
 import re
+import tomllib
+from importlib import metadata
+from typing import Any
 
-_MACHINE_TO_ARCH = {"x86_64": "amd64", "amd64": "amd64",
-                    "aarch64": "arm64", "arm64": "arm64", "riscv64": "riscv64"}
-_raw_arch = os.environ.get("STV_ARCH") or platform.machine()
-ARCH = _MACHINE_TO_ARCH.get(_raw_arch, _raw_arch)
-is_riscv64 = ARCH == "riscv64"
+_MACHINE_TO_ARCH: dict[str, str] = {
+    "x86_64": "amd64",
+    "amd64": "amd64",
+    "aarch64": "arm64",
+    "arm64": "arm64",
+    "riscv64": "riscv64",
+}
+_raw_arch: str = os.environ.get("STV_ARCH") or platform.machine()
+ARCH: str = _MACHINE_TO_ARCH.get(_raw_arch, _raw_arch)
+is_riscv64: bool = ARCH == "riscv64"
 
-def base(v):
+
+def base(v: str) -> str:
     return v.split("+", 1)[0].strip() if v else v
 
-def localseg(v):
+
+def localseg(v: str) -> str:
     return v.split("+", 1)[1] if v and "+" in v else ""
+
 
 _DEV_MARKER = re.compile(r"(a|b|rc|\.dev)\d*$")
 
-def pin_set(val):
+
+def pin_set(val: str) -> set[str]:
     return {base(val)} if val else set()
 
-KNOWN_DRIFT = [
-]
 
-def tolerated_drift(dist_name, arch, installed_base, expected):
+KNOWN_DRIFT: list[tuple[str, str, str, str, str]] = []
+
+
+def tolerated_drift(
+    dist_name: str, arch: str, installed_base: str, expected: str
+) -> str | None:
     for _d, _a, _i, _e, _why in KNOWN_DRIFT:
         if (_d, _a, _i, _e) == (dist_name, arch, installed_base, expected):
             return _why
@@ -33,150 +49,218 @@ def tolerated_drift(dist_name, arch, installed_base, expected):
 
 
 SPECS = [
-    ("torch",          "torch",          os.environ.get("EXP_PYTORCH", ""),     True),
-    ("torchvision",    "torchvision",    os.environ.get("EXP_TORCHVISION", ""), True),
-    ("onnxruntime",    "onnxruntime",    os.environ.get("EXP_ONNX", ""),        False),
-    ("numpy",          "numpy",          "",                                    False),
-    ("PIL",            "pillow",         "",                                    False),
-    ("contourpy",      "contourpy",      "",                                    False),
-    ("ai_edge_litert", "ai-edge-litert", os.environ.get("EXP_LITERT", ""),      False),
+    ("torch", "torch", os.environ.get("EXP_PYTORCH", ""), True),
+    ("torchvision", "torchvision", os.environ.get("EXP_TORCHVISION", ""), True),
+    ("onnxruntime", "onnxruntime", os.environ.get("EXP_ONNX", ""), False),
+    ("numpy", "numpy", "", False),
+    ("PIL", "pillow", "", False),
+    ("contourpy", "contourpy", "", False),
+    ("ai_edge_litert", "ai-edge-litert", os.environ.get("EXP_LITERT", ""), False),
     ("onnxruntime_genai", "onnxruntime-genai", os.environ.get("EXP_GENAI", ""), False),
 ]
 
 
 extra = os.environ.get("PYTORCH_EXTRA", "")
-want_variant = {"pytorch-cpu": "cpu", "pytorch-cu130": "cu130",
-                "pytorch-rocm10": os.environ.get("PYTORCH_ROCM_INDEX", "rocm7.14")}.get(extra, "")
+want_variant = {
+    "pytorch-cpu": "cpu",
+    "pytorch-cu130": "cu130",
+    "pytorch-rocm10": os.environ.get("PYTORCH_ROCM_INDEX", "rocm7.14"),
+}.get(extra, "")
 
-def installed_version(import_name, dist_name):
+
+def installed_version(import_name: str, dist_name: str) -> str | None:
     try:
         mod = importlib.import_module(import_name)
-        v = getattr(mod, "__version__", None)
-        if v:
-            return str(v)
-    except Exception:
-        pass
+    except (ImportError, OSError):
+        mod = None
+    if mod is not None:
+        version = getattr(mod, "__version__", None)
+        if version:
+            return str(version)
     try:
-        import importlib.metadata as M
-        return M.version(dist_name)
-    except Exception:
+        return metadata.version(dist_name)
+    except metadata.PackageNotFoundError:
         return None
 
-expected_absent = set()
-if is_riscv64 and os.environ.get("GENAI_ALLOW_RISCV64", "true").strip().lower() != "true":
+
+expected_absent: set[str] = set()
+if (
+    is_riscv64
+    and os.environ.get("GENAI_ALLOW_RISCV64", "true").strip().lower() != "true"
+):
     expected_absent.add("onnxruntime-genai")
 
-def load_lock():
-    lock_bases = {}
+
+def load_lock() -> tuple[dict[str, set[str]], bool]:
+    lock_bases: dict[str, set[str]] = {}
     lock_loaded = False
     lock_path = os.environ.get("UVLOCK", "")
     if lock_path and os.path.exists(lock_path):
         try:
-            import tomllib
             with open(lock_path, "rb") as f:
                 data = tomllib.load(f)
             for p in data.get("package", []):
-                lock_bases.setdefault(p.get("name", ""), set()).add(base(p.get("version", "")))
+                lock_bases.setdefault(p.get("name", ""), set()).add(
+                    base(p.get("version", ""))
+                )
             lock_loaded = True
-        except Exception as e:
-            print("  ??  could not parse uv.lock (%s); lock-sourced pins skipped" % e)
+        except (OSError, tomllib.TOMLDecodeError) as error:
+            raise SystemExit(f"ERROR: could not parse uv.lock at {lock_path}: {error}")
     return lock_bases, lock_loaded
 
-def report_mismatch(dist_name, inst, ib, build_pin, from_lock, allowed, fails, tolerated):
+
+def report_mismatch(
+    dist_name: str,
+    inst: str,
+    ib: str,
+    build_pin: str,
+    from_lock: set[str],
+    allowed: set[str],
+    fails: list[str],
+    tolerated: list[str],
+) -> None:
     why = "versions.env build pin" if build_pin else "uv.lock"
     expected = ",".join(sorted(allowed))
-    lock_note = ("; lock has " + ",".join(sorted(from_lock))) if (build_pin and from_lock) else ""
+    lock_note = (
+        ("; lock has " + ",".join(sorted(from_lock)))
+        if (build_pin and from_lock)
+        else ""
+    )
     excuse = tolerated_drift(dist_name, ARCH, ib, expected)
     if excuse:
-        tolerated.append("%s %s != %s on %s" % (dist_name, inst, expected, ARCH))
-        print("  !!  %-16s installed %s != expected %s on %s (%s is authoritative%s)"
-              % (dist_name, inst, expected, ARCH, why, lock_note))
-        print("  !!  %-16s TOLERATED DRIFT -- %s" % ("", excuse))
+        tolerated.append(f"{dist_name} {inst} != {expected} on {ARCH}")
+        print(
+            f"  !!  {dist_name:<16} installed {inst} != expected {expected} on {ARCH} "
+            f"({why} is authoritative{lock_note})"
+        )
+        print(f"  !!  {'':<16} TOLERATED DRIFT -- {excuse}")
     else:
-        fails.append("%s installed %s not in %s (%s)" % (dist_name, inst, sorted(allowed), why))
-        print("  XX  %-16s installed %s NOT in expected %s (%s is authoritative%s)"
-              % (dist_name, inst, sorted(allowed), why, lock_note))
+        fails.append(f"{dist_name} installed {inst} not in {sorted(allowed)} ({why})")
+        print(
+            f"  XX  {dist_name:<16} installed {inst} NOT in expected {sorted(allowed)} "
+            f"({why} is authoritative{lock_note})"
+        )
 
-def check_base_version(dist_name, inst, ib, build_pin, from_lock, allowed, fails, tolerated):
+
+def check_base_version(
+    dist_name: str,
+    inst: str,
+    ib: str,
+    build_pin: str,
+    from_lock: set[str],
+    allowed: set[str],
+    fails: list[str],
+    tolerated: list[str],
+) -> None:
     ib_cmp = _DEV_MARKER.sub("", ib) if (build_pin and localseg(inst)) else ib
     if ib in allowed or ib_cmp in allowed:
         src = "versions.env" if build_pin else "uv.lock"
         note = ""
         if build_pin and from_lock and not ({ib, ib_cmp} & from_lock):
-            note = " [uv.lock says %s; build pin wins]" % ",".join(sorted(from_lock))
-        print("  OK  %-16s %-16s (matches %s)%s" % (dist_name, inst, src, note))
+            note = " [uv.lock says {}; build pin wins]".format(
+                ",".join(sorted(from_lock))
+            )
+        print(f"  OK  {dist_name:<16} {inst:<16} (matches {src}){note}")
     elif is_riscv64 and not build_pin:
-        print("  ~~  %-16s installed %s (riscv64 re-resolved; accepted, lock pin %s)"
-              % (dist_name, inst, sorted(allowed)))
+        print(
+            f"  ~~  {dist_name:<16} installed {inst} "
+            f"(riscv64 re-resolved; accepted, lock pin {sorted(allowed)})"
+        )
     else:
-        report_mismatch(dist_name, inst, ib, build_pin, from_lock, allowed, fails, tolerated)
+        report_mismatch(
+            dist_name, inst, ib, build_pin, from_lock, allowed, fails, tolerated
+        )
 
 
-def check_variant(dist_name, inst, torchlike, fails):
+def check_variant(dist_name: str, inst: str, torchlike: bool, fails: list[str]) -> None:
     if torchlike and want_variant:
         lv = localseg(inst)
         if is_riscv64:
-            print("  ~~  %-16s build variant +%s (riscv64 local wheel; not asserted)"
-                  % (dist_name, lv or "?"))
+            print(
+                f"  ~~  {dist_name:<16} build variant +{lv or '?'} "
+                "(riscv64 local wheel; not asserted)"
+            )
         elif lv and lv != want_variant:
-            fails.append("%s variant +%s != +%s" % (dist_name, lv, want_variant))
-            print("  XX  %-16s build variant +%s != expected +%s (PYTORCH_EXTRA=%s)"
-                  % (dist_name, lv, want_variant, extra))
+            fails.append(f"{dist_name} variant +{lv} != +{want_variant}")
+            print(
+                f"  XX  {dist_name:<16} build variant +{lv} != expected +{want_variant} "
+                f"(PYTORCH_EXTRA={extra})"
+            )
         elif lv == want_variant:
-            print("  OK  %-16s build variant +%s (matches %s)" % (dist_name, lv, extra))
+            print(f"  OK  {dist_name:<16} build variant +{lv} (matches {extra})")
 
-def check_package(spec, lock_bases, fails, tolerated):
+
+def check_package(
+    spec: tuple[str, str, str, bool],
+    lock_bases: dict[str, set[str]],
+    fails: list[str],
+    tolerated: list[str],
+) -> None:
     import_name, dist_name, build_pin, torchlike = spec
     inst = installed_version(import_name, dist_name)
     if inst is None:
         if dist_name in expected_absent:
-            print("  ~~  %-16s not installed (riscv64 GenAI lane off via GENAI_ALLOW_RISCV64; policy, not drift)" % dist_name)
+            print(
+                f"  ~~  {dist_name:<16} not installed "
+                "(riscv64 GenAI lane off via GENAI_ALLOW_RISCV64; policy, not drift)"
+            )
             return
-        fails.append("%s NOT INSTALLED" % dist_name)
-        print("  XX  %-16s NOT INSTALLED" % dist_name)
+        fails.append(f"{dist_name} NOT INSTALLED")
+        print(f"  XX  {dist_name:<16} NOT INSTALLED")
         return
     ib = base(inst)
     from_lock = lock_bases.get(dist_name, set())
     allowed = pin_set(build_pin) if build_pin else set(from_lock)
     if not allowed:
-        print("  ??  %-16s %s: no pin available -- not asserted" % (dist_name, inst))
+        print(f"  ??  {dist_name:<16} {inst}: no pin available -- not asserted")
         return
-    check_base_version(dist_name, inst, ib, build_pin, from_lock, allowed, fails, tolerated)
+    check_base_version(
+        dist_name, inst, ib, build_pin, from_lock, allowed, fails, tolerated
+    )
     check_variant(dist_name, inst, torchlike, fails)
 
-def check_tvm(fails):
+
+def check_tvm(fails: list[str]) -> None:
     try:
         import tvm as _tvm
+
         _tvm_v = getattr(_tvm, "__version__", "?")
-        print("  ok  %-16s %s" % ("tvm", _tvm_v))
+        print(f"  ok  {'tvm':<16} {_tvm_v}")
         _exp_tvm = os.environ.get("EXP_TVM", "")
         if _exp_tvm:
             _exp_mm = ".".join(_exp_tvm.lstrip("v").split(".")[:2])
             _tvm_mm = ".".join(str(_tvm_v).split(".")[:2])
             if _tvm_mm != _exp_mm:
-                fails.append("tvm %s major.minor != %s (from TVM_REF=%s)" % (_tvm_v, _exp_mm, _exp_tvm))
-    except Exception as _e:
+                fails.append(
+                    f"tvm {_tvm_v} major.minor != {_exp_mm} (from TVM_REF={_exp_tvm})"
+                )
+    except (ImportError, OSError, RuntimeError) as _e:
         if os.environ.get("EXP_TVM", ""):
-            fails.append("tvm NOT IMPORTABLE but EXP_TVM set: %s" % _e)
+            fails.append(f"tvm NOT IMPORTABLE but EXP_TVM set: {_e}")
         else:
-            print("  --  %-16s not importable (best-effort; media build shipped without it)" % "tvm")
+            print(
+                f"  --  {'tvm':<16} not importable (best-effort; media build shipped without it)"
+            )
 
-def check_gstreamer(cv2, fails):
+
+def check_gstreamer(cv2: Any, fails: list[str]) -> None:
     _cap = cv2.VideoCapture(
         "videotestsrc num-buffers=1 ! videoconvert !"
         " video/x-raw,format=BGR ! appsink drop=false sync=false",
-        cv2.CAP_GSTREAMER)
+        cv2.CAP_GSTREAMER,
+    )
     _got, _frame = _cap.read()
     _cap.release()
     if _got and _frame is not None and _frame.ndim == 3:
-        print("  OK  cv2 gst pipeline videotestsrc->appsink delivered a %s frame"
-              % (_frame.shape,))
+        print(
+            f"  OK  cv2 gst pipeline videotestsrc->appsink delivered a {_frame.shape} frame"
+        )
     else:
         fails.append("cv2 GStreamer pipeline delivered NO frame (backend reports YES)")
         print("  XX  cv2 gst pipeline videotestsrc->appsink delivered NO frame")
 
 
-def check_ffmpeg(cv2, _np, _d, fails):
+def check_ffmpeg(cv2: Any, _np: Any, _d: str, fails: list[str]) -> None:
     _p = os.path.join(_d, "roundtrip.avi")
     _fourcc = getattr(cv2, "VideoWriter_fourcc", None) or cv2.VideoWriter.fourcc
     _w = cv2.VideoWriter(_p, cv2.CAP_FFMPEG, _fourcc(*"MJPG"), 10.0, (64, 48))
@@ -191,66 +275,103 @@ def check_ffmpeg(cv2, _np, _d, fails):
         _got, _back = _rc.read()
         _rc.release()
         if _got and _back is not None and _back.shape == (48, 64, 3):
-            print("  OK  cv2 ffmpeg roundtrip encode->decode %d bytes, frame %s"
-                  % (os.path.getsize(_p), _back.shape))
+            print(
+                f"  OK  cv2 ffmpeg roundtrip encode->decode {os.path.getsize(_p)} bytes, "
+                f"frame {_back.shape}"
+            )
         else:
             fails.append("cv2 FFMPEG roundtrip wrote a file it cannot read back")
             print("  XX  cv2 ffmpeg roundtrip: encoded clip did not decode")
 
-def check_media(cv2, _gst_ok, _ff_ok, fails):
+
+def _cv2_error_types(cv2: Any) -> tuple[type[Exception], ...]:
+    return (
+        ImportError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        AttributeError,
+        cv2.error,
+    )
+
+
+def check_media(cv2: Any, _gst_ok: bool, _ff_ok: bool, fails: list[str]) -> None:
     import shutil as _sh
     import tempfile as _tf
+
     _d = _tf.mkdtemp()
     try:
         import numpy as _np
+
         if _gst_ok:
             check_gstreamer(cv2, fails)
         if _ff_ok:
             check_ffmpeg(cv2, _np, _d, fails)
-    except Exception as _me:
-        fails.append("cv2 media pipeline raised %s" % _me)
-        print("  XX  cv2 media pipeline raised: %s" % _me)
+    except _cv2_error_types(cv2) as _me:
+        fails.append(f"cv2 media pipeline raised {_me}")
+        print(f"  XX  cv2 media pipeline raised: {_me}")
     finally:
         _sh.rmtree(_d, ignore_errors=True)
 
-def check_cv2(fails):
+
+def _report_cv2_error(error: Exception, cv_required: bool, fails: list[str]) -> None:
+    if cv_required:
+        fails.append(f"cv2 {error}")
+        print(f"  XX  cv2 import/version failed: {error}")
+    else:
+        print(f"  ..  cv2 not importable (optional here): {error}")
+
+
+def check_cv2(fails: list[str]) -> None:
     cv_major = os.environ.get("EXP_OPENCV_MAJOR", "")
     cv_required = os.environ.get("STV_CV2_REQUIRED", "1") == "1"
     try:
         import cv2
+    except (ImportError, OSError, RuntimeError) as error:
+        _report_cv2_error(error, cv_required, fails)
+        return
+
+    try:
         cvv = cv2.__version__
         if cv_major and cvv.split(".")[0] != cv_major:
-            fails.append("opencv/cv2 %s major != %s" % (cvv, cv_major))
-            print("  XX  %-16s %s: major != %s" % ("opencv/cv2", cvv, cv_major))
+            fails.append(f"opencv/cv2 {cvv} major != {cv_major}")
+            print(f"  XX  {'opencv/cv2':<16} {cvv}: major != {cv_major}")
         else:
-            print("  OK  %-16s %-16s (major %s)" % ("opencv/cv2", cvv, cv_major or "?"))
+            print(f"  OK  {'opencv/cv2':<16} {cvv:<16} (major {cv_major or '?'})")
         import re as _re
+
         _binfo = cv2.getBuildInformation()
-        def _backend(name) -> str:
+
+        def _backend(name: str) -> str:
             m = _re.search(name + r":\s*(\S+)", _binfo)
             return m.group(1) if m else "?"
+
         _gst = _backend("GStreamer")
-        _ff  = _backend("FFMPEG")
+        _ff = _backend("FFMPEG")
         _gst_ok = _gst.upper().startswith("YES")
         _ff_ok = _ff.upper().startswith("YES")
         if _gst_ok and _ff_ok:
-            print("  OK  cv2 videoio      GStreamer=%s; FFMPEG=%s" % (_gst, _ff))
+            print(f"  OK  cv2 videoio      GStreamer={_gst}; FFMPEG={_ff}")
         else:
             if not _gst_ok:
-                fails.append("cv2 GStreamer backend=%s (two-pass regressed; expected YES)" % _gst)
+                fails.append(
+                    f"cv2 GStreamer backend={_gst} (two-pass regressed; expected YES)"
+                )
             if not _ff_ok:
-                fails.append("cv2 FFMPEG backend=%s (OCV-FF1 regressed; expected YES)" % _ff)
-            print("  XX  cv2 videoio      GStreamer=%s FFMPEG=%s — REGRESSED (both expected YES)" % (_gst, _ff))
+                fails.append(
+                    f"cv2 FFMPEG backend={_ff} (OCV-FF1 regressed; expected YES)"
+                )
+            print(
+                f"  XX  cv2 videoio      GStreamer={_gst} FFMPEG={_ff} — REGRESSED (both expected YES)"
+            )
         if os.environ.get("STV_MEDIA_FUNCTIONAL", "1") == "1":
             check_media(cv2, _gst_ok, _ff_ok, fails)
-    except Exception as e:
-        if cv_required:
-            fails.append("cv2 %s" % e)
-            print("  XX  cv2 import/version failed: %s" % e)
-        else:
-            print("  ..  cv2 not importable (optional here): %s" % e)
+    except _cv2_error_types(cv2) as error:
+        _report_cv2_error(error, cv_required, fails)
 
-def main():
+
+def main() -> int:
     lock_bases, lock_loaded = load_lock()
     fails, tolerated = [], []
     for spec in SPECS:
@@ -260,14 +381,17 @@ def main():
     if not lock_loaded:
         print("  note: uv.lock not loaded -- only build-pinned packages asserted")
     if tolerated:
-        print("VERSION-ASSERT: %d TOLERATED DRIFT(s): %s -- each is one dated line in "
-              "KNOWN_DRIFT; fix the producer and delete the line to re-arm the assert"
-              % (len(tolerated), "; ".join(tolerated)))
+        print(
+            f"VERSION-ASSERT: {len(tolerated)} TOLERATED DRIFT(s): {'; '.join(tolerated)} "
+            "-- each is one dated line in KNOWN_DRIFT; fix the producer and delete the line "
+            "to re-arm the assert"
+        )
     if fails:
-        print("VERSION-ASSERT: FAIL (%d mismatch(es))" % len(fails))
+        print(f"VERSION-ASSERT: FAIL ({len(fails)} mismatch(es))")
         return 1
     print("VERSION-ASSERT: PASS")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

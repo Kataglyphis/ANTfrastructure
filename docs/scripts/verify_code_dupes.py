@@ -36,9 +36,9 @@ ALLOW_FILE = Path(__file__).with_name("code-dupes.allow")
 ALLOW_FMT = "a | b | budget | reason"
 
 sys.path.insert(0, str(HUB_ROOT / "linux" / "scripts"))
-from quality_allow import iter_rows  # noqa: E402
-import gate_scope  # noqa: E402
-from verify_code_size import code_lines  # noqa: E402
+import gate_scope
+from quality_allow import iter_rows
+from verify_code_size import code_lines
 
 # Never scanned: vendored trees, generated output, and records that narrate the same work on purpose.
 SKIP_DIRS = {".git", "external", "third_party", "node_modules", "out", "archive",
@@ -116,8 +116,7 @@ def longest_common_run(a: list[str], b: list[str]) -> int:
         for j in range(1, len(b) + 1):
             if ai == b[j - 1]:
                 cur[j] = prev[j - 1] + 1
-                if cur[j] > best:
-                    best = cur[j]
+                best = max(best, cur[j])
         prev = cur
     return best
 
@@ -493,7 +492,7 @@ def _print_findings(
         print(f"    {b[0]}:{b[1]}  {texts[b][:140]}\n", file=sys.stderr)
     _print_families(ranked, sys.stderr)
     if ranked:
-        print("", file=sys.stderr)
+        print(file=sys.stderr)
     print("Give the block ONE owner (a shared helper in 01-core, or the "
           f"canonical page) and call it from the other. If the twin is "
           f"deliberate, add it to {ALLOW_FILE.name} with a budget and a reason.",
@@ -535,7 +534,7 @@ def _explain_counts(
     """Shared shingles per unit pair, split into counted and dropped-as-idiom."""
     counted: Counter[UnitPair] = Counter()
     idiom: Counter[UnitPair] = Counter()
-    for _sh, holders in owners.items():
+    for holders in owners.values():
         left = sorted(h for h in holders if h[0] == a_file)
         right = sorted(h for h in holders if h[0] == b_file)
         if not left or not right:

@@ -13,7 +13,7 @@ python3 - "${_work}/manifest.json" <<'PY'
 import json
 import sys
 
-hot = [{"id": "hot.e%02d" % n, "target": "a/hot.conf", "find": "x", "replace": "y",
+hot = [{"id": f"hot.e{n:02d}", "target": "a/hot.conf", "find": "x", "replace": "y",
         "test": "true", "why": "fixture"} for n in range(10)]
 cold = [{"id": "cold.only", "target": "a/cold.conf", "find": "x", "replace": "y",
          "test": "true", "why": "fixture"}]

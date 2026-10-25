@@ -8,18 +8,10 @@ source "${CORE_DIR}/chain-lifecycle.sh"
 source "${CORE_DIR}/chain-storage.sh"
 
 workdir="$(mktemp -d)"
-_stop_lifecycle_children() {
-  local pid
-  for pid in "$@"; do
-    [ -n "$pid" ] || continue
-    kill "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
-  done
-}
 _cleanup_lifecycle_fixture() {
   local leaf="${_fixture_leaf_pid:-}"
   if [ -z "$leaf" ] && [ -s "${workdir}/leaf.pid" ]; then leaf="$(cat "${workdir}/leaf.pid")"; fi
-  _stop_lifecycle_children "$leaf" "${_fixture_root_pid:-}" "${_fixture_sibling_pid:-}"
+  t_stop_children "$leaf" "${_fixture_root_pid:-}" "${_fixture_sibling_pid:-}"
   rm -rf "${workdir}"
 }
 trap _cleanup_lifecycle_fixture EXIT
@@ -82,7 +74,7 @@ chain_terminate_descendants TERM "${root}"
 _waited=0
 while kill -0 "${leaf}" 2>/dev/null && [ "${_waited}" -lt 25 ]; do sleep 0.1; _waited=$((_waited + 1)); done
 t_assert_fails kill -0 "${leaf}"
-_stop_lifecycle_children "${leaf}" "${root}"
+t_stop_children "${leaf}" "${root}"
 t_assert_rc 1 kill -0 "${root}"
 _fixture_root_pid=""
 _fixture_leaf_pid=""
@@ -681,7 +673,7 @@ printf 'live output\n' > "${_sib_logs}/media-arm64.log"
 CROSS_RUN_ID=this-run _chain_archive_prev_logs >/dev/null 2>&1
 t_assert_ok test -f "${_sib_logs}/media-arm64.log"
 
-_stop_lifecycle_children "${_sib_pid}"
+t_stop_children "${_sib_pid}"
 t_assert_rc 1 kill -0 "${_sib_pid}"
 if ! kill -0 "${_sib_pid}" 2>/dev/null; then _fixture_sibling_pid=""; fi
 rm -rf "${_sib_pf}" "${_sib_logs}"

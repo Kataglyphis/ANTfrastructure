@@ -9,16 +9,17 @@ import os
 import re
 import shutil
 import sys
+from collections.abc import Sequence
 
 # What setuptools and meson read to compile, archive and link an extension.
 TOOL_VARS = ("CC", "CXX", "AR", "LDSHARED", "LDCXXSHARED", "BLDSHARED", "LINKCC")
 
 
-def say(msg):
+def say(msg: str) -> None:
     print(f"[ft-sysconfig] {msg}", flush=True)
 
 
-def tree_files(prefix):
+def tree_files(prefix: str) -> tuple[str, list[str]]:
     data = sorted(glob.glob(os.path.join(prefix, "lib", "python3.*t", "_sysconfigdata_t_*.py")))
     if len(data) != 1:
         sys.exit(f"[ft-sysconfig] ERROR: {prefix} holds {len(data)} lib/python3.*t/_sysconfigdata_t_*.py, want 1")
@@ -28,7 +29,7 @@ def tree_files(prefix):
     return data[0], sorted(twins)
 
 
-def build_time_vars(path):
+def build_time_vars(path: str) -> dict[str, object]:
     with open(path, encoding="utf-8") as f:
         tree = ast.parse(f.read(), path)
     for node in tree.body:
@@ -37,13 +38,13 @@ def build_time_vars(path):
     sys.exit(f"[ft-sysconfig] ERROR: {path} assigns no build_time_vars")
 
 
-def runs(tool):
+def runs(tool: str) -> bool:
     if os.path.isabs(tool):
         return os.path.isfile(tool) and os.access(tool, os.X_OK)
     return shutil.which(tool) is not None
 
 
-def missing(variables):
+def missing(variables: dict[str, object]) -> list[tuple[str, str]]:
     out = []
     for var in TOOL_VARS:
         words = str(variables.get(var) or "").split()
@@ -52,7 +53,7 @@ def missing(variables):
     return out
 
 
-def check(prefix):
+def check(prefix: str) -> int:
     data, _ = tree_files(prefix)
     bad = missing(build_time_vars(data))
     if bad:
@@ -62,7 +63,7 @@ def check(prefix):
     return 0
 
 
-def fix(prefix):
+def fix(prefix: str) -> int:
     data, twins = tree_files(prefix)
     # A cross build records the toolchain stage's path; the target image carries the same name on PATH.
     swaps = {tool: os.path.basename(tool) for _, tool in missing(build_time_vars(data))
@@ -81,7 +82,7 @@ def fix(prefix):
     return check(prefix)
 
 
-def main(argv):
+def main(argv: Sequence[str]) -> int:
     if len(argv) != 3 or argv[1] not in ("fix", "check"):
         print(__doc__, file=sys.stderr)
         return 2

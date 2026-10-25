@@ -28,7 +28,7 @@ fi
 PAYLOADS = {"z wheel.whl": b"z\0binary", "a.whl": b"a", "sub/middle.whl": b"middle"}
 
 
-def capture(source):
+def capture(source: Path) -> dict[str, dict[str, int | str]]:
     result = {}
     with tempfile.TemporaryDirectory(prefix="ant-wheel-manifest-") as temporary:
         root = Path(temporary)
@@ -83,7 +83,7 @@ def capture(source):
 
 
 class ManifestContracts(unittest.TestCase):
-    def test_original_failure_receipts(self):
+    def test_original_failure_receipts(self: "ManifestContracts") -> None:
         expected = json.loads(
             Path(__file__).with_name("wheelhouse-manifest-receipts.json").read_text()
         )
@@ -92,7 +92,7 @@ class ManifestContracts(unittest.TestCase):
             with self.subTest(case=case):
                 self.assertEqual(receipt, actual[case])
 
-    def test_missing_companion_imports(self):
+    def test_missing_companion_imports(self: "ManifestContracts") -> None:
         with tempfile.TemporaryDirectory(prefix="ant-wheel-import-") as temporary:
             root = Path(temporary)
             library = root / "lib-runtime-wheels.sh"
@@ -142,7 +142,7 @@ class ManifestContracts(unittest.TestCase):
             self.assertIn("FATAL: wheelhouse-manifest.sh", result.stderr)
             self.assertNotIn("completed", result.stdout)
 
-    def test_docker_companion_copy(self):
+    def test_docker_companion_copy(self: "ManifestContracts") -> None:
         text = (SOURCE.parent / "Dockerfile.torch").read_text()
         copy = "COPY --chmod=755 linux/scripts/01-core/wheelhouse-manifest.sh /opt/scripts/core/wheelhouse-manifest.sh"
         self.assertEqual(1, text.count(copy))
@@ -151,7 +151,7 @@ class ManifestContracts(unittest.TestCase):
             text.index("bash /opt/scripts/packaging/setup-torch-venv.sh"),
         )
 
-    def test_independent_byte_manifest(self):
+    def test_independent_byte_manifest(self: "ManifestContracts") -> None:
         manifest = "".join(
             f"{hashlib.sha256(payload).hexdigest()}  ./{name}\n"
             for name, payload in sorted(PAYLOADS.items())

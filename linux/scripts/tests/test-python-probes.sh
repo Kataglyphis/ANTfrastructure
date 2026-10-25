@@ -13,11 +13,11 @@ import importlib.util
 import io
 import json
 import os
-from pathlib import Path
 import sys
 import tempfile
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 VERSION_PATH, GST_PATH = sys.argv[1:]
@@ -39,6 +39,15 @@ class ProbeTests(unittest.TestCase):
                                      {"onnxruntime-genai": set(locked)}, failures, tolerated)
         return failures, tolerated
 
+    def installed_version_after_import_error(self, import_error, distribution="example", metadata_error=None):
+        with patch.object(self.probe.importlib, "import_module", side_effect=import_error):
+            metadata = self.probe.metadata
+            if metadata_error is not None:
+                with patch.object(metadata, "version", side_effect=metadata_error):
+                    return self.probe.installed_version("broken_import", distribution)
+            with patch.object(metadata, "version", return_value="1.2.3"):
+                return self.probe.installed_version("broken_import", distribution)
+
     def test_build_pin_overrules_matching_lock(self):
         failures, tolerated = self.run_package("0.14.0", "0.15.2", ["0.14.0"])
         self.assertEqual(len(failures), 1)
@@ -48,6 +57,30 @@ class ProbeTests(unittest.TestCase):
     def test_local_prerelease_matches_its_build_pin(self):
         failures, _ = self.run_package("0.15.2a0+git123", "0.15.2", [])
         self.assertFalse(failures)
+
+    def test_installed_version_falls_back_only_for_import_errors(self):
+        self.assertEqual(self.installed_version_after_import_error(ImportError), "1.2.3")
+        with self.assertRaisesRegex(RuntimeError, "broken module"):
+            self.installed_version_after_import_error(RuntimeError("broken module"))
+
+    def test_missing_distribution_is_reported_as_absent(self):
+        self.assertIsNone(
+            self.installed_version_after_import_error(
+                ImportError,
+                "missing_dist",
+                self.probe.metadata.PackageNotFoundError,
+            )
+        )
+
+    def test_malformed_uv_lock_is_fatal(self):
+        with tempfile.TemporaryDirectory() as work:
+            lock = Path(work) / "uv.lock"
+            lock.write_text("package = [\n", encoding="utf-8")
+            with (
+                patch.dict(os.environ, {"UVLOCK": str(lock)}),
+                self.assertRaisesRegex(SystemExit, "could not parse uv.lock"),
+            ):
+                self.probe.load_lock()
 
     def test_riscv_lock_only_version_is_independent(self):
         self.probe.is_riscv64 = True
@@ -78,7 +111,7 @@ class ProbeTests(unittest.TestCase):
             getBuildInformation=lambda: "GStreamer: YES\nFFMPEG: YES",
             VideoCapture=lambda *args: types.SimpleNamespace(read=lambda: (read_ok, frame),
                                                             release=lambda: None),
-            VideoWriter=writer, VideoWriter_fourcc=lambda *args: 1)
+            VideoWriter=writer, VideoWriter_fourcc=lambda *args: 1, error=RuntimeError)
         numpy = types.SimpleNamespace(full=lambda *args: frame, uint8="uint8")
         return {"cv2": cv2, "numpy": numpy}
 
@@ -100,6 +133,28 @@ class ProbeTests(unittest.TestCase):
 
     def test_functional_media_roundtrip_passes(self):
         self.assertFalse(self.check_media(True, True))
+
+    def test_media_runtime_errors_become_a_failing_verdict(self):
+        fixture = self.media_fixture(True, True)
+        cv2 = fixture["cv2"]
+        def raise_media_error(*args):
+            raise cv2.error("capture failed")
+        cv2.VideoCapture = raise_media_error
+        failures = []
+        with patch.dict(sys.modules, fixture):
+            self.probe.check_media(cv2, True, False, failures)
+        self.assertEqual(failures, ["cv2 media pipeline raised capture failed"])
+
+    def test_cv2_api_errors_keep_the_required_failure_verdict(self):
+        fixture = self.media_fixture(True, True)
+        cv2 = fixture["cv2"]
+        def raise_build_error():
+            raise cv2.error("metadata failed")
+        cv2.getBuildInformation = raise_build_error
+        failures = []
+        with patch.dict(sys.modules, fixture), patch.dict(os.environ, {"STV_MEDIA_FUNCTIONAL": "0"}):
+            self.probe.check_cv2(failures)
+        self.assertEqual(failures, ["cv2 metadata failed"])
 
     def test_gstreamer_metadata_preserves_target_abi(self):
         module = load(GST_PATH)
@@ -123,9 +178,15 @@ class ProbeTests(unittest.TestCase):
 
     def test_gstreamer_metadata_refuses_missing_headers(self):
         module = load(GST_PATH)
-        with patch.object(sys, "argv", [GST_PATH, "/unused", "target", "/no-such-headers", "/none", "/pc"]):
-            with self.assertRaises(SystemExit):
-                module.main()
+        with (
+            patch.object(
+                sys,
+                "argv",
+                [GST_PATH, "/unused", "target", "/no-such-headers", "/none", "/pc"],
+            ),
+            self.assertRaises(SystemExit),
+        ):
+            module.main()
 
 with contextlib.redirect_stdout(io.StringIO()):
     unittest.main(argv=["probes"], verbosity=2)

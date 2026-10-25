@@ -4,6 +4,7 @@ import argparse
 import collections
 import json
 import os
+import posixpath
 import tarfile
 from collections.abc import Iterator, Sequence
 from typing import TypedDict
@@ -67,7 +68,7 @@ def audit(layers: Sequence[LayerDescriptor], blob_dir: str, find: str = '') -> A
                 if base == '.wh..wh..opq':
                     whiteouts.append(('dir', os.path.dirname(name)))
                 else:
-                    whiteouts.append(('path', os.path.join(os.path.dirname(name), base[4:])))
+                    whiteouts.append(('path', posixpath.join(posixpath.dirname(name), base[4:])))
                 continue
             if is_reg:
                 files[name] = size

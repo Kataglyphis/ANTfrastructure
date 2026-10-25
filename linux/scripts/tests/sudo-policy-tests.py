@@ -7,7 +7,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 WORKER = r"""
 set -uo pipefail
@@ -72,7 +74,7 @@ DEPENDENCIES = ("compiler-cache-utils.sh", "load-versions-env.sh", "versions.env
                 "platform.sh", "cross-active-fallback.sh")
 
 
-def populate(work, scripts):
+def populate(work: Path, scripts: Path) -> str:
     for folder in ("common-core", "01-core", "toolchain", "no-installed"):
         (work / folder).mkdir()
     for name in DEPENDENCIES:
@@ -83,7 +85,7 @@ def populate(work, scripts):
     return leaf
 
 
-def environment(work, case):
+def environment(work: Path, case: Sequence[Any]) -> dict[str, str]:
     order, phase, uid, available, die_action, readonly, strict, context, delegate = case
     result = dict(os.environ, WORK=str(work), ORDER=order, PHASE=phase, TEST_EUID=uid,
                   AVAILABLE=str(available), DIE_ACTION=die_action, READONLY=readonly,
@@ -93,7 +95,7 @@ def environment(work, case):
     return result
 
 
-def check_receipt(work, scripts, leaf, row, real_euid=False):
+def check_receipt(work: Path, scripts: Path, leaf: str, row: Sequence[Sequence[Any]], real_euid: bool = False) -> None:
     case, expected = row
     context, delegate = case[7], case[8]
     common = (scripts / "01-core/common.sh").read_text()
@@ -168,7 +170,7 @@ exit "$result"
 '''
 
 
-def prepare_cold(work, scripts, mode):
+def prepare_cold(work: Path, scripts: Path, mode: str) -> None:
     populate(work, scripts)
     common = (scripts / "01-core/common.sh").read_text()
     bootstrap = (scripts / "02-toolchain/bootstrap.sh").read_text()
@@ -198,7 +200,7 @@ def prepare_cold(work, scripts, mode):
         shutil.copyfile(scripts / "01-core/sudo-policy.sh", work / "no-installed/sudo-policy.sh")
 
 
-def check_cold(scripts, case):
+def check_cold(scripts: Path, case: Sequence[Any]) -> None:
     caller, mode, strict, context = case
     with tempfile.TemporaryDirectory(prefix="sudo-cold-") as directory:
         work = Path(directory)
@@ -222,7 +224,7 @@ def check_cold(scripts, case):
         check_cold_message(case, result)
 
 
-def check_cold_message(case, result):
+def check_cold_message(case: Sequence[Any], result: subprocess.CompletedProcess[str]) -> None:
     caller, mode, strict, context = case
     if mode in {"complete", "delegated", "matched", "external-complete", "external-installed", "external-matched", "external-bare"}:
         assert result.stderr == "", (case, result)
@@ -258,7 +260,7 @@ printf 'STATUS:%s SIDE:%s\n' "$status" "$side"
 '''
 
 
-def check_protocol(scripts):
+def check_protocol(scripts: Path) -> None:
     for nonroot, available, status in itertools.product((0, 1), (0, 1), (0, 23)):
         env = dict(os.environ, NONROOT=str(nonroot), AVAILABLE=str(available), PUBLISH_STATUS=str(status))
         result = subprocess.run(["bash", "-c", PROTOCOL_WORKER, "_",
@@ -326,7 +328,7 @@ exit "$status"
 '''
 
 
-def check_changed_directory(scripts, style, strict, context):
+def check_changed_directory(scripts: Path, style: str, strict: int, context: str) -> None:
     with tempfile.TemporaryDirectory(prefix="sudo-cwd-") as directory:
         work = Path(directory)
         (work / "installed").mkdir()
@@ -361,7 +363,7 @@ def check_changed_directory(scripts, style, strict, context):
             assert cwd == f"PWD:{projects[index]}", result
 
 
-def main():
+def main() -> None:
     scripts = Path(sys.argv[1]).resolve()
     rows = json.loads(Path(__file__).with_name("sudo-policy-receipts.json").read_text())
     assert len(rows) == 904

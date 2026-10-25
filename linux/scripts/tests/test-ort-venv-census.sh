@@ -16,7 +16,7 @@ mkdir -p "${_WIN_STAGE}" || exit 1
 _WIN_COPY="${_WIN_STAGE}/ort-venv-census.py"
 cp "${CENSUS}" "${_WIN_COPY}" || exit 1
 t_case "Build-TorchApp.ps1 reads the shared census staged by Dockerfile.torch"
-t_assert_contains "$(cat "${_WIN_COPY}")" "def check(store):" "the staged source contains the census"
+t_assert_contains "$(cat "${_WIN_COPY}")" "def check(store: str) -> tuple[list[str], list[str]]:" "the staged source contains the census"
 cmp -s "${CENSUS}" "${_WIN_COPY}"
 t_assert_eq 0 "$?" "the Windows stage gets the same source bytes"
 t_assert_eq 1 "$(tr -d '\r' < "${TORCH_DOCKERFILE}" | grep -Fxc 'COPY linux\scripts\03-media\runtime\ort-venv-census.py C:\temp\scripts\')" "the image stages the shared source beside Build-TorchApp.ps1"
@@ -200,6 +200,43 @@ for _copy in "${CENSUS}" "${_WIN_COPY}"; do
   t_assert_contains "${_out}" "ORT-CENSUS FAIL the census could not complete" "the crash is a finding"
   t_assert_contains "${_out}" "rc=1" "exit 1"
   t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e 'ORT-CENSUS PASS' || true)" "no PASS line"
+
+  t_case "a malformed chain wheel is a sentinelled failure ${_tag}"
+  _root="$(mktemp -d "${_work}/case.XXXXXX")"
+  mkdir -p "${_root}/store"
+  printf 'not a wheel archive\n' > "${_root}/store/broken.whl"
+  _out="$(cd "${_root}" && "${_PY}" -S "${_copy}" --check --store "${_root}/store" 2>&1; echo "rc=$?")"
+  t_assert_contains "${_out}" "ORT-CENSUS FAIL the census could not complete: BadZipFile" "known archive failures stay reportable"
+  t_assert_contains "${_out}" "rc=1" "malformed data fails"
+  t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e 'ORT-CENSUS PASS' || true)" "no PASS line"
+
+  t_case "unexpected implementation errors escape without a verdict sentinel ${_tag}"
+  _out="$("${_PY}" - "${_copy}" <<'PY'
+import contextlib
+import importlib.util
+import io
+import sys
+from unittest.mock import patch
+
+spec = importlib.util.spec_from_file_location("ort_census", sys.argv[1])
+if spec is None or spec.loader is None:
+    raise RuntimeError("cannot import the census fixture")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+output = io.StringIO()
+try:
+    with patch.object(module, "check", side_effect=AssertionError("unexpected census bug")), \
+         contextlib.redirect_stdout(output):
+        module.main(["--check", "--store", "unused"])
+except AssertionError as exc:
+    assert str(exc) == "unexpected census bug"
+else:
+    raise AssertionError("the census swallowed an unexpected implementation error")
+assert "ORT-CENSUS" not in output.getvalue()
+print("unexpected implementation error escaped without a verdict sentinel")
+PY
+)"
+  t_assert_contains "${_out}" "unexpected implementation error escaped without a verdict sentinel"
 
   t_case "--purge-list names every candidate and nothing else ${_tag}"
   _out="$(_scenario "${_copy}" purge-list "${HEALTHY[@]}" "install ort-nightly 1.31.0 onnxruntime" \

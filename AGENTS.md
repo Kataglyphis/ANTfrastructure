@@ -80,6 +80,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    and masked-declaration lists are empty; keep them empty. Share duplicated behavior; do not rename
    variables, reformat copies or add suppressions to evade a duplication finding.
    The duplication scanner shares the code-size shell lexer so quoted braces and here-doc bodies do not merge function units.
+   Windows ShellCheck warning scans keep each command below 24,000 characters and merge every batch's JSON findings; preserve `-x` in each call.
    Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks.
    Copied lint drivers carry `lint-scope-init.sh` and `lint-root.sh`; source initialization in the driver shell so remaining positional arguments survive.
    Wheel unpack/pack transport keeps Python argument boundaries and raw status; packaging execution keeps best-effort and sudo failure policies separate.
@@ -142,7 +143,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows formatting preserves distinct C/C++ fallback and tracked-only Dart policies; copied source-build suites carry their retry and media wiring fixture companions.
    Repository refresh shares best-effort fetches; callers retain checkout failure policy. Linux parser destination maps preserve raw values and consumed-argument counts.
    Object smokes share compile/cleanup lifecycle while retaining caller ELF policies; allocation or cleanup failure cannot pass.
-   Host probing preserves target/build precedence and failed/empty probe behavior; shared runtime transports retain Python guards and caller sentinel verdicts.
+   Host probing preserves target/build precedence and failed/empty probe behavior; shared runtime transports retain Python guards and caller sentinel verdicts. TVM codegen skips only a missing import; unexpected initialization errors fail the smoke.
+   Flutter browser smokes record Playwright failures and let unexpected Python errors propagate, so an implementation bug cannot report a green run.
    Base, toolchain and required-platform entry points carry `module-bootstrap.sh` in copied and mounted closures; keep the per-file mounts narrow.
    Cross-verification shares target selection without merging caller fallback, skip-diagnostic or architecture-restoration policies.
    Native and cross LLVM builds share source-cache validation and eviction in `common.sh`; retain their distinct fetch and build-directory policies.
@@ -175,11 +177,11 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts.
    Python CI suites carry their shared driver fixture; preserve child status, call logs and parent environment isolation.
    Windows Python CI build, packaging and installed-wheel drivers share the summary, log-close and fatal-step verdict in `Complete-CiBuildSession`; preserve that order and verdict.
-   The hub's locked `quality/` environment and pinned ty gate strictly check 140 tracked Python files, including quality tools, tests, build helpers and the Windows certificate helper; the full Linux and Windows scans stay visible in ignored `logs/code-quality/`. Ruff ANN002, ANN003, ANN202, ANN204, ANN205 and ANN206 are strict over every tracked Python file; ANN001 and ANN201 are strict for 29 typed Python files in Renovate, the LLM gateway, docs, host and build helpers. Remaining ANN001 and ANN201 findings stay in reports. Reusable Python CI artifact uploads fail on an empty combined path set and retain `always()` so failed tests can upload logs; the Windows build verdict separately requires distribution artifacts. A checker setup failure is fatal, and ambient `TY_VERSION` or `RUFF_VERSION` cannot replace the repository pins. Ty checks types but does not require annotations.
+   The locked Python quality gate checks 140 Linux/shared files, the Windows gate checks its certificate helper, and five dependency-specific Python sources use dedicated strict ty gates in their build or workflow environments. Ruff ANN002, ANN003, ANN202, ANN204, ANN205 and ANN206 are fatal across every tracked Python file; ANN001 and ANN201 are fatal for the maintained 121-file scope. Keep both scopes and the repository tool pins intact; checker setup failures are fatal. See [Python type analysis](docs/code-quality-tooling.md#python-type-analysis) for the current file list and fixture requirements. Ty checks types but does not require annotations.
    The docs workflow checks `docs/conf.py` with pinned ty and the pinned DocumANTation theme source before publishing; missing theme source or a type finding fails. The Linux x64 report still records the unresolved theme import when its checkout has no submodules.
-   The x64 torch image build checks `venv-version-probe.py` with pinned ty against its assembled `/opt/venv`; the Windows LiteRT wheel build checks `litert-wheel-smoke.py` against its installed wheel and dependencies. Both gates fail on import or type errors and keep checker tools out of shipped images. The generic preflight reports still show those runtime-only imports; the Jetson webcam remains report-only. Linux x64 CI checks the WebDAV downloader against the exact pinned client source commit, and the locked quality environment checks the Flutter browser smoke against Playwright.
+   The x64 torch image build checks `venv-version-probe.py` with pinned ty against its assembled `/opt/venv`; the Windows LiteRT wheel build checks `litert-wheel-smoke.py` against its installed wheel and dependencies. Both gates fail on import or type errors and keep checker tools out of shipped images. The version probe catches only expected import, metadata, lock-parse and OpenCV failures; malformed present locks and unexpected runtime exceptions must fail. The generic preflight reports still show those runtime-only imports; the Jetson webcam remains report-only. Linux x64 CI checks the WebDAV downloader against the exact pinned client source commit, and the locked quality environment checks the Flutter browser smoke against Playwright.
    Ruff B012 and B023 are fatal for tracked Python and extracted shell heredocs; default hub preflight sweeps also make F401, F841, RUF059, FURB167, ISC004, UP032 and B009 fatal. Targeted and named-root lint calls keep those additional rules advisory. Preserve the selector and extraction mutation proofs.
-   Consumer Python lint includes tracked shell heredocs; extraction failure is fatal and a valid no-block scan is green.
+   Consumer Python lint maps tracked shell heredocs back to source lines across Windows path separators and forces UTF-8 when it prints remapped findings; extraction failure is fatal, and a valid no-block scan is green.
    Stable Python CI test legs require fresh JUnit and measured, covered package lines; a configured coverage floor must reach every leg.
    Windows Pester coverage must measure one file and executed commands in each of its fifteen named modules, including Vulkan validation at 80%; missing or empty reports, missing targets and scores below the module floor fail the test run.
    Detected consumer lint calls keep ratchets enabled and failures fatal; the weekly inventory reports missing calls as advisory.
@@ -301,9 +303,8 @@ Five of them are RULES and stay here:
 - **Generated run artifacts belong under `logs/`.** Use `logs/build-logs/` for Linux stage logs
   and resource metrics, `logs/windows-build-logs/` for Windows BuildKit runs, and
   `logs/test-results/` for Python test reports and `logs/code-quality/` for ty and annotation
-  reports. The directory is ignored by Git.
-  Live `chain-status*.json` stays at the repo root; requested complexity JSON stays in
-  the separate ignored `out/complexity/` directory.
+  reports, mutation results and complexity metrics. The directory is ignored by Git.
+  Live `chain-status*.json` stays at the repo root.
 
 ### Windows Container Build
 
@@ -322,6 +323,9 @@ under rootless nerdctl:
 [`linux-host-setup.md` § B2b](docs/linux-host-setup.md#b2b-a-gpu-container-on-a-jetson-with-rootless-nerdctl).
 Recipes, mount traps and the one driver that answers them (`run-in-ci-image.sh`):
 [`rancher-desktop-linux-containers.md`](docs/rancher-desktop-linux-containers.md).
+For repeatable Ubuntu WSL2 quality checks, run `bash linux/scripts/wsl-quality.sh setup`, then
+`bash linux/scripts/wsl-quality.sh check`; it installs pinned tools and writes reports below
+ignored `logs/code-quality/wsl/`.
 
 ### LLM Stack (Ollama + Open WebUI)
 
@@ -417,6 +421,7 @@ hand-rolling any of that in a consumer.
 
 When adding here:
 
+- **Reuse before adding (owner directive for every owned repo).** Search the current repository and its submodules for an existing implementation before creating functionality. Reuse or extend the canonical repo or submodule surface; when none exists, add it once to a shared repo and wire consumers to it. Keep consumer-specific values as parameters. If a hard technical boundary prevents reuse, record the reason and keep the copy tied to its canonical source.
 - PowerShell 7 (pwsh) is the standard shell and the Windows containers' default SHELL. Every
   `.ps1`/`.psm1` declares `#requires -Version 7.0` on line 1 (or directly under the SPDX header),
   before any `param()`. Exactly two tracked files omit it, on purpose, both pinned 5.1-parsable by
@@ -960,11 +965,14 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
 - **riscv64 self-builds `onnxruntime-genai`** (GEN1); never re-add an arch guard.
   `GENAI_ALLOW_RISCV64=false` backs it out. What is proven, and the one caveat that is not (real
   silicon): [`gen1-riscv64-genai.md`](docs/gen1-riscv64-genai.md).
+- The GenAI smoke catches only known binding and native failures; unexpected exceptions stay fatal and cannot produce a green sentinel.
 - **Feature parity has exactly TWO documented exemptions**, both riscv64: `cmake` (Kitware
   publishes no riscv64 archive) and `iree_base_compiler` (the IREE compiler cannot be
   cross-built). `_parity_exempt` in `06-packaging/smoke-runtime-image.sh` is the source of truth:
   record a new exception THERE, never in prose; the gate fails an exemption that no longer
   applies. The ORT flavour split and arm64-only QNN are deliberate, not gaps.
+- The runtime VENV-SET probe may skip only when `packaging` or the app distribution is absent;
+  a crashed probe or malformed installed requirement emits `VENV ERROR` and fails the gate.
 - **riscv64 builds WITH the vector extension**, set through `--with-arch` in
   `02-toolchain/build-gcc.sh`, never as a `CFLAGS` export: `-march` alone reaches neither OpenCV
   nor ORT nor Rust, each of which has its own switch. Do not "restore compatibility" by reverting
@@ -1035,8 +1043,11 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
     map a `libonnxruntime*` soname to a distro package.
   - The app venv's ORT is the chain wheel byte for byte (`ort-venv-census.py`); a missing chain
     wheel fails the torch stage, with no PyPI fallback.
+  - The venv census reports known input errors as findings; unexpected implementation errors keep their traceback and cannot pass.
   - Linux app bundles exclude PyPI ORT providers before exporting the lock and pass the chain
     wheel to the first requirements install; a later replacement cannot rescue a failed resolver.
+  - Debian app dependency scans fail on unsuccessful `readelf` or `ldconfig`; only `dpkg -S`
+    nonzero means no package owns a soname.
   - The census's ORT fingerprint is a whole NUL-terminated `__FILE__` source path, never the bare
     `onnxruntime/core/` directory: consumers name that directory as data (OxidANT's loader,
     FFmpeg's configure line) and must stay importers. A file that DEFINES `OrtGetApiBase` (ELF
@@ -1131,7 +1142,8 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
 
   CI never samples: its eight `mutations` jobs split the manifest with `--shard` and together prove
   every entry. When the gate gets slow, fix the suite that got slow; never raise a timeout or
-  sample in CI. The 2026-09-23 timeout and the layout:
+  sample in CI. Mutation test children get closed stdin so caller input cannot stall a proof. The
+  2026-09-23 timeout and the layout:
   [`code-quality-tooling.md` § The mutation gate in CI, sharded](docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded).
 
 - **Never retype a number a gate can measure.** Manifest sizes, per-prefix mutation counts and the
@@ -1228,8 +1240,8 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   the consumer's `lint-path` and gates it when `complexity-strict: true` is set.
   Use `-Path <file-or-dir> -Strict` while working on new
   files that Git has not tracked yet. For an untracked JSON result, create
-  `out/complexity/` with `New-Item -ItemType Directory -Force out/complexity`, then add
-  `-JsonPath out/complexity/windows-full.json` to the strict command. Parse and scan
+  `logs/code-quality/complexity/` with `New-Item -ItemType Directory -Force logs/code-quality/complexity`, then add
+  `-JsonPath logs/code-quality/complexity/windows-full.json` to the strict command. Parse and scan
   failures are fatal. Do not add exceptions or raise limits to silence findings.
 
 - **Runtime verification happens inside a container, or against raw symlink targets.** Never use
@@ -1295,6 +1307,8 @@ mount).
   a preflight gate, so a hand edit is caught rather than shipped.
 - **A version with a checksum moves with its checksum.** `bump_versions.py` owns those pairs: a
   pin updated without its digest is an unverified download that still looks pinned.
+- `bump_fetch.py` falls back only for expected network or invalid-JSON failures; unexpected Python
+  exceptions must propagate instead of becoming missing metadata or an unnecessary asset download.
 
 Key layout, coupled pairs and report tiers: [`dependency-updates.md`](docs/dependency-updates.md)
 and [`cross-build-verification.md`](docs/cross-build-verification.md#per-arch-version-truth).

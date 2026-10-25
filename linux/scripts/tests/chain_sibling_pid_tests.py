@@ -33,7 +33,7 @@ builtin printf 'TAIL:%s\n' "$status"
 """
 
 
-def predicate_controls(definitions):
+def predicate_controls(definitions: str) -> int:
     worker = r"""
 source "$1"
 pid="$2" status="$3"
@@ -74,7 +74,7 @@ printf 'RESULT:%s\n' "$rc"
     return 27
 
 
-def main():
+def main() -> None:
     names = (
         "_chain_is_live_other_pid",
         "_chain_live_sibling_pid",
@@ -109,14 +109,15 @@ def main():
                 timeout=5,
             )
 
-            def clean(data, work=work) -> str:
-                data = re.sub(
+            def clean(data: bytes, work: pathlib.Path = work) -> str:
+                text = data.decode().replace(directory, "[WORK]")
+                text = re.sub(
                     r": line \d+:",
                     ": line [LINE]:",
-                    data.decode().replace(directory, "[WORK]"),
+                    text,
                 )
                 return re.sub(
-                    r"(?<!\d)" + (work / "self").read_text() + r"(?!\d)", "[PID]", data
+                    r"(?<!\d)" + (work / "self").read_text() + r"(?!\d)", "[PID]", text
                 )
 
             actual = {

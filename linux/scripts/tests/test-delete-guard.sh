@@ -20,6 +20,30 @@ t_assert_ok test -f "${GUARD}"
 t_assert_contains "$(cat "${TESTS_DIR}/../../../.claude/settings.json")" \
   "guard-destructive-deletes.py" "pwsh is absent on this host, so .py must be first"
 
+t_case "malformed hook input fails open but unexpected parser errors surface"
+_bad_json_rc=0
+printf '{' | "${PY}" "${GUARD}" 2>/dev/null || _bad_json_rc=$?
+t_assert_eq "0" "${_bad_json_rc}" "invalid hook JSON remains non-blocking"
+_probe_error_rc=0
+"${PY}" - "${GUARD}" <<'PY' || _probe_error_rc=$?
+import io
+import runpy
+import sys
+from unittest.mock import patch
+
+with patch("sys.stdin", io.StringIO("")), patch("json.load", side_effect=RuntimeError("probe failure")):
+    try:
+        runpy.run_path(sys.argv[1], run_name="__main__")
+    except RuntimeError as exc:
+        if str(exc) != "probe failure":
+            raise
+    except SystemExit as exc:
+        raise AssertionError(f"unexpected error was swallowed with exit {exc.code}") from exc
+    else:
+        raise AssertionError("unexpected parser error did not escape")
+PY
+t_assert_eq "0" "${_probe_error_rc}" "unexpected parser errors must not be swallowed"
+
 t_case "host-destroying commands are denied"
 for _c in "rm -rf /" "rm -rf /usr/lib" "rm -rf \$HOME/*" "rm -rf ~/.ssh" \
           "rm -rf ~/.local/share/containerd" "dd if=/dev/zero of=/dev/sda" \

@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS = Path(sys.argv.pop(1)).resolve()
@@ -26,7 +27,16 @@ trap 'declare -p rustup_init 2>/dev/null > "$STATE" || true' EXIT
 """
 
 
-def function(file, name):
+class InstallerReceipt(TypedDict):
+    rc: int
+    out: str
+    err: str
+    trace: str
+    state: str
+    remaining: str | None
+
+
+def function(file: Path, name: str) -> str:
     return subprocess.run(
         [
             "bash",
@@ -43,7 +53,7 @@ def function(file, name):
     ).stdout
 
 
-def installer_code(scripts, caller):
+def installer_code(scripts: Path, caller: str) -> str:
     file = scripts / (
         "01-core/python_uv.sh" if caller == "uv" else "02-toolchain/install-rust.sh"
     )
@@ -64,7 +74,15 @@ def installer_code(scripts, caller):
     return prefix + text[start : text.index("rustc --version", start)]
 
 
-def receipt(scripts, caller, stage, context, digest, versions=None, installed=False):
+def receipt(
+    scripts: Path,
+    caller: str,
+    stage: str,
+    context: str,
+    digest: str,
+    versions: str | None = None,
+    installed: bool = False,
+) -> InstallerReceipt:
     with tempfile.TemporaryDirectory(prefix="ant-installer-receipt-") as directory:
         work = Path(directory)
         if versions is not None:
@@ -132,7 +150,7 @@ def receipt(scripts, caller, stage, context, digest, versions=None, installed=Fa
         }
 
 
-def capture(scripts):
+def capture(scripts: Path) -> dict[str, InstallerReceipt]:
     return {
         f"{caller}:{stage}:{context}:{digest}": receipt(
             scripts, caller, stage, context, digest
@@ -144,7 +162,12 @@ def capture(scripts):
     }
 
 
-def import_receipt(caller, content, conditional, retry=False):
+def import_receipt(
+    caller: str,
+    content: str | None,
+    conditional: bool,
+    retry: bool = False,
+) -> tuple[int, str, str]:
     with tempfile.TemporaryDirectory(prefix="ant-installer-import-") as directory:
         work = Path(directory)
         core = work / "core"
@@ -200,7 +223,7 @@ def import_receipt(caller, content, conditional, retry=False):
 
 
 class VerifiedInstallers(unittest.TestCase):
-    def test_original_lifecycle_receipts(self):
+    def test_original_lifecycle_receipts(self) -> None:
         expected = json.loads(
             Path(__file__).with_name("verified-installer-receipts.json").read_text()
         )
@@ -210,7 +233,7 @@ class VerifiedInstallers(unittest.TestCase):
             with self.subTest(case=name):
                 self.assertEqual(value, actual[name])
 
-    def test_independent_failure_policies(self):
+    def test_independent_failure_policies(self) -> None:
         actual = capture(SCRIPTS)
         self.assertEqual(23, actual["uv:curl:strict:pin"]["rc"])
         self.assertEqual("partial", actual["uv:curl:strict:pin"]["remaining"])
@@ -228,7 +251,7 @@ class VerifiedInstallers(unittest.TestCase):
         )
         self.assertEqual("", actual["uv:success:strict:pin"]["state"])
 
-    def test_uv_override_and_discovery(self):
+    def test_uv_override_and_discovery(self) -> None:
         versions = "UV_INSTALL_SH_SHA256=file pin\n"
         from_file = receipt(SCRIPTS, "uv", "success", "strict", "", versions=versions)
         overridden = receipt(
@@ -241,7 +264,7 @@ class VerifiedInstallers(unittest.TestCase):
         self.assertEqual("", installed["trace"])
         self.assertEqual("uv version: uv-fixture\n", installed["out"])
 
-    def test_cold_copied_imports(self):
+    def test_cold_copied_imports(self) -> None:
         valid = (SCRIPTS / "01-core/verified-script-install.sh").read_text()
         variants = [
             ("missing", None, 1),
@@ -262,7 +285,9 @@ class VerifiedInstallers(unittest.TestCase):
         self.assertIn("STATUS:23 LOADED:\n", out)
         self.assertIn("RETRIED", out)
 
-    def assert_import(self, caller, label, body, status, conditional):
+    def assert_import(
+        self, caller: str, label: str, body: str | None, status: int, conditional: bool
+    ) -> None:
         rc, out, err = import_receipt(caller, body, conditional)
         expected_rc = 0 if caller == "uv" and conditional else status
         self.assertEqual(expected_rc, rc)
@@ -273,7 +298,7 @@ class VerifiedInstallers(unittest.TestCase):
                 "requires verified_script_install from verified-script-install.sh", err
             )
 
-    def test_rust_docker_closure(self):
+    def test_rust_docker_closure(self) -> None:
         docker = (ROOT / "linux/Dockerfile.toolchain").read_text().replace("\\\n", " ")
         runs = [
             line

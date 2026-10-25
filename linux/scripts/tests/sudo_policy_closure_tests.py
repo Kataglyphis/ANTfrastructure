@@ -14,7 +14,7 @@ sys.path.insert(0, str(SCRIPTS))
 from verify_dockerfile_env_order import instructions
 
 
-def runs(name, source):
+def runs(name: str, source: str) -> list[str]:
     return [
         text
         for _, text in instructions(ROOT / "linux" / name)
@@ -55,7 +55,7 @@ fi
 
 
 class SudoPolicyClosureTests(unittest.TestCase):
-    def test_base_readonly_bindings(self):
+    def test_base_readonly_bindings(self: "SudoPolicyClosureTests") -> None:
         selected = runs("Dockerfile.base", "linux/scripts/01-core/common.sh")
         self.assertEqual(6, len(selected))
         for recipe in selected:
@@ -64,7 +64,7 @@ class SudoPolicyClosureTests(unittest.TestCase):
                 recipe,
             )
 
-    def test_toolchain_readonly_bindings(self):
+    def test_toolchain_readonly_bindings(self: "SudoPolicyClosureTests") -> None:
         selected = runs("Dockerfile.toolchain", "linux/scripts/01-core/common.sh")
         self.assertEqual(2, len(selected))
         for recipe in selected:
@@ -73,7 +73,7 @@ class SudoPolicyClosureTests(unittest.TestCase):
                 recipe,
             )
 
-    def test_sdk_copies_the_current_companion(self):
+    def test_sdk_copies_the_current_companion(self: "SudoPolicyClosureTests") -> None:
         selected = [
             text
             for _, text in instructions(ROOT / "linux/Dockerfile.sdk")
@@ -84,7 +84,9 @@ class SudoPolicyClosureTests(unittest.TestCase):
         self.assertIn("linux/scripts/01-core/sudo-policy.sh", selected[0].split())
         self.assertEqual("/opt/scripts/core/", selected[0].split()[-1])
 
-    def test_whole_core_copies_keep_the_existing_route(self):
+    def test_whole_core_copies_keep_the_existing_route(
+        self: "SudoPolicyClosureTests",
+    ) -> None:
         for name in ["Dockerfile.package", "Dockerfile.torch", "Dockerfile.toolchain"]:
             with self.subTest(dockerfile=name):
                 self.assertTrue(
@@ -96,7 +98,9 @@ class SudoPolicyClosureTests(unittest.TestCase):
                     )
                 )
 
-    def test_copied_common_uses_the_companion_and_refuses_its_absence(self):
+    def test_copied_common_uses_the_companion_and_refuses_its_absence(
+        self: "SudoPolicyClosureTests",
+    ) -> None:
         for missing in [False, True]:
             with self.subTest(missing=missing), tempfile.TemporaryDirectory() as folder:
                 work = Path(folder)

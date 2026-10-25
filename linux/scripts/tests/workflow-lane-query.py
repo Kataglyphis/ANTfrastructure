@@ -21,11 +21,11 @@ steps = V.value(job, "steps") if job else []
 raw = path.read_text(encoding="utf-8")
 
 
-def run_text():
+def run_text() -> str:
     return "\n".join(str(V.value(step, "run") or "") for step in (steps or []))
 
 
-def run_blocks(name):
+def run_blocks(name: str) -> str:
     # The loader leaves block scalars opaque, so assertions read the original indentation.
     lines = raw.splitlines()
     start = lines.index(f"  {name}:")

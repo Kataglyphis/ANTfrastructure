@@ -11,8 +11,8 @@ import re
 import stat
 import struct
 import zipfile
-from collections.abc import Iterator
-from typing import TypeAlias
+from collections.abc import Callable, Iterator
+from typing import Literal, TypeAlias
 
 ABI = (b"OrtGetApiBase", b"CreateEpFactories", b"RegisterCustomOps")
 # An ORT source path plus NUL, as __FILE__ embeds it; a bare chain dir is not ORT. See docs/onnxruntime-single-source.md
@@ -25,18 +25,28 @@ MAGIC = (b"\x7fELF", b"\0asm")
 SKIP_TOP = ("/proc", "/sys", "/dev", "/run")
 CHUNK = 16 << 20
 OVERLAP = 512
-ElfImage: TypeAlias = tuple[bool, str, list[tuple[int, int, int]], list[tuple[int, int]]]
+BinaryBuffer: TypeAlias = bytes | mmap.mmap
+LoadSegment: TypeAlias = tuple[int, int, int]
+DynamicEntry: TypeAlias = tuple[int, int]
+DynamicInfo: TypeAlias = dict[str, list[str]]
+ArchiveMember: TypeAlias = tuple[str, str, str, list[str], list[str]]
+WalkEntry: TypeAlias = tuple[str, str, os.stat_result]
+UserFacts: TypeAlias = tuple[Literal["def", "use"], str, list[str], list[str], DynamicInfo | None]
+FileFacts: TypeAlias = tuple[Literal["bin", "def", "use"] | None, str | None,
+                             list[str] | None, list[str] | None, DynamicInfo | None]
+ElfImage: TypeAlias = tuple[bool, str, list[LoadSegment], list[DynamicEntry]]
+EMPTY_FACTS: FileFacts = (None, None, None, None, None)
 
 
-def emit(*fields: object):
+def emit(*fields: object) -> None:
     print("\t".join("-" if f in (None, "") else str(f) for f in fields))
 
 
-def host(root, path):
+def host(root: str, path: str) -> str:
     return path if root == "/" else os.path.join(root, *[p for p in path.split("/") if p])
 
 
-def source_root(run):
+def source_root(run: str) -> str | None:
     """The build root a printable run before a path marker names: '' = relative, None = a URL."""
     if re.search(r"[A-Za-z][A-Za-z0-9+.-]*://", run):
         return None
@@ -46,7 +56,7 @@ def source_root(run):
     return run.rstrip("/") if run.startswith("/") else ""
 
 
-def roots_in(buf, min_end=0):
+def roots_in(buf: BinaryBuffer, min_end: int = 0) -> list[str]:
     out = []
     for m in MARK.finditer(buf):
         if m.end() <= min_end:
@@ -60,7 +70,7 @@ def roots_in(buf, min_end=0):
     return out
 
 
-def scan_stream(read):
+def scan_stream(read: Callable[[int], bytes]) -> tuple[str, list[str], list[str]]:
     """sha256, ABI markers and ORT source roots over chunked reads (archive members)."""
     sha, abi, roots, carry = hashlib.sha256(), set(), [], b""
     while True:
@@ -76,7 +86,7 @@ def scan_stream(read):
     return sha.hexdigest(), sorted(abi), roots
 
 
-def _elf_image(mm) -> ElfImage | None:
+def _elf_image(mm: BinaryBuffer) -> ElfImage | None:
     """(is64, byte order, PT_LOAD spans, dynamic entries) from an ELF's program headers; None without PT_DYNAMIC."""
     if mm[:4] != MAGIC[0]:
         return None
@@ -105,11 +115,11 @@ def _elf_image(mm) -> ElfImage | None:
     return is64, end, loads, entries
 
 
-def _file_offset(loads, vaddr) -> int | None:
+def _file_offset(loads: list[LoadSegment], vaddr: int) -> int | None:
     return next((o + vaddr - v for v, o, n in loads if v <= vaddr < v + n), None)
 
 
-def elf_dynamic(mm):
+def elf_dynamic(mm: BinaryBuffer) -> DynamicInfo:
     """DT_NEEDED / DT_RPATH / DT_RUNPATH of an ELF, read from its program headers; {} if none."""
     try:
         image = _elf_image(mm)
@@ -118,7 +128,11 @@ def elf_dynamic(mm):
         return {}
 
 
-def _dynamic_entries(mm, loads, entries) -> dict[str, list[str]]:
+def _dynamic_entries(
+    mm: BinaryBuffer,
+    loads: list[LoadSegment],
+    entries: list[DynamicEntry],
+) -> DynamicInfo:
     base = _file_offset(loads, dict(entries).get(5, -1))
     if base is None:
         return {}
@@ -131,7 +145,7 @@ def _dynamic_entries(mm, loads, entries) -> dict[str, list[str]]:
     return out
 
 
-def elf_defines(mm, name):
+def elf_defines(mm: BinaryBuffer, name: bytes) -> bool:
     """True when ld.so's hash lookup finds `name` DEFINED in the ELF's dynamic symbols: ORT under any name."""
     try:
         image = _elf_image(mm)
@@ -153,7 +167,7 @@ def elf_defines(mm, name):
         return False
 
 
-def user_facts(mm, abi, roots):
+def user_facts(mm: BinaryBuffer, abi: list[str], roots: list[str]) -> UserFacts:
     """(kind, sha, abi, roots, dyn) of an unnamed, unfingerprinted file that mentions ORT: 'use', or 'def'."""
     sha = hashlib.sha256(mm).hexdigest()
     # An ORT under another name with its fingerprints stripped still defines its entry point.
@@ -162,9 +176,16 @@ def user_facts(mm, abi, roots):
     return "use", sha, abi, roots, elf_dynamic(mm) if mm[:4] == MAGIC[0] else None
 
 
-def _hash_chain(mm, end, word, loads, tags, name) -> Iterator[int]:
+def _hash_chain(
+    mm: BinaryBuffer,
+    end: str,
+    word: int,
+    loads: list[LoadSegment],
+    tags: dict[int, int],
+    name: bytes,
+) -> Iterator[int]:
     """The symbol indices ld.so compares for `name`: DT_GNU_HASH's chain, else DT_HASH's."""
-    def u32(off) -> int:
+    def u32(off: int) -> int:
         return struct.unpack_from(end + "I", mm, off)[0]
     gnu, sysv = _file_offset(loads, tags.get(0x6FFFFEF5, -1)), _file_offset(loads, tags.get(4, -1))
     if gnu is not None:
@@ -195,7 +216,7 @@ def _hash_chain(mm, end, word, loads, tags, name) -> Iterator[int]:
             i = u32(sysv + 8 + 4 * nbucket + 4 * i)
 
 
-def resolve(root, path):
+def resolve(root: str, path: str) -> str | None:
     """Follow symlinks component by component INSIDE root: an absolute target is root-relative."""
     parts, cur, i, hops = [p for p in path.split("/") if p], "/", 0, 0
     while i < len(parts):
@@ -212,7 +233,11 @@ def resolve(root, path):
     return cur if os.path.isfile(host(root, cur)) else None
 
 
-def ld_conf_dirs(root, conf="/etc/ld.so.conf", seen=None):
+def ld_conf_dirs(
+    root: str,
+    conf: str = "/etc/ld.so.conf",
+    seen: set[str] | None = None,
+) -> list[str]:
     """ld.so.conf directories in the order ldconfig reads them (includes expanded, sorted)."""
     seen = set() if seen is None else seen
     if conf in seen:
@@ -240,7 +265,7 @@ def ld_conf_dirs(root, conf="/etc/ld.so.conf", seen=None):
     return out
 
 
-def dist_owners(root, site):
+def dist_owners(root: str, site: str) -> list[str]:
     """Distributions whose RECORD installs the `onnxruntime` import package into one site dir."""
     owners = []
     for d in sorted(os.listdir(host(root, site))):
@@ -253,7 +278,7 @@ def dist_owners(root, site):
     return owners
 
 
-def stamp_fields(root, path):
+def stamp_fields(root: str, path: str) -> tuple[str, list[str]] | None:
     """(consumer, sha-like values) of a G2 stamp, or None when it is missing or unreadable."""
     try:
         with open(host(root, path), encoding="utf-8") as fh:
@@ -266,7 +291,7 @@ def stamp_fields(root, path):
     return str(data.get("consumer", "")), shas
 
 
-def file_sha(path):
+def file_sha(path: str) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(CHUNK), b""):
@@ -274,7 +299,7 @@ def file_sha(path):
     return h.hexdigest()
 
 
-def reference_manifest(root, manifest):
+def reference_manifest(root: str, manifest: str) -> None:
     """REF lines from a sha256sum list of the chain wheel's members (built beside the wheel)."""
     try:
         with open(host(root, manifest), encoding="utf-8") as fh:
@@ -287,34 +312,38 @@ def reference_manifest(root, manifest):
 
 
 class Census:
-    def __init__(self, args) -> None:
-        self.root = args.root
-        self.contract = [c.split("|") for c in args.contract]
-        self.sha_cache, self.sites, self.files, self.skipped, self.uses = {}, [], 0, 0, []
-        self.ldpath = [d for d in (args.ld_library_path or "").split(":") if d]
-        self.search = []
+    def __init__(self, args: argparse.Namespace) -> None:
+        self.root: str = args.root
+        self.contract: list[list[str]] = [c.split("|") for c in args.contract]
+        self.sha_cache: dict[str, str] = {}
+        self.sites: list[str] = []
+        self.files = 0
+        self.skipped = 0
+        self.uses: list[tuple[str, list[str], list[str], DynamicInfo]] = []
+        self.ldpath: list[str] = [d for d in (args.ld_library_path or "").split(":") if d]
+        self.search: list[str] = []
         if args.image:
             multi = [posixpath.join(d, n) for d in ("/lib", "/usr/lib") for n in self._list(d)
                      if n.endswith("-linux-gnu")]
             self.search = ld_conf_dirs(self.root) + multi + ["/lib", "/usr/lib", "/lib64", "/usr/lib64"]
 
-    def _list(self, image_dir) -> list[str]:
+    def _list(self, image_dir: str) -> list[str]:
         try:
             return sorted(os.listdir(host(self.root, image_dir)))
         except OSError:
             return []
 
-    def sha(self, image_path):
+    def sha(self, image_path: str) -> str:
         if image_path not in self.sha_cache:
             self.sha_cache[image_path] = file_sha(host(self.root, image_path))
         return self.sha_cache[image_path]
 
-    def entry(self, name):
+    def entry(self, name: str) -> str:
         if not self.contract:
             return "*"
         return next((c[0] for c in self.contract if any(fnmatch.fnmatch(name, g) for g in c[1].split(","))), "")
 
-    def walk(self, top, root):
+    def walk(self, top: str, root: str) -> Iterator[WalkEntry]:
         """(image path, host path, lstat) of every regular file under `top`, one filesystem only."""
         htop = host(root, top)
         try:
@@ -344,10 +373,10 @@ class Census:
                 if stat.S_ISREG(st.st_mode):
                     yield posixpath.join(ipath, n), os.path.join(dirpath, n), st
 
-    def _skip(self, _err) -> None:
+    def _skip(self, _err: OSError) -> None:
         self.skipped += 1
 
-    def members(self, ipath, hpath):
+    def members(self, ipath: str, hpath: str) -> Iterator[ArchiveMember]:
         """(label, name, sha, abi, roots) per native member of an archive; raises on a bad one."""
         with zipfile.ZipFile(hpath) as zf:
             for info in zf.infolist():
@@ -358,14 +387,14 @@ class Census:
                     sha, abi, roots = scan_stream(fh.read)
                 yield ipath + "!" + info.filename, base, sha, abi, roots
 
-    def facts(self, ipath, hpath, st):
+    def facts(self, ipath: str, hpath: str, st: os.stat_result) -> FileFacts:
         """(kind, sha, abi, roots, dyn) of one on-disk file; kind None = not ORT-related."""
         named = bool(INSTANCE.match(posixpath.basename(ipath)))
         if st.st_size == 0:
-            return ("bin", hashlib.sha256(b"").hexdigest(), [], [], {}) if named else (None,) * 5
+            return ("bin", hashlib.sha256(b"").hexdigest(), [], [], {}) if named else EMPTY_FACTS
         with open(hpath, "rb") as fh:
             if fh.read(4) not in MAGIC and not named:
-                return (None,) * 5
+                return EMPTY_FACTS
             with mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) as mm:
                 has_ort = mm.find(b"onnxruntime") != -1
                 abi = sorted(a.decode() for a in ABI if mm.find(a) != -1)
@@ -373,10 +402,10 @@ class Census:
                 if named or roots:
                     return "bin", hashlib.sha256(mm).hexdigest(), abi, roots, {}
                 if not (abi or has_ort):
-                    return (None,) * 5
+                    return EMPTY_FACTS
                 return user_facts(mm, abi, roots)
 
-    def one(self, ipath, hpath, st, kind_ref):
+    def one(self, ipath: str, hpath: str, st: os.stat_result, kind_ref: bool) -> None:
         """Emit the REF/BIN/USE/UNREAD facts of one file (archive members included)."""
         name = posixpath.basename(ipath)
         if name.lower().endswith(ARCHIVE_EXT):
@@ -395,10 +424,20 @@ class Census:
             if INSTANCE.match(name):
                 emit("UNREAD", ipath, exc)
             return
-        if kind:
+        if kind is not None and sha is not None and abi is not None and roots is not None:
             self._record(kind_ref, ipath, name, sha, abi, roots, dyn, kind == "def")
 
-    def _record(self, kind_ref, label, name, sha, abi, roots, dyn, defines=False) -> None:
+    def _record(
+        self,
+        kind_ref: bool,
+        label: str,
+        name: str,
+        sha: str,
+        abi: list[str],
+        roots: list[str],
+        dyn: DynamicInfo | None,
+        defines: bool = False,
+    ) -> None:
         instance = bool(INSTANCE.match(name) or roots) or defines
         # A relative root prints as '.': emit() turns '' into '-', which means "no fingerprint at all".
         joined = "|".join(r or "." for r in roots)
@@ -413,11 +452,11 @@ class Census:
                 if dyn is not None:
                     self.uses.append((label, abi, needed, dyn))
 
-    def ld_lookup(self, importer, dyn, name):
+    def ld_lookup(self, importer: str, dyn: DynamicInfo, name: str) -> str | None:
         """ld.so's order: DT_RPATH (only without DT_RUNPATH), LD_LIBRARY_PATH, DT_RUNPATH, cache, defaults."""
         origin = posixpath.dirname(importer)
 
-        def expand(dirs) -> list[str]:
+        def expand(dirs: list[str]) -> list[str]:
             return [d.replace("${ORIGIN}", origin).replace("$ORIGIN", origin) for d in dirs]
         runpath = expand(dyn.get("runpath", []))
         rpath = [] if runpath else expand(dyn.get("rpath", []))
@@ -427,14 +466,14 @@ class Census:
                 return hit
         return None
 
-    def resolutions(self):
+    def resolutions(self) -> None:
         for importer, abi, needed, dyn in self.uses:
             for name in needed or (["libonnxruntime.so"] if "OrtGetApiBase" in abi else []):
                 hit = self.ld_lookup(importer, dyn, name)
                 emit("RES", importer, name, hit, self.sha(hit) if hit else None)
 
 
-def emit_reference(census, args):
+def emit_reference(census: Census, args: argparse.Namespace) -> None:
     """REF lines for the chain ORT (directories and wheel manifests), CORE lines for its core lib."""
     for ref in args.ref:
         for ipath, hpath, st in census.walk(ref, args.ref_root):
@@ -447,7 +486,7 @@ def emit_reference(census, args):
             emit("CORE", file_sha(host(args.ref_root, hit)), hit)
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", default="/")
     ap.add_argument("--scan", action="append", default=[], help="image path to scan (default /)")

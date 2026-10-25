@@ -6,6 +6,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 WORKER = r"""
@@ -58,7 +59,7 @@ printf 'TAIL:%s\n' "$status"
 """
 
 
-def definitions(paths):
+def definitions(paths: dict[str, pathlib.Path]) -> str:
     harness = ROOT / "linux/scripts/tests/test-harness.sh"
     chunks = []
     for leaf, name in [
@@ -101,7 +102,7 @@ def definitions(paths):
     return "\n".join(chunks)
 
 
-def run(funcs, row):
+def run(funcs: str, row: tuple[str, str, str, str]) -> dict[str, Any]:
     mode = row[1]
     with tempfile.TemporaryDirectory(prefix="ant wheel transport ") as tmp:
         work = pathlib.Path(tmp)
@@ -121,7 +122,7 @@ def run(funcs, row):
             ["/bin/bash", "-c", WORKER, "_", tmp, *row], capture_output=True, timeout=5, check=False
         )
 
-        def clean(b) -> str:
+        def clean(b: bytes) -> str:
             return b.decode().replace(tmp, "[WORK]")
 
         files = {
@@ -156,7 +157,7 @@ rows = list(
 )
 
 
-def main():
+def main() -> bool:
     paths = dict(
         zip(
             ("litert-wheel.sh", "repair-wheels.sh", "common.sh"),

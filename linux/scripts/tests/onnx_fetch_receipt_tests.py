@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections.abc import Mapping
 from pathlib import Path
 
 SOURCE = Path(sys.argv.pop(1))
@@ -50,7 +51,7 @@ cases = [
 
 
 class FetchReceipts(unittest.TestCase):
-    def test_original_fetch_receipts(self):
+    def test_original_fetch_receipts(self) -> None:
         for name, config in cases:
             with (
                 self.subTest(name=name),
@@ -62,7 +63,7 @@ class FetchReceipts(unittest.TestCase):
                 self.assertEqual(EXPECTED[name]["stderr"], actual["stderr"])
 
     @staticmethod
-    def run_fixture(root, config) -> dict[str, int | str]:
+    def run_fixture(root: str, config: Mapping[str, bool | int | str]) -> dict[str, int | str]:
         base = Path(root)
         paths = {
             "start": base / "caller start",
@@ -100,9 +101,8 @@ class FetchReceipts(unittest.TestCase):
         )
         env["PATH"] = str(guard_bin) + os.pathsep + env.get("PATH", "")
         for flag in ("clone", "sync", "update"):
-            env["FAIL_" + flag.upper()] = (
-                str(paths[config[flag]]) if flag in config else ""
-            )
+            destination = config.get(flag)
+            env["FAIL_" + flag.upper()] = str(paths[destination]) if isinstance(destination, str) else ""
         result = subprocess.run(
             [
                 "bash",

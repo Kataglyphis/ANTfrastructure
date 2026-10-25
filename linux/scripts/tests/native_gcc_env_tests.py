@@ -8,10 +8,19 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import TypedDict
 
 TESTS = Path(__file__).resolve().parent
 SCRIPTS = Path(sys.argv.pop(1)).resolve()
 VARIABLES = ("CPATH", "CPPFLAGS", "CFLAGS", "CXXFLAGS", "LIBRARY_PATH")
+
+
+class Capture(TypedDict):
+    status: int
+    stdout: str
+    stderr: str
+
+
 DRIVER = r"""set -euo pipefail
 source "$TESTS/test-harness.sh"
 if [ "$KIND" = torch ]; then
@@ -31,7 +40,9 @@ for name in CPATH CPPFLAGS CFLAGS CXXFLAGS LIBRARY_PATH _idaf _mi _ml; do printf
 """
 
 
-def capture_case(scripts, kind, seed, directories):
+def capture_case(
+    scripts: Path, kind: str, seed: str, directories: str
+) -> Capture:
     with tempfile.TemporaryDirectory(prefix="ant-native-env-") as temporary:
         work = Path(temporary)
         text = (scripts / "06-packaging/setup-torch-venv.sh").read_text()
@@ -75,7 +86,7 @@ def capture_case(scripts, kind, seed, directories):
         }
 
 
-def capture(scripts):
+def capture(scripts: Path) -> dict[str, Capture]:
     receipts = {}
     for kind in ("torch", "profile"):
         for seed in ("unset", "empty", "preset", "late", "twice"):
@@ -92,7 +103,7 @@ def capture(scripts):
 
 
 class NativeEnvironment(unittest.TestCase):
-    def test_original_receipts(self):
+    def test_original_receipts(self: "NativeEnvironment") -> None:
         expected = json.loads(
             Path(__file__).with_name("native-gcc-env-receipts.json").read_text()
         )
@@ -101,7 +112,7 @@ class NativeEnvironment(unittest.TestCase):
             with self.subTest(case=case):
                 self.assertEqual(receipt, actual[case])
 
-    def test_required_companion_and_posix_profile(self):
+    def test_required_companion_and_posix_profile(self: "NativeEnvironment") -> None:
         with tempfile.TemporaryDirectory(prefix="ant-native-profile-") as temporary:
             work = Path(temporary)
             source = (SCRIPTS / "06-packaging/swap-native-gcc.sh").read_text()
@@ -167,7 +178,7 @@ class NativeEnvironment(unittest.TestCase):
             self.assertEqual(1, failed.returncode)
             self.assertIn("missing.sh", failed.stderr)
 
-    def test_docker_closures(self):
+    def test_docker_closures(self: "NativeEnvironment") -> None:
         line = "COPY --chmod=755 linux/scripts/01-core/native-gcc-system-paths.sh /opt/scripts/core/native-gcc-system-paths.sh"
         for stage, executable in (
             ("android", "swap-native-gcc.sh"),
@@ -182,7 +193,7 @@ class NativeEnvironment(unittest.TestCase):
         package = (SCRIPTS.parent / "Dockerfile.package").read_text()
         self.assertIn("COPY linux/scripts/01-core/ /opt/scripts/core/", package)
 
-    def test_explicit_system_paths(self):
+    def test_explicit_system_paths(self: "NativeEnvironment") -> None:
         actual = capture(SCRIPTS)
         line = actual["torch:preset:both"]["stdout"]
         self.assertIn(

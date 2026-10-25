@@ -3,16 +3,15 @@
 
 Predicates are frozen in trailing-conditional.allow; see docs/code-quality-tooling.md#trailing-conditional-returns-trailing-conditional"""
 import argparse
-from collections.abc import Iterator
 import os
 import re
 import sys
+from collections.abc import Iterator, Sequence
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from quality_allow import check_keys, load_keys  # noqa: E402
-
-import gate_scope  # noqa: E402
-from verify_code_size import DEF, ROOT, code_lines, shell_functions  # noqa: E402
+import gate_scope
+from quality_allow import check_keys, load_keys
+from verify_code_size import DEF, ROOT, code_lines, shell_functions
 
 ALLOW = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                      "trailing-conditional.allow")
@@ -24,7 +23,7 @@ CLOSERS = ("done", "fi", "esac", "}")
 CALL = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)(?:\s|$)")
 
 
-def top_ops(code):
+def top_ops(code: str) -> Iterator[tuple[int, str]]:
     """Yield (index, op) for `;`, `&&`, `||`, `|` at paren depth 0 and outside `[[ ]]`, where `|` is regex."""
     depth = bracket = i = 0
     while i < len(code):
@@ -51,7 +50,7 @@ def top_ops(code):
         i += 1
 
 
-def body_lines(body):
+def body_lines(body: list[str]) -> list[str]:
     """code_lines of the body without its head and closing brace, so one-line and multi-line bodies match."""
     lines = code_lines(body)
     if not lines:
@@ -65,7 +64,7 @@ def body_lines(body):
     return lines
 
 
-def last_statement(lines, end):
+def last_statement(lines: list[str], end: int) -> tuple[str, int, int]:
     """(statement, first, last index) of the last statement at or before `end`, continuations joined."""
     while end >= 0 and not lines[end].strip():
         end -= 1
@@ -78,12 +77,12 @@ def last_statement(lines, end):
     return stmt.rstrip(";").strip(), start, end
 
 
-def is_simple(stmt):
+def is_simple(stmt: str) -> bool:
     """No top-level `;`, `&&`, `||` or `|`: the statement is one command."""
     return not any(True for _pair in top_ops(stmt))
 
 
-def unwrap_group(stmt):
+def unwrap_group(stmt: str) -> str:
     """The last inner statement of a `{ ...; }` group, whose status it returns, or ""."""
     if not (stmt.startswith("{") and stmt.endswith("}")):
         return ""
@@ -92,12 +91,12 @@ def unwrap_group(stmt):
     return parts[-1] if parts else ""
 
 
-def closes_a_block(stmt):
+def closes_a_block(stmt: str) -> bool:
     """Is this a bare block closer, which returns its block's status (unlike `done | sort -u`)?"""
     return is_simple(stmt) and stmt.split()[0] in CLOSERS
 
 
-def returned_statement(lines):
+def returned_statement(lines: list[str]) -> tuple[str, int]:
     """(statement, line offset) whose status the function returns, stepping into a closed block."""
     end = len(lines) - 1
     while end >= 0:
@@ -110,7 +109,7 @@ def returned_statement(lines):
     return "", 0
 
 
-def is_finding(stmt):
+def is_finding(stmt: str) -> bool:
     """True when `stmt`'s exit status is a condition's rather than an action's."""
     inner = unwrap_group(stmt)
     if inner:
@@ -129,7 +128,7 @@ def is_finding(stmt):
     return bool(words) and words[0] in TEST_HEAD
 
 
-def delegate(stmt):
+def delegate(stmt: str) -> str:
     """The same-file function a bare trailing call hands its status to, or ""."""
     if not is_simple(stmt):
         return ""
@@ -137,7 +136,7 @@ def delegate(stmt):
     return m.group(1) if m else ""
 
 
-def file_sites(path, rel):
+def file_sites(path: str, rel: str) -> dict[str, str]:
     """{function: site}: direct findings, then functions tail-calling one, to a fixed point."""
     found, calls = {}, {}
     for _r, name, start, body in shell_functions(path, rel):
@@ -157,7 +156,7 @@ def file_sites(path, rel):
             found[n] = calls.pop(n)[1]
 
 
-def _walk_scan(root, tops) -> Iterator[str]:
+def _walk_scan(root: str, tops: Sequence[str]) -> Iterator[str]:
     """Every *.sh under the named top-level directories."""
     for top in tops:
         for base, dirs, files in os.walk(os.path.join(root, top)):
@@ -168,7 +167,7 @@ def _walk_scan(root, tops) -> Iterator[str]:
                     yield os.path.relpath(os.path.join(base, fn), root).replace(os.sep, "/")
 
 
-def scan_paths(root, scan):
+def scan_paths(root: str, scan: Sequence[str] | None) -> list[str]:
     """Files to grade: --scan's walk, the hub's historical walk, or another root's tracked *.sh."""
     if scan:
         return sorted(_walk_scan(root, scan))
@@ -177,14 +176,14 @@ def scan_paths(root, scan):
     return gate_scope.tracked(root, ['*.sh'])
 
 
-def sites(root, rels):
+def sites(root: str, rels: Sequence[str]) -> Iterator[tuple[str, str, str]]:
     """Yield (relpath, function, site) for every trailing-conditional function found."""
     for rel in rels:
         for name, site in file_sites(os.path.join(root, rel), rel).items():
             yield rel, name, site
 
 
-def main():
+def main() -> int:
     ap = argparse.ArgumentParser(description="Fail on new trailing-conditional returns.")
     ap.add_argument("--root", default=None,
                     help="the tree to grade (default: this repo)")
@@ -221,7 +220,7 @@ def main():
         f"{len(allow)} frozen in {os.path.basename(allow_file)}"
     )
 
-    def _site(k) -> str:
+    def _site(k: str) -> str:
         f, n = k.split("\t")
         at = next((s for ff, nn, s in found if ff == f and nn == n), f)
         return f"{n}  ->  {at[:110]}"

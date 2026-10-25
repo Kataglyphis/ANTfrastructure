@@ -5,6 +5,8 @@ import datetime
 import json
 import os
 import re
+from collections.abc import Iterable, Mapping, Sequence
+from typing import Any, Literal, TypedDict
 
 RECAP = re.compile(
     r"^(\S+)\s*:\s*ok=(\d+)\s+changed=(\d+)\s+unreachable=(\d+)\s+failed=(\d+)"
@@ -22,7 +24,24 @@ TAIL_CHARS = 6000
 HISTORY = 10
 
 
-def host_status(counts):
+class HostStatus(TypedDict):
+    name: str
+    status: Literal["unreachable", "failed", "changed", "ok"]
+    ok: int
+    changed: int
+    unreachable: int
+    failed: int
+    skipped: int
+    rescued: int
+    ignored: int
+
+
+class SlowTask(TypedDict):
+    task: str
+    seconds: float
+
+
+def host_status(counts: Mapping[str, int]) -> Literal["unreachable", "failed", "changed", "ok"]:
     """One word per host: unreachable, failed, changed or ok (a rescued task is no failure)."""
     if counts["unreachable"]:
         return "unreachable"
@@ -31,7 +50,7 @@ def host_status(counts):
     return "changed" if counts["changed"] else "ok"
 
 
-def parse(lines):
+def parse(lines: Iterable[str]) -> tuple[list[HostStatus], list[str], list[SlowTask]]:
     """The PLAY RECAP's hosts, profile_tasks' slowest tasks and the notes the playbooks print, in log order."""
     hosts, notes, slowest, in_recap, in_timing = [], [], [], False, False
     for line in lines:
@@ -56,13 +75,13 @@ def parse(lines):
     return hosts, notes, slowest
 
 
-def tail(lines):
+def tail(lines: Sequence[str]) -> str:
     """The log's last lines, as much as fits in TAIL_CHARS."""
     text = "\n".join(line for line in lines[-TAIL_LINES:] if line.strip())
     return text[-TAIL_CHARS:]
 
 
-def seconds_between(started, finished):
+def seconds_between(started: str, finished: str) -> int | None:
     try:
         delta = datetime.datetime.fromisoformat(finished) - datetime.datetime.fromisoformat(started)
     except ValueError:
@@ -70,7 +89,7 @@ def seconds_between(started, finished):
     return int(delta.total_seconds())
 
 
-def build(args, previous):
+def build(args: argparse.Namespace, previous: Mapping[str, Any]) -> dict[str, Any]:
     with open(args.log, encoding="utf-8", errors="replace") as handle:
         lines = [ANSI.sub("", line.rstrip("\n")) for line in handle]
     hosts, notes, slowest = parse(lines)
@@ -98,7 +117,7 @@ def build(args, previous):
     }
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--log", required=True)
     parser.add_argument("--rc", type=int, required=True)

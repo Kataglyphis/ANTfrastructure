@@ -11,7 +11,7 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 
-def fn(path, name):
+def fn(path: pathlib.Path, name: str) -> str:
     harness = ROOT / "linux/scripts/tests/test-harness.sh"
     result = subprocess.run(
         [
@@ -31,7 +31,7 @@ def fn(path, name):
     return result.stdout
 
 
-def gst_blocks(text, current):
+def gst_blocks(text: str, current: bool) -> list[str]:
     if current:
         return [
             text[m.start() : text.index("\nfi", m.start()) + 3]
@@ -88,7 +88,7 @@ printf 'TAIL:%s\n' "$status"
 """
 
 
-def sources(root):
+def sources(root: pathlib.Path) -> dict[str, str]:
     litert = root / "linux/scripts/03-media/build/litert/build-litert.sh"
     torch = root / "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh"
     setup = root / "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh"
@@ -129,7 +129,7 @@ def sources(root):
     return definitions
 
 
-def cases():
+def cases() -> list[tuple[str, ...]]:
     rows = []
     for caller, p, m, t, c, s, i in itertools.product(
         ("litert", "torch"),
@@ -172,7 +172,9 @@ def cases():
     return rows
 
 
-def capture(functions, row):
+def capture(
+    functions: dict[str, str], row: tuple[str, ...]
+) -> dict[str, int | str]:
     with tempfile.TemporaryDirectory(prefix="ant wheel tag ") as directory:
         work = pathlib.Path(directory)
         (work / "trace").write_bytes(b"")
@@ -184,7 +186,7 @@ def capture(functions, row):
             check=False,
         )
 
-        def clean(value) -> str:
+        def clean(value: bytes) -> str:
             return re.sub(
                 r": line [0-9]+:",
                 ": line [LINE]:",
@@ -200,7 +202,7 @@ def capture(functions, row):
         }
 
 
-def main():
+def main() -> bool:
     root = pathlib.Path(sys.argv[1]).resolve()
     functions = sources(root)
     expected = json.loads(

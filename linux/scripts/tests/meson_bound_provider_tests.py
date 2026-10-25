@@ -62,7 +62,7 @@ if [[ "$family" = gst ]]; then cat "$MESON_CROSS_FILE"; fi
 """
 
 
-def source_parts():
+def source_parts() -> tuple[str, dict[str, str]]:
     common = SCRIPTS / "01-core/common.sh"
     owner = "\n".join(
         function(common, name)
@@ -102,7 +102,9 @@ EXPECTED_FLAGS = {
 }
 
 
-def expected_receipt(family, phase, missing):
+def expected_receipt(
+    family: str, phase: str, missing: str
+) -> tuple[int, str, str]:
     if missing != "none" and (
         family == "gst" or missing == "append_available_meson_provider"
     ):
@@ -115,7 +117,7 @@ def expected_receipt(family, phase, missing):
     return 0, EXPECTED_FLAGS[family, phase], ""
 
 
-def main():
+def main() -> None:
     owner, callers = source_parts()
     checks = 0
     cases = [

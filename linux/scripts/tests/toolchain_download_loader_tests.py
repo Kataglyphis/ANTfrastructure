@@ -5,6 +5,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+from typing import NotRequired, TypedDict
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 CONTEXT = ROOT / 'linux/scripts/tests/shell-context-fixture.sh'
@@ -13,15 +14,70 @@ from verify_dockerfile_context_paths import copy_sources
 from verify_dockerfile_env_order import instructions
 
 
-def scenarios():
+class Scenario(TypedDict):
+    caller: str
+    layout: str
+    available: str
+    preloaded: bool
+    context: str
+    outer: str
+    bootstrap: NotRequired[str]
+
+
+class Receipt(TypedDict):
+    rc: int
+    out: str
+    err: str
+    trace: str
+
+
+class ScenarioReceipt(TypedDict):
+    case: Scenario
+    receipt: Receipt
+
+
+def _scenario(row: dict[str, str | bool]) -> Scenario:
+    caller = row["caller"]
+    layout = row["layout"]
+    available = row["available"]
+    preloaded = row["preloaded"]
+    context = row["context"]
+    outer = row["outer"]
+    if (
+        not isinstance(caller, str)
+        or not isinstance(layout, str)
+        or not isinstance(available, str)
+        or not isinstance(context, str)
+        or not isinstance(outer, str)
+    ):
+        raise TypeError("scenario text fields must be strings")
+    if not isinstance(preloaded, bool):
+        raise TypeError("scenario preloaded flag must be a boolean")
+    scenario: Scenario = {
+        "caller": caller,
+        "layout": layout,
+        "available": available,
+        "preloaded": preloaded,
+        "context": context,
+        "outer": outer,
+    }
+    bootstrap = row.get("bootstrap")
+    if bootstrap is not None:
+        if not isinstance(bootstrap, str):
+            raise TypeError("scenario bootstrap state must be a string")
+        scenario["bootstrap"] = bootstrap
+    return scenario
+
+
+def scenarios() -> list[Scenario]:
     available = ('both', 'repo', 'installed', 'none', 'before-error', 'after-error', 'readonly', 'already-loaded')
     keys = ('caller', 'layout', 'available', 'preloaded', 'context', 'outer')
     values = itertools.product(('android-sdk.sh', 'vulkan.sh'), ('tree', 'flat'), available, (False, True),
                                ('direct', 'conditional'), ('relaxed', 'strict'))
-    return [dict(zip(keys, row, strict=True)) for row in values]
+    return [_scenario(dict(zip(keys, row, strict=True))) for row in values]
 
 
-def loader(text):
+def loader(text: str) -> str:
     old = 'if ! command -v download_file >/dev/null 2>&1; then'
     if old in text:
         start = text.index(old)
@@ -32,14 +88,20 @@ def loader(text):
     return text[start:end]
 
 
-def source_module(actual, label, available):
+def source_module(actual: str, label: str, available: str) -> str:
     trace = f'printf "source:{label}\\n" >> "$WORK/trace"\n'
     if label == 'repo' and available == 'before-error':
         return trace + 'return 7\n' + actual
     return trace + actual + ('\nreturn 7\n' if label == 'repo' and available == 'after-error' else '')
 
 
-def prepare(work, row, blocks, bootstrap, actual):
+def prepare(
+    work: pathlib.Path,
+    row: Scenario,
+    blocks: dict[str, str],
+    bootstrap: str,
+    actual: str,
+) -> pathlib.Path:
     directory = work / 'scripts' / ('02-toolchain' if row['layout'] == 'tree' else '')
     directory.mkdir(parents=True)
     repository = directory.parent / '01-core'
@@ -88,7 +150,9 @@ declare -f download_file die || true
 '''
 
 
-def capture(row, blocks, bootstrap, actual):
+def capture(
+    row: Scenario, blocks: dict[str, str], bootstrap: str, actual: str
+) -> Receipt:
     with tempfile.TemporaryDirectory(prefix='ant downloads scope ') as directory:
         work = pathlib.Path(directory)
         caller = prepare(work, row, blocks, bootstrap, actual)
@@ -99,22 +163,31 @@ def capture(row, blocks, bootstrap, actual):
                 'err': result.stderr.replace(directory, '[WORK]'), 'trace': (work / 'trace').read_text()}
 
 
-def receipts(toolchain, downloads):
+def receipts(toolchain: pathlib.Path, downloads: pathlib.Path) -> list[ScenarioReceipt]:
     blocks = {leaf: loader((toolchain / leaf).read_text()) for leaf in ('android-sdk.sh', 'vulkan.sh')}
     bootstrap = (toolchain / 'bootstrap.sh').read_text()
     actual = downloads.read_text()
     return [{'case': row, 'receipt': capture(row, blocks, bootstrap, actual)} for row in scenarios()]
 
 
-def bootstrap_failures(blocks, bootstrap, actual):
+def bootstrap_failures(
+    blocks: dict[str, str], bootstrap: str, actual: str
+) -> tuple[int, list[str]]:
     failures = []
     assertions = 0
     for caller, layout, preloaded, context, failure in itertools.product(
         ('android-sdk.sh', 'vulkan.sh'), ('tree', 'flat'), (False, True),
         ('direct', 'conditional'), ('missing', 'return-error')
     ):
-        row = {'caller': caller, 'layout': layout, 'preloaded': preloaded, 'context': context,
-               'available': 'both', 'outer': 'relaxed', 'bootstrap': failure}
+        row: Scenario = {
+            'caller': caller,
+            'layout': layout,
+            'preloaded': preloaded,
+            'context': context,
+            'available': 'both',
+            'outer': 'relaxed',
+            'bootstrap': failure,
+        }
         result = capture(row, blocks, bootstrap, actual)
         status = 1 if failure == 'missing' else 7
         caught = caller == 'vulkan.sh' and context == 'conditional'
@@ -128,7 +201,7 @@ def bootstrap_failures(blocks, bootstrap, actual):
     return assertions, failures
 
 
-def copy_mappings(stage):
+def copy_mappings(stage: str) -> dict[str, tuple[str, bool]]:
     actual = {}
     for _, line in instructions(ROOT / 'linux' / f'Dockerfile.{stage}'):
         sources = copy_sources(line)
@@ -148,7 +221,7 @@ def copy_mappings(stage):
     return actual
 
 
-def copied_companions():
+def copied_companions() -> tuple[int, list[str]]:
     expected = {
         'android': {'/opt/scripts/android-sdk.sh': 'android-sdk.sh', '/opt/scripts/bootstrap.sh': 'bootstrap.sh',
                     '/opt/scripts/bootstrap-import.sh': 'bootstrap-import.sh'},
@@ -171,7 +244,7 @@ def copied_companions():
     return assertions, failures
 
 
-def copied_vulkan_probe():
+def copied_vulkan_probe() -> tuple[int, list[str]]:
     mappings = copy_mappings('torch')
     with tempfile.TemporaryDirectory(prefix='ant copied Vulkan ') as directory:
         work = pathlib.Path(directory)
@@ -196,7 +269,7 @@ def copied_vulkan_probe():
     return len(checks), failures
 
 
-def main():
+def main() -> int:
     toolchain, downloads = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
     expected = json.loads(pathlib.Path(__file__).with_name('toolchain-download-loader-receipts.json').read_text())
     current = receipts(toolchain, downloads)

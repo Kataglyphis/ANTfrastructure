@@ -24,11 +24,11 @@ actions, reusable workflows, shell libraries and gates serve the family at `@dev
 
 ## Highlights
 
-- **One multi-arch `:latest`** for Linux: ONNX Runtime (+GenAI), OpenCV, FFmpeg, GStreamer, LiteRT, TVM, IREE.
+- **One multi-arch `:latest`** for Linux: ONNX Runtime (+GenAI), OpenCV, FFmpeg, GStreamer, LiteRT, TVM, IREE ([GenAI smoke contract](docs/gen1-riscv64-genai.md)).
 - **A Windows build image**, `:winamd64`, with MSVC, clang-cl, DirectML and HailoRT; `:winarm64` is its arm64 bundle.
 - **Accelerators**: Hailo-10H in `:latest`, CUDA and DeepStream in `:latest-nvidia`, MIGraphX in `:latest-rocm`.
 - **The family's CI surface**: composite actions and reusable workflows, called at `@develop`.
-- **Gates that fail loudly**: a shell preflight, a mutation gate that proves each gate can go red, runtime smokes.
+- **Gates that fail loudly**: a shell preflight, a mutation gate that proves each gate can go red, runtime smokes ([ORT census failure contract](docs/failure-modes.md#the-torch-stage-fails-with-ort-census-fail)).
 - **Home-lab stacks, deliberately here**: an Ollama + Open WebUI server, Home Assistant, Nextcloud AIO, Ansible.
 
 ## Quick start
@@ -46,7 +46,7 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --lo
 ```
 
 A fresh host starts at [Linux Host Setup](docs/linux-host-setup.md) or [Windows Host Setup](docs/windows-host-setup.md).
-Generated logs and test reports go in ignored `logs/`; PowerShell complexity JSON stays in `out/complexity/`.
+From Ubuntu WSL2, run `bash linux/scripts/wsl-quality.sh setup` to install pinned tools, then `bash linux/scripts/wsl-quality.sh check` to run Linux and PowerShell checks. Generated logs, test reports and complexity metrics go in ignored `logs/`.
 
 ## Published images
 
@@ -67,13 +67,13 @@ Registry `ghcr.io/kataglyphis/kataglyphis_beschleuniger`, one manifest per tag o
 | --- | --- |
 | Find a topic or build the docs locally | [docs/INDEX.md](docs/INDEX.md) · [Locked docs setup](docs/project-info.md#building-the-hubs-docs) |
 | Wire a new project or reuse build, installer, discovery, reporting and process helpers | [Adoption](docs/adopting-in-a-new-project.md) · [Shared libraries](docs/shared-script-libraries.md) · [Image defaults](.github/actions/README.md#the-two-images-and-the-one-place-they-are-named) |
-| Upgrade dependencies, Renovate as a local CLI | [docs/dependency-updates.md](docs/dependency-updates.md) |
+| Upgrade dependencies and verify checksum refreshes; Renovate as a local CLI | [docs/dependency-updates.md](docs/dependency-updates.md) |
 | See what is published, how the chain is laid out, what is in it | [docs/overview.md](docs/overview.md) |
-| Build and accept the Linux images | [Basics](docs/linux-build-basics.md) · [Cross builds](docs/linux-cross-builds.md) · [Accelerators](docs/linux-accelerator-images.md) · [Consumer acceptance](docs/image-acceptance.md) |
+| Build and accept Linux images and smoke-test Flutter web builds | [Basics](docs/linux-build-basics.md) · [Cross builds](docs/linux-cross-builds.md) · [Accelerators](docs/linux-accelerator-images.md) · [Consumer acceptance](docs/image-acceptance.md) · [Python app bundles](docs/python-app-bundles.md) · [Python venv and TVM smoke coverage, including VENV-SET](docs/cross-build-verification.md#smoke-torch-venv-what-the-venv-assertions-cover) · [Webserver and browser smoke helpers](linux/webserver/README.md) |
 | Build the Windows image, and its arm64 bundle | [docs/windows-builds.md](docs/windows-builds.md) · [docs/windows-build-lanes.md](docs/windows-build-lanes.md) · [docs/windows-cross-builds.md](docs/windows-cross-builds.md) · [ROCm details](docs/windows-rocm.md) |
 | Look up an error message | [docs/failure-modes.md](docs/failure-modes.md) |
 | Run quality lanes by hand or see their triggers | [docs/ci-build-triggers.md](docs/ci-build-triggers.md) |
-| Know every quality gate, the exception policy and shared build behavior | [Locked ty, Playwright, WebDAV and 29-file Ruff gate](docs/code-quality-tooling.md#python-type-analysis) · [Shell return-status gate](docs/code-quality-tooling.md#trailing-conditional-returns-trailing-conditional) · [ShellCheck warning ratchet](docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings) · [Quality tooling and duplication scan boundaries](docs/code-quality-tooling.md#the-allowlist-contract) · [Gate registry](docs/code-quality-gates.md) · [Test worker, timeout and process cleanup](docs/code-quality-tooling.md#the-gates-run-side-by-side) · [Linux compiler, APT and privilege policies](docs/shared-script-libraries.md) · [Windows dependency graphs, bounded TCP probes and fixtures](docs/windows-builds.md#shared-windows-behavior) |
+| Know every quality gate, the exception policy and shared build behavior | [Python type, Ruff annotation and UTF-8 source-mapped heredoc checks for Linux and Windows](docs/code-quality-tooling.md#python-type-analysis) · [Shell return-status gate](docs/code-quality-tooling.md#trailing-conditional-returns-trailing-conditional) · [ShellCheck warning ratchet, with bounded Windows batches](docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings) · [Quality tooling and duplication scan boundaries](docs/code-quality-tooling.md#the-allowlist-contract) · [Gate registry](docs/code-quality-gates.md) · [Test worker, timeout and process cleanup](docs/code-quality-tooling.md#the-gates-run-side-by-side) · [Linux compiler, APT and privilege policies](docs/shared-script-libraries.md) · [Windows dependency graphs, bounded TCP probes and fixtures](docs/windows-builds.md#shared-windows-behavior) |
 | Check CI test reports and consumer quality wiring | [Python report gate](docs/code-quality-tooling.md#python-test-report-integrity) · [Python CI artifact uploads](docs/python-ci.md#test-artifact-uploads) · [Windows Pester coverage for 15 modules](docs/code-quality-tooling.md#windows-pester-coverage) · [Consumer inventory](docs/consumer-inventory.md#the-consumer-inventory) |
 | Check Windows PowerShell complexity | [Scanner, limits and ignored report folder](docs/code-quality-tooling.md#windows-powershell-complexity) |
 | Know what is inside an image, and under which licence | [docs/third-party-licenses.md](docs/third-party-licenses.md) · [docs/sbom.md](docs/sbom.md) · [docs/vulnerability-scanning.md](docs/vulnerability-scanning.md) |
@@ -97,4 +97,4 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 
 ## Contributing and contact
 
-Contribute with `make hooks` and `make preflight`; see [family rules](docs/repository-family.md) and [AGENTS.md § Validation](AGENTS.md#validation). Licence: MIT, see [LICENSE](LICENSE).
+Contribute by reusing shared repo and submodule functionality first; run `make hooks` and `make preflight`. See [adoption rules](docs/adopting-in-a-new-project.md#reuse-before-adding-functionality), [family rules](docs/repository-family.md) and [AGENTS.md § Validation](AGENTS.md#validation). Licence: MIT, see [LICENSE](LICENSE).

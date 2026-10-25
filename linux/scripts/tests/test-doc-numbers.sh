@@ -60,10 +60,10 @@ def fast_slugs(root):
 def census(root):
     """The three --census headline counts, read back through the gate's own CLI."""
     out = subprocess.run([sys.executable, os.path.join(root, CENSUS_GATE), "--census"],
-                         capture_output=True, text=True).stdout
+                         capture_output=True, text=True, check=False).stdout
     hit = CENSUS_LINE.search(out)
     if not hit:
-        raise SystemExit("census: %s --census printed no header line" % CENSUS_GATE)
+        raise SystemExit(f"census: {CENSUS_GATE} --census printed no header line")
     return dict(zip(CENSUS_KEYS, (int(g) for g in hit.groups())))
 
 
@@ -81,13 +81,11 @@ def truth(root):
 def check_totals(root, t, out):
     hits = TOTALS.findall(read(root, OWNER))
     if len(hits) != 1:
-        out.append("totals: %s must carry the authority line exactly once, found %d"
-                   % (OWNER, len(hits)))
+        out.append(f"totals: {OWNER} must carry the authority line exactly once, found {len(hits)}")
         return
     got = (int(hits[0][0]), int(hits[0][1]))
     if got != (t["total"], t["distinct"]):
-        out.append("totals: %s says %s, mutations.json has (%d, %d)"
-                   % (OWNER, got, t["total"], t["distinct"]))
+        out.append(f"totals: {OWNER} says {got}, mutations.json has ({t['total']}, {t['distinct']})")
 
 
 def check_family(root, t, out):
@@ -95,27 +93,25 @@ def check_family(root, t, out):
         for num, _mid, prefix in FAMILY.findall(read(root, rel)):
             have = t["fam"].get(prefix)
             if have is None:
-                out.append("family: %s quotes prefix %s, which no id carries" % (rel, prefix))
+                out.append(f"family: {rel} quotes prefix {prefix}, which no id carries")
             elif int(num) != have:
-                out.append("family: %s says %s entries for %s.*, manifest has %d"
-                           % (rel, num, prefix, have))
+                out.append(f"family: {rel} says {num} entries for {prefix}.*, manifest has {have}")
 
 
 def check_bare(root, _t, out):
     for rel in MIRRORS:
         for hit in BARE.findall(read(root, rel)):
-            out.append("bare-total: %s re-quotes the manifest total (%r); %s owns it"
-                       % (rel, hit, OWNER))
+            out.append(f"bare-total: {rel} re-quotes the manifest total ({hit!r}); {OWNER} owns it")
 
 
 def check_fast(root, t, out):
     for rel in MIRRORS:
         hits = FAST.findall(read(root, rel))
         if not hits:
-            out.append("fast-slugs: %s no longer states the hook's fast-slug count" % rel)
+            out.append(f"fast-slugs: {rel} no longer states the hook's fast-slug count")
         for num in hits:
             if int(num) != t["fast"]:
-                out.append("fast-slugs: %s says %s, the hook lists %d" % (rel, num, t["fast"]))
+                out.append(f"fast-slugs: {rel} says {num}, the hook lists {t['fast']}")
 
 
 def check_span(root, t, out):
@@ -124,8 +120,7 @@ def check_span(root, t, out):
         for first, last in SPAN.findall(read(root, rel)):
             seen += 1
             if (int(first), int(last)) != t["span"]:
-                out.append("fast-span: %s says :%s-%s, _FAST_SLUGS spans :%d-%d"
-                           % (rel, first, last, t["span"][0], t["span"][1]))
+                out.append(f"fast-span: {rel} says :{first}-{last}, _FAST_SLUGS spans :{t['span'][0]}-{t['span'][1]}")
     if not seen:
         out.append("fast-span: no page quotes the _FAST_SLUGS line span any more")
 
@@ -135,11 +130,9 @@ def check_census(root, t, out):
     for key, rx in CENSUS:
         hits = rx.findall(page)
         if len(hits) != 1:
-            out.append("census: %s must quote the %s count exactly once, found %d"
-                       % (OWNER, key, len(hits)))
+            out.append(f"census: {OWNER} must quote the {key} count exactly once, found {len(hits)}")
         elif int(hits[0]) != t["census"][key]:
-            out.append("census: %s says %s for %s, --census reports %d"
-                       % (OWNER, hits[0], key, t["census"][key]))
+            out.append(f"census: {OWNER} says {hits[0]} for {key}, --census reports {t['census'][key]}")
 
 
 CHECKS = (check_totals, check_family, check_bare, check_fast, check_span, check_census)
@@ -149,19 +142,18 @@ def rewrite(root, t):
     done = []
     for rel in (OWNER,) + MIRRORS:
         before = read(root, rel)
-        after = TOTALS.sub(lambda m: "**%d entries** over **%d distinct test commands**"
-                           % (t["total"], t["distinct"]), before)
-        after = FAMILY.sub(lambda m: "%d%s(`%s.*`)"
-                           % (t["fam"].get(m.group(3), int(m.group(1))), m.group(2), m.group(3)),
+        after = TOTALS.sub(lambda _m: f"**{t['total']} entries** over **{t['distinct']} distinct test commands**",
+                           before)
+        after = FAMILY.sub(lambda m: f"{t['fam'].get(m.group(3), int(m.group(1)))}{m.group(2)}(`{m.group(3)}.*`)",
                            after)
         after = FAST.sub(lambda m: m.group(0).replace(m.group(1), str(t["fast"]), 1), after)
-        after = SPAN.sub("`_FAST_SLUGS` (`:%d-%d`)" % t["span"], after)
+        after = SPAN.sub(f"`_FAST_SLUGS` (`:{t['span'][0]}-{t['span'][1]}`)", after)
         for key, rx in CENSUS:
             after = rx.sub(lambda m, k=key: m.group(0).replace(
                 m.group(1), str(t["census"][k]), 1), after)
         if after != before:
             write(root, rel, after)
-            done.append("updated: %s" % rel)
+            done.append(f"updated: {rel}")
     return done
 
 
@@ -174,9 +166,9 @@ def main():
         lines = []
         for check in CHECKS:
             check(root, t, lines)
-    print("derived: total=%d distinct=%d fast=%d span=%d-%d census=%s"
-          % (t["total"], t["distinct"], t["fast"], t["span"][0], t["span"][1],
-             "/".join(str(t["census"][k]) for k in CENSUS_KEYS)))
+    print(f"derived: total={t['total']} distinct={t['distinct']} fast={t['fast']} "
+          f"span={t['span'][0]}-{t['span'][1]} census="
+          f"{'/'.join(str(t['census'][k]) for k in CENSUS_KEYS)}")
     print("\n".join(lines))
 
 

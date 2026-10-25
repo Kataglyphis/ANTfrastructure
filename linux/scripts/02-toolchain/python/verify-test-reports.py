@@ -2,10 +2,10 @@
 """Reject empty Python test and coverage reports before CI accepts a leg."""
 
 import argparse
-from decimal import Decimal, InvalidOperation
-from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 
 def junit_passes(path: Path) -> int:

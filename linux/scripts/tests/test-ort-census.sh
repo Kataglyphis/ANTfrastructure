@@ -171,7 +171,8 @@ data += struct.pack("<IIQQQQQQ", 1, 5, 0, 0, 0, total, total, 0x1000)
 data += struct.pack("<IIQQQQQQ", 2, 6, dyn_off, dyn_off, dyn_off, dyn_size, dyn_size, 8)
 data += b"".join(struct.pack("<qQ", t, v) for t, v in dyn) + struct.pack("<qQ", 5, str_off) + struct.pack("<qQ", 0, 0)
 data += syms + strtab + payload
-open(path, "wb").write(data + b"\0" * (total - len(data)))
+with open(path, "wb") as fh:
+    fh.write(data + b"\0" * (total - len(data)))
 PY
 }
 CHAIN_SRC=/opt/onnxruntime/onnxruntime/core/session/inference_session.cc
@@ -210,9 +211,11 @@ t_case "the fingerprint is a whole NUL-terminated ORT source path; a directory l
 _roots() {
   MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "${PY}" - "$(_ort_host_dir "${PKG}")" "${FFMPEG_CONFIG}" <<'PY' | tr -d '\r'
 import sys
+
 sys.dont_write_bytecode = True  # no __pycache__ in a tree that is a build context
 sys.path.insert(0, sys.argv[1])
 import ort_census_probe as p
+
 FFMPEG_CONFIG = sys.argv[2]
 print(";".join("|".join(r or "." for r in p.roots_in(buf)) for buf in (
     b"\0/opt/onnxruntime/onnxruntime/core/session/inference_session.cc\0",

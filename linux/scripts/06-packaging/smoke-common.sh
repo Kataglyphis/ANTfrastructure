@@ -361,7 +361,7 @@ try:
     import numpy as np
     import onnxruntime as ort
 except Exception as exc:
-    print("ONNX-EP SKIP: onnxruntime/numpy unavailable (%s)" % exc)
+    print(f"ONNX-EP SKIP: onnxruntime/numpy unavailable ({exc!s})")
     sys.exit(3)
 
 
@@ -412,11 +412,12 @@ sess = ort.InferenceSession(model, providers=["CPUExecutionProvider"])
 out = sess.run(None, {"X": np.array([[1, 2, 3, 4]], np.float32),
                       "Y": np.array([[10, 20, 30, 40]], np.float32)})[0]
 if out.tolist() != [[11.0, 22.0, 33.0, 44.0]]:
-    print("ONNX-EP FAIL: Add graph returned %r" % (out.tolist(),))
+    print(f"ONNX-EP FAIL: Add graph returned {out.tolist()!r}")
     sys.exit(1)
-print("ONNX-EP OK: onnxruntime %s served the graph on %s (available: %s)"
-      % (ort.__version__, ",".join(sess.get_providers()),
-         ",".join(ort.get_available_providers())))
+print(
+    f"ONNX-EP OK: onnxruntime {ort.__version__} served the graph on "
+    f"{','.join(sess.get_providers())} (available: {','.join(ort.get_available_providers())})"
+)
 ONNX_PY
 }
 
@@ -425,7 +426,8 @@ ONNX_PY
 # env inputs, the ELF machine table, and the import gate (SKIP vs FAIL).
 _smoke_genai_py_preamble() {
   cat <<'GENAI_PY_HEAD'
-import os, sys
+import os
+import sys
 
 EXPECT_VERSION = os.environ.get("GENAI_EXPECT_VERSION", "").strip().lstrip("vV")
 EXPECT_ARCH = os.environ.get("GENAI_EXPECT_ARCH", "").strip()
@@ -436,10 +438,12 @@ ELF_MACHINE = {"amd64": (62, "X86-64"), "arm64": (183, "AArch64"),
                "riscv64": (243, "RISC-V"), "386": (3, "Intel 80386")}
 
 proven, unproven, fails = [], [], []
+IMPORT_FAILURES = (ImportError, OSError, RuntimeError)
+NATIVE_FAILURES = (AttributeError, OSError, RuntimeError, TypeError, ValueError)
 
 
 def record_exception(operation, exc):
-    fails.append("%s raised %s: %s" % (operation, type(exc).__name__, exc))
+    fails.append(f"{operation} raised {type(exc).__name__}: {exc!s}")
 
 
 def genai_dist_version():
@@ -447,10 +451,7 @@ def genai_dist_version():
     import importlib.metadata as M
     import re
     for d in M.distributions():
-        try:
-            name = re.sub(r"[-_.]+", "-", d.metadata["Name"] or "").lower()
-        except Exception:
-            continue
+        name = re.sub(r"[-_.]+", "-", d.metadata.get("Name", "") or "").lower()
         if re.fullmatch(r"onnxruntime-genai(-[a-z0-9-]+)?", name):
             return d.version
     return None
@@ -458,22 +459,27 @@ def genai_dist_version():
 
 try:
     import onnxruntime_genai as og
-except Exception as exc:
+except IMPORT_FAILURES as exc:
     # Installed-but-unimportable is a DEFECT, not a SKIP; tell them apart by
     # asking whether the DISTRIBUTION is present. docs/failure-modes.md
     _dist = None
     try:
         _dist = genai_dist_version()
-    except Exception:
-        _dist = None
+    except (OSError, ValueError) as metadata_error:
+        print(
+            f"GENAI-BIND FAIL: cannot inspect installed GenAI metadata "
+            f"({type(metadata_error).__name__}: {metadata_error!s})"
+        )
+        sys.exit(1)
     if _dist is not None:
-        print("GENAI-BIND FAIL: onnxruntime_genai %s is INSTALLED but not importable "
-              "(%s: %s)" % (_dist, type(exc).__name__, exc))
+        print(
+            f"GENAI-BIND FAIL: onnxruntime_genai {_dist} is INSTALLED but not importable "
+                f"({type(exc).__name__}: {exc!s})"
+        )
         print("  -- the distribution is present, so this is a BROKEN native binding,")
         print("     not an arch without a wheel. Check the .so's NEEDED/undefined symbols.")
         sys.exit(1)
-    print("GENAI-BIND SKIP: onnxruntime_genai is not installed (%s: %s)"
-          % (type(exc).__name__, exc))
+    print(f"GENAI-BIND SKIP: onnxruntime_genai is not installed ({type(exc).__name__}: {exc!s})")
     print("  -- absence is not judged here; the ARCH-PARITY table owns 'is this")
     print("     wheel supposed to exist on this arch'.")
     sys.exit(3)
@@ -487,18 +493,15 @@ _smoke_genai_py_tier1_version() {
 # ── tier 1: version, against the versions.env BUILD pin ────────────────────
 version = getattr(og, "__version__", None)
 if not version:
-    try:
-        version = genai_dist_version()
-    except Exception:
-        version = None
+    version = genai_dist_version()
 if not version:
     fails.append("onnxruntime_genai exposes no __version__ and no dist metadata")
 elif not EXPECT_VERSION:
     unproven.append("version (no GENAI_EXPECT_VERSION passed in)")
 elif version.split("+")[0] != EXPECT_VERSION:
-    fails.append("version %s != versions.env pin %s" % (version, EXPECT_VERSION))
+    fails.append(f"version {version} != versions.env pin {EXPECT_VERSION}")
 else:
-    proven.append("__version__ %s matches the build pin" % version)
+    proven.append(f"__version__ {version} matches the build pin")
 
 GENAI_PY_T1
 }
@@ -509,10 +512,8 @@ _smoke_genai_py_tier2_elf() {
 # ── tier 2: the pybind extension is TARGET-arch ELF ────────────────────────
 # __file__ is the module the interpreter actually loaded, not the wheel's tag.
 ext_path = None
-try:
-    ext_path = getattr(og.onnxruntime_genai, "__file__", None)
-except Exception:
-    pass
+loaded_extension = getattr(og, "onnxruntime_genai", None)
+ext_path = getattr(loaded_extension, "__file__", None)
 if not ext_path:
     for _m in sys.modules.values():
         _f = getattr(_m, "__file__", "") or ""
@@ -529,26 +530,31 @@ else:
         with open(ext_path, "rb") as fh:
             head = fh.read(20)
     except OSError as exc:
-        fails.append("cannot read the loaded extension %s (%s: %s)"
-                     % (ext_path, type(exc).__name__, exc))
+        fails.append(f"cannot read the loaded extension {ext_path} ({type(exc).__name__}: {exc!s})")
     if head is None:
         pass
     elif head[:4] != b"\x7fELF":
-        fails.append("%s is not an ELF object" % ext_path)
+        fails.append(f"{ext_path} is not an ELF object")
     else:
         little = head[5] == 1
         machine = int.from_bytes(head[18:20], "little" if little else "big")
         want = ELF_MACHINE.get(EXPECT_ARCH)
         if not EXPECT_ARCH:
-            unproven.append("extension ELF machine (no GENAI_EXPECT_ARCH passed in; read e_machine=%d)" % machine)
+            unproven.append(
+                f"extension ELF machine (no GENAI_EXPECT_ARCH passed in; read e_machine={machine})"
+            )
         elif not want:
-            unproven.append("extension ELF machine (arch %r not in the table)" % EXPECT_ARCH)
+            unproven.append(f"extension ELF machine (arch {EXPECT_ARCH!r} not in the table)")
         elif machine != want[0]:
-            fails.append("%s has ELF machine %d, expected %d (%s) for %s"
-                         % (os.path.basename(ext_path), machine, want[0], want[1], EXPECT_ARCH))
+            fails.append(
+                f"{os.path.basename(ext_path)} has ELF machine {machine}, expected "
+                f"{want[0]} ({want[1]}) for {EXPECT_ARCH}"
+            )
         else:
-            proven.append("native extension %s is %s ELF (e_machine=%d)"
-                          % (os.path.basename(ext_path), want[1], machine))
+            proven.append(
+                f"native extension {os.path.basename(ext_path)} is {want[1]} ELF "
+                f"(e_machine={machine})"
+            )
 
 GENAI_PY_T2
 }
@@ -559,7 +565,7 @@ _smoke_genai_py_tier3_native() {
 # ── tier 3: native code RUNS (no model weights required) ───────────────────
 for _name in ("Config", "Model", "Tokenizer", "GeneratorParams", "Generator", "Tensor"):
     if not hasattr(og, _name):
-        fails.append("og.%s missing -- the pybind module loaded but is incomplete" % _name)
+        fails.append(f"og.{_name} missing -- the pybind module loaded but is incomplete")
 
 caps = []
 for _fn in ("is_cuda_available", "is_webgpu_available", "is_qnn_available"):
@@ -567,32 +573,32 @@ for _fn in ("is_cuda_available", "is_webgpu_available", "is_qnn_available"):
     if _f is None:
         continue
     try:
-        caps.append("%s=%s" % (_fn[3:-10], bool(_f())))
-    except Exception as exc:
-        fails.append("og.%s() raised %s: %s -- the native symbol did not resolve"
-                     % (_fn, type(exc).__name__, exc))
+        caps.append(f"{_fn[3:-10]}={bool(_f())}")
+    except NATIVE_FAILURES as exc:
+        fails.append(
+            f"og.{_fn}() raised {type(exc).__name__}: {exc!s} -- the native symbol did not resolve"
+        )
 if caps:
-    proven.append("native capability predicates executed (%s)" % ", ".join(caps))
+    proven.append(f"native capability predicates executed ({', '.join(caps)})")
 
 # OgaTensor round-trip: real C++ work (dtype/shape/copy-back), zero model bytes.
 try:
     import numpy as np
-except Exception as exc:
+except IMPORT_FAILURES as exc:
     np = None
-    unproven.append("og.Tensor round-trip (numpy unavailable in this venv: %s)" % exc)
+    unproven.append(f"og.Tensor round-trip (numpy unavailable in this venv: {exc!s})")
 if np is not None and hasattr(og, "Tensor"):
     try:
         src = np.array([[1.5, 2.5, 3.5, 4.5]], dtype=np.float32)
         t = og.Tensor(src)
         back = t.as_numpy()
         if list(t.shape()) != [1, 4]:
-            fails.append("og.Tensor round-trip: shape() = %r, expected [1, 4]" % (t.shape(),))
+            fails.append(f"og.Tensor round-trip: shape() = {t.shape()!r}, expected [1, 4]")
         elif back.tolist() != src.tolist():
-            fails.append("og.Tensor round-trip CORRUPTED the buffer: %r -> %r"
-                         % (src.tolist(), back.tolist()))
+            fails.append(f"og.Tensor round-trip CORRUPTED the buffer: {src.tolist()!r} -> {back.tolist()!r}")
         else:
             proven.append("og.Tensor round-tripped a float32 buffer through the native library")
-    except Exception as exc:
+    except NATIVE_FAILURES as exc:
         record_exception("og.Tensor round-trip", exc)
 
 # A non-model path must be rejected BY THE LIBRARY: TypeError/AttributeError
@@ -602,10 +608,12 @@ if hasattr(og, "Config"):
         og.Config("/nonexistent-genai-smoke-model")
         proven.append("og.Config() accepted a non-model path (native code ran; lenient upstream)")
     except (TypeError, AttributeError) as exc:
-        fails.append("og.Config() failed at the BINDING layer (%s: %s) -- signature/ABI mismatch, "
-                     "not a model error" % (type(exc).__name__, exc))
-    except Exception as exc:
-        proven.append("og.Config() rejected a non-model path from native code (%s)" % type(exc).__name__)
+        fails.append(
+            f"og.Config() failed at the BINDING layer ({type(exc).__name__}: {exc!s}) "
+            "-- signature/ABI mismatch, not a model error"
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        proven.append(f"og.Config() rejected a non-model path from native code ({type(exc).__name__})")
 
 GENAI_PY_T3
 }
@@ -617,7 +625,7 @@ _smoke_genai_py_tier4_generate() {
 if not MODEL_DIR:
     unproven.append("generate() token content -- no GENAI_MODEL_DIR; no model ships in this image")
 elif not os.path.isdir(MODEL_DIR):
-    fails.append("GENAI_MODEL_DIR=%s is not a directory" % MODEL_DIR)
+    fails.append(f"GENAI_MODEL_DIR={MODEL_DIR} is not a directory")
 else:
     try:
         model = og.Model(MODEL_DIR)
@@ -632,16 +640,19 @@ else:
         out = list(gen.get_sequence(0))
         new = out[len(list(ids)):]
         if not new:
-            fails.append("generate() produced NO new tokens (prompt %d, sequence %d)"
-                         % (len(list(ids)), len(out)))
+            fails.append(f"generate() produced NO new tokens (prompt {len(list(ids))}, sequence {len(out)})")
         elif len(set(new)) == 1:
             # The #594 signature: broken kernels degenerate into one repeated token.
-            fails.append("generate() emitted %d identical tokens (%r) -- the "
-                         "onnxruntime-genai #594 nonsense signature" % (len(new), new[0]))
+            fails.append(
+                f"generate() emitted {len(new)} identical tokens ({new[0]!r}) -- the "
+                "onnxruntime-genai #594 nonsense signature"
+            )
         else:
-            proven.append("generate() produced %d new tokens from %s: %r ... decoded %r"
-                          % (len(new), MODEL_DIR, new[:8], tok.decode(new)[:80]))
-    except Exception as exc:
+            proven.append(
+                f"generate() produced {len(new)} new tokens from {MODEL_DIR}: {new[:8]!r} ... "
+                f"decoded {tok.decode(new)[:80]!r}"
+            )
+    except NATIVE_FAILURES as exc:
         record_exception("generate()", exc)
 
 GENAI_PY_T4
@@ -651,20 +662,22 @@ GENAI_PY_T4
 _smoke_genai_py_verdict() {
   cat <<'GENAI_PY_TAIL'
 for line in proven:
-    print("  PROVEN   %s" % line)
+    print(f"  PROVEN   {line}")
 for line in unproven:
-    print("  UNPROVEN %s" % line)
+    print(f"  UNPROVEN {line}")
 for line in fails:
-    print("  DEFECT   %s" % line)
+    print(f"  DEFECT   {line}")
 
 if not MODEL_DIR:
     print("GENAI-GEN SKIP: no GENAI_MODEL_DIR set, so no real generation was attempted.")
 
 if fails:
-    print("GENAI-BIND FAIL: %d defect(s) in the onnxruntime_genai binding" % len(fails))
+    print(f"GENAI-BIND FAIL: {len(fails)} defect(s) in the onnxruntime_genai binding")
     sys.exit(1)
-print("GENAI-BIND OK: onnxruntime_genai %s -- native binding exercised; see UNPROVEN "
-      "lines for what this did NOT establish" % (version or "?"))
+print(
+    f"GENAI-BIND OK: onnxruntime_genai {version or '?'} -- native binding exercised; see UNPROVEN "
+    "lines for what this did NOT establish"
+)
 GENAI_PY_TAIL
 }
 

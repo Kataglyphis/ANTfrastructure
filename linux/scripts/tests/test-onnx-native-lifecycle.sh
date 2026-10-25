@@ -16,8 +16,9 @@ for backend in cpu amd; do
   script="${CPU}"
   [ "${backend}" != amd ] || script="${AMD}"
   python3 - "${script}" "${WORK}/${backend}.sh" <<'PY'
-from pathlib import Path
 import sys
+from pathlib import Path
+
 text = Path(sys.argv[1]).read_text()
 starts = ['# Execute build (with retry', 'if ! "${BUILD_SH}"', 'run_onnx_native_build ']
 start = min(text.index(marker) for marker in starts if marker in text)

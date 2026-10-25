@@ -222,14 +222,14 @@ def ort_wheel(path):  # open() first: is_zipfile() swallows the OSError of a bod
         return any(n.startswith("onnxruntime/") for n in zf.namelist())
 
 
-for root, _, files in os.walk(sys.argv[1], onerror=lambda e: print("E cannot read %s" % e)):
+for root, _, files in os.walk(sys.argv[1], onerror=lambda e: print(f"E cannot read {e}")):
     for name in files:
         rel = os.path.relpath(os.path.join(root, name), sys.argv[1]).replace(os.sep, "/")
         try:
             if ort_wheel(os.path.join(root, name)):
                 print("W " + rel)
         except (OSError, zipfile.BadZipFile) as exc:
-            print("E cannot read the cached file %s: %s" % (rel, exc))
+            print(f"E cannot read the cached file {rel}: {exc}")
 PY
 )" || { echo "cannot inspect pip's HTTP cache at $1/http-v2 (python3 failed)"; return 0; }
   while IFS= read -r rel; do

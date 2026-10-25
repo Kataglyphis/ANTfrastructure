@@ -9,6 +9,8 @@ docs/code-quality-tooling.md#env-instruction-ordering-dockerfile-lint"""
 import os
 import re
 import sys
+from collections.abc import Iterator
+from os import PathLike
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CONT = re.compile(r"\\\s*$")
@@ -16,7 +18,7 @@ REF = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
 ASSIGN = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=")
 
 
-def instructions(path):
+def instructions(path: str | PathLike[str]) -> Iterator[tuple[int, str]]:
     """(line, text) per instruction, continuations joined and interior comments
     dropped the way BuildKit drops them."""
     buf, start = [], 0
@@ -38,7 +40,7 @@ def instructions(path):
         yield start, " ".join(t for t in buf if t)
 
 
-def tokens(body):
+def tokens(body: str) -> list[str]:
     """Whitespace-split, honouring double quotes so a quoted PATH stays one token."""
     out, cur, quoted = [], "", False
     for char in body:
@@ -56,7 +58,7 @@ def tokens(body):
     return out
 
 
-def env_offenders(body, args):
+def env_offenders(body: str, args: set[str]) -> list[tuple[str, str]]:
     """(key, ref) for every value reading a key assigned EARLIER in this instruction.
     A key reading ITSELF is the inherit-and-extend idiom and is fine; a name that is
     also an ARG in scope resolves from the ARG, so it is fine too."""
@@ -73,7 +75,7 @@ def env_offenders(body, args):
     return bad
 
 
-def scan(path):
+def scan(path: str | PathLike[str]) -> list[tuple[int, str, str]]:
     """Findings for one Dockerfile; ARG scope resets at every FROM, as BuildKit does."""
     args, out = set(), []
     for line, text in instructions(path):
@@ -89,7 +91,7 @@ def scan(path):
     return out
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     targets = argv[1:]
     if not targets:
         sys.stderr.write("usage: verify_dockerfile_env_order.py <Dockerfile>...\n")
@@ -98,19 +100,19 @@ def main(argv):
     for rel in targets:
         path = rel if os.path.isabs(rel) else os.path.join(ROOT, rel)
         if not os.path.isfile(path):
-            sys.stderr.write("FAIL: not a file: %s\n" % rel)
+            sys.stderr.write(f"FAIL: not a file: {rel}\n")
             bad += 1
             continue
         for line, key, ref in scan(path):
             sys.stderr.write(
-                "%s:%d: ENV %s reads ${%s}, set in the SAME instruction -- it expands to "
+                f"{rel}:{line}: ENV {key} reads ${{{ref}}}, set in the SAME instruction -- it expands to "
                 "the value before the instruction (empty here). Split the ENV in two.\n"
-                % (rel, line, key, ref))
+            )
             bad += 1
     if bad:
-        sys.stderr.write("\nENV-ORDER LINT FAILED (%d finding(s))\n" % bad)
+        sys.stderr.write(f"\nENV-ORDER LINT FAILED ({bad} finding(s))\n")
         return 1
-    print("  ok: ENV ordering (%d Dockerfile(s))" % len(targets))
+    print(f"  ok: ENV ordering ({len(targets)} Dockerfile(s))")
     return 0
 
 

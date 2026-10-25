@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 from kataglyphis_webdavclient.webdavclient import WebDavClient
 
 
-def parse_args(argv=None) -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Download a WebDAV tree, optionally filtered by extension.")
     parser.add_argument("hostname", help="WebDAV server hostname")
     parser.add_argument("username", help="WebDAV server username")
@@ -47,7 +48,7 @@ def download_filtered(client: WebDavClient, remote: str, local: str, extension: 
     return 0
 
 
-def main(argv=None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     client = WebDavClient(args.hostname, args.username, args.password)
     Path(args.local_base_path).mkdir(parents=True, exist_ok=True)

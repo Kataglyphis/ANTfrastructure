@@ -49,8 +49,9 @@ t_case "a missing companion fails closed rather than supplying a private fallbac
 t_assert_rc 1 bash "$bundle/worker.sh"
 t_case "Docker copies the executable companion before running Torch setup"
 t_assert_ok python3 - "$REPO_ROOT/linux/Dockerfile.torch" <<'PY'
-from pathlib import Path
 import sys
+from pathlib import Path
+
 lines = Path(sys.argv[1]).read_text().splitlines()
 copy = lines.index("COPY --chmod=755 linux/scripts/06-packaging/package-image-wiring.sh /opt/scripts/packaging/package-image-wiring.sh")
 execute = next(i for i, line in enumerate(lines) if "bash /opt/scripts/packaging/setup-torch-venv.sh" in line)

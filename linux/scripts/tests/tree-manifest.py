@@ -22,7 +22,7 @@ EXAMPLES = 15
 def describe(path: str) -> list:
     """[type, mode, size, nlink, mtime, content]; directory and symlink times are not compared."""
     st = os.lstat(path)
-    mode = "%o" % stat.S_IMODE(st.st_mode)
+    mode = f"{stat.S_IMODE(st.st_mode):o}"
     if stat.S_ISLNK(st.st_mode):
         return ["l", mode, 0, 1, 0, os.readlink(path)]
     if stat.S_ISDIR(st.st_mode):
@@ -61,14 +61,14 @@ def diff_lists(a_path: str, b_path: str) -> int:
     findings: dict[str, list[str]] = {}
     for rel in sorted(set(a) | set(b)):
         if rel not in b or rel not in a:
-            findings.setdefault("only in %s" % (a_path if rel in a else b_path), []).append(rel)
+            findings.setdefault(f"only in {a_path if rel in a else b_path}", []).append(rel)
             continue
         for i, field in enumerate(FIELDS):
             if a[rel][i] != b[rel][i]:
-                findings.setdefault("%s differs" % field, []).append("%s: %s != %s" % (rel, a[rel][i], b[rel][i]))
-    print("%d entries vs %d entries" % (len(a), len(b)))
+                findings.setdefault(f"{field} differs", []).append(f"{rel}: {a[rel][i]} != {b[rel][i]}")
+    print(f"{len(a)} entries vs {len(b)} entries")
     for kind, rows in findings.items():
-        print("%s: %d" % (kind, len(rows)))
+        print(f"{kind}: {len(rows)}")
         for row in rows[:EXAMPLES]:
             print("  " + row)
     if not findings:

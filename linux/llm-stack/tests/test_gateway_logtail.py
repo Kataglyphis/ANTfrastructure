@@ -15,7 +15,7 @@ SPEC.loader.exec_module(MODULE)
 LogTail = MODULE.LogTail
 
 
-def test_logtail_waits_past_a_previous_request(tmp_path):
+def test_logtail_waits_past_a_previous_request(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "requests.jsonl"
     tail = LogTail(str(path))
     path.write_text(json.dumps({"alias": "chat"}) + "\n", encoding="utf-8")
@@ -35,7 +35,7 @@ def test_logtail_waits_past_a_previous_request(tmp_path):
     assert lines == [{"alias": "chat-long", "aborted": "client_disconnect"}]
 
 
-def test_logtail_keeps_duplicate_matching_requests_visible(tmp_path):
+def test_logtail_keeps_duplicate_matching_requests_visible(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "requests.jsonl"
     path.write_text('{"alias":"chat-long"}\n{"alias":"chat-long"}\n', encoding="utf-8")
     tail = LogTail(str(path))

@@ -5,12 +5,14 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
+from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 CONTEXT = ROOT / 'linux/scripts/tests/shell-context-fixture.sh'
 
 
-def cases():
+def cases() -> list[dict[str, Any]]:
     rows = []
     for section, units, splitting, include in itertools.product(
         ('stop', 'start'), ('', 'containerd.service buildkit.service', '*.service', 'missing*.service', 'unit with spaces'),
@@ -33,7 +35,7 @@ def cases():
     return rows
 
 
-def sections(source):
+def sections(source: Path) -> dict[str, str]:
     text = source.read_text()
     markers = {
         'rollback': ('# Rollback: bin/', '# Refuse while a build runs:'),
@@ -49,7 +51,7 @@ def sections(source):
     return result
 
 
-def helpers(source):
+def helpers(source: Path) -> str:
     return source.read_text().split('# Rollback: bin/', 1)[0].replace('warn()', '_fixture_actual_warn()')
 
 
@@ -99,7 +101,12 @@ printf 'DONE:%s OK:%s\n' "$result" "$_ok"
 '''
 
 
-def capture(source, row, extracted, functions):
+def capture(
+    source: Path,
+    row: dict[str, Any],
+    extracted: dict[str, str],
+    functions: str,
+) -> dict[str, int | str]:
     defaults = {'rootless': '1', 'units': 'containerd.service buildkit.service', 'include': '1',
                     'service': 0, 'warning': 0, 'copy': 0, 'active': 'both', 'splitting': 'default', 'context': 'direct', 'strict': 'strict'}
     defaults.update(row)
@@ -110,7 +117,7 @@ def capture(source, row, extracted, functions):
         for relative in ('alpha.service', 'zeta.service', 'calls', 'backup/VERSION'):
             (work / relative).write_text('')
         (work / 'functions').write_text(functions)
-        (work / 'section').write_text(extracted[row['section']])
+        (work / 'section').write_text(extracted[str(row['section'])])
         command = ['/bin/bash', '-c', WORKER, '_', str(work / 'functions'), str(CONTEXT), directory, str(work / 'section')]
         command.extend(str(defaults[key]) for key in ('rootless', 'units', 'include', 'service', 'warning', 'copy',
                                                       'active', 'splitting', 'context', 'strict'))
@@ -119,7 +126,7 @@ def capture(source, row, extracted, functions):
                     'err': result.stderr.replace(directory, '[WORK]'), 'calls': (work / 'calls').read_text().replace(directory, '[WORK]')}
 
 
-def main():
+def main() -> int:
     source = pathlib.Path(sys.argv[1]).resolve()
     expected = json.loads(pathlib.Path(sys.argv[2]).read_text())
     extracted, functions = sections(source), helpers(source)

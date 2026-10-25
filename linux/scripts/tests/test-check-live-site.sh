@@ -8,7 +8,11 @@ SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 CHECK="${SCRIPTS}/check-live-site.js"
 w="$(mktemp -d)"
 srv=""
-trap '[ -z "${srv}" ] || kill "${srv}" 2>/dev/null; rm -rf "${w}"' EXIT
+_cleanup_live_site() {
+  t_stop_children "${srv}"
+  rm -rf "${w}"
+}
+trap _cleanup_live_site EXIT
 export CHECK_LIVE_SITE_VIEWPORTS="800x600"
 
 # _page <name> <csp or ''> <script>: a site whose page carries the app's <flutter-view> and runs <script>.
@@ -97,7 +101,10 @@ t_assert_contains "$(t_out _check "${BASE}/" always/)" "FAIL always/ 800x600"
 t_assert_contains "$(t_out _check "${BASE}/" always/)" "flaky: always/ 800x600: exception: Error: always"
 
 t_case "a site that does not answer names each file's network error, not a status"
-t_assert_contains "$(t_out node "${CHECK}" http://127.0.0.1:9/ --files "${w}/site/clean" --scrolls 0 --settle-ms 0 --ready-ms 500)" "ECONNREFUSED index.html"
+# Chrome rejects port 9 before the request can report ECONNREFUSED.
+t_stop_children "${srv}"
+srv=""
+t_assert_contains "$(t_out node "${CHECK}" "${BASE}/" --files "${w}/site/clean" --scrolls 0 --settle-ms 0 --ready-ms 500)" "ECONNREFUSED index.html"
 
 t_case "no base URL is a usage error"
 t_assert_rc 2 node "${CHECK}"

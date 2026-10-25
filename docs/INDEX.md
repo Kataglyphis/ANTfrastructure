@@ -125,6 +125,7 @@ The two halves of one topic often split:
 | **TensorRT 11** in the nvidia variant: the runtime `.so` files only, the ORT TensorRT EP, the SLA's redistribution terms | [`linux-accelerator-images.md`](linux-accelerator-images.md#tensorrt-11) |
 | **Running `:latest-rocm` on an AMD GPU**: `--group-add`, the ROCm roots, the two ROCm stacks; the GPU runtime gate | [`linux-accelerator-images.md`](linux-accelerator-images.md#running-it-on-an-amd-gpu) |
 | **Setting up a Linux build host**: GPU drivers, CUDA, runtime config, performance mode, GRUB recovery | [`linux-host-setup.md`](linux-host-setup.md) |
+| **Reproducible quality checks in Ubuntu WSL2**: pinned tool setup and the Linux plus PowerShell check runner | [`linux-host-setup.md`](linux-host-setup.md#d5-the-host-tools-preflight-needs-and-never-asked-for) |
 | **General Linux commands** — disk, text/log filtering, users, networking, SSH, media/OCR, remote desktop, git. Not repo-specific | [`linux-reference.md`](linux-reference.md) |
 | Hailo `.hef` compilation and Jetson board procedures | [`linux-accelerator-images.md`](linux-accelerator-images.md#edge-accelerators) |
 | **Hailo in the image chain** — plan, upstream matrix (device families and branches, licences, TAPPAS's GStreamer gap) and the stage/gate design | [`hailo-support.md`](hailo-support.md) |
@@ -189,6 +190,7 @@ Wiring a new project: [Start here](#start-here).
 | The five shell-safety bug classes (all found live) | [`../AGENTS.md`](../AGENTS.md) § *Shell safety conventions* |
 | Reusable PowerShell modules | `windows/scripts/modules/` — resolved via the consumer's `Resolve-BuildModule.ps1` |
 | Which hub function to call before writing your own helper: container, MSIX/MSI, config, build-step, logging, cargo, packaging, CI | [`adopting-in-a-new-project.md` § *Reach for these before writing a helper*](adopting-in-a-new-project.md#reach-for-these-before-writing-a-helper) |
+| **Reuse before adding functionality** — check the repo and its submodules; add shared behavior once and consume it | [`adopting-in-a-new-project.md` § Reuse before adding functionality](adopting-in-a-new-project.md#reuse-before-adding-functionality) |
 | Reusable bash libraries | `linux/scripts/lib/` and `linux/scripts/01-core/` |
 | Generic Python CI drivers | `linux/scripts/02-toolchain/python/ci_*.sh` |
 | CI composite actions | [`../.github/actions/README.md`](../.github/actions/README.md) |

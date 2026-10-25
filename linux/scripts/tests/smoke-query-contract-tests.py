@@ -7,8 +7,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+Case = tuple[int, str, str, int, int, int, str]
+PrefixCase = tuple[int, str, str, str]
 
-def extract(text, name):
+
+def extract(text: str, name: str) -> str:
     match = re.search(r"^" + re.escape(name) + r"\(\) \{\n.*?^\}", text, re.MULTILINE | re.DOTALL)
     if match is None:
         raise AssertionError(f"missing function: {name}")
@@ -71,7 +74,7 @@ fi
 '''
 
 
-def expected_output(mode, present, work):
+def expected_output(mode: str, present: bool, work: Path) -> str:
     prefix = ""
     if mode == "native_import":
         prefix = "IMPORTED\n"
@@ -84,7 +87,7 @@ def expected_output(mode, present, work):
     return prefix + f"PASS:<Fixture web runtime valid (1 verified .wasm in {work})>\nSTATUS:0\n"
 
 
-def check_case(work, case):
+def check_case(work: Path, case: Case) -> None:
     strict, context, aliases, output, producer_rc, consumer_rc, mode = case
     env = dict(os.environ, WORK=str(work), STRICT=str(strict), CONTEXT=context,
                ALIASES=aliases, OUTPUT=str(output), FIND_RC=str(producer_rc),
@@ -106,7 +109,7 @@ def check_case(work, case):
         assert "GREP:early:<-q .>:" in trace, (case, trace)
 
 
-def check_dynamic_scope(work):
+def check_dynamic_scope(work: Path) -> None:
     code = r'''
 set -euo pipefail
 source "$1/python.sh"
@@ -185,7 +188,7 @@ fi
 '''
 
 
-def check_prefix_case(work, case):
+def check_prefix_case(work: Path, case: PrefixCase) -> None:
     strict, context, aliases, subject = case
     for leaf in ("find-prefix", "grep-prefix"):
         (work / leaf).write_text("")
@@ -207,14 +210,14 @@ def check_prefix_case(work, case):
     assert expected_find in find, (case, find)
 
 
-def check_prefix_aliases(work):
+def check_prefix_aliases(work: Path) -> None:
     cases = itertools.product((0, 1), ("direct", "conditional"),
                               ("early", "late"), ("python", "web"))
     for case in cases:
         check_prefix_case(work, case)
 
 
-def main():
+def main() -> None:
     text = Path(sys.argv[1]).read_text()
     with tempfile.TemporaryDirectory(prefix="smoke-query-") as directory:
         work = Path(directory)

@@ -6,11 +6,22 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+from typing import Any, TypedDict
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
+Case = tuple[str, str, str, str, str, str, str, str, str]
 
 
-def function(path, name):
+class Capture(TypedDict):
+    rc: int
+    out: str
+    err: str
+    trace: str
+    state: str
+    files: dict[str, str]
+
+
+def function(path: pathlib.Path, name: str) -> str:
     result = subprocess.run(
         [
             "/bin/bash",
@@ -29,7 +40,7 @@ def function(path, name):
     return result.stdout
 
 
-def definitions(paths):
+def definitions(paths: dict[str, pathlib.Path]) -> tuple[str, str]:
     common = paths["common.sh"]
     gst = paths["build-gstreamer-monorepo.sh"]
     camera = paths["build-libcamera.sh"].read_text()
@@ -111,7 +122,7 @@ printf 'TAIL:%s\n' "$status"
 """
 
 
-def cases():
+def cases() -> list[Case]:
     rows = []
     for caller, cross, native, file, context, strict in itertools.product(
         ("gst", "camera"),
@@ -179,7 +190,7 @@ def cases():
     return rows
 
 
-def capture(parts, row, api="healthy"):
+def capture(parts: tuple[str, str], row: Case, api: str = "healthy") -> Capture:
     with tempfile.TemporaryDirectory(prefix="ant meson flags ") as directory:
         work = pathlib.Path(directory)
         (work / "trace").write_bytes(b"")
@@ -196,7 +207,7 @@ def capture(parts, row, api="healthy"):
             check=False,
         )
 
-        def clean(v) -> str:
+        def clean(v: bytes) -> str:
             return v.decode().replace(directory, "[WORK]")
 
         return {
@@ -213,7 +224,9 @@ def capture(parts, row, api="healthy"):
         }
 
 
-def required_api_contract(parts, expected):
+def required_api_contract(
+    parts: tuple[str, str], expected: list[dict[str, Any]]
+) -> tuple[int, list[str]]:
     frozen = {tuple(entry["case"]): entry["receipt"] for entry in expected}
     failures = []
     assertions = 0
@@ -255,7 +268,7 @@ def required_api_contract(parts, expected):
     return assertions, failures
 
 
-def main():
+def main() -> bool:
     paths = dict(
         zip(
             ("common.sh", "build-gstreamer-monorepo.sh", "build-libcamera.sh"),

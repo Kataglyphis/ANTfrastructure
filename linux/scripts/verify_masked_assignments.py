@@ -4,15 +4,14 @@
 docs/failure-modes.md#a-declaration-that-masks-its-commands-exit-status
 """
 import argparse
-from collections.abc import Iterable, Iterator
 import os
 import re
 import sys
+from collections.abc import Iterable, Iterator
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from quality_allow import check_keys, load_keys  # noqa: E402
-
-import gate_scope  # noqa: E402
+import gate_scope
+from quality_allow import check_keys, load_keys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ALLOW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "masked-assignments.allow")

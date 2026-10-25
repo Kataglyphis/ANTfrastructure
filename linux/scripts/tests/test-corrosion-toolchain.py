@@ -3,17 +3,21 @@
 # SPDX-License-Identifier: MIT
 """Exercise generated Rust bridge flags without compiling or downloading a crate."""
 import os
-from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-
+from pathlib import Path
 
 MODULE = Path(__file__).resolve().parents[3] / "cmake" / "CorrosionToolchain.cmake"
 
 
 class CorrosionToolchainTests(unittest.TestCase):
-    def configure(self, windows=False, asan=False, config="Debug"):
+    def configure(
+        self: "CorrosionToolchainTests",
+        windows: bool = False,
+        asan: bool = False,
+        config: str = "Debug",
+    ) -> str:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "CMakeLists.txt").write_text(
@@ -38,25 +42,31 @@ class CorrosionToolchainTests(unittest.TestCase):
             )
             return (root / "build/flags.txt").read_text(encoding="utf-8")
 
-    def test_native_preserves_configured_compilers_and_flags(self):
+    def test_native_preserves_configured_compilers_and_flags(
+        self: "CorrosionToolchainTests",
+    ) -> None:
         flags = self.configure()
         self.assertIn("CC=/toolchain/clang", flags)
         self.assertIn("CXX=/toolchain/clang++", flags)
         self.assertIn("CXXFLAGS=-march=native -fexceptions", flags)
 
-    def test_windows_debug_uses_matching_debug_crt(self):
+    def test_windows_debug_uses_matching_debug_crt(
+        self: "CorrosionToolchainTests",
+    ) -> None:
         flags = self.configure(windows=True)
         self.assertIn("CFLAGS=/MDd /D_DEBUG", flags)
         self.assertIn("/D_ITERATOR_DEBUG_LEVEL=2", flags)
 
-    def test_asan_debug_uses_release_crt_and_iterator_abi(self):
+    def test_asan_debug_uses_release_crt_and_iterator_abi(
+        self: "CorrosionToolchainTests",
+    ) -> None:
         flags = self.configure(windows=True, asan=True)
         self.assertNotIn("/MDd", flags)
         self.assertNotIn("/D_DEBUG", flags)
         self.assertIn("CFLAGS=/MD", flags)
         self.assertIn("/D_ITERATOR_DEBUG_LEVEL=0", flags)
 
-    def test_profile_uses_release_crt(self):
+    def test_profile_uses_release_crt(self: "CorrosionToolchainTests") -> None:
         flags = self.configure(windows=True, config="RelWithDebInfo")
         self.assertNotIn("/MDd", flags)
         self.assertIn("/MD /DNDEBUG", flags)

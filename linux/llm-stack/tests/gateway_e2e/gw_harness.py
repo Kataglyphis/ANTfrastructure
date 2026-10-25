@@ -6,10 +6,20 @@ import secrets
 import shutil
 import socket
 import subprocess
+from collections.abc import Mapping, Sequence
+from typing import Any, Protocol
 
-from gw_client import LogTail, call
+from gw_client import JsonValue, LogTail, Reply, call
 
-type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
+
+class GatewayLane(Protocol):
+    port: int
+    requests: Any
+    sent: Any
+
+    def completions(self) -> Any: ...
+
+    def reset(self) -> None: ...
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STACK = os.path.dirname(os.path.dirname(HERE))
@@ -25,13 +35,14 @@ TIMEOUTS = {"npu": 2, "gpu": 6, "cpu": 1800}
 CONTEXT = {"npu": 4096, "gpu": 16384, "cpu": 16384}
 
 
-def free_port():
+def free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
 
 
-def registry(lanes, ports, budget=3900, listen=None):
+def registry(lanes: Mapping[str, GatewayLane], ports: Sequence[int], budget: int = 3900,
+             listen: str | None = None) -> Any:
     backends = {f"e2e-{n}": {"base_url": f"http://127.0.0.1:{lane.port}", "model": LANE_MODELS[n]}
                 for n, lane in lanes.items()}
     gateway = {
@@ -53,7 +64,19 @@ def registry(lanes, ports, budget=3900, listen=None):
 
 
 class Gateway:
-    def __init__(self, root, lanes) -> None:
+    lanes: Mapping[str, GatewayLane]
+    lanes_models: dict[str, str]
+    root: str
+    ports: list[int]
+    port: int
+    metrics_port: int
+    state: str
+    registry_path: str
+    keys: dict[str, str]
+    env: dict[str, str]
+    log: LogTail
+
+    def __init__(self, root: str, lanes: Mapping[str, GatewayLane]) -> None:
         self.lanes = lanes
         self.lanes_models = dict(LANE_MODELS)
         self.root = root
@@ -75,32 +98,33 @@ class Gateway:
         self.write_registry()
         self.log = LogTail(os.path.join(self.state, "logs", "requests.jsonl"))
 
-    def write_registry(self, *, budget: int = 3900, listen: str | None = None):
+    def write_registry(self, *, budget: int = 3900, listen: str | None = None) -> None:
         with open(self.registry_path, "w", encoding="utf-8") as fh:
             json.dump(registry(self.lanes, self.ports, budget=budget, listen=listen), fh, indent=1)
 
-    def serve(self, *args: str, timeout=300):
+    def serve(self, *args: str, timeout: float = 300) -> subprocess.CompletedProcess[str]:
         return subprocess.run(["bash", SERVE, *args], env=self.env, capture_output=True,
                               text=True, timeout=timeout, check=False)
 
-    def live(self, name):
+    def live(self, name: str) -> Any:
         with open(os.path.join(self.state, "live", name), encoding="utf-8") as fh:
             return json.load(fh)
 
-    def info(self):
+    def info(self) -> Any:
         return call(self.port, "/gateway/info", method="GET").json()
 
-    def route(self, rid):
+    def route(self, rid: str) -> Any:
         return next(r for r in self.live("apisix.json")["routes"] if r["id"] == rid)
 
-    def post(self, model, key="lab", path="/v1/chat/completions", fake=None, **body: JsonValue):
+    def post(self, model: str | None, key: str | None = "lab", path: str = "/v1/chat/completions",
+             fake: Mapping[str, str] | None = None, **body: JsonValue) -> Reply:
         body.setdefault("messages", [{"role": "user", "content": "hi"}])
         body = {k: v for k, v in body.items() if v is not None}
         headers = {f"X-Fake-{lane.capitalize()}": d for lane, d in (fake or {}).items()}
         return call(self.port, path, dict(body, model=model), key=self.keys.get(key, key),
                     headers=headers)
 
-    def exec(self, *cmd: str):
+    def exec(self, *cmd: str) -> str:
         """Run a command inside the live gateway container (not a validation one)."""
         engine = os.environ.get("ANTFRASTRUCTURE_LLM_ENGINE") or next(
             n for n in ("nerdctl", "docker") if shutil.which(n))
@@ -111,8 +135,8 @@ class Gateway:
         return subprocess.run([engine, "exec", name, *cmd], capture_output=True, text=True,
                               check=True).stdout
 
-    def requests(self, lane):
+    def requests(self, lane: str) -> Any:
         return self.lanes[lane].completions()
 
-    def counts(self):
+    def counts(self) -> dict[str, int]:
         return {n: len(lane.completions()) for n, lane in self.lanes.items()}

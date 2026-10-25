@@ -13,7 +13,6 @@ from typing import Any
 
 import bump_versions as bv  # tests patch names on bump_versions; every call reads them through it
 
-
 UA = {"User-Agent": "kataglyphis-bump-versions"}
 
 
@@ -64,10 +63,10 @@ def sha256_of_gz_stream(url: str) -> str:
     """Hash a .tar.gz's decompressed stream, which outlives GitHub's gzip stability pledge; pairs with download_verified_file()'s "stream" mode."""
     import gzip
     h = hashlib.sha256()
-    with urllib.request.urlopen(urllib.request.Request(url, headers=bv._headers(url)), timeout=600) as r:
-        with gzip.GzipFile(fileobj=r) as gz:
-            for chunk in iter(lambda: gz.read(1 << 20), b""):
-                h.update(chunk)
+    with urllib.request.urlopen(urllib.request.Request(url, headers=bv._headers(url)), timeout=600) as r, \
+            gzip.GzipFile(fileobj=r) as gz:
+        for chunk in iter(lambda: gz.read(1 << 20), b""):
+            h.update(chunk)
     return h.hexdigest()
 
 
@@ -92,7 +91,7 @@ def artifact_exists(url: str) -> bool:
         req = urllib.request.Request(url, headers=bv._headers(url, {"Range": "bytes=0-0"}))
         with urllib.request.urlopen(req, timeout=30) as r:
             return 200 <= r.status < 300
-    except Exception:
+    except OSError:
         return False
 
 
@@ -154,7 +153,9 @@ def asset_sha256(repo: str, tag: str, asset: str, sums: tuple[str, ...] = ()) ->
     for sums_name in sums:
         try:
             text = bv.http_text(base + sums_name)
-        except Exception:  # noqa: BLE001 — try the next candidate / fallback
+        except OSError:
+            text = None
+        if text is None:
             continue
         m = re.search(rf"([0-9a-fA-F]{{64}})[ \t*]+\.?/?{re.escape(asset)}\s*$", text, re.MULTILINE)
         if m:
@@ -202,11 +203,12 @@ def gh_asset_digest(repo: str, tag: str, asset: str) -> str:
     """GitHub's own sha256 for a release asset, sparing a GB-sized download; hashes the asset when the API has none."""
     try:
         rel = bv.http_json(f"https://api.github.com/repos/{repo}/releases/tags/{tag}")
+    except (OSError, json.JSONDecodeError):
+        rel = None
+    if rel is not None:
         for a in rel.get("assets", []):
             if a.get("name") == asset and str(a.get("digest", "")).startswith("sha256:"):
                 return a["digest"].split(":", 1)[1].lower()
-    except Exception:  # noqa: BLE001 — fall back to hashing the asset itself
-        pass
     return bv.asset_sha256(repo, tag, asset)
 
 

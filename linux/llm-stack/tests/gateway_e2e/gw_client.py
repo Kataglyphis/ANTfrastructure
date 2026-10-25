@@ -3,10 +3,15 @@ import http.client
 import json
 import os
 import time
+from collections.abc import Callable, Mapping
+from typing import Any
+
+type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
 
 
 class Reply:
-    def __init__(self, status, headers, chunks, error, elapsed) -> None:
+    def __init__(self, status: int, headers: list[tuple[str, str]], chunks: list[tuple[float, bytes]],
+                 error: Exception | None, elapsed: float) -> None:
         self.status = status
         self.headers = {k.lower(): v for k, v in headers}
         self.chunks = chunks
@@ -14,10 +19,10 @@ class Reply:
         self.error = error
         self.elapsed = elapsed
 
-    def json(self):
+    def json(self) -> Any:
         return json.loads(self.body)
 
-    def sse(self):
+    def sse(self) -> list[Any]:
         """The data: payloads of an SSE body, [DONE] included as a string."""
         out = []
         for line in self.body.decode().splitlines():
@@ -27,8 +32,9 @@ class Reply:
         return out
 
 
-def call(port, path, body=None, key=None, headers=None, method="POST", timeout=30,
-         raw=None, content_type="application/json"):
+def call(port: int, path: str, body: Any = None, key: str | None = None,
+         headers: Mapping[str, str] | None = None, method: str = "POST", timeout: float = 30,
+         raw: bytes | str | None = None, content_type: str | None = "application/json") -> Reply:
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
     sent = {}
     data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
@@ -56,17 +62,18 @@ def call(port, path, body=None, key=None, headers=None, method="POST", timeout=3
 class LogTail:
     """New lines of the gateway's JSON request log since the last mark()."""
 
-    def __init__(self, path) -> None:
+    def __init__(self, path: str | os.PathLike[str]) -> None:
         self.path = path
         self.offset = 0
 
     def _size(self) -> int:
         return os.path.getsize(self.path) if os.path.exists(self.path) else 0
 
-    def mark(self):
+    def mark(self) -> None:
         self.offset = self._size()
 
-    def lines(self, expect=1, timeout=5.0, settle=0.4, *, predicate=None):
+    def lines(self, expect: int = 1, timeout: float = 5.0, settle: float = 0.4, *,
+              predicate: Callable[[dict[str, object]], bool] | None = None) -> list[dict[str, object]]:
         def matching() -> list[dict[str, object]]:
             lines = self._read()
             return [line for line in lines if predicate(line)] if predicate else lines

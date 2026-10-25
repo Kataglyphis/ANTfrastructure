@@ -9,13 +9,21 @@ import unittest
 from functools import lru_cache
 from itertools import product
 from pathlib import Path
+from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[3]
 SUBJECT = Path(sys.argv.pop(1)).resolve()
 
 
+class RunResult(TypedDict):
+    rc: int
+    out: str
+    err: str
+    trace: str
+
+
 @lru_cache
-def extract(file, name):
+def extract(file: Path, name: str) -> str:
     return subprocess.run(
         [
             "bash",
@@ -32,7 +40,7 @@ def extract(file, name):
     ).stdout
 
 
-def functions():
+def functions() -> str:
     source = ""
     if "_resolve_build_gcc_candidates() {" in SUBJECT.read_text():
         source = extract(SUBJECT, "_resolve_build_gcc_candidates")
@@ -83,24 +91,24 @@ source "$FUNCTIONS"
 
 
 def run(
-    lang,
-    primary,
-    alternate,
-    context,
-    strict,
-    print_status=0,
-    primary_status=0,
-    alternate_status=0,
-    have_resolver=0,
-    have_triplet=0,
-    triplet_status=0,
-    file_choice="/none",
-    path_status=127,
-    late_alias=True,
-    late_bindings=False,
-    preserve_globals=False,
-    nonempty_status="auto",
-):
+    lang: str,
+    primary: str,
+    alternate: str,
+    context: str,
+    strict: bool,
+    print_status: int = 0,
+    primary_status: int = 0,
+    alternate_status: int = 0,
+    have_resolver: int = 0,
+    have_triplet: int = 0,
+    triplet_status: int = 0,
+    file_choice: str = "/none",
+    path_status: int = 127,
+    late_alias: bool = True,
+    late_bindings: bool = False,
+    preserve_globals: bool = False,
+    nonempty_status: str | int = "auto",
+) -> RunResult:
     with tempfile.TemporaryDirectory(prefix="ant-compiler-resolver-") as directory:
         work = Path(directory)
         (work / "functions").write_text(functions())
@@ -173,7 +181,7 @@ FALLBACKS = [
 ]
 
 
-def capture():
+def capture() -> dict[str, RunResult]:
     results = {}
     for lang, profile, context, strict, fault in product(
         ["c", "cxx", "rust"],
@@ -218,14 +226,14 @@ def capture():
 
 
 class CompilerCandidatePublication(unittest.TestCase):
-    def test_original_whole_resolver_receipts(self):
+    def test_original_whole_resolver_receipts(self) -> None:
         expected = json.loads(
             Path(__file__).with_name("compiler-candidate-receipts.json").read_text()
         )
         self.assertEqual(224, len(expected))
         self.assertEqual(expected, capture())
 
-    def test_independent_candidate_and_publication_policy(self):
+    def test_independent_candidate_and_publication_policy(self) -> None:
         first = run("c", "/first\n", "/unused", "direct", True, primary_status=23)
         self.assertEqual(0, first["rc"])
         self.assertEqual("/first", first["out"])
@@ -243,7 +251,7 @@ class CompilerCandidatePublication(unittest.TestCase):
         self.assertEqual(0, conditional["rc"])
         self.assertEqual("/printed:STATUS:0", conditional["out"])
 
-    def test_binding_and_caller_locals(self):
+    def test_binding_and_caller_locals(self) -> None:
         for lang in ["c", "cxx"]:
             ordinary = run(
                 lang, "", "/alternate", "conditional", True, preserve_globals=True

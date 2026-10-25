@@ -14,8 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from deps_table import load_deps_metadata, read_dependency_versions, resolve_dep_version  # noqa: E402
-import license_obligations as lo  # noqa: E402
+import license_obligations as lo
+from deps_table import load_deps_metadata, read_dependency_versions, resolve_dep_version
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 VERSIONS_ENV = REPO_ROOT / "linux/scripts/01-core/versions.env"

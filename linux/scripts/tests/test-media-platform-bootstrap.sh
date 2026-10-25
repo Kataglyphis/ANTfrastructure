@@ -72,14 +72,20 @@ for caller in validator torch; do
 done
 t_case 'Torch explicitly ships the bootstrap beside its required platform and logging companions'
 t_assert_ok python3 - "${TESTS_DIR}/../../Dockerfile.torch" <<'PY'
-import shlex, sys
+import shlex
+import sys
 from pathlib import Path
+
 for line in Path(sys.argv[1]).read_text().splitlines():
     if not line.startswith('COPY '): continue
     fields = shlex.split(line)
-    if fields and fields[0] == 'COPY' and fields[-1] == '/opt/scripts/core/':
-        if {'linux/scripts/01-core/module-bootstrap.sh', 'linux/scripts/01-core/platform.sh', 'linux/scripts/01-core/logging.sh'} <= set(fields):
-            break
+    if (
+        fields
+        and fields[0] == 'COPY'
+        and fields[-1] == '/opt/scripts/core/'
+        and {'linux/scripts/01-core/module-bootstrap.sh', 'linux/scripts/01-core/platform.sh', 'linux/scripts/01-core/logging.sh'} <= set(fields)
+    ):
+        break
 else:
     raise SystemExit('Torch core COPY lacks its required bootstrap closure')
 PY

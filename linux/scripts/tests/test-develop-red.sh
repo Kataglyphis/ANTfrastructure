@@ -14,24 +14,26 @@ trap 'rm -rf "${_work}"' EXIT
 _replay() {
   local out="${_work}/$1.json"
   "${PY}" - "$1" "${out}" <<'PY'
-import json, sys
+import json
+import sys
+
 scenario, out = sys.argv[1], sys.argv[2]
 O, R = "Kataglyphis", "/repos/Kataglyphis"
 answers = {}
 def run(i, conclusion, updated, event="push"):
     return {"id": i, "workflow_id": 7, "name": "Lane", "path": ".github/workflows/lane.yml",
             "event": event, "conclusion": conclusion, "updated_at": updated,
-            "html_url": "https://github.com/%s/Fam/actions/runs/%d" % (O, i), "head_sha": "%040d" % i}
+            "html_url": f"https://github.com/{O}/Fam/actions/runs/{i}", "head_sha": f"{i:040d}"}
 def jobs(i, *pages):
     total = sum(len(p) for p in pages)
     for n, page in enumerate(pages, 1):
-        answers["%s/Fam/actions/runs/%d/jobs?filter=latest&per_page=100&page=%d" % (R, i, n)] = {
+        answers[f"{R}/Fam/actions/runs/{i}/jobs?filter=latest&per_page=100&page={n}"] = {
             "total_count": total, "jobs": [{"name": k, "conclusion": v} for k, v in page]}
 def issue(number, state, seen, red):
     mark = {"repo": "Fam", "workflow_id": 7, "seen": seen, "red": red}
     return {"number": number, "state": state, "body": "text\n\n<!-- develop-red " + json.dumps(mark) + " -->"}
 def ref(i):
-    return {"run": i, "url": "https://github.com/%s/Fam/actions/runs/%d" % (O, i), "sha": "%08d" % 0}
+    return {"run": i, "url": f"https://github.com/{O}/Fam/actions/runs/{i}", "sha": f"{0:08d}"}
 repos = [{"name": "Fam", "fork": False, "archived": False, "default_branch": "develop"},
          {"name": "Forked", "fork": True, "archived": False, "default_branch": "develop"},
          {"name": "Old", "fork": False, "archived": True, "default_branch": "develop"},
@@ -74,9 +76,9 @@ elif scenario == "closed-floor":
 elif scenario == "old-red-newest":
     runs = [run(12, "failure", "2026-10-01T11:00:00Z")]
     jobs(12, [("build", "failure")])
-answers["/users/%s/repos?type=owner&per_page=100" % O] = repos
-answers["%s/ANTfrastructure/issues?labels=develop-red&state=all&sort=created&direction=desc&per_page=100" % R] = issues
-answers["%s/Fam/actions/runs?branch=develop&status=completed&per_page=100" % R] = {"workflow_runs": runs}
+answers[f"/users/{O}/repos?type=owner&per_page=100"] = repos
+answers[f"{R}/ANTfrastructure/issues?labels=develop-red&state=all&sort=created&direction=desc&per_page=100"] = issues
+answers[f"{R}/Fam/actions/runs?branch=develop&status=completed&per_page=100"] = {"workflow_runs": runs}
 with open(out, "w", encoding="utf-8") as handle:
     json.dump(answers, handle)
 PY

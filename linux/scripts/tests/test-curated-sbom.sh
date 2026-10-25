@@ -80,10 +80,12 @@ t_assert_eq "0" "$(t_rc "${PY}" "${GATE}" --check)"
 t_case "scanner comparison keeps package counts, image scope and source obligations distinct"
 comparison="$("${PY}" - "${REPO}" "${_work}" <<'PY_COMPARE'
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
+
 sys.path.insert(0, str(Path(sys.argv[1]) / "docs/scripts"))
 import compare_sbom as comparison
+
 work = Path(sys.argv[2])
 scanned = work / "scanned-linux.spdx.json"
 scanned.write_text(json.dumps({"packages": [

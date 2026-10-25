@@ -117,6 +117,25 @@ _run_stub_binding() {
     STUB_GENAI_EXT="${STUB}/onnxruntime_genai/ext_x86_64.so" "$@"
 }
 
+_prepare_config_fixture() {
+  local destination="$1" init="$2"
+  mkdir -p "${destination}"
+  cp -r "${STUB}/onnxruntime_genai" "${STUB}/numpy" "${destination}/"
+  printf '\nclass Config:\n%s\n' "${init}" >> "${destination}/onnxruntime_genai/__init__.py"
+}
+
+_assert_config_failure() {
+  local destination="$1" init="$2" expected="$3" no_green_sentinel="${4:-0}"
+  _prepare_config_fixture "${destination}" "${init}"
+  _run "${destination}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 \
+    STUB_GENAI_EXT="${STUB}/onnxruntime_genai/ext_x86_64.so"
+  t_assert_eq "1" "${_RC}"
+  t_assert_contains "${_OUT}" "${expected}"
+  if [ "${no_green_sentinel}" = 1 ]; then
+    t_assert_ok test -z "$(printf '%s' "${_OUT}" | grep -c 'GENAI-BIND OK:' | grep -v '^0$')"
+  fi
+}
+
 # ── B. the three hand-verified verdicts ─────────────────────────────────────
 t_case "module absent -> GENAI-BIND SKIP, rc=3"
 _run "${EMPTY}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64
@@ -189,15 +208,13 @@ _run_stub_binding STUB_GENAI_DROP=Generator
 t_assert_eq "1" "${_RC}"
 t_assert_contains "${_OUT}" "og.Generator missing"
 
-t_case "tier 3: Config refused at the BINDING layer (TypeError) -> FAIL rc=1"
+t_case "tier 3: rejected and unexpected Config errors both fail without a green sentinel"
 # Dropping Config's ctor arg is exactly the ABI/signature mismatch shape.
-BINDBAD="${_WORK}/bindbad"; mkdir -p "${BINDBAD}"
-cp -r "${STUB}/onnxruntime_genai" "${STUB}/numpy" "${BINDBAD}/"
-printf '\nclass Config:\n    def __init__(self): pass\n' >> "${BINDBAD}/onnxruntime_genai/__init__.py"
-_run "${BINDBAD}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 \
-     STUB_GENAI_EXT="${STUB}/onnxruntime_genai/ext_x86_64.so"
-t_assert_eq "1" "${_RC}"
-t_assert_contains "${_OUT}" "og.Config() failed at the BINDING layer"
+_assert_config_failure "${_WORK}/bindbad" '    def __init__(self): pass' \
+  "og.Config() failed at the BINDING layer"
+_assert_config_failure "${_WORK}/unexpected" \
+  '    def __init__(self, path): raise AssertionError("unexpected config failure")' \
+  "AssertionError: unexpected config failure" 1
 
 t_case "tier 4: GENAI_MODEL_DIR pointing at a non-directory -> FAIL rc=1"
 t_needs "a POSIX python3 (Windows' python sees drive-letter paths)" t_posix_python

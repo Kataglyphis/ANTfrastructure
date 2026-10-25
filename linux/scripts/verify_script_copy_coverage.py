@@ -4,6 +4,7 @@
 docs/cross-build-verification.md#failure-classes-from-build-history
 """
 from __future__ import annotations
+
 import re
 import sys
 from pathlib import Path

@@ -5,8 +5,10 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 LIB="${1:-${TESTS_DIR}/../lib/app-packaging.sh}"
 PY_PACKAGE="${2:-${TESTS_DIR}/../06-packaging/python-app-package.sh}"
+t_skip_unless "real POSIX symlinks for the Debian package fixture" t_posix_symlinks
 t_source_functions "${LIB}" _app_packaging_bundle_deb || exit 1
 t_source_functions "${PY_PACKAGE}" package_deb || exit 1
+t_source_functions "${PY_PACKAGE}" deb_depends || exit 1
 if grep -q '^app_packaging_write_deb_control()' "${LIB}"; then
   t_source_functions "${LIB}" app_packaging_write_deb_control || exit 1
 fi
@@ -79,4 +81,37 @@ for caller in python native; do
     done
   done
 done
+
+t_case "a failed readelf command cannot produce a partial package dependency list"
+_DEP_BUNDLE="${WORK}/dependency-bundle"
+_DEP_TOOLS="${WORK}/dependency-tools"
+mkdir -p "${_DEP_BUNDLE}/lib" "${_DEP_TOOLS}"
+printf '{"glibc":true}\n' > "${_DEP_BUNDLE}/bundle.json"
+printf '\177ELF' > "${_DEP_BUNDLE}/lib/module.so"
+cat > "${_DEP_TOOLS}/readelf" <<'TOOL'
+#!/usr/bin/env bash
+[ "${READELF_FAIL:-0}" = 0 ] || exit 9
+case "${1}" in
+  -dW) printf '(NEEDED) Shared library: [libcustom.so]\n' ;;
+  -VW) printf 'Name: GLIBC_2.17\n' ;;
+esac
+TOOL
+cat > "${_DEP_TOOLS}/ldconfig" <<'TOOL'
+#!/usr/bin/env bash
+printf ' libcustom.so (libc6,x86-64) => /usr/lib/libcustom.so\n'
+TOOL
+cat > "${_DEP_TOOLS}/dpkg" <<'TOOL'
+#!/usr/bin/env bash
+printf 'custom-runtime: %s\n' "${2}"
+TOOL
+chmod +x "${_DEP_TOOLS}/readelf" "${_DEP_TOOLS}/ldconfig" "${_DEP_TOOLS}/dpkg"
+_DEP_OUT="$(BUNDLE="${_DEP_BUNDLE}" PATH="${_DEP_TOOLS}:${PATH}" deb_depends)"
+_DEP_RC=$?
+t_assert_eq 0 "${_DEP_RC}" "${_DEP_OUT}"
+t_assert_contains "${_DEP_OUT}" "libc6, custom-runtime"
+_DEP_OUT="$(BUNDLE="${_DEP_BUNDLE}" PATH="${_DEP_TOOLS}:${PATH}" READELF_FAIL=1 deb_depends 2>&1)"
+_DEP_RC=$?
+t_assert_eq 1 "${_DEP_RC}" "readelf failure must abort dependency discovery"
+t_assert_contains "${_DEP_OUT}" "CalledProcessError"
+
 t_summary

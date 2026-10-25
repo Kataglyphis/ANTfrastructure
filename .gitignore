@@ -1,6 +1,6 @@
 docs/_build/*
 *.log
-/logs/
+/logs
 # uv project environments are local build products.
 /.venv/
 /docs/.venv/

@@ -13,6 +13,7 @@ import tarfile
 import tempfile
 import time
 import urllib.request
+from collections.abc import Generator
 from pathlib import Path
 
 ATTEMPTS = 3
@@ -87,7 +88,7 @@ def download(url: str, part: Path, offline_hint: Path) -> None:
         try:
             # The scheme is checked above; the lock's SHA-256 checks the bytes.
             with (
-                urllib.request.urlopen(url, timeout=TIMEOUT_SECONDS) as response,  # noqa: S310  # nosec B310
+                urllib.request.urlopen(url, timeout=TIMEOUT_SECONDS) as response,  # nosec B310
                 part.open("wb") as out,
             ):
                 shutil.copyfileobj(response, out, CHUNK)
@@ -184,7 +185,7 @@ def extract(cached: Path, sha: str, target: Path) -> None:
 
 
 @contextlib.contextmanager
-def cache_lock(cache: Path):
+def cache_lock(cache: Path) -> Generator[None, None, None]:
     """One fetch per cache at a time: two would write the same targets."""
     with (cache / ".lock").open("a+b") as handle:
         deadline = time.monotonic() + LOCK_TIMEOUT_SECONDS

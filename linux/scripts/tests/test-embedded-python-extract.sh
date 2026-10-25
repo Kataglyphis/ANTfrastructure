@@ -19,6 +19,7 @@ cat > "${_work}/direct.sh" <<'SH'
 run_probe() {
   python3 - <<'PY'
 import sys
+
 print(sys.version)
 PY
 }
@@ -28,6 +29,7 @@ SH
 cat > "${_work}/redirected.sh" <<'SH'
 "$py" - <<'PY' 2>/dev/null || echo 'probe crashed'
 import os
+
 print(os.name)
 PY
 SH

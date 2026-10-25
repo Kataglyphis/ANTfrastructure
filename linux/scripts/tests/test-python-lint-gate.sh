@@ -178,6 +178,23 @@ t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82,B012,B023): clean" "F401 i
 t_assert_contains "${_out}" "ADVISORY: findings above are informational"
 t_assert_contains "${_out}" "rc=0" "the adoption ramp must stay advisory"
 
+t_case "Unicode advisory diagnostics survive a Windows code-page Python"
+_unicode_d="$(_mkroot)"
+printf 'print("ok")\n' > "${_unicode_d}/docs/scripts/subject.py"
+mkdir -p "${_unicode_d}/bin"
+cat > "${_unicode_d}/bin/ruff" <<'RUFF_STUB'
+#!/usr/bin/env bash
+case " $* " in *" --select "*) exit 0 ;; esac
+printf '%s\n' 'subject.py:1:1: UP031 diagnostic → readable'
+exit 1
+RUFF_STUB
+chmod +x "${_unicode_d}/bin/ruff"
+_out="$(PYTHONIOENCODING=cp1252 PATH="${_unicode_d}/bin:${PATH}" \
+  _run "${_unicode_d}" "${_unicode_d}/docs/scripts/subject.py")"
+t_assert_contains "${_out}" "UP031 diagnostic → readable"
+t_assert_contains "${_out}" "ADVISORY: findings above are informational"
+t_assert_contains "${_out}" "rc=0"
+
 t_case "a full hub sweep rejects unused Python imports"
 _out="$(_targets 'import os' 'print("ok")')"
 t_assert_contains "${_out}" "F401"

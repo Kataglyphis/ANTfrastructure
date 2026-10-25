@@ -611,8 +611,7 @@ def lock_readable(root: str, rel: str, dep: str) -> None:
         print(f"  {rel}: present, {len(text)} bytes; no stdlib parser for this format, so "
               "'there and not empty' is the whole claim")
         return
-    body = text[len(renovate_audit.BOM):] if text.startswith(
-        renovate_audit.BOM) else text
+    body = text.removeprefix(renovate_audit.BOM)
     try:
         renovate_audit.PARSERS[kind](body)
     except BaseException as exc:                   # noqa: BLE001 -- a parser

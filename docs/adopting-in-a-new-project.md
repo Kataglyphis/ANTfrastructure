@@ -6,6 +6,15 @@ planner–executor agentic loop, reusable PowerShell modules and bash libraries,
 actions. BeschleunigerBallett is the reference consumer: when a detail here is ambiguous, read how
 that repo does it.
 
+## Reuse before adding functionality
+
+Before adding a helper, script, library, workflow or tool in any owned repository, search that
+repository and its submodules for an implementation to reuse. Extend the canonical shared
+implementation and consume it through the repo or submodule when one exists. If it does not, add
+the functionality once to the shared repo and wire consumers to it with project-specific values
+passed as parameters. When a technical boundary makes reuse impossible, record the reason and keep
+the duplicate connected to its canonical source.
+
 ## 0. Add the submodule
 
 ```bash

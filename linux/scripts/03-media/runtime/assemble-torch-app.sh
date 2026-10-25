@@ -457,7 +457,11 @@ assert_chain_wheels_installed() {
   shopt -u nullglob
   [ "${#_check[@]}" -gt 0 ] || return 0
   "${VENV}/bin/python" -I - "${_dir}" "${_check[@]}" <<'PY'
-import importlib.metadata as md, json, re, sys
+import importlib.metadata as md
+import json
+import re
+import sys
+
 store, bad = sys.argv[1].rstrip("/"), 0
 for wheel in sys.argv[2:]:
     name, version = re.sub(r"[-_.]+", "-", wheel.split("-")[0]).lower(), wheel.split("-")[1]

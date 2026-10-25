@@ -5,6 +5,7 @@
 
 See docs/dependency-updates.md#the-edit-is-audited-by-a-real-parser
 """
+
 import collections
 import json
 import re
@@ -20,8 +21,7 @@ import renovate_cmake
 import renovate_locator
 
 # start/end: the version's half-open span in leaf; why: "" or the reason a readable declaration may not move.
-Decl = collections.namedtuple("Decl", "path leaf start end why",
-                              defaults=("",))
+Decl = collections.namedtuple("Decl", "path leaf start end why", defaults=("",))
 DeclPath = tuple[object, ...]
 Leaves = dict[DeclPath, tuple[str, object]]
 
@@ -62,7 +62,8 @@ def _yaml() -> ModuleType:
         raise Unreadable(
             "PyYAML is not installed for this python, and a YAML manifest is "
             "not written unless the edit can be read back by a real YAML "
-            "parser -- install it (pip install pyyaml) and re-run") from exc
+            "parser -- install it (pip install pyyaml) and re-run"
+        ) from exc
     return yaml
 
 
@@ -73,10 +74,12 @@ def _oneline(text: object) -> str:
 
 def _duplicate(kind: str, key: object) -> str:
     """The one wording for a repeated key; last-wins parsing would hide the second declaration."""
-    return ("this %s declares %r twice, so the file says two things about it. "
-            "Which one a report means is not knowable, and a manifest that "
-            "contradicts itself is not one this tool edits -- nothing is "
-            "written" % (kind, key))
+    return (
+        f"this {kind} declares {key!r} twice, so the file says two things about it. "
+        "Which one a report means is not knowable, and a manifest that "
+        "contradicts itself is not one this tool edits -- nothing is "
+        "written"
+    )
 
 
 # Cached, since building it needs the import _yaml() owns.
@@ -91,12 +94,14 @@ def _loader() -> type:
     yaml = _yaml()
 
     class Loader(yaml.SafeLoader):
-        def construct_mapping(self, node: "MappingNode", deep: bool = False) -> dict[object, object]:
+        def construct_mapping(
+            self, node: "MappingNode", deep: bool = False
+        ) -> dict[object, object]:
             seen = set()
             for key_node, _value in node.value:
                 key = self.construct_object(key_node, deep=True)
                 if isinstance(key, (dict, list)):
-                    continue          # PyYAML rejects an unhashable key itself
+                    continue  # PyYAML rejects an unhashable key itself
                 if key in seen:
                     raise Unreadable(_duplicate("mapping", key))
                 seen.add(key)
@@ -111,7 +116,7 @@ def _parse_yaml(body: str) -> object:
     try:
         return yaml.load(body, Loader=_loader())
     except yaml.YAMLError as exc:
-        raise Unreadable("PyYAML cannot read it: %s" % _oneline(exc)) from exc
+        raise Unreadable(f"PyYAML cannot read it: {_oneline(exc)}") from exc
 
 
 def _json_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -146,14 +151,16 @@ def _parse_env(body: str) -> dict[str, dict[str, str]]:
         found = kv.match(lines[key_line]) if key_line < len(lines) else None
         if found is None:
             raise Unreadable(
-                "line %d: the # renovate hint for '%s' is not followed by a "
-                "KEY=value line" % (num + 1, match.group(1)))
+                f"line {num + 1}: the # renovate hint for '{match.group(1)}' is not followed by a "
+                "KEY=value line"
+            )
         key, value = found.groups()
         values = out.setdefault(match.group(1), {})
         if key in values:
             raise Unreadable(
-                "line %d: %s is assigned twice, and one leaf cannot carry two "
-                "values" % (key_line + 1, key))
+                f"line {key_line + 1}: {key} is assigned twice, and one leaf cannot carry two "
+                "values"
+            )
         values[key] = value
     return out
 
@@ -187,12 +194,20 @@ def parse_requirements(text: str) -> list[dict[str, str]]:
         parsed = renovate_locator.pep508_span(text_)
         if parsed is None:
             raise Unreadable(
-                "%r is neither an option line nor a PEP 508 requirement, so "
-                "what this file asks for cannot be read" % text_)
+                f"{text_!r} is neither an option line nor a PEP 508 requirement, so "
+                "what this file asks for cannot be read"
+            )
         name, extras, start, end = parsed
         spec, opts = _spec_and_options(text_[start:end])
-        out.append({"name": name, "extras": extras or "", "spec": spec,
-                    "opts": opts, "tail": text_[end:].strip()})
+        out.append(
+            {
+                "name": name,
+                "extras": extras or "",
+                "spec": spec,
+                "opts": opts,
+                "tail": text_[end:].strip(),
+            }
+        )
     return out
 
 
@@ -208,16 +223,22 @@ def hash_pinned(opts: str) -> str:
     """Why a digest-pinned requirement is not moved (nothing here recomputes hashes), or ""."""
     if "--hash" not in opts:
         return ""
-    return ("this requirement is pinned by digest (%s), and those digests "
-            "describe the release being replaced. Nothing here recomputes them "
-            "-- re-run pip-compile -- and pip rejects a requirements file whose "
-            "hashes do not match, so the version is not moved on its own"
-            % _oneline(opts)[:80])
+    return (
+        f"this requirement is pinned by digest ({_oneline(opts)[:80]}), and those digests "
+        "describe the release being replaced. Nothing here recomputes them "
+        "-- re-run pip-compile -- and pip rejects a requirements file whose "
+        "hashes do not match, so the version is not moved on its own"
+    )
 
 
-PARSERS = {"yaml": _parse_yaml, "toml": tomllib.loads, "json": _parse_json,
-           "requirements": parse_requirements, "env": _parse_env,
-           "cmake": renovate_cmake.parse}
+PARSERS = {
+    "yaml": _parse_yaml,
+    "toml": tomllib.loads,
+    "json": _parse_json,
+    "requirements": parse_requirements,
+    "env": _parse_env,
+    "cmake": renovate_cmake.parse,
+}
 
 
 def parse(manager: str, text: str) -> object:
@@ -225,8 +246,9 @@ def parse(manager: str, text: str) -> object:
     kind = FORMATS.get(manager)
     if kind is None:
         raise Unreadable(
-            "there is no real parser here for manager '%s', and a file whose "
-            "meaning cannot be read back is not written" % manager)
+            f"there is no real parser here for manager '{manager}', and a file whose "
+            "meaning cannot be read back is not written"
+        )
     body = text[1:] if text.startswith(BOM) else text
     try:
         return PARSERS[kind](body)
@@ -234,11 +256,12 @@ def parse(manager: str, text: str) -> object:
         raise
     except RecursionError as exc:
         raise Unreadable(
-            "it nests too deeply for the %s parser to read: %s"
-            % (kind, _oneline(exc))) from exc
-    except Exception as exc:                       # noqa: BLE001 -- see above
-        raise Unreadable("it does not read as %s: %s: %s"
-                         % (kind, type(exc).__name__, _oneline(exc))) from exc
+            f"it nests too deeply for the {kind} parser to read: {_oneline(exc)}"
+        ) from exc
+    except Exception as exc:
+        raise Unreadable(
+            f"it does not read as {kind}: {type(exc).__name__}: {_oneline(exc)}"
+        ) from exc
 
 
 def flatten(struct: object) -> Leaves:
@@ -252,18 +275,20 @@ def flatten(struct: object) -> Leaves:
             continue
         if id(node) in seen:
             raise Unreadable(
-                "%s refers back to itself, so this document has no finite set "
-                "of paths to compare" % show(path))
+                f"{show(path)} refers back to itself, so this document has no finite set "
+                "of paths to compare"
+            )
         if len(seen) >= MAX_DEPTH:
             # Elided: in full it is a huge plan row that says nothing more.
             raise Unreadable(
-                "this document nests past %d levels, under %s; it is not "
+                f"this document nests past {MAX_DEPTH} levels, under {show(path[:4])} ...; it is not "
                 "compared rather than compared partially"
-                % (MAX_DEPTH, show(path[:4]) + " ..."))
+            )
         if len(out) > MAX_PATHS:
             raise Unreadable(
-                "this document expands past %d paths; it is not compared rather "
-                "than compared partially" % MAX_PATHS)
+                f"this document expands past {MAX_PATHS} paths; it is not compared rather "
+                "than compared partially"
+            )
         if isinstance(node, dict):
             out[path] = ("{}", tuple(sorted(str(key) for key in node)))
             items = node.items()
@@ -281,7 +306,7 @@ def show(path: DeclPath) -> str:
     out = ""
     for part in path:
         if isinstance(part, int):
-            out += "[%d]" % part
+            out += f"[{part}]"
         else:
             out += ("." + str(part)) if out else str(part)
     return out or "(the document root)"
@@ -386,8 +411,7 @@ def decl_pep621(struct: object, dep: str) -> list[Decl]:
     want = renovate_locator.normalise(dep)
     for table, keys in renovate_locator.PEP621_KEYS.items():
         for key in keys:
-            _array(out, _mapping(_dig(struct, table)).get(key),
-                   table + (key,), want)
+            _array(out, _mapping(_dig(struct, table)).get(key), table + (key,), want)
     for table in renovate_locator.PEP621_TABLES:
         for key, array in _mapping(_dig(struct, table)).items():
             _array(out, array, table + (key,), want)
@@ -415,8 +439,7 @@ def decl_cargo(struct: object, dep: str) -> list[Decl]:
             if isinstance(spec, str):
                 out.append(_whole(base + (table, dep), spec))
             elif isinstance(version := _mapping(spec).get("version"), str):
-                out.append(_whole(base + (table, dep, "version"),
-                                  version))
+                out.append(_whole(base + (table, dep, "version"), version))
     return out
 
 
@@ -432,8 +455,10 @@ def decl_npm(struct: object, dep: str) -> list[Decl]:
 
 def decl_annotated(struct: object, dep: str) -> list[Decl]:
     """Every KEY= value the hints name for this dep; KEY is the path, as deps can share a name."""
-    return [_whole((dep, key), cast(str, value))
-            for key, value in sorted(_mapping(_mapping(struct).get(dep)).items())]
+    return [
+        _whole((dep, key), cast(str, value))
+        for key, value in sorted(_mapping(_mapping(struct).get(dep)).items())
+    ]
 
 
 def decl_requirements(struct: object, dep: str) -> list[Decl]:
@@ -448,8 +473,7 @@ def decl_requirements(struct: object, dep: str) -> list[Decl]:
         if renovate_locator.normalise(entry["name"]) != want:
             continue
         spec = entry["spec"]
-        out.append(Decl((i, "spec"), spec, 0, len(spec),
-                        hash_pinned(entry["opts"])))
+        out.append(Decl((i, "spec"), spec, 0, len(spec), hash_pinned(entry["opts"])))
     return out
 
 
@@ -475,59 +499,74 @@ DECLARERS = {
 
 
 # The invariant, computed before the edit and checked after it
-def _miscount(dep: str, old: str, count: int, found: list[Decl], at_old: list[Decl]) -> str:
+def _miscount(
+    dep: str, old: str, count: int, found: list[Decl], at_old: list[Decl]
+) -> str:
     """Why the parse and the report disagree: declared nowhere, elsewhere, or more often."""
-    where = ", ".join("%s=%s" % (show(d.path), d.leaf[d.start:d.end])
-                      for d in found)
+    where = ", ".join(f"{show(d.path)}={d.leaf[d.start : d.end]}" for d in found)
     if not found:
-        return ("a real parser finds no declaration of '%s' in this file at "
-                "all, so whatever line was picked to rewrite is not one; "
-                "nothing is written" % dep)
+        return (
+            f"a real parser finds no declaration of '{dep}' in this file at "
+            "all, so whatever line was picked to rewrite is not one; "
+            "nothing is written"
+        )
     if not at_old:
-        return ("a real parser reads this file as declaring '%s' at %s, and "
-                "none of those carries the reported current value %s -- "
-                "something moved, so nothing is written" % (dep, where, old))
-    return ("a real parser reads this file as declaring '%s' at %s -- %d of "
-            "them at the reported %s, against %d update(s) in the report. "
-            "Which declaration the report means is not knowable from the "
-            "file, so nothing is written"
-            % (dep, where, len(at_old), old, count))
+        return (
+            f"a real parser reads this file as declaring '{dep}' at {where}, and "
+            f"none of those carries the reported current value {old} -- "
+            "something moved, so nothing is written"
+        )
+    return (
+        f"a real parser reads this file as declaring '{dep}' at {where} -- {len(at_old)} of "
+        f"them at the reported {old}, against {count} update(s) in the report. "
+        "Which declaration the report means is not knowable from the "
+        "file, so nothing is written"
+    )
 
 
 def _crashed(doing: str, exc: Exception) -> str:
     """A refusal naming an unexpected exception, which must not escape past the rollback."""
-    return ("%s raised %s: %s. That is a defect in the auditor rather than a "
-            "verdict on the file, and an audit that cannot finish does not "
-            "sanction an edit -- so nothing is kept"
-            % (doing, type(exc).__name__, _oneline(exc)))
+    return (
+        f"{doing} raised {type(exc).__name__}: {_oneline(exc)}. That is a defect in the auditor rather than a "
+        "verdict on the file, and an audit that cannot finish does not "
+        "sanction an edit -- so nothing is kept"
+    )
 
 
-def _expected(manager: str, text: str, groups: Sequence[tuple[str, str, str, int]]) -> tuple[dict[DeclPath, str], Leaves, str]:
+def _expected(
+    manager: str, text: str, groups: Sequence[tuple[str, str, str, int]]
+) -> tuple[dict[DeclPath, str], Leaves, str]:
     struct = parse(manager, text)
     leaves = flatten(struct)
     want = {}
     for dep, old, new, count in groups:
         found = DECLARERS[manager](struct, dep)
-        at_old = [d for d in found if d.leaf[d.start:d.end] == old]
+        at_old = [d for d in found if d.leaf[d.start : d.end] == old]
         if len(at_old) != count:
             return {}, {}, _miscount(dep, old, count, found, at_old)
         for decl in at_old:
             # Readable but not movable: its own reason, not a miscount.
             if decl.why:
-                return {}, {}, "%s declares '%s', and %s" % (
-                    show(decl.path), dep, decl.why)
+                return {}, {}, f"{show(decl.path)} declares '{dep}', and {decl.why}"
             if decl.path in want:
-                return {}, {}, (
-                    "two of this report's updates both claim %s; one value "
-                    "cannot become two things" % show(decl.path))
-            rewritten = decl.leaf[:decl.start] + new + decl.leaf[decl.end:]
+                return (
+                    {},
+                    {},
+                    (
+                        f"two of this report's updates both claim {show(decl.path)}; one value "
+                        "cannot become two things"
+                    ),
+                )
+            rewritten = decl.leaf[: decl.start] + new + decl.leaf[decl.end :]
             # old == new is a lockfile-only update; `want` holds only paths that must move.
             if rewritten != decl.leaf:
                 want[decl.path] = rewritten
     return want, leaves, ""
 
 
-def expected(manager: str, text: str, groups: Sequence[tuple[str, str, str, int]]) -> tuple[dict[DeclPath, str], Leaves, str]:
+def expected(
+    manager: str, text: str, groups: Sequence[tuple[str, str, str, int]]
+) -> tuple[dict[DeclPath, str], Leaves, str]:
     """(path -> leaf it must carry, this document's leaves, refusal), from the parse alone; never raises.
 
     groups: one (dep, old, new, count) per reported pin.
@@ -536,7 +575,7 @@ def expected(manager: str, text: str, groups: Sequence[tuple[str, str, str, int]
         return _expected(manager, text, groups)
     except Unreadable as exc:
         return {}, {}, str(exc)
-    except Exception as exc:                       # noqa: BLE001 -- see _crashed
+    except Exception as exc:  # noqa: BLE001 -- see _crashed
         return {}, {}, _crashed("working out what the edit may change", exc)
 
 
@@ -544,11 +583,14 @@ def _shape(gone: set[DeclPath], born: set[DeclPath]) -> str:
     """A bump adds and removes no path; one that does escaped its quoting or changed the format's reading."""
     parts = []
     if gone:
-        parts.append("%d path(s) disappeared (%s)" % (len(gone), _paths(gone)))
+        parts.append(f"{len(gone)} path(s) disappeared ({_paths(gone)})")
     if born:
-        parts.append("%d appeared (%s)" % (len(born), _paths(born)))
-    return ("the edit changed the SHAPE of the file: " + " and ".join(parts)
-            + ". A version bump adds and removes nothing")
+        parts.append(f"{len(born)} appeared ({_paths(born)})")
+    return (
+        "the edit changed the SHAPE of the file: "
+        + " and ".join(parts)
+        + ". A version bump adds and removes nothing"
+    )
 
 
 def _elsewhere(moved: set[DeclPath], want: dict[DeclPath, str]) -> str:
@@ -556,31 +598,45 @@ def _elsewhere(moved: set[DeclPath], want: dict[DeclPath, str]) -> str:
     missed = set(want) - moved
     parts = []
     if stray:
-        parts.append("it changed %s, which declares nothing this report names"
-                     % _paths(stray))
+        parts.append(
+            f"it changed {_paths(stray)}, which declares nothing this report names"
+        )
     if missed:
-        parts.append("it left %s, the declaration the report named, alone"
-                     % _paths(missed))
-    return ("the edit did not land where the report's dependency is declared: "
-            + "; and ".join(parts))
+        parts.append(
+            f"it left {_paths(missed)}, the declaration the report named, alone"
+        )
+    return (
+        "the edit did not land where the report's dependency is declared: "
+        + "; and ".join(parts)
+    )
 
 
-def audit(manager: str, before_text: str, after_text: str, groups: Sequence[tuple[str, str, str, int]]) -> str:
-    """"" when exactly the reported declarations moved old -> new, else why to put the file back; never raises."""
+def audit(
+    manager: str,
+    before_text: str,
+    after_text: str,
+    groups: Sequence[tuple[str, str, str, int]],
+) -> str:
+    """Return a refusal reason unless exactly the reported declarations moved."""
     try:
         return _audit(manager, before_text, after_text, groups)
-    except Exception as exc:                       # noqa: BLE001 -- see _crashed
+    except Exception as exc:  # noqa: BLE001 -- see _crashed
         return _crashed("auditing the file after the write", exc)
 
 
-def _audit(manager: str, before_text: str, after_text: str, groups: Sequence[tuple[str, str, str, int]]) -> str:
+def _audit(
+    manager: str,
+    before_text: str,
+    after_text: str,
+    groups: Sequence[tuple[str, str, str, int]],
+) -> str:
     want, before_leaves, why = expected(manager, before_text, groups)
     if why:
         return why
     try:
         after_leaves = flatten(parse(manager, after_text))
     except Unreadable as exc:
-        return "after the edit, %s" % exc
+        return f"after the edit, {exc}"
     gone = set(before_leaves) - set(after_leaves)
     born = set(after_leaves) - set(before_leaves)
     if gone or born:
@@ -590,6 +646,8 @@ def _audit(manager: str, before_text: str, after_text: str, groups: Sequence[tup
         return _elsewhere(moved, want)
     for path in sorted(moved, key=show):
         if after_leaves[path] != ("str", want[path]):
-            return ("%s now reads %r, and the reported update makes it %r"
-                    % (show(path), after_leaves[path][1], want[path]))
+            return (
+                f"{show(path)} now reads {after_leaves[path][1]!r}, and the reported update makes it "
+                f"{want[path]!r}"
+            )
     return ""

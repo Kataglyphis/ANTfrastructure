@@ -329,7 +329,7 @@ def write_inline_markers(versions: dict[str, str]) -> int:
 
 # Deps table (third-party-licenses.md), rendered by deps_table.py, shared with generate-website-licenses.py.
 
-from deps_table import (  # noqa: E402
+from deps_table import (
     render_deps_table_lines,
     render_modified_lines,
     render_obligations_lines,
@@ -763,7 +763,7 @@ def main() -> int:
         # Also check website license files.
         import subprocess
         lic_script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"
-        lic_result = subprocess.run([sys.executable, str(lic_script), "--check"], capture_output=True, text=True)
+        lic_result = subprocess.run([sys.executable, str(lic_script), "--check"], capture_output=True, text=True, check=False)
         result |= lic_result.returncode
         if lic_result.returncode:
             print(lic_result.stderr, file=sys.stderr)
@@ -782,7 +782,7 @@ def main() -> int:
     # Auto-regenerate website license files so they never go stale.
     import subprocess
     lic_script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"
-    lic_result = subprocess.run([sys.executable, str(lic_script), "--write"], capture_output=True, text=True)
+    lic_result = subprocess.run([sys.executable, str(lic_script), "--write"], capture_output=True, text=True, check=False)
     if lic_result.returncode:
         print("ERROR: generate-website-licenses.py --write failed:", file=sys.stderr)
         print(lic_result.stderr, file=sys.stderr)

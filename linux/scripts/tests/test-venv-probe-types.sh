@@ -5,19 +5,17 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 S="$(cd "${TESTS_DIR}/.." && pwd)"
 
-t_case "the torch Dockerfile invokes ty with the assembled venv and packaged probe"
+t_case "the torch Dockerfile checks both probes against the assembled venv"
 type_run="$(awk '/^RUN --mount=type=bind,source=linux\/scripts\/06-packaging\/check-venv-probe-types.sh,/{on=1} on {print} on && /^    esac/ {exit}' "${S}/../Dockerfile.torch")"
 t_assert_contains "${type_run}" 'load-ty-tool.sh,target=/tmp/venv-probe-ty/load-ty-tool.sh' \
   "the shared pin loader must be mounted beside the build-time checker"
+t_assert_contains "${type_run}" 'source=linux/jetson-webcam/app.py,target=/tmp/venv-probe-ty/jetson-webcam-app.py,ro' \
+  "the Jetson app source must be mounted only into the type-check step"
 actual="$(printf '%s\n' "${type_run}" | grep -E '^[[:space:]]*amd64\)' || true)"
-read -r arch runner checker venv probe pins end _ <<< "${actual}"
-t_assert_eq 'amd64)' "${arch}" "the x64 build must have a live type-check arm"
-t_assert_eq 'bash' "${runner}" "the Dockerfile must execute the checker script"
-t_assert_eq '/tmp/venv-probe-ty/check.sh' "${checker}" "the mounted type gate must run"
-t_assert_eq '/opt/venv' "${venv}" "the checker must inspect the assembled venv"
-t_assert_eq '/opt/scripts/packaging/venv-version-probe.py' "${probe}" "the checker must inspect the packaged probe"
-t_assert_eq '/tmp/venv-probe-ty/tool-pins.env' "${pins}" "the checker must read the pinned tool version"
-t_assert_eq ';;' "${end}" "the x64 case must terminate before other architecture arms"
+t_assert_contains "${actual}" 'bash /tmp/venv-probe-ty/check.sh /opt/venv /opt/scripts/packaging/venv-version-probe.py /tmp/venv-probe-ty/tool-pins.env &&' \
+  "the x64 build must check the packaged probe against its assembled environment"
+t_assert_contains "${type_run}" 'bash /tmp/venv-probe-ty/check.sh /opt/venv /tmp/venv-probe-ty/jetson-webcam-app.py /tmp/venv-probe-ty/tool-pins.env ;;' \
+  "the same runtime environment must type-check the Jetson app"
 t_assert_contains "$(cat "${S}/../Dockerfile.package")" \
   'COPY --chmod=644 linux/scripts/06-packaging/venv-version-probe.py /opt/scripts/packaging/venv-version-probe.py' \
   "the source passed to ty must be packaged at that path"

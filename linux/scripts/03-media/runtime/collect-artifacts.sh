@@ -41,10 +41,10 @@ for name in sorted(os.listdir(os.path.join(prefix, sub))):
     with zipfile.ZipFile(os.path.join(prefix, sub, name)) as zf:
         for info in zf.infolist():
             if re.search(r"\.so(?:\.[0-9]+)*$", info.filename):
-                rows.append("%s  %s!%s\n" % (hashlib.sha256(zf.read(info)).hexdigest(), name, info.filename))
+                rows.append(f"{hashlib.sha256(zf.read(info)).hexdigest()}  {name}!{info.filename}\n")
 with open(os.path.join(prefix, out), "w", encoding="utf-8") as fh:
     fh.writelines(rows)
-print("%s: %d chain wheel member(s) under %s/%s" % (out, len(rows), prefix, sub))
+print(f"{out}: {len(rows)} chain wheel member(s) under {prefix}/{sub}")
 PY
 }
 

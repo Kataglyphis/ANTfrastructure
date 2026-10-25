@@ -4,7 +4,9 @@ import argparse
 import os
 import threading
 import time
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
 
 import cv2
 import torch
@@ -17,7 +19,7 @@ PAGE = b"""<!doctype html><title>Jetson webcam</title>
 SIZE = 320  # SSDLite320's fixed input side
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--camera", default="/dev/video0")
     p.add_argument("--port", type=int, default=8080)
@@ -31,14 +33,15 @@ class Latest:
 
     def __init__(self) -> None:
         self.cond = threading.Condition()
-        self.item, self.seq = None, 0
+        self.item: Any | None = None
+        self.seq = 0
 
-    def put(self, item):
+    def put(self, item: Any) -> None:
         with self.cond:
             self.item, self.seq = item, self.seq + 1
             self.cond.notify_all()
 
-    def wait_newer(self, seen):
+    def wait_newer(self, seen: int) -> tuple[Any | None, int]:
         with self.cond:
             self.cond.wait_for(lambda: self.seq != seen, timeout=2)
             return self.item, self.seq
@@ -47,7 +50,7 @@ class Latest:
 class FastSSD:
     """SSDLite replayed from a CUDA graph with one batched NMS instead of torchvision's per-class loop."""
 
-    def __init__(self, model, dev, cuda_graph=True) -> None:
+    def __init__(self, model: Any, dev: Any, cuda_graph: bool = True) -> None:
         self.m = model
         self.static_in = torch.zeros(1, 3, SIZE, SIZE, device=dev)
         with torch.inference_mode():
@@ -71,7 +74,9 @@ class FastSSD:
         return head["bbox_regression"][0], head["cls_logits"][0]
 
     @torch.inference_mode()
-    def __call__(self, rgb_u8, threshold, iou=0.55, top=100) -> tuple[list[list[float]], list[int], list[float]]:
+    def __call__(
+        self, rgb_u8: Any, threshold: float, iou: float = 0.55, top: int = 100
+    ) -> tuple[list[list[float]], list[int], list[float]]:
         h, w = rgb_u8.shape[:2]
         x = rgb_u8.permute(2, 0, 1).unsqueeze(0).float().div_(255)
         x = torch.nn.functional.interpolate(x, size=(SIZE, SIZE), mode="bilinear", align_corners=False)
@@ -90,7 +95,7 @@ class FastSSD:
         return (boxes[keep] * scale).tolist(), labels[keep].tolist(), scores[keep].tolist()
 
 
-def capture_loop(camera, frames):
+def capture_loop(camera: str, frames: Latest) -> None:
     cap = cv2.VideoCapture(camera, cv2.CAP_V4L2)
     if not cap.isOpened():
         raise SystemExit(f"cannot open {camera}")
@@ -104,7 +109,7 @@ def capture_loop(camera, frames):
             time.sleep(0.05)
 
 
-def inference_loop(args, frames, jpegs):
+def inference_loop(args: argparse.Namespace, frames: Latest, jpegs: Latest) -> None:
     if not torch.cuda.is_available():
         raise SystemExit("CUDA not available -- start the container with the GPU (see README.md)")
     dev = torch.device("cuda")
@@ -136,7 +141,7 @@ def inference_loop(args, frames, jpegs):
         jpegs.put(cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])[1].tobytes())
 
 
-def make_handler(jpegs):
+def make_handler(jpegs: Latest) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             if self.path != "/stream":
@@ -163,16 +168,17 @@ def make_handler(jpegs):
     return Handler
 
 
-def run_or_die(target, *args: object):
+def run_or_die(target: Callable[..., Any], *args: object) -> None:
     # A dead worker thread must stop the server, not leave it streaming nothing.
     try:
         target(*args)
     except BaseException as exc:  # noqa: BLE001 -- report whatever killed it, then exit
-        print(f"{target.__name__} stopped: {exc}", flush=True)
+        worker_name = getattr(target, "__name__", type(target).__name__)
+        print(f"{worker_name} stopped: {exc}", flush=True)
         os._exit(1)
 
 
-def main():
+def main() -> None:
     args = parse_args()
     frames, jpegs = Latest(), Latest()
     threading.Thread(target=run_or_die, args=(capture_loop, args.camera, frames), daemon=True).start()

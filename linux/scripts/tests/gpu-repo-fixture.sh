@@ -10,9 +10,10 @@ gpu_repo_plant() {
   local sandbox="$1" component="$2" pins="$3" context="${4:-direct}"
   mkdir -p "$sandbox/core" "$sandbox/etc/apt/keyrings" "$sandbox/etc/apt/sources.list.d" "$sandbox/etc/apt/preferences.d" "$sandbox/etc/ld.so.conf.d" "$sandbox/tmp" "$sandbox/opt/rocm/core/bin" "$sandbox/opt/rocm/core/include" "$sandbox/opt/rocm/core/lib"
   python3 - "$GPU_REPO_ROOT/linux/scripts/01-core/setup-$component-repo.sh" "$sandbox/core/driver.sh" "$sandbox" "$component" "$context" <<'PY'
-from pathlib import Path
 import re
 import sys
+from pathlib import Path
+
 source, target, root, component, context = sys.argv[1:]
 text=Path(source).read_text()
 text=re.sub(r'/etc/|/opt/rocm|/tmp/', lambda match: root+match.group(), text)
@@ -101,8 +102,9 @@ gpu_repo_record() {
 
 gpu_repo_bytes() {
   python3 - "$GPU_CASE" "$1" <<'PYCODE'
-from pathlib import Path
 import sys
+from pathlib import Path
+
 root, name = sys.argv[1:]
 path=Path(name)
 print(path.read_bytes().replace(root.encode(), b'@ROOT@').hex() if path.is_file() else '<missing>', end='')

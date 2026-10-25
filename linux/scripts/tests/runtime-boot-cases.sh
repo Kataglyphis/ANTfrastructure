@@ -223,6 +223,18 @@ _truth_gate_output() {
 _advert_gate() { _truth_gate_output "$1" "${2:-0}" check_advertised_versions; }
 _venv_gate() { _truth_gate_output "${2:-ASSERTED 1}" "${1:-0}" check_venv_package_set; }
 
+_venv_status_gate() {
+  VENV_STATUS="$1" bash -c '
+    '"${_STUBS}"'
+    target_arch=amd64
+    _SHIPPED_TRUTH_PROBE="${VENV_STATUS}"
+    _venv_set_verdicts() { printf "ASSERTED 1\n"; }
+    '"$(_extract _check_venv_package_set)"'
+    _check_venv_package_set
+    printf "FAILURES=%s\n" "${FAILURES}"
+  ' 2>&1
+}
+
 t_case "an incomplete shared probe fails the advertised gate with its own diagnostic"
 _out="$(_advert_gate "OK RUST_VERSION 1.98.0" 1)"
 t_assert_contains "${_out}" "FAIL advertised-version gate could not run: the in-image probe never printed RTPROBE_DONE (amd64) -- a gate that cannot run is not a pass"
@@ -238,6 +250,16 @@ t_assert_eq 0 "$(printf '%s\n' "${_out}" | grep -c 'requirement edge')" "the ver
 t_case "an empty venv assertion count remains a failure"
 t_assert_contains "$(_venv_gate 0 "ASSERTED 0")" "FAIL VENV-SET asserted NOTHING on amd64" \
   "the common probe check cannot turn an empty contract into a pass"
+
+t_case "a crashed venv metadata probe fails instead of becoming an unavailable skip"
+_out="$(_venv_status_gate "VENV ERROR metadata-probe-crashed")"
+t_assert_contains "${_out}" "FAIL venv package-set metadata probe failed on amd64: metadata-probe-crashed"
+t_assert_contains "${_out}" "FAILURES=1" "a probe error contributes one fatal verdict"
+
+t_case "an absent optional metadata package remains a loud unavailable skip"
+_out="$(_venv_status_gate "VENV ABSENT packaging-module-missing")"
+t_assert_contains "${_out}" "SKIP venv package-set comparison UNAVAILABLE on amd64: packaging-module-missing"
+t_assert_contains "${_out}" "FAILURES=0" "the explicit unavailable state is not reported as a pass or failure"
 
 t_case "an unset key fails the gate instead of printing a SKIP"
 t_assert_contains "$(_advert_gate "UNSET RUST_VERSION")" "could only ever SKIP" \

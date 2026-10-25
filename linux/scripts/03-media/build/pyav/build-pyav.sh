@@ -188,7 +188,9 @@ pyav_report() {
     for wheel in "${wheels[@]}"; do
         info "Built $(basename "${wheel}")"
         "${BUILD_PYTHON}" - "${wheel}" <<'PY' || true
-import sys, zipfile
+import sys
+import zipfile
+
 names = [n for n in zipfile.ZipFile(sys.argv[1]).namelist() if n.endswith(".so")]
 print(f"  PyAV wheel carries {len(names)} extension(s); e.g. {names[0] if names else '<none>'}")
 PY

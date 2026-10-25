@@ -12,8 +12,9 @@ for helper in append_onnx_cross_cmake_build_args copy_onnx_libraries_to_output a
   if grep -q "^${helper}()" "$common"; then eval "$(t_fn_src "$common" "$helper")"; fi
 done
 python3 - "$repo" "$work/genai.sh" <<'PY'
-from pathlib import Path
 import sys
+from pathlib import Path
+
 text=(Path(sys.argv[1])/'linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh').read_text()
 a=text.index('_GENAI_MODULE_EXT=""')
 b=text.index('\nfi',a)+3

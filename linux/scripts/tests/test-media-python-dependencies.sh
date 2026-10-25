@@ -7,8 +7,9 @@ repo="${1:-$(cd "${TESTS_DIR}/../../.." && pwd)}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 python3 - "$repo" "$work" <<'PY'
-from pathlib import Path
 import sys
+from pathlib import Path
+
 root, out = map(Path, sys.argv[1:])
 preamble = (root/'linux/scripts/01-core/install-deps-preamble.sh').read_text()
 marker = 'report_cross_python_development() {'
@@ -73,8 +74,9 @@ BASH
   done
 done
 python3 - "$repo" "$work" <<'PYCODE'
-from pathlib import Path
 import sys
+from pathlib import Path
+
 root, out = map(Path, sys.argv[1:])
 text = (root/'linux/scripts/03-media/build/gstreamer/common/pre-setup.sh').read_text()
 helper = ''
@@ -87,6 +89,15 @@ for name in ('vulkan', 'csound'):
     start = text.rfind(needle, 0, end)
     end = text.index('\n', end)
     (out/f'{name}-pc.sh').write_text(helper+text[start:end]+'\n')
+text = (root/'linux/scripts/03-media/build/gstreamer/install-deps.sh').read_text()
+if '\nmedia_load_vulkan_toolchain\n' in text:
+    common = (root/'linux/scripts/03-media/core/common.sh').read_text()
+    start = common.index('media_load_vulkan_toolchain() {')
+    code = common[start:common.index('\n}', start)+2]+'\nmedia_load_vulkan_toolchain\n'
+else:
+    start = text.index('if [ -f /opt/scripts/toolchain/vulkan.sh ]; then')
+    code = text[start:text.index('\nfi', start)+3]
+(out/'import.sh').write_text(code.replace('/opt/scripts/toolchain/vulkan.sh', '"' + str(out/'vulkan.sh') + '"'))
 PYCODE
 for name in vulkan csound; do
   t_case "$name pkg-config bytes and write-error policy"
@@ -113,20 +124,6 @@ BASH
   t_assert_eq "$expected_rc" "$rc"
 done
 t_case 'optional Vulkan import keeps missing/success/failure and parent environment visibility'
-python3 - "$repo" "$work" <<'PYCODE'
-from pathlib import Path
-import sys
-root, out = map(Path, sys.argv[1:])
-text = (root/'linux/scripts/03-media/build/gstreamer/install-deps.sh').read_text()
-if '\nmedia_load_vulkan_toolchain\n' in text:
-    common = (root/'linux/scripts/03-media/core/common.sh').read_text()
-    start = common.index('media_load_vulkan_toolchain() {')
-    code = common[start:common.index('\n}', start)+2]+'\nmedia_load_vulkan_toolchain\n'
-else:
-    start = text.index('if [ -f /opt/scripts/toolchain/vulkan.sh ]; then')
-    code = text[start:text.index('\nfi', start)+3]
-(out/'import.sh').write_text(code.replace('/opt/scripts/toolchain/vulkan.sh', str(out/'vulkan.sh')))
-PYCODE
 t_assert_eq 0 "$(t_rc bash -eu "$work/import.sh")"
 printf 'VULKAN_IMPORT=visible\n' > "$work/vulkan.sh"
 t_assert_eq visible "$(bash -eu -c 'source "$1"; printf %s "$VULKAN_IMPORT"' _ "$work/import.sh")"

@@ -513,6 +513,9 @@ feeds it, or dropping the parse check each turn one of those three assertions re
 before this, all three were silent — every suite stayed green while ~775 lines
 left the gate. The suite builds its fixture openers as `printf` ARGUMENTS so it is
 never itself an extraction target.
+Windows Ruff paths and source-map keys normalize separators before the finding is
+mapped back to its shell file and source line.
+The relabeler forces UTF-8 for its own output: Windows Python can inherit cp1252 and fail while printing a non-ASCII source line, leaving the advisory report incomplete. The suite forces cp1252 and checks that a Unicode Ruff diagnostic survives.
 
 Mutations: `comment-size.verdict-discarded`, `comment-size.limit-not-enforced`,
 `comment-size.every-language-is-a-subject`, `comment-size.heredoc-is-data`,
@@ -522,11 +525,13 @@ Mutations: `comment-size.verdict-discarded`, `comment-size.limit-not-enforced`,
 `python-lint.hub-unused-unpacking-gate`, `python-lint.hub-regex-flag-gate`,
 `python-lint.hub-string-concatenation-gate`,
 `python-lint.hub-string-format-gate`,
-`python-lint.embedded-extraction-off`, `python-lint.embedded-file-discovery` and
-`python-lint.heredoc-python-decision` (the last targets
+`python-lint.embedded-extraction-off`, `python-lint.embedded-file-discovery`,
+`python-lint.heredoc-python-decision` (which targets
 `extract_embedded_python.py`, which `verify_gate_registry.py` counts among
 `python-lint`'s own files because `own_files` includes the helpers a `.sh` gate
-shells out to).
+shells out to), and `python-lint.utf8-diagnostic-output` (which forces the
+Windows source-map helper to print non-ASCII Ruff findings as UTF-8; its fixture
+runs under cp1252).
 
 ## Python type analysis
 
@@ -547,41 +552,37 @@ files. It uses the Linux target for Linux and shared scripts and the Windows tar
 missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
 The full-tree ANN002/ANN003/ANN204/ANN205/ANN206 gate writes
 `logs/code-quality/ruff-annotations-gate.txt`. A second full-tree ANN202 gate writes
-`logs/code-quality/ruff-private-returns-gate.txt`. Twenty-nine fully annotated Renovate,
-LLM gateway, docs, host, image acceptance and build helper files have fatal ANN001/ANN201 checks in
-`logs/code-quality/ruff-parameters-returns-gate.txt`.
+`logs/code-quality/ruff-private-returns-gate.txt`. The maintained 121-file scope has fatal
+ANN001/ANN201 checks in `logs/code-quality/ruff-parameters-returns-gate.txt`.
 The Linux x64 workflow uploads
 these files after preflight. Reports with findings state that
 they have findings; a failed download, invalid configuration or checker crash fails CI.
 
-**140 of 146 tracked Python files are a strict type gate.** This includes all tracked
-`docs/scripts/*.py`, `linux/scripts/verify_*.py`, `linux/scripts/tests/*.py`,
-Linux LLM stack tests, dependency-free build helpers, shared Python helpers and the
-Windows certificate helper. `quality/pyproject.toml` and the committed
-`quality/uv.lock` supply pytest, PyYAML, markdown-it-py and Playwright
-to a Python 3.14 environment;
-the gate syncs it with `uv sync --project quality --locked` and passes that interpreter
+**All 146 tracked Python files have fatal ty coverage.** The locked quality
+environment checks 140 Linux/shared files, and the Windows platform gate checks
+the Windows certificate helper. Five files with dependencies absent from the
+locked environment are checked in their real workflow or build environments:
+`docs/conf.py`, the WebDAV downloader, `venv-version-probe.py`, the Jetson webcam
+app, and `litert-wheel-smoke.py`. The common Linux and Windows reports scan the
+remaining files whose imports resolve in the locked environment.
+`quality/pyproject.toml` and the committed `quality/uv.lock` supply pytest,
+PyYAML, markdown-it-py and Playwright to a Python 3.14 environment; the gate
+syncs it with `uv sync --project quality --locked` and passes that interpreter
 to ty. The Linux and Windows strict results have separate ignored reports.
-The Linux x64 full scan still reports four files with image-only, submodule or
-private imports. One is `docs/conf.py`: Linux x64 checks out without the theme
-submodule, so its unresolved import stays visible in `ty-linux.txt`. The docs
-workflow checks out the pinned DocumANTation submodule and runs `--docs-conf`
-as a prerequisite to building and publishing the site. That mode checks the
-tracked configuration against the theme's source path, writes
-`logs/code-quality/ty-docs-conf-gate.txt`, and fails for a missing theme or a
-type finding. Sphinx rendering is checked by the later docs build. Two more
-runtime-dependent files have separate build-time type gates: `venv-version-probe.py`
-in the x64 torch image uses its assembled `/opt/venv`, and `litert-wheel-smoke.py`
-in the Windows media wheel build uses the installed wheel, NumPy and ml_dtypes.
-They remain visible in generic reports because those packages are absent from
-the quality environment. The Jetson webcam still has only report-only ty
-findings. Linux x64 CI
-checks the WebDAV downloader against the exact pinned client source commit without
-installing its runtime dependencies, writes the verdict to ignored
+Linux x64 checks `docs/conf.py` with the pinned DocumANTation submodule using
+`--docs-conf` before building and publishing the site. That mode writes
+`logs/code-quality/ty-docs-conf-gate.txt` and fails for a missing theme or a
+type finding. Sphinx rendering is checked by the later docs build. The x64 torch
+image checks `venv-version-probe.py` and the Jetson webcam app against its
+assembled `/opt/venv`; the webcam app's API usage is checked without launching
+a camera or GPU. The Windows media wheel build checks `litert-wheel-smoke.py`
+against its installed wheel, NumPy and ml_dtypes. Linux x64 CI checks the WebDAV
+downloader against the exact pinned client source commit without installing its
+runtime dependencies, writes the verdict to ignored
 `logs/code-quality/ty-webdav-gate.txt`, and uploads it. A local Git fixture
 checks a wrong API argument, missing client source and failed fetch. The Flutter
 browser smoke joins the strict ty scope through the locked Playwright package;
-type checking does not launch Chromium. A new
+type checking does not launch Chromium; the Flutter font fetcher and web artifact checker are also in the strict scope. A new
 Python path outside the strict patterns also starts in the full report until
 the strict scope is extended.
 The preflight and x64 image build share `01-core/load-ty-tool.sh` for the pinned
@@ -590,7 +591,7 @@ and probe script so the build checks the same pin without copying the checker in
 the final image. The shared loader clears an ambient `TY_VERSION`; the preflight
 driver also clears `RUFF_VERSION` before loading its pinned tools. Fixtures and
 mutations prove ambient versions cannot replace either pin.
-There is no allowlist or raised diagnostic threshold. The full report retains paths and
+There is no allowlist or raised diagnostic threshold. The all-file Ruff report retains paths and
 rules for the next cleanup. `tests/test-python-types.sh` plants an incorrect annotated
 return and errors in selected Linux and Windows helpers, requiring the gate to fail.
 Mutation cases remove the verdict, path selections and theme search path; the
@@ -603,19 +604,21 @@ tracked Python file. The 20 existing variadic findings, 22 `ANN204` findings and
 four `ANN205` findings were fixed; `ANN206` was already clean. All 303 existing
 private return findings were fixed, so `ANN202` now fails across all 146 tracked
 Python files. Parameter and public return findings were fixed in the Renovate CMake
-parser, locator and planner, the gateway renderer and its tests, the two docs duplication
-scanners, the develop-red watcher, layer audit, large-file and masked-assignment
-verifiers, the Renovate audit, consumer inventory, package-name verifier, three docs bump tools, and
+parser, locator and planner, the gateway renderer and its tests, gateway fixture, client, operations, routing and shaping tests with their fake lane and harness, apt update selection, guarded link, image acceptance and header discovery tests, the version bump driver and Flutter browser smoke, the two docs duplication
+scanners, the develop-red watcher, manifest annotation, layer audit, code-size, large-file,
+masked-assignment and trailing-conditional verifiers, the lint-scope and callback tests, ONNX receipt and gateway routing tests, workflow query, Flutter font fetcher and web artifact checker, Renovate audit, consumer inventory, package-name verifier, three docs bump tools, and
 nine small docs, host, image, wheel and test files, plus the mutation verifier,
-gate registry and image acceptance driver. ANN001/ANN201 fail in those 29 files.
+gate registry, image acceptance driver, image-env verifier, complexity and
+dead-function verifiers, ORT census probe, venv version probe, GStreamer metadata
+helper, ORT venv census, QNN query tests, chain ORT fixtures, sudo policy, raw pin reader, cross-active registration, compiler candidate, media-file set, smoke query contract, Clang job policy, binfmt probe, Meson dispatch, host Cargo preparation, target Cargo pipeline and host Python pin tests, Flutter performance reporter, media-pin advisory, directory-visitor, verified-installer, toolchain download-loader and fleet dependency tests, workflow conventions verifier, site-link verifier, shared quality allow and gate scope helpers, comment-size and ShellCheck ratchet verifiers, the Dart documentation renderer, free-threaded sysconfig tool, SHA-256 data-lock fetcher, Ansible status report, Jetson webcam app, validator probe, runtime child-stop, wheel tag resolution, runtime SDK help, triplet query, advertised-key verifier, CLI help exit, image-reference CLI, native smoke dispatch, nerdctl service receipts, binfmt probe controls, native GCC environment tests, Dockerfile ENV ordering verifier, image-consumer bootstrap tests, NPM Python transport tests, Python provider context tests, serving stack tests, LLM network guard, libcamera report tests, consumer quality wiring tests, embedded Python extractor, Corrosion toolchain tests, sudo policy closure tests, wheel archive transport tests, WebDAV download tests, Meson bound provider tests, Flutter trace summary, wheelhouse manifest, chain sibling PID and log-dir consumer tests, gateway log-tail tests, and the WebDAV downloader. ANN001/ANN201 fail in those 121 files.
 Remaining findings stay in the full report. The focused
 suite injects unannotated signatures, and selector and
 scope mutations prove the gates can fail. The Ruff annotation and ty checks share one fatal report/exit path so
 their diagnostics and exit status cannot drift apart.
-The workflow convention verifier, consumer inventory and Renovate planner now
-have zero Ruff UP031 findings after changing their diagnostics to equivalent
-f-strings. Their focused fixtures check the emitted verdicts; the inventory's
-tabular progress output keeps the original column widths.
+The workflow convention verifier, consumer inventory, Renovate planner and
+image-env verifier now have zero Ruff UP031 findings after changing their
+diagnostics to equivalent f-strings. Their focused fixtures check the emitted
+verdicts; the inventory's tabular progress output keeps the original column widths.
 
 ## Dockerfile lint: hadolint rule selection (`dockerfile-lint`)
 
@@ -818,7 +821,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3449 entries** over **375 distinct test commands**; both digits are
+manifest holds **3524 entries** over **376 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -876,8 +879,12 @@ verdicts: **1m59s** at `--jobs 8`, then the default (6.2x), and **1m24s** at `--
 The test transport reaps its session when the test shell exits. A surviving child
 can hold captured stdout or stderr open after the shell is gone; waiting for pipe
 EOF first used to turn a completed test into a 300-second baseline timeout.
-`test-mutation-pipe-reaping.sh` proves the transport closes those pipes on both
-the baseline and its mutant; its own mutation removes the exit watcher.
+Each test starts with stdin closed, so inherited terminal input cannot stall a
+fixture; `test-mutation-gate.sh` pipes a marker to the parent and proves the
+child cannot consume it. `test-mutation-pipe-reaping.sh` proves the transport
+closes captured pipes on both the baseline and its mutant; its own mutation
+removes the exit watcher. The Windows harness proof writes its JSON result under
+ignored `logs/code-quality/` inside its throwaway copy.
 Since 2026-09-24 every verdict is printed the moment its entry completes, flushed
 and tagged `[j/J]` with the shard that proved it, and a closing `FAILED: n of m
 entr(ies), in manifest order: …` line puts the failures back in manifest order. It
@@ -1205,6 +1212,7 @@ four subjects: **shell functions** and **Python functions** over
 Python and Dockerfile files** over `FILE_SIZE_LIMIT` (default 800) against
 `file-size.allow`. The offenders that exist today are frozen in those two
 files, which are the inventory — this page does not keep a second count.
+When an oversized file shrinks, update its recorded line count; a stale size freeze fails the gate.
 
 Python functions are read with `ast`, not a regex: `end_lineno` is exact, nested
 `def`s are qualified (`Class.method`), and a decorator or a multi-line signature
@@ -1390,6 +1398,10 @@ the relative source for `--source "${SCAN_ROOT}"`, that anchor stopped matching 
 the gate went from **2.42 GB in 3m37s, clean** to **8.22 GB in 12m48s with 10801
 findings** — every one of them `ROCM_GPG_KEY_SHA256` in a gitignored build log, i.e.
 the checksum of a *public* GPG key.
+
+The same config excludes `logs/` and Python `__pycache__/`: script tests create
+synthetic credentials and downloaded dependency code there while preflight slugs
+run concurrently. These are ignored outputs, not source shipped by a commit.
 
 Consumer support is unaffected: a consumer's own `.gitleaks.toml` anchors its paths
 relative to its own tree too, which is exactly what scanning from inside gives it.
@@ -1635,8 +1647,8 @@ change: renaming without deleting reports STALE, deleting without renaming repor
 the prefix that cannot own it.
 
 Lines prefixed `mutation-family:` are the third namespace and are NOT debt: they
-declare the descriptive prefixes used over ordinary build scripts, which no gate
-owns. 16 declared on 2026-09-04, covering 43 ids. An undeclared prefix fails as
+declare descriptive prefixes for implementation files no gate owns. 16 declared
+on 2026-09-04, covering 43 ids. An undeclared prefix fails as
 NEW; a family no id carries any more is STALE. If a family name is ever adopted as
 a preflight slug, every id under it starts being judged by ownership and the
 declaration goes stale in the same run. The file therefore holds three counts —
@@ -1798,8 +1810,8 @@ Git-ignored `logs/` directory. Linux and Windows Python CI put their reports in
 `logs/test-results/`; Linux stage logs use `logs/build-logs/`, and Windows BuildKit uses
 `logs/windows-build-logs/`. The docs build copies selected reports into its generated site
 assets for publication. The live `chain-status*.json` files remain at the repo root because
-the chain reads them there. PowerShell complexity JSON remains in `out/complexity/` as
-requested separately.
+the chain reads them there. PowerShell complexity JSON belongs under ignored
+`logs/code-quality/`.
 The Windows test runner writes a JSON summary for each parent run to
 `logs/windows-tests/summary-<timestamp>-<pid>.json`; child runs do not write durable copies.
 
@@ -1852,11 +1864,11 @@ the harness keeps its rooted-path and missing-file policies.
 The default command prints a nonblocking report. Windows x64 CI runs the full
 tracked-tree scan with `-Strict` after the PowerShell lint gate. Use
 `-Path <file-or-dir> -Strict` to include a new file before Git tracks it, and
-save local JSON results in the Git-ignored `out/complexity/` folder:
+save local JSON results in the Git-ignored `logs/code-quality/complexity/` folder:
 
 ```pwsh
-New-Item -ItemType Directory -Force out/complexity | Out-Null
-pwsh -File windows/scripts/Invoke-CodeComplexity.ps1 -Strict -JsonPath out/complexity/windows-full.json
+New-Item -ItemType Directory -Force logs/code-quality/complexity | Out-Null
+pwsh -File windows/scripts/Invoke-CodeComplexity.ps1 -Strict -JsonPath logs/code-quality/complexity/windows-full.json
 ```
 
 `-JsonPath` remains optional; CI runs the strict gate without writing a report.
@@ -2174,7 +2186,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 939 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 940 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -2285,9 +2297,11 @@ all proven since 2026-09-05.
 `shellcheck-warnings`, baseline `linux/scripts/shellcheck-warnings.allow`, suite
 `linux/scripts/tests/test-shellcheck-warnings.sh`.
 
-One `shellcheck -x -f json1 -S warning` run over exactly the file set
+`shellcheck -x -f json1 -S warning` analyzes exactly the file set
 `lint-shell.sh --list-files` prints, counted per `(file, SCxxxx)` and checked
-against the frozen rows with the shared four-way rule. On 2026-09-04, after the
+against the frozen rows with the shared four-way rule. Windows runs split that
+set into commands below 24,000 characters and merge their JSON findings; `-x`
+keeps sourced-file analysis enabled in every batch. On 2026-09-04, after the
 row review below: **319 files in scope, 174 warning-level findings in 72 files, 92
 frozen rows** — SC2034 (84), SC2155 (19), SC2154 (16), SC2178 (12), SC2046 (11),
 SC1090 (9), SC2163 (8).
@@ -2405,8 +2419,10 @@ gate with exit 2, naming the file, the line and the expected format.
 
 **Coverage.** `tests/test-shellcheck-warnings.sh`, over throwaway trees whose subjects provoke SC2034,
 SC2155 and a source-directive pair, plus stub binaries for the paths a real
-shellcheck cannot produce; 20 mutations (`shellcheck-warnings.*`), every one
-proven to bite. The suite's
+shellcheck cannot produce; 21 mutations (`shellcheck-warnings.*`), every one
+proven to bite. `tests/test-shellcheck-batching.sh` simulates Windows' process
+limit and proves each input is checked once and every batch's findings are merged.
+The suite's
 last case runs the gate against the live tree, and `SKIP_REAL_TREE=1` drops it —
 which is what every mutation `test` command sets, so no mutation can be recorded
 as biting because the tree drifted rather than because the guarantee was removed.
@@ -3430,6 +3446,7 @@ Four rules, each of which a copy got wrong somewhere:
    succeeds in any subdirectory, so `--root <repo>/third_party` passed and graded
    a fragment with every relative path anchored one level down — which shifts
    every allowlist key without saying so. Refused now, naming the real toplevel.
+   Invalid roots exit with status 2 and a named error before any gate work starts.
 2. **An empty scan is a decision, never a default.** `refuse` where every repo
    must have such files, so an empty list means the scope construction broke;
    `allow` where a repo may legitimately have none. The caller says which.

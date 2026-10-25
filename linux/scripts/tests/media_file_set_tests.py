@@ -7,13 +7,21 @@ import tempfile
 import unittest
 from functools import lru_cache
 from pathlib import Path
+from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[3]
 MEDIA = Path(sys.argv.pop(1)).resolve()
 
 
+class Receipt(TypedDict):
+    rc: int
+    out: str
+    err: str
+    trace: str
+
+
 @lru_cache
-def body(file, domain):
+def body(file: Path, domain: str) -> str:
     if domain == "tf":
         return (
             subprocess.run(
@@ -38,7 +46,7 @@ def body(file, domain):
 
 
 @lru_cache
-def helper_source():
+def helper_source() -> str:
     return subprocess.run(
         [
             "bash",
@@ -54,7 +62,7 @@ def helper_source():
     ).stdout
 
 
-def receipt(file, domain, mask, kind, conditional):
+def receipt(file: Path, domain: str, mask: int, kind: str, conditional: bool) -> Receipt:
     with tempfile.TemporaryDirectory(prefix="ant-media-regular-files-") as directory:
         w = Path(directory)
         root = w / "space [*]"
@@ -124,7 +132,7 @@ mkdir() { printf 'mkdir\n' >> "$TRACE"; }
         }
 
 
-def capture():
+def capture() -> dict[str, Receipt]:
     results = {}
     for domain, rel in [
         ("tf", "build/ffmpeg/ffmpeg-dnn-backends.sh"),
@@ -139,7 +147,7 @@ def capture():
     return results
 
 
-def missing_api(domain, selected, conditional):
+def missing_api(domain: str, selected: bool, conditional: bool) -> subprocess.CompletedProcess[str]:
     if domain == "tf":
         segment = body(MEDIA / "build/ffmpeg/ffmpeg-dnn-backends.sh", "tf")
         setup = (
@@ -183,14 +191,14 @@ cross_compile_cmake_lib_from_source() { printf UNEXPECTED_BUILD; }
 
 
 class MediaFileSets(unittest.TestCase):
-    def test_original_domain_receipts(self):
+    def test_original_domain_receipts(self) -> None:
         expected = json.loads(
             Path(__file__).with_name("media-file-set-receipts.json").read_text()
         )
         self.assertEqual(128, len(expected))
         self.assertEqual(expected, capture())
 
-    def test_file_sets_have_independent_expected_verdicts(self):
+    def test_file_sets_have_independent_expected_verdicts(self) -> None:
         got = capture()
         for domain in ["tf", "hb"]:
             for kind in ["regular", "directory", "symlink", "dangling"]:
@@ -215,7 +223,7 @@ class MediaFileSets(unittest.TestCase):
             ),
         )
 
-    def test_raw_failure_status_and_order(self):
+    def test_raw_failure_status_and_order(self) -> None:
         command = (
             r"""set -uo pipefail
 function [ { printf '%s\n' "$2"; return 23; }
@@ -236,7 +244,7 @@ if media_regular_files_present 'first [*]' 'second file'; then exit 0; else exit
         self.assertEqual("first [*]\n", result.stdout)
         self.assertEqual("", result.stderr)
 
-    def test_missing_api_fails_closed_only_when_selected(self):
+    def test_missing_api_fails_closed_only_when_selected(self) -> None:
         for domain in ["tf", "hb"]:
             for conditional in [False, True]:
                 with self.subTest(domain=domain, conditional=conditional):

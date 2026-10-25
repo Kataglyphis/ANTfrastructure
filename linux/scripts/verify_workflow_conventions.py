@@ -12,7 +12,7 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Never, TypeAlias
 
@@ -57,6 +57,11 @@ _ITEM = re.compile(r"^-(?:(?P<gap>[ \t]+)(?P<rest>\S.*?))?[ \t]*$")
 _BLOCK = re.compile(r"^[|>][+-]?[0-9]*$")
 _FLOW_BREAK = ",:[]{}"
 YamlNode: TypeAlias = "str | list[YamlNode] | dict[str, tuple[YamlNode, int]] | None"
+YamlDocument: TypeAlias = dict[str, tuple[YamlNode, int]]
+Finding: TypeAlias = tuple[str, str, str, int, str]
+ExcuseKey: TypeAlias = tuple[str, str, str, str]
+ExcuseRows: TypeAlias = list[tuple[ExcuseKey, str, int]]
+Census: TypeAlias = dict[tuple[str, str], tuple[int, str, int]]
 
 
 def _strip_comment(line: str) -> str:
@@ -167,7 +172,7 @@ def _scalar(text: str, line: int = 0) -> YamlNode:
         if text[i:].strip():
             raise ParseError(f"{text[i:].strip()[:24]!r} follows a flow collection")
         return node
-    if text.startswith(("&", "*")) or text.startswith("<<"):
+    if text.startswith(("&", "*", "<<")):
         raise ParseError("anchors, aliases and merge keys are not supported")
     return text
 
@@ -188,7 +193,7 @@ def _lines(text: str) -> list[tuple[int, str, int]]:
 
 
 class _Cursor:
-    def __init__(self, rows) -> None:
+    def __init__(self, rows: list[tuple[int, str, int]]) -> None:
         self.rows = rows
         self.i = 0
 
@@ -277,7 +282,7 @@ def _parse_map(cur: _Cursor, indent: int) -> dict:
             _skip_continuation(cur, indent)
 
 
-def load_yaml(path: Path) -> dict:
+def load_yaml(path: Path) -> YamlDocument:
     """The document as {key: (value, line)} maps; sequences hold bare values."""
     rows = _lines(path.read_text(encoding="utf-8"))
     if not rows:
@@ -296,14 +301,14 @@ def load_yaml(path: Path) -> dict:
     return node
 
 
-def value(node, key, default=None):
+def value(node: YamlNode, key: str, default: YamlNode = None) -> YamlNode:
     """The value half of a {key: (value, line)} entry."""
     if isinstance(node, dict) and key in node:
         return node[key][0]
     return default
 
 
-def line_of(node, key, default=0):
+def line_of(node: YamlNode, key: str, default: int = 0) -> int:
     if isinstance(node, dict) and key in node:
         return node[key][1]
     return default
@@ -312,7 +317,7 @@ def line_of(node, key, default=0):
 # The four checks
 
 
-def _label_values(val) -> list:
+def _label_values(val: YamlNode) -> list[str]:
     """Literal strings in a runner value: a scalar, a sequence, or the `{group:, labels:}` mapping form."""
     if isinstance(val, str):
         return [val]
@@ -329,7 +334,7 @@ def _label_values(val) -> list:
     return []
 
 
-def _labels(node, out) -> None:
+def _labels(node: YamlNode, out: list[tuple[str, int]]) -> None:
     """Every literal value a runner label can be spelled as, with its line."""
     if isinstance(node, dict):
         for key, (val, num) in node.items():
@@ -341,7 +346,7 @@ def _labels(node, out) -> None:
             _labels(item, out)
 
 
-def check_runner_ban(rel, doc):
+def check_runner_ban(rel: str, doc: YamlDocument) -> list[Finding]:
     found = []
     _labels(doc, found)
     return [(rel, "runner-ban", label, num,
@@ -351,12 +356,12 @@ def check_runner_ban(rel, doc):
             if EXPRESSION not in label and LATEST_LABEL.match(label)]
 
 
-def _jobs(doc) -> Iterable[tuple[str, tuple[YamlNode, int]]]:
+def _jobs(doc: YamlDocument) -> Iterable[tuple[str, tuple[YamlNode, int]]]:
     jobs = value(doc, "jobs")
     return jobs.items() if isinstance(jobs, dict) else []
 
 
-def check_job_timeout(rel, doc):
+def check_job_timeout(rel: str, doc: YamlDocument) -> list[Finding]:
     out = []
     for jid, (job, num) in _jobs(doc):
         if not isinstance(job, dict) or "uses" in job:
@@ -369,7 +374,7 @@ def check_job_timeout(rel, doc):
     return out
 
 
-def check_permissions(rel, doc):
+def check_permissions(rel: str, doc: YamlDocument) -> list[Finding]:
     if "permissions" in doc:
         return []
     return [(rel, "permissions", jid, num,
@@ -379,7 +384,7 @@ def check_permissions(rel, doc):
             if not isinstance(job, dict) or "permissions" not in job]
 
 
-def _steps(node, out) -> None:
+def _steps(node: YamlNode, out: list[YamlDocument]) -> None:
     if isinstance(node, dict):
         for key, (val, _num) in node.items():
             if key == "steps" and isinstance(val, list):
@@ -391,7 +396,7 @@ def _steps(node, out) -> None:
             _steps(item, out)
 
 
-def check_artifact_error(rel, doc):
+def check_artifact_error(rel: str, doc: YamlDocument) -> list[Finding]:
     steps = []
     _steps(doc, steps)
     out = []
@@ -404,14 +409,17 @@ def check_artifact_error(rel, doc):
         if setting == "error":
             continue
         # The allow file is pipe-delimited, and a step name may contain a pipe.
-        name = (value(step, "name") or value(step, "id") or "(unnamed)").replace("|", "/")
+        raw_name = value(step, "name") or value(step, "id") or "(unnamed)"
+        if not isinstance(raw_name, str):
+            raise TypeError("an artifact upload step name must be a string")
+        name = raw_name.replace("|", "/")
         out.append((rel, "artifact-error", name, line_of(step, "uses"),
                     "upload-artifact step {!r} sets if-no-files-found={}; a build "
                     "that produced nothing uploads nothing and stays green".format(name, setting or "<unset, defaults to warn>")))
     return out
 
 
-CHECKERS = {
+CHECKERS: dict[str, Callable[[str, YamlDocument], list[Finding]]] = {
     "runner-ban": check_runner_ban,
     "job-timeout": check_job_timeout,
     "permissions": check_permissions,
@@ -459,7 +467,7 @@ def _excuse_row(path: Path, parts: list, num: int, rows: list, seen: dict) -> No
     rows.append((key, " | ".join(parts[4:]), num))
 
 
-def load_allow(path: Path):
+def load_allow(path: Path) -> tuple[ExcuseRows, Census]:
     """-> (excuse rows in file order, {(repo, check): (count, reason, line)})."""
     rows, seen, census = [], {}, {}
     if not path.exists():
@@ -478,7 +486,7 @@ def load_allow(path: Path):
     return rows, census
 
 
-def declared_repos():
+def declared_repos() -> tuple[set[str], str]:
     """(declared repositories, hub name); fails rather than return an empty set that disables the typo check."""
     try:
         raw = CONSUMERS.read_text(encoding="utf-8")
@@ -508,14 +516,14 @@ def declared_repos():
 def repo_name(root: Path) -> str:
     """The linted repository's name from its origin remote (directories get renamed), else the directory name."""
     out = subprocess.run(["git", "-C", str(root), "remote", "get-url", "origin"],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, check=False)
     url = out.stdout.strip() if out.returncode == 0 else ""
     if url:
         return url.rstrip("/").rsplit("/", 1)[-1].removesuffix(".git")
     return root.name
 
 
-def armed() -> frozenset:
+def armed() -> frozenset[str]:
     raw = os.environ.get(ARM_ENV, "").strip()
     if raw.lower() in DISARM:
         return ALWAYS_ARMED
@@ -530,13 +538,13 @@ def armed() -> frozenset:
     return frozenset(named) | ALWAYS_ARMED
 
 
-def yaml_files(root: Path) -> list:
+def yaml_files(root: Path) -> list[Path]:
     gh = root / ".github"
     found = sorted(gh.glob("workflows/*.yml")) + sorted(gh.glob("workflows/*.yaml"))
     return found + sorted(gh.glob("actions/*/action.yml")) + sorted(gh.glob("actions/*/action.yaml"))
 
 
-def collect(root: Path, files: list) -> list:
+def collect(root: Path, files: list[Path]) -> list[Finding]:
     findings = []
     for path in files:
         rel = path.relative_to(root).as_posix()
@@ -556,7 +564,9 @@ def collect(root: Path, files: list) -> list:
     return findings
 
 
-def grade_findings(findings: list, repo: str, excused: dict, live: frozenset):
+def grade_findings(
+    findings: list[Finding], repo: str, excused: dict[ExcuseKey, str], live: frozenset[str]
+) -> tuple[set[ExcuseKey], int, int]:
     """Each finding gets exactly one verdict. -> (excuses used, fatal, advisory)"""
     used, fatal, advisory = set(), 0, 0
     for rel, check, detail, num, why in sorted(findings):
@@ -573,7 +583,9 @@ def grade_findings(findings: list, repo: str, excused: dict, live: frozenset):
     return used, fatal, advisory
 
 
-def grade_rows(rows: list, census: dict, repo: str, known: set, used: set):
+def grade_rows(
+    rows: ExcuseRows, census: Census, repo: str, known: set[str], used: set[ExcuseKey]
+) -> tuple[int, int]:
     """The bookkeeping half, which never ramps. -> (stale rows, typo'd rows)"""
     stale = typos = 0
     for key, _reason, num in rows:
@@ -591,8 +603,10 @@ def grade_rows(rows: list, census: dict, repo: str, known: set, used: set):
     return stale, typos
 
 
-def grade_census(findings: list, repo: str, excused: set, census: dict,
-                 is_hub: bool, live: frozenset) -> int:
+def grade_census(
+    findings: list[Finding], repo: str, excused: set[ExcuseKey], census: Census,
+    is_hub: bool, live: frozenset[str]
+) -> int:
     """Failed census rows: ramping counts may only go down, and armed checks count zero."""
     counts = {}
     for rel, check, detail, _num, _why in findings:
@@ -626,8 +640,10 @@ def grade_census(findings: list, repo: str, excused: set, census: dict,
     return bad
 
 
-def report(repo: str, findings: list, rows: list, census: dict, live: frozenset,
-           known: set, hub: str) -> int:
+def report(
+    repo: str, findings: list[Finding], rows: ExcuseRows, census: Census,
+    live: frozenset[str], known: set[str], hub: str
+) -> int:
     excused = {key: reason for key, reason, _num in rows if key[0] == repo}
     foreign = sum(1 for key, _r, _n in rows if key[0] != repo)
 

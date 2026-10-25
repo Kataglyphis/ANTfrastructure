@@ -112,7 +112,9 @@ t_is_elf() { [ "$(head -c 4 "$1" 2>/dev/null | tail -c 3)" = ELF ]; }
 t_zip() {
   mkdir -p "$(dirname "$1")"
   python3 - "$@" <<'PY'
-import sys, zipfile
+import sys
+import zipfile
+
 with zipfile.ZipFile(sys.argv[1], "w") as z:
     for member in sys.argv[2:]:
         z.writestr(member, b"")
@@ -230,6 +232,16 @@ t_rc()  { "$@" >/dev/null 2>&1; echo $?; }
 t_wait_file() { local _i; for _i in $(seq 1 "${2:-100}"); do [ -s "$1" ] && return 0; sleep 0.1; done; return 1; }
 # t_pid_state <pid> — "alive" or "dead", for asserting that a test left no process behind
 t_pid_state() { if kill -0 "${1:-0}" 2>/dev/null; then echo alive; else echo dead; fi; }
+
+# Reap fixture children so a suite cannot leave a server or worker running.
+t_stop_children() {
+  local pid
+  for pid in "$@"; do
+    [ -n "$pid" ] || continue
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  done
+}
 
 # t_assert_eq <expected> <actual> [message]
 t_assert_eq() {

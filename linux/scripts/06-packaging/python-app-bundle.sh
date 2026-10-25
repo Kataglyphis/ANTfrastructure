@@ -174,9 +174,14 @@ done
 
 info "== data"
 python3 - "${CONFIG}" "${BUNDLE}" <<'PY'
-import json, shutil, sys
+import json
+import shutil
+import sys
 from pathlib import Path
-for item in json.load(open(sys.argv[1])).get("data", []):
+
+with open(sys.argv[1], encoding="utf-8") as config_file:
+    data = json.load(config_file).get("data", [])
+for item in data:
     dest = Path(sys.argv[2]) / item["to"]
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(item["from"], dest)
@@ -252,10 +257,14 @@ KATAGLYPHIS_BUNDLED_GLIBC=1 python3 "${SCRIPT_DIR}/python-app-selftest.py" --roo
   err "self-test '${SELF_TEST[*]}' failed through the bundled loader"
 # The packagers read the waived sonames back: a deb must not depend on a library nothing loads.
 python3 - "${BUNDLE}" "${report}" "$(basename "${app_wheel}")" "$(basename "${ort_wheel}")" "${PYTHON_VERSION}" "${GLIBC_VERSION}" "${ALLOWED_UNRESOLVED[*]}" "${SCRIPTS[@]}" <<'PY'
-import json, sys
+import json
+import sys
+
 bundle, report, wheel, ort, python, glibc, allowed, *scripts = sys.argv[1:]
 manifest = {"wheel": wheel, "ort_wheel": ort, "python": python, "glibc": glibc, "scripts": scripts,
             "unresolved_allowed": allowed.split(), "self_test": json.loads(report)}
-open(f"{bundle}/bundle.json", "w").write(json.dumps(manifest, indent=2) + "\n")
+with open(f"{bundle}/bundle.json", "w", encoding="utf-8") as manifest_file:
+    json.dump(manifest, manifest_file, indent=2)
+    manifest_file.write("\n")
 PY
 info "bundle ready: ${BUNDLE} (${APP_ID})"

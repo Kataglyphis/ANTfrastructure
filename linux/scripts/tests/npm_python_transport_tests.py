@@ -6,8 +6,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = Path(sys.argv.pop(1)).resolve()
@@ -15,7 +17,7 @@ INTEGRITY = "sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1D
 
 
 @lru_cache
-def extract(file, fn):
+def extract(file: Path, fn: str) -> str:
     return subprocess.run(
         [
             "bash",
@@ -78,7 +80,7 @@ late_python() { printf 'late\0' >> "$WORK/binding.calls"; _python_impl "$@"; }
 """
 
 
-def run(file, case):
+def run(file: Path, case: Sequence[Any]) -> list[Any]:
     scenario, strict, conditional, phase = case
     with tempfile.TemporaryDirectory(prefix="ant-npm-python-") as directory:
         work = Path(directory)
@@ -156,7 +158,7 @@ def run(file, case):
 
 
 class NpmPythonTransportTests(unittest.TestCase):
-    def test_original_receipts(self):
+    def test_original_receipts(self: "NpmPythonTransportTests") -> None:
         rows = json.loads(
             Path(__file__).with_name("npm-python-transport-receipts.json").read_text()
         )
@@ -165,7 +167,9 @@ class NpmPythonTransportTests(unittest.TestCase):
             with self.subTest(case=row["case"]):
                 self.assertEqual(row["receipt"], run(SCRIPT, row["case"]))
 
-    def test_prefix_alias_preserves_enclosing_arguments(self):
+    def test_prefix_alias_preserves_enclosing_arguments(
+        self: "NpmPythonTransportTests",
+    ) -> None:
         result = run(SCRIPT, ["success", True, False, "prefix"])
         self.assertEqual(0, result[0])
         self.assertEqual("", result[2])
@@ -173,7 +177,9 @@ class NpmPythonTransportTests(unittest.TestCase):
         self.assertEqual({"dest [*]/result": "unpacked"}, result[4])
         self.assertEqual(2, result[3]["python.calls"].count("python\0-c\0"))
 
-    def test_raw_status_quiet_stderr_and_arguments(self):
+    def test_raw_status_quiet_stderr_and_arguments(
+        self: "NpmPythonTransportTests",
+    ) -> None:
         code = (
             extract(SCRIPT, "_npm_python_quiet")
             + r"""

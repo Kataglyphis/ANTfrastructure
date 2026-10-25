@@ -7,12 +7,18 @@ docs/code-quality-tooling.md#the-allowlist-contract"""
 
 import os
 import sys
-
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from typing import TypeAlias, TypeVar
 
 FMT = "<key> | ... | <count> | <reason>"
+AllowRows: TypeAlias = dict[tuple[str, ...], tuple[int, str]]
+CountRows: TypeAlias = dict[tuple[str, ...], int]
+Key = TypeVar("Key")
 
 
-def iter_rows(path, keys=None, fmt=FMT):
+def iter_rows(
+    path: str, keys: int | None = None, fmt: str = FMT
+) -> Iterator[tuple[tuple[str, ...], int, str, int]]:
     """`key | count | reason` rows -> (key-tuple, count, reason, line number), in file
     order and repeats included. `keys` fixes the number of key columns so a reason may
     carry `|` and `#`; None keeps the count in the second column from the right. A row
@@ -27,28 +33,34 @@ def iter_rows(path, keys=None, fmt=FMT):
             parts = [p.strip() for p in line.split("|")]
             at = len(parts) - 2 if keys is None else keys
             if at < 1 or len(parts) < at + 2 or not parts[at].isdigit():
-                sys.stderr.write("ERROR: %s:%d: expected '%s'\n"
-                                 % (os.path.basename(path), num, fmt))
+                sys.stderr.write(f"ERROR: {os.path.basename(path)}:{num}: expected '{fmt}'\n")
                 raise SystemExit(2)
             yield tuple(parts[:at]), int(parts[at]), " | ".join(parts[at + 1:]), num
 
 
-def load_rows(path, keys=None, fmt=FMT):
+def load_rows(path: str, keys: int | None = None, fmt: str = FMT) -> AllowRows:
     """iter_rows as a {key: (count, reason)} table; a repeated key keeps its last row."""
     return {key: (count, reason) for key, count, reason, _num in iter_rows(path, keys, fmt)}
 
 
-def load_counts(path, keys=None, fmt=FMT):
+def load_counts(path: str, keys: int | None = None, fmt: str = FMT) -> CountRows:
     """load_rows without the reasons -- what check_counts compares against."""
     return {key: count for key, (count, _reason) in load_rows(path, keys, fmt).items()}
 
 
-def check_counts(kind, items, frozen, limit, allow_name, unit="lines"):
+def check_counts(
+    kind: str,
+    items: Iterable[tuple[Key, int]],
+    frozen: Mapping[Key, int],
+    limit: int,
+    allow_name: str,
+    unit: str = "lines",
+) -> int:
     """The four-way contract: a new offender, growth, an unrecorded shrink and a
     stale freeze all fail. `items` = [(key-tuple, count)], `frozen` from load_counts."""
     rc = 0
     over = [(k, n) for k, n in items if n > limit]
-    print("  %-9s %d over %d %s; %d frozen" % (kind + ":", len(over), limit, unit, len(frozen)))
+    print(f"  {kind + ':':<9} {len(over)} over {limit} {unit}; {len(frozen)} frozen")
     seen = set()
     for key, count in sorted(over):
         seen.add(key)
@@ -56,29 +68,32 @@ def check_counts(kind, items, frozen, limit, allow_name, unit="lines"):
         was = frozen.get(key)
         if was is None:
             rc = 1
-            sys.stderr.write("FAIL: %s is %d %s, over the %d-%s limit and not "
-                             "frozen -- fix it, or add it to %s with a reason.\n"
-                             % (label, count, unit, limit, unit.rstrip("s"), allow_name))
+            sys.stderr.write(
+                f"FAIL: {label} is {count} {unit}, over the {limit}-{unit.rstrip('s')} limit "
+                f"and not frozen -- fix it, or add it to {allow_name} with a reason.\n"
+            )
         elif count > was:
             rc = 1
-            sys.stderr.write("FAIL: %s GREW from %d to %d %s -- update its %s "
-                             "entry and say why in the reason column.\n"
-                             % (label, was, count, unit, allow_name))
+            sys.stderr.write(
+                f"FAIL: {label} GREW from {was} to {count} {unit} -- update its {allow_name} "
+                "entry and say why in the reason column.\n"
+            )
         elif count < was:
             rc = 1
-            sys.stderr.write("FAIL: %s shrank from %d to %d %s -- update its %s "
-                             "entry so the baseline cannot rot.\n"
-                             % (label, was, count, unit, allow_name))
+            sys.stderr.write(
+                f"FAIL: {label} shrank from {was} to {count} {unit} -- update its {allow_name} "
+                "entry so the baseline cannot rot.\n"
+            )
     for key, was in sorted(frozen.items()):
         if key not in seen:
             rc = 1
             label = ":".join(key) if isinstance(key, tuple) else key
-            sys.stderr.write("FAIL: STALE freeze for %s (%d %s) -- it is no longer "
-                             "over the limit; delete the line.\n" % (label, was, unit))
+            sys.stderr.write(f"FAIL: STALE freeze for {label} ({was} {unit}) -- it is no longer "
+                             "over the limit; delete the line.\n")
     return rc
 
 
-def load_keys(path):
+def load_keys(path: str) -> set[str]:
     """One frozen key per line (fields tab-separated), `#` comments skipped -> set."""
     keep = set()
     if not os.path.exists(path):
@@ -91,8 +106,14 @@ def load_keys(path):
     return keep
 
 
-def check_keys(keys, frozen, new_head, stale_head, describe=lambda k: k.replace("\t", "  "),
-               describe_stale=None):
+def check_keys(
+    keys: Iterable[str],
+    frozen: set[str],
+    new_head: str,
+    stale_head: str,
+    describe: Callable[[str], str] = lambda key: key.replace("\t", "  "),
+    describe_stale: Callable[[str], str] | None = None,
+) -> int:
     """The two-way contract: a key not frozen is NEW, a frozen key not found is STALE.
     Prints each set under its heading; returns 1 if either is non-empty.
 

@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 WORKER = r"""
 set -uo pipefail
@@ -57,7 +58,7 @@ fi
 """
 
 
-def check_report(work, row):
+def check_report(work: Path, row: list[Any]) -> None:
     case, expected = row
     strict, context, aliases, pkg_available, gst_available, pkg_rc, gst_rc, version_rc = case
     env = dict(os.environ, WORK=str(work), STRICT=str(strict), CONTEXT=context,
@@ -70,7 +71,7 @@ def check_report(work, row):
     assert receipt == expected, (case, receipt, expected)
 
 
-def check_dynamic_scope(work):
+def check_dynamic_scope(work: Path) -> None:
     code = r'''
 set -euo pipefail
 source "$1/current-functions.sh"
@@ -95,7 +96,7 @@ printf 'GLOBALS:%s/%s/%s/%s\n' "$tool" "$probe" "$success" "$missing"
     assert result.stderr == "", result
 
 
-def check_prefix_argv(work):
+def check_prefix_argv(work: Path) -> None:
     code = r"""
 set -euo pipefail
 shopt -s expand_aliases
@@ -119,7 +120,7 @@ libcamera_env_show 'head with spaces' '' tail
     assert actual == expected, (actual, expected)
 
 
-def main():
+def main() -> None:
     text = Path(sys.argv[1]).read_text()
     names = ("_libcamera_report_available_probe", "_libcamera_pkg_probe", "_libcamera_pkg_found",
              "_libcamera_gst_probe", "_libcamera_gst_found", "libcamera_env_show")

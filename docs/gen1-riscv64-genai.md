@@ -396,8 +396,10 @@ arch. Caught, it becomes an ordinary `DEFECT` line.
 
 Tier 3's `og.Config()` check discriminates *where* the rejection came from: a
 `TypeError`/`AttributeError` means the **binding** refused it — a signature/ABI
-mismatch, a FAIL. Any other exception (or none) means native code ran and made
-the decision.
+mismatch, a FAIL. `OSError`, `RuntimeError` or `ValueError` means native code
+rejected the path; no exception means it accepted the path, which also fails
+the expected rejection check. Unexpected exceptions escape and fail the probe
+with their traceback; they never count as proof that native code ran.
 
 The program prints `PROVEN` / `UNPROVEN` / `DEFECT` lines itself, so a log
 reader never has to take the accounting on trust.

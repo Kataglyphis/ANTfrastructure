@@ -14,16 +14,20 @@ PLAN = json.loads((ROOT / "shared/config/image-consumers.json").read_text(encodi
 
 
 class BootstrapTests(unittest.TestCase):
-    def test_cpp_acceptance_uses_the_unprivileged_gcc_lane(self):
+    def test_cpp_acceptance_uses_the_unprivileged_gcc_lane(
+        self: "BootstrapTests",
+    ) -> None:
         spec = next(row for row in PLAN["consumers"] if row["name"] == "AccelerANTgine")
         self.assertEqual(spec["command"][-2:], ["--compiler", "gcc"])
 
-    def test_flutter_bootstraps_register_git_and_resolve_each_package(self):
+    def test_flutter_bootstraps_register_git_and_resolve_each_package(
+        self: "BootstrapTests",
+    ) -> None:
         for name in ("ANThology", "OmniAccelerANT", "jotrockenmitlocken"):
             with self.subTest(consumer=name), tempfile.TemporaryDirectory(prefix="acceptance bootstrap ") as directory:
                 self.check_flutter(name, Path(directory))
 
-    def check_flutter(self, name, directory):
+    def check_flutter(self: "BootstrapTests", name: str, directory: Path) -> None:
         work = directory / "checkout"
         tools = directory / "bin"
         work.mkdir()
@@ -84,13 +88,13 @@ esac
         self.assertNotIn("--platform chrome", (directory / "calls").read_text())
 
     @staticmethod
-    def write(path, content, *, executable=False) -> None:
+    def write(path: Path, content: str, *, executable: bool = False) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         if executable:
             path.chmod(0o755)
 
-    def package(self, root):
+    def package(self: "BootstrapTests", root: Path) -> None:
         self.write(root / "pubspec.yaml", "name: acceptance_fixture\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\n")
         self.write(root / "lib/main.dart", "void main() {}\n")
 

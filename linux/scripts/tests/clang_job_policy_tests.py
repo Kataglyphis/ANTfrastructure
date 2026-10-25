@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from functools import lru_cache
 from pathlib import Path
+from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[3]
 SUBJECT = Path(sys.argv.pop(1)).resolve()
@@ -29,8 +30,16 @@ VALUES = [
 ]
 
 
+class Receipt(TypedDict):
+    rc: int
+    out: str
+    err: str
+    trace: str
+    state: str
+
+
 @lru_cache
-def snippets(file):
+def snippets(file: Path) -> tuple[str, str, str]:
     s = file.read_text()
     a = s.index("# Parse options\n")
     b = s.index("# Validate and compute values", a)
@@ -57,8 +66,16 @@ def snippets(file):
 
 
 def receipt(
-    file, mode, value, context, strict, secondary="", mapper=True, status=0, argv=None
-):
+    file: Path,
+    mode: str,
+    value: str | None,
+    context: str,
+    strict: bool,
+    secondary: str | None = "",
+    mapper: bool = True,
+    status: int = 0,
+    argv: list[str] | None = None,
+) -> Receipt:
     h, p, j = snippets(file)
     with tempfile.TemporaryDirectory(prefix="ant-clang-jobs-") as directory:
         work = Path(directory)
@@ -123,7 +140,7 @@ trap 'declare -p BASH_REMATCH > "$WORK/state"; printf "NUM:%s:%s\nTARGETS:%s\nST
         }
 
 
-def capture(file):
+def capture(file: Path) -> dict[str, Receipt]:
     result = {}
     for mode in ["cli", "selection"]:
         for value in VALUES:
@@ -152,14 +169,14 @@ def capture(file):
 
 
 class ClangJobPolicy(unittest.TestCase):
-    def test_original_receipts(self):
+    def test_original_receipts(self) -> None:
         expected = json.loads(
             Path(__file__).with_name("clang-job-receipts.json").read_text()
         )
         self.assertEqual(132, len(expected))
         self.assertEqual(expected, capture(SUBJECT))
 
-    def test_independent_numeric_policy(self):
+    def test_independent_numeric_policy(self) -> None:
         for value in ["0", "00", "00012", "99999999999999999999999999999999"]:
             with self.subTest(value=value):
                 got = receipt(
@@ -174,7 +191,7 @@ class ClangJobPolicy(unittest.TestCase):
         invalid = receipt(SUBJECT, "selection", "bad", "direct", True, secondary="bad")
         self.assertIn("declare -a BASH_REMATCH=()", invalid["state"])
 
-    def test_cli_dispatch_and_fallbacks(self):
+    def test_cli_dispatch_and_fallbacks(self) -> None:
         for flag in ["--jobs", "-j"]:
             got = receipt(
                 SUBJECT, "cli", "07", "direct", True, argv=[flag, "07", "--no-strip"]

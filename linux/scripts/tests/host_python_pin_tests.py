@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 TESTS = Path(__file__).resolve().parent
 SCRIPTS = Path(sys.argv.pop(1)).resolve()
@@ -85,7 +86,7 @@ CASES = {
 }
 
 
-def plant_python_tools(work, config):
+def plant_python_tools(work: Path, config: dict[str, Any]) -> Path:
     tools = work / "tools"
     tools.mkdir()
     for name in ("python3", "python"):
@@ -115,7 +116,9 @@ def plant_python_tools(work, config):
     return tools
 
 
-def capture_case(scripts, api, context, config):
+def capture_case(
+    scripts: Path, api: str, context: str, config: dict[str, Any]
+) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="ant-host-python-") as temporary:
         work = Path(temporary)
         core = work / "core"
@@ -185,7 +188,7 @@ def capture_case(scripts, api, context, config):
         }
 
 
-def capture(scripts):
+def capture(scripts: Path) -> dict[str, dict[str, Any]]:
     result = {}
     for api in ("canonical", "gst"):
         for context in ("strict", "conditional"):
@@ -199,7 +202,7 @@ def capture(scripts):
 
 
 class HostPythonPins(unittest.TestCase):
-    def test_original_receipts(self):
+    def test_original_receipts(self) -> None:
         expected = json.loads(
             Path(__file__).with_name("host-python-pin-receipts.json").read_text()
         )
@@ -208,7 +211,7 @@ class HostPythonPins(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(receipt, actual[name])
 
-    def test_required_imports_and_load_guards(self):
+    def test_required_imports_and_load_guards(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ant-python-import-") as temporary:
             core = Path(temporary)
             (core / "cross-python.sh").write_bytes(
@@ -263,7 +266,7 @@ class HostPythonPins(unittest.TestCase):
             self.assertEqual(1, result.returncode)
             self.assertIn("platform.sh lacks host_python_path", result.stderr)
 
-    def test_source_only_and_already_loaded_guards(self):
+    def test_source_only_and_already_loaded_guards(self) -> None:
         source = SCRIPTS / "01-core/cross-python.sh"
         executed = subprocess.run(
             ["bash", str(source)],
@@ -285,7 +288,7 @@ class HostPythonPins(unittest.TestCase):
         self.assertEqual(0, loaded.returncode)
         self.assertEqual("existing definition", loaded.stdout)
 
-    def test_android_import_order_and_override(self):
+    def test_android_import_order_and_override(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ant-android-python-") as temporary:
             root = Path(temporary)
             android = root / "03-media/build/gstreamer/android"
@@ -357,7 +360,7 @@ class HostPythonPins(unittest.TestCase):
             self.assertEqual(0, result.returncode)
             self.assertEqual("skipped\n", result.stdout)
 
-    def test_independent_policy(self):
+    def test_independent_policy(self) -> None:
         actual = capture(SCRIPTS)
         self.assertEqual("WORK/media pin", actual["canonical:strict:media"]["stdout"])
         self.assertEqual(43, actual["gst:conditional:printf-failure"]["status"])

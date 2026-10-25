@@ -7,9 +7,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections.abc import Sequence
 from functools import lru_cache
 from itertools import product
 from pathlib import Path
+from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS = Path(sys.argv.pop(1)).resolve()
@@ -20,6 +22,22 @@ SUBJECTS = {
         "init_nvidia_defaults",
     ),
 }
+
+
+class ReceiptResult(TypedDict):
+    rc: int
+    out: str
+    err: str
+    trace: str
+    state: str
+    tree: list[list[str]]
+
+
+class LegacyResult(TypedDict):
+    rc: int
+    out: str
+    err: str
+    trace: str
 WORKER = r"""set -uo pipefail
 shopt -s expand_aliases
 record() { printf '%s\n' "$@" >> "$WORK/trace"; }
@@ -40,7 +58,7 @@ source "$HELPER"
 
 
 @lru_cache
-def extract(file, name):
+def extract(file: Path, name: str) -> str:
     return subprocess.run(
         [
             "bash",
@@ -57,7 +75,7 @@ def extract(file, name):
     ).stdout
 
 
-def sources(work, subject, availability):
+def sources(work: Path, subject: str, availability: str) -> str:
     for key, (relative, name) in SUBJECTS.items():
         source = extract(SCRIPTS / relative, name)
         source = re.sub(
@@ -75,7 +93,7 @@ def sources(work, subject, availability):
     return str(work / subject)
 
 
-def prepare(work, subject, early):
+def prepare(work: Path, subject: str, early: bool) -> Path:
     selected = work / "selected/include"
     selected.mkdir(parents=True)
     (selected / "NvInfer.h").write_text("tensor header")
@@ -93,7 +111,10 @@ def prepare(work, subject, early):
     return selected / ("flatbuffers.h" if subject == "litert" else "NvInfer.h")
 
 
-def driver(subject, context, strict, phase, order, prefix=False):
+def driver(
+    subject: str, context: str, strict: bool, phase: str,
+    order: tuple[str, str] | None, prefix: bool = False,
+) -> str:
     code = WORKER
     if order is None:
         if phase in ("before", "after"):
@@ -121,17 +142,17 @@ def driver(subject, context, strict, phase, order, prefix=False):
 
 
 def receipt(
-    subject,
-    output,
-    status,
-    context,
-    strict,
-    phase="same",
-    early=False,
-    availability="valid",
-    order=None,
-    prefix=False,
-):
+    subject: str,
+    output: bool,
+    status: int,
+    context: str,
+    strict: bool,
+    phase: str = "same",
+    early: bool = False,
+    availability: str = "valid",
+    order: tuple[str, str] | None = None,
+    prefix: bool = False,
+) -> ReceiptResult:
     with tempfile.TemporaryDirectory(prefix="ant-header-discovery-") as directory:
         work = Path(directory)
         result_path = prepare(work, subject, early)
@@ -172,7 +193,9 @@ def receipt(
         }
 
 
-def legacy_receipt(args, strict, conditional, status):
+def legacy_receipt(
+    args: Sequence[str], strict: bool, conditional: bool, status: int
+) -> LegacyResult:
     with tempfile.TemporaryDirectory(prefix="ant-first-match-legacy-") as directory:
         work = Path(directory)
         (work / "helper").write_text((SCRIPTS / "01-core/guard-helpers.sh").read_text())
@@ -208,7 +231,7 @@ alias find=find_late
 
 
 class HeaderDiscovery(unittest.TestCase):
-    def test_original_whole_function_receipts(self):
+    def test_original_whole_function_receipts(self) -> None:
         expected = json.loads(
             Path(__file__).with_name("header-discovery-receipts.json").read_text()
         )
@@ -226,7 +249,7 @@ class HeaderDiscovery(unittest.TestCase):
         self.assertEqual(48, len(expected))
         self.assertEqual(expected, actual)
 
-    def test_legacy_first_match_receipts(self):
+    def test_legacy_first_match_receipts(self) -> None:
         expected = json.loads(
             Path(__file__).with_name("first-match-legacy-receipts.json").read_text()
         )
@@ -249,7 +272,7 @@ class HeaderDiscovery(unittest.TestCase):
                     legacy_receipt(args, strict, conditional, status),
                 )
 
-    def test_late_aliases_and_multi_source_orders(self):
+    def test_late_aliases_and_multi_source_orders(self) -> None:
         for subject, phase in product(SUBJECTS, ["before", "after"]):
             result = receipt(subject, True, 23, "conditional", True, phase=phase)
             self.assertEqual(0, result["rc"])
@@ -264,7 +287,7 @@ class HeaderDiscovery(unittest.TestCase):
             self.assertEqual("latest", result["trace"].splitlines()[0])
             self.assertNotIn("_header_find", result["state"])
 
-    def test_prefix_alias_keeps_enclosing_arguments(self):
+    def test_prefix_alias_keeps_enclosing_arguments(self) -> None:
         for subject, context, strict, phase, status, order in product(
             SUBJECTS, ["direct", "conditional"], [False, True],
             ["before", "after"], [0, 23],
@@ -287,7 +310,7 @@ class HeaderDiscovery(unittest.TestCase):
                 self.assertEqual(expected, result["trace"].splitlines()[:len(expected)])
                 self.assertNotIn("_header_find", result["state"])
 
-    def test_missing_api_is_selected_only(self):
+    def test_missing_api_is_selected_only(self) -> None:
         for subject, early, availability, context in product(
             SUBJECTS, [False, True], ["missing", "legacy"], ["direct", "conditional"]
         ):

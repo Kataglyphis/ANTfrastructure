@@ -6,6 +6,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Sequence
+from typing import Any
 
 WORKER = r'''
 set -u
@@ -53,7 +55,7 @@ declare -p DEBIAN_FRONTEND TZ
 '''
 
 
-def prepare(case, base, core_sources):
+def prepare(case: Sequence[str], base: pathlib.Path, core_sources: pathlib.Path) -> pathlib.Path:
     caller, active, enabled, late = case[:4]
     root = base / 'stage'
     core = root / 'core'
@@ -95,7 +97,7 @@ def prepare(case, base, core_sources):
     return root
 
 
-def registration_cases(base, core_sources, oracle):
+def registration_cases(base: pathlib.Path, core_sources: pathlib.Path, oracle: list[dict[str, Any]]) -> int:
     for row in oracle:
         case = row['case']
         root = prepare(case, base, core_sources)
@@ -121,7 +123,7 @@ declare -F cross_build_is_active >/dev/null
 '''
 
 
-def retry_controls(base, core_sources):
+def retry_controls(base: pathlib.Path, core_sources: pathlib.Path) -> int:
     failures = [None, '', 'return 31\n', 'register_cross_active_fallback() { :; }\nreturn 31\n',
                 'other() { :; }\n', 'register_cross_active_fallback() { return 31; }\n', 'if ; then\n']
     count = 0
@@ -140,7 +142,7 @@ def retry_controls(base, core_sources):
     return count
 
 
-def typed_controls(core_sources):
+def typed_controls(core_sources: pathlib.Path) -> int:
     worker = r'''
 set -eu
 profile=sentinel
@@ -160,7 +162,7 @@ done
     return 3
 
 
-def instruction_mapping(text):
+def instruction_mapping(text: str) -> dict[str, str]:
     if text.startswith('RUN '):
         return {target: source for source, target in re.findall(r'--mount=type=bind,source=([^,\s]+),target=([^,\s]+)', text)}
     if text.startswith('COPY '):
@@ -170,7 +172,7 @@ def instruction_mapping(text):
     return {}
 
 
-def cold_closures(docker_root):
+def cold_closures(docker_root: pathlib.Path) -> list[tuple[str, int, str, dict[str, str]]]:
     sys.path.insert(0, str(docker_root / 'scripts'))
     from verify_dockerfile_env_order import instructions
     rows = []
@@ -193,7 +195,8 @@ def cold_closures(docker_root):
     return rows
 
 
-def stage_closure(base, row, core_sources, docker_root):
+def stage_closure(base: pathlib.Path, row: tuple[str, int, str, dict[str, str]], core_sources: pathlib.Path,
+                  docker_root: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
     docker, line, target_entry, mapping = row
     stage = base / 'cold' / (docker + str(line))
     entry = stage / target_entry.lstrip('/')
@@ -217,7 +220,7 @@ def stage_closure(base, row, core_sources, docker_root):
     return entry, leaf
 
 
-def layer_controls(base, core_sources, docker_root):
+def layer_controls(base: pathlib.Path, core_sources: pathlib.Path, docker_root: pathlib.Path) -> int:
     count = 0
     worker = 'set -eu; BUILD_MODE=native; source "$1"; if cross_build_is_active; then status=0; else status=$?; fi; printf "%s" "$status"'
     for row in cold_closures(docker_root):
@@ -231,7 +234,7 @@ def layer_controls(base, core_sources, docker_root):
     return count
 
 
-def main():
+def main() -> None:
     core_sources = pathlib.Path(sys.argv[1]).resolve()
     oracle = json.loads(pathlib.Path(sys.argv[2]).read_text())
     docker_root = pathlib.Path(sys.argv[3]).resolve()

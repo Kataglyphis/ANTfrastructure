@@ -11,7 +11,7 @@ SCRIPTS = pathlib.Path(sys.argv[1]).resolve()
 TESTS = pathlib.Path(__file__).parent
 
 
-def function(leaf, name):
+def function(leaf: str, name: str) -> str:
     result = subprocess.run(
         [
             "bash",
@@ -92,7 +92,7 @@ builtin printf 'TAIL:%s\n' "$status"
 '''
 
 
-def main():
+def main() -> None:
     frozen = json.loads((TESTS / "log-dir-consumer-receipts.json").read_text())
     definitions = "\n".join(
         function(leaf, name)
@@ -114,7 +114,7 @@ def main():
                 timeout=5,
             )
 
-            def clean(value) -> str:
+            def clean(value: bytes) -> str:
                 return re.sub(
                     r": line [0-9]+:",
                     ": line [LINE]:",

@@ -49,7 +49,9 @@ t_assert_eq "ghcr.io/k/img:latest" \
 t_case "the index lookup takes exactly one manifest for the platform"
 _probe() {
   python3 - "${DIGEST_PY}" "$@" <<'PY'
-import importlib.util, sys
+import importlib.util
+import sys
+
 spec = importlib.util.spec_from_file_location("rpd", sys.argv[1]); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 idx = {"manifests": [
     {"digest": "sha256:amd", "platform": {"os": "linux", "architecture": "amd64"}},

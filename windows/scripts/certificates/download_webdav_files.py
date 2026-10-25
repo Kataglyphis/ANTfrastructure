@@ -19,8 +19,8 @@ _TARGET = (
 
 if not _TARGET.is_file():
     sys.stderr.write(
-        "download_webdav_files.py moved to %s and it is not there; this is a "
-        "broken checkout.\n" % _TARGET
+        f"download_webdav_files.py moved to {_TARGET} and it is not there; this is a "
+        "broken checkout.\n"
     )
     raise SystemExit(2)
 

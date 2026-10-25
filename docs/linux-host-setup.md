@@ -936,6 +936,30 @@ update-shell`) before deciding an install failed.
 
 ### D5. The host tools preflight needs and never asked for
 
+For Ubuntu WSL2, use the repository runner to install and verify the tools the
+Linux preflight and Windows PowerShell checks need:
+
+```bash
+bash linux/scripts/wsl-quality.sh setup
+bash linux/scripts/wsl-quality.sh check
+```
+
+`setup` reads the uv, Python, PowerShell, PSScriptAnalyzer and ShellCheck pins
+from the repo and syncs `quality/` from its locked project file. It installs
+Pester at the minimum version required by `Invoke-Tests.ps1`. `check` runs the
+Linux preflight, every mutation proof, PowerShell lint, complexity and Pester
+suites. Use `bash linux/scripts/wsl-quality.sh all` to do both in one run.
+The runner removes Windows interop directories from child `PATH` values so
+Linux probes only enumerate Linux tools. Logs and complexity JSON go under
+ignored `logs/code-quality/wsl/`.
+
+Run it from a WSL-side checkout under the Linux filesystem for faster scans.
+Setup needs `sudo` for Ubuntu packages and network access for pinned tools and
+Python modules. ShellCheck, actionlint, hadolint, gitleaks and Python analysis
+tools keep using the repo's checksum pins or uv-managed versions.
+
+The individual prerequisites below remain useful on native Linux hosts.
+
 `preflight.sh` fails on a correctly-set-up Linux host without these. `uv`,
 `shellcheck` and `uidmap` were undeclared until 2026-09-15. All but `uidmap` are
 user-scope and need no sudo. Two tools this list used to lead with, `pwsh` and

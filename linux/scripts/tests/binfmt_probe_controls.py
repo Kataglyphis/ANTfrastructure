@@ -19,7 +19,16 @@ function: Callable[[str, str], str]
 receipt: Callable[[subprocess.CompletedProcess[bytes], bytes, Path], dict[str, int | str]]
 
 
-def configure(base, owner, manifest, oracle, extractor, recorder):
+def configure(
+    base: Path,
+    owner: Path,
+    manifest: Path,
+    oracle: list[OracleRow],
+    extractor: Callable[[str, str], str],
+    recorder: Callable[
+        [subprocess.CompletedProcess[bytes], bytes, Path], dict[str, int | str]
+    ],
+) -> None:
     global BASE, OWNER, MANIFEST, ORACLE, function, receipt
     BASE, OWNER, MANIFEST, ORACLE = base, owner, manifest, oracle
     function, receipt = extractor, recorder
@@ -68,7 +77,7 @@ exit "$status"
 '''
 
 
-def state_controls():
+def state_controls() -> int:
     worker = BASE / 'state-worker.sh'
     worker.write_text(STATE_WORKER)
     root = BASE / 'state'
@@ -110,7 +119,7 @@ exit "$status"
 '''
 
 
-def refusal_controls():
+def refusal_controls() -> int:
     root = BASE / 'refusal'
     owner = root / 'linux/host-config/install-nerdctl-full.sh'
     owner.parent.mkdir(parents=True, exist_ok=True)
@@ -166,7 +175,7 @@ if [ "$scenario" = rollback ]; then source "$owner" --rollback; else source "$ow
 '''
 
 
-def standalone_controls():
+def standalone_controls() -> int:
     root = BASE / 'standalone'
     (root / 'units').mkdir(parents=True, exist_ok=True)
     (root / 'prefix/bin').mkdir(parents=True, exist_ok=True)
@@ -200,7 +209,7 @@ exec bash "$owner" --source-binfmt-probe
 '''
 
 
-def executed_control():
+def executed_control() -> int:
     root = BASE / 'executed'
     root.mkdir(exist_ok=True)
     (root / 'actions').unlink(missing_ok=True)

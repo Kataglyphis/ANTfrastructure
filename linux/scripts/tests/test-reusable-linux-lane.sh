@@ -42,9 +42,13 @@ EXTRA="${_work}/extra-args"
 STEPS="${_work}/conditions"
 # shellcheck disable=SC2086
 ${_PY} - "${ROOT}/linux/scripts" "${LANE}" "${STEP}" "${EXTRA}" "${STEPS}" <<'PY'
-import sys, pathlib, textwrap
+import importlib
+import pathlib
+import sys
+import textwrap
+
 sys.path.insert(0, sys.argv[1])
-import verify_workflow_conventions as V
+V = importlib.import_module("verify_workflow_conventions")
 path = pathlib.Path(sys.argv[2])
 lane = V.load_yaml(path)
 lines = path.read_text(encoding='utf-8').splitlines()
@@ -66,7 +70,7 @@ build = V.value(V.value(lane, 'jobs'), 'build')
 with open(sys.argv[4], 'w', encoding='utf-8') as extra, open(sys.argv[5], 'w', encoding='utf-8') as conds:
     for step in (V.value(build, 'steps') or []):
         name = V.value(step, 'name')
-        conds.write(f"{name}|{str(V.value(step, 'if') or '-')}\n")
+        conds.write(f"{name}|{V.value(step, 'if') or '-'}\n")
         if name not in ('Run Python tests', 'Packaging application'):
             continue
         with_at = V.line_of(step, 'with') - 1
@@ -156,9 +160,12 @@ t_case "no row runs on a moving *-latest label"
 # The YAML gate's runner ban cannot see labels emitted from a run: block.
 # shellcheck disable=SC2086
 t_assert_eq "[]" "$(${_PY} - "${ROOT}/linux/scripts" "$(_matrix "x64 arm64")" <<'PY' 2>&1
-import sys, json
+import importlib
+import json
+import sys
+
 sys.path.insert(0, sys.argv[1])
-import verify_workflow_conventions as V
+V = importlib.import_module("verify_workflow_conventions")
 print([r["runs_on"] for r in json.loads(sys.argv[2])["include"] if V.LATEST_LABEL.match(r["runs_on"])])
 PY
 )"

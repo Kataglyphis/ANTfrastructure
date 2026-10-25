@@ -22,14 +22,18 @@ t_assert_ok "${PY}" -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${
 
 t_case "every case of the shared fixture gets its recorded verdict"
 _mismatch="$("${PY}" - "${REPO_ROOT}/linux/scripts" "${CASES}" <<'PY'
-import json, sys
+import importlib
+import json
+import sys
+
 sys.path.insert(0, sys.argv[1])
-import verify_image_env as g
-cases = json.load(open(sys.argv[2], encoding="utf-8"))
+g = importlib.import_module("verify_image_env")
+with open(sys.argv[2], encoding="utf-8") as cases_file:
+    cases = json.load(cases_file)
 bad = [c for c in cases if bool(g.leak_reasons(c["name"], c["value"])) != c["leak"]]
 print(len(cases), len([c for c in cases if c["leak"]]))
 for c in bad:
-    print("MISMATCH %s=%s (%s)" % (c["name"], c["value"], c["why"]))
+    print(f"MISMATCH {c['name']}={c['value']} ({c['why']})")
 PY
 )"
 _counts="$(printf '%s\n' "${_mismatch}" | head -1)"

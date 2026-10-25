@@ -29,7 +29,7 @@ BARE_SUFFIXES = (".so", ".pyd")
 
 def declares(pyproject: str) -> int:
     """Print the project's Free Threading classifier and return 0, or why there is none and return 1."""
-    import tomllib  # noqa: PLC0415 -- prove runs on interpreters this import need not exist on
+    import tomllib
 
     path = Path(pyproject)
     if not path.is_file():
@@ -172,14 +172,14 @@ def prove(dist: str) -> int:
     if not sysconfig.get_config_var("Py_GIL_DISABLED"):
         print(f"ERROR: {sys.executable} is not a free-threaded interpreter", file=sys.stderr)
         return 2
-    if sys._is_gil_enabled():  # noqa: SLF001 -- the documented free-threading probe
+    if sys._is_gil_enabled():
         print("ERROR: the GIL is enabled before any import (-X gil=1?)", file=sys.stderr)
         return 2
     modules = installed_modules(dist)
     if not modules:
         return 2
     offenders, failures = load_reporting(modules)
-    if sys._is_gil_enabled() or offenders:  # noqa: SLF001
+    if sys._is_gil_enabled() or offenders:
         # CPython warns once: modules loaded after the first offender find the GIL on already.
         first = offenders[0] if offenders else "an unnamed module"
         print(f"ERROR: the GIL was re-enabled, first by {first}; Cython needs freethreading_compatible=True", file=sys.stderr)

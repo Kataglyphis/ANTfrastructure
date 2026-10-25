@@ -14,7 +14,8 @@ _litert_disable_qairt_header_download() {
 import sys
 
 p = sys.argv[1]
-s = open(p, encoding='utf-8').read()
+with open(p, encoding='utf-8') as fh:
+    s = fh.read()
 needle = 'if(NOT QAIRT_HEADERS_DIR)'
 if needle not in s:
     sys.exit("QAIRT download patch: anchor 'if(NOT QAIRT_HEADERS_DIR)' not found -- upstream changed")
@@ -23,7 +24,8 @@ s = s.replace(needle,
     '# ~1.5 GB file(DOWNLOAD) of QAIRT from softwarecenter.qualcomm.com. Qualcomm\n'
     '# dispatch stays OFF because QAIRT_HEADERS_DIR is never set.\n'
     'if(FALSE)', 1)
-open(p, 'w', encoding='utf-8', newline='').write(s)
+with open(p, 'w', encoding='utf-8', newline='') as fh:
+    fh.write(s)
 PY
     _litert_qairt_log INFO "LiteRT: no QAIRT SDK staged -- upstream's unhashed QAIRT download disabled (Qualcomm dispatch OFF)"
 }

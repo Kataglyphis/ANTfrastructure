@@ -7,14 +7,16 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[3]
 
 
 @lru_cache
-def extract(file, fn):
+def extract(file: Path, fn: str) -> str:
     return subprocess.run(
         [
             "bash",
@@ -44,7 +46,9 @@ log() { printf 'LOG:%s\n' "$*"; }
 """
 
 
-def run(case, missing=False):
+def run(
+    case: Sequence[Any], missing: bool = False
+) -> list[Any]:
     subject, flag, status, strict, conditional, phase, stream = case
     file = ROOT / (
         "linux/scripts/stop-cross-chain.sh"
@@ -97,7 +101,9 @@ def run(case, missing=False):
 
 
 class HelpExitTests(unittest.TestCase):
-    def test_command_prefix_alias_keeps_parser_arguments(self):
+    def test_command_prefix_alias_keeps_parser_arguments(
+        self: "HelpExitTests",
+    ) -> None:
         for subject, relative, name, callback, args in [
             ("stop", "stop-cross-chain.sh", "main", "_stop_usage", ["--timeout", "7"]),
             (
@@ -132,7 +138,7 @@ GRACE_SECS=15 NATIVE_IMAGE=old CROSS_IMAGE=old VERBOSE=0
                     (result.returncode, result.stdout, result.stderr),
                 )
 
-    def test_original_receipts(self):
+    def test_original_receipts(self: "HelpExitTests") -> None:
         rows = json.loads(
             Path(__file__).with_name("cli-help-exit-receipts.json").read_text()
         )
@@ -141,7 +147,7 @@ GRACE_SECS=15 NATIVE_IMAGE=old CROSS_IMAGE=old VERBOSE=0
             with self.subTest(case=row["case"]):
                 self.assertEqual(row["receipt"], run(row["case"]))
 
-    def test_missing_helper_stops_conditional_parser(self):
+    def test_missing_helper_stops_conditional_parser(self: "HelpExitTests") -> None:
         for subject in ["stop", "parity"]:
             with self.subTest(subject=subject):
                 result = run(
@@ -151,7 +157,7 @@ GRACE_SECS=15 NATIVE_IMAGE=old CROSS_IMAGE=old VERBOSE=0
                 self.assertEqual("", result[1])
                 self.assertIn("show_usage_and_exit", result[2])
 
-    def test_helper_exits_and_preserves_arguments(self):
+    def test_helper_exits_and_preserves_arguments(self: "HelpExitTests") -> None:
         code = (
             extract(ROOT / "linux/scripts/01-core/logging.sh", "show_usage_and_exit")
             + r"""
@@ -168,7 +174,7 @@ printf FELLTHROUGH
             (result.returncode, result.stdout, result.stderr),
         )
 
-    def test_helper_requires_command(self):
+    def test_helper_requires_command(self: "HelpExitTests") -> None:
         code = (
             extract(ROOT / "linux/scripts/01-core/logging.sh", "show_usage_and_exit")
             + "\nshow_usage_and_exit\n"
@@ -180,7 +186,7 @@ printf FELLTHROUGH
         self.assertEqual("", result.stdout)
         self.assertIn("usage command required", result.stderr)
 
-    def test_copied_closure_and_real_help(self):
+    def test_copied_closure_and_real_help(self: "HelpExitTests") -> None:
         for row in json.loads(
             Path(__file__).with_name("cli-help-real-receipts.json").read_text()
         ):

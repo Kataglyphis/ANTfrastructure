@@ -46,7 +46,7 @@ def norm(name: str) -> str:
         if part in ("", "."):
             continue
         if part == "..":
-            raise ExtractError("member %r climbs out of the image root" % name)
+            raise ExtractError(f"member {name!r} climbs out of the image root")
         parts.append(part)
     return "/".join(parts)
 
@@ -71,15 +71,15 @@ def read_layers(layout: str) -> list[tuple[str, int]]:
         with open(os.path.join(layout, "manifest.json"), encoding="utf-8") as fh:
             manifest = json.load(fh)
     except (OSError, ValueError) as exc:
-        raise ExtractError("%s holds no readable manifest.json: %s" % (layout, exc)) from exc
+        raise ExtractError(f"{layout} holds no readable manifest.json: {exc}") from exc
     layers = manifest.get("layers")
     if manifest.get("schemaVersion") != 2 or not isinstance(layers, list) or not layers:
-        raise ExtractError("%s/manifest.json is not a single-platform image manifest" % layout)
+        raise ExtractError(f"{layout}/manifest.json is not a single-platform image manifest")
     out = []
     for layer in layers:
         blob = os.path.join(layout, layer["digest"].partition(":")[2])
         if not os.path.isfile(blob):
-            raise ExtractError("layer blob missing from the layout: %s" % layer["digest"])
+            raise ExtractError(f"layer blob missing from the layout: {layer['digest']}")
         out.append((blob, int(layer.get("size", 0))))
     return out
 
@@ -117,7 +117,7 @@ def make_parents(root: str, name: str) -> str:
         if is_real_dir(cur):
             continue
         if os.path.lexists(cur):
-            raise ExtractError("%s would be written through %s, which is not a directory" % (name, cur))
+            raise ExtractError(f"{name} would be written through {cur}, which is not a directory")
         os.mkdir(cur)
     return os.path.join(cur, parts[-1])
 
@@ -150,7 +150,7 @@ def place(tar: tarfile.TarFile, member: tarfile.TarInfo, name: str, staging: str
     elif member.isfifo():
         os.mkfifo(path, member.mode & 0o777 & ~umask)
     else:
-        raise ExtractError("%s: a device or unknown member (type %r) cannot be written unprivileged" % (name, member.type))
+        raise ExtractError(f"{name}: a device or unknown member (type {member.type!r}) cannot be written unprivileged")
 
 
 def scan(tar: tarfile.TarFile, staging: str, allow: Allow, rec: dict, umask: int) -> None:
@@ -194,7 +194,7 @@ def copy_link_targets(blob: str, staging: str, links: list, umask: int) -> None:
                 write_file(tar, member, path, umask)
             member_cache.clear()
     if want:
-        raise ExtractError("hard link target(s) not in the same layer: %s" % ", ".join(sorted(want)))
+        raise ExtractError(f"hard link target(s) not in the same layer: {', '.join(sorted(want))}")
 
 
 def extract_layer(blob: str, staging: str, paths: tuple, umask: int) -> dict:
@@ -223,7 +223,7 @@ def link_into(dest: str, name: str, target: str) -> None:
     d = real_dir(dest, parent)
     src = os.path.join(d, base) if d is not None else ""
     if not src or not os.path.isfile(src) or os.path.islink(src):
-        raise ExtractError("hard link %s names %s, which is not a regular file here" % (name, target))
+        raise ExtractError(f"hard link {name} names {target}, which is not a regular file here")
     path = make_parents(dest, name)
     remove(path)
     os.link(src, path)
@@ -280,7 +280,7 @@ def run(layout: str, dest: str, paths: list[str], jobs: int, delete_blobs: bool)
     os.makedirs(work)
     os.makedirs(dest, exist_ok=True)
     if os.listdir(dest):
-        raise ExtractError("%s is not empty" % dest)
+        raise ExtractError(f"{dest} is not empty")
     refs: dict[str, int] = {}
     for blob, _ in layers:
         refs[blob] = refs.get(blob, 0) + 1
@@ -312,7 +312,7 @@ def run(layout: str, dest: str, paths: list[str], jobs: int, delete_blobs: bool)
     finish_dirs(dest, dirs, umask)
     missing = [p for p in allow.paths if not os.path.lexists(os.path.join(dest, p))]
     if missing:
-        raise ExtractError("not in the image: %s; the image contract moved" % ", ".join(missing))
+        raise ExtractError(f"not in the image: {', '.join(missing)}; the image contract moved")
     return totals
 
 
@@ -328,10 +328,12 @@ def main(argv: list[str]) -> int:
     try:
         totals = run(args.layout, args.dest, args.paths, max(1, args.jobs), args.delete_blobs)
     except (ExtractError, OSError, tarfile.TarError, KeyError) as exc:
-        sys.stderr.write("oci-layers-extract.py: %s\n" % exc)
+        sys.stderr.write(f"oci-layers-extract.py: {exc}\n")
         return 1
-    print("oci-layers-extract.py: %d layers, %d files, %.1f MB in %.1f s" % (
-        totals["layers"], totals["files"], totals["bytes"] / 1e6, time.monotonic() - start))
+    print(
+        f"oci-layers-extract.py: {totals['layers']} layers, {totals['files']} files, "
+        f"{totals['bytes'] / 1e6:.1f} MB in {time.monotonic() - start:.1f} s"
+    )
     return 0
 
 

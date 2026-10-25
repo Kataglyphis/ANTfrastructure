@@ -83,13 +83,13 @@ def _grade_reusable(rel: str, name: str, job: dict, at: int,
     uses = value(job, "uses", "")
     if not isinstance(uses, str) or not uses.startswith(REUSABLE):
         return
-    where = "%s:%d job %s" % (rel, line_of(job, "uses", at), name)
+    where = f"{rel}:{line_of(job, 'uses', at)} job {name}"
     ratchets = value(value(job, "with", {}), "ratchets")
     if ratchets != "true" or _inactive(job) or _nonfatal(job):
         failures.append(
-            "%s: reusable lint call needs ratchets: true and a fatal, enabled job" % where)
+            f"{where}: reusable lint call needs ratchets: true and a fatal, enabled job")
     else:
-        witnesses.append("%s: reusable lint with ratchets: true" % where)
+        witnesses.append(f"{where}: reusable lint with ratchets: true")
 
 
 def _grade_steps(path: Path, rel: str, name: str, job: dict,
@@ -101,13 +101,13 @@ def _grade_steps(path: Path, rel: str, name: str, job: dict,
         if not isinstance(step, dict):
             continue
         for argv in _direct_calls(_run_text(path, step)):
-            where = "%s:%d job %s" % (rel, line_of(step, "run"), name)
+            where = f"{rel}:{line_of(step, 'run')} job {name}"
             if "--ratchets" not in argv or _inactive(job) or _inactive(step) or \
                     _nonfatal(job) or _nonfatal(step):
                 failures.append(
-                    "%s: direct lint call needs --ratchets and a fatal, enabled step" % where)
+                    f"{where}: direct lint call needs --ratchets and a fatal, enabled step")
             else:
-                witnesses.append("%s: direct lint with --ratchets" % where)
+                witnesses.append(f"{where}: direct lint with --ratchets")
 
 
 def _grade_workflow(path: Path, rel: str, doc: dict,
@@ -141,12 +141,11 @@ def inspect(root: Path, tracked: list[str]) -> tuple[list[str], list[str]]:
         try:
             doc = load_yaml(path)
         except OSError as exc:
-            failures.append("%s: cannot parse tracked workflow (%s)" % (rel, exc))
+            failures.append(f"{rel}: cannot parse tracked workflow ({exc})")
             continue
         except (UnicodeError, ParseError) as exc:
             if _mentions_quality(path):
-                failures.append("%s: cannot parse tracked workflow with a lint call (%s)"
-                                % (rel, exc))
+                failures.append(f"{rel}: cannot parse tracked workflow with a lint call ({exc})")
             continue
         _grade_workflow(path, rel, doc, witnesses, failures)
     return witnesses, failures
@@ -166,9 +165,9 @@ def main() -> int:
         return gate_scope.die(exc)
     witnesses, failures = inspect(root, tracked)
     for witness in witnesses:
-        print("OK: %s" % witness)
+        print(f"OK: {witness}")
     for failure in failures:
-        print("FAIL: %s" % failure, file=sys.stderr)
+        print(f"FAIL: {failure}", file=sys.stderr)
     if not witnesses and not failures:
         print("ADVISORY: no tracked CI lint call; removal of every lint call is outside this gate")
     return 1 if failures else 0

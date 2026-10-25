@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 TESTS = Path(__file__).resolve().parent
 SUBJECTS = Path(sys.argv.pop(1)).resolve()
@@ -104,7 +105,7 @@ SCENARIOS = (
 )
 
 
-def plant_tools(work, scenario):
+def plant_tools(work: Path, scenario: str) -> Path:
     tools = work / "tools"
     tools.mkdir()
     names = ["pkg-config", "gst-launch-1.0"]
@@ -119,7 +120,7 @@ def plant_tools(work, scenario):
     return tools
 
 
-def capture_case(subjects, scenario, context):
+def capture_case(subjects: Path, scenario: str, context: str) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="ant-smoke-native-") as temporary:
         work = Path(temporary)
         text = (subjects / "smoke-media.sh").read_text()
@@ -175,7 +176,7 @@ def capture_case(subjects, scenario, context):
         }
 
 
-def capture(subjects):
+def capture(subjects: Path) -> dict[str, dict[str, Any]]:
     return {
         f"{scenario}:{context}": capture_case(subjects, scenario, context)
         for scenario in SCENARIOS
@@ -184,7 +185,7 @@ def capture(subjects):
 
 
 class NativeSmokeDispatch(unittest.TestCase):
-    def test_original_receipts(self):
+    def test_original_receipts(self: "NativeSmokeDispatch") -> None:
         expected = json.loads(
             Path(__file__).with_name("smoke-native-dispatch-receipts.json").read_text()
         )
@@ -193,7 +194,7 @@ class NativeSmokeDispatch(unittest.TestCase):
             with self.subTest(case=case):
                 self.assertEqual(receipt, actual[case])
 
-    def test_callback_contract(self):
+    def test_callback_contract(self: "NativeSmokeDispatch") -> None:
         command = r"""source "$1"
 cross_build_is_active() { return 1; }
 label=caller-label; path=caller-path; GLOBAL=40
@@ -228,7 +229,7 @@ smoke_native_dispatch tool /path callback
         self.assertEqual(1, result.returncode)
         self.assertEqual("before", result.stdout)
 
-    def test_independent_verdicts_and_errexit(self):
+    def test_independent_verdicts_and_errexit(self: "NativeSmokeDispatch") -> None:
         actual = capture(SUBJECTS)
         self.assertIn("PASS ffmpeg H.264 encode OK", actual["success:strict"]["stdout"])
         self.assertIn("PASS cam binary functional", actual["success:strict"]["stdout"])

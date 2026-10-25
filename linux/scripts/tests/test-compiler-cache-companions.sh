@@ -54,10 +54,12 @@ t_assert_eq '' "${out}" 'later bootstrap and build work must not run'
 
 t_case 'native builders and the media CMake module carry their required utility'
 t_assert_ok python3 - "${DOCKER_ROOT}" "${TESTS_DIR}/.." <<'PYTHON'
-from pathlib import Path
 import sys
+from pathlib import Path
+
 sys.path.insert(0, sys.argv[2])
 from verify_dockerfile_env_order import instructions
+
 root = Path(sys.argv[1])
 base_runs = [line for _, line in instructions(root / 'linux/Dockerfile.base') if line.startswith('RUN ') and 'source=linux/scripts/01-core/common.sh,' in line]
 assert len(base_runs) == 6

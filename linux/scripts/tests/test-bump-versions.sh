@@ -99,6 +99,61 @@ _bv_tags_offline() {
   { printf 'bv.ls_remote_tags = lambda repo: %s\n' "$tags"; cat; } | _bv_offline "$@"
 }
 
+t_case "digest fallbacks handle network failures but expose implementation errors"
+_out="$(_bv_offline <<'PY'
+sums_calls = []
+def http_text(url):
+    sums_calls.append(url.rsplit("/", 1)[-1])
+    if url.endswith("missing.sha256"):
+        raise OSError("not published")
+    if url.endswith("bug.sha256"):
+        raise RuntimeError("checksum parser bug")
+    return "a" * 64 + "  sample.tar.gz\n"
+bv.http_text = http_text
+bv.sha256_of_url = lambda url: "b" * 64
+print("sums", bv.asset_sha256("example/project", "v1", "sample.tar.gz", ("missing.sha256", "good.sha256"))[:4], sums_calls)
+try:
+    bv.asset_sha256("example/project", "v1", "sample.tar.gz", ("bug.sha256",))
+except RuntimeError as exc:
+    print("sums-error", exc)
+
+api_error = {"kind": "offline"}
+def http_json(url):
+    if api_error["kind"] == "bug":
+        raise RuntimeError("API parser bug")
+    if api_error["kind"] == "json":
+        raise __import__("json").JSONDecodeError("bad response", "", 0)
+    raise OSError("API unavailable")
+bv.http_json = http_json
+bv.asset_sha256 = lambda *args, **kwargs: "c" * 64
+print("api-fallback", bv.gh_asset_digest("example/project", "v1", "sample.tar.gz")[:4])
+api_error["kind"] = "bug"
+try:
+    bv.gh_asset_digest("example/project", "v1", "sample.tar.gz")
+except RuntimeError as exc:
+    print("api-error", exc)
+api_error["kind"] = "json"
+print("api-invalid-json", bv.gh_asset_digest("example/project", "v1", "sample.tar.gz")[:4])
+
+fetch_globals = bv.artifact_exists.__globals__
+request = fetch_globals["urllib"].request
+request.urlopen = lambda *args, **kwargs: (_ for _ in ()).throw(OSError("offline"))
+print("probe-offline", bv.artifact_exists("https://example.invalid/asset"))
+request.urlopen = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("request code bug"))
+try:
+    bv.artifact_exists("https://example.invalid/asset")
+except RuntimeError as exc:
+    print("probe-error", exc)
+PY
+)"
+t_assert_contains "${_out}" "sums aaaa ['missing.sha256', 'good.sha256']" "one unavailable checksum mirror does not block the next published digest"
+t_assert_contains "${_out}" "sums-error checksum parser bug" "unexpected checksum code failures are not replaced by an asset download"
+t_assert_contains "${_out}" "api-fallback cccc" "an unavailable GitHub digest API still falls back to hashing the release asset"
+t_assert_contains "${_out}" "api-error API parser bug" "unexpected API code failures propagate instead of causing a large fallback download"
+t_assert_contains "${_out}" "api-invalid-json cccc" "a non-JSON digest response still falls back to the streamed asset hash"
+t_assert_contains "${_out}" "probe-offline False" "an unavailable artifact probe is still a negative candidate"
+t_assert_contains "${_out}" "probe-error request code bug" "unexpected artifact probe bugs remain fatal"
+
 t_case "--only names a key outside the safe set: rc 2, and the error names it"
 _fx="$(_fixture only_bogus <<'ENV'
 UP_VERSION=1.0.0
@@ -425,6 +480,7 @@ PY
 }
 
 t_case "--audit-sha-pairs: only a quoted key in the source counts as specced, never a comment naming it"
+t_needs "a POSIX Python that can read the fixture paths" t_posix_python
 _fx="$(_fixture audit_src <<'ENV'
 QUOTED_SHA256=aaaa
 COMMENTED_SHA256=bbbb
@@ -451,6 +507,7 @@ PY
 }
 
 t_case "--audit-sha-pairs on the REAL versions.env + tool-pins.env: rc 0, and one new unspecced SHA key turns it red"
+t_needs "a POSIX Python that can read the fixture paths" t_posix_python
 t_assert_contains "$(_audit_pins audit_sha_pairs)" "rc 0" "every committed SHA pin is specced, held, exempt or URL-paired"
 _mut="$(_audit_pins audit_sha_pairs tool-pins.env "NEWTOOL_LINUX_X86_64_SHA256=$(printf '%064d' 0)")"
 t_assert_contains "${_mut}" "rc 1" "a SHA key added with no spec, hold or exemption fails the audit"
@@ -458,6 +515,7 @@ t_assert_eq "1" "$(printf '%s\n' "${_mut}" | grep -c -e '^  [A-Z]' || true)" "an
 t_assert_contains "${_mut}" "  NEWTOOL_LINUX_X86_64_SHA256" "the new key itself"
 
 t_case "--audit-unclassified on the REAL pin files: rc 0, and one new untiered version key turns it red"
+t_needs "a POSIX Python that can read the fixture paths" t_posix_python
 _real="$(_audit_pins audit_unclassified)"
 t_assert_contains "${_real}" "rc 0" "every committed key is tiered, derived, manual, Renovate-annotated or non-version"
 t_assert_eq "0" "$(printf '%s\n' "${_real}" | grep -c -e UNCLASSIFIED || true)" "and none is listed as unclassified"

@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+from typing import TypedDict
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "linux/scripts"))
@@ -15,7 +16,46 @@ from verify_dockerfile_context_paths import copy_sources
 from verify_dockerfile_env_order import instructions
 
 
-def function(path, name):
+class CaptureResult(TypedDict):
+    rc: int
+    out: str
+    err: str
+    trace: str
+    state: str
+
+
+class ReceiptCase(TypedDict):
+    case: list[str]
+    receipt: CaptureResult
+
+
+class ReceiptIndexes(TypedDict):
+    rc: int
+    out: int
+    err: int
+    trace: int
+    state: int
+
+
+class ReceiptValues(TypedDict):
+    rc: list[int]
+    out: list[str]
+    err: list[str]
+    trace: list[str]
+    state: list[str]
+
+
+class ReceiptEntry(TypedDict):
+    case: list[str]
+    receipt: ReceiptIndexes
+
+
+class ReceiptData(TypedDict):
+    values: ReceiptValues
+    cases: list[ReceiptEntry]
+
+
+def function(path: pathlib.Path, name: str) -> str:
     result = subprocess.run(
         [
             "/bin/bash",
@@ -34,7 +74,7 @@ def function(path, name):
     return result.stdout
 
 
-def definitions(paths):
+def definitions(paths: dict[str, pathlib.Path]) -> str:
     chunks = []
     for leaf, name in [
         ("platform.sh", "path_visit_existing_directories"),
@@ -218,7 +258,7 @@ CASE_PROFILES = (
 )
 
 
-def cases():
+def cases() -> list[tuple[str, ...]]:
     rows = []
     for profile in CASE_PROFILES:
         for values in itertools.product(*profile.values()):
@@ -227,7 +267,9 @@ def cases():
     return rows
 
 
-def paths(work, shape, query):
+def paths(
+    work: pathlib.Path, shape: str, query: str
+) -> tuple[dict[str, str], list[str], list[str]]:
     prefix = str(work / "prefix")
     gcc = str(work / "gcc")
     triplet = "fixture-triplet"
@@ -292,7 +334,7 @@ def paths(work, shape, query):
     )
 
 
-def physical_path(work, path):
+def physical_path(work: pathlib.Path, path: str) -> pathlib.Path:
     return (
         pathlib.Path(path)
         if path.startswith(str(work) + "/")
@@ -300,7 +342,9 @@ def physical_path(work, path):
     )
 
 
-def prepare_directories(work, candidates, layout):
+def prepare_directories(
+    work: pathlib.Path, candidates: list[str], layout: str
+) -> None:
     selected = {"all": candidates, "none": [], "alternate": candidates[::2]}.get(
         layout, candidates[:-1]
     )
@@ -319,7 +363,9 @@ def prepare_directories(work, candidates, layout):
             output.symlink_to(target, target_is_directory=True)
 
 
-def capture(funcs, row, api="healthy"):
+def capture(
+    funcs: str, row: tuple[str, ...], api: str = "healthy"
+) -> CaptureResult:
     with tempfile.TemporaryDirectory(prefix="ant existing dirs ") as directory:
         work = pathlib.Path(directory)
         (work / "trace").write_bytes(b"")
@@ -342,7 +388,7 @@ def capture(funcs, row, api="healthy"):
             check=False,
         )
 
-        def clean(value) -> str:
+        def clean(value: bytes) -> str:
             return re.sub(
                 r": line [0-9]+:",
                 ": line [LINE]:",
@@ -358,23 +404,28 @@ def capture(funcs, row, api="healthy"):
         }
 
 
-def load_receipts():
-    data = json.loads(
+def load_receipts() -> list[ReceiptCase]:
+    data: ReceiptData = json.loads(
         pathlib.Path(__file__).with_name("directory-visitor-receipts.json").read_text()
     )
     return [
         {
             "case": entry["case"],
             "receipt": {
-                field: data["values"][field][index]
-                for field, index in entry["receipt"].items()
+                "rc": data["values"]["rc"][entry["receipt"]["rc"]],
+                "out": data["values"]["out"][entry["receipt"]["out"]],
+                "err": data["values"]["err"][entry["receipt"]["err"]],
+                "trace": data["values"]["trace"][entry["receipt"]["trace"]],
+                "state": data["values"]["state"][entry["receipt"]["state"]],
             },
         }
         for entry in data["cases"]
     ]
 
 
-def required_api_contract(funcs, expected):
+def required_api_contract(
+    funcs: str, expected: list[ReceiptCase]
+) -> tuple[int, list[str]]:
     frozen = {tuple(entry["case"]): entry["receipt"] for entry in expected}
     assertions = 0
     failures = []
@@ -433,7 +484,7 @@ def required_api_contract(funcs, expected):
     return assertions, failures
 
 
-def fresh_copy(stage, source, target):
+def fresh_copy(stage: str, source: str, target: str) -> bool:
     mapping = {}
     for _, text in instructions(ROOT / "linux" / f"Dockerfile.{stage}"):
         sources = copy_sources(text)
@@ -457,7 +508,7 @@ def fresh_copy(stage, source, target):
     return mapping.get(target) == source
 
 
-def closure_contract():
+def closure_contract() -> tuple[int, list[str]]:
     pairs = []
     failures = []
     for path in sorted((ROOT / "linux").glob("Dockerfile*")):
@@ -502,7 +553,7 @@ def closure_contract():
     return len(pairs) + 4, failures
 
 
-def main():
+def main() -> int:
     paths = dict(
         zip(
             ("platform.sh", "cross-env.sh", "llvm.sh"),

@@ -5,6 +5,8 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+from collections.abc import Mapping
+from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 CONTEXT = ROOT / 'linux/scripts/tests/shell-context-fixture.sh'
@@ -15,7 +17,7 @@ from verify_dockerfile_env_order import instructions
 KEYS = {'android-sdk.sh': 'ANDROID_CMDLINE_TOOLS_SHA256', 'install-rust.sh': 'RUSTUP_INIT_SHA256'}
 
 
-def scenarios():
+def scenarios() -> list[dict[str, Any]]:
     result = []
     initial = ('unset', 'declared-unset', 'empty', 'preset', 'exported-unset', 'exported-empty', 'exported-preset')
     main = ('missing', 'empty', 'single', 'duplicate', 'quoted', 'raw-syntax')
@@ -30,7 +32,7 @@ def scenarios():
     return result
 
 
-def block(source, key):
+def block(source: pathlib.Path, key: str) -> str:
     text = source.read_text()
     old = f'if [ -z "${{{key}:-}}" ] && [ -f /opt/scripts/core/versions.env ]; then'
     if old in text:
@@ -44,7 +46,7 @@ def block(source, key):
     return calls[0].replace('/opt/scripts/core/versions.env', '"$PIN_FILE"')
 
 
-def contents(kind, key):
+def contents(kind: str, key: str) -> bytes:
     values = {'empty': '', 'single': '@PIN@= value \nUNRELATED_PIN=from-file\n',
               'duplicate': '@PIN@=first\n@PIN@=second\nUNRELATED_PIN=from-file\n',
               'quoted': '@PIN@="literal quoted value"\nUNRELATED_PIN=from-file\n',
@@ -55,7 +57,7 @@ def contents(kind, key):
     return values[kind].replace('@PIN@', key).encode()
 
 
-def prepare(work, row, key, snippet):
+def prepare(work: pathlib.Path, row: Mapping[str, Any], key: str, snippet: str) -> pathlib.Path:
     pin = work / 'versions [pin].env'
     kind = row['data']
     if kind == 'directory':
@@ -105,7 +107,7 @@ printf 'RESULT:%s\n' "$status"
 '''
 
 
-def capture(row, snippets, owner):
+def capture(row: Mapping[str, Any], snippets: Mapping[str, str], owner: pathlib.Path) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix='ant raw pin [] ') as directory:
         work = pathlib.Path(directory)
         key = KEYS[row['caller']]
@@ -119,7 +121,7 @@ def capture(row, snippets, owner):
                 'state': (work / 'state').read_text()}
 
 
-def imports(toolchain):
+def imports(toolchain: pathlib.Path) -> dict[str, str]:
     android = (toolchain / 'android-sdk.sh').read_text()
     required = next(line for line in android.splitlines() if line.startswith('source_toolchain_required ') and 'load-versions-env.sh' in line)
     initializer = next(line for line in android.splitlines() if line.startswith('source ') and '/bootstrap-import.sh' in line)
@@ -142,7 +144,7 @@ printf 'RESULT:%s\n' "$result"
 '''
 
 
-def import_case(work, snippet, bootstrap, owner, mode):
+def import_case(work: pathlib.Path, snippet: str, bootstrap: str, owner: str, mode: str) -> None:
     (work / 'core').mkdir()
     if mode == 'old-bootstrap':
         bootstrap = 'source_toolchain_downloads() { :; }\n'
@@ -162,7 +164,7 @@ def import_case(work, snippet, bootstrap, owner, mode):
         (work / 'core/load-versions-env.sh').write_text(body)
 
 
-def import_contract(toolchain, owner):
+def import_contract(toolchain: pathlib.Path, owner: pathlib.Path) -> tuple[int, list[str]]:
     prefixes = imports(toolchain)
     bootstrap = (toolchain / 'bootstrap.sh').read_text()
     assertions = 0
@@ -191,7 +193,7 @@ def import_contract(toolchain, owner):
     return assertions, failures
 
 
-def image_contract():
+def image_contract() -> tuple[int, list[str]]:
     android = {}
     for _, line in instructions(ROOT / 'linux/Dockerfile.android'):
         sources = copy_sources(line)
@@ -217,7 +219,7 @@ def image_contract():
     return 2, failures
 
 
-def main():
+def main() -> int:
     toolchain, owner = pathlib.Path(sys.argv[1]).resolve(), pathlib.Path(sys.argv[2]).resolve()
     expected = json.loads(pathlib.Path(__file__).with_name('raw-pin-receipts.json').read_text())
     snippets = {leaf: block(toolchain / leaf, key) for leaf, key in KEYS.items()}

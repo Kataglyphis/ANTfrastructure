@@ -92,11 +92,13 @@ import re
 import sys
 
 path = sys.argv[1]
-text = open(path, encoding="utf-8").read()
+with open(path, encoding="utf-8") as fh:
+    text = fh.read()
 body = re.search(r"^bootstrap_ca\(\).*?^\}", text, re.DOTALL | re.MULTILINE).group(0)
 moved = body.replace("\n  restore_mirror_https_scheme\n", "\n")
 moved = moved.replace("bootstrap_ca() {\n", "bootstrap_ca() {\n  restore_mirror_https_scheme\n", 1)
-open(path, "w", encoding="utf-8").write(text.replace(body, moved, 1))
+with open(path, "w", encoding="utf-8") as fh:
+    fh.write(text.replace(body, moved, 1))
 PY
 _out="$(t_out _gate "${fix}")"
 t_assert_eq "1" "$(t_rc _gate "${fix}")"

@@ -6,11 +6,12 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 
-def definitions(paths):
+def definitions(paths: dict[str, pathlib.Path]) -> str:
     harness = ROOT / "linux/scripts/tests/test-harness.sh"
     chunks = []
     for leaf, name in [
@@ -97,7 +98,7 @@ printf 'TAIL:%s\n' "$status"
 """
 
 
-def cases():
+def cases() -> list[tuple[str, ...]]:
     rows = []
     for caller, arch, mapper, layout, context, strict in itertools.product(
         ("pin", "gst"),
@@ -153,7 +154,12 @@ def cases():
     return rows
 
 
-def capture(paths, funcs, row, api="healthy"):
+def capture(
+    paths: dict[str, pathlib.Path],
+    funcs: str,
+    row: tuple[str, ...],
+    api: str = "healthy",
+) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="ant triplet query ") as directory:
         work = pathlib.Path(directory)
         (work / "trace").write_bytes(b"")
@@ -179,7 +185,7 @@ def capture(paths, funcs, row, api="healthy"):
             check=False,
         )
 
-        def clean(value) -> str:
+        def clean(value: bytes) -> str:
             return value.decode().replace(directory, "[WORK]")
 
         files = (
@@ -196,7 +202,9 @@ def capture(paths, funcs, row, api="healthy"):
                 "links": files}
 
 
-def required_api_contract(paths, funcs):
+def required_api_contract(
+    paths: dict[str, pathlib.Path], funcs: str
+) -> tuple[int, list[str]]:
     assertions = 0
     failures = []
     for caller, api, context, strict in itertools.product(
@@ -226,7 +234,7 @@ def required_api_contract(paths, funcs):
     return assertions, failures
 
 
-def main():
+def main() -> bool:
     paths = dict(
         zip(
             ("platform.sh", "compiler-resolution.sh", "build-gst-plugins-rs.sh"),

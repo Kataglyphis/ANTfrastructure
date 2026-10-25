@@ -11,8 +11,8 @@ import sys
 import tokenize
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from quality_allow import check_keys, load_keys  # noqa: E402
-import gate_scope  # noqa: E402
+import gate_scope
+from quality_allow import check_keys, load_keys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ALLOW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "comment-size.allow")
@@ -38,7 +38,7 @@ NOT_PROSE = re.compile(r"SPDX-License-Identifier|Copyright|^\W*\(c\)|All rights 
 HEREDOC = re.compile(r"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?")
 
 
-def style(rel):
+def style(rel: str) -> str | None:
     base = os.path.basename(rel)
     ext = os.path.splitext(base)[1].lower()
     if ext in HASH or base.startswith(HASH_NAMES):
@@ -48,11 +48,11 @@ def style(rel):
     return None
 
 
-def _prose(text) -> bool:
+def _prose(text: str) -> bool:
     return bool(text.strip()) and not NOT_PROSE.search(text.strip())
 
 
-def _heredoc_word(line) -> str | None:
+def _heredoc_word(line: str) -> str | None:
     """The delimiter of a heredoc this shell line opens; `<<` inside quotes or a comment opens none."""
     quote, i = None, 0
     while i < len(line):
@@ -75,7 +75,7 @@ def _heredoc_word(line) -> str | None:
     return None
 
 
-def _ps_quote_after(line, quote) -> str | None:
+def _ps_quote_after(line: str, quote: str | None) -> str | None:
     """What is still open at the end of a PowerShell ``line``: None, "'", '"' or "<#" (a block comment)."""
     i = 0
     while i < len(line):
@@ -107,7 +107,7 @@ def _ps_quote_after(line, quote) -> str | None:
     return quote
 
 
-def _hash_flags(src, shell, powershell) -> list[bool]:
+def _hash_flags(src: str, shell: bool, powershell: bool) -> list[bool]:
     flags, end, here, quote = [], None, False, None
     for line in src.split("\n"):
         s = line.strip()
@@ -134,7 +134,7 @@ def _hash_flags(src, shell, powershell) -> list[bool]:
     return flags
 
 
-def _python_flags(src) -> list[bool]:
+def _python_flags(src: str) -> list[bool]:
     lines = src.split("\n")
     flags, code = [False] * len(lines), set()
     try:
@@ -149,7 +149,7 @@ def _python_flags(src) -> list[bool]:
     return [f and i not in code for i, f in enumerate(flags)]
 
 
-def _slash_flags(src) -> list[bool]:
+def _slash_flags(src: str) -> list[bool]:
     flags, in_block, doc = [], False, False
     for line in src.split("\n"):
         s = line.strip()
@@ -169,7 +169,7 @@ def _slash_flags(src) -> list[bool]:
     return flags
 
 
-def file_blocks(path, rel):
+def file_blocks(path: str, rel: str) -> list[tuple[int, int]]:
     """(start_line, length) of every comment block longer than LIMIT lines in one file."""
     k = style(rel)
     if not k or SKIP.search(rel):
@@ -200,18 +200,18 @@ def file_blocks(path, rel):
     return out
 
 
-def scan_paths(root, scan):
+def scan_paths(root: str, scan: list[str] | None) -> list[str]:
     rels = gate_scope.tracked(root, PATTERNS)
     if scan:
         rels = [r for r in rels if any(r == s or r.startswith(s.rstrip("/") + "/") for s in scan)]
     return sorted(rels)
 
 
-def blocks(root, rels):
+def blocks(root: str, rels: list[str]) -> list[tuple[str, int, int]]:
     return [(rel, start, n) for rel in rels for start, n in file_blocks(os.path.join(root, rel), rel)]
 
 
-def main():
+def main() -> int:
     ap = argparse.ArgumentParser(description="Fail on new comment blocks over the limit.")
     ap.add_argument("--root", default=None,
                     help="the tree to grade (default: this repo)")
@@ -245,7 +245,7 @@ def main():
         print(f"  allow: {allow}")
     print(f"  {len(keys)} block(s) over the limit; {len(frozen)} frozen")
 
-    def _block(k) -> str:
+    def _block(k: str) -> str:
         rel, _ = k.split("\t")
         start, n = keys[k]
         return f"{rel}:{start}  {n} lines"

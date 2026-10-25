@@ -440,13 +440,50 @@ t_assert_eq "1" "$(printf '%s' "${_stv_out}" | grep -c 'FAILURES=[1-9]')"
 
 t_case "KNOWN_DRIFT: every entry is reviewed, dated and backlog-linked"
 # Asserts the shape, not a count: an empty KNOWN_DRIFT is the desired steady state.
-_kd_block="$(sed -n '/^KNOWN_DRIFT = \[/,/^\]/p' "${TESTS_DIR}/../06-packaging/venv-version-probe.py")"
-_kd="$(printf '%s\n' "${_kd_block}" | grep -c '^    ("' || true)"
+_kd_counts="$("${PREFLIGHT_PYTHON:-python3}" - "${TESTS_DIR}/../06-packaging/venv-version-probe.py" <<'PY'
+import ast
+import re
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as source:
+    tree = ast.parse(source.read())
+table = next(
+    node.value
+    for node in tree.body
+    if (
+        isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "KNOWN_DRIFT"
+    )
+    or (
+        isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "KNOWN_DRIFT" for target in node.targets)
+    )
+)
+rows = ast.literal_eval(table)
+date = re.compile(r"20[0-9][0-9]-[01][0-9]-[0-3][0-9]")
+print(len(rows), sum(not any(date.search(str(value)) for value in row) for row in rows))
+PY
+)"
+read -r _kd _kd_bad <<< "${_kd_counts}"
 t_assert_ok test "${_kd}" -le 2
-t_assert_contains "${_kd_block}" "KNOWN_DRIFT = [" "a missing table must not silently satisfy the shape check"
-_kd_bad="$(printf '%s\n' "${_kd_block}" | grep '^    ("' \
-            | grep -cv '20[0-9][0-9]-[01][0-9]-[0-3][0-9]' || true)"
 t_assert_eq "0" "${_kd_bad}" "a KNOWN_DRIFT arm without a review date"
+
+t_case "TVM import absence is a skip, while unexpected import bugs fail"
+cat > "${_STV}/stubs/tvm.py" <<'PY'
+raise ImportError("TVM is absent")
+PY
+_tvm_out="$(env -i PATH="${PATH}" HOME="${HOME}" VENV="${_STV}/venv" \
+  bash -c "source '${_STV}/stv.sh' >/dev/null 2>&1; assert_tvm_codegen 2>&1; echo FAILURES=\${FAILURES}")"
+t_assert_contains "${_tvm_out}" "SKIP tvm codegen: tvm not importable"
+t_assert_contains "${_tvm_out}" "FAILURES=0"
+cat > "${_STV}/stubs/tvm.py" <<'PY'
+raise AssertionError("unexpected TVM initialization bug")
+PY
+_tvm_out="$(env -i PATH="${PATH}" HOME="${HOME}" VENV="${_STV}/venv" \
+  bash -c "source '${_STV}/stv.sh' >/dev/null 2>&1; assert_tvm_codegen 2>&1; echo FAILURES=\${FAILURES}")"
+t_assert_contains "${_tvm_out}" "AssertionError: unexpected TVM initialization bug"
+t_assert_contains "${_tvm_out}" "FAILURES=1"
 
 # D3: smoke-common's gate helpers must (A) fail when they should and (B) stay the only copy
 

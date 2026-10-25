@@ -10,7 +10,7 @@ DRIVERS = ('lint-shell.sh', 'lint-python.sh', 'lint-dockerfiles.sh')
 
 
 class ScopeInitializationTests(unittest.TestCase):
-    def test_original_driver_receipts(self):
+    def test_original_driver_receipts(self) -> None:
         expected = json.loads(Path(__file__).with_name('lint-scope-init-receipts.json').read_text())
         with tempfile.TemporaryDirectory(prefix='ant lint init ') as td:
             work = Path(td)
@@ -49,7 +49,7 @@ class ScopeInitializationTests(unittest.TestCase):
                             result.stderr.replace(str(work).encode(), b'@WORK@').decode()]
             self.assertEqual(expected, actual)
 
-    def test_missing_companions_cannot_reuse_stale_functions(self):
+    def test_missing_companions_cannot_reuse_stale_functions(self) -> None:
         initializer = ROOT / 'linux/scripts/01-core/lint-scope-init.sh'
         with tempfile.TemporaryDirectory() as td:
             for driver in DRIVERS:

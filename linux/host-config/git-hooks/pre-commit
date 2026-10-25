@@ -55,7 +55,7 @@ with open(manifest, encoding="utf-8") as fh:
     matched = [e["id"] for e in json.load(fh) if e["target"] in staged]
 matched.reverse()
 run = matched[:cap] if cap > 0 else matched
-print("plan %d %d" % (len(run), len(matched)))
+print(f"plan {len(run)} {len(matched)}")
 for mid in run:
     print(mid)
 PY

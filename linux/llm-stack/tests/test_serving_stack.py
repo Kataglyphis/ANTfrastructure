@@ -38,7 +38,9 @@ class _ComposeLoader(yaml.SafeLoader):
     """
 
 
-def _compose_tag(loader, _tag_suffix, node) -> list[object] | dict[object, object] | str:
+def _compose_tag(
+    loader: _ComposeLoader, _tag_suffix: str, node: yaml.Node
+) -> list[object] | dict[object, object] | str:
     if isinstance(node, yaml.SequenceNode):
         return loader.construct_sequence(node, deep=True)
     if isinstance(node, yaml.MappingNode):
@@ -49,7 +51,7 @@ def _compose_tag(loader, _tag_suffix, node) -> list[object] | dict[object, objec
 _ComposeLoader.add_multi_constructor("!", _compose_tag)
 
 
-def _load(path) -> _ComposeDoc:
+def _load(path: str) -> _ComposeDoc:
     return yaml.load((HERE / path).read_text(encoding="utf-8"), Loader=_ComposeLoader)
 
 
@@ -61,14 +63,14 @@ def _compose(*paths: str) -> _ComposeDoc:
     return doc
 
 
-def test_compose_parses_and_builds_ollama_locally():
+def test_compose_parses_and_builds_ollama_locally() -> None:
     services = _compose("docker-compose.yml")["services"]
     assert "ollama" in services, "the ollama service is the stack's reason to exist"
     assert services["ollama"].get("build") in (".", {}), \
         "the ollama service must build the local Dockerfile, not pull a moving tag"
 
 
-def test_no_pulled_image_rides_a_mutable_tag():
+def test_no_pulled_image_rides_a_mutable_tag() -> None:
     services = _compose("docker-compose.yml")["services"]
     for name, service in services.items():
         image = service.get("image")
@@ -78,11 +80,11 @@ def test_no_pulled_image_rides_a_mutable_tag():
         assert "@sha256:" in image or ":" in image, f"{name} has no tag: {image}"
 
 
-def test_the_overlays_parse():
+def test_the_overlays_parse() -> None:
     _compose("docker-compose.yml", *OVERLAYS)
 
 
-def test_the_registry_keeps_its_default_and_genie_lanes():
+def test_the_registry_keeps_its_default_and_genie_lanes() -> None:
     data = json.loads(REGISTRY.read_text(encoding="utf-8"))
     backends = data["backends"]
     assert data["default"] == "ollama", "ollama must stay the default lane"
@@ -93,7 +95,7 @@ def test_the_registry_keeps_its_default_and_genie_lanes():
         assert entry.get("base_url"), f"{name} has no base_url"
 
 
-def test_no_entry_stores_a_key_rather_than_its_variable_name():
+def test_no_entry_stores_a_key_rather_than_its_variable_name() -> None:
     data = json.loads(REGISTRY.read_text(encoding="utf-8"))
     for name, entry in data["backends"].items():
         for field in ("api_key", "key", "token"):

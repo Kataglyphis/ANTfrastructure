@@ -73,8 +73,10 @@ done
 unset -f '['
 t_case 'every isolated package entry point carries its inventory companion'
 t_assert_ok python3 - "${TESTS_DIR}/../../Dockerfile.package" <<'PY_CLOSURE'
+import shlex
+import sys
 from pathlib import Path
-import shlex, sys
+
 text = Path(sys.argv[1]).read_text().replace(chr(92) + chr(10), ' ')
 copies = [shlex.split(line) for line in text.splitlines() if line.startswith('COPY ')]
 for source, destination in [('copy-media-payloads.sh', '/tmp/'), ('validate-compilers.sh', '/opt/scripts/packaging/')]:

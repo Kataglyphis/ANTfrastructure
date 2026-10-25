@@ -7,8 +7,7 @@ import sys
 import sysconfig
 
 
-
-def main():
+def main() -> None:
     output_path = pathlib.Path(sys.argv[1])
     target_triplet = sys.argv[2]
     include_dir = pathlib.Path(sys.argv[3])

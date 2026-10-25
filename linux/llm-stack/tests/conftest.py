@@ -1,6 +1,8 @@
 """Suite-wide guard: a test may reach only a server it bound itself, loopback included."""
 import os
 import socket
+from collections.abc import Buffer
+from typing import Any
 
 import pytest
 
@@ -14,7 +16,9 @@ _OWN_PORTS = set()
 _REAL_BIND = socket.socket.bind
 
 
-def _recording_bind(self, address) -> None:
+def _recording_bind(
+    self: Any, address: tuple[Any, ...] | str | Buffer | int, /
+) -> None:
     _REAL_BIND(self, address)
     try:
         _OWN_PORTS.add(self.getsockname()[1])
@@ -25,7 +29,7 @@ def _recording_bind(self, address) -> None:
 socket.socket.bind = _recording_bind
 
 
-def pytest_configure(config):
+def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "inference: tests that require model inference (slow, needs model loaded)")
 
 
@@ -34,7 +38,9 @@ class NetworkAccessInATest(RuntimeError):
 
 
 @pytest.fixture(autouse=True)
-def no_network(request, monkeypatch):
+def no_network(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
     if os.path.basename(str(request.node.fspath)) in _LIVE_ENDPOINT_MODULES:
         return
     if os.path.basename(os.path.dirname(str(request.node.fspath))) in _LIVE_ENDPOINT_DIRS:
@@ -43,7 +49,7 @@ def no_network(request, monkeypatch):
         return
     real_connect = socket.socket.connect
 
-    def guarded(self, address) -> None:
+    def guarded(self: socket.socket, address: Any) -> None:
         port = address[1] if isinstance(address, tuple) and len(address) > 1 else None
         if port in _OWN_PORTS:
             return real_connect(self, address)

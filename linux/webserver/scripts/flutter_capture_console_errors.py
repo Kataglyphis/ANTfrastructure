@@ -12,7 +12,8 @@ import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import Page, Request, Response, sync_playwright
 
 
 def parse_args() -> argparse.Namespace:
@@ -63,7 +64,7 @@ def parse_args() -> argparse.Namespace:
 class SpaHandler(http.server.SimpleHTTPRequestHandler):
     """Serves the build; an extension-less path that is no file gets index.html."""
 
-    def translate_path(self, path):
+    def translate_path(self, path: str) -> str:
         translated = super().translate_path(path)
         if not os.path.exists(translated) and "." not in os.path.basename(translated):
             return os.path.join(self.directory, "index.html")
@@ -74,7 +75,30 @@ class SpaHandler(http.server.SimpleHTTPRequestHandler):
 
 
 class E2ETestSuite:
-    def __init__(self, *, build_dir: Path, port: int, chromium_bin: str, screenshot_path: str, routes=None, forbidden_hosts=None) -> None:
+    routes: list[str]
+    forbidden_hosts: list[str]
+    third_party: collections.Counter[str]
+    third_party_urls: set[str]
+    http_errors: set[str]
+    build_dir: Path
+    port: int
+    chromium_bin: str
+    screenshot_path: str
+    results: dict[str, int]
+    console_logs: list[dict[str, str]]
+    page_errors: list[str]
+    failures: list[str]
+
+    def __init__(
+        self,
+        *,
+        build_dir: Path,
+        port: int,
+        chromium_bin: str,
+        screenshot_path: str,
+        routes: list[str] | None = None,
+        forbidden_hosts: list[str] | None = None,
+    ) -> None:
         self.routes = routes or []
         self.forbidden_hosts = forbidden_hosts or []
         self.third_party = collections.Counter()
@@ -89,11 +113,11 @@ class E2ETestSuite:
         self.page_errors = []
         self.failures = []
 
-    def log_pass(self, test_name):
+    def log_pass(self, test_name: str) -> None:
         self.results["passed"] += 1
         print(f"  ✅ {test_name}")
 
-    def log_fail(self, test_name, reason=""):
+    def log_fail(self, test_name: str, reason: str = "") -> None:
         self.results["failed"] += 1
         msg = f"  ❌ {test_name}"
         if reason:
@@ -101,33 +125,39 @@ class E2ETestSuite:
         print(msg)
         self.failures.append(f"{test_name}: {reason}")
 
-    def log_warn(self, test_name, reason=""):
+    def log_warn(self, test_name: str, reason: str = "") -> None:
         self.results["warnings"] += 1
         msg = f"  ⚠️  {test_name}"
         if reason:
             msg += f" - {reason}"
         print(msg)
 
-    def log_skip(self, test_name, reason=""):
+    def log_skip(self, test_name: str, reason: str = "") -> None:
         self.results["skipped"] += 1
         print(f"  ⏭️  {test_name} - {reason}")
 
-    def setup_page(self, page):
+    def setup_page(self, page: Page) -> None:
         page.on(
             "console",
             lambda msg: self.console_logs.append({"type": msg.type, "text": msg.text}),
         )
         page.on("pageerror", lambda err: self.page_errors.append(str(err)))
         page.on("request", self.record_request)
-        page.on("response", lambda response: response.status >= 400 and self.http_errors.add(f"{response.status} {response.url}"))
+        page.on("response", self.record_response)
 
-    def record_request(self, request):
+    def record_request(self, request: Request) -> None:
         parts = urlsplit(request.url)
-        if parts.scheme in ("http", "https") and parts.hostname not in ("localhost", "127.0.0.1"):
-            self.third_party[parts.hostname] += 1
+        hostname = parts.hostname
+        if (parts.scheme in ("http", "https") and hostname is not None
+                and hostname not in ("localhost", "127.0.0.1")):
+            self.third_party[hostname] += 1
             self.third_party_urls.add(request.url.split("?")[0])
 
-    def report_network(self):
+    def record_response(self, response: Response) -> None:
+        if response.status >= 400:
+            self.http_errors.add(f"{response.status} {response.url}")
+
+    def report_network(self) -> bool:
         """Every host besides the served build, and the forbidden ones among them; True when one was contacted."""
         print("\n🌐 Network")
         for url in sorted(self.http_errors):
@@ -146,7 +176,7 @@ class E2ETestSuite:
             self.log_fail("Forbidden host contacted", host)
         return bool(forbidden)
 
-    def wait_for_flutter(self, page, timeout=30000):
+    def wait_for_flutter(self, page: Page, timeout: float = 30000) -> None:
         page.wait_for_function(
             """
             () => document.querySelector('flt-glass-pane') !== null ||
@@ -156,7 +186,7 @@ class E2ETestSuite:
             timeout=timeout,
         )
 
-    def test_navigation(self, page, base_url):
+    def test_navigation(self, page: Page, base_url: str) -> None:
         print("\n📍 Navigation & Routing Tests")
         routes = [(route, route) for route in self.routes] if self.routes else [
             ("/", "Landing page"),
@@ -175,36 +205,36 @@ class E2ETestSuite:
                     self.log_pass(f"Navigate to {name} ({route})")
                 else:
                     self.log_fail(f"Navigate to {name} ({route})", f"URL is {current_url}")
-            except Exception as exc:
+            except PlaywrightError as exc:
                 self.log_fail(f"Navigate to {name} ({route})", str(exc)[:100])
 
-    def test_responsive_layouts(self, page, base_url):
+    def test_responsive_layouts(self, page: Page, base_url: str) -> None:
         print("\n📱 Responsive Layout Tests")
-        viewports = [
-            {"width": 375, "height": 812, "name": "Mobile (iPhone)"},
-            {"width": 768, "height": 1024, "name": "Tablet (iPad)"},
-            {"width": 1280, "height": 800, "name": "Desktop"},
-            {"width": 1920, "height": 1080, "name": "Full HD"},
+        viewports: list[tuple[int, int, str]] = [
+            (375, 812, "Mobile (iPhone)"),
+            (768, 1024, "Tablet (iPad)"),
+            (1280, 800, "Desktop"),
+            (1920, 1080, "Full HD"),
         ]
 
         page.goto(base_url, wait_until="domcontentloaded", timeout=30000)
         self.wait_for_flutter(page)
 
-        for viewport in viewports:
+        for width, height, name in viewports:
             try:
-                page.set_viewport_size({"width": viewport["width"], "height": viewport["height"]})
+                page.set_viewport_size({"width": width, "height": height})
                 time.sleep(1)
                 body_width = page.evaluate("() => document.body.scrollWidth")
                 if body_width > 0:
                     self.log_pass(
-                        f"{viewport['name']} ({viewport['width']}x{viewport['height']}) - body width: {body_width}px"
+                        f"{name} ({width}x{height}) - body width: {body_width}px"
                     )
                 else:
-                    self.log_fail(viewport["name"], "body width is 0")
-            except Exception as exc:
-                self.log_fail(viewport["name"], str(exc)[:100])
+                    self.log_fail(name, "body width is 0")
+            except PlaywrightError as exc:
+                self.log_fail(name, str(exc)[:100])
 
-    def test_assets_and_rendering(self, page, base_url):
+    def test_assets_and_rendering(self, page: Page, base_url: str) -> None:
         print("\n🖼️  Asset & Rendering Tests")
         page.goto(base_url, wait_until="domcontentloaded", timeout=30000)
         try:
@@ -216,8 +246,8 @@ class E2ETestSuite:
                 timeout=30000,
             )
             time.sleep(1)
-        except Exception:
-            pass
+        except PlaywrightError as exc:
+            self.log_warn("Flutter renderer wait", str(exc)[:100])
 
         try:
             wasm_config = page.evaluate(
@@ -235,7 +265,7 @@ class E2ETestSuite:
                 self.log_pass("WASM build configured")
             else:
                 self.log_warn("WASM build", "No dart2wasm build found in config")
-        except Exception as exc:
+        except PlaywrightError as exc:
             self.log_fail("WASM check", str(exc)[:100])
 
         try:
@@ -244,7 +274,7 @@ class E2ETestSuite:
                 self.log_pass("Flutter glass pane rendered")
             else:
                 self.log_fail("Flutter glass pane", "Element not found")
-        except Exception as exc:
+        except PlaywrightError as exc:
             self.log_fail("Flutter glass pane", str(exc)[:100])
 
         try:
@@ -257,7 +287,7 @@ class E2ETestSuite:
                     self.log_pass("Flutter renderer present (DOM-based)")
                 else:
                     self.log_fail("Canvas/renderer", "Neither canvas nor Flutter renderer found")
-        except Exception as exc:
+        except PlaywrightError as exc:
             self.log_fail("Canvas check", str(exc)[:100])
 
         try:
@@ -277,10 +307,10 @@ class E2ETestSuite:
                     self.log_warn("Failed resources", f"{len(unexpected)} unexpected 4xx/5xx responses")
                 else:
                     self.log_pass("No unexpected failed resource loads")
-        except Exception as exc:
+        except PlaywrightError as exc:
             self.log_fail("Resource check", str(exc)[:100])
 
-    def test_performance(self, page, base_url):
+    def test_performance(self, page: Page, base_url: str) -> None:
         print("\n⚡ Performance Metrics")
         page.goto(base_url, wait_until="domcontentloaded", timeout=30000)
         self.wait_for_flutter(page)
@@ -323,10 +353,10 @@ class E2ETestSuite:
 
             if load_complete > 5000:
                 self.log_warn("Slow load", f"Page took {load_complete:.0f}ms to load (>5s)")
-        except Exception as exc:
+        except PlaywrightError as exc:
             self.log_fail("Performance metrics", str(exc)[:100])
 
-    def test_ui_interactions(self, page, base_url):
+    def test_ui_interactions(self, page: Page, base_url: str) -> None:
         print("\n🎨 UI Interaction Tests")
         page.goto(base_url, wait_until="domcontentloaded", timeout=30000)
 
@@ -352,7 +382,7 @@ class E2ETestSuite:
                 self.log_pass("Loading screen faded out")
             else:
                 self.log_warn("Loading screen", "Still visible after Flutter rendered")
-        except Exception as exc:
+        except PlaywrightError as exc:
             self.log_fail("Loading screen check", str(exc)[:100])
 
         try:
@@ -361,7 +391,7 @@ class E2ETestSuite:
                 self.log_pass("Cookie notice present")
             else:
                 self.log_warn("Cookie notice", "Element not found")
-        except Exception as exc:
+        except PlaywrightError as exc:
             self.log_fail("Cookie notice", str(exc)[:100])
 
         try:
@@ -383,7 +413,7 @@ class E2ETestSuite:
                     self.log_warn("Cookie consent", "Notice not hidden after click (may use different mechanism)")
             else:
                 self.log_skip("Cookie consent", "Button not visible")
-        except Exception as exc:
+        except PlaywrightError as exc:
             self.log_fail("Cookie consent", str(exc)[:100])
 
         try:
@@ -399,7 +429,7 @@ class E2ETestSuite:
                 self.log_pass("Navigation rendered (Flutter glass pane)")
             else:
                 self.log_warn("Navigation", "No Flutter renderer found")
-        except Exception as exc:
+        except PlaywrightError as exc:
             self.log_fail("Navigation bar", str(exc)[:100])
 
         try:
@@ -409,10 +439,10 @@ class E2ETestSuite:
                 """
             )
             self.log_pass(f"Color scheme preference detected: {'dark' if prefers_dark else 'light'}")
-        except Exception as exc:
+        except PlaywrightError as exc:
             self.log_fail("Dark mode check", str(exc)[:100])
 
-    def report_console_logs(self):
+    def report_console_logs(self) -> bool:
         print("\n📋 Console Log Summary")
 
         seen = set()
@@ -454,7 +484,7 @@ class E2ETestSuite:
 
         return has_errors
 
-    def run_all(self):
+    def run_all(self) -> int:
         print("=" * 60)
         print("Flutter Web App - Comprehensive E2E Test Suite")
         print("=" * 60)
@@ -489,11 +519,8 @@ class E2ETestSuite:
                 print(f"\n📸 Screenshot saved to: {self.screenshot_path}")
 
                 browser.close()
-            except Exception as exc:
-                print(f"\n❌ Fatal error: {exc}")
-                import traceback
-
-                traceback.print_exc()
+            except PlaywrightError as exc:
+                self.log_fail("Browser run", str(exc)[:100])
             finally:
                 server.shutdown()
                 server.server_close()

@@ -20,11 +20,13 @@ COMMENT_OPENER = re.compile(r"[ \t]*#")
 FAMILY = re.compile(r"(PY(?:EOF|THON)?).*$")
 
 
-def _stem(src) -> str:
+def _stem(src: str) -> str:
     return os.path.basename(src)[:-3] if src.endswith(".sh") else os.path.basename(src)
 
 
-def _extract_blocks(src, text, outdir) -> tuple[int, dict[str, list[str]]]:
+def _extract_blocks(
+    src: str, text: str, outdir: str
+) -> tuple[int, dict[str, list[str]]]:
     """Write the blocks that run their own interpreter; return how many, and the cat-ed fragments by family."""
     written = 0
     fragments = {}
@@ -46,7 +48,9 @@ def _extract_blocks(src, text, outdir) -> tuple[int, dict[str, list[str]]]:
     return written, fragments
 
 
-def _extract_families(src, fragments, outdir) -> int:
+def _extract_families(
+    src: str, fragments: dict[str, list[str]], outdir: str
+) -> int:
     written = 0
     for family, frags in sorted(fragments.items()):
         # A lone fragment lints with bogus undefined names, which ast.parse cannot catch.
@@ -65,7 +69,7 @@ def _extract_families(src, fragments, outdir) -> int:
     return written
 
 
-def main():
+def main() -> int:
     if len(sys.argv) < 3:
         sys.stderr.write("usage: extract_embedded_python.py <outdir> <file.sh>...\n")
         return 2
@@ -77,7 +81,7 @@ def main():
             with open(src, encoding="utf-8", errors="replace") as fh:
                 text = fh.read()
         except OSError as exc:
-            sys.stderr.write("extract-embedded-python: cannot read %s: %s\n" % (src, exc))
+            sys.stderr.write(f"extract-embedded-python: cannot read {src}: {exc}\n")
             failed = True
             continue
         _, fragments = _extract_blocks(src, text, outdir)

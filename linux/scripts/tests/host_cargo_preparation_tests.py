@@ -7,9 +7,14 @@ import re
 import subprocess
 import sys
 import tempfile
+from typing import Any
 
 SCRIPTS = pathlib.Path(sys.argv[1]).resolve()
 TESTS = pathlib.Path(__file__).parent
+Case = tuple[str, str, str, str, str, str, str]
+
+
+Capture = dict[str, Any]
 
 
 WORKER = r"""
@@ -78,7 +83,7 @@ printf 'TAIL:%s\n' "$status"
 """
 
 
-def extract(leaf, names):
+def extract(leaf: str, names: list[str]) -> str:
     return subprocess.run(
         [
             "bash",
@@ -96,7 +101,7 @@ def extract(leaf, names):
     ).stdout
 
 
-def definitions():
+def definitions() -> dict[tuple[str, str], str]:
     result = {}
     helper = extract(
         "01-core/compiler-resolution.sh", ["prepare_and_publish_host_cargo_compiler"]
@@ -116,7 +121,7 @@ def definitions():
     return result
 
 
-def capture(body, row):
+def capture(body: str, row: Case) -> Capture:
     with tempfile.TemporaryDirectory(prefix="ant host Cargo ") as directory:
         work = pathlib.Path(directory)
         (work / "functions").write_text(body)
@@ -128,7 +133,7 @@ def capture(body, row):
             timeout=5,
         )
 
-        def clean(data) -> str:
+        def clean(data: bytes) -> str:
             return re.sub(
                 r": line \d+:",
                 ": line [LINE]:",
@@ -144,7 +149,7 @@ def capture(body, row):
         }
 
 
-def cold_contract(parts):
+def cold_contract(parts: dict[tuple[str, str], str]) -> int:
     checks = 0
     for caller, active, context, strict, scenario in itertools.product(
         ("setup", "standalone"),
@@ -175,7 +180,7 @@ def cold_contract(parts):
     return checks
 
 
-def alias_contract(parts):
+def alias_contract(parts: dict[tuple[str, str], str]) -> int:
     checks = 0
     for caller, phase in itertools.product(
         ("setup", "standalone"), ("prefix", "late-prefix")
@@ -196,7 +201,7 @@ def alias_contract(parts):
     return checks
 
 
-def main():
+def main() -> None:
     parts = definitions()
     frozen = json.loads((TESTS / "host-cargo-preparation-receipts.json").read_text())
     assert len(frozen["cases"]) == 960, "all original scenarios must remain covered"

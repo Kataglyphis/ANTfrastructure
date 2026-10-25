@@ -62,19 +62,18 @@ def stem(name):  # a retag or an auditwheel repair rewrites only the platform ta
 def check(sha, wheel, member):  # a twin of the chain wheel's name could land on it in the retag or repair
     twins = [n for n in present if n != wheel and stem(n) == stem(wheel)]
     if twins:
-        return None, "%s!%s: other wheels share its name, platform tag aside (%s)" % (wheel, member, ", ".join(twins))
+        return None, f"{wheel}!{member}: other wheels share its name, platform tag aside ({', '.join(twins)})"
     if wheel not in present or members(wheel).get(member) != sha:
-        return None, "%s!%s: no wheel in %s holds these bytes any more" % (wheel, member, wheels)
-    return "%s  %s!%s\n" % (sha, wheel, member), None
+        return None, f"{wheel}!{member}: no wheel in {wheels} holds these bytes any more"
+    return f"{sha}  {wheel}!{member}\n", None
 
 
 def follow(sha, wheel, member):
     hits = [n for n in present if stem(n) == stem(wheel)]
     got = members(hits[0]).get(member) if len(hits) == 1 else None
     if got is None:
-        return None, "%s!%s: not exactly one rewritten wheel of that name carries it (%s)" % (
-            wheel, member, ", ".join(hits) or "none")
-    return "%s  %s!%s\n" % (got, hits[0], member), None
+        return None, f"{wheel}!{member}: not exactly one rewritten wheel of that name carries it ({', '.join(hits) or 'none'})"
+    return f"{got}  {hits[0]}!{member}\n", None
 
 
 out, bad = {}, []
@@ -87,9 +86,9 @@ for manifest in (m for m in sys.argv[3:] if os.path.isfile(m)):
         try:
             line, err = {"check": check, "follow": follow}[mode](sha, wheel, member)
         except (OSError, zipfile.BadZipFile) as exc:
-            line, err = None, "%s: %s" % (wheel, exc)
+            line, err = None, f"{wheel}: {exc}"
         if err:
-            bad.append("%s: %s" % (manifest, err))
+            bad.append(f"{manifest}: {err}")
         else:
             out[manifest].append(line)
 for msg in bad:
@@ -101,7 +100,7 @@ for manifest, lines in out.items():
         with open(manifest + ".tmp", "w", encoding="utf-8") as fh:
             fh.writelines(lines)
         os.replace(manifest + ".tmp", manifest)
-    print("ORT wheel manifest %s: %d chain wheel member(s) %s" % (manifest, len(lines), mode))
+    print(f"ORT wheel manifest {manifest}: {len(lines)} chain wheel member(s) {mode}")
 PY
 }
 _ORT_MANIFESTS=(/usr/local/lib/onnxruntime-*/ort-provenance.sha256)

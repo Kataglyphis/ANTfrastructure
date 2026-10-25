@@ -855,6 +855,7 @@ _tree_arch_py() {
   cat <<'PY'
 import os
 import re
+
 # No space in a label: the verdict line is read back with `read -r verb tree machine
 # count sample`, and "Intel 80386" ate the count column on 2026-09-04.
 EM = {3: "Intel-80386", 40: "ARM", 62: "X86-64", 183: "AArch64", 243: "RISC-V"}
@@ -906,7 +907,8 @@ for tree in os.environ.get("RT_TREES", "").split():
         if len(head) < 20 or head[:4] != b"\x7fELF":
             continue
         order = "little" if head[5] == 1 else "big"
-        key = EM.get(int.from_bytes(head[18:20], order), "EM%d" % int.from_bytes(head[18:20], order))
+        machine_id = int.from_bytes(head[18:20], order)
+        key = EM.get(machine_id, f"EM{machine_id}")
         seen[key] = seen.get(key, 0) + 1
         sample.setdefault(key, path)
     if not seen:
@@ -1316,11 +1318,13 @@ PROBE
 _probe_venv_inventory() {
   # The venv package set and the app's requirement edges, via importlib.metadata.
   cat <<'PROBE'
-"$py" - <<'PY' 2>/dev/null || echo 'VENV ABSENT metadata-probe-crashed'
+"$py" - <<'PY' 2>/dev/null || echo 'VENV ERROR metadata-probe-crashed'
+import importlib
 import importlib.metadata as md
+
 try:
-    from packaging.requirements import Requirement
-except Exception:
+    Requirement = importlib.import_module("packaging.requirements").Requirement
+except ModuleNotFoundError:
     print("VENV ABSENT packaging-module-missing"); raise SystemExit(0)
 def n(s): return s.strip().lower().replace("_", "-").replace(".", "-")
 inst = set()
@@ -1330,12 +1334,10 @@ for d in md.distributions():
         inst.add(n(nm))
 for x in sorted(inst):
     print("PKG", x)
-app = None
-for cand in ("orchestrant", "orchestrant"):
-    try:
-        app = md.distribution(cand); break
-    except Exception:
-        pass
+try:
+    app = md.distribution("orchestrant")
+except md.PackageNotFoundError:
+    app = None
 if app is None:
     print("VENV ABSENT app-dist-not-installed")
 else:
@@ -1343,10 +1345,7 @@ else:
     # environment, so an upstream 'platform_machine != riscv64' is honoured for free.
     for e in (app.metadata.get_all("Provides-Extra") or []):
         for r in (app.requires or []):
-            try:
-                q = Requirement(r)
-            except Exception:
-                continue
+            q = Requirement(r)
             if q.marker is None or not q.marker.evaluate({"extra": e}):
                 continue
             print("REQ", e, n(q.name))
@@ -1356,10 +1355,7 @@ for d in md.distributions():
     if not nm:
         continue
     for r in (d.requires or []):
-        try:
-            q = Requirement(r)
-        except Exception:
-            continue
+        q = Requirement(r)
         if q.marker is not None and not q.marker.evaluate({"extra": ""}):
             continue
         if n(q.name) not in inst:
@@ -1685,13 +1681,13 @@ check_venv_package_set() {
   _shipped_truth_section "$1" "$2" "B: venv package set vs the app's declared graph" _venv_probe_failure _check_venv_package_set
 }
 _check_venv_package_set() {
-  local absent
-  absent="$(printf '%s\n' "${_SHIPPED_TRUTH_PROBE}" | sed -n 's/^VENV ABSENT //p' | head -1)"
-  if [ -n "${absent}" ]; then
-    echo "  SKIP venv package-set comparison UNAVAILABLE on ${target_arch}: ${absent}"
-    echo "  SKIP   -- this is a loud skip, NOT a pass; the set was never compared"
-    return 0
-  fi
+  local status
+  status="$(printf '%s\n' "${_SHIPPED_TRUTH_PROBE}" | sed -n 's/^VENV ERROR /ERROR /p' | head -1)"
+  [ -n "${status}" ] || status="$(printf '%s\n' "${_SHIPPED_TRUTH_PROBE}" | sed -n 's/^VENV ABSENT /ABSENT /p' | head -1)"
+  case "${status}" in
+    ERROR*) fail "venv package-set metadata probe failed on ${target_arch}: ${status#ERROR }"; return 0 ;;
+    ABSENT*) printf '  SKIP venv package-set comparison UNAVAILABLE on %s: %s\n  SKIP   -- this is a loud skip, NOT a pass; the set was never compared\n' "${target_arch}" "${status#ABSENT }"; return 0 ;;
+  esac
   local verb extra pkg owner miss=0 asserted=0
   while read -r verb extra pkg owner; do
     case "${verb}" in
@@ -2171,7 +2167,10 @@ _android_abi_want() {
 # Scans .a members too: `file` on an archive does not report its members' machine.
 _android_abi_py() {
   cat <<'PY'
-import collections, os, struct
+import collections
+import os
+import struct
+
 
 def machine(b):
     return struct.unpack_from("<H", b, 18)[0] if b[:4] == b"\x7fELF" else None
@@ -2210,7 +2209,7 @@ for root, _dirs, files in os.walk("/opt/android"):
             seen[got] += 1
             sample.setdefault(got, path)
 for got, count in seen.most_common():
-    print("MACH %d %d %s" % (got, count, sample[got]))
+    print(f"MACH {got} {count} {sample[got]}")
 PY
 }
 

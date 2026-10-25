@@ -130,7 +130,7 @@ def verdict(text: str) -> str | None:
 def main() -> None:
     try:
         ev = json.load(sys.stdin)
-    except Exception:
+    except json.JSONDecodeError:
         sys.exit(0)
     tool = str(ev.get("tool_name", ""))
     tin = ev.get("tool_input") or {}

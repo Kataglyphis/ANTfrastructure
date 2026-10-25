@@ -22,13 +22,13 @@ def split_ref(ref: str) -> tuple[str, str, str]:
     """(registry, repository, tag-or-digest) of a fully qualified reference."""
     host, _, rest = ref.partition("/")
     if not rest or "." not in host:
-        raise ValueError("not a fully qualified reference: %s" % ref)
+        raise ValueError(f"not a fully qualified reference: {ref}")
     if "@" in rest:
         repo, _, ident = rest.partition("@")
     else:
         repo, _, ident = rest.rpartition(":")
         if not repo or "/" in ident:
-            raise ValueError("reference has no tag or digest: %s" % ref)
+            raise ValueError(f"reference has no tag or digest: {ref}")
     return host, repo, ident
 
 
@@ -42,19 +42,19 @@ def select_platform(index: dict, platform: str) -> str:
         and m.get("platform", {}).get("architecture") == want_arch
     ]
     if len(hits) != 1:
-        raise LookupError("%d manifests for %s in the index, expected exactly 1" % (len(hits), platform))
+        raise LookupError(f"{len(hits)} manifests for {platform} in the index, expected exactly 1")
     return hits[0]
 
 
 def _token(host: str, repo: str) -> str:
-    query = urllib.parse.urlencode({"scope": "repository:%s:pull" % repo})
-    with urllib.request.urlopen("https://%s/token?%s" % (host, query), timeout=60) as resp:
+    query = urllib.parse.urlencode({"scope": f"repository:{repo}:pull"})
+    with urllib.request.urlopen(f"https://{host}/token?{query}", timeout=60) as resp:
         return json.load(resp)["token"]
 
 
 def fetch_index(host: str, repo: str, ident: str) -> dict:
     req = urllib.request.Request(
-        "https://%s/v2/%s/manifests/%s" % (host, repo, ident),
+        f"https://{host}/v2/{repo}/manifests/{ident}",
         headers={"Accept": ", ".join(INDEX_TYPES), "Authorization": "Bearer " + _token(host, repo)},
     )
     with urllib.request.urlopen(req, timeout=60) as resp:
@@ -69,7 +69,7 @@ def main(argv: list[str]) -> int:
         host, repo, ident = split_ref(argv[1])
         print(select_platform(fetch_index(host, repo, ident), argv[2]))
     except (ValueError, LookupError, OSError, KeyError) as exc:
-        sys.stderr.write("registry-platform-digest.py: %s\n" % exc)
+        sys.stderr.write(f"registry-platform-digest.py: {exc}\n")
         return 1
     return 0
 

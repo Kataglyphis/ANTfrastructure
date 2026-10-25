@@ -5,17 +5,18 @@ import shlex
 import subprocess
 import sys
 import tempfile
+from typing import Any
 
 import binfmt_probe_controls as controls
 
 
-def function(text, name):
+def function(text: str, name: str) -> str:
     start = text.index(name + '() {')
     end = text.index('\n}', start) + 2
     return text[start:end]
 
 
-def body(caller, owner, manifest):
+def body(caller: str, owner: pathlib.Path, manifest: pathlib.Path) -> str:
     if caller == 'installer':
         text = owner.read_text()
         start = text.index('_binfmt_missing=""')
@@ -95,13 +96,20 @@ exit "$status"
 '''
 
 
-def receipt(result, trace, base):
+def receipt(
+    result: subprocess.CompletedProcess[bytes], trace: bytes, base: pathlib.Path
+) -> dict[str, int | str]:
     return {'status': result.returncode, 'out': result.stdout.replace(str(base).encode(), b'<fixture>').hex(),
             'err': result.stderr.replace(str(base).encode(), b'<fixture>').hex(),
             'trace': trace.replace(str(base).encode(), b'<fixture>').hex()}
 
 
-def probe_cases(base, owner, manifest, oracle):
+def probe_cases(
+    base: pathlib.Path,
+    owner: pathlib.Path,
+    manifest: pathlib.Path,
+    oracle: list[dict[str, Any]],
+) -> int:
     worker = base / 'probe-worker.sh'
     worker.write_text(WORKER)
     tool = base / 'tool with spaces'
@@ -123,7 +131,7 @@ def probe_cases(base, owner, manifest, oracle):
     return len(oracle)
 
 
-def main():
+def main() -> None:
     owner = pathlib.Path(sys.argv[1])
     manifest = pathlib.Path(sys.argv[2])
     oracle = json.loads(pathlib.Path(sys.argv[3]).read_text())

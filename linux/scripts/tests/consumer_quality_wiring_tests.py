@@ -11,7 +11,7 @@ from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
-from verify_consumer_quality_wiring import inspect  # noqa: E402
+from verify_consumer_quality_wiring import inspect
 
 REL = ".github/workflows/quality.yml"
 
@@ -37,11 +37,13 @@ class QualityWiringTests(unittest.TestCase):
         self.addCleanup(self.work.cleanup)
         self.root = Path(self.work.name)
 
-    def check(self, workflow: str, tracked: list[str] | None = None):
+    def check(
+        self: QualityWiringTests, workflow: str, tracked: list[str] | None = None
+    ) -> tuple[list[str], list[str]]:
         _write(self.root, workflow)
         return inspect(self.root, [REL] if tracked is None else tracked)
 
-    def test_reusable_ratchet_mutation(self):
+    def test_reusable_ratchet_mutation(self: QualityWiringTests) -> None:
         good = ("on: push\njobs:\n  lint:\n    uses: Kataglyphis/ANTfrastructure/"
                 ".github/workflows/lint-gates.yml@develop\n    with:\n      ratchets: true\n")
         witnesses, failures = self.check(good)
@@ -54,7 +56,7 @@ class QualityWiringTests(unittest.TestCase):
             self.assertEqual([], witnesses)
             self.assertIn("ratchets: true", failures[0])
 
-    def test_direct_ratchet_mutation(self):
+    def test_direct_ratchet_mutation(self: QualityWiringTests) -> None:
         good = ("on: push\njobs:\n  lint:\n    runs-on: ubuntu-26.04\n"
                 "    steps:\n      - run: bash antfrastructure-tools/linux/scripts/"
                 "run-lint-gates.sh . --ratchets\n")
@@ -63,7 +65,7 @@ class QualityWiringTests(unittest.TestCase):
         self.assertEqual([], witnesses)
         self.assertIn("--ratchets", failures[0])
 
-    def test_block_run_and_non_calls(self):
+    def test_block_run_and_non_calls(self: QualityWiringTests) -> None:
         text = ("on: push\njobs:\n  lint:\n    runs-on: ubuntu-26.04\n"
                 "    steps:\n      - run: |\n          echo run-lint-gates.sh --ratchets\n"
                 "          # bash tools/linux/scripts/run-lint-gates.sh . --ratchets\n"
@@ -73,7 +75,7 @@ class QualityWiringTests(unittest.TestCase):
         self.assertEqual([], witnesses)
         self.assertEqual(1, len(failures))
 
-    def test_disabled_or_nonfatal_call(self):
+    def test_disabled_or_nonfatal_call(self: QualityWiringTests) -> None:
         base = ("on: push\njobs:\n  lint:\n    uses: Kataglyphis/ANTfrastructure/"
                 ".github/workflows/lint-gates.yml@develop\n    with:\n      ratchets: true\n")
         for extra in ("    if: false\n", "    continue-on-error: true\n"):
@@ -81,12 +83,14 @@ class QualityWiringTests(unittest.TestCase):
             self.assertEqual([], witnesses)
             self.assertEqual(1, len(failures))
 
-    def test_comments_and_untracked_workflow_are_not_calls(self):
+    def test_comments_and_untracked_workflow_are_not_calls(
+        self: QualityWiringTests,
+    ) -> None:
         text = "# uses: Kataglyphis/ANTfrastructure/.github/workflows/lint-gates.yml@develop\non: push\njobs: {}\n"
         self.assertEqual(([], []), self.check(text))
         self.assertEqual(([], []), self.check(text, tracked=[]))
 
-    def test_parse_failure_is_fatal(self):
+    def test_parse_failure_is_fatal(self: QualityWiringTests) -> None:
         self.assertEqual(([], []), self.check("on: push\njobs:\n  broken: [\n"))
         broken = ("on: push\njobs:\n  broken: [\n"
                   "  # uses: Kataglyphis/ANTfrastructure/.github/workflows/lint-gates.yml@develop\n")
@@ -95,7 +99,9 @@ class QualityWiringTests(unittest.TestCase):
             broken + "  uses: Kataglyphis/ANTfrastructure/.github/workflows/lint-gates.yml@develop\n")
         self.assertIn("cannot parse tracked workflow with a lint call", failures[0])
 
-    def test_weekly_inventory_folds_a_mutated_call_into_its_verdict(self):
+    def test_weekly_inventory_folds_a_mutated_call_into_its_verdict(
+        self: QualityWiringTests,
+    ) -> None:
         hub = self.root / "hub"
         consumer = self.root / "consumer"
         (hub / "linux/scripts").mkdir(parents=True)
@@ -121,13 +127,13 @@ class QualityWiringTests(unittest.TestCase):
         report = self.root / "logs/reports/consumer-inventory.md"
         cmd = [sys.executable, str(SCRIPTS / "verify_consumer_inventory.py"),
                "--inventory", str(inventory), "--hub-root", str(hub), "--offline",
-               "--local", "hub=%s" % hub, "--local", "consumer=%s" % consumer,
+               "--local", f"hub={hub}", "--local", f"consumer={consumer}",
                "--report", str(report)]
-        clean = subprocess.run(cmd, capture_output=True, text=True)
+        clean = subprocess.run(cmd, check=False, capture_output=True, text=True)
         self.assertEqual(0, clean.returncode, clean.stderr)
         self.assertIn("consumer:** OK", report.read_text(encoding="utf-8"))
         _write(consumer, workflow.replace("ratchets: true", "ratchets: false"))
-        broken = subprocess.run(cmd, capture_output=True, text=True)
+        broken = subprocess.run(cmd, check=False, capture_output=True, text=True)
         self.assertEqual(1, broken.returncode)
         self.assertIn("CI quality wiring", broken.stderr)
         self.assertIn("consumer:** FAIL", report.read_text(encoding="utf-8"))

@@ -1185,6 +1185,8 @@ Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for
 
 **Automated sweep: `python3 docs/scripts/bump_versions.py`** (report), `--write` (safe tier), `--write-all` (report tier + paired checksum extras — extras MUST be applied together with the version, see the CUDA-hash incident note in the script). Three tiers: SAFE / REPORT / MANUAL, plus a self-audit for unclassified keys — a key counts as classified when it is in a tier, carries a `# renovate:` annotation, or matches the non-version filter.
 
+`bump_fetch.py` keeps checksum fallbacks limited to expected failures: an unavailable sums file advances to the next candidate, and an unavailable or invalid-JSON release digest response falls back to hashing the asset. Unexpected Python errors propagate; they must not look like missing metadata or start a large fallback download.
+
 **`--audit-unclassified`** is that self-audit as a gate, offline (since 2026-10-09). Every key in either pin file must be one of these, or the audit fails and names it:
 - **Tiered**: a SAFE or REPORT spec, or a MANUAL row (one comment line of reason per group).
 - **Derived**: a version a spec writes as an extra of its owner key, read from the table that spec walks (`derived_keys()`): the ten `CUDA_WINDOWS_ARM64_*_VERSION` from `CUDA_VERSION`'s redist manifest, and the three DeepStream open-source deps from `DEEPSTREAM_VERSION`'s `install_opensource_deps.sh`.

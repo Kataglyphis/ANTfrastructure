@@ -8,9 +8,13 @@ import shutil
 import stat
 import time
 import urllib.request
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 
 import pytest
-from gw_client import call
+from gw_client import JsonValue, call
+from gw_harness import Gateway
 
 FIELDS = {"ts", "consumer", "route_id", "alias", "lane", "rerouted", "prompt", "status",
           "upstream", "upstream_status", "model", "prompt_tokens", "completion_tokens",
@@ -18,34 +22,40 @@ FIELDS = {"ts", "consumer", "route_id", "alias", "lane", "rerouted", "prompt", "
           "method", "uri"}
 
 
-def test_one_log_line_per_request_with_its_fields(gateway):
+def test_one_log_line_per_request_with_its_fields(gateway: Gateway) -> None:
     gateway.post("chat", stream=True)
     (line,) = gateway.log.lines()
     assert FIELDS <= set(line), sorted(FIELDS - set(line))
     assert (line["consumer"], line["route_id"], line["alias"], line["lane"]) == ("lab", "chat", "chat", "npu")
     assert (line["rerouted"], line["prompt"], line["status"], line["aborted"]) == ("no", "-", 200, "-")
-    assert line["upstream"] == f"127.0.0.1:{gateway.lanes['npu'].port}"
+    upstream = line["upstream"]
+    assert isinstance(upstream, str)
+    assert upstream == f"127.0.0.1:{gateway.lanes['npu'].port}"
     assert line["model"] == gateway.lanes_models["npu"]
-    assert line["stream"] == "true" and int(line["completion_tokens"]) == 3
+    completion_tokens = line["completion_tokens"]
+    assert isinstance(completion_tokens, (str, int, float))
+    assert line["stream"] == "true" and int(completion_tokens) == 3
     assert isinstance(line["est_tokens"], int)
 
 
-def test_a_fallback_is_one_line_naming_both_attempts(gateway):
+def test_a_fallback_is_one_line_naming_both_attempts(gateway: Gateway) -> None:
     gateway.post("chat", fake={"npu": "overflow"})
     (line,) = gateway.log.lines()
+    upstream = line["upstream"]
+    assert isinstance(upstream, str)
     npu, gpu = (f"127.0.0.1:{gateway.lanes[n].port}" for n in ("npu", "gpu"))
     assert (line["lane"], line["rerouted"], line["status"]) == ("gpu", "overflow", 200)
-    assert [a.strip() for a in line["upstream"].split(",")] == [npu, gpu]
+    assert [a.strip() for a in upstream.split(",")] == [npu, gpu]
     assert [s.strip() for s in str(line["upstream_status"]).split(",")] == ["503", "200"]
 
 
-def test_static_routes_log_without_lane_fields(gateway):
+def test_static_routes_log_without_lane_fields(gateway: Gateway) -> None:
     call(gateway.port, "/v1/models", method="GET")
     (line,) = gateway.log.lines()
     assert line["route_id"] == "models" and "lane" not in line
 
 
-def _metric_lines(gateway, prefix, timeout=35) -> list[str]:
+def _metric_lines(gateway: Gateway, prefix: str, timeout: float = 35) -> list[str]:
     """The exporter refreshes its cache every 15 s, so a fresh series can take that long."""
     url = f"http://127.0.0.1:{gateway.metrics_port}/apisix/prometheus/metrics"
     deadline = time.monotonic() + timeout
@@ -57,7 +67,7 @@ def _metric_lines(gateway, prefix, timeout=35) -> list[str]:
         time.sleep(1)
 
 
-def test_metrics_carry_the_lane_as_node(gateway):
+def test_metrics_carry_the_lane_as_node(gateway: Gateway) -> None:
     # APISIX skips a latency of 0 ms, and the fake would answer within one.
     gateway.post("chat-long", fake={"gpu": "hold=0.2"})
     latency = _metric_lines(gateway, "apisix_llm_latency_count{")
@@ -67,14 +77,14 @@ def test_metrics_carry_the_lane_as_node(gateway):
     assert any('node="gpu"' in m for m in tokens), tokens
 
 
-def test_the_keys_on_disk_stay_private(gateway):
+def test_the_keys_on_disk_stay_private(gateway: Gateway) -> None:
     """runtime.env holds every client key in clear; compose.log echoes them."""
     for rel in ("live/runtime.env", "compose.log"):
         mode = stat.S_IMODE(os.stat(os.path.join(gateway.state, rel)).st_mode)
         assert mode == 0o600, f"{rel} is {oct(mode)}"
 
 
-def test_every_listener_is_on_loopback(gateway):
+def test_every_listener_is_on_loopback(gateway: Gateway) -> None:
     conf = gateway.exec("cat", "/usr/local/apisix/conf/nginx.conf")
     listens = re.findall(r"^\s*listen\s+([^\s;]+)", conf, re.MULTILINE)
     assert listens, "no listen directive found"
@@ -84,13 +94,13 @@ def test_every_listener_is_on_loopback(gateway):
     assert ports == {str(p) for p in gateway.ports}, "API, status and metrics only (no admin, control, ssl)"
 
 
-def test_status_reports_in_sync(gateway):
+def test_status_reports_in_sync(gateway: Gateway) -> None:
     status = gateway.serve("status")
     assert status.returncode == 0, status.stdout + status.stderr
     assert "in sync" in status.stdout
 
 
-def test_validation_passes_the_live_bundle(gateway, tmp_path):
+def test_validation_passes_the_live_bundle(gateway: Gateway, tmp_path: Path) -> None:
     bundle = tmp_path / "bundle"
     shutil.copytree(os.path.join(gateway.state, "live"), bundle,
                     ignore=shutil.ignore_patterns("runtime.env", "*.prev"))
@@ -104,7 +114,9 @@ def test_validation_passes_the_live_bundle(gateway, tmp_path):
     (lambda doc: doc["routes"][2]["plugins"]["geniex-shape"].update(tag="sometimes"),
      "failed to check item data"),
 ])
-def test_validation_refuses_a_bundle_apisix_would_half_load(gateway, tmp_path, break_it, symptom):
+def test_validation_refuses_a_bundle_apisix_would_half_load(
+    gateway: Gateway, tmp_path: Path, break_it: Callable[[dict[str, Any]], None], symptom: str,
+) -> None:
     bundle = tmp_path / "bundle"
     shutil.copytree(os.path.join(gateway.state, "live"), bundle,
                     ignore=shutil.ignore_patterns("runtime.env", "*.prev"))
@@ -116,9 +128,10 @@ def test_validation_refuses_a_bundle_apisix_would_half_load(gateway, tmp_path, b
     assert symptom in bad.stderr
 
 
-def test_reload_swaps_routing_in_place_and_keys_survive_it(gateway):
+def test_reload_swaps_routing_in_place_and_keys_survive_it(gateway: Gateway) -> None:
     before = gateway.info()["config_sha256"]
-    medium = [{"role": "user", "content": "y" * 4000}]
+    message: dict[str, JsonValue] = {"role": "user", "content": "y" * 4000}
+    medium: list[JsonValue] = [message]
     assert gateway.post("chat", messages=medium).headers["x-gw-lane"] == "npu"
     gateway.write_registry(budget=1000)
     try:
@@ -142,7 +155,7 @@ def test_reload_swaps_routing_in_place_and_keys_survive_it(gateway):
     assert gateway.info()["config_sha256"] == before
 
 
-def test_reload_refuses_a_change_that_needs_a_restart(gateway):
+def test_reload_refuses_a_change_that_needs_a_restart(gateway: Gateway) -> None:
     before = gateway.info()["config_sha256"]
     gateway.write_registry(listen="127.0.0.1:1")
     try:

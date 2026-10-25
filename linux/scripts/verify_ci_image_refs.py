@@ -15,8 +15,7 @@ HERE = Path(__file__).resolve().parent
 HUB_ROOT = HERE.parent.parent
 VERSIONS_ENV = HERE / "01-core" / "versions.env"
 
-sys.path.insert(0, str(HERE))
-import gate_scope  # noqa: E402
+import gate_scope
 
 # Action (under <root>/.github/actions/) -> image input -> canonical ref; `target-arch: arm64` selects `image-arm64`.
 CONTAINER_ACTIONS = {
@@ -42,7 +41,7 @@ DEFAULT_RE = re.compile(r"^    default:\s*(.*?)\s*$")
 
 
 def fail(msg: str) -> None:
-    sys.stderr.write("FAIL: %s\n" % msg)
+    sys.stderr.write(f"FAIL: {msg}\n")
 
 
 def load_versions(path: Path) -> dict[str, str]:
@@ -69,9 +68,9 @@ def canonical_refs() -> dict[str, str]:
     versions = load_versions(VERSIONS_ENV)
     missing = [k for k in ("IMAGE_REGISTRY_PREFIX", *TAG_KEYS.values()) if not versions.get(k)]
     if missing:
-        raise SystemExit("FAIL: %s: missing %s" % (VERSIONS_ENV, ", ".join(missing)))
+        raise SystemExit(f"FAIL: {VERSIONS_ENV}: missing {', '.join(missing)}")
     prefix = versions["IMAGE_REGISTRY_PREFIX"]
-    return {name: "%s:%s" % (prefix, versions[key]) for name, key in TAG_KEYS.items()}
+    return {name: f"{prefix}:{versions[key]}" for name, key in TAG_KEYS.items()}
 
 
 def yaml_files(root: Path) -> list[Path]:
@@ -88,8 +87,9 @@ def script_files(root: Path) -> list[Path]:
 def frozen_ref_re(refs: dict[str, str]) -> re.Pattern:
     """A canonical ref as a whole tag; `.` is not a continuation, so a ref ending a sentence still counts."""
     return re.compile(
-        "(?:%s)(?![A-Za-z0-9_-])"
-        % "|".join(re.escape(ref) for ref in sorted(set(refs.values()))))
+        f"(?:{'|'.join(re.escape(ref) for ref in sorted(set(refs.values())))})"
+        r"(?![A-Za-z0-9_-])"
+    )
 
 
 def ask_instead(path: Path) -> str:
@@ -109,9 +109,10 @@ def check_script_copies(root: Path, files: list[Path], frozen: re.Pattern) -> in
         for n, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
             if not frozen.search(line):
                 continue
-            fail("%s:%d: a spelled-out copy of the family CI image ref, frozen at "
-                 "today's tag. Ask the owner instead: %s\n      %s"
-                 % (rel, n, ask_instead(path), line.strip()))
+            fail(
+                f"{rel}:{n}: a spelled-out copy of the family CI image ref, frozen at "
+                f"today's tag. Ask the owner instead: {ask_instead(path)}\n      {line.strip()}"
+            )
             bad += 1
     return bad
 
@@ -129,10 +130,11 @@ def check_yaml_copies(root: Path, files: list[Path], frozen: re.Pattern) -> int:
             key, value = entry.group(1), entry.group(2).strip().strip("'\"")
             if key == "default" or not frozen.fullmatch(value):
                 continue
-            fail("%s:%d: `%s:` is a copy of the family CI image ref. The four "
-                 "container actions carry it as their `image:` input default -- "
-                 "omit the input rather than hoisting the ref into YAML.\n      %s"
-                 % (rel, n, key, line.strip()))
+            fail(
+                f"{rel}:{n}: `{key}:` is a copy of the family CI image ref. The four "
+                "container actions carry it as their `image:` input default -- "
+                f"omit the input rather than hoisting the ref into YAML.\n      {line.strip()}"
+            )
             bad += 1
     return bad
 
@@ -140,7 +142,7 @@ def check_yaml_copies(root: Path, files: list[Path], frozen: re.Pattern) -> int:
 def image_input_default(text: str, name: str = "image") -> str | None:
     """The `default:` of top-level input `name`, or None; hand-parsed because the gate runs on the stdlib alone."""
     # The input NAME inside an action's `inputs:` block, not a value.
-    input_key = re.compile(r"^  %s:\s*$" % re.escape(name))
+    input_key = re.compile(rf"^  {re.escape(name)}:\s*$")
     lines = text.replace("\r\n", "\n").split("\n")
     for i, line in enumerate(lines):
         if not input_key.match(line):
@@ -167,12 +169,13 @@ def check_action_defaults(root: Path, refs: dict[str, str]) -> tuple[int, int]:
             seen += 1
             value = image_input_default(text, input_name)
             if value is None:
-                fail("%s: the `%s` input has no `default:` -- callers would have to "
-                     "re-type the tag, which is the drift this gate exists to stop." % (rel, input_name))
+                fail(
+                    f"{rel}: the `{input_name}` input has no `default:` -- callers would have to "
+                    "re-type the tag, which is the drift this gate exists to stop."
+                )
                 bad += 1
             elif value != refs[platform]:
-                fail("%s: `%s` default is %s, versions.env composes %s"
-                     % (rel, input_name, value, refs[platform]))
+                fail(f"{rel}: `{input_name}` default is {value}, versions.env composes {refs[platform]}")
                 bad += 1
     return bad, seen
 
@@ -196,12 +199,14 @@ def check_literals(root: Path, files: list[Path], refs: dict[str, str]) -> tuple
         for lineno, tag, line in literal_refs(path.read_text(encoding="utf-8")):
             if tag in canonical_tags:
                 continue
-            key = "%s::%s" % (rel, tag)
+            key = f"{rel}::{tag}"
             if key in EXCUSED:
                 used_excuses.add(key)
                 continue
-            fail("%s:%d: non-canonical image tag ':%s' (canonical: %s)\n      %s"
-                 % (rel, lineno, tag, " / ".join(sorted(canonical_tags)), line))
+            fail(
+                f"{rel}:{lineno}: non-canonical image tag ':{tag}' "
+                f"(canonical: {' / '.join(sorted(canonical_tags))})\n      {line}"
+            )
             bad += 1
     return bad, used_excuses
 
@@ -242,8 +247,10 @@ def check_call_sites(root: Path, files: list[Path], refs: dict[str, str]) -> int
             found = REF_RE.search(image.group(2))
             # No literal resolves through the action default; literals in expressions were check_literals'.
             if found and found.group(1) != refs[platform].rsplit(":", 1)[1]:
-                fail("%s:%d: `%s:` of a %s action is handed ':%s'; it must run %s"
-                     % (rel, lineno, image.group(1), platform.split("-")[0], found.group(1), refs[platform]))
+                fail(
+                    f"{rel}:{lineno}: `{image.group(1)}:` of a {platform.split('-')[0]} action "
+                    f"is handed ':{found.group(1)}'; it must run {refs[platform]}"
+                )
                 bad += 1
     return bad
 
@@ -251,14 +258,14 @@ def check_call_sites(root: Path, files: list[Path], refs: dict[str, str]) -> int
 def main() -> int:
     root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else HUB_ROOT
     refs = canonical_refs()
-    print("== CI image refs under %s ==" % root)
+    print(f"== CI image refs under {root} ==")
     for name, ref in refs.items():
-        print("   %-13s %s" % (name, ref))
+        print(f"   {name:<13} {ref}")
 
     files = yaml_files(root)
     if not files:
         # A gate that checks nothing must not report green.
-        fail("no workflow or action YAML under %s/.github -- wrong root?" % root)
+        fail(f"no workflow or action YAML under {root}/.github -- wrong root?")
         return 1
 
     # After the wrong-root refusal, whose message is more useful than gate_scope's.
@@ -278,14 +285,16 @@ def main() -> int:
     bad += check_script_copies(root, scripts, frozen)
 
     for stale in sorted(set(EXCUSED) - used_excuses):
-        fail("EXCUSED row is stale (that tag no longer appears): %s -- delete it" % stale)
+        fail(f"EXCUSED row is stale (that tag no longer appears): {stale} -- delete it")
         bad += 1
 
     if bad:
-        sys.stderr.write("CI IMAGE REF GATE FAILED (%d finding(s))\n" % bad)
+        sys.stderr.write(f"CI IMAGE REF GATE FAILED ({bad} finding(s))\n")
         return 1
-    print("CI IMAGE REFS OK (%d YAML file(s), %d script(s), %d container action default(s))"
-          % (len(files), len(scripts), checked))
+    print(
+        f"CI IMAGE REFS OK ({len(files)} YAML file(s), {len(scripts)} script(s), "
+        f"{checked} container action default(s))"
+    )
     return 0
 
 
