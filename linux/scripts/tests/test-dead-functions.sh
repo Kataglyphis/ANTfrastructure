@@ -266,6 +266,7 @@ t_case "a declared shared bootstrap has a real image-consumer caller, not an ine
 shared_hub="$(_fixture ':')"
 cp "${SCRIPTS_DIR}/image-acceptance.py" "${shared_hub}/linux/scripts/"
 mkdir -p "${shared_hub}/shared/config"
+cp "${SCRIPTS_DIR}/../../shared/config/shared-assets.manifest" "${shared_hub}/shared/config/"
 shared_plan="${shared_hub}/shared/config/image-consumers.json"
 cat > "${shared_plan}" <<'JSON'
 {"schema_version":1,"platform":"linux/amd64","timeout_seconds":60,"consumers":[{"name":"consumer","repository":"Example/Consumer","ref":"develop","command":["bash","-lc","source scripts/lib/antfrastructure.sh; antfrastructure_source linux/scripts/01-core/platform.sh"]}]}
@@ -281,6 +282,7 @@ _shared_command() {
   "${PY}" - "${shared_plan}" "$1" <<'PY'
 import json
 import sys
+
 with open(sys.argv[1], encoding="utf-8") as source:
     plan = json.load(source)
 plan["consumers"][0]["command"][2] = sys.argv[2]
@@ -288,7 +290,17 @@ with open(sys.argv[1], "w", encoding="utf-8") as target:
     json.dump(plan, target)
 PY
 }
+mkdir -p "${shared_consumer}/scripts/linux/lib"
+mv "${shared_consumer}/scripts/lib/antfrastructure.sh" "${shared_consumer}/scripts/linux/lib/antfrastructure.sh"
+printf 'antfrastructure-sh\n' > "${shared_consumer}/.antfrastructure-shared.manifest"
+_shared_command 'source scripts/linux/lib/antfrastructure.sh; antfrastructure_source linux/scripts/01-core/platform.sh'
+t_git_commit "${shared_consumer}"
+t_assert_eq 0 "$(t_rc "${PY}" "${shared_gate}" --root "${shared_consumer}")" \
+  "the registry default resolves a declaration without a path override"
+mv "${shared_consumer}/scripts/linux/lib/antfrastructure.sh" "${shared_consumer}/scripts/lib/antfrastructure.sh"
+printf 'antfrastructure-sh scripts/lib/antfrastructure.sh\n' > "${shared_consumer}/.antfrastructure-shared.manifest"
 _shared_command 'source scripts/lib/antfrastructure.sh; echo antfrastructure_source'
+t_git_commit "${shared_consumer}"
 t_assert_eq 1 "$(t_rc "${PY}" "${shared_gate}" --root "${shared_consumer}")" \
   "echoing the API name is not a shell call"
 t_assert_contains "$("${PY}" "${shared_gate}" --root "${shared_consumer}" 2>&1)" \

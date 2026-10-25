@@ -106,11 +106,14 @@ fi
 CACHE_ROOT="${RENOVATE_LOCAL_CACHE:-${XDG_CACHE_HOME:-${HOME}/.cache}/kataglyphis}"
 NODE_DIR="${CACHE_ROOT}/node-${RENOVATE_NODE_VERSION}"
 RENOVATE_NPM_DIR="${HUB_ROOT}/linux/scripts/renovate-npm"
+RENOVATE_BOOTSTRAP_PY="${HUB_ROOT}/linux/scripts/renovate_bootstrap.py"
 NPM_PREFIX=""
 RENOVATE_JS=""
 NODE_BIN=""
 NPM_BIN=""
 RENOVATE_RUN_VERSION=""
+
+rb_py() { "${PY_BIN}" "${RENOVATE_BOOTSTRAP_PY}" "$@"; }
 
 node_major() { "$1" --version 2>/dev/null | sed -e 's/^v//' -e 's/\..*//'; }
 
@@ -127,12 +130,13 @@ node_arch_asset() {
 
 renovate_lock_check() {
   local lock="${RENOVATE_NPM_DIR}/package-lock.json" locked declared
+  [ -f "${RENOVATE_BOOTSTRAP_PY}" ] || err "no ${RENOVATE_BOOTSTRAP_PY}: Renovate bootstrap metadata cannot be checked"
   [ -f "${lock}" ] || err "no ${lock}: the bootstrap installs Renovate from it"
-  locked="$("${PY_BIN}" -c 'import json, sys; print(json.load(open(sys.argv[1]))["packages"]["node_modules/renovate"]["version"])' "${lock}")" \
+  locked="$(rb_py lock-version "${lock}")" \
     || err "cannot read the renovate version from ${lock}"
   [ "${locked}" = "${RENOVATE_VERSION}" ] \
     || err "${lock} installs renovate ${locked}, tool-pins.env pins ${RENOVATE_VERSION}: set it in package.json beside the lock and run 'npm install --package-lock-only --ignore-scripts' there with Node ${RENOVATE_NODE_VERSION}"
-  declared="$("${PY_BIN}" -c 'import json, sys; print(json.load(open(sys.argv[1]))["dependencies"]["renovate"])' "${RENOVATE_NPM_DIR}/package.json")" \
+  declared="$(rb_py manifest-version "${RENOVATE_NPM_DIR}/package.json")" \
     || err "cannot read the renovate version from ${RENOVATE_NPM_DIR}/package.json"
   [ "${declared}" = "${RENOVATE_VERSION}" ] \
     || err "${RENOVATE_NPM_DIR}/package.json declares renovate ${declared}, tool-pins.env pins ${RENOVATE_VERSION}"
@@ -144,7 +148,7 @@ resolve_renovate_version() {
   [ -x "${NPM_BIN}" ] || err "npm is missing beside ${NODE_BIN}"
   latest="$(PATH="$(dirname "${NODE_BIN}"):${PATH}" "${NPM_BIN}" view renovate dist-tags.latest --json --prefer-online --no-update-notifier --loglevel=error)" \
     || err "cannot check npm's latest Renovate version; dependency scan was not started"
-  RENOVATE_RUN_VERSION="$(printf '%s' "${latest}" | "${PY_BIN}" -c 'import json, re, sys; value = json.load(sys.stdin); pattern = r"[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?(?:\+[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?"; print(value) if isinstance(value, str) and len(value) <= 128 and re.fullmatch(pattern, value) else sys.exit(1)')" \
+  RENOVATE_RUN_VERSION="$(printf '%s' "${latest}" | rb_py latest)" \
     || err "npm returned an invalid latest Renovate version; dependency scan was not started"
   if [ "${RENOVATE_RUN_VERSION}" = "${RENOVATE_VERSION}" ]; then
     NPM_PREFIX="${CACHE_ROOT}/renovate-${RENOVATE_VERSION}-$(sha256sum "${RENOVATE_NPM_DIR}/package-lock.json" | cut -c1-12)"
@@ -155,38 +159,14 @@ resolve_renovate_version() {
   RENOVATE_JS="${NPM_PREFIX}/node_modules/renovate/dist/renovate.js"
 }
 
-stage_renovate_manifest() {
-  local destination="$1"
-  "${PY_BIN}" - "${RENOVATE_NPM_DIR}/package.json" "${destination}" "${RENOVATE_RUN_VERSION}" <<'PY'
-import json
-import sys
-with open(sys.argv[1], encoding="utf-8") as source:
-    manifest = json.load(source)
-manifest["dependencies"]["renovate"] = sys.argv[3]
-with open(sys.argv[2], "w", encoding="utf-8") as output:
-    json.dump(manifest, output, indent=2)
-    output.write("\n")
-PY
-}
-
-verify_renovate_lock() {
-  "${PY_BIN}" - "${1}" "${RENOVATE_RUN_VERSION}" <<'PY'
-import json
-import sys
-with open(sys.argv[1], encoding="utf-8") as source:
-    package = json.load(source)["packages"]["node_modules/renovate"]
-if package.get("version") != sys.argv[2] or not package.get("integrity"):
-    sys.exit(1)
-PY
-}
-
 verify_renovate_install() {
   local actual
   [ -f "${RENOVATE_JS}" ] || return 1
-  actual="$("${PY_BIN}" -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["version"])' "${NPM_PREFIX}/node_modules/renovate/package.json" 2>/dev/null)" || return 1
+  actual="$(rb_py installed-version "${NPM_PREFIX}/node_modules/renovate/package.json" 2>/dev/null)" || return 1
   [ "${actual}" = "${RENOVATE_RUN_VERSION}" ] || return 1
   actual="$("${NODE_BIN}" "${RENOVATE_JS}" --version 2>/dev/null)" || return 1
-  [ "${actual}" = "${RENOVATE_RUN_VERSION}" ]
+  [ "${actual}" = "${RENOVATE_RUN_VERSION}" ] || return 1
+  return 0
 }
 
 bootstrap_node() {
@@ -222,6 +202,36 @@ bootstrap_node() {
   [ -x "${NODE_BIN}" ] || err "node did not land at ${NODE_BIN}"
 }
 
+renovate_stage_error() {
+  local stage="$1"
+  shift
+  case "${stage}" in
+    "${CACHE_ROOT}"/.renovate-install.*) rm -rf -- "${stage}" || err "cannot clean ${stage}" ;;
+    *) err "refusing to clean non-cache stage ${stage}" ;;
+  esac
+  err "$@"
+}
+
+install_renovate_stage() {
+  local stage="$1"
+  if [ "${RENOVATE_RUN_VERSION}" = "${RENOVATE_VERSION}" ]; then
+    cp "${RENOVATE_NPM_DIR}/package.json" "${RENOVATE_NPM_DIR}/package-lock.json" "${stage}/" \
+      || renovate_stage_error "${stage}" "cannot stage the committed Renovate lock"
+  else
+    rb_py stage-manifest "${RENOVATE_NPM_DIR}/package.json" "${stage}/package.json" "${RENOVATE_RUN_VERSION}" \
+      || renovate_stage_error "${stage}" "cannot stage Renovate ${RENOVATE_RUN_VERSION} manifest"
+    (cd "${stage}" && PATH="$(dirname "${NODE_BIN}"):${PATH}" \
+      "${NPM_BIN}" install --package-lock-only --ignore-scripts --no-fund --no-audit --no-update-notifier --loglevel=error >&2) \
+      || renovate_stage_error "${stage}" "cannot resolve an integrity lock for renovate@${RENOVATE_RUN_VERSION}"
+  fi
+  rb_py verify-lock "${stage}/package-lock.json" "${RENOVATE_RUN_VERSION}" \
+    || renovate_stage_error "${stage}" "Renovate lock lacks renovate@${RENOVATE_RUN_VERSION} with integrity"
+  note "installing renovate ${RENOVATE_RUN_VERSION} into ${NPM_PREFIX} from its integrity lock" >&2
+  (cd "${stage}" && PATH="$(dirname "${NODE_BIN}"):${PATH}" \
+    "${NPM_BIN}" ci --engine-strict --no-fund --no-audit --no-update-notifier --loglevel=error >&2) \
+    || renovate_stage_error "${stage}" "npm ci of renovate@${RENOVATE_RUN_VERSION} failed"
+}
+
 # stdout stays the --print-bin answer, so the install talks on stderr.
 bootstrap_renovate() {
   local stage lock_fd
@@ -231,24 +241,9 @@ bootstrap_renovate() {
   flock -x "${lock_fd}" || err "cannot lock ${NPM_PREFIX}"
   if verify_renovate_install; then exec {lock_fd}>&-; return 0; fi
   stage="$(mktemp -d "${CACHE_ROOT}/.renovate-install.XXXXXXXX")" || err "cannot stage Renovate install"
-  if [ "${RENOVATE_RUN_VERSION}" = "${RENOVATE_VERSION}" ]; then
-    cp "${RENOVATE_NPM_DIR}/package.json" "${RENOVATE_NPM_DIR}/package-lock.json" "${stage}/" \
-      || { rm -rf "${stage}"; err "cannot stage the committed Renovate lock"; }
-  else
-    stage_renovate_manifest "${stage}/package.json" \
-      || { rm -rf "${stage}"; err "cannot stage Renovate ${RENOVATE_RUN_VERSION} manifest"; }
-    (cd "${stage}" && PATH="$(dirname "${NODE_BIN}"):${PATH}" \
-      "${NPM_BIN}" install --package-lock-only --ignore-scripts --no-fund --no-audit --no-update-notifier --loglevel=error >&2) \
-      || { rm -rf "${stage}"; err "cannot resolve an integrity lock for renovate@${RENOVATE_RUN_VERSION}"; }
-  fi
-  verify_renovate_lock "${stage}/package-lock.json" \
-    || { rm -rf "${stage}"; err "Renovate lock lacks renovate@${RENOVATE_RUN_VERSION} with integrity"; }
-  note "installing renovate ${RENOVATE_RUN_VERSION} into ${NPM_PREFIX} from its integrity lock" >&2
-  (cd "${stage}" && PATH="$(dirname "${NODE_BIN}"):${PATH}" \
-    "${NPM_BIN}" ci --engine-strict --no-fund --no-audit --no-update-notifier --loglevel=error >&2) \
-    || { rm -rf "${stage}"; err "npm ci of renovate@${RENOVATE_RUN_VERSION} failed"; }
-  rm -rf "${NPM_PREFIX:?}" || { rm -rf "${stage}"; err "cannot replace ${NPM_PREFIX}"; }
-  mv "${stage}" "${NPM_PREFIX}" || { rm -rf "${stage}"; err "cannot publish ${NPM_PREFIX}"; }
+  install_renovate_stage "${stage}"
+  rm -rf "${NPM_PREFIX:?}" || renovate_stage_error "${stage}" "cannot replace ${NPM_PREFIX}"
+  mv "${stage}" "${NPM_PREFIX}" || renovate_stage_error "${stage}" "cannot publish ${NPM_PREFIX}"
   verify_renovate_install || err "installed Renovate ${RENOVATE_RUN_VERSION} failed its version smoke"
   exec {lock_fd}>&-
 }

@@ -123,6 +123,26 @@ def corpus() -> Iterator[tuple[str, str]]:
     return _walk_corpus() if GRADED == HUB else _tracked_corpus()
 
 
+def _default_shared_bootstrap_rel() -> str:
+    """Read the canonical mirror path for a declaration without an override."""
+    registry = os.path.join(HUB, "shared/config/shared-assets.manifest")
+    with open(registry, encoding="utf-8") as fh:
+        defaults = [fields[2].strip() for line in fh
+                    if len(fields := line.split("|")) >= 3
+                    and fields[0].strip() == "antfrastructure-sh"]
+    if len(defaults) != 1:
+        raise ValueError("shared asset registry lacks one antfrastructure-sh default path")
+    return defaults[0]
+
+
+def _normalized_mirror_rel(rel: str) -> str:
+    """Reject declarations that escape the consumer's tracked root."""
+    parts = rel.replace("\\", "/").split("/")
+    if not rel or os.path.isabs(rel) or ":" in parts[0] or ".." in parts or "." in parts:
+        raise ValueError("antfrastructure-sh mirror must be a rooted-relative path")
+    return "/".join(parts)
+
+
 def _shared_bootstrap_rel() -> str | None:
     """Return the declared consumer mirror path, including nondefault layouts."""
     if ".antfrastructure-shared.manifest" not in set(_tracked(GRADED)):
@@ -138,21 +158,8 @@ def _shared_bootstrap_rel() -> str | None:
         return None
     if len(selected) != 1:
         raise ValueError("antfrastructure-sh must be declared once")
-    if len(selected[0]) == 2:
-        rel = selected[0][1]
-    else:
-        registry = os.path.join(HUB, "shared/config/shared-assets.manifest")
-        with open(registry, encoding="utf-8") as fh:
-            defaults = [fields[2].strip() for line in fh
-                        if len(fields := line.split("|")) >= 3
-                        and fields[0].strip() == "antfrastructure-sh"]
-        if len(defaults) != 1:
-            raise ValueError("shared asset registry lacks one antfrastructure-sh default path")
-        rel = defaults[0]
-    parts = rel.replace("\\", "/").split("/")
-    if not rel or os.path.isabs(rel) or ":" in parts[0] or ".." in parts or "." in parts:
-        raise ValueError("antfrastructure-sh mirror must be a rooted-relative path")
-    return "/".join(parts)
+    rel = selected[0][1] if len(selected[0]) == 2 else _default_shared_bootstrap_rel()
+    return _normalized_mirror_rel(rel)
 
 
 def _command_calls(command: list[str], mirror: str, names: set[str]) -> set[str]:

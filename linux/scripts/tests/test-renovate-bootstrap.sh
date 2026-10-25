@@ -12,6 +12,8 @@ mkdir -p "${w}/bin" "${w}/repo"
 git -C "${w}/repo" init -q
 want="$(sed -n 's/^RENOVATE_VERSION=//p' "${SCRIPTS}/01-core/tool-pins.env")"
 export STUB_RENOVATE_LATEST="${want}" STUB_NPM_LOG="${w}/npm.log"
+export STUB_BOOTSTRAP_PY="${SCRIPTS}/renovate_bootstrap.py"
+export STUB_CI_FAIL=0 STUB_INSTALL_FAIL=0 STUB_LOCK_BAD=0 STUB_VIEW_FAIL=0 STUB_VIEW_INVALID=0
 : > "${STUB_NPM_LOG}"
 
 cat > "${w}/bin/node" <<'SH'
@@ -33,29 +35,19 @@ case "$1" in
     ;;
   install)
     [ "${STUB_INSTALL_FAIL:-0}" = 0 ] || exit 5
-    python3 - <<'PY'
-import json
-import os
-with open("package.json", encoding="utf-8") as source:
-    version = json.load(source)["dependencies"]["renovate"]
-with open("package-lock.json", "w", encoding="utf-8") as output:
-    integrity = "" if os.getenv("STUB_LOCK_BAD") == "1" else "sha512-stub"
-    json.dump({"packages": {"node_modules/renovate": {"version": version, "integrity": integrity}}}, output)
-PY
+    version="$(python3 "${STUB_BOOTSTRAP_PY}" manifest-version package.json)" || exit 9
+    integrity=sha512-stub
+    [ "${STUB_LOCK_BAD:-0}" = 1 ] && integrity=""
+    printf '{"packages":{"node_modules/renovate":{"version":"%s","integrity":"%s"}}}\n' \
+      "${version}" "${integrity}" > package-lock.json
     ;;
   ci)
     [ "${STUB_CI_FAIL:-0}" = 0 ] || exit 6
     [ -f package.json ] && [ -f package-lock.json ] || exit 7
-    python3 - <<'PY'
-import json
-from pathlib import Path
-with open("package-lock.json", encoding="utf-8") as source:
-    version = json.load(source)["packages"]["node_modules/renovate"]["version"]
-folder = Path("node_modules/renovate")
-(folder / "dist").mkdir(parents=True, exist_ok=True)
-(folder / "package.json").write_text(json.dumps({"version": version}), encoding="utf-8")
-(folder / "dist/renovate.js").write_text("", encoding="utf-8")
-PY
+    version="$(python3 "${STUB_BOOTSTRAP_PY}" lock-version package-lock.json)" || exit 9
+    mkdir -p node_modules/renovate/dist
+    printf '{"version": "%s"}\n' "${version}" > node_modules/renovate/package.json
+    : > node_modules/renovate/dist/renovate.js
     ;;
   *) exit 8 ;;
 esac
@@ -124,6 +116,7 @@ t_case "an installed version mismatch is repaired from the locked cache recipe"
 python3 - "${new_prefix}/node_modules/renovate/package.json" <<'PY'
 import json
 import sys
+
 with open(sys.argv[1], "w", encoding="utf-8") as target:
     json.dump({"version": "0.0.0"}, target)
 PY
