@@ -210,6 +210,8 @@ def main() -> int:
     ap.add_argument("--allow", default=None,
                     help="the freeze file (default: code-complexity.allow beside this "
                          "script for the hub, <root>/code-complexity.allow otherwise)")
+    ap.add_argument("--report-only", action="store_true",
+                    help="list measurements over the limits without enforcing a freeze file")
     args = ap.parse_args()
 
     try:
@@ -230,6 +232,13 @@ def main() -> int:
     for rel, name, cc, nest in measure(scanner(root)):
         was = worst.get((rel, name), (0, 0))
         worst[(rel, name)] = (max(cc, was[0]), max(nest, was[1]))
+    if args.report_only:
+        offenders = [((rel, name), (cc, nest)) for (rel, name), (cc, nest)
+                     in sorted(worst.items()) if cc > CC_LIMIT or nest > NEST_LIMIT]
+        for (rel, name), (cc, nest) in offenders:
+            print(f"REPORT: {rel}:{name} cc={cc} nesting={nest}")
+        print(f"REPORT: {len(offenders)} functions over a complexity limit")
+        return 0
     frozen = load_counts(allow, 3, ALLOW_FMT)
     rc = check_rows(frozen, allow_name)
     for metric, limit, unit, i in (("cc", CC_LIMIT, "paths", 0),

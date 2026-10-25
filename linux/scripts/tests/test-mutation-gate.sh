@@ -562,6 +562,81 @@ t_assert_contains "${_out}" "target is a symlink" "the link is the finding, not 
 t_assert_eq 0 "$(printf '%s' "${_out}" | grep -c 'target missing')" "and it must not be misreported as a stale entry"
 t_assert_eq "1" "$(_iso_rc)"
 
+t_case "absolute and parent-traversal recipe targets fail before any test or write"
+_fixture "GUARD=on" "GUARD=off" yes .
+printf 'GUARD=on\n' > "${_tmp}/outside.txt"
+for _target in '../outside.txt' "${_tmp}/outside.txt" 'C:\outside.txt'; do
+  printf '[{"id":"probe","target":"%s","find":"GUARD=on","replace":"GUARD=off","test":"bash ./t.sh","why":"probe"}]\n' \
+    "${_target//\\/\\\\}" > "${_work}/m.json"
+  t_assert_eq "2" "$(_iso_rc)" "${_target} must fail while loading the recipe"
+  t_assert_eq "GUARD=on" "$(cat "${_tmp}/outside.txt")" "an invalid target cannot reach the host file"
+done
+
+t_case "a symlinked parent cannot send a target outside the mutation root"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
+_fixture "GUARD=on" "GUARD=off" yes .
+printf 'GUARD=on\n' > "${_tmp}/outside.txt"
+ln -sfn "${_tmp}" "${_work}/linked-dir"
+printf '[{"id":"probe","target":"linked-dir/outside.txt","find":"GUARD=on","replace":"GUARD=off","test":"bash ./t.sh","why":"probe"}]\n' > "${_work}/m.json"
+printf 'grep -q "GUARD=on" ./linked-dir/outside.txt\n' > "${_work}/t.sh"
+_out="$(t_out _gate 2>&1)"
+t_assert_contains "${_out}" "target resolves outside the mutation root"
+t_assert_eq "1" "$(_rc)"
+t_assert_eq "GUARD=on" "$(cat "${_tmp}/outside.txt")"
+
+_safe_target_contract() {
+  local driver="$1"
+  local status
+  TMPDIR="${_tmp}" "${PY}" "${driver}" --manifest "${_work}/m.json" --root "${_work}" --in-place >/dev/null 2>&1
+  status=$?
+  if [ "${status}" -ne 1 ] || [ "$(cat "${_tmp}/outside.txt")" != 'GUARD=on' ]; then
+    return 1
+  fi
+  return 0
+}
+t_assert_ok _safe_target_contract "${GATE}"
+sed '/if not within(os.path.realpath(root), target):/,+1d' "${GATE}" > "${_tmp}/no-target-containment.py"
+t_assert_fails _safe_target_contract "${_tmp}/no-target-containment.py"
+
+t_case "optional setup runs once in each copy before its unmutated baseline"
+_setup_repo="${_tmp}/setup-caller"
+mkdir -p "${_setup_repo}/.venv"
+git -C "${_setup_repo}" init -q
+printf '.venv/\n' > "${_setup_repo}/.gitignore"
+printf 'old\n' > "${_setup_repo}/.venv/source-only"
+for _n in 1 2; do
+  printf 'GUARD=on\n' > "${_setup_repo}/subject${_n}.sh"
+  printf 'test -f .venv/ready && grep -q "GUARD=on" ./subject%s.sh\n' "${_n}" > "${_setup_repo}/test${_n}.sh"
+done
+cat > "${_setup_repo}/m.json" <<'EOF'
+[{"id":"probe.1","target":"subject1.sh","find":"GUARD=on","replace":"GUARD=off","test":"bash ./test1.sh","why":"probe"},
+ {"id":"probe.2","target":"subject2.sh","find":"GUARD=on","replace":"GUARD=off","test":"bash ./test2.sh","why":"probe"}]
+EOF
+printf 'mkdir -p .venv\nprintf ready > .venv/ready\necho setup >> "%s/setup-count"\n' "${_tmp}" > "${_setup_repo}/setup.sh"
+_setup_gate() {
+  TMPDIR="${_tmp}" "${PY}" "${GATE}" --manifest "${_setup_repo}/m.json" \
+    --root "${_setup_repo}" --jobs 2 "$@"
+}
+_out="$(t_out _setup_gate)"
+t_assert_contains "${_out}" "baseline test already fails unmutated" "the ignored source .venv must not reach mirrors"
+t_assert_eq "1" "$(t_rc _setup_gate)"
+rm -f "${_tmp}/setup-count"
+_out="$(t_out _setup_gate --setup-script setup.sh)"
+t_assert_eq "2" "$(printf '%s\n' "${_out}" | grep -c 'bites   probe\.' || true)" "both mirrors must run their own setup"
+t_assert_eq "0" "$(t_rc _setup_gate --setup-script setup.sh)"
+t_assert_eq "4" "$(wc -l < "${_tmp}/setup-count" | tr -d ' ')" "each of two invocations prepares both mirrors"
+t_assert_eq "old" "$(cat "${_setup_repo}/.venv/source-only")"
+t_assert_fails test -e "${_setup_repo}/.venv/ready"
+printf 'exit 7\n' > "${_setup_repo}/failed-setup.sh"
+_out="$(t_out _setup_gate --setup-script failed-setup.sh)"
+t_assert_contains "${_out}" "setup script failed-setup.sh exited rc=7"
+t_assert_eq "1" "$(t_rc _setup_gate --setup-script failed-setup.sh)"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c 'bites   probe\.' || true)" "a failed setup cannot pass as a caught mutation"
+sed 's/if not script:/if True:/' "${GATE}" > "${_tmp}/no-mirror-setup.py"
+_mutant_setup_gate() { GATE="${_tmp}/no-mirror-setup.py" _setup_gate --setup-script setup.sh; }
+t_assert_contains "$(t_out _mutant_setup_gate)" "baseline test already fails unmutated"
+t_assert_eq "1" "$(t_rc _mutant_setup_gate)"
+
 # Shards run in parallel, but every entry must still be proven alone.
 
 # _shard_fixture <n> <survivor>: n entries; the survivor's test cannot fail, so a dropped shard shows.

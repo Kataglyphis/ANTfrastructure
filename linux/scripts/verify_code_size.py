@@ -294,6 +294,8 @@ def main() -> int:
                          "script for the hub, <root>/file-size.allow otherwise)")
     ap.add_argument("--scan", action="append",
                     help="restrict to this top-level directory (repeatable)")
+    ap.add_argument("--report-only", action="store_true",
+                    help="list measurements over the limits without enforcing freeze files")
     args = ap.parse_args()
 
     try:
@@ -316,9 +318,21 @@ def main() -> int:
     longest: dict[tuple[str, str], int] = {}
     for f, n, c in functions(root, args.scan):
         longest[(f, n)] = max(c, longest.get((f, n), 0))
+    file_lengths = [((f,), n) for f, n in files(root, args.scan)]
+    if args.report_only:
+        large_functions = [(f, n, count) for (f, n), count in sorted(longest.items())
+                           if count > LIMIT]
+        large_files = [(f, count) for (f,), count in file_lengths if count > FILE_LIMIT]
+        for f, n, count in large_functions:
+            print(f"REPORT: function {f}:{n} = {count} lines")
+        for f, count in large_files:
+            print(f"REPORT: file {f} = {count} lines")
+        print(f"REPORT: {len(large_functions)} oversized functions, "
+              f"{len(large_files)} oversized files")
+        return 0
     rc = check_counts("functions", sorted(longest.items()),
                       load_counts(fn_allow, 2, FN_FMT), LIMIT, os.path.basename(fn_allow))
-    rc |= check_counts("files", [((f,), n) for f, n in files(root, args.scan)],
+    rc |= check_counts("files", file_lengths,
                        load_counts(file_allow, 1, FILE_FMT), FILE_LIMIT,
                        os.path.basename(file_allow))
     if rc == 0:

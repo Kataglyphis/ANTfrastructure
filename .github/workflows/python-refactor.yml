@@ -1,6 +1,22 @@
 name: Python refactor · patch preview
 
 on:
+  workflow_call:
+    inputs:
+      path:
+        description: One tracked caller-repository-relative Python file to refactor
+        required: true
+        type: string
+      hub-checkout:
+        description: Check out ANTfrastructure separately when the caller has no submodule
+        required: false
+        type: boolean
+        default: false
+      ratchets:
+        description: Run the caller's seeded code-quality ratchets after the refactor
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       path:
@@ -17,28 +33,61 @@ jobs:
     timeout-minutes: 45
     env:
       REFACTOR_PATH: ${{ inputs.path }}
+      REFACTOR_HUB_CHECKOUT: ${{ inputs.hub-checkout }}
+      REFACTOR_RATCHETS: ${{ inputs.ratchets }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
+          submodules: true
+
+      - name: Get ANTfrastructure tooling without a submodule
+        if: ${{ inputs.hub-checkout }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Kataglyphis/ANTfrastructure
+          ref: develop
+          path: antfrastructure-tools
           persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.0
 
       - name: Sync locked quality environment
+        if: ${{ github.repository == 'Kataglyphis/ANTfrastructure' }}
         run: uv sync --project quality --locked --python 3.14
 
       - name: Install runner test dependencies
+        if: ${{ github.repository == 'Kataglyphis/ANTfrastructure' }}
         run: pip install --quiet pytest pyyaml
 
       - name: Apply pinned safe Ruff edits
-        run: bash linux/scripts/refactor-python.sh --apply -- "$REFACTOR_PATH"
+        shell: bash
+        run: |
+          set -euo pipefail
+          hub='third_party/ANTfrastructure'
+          if [ "${GITHUB_REPOSITORY}" = 'Kataglyphis/ANTfrastructure' ]; then hub='.'; fi
+          if [ "${REFACTOR_HUB_CHECKOUT}" = 'true' ]; then hub='antfrastructure-tools'; fi
+          bash "${hub}/linux/scripts/refactor-python.sh" --root "${GITHUB_WORKSPACE}" --apply -- "${REFACTOR_PATH}"
 
       - name: Verify mutation recipes still match
+        if: ${{ github.repository == 'Kataglyphis/ANTfrastructure' }}
         run: python3 docs/scripts/verify_mutations.py --stale-check
 
       - name: Run affected quality gates
+        if: ${{ github.repository == 'Kataglyphis/ANTfrastructure' }}
         run: PREFLIGHT_ONLY=python-lint,python-types,code-dupes,code-size,code-complexity,comment-size,script-tests bash linux/scripts/preflight.sh
+
+      - name: Run caller quality gates
+        if: ${{ github.repository != 'Kataglyphis/ANTfrastructure' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          hub='third_party/ANTfrastructure'
+          if [ "${REFACTOR_HUB_CHECKOUT}" = 'true' ]; then hub='antfrastructure-tools'; fi
+          args=()
+          if [ "${REFACTOR_RATCHETS}" = 'true' ]; then args+=(--ratchets); fi
+          bash "${hub}/linux/scripts/run-lint-gates.sh" "${GITHUB_WORKSPACE}" "${args[@]}"
 
       - name: Save proposed patch
         if: always()

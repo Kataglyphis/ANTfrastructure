@@ -105,6 +105,19 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "${_green}/lint-shell.sh"
 t_assert_eq "1" "$(_LINT_GATES_DIR="${_green}" t_rc _lint_gates_shell)" \
   "lint-shell.sh with zero file arguments lints ANTfrastructure and exits 0"
 
+t_case "a no-shell consumer can opt in without invoking the shell linter"
+_no_shell_marker="${_work}/shell-linter-called"
+printf '#!/usr/bin/env bash\nprintf called > "${SHELL_CALL_MARKER}"\nexit 1\n' > "${_green}/lint-shell.sh"
+_LINT_GATES_ALLOW_EMPTY_SHELL=0
+_lint_gates_parse_args "${_empty}" --allow-empty-shell
+t_assert_eq "1" "${_LINT_GATES_ALLOW_EMPTY_SHELL}"
+t_assert_eq "0" "$(SHELL_CALL_MARKER="${_no_shell_marker}" _LINT_GATES_DIR="${_green}" t_rc _lint_gates_shell)" \
+  "an empty opt-in must skip ShellCheck without falling back to the hub"
+t_assert_contains "$(SHELL_CALL_MARKER="${_no_shell_marker}" _LINT_GATES_DIR="${_green}" t_out _lint_gates_shell)" "nothing to grade"
+t_assert_eq "0" "$(t_rc test ! -f "${_no_shell_marker}")" \
+  "the shell linter must not run with zero consumer files"
+_LINT_GATES_ALLOW_EMPTY_SHELL=0
+
 t_case "gates.sh: every gate runs, and the verdict is raised once at the end"
 gate_reset "T"
 run_gate "first" false
@@ -278,6 +291,21 @@ t_assert_contains "$(cat "${GATE}")" 'run_gate "ratchets" _lint_gates_ratchet'
 t_assert_eq "0" "$(grep -c '^  run_gate "ratchets"' "${GATE}")" \
   "an unconditional registration reddens every consumer that has not seeded its freeze files"
 
+t_case "consumer duplication is separately selectable without changing the ratchets contract"
+_LINT_GATES_CODE_DUPES=0
+_LINT_GATES_CODE_DUPES_REPORT=0
+_lint_gates_parse_args "$(_consumer)" --code-dupes --code-dupes-report
+t_assert_eq "1|1" "${_LINT_GATES_CODE_DUPES}|${_LINT_GATES_CODE_DUPES_REPORT}"
+t_assert_contains "$(cat "${GATE}")" 'run_gate "code duplication" _lint_gates_code_dupes strict' \
+  "the strict scanner must be independently reachable"
+t_assert_contains "$(cat "${GATE}")" 'run_gate "code duplication report" _lint_gates_code_dupes report' \
+  "the advisory scanner must be independently reachable"
+t_assert_eq "0" "$(grep -c '_lint_gates_code_dupes || rc=1' "${GATE}")" \
+  "the old ratchets contract must not suddenly fail on consumer duplication debt"
+t_assert_contains "$(cat "${GATE}")" 'local args=(--root "${_LINT_GATES_ROOT}" --allow-empty --report)' \
+  "the scanner must grade the caller root and emit the artifact"
+t_assert_eq "0" "$(t_rc test -f "${_HUB}/docs/scripts/verify_code_dupes.py")"
+
 t_case "every gate the ratchet step names ships beside the aggregator"
 for _ratchet in "${_LINT_GATES_RATCHET_GATES[@]}"; do
   t_assert_eq "0" "$(t_rc test -f "${SCRIPTS}/${_ratchet}.py")" "${_ratchet}.py is named by the step and must exist"
@@ -337,5 +365,23 @@ t_case "the probe did not shadow the ruff gate: _lint_gates_python is defined on
 t_assert_eq "1" "$(grep -c '^_lint_gates_python() {' "${GATE}")" "one definition, the ruff scope"
 t_assert_contains "$(cat "${GATE}")" 'run_gate "ruff" _lint_gates_python'
 t_assert_eq "1" "$(grep -c '^_lint_gates_interpreter() {' "${GATE}")" "the probe has its own name"
+
+t_case "the reusable workflow measures duplication by default and exposes a separate strict switch"
+# shellcheck source=workflow-lane-fixture.sh
+source "${TESTS_DIR}/workflow-lane-fixture.sh"
+workflow_lane_fixture_init .github/workflows/lint-gates.yml lint-gates lint-gates python3 || exit 1
+workflow_assert_input_fields code-dupes type 'boolean' default 'false'
+workflow_assert_input_fields code-dupes-report type 'boolean' default 'true'
+workflow_assert_input_fields allow-empty-shell type 'boolean' default 'false'
+t_assert_contains "$(_q "run_blocks('lint-gates')")" 'args+=(--code-dupes)'
+t_assert_contains "$(_q "run_blocks('lint-gates')")" 'args+=(--code-dupes-report)'
+t_assert_contains "$(_q "run_blocks('lint-gates')")" 'args+=(--allow-empty-shell)'
+
+t_case "the workflow uploads the caller duplication report even after findings"
+workflow_assert_artifact_step 'Save duplication report' 'logs/code-quality/code-dupes.txt' 'inputs.code-dupes-report'
+_faulted_workflow="${_work}/lint-gates-no-report.yml"
+sed '/- name: Save duplication report/,+6d' "${LANE}" > "${_faulted_workflow}"
+t_assert_eq "False" "$(LANE="${_faulted_workflow}" _q "any(V.value(s,'name') == 'Save duplication report' for s in steps)")" \
+  "the upload assertion must fail if the step is deleted"
 
 t_summary

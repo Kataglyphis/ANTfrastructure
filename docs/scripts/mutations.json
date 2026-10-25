@@ -1826,8 +1826,8 @@
  {
   "id": "code-dupes.bookkeeping-before-findings",
   "target": "docs/scripts/verify_code_dupes.py",
-  "find": "    bookkeeping = _print_bookkeeping(shrunk, stale, measured, args.threshold)\n\n    if findings:\n        _print_findings(findings, runs, texts, ranked)\n        return 1",
-  "replace": "    if findings:\n        _print_findings(findings, runs, texts, ranked)\n        return 1\n    bookkeeping = _print_bookkeeping(shrunk, stale, measured, args.threshold)",
+  "find": "    bookkeeping = _print_bookkeeping(shrunk, stale, measured, args.threshold)\n\n    verdict = _finding_verdict(args, findings, bookkeeping, runs, texts, ranked)\n    if verdict is not None:\n        return verdict",
+  "replace": "    verdict = _finding_verdict(args, findings, 0, runs, texts, ranked)\n    if verdict is not None:\n        return verdict\n    bookkeeping = _print_bookkeeping(shrunk, stale, measured, args.threshold)\n    if bookkeeping:\n        return 0 if args.report_only else 1",
   "test": "bash linux/scripts/tests/test-code-dupes.sh",
   "why": "one run must show every bookkeeping error, not hide them behind the first new finding"
  },
@@ -2858,8 +2858,8 @@
  {
   "id": "mutations.symlink-checked-before-exists",
   "target": "docs/scripts/verify_mutations.py",
-  "find": "    if os.path.islink(target):\n        return None, None, \"target is a symlink -- a write through it escapes the copy\"\n    if not os.path.exists(target):\n        return None, None, \"target missing\"",
-  "replace": "    if not os.path.exists(target):\n        return None, None, \"target missing\"\n    if os.path.islink(target):\n        return None, None, \"target is a symlink -- a write through it escapes the copy\"",
+  "find": "    if os.path.islink(target):\n        return None, None, \"target is a symlink -- a write through it escapes the copy\"\n    if not within(os.path.realpath(root), target):\n        return None, None, \"target resolves outside the mutation root\"\n    if not os.path.exists(target):\n        return None, None, \"target missing\"",
+  "replace": "    if not os.path.exists(target):\n        return None, None, \"target missing\"\n    if os.path.islink(target):\n        return None, None, \"target is a symlink -- a write through it escapes the copy\"\n    if not within(os.path.realpath(root), target):\n        return None, None, \"target resolves outside the mutation root\"",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "os.path.exists follows the link, so checking it first reports a dangling symlink as a stale manifest entry and hides the escape"
  },
@@ -8661,15 +8661,15 @@
  },
  {
   "id": "windows-lane.powershell-lint-fails-on-analyzer",
-  "target": ".github/workflows/python-ci-windows.yml",
-  "find": "pwsh -NoProfile -File $gate -Path '${{ inputs.lint-path }}' -FailOnAnalyzer",
-  "replace": "pwsh -NoProfile -File $gate -Path '${{ inputs.lint-path }}'",
+  "target": ".github/workflows/powershell-quality.yml",
+  "find": "if ($env:LINT_ANALYZER_STRICT -eq 'true') { $lintArgs += '-FailOnAnalyzer' }",
+  "replace": "if ($env:LINT_ANALYZER_STRICT -eq 'true') { $lintArgs += '-NoProfile' }",
   "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
   "why": "without -FailOnAnalyzer the analyzer prints its findings and exits 0: a check that cannot fail"
  },
  {
   "id": "windows-lane.powershell-analyzer-is-version-pinned",
-  "target": ".github/workflows/python-ci-windows.yml",
+  "target": ".github/workflows/powershell-quality.yml",
   "find": "Install-Module PSScriptAnalyzer -RequiredVersion $pin -Force -Scope CurrentUser",
   "replace": "Install-Module PSScriptAnalyzer -Force -Scope CurrentUser",
   "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
@@ -27387,8 +27387,8 @@
  {
   "id": "windows-lane.powershell-complexity-strict-opt-in",
   "target": ".github/workflows/python-ci-windows.yml",
-  "find": "Strict = ('${{ inputs.complexity-strict }}' -eq 'true')",
-  "replace": "Strict = $false",
+  "find": "strict: ${{ inputs.complexity-strict }}",
+  "replace": "strict: false",
   "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
   "why": "The opt-in must turn a consumer complexity finding into a failed job while report mode stays the default."
  },

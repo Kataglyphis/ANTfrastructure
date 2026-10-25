@@ -8,9 +8,11 @@ import argparse
 import atexit
 import concurrent.futures
 import json
+import ntpath
 import os
 import queue
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -80,6 +82,15 @@ def within(root: str, path: str) -> bool:
         return False
 
 
+def relative_file_path(path: str, label: str) -> str:
+    """Require a portable relative file name without components that could leave a mirror."""
+    if (not isinstance(path, str) or not path or "\\" in path
+            or ntpath.splitdrive(path)[0]
+            or any(part in ("", ".", "..") for part in path.split("/"))):
+        raise ValueError(f"{label} must be a normalized relative path inside the mutation root")
+    return path
+
+
 def mirror_tree(src: str, dst: str) -> str:
     """Throwaway copy of src minus ignored and excluded paths; symlinks stay links, and a failed copy is fatal, never skipped."""
     skip = {os.path.normpath(os.path.join(src, rel)) for rel in COPY_EXCLUDES}
@@ -113,6 +124,7 @@ def load(path: str) -> list[MutationEntry]:
         for key in ("id", "target", "find", "replace", "test", "why"):
             if key not in m:
                 raise SystemExit(f"manifest entry missing {key!r}: {m!r}")
+        relative_file_path(m["target"], f"mutation target for {m['id']}")
         if m["id"] in seen:
             raise SystemExit("duplicate mutation id: {}".format(m["id"]))
         seen.add(m["id"])
@@ -335,6 +347,8 @@ def applicable(entry: MutationEntry, root: str) -> tuple[str | None, str | None,
     target = os.path.join(root, entry["target"])
     if os.path.islink(target):
         return None, None, "target is a symlink -- a write through it escapes the copy"
+    if not within(os.path.realpath(root), target):
+        return None, None, "target resolves outside the mutation root"
     if not os.path.exists(target):
         return None, None, "target missing"
     original = read_exact(target)
@@ -458,6 +472,25 @@ def mirror_cap(mirror_bytes: int, free_bytes: int) -> int:
     return max(1, free_bytes // 4 // max(mirror_bytes, 1))
 
 
+def setup_mirror(root: str, script: str | None) -> bool:
+    """Install a consumer's test dependencies inside one disposable mirror before its baselines."""
+    if not script:
+        return True
+    path = os.path.join(root, script)
+    if (os.path.islink(path) or not within(os.path.realpath(root), path)
+            or not os.path.isfile(path)):
+        sys.stderr.write(f"FAIL: setup script is missing or leaves the mutation root: {script}\n")
+        return False
+    rc, timed_out, output = _run_test(f"bash -- {shlex.quote(script)}", root, 900)
+    if timed_out or rc != 0:
+        detail = "timed out after 900s" if timed_out else f"exited rc={rc}"
+        sys.stderr.write(
+            f"FAIL: setup script {script} {detail}; output excerpt: {_output_excerpt(output)}\n"
+        )
+        return False
+    return True
+
+
 def _drain(todo: queue.Queue[MutationEntry]) -> Iterator[MutationEntry]:
     """Entries off the shared queue until it is empty, so a mirror that is free takes the next one."""
     while True:
@@ -488,6 +521,8 @@ def run_shards(
     def shard(n: int, root: str) -> int:
         if n:
             mirror_tree(src, root)
+            if not setup_mirror(root, args.setup_script):
+                return 1
         return run_shard(args, _drain(todo), root, report, baselines, f"[{n + 1}/{jobs}] ")
 
     try:
@@ -559,6 +594,8 @@ def main() -> int:
                          " (default: %(default)s; the pre-push hook passes the remote's tip)")
     ap.add_argument("--in-place", action="store_true",
                     help="mutate --root itself instead of a throwaway copy (fixtures only)")
+    ap.add_argument("--setup-script",
+                    help="run this relative Bash script once inside each disposable mirror")
     ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
                     help="mutations to prove at once, one mirror each (default: %(default)s)")
     ap.add_argument("--stale-check", action="store_true",
@@ -567,7 +604,16 @@ def main() -> int:
                     help="prove only entries[K::N] of the selection (K from 0): one of N CI jobs")
     args = ap.parse_args()
 
-    entries = select(args)
+    try:
+        entries = select(args)
+        if args.setup_script:
+            relative_file_path(args.setup_script, "setup script")
+    except ValueError as exc:
+        sys.stderr.write(f"ERROR: {exc}\n")
+        return 2
+    if args.in_place and args.setup_script:
+        sys.stderr.write("ERROR: --setup-script requires disposable mirrors; omit --in-place\n")
+        return 2
     scope = f" (shard {args.shard}: {len(entries)} entr(ies))" if args.shard else ""
     if args.stale_check:
         say(f"=== mutation staleness: does every recorded edit still apply?{scope} ===")
@@ -590,7 +636,9 @@ def main() -> int:
         try:
             mirror_tree(src, workspace)
             args.root = workspace
-            rc = run_shards(args, entries, src, report)
+            rc = run_shards(args, entries, src, report) if setup_mirror(
+                workspace, args.setup_script
+            ) else 1
         finally:
             shutil.rmtree(workspace, ignore_errors=True)
     report.summary(entries)

@@ -350,7 +350,7 @@ hand-maintained here.
 
 `preflight.sh` records the selected slugs and runs them `PREFLIGHT_JOBS` at a time (default: one
 per CPU) through `linux/scripts/lib-ordered-jobs.sh`. Two run alone: `cmake-format` first, because
-it builds `.venv-cmake-format` in the tree the other gates walk, and `mutations` last, because it
+it builds `logs/tools/cmake-format-linux` in the tree the other gates walk, and `mutations` last, because it
 copies the tree. Python writes no bytecode meanwhile. Each slug's output prints whole, in
 registration order, so the log reads like a serial run, only sooner. One level down the same runner
 drives `run-tests.sh` (`RUN_TESTS_JOBS`, suites in name order, same totals), and `lint-shell.sh`
@@ -540,23 +540,26 @@ runs under cp1252).
 
 ## Python refactor preview
 
-`bash linux/scripts/refactor-python.sh --check [-- <tracked.py> ...]` checks tracked Python
-files with the Ruff version in `linux/scripts/01-core/tool-pins.env`. It defaults to all
-tracked `.py` files and never writes to source. `--apply -- <tracked.py> ...` runs Ruff's
-safe lint fixes and formatter on the named clean files, then saves the proposed diff and
-tool log under ignored `logs/code-quality/python-refactor.*`. A dirty, untracked or
-non-Python input is rejected. Run the script from the repository root, review the diff,
-then run the relevant preflight gates before committing. This tool does not refactor
+`bash linux/scripts/refactor-python.sh --root <checkout> --check [-- <tracked.py> ...]`
+checks tracked Python files in the named Git checkout with the pinned Ruff version in
+`linux/scripts/01-core/tool-pins.env` and that checkout's Ruff configuration. Without
+`--root` it grades ANTfrastructure; without file names it selects all tracked `.py` files.
+`--apply -- <tracked.py> ...` runs safe Ruff fixes and formatting on named clean files,
+then saves the patch and tool log under the target's ignored `logs/code-quality/`.
+Dirty, untracked and non-Python inputs are rejected. Review the patch and run the
+relevant quality gates before committing. This tool does not refactor
 PowerShell, Bash, embedded Python or generated code, and a Ruff fix is not a substitute
 for tests.
 
 The first whole-tree formatter audit on 2026-10-25 found 123 of 147 tracked Python
 files would change. That is existing formatting debt; the ordinary preflight still
-enforces Ruff lint and ty, not whole-tree `ruff format --check`. The on-demand
-`.github/workflows/python-refactor.yml` accepts one tracked repository-relative Python
-path, applies the same script, checks mutation recipes and affected quality gates, and
-uploads an ignored patch and logs. It has read-only repository permissions and does not
-commit or open a pull request. The patch is the review boundary. Some mutation recipes
+enforces Ruff lint and ty, not whole-tree `ruff format --check`. The on-demand and
+reusable `workflow_call` `.github/workflows/python-refactor.yml` accepts one tracked
+caller-relative Python path. It previews the edit in a disposable CI checkout, runs
+the caller's lint gates (and the hub's mutation checks when run here), and uploads the
+patch and logs. Consumers call it at `@develop`; `hub-checkout: true` serves a repo
+without a submodule. It has read-only repository permissions and does not commit or
+open a pull request. The patch is the review boundary. Some mutation recipes
 match exact source text, so a format edit can require a recipe update before the gates
 pass. The workflow syncs the locked quality environment for ty, while general script tests
 use the runner Python with pytest and PyYAML as in `linux-x64.yml`; putting the quality
@@ -566,12 +569,33 @@ the whole backlog, may commit and treats its quality phase as advisory. Its reus
 components are documented in `shared/agentic-loop/templates/README.md` for a future
 scoped AI driver.
 
+The reusable `code-quality-report.yml` runs duplication, size and complexity in
+`--report-only` mode against a caller checkout on Linux. Findings appear in the job
+summary and ignored `logs/code-quality/measurements/` artifacts; unusable roots
+and scanner failures still fail the job. `lint-gates.yml` also uploads
+`logs/code-quality/code-dupes.txt` by default. To enforce duplication after removing
+existing findings, set `code-dupes: true` in the lint workflow or pass `--code-dupes`
+to `run-lint-gates.sh`; no new freeze budgets are allowed to make adoption pass.
+The pinned actionlint reuses the hub's runner-label config when the caller has none.
+`submodule-pins.yml` accepts `hub-checkout: true` for a caller that has other
+submodules but keeps this hub outside its Git tree; the pin suite still grades
+the caller root.
+
+The reusable `python-static.yml` runs the hub's uv-locked Ruff 0.17.0 and ty 0.0.91
+against tracked Python in the caller checkout. It installs no caller dependencies.
+Use `bash linux/scripts/python-static.sh --root <checkout> --path <file-or-dir>
+--report-only` locally; `--strict` fails on diagnostics. The default reusable lane
+reports findings without failing and uploads `logs/code-quality/python-static/`.
+Tool setup, missing Python scope, and invalid checkout paths still fail. A consumer
+can expose `strict` as a manual workflow input while the automatic lane measures
+existing debt. The job summary states diagnostic counts as well as exit statuses.
+
 The next measurement gaps are concrete: the existing size and complexity scanners cover
 139 of 147 tracked Python files; eight files in Windows, shared and other Linux locations
 are outside their four scan roots. The duplication scanner handles shell, PowerShell,
 Dockerfiles and Markdown, but not Python. Its current `--report` and `--explain` modes
 already rank the languages it does cover for an AI refactor queue. Linux size, complexity
-and duplication gates print verdicts but keep no structured trend report. Extend these
+and duplication gates now keep text artifacts, but no structured trend report. Extend these
 existing scanners, first measure the added scope, then remove its findings before making
 new coverage fatal; do not add quality exceptions or weaken thresholds for the rollout.
 
@@ -842,6 +866,18 @@ reads through `iter_rows` the same way.
 slug `mutations`. For each recorded entry it makes a literal edit that **neuters
 one guarantee**, runs the named test, and requires the test to FAIL. A mutation
 the tests survive is reported and fails the gate.
+
+Consumers can call `.github/workflows/mutation-gates.yml@develop` with a tracked
+`manifest` path and an optional tracked `setup-script`. The shared validator
+rejects missing or empty recipes, absolute or parent-traversal recipe targets,
+paths outside the caller checkout and empty shards before running
+`verify_mutations.py --root <caller>`. The runner checks target containment again
+before reading or writing, including through a symlinked parent. An optional
+setup script runs once inside each disposable mirror before any baseline test;
+this makes a local `.venv` created by `uv sync` available to that mirror's tests.
+Setup failure is fatal and the caller checkout is not modified. Mutation logs are
+uploaded from ignored `logs/code-quality/mutations/`. Each consumer owns its
+recipes because each recipe must break one of that consumer's guarantees.
 
 **Why it exists.** Reading a test cannot tell you whether it can fail. In one
 session, eight tests written to guard a fix turned out to pass with the fix
@@ -1771,6 +1807,8 @@ deleted file both pass; an extension-less `git-hooks/pre-commit` is caught while
 extension-less `NOTES` is not; and a directory that is not a repo, or a tree with no
 `lint-shell.sh` to answer the scope question, returns 1 printing
 `__git-ls-files-FAILED__` instead of reading as clean.
+The `.gitattributes` pins documentation, workflow YAML, docs-site templates and
+GPU fixture sources to LF because those tests compare full lines under WSL.
 
 That last guarantee holds **only under `pipefail`** — a failing stage fails the
 pipeline only because `preflight.sh` sets `set -uo pipefail`. The suite used to
@@ -1916,6 +1954,9 @@ pwsh -File windows/scripts/Invoke-CodeComplexity.ps1 -Strict -JsonPath logs/code
 ```
 
 `-JsonPath` remains optional for local runs; CI supplies it to the strict gate.
+For a consumer checkout, pass `-Root <consumer-root> -Path <relative-file-or-dir>`;
+relative paths and JSON report names then use the consumer root. `-Root` requires
+`-Path`, and a selected file outside the root fails.
 The optional `lint-powershell` job in `python-ci-windows.yml` runs the scanner
 on the consumer's `lint-path` after PSScriptAnalyzer. Set `complexity-strict: true`
 in a consumer's workflow to fail on findings; parse and scan failures are fatal
@@ -2230,7 +2271,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 940 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 942 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -3326,7 +3367,7 @@ the document.
 
 An inline preflight function that drives `lib/code-quality.sh` end to end:
 `code_quality_ensure_cmake_format` provisions the tool through uv into
-`.venv-cmake-format` when it is not on `PATH` (pins in
+`logs/tools/cmake-format-linux` when it is not on `PATH` (pins in
 `linux/scripts/cmake-format.requirements.txt` — `pyyaml` is in there because
 `cmake-format==0.6.13` does not depend on it and dies with
 `ModuleNotFoundError` the moment it reads a YAML config; after the install

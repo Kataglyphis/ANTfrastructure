@@ -183,8 +183,9 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Consumer Python lint maps tracked shell heredocs back to source lines across Windows path separators and forces UTF-8 when it prints remapped findings; extraction failure is fatal, and a valid no-block scan is green.
    Stable Python CI test legs require fresh JUnit and measured, covered package lines; a configured coverage floor must reach every leg.
    Windows Pester coverage must measure one file and executed commands in each of its fifteen named modules, including Vulkan validation at 80%; missing or empty reports, missing targets and scores below the module floor fail the test run.
-   Detected consumer lint calls keep ratchets enabled and failures fatal; the weekly inventory reports missing calls as advisory.
-   Consumer Windows PowerShell lint jobs report complexity over the same selected path; enable strict verdicts with `complexity-strict` after the consumer meets the limits.
+   Detected consumer lint calls keep ratchets enabled and failures fatal; the weekly inventory reports missing calls as advisory. Duplication reporting is available in every reusable lint run, while `--code-dupes` / `code-dupes: true` is a separate fatal gate for consumers that have removed the measured debt; do not freeze that debt with new allowances. The report-only size, complexity and duplication lane writes ignored artifacts and keeps broken inputs fatal.
+   Consumer Windows PowerShell lint jobs report complexity over the same selected path and upload JSON; enable strict verdicts with `complexity-strict` after the consumer meets the limits. PowerShell-only repos call `powershell-quality.yml` with `strict: true` when clean.
+   Consumer mutation jobs supply a tracked, nonempty recipe manifest; an empty shard or missing setup file cannot pass as proof. Python refactor previews target the caller root and upload a patch without publishing it.
 
 ## Container Architecture
 
@@ -304,6 +305,11 @@ Five of them are RULES and stay here:
   `logs/test-results/` for Python test reports and `logs/code-quality/` for ty and annotation
   reports, mutation results and complexity metrics. The directory is ignored by Git.
   Live `chain-status*.json` stays at the repo root.
+
+- **Pin a verified hub SHA in one consumer with the shared helper.** Run
+  `python3 linux/scripts/pin-antfrastructure-submodule.py --repo <consumer> --branch <branch> --sha <full-sha>`
+  from this checkout; it stages only the initialized hub gitlink after checking both remotes.
+  Commit and push the consumer separately, after the hub commit is published and green.
 
 - **Preview Python refactors before accepting them.** `bash linux/scripts/refactor-python.sh --check`
   reports formatter drift; `--apply -- <tracked.py>` makes pinned safe Ruff edits and saves a
@@ -451,6 +457,8 @@ When adding here:
 - **The two-consumer test.** What a second consumer needs belongs here, not vendored twice. Moving
   one up, turn its project-specific values into parameters whose DEFAULTS keep the original
   behaviour, so the vendoring consumer can delete its copy with no behaviour change.
+- **Avoid mutual submodule links.** This hub vendors DocumANTation; that consumer calls reusable
+  workflows with `hub-checkout: true` instead of linking this hub back into its Git tree.
 - Document the **symptom**, not just the fix: platform traps are found by recognising an error
   message, not by reading code.
 - Keep functions free of consumer-specific paths, preset names and build directories; pass those
@@ -698,7 +706,7 @@ here has gone stale, and `ls` answers faster.
 | `shared/agentic-loop/` | Cross-platform loop data: the planner/refactor/executor task prompts and the role system prompts both lane implementations read, plus the copy-and-edit consumer templates. [Templates](shared/agentic-loop/templates/README.md) |
 | `docs/scripts/` | The docs gates and version tooling — `verify_doc_links.py`, `verify_doc_dupes.py`, `verify_code_dupes.py`, `sync_versions.py`, `bump_versions.py`, the SBOM pair, `mutations.json`. [Gate registry](docs/code-quality-gates.md) |
 | `.github/actions/` | The composite actions consumers call `@develop`. [README](.github/actions/README.md) |
-| `.github/workflows/` | This repo's own lanes plus the `workflow_call` ones consumers reuse (`python-ci-*`, `container-ci-windows`, `lint-gates`, `submodule-pins`, `build-docs`, which builds, checks and publishes every docs site: [`docs-sites.md`](docs/docs-sites.md), and `release-publish`, every `release.yml`'s version check and publish: [`branch-and-release-strategy.md`](docs/branch-and-release-strategy.md#the-reusable-release-workflow)). [Triggers](docs/ci-build-triggers.md) |
+| `.github/workflows/` | This repo's own lanes plus the `workflow_call` ones consumers reuse (`python-ci-*`, `python-static`, `python-refactor`, `powershell-quality`, `code-quality-report`, `mutation-gates`, `container-ci-windows`, `lint-gates`, `submodule-pins`, `build-docs`, which builds, checks and publishes every docs site: [`docs-sites.md`](docs/docs-sites.md), and `release-publish`, every `release.yml`'s version check and publish: [`branch-and-release-strategy.md`](docs/branch-and-release-strategy.md#the-reusable-release-workflow)). [Triggers](docs/ci-build-triggers.md) |
 | `linux/scripts/` | The Linux build system: `01-core` (shared utilities), `02-toolchain` (GCC/LLVM/Rust/Python/CMake/Vulkan), `03-media` (per-library builds), `04-runtime` (entrypoint + env), `05-frameworks` (TVM, Torch, Flutter), `06-packaging` (assembly + smoke), plus the orchestrators and gates at its root. [Libraries](docs/shared-script-libraries.md) |
 | `linux/llm-stack/` | The Ollama + Open WebUI serving stack. [README](linux/llm-stack/README.md) |
 | `linux/jetson-webcam/` | A USB-camera object-detection PoC on a Jetson GPU, run in the arm64 GPU wrapper image. [README](linux/jetson-webcam/README.md) |
@@ -1245,8 +1253,9 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
 
 - **PowerShell complexity:** `pwsh -File windows/scripts/Invoke-CodeComplexity.ps1 -Strict`
   enforces the 15/5/80 cyclomatic, nesting and function-line limits across every tracked
-  Windows PowerShell file in hub CI; the optional reusable consumer lint job reports
-  the consumer's `lint-path` and gates it when `complexity-strict: true` is set.
+  Windows PowerShell file in hub CI; the reusable `powershell-quality.yml` job reports
+  the consumer's `lint-path` under `-Root` and gates it when `strict: true` is set. Python Windows CI
+  calls that same job through `complexity-strict`.
   Use `-Path <file-or-dir> -Strict` while working on new
   files that Git has not tracked yet. For a local JSON result, create
   `logs/code-quality/complexity/` and add

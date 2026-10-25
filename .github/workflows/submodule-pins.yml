@@ -15,6 +15,10 @@ on:
           per-failure diagnostics, 6.x rejects -Quiet), measured 2026-09-07.
         type: string
         default: '3.4.0'
+      hub-checkout:
+        description: Check out ANTfrastructure separately when the caller has no hub submodule.
+        type: boolean
+        default: false
       runner:
         description: Runner label; a Windows one, because Pester 3.4.0 is a Windows PowerShell-era module.
         type: string
@@ -54,8 +58,17 @@ jobs:
           # Top level at default depth, so the reachability check exercises its shallow-clone escalation.
           submodules: true
 
+      - name: Get ANTfrastructure tooling without a submodule
+        if: ${{ inputs.hub-checkout }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Kataglyphis/ANTfrastructure
+          ref: develop
+          path: antfrastructure-tools
+          persist-credentials: false
+
       - name: Submodule pins sit at their recorded, restorable commits
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-pester-suite@develop
         with:
-          path: ${{ inputs.suite-path || 'shared/windows/tests/Submodule.Pins.Tests.ps1' }}
+          path: ${{ inputs.hub-checkout && 'antfrastructure-tools/shared/windows/tests/Submodule.Pins.Tests.ps1' || inputs.suite-path || 'shared/windows/tests/Submodule.Pins.Tests.ps1' }}
           version: ${{ inputs.pester-version || '3.4.0' }}

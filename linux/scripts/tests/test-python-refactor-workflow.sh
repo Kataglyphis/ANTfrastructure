@@ -13,13 +13,14 @@ _query_true() {
 }
 
 _dispatch_readonly() {
-  _query_true 'list(V.value(lane,"on")) == ["workflow_dispatch"] and V.value(V.value(lane,"permissions"),"contents") == "read" and len(V.value(lane,"permissions")) == 1 and all(V.value(j,"permissions") is None for j,_ in V.value(lane,"jobs").values())' || return 1
-  _query_true 'V.value(V.value(V.value(V.value(lane,"on"),"workflow_dispatch"),"inputs"),"path") is not None and V.value(V.value(V.value(V.value(V.value(lane,"on"),"workflow_dispatch"),"inputs"),"path"),"required") == "true" and V.value(V.value(V.value(V.value(V.value(lane,"on"),"workflow_dispatch"),"inputs"),"path"),"type") == "string"' || return 1
+  _query_true 'set(V.value(lane,"on")) == {"workflow_dispatch", "workflow_call"} and V.value(V.value(lane,"permissions"),"contents") == "read" and len(V.value(lane,"permissions")) == 1 and all(V.value(j,"permissions") is None for j,_ in V.value(lane,"jobs").values())' || return 1
+  _query_true 'all(V.value(V.value(V.value(V.value(V.value(lane,"on"),event),"inputs"),"path"),"required") == "true" and V.value(V.value(V.value(V.value(V.value(lane,"on"),event),"inputs"),"path"),"type") == "string" for event in ("workflow_dispatch", "workflow_call"))' || return 1
+  _query_true 'V.value(V.value(V.value(V.value(V.value(lane,"on"),"workflow_call"),"inputs"),"hub-checkout"),"default") == "false" and V.value(V.value(V.value(V.value(V.value(lane,"on"),"workflow_call"),"inputs"),"ratchets"),"default") == "false"' || return 1
   return 0
 }
 
 _credentialless_checkout() {
-  _query_true 'any(re.fullmatch(r"actions/checkout@[0-9a-f]{40}",V.value(s,"uses") or "") and V.value(V.value(s,"with"),"persist-credentials") == "false" for s in steps)' || return 1
+  _query_true 'len([s for s in steps if re.fullmatch(r"actions/checkout@[0-9a-f]{40}",V.value(s,"uses") or "")]) == 2 and all(V.value(V.value(s,"with"),"persist-credentials") == "false" for s in steps if re.fullmatch(r"actions/checkout@[0-9a-f]{40}",V.value(s,"uses") or "")) and any(V.value(s,"name") == "Get ANTfrastructure tooling without a submodule" and V.value(s,"if") == "${{ inputs.hub-checkout }}" for s in steps)' || return 1
   return 0
 }
 
@@ -34,12 +35,12 @@ _runner_test_deps() {
 }
 
 _safe_refactor_path() {
-  _query_true 'V.value(V.value(job,"env"),"REFACTOR_PATH") == "${{ inputs.path }}" and any(V.value(s,"name") == "Apply pinned safe Ruff edits" and V.value(s,"run") == "bash linux/scripts/refactor-python.sh --apply -- \"$REFACTOR_PATH\"" for s in steps)' || return 1
+  _query_true 'V.value(V.value(job,"env"),"REFACTOR_PATH") == "${{ inputs.path }}" and any(V.value(s,"name") == "Apply pinned safe Ruff edits" for s in steps) and "--root \"${GITHUB_WORKSPACE}\" --apply -- \"${REFACTOR_PATH}\"" in run_blocks("patch") and "${hub}/linux/scripts/refactor-python.sh" in run_blocks("patch")' || return 1
   return 0
 }
 
 _quality_gates() {
-  _query_true 'any(V.value(s,"name") == "Verify mutation recipes still match" and V.value(s,"run") == "python3 docs/scripts/verify_mutations.py --stale-check" for s in steps) and any(V.value(s,"name") == "Run affected quality gates" and V.value(s,"run") == "PREFLIGHT_ONLY=python-lint,python-types,code-dupes,code-size,code-complexity,comment-size,script-tests bash linux/scripts/preflight.sh" for s in steps)' || return 1
+  _query_true 'any(V.value(s,"name") == "Verify mutation recipes still match" and V.value(s,"run") == "python3 docs/scripts/verify_mutations.py --stale-check" and V.value(s,"if") == "${{ github.repository == '\''Kataglyphis/ANTfrastructure'\'' }}" for s in steps) and any(V.value(s,"name") == "Run affected quality gates" and V.value(s,"run") == "PREFLIGHT_ONLY=python-lint,python-types,code-dupes,code-size,code-complexity,comment-size,script-tests bash linux/scripts/preflight.sh" for s in steps) and any(V.value(s,"name") == "Run caller quality gates" for s in steps) and "${hub}/linux/scripts/run-lint-gates.sh" in run_blocks("patch") and "${GITHUB_WORKSPACE}" in run_blocks("patch")' || return 1
   return 0
 }
 
@@ -67,7 +68,7 @@ _contract() {
 
 _mutated_contract() { LANE="$1" _contract; }
 
-t_case "the lane runs only on manual dispatch with a required path and read-only token"
+t_case "the reusable and dispatch lanes require a path and use a read-only token"
 t_assert_ok test -f "${LANE}"
 t_assert_ok _dispatch_readonly
 t_assert_ok _no_publish_step
@@ -77,7 +78,7 @@ t_assert_ok _credentialless_checkout
 t_assert_ok _locked_quality_sync
 t_assert_ok _runner_test_deps
 
-t_case "the input reaches only the safe refactor script as a quoted argument"
+t_case "the input reaches the caller checkout through the safe refactor script"
 t_assert_ok _safe_refactor_path
 
 t_case "mutation recipes and affected quality gates run before the patch is uploaded"
@@ -92,6 +93,12 @@ trap 'rm -rf -- "${_work}"' EXIT
 t_case "a checkout that persists credentials is rejected"
 _bad="${_work}/checkout-credentials.yml"
 sed 's/persist-credentials: false/persist-credentials: true/' "${LANE}" > "${_bad}"
+t_assert_fails cmp -s "${LANE}" "${_bad}"
+t_assert_fails _mutated_contract "${_bad}"
+
+t_case "a caller refactor aimed at the tooling checkout is rejected"
+_bad="${_work}/wrong-refactor-root.yml"
+sed 's/--root "${GITHUB_WORKSPACE}" --apply/--root "." --apply/' "${LANE}" > "${_bad}"
 t_assert_fails cmp -s "${LANE}" "${_bad}"
 t_assert_fails _mutated_contract "${_bad}"
 

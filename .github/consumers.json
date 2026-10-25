@@ -107,6 +107,70 @@
       "self": false,
       "confirmed": true,
       "note": "Data release repository using the shared container preparation and execution actions."
+    },
+    {
+      "name": "awesome-beamer",
+      "clone_url": "https://github.com/Kataglyphis/awesome-beamer.git",
+      "ref": "master",
+      "self": false,
+      "confirmed": true,
+      "note": "Beamer theme; consumes shared quality reports and tooling as a submodule."
+    },
+    {
+      "name": "flutter-permission-handler",
+      "clone_url": "https://github.com/Kataglyphis/flutter-permission-handler.git",
+      "ref": "main",
+      "self": false,
+      "confirmed": true,
+      "note": "Flutter plugin fork; consumes shared quality reports and tooling as a submodule."
+    },
+    {
+      "name": "hcsshim",
+      "clone_url": "https://github.com/Kataglyphis/hcsshim.git",
+      "ref": "main",
+      "self": false,
+      "confirmed": true,
+      "note": "Windows container fork; consumes shared quality reports and tooling as a submodule."
+    },
+    {
+      "name": "Kataglyphis",
+      "clone_url": "https://github.com/Kataglyphis/Kataglyphis.git",
+      "ref": "develop",
+      "self": false,
+      "confirmed": true,
+      "note": "Profile repository; consumes shared quality reports and tooling as a submodule."
+    },
+    {
+      "name": "llvm-project",
+      "clone_url": "https://github.com/Kataglyphis/llvm-project.git",
+      "ref": "main",
+      "self": false,
+      "confirmed": true,
+      "note": "LLVM fork; consumes shared quality reports and tooling as a submodule."
+    },
+    {
+      "name": "sccache",
+      "clone_url": "https://github.com/Kataglyphis/sccache.git",
+      "ref": "main",
+      "self": false,
+      "confirmed": true,
+      "note": "Compiler cache fork; consumes shared quality reports and tooling as a submodule."
+    },
+    {
+      "name": "smile",
+      "clone_url": "https://github.com/Kataglyphis/smile.git",
+      "ref": "master",
+      "self": false,
+      "confirmed": true,
+      "note": "LaTeX theme; consumes shared quality reports and tooling as a submodule."
+    },
+    {
+      "name": "track-anything-annotate",
+      "clone_url": "https://github.com/Kataglyphis/track-anything-annotate.git",
+      "ref": "master",
+      "self": false,
+      "confirmed": true,
+      "note": "Python annotation app; consumes shared quality reports and tooling as a submodule."
     }
   ],
   "unconfirmed": [],

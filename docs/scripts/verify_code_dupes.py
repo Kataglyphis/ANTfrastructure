@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import os
 import re
 import sys
 import time
@@ -41,7 +42,8 @@ from quality_allow import iter_rows
 from verify_code_size import code_lines
 
 # Never scanned: vendored trees, generated output, and records that narrate the same work on purpose.
-SKIP_DIRS = {".git", "external", "third_party", "node_modules", "out", "archive",
+SKIP_DIRS = {".git", "external", "third_party", "antfrastructure-tools",
+             "node_modules", "out", "archive",
              "_build", "dist", "sphinx-kataglyphis-theme", "logs",
              # Third-party and generated: nothing here is ours to de-duplicate.
              ".venv", "venv", "site-packages", ".tox", "license-assets",
@@ -318,19 +320,21 @@ def collect() -> list[tuple[Path, str]]:
     doc_gate_scope |= set((REPO_ROOT / "docs").glob("*.md"))
 
     found: list[tuple[Path, str]] = []
-    for path in sorted(REPO_ROOT.rglob("*")):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(REPO_ROOT)
-        name = path.name
-        if any(m.lower() in name.lower() for m in SKIP_NAME_MARKERS):
-            continue
-        kind = _file_kind(name)
-        if kind is None or (SKIP_DIRS | KIND_SKIP_DIRS.get(kind, set())) & set(rel.parts):
-            continue
-        if not (kind == "md" and path in doc_gate_scope):
-            found.append((path, kind))
-    return found
+    for base, dirs, names in os.walk(REPO_ROOT):
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
+        for name in names:
+            if any(m.lower() in name.lower() for m in SKIP_NAME_MARKERS):
+                continue
+            kind = _file_kind(name)
+            if kind is None:
+                continue
+            path = Path(base) / name
+            rel = path.relative_to(REPO_ROOT)
+            if KIND_SKIP_DIRS.get(kind, set()) & set(rel.parts) or not path.is_file():
+                continue
+            if not (kind == "md" and path in doc_gate_scope):
+                found.append((path, kind))
+    return sorted(found)
 
 
 UNIT_READERS = {"shell": shell_units, "ps": ps_units,
@@ -605,6 +609,8 @@ def _build_parser() -> argparse.ArgumentParser:
                     help=f"shared shingles that constitute duplication (default {DEFAULT_THRESHOLD})")
     ap.add_argument("--report", action="store_true",
                     help="list every pair over the threshold, allowed ones included")
+    ap.add_argument("--report-only", action="store_true",
+                    help="report findings without failing; scanner and allow-file errors stay fatal")
     # --baseline rewrites the whole allow file, so scoping it with --kind would drop every other kind's rows.
     scope = ap.add_mutually_exclusive_group()
     scope.add_argument("--baseline", action="store_true",
@@ -615,11 +621,32 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--root", metavar="DIR",
                     help="grade this checkout instead of the gate's own repo;"
                          " the budget file is then <root>/code-dupes.allow")
+    ap.add_argument("--allow-empty", action="store_true",
+                    help="pass when a consumer has no supported source files;"
+                         " the default remains a failed empty scan")
     ap.add_argument("--explain", nargs="+", metavar="FILE",
                     help="say WHAT one pair shares: the overlapping units, their"
                          " line numbers and how much the idiom cutoff hides."
                          " One path for a self-pair, two for a cross-file pair")
     return ap
+
+
+def _parse_args() -> argparse.Namespace:
+    args = _build_parser().parse_args()
+    if args.report_only and (args.baseline or args.explain):
+        print("ERROR: --report-only cannot be combined with --baseline or --explain",
+              file=sys.stderr)
+        raise SystemExit(2)
+    return args
+
+
+def _empty_scope_verdict(args: argparse.Namespace) -> int:
+    if args.allow_empty and not (args.baseline or args.explain):
+        print("code duplication: no supported files in scope")
+        return 0
+    print("ERROR: nothing in scope to check", file=sys.stderr)
+    return 2
+
 
 def _apply_root(arg: str | None) -> None:
     """Re-point the graded tree and its budget file; an unusable root ends the run via SystemExit."""
@@ -671,15 +698,26 @@ def _rank_pairs(
     return runs
 
 
+def _finding_verdict(
+    args: argparse.Namespace, findings: list[Finding], bookkeeping: int,
+    runs: dict[UnitPair, int], texts: Texts, ranked: list[RankedFamily],
+) -> int | None:
+    if findings:
+        _print_findings(findings, runs, texts, ranked)
+        return 0 if args.report_only else 1
+    if bookkeeping:
+        return 0 if args.report_only else 1
+    return None
+
+
 def main() -> int:
-    args = _build_parser().parse_args()
+    args = _parse_args()
     _apply_root(args.root)
 
     kinds = set(args.kind) if args.kind else set(UNIT_READERS)
     files = [(p, k) for p, k in collect() if k in kinds]
     if not files:
-        print("ERROR: nothing in scope to check", file=sys.stderr)
-        return 2
+        return _empty_scope_verdict(args)
 
     owners, heads, texts, unit_lines, kind_of = _index_units(files)
 
@@ -701,18 +739,15 @@ def main() -> int:
                      if cnt >= FAMILY_MIN_SHINGLES),
                     key=lambda f: (-f[0], -len(f[1]), sorted(f[1])))
 
-    if args.report:
+    if args.report or args.report_only:
         _print_report(args, files, texts, allowed, runs, spread)
 
     stale = [k for k in allow if k not in per_file]
     bookkeeping = _print_bookkeeping(shrunk, stale, measured, args.threshold)
 
-    if findings:
-        _print_findings(findings, runs, texts, ranked)
-        return 1
-
-    if bookkeeping:
-        return 1
+    verdict = _finding_verdict(args, findings, bookkeeping, runs, texts, ranked)
+    if verdict is not None:
+        return verdict
 
     _print_families(ranked, sys.stdout)
     print(f"code duplication gate OK: {len(texts)} units in {len(files)} files, "

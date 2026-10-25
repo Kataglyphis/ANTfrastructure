@@ -47,6 +47,19 @@ git submodule sync   # moves the existing checkout's remote too
 The family moves gitlinks with Renovate as a local CLI
 ([`dependency-updates.md`](dependency-updates.md)): `renovate-local.sh`, called through the
 wrapper template in `shared/linux/templates/`, reports what is behind; `--apply` moves the gitlink.
+To stage one explicit, already published hub `develop` commit across consumers, run the
+hub checkout's reusable pin helper once per initialized consumer:
+
+```bash
+python3 linux/scripts/pin-antfrastructure-submodule.py \
+  --repo /path/to/consumer --branch develop --sha <full-40-character-hub-sha>
+```
+
+Pass the consumer's checked-out branch (`develop`, `main` or `master`). The helper verifies
+that checkout matches its remote branch, fetches the hub's `develop` tip and requires the exact
+SHA, refuses a dirty or uninitialized hub submodule, then stages only
+`third_party/ANTfrastructure`. It never commits or pushes. Repositories without that gitlink,
+such as DocumANTation, use the reusable workflow's separate `hub-checkout` instead.
 By hand, name the path and leave `--recursive` out:
 
 ```bash
@@ -690,16 +703,22 @@ and gets all of it:
    Keep a ~5-line `scripts/linux/run-lint-gates.sh` wrapper so the dev-box command and the CI step
    are the same string, and call the reusable lane from CI:
    `jobs: lint: uses: Kataglyphis/ANTfrastructure/.github/workflows/lint-gates.yml@develop`
-   (inputs: `exclude`, `submodules`, `hub-checkout` for a consumer without a submodule). Add
+   (inputs: `exclude`, `submodules`, `hub-checkout` for a consumer without a submodule,
+   `allow-empty-shell` for a repo with no tracked shell). Add
    `--ratchets` (the lane's `ratchets: true`) once the eight `<gate>.allow` freeze files are seeded
    and committed; that switches on the measurement gates (code size, complexity, dead functions,
    comment size, stdout returns, masked declarations, trailing conditionals, shellcheck warnings)
    over the consumer's own shell. The same step grades the consumer's pages against the hub's
    (`doc-dupes --against-hub`), off until `doc-dupes-hub.allow` is committed.
+   The lane uploads a duplication report from ignored `logs/code-quality/` by default;
+   `code-dupes: true` makes the same scanner fatal once findings are removed.
 3. **The pin suite.** `Submodule.Pins.Tests.ps1` asserts every submodule sits at its recorded,
    remotely reachable commit; consumers call
    `uses: Kataglyphis/ANTfrastructure/.github/workflows/submodule-pins.yml@develop`
    (the AGENTS.md template's § 3 names the suite) instead of copying the job.
+   `hub-checkout: true` obtains the suite separately when the consumer has no hub
+   gitlink and still checks the consumer's own submodules. Use that path when this
+   hub already vendors the consumer; mutual submodule links create a recursive cycle.
    **The generated-artifacts suite**, `shared/windows/tests/Repo.GeneratedArtifacts.Tests.ps1`,
    fails on a tracked file that `.gitignore` also excludes, and on one under the repo's
    generated-output pathspecs in `scripts/windows/generated-artifacts.txt` (one per line, `#`
@@ -713,8 +732,23 @@ and gets all of it:
    (it has no freeze file, so it is safe the first time) and grades every tracked Markdown page,
    which puts a consumer's own `README.md` into the cross-reference graph. `doc-dupes` and
    `code-dupes` take `--root` as well, with budgets at `<root>/doc-dupes.allow` and
-   `<root>/code-dupes.allow`, and stay off until a consumer seeds one: a duplication ratchet with
-   no budget is red on its first run by construction.
+   `<root>/code-dupes.allow`. Existing duplication is reported without a budget;
+   remove it before enabling the strict gate. Do not add new freeze rows for adoption.
+6. **Every consumer can measure code quality automatically** by calling
+   `code-quality-report.yml@develop`. Its size, complexity and duplication reports
+   are artifacts under ignored `logs/code-quality/measurements/`; broken scans fail.
+   Python files can get a reviewable safe Ruff patch through `python-refactor.yml@develop`
+   with a tracked `path` input. No workflow commits the patch. Call
+   `python-static.yml@develop` on push and pull request for uv-locked Ruff and ty
+   reports over tracked Python; expose its `strict` input for a manual fatal run.
+7. **Mutation recipes stay in the consumer**, but `mutation-gates.yml@develop` runs them
+   with a tracked `manifest` and optional tracked `setup-script`. Missing recipes and
+   empty shards fail rather than passing without a test. Recipe targets must be
+   normalized relative paths within the caller root. Setup runs once in each
+   disposable test copy, so a script such as `uv sync` can create that copy's `.venv`.
+8. **PowerShell-only consumers** call `powershell-quality.yml@develop`; it runs
+   PSScriptAnalyzer and complexity over `lint-path` rooted at the caller and uploads JSON. `strict: true`
+   makes complexity findings fatal when the consumer has removed its debt.
 
 Still hub-only: the hub's own git hooks; consumers get the hook of § 8
 ([The pre-commit hook, by reference](#the-pre-commit-hook-by-reference)).
@@ -728,7 +762,9 @@ Still hub-only: the hub's own git hooks; consumers get the hook of § 8
 - [ ] No consumer copy of anything that exists upstream (check before writing) — the manifest drift gate and the lint aggregator of § 9 are the mechanism
 - [ ] `.antfrastructure-shared.manifest` declared; `sync-shared-config.sh --check` green
 - [ ] `run-lint-gates.sh` wired as a wrapper and as the reusable `lint-gates.yml` lane; ratchets on with freeze files committed
-- [ ] `submodule-pins.yml` lane called (any repo with a submodule)
+- [ ] `code-quality-report.yml` wired; `/logs/` ignored; `python-static.yml` and `python-refactor.yml` wired when Python is tracked
+- [ ] PowerShell quality and mutation workflows wired when those languages and recipes are present
+- [ ] `submodule-pins.yml` lane called (any repo with a submodule; `hub-checkout: true` if the hub is separate)
 - [ ] `core.hooksPath` pointed at `third_party/ANTfrastructure/shared/linux/templates/git-hooks` (§ 8)
 - [ ] `BACKLOG.md` + loop config + thin runners in place, prompts left upstream
 - [ ] Role prompts are overlays only; `.opencode/agents/` gitignored, never hand-edited

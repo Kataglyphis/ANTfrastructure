@@ -65,6 +65,14 @@ f() {
 }
 EOF
 
+t_case "report-only lists complex functions without a freeze"
+fix="$(_ors 20 | _tree)"
+out="$("${PY}" "${fix}/linux/scripts/${GATE}" --report-only 2>&1)"
+t_assert_eq "0" "$?" "a measured complexity finding is advisory"
+t_assert_contains "${out}" "REPORT: linux/scripts/subject.sh:f cc=21 nesting=0" \
+  "the report names the measured function and both metrics"
+rm -rf "${fix}"
+
 t_case "if/elif/for/while/until and && / || each add one path"
 fix="$(_tree <<'EOF'
 f() {

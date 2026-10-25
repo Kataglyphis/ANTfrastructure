@@ -332,4 +332,7 @@ fi
 t_case "--root grades the named tree, and its budget lives under that root"
 gate_root_pair_arm "${PY}" "${GATE}" "$(_twin)" scripts/a.sh scripts/b.sh code-dupes.allow
 
+t_case "--allow-empty accepts only an empty supported scope, not a broken root or a finding"
+t_assert_rc 0 "${PY}" "${TESTS_DIR}/code_dupes_options_tests.py" "${GATE}" "$(_twin)"
+
 t_summary

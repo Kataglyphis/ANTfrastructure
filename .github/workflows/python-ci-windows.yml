@@ -398,44 +398,8 @@ jobs:
   # Independent of the build: a syntax error in the build scripts is exactly when this gate matters.
   lint-powershell:
     if: ${{ inputs.lint-powershell }}
-    name: PowerShell lint (ANTfrastructure gate)
-    runs-on: ${{ inputs.runs-on }}
-    # Install-Module is the step that can hang.
-    timeout-minutes: 20
-    steps:
-      # Top level only: the gate lives in third_party/ANTfrastructure, and nothing reads that submodule's own chain.
-      - name: Check out
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 1
-          submodules: true
-
-      # Pinned: a new analyzer release must not fail this lane with no commit to blame.
-      - name: Install PSScriptAnalyzer
-        run: |
-          $versions = 'third_party/ANTfrastructure/linux/scripts/01-core/versions.env'
-          $pins = @(Get-Content -LiteralPath $versions | Where-Object { $_ -match '^\s*PSSCRIPTANALYZER_VERSION\s*=' })
-          if ($pins.Count -ne 1) { throw "PSSCRIPTANALYZER_VERSION must occur exactly once in $versions" }
-          $pin = ($pins[0] -split '=', 2)[1].Trim().Trim('"', "'")
-          Install-Module PSScriptAnalyzer -RequiredVersion $pin -Force -Scope CurrentUser
-
-      # The ruleset resolves against the gate's own root (by reference); -FailOnAnalyzer is fixed, as without it the analyzer cannot fail.
-      - name: Lint PowerShell (parse gate + AST traps + PSScriptAnalyzer)
-        run: |
-          $gate = 'third_party/ANTfrastructure/windows/scripts/Invoke-Lint.ps1'
-          if (-not (Test-Path -LiteralPath $gate)) {
-            throw "Missing $gate - this lane expects ANTfrastructure at third_party/ANTfrastructure (the family layout) and checks it out with submodules: true."
-          }
-          pwsh -NoProfile -File $gate -Path '${{ inputs.lint-path }}' -FailOnAnalyzer
-
-      - name: Report PowerShell complexity
-        run: |
-          $complexityGate = 'third_party/ANTfrastructure/windows/scripts/Invoke-CodeComplexity.ps1'
-          if (-not (Test-Path -LiteralPath $complexityGate -PathType Leaf)) {
-            throw "Missing $complexityGate - this lane expects ANTfrastructure at third_party/ANTfrastructure and checks it out with submodules: true."
-          }
-          $complexityArgs = @{
-            Path = '${{ inputs.lint-path }}'
-            Strict = ('${{ inputs.complexity-strict }}' -eq 'true')
-          }
-          & $complexityGate @complexityArgs
+    uses: ./.github/workflows/powershell-quality.yml
+    with:
+      runs-on: ${{ inputs.runs-on }}
+      lint-path: ${{ inputs.lint-path }}
+      strict: ${{ inputs.complexity-strict }}

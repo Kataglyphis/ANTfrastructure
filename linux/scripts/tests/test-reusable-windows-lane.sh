@@ -54,36 +54,41 @@ t_case "the lint job does NOT wait for the build job"
 # Chained behind the build, the lint would hide behind the very failure it explains.
 t_assert_eq "None" "$(_q "V.value(job,'needs')")"
 
-t_case "it runs on the lane's pinned Windows runner, never a moving alias"
-t_assert_contains "$(_q "V.value(job,'runs-on')")" "inputs.runs-on"
+t_case "the optional Python job delegates to the shared PowerShell quality workflow"
+t_assert_eq "./.github/workflows/powershell-quality.yml" "$(_q "V.value(job,'uses')")"
+t_assert_contains "$(_q "V.value(V.value(job,'with'),'runs-on')")" 'inputs.runs-on'
+t_assert_contains "$(_q "V.value(V.value(job,'with'),'lint-path')")" 'inputs.lint-path'
+t_assert_contains "$(_q "V.value(V.value(job,'with'),'strict')")" 'inputs.complexity-strict'
+
+workflow_lane_fixture_init .github/workflows/powershell-quality.yml lint-powershell lint-powershell python3 || exit 1
+t_case "the standalone lane serves PowerShell-only consumers and pins its runner"
+workflow_assert_input_fields lint-path type 'string' default 'scripts'
+workflow_assert_input_fields strict type 'boolean' default 'false'
+workflow_assert_input_fields analyzer-strict type 'boolean' default 'true'
+workflow_assert_input_fields hub-checkout type 'boolean' default 'false'
+t_assert_contains "$(_q "V.value(job,'runs-on')")" 'inputs.runs-on'
 t_assert_eq "False" "$(_q "'windows-latest' in str(V.value(job,'runs-on'))")"
-
-t_case "the checkout takes submodules: the gate and its ruleset live in one"
 t_assert_eq "True" "$(_q "any(str(V.value(V.value(s,'with'),'submodules')) == 'true' for s in steps if V.value(s,'uses'))")"
-
-t_case "every action the job uses is SHA-pinned"
 t_assert_eq "True" "$(_q "all('@' in str(V.value(s,'uses')) and len(str(V.value(s,'uses')).split('@')[1]) == 40 for s in steps if V.value(s,'uses'))")"
+t_assert_eq "True" "$(_q "any(V.value(s,'name') == 'Get ANTfrastructure tooling' and 'inputs.hub-checkout' in str(V.value(s,'if')) for s in steps)")"
 
-t_case "PSScriptAnalyzer is installed at a pinned version"
-# Unpinned, a new analyzer rule fails the lane with no commit to blame.
+t_case "the standalone lane pins PSScriptAnalyzer and grades the caller path"
 t_assert_eq "True" "$(_q "'PSSCRIPTANALYZER_VERSION' in run_blocks('lint-powershell')")"
 t_assert_eq "True" "$(_q "'-RequiredVersion \$pin' in run_blocks('lint-powershell')")"
-t_assert_eq "False" "$(_q "'Install-Module PSScriptAnalyzer -Force' in run_blocks('lint-powershell')")"
+t_assert_eq "True" "$(_raw_has "\$gate = Join-Path \$hub 'windows/scripts/Invoke-Lint.ps1'")"
+t_assert_eq "True" "$(_raw_has 'if ($env:LINT_ANALYZER_STRICT -eq '\''true'\'') { $lintArgs += '\''-FailOnAnalyzer'\'' }')"
+t_assert_eq "True" "$(_raw_has 'pwsh @lintArgs')"
+t_assert_eq "True" "$(_raw_has 'if ($LASTEXITCODE -ne 0) { throw')"
+t_assert_eq "True" "$(_raw_has 'if (-not (Test-Path -LiteralPath $gate -PathType Leaf))')"
 
-t_case "the gate is the HUB's script, pointed at the CALLER's tree"
-t_assert_eq "True" "$(_raw_has '$gate = '"'"'third_party/ANTfrastructure/windows/scripts/Invoke-Lint.ps1'"'"'')"
-
-t_case "the gate is invoked with -Path <lint-path> AND -FailOnAnalyzer"
-# Without -FailOnAnalyzer, analyzer findings print and the script still exits 0.
-t_assert_eq "True" "$(_raw_has "pwsh -NoProfile -File \$gate -Path '\${{ inputs.lint-path }}' -FailOnAnalyzer")"
-
-t_case "complexity always reports on the same caller tree and gates findings only by opt-in"
+t_case "the standalone lane reports complexity and gates only when strict is selected"
 t_assert_eq "True" "$(_q "len([s for s in steps if V.value(s,'name') == 'Report PowerShell complexity' and V.value(s,'if') is None]) == 1")"
-t_assert_eq "True" "$(_raw_has "\$complexityGate = 'third_party/ANTfrastructure/windows/scripts/Invoke-CodeComplexity.ps1'")"
-t_assert_eq "True" "$(_raw_has 'Test-Path -LiteralPath $complexityGate -PathType Leaf')"
-t_assert_eq "True" "$(_raw_has "Path = '\${{ inputs.lint-path }}'")"
-t_assert_eq "True" "$(_raw_has "Strict = ('\${{ inputs.complexity-strict }}' -eq 'true')")"
-t_assert_eq "True" "$(_raw_has '& $complexityGate @complexityArgs')"
+t_assert_eq "True" "$(_raw_has "\$gate = Join-Path \$hub 'windows/scripts/Invoke-CodeComplexity.ps1'")"
+t_assert_eq "True" "$(_raw_has "\$strict = \$env:LINT_STRICT -eq 'true'")"
+t_assert_eq "True" "$(_raw_has "& \$gate -Path \$env:LINT_PATH -Root \$env:GITHUB_WORKSPACE -Strict:\$strict -JsonPath 'logs/code-quality/complexity/windows-consumer.json'")"
+workflow_assert_artifact_step 'Save PowerShell complexity report' 'logs/code-quality/complexity/windows-consumer.json'
+
+workflow_lane_fixture_init .github/workflows/python-ci-windows.yml build-test-python-package-on-windows lint-powershell python3 || exit 1
 
 # Build half: a caller without a Python package must be able to take the lint alone
 t_case "build-python-package is a boolean that DEFAULTS ON"
@@ -108,10 +113,6 @@ t_case "the build job asserts the token it does need, and names the way out"
 # Otherwise the empty secret surfaces as an opaque ghcr `docker login` failure.
 t_assert_eq "True" "$(_raw_has 'if (-not $env:GHCR_PAT) {')"
 t_assert_eq "True" "$(_raw_has 'build-python-package: false to take the PowerShell lint alone')"
-
-t_case "a missing submodule fails with a message that names the fix"
-# `pwsh -File <absent>` reads as a broken lane, not an un-checked-out submodule.
-t_assert_eq "True" "$(_raw_has 'Test-Path -LiteralPath $gate')"
 
 t_case "arm64-tests is a boolean that DEFAULTS OFF, and both arm64 jobs are gated on it"
 # Defaulting on would hand every existing caller a windows-11-arm job its lock was never checked for.

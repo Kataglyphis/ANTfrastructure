@@ -557,7 +557,7 @@ _f11_env_writes() {
 # fix11_ort_cargo: ort's default features include download-binaries, so every ort dependency needs default-features = false.
 fix11_ort_cargo() {
   local hits
-  hits="$(cd "${REPO_ROOT}" && find . \( -name .git -o -name external -o -name out -o -name target -o -name node_modules \) \
+  hits="$(cd "${REPO_ROOT}" && find . \( -name .git -o -path ./logs -o -name external -o -name out -o -name target -o -name node_modules \) \
       -prune -o -type f -name Cargo.toml -print 2>/dev/null | LC_ALL=C sort | while IFS= read -r f; do
         awk -v f="${f#./}" -v Q="[\"']" -v O="[\"']ort(-sys)?[\"']" -v DF='default[-_]features[[:space:]]*=[[:space:]]*false' '
           function flush(n) {

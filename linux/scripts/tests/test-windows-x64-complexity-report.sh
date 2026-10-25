@@ -18,17 +18,17 @@ _step_block() {
 }
 
 _report_contract() {
-  local lane="$1" block upload action
+  local lane="$1" block upload
   block="$(_step_block 'Enforce PowerShell complexity' "${lane}")"
   [[ "${block}" == *'New-Item -ItemType Directory -Force logs/code-quality/complexity | Out-Null'* ]] || return 1
   [[ "${block}" == *'windows/scripts/Invoke-CodeComplexity.ps1 -Strict -JsonPath logs/code-quality/complexity/windows-full.json'* ]] || return 1
-  [ "$(LANE="${lane}" _q "len([s for s in steps if V.value(s,'name') == 'Save complexity report'])")" = 1 ] || return 1
   upload="next(s for s in steps if V.value(s,'name') == 'Save complexity report')"
-  [ "$(LANE="${lane}" _q "V.value(V.value(${upload},'with'),'path')")" = 'logs/code-quality/complexity/windows-full.json' ] || return 1
-  [ "$(LANE="${lane}" _q "V.value(V.value(${upload},'with'),'if-no-files-found')")" = error ] || return 1
-  [ "$(LANE="${lane}" _q "V.value(${upload},'if')")" = 'always()' ] || return 1
-  action="$(LANE="${lane}" _q "V.value(${upload},'uses')")"
-  [[ "${action}" =~ ^actions/upload-artifact@[0-9a-f]{40}$ ]] || return 1
+  LANE="${lane}" workflow_require_queries \
+    "len([s for s in steps if V.value(s,'name') == 'Save complexity report']) == 1" \
+    "V.value(V.value(${upload},'with'),'path') == 'logs/code-quality/complexity/windows-full.json'" \
+    "V.value(V.value(${upload},'with'),'if-no-files-found') == 'error'" \
+    "V.value(${upload},'if') == 'always()'" \
+    "bool(re.fullmatch(r'actions/upload-artifact@[0-9a-f]{40}', V.value(${upload},'uses') or ''))"
 }
 
 t_case "strict Windows complexity writes JSON and uploads the exact report"

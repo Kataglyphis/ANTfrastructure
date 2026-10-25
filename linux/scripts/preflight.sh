@@ -254,12 +254,13 @@ check_cmake_format() {
   (
     set -euo pipefail
     source linux/scripts/lib/code-quality.sh
-    CODE_QUALITY_VENV_DIR="${PWD}/.venv-cmake-format"
+    mkdir -p "${PWD}/logs/tools"
+    CODE_QUALITY_VENV_DIR="${PWD}/logs/tools/cmake-format-linux"
     CODE_QUALITY_CMAKE_SEARCH_ROOT=.
     # The Windows patch shims' bytes are layer-cache keys; venvs can carry pip .cmake files.
     CODE_QUALITY_CMAKE_EXCLUDE_PATHS=(
       './.git/*' './third_party/*' './external/*'
-      './windows/scripts/patches/*' './.venv*' './out/*'
+      './windows/scripts/patches/*' './.venv*' './out/*' './logs/*'
     )
     code_quality_ensure_cmake_format
     local files=()

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run-lint-gates.sh - shellcheck, actionlint, gitleaks, ruff, shared config, pins, README length (+ratchets) over ONE consumer tree.
 
-#   run-lint-gates.sh <consumer-root> [--exclude <top-level-dir>]... [--ratchets]
+#   run-lint-gates.sh <consumer-root> [--exclude <top-level-dir>]... [--ratchets] [--code-dupes|--code-dupes-report] [--allow-empty-shell]
 
 # The root is mandatory: derived from BASH_SOURCE inside a submodule, it would grade ANTfrastructure instead.
 
@@ -20,6 +20,9 @@ _LINT_GATES_EXCLUDE=()
 _LINT_GATES_ROOT=""
 _LINT_GATES_HUB_FILE=""
 _LINT_GATES_RATCHETS=0
+_LINT_GATES_CODE_DUPES=0
+_LINT_GATES_CODE_DUPES_REPORT=0
+_LINT_GATES_ALLOW_EMPTY_SHELL=0
 _LINT_GATES_PY=""
 
 _lint_gates_die() { printf 'run-lint-gates.sh: %s\n' "$*" >&2; exit 2; }
@@ -49,7 +52,19 @@ _lint_gates_parse_args() {
         _LINT_GATES_RATCHETS=1
         shift
         ;;
-      *) _lint_gates_die "unknown argument '$1' (expected --exclude <dir> or --ratchets)" ;;
+      --code-dupes)
+        _LINT_GATES_CODE_DUPES=1
+        shift
+        ;;
+      --code-dupes-report)
+        _LINT_GATES_CODE_DUPES_REPORT=1
+        shift
+        ;;
+      --allow-empty-shell)
+        _LINT_GATES_ALLOW_EMPTY_SHELL=1
+        shift
+        ;;
+      *) _lint_gates_die "unknown argument '$1' (expected --exclude <dir>, --ratchets, --code-dupes, --code-dupes-report or --allow-empty-shell)" ;;
     esac
   done
   [ "${#_LINT_GATES_EXCLUDE[@]}" -gt 0 ] || _LINT_GATES_EXCLUDE=(third_party)
@@ -93,7 +108,14 @@ _lint_gates_scope() {
 }
 
 _lint_gates_shell() {
-  _lint_gates_scope shellcheck '*.sh' || return 1
+  local rc=0
+  if [ "${_LINT_GATES_ALLOW_EMPTY_SHELL}" -eq 1 ]; then
+    _lint_gates_scope shellcheck '*.sh' allow-empty || rc=$?
+    [ "${rc}" -eq 2 ] && return 0
+    [ "${rc}" -eq 0 ] || return "${rc}"
+  else
+    _lint_gates_scope shellcheck '*.sh' || return 1
+  fi
   bash "${_LINT_GATES_DIR}/lint-shell.sh" "${_LINT_GATES_SCOPE[@]}"
 }
 
@@ -190,6 +212,32 @@ _lint_gates_doc_dupes_hub() {
   printf '== verify_doc_dupes.py --against-hub --root %s ==\n' "${_LINT_GATES_ROOT}"
   # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
   ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --against-hub --root "${_LINT_GATES_ROOT}"
+}
+
+# Pure Python consumers have no units in this scanner yet; only that empty scope may pass.
+_lint_gates_code_dupes() {
+  local mode="${1:-strict}" report rc=0
+  local args=(--root "${_LINT_GATES_ROOT}" --allow-empty --report)
+  _lint_gates_hub docs/scripts/verify_code_dupes.py || return 1
+  _lint_gates_interpreter || return 1
+  if [ "${mode}" = report ]; then args+=(--report-only); fi
+  report="${_LINT_GATES_ROOT}/logs/code-quality/code-dupes.txt"
+  mkdir -p "$(dirname "${report}")" || return 1
+  printf '== verify_code_dupes.py --root %s ==\n' "${_LINT_GATES_ROOT}"
+  # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
+  ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" "${args[@]}" > "${report}" 2>&1 || rc=$?
+  if [ "${mode}" = report ] && [ "${rc}" -eq 0 ]; then
+    if ! grep -qE '^code duplication (gate:|gate OK:|: no supported files in scope)' "${report}"; then
+      cat "${report}" >&2
+      printf 'code duplication report produced no verdict\n' >&2
+      return 2
+    fi
+    printf 'code duplication report: %s\n' "${report}"
+    sed -n '/^code duplication gate:/p; /^code duplication gate OK:/p; /^code duplication: no supported files in scope/p' "${report}" | head -n 1
+  else
+    cat "${report}" >&2
+  fi
+  return "${rc}"
 }
 
 _lint_gates_ratchet() {
@@ -349,6 +397,11 @@ _lint_gates_main() {
   run_gate "README length" _lint_gates_readme
   if [ "${_LINT_GATES_RATCHETS}" -eq 1 ]; then
     run_gate "ratchets" _lint_gates_ratchet
+  fi
+  if [ "${_LINT_GATES_CODE_DUPES}" -eq 1 ]; then
+    run_gate "code duplication" _lint_gates_code_dupes strict
+  elif [ "${_LINT_GATES_CODE_DUPES_REPORT}" -eq 1 ]; then
+    run_gate "code duplication report" _lint_gates_code_dupes report
   fi
   assert_gates
 }

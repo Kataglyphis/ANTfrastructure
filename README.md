@@ -46,7 +46,7 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --lo
 ```
 
 A fresh host starts at [Linux Host Setup](docs/linux-host-setup.md) or [Windows Host Setup](docs/windows-host-setup.md).
-From Ubuntu WSL2, run `bash linux/scripts/wsl-quality.sh setup` to install pinned tools, then `bash linux/scripts/wsl-quality.sh check` to run Linux and PowerShell checks. Use `bash linux/scripts/refactor-python.sh --check` to preview Python format debt, or `--apply -- path/to/file.py` to create a reviewable fix; [quality tooling](docs/code-quality-tooling.md#python-refactor-preview). Generated reports go in ignored `logs/`.
+From Ubuntu WSL2, run `bash linux/scripts/wsl-quality.sh setup` to install pinned tools, then `bash linux/scripts/wsl-quality.sh check` to run Linux and PowerShell checks. Use `bash linux/scripts/refactor-python.sh --root <checkout> --check` to preview another repo's Python format debt, or `--apply -- path/to/file.py` to create a reviewable fix. Consumers call the reusable report, locked Ruff and ty, refactor, mutation and PowerShell workflows at `@develop`; [quality tooling](docs/code-quality-tooling.md#python-refactor-preview) and [adoption](docs/adopting-in-a-new-project.md#9-quality-gates). Generated reports go in ignored `logs/`.
 
 ## Published images
 
@@ -66,7 +66,7 @@ Registry `ghcr.io/kataglyphis/kataglyphis_beschleuniger`, one manifest per tag o
 | I want to… | Read |
 | --- | --- |
 | Find a topic or build the docs locally | [docs/INDEX.md](docs/INDEX.md) · [Locked docs setup](docs/project-info.md#building-the-hubs-docs) |
-| Wire a new project or reuse build, installer, discovery, reporting and process helpers | [Adoption](docs/adopting-in-a-new-project.md) · [Shared libraries](docs/shared-script-libraries.md) · [Image defaults](.github/actions/README.md#the-two-images-and-the-one-place-they-are-named) |
+| Wire a new project, pin an exact hub SHA, or reuse build, installer, discovery, reporting and process helpers | [Adoption](docs/adopting-in-a-new-project.md#bumping-the-pin) · [Shared libraries](docs/shared-script-libraries.md) · [Image defaults](.github/actions/README.md#the-two-images-and-the-one-place-they-are-named) |
 | Upgrade dependencies and verify checksum refreshes; Renovate as a local CLI | [docs/dependency-updates.md](docs/dependency-updates.md) |
 | See what is published, how the chain is laid out, what is in it | [docs/overview.md](docs/overview.md) |
 | Build and accept Linux images and smoke-test Flutter web builds | [Basics](docs/linux-build-basics.md) · [Cross builds](docs/linux-cross-builds.md) · [Accelerators](docs/linux-accelerator-images.md) · [Consumer acceptance](docs/image-acceptance.md) · [Python app bundles](docs/python-app-bundles.md) · [Python venv and TVM smoke coverage, including VENV-SET](docs/cross-build-verification.md#smoke-torch-venv-what-the-venv-assertions-cover) · [Webserver and browser smoke helpers](linux/webserver/README.md) |

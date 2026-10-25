@@ -67,6 +67,12 @@ t_assert_eq "0" "$(t_rc bash "${GATE}" "${clean}")" \
 t_assert_contains "${_out}" "linting workflows under ${clean}"
 t_assert_contains "${_out}" "WORKFLOW LINT OK"
 
+t_case "a consumer without local actionlint config inherits the hub's pinned runner labels"
+future="$(_root clean)"
+sed -i 's/ubuntu-24.04/ubuntu-26.04/' "${future}/.github/workflows/ci.yml"
+t_assert_eq "0" "$(t_rc bash "${GATE}" "${future}")" \
+  "the shared runner policy must recognize the family's pinned runner"
+
 t_case "a real actionlint finding FAILS the gate"
 broken="$(_root broken)"
 _out="$(t_out bash "${GATE}" "${broken}")"

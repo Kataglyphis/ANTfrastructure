@@ -1,0 +1,96 @@
+name: Python static analysis (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      path:
+        description: Tracked Python file or directory relative to the caller checkout
+        type: string
+        default: '.'
+      strict:
+        description: Fail on Ruff or ty findings; report-only is the default
+        type: boolean
+        default: false
+      hub-checkout:
+        description: Check out ANTfrastructure separately when the caller has no submodule
+        type: boolean
+        default: false
+      runner:
+        description: Pinned Linux runner label
+        type: string
+        default: ubuntu-26.04
+  workflow_dispatch:
+    inputs:
+      path:
+        description: Tracked Python file or directory relative to this checkout
+        type: string
+        default: '.'
+      strict:
+        description: Fail on Ruff or ty findings
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    runs-on: ${{ inputs.runner || 'ubuntu-26.04' }}
+    timeout-minutes: 45
+    env:
+      STATIC_PATH: ${{ inputs.path || '.' }}
+      STATIC_STRICT: ${{ inputs.strict }}
+      STATIC_HUB_CHECKOUT: ${{ inputs.hub-checkout }}
+    steps:
+      - name: Check out caller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: true
+
+      - name: Get ANTfrastructure tooling without a submodule
+        if: ${{ inputs.hub-checkout }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Kataglyphis/ANTfrastructure
+          ref: develop
+          path: antfrastructure-tools
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.0
+
+      - name: Run locked Ruff and ty
+        shell: bash
+        run: |
+          set -euo pipefail
+          hub='third_party/ANTfrastructure'
+          if [ "${GITHUB_REPOSITORY}" = 'Kataglyphis/ANTfrastructure' ]; then hub='.'; fi
+          if [ "${STATIC_HUB_CHECKOUT}" = 'true' ]; then hub='antfrastructure-tools'; fi
+          mode=--report-only
+          if [ "${STATIC_STRICT}" = 'true' ]; then mode=--strict; fi
+          bash "${hub}/linux/scripts/python-static.sh" --root "${GITHUB_WORKSPACE}" \
+            --path "${STATIC_PATH}" "${mode}"
+
+      - name: Summarize findings
+        if: always()
+        shell: bash
+        run: |
+          report='logs/code-quality/python-static'
+          if [ -f "${report}/summary.txt" ]; then
+            echo '### Python static analysis' >> "${GITHUB_STEP_SUMMARY}"
+            cat "${report}/summary.txt" >> "${GITHUB_STEP_SUMMARY}"
+            for scanner in ruff ty; do
+              echo "#### ${scanner}" >> "${GITHUB_STEP_SUMMARY}"
+              tail -n 12 "${report}/${scanner}.txt" >> "${GITHUB_STEP_SUMMARY}"
+            done
+          fi
+
+      - name: Upload Python static reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: python-static-${{ github.run_id }}
+          path: logs/code-quality/python-static/*.txt
+          if-no-files-found: error
+          retention-days: 30

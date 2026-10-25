@@ -2,7 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+HUB_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="${HUB_ROOT}"
+ROOT_GIVEN=0
 MODE=check
 MODE_GIVEN=0
 REQUESTED=()
@@ -10,13 +12,14 @@ RUN_LOG=""
 
 usage() {
   cat <<'EOF'
-Usage: bash linux/scripts/refactor-python.sh [--check|--apply] [--] [tracked/path.py ...]
+Usage: bash linux/scripts/refactor-python.sh [--root DIR] [--check|--apply] [--] [tracked/path.py ...]
 
+  --root   Git checkout to refactor (default: ANTfrastructure)
   --check  report Ruff lint and format drift without editing (default)
   --apply  apply safe Ruff fixes and formatting to clean tracked Python files
 
-Paths are exact, repo-relative tracked .py files. With no paths, all tracked .py files are selected.
-Reports and the resulting patch stay under ignored logs/code-quality/.
+Paths are exact, target-repo-relative tracked .py files. With no paths, all tracked .py files are selected.
+The target's Ruff configuration is used. Reports and the patch stay under its ignored logs/code-quality/.
 EOF
 }
 
@@ -28,6 +31,19 @@ die() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --root)
+      [[ $# -gt 1 && -n "$2" ]] || die "--root needs a directory argument"
+      [[ "${ROOT_GIVEN}" -eq 0 ]] || die "--root was given twice"
+      REPO_ROOT="$2"
+      ROOT_GIVEN=1
+      shift
+      ;;
+    --root=*)
+      [[ -n "${1#--root=}" ]] || die "--root needs a directory argument"
+      [[ "${ROOT_GIVEN}" -eq 0 ]] || die "--root was given twice"
+      REPO_ROOT="${1#--root=}"
+      ROOT_GIVEN=1
+      ;;
     --check|--apply)
       next_mode="${1#--}"
       if [[ "${MODE_GIVEN}" -eq 1 && "${MODE}" != "${next_mode}" ]]; then
@@ -44,8 +60,11 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+REPO_ROOT="$(cd "${REPO_ROOT}" 2>/dev/null && pwd -P)" || die "target root does not exist"
+git -C "${REPO_ROOT}" rev-parse --git-dir >/dev/null 2>&1 || die "${REPO_ROOT} is not a Git checkout"
+[[ -z "$(git -C "${REPO_ROOT}" rev-parse --show-prefix)" ]] \
+  || die "--root must name the top of a Git checkout"
 cd "${REPO_ROOT}" || die "cannot enter ${REPO_ROOT}"
-git rev-parse --git-dir >/dev/null 2>&1 || die "${REPO_ROOT} is not a Git checkout"
 git check-ignore -q --no-index -- logs/code-quality/python-refactor.probe \
   || die "logs/code-quality/ must be ignored by Git"
 

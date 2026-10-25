@@ -27,9 +27,28 @@ on:
         default: false
       ratchets:
         description: >-
-          Pass --ratchets: the eight --root measurement gates over the consumer
-          tree, freeze files at <root>/<gate>.allow. Only once those are seeded
-          and committed.
+          Pass --ratchets: the eight root-aware measurement gates over the
+          consumer tree. Freeze files live at the root; seed and commit them
+          before enabling this input.
+        type: boolean
+        default: false
+      code-dupes:
+        description: >-
+          Enforce the consumer's duplication budget using code-dupes.allow at
+          its root. Enable after refactoring existing findings.
+        type: boolean
+        default: false
+      code-dupes-report:
+        description: >-
+          Measure duplication and upload a report even while findings remain.
+          Scanner and allow-file errors still fail the job. Default true so
+          consumers see their remaining duplication without changing ratchets.
+        type: boolean
+        default: true
+      allow-empty-shell:
+        description: >-
+          Permit a consumer with no tracked shell scripts. The shell gate then
+          reports the empty scope without invoking ShellCheck on the hub.
         type: boolean
         default: false
       runner:
@@ -49,6 +68,9 @@ jobs:
       LINT_EXCLUDE: ${{ inputs.exclude }}
       LINT_HUB_CHECKOUT: ${{ inputs.hub-checkout }}
       LINT_RATCHETS: ${{ inputs.ratchets }}
+      LINT_CODE_DUPES: ${{ inputs.code-dupes }}
+      LINT_CODE_DUPES_REPORT: ${{ inputs.code-dupes-report }}
+      LINT_ALLOW_EMPTY_SHELL: ${{ inputs.allow-empty-shell }}
     steps:
       # Every scope comes from `git ls-files`, not history.
       - name: Check out
@@ -78,4 +100,15 @@ jobs:
           if [ "${LINT_HUB_CHECKOUT}" = 'true' ]; then hub='antfrastructure-tools'; fi
           args=(--exclude "${LINT_EXCLUDE}")
           if [ "${LINT_RATCHETS}" = 'true' ]; then args+=(--ratchets); fi
+          if [ "${LINT_CODE_DUPES}" = 'true' ]; then args+=(--code-dupes); fi
+          if [ "${LINT_CODE_DUPES_REPORT}" = 'true' ]; then args+=(--code-dupes-report); fi
+          if [ "${LINT_ALLOW_EMPTY_SHELL}" = 'true' ]; then args+=(--allow-empty-shell); fi
           bash "${hub}/linux/scripts/run-lint-gates.sh" "${GITHUB_WORKSPACE}" "${args[@]}"
+
+      - name: Save duplication report
+        if: ${{ always() && inputs.code-dupes-report }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: code-duplication-${{ github.run_id }}
+          path: logs/code-quality/code-dupes.txt
+          if-no-files-found: error

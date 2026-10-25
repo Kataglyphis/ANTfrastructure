@@ -25,3 +25,27 @@ workflow_assert_input_fields() {
     t_assert_eq "$expected" "$(_q "V.value(V.value(inputs,'${input}'),'${field}')")"
   done
 }
+
+workflow_assert_artifact_step() {
+  local name="$1" path="$2" condition="${3:-}" query
+  query="next(s for s in steps if V.value(s,'name') == '${name}')"
+  t_assert_contains "$(_q "V.value(${query},'if')")" 'always()'
+  [ -z "${condition}" ] || t_assert_contains "$(_q "V.value(${query},'if')")" "${condition}"
+  t_assert_contains "$(_q "V.value(${query},'uses')")" 'actions/upload-artifact@'
+  t_assert_eq "True" "$(_q "V.value(V.value(${query},'with'),'path') == '${path}'")"
+  t_assert_eq "True" "$(_q "V.value(V.value(${query},'with'),'if-no-files-found') == 'error'")"
+}
+
+workflow_require_queries() {
+  local expression result
+  for expression in "$@"; do
+    result="$(_q "${expression}")" || {
+      printf 'workflow query failed: %s\n%s\n' "${expression}" "${result}" >&2
+      return 1
+    }
+    if [ "${result}" != True ]; then
+      printf 'workflow query was not true: %s\n%s\n' "${expression}" "${result}" >&2
+      return 1
+    fi
+  done
+}

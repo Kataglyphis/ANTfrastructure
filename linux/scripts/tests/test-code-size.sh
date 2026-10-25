@@ -75,6 +75,14 @@ t_case "sizes under the limit are not reported"
 _exits function 10 "" 0 "10 lines is under the function limit"
 _exits file      50 "" 0 "50 lines is under the file limit"
 
+t_case "report-only lists oversized code without creating a freeze"
+fix="$(_fixture function 100 '')"
+out="$("${PY}" "${fix}/linux/scripts/verify_code_size.py" --report-only 2>&1)"
+t_assert_eq "0" "$?" "a measured finding is advisory in report-only mode"
+t_assert_contains "${out}" "REPORT: function linux/scripts/subject.sh:big = 100 lines" \
+  "the report names the measured function"
+rm -rf "${fix}"
+
 # ── the four-way contract, both metrics ──────────────────────────────────────
 t_case "a new offender fails, and actually exits non-zero"
 _says  function 100 "" "not frozen" "an unfrozen function must name the allow file"

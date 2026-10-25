@@ -160,4 +160,23 @@ function Test-Flow {
             Assert-Equal 80 $saved.Limits.CodeLines
         }
     }
+
+    It 'reports paths relative to an explicit consumer root from any working directory' {
+        Invoke-InTestDir -DirectoryPrefix 'complexity-consumer-root-' -Files @{
+            'scripts/valid.ps1' = "function Test-Good { 'ok' }"
+        } -Body {
+            param($directory)
+            $json = Join-Path $directory 'report.json'
+            $report = & $complexityScript -Root $directory -Path 'scripts' -JsonPath $json -PassThru
+            $saved = Get-TestJsonFile -Path $json
+            Assert-Equal 1 $report.FileCount
+            Assert-Equal 'scripts/valid.ps1' $report.Units[0].File
+            Assert-Equal 'scripts/valid.ps1' $saved.Units[0].File
+            Assert-Equal 15 $saved.Limits.Cyclomatic
+            Assert-Equal 5 $saved.Limits.Nesting
+            Assert-Equal 80 $saved.Limits.CodeLines
+            Assert-Throws { & $complexityScript -Root $directory -PassThru | Out-Null } -MessagePattern '-Path is required'
+            Assert-Throws { & $complexityScript -Root $directory -Path $complexityScript -PassThru | Out-Null } -MessagePattern 'outside complexity root'
+        }
+    }
 }

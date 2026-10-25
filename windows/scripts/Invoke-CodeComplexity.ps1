@@ -6,6 +6,7 @@
 [CmdletBinding()]
 param(
     [string[]]$Path,
+    [ValidateNotNullOrEmpty()][string]$Root,
     [switch]$Strict,
     [switch]$PassThru,
     [string]$JsonPath
@@ -17,6 +18,13 @@ Import-Module (Join-Path $PSScriptRoot 'modules/WindowsAst.Common.psm1') -ErrorA
 
 $limits = [ordered]@{ Cyclomatic = 15; Nesting = 5; CodeLines = 80 }
 $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$explicitRoot = $PSBoundParameters.ContainsKey('Root')
+if ($explicitRoot -and (-not $Path -or $Path.Count -eq 0)) { throw '-Path is required when -Root is supplied' }
+$reportRoot = if ($explicitRoot) {
+    $resolvedRoot = Get-Item -LiteralPath $Root -ErrorAction Stop
+    if (-not $resolvedRoot.PSIsContainer) { throw "Complexity root must be a directory: $Root" }
+    $resolvedRoot.FullName
+} else { $repoRoot }
 
 function Get-GitTrackedPaths {
     param([Parameter(Mandatory)][string]$Root)
@@ -55,7 +63,10 @@ function Get-SelectedPowerShellFiles {
         @(Get-TrackedPowerShellFiles -Root $repoRoot)
     } else {
         foreach ($item in $Selection) {
-            $resolved = Get-Item -LiteralPath $item -ErrorAction Stop
+            $selectionPath = if ($explicitRoot -and -not [IO.Path]::IsPathFullyQualified($item)) {
+                Join-Path $reportRoot $item
+            } else { $item }
+            $resolved = Get-Item -LiteralPath $selectionPath -ErrorAction Stop
             if ($resolved.PSIsContainer) {
                 Get-ChildItem -LiteralPath $resolved.FullName -Recurse -File -Include '*.ps1', '*.psm1'
             } else {
@@ -72,11 +83,14 @@ function Get-SelectedPowerShellFiles {
 
 function Get-ReportPath {
     param([Parameter(Mandatory)][string]$File)
-    $prefix = $repoRoot.TrimEnd([char[]]@('\', '/')) + [IO.Path]::DirectorySeparatorChar
-    if ($File.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
-        return $File.Substring($prefix.Length).Replace('\', '/')
+    $relative = [IO.Path]::GetRelativePath($reportRoot, $File)
+    $outside = $relative -eq '..' -or $relative.StartsWith('..' + [IO.Path]::DirectorySeparatorChar) -or
+        [IO.Path]::IsPathFullyQualified($relative)
+    if ($outside) {
+        if ($explicitRoot) { throw "Selected PowerShell file is outside complexity root: $File" }
+        return $File
     }
-    return $File
+    return $relative.Replace('\', '/')
 }
 
 function Get-NamedUnitKind {

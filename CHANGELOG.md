@@ -15,6 +15,12 @@
 
 ## 2026-10-25 — Quality debt cleanup
 
+- Add a reusable one-consumer hub pin helper: require an explicit remote `develop` SHA,
+  check the consumer branch and a clean initialized submodule, and stage only its gitlink.
+- Make quality measurements reusable across owned repositories: rooted size, complexity and duplication reports, consumer mutation recipes, read-only Python refactor previews, uv-locked Ruff and ty reports, and a standalone PowerShell lint/JSON workflow rooted at the caller. Keep duplication strictness separate from the existing ratchets while consumers remove current findings.
+- Keep the Linux cmake-format preflight environment in ignored `logs/tools/` so a Windows virtual environment cannot be reused accidentally under WSL; exclude rollout logs from the critical Cargo source check.
+- Register all 20 active owned repositories in the consumer inventory; archived repositories remain outside the rollout.
+- Let consumers with other submodules call the shared pin gate through a separate hub checkout, avoiding a mutual DocumANTation submodule cycle.
 - Isolate riscv64 cross pkg-config probes from the amd64 image's metadata, and make the GStreamer smoke use the shared target environment so invalid x86_64 link paths fail before consumer tests.
 - Add an on-demand Python refactor preview: pinned safe Ruff fixes and formatting, strict follow-up gates and an uploaded patch, with local logs ignored by Git.
 - Keep the preview's general tests on the runner Python while the type gate uses the locked quality environment; prove both paths in the workflow fixture.

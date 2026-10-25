@@ -1,0 +1,70 @@
+name: Code quality measurements (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      hub-checkout:
+        description: Check out ANTfrastructure separately when the caller has no submodule
+        type: boolean
+        default: false
+      runner:
+        description: Pinned Linux runner label
+        type: string
+        default: ubuntu-26.04
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ${{ inputs.runner || 'ubuntu-26.04' }}
+    timeout-minutes: 60
+    steps:
+      - name: Check out caller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: true
+
+      - name: Get ANTfrastructure tooling without a submodule
+        if: ${{ inputs.hub-checkout }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Kataglyphis/ANTfrastructure
+          ref: develop
+          path: antfrastructure-tools
+          persist-credentials: false
+
+      - name: Measure tracked code
+        shell: bash
+        env:
+          REPORT_HUB_CHECKOUT: ${{ inputs.hub-checkout }}
+        run: |
+          set -euo pipefail
+          hub='third_party/ANTfrastructure'
+          if [ "${GITHUB_REPOSITORY}" = 'Kataglyphis/ANTfrastructure' ]; then hub='.'; fi
+          if [ "${REPORT_HUB_CHECKOUT}" = 'true' ]; then hub='antfrastructure-tools'; fi
+          mkdir -p logs/code-quality/measurements
+          python3 "${hub}/docs/scripts/verify_code_dupes.py" \
+            --root "${GITHUB_WORKSPACE}" --allow-empty --report-only \
+            > logs/code-quality/measurements/duplication.txt 2>&1
+          python3 "${hub}/linux/scripts/verify_code_size.py" \
+            --root "${GITHUB_WORKSPACE}" --report-only \
+            > logs/code-quality/measurements/size.txt 2>&1
+          python3 "${hub}/linux/scripts/verify_code_complexity.py" \
+            --root "${GITHUB_WORKSPACE}" --report-only \
+            > logs/code-quality/measurements/complexity.txt 2>&1
+          for report in logs/code-quality/measurements/*.txt; do
+            echo "### ${report##*/}" >> "${GITHUB_STEP_SUMMARY}"
+            tail -n 12 "${report}" >> "${GITHUB_STEP_SUMMARY}"
+          done
+
+      - name: Upload measurements
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: code-quality-measurements-${{ github.run_id }}
+          path: logs/code-quality/measurements/
+          if-no-files-found: error
+          retention-days: 30

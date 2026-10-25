@@ -35,7 +35,7 @@ jobs:
   inventory:
     name: Grade every hub entry point against its consumers
     runs-on: ubuntu-26.04
-    timeout-minutes: 20
+    timeout-minutes: 60
     # Issues, because an unattended weekly failure must land somewhere a human reads.
     permissions:
       contents: read

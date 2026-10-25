@@ -1,0 +1,92 @@
+name: PowerShell quality (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: Pinned Windows runner label.
+        type: string
+        default: windows-2025
+      lint-path:
+        description: Consumer file or directory to lint, relative to its root.
+        type: string
+        default: scripts
+      strict:
+        description: Fail when complexity exceeds the shared limits.
+        type: boolean
+        default: false
+      analyzer-strict:
+        description: Fail on PSScriptAnalyzer warnings and errors; parser failures always fail.
+        type: boolean
+        default: true
+      hub-checkout:
+        description: Check out ANTfrastructure when the consumer has no submodule.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint-powershell:
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 20
+    env:
+      LINT_PATH: ${{ inputs.lint-path }}
+      LINT_STRICT: ${{ inputs.strict }}
+      LINT_ANALYZER_STRICT: ${{ inputs.analyzer-strict }}
+      LINT_HUB_CHECKOUT: ${{ inputs.hub-checkout }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          submodules: true
+
+      - name: Get ANTfrastructure tooling
+        if: ${{ inputs.hub-checkout }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Kataglyphis/ANTfrastructure
+          ref: develop
+          path: antfrastructure-tools
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $hub = if ($env:LINT_HUB_CHECKOUT -eq 'true') { 'antfrastructure-tools' } else { 'third_party/ANTfrastructure' }
+          $versions = Join-Path $hub 'linux/scripts/01-core/versions.env'
+          if (-not (Test-Path -LiteralPath $versions -PathType Leaf)) { throw "Missing $versions" }
+          $pins = @(Get-Content -LiteralPath $versions | Where-Object { $_ -match '^\s*PSSCRIPTANALYZER_VERSION\s*=' })
+          if ($pins.Count -ne 1) { throw "PSSCRIPTANALYZER_VERSION must occur exactly once in $versions" }
+          $pin = ($pins[0] -split '=', 2)[1].Trim().Trim('"', "'")
+          Install-Module PSScriptAnalyzer -RequiredVersion $pin -Force -Scope CurrentUser
+
+      - name: Lint PowerShell
+        shell: pwsh
+        run: |
+          $hub = if ($env:LINT_HUB_CHECKOUT -eq 'true') { 'antfrastructure-tools' } else { 'third_party/ANTfrastructure' }
+          $gate = Join-Path $hub 'windows/scripts/Invoke-Lint.ps1'
+          if (-not (Test-Path -LiteralPath $gate -PathType Leaf)) { throw "Missing $gate" }
+          $lintArgs = @('-NoProfile', '-File', $gate, '-Path', $env:LINT_PATH)
+          if ($env:LINT_ANALYZER_STRICT -eq 'true') { $lintArgs += '-FailOnAnalyzer' }
+          pwsh @lintArgs
+          if ($LASTEXITCODE -ne 0) { throw "PowerShell lint failed with exit $LASTEXITCODE" }
+
+      - name: Report PowerShell complexity
+        shell: pwsh
+        run: |
+          $hub = if ($env:LINT_HUB_CHECKOUT -eq 'true') { 'antfrastructure-tools' } else { 'third_party/ANTfrastructure' }
+          $gate = Join-Path $hub 'windows/scripts/Invoke-CodeComplexity.ps1'
+          if (-not (Test-Path -LiteralPath $gate -PathType Leaf)) { throw "Missing $gate" }
+          New-Item -ItemType Directory -Force 'logs/code-quality/complexity' | Out-Null
+          $strict = $env:LINT_STRICT -eq 'true'
+          & $gate -Path $env:LINT_PATH -Root $env:GITHUB_WORKSPACE -Strict:$strict -JsonPath 'logs/code-quality/complexity/windows-consumer.json'
+
+      - name: Save PowerShell complexity report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-powershell-complexity-${{ github.run_id }}
+          path: logs/code-quality/complexity/windows-consumer.json
+          if-no-files-found: error

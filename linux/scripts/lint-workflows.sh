@@ -55,7 +55,13 @@ shellcheck_for_actionlint
 shellcheck_rule_selftest
 
 FAILED=0
-"${ACTIONLINT_BIN}" || FAILED=1
+# The pinned actionlint predates ubuntu-26.04; reuse the hub label policy when a consumer has none.
+ACTIONLINT_CONFIG=()
+if [ ! -f .github/actionlint.yaml ] && [ ! -f .github/actionlint.yml ] \
+    && [ -f "${REPO_ROOT}/.github/actionlint.yaml" ]; then
+  ACTIONLINT_CONFIG=(-config-file "${REPO_ROOT}/.github/actionlint.yaml")
+fi
+"${ACTIONLINT_BIN}" "${ACTIONLINT_CONFIG[@]}" || FAILED=1
 
 # This checkout's copy of the script, run against the handed tree.
 # shellcheck source=01-core/python-probe.sh

@@ -29,6 +29,14 @@ profile to the consumer workspace's ignored `logs/test-results/` directory. The 
 workflows upload that directory after tests, including failed tests. The docs build copies
 selected reports from there into its generated site assets for publication.
 
+`python-static.yml` is a separate lightweight reusable lane for consumers that need
+Ruff and ty measurements without building their application. It runs the hub's
+uv-locked quality environment over tracked Python, writes reports under ignored
+`logs/code-quality/python-static/`, and accepts a caller-relative `path`. The
+default is advisory for findings; `strict: true` gates them. Missing tool setup or
+an empty Python scope fails in either mode. Local entry point:
+`bash linux/scripts/python-static.sh --root <checkout> --path . --report-only`.
+
 ## Test artifact uploads
 
 The Linux and Windows reusable jobs keep `if: always()` on their uploads so failed
@@ -472,10 +480,14 @@ Tests: `linux/scripts/tests/test-python-ci-defaults.sh`, mutations
 
 ## The Windows build driver
 
-The reusable lane's optional `lint-powershell` job scans the consumer's `lint-path`
-with PSScriptAnalyzer and the PowerShell complexity scanner. Complexity findings
-are reported by default; `complexity-strict: true` makes them fail the job once
-the consumer code meets the 15/5/80 limits. Parse and scan failures still fail.
+The reusable lane's optional `lint-powershell` job calls the standalone
+`powershell-quality.yml` workflow. It scans the consumer's `lint-path` with
+PSScriptAnalyzer and the PowerShell complexity scanner. The JSON report is uploaded
+from ignored `logs/code-quality/complexity/windows-consumer.json`, including on a
+finding. Complexity findings are reported by default; `complexity-strict: true`
+makes them fail the job once the consumer code meets the 15/5/80 limits. Parse
+and scan failures still fail. PowerShell-only repos call the same standalone
+workflow with `strict: true` when their complexity debt is gone.
 
 `python-ci-windows.yml`'s build job runs `build-script` in the `:winamd64` container. Left empty,
 that is the repo's own `scripts\windows\Build-Windows.ps1` when the checkout has one, else

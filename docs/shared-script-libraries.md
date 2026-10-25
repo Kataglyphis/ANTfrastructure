@@ -1177,6 +1177,7 @@ could change. A permanently red lane is a tolerated failure by construction.
 ```bash
 bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD"
 bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD" --exclude vendor
+bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD" --ratchets --code-dupes-report
 ```
 
 shellcheck, actionlint (+ the CI image-ref check), gitleaks, ruff (error tier),
@@ -1214,6 +1215,13 @@ describes: the freeze files are read from `<consumer-root>/<gate>.allow`
 has none). It is opt-in because a tree with no freeze files is red on its first
 run — that first report is what seeds them. Seed, commit, then keep the flag on
 in the wrapper and the workflow.
+
+`--code-dupes-report` writes an advisory duplication measurement to ignored
+`logs/code-quality/code-dupes.txt`; the reusable workflow enables and uploads it by
+default. `--code-dupes` is a separate fatal gate once copied blocks are removed.
+Neither switch changes the eight `--ratchets` gates or authorizes a new freeze
+budget. `--allow-empty-shell` is an explicit option for repositories with no
+tracked shell files; the default still refuses an empty shell scope.
 
 The step also runs **`docs/scripts/verify_doc_links.py --root`** (2026-09-15),
 which is the ninth gate and the odd one out: it has no freeze file, so there is

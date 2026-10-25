@@ -77,8 +77,9 @@ _pf_run_recorded')"
 t_assert_contains "${out}" "FAILED=cmake-format check"
 t_assert_contains "${out}" "== alpha check =="
 
-t_case "the slug run first builds the venv in the tree; the one run last is the gate that copies the tree"
-t_assert_contains "$(sed -n '/^check_cmake_format() {/,/^}/p' "${PREFLIGHT}")" '.venv-cmake-format'
+t_case "the slug run first builds its Linux venv under ignored logs; the one run last copies the tree"
+t_assert_contains "$(sed -n '/^check_cmake_format() {/,/^}/p' "${PREFLIGHT}")" 'logs/tools/cmake-format-linux'
+t_assert_contains "$(sed -n '/^check_cmake_format() {/,/^}/p' "${PREFLIGHT}")" "'./logs/*'"
 t_assert_contains "$(grep -E "^run_check $(sed -n 's/^PREFLIGHT_FIRST="\(.*\)"$/\1/p' "${PREFLIGHT}") " "${PREFLIGHT}")" "check_cmake_format"
 t_assert_contains "$(grep -E "^run_check $(sed -n 's/^PREFLIGHT_LAST="\(.*\)"$/\1/p' "${PREFLIGHT}") " "${PREFLIGHT}")" "docs/scripts/verify_mutations.py"
 

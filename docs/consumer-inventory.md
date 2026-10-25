@@ -20,8 +20,12 @@ walked from a clean clone every time the question is asked.
 
 Two files, one workflow.
 
-The declared family includes ModelANT and AssetANT as well as code consumers: their
-release/check workflows call hub actions, so omitting them would shrink the evidence.
+The declared inventory names all 20 active repositories owned by Kataglyphis: the hub,
+its original eleven family consumers, and eight other active projects and forks. Archived
+repositories are excluded because they cannot receive this live CI integration. ModelANT
+and AssetANT remain named because their release/check workflows call hub actions.
+The large LLVM fork makes the weekly clean-clone check more expensive, so its job has a
+60-minute timeout; clone or scan failure remains fatal.
 Path reachability is supplemented by the runtime [image acceptance](image-acceptance.md)
 checks; a file that exists can still reject arguments or produce the wrong result.
 

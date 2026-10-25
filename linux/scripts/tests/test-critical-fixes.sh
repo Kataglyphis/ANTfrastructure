@@ -393,6 +393,7 @@ _cargo() {
   local d
   d="$(mktemp -d "${_work}/cargo.XXXXXX")"
   printf '%b' "$1" | _write "${d}/x/Cargo.toml"
+  printf '[dependencies]\nort = "=2.0.0-rc.13"\n' | _write "${d}/logs/consumer/Cargo.toml"
   REPO_ROOT="${d}" bash -c 'pass() { echo "PASS $*"; }; fail() { echo "FAIL $*"; }'$'\n'"${_cargo_verdict}"$'\n'"${_cargo_rule}"$'\n''fix11_ort_cargo' 2>&1
 }
 while IFS="$(printf '\t')" read -r _want _toml; do
