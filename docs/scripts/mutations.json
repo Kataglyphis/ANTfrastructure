@@ -27419,8 +27419,8 @@
  {
   "id": "python-types.renovate-audit-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "'linux/scripts/renovate_audit.py'",
-  "replace": "'linux/scripts/no-renovate-audit.py'",
+  "find": "'linux/scripts/renovate_audit.py' 'linux/scripts/renovate_cmake.py' \\",
+  "replace": "'linux/scripts/no-renovate-audit.py' 'linux/scripts/renovate_cmake.py' \\",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "Renovate's YAML audit must remain in the strict type scope."
  },

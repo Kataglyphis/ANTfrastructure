@@ -9,6 +9,7 @@ import re
 import subprocess
 import urllib.parse
 import urllib.request
+from typing import Any
 
 import bump_versions as bv  # tests patch names on bump_versions; every call reads them through it
 
@@ -31,7 +32,7 @@ def _headers(url: str, extra: dict | None = None) -> dict:
     return h
 
 
-def http_json(url: str):
+def http_json(url: str) -> Any:
     with urllib.request.urlopen(urllib.request.Request(url, headers=bv._headers(url)), timeout=60) as r:
         return json.load(r)
 

@@ -15,6 +15,11 @@
 
 ## 2026-10-25 — Quality debt cleanup
 
+- Keep the Windows 15-decision complexity gate green by moving LiteRT ty-pin validation into focused helpers in the BuildKit driver and wheel builder; missing pins still fail before a media solve or Bazel build.
+- Clear 264 Ruff parameter and public-return annotation findings in the Renovate audit, package-name verifier and two docs bump tools; enforce ANN001/ANN201 on all 24 fully annotated files.
+- Add Playwright to the locked quality environment and make ty check the Flutter browser smoke against its real API, with a failing API-type fixture and regenerated licence and SBOM records.
+- Check the WebDAV downloader against the exact pinned client source commit in Linux x64 CI, without installing runtime dependencies; keep its fatal report under ignored logs and prove wrong calls and missing source fail.
+
 - Add a locked `quality/` uv project for the Python analysis environment and expand fatal ty checks from 129 to 140 of 146 tracked files; keep the remaining image-only and private imports visible in ignored reports.
 - Resolve all 20 missing variadic parameter annotations and make Ruff ANN002 and ANN003 fatal across every tracked Python file, with failing fixtures and mutation proofs.
 - Annotate 195 private returns in Renovate Python scripts and all Linux quality verifiers; make their Ruff ANN202 findings fatal, with selector and scope mutation proofs.

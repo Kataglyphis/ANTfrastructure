@@ -2015,6 +2015,58 @@
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
+      "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--32f4ea9f",
+      "name": "Playwright (Flutter browser smoke and quality analysis)",
+      "versionInfo": "locked in quality/uv.lock",
+      "downloadLocation": "https://github.com/microsoft/playwright-python",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Host Quality Tools",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--70b0c1db",
+      "name": "greenlet (Playwright dependency)",
+      "versionInfo": "locked in quality/uv.lock",
+      "downloadLocation": "https://github.com/python-greenlet/greenlet",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT AND PSF-2.0",
+      "licenseConcluded": "MIT AND PSF-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Host Quality Tools",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--9a46b853",
+      "name": "pyee (Playwright dependency)",
+      "versionInfo": "locked in quality/uv.lock",
+      "downloadLocation": "https://github.com/jfhbrook/pyee",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Host Quality Tools",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--542be3e2",
+      "name": "typing-extensions (Playwright dependency)",
+      "versionInfo": "locked in quality/uv.lock",
+      "downloadLocation": "https://github.com/python/typing_extensions",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "PSF-2.0",
+      "licenseConcluded": "PSF-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Host Quality Tools",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
       "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--3c7f46b3",
       "name": "pytest (quality analysis)",
       "versionInfo": "locked in quality/uv.lock",
@@ -2806,6 +2858,26 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--e3fc17ab"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--32f4ea9f"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--70b0c1db"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--9a46b853"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--542be3e2"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

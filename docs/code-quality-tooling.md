@@ -538,29 +538,31 @@ the exact `TY_VERSION` and `RUFF_VERSION` in `01-core/tool-pins.env`:
 ```bash
 PREFLIGHT_ONLY=python-types bash linux/scripts/preflight.sh
 bash linux/scripts/lint-python-types.sh --docs-conf
+bash linux/scripts/01-core/check-webdav-types.sh
 ```
 
-The script passes tracked Python paths to ty rather than scanning a directory of generated
+`lint-python-types.sh` passes tracked Python paths to ty rather than scanning a directory of generated
 files. It uses the Linux target for Linux and shared scripts and the Windows target for
 `windows/`. The four preflight ty outputs go to ignored `logs/code-quality/ty-*.txt`; Ruff's
 missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
 The full-tree ANN002/ANN003/ANN204/ANN205/ANN206 gate writes
 `logs/code-quality/ruff-annotations-gate.txt`. A second full-tree ANN202 gate writes
-`logs/code-quality/ruff-private-returns-gate.txt`. Twenty fully annotated Renovate,
+`logs/code-quality/ruff-private-returns-gate.txt`. Twenty-four fully annotated Renovate,
 LLM gateway, docs, host and build helper files have fatal ANN001/ANN201 checks in
 `logs/code-quality/ruff-parameters-returns-gate.txt`.
 The Linux x64 workflow uploads
 these files after preflight. Reports with findings state that
 they have findings; a failed download, invalid configuration or checker crash fails CI.
 
-**140 of 146 tracked Python files are a strict type gate.** This includes all tracked
+**141 of 146 tracked Python files are a strict type gate.** This includes all tracked
 `docs/scripts/*.py`, `linux/scripts/verify_*.py`, `linux/scripts/tests/*.py`,
 Linux LLM stack tests, dependency-free build helpers, shared Python helpers and the
 Windows certificate helper. `quality/pyproject.toml` and the committed
-`quality/uv.lock` supply pytest, PyYAML and markdown-it-py to a Python 3.14 environment;
+`quality/uv.lock` supply pytest, PyYAML, markdown-it-py and Playwright
+to a Python 3.14 environment;
 the gate syncs it with `uv sync --project quality --locked` and passes that interpreter
 to ty. The Linux and Windows strict results have separate ignored reports.
-The Linux x64 full scan still reports six files with image-only, submodule or
+The Linux x64 full scan still reports four files with image-only, submodule or
 private imports. One is `docs/conf.py`: Linux x64 checks out without the theme
 submodule, so its unresolved import stays visible in `ty-linux.txt`. The docs
 workflow checks out the pinned DocumANTation submodule and runs `--docs-conf`
@@ -572,8 +574,14 @@ runtime-dependent files have separate build-time type gates: `venv-version-probe
 in the x64 torch image uses its assembled `/opt/venv`, and `litert-wheel-smoke.py`
 in the Windows media wheel build uses the installed wheel, NumPy and ml_dtypes.
 They remain visible in generic reports because those packages are absent from
-the quality environment. The Jetson webcam, WebDAV downloader and Flutter
-browser smoke still have only report-only ty findings. A new
+the quality environment. The Jetson webcam still has only report-only ty
+findings. Linux x64 CI
+checks the WebDAV downloader against the exact pinned client source commit without
+installing its runtime dependencies, writes the verdict to ignored
+`logs/code-quality/ty-webdav-gate.txt`, and uploads it. A local Git fixture
+checks a wrong API argument, missing client source and failed fetch. The Flutter
+browser smoke joins the strict ty scope through the locked Playwright package;
+type checking does not launch Chromium. A new
 Python path outside the strict patterns also starts in the full report until
 the strict scope is extended.
 The preflight and x64 image build share `01-core/load-ty-tool.sh` for the pinned
@@ -597,8 +605,9 @@ private return findings were fixed, so `ANN202` now fails across all 146 tracked
 Python files. Parameter and public return findings were fixed in the Renovate CMake
 parser, locator and planner, the gateway renderer and its tests, the two docs duplication
 scanners, the develop-red watcher, layer audit, large-file and masked-assignment
-verifiers, and nine small docs, host, image, wheel and test files. ANN001/ANN201
-fail in those 20 files. Remaining findings stay in the full report. The focused
+verifiers, the Renovate audit, package-name verifier, two docs bump tools, and
+nine small docs, host, image, wheel and test files. ANN001/ANN201 fail in
+those 24 files. Remaining findings stay in the full report. The focused
 suite injects unannotated signatures, and selector and
 scope mutations prove the gates can fail. The Ruff annotation and ty checks share one fatal report/exit path so
 their diagnostics and exit status cannot drift apart.
@@ -1854,8 +1863,9 @@ is brought under the same limits.
 The BuildKit driver keeps
 stage solves, optional child arguments, preseed setup and teardown in separate
 functions; focused variant, media, solve-order and publish-gate fixtures check
-those handoffs. Pester fixtures test the metric counts,
-malformed input and strict failure. This scanner does not measure duplication,
+those handoffs. The driver and LiteRT wheel builder validate the ty pin in
+focused helpers; the wheel still fails before Bazel starts. Pester fixtures
+test the metric counts, malformed input and strict failure. This scanner does not measure duplication,
 runtime-generated code or call graphs; `verify_code_dupes.py --kind ps` separately
 checks PowerShell duplication.
 

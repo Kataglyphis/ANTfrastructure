@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Real ty fixtures prove the strict scopes; optional-import files remain in the full reports.
+# Real ty fixtures prove the strict scopes; image-only imports remain in the full reports.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -8,7 +8,7 @@ ROOT="$(mktemp -d)"
 trap 'rm -rf -- "${ROOT}"' EXIT
 
 mkdir -p "${ROOT}/linux/scripts/01-core" "${ROOT}/linux/scripts/tests" \
-  "${ROOT}/linux/scripts/05-frameworks/flutter" "${ROOT}/docs/scripts" \
+  "${ROOT}/linux/scripts/05-frameworks/flutter" "${ROOT}/linux/webserver/scripts" "${ROOT}/docs/scripts" \
   "${ROOT}/windows/scripts/certificates" "${ROOT}/shared/python" \
   "${ROOT}/linux/llm-stack/tests" "${ROOT}/linux/llm-stack/gateway" \
   "${ROOT}/linux/scripts/02-toolchain/python" \
@@ -32,18 +32,21 @@ _set_answer() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (34 files)"
+  t_assert_contains "$1" "ty quality gate: clean (37 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
   t_assert_contains "$1" "rc=0"
 }
 
 t_case "the pinned ty checks tracked quality scripts and writes all reports under logs"
 _set_answer "${ROOT}/docs/scripts/subject.py" 42
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/docs/scripts/bump_tools.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/docs/scripts/bump_fetch.py"
 printf 'from sphinx_kataglyphis import value\nRESULT: int = value()\n' > "${ROOT}/docs/conf.py"
 _set_answer "${ROOT}/windows/scripts/subject.py" 42
 _set_answer "${ROOT}/linux/scripts/verify_subject.py" 42
 _set_answer "${ROOT}/linux/scripts/tests/typed_subject.py" 42
 _set_answer "${ROOT}/linux/scripts/05-frameworks/flutter/typed_subject.py" 42
+printf 'from playwright.sync_api import Page\ndef title(page: Page) -> str:\n    return page.title()\n' > "${ROOT}/linux/webserver/scripts/flutter_capture_console_errors.py"
 _set_answer "${ROOT}/windows/scripts/certificates/typed_subject.py" 42
 printf 'import pytest\nimport yaml\ndef answer() -> int:\n    return 42\n' > "${ROOT}/linux/llm-stack/tests/typed_subject.py"
 printf 'import pytest\ndef answer() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/02-toolchain/python/free-threaded-wheel-tests.py"
@@ -86,9 +89,9 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-t_assert_contains "${out}" "Ruff signature annotation gate: clean (37 files)"
-t_assert_contains "${out}" "Ruff private return gate: clean (37 files)"
-t_assert_contains "${out}" "Ruff parameter and public return gate: clean (20 files)"
+t_assert_contains "${out}" "Ruff signature annotation gate: clean (40 files)"
+t_assert_contains "${out}" "Ruff private return gate: clean (40 files)"
+t_assert_contains "${out}" "Ruff parameter and public return gate: clean (24 files)"
 
 t_case "ambient checker versions cannot replace the repository pins"
 out="$(TY_VERSION=bogus RUFF_VERSION=bogus _run)"
@@ -118,6 +121,15 @@ printf 'def value() -> int:\n    return 42\n' > "${ROOT}/third_party/DocumANTati
 t_case "the locked quality environment resolves test and parser imports"
 t_assert_ok test -d "${ROOT}/quality/.venv"
 t_assert_no_grep "${ROOT}/logs/code-quality/ty-quality-gate.txt" 'unresolved-import'
+
+t_case "a wrong Playwright API return type fails the strict browser-smoke scope"
+printf 'from playwright.sync_api import Page\ndef title(page: Page) -> int:\n    return page.title()\n' > "${ROOT}/linux/webserver/scripts/flutter_capture_console_errors.py"
+out="$(_run)"
+t_assert_contains "${out}" "ty quality gate failed (exit 1)"
+t_assert_contains "${out}" "flutter_capture_console_errors.py"
+t_assert_contains "${out}" "invalid-return-type"
+t_assert_contains "${out}" "rc=1"
+printf 'from playwright.sync_api import Page\ndef title(page: Page) -> str:\n    return page.title()\n' > "${ROOT}/linux/webserver/scripts/flutter_capture_console_errors.py"
 
 t_case "a return type mismatch fails the strict gate"
 _set_answer "${ROOT}/docs/scripts/subject.py" '"wrong"'
@@ -204,11 +216,13 @@ done
 
 t_case "each selected Python file fails on missing parameter and public return types"
 for target in linux/scripts/develop_red.py linux/scripts/layer-audit.py \
-  linux/scripts/renovate_cmake.py linux/scripts/renovate_locator.py linux/scripts/renovate_planner.py \
+  linux/scripts/renovate_audit.py linux/scripts/renovate_cmake.py linux/scripts/renovate_locator.py linux/scripts/renovate_planner.py \
   linux/scripts/verify_large_files.py linux/scripts/verify_masked_assignments.py \
+  linux/scripts/verify_package_names.py \
   linux/llm-stack/gateway/render_apisix.py linux/llm-stack/tests/test_gateway_render.py \
   docs/scripts/verify_code_dupes.py docs/scripts/verify_doc_dupes.py \
-  docs/scripts/sync_versions.py linux/host-config/ghcr_metadata.py \
+  docs/scripts/sync_versions.py docs/scripts/bump_tools.py docs/scripts/bump_fetch.py \
+  linux/host-config/ghcr_metadata.py \
   linux/scripts/01-core/manifest-base-layer.py linux/scripts/01-core/registry-config-label.py \
   linux/scripts/01-core/registry-digest.py linux/scripts/02-toolchain/oci-layers-extract.py \
   linux/scripts/02-toolchain/python/wheel-smoke.py linux/scripts/tests/test-wheel-rewrite.py \

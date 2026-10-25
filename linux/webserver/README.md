@@ -68,7 +68,8 @@ Example:
 
 ```bash
 bash linux/webserver/scripts/flutter_integration_smoke_test.sh http://localhost:8080
-python3 linux/webserver/scripts/flutter_capture_console_errors.py --build-dir /path/to/build/web
+uv run --project quality --locked --python 3.14 python \
+  linux/webserver/scripts/flutter_capture_console_errors.py --build-dir /path/to/build/web
 ```
 
 ## Fallback fonts from the site
@@ -105,13 +106,12 @@ which is why this is not "install chromium with your package manager":
 
 ```bash
 flatpak install flathub org.chromium.Chromium
-python3 -m pip install --break-system-packages playwright
 ```
 
-`--break-system-packages` is not carelessness: on a Debian/Ubuntu host with an
-externally-managed Python, `pip install` refuses outright, and a venv is the
-wrong shape here because the script is run by hand next to a build, not by a
-lane that owns an environment.
+Run the browser command above from the repository root. `uv` installs the pinned
+Playwright Python package from `quality/uv.lock` into the ignored quality
+environment; it does not download a browser. The separate flatpak Chromium
+install remains required.
 
 What the script does, so a green run means something: it serves the build
 directory over HTTP, launches headless Chromium through Playwright's flatpak
@@ -125,8 +125,8 @@ GPU-stall warning in headless mode is expected** and is not a finding.
 
 Four failures account for nearly all of them, and each looks like something else:
 
-- **`No module named 'playwright'`** — the install above was skipped or landed in
-  another interpreter: `python3 -m pip install --break-system-packages playwright`.
+- **`No module named 'playwright'`** — the script was run outside the locked
+  quality environment. Use the `uv run --project quality --locked` command above.
 - **Chromium not found** — check the flatpak is really there
   (`flatpak list | grep chromium`); a system chromium does not satisfy this.
 - **Port 8080 already in use** — a previous run's server survived:

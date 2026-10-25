@@ -174,7 +174,16 @@ function Invoke-LitertTyFixture {
 
 Describe 'Build-LitertWheelBazel: pinned type check over the installed wheel' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsSourceBuild.Common.psm1' -FunctionName 'Get-MissingBuildChildPaths')
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:WheelScript -FunctionName 'Assert-LitertTyAvailable', 'Assert-LitertWheelSmokeTypes')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:WheelScript -FunctionName 'Get-LitertTyVersion', 'Assert-LitertTyAvailable', 'Assert-LitertWheelSmokeTypes')
+
+    It 'reads the requested version and refuses an unset pin before prewarming' {
+        Invoke-WithProcessEnvironment -Environment @{ TY_VERSION = '0.0.91' } -ScriptBlock {
+            Assert-Equal '0.0.91' (Get-LitertTyVersion)
+        }
+        Invoke-WithProcessEnvironment -Environment @{ TY_VERSION = '' } -ScriptBlock {
+            Assert-Throws { Get-LitertTyVersion } -MessagePattern 'TY_VERSION is unset for the LiteRT wheel type gate'
+        }
+    }
 
     It 'prewarms the pinned checker before Bazel and refuses a missing or mismatched version' {
         Invoke-LitertTyFixture -Output 'ty 0.0.91 (fixture)' -Body {
@@ -193,7 +202,7 @@ Describe 'Build-LitertWheelBazel: pinned type check over the installed wheel' {
             Assert-Equal 2 $state.Calls.Count 'cold cache retries online once, before Bazel'
             Assert-Equal 'ty@0.0.91|--version' (@($state.Calls[1]) -join '|')
         }
-        Assert-Match '(?s)\$tyVersion = \$env:TY_VERSION\s+if \(\[string\]::IsNullOrWhiteSpace\(\$tyVersion\)\).*?Assert-LitertTyAvailable -TyVersion \$tyVersion.*?& \$bazel @startup build' $script:WheelText
+        Assert-Match '(?s)\$tyVersion = Get-LitertTyVersion.*?Assert-LitertTyAvailable -TyVersion \$tyVersion.*?& \$bazel @startup build' $script:WheelText
     }
 
     It 'checks the installed target tree with offline ty and requires a positive report' {
@@ -238,8 +247,21 @@ Describe 'Build-LitertWheelBazel: pinned type check over the installed wheel' {
     It 'threads the one host tool pin to the wheel RUN without baking the checker into the image' {
         $driver = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\Build-Buildkit.ps1'))
         $docker = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\Dockerfile.media-builder'))
-        Assert-Match "(?s)if \(\`$branch -eq 'media-litert'\).*?tool-pins\.env.*?\`$branchBuildArgs\['TY_VERSION'\] = \`$tyVersion" $driver
+        Assert-Match "(?s)if \(\`$branch -eq 'media-litert'\).*?\`$branchBuildArgs\['TY_VERSION'\] = Get-BkLitertTyVersion -RepoRoot \`$repoRoot" $driver
         Assert-Match '(?s)ARG TY_VERSION\s+ENV LITERT_WINDOWS_SOURCE_COMMIT.*?RUN --mount=type=cache,target=C:\\bzl-repo-cache.*?UV_CACHE_DIR.*?UV_TOOL_DIR.*?UV_PYTHON_DOWNLOADS.*?Build-LitertWheelBazel\.ps1' $docker
         Assert-Match '(?s)function Invoke-LitertWheelSmoke.*?pip install.*?Assert-LitertWheelSmokeTypes.*?\$Python \$SmokeScript \$Model' $script:WheelText
+    }
+
+    It 'takes the exact tool pin and rejects an invalid value before a media solve' {
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\Build-Buildkit.ps1' -FunctionName 'Get-BkLitertTyVersion')
+        Invoke-InTestDir { param($d)
+            $pinDir = Join-Path $d 'linux\scripts\01-core'
+            New-Item -ItemType Directory -Force -Path $pinDir | Out-Null
+            $pinPath = Join-Path $pinDir 'tool-pins.env'
+            Set-Content -LiteralPath $pinPath -Value 'TY_VERSION=0.0.91'
+            Assert-Equal '0.0.91' (Get-BkLitertTyVersion -RepoRoot $d)
+            Set-Content -LiteralPath $pinPath -Value 'TY_VERSION=invalid'
+            Assert-Throws { Get-BkLitertTyVersion -RepoRoot $d } -MessagePattern 'no valid TY_VERSION'
+        }
     }
 }

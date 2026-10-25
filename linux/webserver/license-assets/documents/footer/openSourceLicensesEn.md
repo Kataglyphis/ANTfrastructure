@@ -321,6 +321,10 @@ its own license terms.
 | Ruff | 0.17.0 | [github.com/astral-sh/ruff](https://github.com/astral-sh/ruff) | MIT |
 | ty | 0.0.91 | [github.com/astral-sh/ty](https://github.com/astral-sh/ty) | MIT |
 | markdown-it-py (quality analysis) | locked in quality/uv.lock | [github.com/executablebooks/markdown-it-py](https://github.com/executablebooks/markdown-it-py) | MIT |
+| Playwright (Flutter browser smoke and quality analysis) | locked in quality/uv.lock | [github.com/microsoft/playwright-python](https://github.com/microsoft/playwright-python) | Apache 2.0 |
+| greenlet (Playwright dependency) | locked in quality/uv.lock | [github.com/python-greenlet/greenlet](https://github.com/python-greenlet/greenlet) | MIT and PSF 2.0 |
+| pyee (Playwright dependency) | locked in quality/uv.lock | [github.com/jfhbrook/pyee](https://github.com/jfhbrook/pyee) | MIT |
+| typing-extensions (Playwright dependency) | locked in quality/uv.lock | [github.com/python/typing_extensions](https://github.com/python/typing_extensions) | PSF 2.0 |
 | pytest (quality analysis) | locked in quality/uv.lock | [github.com/pytest-dev/pytest](https://github.com/pytest-dev/pytest) | MIT |
 | PyYAML (quality analysis) | locked in quality/uv.lock | [github.com/yaml/pyyaml](https://github.com/yaml/pyyaml) | MIT |
 

@@ -5,8 +5,12 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections.abc import Callable
 
 import bump_versions as bv  # tests patch names on bump_versions; every call reads them through it
+
+
+SpecResult = tuple[str, dict[str, str]]
 
 
 def derive_protoc_from_litert_lm(litert_lm_version: str) -> str | None:
@@ -41,7 +45,7 @@ _LITERT_LM_GPU_DLL_PINS = (
 )
 
 
-def litert_lm_gpu_pins(tag_text) -> dict[str, str]:
+def litert_lm_gpu_pins(tag_text: Callable[[str], str]) -> dict[str, str]:
     """The rocm lane's LiteRT-LM GPU pins at a tag: each DLL's git-LFS oid is its sha256, WORKSPACE pins the DXC zip."""
     pins = {}
     for key, dll in bv._LITERT_LM_GPU_DLL_PINS:
@@ -56,7 +60,7 @@ def litert_lm_gpu_pins(tag_text) -> dict[str, str]:
     return pins
 
 
-def spec_litert_lm(cur):
+def spec_litert_lm(cur: str) -> SpecResult:
     """LITERT_LM_VERSION drags the four rocm-lane GPU payload pins with it (versions.env)."""
     v = bv.gh_latest("google-ai-edge/LiteRT-LM").lstrip("v")
     extras = {}
@@ -67,7 +71,7 @@ def spec_litert_lm(cur):
 
 
 # Key specs: each returns (new_version, {paired_env_key: value}) or raises.
-def spec_pwsh(cur):
+def spec_pwsh(cur: str) -> SpecResult:
     tag = bv.gh_latest("PowerShell/PowerShell")
     v = tag.lstrip("v")
     extras = {}
@@ -81,14 +85,14 @@ def spec_pwsh(cur):
     return v, extras
 
 
-def spec_psscriptanalyzer(cur):
+def spec_psscriptanalyzer(cur: str) -> SpecResult:
     v = bv.gh_latest("PowerShell/PSScriptAnalyzer")
     pins = {"PSSCRIPTANALYZER_NUPKG_SHA256": bv.asset_sha256(
         "PowerShell/PSScriptAnalyzer", v, f"PSScriptAnalyzer.{v}.nupkg")} if v != cur and bv.WRITE_MODE else {}
     return v, pins
 
 
-def spec_git(cur):
+def spec_git(cur: str) -> SpecResult:
     # Only .windows.1 releases: Install-ScoopTools.ps1 hardcodes that installer suffix.
     tag = bv.gh_latest("git-for-windows/git", pattern=r"^v\d+\.\d+\.\d+\.windows\.1$")
     v = tag.split(".windows.")[0].lstrip("v")
@@ -99,7 +103,7 @@ def spec_git(cur):
     return v, extras
 
 
-def spec_nuget(cur):
+def spec_nuget(cur: str) -> SpecResult:
     tools = bv.http_json("https://dist.nuget.org/tools.json")
     v = next(t["version"] for t in tools["nuget.exe"] if t["stage"] == "ReleasedAndBlessed")
     extras = {}
@@ -110,7 +114,7 @@ def spec_nuget(cur):
     return v, extras
 
 
-def spec_uv(cur):
+def spec_uv(cur: str) -> SpecResult:
     tag = bv.gh_latest("astral-sh/uv")
     v = tag.lstrip("v")
     extras = {}
@@ -125,7 +129,7 @@ def spec_uv(cur):
     return v, extras
 
 
-def node_pins(v, keys) -> dict[str, str]:
+def node_pins(v: str, keys: tuple[str, str]) -> dict[str, str]:
     """The linux-x64/linux-arm64 tarball digests from nodejs.org's SHASUMS256.txt, as {key: sha256}."""
     sums = bv.http_text(f"https://nodejs.org/dist/v{v}/SHASUMS256.txt")
     pins = {}
@@ -138,26 +142,26 @@ def node_pins(v, keys) -> dict[str, str]:
     return pins
 
 
-def _same_major_node(cur) -> str:
+def _same_major_node(cur: str) -> str:
     major = cur.split(".")[0]
     idx = bv.http_json("https://nodejs.org/dist/index.json")
     return next(e["version"].lstrip("v") for e in idx if e["version"].lstrip("v").split(".")[0] == major)
 
 
-def spec_node(cur):
+def spec_node(cur: str) -> SpecResult:
     v = bv._same_major_node(cur)
     extras = bv.node_pins(v, ("NODE_AMD64_SHA256", "NODE_ARM64_SHA256")) if v != cur and bv.WRITE_MODE else {}
     return v, extras
 
 
-def spec_renovate_node(cur):
+def spec_renovate_node(cur: str) -> SpecResult:
     """Renovate's own Node: same major only, since Renovate declares engines.node for one major (tool-pins.env)."""
     v = bv._same_major_node(cur)
     keys = ("RENOVATE_NODE_LINUX_X64_SHA256", "RENOVATE_NODE_LINUX_ARM64_SHA256")
     return v, (bv.node_pins(v, keys) if v != cur and bv.WRITE_MODE else {})
 
 
-def spec_cmake(cur):
+def spec_cmake(cur: str) -> SpecResult:
     tag = bv.gh_latest("Kitware/CMake")
     v = tag.lstrip("v")
     extras = {}
@@ -170,7 +174,7 @@ def spec_cmake(cur):
     return v, extras
 
 
-def spec_ollama(cur):
+def spec_ollama(cur: str) -> SpecResult:
     tag = bv.gh_latest("ollama/ollama")
     v = tag.lstrip("v")
     extras = {}
@@ -183,7 +187,7 @@ def spec_ollama(cur):
     return v, extras
 
 
-def spec_pandoc(cur):
+def spec_pandoc(cur: str) -> SpecResult:
     v = bv.gh_latest("jgm/pandoc")  # pandoc tags have no v prefix
     extras = {}
     if v != cur and bv.WRITE_MODE:
@@ -195,7 +199,7 @@ def spec_pandoc(cur):
     return v, extras
 
 
-def spec_chrome_for_testing(cur):
+def spec_chrome_for_testing(cur: str) -> SpecResult:
     """Google's Stable Chrome for Testing; the bucket publishes md5 only, so each zip is hashed."""
     v = bv.http_json("https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
                   )["channels"]["Stable"]["version"]
@@ -212,7 +216,7 @@ def spec_chrome_for_testing(cur):
     return v, extras
 
 
-def spec_binaryen(cur):
+def spec_binaryen(cur: str) -> SpecResult:
     v = bv.gh_latest("WebAssembly/binaryen", pattern=r"^version_\d+$")
     extras = {}
     if v != cur and bv.WRITE_MODE:
@@ -226,7 +230,7 @@ def spec_binaryen(cur):
     return v, extras
 
 
-def spec_shellcheck(cur):
+def spec_shellcheck(cur: str) -> SpecResult:
     # No sums file, so asset_sha256 downloads and hashes; the env keeps the leading v.
     v = bv.gh_latest("koalaman/shellcheck")
     extras = {}
@@ -241,7 +245,7 @@ def spec_shellcheck(cur):
     return v, extras
 
 
-def spec_gstreamer(cur):
+def spec_gstreamer(cur: str) -> SpecResult:
     # The repo pins an odd-minor development release, so compare with the newest tag overall.
     tags = bv.http_json(
         "https://gitlab.freedesktop.org/api/v4/projects/gstreamer%2Fgstreamer/repository/tags?per_page=100")
@@ -256,7 +260,7 @@ def spec_gstreamer(cur):
     return v, extras
 
 
-def spec_hadolint(cur):
+def spec_hadolint(cur: str) -> SpecResult:
     v = bv.gh_latest("hadolint/hadolint")  # keep the leading v (env stores it)
     extras = {}
     if v != cur and bv.WRITE_MODE:
@@ -273,7 +277,7 @@ def spec_hadolint(cur):
     return v, extras
 
 
-def spec_amf_headers(cur):
+def spec_amf_headers(cur: str) -> SpecResult:
     # Only vX.Y.Z tags carry the AMF-headers-<tag>.tar.gz asset; the env stores the tag.
     tag = bv.gh_latest("GPUOpen-LibrariesAndSDKs/AMF", pattern=r"^v\d+\.\d+\.\d+$")
     extras = {}
@@ -283,7 +287,7 @@ def spec_amf_headers(cur):
     return tag, extras
 
 
-def spec_actionlint(cur):
+def spec_actionlint(cur: str) -> SpecResult:
     tag = bv.gh_latest("rhysd/actionlint")
     v = tag.lstrip("v")
     extras = {}
@@ -298,15 +302,15 @@ def spec_actionlint(cur):
     return v, extras
 
 
-def spec_rust(cur):
+def spec_rust(cur: str) -> SpecResult:
     return bv.gh_latest("rust-lang/rust").lstrip("v"), {}
 
 
-def spec_cargo_c(cur):
+def spec_cargo_c(cur: str) -> SpecResult:
     return bv.gh_latest("lu-zero/cargo-c").lstrip("v"), {}
 
 
-def spec_flutter(cur):
+def spec_flutter(cur: str) -> SpecResult:
     # GitHub's "latest release" is stale; flutter_infra_release is the authoritative stable pointer.
     data = bv.http_json("https://storage.googleapis.com/flutter_infra_release/releases/releases_linux.json")
     stable_hash = data["current_release"]["stable"]
@@ -319,20 +323,20 @@ def spec_flutter(cur):
     return v, extras
 
 
-def spec_wix(cur):
+def spec_wix(cur: str) -> SpecResult:
     # Same major only: a WiX major changes the CLI and authoring model.
     return bv._nuget_pkg_latest("wix", same_major_as=cur), {}
 
 
-def spec_wix_ui(cur):
+def spec_wix_ui(cur: str) -> SpecResult:
     return bv._nuget_pkg_latest("WixToolset.UI.wixext", same_major_as=cur), {}
 
 
-def spec_wix_firewall(cur):
+def spec_wix_firewall(cur: str) -> SpecResult:
     return bv._nuget_pkg_latest("WixToolset.Firewall.wixext", same_major_as=cur), {}
 
 
-def spec_python(cur):
+def spec_python(cur: str) -> SpecResult:
     # Patches only: a minor upgrade is a hand edit of PYTHON_VERSION, and this run then fills its checksum.
     minor = ".".join(cur.split(".")[:2])
     tag = bv.gh_latest("python/cpython", pattern=rf"^v{re.escape(minor)}\.\d+$")
@@ -345,14 +349,14 @@ def spec_python(cur):
     return v, extras
 
 
-def spec_vulkan(cur):
+def spec_vulkan(cur: str) -> SpecResult:
     # One key feeds the linux and windows lanes and LunarG versions per platform, so take the oldest of the two.
     latest = json.loads(bv.http_text("https://vulkan.lunarg.com/sdk/latest.json"))
     consumed = {p: str(latest[p]).strip() for p in ("linux", "windows") if latest.get(p)}
     if not consumed:
         raise RuntimeError("vulkan: latest.json carried neither a linux nor a windows version")
 
-    def _key(s) -> tuple[int, ...]:
+    def _key(s: str) -> tuple[int, ...]:
         return tuple(int(x) for x in re.findall(r"\d+", s))
 
     v = min(consumed.values(), key=_key)
@@ -371,7 +375,7 @@ def spec_vulkan(cur):
     return v, extras
 
 
-def vulkan_rt_windows_zip_sha256(v, arch="X64"):
+def vulkan_rt_windows_zip_sha256(v: str, arch: str = "X64") -> str:
     """A Windows loader zip (x64 under windows/, ARM64 under warm/): LunarG's published digest, else a stream-hash."""
     platform = "windows" if arch == "X64" else "warm"
     name = f"VulkanRT-{arch}-{v}-Components.zip"
@@ -383,7 +387,7 @@ def vulkan_rt_windows_zip_sha256(v, arch="X64"):
     return m.group(1).lower() if m else bv.sha256_of_url(f"https://sdk.lunarg.com/sdk/download/{v}/{platform}/{name}")
 
 
-def spec_abseil(cur):
+def spec_abseil(cur: str) -> SpecResult:
     """ABSEIL_VERSION drags its immutable commit and that archive's decompressed-stream sha256 along."""
     v = bv.gh_latest("abseil/abseil-cpp")  # tags are bare datestamps (20260817.0)
     extras = {}
@@ -395,7 +399,7 @@ def spec_abseil(cur):
     return v, extras
 
 
-def spec_appimagetool(cur):
+def spec_appimagetool(cur: str) -> SpecResult:
     """Report tier until packaging-deps.sh reads the *_SHA256 keys instead of its own literals."""
     v = bv.gh_latest("AppImage/appimagetool")
     extras = {}
@@ -410,11 +414,11 @@ def spec_appimagetool(cur):
     return v, extras
 
 
-def spec_ubuntu_digest(cur):
+def spec_ubuntu_digest(cur: str) -> SpecResult:
     env = bv.read_env()
     return bv.dockerhub_manifest_digest("library/ubuntu", env["UBUNTU_VERSION"]), {}
 
 
-def spec_windows_digest(cur):
+def spec_windows_digest(cur: str) -> SpecResult:
     env = bv.read_env()
     return bv.mcr_manifest_digest("windows/servercore", f"ltsc{env['WINDOWS_LTSC']}"), {}

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Image-only imports and remaining annotation debt stay report-only; see docs/code-quality-tooling.md#python-type-analysis.
+# Remaining image-only imports and annotation debt stay report-only; see docs/code-quality-tooling.md#python-type-analysis.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -63,16 +63,18 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/renovate_locator.py' 'linux/scripts/renovate_planner.py' \
   'linux/scripts/verify_*.py' \
   'linux/scripts/tests/*.py' 'linux/scripts/gate_scope.py' 'linux/scripts/quality_allow.py' \
-  'linux/scripts/extract_embedded_python.py' 'shared/python/*.py')
+  'linux/scripts/extract_embedded_python.py' 'linux/webserver/scripts/*.py' 'shared/python/*.py')
 mapfile -d '' -t windows_quality_files < <(git ls-files -z -- 'windows/scripts/certificates/*.py')
 mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
   'linux/scripts/develop_red.py' 'linux/scripts/layer-audit.py' \
-  'linux/scripts/renovate_cmake.py' 'linux/scripts/renovate_locator.py' \
+  'linux/scripts/renovate_audit.py' 'linux/scripts/renovate_cmake.py' 'linux/scripts/renovate_locator.py' \
   'linux/scripts/renovate_planner.py' \
   'linux/scripts/verify_large_files.py' 'linux/scripts/verify_masked_assignments.py' \
+  'linux/scripts/verify_package_names.py' \
   'linux/llm-stack/gateway/render_apisix.py' 'linux/llm-stack/tests/test_gateway_render.py' \
   'docs/scripts/verify_code_dupes.py' 'docs/scripts/verify_doc_dupes.py' \
-  'docs/scripts/sync_versions.py' 'linux/host-config/ghcr_metadata.py' \
+  'docs/scripts/sync_versions.py' 'docs/scripts/bump_tools.py' 'docs/scripts/bump_fetch.py' \
+  'linux/host-config/ghcr_metadata.py' \
   'linux/scripts/01-core/manifest-base-layer.py' 'linux/scripts/01-core/registry-config-label.py' \
   'linux/scripts/01-core/registry-digest.py' 'linux/scripts/02-toolchain/oci-layers-extract.py' \
   'linux/scripts/02-toolchain/python/wheel-smoke.py' 'linux/scripts/tests/test-wheel-rewrite.py' \
@@ -80,7 +82,7 @@ mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#parameter_return_files[@]}" -eq 20 ] || { echo "Missing tracked parameter and public-return targets" >&2; exit 2; }
+[ "${#parameter_return_files[@]}" -eq 24 ] || { echo "Missing tracked parameter and public-return targets" >&2; exit 2; }
 
 linux_files=()
 windows_files=()

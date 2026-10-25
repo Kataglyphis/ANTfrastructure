@@ -283,6 +283,12 @@ function Invoke-LitertWheelSmoke {
     } finally { $env:PYTHONPATH = $saved }
 }
 
+function Get-LitertTyVersion {
+    $tyVersion = $env:TY_VERSION
+    if ([string]::IsNullOrWhiteSpace($tyVersion)) { throw 'TY_VERSION is unset for the LiteRT wheel type gate' }
+    return $tyVersion
+}
+
 function Assert-LitertTyAvailable {
     # Prewarm before Bazel so a missing checker cannot waste the wheel compile.
     param([AllowEmptyString()][string]$TyVersion)
@@ -326,8 +332,7 @@ if (Test-WindowsCrossTarget) {
 }
 
 $pin = Get-LitertWheelPin
-$tyVersion = $env:TY_VERSION
-if ([string]::IsNullOrWhiteSpace($tyVersion)) { throw 'TY_VERSION is unset for the LiteRT wheel type gate' }
+$tyVersion = Get-LitertTyVersion
 $null = New-Item -ItemType Directory -Force -Path $WorkRoot
 Assert-LitertTyAvailable -TyVersion $tyVersion
 $python = Get-PinnedPythonVersion

@@ -1523,6 +1523,38 @@
               "spdx": "MIT"
             },
             {
+              "name": "Playwright (Flutter browser smoke and quality analysis)",
+              "var": null,
+              "version_fixed": "locked in quality/uv.lock",
+              "url": "https://github.com/microsoft/playwright-python",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "greenlet (Playwright dependency)",
+              "var": null,
+              "version_fixed": "locked in quality/uv.lock",
+              "url": "https://github.com/python-greenlet/greenlet",
+              "license": "MIT and PSF 2.0",
+              "spdx": "MIT AND PSF-2.0"
+            },
+            {
+              "name": "pyee (Playwright dependency)",
+              "var": null,
+              "version_fixed": "locked in quality/uv.lock",
+              "url": "https://github.com/jfhbrook/pyee",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "typing-extensions (Playwright dependency)",
+              "var": null,
+              "version_fixed": "locked in quality/uv.lock",
+              "url": "https://github.com/python/typing_extensions",
+              "license": "PSF 2.0",
+              "spdx": "PSF-2.0"
+            },
+            {
               "name": "pytest (quality analysis)",
               "var": null,
               "version_fixed": "locked in quality/uv.lock",

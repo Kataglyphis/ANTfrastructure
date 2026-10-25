@@ -9,8 +9,12 @@ import collections
 import json
 import re
 import tomllib
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from types import ModuleType
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from yaml.nodes import MappingNode
 
 import renovate_cmake
 import renovate_locator
@@ -62,12 +66,12 @@ def _yaml() -> ModuleType:
     return yaml
 
 
-def _oneline(text) -> str:
+def _oneline(text: object) -> str:
     """One line: these messages travel through a tab-separated plan row."""
     return " ".join(str(text).split())
 
 
-def _duplicate(kind, key) -> str:
+def _duplicate(kind: str, key: object) -> str:
     """The one wording for a repeated key; last-wins parsing would hide the second declaration."""
     return ("this %s declares %r twice, so the file says two things about it. "
             "Which one a report means is not knowable, and a manifest that "
@@ -87,7 +91,7 @@ def _loader() -> type:
     yaml = _yaml()
 
     class Loader(yaml.SafeLoader):
-        def construct_mapping(self, node, deep=False) -> dict[object, object]:
+        def construct_mapping(self, node: "MappingNode", deep: bool = False) -> dict[object, object]:
             seen = set()
             for key_node, _value in node.value:
                 key = self.construct_object(key_node, deep=True)
@@ -102,7 +106,7 @@ def _loader() -> type:
     return _LOADER
 
 
-def _parse_yaml(body) -> object:
+def _parse_yaml(body: str) -> object:
     yaml = _yaml()
     try:
         return yaml.load(body, Loader=_loader())
@@ -110,7 +114,7 @@ def _parse_yaml(body) -> object:
         raise Unreadable("PyYAML cannot read it: %s" % _oneline(exc)) from exc
 
 
-def _json_pairs(pairs) -> dict[str, object]:
+def _json_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
     """One JSON object, refusing a key written twice (json alone takes last-wins)."""
     out = {}
     for key, value in pairs:
@@ -120,11 +124,11 @@ def _json_pairs(pairs) -> dict[str, object]:
     return out
 
 
-def _parse_json(body) -> object:
+def _parse_json(body: str) -> object:
     return json.loads(body, object_pairs_hook=_json_pairs)
 
 
-def _parse_env(body) -> dict[str, dict[str, str]]:
+def _parse_env(body: str) -> dict[str, dict[str, str]]:
     """An annotated env file as {depName: {KEY: value}}, read independently of the locator's regexes."""
     ann = re.compile(r"^# renovate:.*?\bdepName=(\S+)(?:\s|$)")
     kv = re.compile(r"^([A-Z0-9_]+)=([^\s#]*)$")
@@ -154,7 +158,7 @@ def _parse_env(body) -> dict[str, dict[str, str]]:
     return out
 
 
-def _joined(lines) -> list[str]:
+def _joined(lines: Iterable[str]) -> list[str]:
     """requirements.txt lines with pip's backslash continuations joined."""
     out = []
     held = ""
@@ -170,7 +174,7 @@ def _joined(lines) -> list[str]:
     return out
 
 
-def parse_requirements(text):
+def parse_requirements(text: str) -> list[dict[str, str]]:
     """What a requirements file asks pip for, split into fields so a stray change shows as a second leaf."""
     out = []
     for body in _joined(text.split("\n")):
@@ -192,7 +196,7 @@ def parse_requirements(text):
     return out
 
 
-def _spec_and_options(text) -> tuple[str, str]:
+def _spec_and_options(text: str) -> tuple[str, str]:
     """(specifier, glued-on options such as --hash), so the digests are not compared as the version."""
     cut = text.find(" --")
     if cut < 0:
@@ -200,7 +204,7 @@ def _spec_and_options(text) -> tuple[str, str]:
     return text[:cut].strip(), text[cut:].strip()
 
 
-def hash_pinned(opts):
+def hash_pinned(opts: str) -> str:
     """Why a digest-pinned requirement is not moved (nothing here recomputes hashes), or ""."""
     if "--hash" not in opts:
         return ""
@@ -216,7 +220,7 @@ PARSERS = {"yaml": _parse_yaml, "toml": tomllib.loads, "json": _parse_json,
            "cmake": renovate_cmake.parse}
 
 
-def parse(manager, text):
+def parse(manager: str, text: str) -> object:
     """This file's meaning by its real parser; every parser failure, named, becomes Unreadable."""
     kind = FORMATS.get(manager)
     if kind is None:
@@ -237,7 +241,7 @@ def parse(manager, text):
                          % (kind, type(exc).__name__, _oneline(exc))) from exc
 
 
-def flatten(struct):
+def flatten(struct: object) -> Leaves:
     """Every path with its typed scalar or container shape; iterative, so deep nesting cannot overflow."""
     out = {}
     stack: list[tuple[object, tuple[object, ...], tuple[int, ...]]] = [(struct, (), ())]
@@ -272,7 +276,7 @@ def flatten(struct):
     return out
 
 
-def show(path):
+def show(path: DeclPath) -> str:
     """A path as a human reads it: `jobs.build.steps[0].uses`."""
     out = ""
     for part in path:
@@ -283,25 +287,25 @@ def show(path):
     return out or "(the document root)"
 
 
-def _paths(paths) -> str:
+def _paths(paths: Iterable[DeclPath]) -> str:
     return ", ".join(sorted(show(path) for path in paths)) or "(none)"
 
 
 # Declarations, read off the parsed document where the locator has to guess with regexes
-def _mapping(node) -> dict[object, object]:
+def _mapping(node: object) -> dict[object, object]:
     return node if isinstance(node, dict) else {}
 
 
-def _sequence(node) -> list[object]:
+def _sequence(node: object) -> list[object]:
     return node if isinstance(node, list) else []
 
 
-def _whole(path, text) -> Decl:
+def _whole(path: DeclPath, text: str) -> Decl:
     """A Decl over a whole string leaf, where pub, npm and cargo state only the version."""
     return Decl(path, text, 0, len(text))
 
 
-def _step_nodes(struct) -> Iterator[tuple[DeclPath, dict[object, object]]]:
+def _step_nodes(struct: object) -> Iterator[tuple[DeclPath, dict[object, object]]]:
     """(path, mapping) for each job, job step and composite step: the only places `uses:` declares."""
     root = _mapping(struct)
     for job, node in _mapping(root.get("jobs")).items():
@@ -316,7 +320,7 @@ def _step_nodes(struct) -> Iterator[tuple[DeclPath, dict[object, object]]]:
             yield ("runs", "steps", i), step
 
 
-def _uses(path, node, want) -> Decl | None:
+def _uses(path: DeclPath, node: dict[object, object], want: str) -> Decl | None:
     """The Decl for one `uses:` naming this action, split at the last `@`."""
     text = node.get("uses")
     if not isinstance(text, str):
@@ -330,13 +334,13 @@ def _uses(path, node, want) -> Decl | None:
     return Decl(path + ("uses",), text, len(repo) + 1, len(text))
 
 
-def decl_actions(struct, dep):
+def decl_actions(struct: object, dep: str) -> list[Decl]:
     want = dep.casefold()
     found = (_uses(path, node, want) for path, node in _step_nodes(struct))
     return [decl for decl in found if decl is not None]
 
 
-def decl_pub(struct, dep):
+def decl_pub(struct: object, dep: str) -> list[Decl]:
     """The dep's scalar in a top-level pubspec section; a map-shaped dep states no version here."""
     root = _mapping(struct)
     out = []
@@ -347,7 +351,7 @@ def decl_pub(struct, dep):
     return out
 
 
-def decl_precommit(struct, dep):
+def decl_precommit(struct: object, dep: str) -> list[Decl]:
     out = []
     want = dep.casefold()
     for i, item in enumerate(_sequence(_mapping(struct).get("repos"))):
@@ -358,14 +362,14 @@ def decl_precommit(struct, dep):
     return out
 
 
-def _dig(struct, path) -> object:
+def _dig(struct: object, path: DeclPath) -> object:
     node = struct
     for part in path:
         node = _mapping(node).get(part)
     return node
 
 
-def _array(out, array, path, want) -> None:
+def _array(out: list[Decl], array: object, path: DeclPath, want: str) -> None:
     """Every PEP 508 string in one dependency array that names `want`."""
     for i, text in enumerate(_sequence(array)):
         if not isinstance(text, str):
@@ -376,7 +380,7 @@ def _array(out, array, path, want) -> None:
         out.append(Decl(path + (i,), text, parsed[2], parsed[3]))
 
 
-def decl_pep621(struct, dep):
+def decl_pep621(struct: object, dep: str) -> list[Decl]:
     """Specifiers of PEP 508 strings naming the dep, in the locator's tables as tomllib places them."""
     out = []
     want = renovate_locator.normalise(dep)
@@ -390,7 +394,7 @@ def decl_pep621(struct, dep):
     return out
 
 
-def _cargo_roots(struct) -> Iterator[tuple[DeclPath, dict[object, object]]]:
+def _cargo_roots(struct: object) -> Iterator[tuple[DeclPath, dict[object, object]]]:
     """Mappings whose `[dependencies]` are cargo's: root, `[workspace]`, each `[target.<cfg>]`."""
     root = _mapping(struct)
     yield (), root
@@ -402,7 +406,7 @@ def _cargo_roots(struct) -> Iterator[tuple[DeclPath, dict[object, object]]]:
             yield ("target", cfg), node
 
 
-def decl_cargo(struct, dep):
+def decl_cargo(struct: object, dep: str) -> list[Decl]:
     """The crate's version, bare or under `version`; `{ workspace = true }` states none here."""
     out = []
     for base, node in _cargo_roots(struct):
@@ -416,7 +420,7 @@ def decl_cargo(struct, dep):
     return out
 
 
-def decl_npm(struct, dep):
+def decl_npm(struct: object, dep: str) -> list[Decl]:
     root = _mapping(struct)
     out = []
     for obj in renovate_locator.NPM_OBJECTS:
@@ -426,13 +430,13 @@ def decl_npm(struct, dep):
     return out
 
 
-def decl_annotated(struct, dep):
+def decl_annotated(struct: object, dep: str) -> list[Decl]:
     """Every KEY= value the hints name for this dep; KEY is the path, as deps can share a name."""
-    return [_whole((dep, key), value)
+    return [_whole((dep, key), cast(str, value))
             for key, value in sorted(_mapping(_mapping(struct).get(dep)).items())]
 
 
-def decl_requirements(struct, dep):
+def decl_requirements(struct: object, dep: str) -> list[Decl]:
     """Every requirement naming this dep; glued-on digests forbid moving it."""
     want = renovate_locator.normalise(dep)
     out = []
@@ -449,9 +453,10 @@ def decl_requirements(struct, dep):
     return out
 
 
-def decl_cmake(struct, dep):
+def decl_cmake(struct: object, dep: str) -> list[Decl]:
     """Every declaration of dep the preset's CMake forms read, found in CMake's token stream."""
-    return [Decl(*found) for found in renovate_cmake.declarations(struct, dep)]
+    cmake_tokens = cast(dict[str, renovate_cmake.CmakeToken], struct)
+    return [Decl(*found) for found in renovate_cmake.declarations(cmake_tokens, dep)]
 
 
 DECLARERS = {
@@ -470,7 +475,7 @@ DECLARERS = {
 
 
 # The invariant, computed before the edit and checked after it
-def _miscount(dep, old, count, found, at_old) -> str:
+def _miscount(dep: str, old: str, count: int, found: list[Decl], at_old: list[Decl]) -> str:
     """Why the parse and the report disagree: declared nowhere, elsewhere, or more often."""
     where = ", ".join("%s=%s" % (show(d.path), d.leaf[d.start:d.end])
                       for d in found)
@@ -489,7 +494,7 @@ def _miscount(dep, old, count, found, at_old) -> str:
             % (dep, where, len(at_old), old, count))
 
 
-def _crashed(doing, exc) -> str:
+def _crashed(doing: str, exc: Exception) -> str:
     """A refusal naming an unexpected exception, which must not escape past the rollback."""
     return ("%s raised %s: %s. That is a defect in the auditor rather than a "
             "verdict on the file, and an audit that cannot finish does not "
@@ -497,7 +502,7 @@ def _crashed(doing, exc) -> str:
             % (doing, type(exc).__name__, _oneline(exc)))
 
 
-def _expected(manager, text, groups) -> tuple[dict[DeclPath, str], Leaves, str]:
+def _expected(manager: str, text: str, groups: Sequence[tuple[str, str, str, int]]) -> tuple[dict[DeclPath, str], Leaves, str]:
     struct = parse(manager, text)
     leaves = flatten(struct)
     want = {}
@@ -522,7 +527,7 @@ def _expected(manager, text, groups) -> tuple[dict[DeclPath, str], Leaves, str]:
     return want, leaves, ""
 
 
-def expected(manager, text, groups):
+def expected(manager: str, text: str, groups: Sequence[tuple[str, str, str, int]]) -> tuple[dict[DeclPath, str], Leaves, str]:
     """(path -> leaf it must carry, this document's leaves, refusal), from the parse alone; never raises.
 
     groups: one (dep, old, new, count) per reported pin.
@@ -535,7 +540,7 @@ def expected(manager, text, groups):
         return {}, {}, _crashed("working out what the edit may change", exc)
 
 
-def _shape(gone, born) -> str:
+def _shape(gone: set[DeclPath], born: set[DeclPath]) -> str:
     """A bump adds and removes no path; one that does escaped its quoting or changed the format's reading."""
     parts = []
     if gone:
@@ -546,7 +551,7 @@ def _shape(gone, born) -> str:
             + ". A version bump adds and removes nothing")
 
 
-def _elsewhere(moved, want) -> str:
+def _elsewhere(moved: set[DeclPath], want: dict[DeclPath, str]) -> str:
     stray = moved - set(want)
     missed = set(want) - moved
     parts = []
@@ -560,7 +565,7 @@ def _elsewhere(moved, want) -> str:
             + "; and ".join(parts))
 
 
-def audit(manager, before_text, after_text, groups):
+def audit(manager: str, before_text: str, after_text: str, groups: Sequence[tuple[str, str, str, int]]) -> str:
     """"" when exactly the reported declarations moved old -> new, else why to put the file back; never raises."""
     try:
         return _audit(manager, before_text, after_text, groups)
@@ -568,7 +573,7 @@ def audit(manager, before_text, after_text, groups):
         return _crashed("auditing the file after the write", exc)
 
 
-def _audit(manager, before_text, after_text, groups) -> str:
+def _audit(manager: str, before_text: str, after_text: str, groups: Sequence[tuple[str, str, str, int]]) -> str:
     want, before_leaves, why = expected(manager, before_text, groups)
     if why:
         return why
