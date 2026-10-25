@@ -91,7 +91,7 @@ function Get-Module {
         Assert-Throws { & $check $mutant } -MessagePattern 'Assert-True'
     }
 
-    It 'installs the hub pin in both Windows workflows' {
+    It 'installs the hub pin in Windows lanes and the reusable quality workflow' {
         $check = {
             param([string]$text, [string]$path)
             $install = [regex]::Match($text, '(?ms)^      - name: Install PSScriptAnalyzer\r?\n(?<step>.*?)(?=^      - name:|^      #)').Groups['step'].Value
@@ -100,13 +100,22 @@ function Get-Module {
         }
         foreach ($case in @(
                 @{ Workflow = '.github/workflows/windows-x64.yml'; Path = "'linux/scripts/01-core/versions.env'" }
-                @{ Workflow = '.github/workflows/python-ci-windows.yml'; Path = '$versions'; Root = 'third_party/ANTfrastructure/linux/scripts/01-core/versions.env' }
+                @{ Workflow = '.github/workflows/powershell-quality.yml'; Path = '$versions'; Root = "Join-Path `$hub 'linux/scripts/01-core/versions.env'" }
             )) {
             $text = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $case.Workflow))
-            if ($case.ContainsKey('Root')) { Assert-True ($text.Contains($case.Root)) 'consumer submodule pin path' }
+            if ($case.ContainsKey('Root')) { Assert-True ($text.Contains($case.Root)) 'quality workflow resolves the hub pin path' }
             & $check $text $case.Path
             $mutant = $text.Replace('Install-Module PSScriptAnalyzer -RequiredVersion $pin', 'Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0')
             Assert-Throws { & $check $mutant $case.Path } -MessagePattern 'Assert-True'
         }
+        $caller = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) '.github/workflows/python-ci-windows.yml'))
+        $checkCaller = {
+            param([string]$text)
+            $job = [regex]::Match($text, '(?ms)^  lint-powershell:\r?\n(?<body>.*?)(?=^  [a-z][\w-]*:|\z)').Groups['body'].Value
+            Assert-True ($job.Contains('uses: ./.github/workflows/powershell-quality.yml')) 'consumer lint job calls the pinned quality workflow'
+        }
+        & $checkCaller $caller
+        $mutant = $caller.Replace('uses: ./.github/workflows/powershell-quality.yml', 'uses: ./.github/workflows/missing-quality.yml')
+        Assert-Throws { & $checkCaller $mutant } -MessagePattern 'Assert-True'
     }
 }
