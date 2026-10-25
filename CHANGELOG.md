@@ -15,6 +15,8 @@
 
 ## 2026-10-26 — Renovate submodule updates
 
+- Correct fleet plan wording to name remote default tips for direct gitlinks and distinguish
+  its advisory nested-checkout graph from the apply scope.
 - Let a copied consumer Renovate wrapper initialize its own missing hub submodule on `--apply`;
   report and dry-run stay read-only, while fatal failures restore the checkout and Git config.
 - Make the local Renovate command inspect every direct submodule and update its gitlink to the

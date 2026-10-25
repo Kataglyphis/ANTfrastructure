@@ -91,6 +91,11 @@ remote default branch and its tip without cloning for report or dry-run. Root
 validation preserves a supplied subdirectory; fleet separately
 resolves its repository top level.
 
+The fleet invokes that same driver for each owned checkout, so its direct gitlinks move to
+remote default tips and missing direct checkouts initialize during apply. Its separate graph
+warning can still name an uninitialized nested checkout: recursive initialization is a manual
+way to make that ordering graph complete, outside the direct-submodule update scope.
+
 `test-renovate-cli.sh` checks option order, diagnostics and driver boundaries;
 `test-renovate-git.sh` checks local discovery, spaces and callback context. The
 existing fixture suites cover planning, fleet recursion and transactional writes.

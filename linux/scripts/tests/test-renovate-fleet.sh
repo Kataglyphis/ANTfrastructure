@@ -134,6 +134,8 @@ t_case "(F4b) the heading does not promise more than the tool keeps"
 # --apply's detached checkout writes inside the vendored tree.
 t_assert_fails grep -q 'NONE of them is written' <<<"${OUT}"
 t_assert_contains "${OUT}" "No update is APPLIED in" "what is true is what it says"
+t_assert_contains "${OUT}" "remote default branch tip" \
+  "the direct gitlink target ignores a .gitmodules branch override"
 t_assert_contains "${OUT}" "does check the new commit out inside the copy" \
   "and the pointer move is named as the write it is"
 

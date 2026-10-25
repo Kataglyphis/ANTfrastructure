@@ -513,12 +513,12 @@ summarise_no_own() {
 # Update a repo where it lives, move only pointers where it is vendored. See docs/dependency-updates.md#the-same-repo-checked-out-several-times
 print_duplicates() {
   summarise_no_own
-  # `git submodule update --remote` checks out inside the copy, so never claim it stays untouched.
+  # The local driver checks out each direct gitlink inside its declared copy.
   if note_listing \
       "THE SAME REPO, CHECKED OUT AGAIN. Each of these is a second working" \
       "tree of a repo the fleet already updates above. No update is APPLIED in" \
       "one: what moves here is the POINTER, and the run over the repo that" \
-      "declares it is what moves it -- with \`git submodule update --remote\`," \
+      "declares it is what moves it -- to its remote default branch tip," \
       "which does check the new commit out inside the copy." \
       -- ${DUPLICATES[@]+"${DUPLICATES[@]}"}; then
     note ""
