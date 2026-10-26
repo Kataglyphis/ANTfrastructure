@@ -1236,6 +1236,15 @@ Build home: `linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh`
 both natively and via the Python import path. The riscv64 builder iterates on
 real rebuilds — treat first-failure there as expected tuning, not regression.
 
+For riscv64, the wheelhouse reads the Torch and TorchVision source tags from
+`versions.env` or explicit build arguments. A missing pin or disagreement
+between a source tag and its release version stops the build. The host Torch
+install strips the tag's `v` because `uv pip install` needs `2.14.1+cpu`, not
+`v2.14.1+cpu`. There are no embedded older fallback releases. Copies of
+`build-app-wheelhouse.sh` require `torch-source-pins.sh` beside the driver.
+Numeric tags with or without `v` must agree with the package version; a commit
+ref needs an explicit package version for the host wheel installation.
+
 ### verify-parity.sh (on-demand diagnostic, not a gate)
 
 `06-packaging/verify-parity.sh <native-image> <cross-image>` diffs two BUILT

@@ -13876,6 +13876,38 @@
   "why": "a new wheel would ship, natively or cross, without anyone reading its free-threading support"
  },
  {
+  "id": "wheels.torch-source-package-version",
+  "target": "linux/scripts/05-frameworks/torch/torch-source-pins.sh",
+  "find": "    PYTORCH_VERSION=\"${PYTORCH_VERSION#v}\"\n",
+  "replace": "    PYTORCH_VERSION=\"${PYTORCH_VERSION}\"\n",
+  "test": "bash linux/scripts/tests/test-torch-wheelhouse.sh",
+  "why": "a source tag with v would be passed as an invalid uv package version"
+ },
+ {
+  "id": "wheels.torch-source-ref-drift",
+  "target": "linux/scripts/05-frameworks/torch/torch-source-pins.sh",
+  "find": "    if [[ \"${PYTORCH_REF}\" =~ $version_tag_re && \"${PYTORCH_REF#v}\" != \"${PYTORCH_VERSION#v}\" ]]; then\n",
+  "replace": "    if false; then\n",
+  "test": "bash linux/scripts/tests/test-torch-wheelhouse.sh",
+  "why": "numeric or v-prefixed Torch source tags must agree with the package release"
+ },
+ {
+  "id": "wheels.torch-source-commit-needs-version",
+  "target": "linux/scripts/05-frameworks/torch/torch-source-pins.sh",
+  "find": "    if [ -z \"${PYTORCH_VERSION:-}\" ] && [[ ! \"${PYTORCH_REF}\" =~ $version_tag_re ]]; then\n",
+  "replace": "    if false; then\n",
+  "test": "bash linux/scripts/tests/test-torch-wheelhouse.sh",
+  "why": "a commit ref without a package version would reach uv as an invalid version"
+ },
+ {
+  "id": "wheels.vision-source-ref-drift",
+  "target": "linux/scripts/05-frameworks/torch/torch-source-pins.sh",
+  "find": "    if [[ \"${TORCHVISION_REF}\" =~ $version_tag_re && -n \"${TORCHVISION_VERSION:-}\" && \"${TORCHVISION_REF#v}\" != \"${TORCHVISION_VERSION#v}\" ]]; then\n",
+  "replace": "    if false; then\n",
+  "test": "bash linux/scripts/tests/test-torch-wheelhouse.sh",
+  "why": "numeric or v-prefixed TorchVision source tags must agree with the release"
+ },
+ {
   "id": "wheels.ft-knob-off",
   "target": "linux/scripts/03-media/free-threaded-wheels.sh",
   "find": "    twin:*) knob=\"${verdict#twin:}\"; [ \"${!knob:-0}\" = 1 ] ;;\n",

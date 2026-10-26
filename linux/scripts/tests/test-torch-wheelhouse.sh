@@ -5,6 +5,8 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 source "${TESTS_DIR}/../01-core/logging.sh"
 WHEELHOUSE="${1:-${TESTS_DIR}/../05-frameworks/torch/build-app-wheelhouse.sh}"
+source "${TESTS_DIR}/../05-frameworks/torch/torch-source-pins.sh"
+eval "$(t_fn_src "$WHEELHOUSE" install_host_torch_for_vision)"
 eval "$(t_fn_src "$WHEELHOUSE" _torch_select_max_jobs)"
 for fn in build_torch_wheel build_torchvision_wheel _collect_torch_wheel _collect_torchvision_wheel parse_wheel_version; do
     eval "$(t_fn_src "$WHEELHOUSE" "$fn")"
@@ -44,6 +46,72 @@ t_assert_contains "$(cat "${TESTS_DIR}/../01-core/common.sh")" \
     "[ -f \"\${_COMMON_SH_DIR}/parallelism.sh\" ] && source \"\${_COMMON_SH_DIR}/parallelism.sh\""
 t_assert_contains "$(cat "$WHEELHOUSE")" '"/opt/scripts/core/common.sh"'
 t_assert_eq 0 "$(grep -c 'source /opt/scripts/core/parallelism.sh' "$WHEELHOUSE" || true)"
+
+t_case "Wheelhouse loads the shared Torch source pin resolver"
+t_assert_contains "$(cat "$WHEELHOUSE")" '/torch-source-pins.sh'
+
+t_case "Torch source pins resolve to the package version passed to uv"
+_resolved="$(
+    unset PYTORCH_REF TORCHVISION_REF
+    PYTORCH_VERSION=v2.14.1 TORCHVISION_VERSION=v0.29.1
+    export BUILD_PYTHON=fixture-python DEFAULT_PYPI_INDEX_URL=https://pypi.example/simple PYTORCH_HOST_INDEX_URL=https://torch.example/cpu
+    uv() { printf '%s\n' "$*"; }
+    resolve_torch_source_refs && install_host_torch_for_vision
+)"
+t_assert_contains "$_resolved" 'torch==2.14.1+cpu pillow'
+
+t_case "Torch source pins have no old fallback when versions.env is absent"
+_missing="$(
+    unset PYTORCH_REF PYTORCH_VERSION TORCHVISION_REF TORCHVISION_VERSION
+    resolve_torch_source_refs 2>&1
+)"
+_missing_rc=$?
+t_assert_eq 1 "$_missing_rc"
+t_assert_contains "$_missing" 'Torch source pin missing'
+
+t_case "TorchVision source pins cannot be silently omitted"
+_missing="$(
+    unset TORCHVISION_REF TORCHVISION_VERSION
+    PYTORCH_VERSION=v2.14.1 PYTORCH_REF=v2.14.1
+    resolve_torch_source_refs 2>&1
+)"
+_missing_rc=$?
+t_assert_eq 1 "$_missing_rc"
+t_assert_contains "$_missing" 'TorchVision source pin missing'
+
+t_case "A commit ref needs an explicit Torch package version"
+_missing="$(
+    unset PYTORCH_VERSION TORCHVISION_VERSION
+    PYTORCH_REF=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef TORCHVISION_REF=v0.29.1
+    resolve_torch_source_refs 2>&1
+)"
+_missing_rc=$?
+t_assert_eq 1 "$_missing_rc"
+t_assert_contains "$_missing" 'Torch package version is required for a non-release source ref'
+
+t_case "A commit ref can use an explicit package version"
+_resolved="$(
+    export PYTORCH_VERSION=v2.14.1 PYTORCH_REF=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef TORCHVISION_REF=v0.29.1
+    unset TORCHVISION_VERSION
+    resolve_torch_source_refs && printf '%s|%s' "$PYTORCH_REF" "$PYTORCH_VERSION"
+)"
+t_assert_eq 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef|2.14.1' "$_resolved"
+
+_assert_pin_mismatch() {
+    local label="$1" torch_ref="$2" vision_ref="$3" expected="$4" mismatch rc
+    t_case "$label"
+    mismatch="$(
+        export PYTORCH_VERSION=v2.14.1 PYTORCH_REF="$torch_ref" TORCHVISION_VERSION=v0.29.1 TORCHVISION_REF="$vision_ref"
+        resolve_torch_source_refs 2>&1
+    )"
+    rc=$?
+    t_assert_eq 1 "$rc"
+    t_assert_contains "$mismatch" "$expected"
+}
+_assert_pin_mismatch "Torch source ref cannot disagree with its release" v2.13.0 v0.29.1 'Torch source ref and package version differ'
+_assert_pin_mismatch "Numeric Torch source ref cannot disagree with its release" 2.13.0 v0.29.1 'Torch source ref and package version differ'
+_assert_pin_mismatch "TorchVision source ref cannot disagree with its release" v2.14.1 v0.28.0 'TorchVision source ref and version differ'
+_assert_pin_mismatch "Numeric TorchVision source ref cannot disagree with its release" v2.14.1 0.28.0 'TorchVision source ref and version differ'
 
 src_dir=parent dist_dir=parent wheel_platform=parent python_sysconfig_export=parent cmake_args_string=parent
 target_torch_include=parent target_torch_csrc=parent target_torch_lib=parent

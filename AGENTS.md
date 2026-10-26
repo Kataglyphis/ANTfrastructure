@@ -143,6 +143,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copies of `python_uv.sh` and `webdav-download.sh` carry `python-probe.sh`; missing companions fail rather than restoring interpreter-selection copies.
    Runtime consumer probes retain lazy required-fact checks and distinguish missing facts from failed facts.
    Copied Torch setup carries `package-image-wiring.sh`, `wheelhouse-manifest.sh` and `native-gcc-system-paths.sh` before its first execution.
+   Copied `build-app-wheelhouse.sh` carries `torch-source-pins.sh` beside it.
    Native GCC profiles carry `native-gcc-system-paths.sh`; preserve flag expansion when the profile is sourced.
    `verify-cross-chain.sh` help carries `runtime-build-fns.sh`; ordinary forwarding must not load build helpers.
    Copied `lib-runtime-wheels.sh` carries `01-core/wheelhouse-manifest.sh`.
@@ -1313,6 +1314,10 @@ The rules; the mechanism is documented once in
   declarations; apply projects only the pair accepted in the parent-committed hub gitlink, with
   wheel pins and a parsed, matching `uv.lock` in the same rollback unit. Commit a moved hub
   gitlink before rerunning the pair update.
+- **The riscv64 Torch wheelhouse uses the pinned source pair.** Read Torch and TorchVision from
+  `versions.env` or explicit build inputs. Missing pins or a source-tag/version disagreement fail;
+  a commit ref requires an explicit Torch package version. The host `uv pip install` receives
+  the package version without the source tag's `v`.
 - **The default Renovate run covers every direct `.gitmodules` submodule** (owner directive
   2026-10-26). Resolve each remote's current default branch, regardless of a local `branch =`
   override or a Renovate report row. Report its exact tip; `--apply` initializes a missing

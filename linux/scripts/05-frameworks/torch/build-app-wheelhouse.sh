@@ -63,9 +63,9 @@ unset _evf
 : "${APP_WHEELHOUSE_DIR:=/opt/app-wheels}"
 : "${APP_WHEELHOUSE_FT_DIR:=/opt/app-wheels-free-threaded}"
 : "${APP_WHEELHOUSE_BUILD_ROOT:=/tmp/app-wheelhouse}"
-: "${PYTORCH_REF:=${PYTORCH_VERSION:-v2.13.0}}"
-: "${PYTORCH_VERSION:=${PYTORCH_REF#v}}"
-: "${TORCHVISION_REF:=${TORCHVISION_VERSION:-v0.28.0}}"
+# shellcheck source=torch-source-pins.sh
+source "$(dirname "${BASH_SOURCE[0]}")/torch-source-pins.sh"
+resolve_torch_source_refs
 # The fallback only matters without versions.env.
 : "${IREE_REF:=${IREE_VERSION:-v3.12.0}}"
 : "${PYTORCH_HOST_INDEX_URL:=https://download.pytorch.org/whl/cpu}"
