@@ -31,7 +31,7 @@ git -C "${hub_seed}" remote add origin "${hub_remote}"
 git -C "${hub_seed}" push -q origin develop
 
 _init_pair main "${other_remote}" "${other_seed}"
-printf 'old\n' > "${other_seed}/tool.txt"
+printf 'old\n' > "${other_seed}/other-tool.txt"
 t_git_commit "${other_seed}"
 git -C "${other_seed}" remote add origin "${other_remote}"
 git -C "${other_seed}" branch develop
@@ -51,7 +51,7 @@ t_git_commit "${hub_seed}"
 fresh="$(git -C "${hub_seed}" rev-parse HEAD)"
 git -C "${hub_seed}" push -q origin develop
 
-printf 'new\n' > "${other_seed}/tool.txt"
+printf 'new\n' > "${other_seed}/other-tool.txt"
 t_git_commit "${other_seed}"
 other_fresh="$(git -C "${other_seed}" rev-parse HEAD)"
 git -C "${other_seed}" push -q origin main
@@ -86,7 +86,8 @@ t_assert_contains "$(git -C "${consumer}" diff --cached --name-only)" "other.txt
 _accept_default() {
   local driver="$1"
   "${PY}" "${driver}" --repo "${consumer}" --branch main --path third_party/Other --sha "${other_fresh}" >/dev/null 2>&1 || return 1
-  [ "$(printf '%s\n' "$(_staged_other)" | cut -f1)" = "160000 ${other_fresh} 0" ]
+  [ "$(printf '%s\n' "$(_staged_other)" | cut -f1)" = "160000 ${other_fresh} 0" ] || return 1
+  return 0
 }
 t_case "forcing the declared branch instead of the remote default breaks the acceptance fixture"
 t_assert_ok _accept_default "${PIN}"
