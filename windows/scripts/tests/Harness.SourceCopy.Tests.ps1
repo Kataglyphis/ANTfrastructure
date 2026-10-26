@@ -44,6 +44,10 @@ foreach ($rel in 'fixture.txt') {
             Assert-False (Test-Path -LiteralPath $root)
             Assert-Throws { Invoke-TestSourceCopyLoop -Loop '$x = 1' -Root $root -Files @{} -SourceVariableName repoRoot -DestinationVariableName repoRoot } -MessagePattern 'must differ'
             Assert-False (Test-Path -LiteralPath $root)
+            Assert-Throws { Invoke-TestSourceCopyLoop -Loop '$x = 1' -Root $root -Files @{} -SourceVariableName repoRoot } -MessagePattern 'Invalid source-copy variable name'
+            Assert-Throws { Invoke-TestSourceCopyLoop -Loop '$x = 1' -Root $root -Files @{} -SourceVariableName 'bad-name' -DestinationVariableName Destination } -MessagePattern 'Invalid source-copy variable name'
+            Assert-Throws { Invoke-TestSourceCopyLoop -Loop '$x = 1' -Root $root -SourceVariableName repoRoot -DestinationVariableName Destination } -MessagePattern 'loop, root and files are required'
+            Assert-False (Test-Path -LiteralPath $root)
         }
     }
 }

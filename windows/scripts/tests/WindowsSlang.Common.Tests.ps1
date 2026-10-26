@@ -58,6 +58,35 @@ Describe 'WindowsSlang.Common' {
       return [pscustomobject]@{ Owner = $owner; Consumer = $consumer }
     }
 
+    function New-SlangParityFixture {
+      param([string]$Prefix, [string[]]$Outputs,
+        [Collections.IDictionary]$Generated = @{}, [Collections.IDictionary]$Pinned = @{})
+      $combined = Join-Path $script:root "$Prefix-combined"
+      $destination = Join-Path $script:root "$Prefix-pinned"
+      New-Item -ItemType Directory -Force -Path $combined, (Join-Path $destination 'crate') | Out-Null
+      $mappings = @($Outputs | ForEach-Object { [pscustomobject]@{ out = $_; dst = 'crate' } })
+      $fixture = [pscustomobject]@{ Combined = $combined; Destination = $destination; Mappings = $mappings }
+      foreach ($name in $Generated.Keys) {
+        Set-SlangParityContent -Fixture $fixture -Name $name -Text ([string]$Generated[$name]) -Generated
+      }
+      foreach ($name in $Pinned.Keys) {
+        Set-SlangParityContent -Fixture $fixture -Name $name -Text ([string]$Pinned[$name])
+      }
+      return $fixture
+    }
+
+    function Invoke-SlangFixtureParity {
+      param([object]$Fixture, [string]$ExpectedRoot)
+      $root = if ($ExpectedRoot) { $ExpectedRoot } else { $Fixture.Destination }
+      Assert-SlangWgslOutputsMatch -Mappings $Fixture.Mappings -CombinedOutputDir $Fixture.Combined -DestinationRoot $root
+    }
+
+    function Set-SlangParityContent {
+      param([object]$Fixture, [string]$Name, [string]$Text, [switch]$Generated)
+      $path = if ($Generated) { Join-Path $Fixture.Combined "combined_$Name" } else { Join-Path $Fixture.Destination "crate/$Name" }
+      [IO.File]::WriteAllText($path, $Text)
+    }
+
     $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSlang.Common.psm1'
     Import-Module $modulePath -Force
 
@@ -134,32 +163,22 @@ Describe 'WindowsSlang.Common' {
   # Parity checks manifest rows, not a compiler that never ran or a missing row in that manifest.
   Context 'Assert-SlangWgslOutputsMatch' {
     It 'accepts newline-only differences across every manifest destination' {
-      $combined = Join-Path $script:root 'parity-newlines-combined'
-      $destination = Join-Path $script:root 'parity-newlines-pinned'
-      New-Item -ItemType Directory -Force -Path $combined, (Join-Path $destination 'crate') | Out-Null
-      [IO.File]::WriteAllText((Join-Path $combined 'combined_a.wgsl'), "fn a() {}`n")
-      [IO.File]::WriteAllText((Join-Path $combined 'combined_b.wgsl'), "fn b() {}`n")
-      [IO.File]::WriteAllText((Join-Path $destination 'crate/a.wgsl'), "fn a() {}`r`n")
-      [IO.File]::WriteAllText((Join-Path $destination 'crate/b.wgsl'), "fn b() {}`r`n")
-      $rows = @([pscustomobject]@{ out = 'a.wgsl'; dst = 'crate' }, [pscustomobject]@{ out = 'b.wgsl'; dst = 'crate' })
-      $verified = @(Assert-SlangWgslOutputsMatch -Mappings $rows -CombinedOutputDir $combined -DestinationRoot $destination)
+      $fixture = New-SlangParityFixture -Prefix 'parity-newlines' -Outputs @('a.wgsl', 'b.wgsl') `
+        -Generated @{ 'a.wgsl' = "fn a() {}`n"; 'b.wgsl' = "fn b() {}`n" } `
+        -Pinned @{ 'a.wgsl' = "fn a() {}`r`n"; 'b.wgsl' = "fn b() {}`r`n" }
+      $verified = @(Invoke-SlangFixtureParity -Fixture $fixture)
       $verified.Count | Should -Be 2
       $verified[0].Name | Should -Be 'a.wgsl'
-      $verified[1].Generated | Should -Be (Join-Path $combined 'combined_b.wgsl')
+      $verified[1].Generated | Should -Be (Join-Path $fixture.Combined 'combined_b.wgsl')
     }
 
     It 'fails on a changed non-newline byte and an omitted emitted file' {
-      $combined = Join-Path $script:root 'parity-mutant-combined'
-      $destination = Join-Path $script:root 'parity-mutant-pinned'
-      New-Item -ItemType Directory -Force -Path $combined, (Join-Path $destination 'crate') | Out-Null
-      [IO.File]::WriteAllText((Join-Path $combined 'combined_a.wgsl'), "fn a() {}`n")
-      [IO.File]::WriteAllText((Join-Path $destination 'crate/a.wgsl'), "fn wrong() {}`n")
-      [IO.File]::WriteAllText((Join-Path $destination 'crate/b.wgsl'), "fn b() {}`n")
-      $rows = @([pscustomobject]@{ out = 'a.wgsl'; dst = 'crate' }, [pscustomobject]@{ out = 'b.wgsl'; dst = 'crate' })
-      { Assert-SlangWgslOutputsMatch -Mappings $rows -CombinedOutputDir $combined -DestinationRoot $destination } |
+      $fixture = New-SlangParityFixture -Prefix 'parity-mutant' -Outputs @('a.wgsl', 'b.wgsl') `
+        -Generated @{ 'a.wgsl' = "fn a() {}`n" } -Pinned @{ 'a.wgsl' = "fn wrong() {}`n"; 'b.wgsl' = "fn b() {}`n" }
+      { Invoke-SlangFixtureParity -Fixture $fixture } |
         Should -Throw -ExpectedMessage '*a.wgsl differs*missing generated b.wgsl*'
-      [IO.File]::WriteAllText((Join-Path $destination 'crate/a.wgsl'), "fn a() {}`r")
-      { Assert-SlangWgslOutputsMatch -Mappings $rows -CombinedOutputDir $combined -DestinationRoot $destination } |
+      Set-SlangParityContent -Fixture $fixture -Name 'a.wgsl' -Text "fn a() {}`r"
+      { Invoke-SlangFixtureParity -Fixture $fixture } |
         Should -Throw -ExpectedMessage '*a.wgsl differs*'
     }
 
@@ -174,13 +193,37 @@ Describe 'WindowsSlang.Common' {
     }
 
     It 'rejects invalid UTF-8 rather than comparing replacement characters' {
-      $combined = Join-Path $script:root 'parity-encoding-combined'
-      $destination = Join-Path $script:root 'parity-encoding-pinned'
-      New-Item -ItemType Directory -Force -Path $combined, (Join-Path $destination 'crate') | Out-Null
-      [IO.File]::WriteAllBytes((Join-Path $combined 'combined_a.wgsl'), [byte[]]@(0xff))
-      [IO.File]::WriteAllText((Join-Path $destination 'crate/a.wgsl'), 'fn a() {}')
-      { Assert-SlangWgslOutputsMatch -Mappings @([pscustomobject]@{ out = 'a.wgsl'; dst = 'crate' }) `
-          -CombinedOutputDir $combined -DestinationRoot $destination } | Should -Throw
+      $fixture = New-SlangParityFixture -Prefix 'parity-encoding' -Outputs @('a.wgsl') -Pinned @{ 'a.wgsl' = 'fn a() {}' }
+      [IO.File]::WriteAllBytes((Join-Path $fixture.Combined 'combined_a.wgsl'), [byte[]]@(0xff))
+      { Assert-SlangWgslOutputsMatch -Mappings $fixture.Mappings `
+          -CombinedOutputDir $fixture.Combined -DestinationRoot $fixture.Destination } | Should -Throw
+    }
+
+    It 'compares the original snapshot when compilation overwrites a pinned destination' {
+      $fixture = New-SlangParityFixture -Prefix 'parity-overwrite' -Outputs @('a.wgsl', 'b.wgsl') `
+        -Pinned @{ 'a.wgsl' = "fn pinned() {}`r`n"; 'b.wgsl' = "fn b() {}`n" }
+      $snapshot = Join-Path $script:root 'parity-overwrite-snapshot'
+      Copy-SlangPinnedWgslSnapshot -Mappings $fixture.Mappings -DestinationRoot $fixture.Destination -SnapshotRoot $snapshot
+      Set-SlangParityContent -Fixture $fixture -Name 'a.wgsl' -Text "fn changed() {}`n"
+      Set-SlangParityContent -Fixture $fixture -Name 'a.wgsl' -Text "fn changed() {}`n" -Generated
+      Set-SlangParityContent -Fixture $fixture -Name 'b.wgsl' -Text "fn b() {}`r`n" -Generated
+      @(Invoke-SlangFixtureParity -Fixture $fixture).Count | Should -Be 2
+      { Invoke-SlangFixtureParity -Fixture $fixture -ExpectedRoot $snapshot } |
+        Should -Throw -ExpectedMessage '*a.wgsl differs*'
+      [IO.File]::ReadAllText((Join-Path $snapshot 'crate/a.wgsl')) | Should -Be "fn pinned() {}`r`n"
+    }
+
+    It 'refuses missing pinned files and empty snapshot roots before allocation' {
+      $fixture = New-SlangParityFixture -Prefix 'parity-missing-pinned' -Outputs @('a.wgsl')
+      $snapshot = Join-Path $script:root 'parity-missing-snapshot'
+      { Copy-SlangPinnedWgslSnapshot -Mappings $fixture.Mappings -DestinationRoot $fixture.Destination -SnapshotRoot $snapshot } |
+        Should -Throw -ExpectedMessage '*Missing pinned WGSL before compilation*'
+      Test-Path -LiteralPath $snapshot | Should -BeFalse
+      InModuleScope WindowsSlang.Common {
+        { Get-SlangWgslDestinationPaths -Mappings @() -DestinationRoot 'unused' } | Should -Throw -ExpectedMessage '*no manifest mappings*'
+        { Get-SlangWgslDestinationPaths -Mappings @([pscustomobject]@{ out = 'a.wgsl'; dst = 'crate' }) -DestinationRoot '' } |
+          Should -Throw -ExpectedMessage '*destination root is empty*'
+      }
     }
   }
 

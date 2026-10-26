@@ -134,22 +134,66 @@ function Get-SlangShaderManifest {
     return $doc
 }
 
+function Resolve-SlangPinnedDestination {
+    param([string]$DestinationRoot, [string]$RelativeDir, [string]$Name)
+    $root = [IO.Path]::GetFullPath($DestinationRoot)
+    if ([IO.Path]::IsPathRooted($RelativeDir)) { throw "WGSL destination is not relative: $RelativeDir" }
+    $destination = [IO.Path]::GetFullPath((Join-Path (Join-Path $root $RelativeDir) $Name))
+    $relative = [IO.Path]::GetRelativePath($root, $destination)
+    if ([IO.Path]::IsPathRooted($relative) -or $relative -eq '..' -or
+        $relative.StartsWith(('..' + [IO.Path]::DirectorySeparatorChar), [StringComparison]::Ordinal)) {
+        throw "WGSL destination escapes the root: $RelativeDir/$Name"
+    }
+    return $destination
+}
+
+function Get-SlangWgslDestinationPaths {
+    param([object[]]$Mappings, [string]$DestinationRoot)
+    if ($null -eq $Mappings -or $Mappings.Count -eq 0) { throw 'WGSL output parity has no manifest mappings' }
+    if ([string]::IsNullOrWhiteSpace($DestinationRoot)) { throw 'WGSL destination root is empty' }
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($mapping in $Mappings) {
+        $name = [string]$mapping.out
+        if ($name -notmatch '^[^\\/]+\.wgsl$' -or -not $seen.Add($name)) { throw "Invalid or duplicate WGSL output name: $name" }
+        $relativeDir = [string]$mapping.dst
+        $destination = Resolve-SlangPinnedDestination -DestinationRoot $DestinationRoot -RelativeDir $relativeDir -Name $name
+        [pscustomobject]@{ Name = $name; RelativeDir = $relativeDir; Destination = $destination }
+    }
+}
+
+# The compiler overwrites pinned WGSL, so preserve its original bytes before invoking it.
+function Copy-SlangPinnedWgslSnapshot {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Mappings,
+        [Parameter(Mandatory)][string]$DestinationRoot,
+        [Parameter(Mandatory)][string]$SnapshotRoot
+    )
+    $paths = @(Get-SlangWgslDestinationPaths -Mappings $Mappings -DestinationRoot $DestinationRoot)
+    $missing = @($paths | Where-Object { -not (Test-Path -LiteralPath $_.Destination -PathType Leaf) })
+    if ($missing.Count -gt 0) { throw "Missing pinned WGSL before compilation: $($missing.Destination -join '; ')" }
+    if (Test-Path -LiteralPath $SnapshotRoot) { throw "WGSL snapshot root already exists: $SnapshotRoot" }
+    [IO.Directory]::CreateDirectory($SnapshotRoot) | Out-Null
+    foreach ($path in $paths) {
+        $target = Join-Path (Join-Path $SnapshotRoot $path.RelativeDir) $path.Name
+        [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target)) | Out-Null
+        [IO.File]::Copy($path.Destination, $target)
+    }
+}
+
 function Assert-SlangWgslOutputsMatch {
     param(
         [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Mappings,
         [Parameter(Mandatory)][string]$CombinedOutputDir,
         [Parameter(Mandatory)][string]$DestinationRoot
     )
-    if ($Mappings.Count -eq 0) { throw 'WGSL output parity has no manifest mappings' }
-    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $paths = @(Get-SlangWgslDestinationPaths -Mappings $Mappings -DestinationRoot $DestinationRoot)
     $utf8 = [Text.UTF8Encoding]::new($false, $true)
     $verified = [Collections.Generic.List[object]]::new()
     $problems = [Collections.Generic.List[string]]::new()
-    foreach ($mapping in $Mappings) {
-        $name = [string]$mapping.out
-        if ($name -notmatch '^[^\\/]+\.wgsl$' -or -not $seen.Add($name)) { throw "Invalid or duplicate WGSL output name: $name" }
+    foreach ($path in $paths) {
+        $name = $path.Name
         $generated = Join-Path $CombinedOutputDir "combined_$name"
-        $destination = Join-Path (Join-Path $DestinationRoot ([string]$mapping.dst)) $name
+        $destination = $path.Destination
         if (-not (Test-Path -LiteralPath $generated -PathType Leaf)) { $problems.Add("missing generated $name"); continue }
         if (-not (Test-Path -LiteralPath $destination -PathType Leaf)) { $problems.Add("missing pinned $destination"); continue }
         $emittedText = $utf8.GetString([IO.File]::ReadAllBytes($generated)).Replace("`r`n", "`n")
@@ -442,4 +486,4 @@ function Invoke-SlangShaderCompile {
 }
 
 Export-ModuleMember -Function Test-WgslVaryingsAreLocated, Test-SlangcVersionAtLeast, Resolve-Slangc,
-    Get-SlangIncludeArgument, Get-SlangShaderManifest, Assert-SlangWgslOutputsMatch, Resolve-SlangSourcePath, Invoke-SlangShaderCompile
+    Get-SlangIncludeArgument, Get-SlangShaderManifest, Copy-SlangPinnedWgslSnapshot, Assert-SlangWgslOutputsMatch, Resolve-SlangSourcePath, Invoke-SlangShaderCompile

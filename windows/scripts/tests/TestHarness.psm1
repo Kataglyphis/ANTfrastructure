@@ -587,11 +587,14 @@ function Get-TestSourceCopyLoopText {
 }
 
 function Invoke-TestSourceCopyLoop {
-    param([Parameter(Mandatory)][string]$Loop,
-        [Parameter(Mandatory)][string]$Root,
-        [Parameter(Mandatory)][Collections.IDictionary]$Files,
-        [Parameter(Mandatory)][ValidatePattern('^[A-Za-z_][A-Za-z0-9_]*$')][string]$SourceVariableName,
-        [Parameter(Mandatory)][ValidatePattern('^[A-Za-z_][A-Za-z0-9_]*$')][string]$DestinationVariableName)
+    param([string]$Loop, [string]$Root, [Collections.IDictionary]$Files,
+        [string]$SourceVariableName, [string]$DestinationVariableName)
+    if ([string]::IsNullOrWhiteSpace($Loop) -or [string]::IsNullOrWhiteSpace($Root) -or $null -eq $Files) {
+        throw 'Source-copy loop, root and files are required'
+    }
+    foreach ($name in @($SourceVariableName, $DestinationVariableName)) {
+        if ($name -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') { throw "Invalid source-copy variable name: $name" }
+    }
     if ($SourceVariableName -eq $DestinationVariableName) { throw 'Source and destination variables must differ' }
     $source = 'param($' + $SourceVariableName + ', $' + $DestinationVariableName + ")`n" + $Loop
     $null = ConvertTo-TestScriptAst -Text $source -ErrorLabel 'Invoke-TestSourceCopyLoop'

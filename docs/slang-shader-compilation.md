@@ -61,16 +61,18 @@ the final failure and artifact counts. The Pester suite checks cache reuse,
 imported-manifest staleness, missing-source failure and destination preservation
 when a combined emit is invalid.
 
+`Copy-SlangPinnedWgslSnapshot` preserves every mapped destination before the
+compiler can overwrite it; the caller removes that temporary tree on every exit.
 `Assert-SlangWgslOutputsMatch` is the optional Windows CI proof after a combined
 emit. Pass the composed manifest's `wgslMap`, its combined output directory and
-the pinned destination root. It requires a nonempty map, a file for every
+the snapshot root. It requires a nonempty map, a file for every
 `combined_<out>` name and every pinned `dst/<out>` file, then compares strict
 UTF-8 content after CRLF-to-LF normalization. Missing, duplicate or changed
 outputs fail. A caller that needs freshness must clear its expected combined
 files before compilation, because this assertion cannot identify an old cache
-file by itself. Ballett does that before its ARM test build and carries the
-emits into the native artifact; the local source-time guard still applies to a
-single working tree.
+file by itself. Ballett snapshots the pinned files, clears the expected combined
+outputs, then compiles and carries the verified emits into the ARM test artifact.
+The local source-time guard still applies to a single working tree.
 
 ## Manifest schema
 
