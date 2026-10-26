@@ -112,24 +112,17 @@ rm -f "${WORK}/s.sock"
 t_assert_eq "" "$(PATH="${WORK}/bin:${PATH}" SCCACHE_SERVER_UDS="${WORK}/s.sock" bash "${LIB}" drain 2>&1)" "no socket, no server to ask"
 
 t_case "every Dockerfile RUN on the sccache mount carries the secret, the library, and ends in the drain"
-bad="$(python3 - "${LINUX_DIR}" <<'EOF'
+bad="$(PYTHONPATH="${TESTS_DIR}" python3 - "${LINUX_DIR}" <<'EOF'
 import glob, os, sys
+from dockerfile_runs import dockerfile_runs
 for f in sorted(glob.glob(os.path.join(sys.argv[1], "Dockerfile.*"))):
     if f.endswith("Dockerfile.base"):  # base only initialises the caches; nothing there compiles
         continue
-    lines = open(f).read().split("\n")
-    i = 0
-    while i < len(lines):
-        if lines[i].startswith("RUN"):
-            s = i
-            while lines[i].rstrip().endswith("\\") or lines[i].lstrip().startswith("#"):
-                i += 1
-            b = "\n".join(lines[s:i + 1])
-            if "target=/var/cache/sccache" in b:
-                lib = "source=linux/scripts/01-core," in b or "source=linux/scripts/01-core/sccache-s3-level.sh," in b
-                if not (lib and "type=secret,id=sccache_s3,required=false" in b and b.rstrip().endswith("sccache-s3-level.sh drain")):
-                    print("%s:%d" % (os.path.basename(f), s + 1))
-        i += 1
+    for s, b in dockerfile_runs(f):
+        if "target=/var/cache/sccache" in b:
+            lib = "source=linux/scripts/01-core," in b or "source=linux/scripts/01-core/sccache-s3-level.sh," in b
+            if not (lib and "type=secret,id=sccache_s3,required=false" in b and b.rstrip().endswith("sccache-s3-level.sh drain")):
+                print("%s:%d" % (os.path.basename(f), s))
 EOF
 )"
 t_assert_eq "" "${bad}" "RUNs missing the secret mount, the library or the closing drain"
@@ -143,6 +136,7 @@ t_case "the chain hands the host file over as one secret only when it is private
 _drv() {
   local fn
   fn="$(t_fn_src "${TESTS_DIR}/../01-core/cross-stage-build.sh" _cross_build_append_sccache_s3_secret)" || return 1
+  fn+=$'\n'"$(t_fn_src "${TESTS_DIR}/../01-core/build-helpers.sh" host_secret_file_ready)" || return 1
   KATAGLYPHIS_SCCACHE_S3_FILE="${WORK}/host.env" bash -c 'eval "$1"; _rc="$2"
     warn() { echo "WARN $*"; }; info() { echo "INFO $*"; }
     sccache_s3_endpoint_reachable() { return "${_rc}"; }

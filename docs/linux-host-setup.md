@@ -149,8 +149,8 @@ Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for
 - **Registry access** (GHCR) for pushing intermediate and final images
 - **Disk space**: far more than the ~50GB+ this line used to say. The chain's disk
   preflight (`_chain_disk_preflight` in `build-cross-chain.sh`) budgets 60 GB per
-  arch for a run from `base` (40 GB from `media` on), plus ~120 GB for the runtime
-  lane (`CROSS_RUNTIME_LANE_GB`), and warns when free space is below the sum; the
+  arch for a run from `base` (40 GB from `media` on), plus the runtime lane's sum (165 GB amd64,
+  105 GB per other arch, plus a 40 GB floor; `CROSS_RUNTIME_LANE_GB`), and warns when free space is below the sum; the
   runtime lane refuses to start without its share
 - **Python 3** for digest resolution (`registry-digest.py`)
 

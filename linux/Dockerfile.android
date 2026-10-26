@@ -78,7 +78,8 @@ COPY --chmod=755 linux/scripts/01-core/downloads.sh linux/scripts/01-core/downlo
 COPY --chmod=755 linux/scripts/01-core/compiler-resolution.sh /opt/scripts/core/compiler-resolution.sh
 
 # Arch-independent payload, so no arch key; the id names every android-sdk.sh pin (test-android-sdk-cache-key.sh).
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+LABEL kataglyphis.step=android-sdk
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/android-sdk-shared,id=android-sdk-shared-${ANDROID_SDK_VERSION}-${ANDROID_NDK_VERSION}-${ANDROID_COMPILE_SDK}-${ANDROID_BUILD_TOOLS}-${ANDROID_EXTRA_COMPILE_SDK}-${ANDROID_EXTRA_BUILD_TOOLS}-${ANDROID_CMAKE_VERSION},sharing=locked \
     --mount=type=tmpfs,target=/tmp \
@@ -100,7 +101,8 @@ ARG ANDROID_LIB=gstreamer
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
 # cerbero state on a cachemount so a failed attempt resumes; every id key matters. See docs/build-cache-tiers.md § 1.1 The cerbero state cachemount (CERB-CACHE)
-RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
+LABEL kataglyphis.step=android-gstreamer
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
@@ -125,7 +127,8 @@ ARG ANDROID_LIB=onnxruntime
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
 # The cerbero mount is inert here; it keeps the five library stages identical for verify-android-stage-parity.sh.
-RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
+LABEL kataglyphis.step=android-onnx
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
@@ -150,7 +153,8 @@ ARG ANDROID_LIB=litert
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
 # The cerbero mount is inert here; it keeps the five library stages identical for verify-android-stage-parity.sh.
-RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
+LABEL kataglyphis.step=android-litert
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
@@ -175,7 +179,8 @@ ARG ANDROID_LIB=opencv
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
 # The cerbero mount is inert here; it keeps the five library stages identical for verify-android-stage-parity.sh.
-RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
+LABEL kataglyphis.step=android-opencv
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
@@ -200,7 +205,8 @@ ARG ANDROID_LIB=iree
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
 # The cerbero mount is inert here; it keeps the five library stages identical for verify-android-stage-parity.sh.
-RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
+LABEL kataglyphis.step=android-iree
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
@@ -225,7 +231,8 @@ ARG FLUTTER_RUST_BRIDGE_VERSION=2.13.0
 ARG WEB_LANE_TOOLS_CROSS_ARCHES=riscv64
 
 # 01-core per file (WLT_CORE_FILES): android-sdk's /opt/scripts/core is an older copy.
-RUN --mount=type=bind,source=linux/scripts/06-packaging/web-lane-tools.sh,target=/tmp/wlt/06-packaging/web-lane-tools.sh,ro \
+LABEL kataglyphis.step=web-lane-tools
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/06-packaging/web-lane-tools.sh,target=/tmp/wlt/06-packaging/web-lane-tools.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/tmp/wlt/01-core/cross-env.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/wlt/01-core/platform.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/wlt/01-core/ubuntu-mirror.sh,ro \
@@ -258,7 +265,8 @@ COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packagi
 COPY --chmod=755 linux/scripts/06-packaging/smoke-android.sh /opt/scripts/packaging/smoke-android.sh
 COPY --chmod=755 linux/scripts/06-packaging/swap-native-gcc.sh /opt/scripts/packaging/swap-native-gcc.sh
 COPY --chmod=755 linux/scripts/01-core/native-gcc-system-paths.sh /opt/scripts/core/native-gcc-system-paths.sh
-RUN set -euo pipefail; \
+LABEL kataglyphis.step=native-gcc-swap
+RUN --mount=type=secret,id=asset_mirror,required=false set -euo pipefail; \
     if [ -d /opt/python-cross ] && [ ! -f /opt/python-cross/.keep ]; then \
         touch /opt/python-cross/.keep; fi; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
@@ -267,10 +275,12 @@ RUN set -euo pipefail; \
     bash /opt/scripts/packaging/swap-native-gcc.sh
 
 # A broken SDK/NDK fails the build here; the Vulkan smoke is not run, as no build stage has the full Vulkan SDK.
-RUN set -euo pipefail; \
+LABEL kataglyphis.step=android-smoke
+RUN --mount=type=secret,id=asset_mirror,required=false set -euo pipefail; \
     bash /opt/scripts/packaging/smoke-android.sh
 
 # Ensure /opt/llvm-target exists for downstream stages (package build expects it)
+LABEL kataglyphis.step=llvm-target-dir
 RUN mkdir -p /opt/llvm-target
 
 # Last: above the GCC swap, a changed producer output would re-run that prefix-sized copy.

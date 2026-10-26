@@ -108,14 +108,14 @@ _manifest_wrapper_gate() {
 
 # Refuse to shrink a published index: a coherent single-arch run would replace a 3-arch :latest.
 _manifest_completeness_gate() {
-  local published published_err
+  local published_arches published_err rc=0 index="${RUNTIME_INDEX_ARCHES:-${TARGET_ARCHES}}"
   published_err="$(mktemp)" || return 1
-  # Only a 404 means nothing to protect; any other failure is "could not check", never "safe".
-  if ! published="$("${NERDCTL_BIN:-nerdctl}" manifest inspect "${IMAGE_NAME}" 2>"${published_err}")"; then
-    if grep -qE -e "not found|manifest unknown|MANIFEST_UNKNOWN|404" "${published_err}"; then
-      rm -f "${published_err}"
-      return 0
-    fi
+  published_arches="$(runtime_published_arches "${IMAGE_NAME}" 2>"${published_err}")" || rc=$?
+  if [ "${rc}" -eq 3 ]; then
+    rm -f "${published_err}"
+    return 0
+  fi
+  if [ "${rc}" -ne 0 ]; then
     warn "[manifest] could NOT read ${IMAGE_NAME} from the registry, so this gate cannot tell whether a push would drop an arch:"
     warn "[manifest] $(tail -1 "${published_err}" 2>/dev/null)"
     warn "[manifest] refusing rather than shrinking blind (RUNTIME_MANIFEST_COMPLETENESS=0 disables)."
@@ -124,14 +124,12 @@ _manifest_completeness_gate() {
   fi
   rm -f "${published_err}"
   # Compare sets, not counts: swapping {riscv64} for {amd64} keeps the count and drops an arch.
-  local published_arches want_arches dropped
-  published_arches="$(printf '%s\n' "${published}" \
-    | sed -n 's/.*"architecture"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | LC_ALL=C sort -u)"
-  want_arches="$(arch_list_to_words "${TARGET_ARCHES}" | tr ' ' '\n' | grep -v '^$' | LC_ALL=C sort -u)"
+  local want_arches dropped
+  want_arches="$(arch_list_to_words "${index}" | tr ' ' '\n' | grep -v '^$' | LC_ALL=C sort -u)"
   dropped="$(LC_ALL=C comm -23 <(printf '%s\n' "${published_arches}") <(printf '%s\n' "${want_arches}") | tr '\n' ' ')"
   [ -n "${dropped// /}" ] || return 0
 
-  warn "[manifest] ${IMAGE_NAME} is PUBLISHED with [$(printf '%s' "${published_arches}" | tr '\n' ' ')] but this run writes [${TARGET_ARCHES}]."
+  warn "[manifest] ${IMAGE_NAME} is PUBLISHED with [$(printf '%s' "${published_arches}" | tr '\n' ' ')] but this run writes [${index}]."
   warn "[manifest] pushing it would DROP: ${dropped}"
   if [ "${FORCE_MANIFEST}" -eq 1 ]; then
     warn "[manifest] --force set: shrinking ${IMAGE_NAME} anyway."
@@ -144,7 +142,7 @@ _manifest_completeness_gate() {
 # No skip switch. docs/build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting
 _manifest_image_env_gate() {
   local arch tag env_lines failed=""
-  for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
+  for arch in $(arch_list_to_words "${RUNTIME_INDEX_ARCHES:-${TARGET_ARCHES}}"); do
     tag="$(runtime_wrapper_tag "${arch}")" || { warn "[manifest] image-env gate: no wrapper tag for ${arch}"; return 1; }
     # Pull only when MISSING, as the content gate does: a pull re-points an existing tag.
     if ! image_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"; then
@@ -163,13 +161,21 @@ _manifest_image_env_gate() {
   return 1
 }
 
+# <array>: one ref per child; a reused child goes in by the digest its gates read, never by its mutable tag.
+_manifest_index_refs() {
+  local -n _mir_out="$1"
+  local arch ref
+  for arch in $(arch_list_to_words "${RUNTIME_INDEX_ARCHES:-${TARGET_ARCHES}}"); do
+    if [ -z "${RUNTIME_REUSED_REFS:-}" ] || ! ref="$(runtime_reused_ref "${arch}")"; then
+      ref="$(runtime_wrapper_tag "${arch}")"
+    fi
+    _mir_out+=("${ref}")
+  done
+}
+
 create_manifest() {
   local refs=()
-  local arch
-
-  for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
-    refs+=("$(runtime_wrapper_tag "${arch}")")
-  done
+  _manifest_index_refs refs
 
   if is_dry_run; then
     log "[DRY RUN] would create manifest ${IMAGE_NAME} from refs: ${refs[*]}"
@@ -178,6 +184,10 @@ create_manifest() {
 
   # Before every switchable gate below, and on --manifest-only too: none of them waives this one.
   _manifest_image_env_gate || err "manifest image-env gate refused ${IMAGE_NAME}: a wrapper's ENV carries a build-host setting (see above)"
+  # No switch: the coherence gate's run-id check below covers only the children this run built.
+  if [ -n "${RUNTIME_REUSED_REFS:-}" ]; then
+    runtime_reuse_recheck || err "manifest reuse gate refused ${IMAGE_NAME}: a reused child moved or no longer matches this run's build key (see above)"
+  fi
 
   # Refuse a mixed/stale-generation index unless --force.
   if [ "${RUNTIME_MANIFEST_COHERENCE:-1}" = "1" ]; then
@@ -317,7 +327,7 @@ _manifest_gate_jobs() {
 _manifest_each_arch() {
   local label="$1" script="$2" jobs arch
   local -a arches=()
-  mapfile -t arches < <(arch_list_to_words "${TARGET_ARCHES}" | sed '/^$/d')
+  mapfile -t arches < <(arch_list_to_words "${RUNTIME_INDEX_ARCHES:-${TARGET_ARCHES}}" | sed '/^$/d')
   jobs="$(_manifest_gate_jobs "${#arches[@]}")" || return 2
   if [ "${jobs}" -gt 1 ]; then
     _manifest_gates_parallel "${label}" "${script}" "${jobs}" "${arches[@]}"
@@ -358,15 +368,18 @@ _manifest_gates_parallel() {
 
 # Build-only half of main(), skipped by --manifest-only/--repair.
 _manifest_build_and_smoke() {
-  # Foreign wrappers build under QEMU, so emulators must exist before the build loop.
-  ensure_foreign_binfmt "${TARGET_ARCHES}"
+  # Foreign wrappers build under QEMU, so emulators must exist before the build loop; reused children boot in the smoke.
+  ensure_foreign_binfmt "${RUNTIME_INDEX_ARCHES:-${TARGET_ARCHES}}"
+  # After binfmt, which its foreign apt plans run under; before any arch spends hours.
+  runtime_input_preflight || return $?
 
   runtime_push_queue_start || return $?
   run_parallel_arch_loop runtime_wheels_arch_chain "$(arch_loop_flag_prefix runtime-arch-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
+  runtime_reuse_pull || return 1
 
   # Smoke before the index goes live so a broken image never ships as :latest; queued pushes stream meanwhile.
   if [ "${RUNTIME_IMAGE_SMOKE}" = "1" ]; then
-    [ "${_BINFMT_ENSURED:-0}" = "1" ] || ensure_foreign_binfmt "${TARGET_ARCHES}"
+    [ "${_BINFMT_ENSURED:-0}" = "1" ] || ensure_foreign_binfmt "${RUNTIME_INDEX_ARCHES:-${TARGET_ARCHES}}"
     # Every arch's content gate before any boot smoke: a stale wrapper boots green too. docs/cross-build-verification.md#verify-the-shipped-bytes-never-the-push
     _manifest_each_arch "Wrapper content gate" "${REPO_ROOT}/linux/scripts/verify-shipped-wrapper.sh"
     _manifest_each_arch "Runtime-image smoke" "${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh"
@@ -384,12 +397,49 @@ _manifest_gates_only() {
   fi
 }
 
+# Prints drop or keep; an unknown RUNTIME_DROP_PUSHED_IMAGES is rc 2, so a typo stops the lane at its start.
+_manifest_drop_mode() {
+  runtime_switch_mode RUNTIME_DROP_PUSHED_IMAGES 1 drop keep "drop after the push" "keep them local"
+}
+
+# After the last local reader (the gates, then the index's image-env gate). docs/build-cache-tiers.md#pushed-runtime-images-leave-the-host
+_manifest_drop_pushed_images() {
+  local mode arch wrapper tag kept=0 dropped=0
+  mode="$(_manifest_drop_mode)" || return 2
+  [ "${BUILD_IMAGES}" -eq 1 ] || return 0
+  # A --no-push run's local images are its only copy.
+  if [ "${mode}" = keep ] || [ "${CROSS_NO_PUSH:-0}" = "1" ] || ! runtime_pushes_wrapper_images || is_dry_run; then
+    log "[runtime-drop] keeping the local runtime images (RUNTIME_DROP_PUSHED_IMAGES=${RUNTIME_DROP_PUSHED_IMAGES:-1}, PUSH_IMAGES=${PUSH_IMAGES:-0}, CROSS_NO_PUSH=${CROSS_NO_PUSH:-0})"
+    return 0
+  fi
+  for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
+    wrapper="$(runtime_wrapper_tag "${arch}")" || return 1
+    for tag in "${wrapper}" "${wrapper}-tmp-reduced-platform" "$(runtime_package_tag "${arch}")"; do
+      image_exists "${NERDCTL_BIN:-nerdctl}" "${tag}" || continue
+      # Advisory: a refused rmi (in use) costs disk, never the published index.
+      if remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"; then
+        dropped=$(( dropped + 1 ))
+      else
+        kept=$(( kept + 1 ))
+        warn "[runtime-drop] ${tag} would not remove; it stays local"
+      fi
+    done
+  done
+  log "[runtime-drop] removed ${dropped} pushed runtime image(s) from the local store, ${kept} refused (RUNTIME_DROP_PUSHED_IMAGES=0 keeps them)"
+}
+
 _manifest_check_freshness() {
   # Advisory, since it runs after the push; MANIFEST_FRESHNESS_STRICT=1 makes it fatal.
   if [ "${MANIFEST_FRESHNESS_GATE:-1}" = "1" ] \
      && [ -x "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" ]; then
+    local arch var reused=""
+    while read -r arch _; do
+      [ -n "${arch}" ] || continue
+      var="$(runtime_build_key_varname "${arch}")"
+      reused="${reused:+${reused},}${arch}:${!var:-}"
+    done <<< "${RUNTIME_REUSED_REFS:-}"
     # --tag: the default :latest is never touched by a host-infixed run.
-    if EXPECT_RUN_ID="${CROSS_RUN_ID:-}" \
+    if EXPECT_RUN_ID="${CROSS_RUN_ID:-}" EXPECT_REUSED="${reused}" \
        bash "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" --tag "${IMAGE_NAME##*:}"; then
       log "[manifest] freshness verified: every child matches its per-arch tag and shares this run's id"
     elif [ "${MANIFEST_FRESHNESS_STRICT:-0}" = "1" ]; then
@@ -397,6 +447,23 @@ _manifest_check_freshness() {
     else
       warn "[manifest] freshness check FAILED — the published index does not match this run (advisory; set MANIFEST_FRESHNESS_STRICT=1 to make this fatal)"
     fi
+  fi
+  return 0
+}
+
+# Stamps this run's build keys, then, on a publishing build, keeps each published arch outside the targets that still matches.
+_manifest_plan_reuse() {
+  local -a arches=()
+  runtime_reuse_mode >/dev/null || exit 2
+  RUNTIME_INDEX_ARCHES="${TARGET_ARCHES}"
+  # A dry run builds nothing to stamp and must not reach the registry.
+  is_dry_run && return 0
+  mapfile -t arches < <(arch_list_to_words "${TARGET_ARCHES}" | sed '/^$/d')
+  runtime_build_keys_export "${arches[@]}"
+  [ "${BUILD_IMAGES}" -eq 1 ] && [ "${CREATE_MANIFEST}" -eq 1 ] || return 0
+  runtime_reuse_plan "${IMAGE_NAME}" "${TARGET_ARCHES}"
+  if [ -n "${RUNTIME_REUSED_REFS}" ]; then
+    log "[runtime-reuse] the index lists [${RUNTIME_INDEX_ARCHES}]; every gate reads every child (RUNTIME_REUSE_CHILDREN=0 rebuilds instead)"
   fi
   return 0
 }
@@ -428,6 +495,7 @@ main() {
   export CROSS_BUILD_DATE CROSS_VCS_REF
   # The app too: every arch of one index builds the same OrchestrANT commit.
   runtime_resolve_app_ref
+  _manifest_drop_mode >/dev/null || exit 2
 
   _manifest_exit_after_gates_if_requested
 
@@ -436,6 +504,7 @@ main() {
     log "CROSS_NO_PUSH=1 — skipping multi-arch manifest creation (no pushed per-arch refs to index)"
     CREATE_MANIFEST=0
   fi
+  _manifest_plan_reuse
 
   # Everything after this publishes an index over wrappers that already exist.
   if [ "${BUILD_IMAGES}" -eq 1 ]; then
@@ -450,6 +519,7 @@ main() {
     create_manifest
     _manifest_check_freshness
   fi
+  _manifest_drop_pushed_images
 }
 
 main "$@"

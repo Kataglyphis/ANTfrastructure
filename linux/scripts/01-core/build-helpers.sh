@@ -93,10 +93,38 @@ append_runtime_accelerator_build_args() {
   append_optional_build_arg "$1" ENABLE_TENSORRT "${ENABLE_TENSORRT:-}"
 }
 
+# <file> <what> <hint> <NAME...>: 0 when a host secret file is private and sets every NAME; otherwise says why and returns 1.
+host_secret_file_ready() {
+  local file="$1" what="$2" hint="$3" name
+  shift 3
+  [ -f "${file}" ] || return 1
+  if [ -n "$(find "${file}" -perm /077 2>/dev/null)" ]; then
+    printf '[WARN] %s: %s is readable by others (chmod 600 it) -- building without it\n' "${what}" "${file}" >&2
+    return 1
+  fi
+  for name in "$@"; do
+    if ! grep -q "^${name}=." "${file}"; then
+      printf '[WARN] %s: %s has no %s%s -- building without it\n' "${what}" "${file}" "${name}" "${hint:+ (${hint})}" >&2
+      return 1
+    fi
+  done
+  return 0
+}
+
+# The host's asset mirror as one BuildKit secret, so neither its endpoint nor its key re-keys a RUN: docs/linux-cross-builds.md#the-asset-mirror
+append_asset_mirror_secret() {
+  local -n _aams_out=$1
+  local file="${KATAGLYPHIS_ASSET_MIRROR_FILE:-${XDG_CONFIG_HOME:-${HOME:-/root}/.config}/kataglyphis/asset-mirror.env}"
+  case "${KATAGLYPHIS_ASSET_MIRROR:-on}" in 0|off|false|no) return 0 ;; esac
+  host_secret_file_ready "${file}" "asset mirror" "" ASSET_MIRROR_URL || return 0
+  _aams_out+=(--secret "id=asset_mirror,src=${file}")
+}
+
 append_common_build_args() {
   local -n _acba_out=$1
   append_mirror_build_args_from_env _acba_out
   append_version_build_args _acba_out "${2:-}"
+  append_asset_mirror_secret _acba_out
 }
 
 image_exists() {

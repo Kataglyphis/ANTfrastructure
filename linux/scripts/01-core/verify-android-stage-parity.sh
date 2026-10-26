@@ -17,6 +17,7 @@ extract_normalized() {  # extract_normalized <stage-name>
     grab {
       if ($0 ~ /^[[:space:]]*#/ || $0 ~ /^[[:space:]]*$/) next   # comments/blanks
       sub(/^ARG ANDROID_LIB=.*/, "ARG ANDROID_LIB=<LIB>")
+      if ($0 == "LABEL kataglyphis.step=" stage) $0 = "LABEL kataglyphis.step=<STAGE>"
       print
     }
   ' "${DOCKERFILE}"

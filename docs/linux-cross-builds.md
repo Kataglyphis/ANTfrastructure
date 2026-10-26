@@ -412,6 +412,37 @@ what the check tells you to do):
 > run internally consistent; the **ancestry check** is the cross-run half. Neither
 > subsumes the other.
 
+### The asset mirror
+
+A pinned release asset (shellcheck, hadolint, cmake, mold, …) comes from GitHub, so a
+GitHub outage used to fail an arch: on 2026-10-21 shellcheck's aarch64 asset answered
+HTTP 500 for a minute and the arm64 wrapper died (CON153). Since 2026-10-26 every
+`download_verified_file` asks the build hosts' own Garage bucket first, under
+`<ASSET_MIRROR_URL>/<sha256>/<file name>`, and falls back to the upstream URL. The pinned
+sha256 stays the only gate: a mirrored copy that does not match is deleted and upstream's
+is fetched, so the mirror can add availability and nothing else.
+
+| Knob | Default | Effect |
+|---|---|---|
+| `KATAGLYPHIS_ASSET_MIRROR_FILE` | `~/.config/kataglyphis/asset-mirror.env` | The host's mirror config (`ASSET_MIRROR_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`), mode 600. |
+| `KATAGLYPHIS_ASSET_MIRROR` | `on` | `off` / `0` builds without the secret and fetches upstream only. |
+
+- **How it reaches a RUN.** `append_common_build_args` (`build-helpers.sh`) passes the file as
+  the BuildKit secret `asset_mirror`, so every cross stage and every runtime build gets it, and
+  every Linux RUN that reads a hub script mounts it with `required=false`. A secret is not part
+  of a cache key, and it lands in no layer, ENV or history: a host without the file builds the
+  same layers. A file others can read, or one without `ASSET_MIRROR_URL`, is not passed.
+- **What the log says.** `asset-mirror| hit <name>` for a served asset; `asset-mirror| miss
+  <sha256> <url> <file|stream>` for one fetched upstream, which is the line the fill script
+  reads; `asset-mirror| <base> unreachable (curl N)` once per shell, after which that shell
+  stops asking.
+- **Not covered.** `sh.rustup.rs` and uv's `install.sh` run through `verified_script_install`
+  and fetch their payloads from upstream themselves, so mirroring the scripts would buy
+  nothing. `download_file` callers without a pin, git clones and apt are not mirrored.
+
+The bucket, its keys and the fill script:
+[the asset mirror runbook in `linux/sccache-s3/README.md`](../linux/sccache-s3/README.md#the-asset-mirror).
+
 ## The command reference AGENTS.md used to carry
 
 Moved here on 2026-09-15, unedited except for this heading and the relative
@@ -770,8 +801,8 @@ A wrapper push needs no CPU, and at 5 MiB/s a ~20 GB wrapper takes ~1.2 h (2026-
   while the uploads stream. Each arch's output is printed whole, in arch order, after its gate ends.
   `RUNTIME_GATE_JOBS=N` caps how many arches run at once; `1` runs them in turn and stops at the
   first failure, as before. Content gates still all finish before any smoke starts.
-- **What it does not change.** The arches still *build* one after another, so the disk gate still
-  sizes for one wrapper (`CROSS_RUNTIME_LANE_GB`). With the push out of the way, the lane's floor
+- **What it does not change.** The arches still *build* one after another, but every wrapper stays
+  local until the gates, so the disk gate sums the arches ([`build-cache-tiers.md` § 3.2](build-cache-tiers.md#the-lane-entry-gate-sums-the-arches)). With the push out of the way, the lane's floor
   is the first build plus the summed upload. Parallel builds only help where builds outlast the
   uploads (CON126).
 
@@ -784,6 +815,73 @@ grep -nE '\[runtime-push\]|\[runtime-timing\]|\[runtime-gates\]' "$LOG"
 Look for `arch=arm64 step=base` (and arm64's `#N [...] RUN` lines) between
 `[runtime-push] arch=amd64 start` and `[runtime-push] arch=amd64 done`. `queue drained: N push(es),
 waited Ns` gives the upload time that was still on the critical path.
+
+### The runtime lane input preflight
+
+Two runs died hours in on an input that a few seconds could have checked (CON140). On 2026-10-20
+riscv64's package stage failed after about 5 h on a `resolute-updates` skew
+(`xvfb : Depends: xserver-common (>= 2:21.1.22-1ubuntu1.3) but it is not going to be installed`). On
+2026-10-21 arm64's package stage failed after about an hour on rustup-init 1.29.2, released the day
+before its pin moved.
+
+So `build-runtime-manifest.sh` runs `runtime_input_preflight` (`lib-runtime-preflight.sh`, host
+side) after the QEMU binfmt check and before any arch builds. It runs on every build path,
+`--from-stage runtime` included; `--manifest-only` and `--gates-only` build nothing and skip it.
+
+- **The apt plan, per arch, all at once.** `06-packaging/package-apt-plan.sh` runs in the runtime
+  base's own parent (`ubuntu:${UBUNTU_VERSION}@${UBUNTU_DIGEST}`, or `BASE_PARENT_IMAGE`) under
+  `--platform linux/<arch>`, with `01-core` and `06-packaging` mounted where `Dockerfile.package`
+  puts them. It applies the fast mirror when the run uses one, runs `apt-get update` against the
+  image's own sources (`-updates` and `-security` included), then `apt-get install --simulate
+  --no-install-recommends` over the set `select_dev_packages` computes: the package stage's strict
+  install, where the xvfb skew failed. A conflict prints apt's own lines and refuses the lane.
+- **The pinned installers.** `sh.rustup.rs` and `astral.sh/uv/install.sh` are downloaded again and
+  hashed against `RUSTUP_INIT_SHA256` and `UV_INSTALL_SH_SHA256`. A mismatch refuses the lane and
+  names the pin; an empty pin is the documented skip and says so.
+- `RUNTIME_INPUT_PREFLIGHT=0` builds without it, as before; `--dry-run` only reports what it would
+  check.
+
+What it does **not** cover: the tolerant lists (`install-deps.sh`, which retries per package and
+warns in the build), `install_pwsh`, Chrome and DeepStream, which install from their own sources,
+and the packages the base stage adds. The plan runs without the artifact's `/opt/gstreamer`, so
+`gtk4_dev_packages` asks for `libgtk-4-dev` on every arch: a superset of amd64's set. It checks
+the rustup-init script, not the per-arch binary that script fetches, which rustup verifies itself.
+Under QEMU the riscv64 plan took 8 min on 2026-10-26 (amd64: 15 s), almost all of it `apt-get
+update`; the arches run side by side, so the lane waits for the slowest one.
+
+### A failed arch re-runs alone
+
+On 2026-10-20 only riscv64 failed, yet the rerun rebuilt and re-uploaded amd64 and arm64 too (3–4 h),
+because the index accepted only children stamped with the current run-id (CON139). Since then a
+child is judged by **what built it**, not by the run that pushed it:
+
+- **The build key.** Each wrapper carries `org.kataglyphis.build-key` beside its run-id: a sha256 over
+  every build-context file `Dockerfile.base`, `Dockerfile.package` and `Dockerfile.torch` bind-mount
+  or `COPY` (listed by `linux/scripts/runtime-build-key.py`), `versions.env` and `tool-pins.env`, the
+  arch's forwarded version args, the arch's android parent **digest**, and the wrapper knobs in
+  `lib-runtime-reuse.sh` (`APP_REF` resolved to a commit, `BUILD_TYPE`, the GPU pair, the wheels
+  delivery, …). The helper fails closed: a source with a variable, a glob, a whole-context bind or a
+  missing file gives no key, and an arch without a key is never reused.
+- **The plan.** `build-runtime-manifest.sh` reads the published index first. A published arch
+  outside `--target-arches` joins this run's index only when its wrapper tag's key equals the key
+  this run computes for it; otherwise it is reported `stale` and the completeness gate refuses, as
+  before. So `--target-arches riscv64 --from-stage runtime` completes a 3-arch `:latest` whose
+  amd64 and arm64 children still match.
+- **Every gate reads every child.** Each reused child is pulled by its digest under its wrapper tag
+  after the build loop; the content gate, the boot smoke and the image-env gate run over it as over a
+  built one. Just before the index, `runtime_reuse_recheck` re-reads its key and digest from the
+  registry and refuses one that moved. The index lists it by that digest, never by its tag. The
+  coherence gate still requires one run-id across the children this run built.
+- **What it does not do.** A `--manifest-only` repair and a dry run never add older children. An
+  upstream input that is not pinned (an apt update since the earlier build) is not in the key, so a
+  reused child can carry an older package set than the rebuilt one; set `RUNTIME_REUSE_CHILDREN=0` to
+  have every child of the index come from one run, which then needs every arch in `--target-arches`.
+
+The log names each decision:
+
+```bash
+grep -nE '\[runtime-reuse\]' "$LOG"
+```
 
 ### The wrapper-smoke gate runs beside the wrapper build
 
@@ -1109,6 +1207,8 @@ destroys it, and what replacing it costs is in
 | `RUNTIME_WHEELS_SOURCE=auto\|image\|export` | Where the wrapper's torch RUN gets `/opt/wheels`: a bind mount of the android image (`image`; `auto`, the default, means `image`), or a sealed directory exported from that same image before each package build (`export`). [Both paths](#the-wrappers-wheelhouse-two-deliveries). |
 | `RUNTIME_ASYNC_PUSH=1\|0` | Each wrapper uploads in a background queue while the next arch builds (`1`, default), or inline as before 2026-10-21 (`0`). [The pusher](#the-wrapper-push-runs-beside-the-next-build). |
 | `RUNTIME_GATE_JOBS=N` | Arches whose content gate and smoke run at once (default: all); `1` gates them in turn. |
+| `RUNTIME_INPUT_PREFLIGHT=1\|0` | The runtime lane simulates each arch's package-stage apt set and re-hashes the pinned installers before it builds (`1`, default), or skips the check (`0`). [What it checks](#the-runtime-lane-input-preflight). |
+| `RUNTIME_REUSE_CHILDREN=1\|0` | A published child outside `--target-arches` whose build key matches joins the index (`1`, default), or every child must come from this run (`0`). [How](#a-failed-arch-re-runs-alone). |
 | `RUNTIME_SMOKE_OVERLAP=1\|0` | The wrapper-smoke gate runs beside the wrapper build (`1`, default) or before it (`0`). [Why](#the-wrapper-smoke-gate-runs-beside-the-wrapper-build). |
 | `CROSS_NO_LOCAL_CACHE_EXPORT=1` | Write-only cache (skip the local cache export; disk relief on big rebuilds). |
 | `NO_CACHE_EXPORT=1` | Drop everything registry-facing (inline cache export + registry cache reads). The manual recovery for the ghcr `DeadlineExceeded`/`httpReadSeeker` import flake — which the chain now also does by itself after two such failures. |

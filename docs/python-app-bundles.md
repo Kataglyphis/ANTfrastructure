@@ -16,7 +16,7 @@ wheels the consumer's CI tested, the Cython-compiled app wheel included.
 | Lane | Builder | Runtime |
 |---|---|---|
 | Windows (`:winamd64`) | [`windows/scripts/python/New-PythonAppBundle.ps1`](../windows/scripts/python/New-PythonAppBundle.ps1) | the image's own source-built CPython, laid out by `PC\layout` |
-| Linux (`:latest`) | [`linux/scripts/06-packaging/python-app-bundle.sh`](../linux/scripts/06-packaging/python-app-bundle.sh) | python-build-standalone via `uv python install` at the version of the image's `python3`, which built the wheels (`versions.env`'s `PYTHON_VERSION` only without one), because the image's own build is not relocatable |
+| Linux (`:latest`) | [`linux/scripts/06-packaging/python-app-bundle.sh`](../linux/scripts/06-packaging/python-app-bundle.sh) | the image's own source-built CPython, staged as a movable tree by [`python-relocate.py`](../linux/scripts/06-packaging/python-relocate.py) ([below](#the-relocated-image-cpython)); `--python-runtime standalone` takes python-build-standalone via `uv python install` instead, on a host without the image |
 
 First consumer: OrchestrANT (`yolo-monitor`, `orchestrant-bench`, `orchestrant-smoke`).
 Measured on 2026-09-30/10-01: Windows 561 MB, Linux x86_64 666 MB. Both builders were also
@@ -72,7 +72,9 @@ Both run in the family image, from a built app wheel (`--wheel-dir`, default `di
 1. **Runtime.**
    - Windows: `PC\layout --include-stable --include-venv --precompile`, then empty
      `Lib\site-packages`, because the layout copies the image's own packages along with it.
-   - Linux: a python-build-standalone of the same version.
+   - Linux: the image's `/usr/local` CPython, staged and checked by `python-relocate.py`
+     ([§ The relocated image CPython](#the-relocated-image-cpython)). It is the interpreter
+     that built the wheels, so the version cannot drift and nothing is downloaded.
 2. **Packages.**
    - `uv export --locked --extra <extras>`, then install into the runtime. Both lanes leave
      PyPI `onnxruntime` out of the export: its 1.31.0 release has no CPython 3.15 wheel, so
@@ -130,6 +132,46 @@ creation order. `Get-PythonAppWheelFile` enumerates direct matching files only;
 callers keep their ABI/name predicates and first-match or unique-wheel verdicts.
 Keep the Shared companion when copying these modules; reset and allocation
 failures terminate before packaging proceeds.
+
+## The relocated image CPython
+
+The image's GIL CPython (`/usr/local`, `--enable-shared`) is not movable as installed: its
+interpreter finds `libpython` through `ld.so.conf`, and `_sysconfigdata` names `/usr/local`.
+`python-relocate.py stage --python <python3> --dest <runtime>` copies it and fixes both:
+
+- The interpreter gets the RUNPATH `$ORIGIN/../lib`. `bundle-loader.sh` keeps that entry
+  pointing at the same directory when it moves the binary beside the loader.
+- `_sysconfigdata` gets a block that replaces the build prefix with `sys.base_prefix` at
+  import, as a whole path component (`-I/usr/local/include` moves, `/usr/localfoo` does not).
+  Native trees keep the module beside the stdlib; the cross-built arm64 and riscv64 trees keep
+  it in `lib-dynload`, so `stage` takes the path the interpreter imports. The stale `.pyc` and
+  the `_sysconfig_vars_*.json` twin, which nothing reads at run time, are removed.
+- `python-3.X.pc` gets `prefix=${pcfiledir}/../..`; `python3.X-config` relocates itself.
+- Left out: the system `site-packages` (pip), `pip3.X`, the static `libpython3.X.a`, and the
+  `readline` binding, which links GNU readline (GPL-3) and serves only an interactive REPL.
+
+`stage` refuses a static build, a distribution interpreter (`/usr`) and an existing
+destination. `python-relocate.py check --tree <runtime>` copies the tree to a fresh directory,
+runs it there with `-I`, imports ssl, sqlite3, ctypes and zlib, and fails when:
+
+- `sys.prefix`, `sys.base_prefix` or `os.__file__` lies outside the copy;
+- `/proc/self/maps` shows `libpython` mapped from anywhere else (the image's `/usr/local/lib`
+  would satisfy a missing RUNPATH silently);
+- a string sysconfig variable still names the build prefix or the unmoved tree;
+- an ELF file has an absolute RUNPATH, cannot be read, or links `libreadline`.
+
+The bundle builder runs both, and the runtime smoke's `RELOCATABLE-PY` row runs both on every
+arch's shipped image. Measured on 2026-10-26 against the published children of `:latest`:
+the stage takes about 5 s and 305 MB on amd64. The row passed on amd64 (7 s), arm64
+(20 s, QEMU) and riscv64 (54 s, QEMU). A test bundle built in `:latest` amd64 under
+`--network none`, with a warm uv cache for its PyPI dependencies, downloaded no CPython, and
+its self-test passed after the bundle was moved.
+
+What `check` does not cover: build-directory strings in compiler flags (`-ffile-prefix-map`
+and the like), and the compiler names a cross tree's sysconfig records. Neither matters for
+installing wheels; an sdist built against the bundle runtime would read them
+([`consumer-image-contract.md` § The free-threaded Python](consumer-image-contract.md#the-free-threaded-python)
+fixes the same names for the twin). Tests: `linux/scripts/tests/test-python-relocate.sh`.
 
 ## Windows: the image's OpenCV, not PyPI's
 
@@ -299,8 +341,8 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
   - Measured in `:winamd64` on 2026-10-01: 240 MB, identity `JonasHeinle.OrchestrANT`
     0.0.29.0, `signtool verify /pa` passes against the shipped `.cer`.
 - **Nothing writes into an installed package.** The builders compile all bytecode
-  (`uv pip install --compile-bytecode`; python-build-standalone's stdlib and the chain cv2
-  separately), and the launchers pass `-B`. Otherwise an admin's first start leaves
+  (`uv pip install --compile-bytecode`; a python-build-standalone stdlib and the chain cv2
+  separately; the image's stdlib ships compiled), and the launchers pass `-B`. Otherwise an admin's first start leaves
   `__pycache__` behind, which the removal does not delete, and the install folder survives.
 
 **The Linux packages start on older distributions too** (2026-10-17): the image's glibc 2.43

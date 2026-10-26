@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# The image's shellcheck and hadolint on every arch, riscv64's hadolint from source; see docs/consumer-image-contract.md#shellcheck-and-hadolint
+# The image's shellcheck on every arch and hadolint on amd64 and arm64; see docs/consumer-image-contract.md#shellcheck-and-hadolint
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 ROOT="$(cd "${SCRIPTS}/../.." && pwd)"
 INSTALL="${SCRIPTS}/06-packaging/install-lint-tools.sh"
-BUILD_HL="${SCRIPTS}/06-packaging/build-hadolint.sh"
 PINS="${SCRIPTS}/01-core/tool-pins.env"
 TORCH="${ROOT}/linux/Dockerfile.torch"
 
@@ -33,7 +32,7 @@ SC_V="$(_pin SHELLCHECK_VERSION)"; HL_V="$(_pin HADOLINT_VERSION)"
 export FAKE_SC_VERSION="${SC_V#v}" FAKE_HL_VERSION="${HL_V#v}" FAKE_DL_LOG="${_work}/dl.log"
 _install() {
   : > "${FAKE_DL_LOG}"
-  FAKE_ARCH="$1" PATH="${_work}/bin:${PATH}" bash "${INSTALL}" "${_work}/prefix-$1" "${2:-}" "${_work}/core" 2>&1
+  FAKE_ARCH="$1" PATH="${_work}/bin:${PATH}" bash "${INSTALL}" "${_work}/prefix-$1" "${_work}/core" 2>&1
 }
 
 t_case "amd64 and arm64 take both release binaries, each at its own pinned checksum"
@@ -45,36 +44,20 @@ _out="$(_install aarch64)"
 t_assert_contains "$(cat "${FAKE_DL_LOG}")" "shellcheck-${SC_V}.linux.aarch64.tar.xz $(_pin SHELLCHECK_LINUX_AARCH64_SHA256)"
 t_assert_contains "$(cat "${FAKE_DL_LOG}")" "${HL_V}/hadolint-linux-arm64 $(_pin HADOLINT_LINUX_ARM64_SHA256)"
 
-t_case "riscv64 takes shellcheck's riscv64 release and hadolint's source build, and refuses without one"
+t_case "riscv64 takes shellcheck's riscv64 release and installs no hadolint"
 t_assert_ok test -n "$(_pin SHELLCHECK_LINUX_RISCV64_SHA256)"
 _out="$(_install riscv64)"
-t_assert_contains "${_out}" "hadolint publishes no riscv64 binary; pass the source build as HADOLINT_BIN"
-printf '#!/bin/sh\n[ "$1" = --version ] || { echo "${FAKE_HL_FINDING:-DL3008}"; exit 1; }\necho "Haskell Dockerfile Linter %s"\n' "${HL_V#v}" > "${_work}/hadolint-src"; chmod +x "${_work}/hadolint-src"
-_out="$(_install riscv64 "${_work}/hadolint-src")"
-t_assert_contains "${_out}" "(riscv64)"
+t_assert_contains "${_out}" "NOTE: hadolint publishes no riscv64 binary; none is installed"
+t_assert_contains "${_out}" "shellcheck ${SC_V} and no hadolint in ${_work}/prefix-riscv64 (riscv64)"
 t_assert_eq "shellcheck-${SC_V}.linux.riscv64.tar.xz $(_pin SHELLCHECK_LINUX_RISCV64_SHA256)" "$(sed 's|.*/||' "${FAKE_DL_LOG}")" "one download, shellcheck's"
+t_assert_ok test ! -e "${_work}/prefix-riscv64/hadolint"
 
 t_case "a tool that does not report its pin fails the install, and so does an unpinned arch"
 t_assert_contains "$(FAKE_SC_VERSION=0.0.1 _install x86_64)" "shellcheck reports '0.0.1', the pin is ${SC_V}"
 t_assert_contains "$(FAKE_HL_VERSION=1.0.0 _install x86_64)" "hadolint reports 'Haskell Dockerfile Linter 1.0.0', the pin is ${HL_V}"
 t_assert_contains "$(FAKE_SC_FINDING=clean _install x86_64)" "shellcheck did not report SC2086"
-t_assert_contains "$(FAKE_HL_FINDING=clean _install riscv64 "${_work}/hadolint-src")" "hadolint did not report a DL30xx rule"
 t_assert_contains "$(_install sparc64)" "no lint tools are pinned for sparc64"
 t_assert_eq 1 "$(FAKE_ARCH=sparc64 PATH="${_work}/bin:${PATH}" t_rc bash "${INSTALL}" "${_work}/p" "" "${_work}/core")"
-
-t_case "the hadolint source build reuses a binary built from the same pins, and only that one"
-mkdir -p "${_work}/cabal/hadolint-bin/${HL_V}-$(_pin HADOLINT_SOURCE_SHA256 | cut -c1-16)-$(_pin HADOLINT_HACKAGE_INDEX_STATE)"
-cp "${_work}/hadolint-src" "${_work}/cabal/hadolint-bin/${HL_V}-$(_pin HADOLINT_SOURCE_SHA256 | cut -c1-16)-$(_pin HADOLINT_HACKAGE_INDEX_STATE)/hadolint"
-_out="$(FAKE_ARCH=riscv64 PATH="${_work}/bin:${PATH}" bash "${BUILD_HL}" "${_work}/hl-reuse" "${_work}/core" "${_work}/cabal" 2>&1)"
-t_assert_contains "${_out}" "build-hadolint: reused ${_work}/cabal/hadolint-bin/${HL_V}-"
-t_assert_ok cmp "${_work}/hadolint-src" "${_work}/hl-reuse/hadolint"
-
-t_case "the hadolint source build does nothing where a release binary exists"
-_out="$(FAKE_ARCH=x86_64 PATH="${_work}/bin:${PATH}" bash "${BUILD_HL}" "${_work}/hl-out" "${_work}/core" 2>&1)"
-t_assert_contains "${_out}" "x86_64 takes the release binary; nothing to build"
-t_assert_eq "" "$(ls -A "${_work}/hl-out")"
-t_assert_ok test -n "$(_pin HADOLINT_SOURCE_SHA256)"
-t_assert_ok test -n "$(_pin HADOLINT_HACKAGE_INDEX_STATE)"
 
 t_case "lint-shell.sh bootstraps the same riscv64 asset on a riscv64 host"
 t_assert_eq "shellcheck-${SC_V}.linux.riscv64.tar.xz $(_pin SHELLCHECK_LINUX_RISCV64_SHA256)" "$(
@@ -89,22 +72,20 @@ t_assert_eq "shellcheck-${SC_V}.linux.riscv64.tar.xz $(_pin SHELLCHECK_LINUX_RIS
 t_case "the bump modules refresh every new pin with its version"
 _bv="$(cat "${ROOT}"/docs/scripts/bump_*.py)"
 t_assert_contains "${_bv}" '("SHELLCHECK_LINUX_RISCV64_SHA256", f"shellcheck-{v}.linux.riscv64.tar.xz")'
-t_assert_contains "${_bv}" 'extras["HADOLINT_SOURCE_SHA256"]'
-t_assert_contains "${_bv}" 'extras["HADOLINT_HACKAGE_INDEX_STATE"]'
+t_assert_fails grep -qF HADOLINT_SOURCE_SHA256 "${ROOT}"/docs/scripts/bump_tools.py
 
-t_case "the torch stage installs both on every arch, from the hadolint build stage"
+t_case "the torch stage installs both from release binaries, with no hadolint source build"
 _torch="$(cat "${TORCH}")"
-t_assert_contains "${_torch}" "FROM ubuntu:\${UBUNTU_VERSION}@\${UBUNTU_DIGEST} AS hadolint-build"
-t_assert_contains "${_torch}" "bash /tmp/build-hadolint.sh /out /tmp/pins"
-t_assert_contains "${_torch}" "--mount=type=bind,from=hadolint-build,source=/out,target=/tmp/hadolint-build"
-t_assert_contains "${_torch}" "install-lint-tools.sh /usr/local/bin /tmp/hadolint-build/hadolint"
+t_assert_contains "${_torch}" "RUN --mount=type=secret,id=asset_mirror,required=false bash /opt/scripts/packaging/install-lint-tools.sh"
+t_assert_fails grep -qF hadolint-build "${TORCH}"
+t_assert_fails grep -qF HADOLINT_SOURCE_SHA256 "${PINS}"
 
 t_case "the shipped-image contract row holds both tools to their tool-pins.env pins (mutation)"
 SMOKE="${SCRIPTS}/06-packaging/smoke-runtime-image.sh"
 CONSUMER="${SCRIPTS}/06-packaging/runtime-consumer-contract.sh"
 mkdir -p "${_work}/rt/06-packaging" "${_work}/rt/01-core"; cp "${PINS}" "${_work}/rt/01-core/"
 t_fn_src "${SMOKE}" _consumer_contract_fact >> "${_work}/rt/06-packaging/row.sh" || exit 1
-for _fn in _consumer_lint_tools_verdict _consumer_versioned_contract_verdict; do
+for _fn in _consumer_lint_tools_verdict _consumer_versioned_contract_verdict _consumer_versioned_verdict; do
   t_fn_src "${CONSUMER}" "${_fn}" >> "${_work}/rt/06-packaging/row.sh" || exit 1
 done
 t_fn_src "${SMOKE}" _rt_env_pin >> "${_work}/rt/06-packaging/row.sh" || exit 1
@@ -116,6 +97,11 @@ t_assert_contains "$(_lint_row "FACT lint-tools shellcheck= hadolint=${HL_V#v}" 
 t_assert_contains "$(_lint_row "FACT lint-tools shellcheck=${SC_V#v} hadolint=" "${_pins_want}")" "BAD lint-tools"
 t_assert_contains "$(_lint_row "FACT other x" "${_pins_want}")" "NOFACT lint-tools"
 t_assert_eq "${SC_V}" "$(bash -c 'source "$1"; _rt_tool_pin SHELLCHECK_VERSION' _ "${_work}/rt/06-packaging/row.sh")" "the row reads tool-pins.env"
+_arch_row() { bash -c 'source "$1"; _consumer_versioned_verdict lint-tools "$2" "$3"' _ "${_work}/rt/06-packaging/row.sh" "$@"; }
+t_assert_eq "OK lint-tools ${_pins_want}" "$(_arch_row "FACT lint-tools ${_pins_want}" amd64)" "amd64 wants hadolint at its pin"
+t_assert_contains "$(_arch_row "FACT lint-tools shellcheck=${SC_V#v} hadolint=" amd64)" "BAD lint-tools"
+t_assert_eq "OK lint-tools shellcheck=${SC_V#v} hadolint=" "$(_arch_row "FACT lint-tools shellcheck=${SC_V#v} hadolint=" riscv64)" "riscv64 ships no hadolint"
+t_assert_contains "$(_arch_row "FACT lint-tools ${_pins_want}" riscv64)" "BAD lint-tools the image has ${_pins_want}"
 _smoke_src="$(cat "${SMOKE}" "${SMOKE%/*}/runtime-consumer-contract.sh")"
 t_assert_contains "${_smoke_src}" 'printf '"'"'FACT lint-tools shellcheck=%s hadolint=%s\n'"'"
 t_assert_contains "${_smoke_src}" 'lint-tools)    _sc="$(_rt_tool_pin SHELLCHECK_VERSION)"; _hl="$(_rt_tool_pin HADOLINT_VERSION)"'

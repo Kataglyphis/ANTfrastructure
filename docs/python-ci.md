@@ -893,8 +893,9 @@ One line moves every image, lane and default: `PYTHON_VERSION` in
 - Windows' build side: `Get-PinnedPythonVersion` feeds the free-threaded interpreter's name, the twin
   tag, the arm64 tvm-ffi wheel tags and the target's `pythonXY.lib`; OpenCV's `FindPythonInterp` stub
   asks the interpreter for its version; `Test-Container` grades the pin and fails without one.
-- The riscv64 uv cache seed, the app bundle's python-build-standalone, and the hub's own workflows,
-  which read X.Y from `versions.env`.
+- The riscv64 uv cache seed, the app bundle's runtime (the image's own CPython; its
+  `--python-runtime standalone` download), and the hub's own workflows, which read X.Y from
+  `versions.env`.
 - Renovate reports every new release, a minor included, and its rule names no version.
 
 **What still needs a look:** a consumer's lock needs wheels (or buildable sdists) for the new tag,

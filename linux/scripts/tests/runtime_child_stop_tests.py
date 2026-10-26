@@ -60,6 +60,7 @@ def receipt(
 date() { printf 100; }
 log() { printf 'log:%s\\n' "$*"; }
 _runtime_heartbeat() { :; }
+runtime_step_run() { "${@:3}"; }
 is_dry_run() { test "$DRY" = 1; }
 kill() { if [[ "$SUBJECT" = timed && "$1" = "$!" ]]; then printf 'kill:<OWN_CHILD>\\n'; else printf 'kill:<%s>\\n' "$1"; fi; printf 'hidden kill\\n' >&2; return "$K"; }
 wait() { if [[ "$SUBJECT" = timed && "$1" = "$!" ]]; then printf 'wait:<OWN_CHILD>\\n'; else printf 'wait:<%s>\\n' "$1"; fi; printf 'hidden wait\\n' >&2; if [[ "$SUBJECT" = timed ]]; then builtin wait "$1" || :; fi; return "$W"; }
@@ -122,6 +123,7 @@ _disk_guard_positive_integer() { return 0; }
 _disk_guard_protected_slugs() { :; }
 _disk_guard_watch_loop() { printf 'unexpected spawn\n'; }
 _runtime_heartbeat() { printf 'unexpected spawn\n'; }
+runtime_step_run() { "${@:3}"; }
 """
                 code += "SELECTED=" + str(int(selected)) + "\n"
                 code += 'CROSS_DISK_WATCH="$SELECTED"\n'

@@ -977,6 +977,9 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
   through the `PY_*_VERSION` family and bumped together, deliberately, with a real build; never
   let an install site float back to `-U pkg`. Never `curl | sh`: clone at a tag with
   `--depth 1 --branch` and hard-fail on a missing tag rather than fall back to a branch.
+  Pinned downloads ask the Garage asset mirror first; the pinned sha256 stays the only gate, and
+  every Linux RUN that reads a hub script mounts the `asset_mirror` secret
+  ([`linux-cross-builds.md`](docs/linux-cross-builds.md#the-asset-mirror)).
 - Keep the optional runtime payloads and LLVM normalization in `Dockerfile.package`: never drop
   `/usr/local/lib/onnxruntime-*`, LiteRT/TensorFlow headers, pkg-config files, or the
   `/usr/local/llvm-target` handling.
@@ -1102,8 +1105,8 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
   source, on `X.Y` and on `X.Yt` (CON110), which `ci_tests.sh` copies into its own cache. A locked `uv sync` takes a built sdist
   from the cache only, so never turn it into a `--find-links` store, and never prove it with
   `--no-build`, which refuses every sdist, cached or not. The torch stage also installs shellcheck
-  and hadolint at their `tool-pins.env` pins on every arch; riscv64's hadolint is a source build
-  in its own stage:
+  at its `tool-pins.env` pin on every arch, and hadolint on amd64 and arm64 only; riscv64 ships
+  no hadolint (owner 2026-10-26):
   [`consumer-image-contract.md` § The riscv64 uv cache seed](docs/consumer-image-contract.md#the-riscv64-uv-cache-seed).
 
 - **A native media wheel whose own code declares free-threading ships a proved `cp3XYt` twin, in
@@ -1146,8 +1149,11 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   published it: that is how `:latest` (then `:latest-cross`) was found reduced to riscv64 alone.
   Recover by re-running the runtime lane for the missing arches. `--force` and
   `RUNTIME_MANIFEST_COMPLETENESS=0` only bypass the early shell check: final promotion
-  still preserves the published runtime platforms. A partial-arch run should carry
-  `--skip-manifest`; a different platform set gets its own tag.
+  still preserves the published runtime platforms. A partial-arch run completes the
+  published index only from children whose build key matches this run's, each gated and listed by
+  digest ([`linux-cross-builds.md`](docs/linux-cross-builds.md#a-failed-arch-re-runs-alone));
+  `RUNTIME_REUSE_CHILDREN=0` requires every arch in the run, and a different platform set gets its
+  own tag.
 - **A published image's environment names nothing outside the container** (2026-09-23, both
   lanes). A build-host setting (the sccache endpoint, a LAN mirror, a proxy) reaches a RUN as an
   ARG and never lands in an ENV: `:winamd64` shipped the owner's LAN WebDAV and broke every

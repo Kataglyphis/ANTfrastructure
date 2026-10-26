@@ -58,15 +58,102 @@ download_and_extract() {
   rm -f "${tmp_tar}"
 }
 
+# Mirror config: KATAGLYPHIS_ASSET_MIRROR_FILE, else the RUN's asset_mirror secret, else the host's file. docs/shared-script-libraries.md#the-asset-mirror
+download_mirror_config_file() {
+  case "${KATAGLYPHIS_ASSET_MIRROR:-on}" in 0|off|false|no) return 1 ;; esac
+  local f
+  if [ -n "${KATAGLYPHIS_ASSET_MIRROR_FILE:-}" ]; then
+    f="${KATAGLYPHIS_ASSET_MIRROR_FILE}"
+    [ -r "${f}" ] || return 1
+    printf '%s\n' "${f}"
+    return 0
+  fi
+  for f in /run/secrets/asset_mirror "${XDG_CONFIG_HOME:-${HOME:-/root}/.config}/kataglyphis/asset-mirror.env"; do
+    if [ -r "${f}" ]; then
+      printf '%s\n' "${f}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+download_mirror_value() {
+  sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -n 1
+}
+
+# <url>: the object's name under <sha256>/, the last path segment without query or fragment.
+download_mirror_object_name() {
+  local name="${1%%[?#]*}"
+  name="${name##*/}"
+  printf '%s\n' "${name:-asset}"
+}
+
+# <config-file> <curl args...>: curl, SigV4-signed when the file holds a key; the key reaches curl on stdin, never argv.
+download_mirror_curl() {
+  local file="$1" key secret region cfg=""
+  shift
+  local -a sign=()
+  key="$(download_mirror_value "${file}" AWS_ACCESS_KEY_ID)"
+  secret="$(download_mirror_value "${file}" AWS_SECRET_ACCESS_KEY)"
+  region="$(download_mirror_value "${file}" AWS_REGION)"
+  if [ -n "${key}" ] && [ -n "${secret}" ]; then
+    case "${key}${secret}" in
+      *[\"\\[:space:]]*)
+        printf 'asset-mirror| the key in %s holds a quote, backslash or space -- not used\n' "${file}" >&2
+        return 2 ;;
+    esac
+    sign=(--aws-sigv4 "aws:amz:${region:-garage}:s3")
+    cfg="user = \"${key}:${secret}\""
+  fi
+  curl --proto '=http,https' -fsS --connect-timeout 3 \
+    --speed-limit 1024 --speed-time 30 ${sign[@]+"${sign[@]}"} -K - "$@" <<<"${cfg}"
+}
+
+# <sha256> <url> <dest> [file|stream]: 0 when the mirror served <sha256>/<name> into <dest>; the caller still verifies it.
+download_mirror_fetch() {
+  local sha="$1" url="$2" dest="$3" mode="${4:-file}" file base name rc=0
+  [[ "${sha}" =~ ^[0-9a-f]{64}$ ]] || return 1
+  [ -z "${_DOWNLOAD_MIRROR_DOWN:-}" ] || return 1
+  command -v curl >/dev/null 2>&1 || return 1
+  file="$(download_mirror_config_file)" || return 1
+  base="$(download_mirror_value "${file}" ASSET_MIRROR_URL)"
+  [ -n "${base}" ] || return 1
+  name="$(download_mirror_object_name "${url}")"
+  download_mirror_curl "${file}" -o "${dest}" "${base%/}/${sha}/${name}" || rc=$?
+  [ "${rc}" -eq 0 ] && return 0
+  rm -f "${dest}"
+  case "${rc}" in
+    # A dead mirror would otherwise cost every later download its connect timeout.
+    6|7|28)
+      _DOWNLOAD_MIRROR_DOWN=1
+      printf 'asset-mirror| %s unreachable (curl %s) -- upstream for the rest of this shell\n' "${base}" "${rc}" >&2 ;;
+    2) ;;
+    *) printf 'asset-mirror| miss %s %s %s\n' "${sha}" "${url}" "${mode}" >&2 ;;
+  esac
+  return 1
+}
+
 # $4=stream hashes the decompressed bytes: GitHub may re-encode codeload gzip, the stream stays stable.
 download_verified_file() {
   local url="$1"
   local expected_sha256="$2"
   local dest="$3"
   local hash_mode="${4:-file}"
-  local checksum_output actual
 
+  if download_mirror_fetch "${expected_sha256}" "${url}" "${dest}" "${hash_mode}"; then
+    if download_verify_sha256 "${expected_sha256}" "${dest}" "${hash_mode}"; then
+      printf 'asset-mirror| hit %s\n' "$(download_mirror_object_name "${url}")" >&2
+      return 0
+    fi
+    printf 'asset-mirror| the mirrored %s failed its checksum -- fetching upstream\n' "$(download_mirror_object_name "${url}")" >&2
+  fi
   download_file "$url" "$dest" || return 1
+  download_verify_sha256 "${expected_sha256}" "${dest}" "${hash_mode}"
+}
+
+# <sha256> <file> [file|stream]: removes <file> and says why when it does not match.
+download_verify_sha256() {
+  local expected_sha256="$1" dest="$2" hash_mode="${3:-file}" checksum_output actual
   if [ "${hash_mode}" = "stream" ]; then
     actual="$(gunzip -c "$dest" 2>/dev/null | sha256sum | awk '{print $1}')"
     [ "${actual}" = "${expected_sha256}" ] || {

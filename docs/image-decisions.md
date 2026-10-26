@@ -124,6 +124,9 @@ These are recorded so nobody files them as gaps:
   already do (owner, 2026-10-20: not a rebuilt GLib; CON129).
 - riscv64 has no IREE compiler, no `ml-ai` extra, no Flutter, appimagetool,
   Flatpak runtimes or Hailo, because upstream ships none for it.
+- riscv64 has no hadolint: upstream ships no riscv64 binary, and its QEMU source build cost about two
+  hours a chain (owner, 2026-10-26: amd64 only for now; was CON151,
+  [§ shellcheck and hadolint](consumer-image-contract.md#shellcheck-and-hadolint)).
 - riscv64 has no pwsh and no PSScriptAnalyzer: PowerShell publishes no riscv64 build, so tests
   that drive pwsh skip there with their reason, `pwsh is not on PATH` (CON131).
 - ORT QNN is opt-in on arm64.

@@ -13,6 +13,28 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-26 — Linux chain: runtime lane robustness and image content
+
+- The image's app venv carries OrchestrANT's `frontend` extra (CON106, owner 2026-10-26): the Linux and Windows torch stages sync `--extra frontend`, so the image runs the Flet viewers and the camera stream page; VENV-SET holds the extra on amd64/arm64 and leaves it out on riscv64, whose markers drop every frontend requirement, and APP-PARITY requires flet, flet-desktop, flet-web and FastAPI with recorded riscv64 absences.
+
+- riscv64 ships no hadolint (CON151, owner 2026-10-26): the torch stage's QEMU source build of hadolint (about 2 h per riscv64 wrapper) is gone with `build-hadolint.sh`, `HADOLINT_SOURCE_SHA256` and `HADOLINT_HACKAGE_INDEX_STATE`; `install-lint-tools.sh` prints a NOTE there, and the lint-tools contract row requires no hadolint on riscv64. amd64 and arm64 keep the pinned release binary.
+
+- Every chain RUN names its layer (CON162): a `LABEL kataglyphis.step=<name>` before each of the 104 RUNs in `linux/Dockerfile.*`, graded by `verify_dockerfile_step_labels.py` (`lint-dockerfiles.sh` pass 0c); `layer-audit.py` prints each layer's step from the image history. Labels are metadata, so no layer recompiles.
+
+- The runtime lane checks its inputs before any arch builds (CON140): each arch's package-stage apt set runs through `apt-get install --simulate` in the base's pinned parent (QEMU for foreign arches), and the rustup and uv installers are re-hashed against their pins. A conflict or rotation refuses the lane with apt's line or the pin's name; `RUNTIME_INPUT_PREFLIGHT=0` builds without the check ([docs](docs/linux-cross-builds.md#the-runtime-lane-input-preflight)).
+
+- Linux app bundles carry the image's own CPython (CON123), staged relocatable by `python-relocate.py` (RUNPATH `$ORIGIN/../lib`, sysconfig rewritten to the new prefix, no system site-packages or GPL-3 readline binding), instead of downloading python-build-standalone; `--python-runtime standalone` keeps the download, and the runtime smoke's `RELOCATABLE-PY` row proves a moved copy on every arch.
+
+- The runtime lane's disk gate sums the arches it keeps local (CON141): 165 GB amd64, 105 GB others, 50 GB less per wrapper already local, plus the 40 GB disk-watch floor; after the index the manifest lane removes each pushed arch's wrapper, push leftover and package image (`RUNTIME_DROP_PUSHED_IMAGES=0` keeps them; `--no-push` never removes).
+
+- Pinned release assets come from the build hosts' Garage bucket first (`release-assets`, `<sha256>/<name>`) and fall back upstream, so a GitHub outage cannot fail an arch (CON153). The pinned sha256 stays the only gate. The host's `~/.config/kataglyphis/asset-mirror.env` reaches every Linux RUN as the BuildKit secret `asset_mirror`, and `linux/host-config/fill-asset-mirror.sh` fills the bucket from a chain's miss lines.
+
+- A failed arch re-runs alone (CON139): each runtime wrapper carries `org.kataglyphis.build-key` (its build-context files, version args, android parent digest and wrapper knobs), and a published child whose key matches joins the index by digest after every gate has read it; `RUNTIME_REUSE_CHILDREN=0` keeps the same-run index ([docs](docs/linux-cross-builds.md#a-failed-arch-re-runs-alone)).
+
+- Every resource-monitor sample names the runtime lane's arch and step (CON142): `_runtime_timed` and the background pusher hold `<arch>.<step>` markers under `RESOURCE_MONITOR_STEP_DIR`, and the stage column lists them as `arch/step` joined by `+`.
+
+- The disk trim names every slug it evicts and keeps, and logs the buildkit fallback's layer cache (records and GiB) before and after its prune (CON152); tool-build caches are BuildKit cache mounts outside the trim's reach.
+
 ## 2026-10-26 — Reuse and dependency updates
 
 - Bind `Test-Elevated` directly in the Windows host lavapipe installer, so consumer

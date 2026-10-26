@@ -148,6 +148,47 @@ h[18:20] = m.to_bytes(2, "little")
 open(sys.argv[1], "wb").write(bytes(h))' "$1" "$2"
 }
 
+# t_fake_curl_args <bin-dir>: writes fake-curl-args.sh, which a curl stub sources with "$@" to set url, out, up, head, fmt, cfg and argv.
+t_fake_curl_args() {
+  mkdir -p "$1"
+  cat > "$1/fake-curl-args.sh" <<'ARGS'
+argv="$*" out="" up="" head=0 url="" cfg="" fmt=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    -T) up="$2"; shift 2 ;;
+    -w) fmt="$2"; shift 2 ;;
+    -I) head=1; shift ;;
+    -K) [ "$2" = - ] && cfg="$(cat)"; shift 2 ;;
+    --connect-timeout|--retry|--retry-delay|--max-time|--speed-limit|--speed-time|--aws-sigv4|--proto|--proto-redir) shift 2 ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+ARGS
+}
+
+# t_fake_curl <bin-dir>: a curl serving FAKE_CURL_ROOT/<host/path> (FAKE_CURL_KEY=basename: /<file name>), logging each call; FAKE_CURL_FAIL_PREFIX URLs refuse the connection.
+t_fake_curl() {
+  t_fake_curl_args "$1"
+  cat > "$1/curl" <<'STUB'
+#!/usr/bin/env bash
+source "${BASH_SOURCE[0]%/*}/fake-curl-args.sh" "$@"
+root="${FAKE_CURL_ROOT:?FAKE_CURL_ROOT is not set}"
+printf '%s\n' "${url}" >> "${root}/requested"
+printf '%s|%s|%s\n' "${url}" "${argv}" "${cfg}" >> "${root}/calls"
+if [ -n "${FAKE_CURL_FAIL_PREFIX:-}" ] && [ "${url#"${FAKE_CURL_FAIL_PREFIX}"}" != "${url}" ]; then exit 7; fi
+key="${url%%[?#]*}"
+case "${FAKE_CURL_KEY:-path}" in basename) key="${key##*/}" ;; *) key="${key#*://}" ;; esac
+file="${root}/${key}"
+if [ -n "${up}" ]; then mkdir -p "$(dirname "${file}")" && cp "${up}" "${file}"; exit; fi
+[ -f "${file}" ] || exit 22
+[ "${head}" = 1 ] && exit 0
+cp "${file}" "${out}"
+STUB
+  chmod +x "$1/curl"
+}
+
 # t_fn_src <file> <function>: one top-level function's source; 1 when gone, so callers add `|| exit 1`.
 t_fn_src() {
   local _src
@@ -189,6 +230,9 @@ t_rt_sandbox() {
   sed '$d' "${_T_SCRIPTS}/06-packaging/smoke-runtime-image.sh" > "${_d}/rt.sh"
   printf '%s' "${_d}"
 }
+
+# t_rt_call <sandbox> <code>: the code's output after sourcing the sandboxed smoke quietly.
+t_rt_call() { bash -c "source '$1/rt.sh' >/dev/null 2>&1"$'\n'"$2" 2>&1; }
 
 # t_rt_recorded <sandbox> <probe text> <call...>: the call's output with _rt_run printing the recorded probe, then FAILURES=<n>.
 t_rt_recorded() {

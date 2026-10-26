@@ -121,6 +121,10 @@ REQUIRED = [
     ("sphinx-book-theme",  "docs"),
     ("sphinx-design",      "docs"),
     ("myst-parser",        "docs"),
+    ("flet",               "frontend"),
+    ("flet-desktop",       "frontend"),
+    ("flet-web",           "frontend"),
+    ("fastapi",            "frontend"),
 ]
 
 # Only reviewed per-architecture absences are tolerated; see docs/riscv64-venv-parity.md.
@@ -138,6 +142,8 @@ EXEMPT = {
     ("iree-base-compiler", "riscv64"):
         "riscv64 builds IREE runtime-only (compiler=OFF, upstream-consistent)",
 }
+EXEMPT.update({(dist, "riscv64"): "app pyproject gates the frontend extra off riscv64; Flet publishes no riscv64 client"
+               for dist, extra in REQUIRED if extra == "frontend"})
 
 fails, exempted, stale = [], [], []
 for dist, extra in REQUIRED:

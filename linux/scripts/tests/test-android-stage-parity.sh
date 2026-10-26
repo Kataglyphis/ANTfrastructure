@@ -49,6 +49,15 @@ t_assert_eq "1" "$(t_rc _gate "${fix}")" "printing a diff and exiting 0 is the f
 t_assert_contains "${_out}" "stage 'android-onnx' diverges"
 t_assert_contains "${_out}" "android library stages have drifted apart"
 
+t_case "each stage's step label names its own stage; a copied label fails"
+_labels=()
+for _s in ${STAGES}; do _labels+=("${_s}=LABEL kataglyphis.step=${_s}"); done
+fix="$(_tree)"; _dockerfile "${fix}" "${_labels[@]}"
+t_assert_eq "0" "$(t_rc _gate "${fix}")" "a label naming its own stage is the deliberate difference"
+_labels[1]="android-onnx=LABEL kataglyphis.step=android-gstreamer"
+fix="$(_tree)"; _dockerfile "${fix}" "${_labels[@]}"
+t_assert_contains "$(t_out _gate "${fix}")" "stage 'android-onnx' diverges"
+
 t_case "a divergence in the LAST stage fails too"
 # The first stage is the reference; the tail of the list must be compared too.
 fix="$(_tree)"; _dockerfile "${fix}" "android-iree=RUN echo drifted"

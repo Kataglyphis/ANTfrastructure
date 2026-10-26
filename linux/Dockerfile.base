@@ -17,7 +17,8 @@ ARG UV_VERSION=0.13.1
 SHELL ["bash", "-lc"]
 
 # Plain /bin/bash (the login shell hits unsupported syscalls under QEMU); mounts are base-image.sh's per-file closure, same in all six RUNs.
-RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
+LABEL kataglyphis.step=bootstrap-ca
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
@@ -41,7 +42,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
     /bin/bash /tmp/scripts/01-core/base-image.sh bootstrap-ca
 
 # Mirror hook for sources bootstrap-ca left alone; without platform.sh beside ubuntu-mirror.sh the fast-mirror knob silently stays off.
-RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/core-scripts/use-fast-ubuntu-mirror.sh,ro \
+LABEL kataglyphis.step=fast-ubuntu-mirror
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/core-scripts/use-fast-ubuntu-mirror.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/core-scripts/ubuntu-mirror.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/core-scripts/platform.sh,ro \
     set -euo pipefail; \
@@ -65,10 +67,12 @@ ENV NVIDIA_DRIVER_CAPABILITIES=all \
     SCCACHE_ERROR_LOG=/tmp/sccache.log
 
 # Writable at runtime for non-root users (sticky, like /tmp); the cache mounts only cover build time.
+LABEL kataglyphis.step=compiler-cache-dirs
 RUN mkdir -p /var/cache/ccache /var/cache/sccache \
     && chmod 1777 /var/cache/ccache /var/cache/sccache
 
 # Not in effect while the env sets SCCACHE_DIR/SIZE/DIRECT. See docs/build-cache-tiers.md#the-shipped-images-cache-dirs
+LABEL kataglyphis.step=sccache-config
 RUN mkdir -p /etc/sccache \
     && printf '%s\n' \
         '[cache.disk]' \
@@ -86,7 +90,8 @@ RUN mkdir -p /etc/sccache \
 WORKDIR /workspace
 
 # OS packages: base, graphics, flutter deps and perf tools in one layer
-RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
+LABEL kataglyphis.step=os-packages
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
@@ -112,7 +117,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
 
 
 # Shared build tooling, in base so the compiler/toolchain builds inherit it
-RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
+LABEL kataglyphis.step=shared-build-tooling
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
@@ -139,7 +145,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
 
 
 # Node.js (official tarballs, apt fallback for RISC-V)
-RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
+LABEL kataglyphis.step=node
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
@@ -165,7 +172,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
 
 
 # Vulkan ICD and layer JSONs
-RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
+LABEL kataglyphis.step=vulkan-runtime-files
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
@@ -190,7 +198,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
       /tmp/vulkan
 
 # uv and compiler cache init
-RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
+LABEL kataglyphis.step=uv
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \

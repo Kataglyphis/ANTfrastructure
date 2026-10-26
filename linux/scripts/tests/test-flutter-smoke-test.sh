@@ -8,19 +8,11 @@ work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
 
 # The stub serves ${work}/site/<path>: a missing file is a 404; -I prints the headers a wasm file needs.
-mkdir -p "${work}/bin" "${work}/site/javascript" "${work}/site/css" "${work}/site/canvaskit"
+mkdir -p "${work}/site/javascript" "${work}/site/css" "${work}/site/canvaskit"
+t_fake_curl_args "${work}/bin"
 cat > "${work}/bin/curl" <<'STUB'
 #!/usr/bin/env bash
-fmt="" head=0 url=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    -w) fmt="$2"; shift 2 ;;
-    -o) shift 2 ;;
-    -I) head=1; shift ;;
-    -*) shift ;;
-    *) url="$1"; shift ;;
-  esac
-done
+source "${BASH_SOURCE[0]%/*}/fake-curl-args.sh" "$@"
 path="${url#http://site}"; path="${path#/}"; file="${SITE}/${path:-index.html}"
 if [ -n "${CURL_FAIL_PATH:-}" ] && [ "${path:-/}" = "$CURL_FAIL_PATH" ]; then
   printf '%s' "${CURL_PARTIAL:-}"

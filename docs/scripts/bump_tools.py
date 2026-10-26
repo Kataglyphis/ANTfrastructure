@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import time
 from collections.abc import Callable
 
 import bump_versions as bv  # tests patch names on bump_versions; every call reads them through it
@@ -269,10 +268,6 @@ def spec_hadolint(cur: str) -> SpecResult:
             ("HADOLINT_WINDOWS_X86_64_SHA256", "hadolint-windows-x86_64.exe"),
         ]:
             extras[env_key] = bv.asset_sha256("hadolint/hadolint", v, asset, sums=("checksums.sha256",))
-        # riscv64 has no release binary: the tag's source and a Hackage index-state of the bump day build it.
-        extras["HADOLINT_SOURCE_SHA256"] = bv.sha256_of_url(
-            f"https://github.com/hadolint/hadolint/archive/refs/tags/{v}.tar.gz")
-        extras["HADOLINT_HACKAGE_INDEX_STATE"] = time.strftime("%Y-%m-%dT00:00:00Z", time.gmtime())
     return v, extras
 
 

@@ -1381,6 +1381,22 @@ nothing to hand back. `lib/dartdoc-build.sh`'s `dartdoc_build_fix_ownership` is
 the older blanket `chown -R` form over one fixed tree and predates this;
 `tests/test-bind-mount-ownership.sh` pins all three decisions.
 
+### The asset mirror
+
+`01-core/downloads.sh` owns it, so every caller of `download_verified_file` (and of
+`download_verified_cached` and `download_verified_install`, which go through it) inherits it
+without a new companion file. `download_mirror_fetch` asks
+`<ASSET_MIRROR_URL>/<sha256>/<name>` first, `download_verify_sha256` checks the bytes, and a
+miss or a mismatch falls back to the upstream URL. The config comes from
+`KATAGLYPHIS_ASSET_MIRROR_FILE`, else the RUN's `/run/secrets/asset_mirror`, else
+`~/.config/kataglyphis/asset-mirror.env`; without one, nothing changes. The mirror speaks plain
+HTTP over WireGuard on purpose, since the pinned digest, not TLS, vouches for the bytes.
+`download_mirror_curl` signs a request when the file holds a key and passes the key on stdin;
+`fill-asset-mirror.sh` reuses it and `download_mirror_object_name`, so the reader and the
+writer cannot disagree on a name. Knobs and log lines:
+[`linux-cross-builds.md` § The asset mirror](linux-cross-builds.md#the-asset-mirror);
+`tests/test-asset-mirror.sh` pins the fallbacks.
+
 ## ELF stripping in media and toolchain builds
 
 `01-core/elf-strip.sh` owns `strip_elf_files` and `strip_elf_tree`. Media build

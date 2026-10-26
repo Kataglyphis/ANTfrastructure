@@ -31,18 +31,8 @@ t_assert_ok test "$(_pin ANDROID_EMULATOR_API)" -ge 35
 
 # A fake curl serves ${_FIX}/<basename of the URL>, so the real download_file and checksum path run.
 _FIX="${_W}/fixtures"
-mkdir -p "${_W}/fakebin" "${_FIX}"
-cat > "${_W}/fakebin/curl" <<'EOF'
-#!/bin/sh
-out=""; url=""
-while [ "$#" -gt 0 ]; do
-  case "$1" in -o) out="$2"; shift 2 ;; -*) shift ;; *) url="$1"; shift ;; esac
-done
-printf '%s\n' "${url}" >> "${FIX}/requested"
-[ -f "${FIX}/${url##*/}" ] || exit 22
-cp "${FIX}/${url##*/}" "${out}"
-EOF
-chmod +x "${_W}/fakebin/curl"
+mkdir -p "${_FIX}"
+t_fake_curl "${_W}/fakebin"
 # No unzip where _run's installer looks (/usr/bin:/bin; WSL has none): a zipfile stand-in that keeps exec bits.
 if ! PATH=/usr/bin:/bin command -v unzip >/dev/null 2>&1; then
   cat > "${_W}/fakebin/unzip" <<'EOF'
@@ -98,7 +88,7 @@ _cft_env() {
 _run() {
   local script="$1" rc=0 out
   shift
-  out="$(env -i PATH="${_W}/fakebin:/usr/bin:/bin" HOME="${_W}" FIX="${_FIX}" "$@" bash "${script}" 2>&1)" || rc=$?
+  out="$(env -i PATH="${_W}/fakebin:/usr/bin:/bin" HOME="${_W}" FAKE_CURL_ROOT="${_FIX}" FAKE_CURL_KEY=basename "$@" bash "${script}" 2>&1)" || rc=$?
   printf '%s\nRC=%s\n' "${out}" "${rc}"
 }
 # _cft_run <arch> [cache dir]

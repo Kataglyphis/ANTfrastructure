@@ -16,15 +16,19 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 CONT = re.compile(r"\\\s*$")
 REF = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
 ASSIGN = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=")
+HEREDOC = re.compile(r"<<-?(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 
 
 def instructions(path: str | PathLike[str]) -> Iterator[tuple[int, str]]:
     """(line, text) per instruction, continuations joined and interior comments
     dropped the way BuildKit drops them."""
-    buf, start = [], 0
+    buf, start, heredoc = [], 0, ""
     with open(path, encoding="utf-8", errors="replace") as fh:
         for num, raw in enumerate(fh, 1):
             line = raw.rstrip("\n")
+            if heredoc:
+                heredoc = "" if line.strip() == heredoc else heredoc
+                continue
             if line.lstrip().startswith("#"):
                 continue
             if not buf:
@@ -34,7 +38,11 @@ def instructions(path: str | PathLike[str]) -> Iterator[tuple[int, str]]:
             more = bool(CONT.search(line))
             buf.append(CONT.sub("", line).strip())
             if not more:
-                yield start, " ".join(t for t in buf if t)
+                text = " ".join(t for t in buf if t)
+                # A heredoc body belongs to its instruction; its lines are not instructions of their own.
+                match = HEREDOC.search(text)
+                heredoc = match.group(2) if match else ""
+                yield start, text
                 buf = []
     if buf:
         yield start, " ".join(t for t in buf if t)

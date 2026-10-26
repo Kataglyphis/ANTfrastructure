@@ -6,7 +6,7 @@ source "${TESTS_DIR}/test-harness.sh"
 S="$(cd "${TESTS_DIR}/.." && pwd)"
 
 t_case "the torch Dockerfile checks both probes against the assembled venv"
-type_run="$(awk '/^RUN --mount=type=bind,source=linux\/scripts\/06-packaging\/check-venv-probe-types.sh,/{on=1} on {print} on && /^    esac/ {exit}' "${S}/../Dockerfile.torch")"
+type_run="$(awk '/^RUN (--mount=type=secret,id=asset_mirror,required=false )?--mount=type=bind,source=linux\/scripts\/06-packaging\/check-venv-probe-types.sh,/{on=1} on {print} on && /^    esac/ {exit}' "${S}/../Dockerfile.torch")"
 t_assert_contains "${type_run}" 'load-ty-tool.sh,target=/tmp/venv-probe-ty/load-ty-tool.sh' \
   "the shared pin loader must be mounted beside the build-time checker"
 t_assert_contains "${type_run}" 'source=linux/jetson-webcam/app.py,target=/tmp/venv-probe-ty/jetson-webcam-app.py,ro' \

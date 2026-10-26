@@ -219,10 +219,11 @@ build_uv_sync_args() {
   local -n _locked_skip="$2"
   local package_name
 
-  # No GUI extra: it pulls wxPython, which is unused here and has no wheel for every pinned Python.
+  # frontend lets the image run the app's Flet viewers; its own markers keep it off riscv64.
   _sync_args=(--find-links /opt/wheels --active \
     --extra "ml-ai" \
-    --extra "docs")
+    --extra "docs" \
+    --extra "frontend")
 
   # With a local torch wheel the backend extra would make uv resolve upstream torch over it.
   local _torch_from_local_wheel=false

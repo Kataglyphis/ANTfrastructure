@@ -14,6 +14,12 @@ source "${_LIB_ORCHESTRATOR_DIR}/lib-runtime-wheels.sh"
 # RUNTIME_ASYNC_PUSH: the wrapper push beside the next arch's build; host-side for the same reason.
 # shellcheck source=linux/scripts/lib-runtime-push.sh
 source "${_LIB_ORCHESTRATOR_DIR}/lib-runtime-push.sh"
+# RUNTIME_INPUT_PREFLIGHT: apt plans and pinned installers before the first build; host-side as well.
+# shellcheck source=linux/scripts/lib-runtime-preflight.sh
+source "${_LIB_ORCHESTRATOR_DIR}/lib-runtime-preflight.sh"
+# RUNTIME_REUSE_CHILDREN: a published child whose build key matches is not rebuilt.
+# shellcheck source=linux/scripts/lib-runtime-reuse.sh
+source "${_LIB_ORCHESTRATOR_DIR}/lib-runtime-reuse.sh"
 # HAILO_NESTED_CACHE / HAILO_PYHAILORT_IPO: the orchestrators check them before the first stage.
 # shellcheck source=linux/scripts/03-media/build/hailo/hailo-build-lib.sh
 source "${_LIB_ORCHESTRATOR_DIR}/03-media/build/hailo/hailo-build-lib.sh"
@@ -125,15 +131,41 @@ orchestrator_consume_log_dir() {
   _OARG_SHIFT=2
 }
 
-# $1 is the run id when CROSS_RUN_ID is unset; RESOURCE_MONITOR=0 disables. See docs/build-resource-monitoring.md
+# $1 is the run id when CROSS_RUN_ID is unset; RESOURCE_MONITOR=0 disables; low-disk counts below the disk-watch floor. See docs/build-resource-monitoring.md
 start_resource_monitor() {
   [ "${RESOURCE_MONITOR:-1}" = "1" ] || return 0
   local mon="${REPO_ROOT}/linux/scripts/01-core/resource-monitor.sh"
   [ -x "${mon}" ] || return 0
   local out="${LOG_DIR:-${REPO_ROOT}/logs}" rid="${CROSS_RUN_ID:-$1}"
   mkdir -p "${out}" || { warn "resource-monitor: cannot create ${out}; monitoring disabled"; return 0; }
+  # Exported before the reuse check, so a child lane marks its steps where the parent's monitor reads.
+  if [ -z "${RESOURCE_MONITOR_STEP_DIR:-}" ]; then
+    RESOURCE_MONITOR_STEP_DIR="${out}/.steps-${rid}"
+    rm -rf -- "${RESOURCE_MONITOR_STEP_DIR}"
+  fi
+  export RESOURCE_MONITOR_STEP_DIR
   pgrep -f "resource-monitor.sh.*${rid}" >/dev/null 2>&1 && return 0
   bash "${mon}" --out-dir "${out}" --run-id "${rid}" --stage-log-dir "${out}" \
-    --disk-path "${BUILDKIT_CACHE_DIR:-/}" --watch-pid "$$" </dev/null >/dev/null 2>&1 &
+    --disk-path "${BUILDKIT_CACHE_DIR:-/}" --low-disk-gb "${RM_LOW_DISK_GB:-${CROSS_DISK_GUARD_GB:-40}}" \
+    --watch-pid "$$" </dev/null >/dev/null 2>&1 &
   log "resource-monitor: sampling -> ${out}/resources-${rid}.csv (RESOURCE_MONITOR=0 to disable)"
+}
+
+# <arch> <step> on|off: the marker a resource-monitor sample is named by. docs/build-resource-monitoring.md#the-runtime-lanes-step-markers
+runtime_step_mark() {
+  local dir="${RESOURCE_MONITOR_STEP_DIR:-}"
+  [ -n "${dir}" ] || return 0
+  if [ "$3" = on ]; then
+    { mkdir -p "${dir}" && : > "${dir}/$1.$2"; } 2>/dev/null || true
+  else
+    rm -f "${dir}/$1.$2" 2>/dev/null || true
+  fi
+  return 0
+}
+
+# <arch> <step> <cmd...>: runs cmd under its marker; no locals, so the command sees its caller's bindings.
+runtime_step_run() {
+  runtime_step_mark "$1" "$2" on
+  "${@:3}" || { set -- "$?" "$1" "$2"; runtime_step_mark "$2" "$3" off; return "$1"; }
+  runtime_step_mark "$1" "$2" off
 }

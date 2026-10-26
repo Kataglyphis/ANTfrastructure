@@ -4,7 +4,7 @@ set -euo pipefail
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 SUBJECT="${TESTS_DIR}/../build-runtime-manifest.sh"
-subject="$(t_fn_src "${SUBJECT}" create_manifest)"
+subject="$(t_fn_src "${SUBJECT}" create_manifest)"$'\n'"$(t_fn_src "${SUBJECT}" _manifest_index_refs)"
 
 scenario() (
   eval "${subject}"

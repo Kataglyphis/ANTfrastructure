@@ -40,7 +40,9 @@ d=json.loads(idx)
 kids=[m for m in d.get("manifests",[]) if m.get("platform",{}).get("os")!="unknown"]
 if not kids: print(f"  FAIL  {TAG} is not a multi-arch index"); sys.exit(1)
 
-fails=0; runids={}
+fails=0; runids={}; keys={}
+# EXPECT_REUSED="<arch>:<build key>,...": children kept from an earlier run, judged by what built them.
+reused=dict(item.split(":",1) for item in os.environ.get("EXPECT_REUSED","").split(",") if ":" in item)
 for m in kids:
     arch=m["platform"]["architecture"]; dig=m["digest"]
     # (1) the per-arch tag must resolve to this exact digest
@@ -68,6 +70,7 @@ for m in kids:
         cfg=json.loads(man)["config"]["digest"]
         labels=json.loads(reg(f"/blobs/{cfg}","*/*")).get("config",{}).get("Labels") or {}
         runids[arch]=labels.get("org.kataglyphis.run-id")
+        keys[arch]=labels.get("org.kataglyphis.build-key")
     except (
         OSError,
         subprocess.SubprocessError,
@@ -77,6 +80,14 @@ for m in kids:
         AttributeError,
     ):
         runids[arch]=None
+
+for arch,want in reused.items():
+    got=keys.get(arch) if arch in runids else None
+    if got!=want:
+        print(f"  FAIL  {arch}: reused child's build key is {got}, expected {want}"); fails+=1
+    else:
+        print(f"  OK    {arch}: reused child carries this run's build key")
+    runids.pop(arch,None)
 
 uniq={v for v in runids.values() if v}
 if None in runids.values() or not uniq:
@@ -89,7 +100,7 @@ else:
     if exp and rid!=exp:
         print(f"  FAIL  run-id is {rid}, expected {exp}"); fails+=1
     else:
-        print(f"  OK    all {len(kids)} children share run-id {rid}")
+        print(f"  OK    all {len(runids)} built children share run-id {rid}")
 
 print(f"[manifest-freshness] {'PASS' if fails==0 else str(fails)+' FAILURE(S)'}")
 sys.exit(1 if fails else 0)

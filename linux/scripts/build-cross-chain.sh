@@ -14,7 +14,7 @@ FINAL_IMAGE="${FINAL_IMAGE:-$(cross_final_image_tag)}"
 FINAL_IMAGE_SET=0
 TARGET_ARCHES="$(resolve_arch_list)"
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
-# A GPU wrapper carries the CUDA/ROCm runtime and GPU torch wheels, so budget more than the CPU 120G.
+# A GPU wrapper carries the CUDA/ROCm runtime and GPU torch wheels, so budget more than the CPU amd64 165G.
 [ -z "${CROSS_GPU_VARIANT:-}" ] || : "${CROSS_RUNTIME_LANE_GB:=180}"
 # A variant logs apart: stage log names repeat across chains, and archiving would move the default's history.
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/logs/build-logs${CROSS_GPU_VARIANT:+/${CROSS_GPU_VARIANT}}}"
@@ -473,18 +473,38 @@ _chain_stage_disk_guard() {
 
 _CHAIN_DISK_WATCH_PID=""
 
-# Free-GB the runtime lane needs right now (arch count x concurrency).
+# <arch>: GB one arch adds to the runtime lane once its android parent is local. docs/build-cache-tiers.md#the-lane-entry-gate-sums-the-arches
+_chain_runtime_arch_gb() {
+  local gb="${CROSS_RUNTIME_LANE_GB:-}"
+  case "${gb}" in
+    ''|*[!0-9]*) case "$1" in amd64) gb=165 ;; *) gb=105 ;; esac ;;
+  esac
+  printf '%s' "${gb}"
+}
+
+# Free-GB the runtime lane needs: every wrapper stays local until the gates after the arch loop, so arches add up.
 _chain_runtime_lane_need_gb() {
-  # The runtime lane builds arches serially, so --parallel-archs must not scale this.
-  local n_arch
-  n_arch="$(arch_list_to_words "${TARGET_ARCHES}" | wc -w)"
-  _disk_guard_runtime_lane_need_gb "${CROSS_RUNTIME_LANE_GB:-120}" "${n_arch}" 0
+  local arch per tag need=0 credit="${CROSS_RUNTIME_WRAPPER_GB:-50}"
+  case "${credit}" in ''|*[!0-9]*) credit=50 ;; esac
+  for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
+    per="$(_chain_runtime_arch_gb "${arch}")"
+    [ "${per}" -gt 0 ] || { printf '0'; return 0; }
+    # A wrapper left by an earlier run is replaced by this one's, which releases its unique layers; a dry run asks no engine.
+    tag="$(RUNTIME_IMAGE_PREFIX="${FINAL_IMAGE}" runtime_wrapper_tag "${arch}" 2>/dev/null || true)"
+    if [ -n "${tag}" ] && ! is_dry_run && image_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"; then
+      per=$(( per > credit ? per - credit : 0 ))
+    fi
+    need=$(( need + per ))
+  done
+  # The in-stage watch trims below CROSS_DISK_GUARD_GB, so the lane must end above it.
+  case "${CROSS_DISK_GUARD_GB:-40}" in ''|*[!0-9]*) ;; *) need=$(( need + ${CROSS_DISK_GUARD_GB:-40} )) ;; esac
+  printf '%s' "${need}"
 }
 
 # Refuse a runtime lane that cannot fit before hours are spent; FORCE_LOW_DISK and --dry-run precede the trim.
 _chain_runtime_lane_disk_gate() {
   [ "${DISK_PREFLIGHT:-1}" = "1" ] || return 0
-  _disk_guard_positive_integer "${CROSS_RUNTIME_LANE_GB:-120}" || return 0
+  _disk_guard_positive_integer "${CROSS_RUNTIME_LANE_GB:-1}" || return 0
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
   local need free_gb protected
   need="$(_chain_runtime_lane_need_gb)"
@@ -513,7 +533,7 @@ _chain_runtime_lane_disk_gate() {
   free_gb="$(_disk_guard_free_gb "${bc_dir}")"
   [ -n "${free_gb}" ] || return 0
   [ "${free_gb}" -lt "${need}" ] || return 0
-  err "runtime lane refused: ${free_gb}G free, ~${need}G needed (${CROSS_RUNTIME_LANE_GB:-120}G per concurrent wrapper build). The 2026-09-01 run entered this lane with 88G and died 28 minutes later with 'no image was built'. Free space, then re-run with --from-stage runtime; or set FORCE_LOW_DISK=1 / CROSS_RUNTIME_LANE_GB=0 to accept the risk."
+  err "runtime lane refused: ${free_gb}G free, ~${need}G needed (per arch: CROSS_RUNTIME_LANE_GB, default 165G amd64 / 105G others, less CROSS_RUNTIME_WRAPPER_GB for a wrapper already local, plus the CROSS_DISK_GUARD_GB floor). The 2026-09-01 run entered this lane with 88G and died 28 minutes later with 'no image was built'. Free space, then re-run with --from-stage runtime; or set FORCE_LOW_DISK=1 / CROSS_RUNTIME_LANE_GB=0 to accept the risk."
 }
 
 # The buildkit reclaim is filtered to type==regular so the cachemounts survive.
@@ -546,13 +566,9 @@ _CHAIN_RUNTIME_GATES="wrapper-content-gate,verify-shipped-wrapper,runtime-image-
 _CHAIN_ARCH_OUTCOMES=""
 _CHAIN_GATES_NOT_RUN=""
 
-# built-this-run | stale | missing, from the wrapper tag's run-id stamp like the coherence gate.
+# built-this-run | reusable | stale | missing, decided once for the chain and the manifest lane (lib-runtime-reuse.sh).
 _chain_runtime_arch_state() {
-  local arch="$1" rid
-  rid="$(ancestry_recorded_run_id "${FINAL_IMAGE}-${arch}" 2>/dev/null || true)"
-  if [ -z "${rid}" ]; then printf 'missing'
-  elif [ "${rid}" = "${CROSS_RUN_ID:-}" ]; then printf 'built-this-run'
-  else printf 'stale'; fi
+  runtime_child_state "$1" "${FINAL_IMAGE}-$1"
 }
 
 # Sets globals, so call directly; a $(...) subshell would discard them.

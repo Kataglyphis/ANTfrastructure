@@ -47,6 +47,8 @@ _entry() (
   eval "$(t_fn_src "${TESTS_DIR}/../lib-orchestrator.sh" orchestrator_consume_runtime_push_arg)"
   eval "$(t_fn_src "${SUBJECT}" _manifest_extra_arg)"
   eval "$(t_fn_src "${SUBJECT}" _manifest_exit_after_gates_if_requested)"
+  eval "$(t_fn_src "${SUBJECT}" _manifest_drop_mode)"
+  eval "$(t_fn_src "${TESTS_DIR}/../lib-runtime-switch.sh" runtime_switch_mode)"
   eval "$(t_fn_src "${SUBJECT}" main)"
   eval "$(t_fn_src "${TESTS_DIR}/../01-core/runtime-flow-common.sh" runtime_prepare_flow)"
   GATES_ONLY=0 BUILD_IMAGES=1 CREATE_MANIFEST=1 PUSH_MANIFEST=0 PUSH_IMAGES=0 DRY_RUN=0
@@ -68,6 +70,7 @@ _entry() (
   _manifest_build_and_smoke() { echo BUILD; }
   create_manifest() { echo PUBLISH; }
   _manifest_check_freshness() { :; }
+  _manifest_drop_pushed_images() { echo DROP; }
   log() { :; }
   err() { printf '%s\n' "$*" >&2; exit 1; }
   main "$@"
@@ -91,6 +94,11 @@ t_assert_eq GATES "${_out}"
 t_case "ordinary runs still reach the build and publication after the gates-only helper"
 _out="$(_entry --push-all)"; _rc=$?
 t_assert_eq 0 "${_rc}"
-t_assert_eq $'BUILD\nPUBLISH' "${_out}"
+t_assert_eq $'BUILD\nPUBLISH\nDROP' "${_out}"
+
+t_case "an unknown RUNTIME_DROP_PUSHED_IMAGES stops the entry point before any gate or build"
+_out="$(RUNTIME_DROP_PUSHED_IMAGES=yes _entry --push --gates-only 2>/dev/null)"; _rc=$?
+t_assert_eq 2 "${_rc}"
+t_assert_eq "" "${_out}"
 
 t_summary

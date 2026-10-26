@@ -18,7 +18,8 @@ ARG FAST_UBUNTU_PORTS_MIRROR_URL
 SHELL ["bash", "-lc"]
 
 # Add AMD ROCm repository + install MIGraphX + ROCm stack
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
+LABEL kataglyphis.step=rocm
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \

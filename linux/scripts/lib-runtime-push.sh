@@ -5,19 +5,15 @@ _LIB_RUNTIME_PUSH_SH_LOADED=1
 # shellcheck source=linux/scripts/01-core/chain-lifecycle.sh
 source "$(dirname "${BASH_SOURCE[0]}")/01-core/chain-lifecycle.sh"
 
+# shellcheck source=linux/scripts/lib-runtime-switch.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-runtime-switch.sh"
+
 RUNTIME_PUSH_QUEUE_DIR=""
 RUNTIME_PUSHER_PID=""
 
 # Prints async or inline. An unknown value is rc 2, so a typo stops a lane at its start.
 runtime_push_mode() {
-  case "${RUNTIME_ASYNC_PUSH:-1}" in
-    1) printf '%s' async ;;
-    0) printf '%s' inline ;;
-    *)
-      printf '[ERROR] RUNTIME_ASYNC_PUSH=%s: expected 1 (background pusher) or 0 (inline push)\n' "${RUNTIME_ASYNC_PUSH}" >&2
-      return 2
-      ;;
-  esac
+  runtime_switch_mode RUNTIME_ASYNC_PUSH 1 async inline "background pusher" "inline push"
 }
 
 # Call in the main shell before the arch loop: a worker subshell's pusher would outlive the shell that waits for it.
@@ -63,6 +59,12 @@ _runtime_push_next() {
   printf '%s' "${oldest}"
 }
 
+# The step marker lives in lib-orchestrator.sh, which a standalone queue may not have loaded.
+_runtime_push_mark() {
+  if declare -F runtime_step_mark >/dev/null; then runtime_step_mark "$1" push "$2"; fi
+  return 0
+}
+
 # <dir> <owner-pid>: FIFO, one push at a time, so the first queued arch gets the whole uplink.
 _runtime_pusher_loop() {
   local dir="$1" owner="$2" poll="${RUNTIME_PUSH_POLL_SECS:-5}" item arch tag rc t0
@@ -74,10 +76,12 @@ _runtime_pusher_loop() {
       mv -f "${dir}/${item}" "${dir}/started.${arch}"
       t0="$(date +%s)"
       log "[runtime-push] arch=${arch} start epoch=${t0} tag=${tag}"
+      _runtime_push_mark "${arch}" on
       # rc is written inside the pipe: errexit would end this loop on a failed push. Prefixed, as it interleaves with the next build.
       { rc=0; runtime_push_tag "${tag}" 2>&1 || rc=$?; printf '%s\n' "${rc}" > "${dir}/rc.${arch}"; } \
         | sed -u "s/^/[push ${arch}] /"
       rc="$(cat "${dir}/rc.${arch}" 2>/dev/null || printf 'none')"
+      _runtime_push_mark "${arch}" off
       log "[runtime-push] arch=${arch} done epoch=$(date +%s) secs=$(( $(date +%s) - t0 )) rc=${rc}"
       continue
     fi

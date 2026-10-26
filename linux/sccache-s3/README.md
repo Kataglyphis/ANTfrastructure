@@ -199,3 +199,58 @@ A Linux chain host stores the same key with `linux/host-config/set-sccache-s3-le
 ([`linux-host-setup.md` § B9](../../docs/linux-host-setup.md#b9-the-shared-s3-level-for-sccache)), and
 its chain hands it to every sccache RUN as one BuildKit secret
 ([`build-cache-tiers.md` § The shared S3 level](../../docs/build-cache-tiers.md#the-shared-s3-level)).
+
+## The asset mirror
+
+The same Garage holds a second bucket, `release-assets`: the pinned release assets the chain
+downloads, so a GitHub outage cannot fail an arch
+([`linux-cross-builds.md` § The asset mirror](../../docs/linux-cross-builds.md#the-asset-mirror)).
+Objects are content-addressed, `<sha256>/<file name>`, and every reader checks the pinned
+sha256 again. It is a bucket of its own because `sccache-s3-evict` deletes the `sccache`
+bucket's oldest objects, and a pinned asset is old by design.
+
+**One-time setup, on the VPS** (check each command against `garage <command> --help`):
+
+```bash
+garage bucket create release-assets
+(umask 077; garage key create asset-mirror-read > /root/asset-mirror-read-key.txt)
+garage bucket allow --read release-assets --key asset-mirror-read
+(umask 077; garage key create asset-mirror-fill > /root/asset-mirror-fill-key.txt)
+garage bucket allow --read --write release-assets --key asset-mirror-fill
+```
+
+Nothing evicts it, and its size is not measured yet: an old pin's objects stay until they are
+deleted by hand.
+
+**On each Linux chain host**, two files, both mode 600 and never in a repository:
+
+| File | Key | Read by |
+|---|---|---|
+| `~/.config/kataglyphis/asset-mirror.env` | `asset-mirror-read` | every chain build, as the BuildKit secret `asset_mirror` |
+| `~/.config/kataglyphis/asset-mirror-fill.env` | `asset-mirror-fill` | `fill-asset-mirror.sh` only |
+
+Both hold the same four lines:
+
+```bash
+ASSET_MIRROR_URL=http://<s3-server-lan-ip>:3900/release-assets
+AWS_ACCESS_KEY_ID=<key id>
+AWS_SECRET_ACCESS_KEY=<secret key>
+AWS_REGION=garage
+```
+
+The firewall rule of § 3 already admits the build hosts. The key reaches curl on stdin and is
+SigV4-signed (`--aws-sigv4`, curl 7.75 or newer), so it shows in no process listing.
+
+**Filling it.** Each upstream fetch logs `asset-mirror| miss <sha256> <url> <mode>`, and the
+fill script turns those lines into objects. After a chain, from the hub checkout:
+
+```bash
+linux/host-config/fill-asset-mirror.sh                         # dry run over logs/build-logs
+linux/host-config/fill-asset-mirror.sh --apply                 # download, verify, upload, read back
+linux/host-config/fill-asset-mirror.sh --apply --url <url> --sha <sha256> [--stream]   # one asset by hand
+```
+
+It mirrors only a digest that `versions.env` or `tool-pins.env` pins, skips an object that is
+already present, verifies every download against the pin and every upload by reading it back,
+and exits 1 when any asset failed. The first chain after the setup fills the log; the second
+one is served from the mirror (`asset-mirror| hit` lines).

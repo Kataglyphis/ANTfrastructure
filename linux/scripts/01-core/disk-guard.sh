@@ -86,9 +86,10 @@ _disk_guard_fmt_gib() {
   awk -v b="${1:-0}" 'BEGIN{printf "%.1f", b/1073741824}'
 }
 
-# Always returns 0 and sets _DISK_GUARD_TRIM_FREED_BYTES/_REMOVED, so call it directly, not in $(...).
+# Always returns 0 and sets _DISK_GUARD_TRIM_FREED_BYTES/_REMOVED/_EVICTED, so call it directly, not in $(...).
 _DISK_GUARD_TRIM_FREED_BYTES=0
 _DISK_GUARD_TRIM_REMOVED=0
+_DISK_GUARD_TRIM_EVICTED=""
 _disk_guard_positive_integer() {
   case "${1:-}" in ''|*[!0-9]*) return 1 ;; esac
   local status=0
@@ -118,6 +119,7 @@ _disk_guard_trim_cache_export() {
   case "${keep_n}" in ''|*[!0-9]*) keep_n=3 ;; esac
   _DISK_GUARD_TRIM_FREED_BYTES=0
   _DISK_GUARD_TRIM_REMOVED=0
+  _DISK_GUARD_TRIM_EVICTED=""
   [ -d "${bc_dir}" ] || return 0
   local free_gb
   free_gb="$(_disk_guard_free_for_target "${bc_dir}" "${target_gb}")" || return 0
@@ -132,8 +134,18 @@ _disk_guard_trim_cache_export() {
     if [ -z "${free_gb}" ] || [ "${free_gb}" -ge "${target_gb}" ]; then break; fi
   done
   free_gb="$(_disk_guard_free_gb "${bc_dir}")"
-  _disk_guard_log "[disk-trim] removed ${_DISK_GUARD_TRIM_REMOVED} slug(s), freed $(_disk_guard_fmt_gib "${_DISK_GUARD_TRIM_FREED_BYTES}") GiB; ${free_gb:-?}G free now"
+  _disk_guard_log "[disk-trim] removed ${_DISK_GUARD_TRIM_REMOVED} slug(s) (${_DISK_GUARD_TRIM_EVICTED:-none}), freed $(_disk_guard_fmt_gib "${_DISK_GUARD_TRIM_FREED_BYTES}") GiB; ${free_gb:-?}G free now; kept: $(_disk_guard_slug_list "${bc_dir}")"
   return 0
+}
+
+# The slugs left in <dir>, comma-joined, so a trim log names what survived it.
+_disk_guard_slug_list() {
+  local f out=""
+  for f in "${1:-}"/*; do
+    [ -d "${f}" ] || continue
+    out+="${out:+,}${f##*/}"
+  done
+  printf '%s' "${out:-none}"
 }
 
 # A failed removal matters only when the selected slug still exists.
@@ -163,6 +175,7 @@ _disk_guard_trim_one() {
   fi
   _DISK_GUARD_TRIM_FREED_BYTES=$(( _DISK_GUARD_TRIM_FREED_BYTES + sz ))
   _DISK_GUARD_TRIM_REMOVED=$(( _DISK_GUARD_TRIM_REMOVED + 1 ))
+  _DISK_GUARD_TRIM_EVICTED+="${_DISK_GUARD_TRIM_EVICTED:+,}${victim}"
   _disk_guard_log "[disk-trim]   removed ${victim} ($(_disk_guard_fmt_gib "${sz}") GiB)"
 }
 
@@ -287,6 +300,14 @@ _disk_guard_buildkit_prune() {
   fi
 }
 
+# "<n> record(s), <x> GiB" of the store's layer cache, "?" when the store cannot be read.
+_disk_guard_regular_usage() {
+  local u
+  u="$(_disk_guard_du_json --filter type==regular \
+    | jq -r '"\(length) record(s), \((map(.size) | add // 0) / 107374182.4 | floor / 10) GiB"' 2>/dev/null || true)"
+  printf '%s' "${u:-?}"
+}
+
 _disk_guard_cachemount_verdict() {
   if [ "${2:-0}" -lt "${1:-0}" ]; then
     _disk_guard_warn "[disk-buildkit] cache-mount records dropped ${1} -> ${2} — the type==regular filter did not hold; ccache/sccache/uv are gone and the next compile stage runs COLD"
@@ -297,14 +318,15 @@ _disk_guard_cachemount_verdict() {
 
 # Always returns 0: a reclaim that cannot run must not abort the stage.
 _disk_guard_buildkit_fallback() {
-  local path="${1:-}" target_gb="${2:-}" keep n_before n_after before after t0
+  local path="${1:-}" target_gb="${2:-}" keep n_before n_after before after t0 reg_before
   _DISK_GUARD_BUILDKIT_FREED_GB=0
   before="$(_disk_guard_lever_needed "${path}" "${target_gb}")" || return 0
   _disk_guard_buildkit_ready || return 0
   keep="$(_disk_guard_keep_gb)"
   n_before="$(_disk_guard_cachemount_count)"
+  reg_before="$(_disk_guard_regular_usage)"
   t0="${SECONDS}"
-  _disk_guard_log "[disk-buildkit] ${before}G free < ${target_gb}G after the cache-export trim — pruning type==regular layer cache with --keep-storage ${keep}G (exec.cachemount records are not candidates)"
+  _disk_guard_log "[disk-buildkit] ${before}G free < ${target_gb}G after the cache-export trim — pruning type==regular layer cache with --keep-storage ${keep}G (exec.cachemount records, the tool builds' cabal and web-lane-tools caches included, are not candidates)"
   _disk_guard_buildkit_prune "${keep}" || true
   _DISK_GUARD_BUILDKIT_PRUNES=$(( ${_DISK_GUARD_BUILDKIT_PRUNES:-0} + 1 ))
   after="$(_disk_guard_free_gb "${path}")"
@@ -312,7 +334,7 @@ _disk_guard_buildkit_fallback() {
   if [ -n "${after}" ] && [ "${after}" -gt "${before}" ]; then
     _DISK_GUARD_BUILDKIT_FREED_GB=$(( after - before ))
   fi
-  _disk_guard_log "[disk-buildkit] reclaimed ${_DISK_GUARD_BUILDKIT_FREED_GB}G of layer cache in $(( SECONDS - t0 ))s (${before}G -> ${after:-?}G free; keep-storage ${keep}G)"
+  _disk_guard_log "[disk-buildkit] reclaimed ${_DISK_GUARD_BUILDKIT_FREED_GB}G of layer cache in $(( SECONDS - t0 ))s (${before}G -> ${after:-?}G free; keep-storage ${keep}G; layer cache ${reg_before:-?} -> $(_disk_guard_regular_usage))"
   _disk_guard_cachemount_verdict "${n_before:-0}" "${n_after:-0}"
   return 0
 }

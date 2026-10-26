@@ -544,8 +544,9 @@ environment markers evaluated *inside the image*. Upstream already encodes the
 legitimate riscv64 divergences as markers
 (`mlflow; platform_machine != "riscv64"`), so those are honoured for free and
 never need a local exception. Which extras count is a two-line **contract**, not
-a threshold: `_VENV_CONTRACT_EXTRAS="ml-ai docs"` (what `assemble-torch-app.sh`
-always requests) plus whichever `pytorch-*` extra the image itself advertises in
+a threshold: `_VENV_CONTRACT_EXTRAS="ml-ai docs frontend"` (what `assemble-torch-app.sh`
+always requests; `_venv_contract_extras` drops `frontend` on riscv64, where the app marks every
+one of its requirements off and the extra would only report `NOREQ`) plus whichever `pytorch-*` extra the image itself advertises in
 `PYTORCH_EXTRA` — reading the image's own advertisement is what keeps a
 `pytorch-cpu` wrapper from being asked for the ROCm extra's wheels. A second arm
 needs no configuration at all: any **dangling edge** — an unconditional
@@ -1873,6 +1874,16 @@ design:
 `tests/test-manifest-wrapper-gate.sh` extracts the function with its ancestry
 collaborators stubbed, so what is under test is the decision rather than the
 registry.
+
+The run-id check covers the children this run built. A child the run reuses
+from an earlier one (a published arch outside `--target-arches`) is held to
+its **build key** instead: it joins the index only when its key matches this
+run's, every gate reads it after a pull by digest, and `runtime_reuse_recheck`
+refuses it if its key or digest moved before the index is created
+([`linux-cross-builds.md` § A failed arch re-runs alone](linux-cross-builds.md#a-failed-arch-re-runs-alone);
+`tests/test-runtime-reuse.sh`). `verify-manifest-freshness.sh` takes the same
+split: `EXPECT_REUSED=<arch>:<key>,…` names the reused children and their keys,
+and the rest must share `EXPECT_RUN_ID`.
 
 ### Cross-compiler multi-arch smoke
 

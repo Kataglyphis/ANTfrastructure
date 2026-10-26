@@ -260,7 +260,7 @@ SAFE: list[tuple[str, Spec, str]] = [
     ("PANDOC_VERSION", spec_pandoc, "documentation image only"),
     ("BINARYEN_VERSION", spec_binaryen, "none (host-side bootstrap)"),
     ("CHROME_FOR_TESTING_VERSION", spec_chrome_for_testing, "linux package chrome layer (amd64, arm64)"),
-    ("HADOLINT_VERSION", spec_hadolint, "torch stage (every arch; riscv64 source build) + host-side lint bootstrap"),
+    ("HADOLINT_VERSION", spec_hadolint, "torch stage (amd64, arm64) + host-side lint bootstrap"),
     ("ACTIONLINT_VERSION", spec_actionlint, "none (host-side lint bootstrap)"),
     ("SHELLCHECK_VERSION", spec_shellcheck, "torch stage (every arch) + host-side lint bootstrap; linux+windows"),
     ("GITLEAKS_VERSION", spec_gitleaks, "none (host-side secret-scan bootstrap; linux+windows)"),
@@ -623,8 +623,7 @@ def unclassified_keys(env: dict[str, str]) -> list[str]:
         r"|_COMMIT$|_ASSET$|^CUDA_ARCHITECTURES$|^WINDOWS_TARGET_ARCH(ES)?$"
         r"|^CI_IMAGE_|^ANDROID_TARGET_ABI$|^GENAI_ALLOW_RISCV64$|^FT_TORCH_TWIN$|^JDK_PACKAGE$"
         r"|^ROCM_WINDOWS_GFX_FAMILY$"  # a GPU target set, like CUDA_ARCHITECTURES
-        r"|^APP_REF$"  # a tracked branch, resolved to a commit per run
-        r"|^HADOLINT_HACKAGE_INDEX_STATE$)"  # a snapshot date spec_hadolint writes with HADOLINT_VERSION
+        r"|^APP_REF$)"  # a tracked branch, resolved to a commit per run
     )
     return sorted(k for k in env if k not in covered and not nonversion.search(k))
 

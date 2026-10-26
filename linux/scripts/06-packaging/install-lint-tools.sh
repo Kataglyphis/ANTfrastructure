@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# [PREFIX [HADOLINT_BIN [CORE_DIR]]]: the pinned shellcheck and hadolint on PATH, SHA-verified. docs/consumer-image-contract.md#shellcheck-and-hadolint
+# [PREFIX [CORE_DIR]]: the pinned shellcheck and hadolint on PATH, SHA-verified. docs/consumer-image-contract.md#shellcheck-and-hadolint
 set -euo pipefail
 
 PREFIX="${1:-/usr/local/bin}"
-HADOLINT_BIN="${2:-}"
-CORE_DIR="${3:-/opt/scripts/core}"
+CORE_DIR="${2:-/opt/scripts/core}"
 
 die() { printf 'install-lint-tools: ERROR: %s\n' "$*" >&2; exit 1; }
 
@@ -44,19 +43,21 @@ if [ "${hl_asset}" != - ]; then
   download_verified_install \
     "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/${hl_asset}" \
     "${hl_sha}" "${PREFIX}/hadolint" || die "the verified hadolint ${HADOLINT_VERSION} download failed"
-elif [ -n "${HADOLINT_BIN}" ]; then
-  install -m 0755 "${HADOLINT_BIN}" "${PREFIX}/hadolint"
 else
-  die "hadolint publishes no ${arch} binary; pass the source build as HADOLINT_BIN"
+  # No upstream binary, and a source build under QEMU costs hours per chain, so this arch ships shellcheck alone.
+  printf 'install-lint-tools: NOTE: hadolint publishes no %s binary; none is installed\n' "${arch}"
 fi
 
 have="$("${PREFIX}/shellcheck" --version | sed -n 's/^version: //p')"
 [ "${have}" = "${SHELLCHECK_VERSION#v}" ] || die "shellcheck reports '${have}', the pin is ${SHELLCHECK_VERSION}"
-have="$("${PREFIX}/hadolint" --version)"
-case "${have}" in
-  *" ${HADOLINT_VERSION#v}"|*" ${HADOLINT_VERSION#v}-"*|*" ${HADOLINT_VERSION#v} "*) ;;
-  *) die "hadolint reports '${have}', the pin is ${HADOLINT_VERSION}" ;;
-esac
+hl_have='no hadolint'
+if [ "${hl_asset}" != - ]; then
+  hl_have="$("${PREFIX}/hadolint" --version)"
+  case "${hl_have}" in
+    *" ${HADOLINT_VERSION#v}"|*" ${HADOLINT_VERSION#v}-"*|*" ${HADOLINT_VERSION#v} "*) ;;
+    *) die "hadolint reports '${hl_have}', the pin is ${HADOLINT_VERSION}" ;;
+  esac
+fi
 # Each must also flag what it exists to flag: a binary that runs but cannot lint is no gate.
 probe="$(mktemp -d)"
 printf '#!/bin/sh\necho $1\n' > "${probe}/probe.sh"
@@ -65,9 +66,11 @@ case "$("${PREFIX}/shellcheck" "${probe}/probe.sh" 2>&1 || true)" in
   *SC2086*) ;;
   *) die "shellcheck did not report SC2086 on an unquoted \$1" ;;
 esac
-case "$("${PREFIX}/hadolint" --no-color "${probe}/Dockerfile" 2>&1 || true)" in
-  *DL30*) ;;
-  *) die "hadolint did not report a DL30xx rule on an unpinned apt-get install" ;;
-esac
+if [ "${hl_asset}" != - ]; then
+  case "$("${PREFIX}/hadolint" --no-color "${probe}/Dockerfile" 2>&1 || true)" in
+    *DL30*) ;;
+    *) die "hadolint did not report a DL30xx rule on an unpinned apt-get install" ;;
+  esac
+fi
 rm -rf "${probe}"
-printf 'install-lint-tools: shellcheck %s and %s in %s (%s)\n' "${SHELLCHECK_VERSION}" "${have}" "${PREFIX}" "${arch}"
+printf 'install-lint-tools: shellcheck %s and %s in %s (%s)\n' "${SHELLCHECK_VERSION}" "${hl_have}" "${PREFIX}" "${arch}"

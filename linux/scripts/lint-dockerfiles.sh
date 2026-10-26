@@ -97,6 +97,19 @@ python3 linux/scripts/verify_dockerfile_env_order.py "${DOCKERFILES[@]}" || FAIL
 printf '== image env: no build-host setting on %d Dockerfile(s) ==\n' "${#DOCKERFILES[@]}"
 python3 linux/scripts/verify_image_env.py --dockerfile "${DOCKERFILES[@]}" || FAILED=1
 
+# Pass 0c: every RUN of the hub's chain Dockerfiles names its layer; a consumer's are not graded.
+# docs/code-quality-tooling.md#step-labels-dockerfile-lint
+CHAIN_DOCKERFILES=()
+if [ "${LINT_ROOT_GIVEN}" -eq 0 ]; then
+  for df in "${DOCKERFILES[@]}"; do
+    case "${df}" in linux/Dockerfile.*|*/linux/Dockerfile.*) CHAIN_DOCKERFILES+=("${df}") ;; esac
+  done
+fi
+if [ "${#CHAIN_DOCKERFILES[@]}" -gt 0 ]; then
+  printf '== step labels on %d chain Dockerfile(s) ==\n' "${#CHAIN_DOCKERFILES[@]}"
+  python3 linux/scripts/verify_dockerfile_step_labels.py "${CHAIN_DOCKERFILES[@]}" || FAILED=1
+fi
+
 # ---------------------------------------------------------------------------
 # hadolint bootstrap (PATH copy preferred; else pinned, SHA-verified download)
 # ---------------------------------------------------------------------------

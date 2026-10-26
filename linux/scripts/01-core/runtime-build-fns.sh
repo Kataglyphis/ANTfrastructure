@@ -470,6 +470,7 @@ _runtime_build_wrapper() {
   local -a _wrap_out=()
   append_runtime_image_output _wrap_out "${_wrapper_tag_out}" "${_wrap_push}" \
     "$(runtime_android_pin "${arch}")" android
+  ! declare -F runtime_build_key_label_args >/dev/null || runtime_build_key_label_args _wrap_out "${arch}"
   # RUNTIME_NO_CACHE=1 applies here too, so a fresh run is fresh end to end.
   # shellcheck disable=SC2086  # intentional: empty RUNTIME_NO_CACHE must vanish
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
@@ -652,7 +653,7 @@ _runtime_timed() {
     _runtime_heartbeat "${step}" "${arch}" "${t0}" &
     hb=$!
   fi
-  "$@" || rc=$?
+  runtime_step_run "${arch}" "${step}" "$@" || rc=$?
   if [ -n "${hb}" ]; then
     parallel_stop_child_advisory "${hb}"
   fi

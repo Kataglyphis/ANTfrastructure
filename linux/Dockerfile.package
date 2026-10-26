@@ -47,26 +47,30 @@ ARG TARGETARCH
 ARG GCC_VERSION
 ARG LLVM_RELEASE
 
-RUN --mount=type=bind,source=linux/scripts/06-packaging/validate-compilers.sh,target=/tmp/validate-compilers.sh,ro --mount=type=bind,source=linux/scripts/06-packaging/media-payloads.sh,target=/tmp/media-payloads.sh,ro \
+LABEL kataglyphis.step=artifact-compilers
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/06-packaging/validate-compilers.sh,target=/tmp/validate-compilers.sh,ro --mount=type=bind,source=linux/scripts/06-packaging/media-payloads.sh,target=/tmp/media-payloads.sh,ro \
     set -euo pipefail; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
     bash /tmp/validate-compilers.sh artifact-source
 
 # Pruned before the /opt/vulkan COPY: docs/artifact-copy-completeness.md#the-vulkan-tree-ships-only-what-the-image-runs
-RUN --mount=type=bind,source=linux/scripts/06-packaging/prune-vulkan-host-sdk.sh,target=/tmp/prune-vulkan-host-sdk.sh,ro \
+LABEL kataglyphis.step=prune-vulkan-host-sdk
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/06-packaging/prune-vulkan-host-sdk.sh,target=/tmp/prune-vulkan-host-sdk.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/platform.sh,ro \
     set -euo pipefail; \
     bash /tmp/prune-vulkan-host-sdk.sh "${TARGET_ARCH:-${TARGETARCH}}"
 
 # Before the Android and Rust COPYs, so the pruned bytes never become a layer.
 ARG HOST_PAYLOAD
-RUN --mount=type=bind,source=linux/scripts/06-packaging/prune-host-payload.sh,target=/tmp/prune-host-payload.sh,ro \
+LABEL kataglyphis.step=prune-host-payload
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/06-packaging/prune-host-payload.sh,target=/tmp/prune-host-payload.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/platform.sh,ro \
     set -euo pipefail; \
     HOST_PAYLOAD="${HOST_PAYLOAD}" bash /tmp/prune-host-payload.sh "${TARGET_ARCH:-${TARGETARCH}}"
 
 # The mkdir keeps an older android image mountable: docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
 FROM artifact-source AS web-lane-tools-src
+LABEL kataglyphis.step=web-lane-tools-dir
 RUN mkdir -p /opt/web-lane-tools
 
 
@@ -118,6 +122,7 @@ COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /usr/lo
 COPY --link --from=artifact-source /opt/llvm-target /usr/local/llvm-target
 # Tolerant per-path copies: variant payloads such as onnxruntime-gpu may be absent.
 COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh linux/scripts/06-packaging/media-payloads.sh linux/scripts/lib/log-bootstrap.sh /tmp/
+LABEL kataglyphis.step=media-payloads
 RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
     set -euo pipefail; \
     # No soname repair here: that belongs to the sdk stage alone (materialize-llvm-target.sh).
@@ -271,6 +276,7 @@ ENV ROCM_PATH=${ROCM_ON:+/opt/rocm} \
 ENV PATH="${PATH}${ROCM_ON:+:/opt/rocm/bin}"
 
 # A login shell rebuilds PATH from /etc/profile; `:=` keeps a caller's CARGO_HOME, the case guard stays idempotent.
+LABEL kataglyphis.step=rust-profile
 RUN printf '%s\n' \
       ': "${RUSTUP_HOME:=/usr/local/rustup}"; export RUSTUP_HOME' \
       ': "${CARGO_HOME:=/usr/local/cargo}"; export CARGO_HOME' \
@@ -307,7 +313,8 @@ COPY --chmod=755 linux/scripts/06-packaging/smoke-torch-venv.sh /opt/scripts/pac
 COPY --chmod=644 linux/scripts/06-packaging/venv-version-probe.py /opt/scripts/packaging/venv-version-probe.py
 
 # The Vulkan SDK installs under x86_64/, so the other arches get symlinks.
-RUN set -euo pipefail; \
+LABEL kataglyphis.step=vulkan-symlinks
+RUN --mount=type=secret,id=asset_mirror,required=false set -euo pipefail; \
     if [ ! -e /usr/local/llvm-target ] && [ -d /opt/llvm-target ]; then \
         ln -s /opt/llvm-target /usr/local/llvm-target; \
     fi; \
@@ -317,6 +324,7 @@ RUN set -euo pipefail; \
     bash /opt/scripts/packaging/setup-vulkan-symlinks.sh "${TARGETARCH:-${TARGET_ARCH:-amd64}}" || true
 
 # A cached LLVM may lack libFuzzer (either layout counts); borrow TheRock's same-ABI copy under both names, the driver wants the unsuffixed one.
+LABEL kataglyphis.step=clang-resource-dir
 RUN set -euo pipefail; \
     _resdir="$(/usr/local/llvm-target/bin/clang -print-resource-dir 2>/dev/null)"; \
     _libdir="${_resdir}/lib/x86_64-unknown-linux-gnu"; \
@@ -336,7 +344,8 @@ RUN set -euo pipefail; \
     fi
 
 # The inherited sources still name ports.ubuntu.com; platform.sh must sit beside ubuntu-mirror.sh or this RUN is a silent no-op.
-RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/core/use-fast-ubuntu-mirror.sh,ro \
+LABEL kataglyphis.step=fast-ubuntu-mirror
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/core/use-fast-ubuntu-mirror.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/core/ubuntu-mirror.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/core/platform.sh,ro \
     set -euo pipefail; \
@@ -344,7 +353,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,tar
 # auto|cross|native|legacy and on|refresh|off: docs/consumer-image-contract.md#building-the-web-lane-tools-from-source
 ARG WEB_LANE_TOOLS_SOURCE=auto
 ARG WEB_LANE_TOOLS_CACHE=on
-RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+LABEL kataglyphis.step=package-image
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
@@ -357,7 +367,8 @@ RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
 # No apt lists cleanup above: /var/lib/apt is a shared cache mount, never committed.
 
 # Cross builds cannot execute the target cc, so only the execution probes are skipped.
-RUN set -euo pipefail; \
+LABEL kataglyphis.step=validate-compilers
+RUN --mount=type=secret,id=asset_mirror,required=false set -euo pipefail; \
     _ta="${TARGET_ARCH:-${TARGETARCH}}"; \
     if [ "${BUILD_MODE}" = "cross" ] && [ -n "${_ta}" ] && [ "${_ta}" != "amd64" ]; then \
         TARGET_ARCH="${_ta}" VALIDATE_CC_STATIC_ONLY=1 \
@@ -368,7 +379,8 @@ RUN set -euo pipefail; \
     fi
 
 # DeepStream's runtime wiring and gates, or proof that the image carries none: docs/linux-accelerator-images.md#deepstream-nvidia-variant
-RUN --mount=type=bind,source=linux/scripts/05-frameworks,target=/opt/scripts/05-frameworks,readonly \
+LABEL kataglyphis.step=deepstream
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/05-frameworks,target=/opt/scripts/05-frameworks,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
@@ -379,11 +391,13 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks,target=/opt/scripts/05-
     fi
 
 # Last, emulator first: a Chrome bump then re-runs one small layer. docs/consumer-image-contract.md#the-android-emulator-runs-on-amd64-with-kvm
-RUN --mount=type=bind,source=linux/scripts/06-packaging/install-android-emulator.sh,target=/tmp/tr/install-android-emulator.sh,ro \
+LABEL kataglyphis.step=android-emulator
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/06-packaging/install-android-emulator.sh,target=/tmp/tr/install-android-emulator.sh,ro \
     --mount=type=cache,target=/var/cache/test-runtimes,id=test-runtimes-dl,sharing=shared \
     set -euo pipefail; \
     TEST_RUNTIMES_CACHE_DIR=/var/cache/test-runtimes bash /tmp/tr/install-android-emulator.sh
-RUN --mount=type=bind,source=linux/scripts/06-packaging/install-chrome-for-testing.sh,target=/tmp/tr/install-chrome-for-testing.sh,ro \
+LABEL kataglyphis.step=chrome-for-testing
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/06-packaging/install-chrome-for-testing.sh,target=/tmp/tr/install-chrome-for-testing.sh,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/test-runtimes,id=test-runtimes-dl,sharing=shared \
@@ -403,7 +417,8 @@ ARG LLVM_RELEASE
 ARG PYTHON_VERSION
 ARG PYTHON_MAJOR_MINOR
 
-RUN set -euo pipefail; \
+LABEL kataglyphis.step=wrapper-smoke
+RUN --mount=type=secret,id=asset_mirror,required=false set -euo pipefail; \
     GCC_VERSION="${GCC_VERSION}" \
     LLVM_RELEASE="${LLVM_RELEASE}" \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}" \

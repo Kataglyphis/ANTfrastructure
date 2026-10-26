@@ -8,6 +8,7 @@ source "${_SCRIPT_DIR}/smoke-common.sh"
 source "${_SCRIPT_DIR}/check-ort-provenance.sh"
 source "${_SCRIPT_DIR}/check-free-threaded-wheels.sh"
 source "${_SCRIPT_DIR}/check-gpu-runtime.sh"
+source "${_SCRIPT_DIR}/check-python-runtime.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 
@@ -1091,20 +1092,6 @@ du -sh /opt 2>/dev/null | sed "s/^/    /"' || echo "  (size probe unavailable)"
     echo ""
 }
 
-# uid 1001 cannot write __pycache__ into root-owned /opt/venv, so an uncompiled venv re-parses every start.
-check_venv_bytecode() {
-  local image_tag="$1"
-  local target_arch="$2"
-    echo "--- AP2: venv byte-compiled (.pyc present) ---"
-    if _rt_run \
-      bash -lc 'find /opt/venv/lib -name "*.pyc" -print -quit 2>/dev/null | grep -q .'; then
-      echo "  OK: /opt/venv ships .pyc (AP2 intact)"
-    else
-      fail "AP2 REGRESSED: no .pyc anywhere under /opt/venv/lib — venv not byte-compiled (VENV_COMPILE gate broken?)"
-    fi
-    echo ""
-}
-
 # Arch-parity table conformance, not a cross-arch diff. See docs/cross-build-verification.md#in-image-smoke-tests-need-a-built-image-not-part-of-preflight
 _PARITY_PREFIXES="OrchestrANT android android-sdk cmake ffmpeg gcc gstreamer libcamera opencv5 python scripts venv vulkan"
 # Wheel names in dist-info form ('-' and '.' normalised to '_').
@@ -1410,7 +1397,15 @@ LITERT_VERSION RUST_VERSION WASM_PACK_VERSION FLUTTER_RUST_BRIDGE_VERSION
 PYTORCH_VERSION TORCHVISION_VERSION"
 
 # Mirrors assemble-torch-app.sh's uv sync; the pytorch-* extra comes from the image's PYTORCH_EXTRA.
-_VENV_CONTRACT_EXTRAS="ml-ai docs"
+_VENV_CONTRACT_EXTRAS="ml-ai docs frontend"
+
+# Every frontend requirement is marked off riscv64 (Flet publishes no riscv64 client), so it would only NOREQ there.
+_venv_contract_extras() {
+  case "$1" in
+    riscv64) printf '%s\n' "${_VENV_CONTRACT_EXTRAS/ frontend/}" ;;
+    *) printf '%s\n' "${_VENV_CONTRACT_EXTRAS}" ;;
+  esac
+}
 
 # Key <arch>:<extra>:<pkg> (DEP = dangling transitive edge); an arm that stops applying fails.
 _venv_pkg_exempt() {
@@ -1452,7 +1447,7 @@ _venv_set_verdicts() {
   local arch="$1" probe="$2"
   local pkgs extras extra reqs r asserted=0 owner name
   pkgs="$(printf '%s\n' "${probe}" | sed -n 's/^PKG //p' | LC_ALL=C sort -u)"
-  extras="${_VENV_CONTRACT_EXTRAS}"
+  extras="$(_venv_contract_extras "${arch}")"
   # The image's own PYTORCH_EXTRA picks the torch extra, so a cpu wrapper is never asked for rocm wheels.
   local torch_extra
   torch_extra="$(printf '%s\n' "${probe}" | sed -n 's/^ADV PYTORCH_EXTRA //p' | head -1)"
@@ -2433,6 +2428,7 @@ main() {
     check_setuid_inventory "${image_tag}" "${target_arch}"
     check_size_observability "${image_tag}" "${target_arch}"
     check_venv_bytecode "${image_tag}" "${target_arch}"
+    check_relocatable_python "${image_tag}" "${target_arch}"
     check_arch_parity "${image_tag}" "${target_arch}"
     run_shipped_truth_probe "${image_tag}" "${target_arch}"
     check_advertised_versions "${image_tag}" "${target_arch}"

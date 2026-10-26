@@ -166,19 +166,10 @@ _cross_build_append_cache_args() {
 # The host's S3 level as one BuildKit secret, so neither the key nor the endpoint re-keys a RUN: docs/build-cache-tiers.md#the-shared-s3-level
 _cross_build_append_sccache_s3_secret() {
   local -n _s3_cmd="$1"
-  local file="${KATAGLYPHIS_SCCACHE_S3_FILE:-${XDG_CONFIG_HOME:-${HOME:-/root}/.config}/kataglyphis/sccache-s3.env}" name endpoint
+  local file="${KATAGLYPHIS_SCCACHE_S3_FILE:-${XDG_CONFIG_HOME:-${HOME:-/root}/.config}/kataglyphis/sccache-s3.env}" endpoint
   case "${KATAGLYPHIS_SCCACHE_S3:-on}" in 0|off|false|no) return 0 ;; esac
-  [ -f "${file}" ] || return 0
-  if [ -n "$(find "${file}" -perm /077 2>/dev/null)" ]; then
-    warn "sccache S3: ${file} is readable by others (chmod 600 it) -- building without the S3 level"
-    return 0
-  fi
-  for name in SCCACHE_BUCKET SCCACHE_ENDPOINT AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
-    if ! grep -q "^${name}=." "${file}"; then
-      warn "sccache S3: ${file} has no ${name} (linux/host-config/set-sccache-s3-level.sh writes it) -- building without the S3 level"
-      return 0
-    fi
-  done
+  host_secret_file_ready "${file}" "sccache S3" "linux/host-config/set-sccache-s3-level.sh writes it" \
+    SCCACHE_BUCKET SCCACHE_ENDPOINT AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY || return 0
   endpoint="$(sed -n 's/^SCCACHE_ENDPOINT=//p' "${file}" | tail -n 1)"
   if ! sccache_s3_endpoint_reachable "${endpoint}"; then
     warn "sccache S3: ${endpoint} takes no TCP connection from this host within 2 s -- building without the S3 level"

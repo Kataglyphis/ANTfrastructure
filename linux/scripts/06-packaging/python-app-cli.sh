@@ -10,7 +10,8 @@ parse_python_app_args() {
     bundle)
       values["--wheel-dir"]=WHEEL_DIR
       values["--python-version"]=PYTHON_VERSION
-      values["--ort-wheel-dir"]=ORT_WHEEL_DIR ;;
+      values["--ort-wheel-dir"]=ORT_WHEEL_DIR
+      values["--python-runtime"]=PYTHON_RUNTIME ;;
     package)
       values["--bundle"]=BUNDLE
       values["--formats"]=FORMATS ;;

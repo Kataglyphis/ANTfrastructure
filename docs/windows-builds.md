@@ -1622,8 +1622,8 @@ image builds FROM:
   - Probe P13: line-profiler built this way has no Rich header and imports on 3.15. pyyaml compiles
     `_yaml` with clang-cl, finds no `yaml.h` and falls back to pure Python, as designed.
   - The shim is for native builds only, because a cross target would need `--target`.
-- **Environment**: `uv sync` on the source-built CPython (extras `ml-ai`, `docs`, `pytorch-cpu`
-  (`pytorch-cu130` on the nvidia lane) and `test`; no `frontend` extra, like Linux),
+- **Environment**: `uv sync` on the source-built CPython (extras `ml-ai`, `docs`, `frontend`, `pytorch-cpu`
+  (`pytorch-cu130` on the nvidia lane) and `test`, as on Linux; `frontend` brings flet and flet-desktop, its markers keep flet-web and FastAPI off Windows),
   with `--no-install-package` for every `onnxruntime*` name in `uv.lock` (a locked name whose family
   has no chain wheel stops the stage), then a reconcile so this lane's wheels always win.
   - Image assembly and consumer sync parse ORT lock names through

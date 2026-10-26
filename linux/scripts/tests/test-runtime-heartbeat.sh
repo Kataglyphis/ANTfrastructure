@@ -13,6 +13,8 @@ eval "${FNS}"
 eval "$(t_fn_src "${TESTS_DIR}/../01-core/parallel-loop.sh" parallel_require_child_stop)" || exit 1
 eval "$(t_fn_src "${TESTS_DIR}/../01-core/parallel-loop.sh" parallel_stop_child_advisory)" || exit 1
 eval "${FNT}"
+eval "$(t_fn_src "${TESTS_DIR}/../lib-orchestrator.sh" runtime_step_mark)" || exit 1
+eval "$(t_fn_src "${TESTS_DIR}/../lib-orchestrator.sh" runtime_step_run)" || exit 1
 
 t_case "a step under the first threshold prints no heartbeat"
 : > "${_LOG}"
@@ -38,6 +40,23 @@ dry_run_probe() (
 t_assert_eq 23 "$(t_rc dry_run_probe)"
 t_assert_contains "$(cat "${_LOG}")" 'step=dry secs='
 t_assert_eq 0 "$(grep -c 'unexpected heartbeat' "${_LOG}")"
+t_case "a timed step holds its monitor marker while it runs and drops it after, on failure too"
+export RESOURCE_MONITOR_STEP_DIR="${_LOG}.steps"
+_marker_probe() { ls "${RESOURCE_MONITOR_STEP_DIR}" > "${_LOG}.seen"; return 9; }
+t_assert_eq 9 "$(t_rc _runtime_timed package arm64 _marker_probe)"
+t_assert_eq "arm64.package" "$(cat "${_LOG}.seen")"
+t_assert_eq "" "$(ls "${RESOURCE_MONITOR_STEP_DIR}")"
+t_case "without a monitor the lane writes no marker"
+RESOURCE_MONITOR_STEP_DIR="" _runtime_timed quick amd64 true
+t_assert_eq "" "$(ls "${RESOURCE_MONITOR_STEP_DIR}")"
+t_case "a marked command keeps its caller's bindings and argument boundaries"
+_bound_probe() { local _caller_var=step; printf '%s|' "${!_caller_var}" "$@" > "${_LOG}.seen"; }
+_runtime_timed bound amd64 _bound_probe 'a b' ''
+t_assert_eq "bound|a b||" "$(cat "${_LOG}.seen")"
+t_assert_eq "" "$(ls "${RESOURCE_MONITOR_STEP_DIR}")" "a passed step drops its marker"
+rm -rf "${RESOURCE_MONITOR_STEP_DIR}" "${_LOG}.seen"
+unset RESOURCE_MONITOR_STEP_DIR
+
 t_case "termination during heartbeat child startup closes inherited output pipes"
 t_assert_ok env HEARTBEAT_FNS="${FNS}" python3 - <<'PYTHON'
 import os

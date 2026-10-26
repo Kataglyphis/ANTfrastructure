@@ -22,9 +22,11 @@ runtime_python_version() {
 PYTHON_VERSION="$(runtime_python_version)"
 ORT_WHEEL_DIR="${ORT_CHAIN_WHEEL_DIR:-/opt/onnxruntime-wheels}"
 WORK_DIR=""
+# image: the image's own CPython, staged relocatable; standalone: python-build-standalone, for a host without the image.
+PYTHON_RUNTIME="image"
 
 usage() {
-  printf 'usage: %s [--repo-root DIR] [--config FILE] [--wheel-dir DIR] [--out-dir DIR] [--python-version X.Y.Z] [--ort-wheel-dir DIR] [--work-dir DIR]\n' "$0"
+  printf 'usage: %s [--repo-root DIR] [--config FILE] [--wheel-dir DIR] [--out-dir DIR] [--python-version X.Y.Z] [--ort-wheel-dir DIR] [--work-dir DIR] [--python-runtime image|standalone]\n' "$0"
 }
 
 parse_python_app_args bundle "$@"
@@ -125,11 +127,25 @@ done
 [ -n "${ort_wheel}" ] || err "no chain ONNX Runtime wheel in ${ORT_WHEEL_DIR}: the family ships only the chain ORT"
 info "chain ORT wheel: $(basename "${ort_wheel}")"
 
-info "== runtime: python-build-standalone ${PYTHON_VERSION} (the image's own build is not relocatable)"
-uv python install "${PYTHON_VERSION}" --install-dir "${WORK_DIR}/python" --no-bin
-python_home="$(find "${WORK_DIR}/python" -mindepth 1 -maxdepth 1 -type d -name "cpython-${PYTHON_VERSION}-linux-*" | head -n 1)"
-[ -n "${python_home}" ] || err "uv installed no cpython-${PYTHON_VERSION} into ${WORK_DIR}/python"
-cp -a "${python_home}" "${RUNTIME}"
+case "${PYTHON_RUNTIME}" in
+  image)
+    image_python_version="$(python3 -I -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])')"
+    [ "${image_python_version}" = "${PYTHON_VERSION}" ] ||
+      err "the image's python3 is ${image_python_version}, not ${PYTHON_VERSION}; pass --python-runtime standalone for another version"
+    info "== runtime: the image's own CPython ${PYTHON_VERSION}, staged relocatable"
+    python3 -I "${SCRIPT_DIR}/python-relocate.py" stage --python "$(command -v python3)" --dest "${RUNTIME}" ||
+      err "could not stage the image's CPython; pass --python-runtime standalone on a host without the image"
+    python3 -I "${SCRIPT_DIR}/python-relocate.py" check --tree "${RUNTIME}" || err "the staged CPython does not run once moved"
+    ;;
+  standalone)
+    info "== runtime: python-build-standalone ${PYTHON_VERSION}"
+    uv python install "${PYTHON_VERSION}" --install-dir "${WORK_DIR}/python" --no-bin
+    python_home="$(find "${WORK_DIR}/python" -mindepth 1 -maxdepth 1 -type d -name "cpython-${PYTHON_VERSION}-linux-*" | head -n 1)"
+    [ -n "${python_home}" ] || err "uv installed no cpython-${PYTHON_VERSION} into ${WORK_DIR}/python"
+    cp -a "${python_home}" "${RUNTIME}"
+    ;;
+  *) err "--python-runtime is image or standalone, not '${PYTHON_RUNTIME}'" ;;
+esac
 PY="${RUNTIME}/bin/python3"
 "${PY}" -c 'import sys; print(sys.version)'
 # The runtime decides: ci_packaging.sh ships a free-threaded twin beside the GIL wheel, and only one of them installs here.
@@ -139,7 +155,7 @@ info "app wheel for the ${abi} runtime: $(basename "${app_wheel}")"
 
 info "== locked packages (${EXTRAS[*]}) with the chain ORT, then the app wheel"
 install_python_app_packages "${PY}" "${app_wheel}" "${ort_wheel}" "${WORK_DIR}" "${EXTRAS[@]}"
-# python-build-standalone ships its stdlib without bytecode, which the launchers' -B would recompile on every start.
+# python-build-standalone ships its stdlib without bytecode, which the launchers' -B would recompile on every start; the image's has it.
 "${PY}" -m compileall -q -j 0 -x '/(site-packages|test|tests|idlelib)/' "$("${PY}" -I -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')"
 
 info "== launchers"

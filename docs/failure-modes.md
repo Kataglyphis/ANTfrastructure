@@ -478,7 +478,7 @@ NEXT stage refuses anyway: `[ERROR] runtime lane refused: 56G free, ~120G needed
 (2026-09-02: six manual prunes; 2026-09-03: the Flutter ship build, attempt 1).
 
 **Cause.** Two different numbers. `CROSS_DISK_GUARD_GB` (40) is a floor for *this*
-stage; the runtime lane needs `CROSS_RUNTIME_LANE_GB` (120) per wrapper build, and
+stage; the runtime lane needs the sum of every arch's growth ([`build-cache-tiers.md` § 3.2](build-cache-tiers.md#the-lane-entry-gate-sums-the-arches)), and
 `--only runtime` additionally pulls the three `cross-android-<arch>` images
 (~40G uncompressed each) as its artifact source. A guard that reclaims to a fixed
 floor is therefore satisfied exactly when the lane is not.

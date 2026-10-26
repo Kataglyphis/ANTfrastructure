@@ -631,6 +631,21 @@ no source fallback, which would cost hundreds of crates per tool under QEMU.
   `binary already exists`, since cargo did not install them. **So a consumer's hub pin
   must include this before it builds on an image that ships them.**
 
+### The app venv runs OrchestrANT's Flet UIs
+
+`/opt/venv` is synced with OrchestrANT's `frontend` extra beside `ml-ai` and `docs` (CON106,
+owner decision 2026-10-26), so the image runs the YOLO viewer (`--ui flet`), the camera stream
+page and the benchmark viewer: flet, flet-desktop, flet-web, FastAPI (held below 0.145 for
+flet-web 1.0.4) and uvicorn, all wheels on cp315 amd64 and arm64. The Windows torch stage syncs
+the same extra; its markers leave flet-web and FastAPI off Windows. **riscv64 has none of it**:
+every `frontend` requirement is marked off riscv64, since Flet publishes no riscv64 client, so
+APP-PARITY records the absences and VENV-SET leaves the extra out of riscv64's contract.
+
+The Python side is complete; the desktop client is not. flet_desktop downloads Flet's stock
+Linux client on first start, and that client stops at `libsecret-1.so.0: cannot open shared
+object file`, which the image does not carry (CON105). The web view (`flet-web`) has no such
+dependency. A client built in the image on `FLUTTER_VERSION` is CON102.
+
 ### PowerShell
 
 The package stage puts `pwsh` at `PWSH_VERSION` on `PATH` (`/usr/local/bin/pwsh`, the tree in
@@ -645,7 +660,8 @@ skip there ([image-decisions.md](image-decisions.md#deliberate--not-gaps)).
 
 ### shellcheck and hadolint
 
-The torch stage puts both on `PATH` in `/usr/local/bin` on every arch (CON83), at the
+The torch stage puts both on `PATH` in `/usr/local/bin` (CON83): shellcheck on every arch,
+hadolint on amd64 and arm64, at the
 `SHELLCHECK_VERSION` and `HADOLINT_VERSION` pins in `tool-pins.env`, the same pins the
 hub's lint gates bootstrap. `install-lint-tools.sh` takes each release binary through
 `download_verified_install` against its per-arch SHA256, and fails the stage when a tool
@@ -653,24 +669,15 @@ does not report its pin.
 
 - **shellcheck** publishes a riscv64 build, pinned as `SHELLCHECK_LINUX_RISCV64_SHA256`.
   `lint-shell.sh` bootstraps the same asset on a riscv64 host.
-- **hadolint publishes none for riscv64.** The `hadolint-build` stage of
-  `Dockerfile.torch` builds it from the release tag's source (`HADOLINT_SOURCE_SHA256`)
-  with Ubuntu's GHC 9.10.3, the compiler its cabal file is tested with. The tag's
-  `cabal.project` carries upstream's `allow-newer: time`; the Hackage release alone
-  does not resolve. `HADOLINT_HACKAGE_INDEX_STATE` pins every dependency to the index
-  of the bump day. The stage starts from the pinned Ubuntu, not the package image, so
-  an app or chain change never re-keys it; on amd64 and arm64 it is an empty `/out`.
-  `build-hadolint.sh` fails a binary that does not report the pin or does not flag a
-  Dockerfile it must flag, and caches it in the cabal cache mount keyed by those three
-  pins, so a chain rebuilds it only when one of them moves. The build is long: measured
-  2026-10-09 under QEMU on the 32-core host, 18221 s for about 105 packages, after 469 s
-  of apt and 138 s of `cabal update`. BuildKit runs it in parallel with the torch stage; the lint-tool install in the final stage waits for it. The
-  binary links libgmp, libffi and libnuma, which the riscv64 image carries.
+- **hadolint publishes none for riscv64, and the riscv64 image ships without it.**
+  A source build under QEMU took about two hours of every riscv64 wrapper, and CI lints
+  Dockerfiles on amd64 anyway. `install-lint-tools.sh` prints
+  `NOTE: hadolint publishes no riscv64 binary; none is installed` there.
 - The pins live in `tool-pins.env`, not `versions.env`: only the torch stage reads them,
   so a lint-tool bump rebuilds the torch stage, never the compiler.
 
 The `lint-tools` contract row compares what both binaries report with the pins, on
-every arch.
+every arch; on riscv64 it requires that no hadolint reports at all.
 
 ### The riscv64 uv cache seed
 
@@ -721,6 +728,15 @@ free-threaded leg (CON110).
   (OrchestrANT). Another consumer's lock hits the seed only where it resolves the same
   versions from PyPI. A uv bump re-keys the cache layout, and the next chain rebuilds
   the seed with it; a consumer on an older image keeps a seed its newer uv may not read.
+
+### The GIL Python travels into app bundles
+
+`/usr/local`'s CPython is the runtime of every Linux app bundle: `python-app-bundle.sh` stages
+it as a movable tree instead of downloading python-build-standalone. Keep it
+`--enable-shared`, with `_sysconfigdata` importable, and do not add files to its
+`site-packages` that a bundle should not carry (the stage drops them). The runtime smoke's
+`RELOCATABLE-PY` row proves a moved copy on every arch:
+[`python-app-bundles.md` § The relocated image CPython](python-app-bundles.md#the-relocated-image-cpython).
 
 ### The free-threaded Python
 

@@ -46,10 +46,10 @@ usage default; see CHANGELOG 2026-10-22.
 - **RV2 — the S3 level stored 2177 objects and served none [S, ★★★, investigate first].**
   `compiler.log`: `sccache-drain| every upload done after 0 s (L1 (s3): 2177 written, 0 failed of 2177)`.
   Find which part of the cache key changed before calling it a fix.
-- **RV3 — ten standalone helpers keep an output contract [decide per script].** Lint scripts print
+- **RV3 — nine standalone helpers keep an output contract [decide per script].** Lint scripts print
   `ERROR:` and have tests on it; `lint-shell` draws ✓/✗; `docs-site` prints `::error` annotations;
-  `probe-sccache` has its own report; `git-sync-branches` counts through a file. Six more
-  (`build-hailort`, `install-litert-web`, `build-hadolint`, `install-lint-tools`, `smoke-common`,
+  `probe-sccache` has its own report; `git-sync-branches` counts through a file. Five more
+  (`build-hailort`, `install-litert-web`, `install-lint-tools`, `smoke-common`,
   `uv-cache-seed`) are bind-mounted into Dockerfiles: they need `logging.sh` in those RUN mounts, which
   re-keys the stage. Do them with the next build.
 - **RV4 — `check-target-toolchain.sh` is not wired into any stage [S, ★★].** The musl-loader failure

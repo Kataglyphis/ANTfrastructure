@@ -31,6 +31,7 @@ ENV BUILD_MODE=${BUILD_MODE} \
     VULKAN_VERSION=${VULKAN_VERSION} \
     LLVM_RELEASE=${LLVM_RELEASE}
 # Via profile.d, not ENV, so riscv64 (no Flutter) does not advertise a missing SDK.
+LABEL kataglyphis.step=flutter-path
 RUN if [ "${TARGET_ARCH:-${TARGETARCH:-amd64}}" != "riscv64" ]; then \
       echo 'export PATH="/opt/flutter/bin:${PATH}"' >> /etc/profile.d/flutter.sh && \
       echo 'export FLUTTER_ROOT=/opt/flutter'        >> /etc/profile.d/flutter.sh ; \
@@ -40,7 +41,8 @@ COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh
 
 # Pick this arch's /opt/llvm-target-<arch> as /opt/llvm-target; a shared fixed prefix would leak across arches.
 COPY --chmod=755 linux/scripts/02-toolchain/materialize-llvm-target.sh /opt/scripts/toolchain/materialize-llvm-target.sh
-RUN set -euo pipefail; \
+LABEL kataglyphis.step=llvm-target
+RUN --mount=type=secret,id=asset_mirror,required=false set -euo pipefail; \
     bash /opt/scripts/toolchain/materialize-llvm-target.sh; \
     rm -f /opt/scripts/toolchain/materialize-llvm-target.sh
 
@@ -85,7 +87,8 @@ COPY --chmod=755 \
     /opt/scripts/toolchain/
 # Patches for the pinned SDK source, none since 1.4.363.0: docs/vulkan-foreign-arch-sdk.md#upstream-patches-recheck-on-every-sdk-bump
 COPY --chmod=755 linux/scripts/01-core/apply-patch.sh /opt/scripts/core/apply-patch.sh
-RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+LABEL kataglyphis.step=sdk-dependencies
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
@@ -93,7 +96,8 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
     bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" --vulkan-version "${VULKAN_VERSION}" vulkan
 
 # Verification
-RUN set -euo pipefail; \
+LABEL kataglyphis.step=sdk-dependencies-arch
+RUN --mount=type=secret,id=asset_mirror,required=false set -euo pipefail; \
     bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" verify; \
     # The verify above checks compilers only; this gates the Vulkan SDK install.
     test -d /opt/vulkan || { echo "ERROR: /opt/vulkan missing after Vulkan SDK install" >&2; exit 1; }; \
@@ -119,7 +123,8 @@ ENV TVM_REF=${TVM_REF} \
 # Flutter SDK (amd64 + arm64; riscv64 skipped)
 COPY --chmod=755 linux/scripts/05-frameworks/flutter/setup-flutter.sh /opt/scripts/frameworks/flutter/setup-flutter.sh
 # Keyed on version (an arch-only id kept shipping the old SDK) and lane (one writer per id); seeded atomically behind a marker.
-RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-sdk-${FLUTTER_VERSION}-${TARGET_ARCH} \
+LABEL kataglyphis.step=flutter
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=cache,target=/var/cache/flutter,id=flutter-sdk-${FLUTTER_VERSION}-${TARGET_ARCH} \
     set -euo pipefail; \
     if [ "${TARGET_ARCH:-amd64}" = "riscv64" ]; then \
         mkdir -p /opt/flutter; \
@@ -157,6 +162,7 @@ RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-sdk-${FLUTTER_VERSIO
 COPY --chmod=755 linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py /opt/scripts/frameworks/flutter/fetch-fallback-fonts.py
 COPY linux/scripts/05-frameworks/flutter/fallback-fonts.lock /opt/scripts/frameworks/flutter/fallback-fonts.lock
 COPY linux/scripts/lib/fetch-data-lock.py /opt/scripts/lib/fetch-data-lock.py
+LABEL kataglyphis.step=fallback-fonts
 RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-fallback-fonts \
     set -euo pipefail; \
     if [ "${TARGET_ARCH:-amd64}" = "riscv64" ]; then \

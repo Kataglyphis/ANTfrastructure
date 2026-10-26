@@ -127,7 +127,9 @@ t_assert_eq "slug-a slug-b" \
 
 t_case "trim LOGS every removal and the total it freed"
 _assert_log_contains "${workdir}/out.txt" "removed slug-a"
-_assert_log_contains "${workdir}/out.txt" "removed 2 slug(s), freed"
+_assert_log_contains "${workdir}/out.txt" "removed 2 slug(s) (slug-a,slug-b), freed"
+_assert_log_contains "${workdir}/out.txt" "kept: slug-c" "the summary names what survived the trim"
+t_assert_eq "slug-a,slug-b" "${_DISK_GUARD_TRIM_EVICTED}"
 
 t_case "trim stops as soon as free space reaches the target"
 # Budget is 100 MiB (would take all three); the second df says 50G >= 40G.
@@ -260,7 +262,9 @@ cat > "${_bk}/bin/buildctl" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${BUILDCTL_LOG}"
 [ "${BUILDCTL_UNREACHABLE:-0}" = "1" ] && exit 1
-case " $* " in *" --format "*) printf '%s\n' "${BUILDCTL_DU_JSON:-[]}"; exit 0 ;; esac
+case " $* " in *" --format "*)
+  if [ -f "${BUILDCTL_PRUNED}" ] && [ -n "${BUILDCTL_DU_JSON_AFTER:-}" ]; then printf '%s\n' "${BUILDCTL_DU_JSON_AFTER}"; exit 0; fi
+  printf '%s\n' "${BUILDCTL_DU_JSON:-[]}"; exit 0 ;; esac
 if [ "$1" = "du" ] && [ "$2" = "--filter" ]; then
   n=97
   [ -f "${BUILDCTL_PRUNED}" ] && n="${BUILDCTL_MOUNTS_AFTER:-${n}}"
@@ -330,6 +334,19 @@ _assert_log_contains "${_bk}/o.txt" "[disk-buildkit] 4G free < 40G after the cac
 _assert_log_contains "${_bk}/o.txt" "reclaimed 223G of layer cache" \
   "a reclaim nobody can quantify from the log is what made 2026-09-03 unreconstructible"
 _assert_log_contains "${_bk}/o.txt" "all 97 cache-mount record(s) survived"
+
+t_case "the prune names the layer cache it took: records and GiB before and after"
+t_needs "jq" command -v jq
+_bk_reset
+BUILDCTL_DU_JSON='[{"size":2147483648},{"size":536870912}]' BUILDCTL_DU_JSON_AFTER='[{"size":536870912}]' \
+  _disk_guard_buildkit_fallback "${_bk}/bc" 40 > "${_bk}/o2.txt" 2>&1
+_assert_log_contains "${_bk}/o2.txt" "layer cache 2 record(s), 2.5 GiB -> 1 record(s), 0.5 GiB"
+_assert_log_contains "${_bk}/o2.txt" "cabal and web-lane-tools caches included, are not candidates"
+_bk_reset
+export BUILDCTL_UNREACHABLE=1
+t_assert_eq "?" "$(_disk_guard_regular_usage)" "an unreadable store must not read as an empty one"
+_bk_reset
+_disk_guard_watch_once "${_bk}/bc" 40 "" 3 > "${_bk}/o.txt" 2>&1
 
 t_case "the reclaim record CREDITS the buildkit prune instead of crying defeat"
 _assert_log_contains "${_bk}/o.txt" "+ 223G of buildkit layer cache"

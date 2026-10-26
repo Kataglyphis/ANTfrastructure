@@ -80,6 +80,21 @@ t_assert_eq "start repo:latest-amd64 end repo:latest-amd64 start repo:latest-arm
 t_assert_contains "${_out}" "LOG [runtime-push] arch=amd64 start epoch="
 t_assert_contains "${_out}" "LOG [runtime-push] arch=arm64 done epoch="
 
+t_case "the pusher holds the arch's push marker while it uploads, and none without the build functions"
+_out="$(PUSH_GATE=amd64 _run "$(t_fn_src "${SCRIPTS}/lib-orchestrator.sh" runtime_step_mark)
+export RESOURCE_MONITOR_STEP_DIR=\"\${W}/steps\"
+${_HELD}"'
+echo "WHILE=$(ls "${RESOURCE_MONITOR_STEP_DIR}")"
+touch "${W}/release"
+runtime_push_queue_finish
+echo "AFTER=[$(ls "${RESOURCE_MONITOR_STEP_DIR}")]"')"
+t_assert_contains "${_out}" "WHILE=amd64.push"
+t_assert_contains "${_out}" "AFTER=[]"
+_out="$(_run 'runtime_push_queue_start
+runtime_push_wrapper repo:latest-amd64 amd64
+runtime_push_queue_finish; echo "FINISH-RC=$?"')"
+t_assert_contains "${_out}" "FINISH-RC=0"
+
 # Both land while the held push keeps the pusher from looking, so it sees them together.
 t_case "items queued out of order still go oldest first"
 _out="$(PUSH_GATE=amd64 _run "${_HELD}"'

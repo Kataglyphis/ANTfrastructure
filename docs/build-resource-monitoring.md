@@ -31,6 +31,28 @@ The **`context`** column is the key one: at every peak-pressure moment the
 summary tells you *which file/target was compiling*, so you can trace an OOM or
 disk spike straight to the offending stage (e.g. torch's `aten` TUs).
 
+### The runtime lane's step markers
+
+The runtime lane writes no per-stage log with a `.run` marker, so before CON142
+every one of its samples read `stage=?`. Now `start_resource_monitor`
+(`lib-orchestrator.sh`) exports `RESOURCE_MONITOR_STEP_DIR`
+(`<log dir>/.steps-<run id>`) and passes it to the monitor as `--step-dir`.
+`_runtime_timed` (`01-core/runtime-build-fns.sh`) creates `<arch>.<step>` there
+while a step runs: `base`, `package`, `smoke`, `wrapper`, `wrapper-build`, and
+any other step it times. The background pusher does the same with `<arch>.push`.
+The marker is removed when the step ends, whether it passed or failed.
+
+While any marker exists, the `stage` column lists every one of them as
+`arch/step`, joined by `+` because a comma would add CSV columns: for example
+`amd64/push+arm64/package`. The summary therefore names the arch and step of
+each peak, even while arches overlap. When no marker exists, the column falls
+back to the active log and then to `--label`, as before.
+
+A child lane keeps the directory its parent exported, so the chain's single
+monitor reads what `build-runtime-manifest.sh` marks. A lane killed past its
+traps can leave a marker behind; the directory is per run id, and a fresh start
+of that run id clears it.
+
 ## Overhead
 
 Negligible. Each tick is a handful of `/proc` reads plus ~3 short-lived forks
@@ -68,7 +90,7 @@ bash linux/scripts/01-core/resource-monitor.sh summarize ~/build-logs/resources-
 ```
 
 Thresholds for the summary's "near-OOM" / "low-disk" sample counts are tunable
-with `--near-oom-mb` (default 4096) and `--low-disk-gb` (default 20).
+with `--near-oom-mb` (default 4096) and `--low-disk-gb` (default 20; the chain orchestrators pass `RM_LOW_DISK_GB`, else the disk-watch floor `CROSS_DISK_GUARD_GB`, 40).
 
 ## Reading the results
 

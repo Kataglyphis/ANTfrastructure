@@ -647,4 +647,7 @@ main() {
     clear_unmounted_apt_lists
 }
 
-main "$@"
+# Sourced, it only defines: package-apt-plan.sh simulates select_dev_packages with it.
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+    main "$@"
+fi

@@ -6,7 +6,7 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**Groomed 2026-10-23 against the merged source and recorded checks.** The immutable Linux index
+**Groomed 2026-10-23 against the merged source and recorded checks; re-checked 2026-10-26.** The immutable Linux index
 observed on 2026-10-22 was
 `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
 (hub `c819278171c47b9c6462dcc239377808b324476e`, run `20261022-055503-544d57b9`),
@@ -110,42 +110,30 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       build's and `step=smoke-wait`, and a wall clock down by about the summed upload plus
       min(smoke, wrapper) per arch. Tick 1–2 on that run.
 
-- [ ] **CON139 — a failed arch re-runs alone; the arches already built are not rebuilt** [M, ★★★].
-      The runtime lane's completeness gate wants every child of `:latest` stamped with the same run-id
-      (`_chain_runtime_arch_state`: `built-this-run | stale | missing`). On 2026-10-20 only riscv64
-      failed (an Ubuntu Ports skew in its package stage), and amd64 and arm64 were already pushed, yet
-      the 2026-10-21 run rebuilt and re-uploaded both: about 3–4 h of a 5 h run for arches that were
-      done. Nine chain attempts ran between 2026-10-19 and 2026-10-21. Work: key a child by what built
-      it (the hub revision and the inputs the ancestry check already verifies) rather than by the run
-      that pushed it, let `--target-arches riscv64 --from-stage runtime` complete an index whose other
-      children match, and keep the gates (wrapper-content, smoke, manifest-coherence) running over every
-      child, re-read from the registry for the ones not built in this run. Done when a run that only
-      rebuilds riscv64 publishes a 3-child `:latest` that passes every gate.
+- [ ] **CON139 — a failed arch re-runs alone; prove it on the build host** [M, ★★★].
+      In source since 2026-10-26 ([`linux-cross-builds.md` § A failed arch re-runs alone](docs/linux-cross-builds.md#a-failed-arch-re-runs-alone)):
+      each wrapper carries `org.kataglyphis.build-key`, and a published child whose key matches joins the
+      index by digest after every gate read it (`RUNTIME_REUSE_CHILDREN=0` restores the same-run index).
+      The first chain after it rebuilds every arch (no published wrapper has a key yet). Done when a
+      follow-up `--target-arches riscv64 --from-stage runtime` logs `[runtime-reuse] amd64: reusing …` and
+      the same for arm64, builds riscv64 only, gates all three, and publishes a 3-child `:latest` that
+      passes freshness.
 
-- [ ] **CON140 — the runtime lane proves each arch's apt set resolves before it builds anything**
-      [S, ★★]. The 2026-10-20 run failed in riscv64's package stage after about 5 h
-      (`xvfb : Depends: xserver-common (>= 2:21.1.22-1ubuntu1.3) but it is not going to be installed`),
-      a skew in `resolute-updates` that `apt-get install --simulate` shows in seconds. Work: before the
-      first arch's base build, run the package stage's apt lists through `apt-get install --simulate` in
-      each arch's parent image (riscv64 and arm64 under QEMU take seconds for a simulate), with the
-      image's own sources (`-updates` and `-security` included), and refuse the lane on a conflict with
-      the line apt printed. A watcher written for that skew polled `dists/resolute/` and never fired,
-      because the fixed package landed only in `resolute-updates`: the check must read what apt reads.
-      The same preflight re-hashes what the pinned installers download (`RUSTUP_INIT_SHA256`,
-      `UV_INSTALL_SH_SHA256`): the 2026-10-21 14:08 rerun lost arm64's package stage after about
-      an hour to rustup-init 1.29.2, released the day before (06440af9 moved the pin).
+- [ ] **CON140 — the runtime lane's input preflight, proved on a chain** [S, ★★].
+      In source since 2026-10-26 ([`linux-cross-builds.md` § The runtime lane input preflight](docs/linux-cross-builds.md#the-runtime-lane-input-preflight),
+      `RUNTIME_INPUT_PREFLIGHT`): each arch's package-stage apt set through `apt-get install --simulate` in
+      the base's pinned parent, and the rustup and uv installers re-hashed. Done when the next chain shows,
+      before any `step=base`, `[runtime-preflight <arch>] OK: apt plan: N package(s) resolve` for all three
+      arches, the two installer `OK` lines and `[runtime-preflight] passed`. riscv64's plan takes about
+      8 min under QEMU and the lane waits for it; overlap it with amd64's build if that shows up as idle.
 
-- [ ] **CON141 — the runtime disk gate measured, and an arch's local images dropped after its push**
-      [M, ★★]. `CROSS_RUNTIME_LANE_GB` (default 120 per concurrent wrapper build) refuses below that,
-      but a 3-arch run took 456 → 80 GB on 2026-10-20 (376 GB), and amd64 alone 299 → 134 GB on
-      2026-10-21. Each `cross-android-<arch>` is about 56 GB unpacked and each `latest-<arch>` about
-      50 GB, and `latest-<arch>`, `latest-<arch>-tmp-reduced-platform` and `latest-package-<arch>` stay
-      local after the push. Work: size the gate from the per-arch figures above, and remove an arch's
-      local images once it is pushed when no later gate reads them locally (check
-      `verify-shipped-wrapper` and `runtime-image-smoke` first). Done when a 3-arch run's minimum free
-      space is reported in the resource summary and stays above the disk-watch threshold (40 GB) without
-      its trim firing.
-
+- [ ] **CON141 — the summed runtime disk gate and the post-push image drop, proved on a chain** [M, ★★].
+      In source since 2026-10-26 ([`build-cache-tiers.md`](docs/build-cache-tiers.md)): the gate sums
+      165 GB for amd64 and 105 GB for each other arch, 50 GB less per wrapper already local, plus the 40 GB
+      floor; after the index the lane removes each pushed arch's `latest-<arch>`,
+      `-tmp-reduced-platform` and `latest-package-<arch>` (`RUNTIME_DROP_PUSHED_IMAGES=0` keeps them).
+      Done when a 3-arch pushing run logs `[runtime-drop] removed N … 0 refused` and its resource summary
+      shows `samples below 40 GB free disk: 0` with no `[disk-watch] … reclaiming` in the runtime stage.
 
 - [ ] **CON112 — ModelANT's release build runs on the pinned CPython and the chain ORT** [M, ★★].
       `.github/workflows/release.yml` builds on `ubuntu-latest` with `actions/setup-python`
@@ -402,13 +390,11 @@ owner carries the breakage that costs.
       `audioplayers_linux` links `-lgstreamer-1.0` without pkg-config's `-L`, so
       `/opt/gstreamer/lib/x86_64-linux-gnu` has to be on `LIBRARY_PATH` (or the plugin's CMake
       patched). Both are moot for CON102's core-only client.
-- [ ] **CON106 — `assemble-torch-app.sh` installs no GUI extra "because it pulls wxPython"** [S, ★].
-      OrchestrANT's `frontend` extra has no wxPython since d954e86; it is flet, flet-desktop,
-      flet-web (off Windows), `fastapi<0.145` and uvicorn[standard]. Every native one has cp315
-      wheels on amd64 and arm64 (httptools 0.9.0, msgpack 1.2.3, uvloop 0.23.0, websockets 17.2;
-      watchfiles 1.3.0 has none but was in the lock before). Decide: `--extra frontend` in the app
-      venv (the image then runs both viewers and the stream page, and app-venv-parity grows by
-      those packages), or keep it out and give the comment its real reason.
+- [ ] **CON106 — the app venv's `frontend` extra in the published images** [S, ★]. Owner decision
+      2026-10-26: add it. In source: both torch stages sync `--extra frontend`
+      ([`consumer-image-contract.md`](docs/consumer-image-contract.md)). Done when the next chain's
+      APP-PARITY passes with flet, flet-desktop, flet-web and FastAPI on amd64 and arm64, riscv64 shows
+      them absent by decision, and `:winamd64`'s torch stage prints `extras: ml-ai docs frontend`.
 - [b] **CON109 — ANThology widgets as a Flet extension** [M, ★]. Blocked on CON102, and on a
       UI that needs a widget Flet lacks (owner, 2026-10-19). OrchestrANT's Flet UIs take
       ANThology's look from Python alone (Material 3, `color_scheme_seed` green accent) and use
@@ -429,24 +415,28 @@ owner carries the breakage that costs.
 
 ## Open — Linux image (all arches)
 
-- [ ] **CON151 — riscv64 builds hadolint, wasm-pack and flutter_rust_bridge_codegen from source on every run** [M, ★★★].
-      2026-10-21: the riscv64 wrapper spent about two hours compiling hadolint (Haskell) under QEMU, and the log
-      says `no wasm-pack release binary for riscv64; building it from source` and the same for
+- [ ] **CON151 — riscv64 builds wasm-pack and flutter_rust_bridge_codegen from source on every run** [M, ★★].
+      2026-10-21: the riscv64 wrapper spent about two hours compiling hadolint (Haskell) under QEMU. Owner
+      decision 2026-10-26: riscv64 ships no hadolint for now (CI lints on amd64), so that build is gone. Left:
+      the log says `no wasm-pack release binary for riscv64; building it from source` and the same for
       `flutter_rust_bridge_codegen`. Work: build each once and publish it SHA-pinned like `tool-pins.env`, or
-      keep the tool-build caches out of the trim (CON152); or lint with hadolint on amd64 only, since CI lints
-      anyway. Done when a riscv64 wrapper with a warm tool cache spends under 5 minutes in tool builds.
+      keep the tool-build caches out of the trim (CON152). Done when a riscv64 wrapper with a warm tool cache
+      spends under 5 minutes in tool builds.
 
-- [ ] **CON152 — the disk trim evicts tool-build caches along with the regenerable exports** [S, ★★].
-      2026-10-21 at 39 GB the chain reclaimed "regenerable cache exports" in the middle of a stage, and the
-      riscv64 hadolint build that followed compiled from scratch (suspected, not proven from the log). Work: the
-      trim names the stages it protects and the bytes it evicts; tool-build caches (CON151) are protected. Done
-      when the trim log lists what it evicted, and a second run's tool builds hit the cache.
+- [ ] **CON152 — the disk trim's eviction log, proved on a chain** [S, ★].
+      In source since 2026-10-26: `[disk-trim]` lists the slugs it removed and kept, and the buildkit
+      fallback logs its layer cache before and after. The tool-build caches are BuildKit cache mounts,
+      which the trim cannot reach ([`build-cache-tiers.md` § 3.1](docs/build-cache-tiers.md)). Done when a
+      chain that trims shows both lines, and a second run's riscv64 web-lane tool builds hit the cache.
 
-- [ ] **CON153 — the pinned release assets are mirrored, so a GitHub outage cannot fail an arch** [S, ★★★].
-      2026-10-21: GitHub answered HTTP 500 for shellcheck's aarch64 asset for about a minute, and the arm64
-      wrapper failed. 2026-10-22: `downloads.sh` defaults to a 20 s retry delay now (was 2 s), so a retry outwaits
-      a short outage. Work left: mirror the pinned release assets (shellcheck, hadolint, rustup-init) to storage
-      we own, SHA-verified, so a longer GitHub outage cannot fail an arch.
+- [ ] **CON153 — the pinned release assets come from the Garage mirror** [S, ★★★]. Owner decision
+      2026-10-26: Garage S3. In source ([`linux-cross-builds.md` § The asset mirror](docs/linux-cross-builds.md#the-asset-mirror),
+      runbook in [`linux/sccache-s3/README.md`](linux/sccache-s3/README.md)): every `download_verified_file`
+      asks `<mirror>/<sha256>/<name>` first and falls back upstream, through the `asset_mirror` BuildKit
+      secret. Left, owner: create the `release-assets` bucket and its read and fill keys, write
+      `~/.config/kataglyphis/asset-mirror.env` and `asset-mirror-fill.env` on each chain host, and after
+      the next chain run `linux/host-config/fill-asset-mirror.sh --apply`. Done when the chain after that
+      logs `asset-mirror| hit` for the pinned assets.
 
 - [ ] **CON129 — finish GTK 4 validation on foreign arches and GPU variants** [M, ★★★].
       The mandatory `gui_unix` feature is enabled in OxidANT. On the recorded `3c558d88` index,
@@ -507,15 +497,14 @@ owner carries the breakage that costs.
          Measure the toolchain's CPython time on a four-core CI runner; 25–40 minutes remains
          an estimate. Keep the single-pin contract in [`python-ci.md`](docs/python-ci.md).
 
-- [ ] **CON123 — a relocatable pinned CPython in `:latest`, so Linux app bundles stop downloading one**
-      [M, ★★]. `python-app-bundle.sh:109` runs `uv python install` for python-build-standalone,
-      because "the image's own build is not relocatable": OrchestrANT run 39413508655 job 118596855417
-      logged `Downloading cpython-3.14.4-linux-x86_64-gnu` at packaging time, release job 118397954209
-      the aarch64 one. The owner's 2026-09-30 plan put the image's own CPython in the bundle; Windows
-      does that (`PC\layout`, [python-app-bundles.md](docs/python-app-bundles.md)). Fix: the toolchain
-      stage ships a relocatable tree of `PYTHON_VERSION` (`$ORIGIN` rpath, no build prefix in its
-      sysconfig) that the builder copies. Done when a bundle builds under `--network none` and its
-      moved copy passes the self-test, on amd64 and arm64.
+- [ ] **CON123 — Linux app bundles carry the image's own CPython; prove on arm64** [M, ★★].
+      In source since 2026-10-26 ([`python-app-bundles.md`](docs/python-app-bundles.md#the-relocated-image-cpython)):
+      `python-relocate.py` stages a relocated copy of `/usr/local`'s CPython at bundle time (no new image
+      tree; `--python-runtime standalone` keeps the download), and the smoke's `RELOCATABLE-PY` row passed on
+      the published amd64, arm64 and riscv64 children. An amd64 bundle built under `--network none` and its
+      moved copy passed the self-test. Left: an arm64 consumer bundle (the closure now copies the distro's
+      libssl, sqlite, libffi into `runtime/lib`), and OrchestrANT's release logging no `Downloading cpython`.
+      `import readline` is absent in bundles on purpose (GPL-3).
 
 - [b] **CON57 — mold in the image, only once it earns it** [S, ★]. `KATAGLYPHIS_LINKER=mold`
       (2026-10-05, `lib/linker-select.sh`) fetches the pinned mold 3.0.0 on first use. Baking
@@ -575,45 +564,28 @@ owner carries the breakage that costs.
       Status 2026-10-21: implemented (store in `linux/Dockerfile.sdk`, read-first in the fetcher, 21 test
       assertions under WSL); open until a family image build shows the 18 placed without a download.
 
-- [ ] **CON159 — the Android payload is 12 GB of the amd64 `:latest`'s 36 GB unpacked** [M, ★★★]. Measured
-      2026-10-22 with `layer-audit.py`: layer 47 (the SDK install) 4.66 GB, of which the emulator's `system.img` is
-      3.58 GB; layer 10 (`/opt/android-sdk`: NDK 2.4 GB) 3.9 GB; layer 11 (GStreamer and OpenCV for Android)
-      3.4 GB. Every Linux CI job pulls all of it, and the riscv64 image already switches it off
-      (`/opt/android/.android-payload-off`). Work: move the emulator and its system image (4.4 GB) out first,
-      into an `android` variant beside `:latest` (as `:latest-nvidia` is), then the rest. Done when the amd64
-      `:latest` unpacks ≥ 4 GB smaller and the Android lane runs on the variant.
 
-- [ ] **CON160 — the flatpak runtime sits in the base layer: 3.2 GB of every image** [S, ★★★]. Measured
-      2026-10-22: `/var/lib/flatpak/repo/objects` is 3.23 GB in layer 00, the base stage, so every stage above
-      inherits it. Work: fetch the runtime when the flatpak packaging runs, pinned by commit; the base stage keeps
-      the flatpak binary only. Done when the base layer is under 3.5 GB unpacked and the flatpak lane fetches.
 
-- [ ] **CON161 — the Flutter SDK ships its git history and a pub preload cache: 0.55 GB** [S, ★]. Measured
-      2026-10-22 in layer 08: `/opt/flutter/.git` 0.31 GB, `.pub-preload-cache` tarballs about 0.24 GB
-      (`flutter_gallery_assets` 87 MB). Work: a shallow clone (`--depth 1`), and the preload cache deleted in the
-      same RUN. Done when the layer drops by 0.5 GB and `flutter --version` and the web lane pass.
 
-- [ ] **CON162 — name the RUN steps: `nerdctl history` shows the ENV list, not the step** [S, ★★]. The 5 GB
-      Android layer read as "ORT-Build" for that reason. Work: a `LABEL kataglyphis.step=<name>` before each heavy
-      RUN (metadata only, no layer), so `nerdctl history` and `layer-audit.py` name every step. Done when the
-      history names the step of the Android layer.
+- [ ] **CON162 — step labels in the published images** [S, ★★]. In source since 2026-10-26: a
+      `LABEL kataglyphis.step=<name>` before each of the 104 RUNs in `linux/Dockerfile.*`, graded by
+      `verify_dockerfile_step_labels.py`, and `layer-audit.py` prints each layer's step. Done when
+      `nerdctl history` of the next `:latest` names every step and `layer-audit.py` names the Android SDK
+      layer `step=android-sdk`, with already-built layers still `CACHED` across each stage handoff.
 
 ## Open — Linux arm64 and riscv64
 
-- [ ] **CON130 — riscv64 cross builds read the amd64 image's `PKG_CONFIG_PATH` first** [S, ★★].
-      Found with CON129 (2026-10-20): `riscv64_cross_env` sets the target's `PKG_CONFIG_LIBDIR_*` and
-      sysroot, but the pkg-config crate falls back to the plain `PKG_CONFIG_PATH`, whose first entries
-      are the amd64 trees. gtk4-sys took amd64's `/opt/gstreamer/lib/x86_64-linux-gnu/pkgconfig/gtk4.pc`
-      (4.14.5, not riscv64's 4.22.4) and emitted `-L/opt/riscv64-sysroot/opt/gstreamer/lib/x86_64-linux-gnu`;
-      the link still found riscv64's libraries through the sysroot's default paths, so nothing failed.
-      `riscv64-cross-smoke.sh` inherits the same variable. A version or arch-specific header that
-      differs would go wrong silently. Candidate: export `PKG_CONFIG_PATH_riscv64gc_unknown_linux_gnu=`
-      (empty) in `riscv64_cross_env`; prove it on the three riscv64 lanes first, which load the library
-      at `@develop`.
-      - **The same leak at run time:** the riscv64 QEMU test processes inherit the amd64 `GST_PLUGIN_PATH`
-        (and registry) and try `/opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0/*.so`, about 300 load
-        warnings per process (OxidANT run 39487523314, 2026-10-20); harmless today, the riscv64 plugins
-        still load. Point the run at the sysroot's riscv64 plugin dir with the build-time fix.
+- [ ] **CON130 — riscv64 cross runs still inherit the amd64 GStreamer plugin path** [S, ★★].
+      The build-time half is in (c40797cc, 2026-10-25): `riscv64_cross_env` unsets `PKG_CONFIG_PATH`
+      and its riscv64 twin, and `riscv64-cross-smoke.sh` uses that environment, so a host `.pc`
+      fails before consumer tests ([`riscv64-cross-test-lanes.md`](docs/riscv64-cross-test-lanes.md)).
+      Left:
+      1. Prove it on the three riscv64 consumer lanes (OxidANT, AccelerANTgine, BeschleunigerBallett),
+         which load the library at `@develop`: gtk4-sys must resolve riscv64's 4.22.4 `gtk4.pc`.
+      2. **The run-time leak:** the riscv64 QEMU test processes inherit the amd64 `GST_PLUGIN_PATH`
+         (and registry) and try `/opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0/*.so`, about 300 load
+         warnings per process (OxidANT run 39487523314, 2026-10-20); harmless today. Point the run at the
+         sysroot's riscv64 plugin dir.
 
 - [b] **CON135 — the active braces advisory has no patched version** [S, ★].
       Observed 2026-10-23 in `linux/scripts/renovate-npm/package-lock.json`: braces 3.0.3
@@ -939,14 +911,10 @@ owner carries the breakage that costs.
       fixes do not establish the cause of the HTTP stall
       ([`docs-sites.md`](docs/docs-sites.md#the-sidebar-toggle-check)).
 
-- [ ] **CON142 — the resource monitor names the runtime lane's arch and step** [S, ★]. All 1197
-      samples of the 2026-10-20 runtime run (and every runtime run before it) carry `stage=?`, so the
-      summary's peak load, peak memory and minimum disk point at nothing. `_rm_stage`
-      (`01-core/resource-monitor.sh`) reads the newest per-stage log with a `.run` marker, and the
-      runtime lane writes none: its output goes to the orchestrator runlog, which the monitor skips on
-      purpose. Work: let the lane publish its current `<arch>/<step>` (the `[runtime-timing]` steps:
-      base, package, smoke, wrapper, push) where `_rm_stage` reads it, a marker file or a per-arch log
-      with its `.run` marker. Done when a runtime run's summary names the arch and step of each peak.
+- [ ] **CON142 — the resource monitor names the runtime lane's arch and step, proved on a chain** [S, ★].
+      In source since 2026-10-26 ([`build-resource-monitoring.md`](docs/build-resource-monitoring.md)):
+      `<arch>.<step>` markers under `RESOURCE_MONITOR_STEP_DIR`. Done when a runtime run's summary shows
+      `stage=amd64/package`-style values (`+`-joined when arches overlap) and no `stage=?`.
 
 - [ ] **CON143 — the hub's tests leave their `mktemp` trees in `/tmp`** [S, ★]. On 2026-10-21 the
       build host's `/tmp` (a 31 GB tmpfs, so RAM) held 31,668 entries and 2.7 GB: 23,865 `tmp.*`,

@@ -104,6 +104,15 @@ report **0** compile requests, not another container's hundreds.
 
 ## Package / runtime stage
 
+### The input preflight (CON140, new 2026-10-26)
+
+| verdict | line |
+|---|---|
+| PASS | before any `step=base`: `[runtime-preflight] OK: https://sh.rustup.rs matches RUSTUP_INIT_SHA256` and the same for `UV_INSTALL_SH_SHA256` |
+| PASS | `[runtime-preflight <arch>] OK: apt plan: N package(s) resolve: …` for every arch, then `[runtime-preflight] passed` |
+| FAIL, by design | `[runtime-preflight <arch>]` with apt's ` : Depends:` line, or `no longer matches <PIN>`, then `refused`: nothing was built. Fix the input; `RUNTIME_INPUT_PREFLIGHT=0` builds anyway |
+| on the clock | the riscv64 plan took 8 min under QEMU when measured; much longer means a slow ports mirror, not a hang |
+
 ### The Vulkan host prefix (HT5)
 
 | verdict | line |

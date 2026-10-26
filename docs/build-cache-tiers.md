@@ -257,9 +257,22 @@ ${bc_dir}/*` and abort, leaving the reclaim to a human. It now calls
   oldest-mtime-first and honours a protected list (the preflight passes none —
   nothing has run yet, and protecting every upcoming stage would protect
   everything);
-* every removal is logged with its size, plus a `removed N slug(s), freed X
-  GiB` summary and the resulting free space. A silent reclaim is how people
-  stop trusting a tool.
+* every removal is logged with its size, plus a summary line:
+  `removed N slug(s) (<evicted slugs>), freed X GiB; <free>G free now; kept:
+  <surviving slugs>`. The opening `[disk-trim]` line names the protected slugs.
+  A silent reclaim is how people stop trusting a tool.
+
+**The tool builds' caches are out of the trim's reach** (CON152). The riscv64
+hadolint build keeps its cabal state in the cachemounts `cabal-cache-<arch>` and
+`cabal-store-<arch>` (`Dockerfile.torch`), and the web-lane tools keep theirs in
+the ids listed in § 1.2. Both are BuildKit `exec.cachemount` records, not slugs
+under `BUILDKIT_CACHE_DIR`, and the runtime lane exports no local cache at all.
+The trim therefore cannot evict them. The § 3.2.1 prune cannot either, since it
+filters `type==regular` and counts the cache-mount records before and after.
+What that prune can evict is the layer cache of a tool's build stage. That layer
+cache is rebuilt from the surviving cachemounts, and the prune logs it as `layer
+cache <n> record(s), <x> GiB -> <n> record(s), <x> GiB`, so a later cold tool
+build can be traced to that line.
 
 Then free space is re-measured. If it now clears `need_gb` the chain proceeds;
 otherwise the old hint-and-abort path runs unchanged. `CROSS_PREFLIGHT_TRIM=0`
@@ -327,18 +340,40 @@ It never calls `nerdctl system prune` / `builder prune`; those wipe the
 still short, the watchdog falls back to a *filtered* buildkit prune instead of
 giving up — § 3.2.1.
 
-**The lane-entry gate.** `_chain_runtime_lane_disk_gate` runs immediately
-before `build-runtime-manifest.sh`. It requires
-`CROSS_RUNTIME_LANE_GB` (default **120**) × concurrency free, trims first, and
-then refuses. `FORCE_LOW_DISK=1` or `CROSS_RUNTIME_LANE_GB=0` override it.
+#### The lane-entry gate sums the arches
 
-*Why concurrency and not arch count.* 120 G is the transient cost of **one**
-wrapper build, measured off the r2 CSV. The chain runs the lane's arches
-sequentially — it does not forward `--parallel-archs` to
-`build-runtime-manifest.sh` — so the requirement is 120 G once, not 360 G. Sizing
-it per-arch would have refused essentially every run on this 915 G host (218 G
-free, 26 G of trimmable cache export) — a gate that refuses everything gets
-switched off, and then it guards nothing.
+`_chain_runtime_lane_disk_gate` runs immediately before `build-runtime-manifest.sh`,
+after the chain has pulled every `cross-android-<arch>` parent, so those cost
+nothing more. It trims first, then refuses. `FORCE_LOW_DISK=1` or
+`CROSS_RUNTIME_LANE_GB=0` override it.
+
+The need is a sum, not one wrapper: the arches build one after another, but every
+wrapper stays local until the content gates and smokes after the arch loop, and
+the index's image-env gate reads them again. Per arch it takes the measured growth,
+165 G for amd64 and 105 G for arm64 and riscv64 (`CROSS_RUNTIME_LANE_GB` sets one
+figure for all; a GPU variant uses 180). An arch whose `latest-<arch>` is already
+local costs `CROSS_RUNTIME_WRAPPER_GB` (50) less, because the new wrapper replaces
+it. `CROSS_DISK_GUARD_GB` (40) is added on top, so the lane ends above the
+in-stage watch threshold instead of trimming mid-run.
+
+Measured (CON141): the 2026-10-20 3-arch run went 456 → 80 G (376 G), amd64 alone
+on 2026-10-21 299 → 134 G (165 G), and the 2026-10-22 rerun, with every wrapper
+local, 289 → 93 G (196 G). A fresh 3-arch run needs 415 G, that rerun 265 G. The
+old gate asked for 120 G once and passed the 289 G entry.
+
+#### Pushed runtime images leave the host
+
+After the index is assembled (or after the gates with `--skip-manifest`),
+`build-runtime-manifest.sh` removes each arch's `latest-<arch>`,
+`latest-<arch>-tmp-reduced-platform` (left by `nerdctl push`) and
+`latest-package-<arch>`. Those are the last local readers; removing a wrapper
+earlier would make the gates pull it back. A run that pushed nothing
+(`--no-push`, no `--push`, a dry run) keeps them, since they are its only copy.
+`RUNTIME_DROP_PUSHED_IMAGES=0` keeps them too; any other value than `0` or `1`
+stops the lane at its start. A refused `rmi` is a `WARN`, never a failure.
+
+The resource summary's `samples below N GB free disk` uses the disk-watch floor
+(`CROSS_DISK_GUARD_GB`) as N, so `0` there means the lane never reached the trim.
 
 The start-of-run preflight gained the same term as an **advisory** warning on
 top of its existing `need_gb`, for the same reason: at chain start the earlier
@@ -1120,7 +1155,9 @@ The rules an agent must never violate:
 | `CROSS_DISK_GUARD_GB` | `40` | free-space floor that triggers T2 LRU pruning (`0` disables) |
 | `CROSS_CACHE_MAX_GB` | `250` | total T2 size cap (`0` disables) |
 | `CROSS_PREFLIGHT_TRIM=0` | unset (trim on) | skip the disk-preflight trim of T2 (§ 3.1) |
-| `CROSS_RUNTIME_LANE_GB` | `120` | free GB the runtime lane needs per *concurrent* wrapper build; `0` disables the lane-entry gate (§ 3.2) |
+| `CROSS_RUNTIME_LANE_GB` | unset (165 amd64, 105 others) | free GB one arch adds to the runtime lane, summed over the arches; `0` disables the lane-entry gate (§ 3.2) |
+| `CROSS_RUNTIME_WRAPPER_GB` | `50` | lane need taken off an arch whose wrapper is already local (§ 3.2) |
+| `RUNTIME_DROP_PUSHED_IMAGES` | `1` | `0` keeps the pushed runtime images local after the run (§ 3.2) |
 | `CROSS_DISK_WATCH=0` | unset (watch on) | disable the in-stage disk watchdog (§ 3.2) |
 | `CROSS_DISK_WATCH_SECS` | `120` | in-stage sampling interval |
 | `CROSS_TRIM_KEEP_SLUGS` | `3` | newest T2 slugs the trim will never remove |

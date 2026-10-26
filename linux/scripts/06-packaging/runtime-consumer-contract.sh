@@ -61,6 +61,8 @@ _consumer_versioned_verdict() {
         free-threaded-python)
                        line="$(_consumer_free_threaded_verdict "${row}" "${probe}" "$(_rt_versions_env_pin PYTHON_VERSION)")" ;;
         lint-tools)    _sc="$(_rt_tool_pin SHELLCHECK_VERSION)"; _hl="$(_rt_tool_pin HADOLINT_VERSION)"
+                       # hadolint publishes no riscv64 binary, so a riscv64 image must report none.
+                       [ "${arch}" != riscv64 ] || _hl=''
                        line="$(_consumer_lint_tools_verdict "${row}" "${probe}" "shellcheck=${_sc#v} hadolint=${_hl#v}")" ;;
         uv-cache-seed) line="$(_consumer_uv_seed_verdict "${row}" "${probe}" "${arch}")" ;;
         gtk4-dev)      line="$(_consumer_gtk4_verdict "${row}" "${probe}")" ;;

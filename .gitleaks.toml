@@ -44,8 +44,8 @@ per-value allowlists is the wrong repair.
 paths = ['''^out/''']
 
 [[allowlists]]
-description = "Git-ignored test logs and Python bytecode are generated artifacts, not source."
-paths = ['''^logs/''', '''(^|/)__pycache__/''']
+description = "Git-ignored test logs, Python bytecode and the type gate's quality/.venv are generated artifacts, not source."
+paths = ['''^logs/''', '''(^|/)__pycache__/''', '''^quality/\.venv/''']
 
 [[allowlists]]
 description = """

@@ -200,7 +200,7 @@ function Install-TorchAppPython3Dll {
 }
 
 function Install-TorchAppEnvironment {
-    Write-Host "=== torch app: clone $AppRef + uv sync (extras: ml-ai docs $PytorchExtra test) ==="
+    Write-Host "=== torch app: clone $AppRef + uv sync (extras: ml-ai docs frontend $PytorchExtra test) ==="
     New-TorchAppCheckout -AppDir $AppDir -AppRef $AppRef
 
     # The source-built CPython matches the chain's cpXY wheels; copy mode, as hardlinks do not survive layer boundaries.
@@ -211,7 +211,7 @@ function Install-TorchAppEnvironment {
 
     Push-Location $AppDir
     try {
-        $extraArgs = '--extra ml-ai --extra docs'
+        $extraArgs = '--extra ml-ai --extra docs --extra frontend'
         if ($PytorchExtra -and $PytorchExtra -ne 'none') { $extraArgs += " --extra $PytorchExtra" }
         if ($env:SKIP_TORCH_TEST_EXTRAS -ne 'true') { $extraArgs += ' --extra test' }
         $baseSyncArgs = "--find-links ""$WheelDir"" $extraArgs"

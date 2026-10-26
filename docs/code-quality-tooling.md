@@ -758,6 +758,30 @@ mutations over the script and its call, and six `image-env.*` ones: four over th
 manifest's image-env gate in `build-runtime-manifest.sh` and two over real Windows
 Dockerfiles.
 
+### Step labels (`dockerfile-lint`)
+
+Pass 0c, `verify_dockerfile_step_labels.py`, over the hub's `linux/Dockerfile.*`
+only; a consumer's Dockerfiles are not graded. `nerdctl history` shows a RUN as
+`RUN |12 A=… B=…`, its ARG list, so a 5 GB Android layer once read as an ORT build.
+Every RUN therefore carries its own `LABEL kataglyphis.step=<name>` before it:
+
+* the name is lowercase kebab-case and unique in its Dockerfile;
+* only instructions that make no layer (`ARG`, `ENV`, `SHELL`, `USER`, another
+  `LABEL`) may sit between the label and its RUN; a `COPY`, `ADD`, `WORKDIR` or
+  `FROM` there would take the name instead, so the gate refuses it;
+* a heredoc's body is not read as instructions.
+
+A label is image metadata: BuildKit keys neither the RUN nor a child's `FROM`
+on it, so adding or renaming one recompiles nothing. The history then shows
+`LABEL kataglyphis.step=<name>` as the empty entry right above its RUN, and
+`layer-audit.py` prints that name as each layer's `step=` (from the manifest's
+config blob, or `--config`). A RUN that leaves no layer spends its label; a
+layer without one keeps the start of its `created_by`.
+
+What it does not cover: the Windows Dockerfiles, and whether a name describes
+its RUN. Proof: `tests/test-dockerfile-step-labels.sh`, `tests/test-layer-audit.sh`,
+five `dockerfile-lint.step-labels-*` mutations.
+
 ## The allowlist contract
 
 Quality fixes must reduce exceptions. Refactor the underlying code before changing an
@@ -901,7 +925,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3549 entries** over **381 distinct test commands**; both digits are
+manifest holds **3634 entries** over **389 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2289,7 +2313,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 955 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 977 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -2300,7 +2324,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **373** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **387** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **1** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.

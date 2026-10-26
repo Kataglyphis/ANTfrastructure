@@ -40,10 +40,23 @@ _rm_context() {
     | cut -c1-80
 }
 
+# Every live <arch>.<step> marker as arch/step, joined by '+' so the CSV row keeps its columns.
+_rm_steps() {
+  local dir="$1" f out=""
+  [ -n "${dir}" ] && [ -d "${dir}" ] || return 0
+  for f in "${dir}"/*.*; do
+    [ -f "${f}" ] || continue
+    f="${f##*/}"
+    out="${out:+${out}+}${f%%.*}/${f#*.}"
+  done
+  printf '%s' "${out}"
+}
+
 _rm_stage() {
-  # Latest buildkit stage or orchestrator [stage X] marker in the active log, else --label.
+  # The runtime lane's step markers, else the active log's latest buildkit or [stage X] marker, else --label.
   local log="$1" fallback="$2" s
-  if [ -n "${log}" ] && [ -r "${log}" ]; then
+  s="$(_rm_steps "${3:-}")"
+  if [ -z "${s}" ] && [ -n "${log}" ] && [ -r "${log}" ]; then
     s="$(tail -n 200 "${log}" 2>/dev/null \
          | grep -aoE '\[stage [a-z0-9-]+\]|#[0-9]+ \[[a-z0-9-]+ ' \
          | tail -n 1 | grep -oE '[a-z0-9-]+ ?\]?$' | tr -d ' ]')"
@@ -66,7 +79,7 @@ _rm_active_log() {
 }
 
 _rm_sample_loop() {
-  local out_dir="$1" run_id="$2" interval="$3" disk_path="$4" stage_log="$5" label="$6" stage_log_dir="$7" watch_pid="$8"
+  local out_dir="$1" run_id="$2" interval="$3" disk_path="$4" stage_log="$5" label="$6" stage_log_dir="$7" watch_pid="$8" step_dir="${9:-}"
   local csv="${out_dir}/resources-${run_id}.csv"
   mkdir -p "${out_dir}" 2>/dev/null || true
   RM_CSV="${csv}"   # exported for the exit trap's summarizer
@@ -101,7 +114,7 @@ _rm_sample_loop() {
     comp="$(pgrep -c -x 'cc1plus|cc1|clang|clang\+\+|rustc|lto1|cc1objplus|go|ld' 2>/dev/null || true)"
     [ -n "${comp}" ] || comp=0
     local active_log; active_log="$(_rm_active_log "${stage_log}" "${stage_log_dir}")"
-    stage="$(_rm_stage "${active_log}" "${label}")"
+    stage="$(_rm_stage "${active_log}" "${label}" "${step_dir}")"
     ctx="$(_rm_context "${active_log}")"
 
     printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"%s"\n' \
@@ -185,6 +198,7 @@ main() {
 
   local out_dir="${LOG_DIR:-logs}" run_id="${CROSS_RUN_ID:-run}" interval=15
   local disk_path="${BUILDKIT_CACHE_DIR:-${HOME:-/}}" stage_log="" stage_log_dir="" label="" watch_pid=""
+  local step_dir="${RESOURCE_MONITOR_STEP_DIR:-}"
   while [ $# -gt 0 ]; do
     case "$1" in
       --out-dir)       out_dir="$2"; shift 2 ;;
@@ -204,7 +218,7 @@ main() {
 
   RM_CSV=""
   trap _rm_on_exit INT TERM EXIT
-  _rm_sample_loop "${out_dir}" "${run_id}" "${interval}" "${disk_path}" "${stage_log}" "${label}" "${stage_log_dir}" "${watch_pid}"
+  _rm_sample_loop "${out_dir}" "${run_id}" "${interval}" "${disk_path}" "${stage_log}" "${label}" "${stage_log_dir}" "${watch_pid}" "${step_dir}"
 }
 
 main "$@"

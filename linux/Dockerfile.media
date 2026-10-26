@@ -79,7 +79,8 @@ COPY --chmod=755 linux/scripts/01-core/install-deps-preamble.sh linux/scripts/01
 COPY --chmod=755 linux/scripts/lib/log-bootstrap.sh /opt/scripts/lib/log-bootstrap.sh
 
 # Fail fast: :sdk has no nvcc, and every CUDA consumer below would otherwise die deep in a build.
-RUN set -euo pipefail; \
+LABEL kataglyphis.step=nvidia-codec-headers
+RUN --mount=type=secret,id=asset_mirror,required=false set -euo pipefail; \
     if [ "${ENABLE_NVIDIA}" = "true" ] && [ ! -x "${CUDA_HOME:-/usr/local/cuda}/bin/nvcc" ]; then \
         echo "ERROR: ENABLE_NVIDIA=true but no nvcc at ${CUDA_HOME:-/usr/local/cuda}/bin/nvcc." >&2; \
         echo "       This stage's BASE_IMAGE has no CUDA toolkit, so every GPU build below would fail deep." >&2; \
@@ -93,7 +94,8 @@ RUN set -euo pipefail; \
     bash /opt/scripts/03-media/activate-cross-python.sh
 
 # External repos inherited from :sdk (ROCm, Kitware) cause version conflicts; per-file mounts keep 01-core edits from re-keying base.
-RUN --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/core-scripts/ubuntu-mirror.sh,readonly \
+LABEL kataglyphis.step=ubuntu-mirror
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/core-scripts/ubuntu-mirror.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/core-scripts/platform.sh,readonly \
     set -euo pipefail; \
     rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources \
@@ -116,6 +118,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/
     apt-get update -qq
 
 # Inherited UV_PYTHON points into the venv `--clear` deletes, so seed from the base CPython without it.
+LABEL kataglyphis.step=base-python
 RUN set -euo pipefail; \
     _base_py=/usr/local/bin/python3; \
     _pv="${PYTHON_VERSION:-}"; [ -x "${_base_py}" ] || _base_py="$(command -v "python${_pv%.*}" || command -v python3)"; \
@@ -124,7 +127,8 @@ RUN set -euo pipefail; \
         --upgrade pip setuptools wheel cython pybind11 numpy
 
 # install-deps resets the alternatives, so GCC is registered as default again.
-RUN --mount=type=bind,source=linux/scripts/01-core/register-gcc-alternatives.sh,target=/tmp/core-scripts/register-gcc-alternatives.sh,ro \
+LABEL kataglyphis.step=gcc-alternatives
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core/register-gcc-alternatives.sh,target=/tmp/core-scripts/register-gcc-alternatives.sh,ro \
     set -euo pipefail; \
     bash /tmp/core-scripts/register-gcc-alternatives.sh
 
@@ -170,7 +174,8 @@ ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
     GENAI_ALLOW_RISCV64=${GENAI_ALLOW_RISCV64}
 
 # Per-file mounts so later build-step edits don't re-pay this layer; 01-core stays whole (source_module pulls most of it).
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+LABEL kataglyphis.step=onnxruntime-deps
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh,target=/opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/10-deps.sh,target=/opt/scripts/03-media/build/onnxruntime/build/10-deps.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh,target=/opt/scripts/03-media/build/onnxruntime/build/20-fetch.sh,readonly \
@@ -184,7 +189,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step fetch
 
 # Per-file mounts: `--step cpu` runs only 30-build-native.sh, so other step edits must not re-key this build.
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+LABEL kataglyphis.step=onnxruntime-cpu
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh,target=/opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh,target=/opt/scripts/03-media/build/onnxruntime/build/30-build-native.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/lib,target=/opt/scripts/03-media/build/onnxruntime/build/lib,readonly \
@@ -201,12 +207,14 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step cpu; \
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
-RUN --mount=type=tmpfs,target=/tmp \
+LABEL kataglyphis.step=onnxruntime-cpu-verify
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core/qnn-sdk.sh,target=/opt/scripts/01-core/qnn-sdk.sh,readonly \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-cpu
 
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+LABEL kataglyphis.step=onnxruntime-gpu
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=bind,source=linux/scripts/patches/onnxruntime,target=/opt/scripts/patches/onnxruntime,readonly \
@@ -229,7 +237,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
 # The patches mount carries the ORT v1.31.0 model-package port and the riscv64 target_platform patch (docs/gen1-riscv64-genai.md).
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+LABEL kataglyphis.step=onnxruntime-genai
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/onnxruntime-genai,target=/opt/scripts/patches/onnxruntime-genai,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
@@ -244,7 +253,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
 # Mounted per file: build/onnxruntime/ and runtime/ are mounted/copied whole elsewhere, so either dir would re-key them.
-RUN --mount=type=tmpfs,target=/tmp \
+LABEL kataglyphis.step=onnxruntime-genai-verify
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/verify-genai-ort.sh,target=/opt/scripts/03-media/verify-genai-ort.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \
@@ -261,7 +271,8 @@ RUN --mount=type=tmpfs,target=/tmp \
     fi
 
 # Arch-independent wasm, compiled once per ORT version and shared; bump -wgpu1 whenever the built flavor set changes.
-RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
+LABEL kataglyphis.step=onnxruntime-web
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
@@ -291,7 +302,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/op
         fi; \
     fi
 
-RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
+LABEL kataglyphis.step=onnxruntime-pkgconfig
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
@@ -299,7 +311,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/op
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step js; \
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step pkgconfig
 
-RUN --mount=type=tmpfs,target=/tmp \
+LABEL kataglyphis.step=onnxruntime-pkgconfig-verify
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-pkgconfig
@@ -314,7 +327,8 @@ ARG LITERTJS_VERSION=2.5.3
 ARG MEDIAPIPE_GENAI_VERSION=0.10.29
 
 # Every install-deps RUN mounts exactly cross-env.sh's source closure, so build-script edits don't re-pay the apt layer.
-RUN --mount=type=bind,source=linux/scripts/03-media/build/litert/install-deps.sh,target=/opt/scripts/03-media/build/litert/install-deps.sh,readonly \
+LABEL kataglyphis.step=litert-deps
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/build/litert/install-deps.sh,target=/opt/scripts/03-media/build/litert/install-deps.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,readonly \
@@ -328,14 +342,16 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/litert/install-deps.sh
     bash /opt/scripts/03-media/build/litert/install-deps.sh
 
 # Prebuilt npm web runtimes; best-effort (exits 0) so a registry hiccup can't break the media build.
-RUN --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \
+LABEL kataglyphis.step=litert-web
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     LITERTJS_VERSION="${LITERTJS_VERSION}" MEDIAPIPE_GENAI_VERSION="${MEDIAPIPE_GENAI_VERSION}" \
     bash /opt/scripts/03-media/build/litert/install-litert-web.sh
 
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+LABEL kataglyphis.step=litert
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/litert,target=/opt/scripts/patches/litert,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \
     --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
@@ -347,7 +363,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     bash /opt/scripts/03-media/build/litert/build-litert.sh "${LITERT_VERSION}"; \
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
-RUN --mount=type=tmpfs,target=/tmp \
+LABEL kataglyphis.step=litert-verify
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh litert && \
@@ -366,7 +383,8 @@ ARG TARGET_ARCH
 ARG TARGETARCH
 
 # Only the five tvm*.sh files, so unrelated 05-frameworks edits don't re-pay this build.
-RUN --mount=type=bind,source=linux/scripts/05-frameworks/tvm.sh,target=/opt/scripts/05-frameworks/tvm.sh,readonly \
+LABEL kataglyphis.step=tvm
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/05-frameworks/tvm.sh,target=/opt/scripts/05-frameworks/tvm.sh,readonly \
     --mount=type=bind,source=linux/scripts/05-frameworks/tvm-detect.sh,target=/opt/scripts/05-frameworks/tvm-detect.sh,readonly \
     --mount=type=bind,source=linux/scripts/05-frameworks/tvm-config.sh,target=/opt/scripts/05-frameworks/tvm-config.sh,readonly \
     --mount=type=bind,source=linux/scripts/05-frameworks/tvm-python.sh,target=/opt/scripts/05-frameworks/tvm-python.sh,readonly \
@@ -412,14 +430,16 @@ ARG OPENCV_OUTPUT_DIR=/opt/opencv5
 ENV OPENCV_PREFIX=${OPENCV_OUTPUT_DIR}
 ENV PKG_CONFIG_PATH="${OPENCV_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
 
-RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
+LABEL kataglyphis.step=opencv-deps
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH}-opencv \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH}-opencv \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/opencv/install-deps.sh
 
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+LABEL kataglyphis.step=opencv
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/opencv,target=/opt/scripts/patches/opencv,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
     --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \
@@ -440,7 +460,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
         --skip-dep-install; \
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
-RUN --mount=type=tmpfs,target=/tmp \
+LABEL kataglyphis.step=opencv-verify
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv-core && \
@@ -458,7 +479,8 @@ ARG IREE_VERSION=v3.12.0
 ARG FT_TORCH_TWIN=1
 
 # No cargo mount: build-app-wheelhouse.sh never runs cargo, and an inert mount reads as coverage.
-RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scripts/frameworks/torch,readonly \
+LABEL kataglyphis.step=app-wheelhouse
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scripts/frameworks/torch,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
@@ -494,7 +516,8 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scrip
     fi; \
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
-RUN --mount=type=tmpfs,target=/tmp \
+LABEL kataglyphis.step=app-wheelhouse-verify
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh app-wheels
@@ -506,7 +529,8 @@ ARG TARGET_ARCH
 ARG BUILD_MODE
 
 # Own apt ids: on other lanes this RUN only echoes, yet it queued for the locked lane-wide store.
-RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scripts/03-media/build/armnn,readonly \
+LABEL kataglyphis.step=armnn-deps
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scripts/03-media/build/armnn,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH}-armnn \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH}-armnn \
@@ -516,7 +540,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scri
         *) echo "Skipping Arm NN deps (arm64 only, got ${TARGET_ARCH:-${TARGETARCH:-}})" ;; \
     esac
 
-RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scripts/03-media/build/armnn,readonly \
+LABEL kataglyphis.step=armnn
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scripts/03-media/build/armnn,readonly \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
@@ -552,14 +577,16 @@ ENV FFMPEG_PREFIX=/opt/ffmpeg \
     FFMPEG_ENABLE_X265=${FFMPEG_ENABLE_X265} \
     FFMPEG_ENABLE_TF=${FFMPEG_ENABLE_TF}
 
-RUN --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scripts/03-media/build/ffmpeg,readonly \
+LABEL kataglyphis.step=ffmpeg-deps
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scripts/03-media/build/ffmpeg,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH}-ffmpeg \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH}-ffmpeg \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/ffmpeg/install-deps.sh
 
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+LABEL kataglyphis.step=ffmpeg
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scripts/03-media/build/ffmpeg,readonly \
     --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/01-core/path-helpers.sh,readonly \
@@ -579,7 +606,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     bash /opt/scripts/03-media/build/ffmpeg/build-ffmpeg.sh; \
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
-RUN --mount=type=tmpfs,target=/tmp \
+LABEL kataglyphis.step=ffmpeg-verify
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh ffmpeg
@@ -592,7 +620,8 @@ ARG PYAV_VERSION=19.0.1
 
 ENV PYAV_VERSION=${PYAV_VERSION}
 
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+LABEL kataglyphis.step=pyav
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/pyav,target=/opt/scripts/03-media/build/pyav,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
@@ -632,7 +661,8 @@ COPY --link --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
 COPY --link --from=armnn /opt/armnn /opt/armnn
 COPY --link --from=armnn /opt/acl /opt/acl
 
-RUN --mount=type=tmpfs,target=/tmp \
+LABEL kataglyphis.step=media-inputs-verify
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh media-inputs
@@ -658,7 +688,8 @@ ENV GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
     BUILD_MODE=${BUILD_MODE} \
     TARGET_ARCH=${TARGET_ARCH}
 
-RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/scripts/03-media/build/gstreamer,readonly \
+LABEL kataglyphis.step=gstreamer-deps
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/scripts/03-media/build/gstreamer,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
@@ -666,7 +697,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
     bash /opt/scripts/03-media/build/gstreamer/install-deps.sh
 
 # The only cargo consumer; its lock sits outside these mounts: docs/build-cache-tiers.md#13-cache-mount-ids-and-source-checkouts
-RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/scripts/03-media/build/gstreamer,readonly \
+LABEL kataglyphis.step=gstreamer
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/scripts/03-media/build/gstreamer,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/gstreamer,target=/opt/scripts/patches/gstreamer,readonly \
     --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \
@@ -690,7 +722,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
         "$BUILD_TYPE"; \
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
-RUN --mount=type=tmpfs,target=/tmp \
+LABEL kataglyphis.step=gstreamer-verify
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh gstreamer
@@ -700,7 +733,8 @@ FROM gstreamer AS libcamera
 # Stage-scoped so the ${TARGET_ARCH} mount ids below expand per lane.
 ARG TARGET_ARCH
 
-RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/scripts/03-media/build/libcamera,readonly \
+LABEL kataglyphis.step=libcamera-deps
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/scripts/03-media/build/libcamera,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
@@ -708,7 +742,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/
     bash /opt/scripts/03-media/build/libcamera/install-deps.sh
 
 # No cargo mount: build-libcamera.sh never runs cargo.
-RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/scripts/03-media/build/libcamera,readonly \
+LABEL kataglyphis.step=libcamera
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/scripts/03-media/build/libcamera,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/libcamera,target=/opt/scripts/patches/libcamera,readonly \
     --mount=type=bind,source=linux/scripts/patches/libyuv,target=/opt/scripts/patches/libyuv,readonly \
@@ -725,7 +760,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/
     bash /opt/scripts/03-media/build/libcamera/build-libcamera.sh; \
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
-RUN --mount=type=tmpfs,target=/tmp \
+LABEL kataglyphis.step=libcamera-verify
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh libcamera
@@ -744,14 +780,16 @@ ARG OPENCV_WITH_PYTHON=true
 ARG OPENCV_OUTPUT_DIR=/opt/opencv5
 ENV OPENCV_PREFIX=${OPENCV_OUTPUT_DIR}
 
-RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
+LABEL kataglyphis.step=opencv-gst-deps
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/opencv/install-deps.sh
 
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+LABEL kataglyphis.step=opencv-gst
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/opencv,target=/opt/scripts/patches/opencv,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
     --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \
@@ -775,7 +813,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
         --skip-dep-install; \
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
-RUN --mount=type=tmpfs,target=/tmp \
+LABEL kataglyphis.step=opencv-gst-verify
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv-core && \
@@ -789,7 +828,8 @@ ARG TARGETARCH
 ARG ENABLE_DEEPSTREAM=false
 
 # /var/tmp, not a tmpfs: the TensorRT 10 debs and the source tree need several GB of scratch.
-RUN --mount=type=bind,source=linux/scripts/05-frameworks/deepstream.sh,target=/opt/scripts/05-frameworks/deepstream.sh,readonly \
+LABEL kataglyphis.step=deepstream
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/05-frameworks/deepstream.sh,target=/opt/scripts/05-frameworks/deepstream.sh,readonly \
     --mount=type=bind,source=linux/scripts/05-frameworks/deepstream-verify.sh,target=/opt/scripts/05-frameworks/deepstream-verify.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
@@ -870,7 +910,8 @@ COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packagin
 
 # free-threaded-store.sh expects the riscv64 torch twin while it is 1, as app-wheelhouse built it.
 ARG FT_TORCH_TWIN=1
-RUN --mount=type=bind,source=linux/scripts/03-media/runtime,target=/opt/scripts/03-media/runtime,readonly \
+LABEL kataglyphis.step=media-runtime
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/runtime,target=/opt/scripts/03-media/runtime,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \

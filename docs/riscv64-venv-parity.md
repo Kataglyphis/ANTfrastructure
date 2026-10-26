@@ -15,7 +15,7 @@ backlog or a parity table, so this page is the decision record.
 ## Mechanism
 
 `linux/scripts/03-media/runtime/assemble-torch-app.sh` builds the venv with
-`uv sync --extra ml-ai --extra docs [--extra pytorch-*]` (the `test` extra is
+`uv sync --extra ml-ai --extra docs --extra frontend [--extra pytorch-*]` (the `test` extra is
 off: `setup-torch-venv.sh` defaults `SKIP_TORCH_TEST_EXTRAS=true`).
 
 On riscv64 that never runs:

@@ -367,6 +367,7 @@ unset CROSS_CHAIN_STATUS_FILE
 
 # B2: the lane-entry disk gate, the only one that can refuse, so it must be able to go red
 source "${CORE_DIR}/disk-guard.sh"
+eval "$(sed -n '/^_chain_runtime_arch_gb() {$/,/^}$/p' "${CHAIN_SH}")"
 eval "$(sed -n '/^_chain_runtime_lane_need_gb() {$/,/^}$/p' "${CHAIN_SH}")"
 eval "$(sed -n '/^_chain_runtime_lane_disk_gate() {$/,/^}$/p' "${CHAIN_SH}")"
 log()  { printf '[INFO] %s\n' "$*"; }
@@ -378,24 +379,48 @@ TARGET_ARCHES="amd64,arm64,riscv64"
 BUILDKIT_CACHE_DIR="${workdir}/lane-bc"; mkdir -p "${BUILDKIT_CACHE_DIR}"
 _lane_free=999
 _disk_guard_free_gb() { printf '%s' "${_lane_free}"; }
+FINAL_IMAGE="ghcr.io/example/img:latest"
+runtime_wrapper_tag() { printf '%s' "${RUNTIME_IMAGE_PREFIX}-$1"; }
+# Space-separated refs the stub store holds; the lane-need cases set it per case.
+_lane_local=""
+image_exists() { case " ${_lane_local} " in *" $2 "*) return 0 ;; esac; return 1; }
 
-# The lane builds arches serially and removes each wrapper, so the peak is one wrapper.
-t_case "lane need is ONE wrapper, whatever --parallel-archs says"
-PARALLEL_ARCHS=0; t_assert_eq "120" "$(_chain_runtime_lane_need_gb)"
-PARALLEL_ARCHS=1; t_assert_eq "120" "$(_chain_runtime_lane_need_gb)"
-PARALLEL_ARCHS=0
+# Every wrapper stays local until the gates after the arch loop, so a 3-arch run adds them up (CON141).
+t_case "lane need sums the measured per-arch figures plus the disk-watch floor"
+t_assert_eq "415" "$(_chain_runtime_lane_need_gb)" "165 amd64 + 105 arm64 + 105 riscv64 + 40 floor"
+t_assert_eq "205" "$(TARGET_ARCHES=amd64 _chain_runtime_lane_need_gb)" "amd64 alone: 165 + 40"
+t_assert_eq "145" "$(TARGET_ARCHES=riscv64 _chain_runtime_lane_need_gb)"
+t_assert_eq "375" "$(CROSS_DISK_GUARD_GB=0 _chain_runtime_lane_need_gb)" "a 0 floor adds nothing"
+
+t_case "--parallel-archs does not change the lane need: the lane builds one arch at a time"
+t_assert_eq "415" "$(PARALLEL_ARCHS=1 _chain_runtime_lane_need_gb)"
+
+t_case "a wrapper already local costs its CROSS_RUNTIME_WRAPPER_GB less"
+_lane_local="ghcr.io/example/img:latest-amd64 ghcr.io/example/img:latest-riscv64"
+t_assert_eq "315" "$(_chain_runtime_lane_need_gb)" "415 - 2 x 50"
+t_assert_eq "355" "$(CROSS_RUNTIME_WRAPPER_GB=30 _chain_runtime_lane_need_gb)"
+t_assert_eq "415" "$(CROSS_RUNTIME_WRAPPER_GB=0 _chain_runtime_lane_need_gb)"
+_lane_local="ghcr.io/example/img:latest-amd64-tmp-reduced-platform"
+t_assert_eq "415" "$(_chain_runtime_lane_need_gb)" "only the wrapper tag itself earns the credit"
+_lane_local=""
+
+t_case "CROSS_RUNTIME_LANE_GB is one figure for every arch, and 0 disables the need"
+t_assert_eq "580" "$(CROSS_RUNTIME_LANE_GB=180 _chain_runtime_lane_need_gb)" "3 x 180 + 40"
+t_assert_eq "0" "$(CROSS_RUNTIME_LANE_GB=0 _chain_runtime_lane_need_gb)"
+t_assert_eq "415" "$(CROSS_RUNTIME_LANE_GB=lots _chain_runtime_lane_need_gb)" "garbage falls back to the measured per-arch figures"
 
 t_case "the lane gate PASSES with ample headroom"
 _lane_free=500
 ( _chain_runtime_lane_disk_gate ) > "${workdir}/lane.txt" 2>&1
 t_assert_contains "$(cat "${workdir}/lane.txt")" "runtime lane: 500G free"
 
-t_case "the lane gate REFUSES when the lane cannot possibly fit"
-# Red if the gate is removed, stubbed to `return 0`, or its threshold defaults to 0.
-_lane_free=88
-( _chain_runtime_lane_disk_gate ) > "${workdir}/lane.txt" 2>&1 && _lane_rc=0 || _lane_rc=$?
-t_assert_eq "1" "${_lane_rc}" "88G free against a ~120G lane MUST refuse"
-t_assert_contains "$(cat "${workdir}/lane.txt")" "runtime lane refused: 88G free"
+t_case "the lane gate REFUSES when the lane cannot fit, also where one wrapper would"
+# Red if the gate is removed, stubbed to `return 0`, or its threshold defaults to 0; 289G passed the old one-wrapper gate.
+for _lane_free in 88 289; do
+  ( _chain_runtime_lane_disk_gate ) > "${workdir}/lane.txt" 2>&1 && _lane_rc=0 || _lane_rc=$?
+  t_assert_eq "1" "${_lane_rc}" "${_lane_free}G free against a ~415G lane MUST refuse"
+  t_assert_contains "$(cat "${workdir}/lane.txt")" "runtime lane refused: ${_lane_free}G free, ~415G needed"
+done
 t_assert_contains "$(cat "${workdir}/lane.txt")" "FORCE_LOW_DISK=1"
 
 # _lane_run [VAR=VAL...]: one gate run in a subshell so knobs cannot leak; sets _lane_rc, logs to lane.txt.
@@ -439,14 +464,14 @@ t_case "the lane-entry gate reaches the buildkit store before it refuses the run
 _bk_reset_calls 88
 _BK_FREED=0 _BK_RESCUE_TO="" _lane_run
 t_assert_eq "1" "${_lane_rc}" "a fallback that cannot help must still leave the refusal intact"
-t_assert_contains "$(_bk_calls)" "CALL ${BUILDKIT_CACHE_DIR} 120 latch=0" \
+t_assert_contains "$(_bk_calls)" "CALL ${BUILDKIT_CACHE_DIR} 415 latch=0" \
   "the lane gate must offer the store the SAME need it is about to refuse on, on a fresh episode"
 
 t_case "a store that CAN be reclaimed rescues the lane instead of refusing it"
 _bk_reset_calls 88
-_BK_FREED=223 _BK_RESCUE_TO=311 _lane_run
-t_assert_eq "0" "${_lane_rc}" "223G reclaimed from the store must let the lane start"
-t_assert_contains "$(cat "${workdir}/lane.txt")" "+ 223G of buildkit layer cache" \
+_BK_FREED=343 _BK_RESCUE_TO=431 _lane_run
+t_assert_eq "0" "${_lane_rc}" "343G reclaimed from the store must let the lane start"
+t_assert_contains "$(cat "${workdir}/lane.txt")" "+ 343G of buildkit layer cache" \
   "the reclaim record must credit the store, not cry defeat"
 _BK_FREED=0; _BK_RESCUE_TO=""
 
@@ -533,7 +558,7 @@ t_case "the lane-entry gate reaches it too, protecting every stage it can name"
 _im_reset 88
 _bk_reset_calls 88
 _lane_run
-t_assert_contains "$(_im_calls)" "CALL ${BUILDKIT_CACHE_DIR} 120 in_flight=0"
+t_assert_contains "$(_im_calls)" "CALL ${BUILDKIT_CACHE_DIR} 145 in_flight=0"
 t_assert_contains "$(_im_calls)" "ghcr.io/x/y:cross-base"
 t_assert_contains "$(_im_calls)" "ghcr.io/x/y:cross-runtime-arm64"
 
@@ -548,6 +573,15 @@ _lane_free=999
 # B3: a runtime failure skips every gate after the per-arch wrapper loop, so the report must name them
 eval "$(sed -n '/^_chain_runtime_arch_state() {$/,/^}$/p' "${CHAIN_SH}")"
 eval "$(sed -n '/^_chain_runtime_failure_report() {$/,/^}$/p' "${CHAIN_SH}")"
+eval "$(t_fn_src "${CHAIN_SH%/*}/lib-runtime-switch.sh" runtime_switch_mode)"
+for _reuse_fn in runtime_reuse_mode runtime_build_key_varname runtime_child_state; do
+  eval "$(t_fn_src "${CHAIN_SH%/*}/lib-runtime-reuse.sh" "${_reuse_fn}")"
+done
+export RUNTIME_BUILD_KEY_LABEL="org.kataglyphis.build-key"
+# Stand-in for the registry's build-key label: riscv64's child was built from k1.
+ancestry_recorded_provenance() {
+  case "$1" in *-riscv64) printf 'k1' ;; *) return 2 ;; esac
+}
 _CHAIN_RUNTIME_GATES="$(sed -n 's/^_CHAIN_RUNTIME_GATES="\(.*\)"$/\1/p' "${CHAIN_SH}")"
 arch_list_to_words() { printf '%s' "${1//,/ }"; }
 warn() { printf '[WARN] %s\n' "$*"; }
@@ -572,6 +606,12 @@ t_case "per-arch state comes from the wrapper tag's own run-id stamp"
 t_assert_eq "missing"        "$(_chain_runtime_arch_state amd64)"
 t_assert_eq "built-this-run" "$(_chain_runtime_arch_state arm64)"
 t_assert_eq "stale"          "$(_chain_runtime_arch_state riscv64)"
+
+t_case "an older child is reusable only when its build key equals this run's, and never with reuse off"
+t_assert_eq "reusable" "$(RUNTIME_BUILD_KEY_riscv64=k1 _chain_runtime_arch_state riscv64)"
+t_assert_eq "stale"    "$(RUNTIME_BUILD_KEY_riscv64=k2 _chain_runtime_arch_state riscv64)" "a different input set must rebuild"
+t_assert_eq "stale"    "$(RUNTIME_BUILD_KEY_riscv64=k1 RUNTIME_REUSE_CHILDREN=0 _chain_runtime_arch_state riscv64)"
+t_assert_eq "missing"  "$(RUNTIME_BUILD_KEY_amd64=k1 _chain_runtime_arch_state amd64)" "no run-id means no image, whatever the key"
 
 t_case "the failure report NAMES the arch and the gates that never ran"
 _CHAIN_ARCH_OUTCOMES=""; _CHAIN_GATES_NOT_RUN=""
