@@ -22,6 +22,10 @@
 .PARAMETER InboundItems
     The top-level entries the transfer streams; keep a root directory out of this list rather than excluding
     it by pattern, because --exclude matches at every depth.
+.PARAMETER ExcludeRootEntries
+    Exact top-level names omitted by the shared selector; cannot combine with InboundItems.
+.PARAMETER ExcludeRootPatterns
+    Wildcards for top-level names only; cannot combine with InboundItems.
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -35,6 +39,8 @@ param(
     [int]$MemoryGb = 16,
     [string[]]$KeepDirs = @(),
     [string[]]$InboundItems = @('.'),
+    [string[]]$ExcludeRootEntries = @(),
+    [string[]]$ExcludeRootPatterns = @(),
     [string[]]$InboundExclude = @('.git'),
     [string[]]$IncrementalDirs = @(),
     [string[]]$IncrementalExclude = @(),
@@ -49,6 +55,11 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+$selectRootEntries = $ExcludeRootEntries.Count -gt 0 -or $ExcludeRootPatterns.Count -gt 0
+if ($selectRootEntries -and $PSBoundParameters.ContainsKey('InboundItems')) {
+    throw 'Choose -InboundItems or root exclusions, not both.'
+}
+
 $moduleDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules'
 $reuseModule = Join-Path $moduleDir 'WindowsContainerBuild.Reuse.psm1'
 if (-not (Test-Path -LiteralPath $reuseModule)) { throw "Required module not found: $reuseModule" }
@@ -59,6 +70,10 @@ if (-not (Test-Path -LiteralPath $imageModule)) { throw "Required module not fou
 Import-Module $imageModule -Force -Global
 
 $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+if ($selectRootEntries) {
+    $InboundItems = @(Get-ContainerInboundItems -RepoRoot $RepoRoot -ExcludeEntries $ExcludeRootEntries -ExcludePatterns $ExcludeRootPatterns)
+}
+Write-Verbose ("Inbound root entries: " + ($InboundItems -join '|'))
 if (-not $Image) { $Image = Get-CiImageReference -Windows }
 $docker = Resolve-DockerExe -Override $DockerExe
 Write-Host "Using docker: $docker"

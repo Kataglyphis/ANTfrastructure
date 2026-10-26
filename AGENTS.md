@@ -186,6 +186,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows native logging and DLL smoke probes share transport; preserve blank failure evidence, loader cleanup and caller coverage minimums. Smoke module copies carry Shared.
    Staging directories share literal-root setup; failed reset or allocation aborts before payload copy and proof.
    Consumer staging suites use the shared stage-directory fixture for AST wiring, stale-byte cleanup and failed allocation; pass their own reset command and callback.
+   Windows container drivers pass root-only source exclusions to the shared runner; never rebuild the inbound list locally or use recursive tar exclusions for root-only skips.
    Windows archives share extraction lifecycle; strict failures remain the default and pinned link exceptions stay explicit.
    ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts.
    Python CI suites carry their shared driver fixture; preserve child status, call logs and parent environment isolation.

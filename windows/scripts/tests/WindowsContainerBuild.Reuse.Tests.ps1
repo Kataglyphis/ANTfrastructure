@@ -23,6 +23,93 @@ function New-TarDockerFixture {
     return [pscustomobject]@{ Calls = [System.Collections.Generic.List[object]]::new(); Code = $Code; Reply = $Reply }
 }
 
+function Get-ContainerInboundFixtureFiles {
+    return [ordered]@{
+        'README.md' = ''
+        'src/build/keep.cpp' = ''
+        'build/skip.cpp' = ''
+        'BUILD-temp/skip.cpp' = ''
+        'build_cache/skip.cpp' = ''
+        'Logs/skip.txt' = ''
+        'dist/skip.txt' = ''
+        'assets/logo.svg' = ''
+    }
+}
+
+Describe 'WindowsContainerBuild.Reuse: root-only inbound selection' {
+
+    It 'keeps filesystem order and nested names while excluding root names and patterns case-insensitively' {
+        Invoke-InTestDir -Files (Get-ContainerInboundFixtureFiles) -Body {
+            param($root)
+            $raw = @([System.IO.Directory]::GetFileSystemEntries($root) | ForEach-Object { [System.IO.Path]::GetFileName($_) })
+            $items = @(Get-ContainerInboundItems -RepoRoot $root -ExcludeEntries @('logs', 'dist') -ExcludePatterns @('build', 'build-*', 'build_*'))
+            Assert-Equal 3 $items.Count
+            foreach ($name in @('README.md', 'src', 'assets')) { Assert-True ($items -contains $name) "missing root item $name" }
+            foreach ($name in @('build', 'BUILD-temp', 'build_cache', 'Logs', 'dist')) { Assert-False ($items -contains $name) "excluded root item $name survived" }
+            Assert-True (Test-Path -LiteralPath (Join-Path $root 'src/build/keep.cpp')) 'a nested build path belongs to the selected src item'
+            $positions = @($items | ForEach-Object { [array]::IndexOf($raw, $_) })
+            Assert-Equal ($positions -join ',') ((@($positions | Sort-Object)) -join ',')
+        }
+    }
+
+    It 'fails before transfer when every root entry is excluded' {
+        Invoke-InTestDir -Files ([ordered]@{ 'build/skip.cpp' = '' }) -Body {
+            param($root)
+            Assert-Throws { Get-ContainerInboundItems -RepoRoot $root -ExcludeEntries @('build') } -MessagePattern 'No inbound root entries remain'
+        }
+    }
+
+    It 'rejects a selector mutant that would keep the excluded root and drop source' {
+        Invoke-InTestDir -Files ([ordered]@{ 'src/keep.cpp' = ''; 'build/skip.cpp' = '' }) -Body {
+            param($root)
+            Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/modules/WindowsContainerBuild.Reuse.psm1' `
+                -FunctionName Get-ContainerInboundItems -Find 'if ($name -in $ExcludeEntries)' `
+                -Replace 'if ($name -notin $ExcludeEntries)' -Expected 'source root must survive' -IncludeControl `
+                -Body { param($path)
+                    $items = @(Get-MutContainerInboundItems -RepoRoot $path -ExcludeEntries @('build'))
+                    Assert-True ($items -contains 'src') 'source root must survive'
+                    Assert-False ($items -contains 'build') 'build root must be excluded'
+                } -BodyArgumentList @($root)
+        }
+    }
+
+    It 'rejects ambiguous runner arguments before resolving Docker' {
+        Invoke-InTestDir -Body {
+            param($root)
+            $runner = Join-Path (Split-Path $PSScriptRoot -Parent) 'build/Invoke-RepoContainerBuild.ps1'
+            Assert-Throws { & $runner -RepoRoot $root -ContainerName fixture -BuildCommand @('pwsh') -InboundItems @('src') -ExcludeRootEntries @('build') -WhatIf } -MessagePattern 'Choose -InboundItems or root exclusions'
+        }
+    }
+
+    It 'wires the shared selector into the runner for root exclusions' {
+        $runner = Join-Path (Split-Path $PSScriptRoot -Parent) 'build/Invoke-RepoContainerBuild.ps1'
+        $source = [System.IO.File]::ReadAllText($runner)
+        Assert-Match '\$InboundItems = @\(Get-ContainerInboundItems -RepoRoot \$RepoRoot' $source
+        Assert-Match 'InboundItems\s*=\s*\$InboundItems' $source
+    }
+
+    It 'reports only selected root names under runner WhatIf without contacting Docker' {
+        Invoke-InTestDir -Files (Get-ContainerInboundFixtureFiles) -Body {
+            param($root)
+            $runner = Join-Path (Split-Path $PSScriptRoot -Parent) 'build/Invoke-RepoContainerBuild.ps1'
+            $pwshExe = Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Source
+            $records = @(Invoke-WithEnv -Vars @{ ProgramFiles = $root } -Body {
+                    & $runner -RepoRoot $root -ContainerName fixture -BuildCommand @('pwsh', '-v') `
+                        -Image fixture-image -DockerExe $pwshExe -ExcludeRootEntries @('build', 'logs', 'dist') `
+                        -ExcludeRootPatterns @('build-*', 'build_*') -WhatIf -Verbose 4>&1 6>&1
+                })
+            $selection = @($records | Where-Object { $_ -is [System.Management.Automation.VerboseRecord] -and $_.Message -like 'Inbound root entries:*' })
+            Assert-Equal 1 $selection.Count
+            $items = @($selection[0].Message.Substring('Inbound root entries: '.Length) -split '\|')
+            Assert-Equal 3 $items.Count
+            Assert-True ($items -contains 'README.md')
+            Assert-True ($items -contains 'src')
+            Assert-True ($items -contains 'assets')
+            Assert-False (@($items | Where-Object { $_ -match 'What if|build|logs|dist' }).Count -gt 0) 'WhatIf and excluded names must not enter tar items'
+        }
+    }
+}
+
 Describe 'WindowsContainerBuild.Reuse: Get-ContainerEnvArgs' {
 
     It 'returns an empty array for an empty dictionary' {

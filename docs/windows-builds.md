@@ -2329,8 +2329,9 @@ fallback (see BeschleunigerBallett's `scripts/windows/Resolve-BuildModule.ps1`).
 
 - `Invoke-ContainerBuild` - the entry point: runs a consumer's build command in the image over the
   tar pipe (default) or a bind mount (`-UseBindMount`) and returns a result object. `-InboundItems`
-  (default `.`) selects the top-level entries to stream, so a root directory can be dropped without
-  a pattern that bsdtar would also match at every depth
+  (default `.`) remains the explicit top-level item list. `Invoke-RepoContainerBuild.ps1` accepts
+  `-ExcludeRootEntries` and `-ExcludeRootPatterns`, calls `Get-ContainerInboundItems`, and fails
+  before Docker when no root entry remains; root-only skips do not become recursive tar patterns
   (`windows-container-build-performance.md` § Transport A). `Resolve-ContainerBuildCommand`,
   `Get-ContainerEnvArgs` and `Get-SccacheContainerEnv` are its exported helpers.
 - `Get-ReusableBuildContainer` - reuse/start/recreate a named build container, recreating it when

@@ -41,6 +41,9 @@
   Vulkan tests reach the elevation decision after verified downloads. An import-binding
   and cold-export regression catches the visibility loss; the failure guide names the symptom.
 
+- Select Windows container source roots in the shared runner for OmniAccelerANT,
+  OxidANT and AccelerANTgine; preserve each repo's exact and wildcard skips,
+  fail on an empty selection, and test the transport under `-WhatIf`.
 - Preserve `true`, `recursive` and `false` as distinct submodule modes in the
   shared Windows short-path checkout; the preparation and container workflows
   retain their recursive short-path defaults while direct-only consumer builds

@@ -103,6 +103,29 @@ function Get-ContainerTarExcludeArgs {
     return ($Exclude | ForEach-Object { "--exclude `"$_`"" }) -join ' '
 }
 
+function Get-ContainerInboundItems {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [string[]]$ExcludeEntries = @(),
+        [string[]]$ExcludePatterns = @()
+    )
+
+    $items = [System.Collections.Generic.List[string]]::new()
+    # Root selection avoids recursive tar exclusions and WhatIf records.
+    foreach ($entry in [System.IO.Directory]::GetFileSystemEntries($RepoRoot)) {
+        $name = [System.IO.Path]::GetFileName($entry)
+        if ($name -in $ExcludeEntries) { continue }
+        $exclude = $false
+        foreach ($pattern in $ExcludePatterns) {
+            if ($name -like $pattern) { $exclude = $true; break }
+        }
+        if (-not $exclude) { $items.Add($name) }
+    }
+    if ($items.Count -eq 0) { throw "No inbound root entries remain in '$RepoRoot'." }
+    return $items.ToArray()
+}
+
 function Invoke-ContainerTarPipe {
     param([string]$PackCommand, [string]$UnpackCommand)
     # cmd preserves the byte stream on every supported PowerShell version.
@@ -936,6 +959,7 @@ Export-ModuleMember -Function @(
     'Get-HostSccacheS3ExecEnv',
     'Get-SccacheContainerEnv',
     'Resolve-ContainerBuildCommand',
+    'Get-ContainerInboundItems',
     'Invoke-ContainerBuild',
     'Copy-IntoBuildContainer',
     'Copy-FromBuildContainer',

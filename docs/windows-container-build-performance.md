@@ -72,10 +72,15 @@ Requirements: none. Caveats: the deletion hazard (safety rail 2 below), and
 
 **`--exclude` matches at every depth.** A pattern that names a root directory
 (`build`) also drops every directory of that name anywhere in the tree —
-including `third_party/ANTinfrastructure/windows/scripts/build`, which consumers
+including `third_party/ANTfrastructure/windows/scripts/build`, which consumers
 need. No pattern form anchors: `./build`, `[.]/build` and `build/` all behave
-the same. A caller that must drop such a root directory passes `-InboundItems`
-(the top-level entries to stream, computed by omitting it) instead of a pattern.
+the same. A caller that must drop such a root directory passes
+`-ExcludeRootEntries` or `-ExcludeRootPatterns` to `Invoke-RepoContainerBuild.ps1`.
+The shared runner enumerates top-level names without `Get-ChildItem`, so `-WhatIf`
+cannot put a diagnostic into the tar input. Selection keeps filesystem order and
+PowerShell's case-insensitive exact or wildcard matching; an empty selection fails
+before Docker runs. Explicit `-InboundItems` retains its old behavior and cannot
+be combined with root exclusions.
 
 ### Transport B — bind mount (Dev Drive needs setup)
 
@@ -529,6 +534,10 @@ this host's sccache remote tier
 and the shared S3 level per `docker exec`, by name only
 ([`windows-build-resources.md` § Two cache levels](windows-build-resources.md#two-cache-levels)).
 The BeschleunigerBallett driver named at the top of this page is built on it.
+OmniAccelerANT, OxidANT and AccelerANTgine pass only their root exclusion policy to
+`Invoke-RepoContainerBuild.ps1`; `Get-ContainerInboundItems` in the shared module
+performs the selection. `WindowsContainerInbound.Fixture.psm1` checks each consumer
+wrapper's call and rejects a private root enumerator.
 
 Its parts are exported for a caller that needs only some of them:
 `Get-ReusableBuildContainer`, `Copy-IntoBuildContainer`,
