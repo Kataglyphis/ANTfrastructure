@@ -98,6 +98,13 @@ remote default tips and missing direct checkouts initialize during apply. Its se
 warning can still name an uninitialized nested checkout: recursive initialization is a manual
 way to make that ordering graph complete, outside the direct-submodule update scope.
 
+For an ordered rollout of one already published direct gitlink, use
+`pin-antfrastructure-submodule.py --repo <consumer> --branch <consumer-branch> --path <direct-path> --sha <remote-default-tip>`.
+The path must appear in tracked `.gitmodules` and the index as a gitlink; the child must already
+be initialized and clean. The helper checks the consumer against its live `origin` branch and
+fetches the child's live remote default branch, ignoring `.gitmodules branch`. It stages only
+the selected gitlink, leaving other dependencies for the regular Renovate run.
+
 `test-renovate-cli.sh` checks option order, diagnostics and driver boundaries;
 `test-renovate-git.sh` checks local discovery, spaces and callback context. The
 existing fixture suites cover planning, fleet recursion and transactional writes.

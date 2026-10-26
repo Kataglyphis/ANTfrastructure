@@ -51,19 +51,27 @@ The family moves gitlinks with Renovate as a local CLI
 wrapper template in `shared/linux/templates/`, reports what is behind; `--apply` moves the gitlink.
 It checks every direct submodule against its remote default branch, even when
 `.gitmodules` names another branch or the checkout has not been initialized.
-To stage one explicit, already published hub `develop` commit across consumers, run the
-hub checkout's reusable pin helper once per initialized consumer:
+To stage one explicit, already published commit across consumers, run the hub checkout's
+reusable pin helper once per initialized direct submodule:
 
 ```bash
 python3 linux/scripts/pin-antfrastructure-submodule.py \
   --repo /path/to/consumer --branch develop --sha <full-40-character-hub-sha>
+
+# For another direct submodule, choose its declared path and published default-branch tip:
+python3 linux/scripts/pin-antfrastructure-submodule.py \
+  --repo /path/to/consumer --branch develop \
+  --path third_party/Other --sha <full-40-character-other-sha>
 ```
 
 Pass the consumer's checked-out branch (`develop`, `main` or `master`). The helper verifies
-that checkout matches its remote branch, fetches the hub's `develop` tip and requires the exact
-SHA, refuses a dirty or uninitialized hub submodule, then stages only
-`third_party/ANTfrastructure`. It never commits or pushes. Repositories without that gitlink,
-such as DocumANTation, use the reusable workflow's separate `hub-checkout` instead.
+that checkout matches its remote branch, requires a tracked direct `.gitmodules` gitlink,
+fetches the selected submodule's remote default-branch tip and requires the exact SHA,
+refuses a dirty or uninitialized child, then stages only the selected gitlink. `--path`
+defaults to `third_party/ANTfrastructure`, so existing hub pin calls still work. The
+`.gitmodules branch` setting does not select the target. The helper never commits or pushes.
+Repositories without the hub gitlink, such as DocumANTation, use the reusable workflow's
+separate `hub-checkout` instead.
 By hand, name the path and leave `--recursive` out:
 
 ```bash

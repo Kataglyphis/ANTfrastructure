@@ -79,6 +79,10 @@
 
 ## 2026-10-26 — Reuse and dependency updates
 
+- Extend the shared submodule pin helper with `--path` for any initialized direct gitlink.
+  Resolve the child's live remote default branch, validate its full tip SHA, and stage only
+  that path; a local Git fixture proves a differing `.gitmodules branch` and mutation failure.
+
 - Refresh tracked Renovate to 44.184.1 with patched Zod; drop the obsolete
   markdown-it override. Raise setuptools to 84.2.1 with a PyPI-verified wheel
   SHA in the shared pin, arm64 wheel and LiteRT lock.

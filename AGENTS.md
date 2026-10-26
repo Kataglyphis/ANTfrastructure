@@ -1331,6 +1331,10 @@ The rules; the mechanism is documented once in
 - **A run REPORTS. `--apply` only when the owner asked for it in that turn** (owner directive
   2026-09-11). `linux/scripts/renovate-local.sh .` reports; `--apply --dry-run` prints the plan;
   `--apply` writes gitlinks, manifests and locks, for every ecosystem the repo has.
+- **A targeted family gitlink pin uses the shared helper.** Pass `--path` for a direct
+  `.gitmodules` entry other than `third_party/ANTfrastructure`. Require the consumer's live
+  remote branch, a clean initialized child and its remote default-branch tip; stage only that
+  gitlink. Do not use `.gitmodules branch` as the target or copy the pin logic into consumers.
 - **A live Renovate scan checks its own CLI first.** Resolve npm's `renovate@latest` tag and
   install that exact release into the isolated user cache before scanning dependencies. A failed
   lookup or install fails the run; never report repository dependencies with an unchecked stale
