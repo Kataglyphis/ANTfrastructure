@@ -85,8 +85,9 @@ from this directory is required — `ansible.cfg`, `ssh_config` and the
 | `playbooks/update-tasmota.yml` | stock Tasmota plugs: REAL gated updates — the version comparison is OURS (the native `Upgrade 1` re-flashes even at the same version, probed live); flash + wait + MQTT health only when the release differs |
 | `playbooks/update-windows.yml` | summy-server: Windows Update via PSWindowsUpdate (`-AcceptAll -IgnoreReboot`), reboot inline only when pending |
 | `playbooks/update-bitshake.yml` | on-demand: the bitShake SmartMeterReader firmware + SMR app (HTTP-driven, never scheduled — a failed flash kills the energy data). Procedure + traps: [HA README § bitShake](../homeassistant/README.md#the-bitshake-smartmeterreader-firmware-updates) |
+| `playbooks/backup.yml` | weekly: copies the Nextcloud AIO Borg repo, Home Assistant's newest backup and each host's secrets to the NAS ([Backups to the NAS](#backups-to-the-nas)) |
 | `playbooks/bootstrap-fleet.yml` | one-time per new host: passwordless sudo for the ansible user |
-| `playbooks/schedule.yml` | installs the weekly systemd timer on pi-1 |
+| `playbooks/schedule.yml` | installs the weekly update and backup timers on pi-1 |
 | `playbooks/ping.yml` | lane proof — reach every inventorized host |
 
 **Beyond apt** — per host, set in gitignored `host_vars/<host>.yml`
@@ -121,8 +122,9 @@ ssh-keyscan -t ed25519 <address> >> .ssh/known_hosts
 **The schedule**: `systemd/ansible-update.{service,timer}` are user units on
 pi-1 (linger is enabled — the rootless containerd stack requires it).
 They fire **Sundays 04:30 Europe/Berlin + 30 min jitter**, `Persistent=true`
-so a host that was off catches up on boot. `playbooks/schedule.yml` installs
-and arms them. The service runs `scripts/run-update.sh`, which runs
+so a host that was off catches up on boot. `systemd/ansible-backup.{service,timer}`
+fire **Saturdays 07:00 + 15 min jitter** the same way. `playbooks/schedule.yml` installs
+and arms all four. The service runs `scripts/run-update.sh`, which runs
 `playbooks/update.yml` and keeps what it printed (next section). To move the checkout, re-run
 `schedule.yml` after — the units hardcode `%h/ANTfrastructure/linux/ansible`.
 
@@ -136,6 +138,9 @@ Since 2026-10-16 every scheduled run leaves a record, and Home Assistant shows i
 | `~/.local/state/ansible-update/runs/<date>-<time>.log` on pi-1 | each run's full output, the newest 20 kept. The user journal on pi-1 is volatile, so `journalctl --user -u ansible-update.service` only reaches back to the last boot |
 | `linux/homeassistant/config/ansible/status.json` (gitignored) | the last run: result, exit code, start, end, duration, the timer's next date, every host's PLAY RECAP counts and a one-word status (`ok`, `changed`, `failed`, `unreachable`), the notes the playbook prints (`GARAGE:`, `TOOLCHAIN:`, a host that did not answer), the 10 slowest tasks with their seconds, the last 10 runs, and the log's last 60 lines |
 
+The weekly backup writes the same pair, to `~/.local/state/ansible-backup/runs/` and
+`config/ansible/backup-status.json`, and its page is the Ansible page's **Backup** view.
+
 `scripts/run-update.sh [playbook]` writes both: it runs the playbook (default
 `playbooks/update.yml`) with its output `tee`d to the journal and the log file and with
 `ansible.posix.profile_tasks` on, which ends the log with the 10 slowest tasks
@@ -145,10 +150,13 @@ whose history it carries on. A run without a PLAY RECAP counts as failed whateve
 because ansible stopped before it could report. To refresh the page by hand without updating
 anything, `scripts/run-update.sh playbooks/ping.yml`. Overrides, all optional:
 `ANSIBLE_UPDATE_STATE` (the log directory's parent), `ANSIBLE_UPDATE_STATUS_DIR`,
-`ANSIBLE_UPDATE_KEEP_RUNS`. `linux/scripts/tests/test-ansible-run-status.sh` checks the status
+`ANSIBLE_UPDATE_KEEP_RUNS`, and `ANSIBLE_UPDATE_STATUS_NAME` and `ANSIBLE_UPDATE_TIMER`, which
+`ansible-backup.service` sets. Runs take a lock (`~/.local/state/ansible-run.lock`) and wait for
+each other, so a backup that catches up at boot never copies from a host the update is rebooting.
+`linux/scripts/tests/test-ansible-run-status.sh` checks the status
 against sample logs: a green run with its slowest tasks, a host that did not answer with Garage and toolchain notes, a
-rescued task, a run that crashed before its recap, the history's length and the size of the
-log's end.
+rescued task, a run that crashed before its recap, the backup's notes, the history's length and
+the size of the log's end.
 
 **Nothing of it is published.** The status and the logs name hosts and print what the hosts
 answered, so `status.json` sits in a gitignored directory and the logs outside the repository.
@@ -178,6 +186,106 @@ A host that answers but fails during its update still stops the run, as before.
 Remote hosts reboot inline (`ansible.builtin.reboot` + wait); `serial: 1`
 means never two hosts down at once — pi-1 carries Home Assistant.
 
+## Backups to the NAS
+
+Since 2026-10-26, `playbooks/backup.yml` copies what git does not hold to the QNAP NAS every
+Saturday. pi-1 is the hub: it mounts the NAS share over SMB for the run only, pulls each source
+onto it, and unmounts it again.
+
+| Source | On the NAS (share `Backup`) | Encrypted by | Kept |
+| --- | --- | --- | --- |
+| Nextcloud AIO's Borg repo on srv-1 (`/root/nextcloud_aio/borg`, ~39 GB) | `nextcloud/srv-1/borg/`, a mirror | Borg (the passphrase is in srv-1's secrets bundle) | by the QTS snapshots |
+| Home Assistant's newest backup (`config/backups/*.tar`) | `homeassistant/` | Home Assistant's backup key | the newest 8 |
+| each host's `backup_secret_paths` | `secrets/<host>/<host>-<stamp>.tar.gz.age` | `age`, for `backup_age_recipients` | the newest 12 |
+
+**Why pi-1 pulls**: srv-1 is on the internet and gets no NAS credential; QTS allows SSH only
+for administrators, while SMB takes a user who can see one share; and pi-1 already logs in to
+srv-1 as root for the update.
+
+**What fails the run**, each one loudly and after every other source was copied:
+
+- **Nextcloud.** AIO is writing its repo (`lock.roster`), or someone else holds `aio-lockfile`.
+  The source is not a Borg repo, or its repo id is not the NAS copy's: a recreated repo mirrored
+  with `--delete` would replace the copy's whole history (`-e backup_nextcloud_accept_new_repo=true`
+  for a deliberate one). The copy still differs from the locked repo after the mirror. AIO's
+  newest archive is older than `backup_max_age_hours` (72).
+- **Home Assistant.** The newest archive is not encrypted (it carries every token in `.storage`),
+  is older than 72 h, or its NAS copy's sha256 differs.
+- **Secrets.** A path is missing, or what `age` wrote is not an age file.
+- **The target.** The NAS credentials file is not root's with mode 0600, or the target is not a
+  CIFS mount, so a failed mount never fills the Pi's own disk.
+
+**`aio-lockfile` is AIO's off switch.** While it exists, AIO's `backupscript.sh` skips every
+daily backup ("Not continuing because aio-lockfile exists"), as AIO's own sync recipe intends.
+The run writes `ansible-backup <stamp> <hub>` into it and removes it in an `always:`. A run that
+was killed leaves it behind; the next run takes it over, reports it and removes it. A lockfile
+without that marker belongs to someone else and stops the copy.
+
+**The NAS copy of the repo is for restoring only.** Borg's FAQ: two repos with one id must never
+both be written, because that is data loss and AES counter reuse. Never point a running AIO at
+the NAS copy while srv-1's AIO still writes the original.
+
+**The snapshots are the history.** The repo is a mirror and the share is writable by pi-1's user,
+so only the QTS snapshots protect against a damaged repo mirrored over a good copy, or a hub that
+was taken over. That user cannot delete a snapshot.
+
+### One-time setup
+
+1. **The NAS (QTS web UI).** Create the shared folder `Backup` on a thin or thick volume (a static
+   volume takes no snapshots). Create a user `pi-backup` outside the administrators group, with
+   read/write on `Backup` and nothing else. Schedule a weekly snapshot of the volume that holds
+   `Backup` for Sunday, after the Saturday run, and keep at least 8.
+2. **The credentials on pi-1**, root's alone (the run checks):
+   ```bash
+   sudo install -d -m 700 /etc/ansible-backup
+   sudo install -m 600 /dev/null /etc/ansible-backup/nas.credentials
+   sudoedit /etc/ansible-backup/nas.credentials   # two lines: username=pi-backup, password=...
+   ```
+3. **The age key**, made on a trusted device and never on pi-1: `age-keygen -o backup-key.txt`.
+   Keep the whole file in the password manager, put the `age1...` public key it prints into
+   `backup_age_recipients` in `host_vars/pi-1.yml`, and delete the file. That one key opens every
+   bundle, and the bundles hold the Borg passphrase and the Home Assistant backup key.
+4. **Home Assistant encrypts its own backups**: Settings → System → Backups → Backup settings →
+   Locations → *This system* → encryption on. Since 2025.2 encryption is chosen per location, and
+   local was off. The next daily backup is the first one the run will copy.
+5. **Arm it** with `~/venvs/ansible/bin/ansible-playbook playbooks/schedule.yml`, and start the
+   first copy by hand: `systemctl --user start ansible-backup.service`. It moves the whole repo
+   over WireGuard; later runs move only new Borg segments.
+
+The host_vars keys: `backup_nas_share`, `backup_nas_credentials`, `backup_nas_mount_opts` (extra
+CIFS options, e.g. `seal`), `backup_age_recipients`, `backup_homeassistant` and
+`backup_homeassistant_dir`, `backup_secret_paths`, `backup_nextcloud_aio_repo` and
+`backup_nextcloud_aio_archives_list`, `backup_max_age_hours`, `backup_homeassistant_keep`,
+`backup_secrets_keep`. The template is `host_vars/pi-2.yml.example`.
+
+### Restoring
+
+- **Nextcloud**: copy `nextcloud/srv-1/borg` (from the share or a snapshot) to the new host,
+  start a fresh AIO and choose *Restore former AIO instance from backup* with the folder that
+  holds `borg` and the passphrase, `borg_backup_password` in the bundle's `configuration.json`.
+  That is AIO's own migration path.
+- **Home Assistant**: onboard a fresh instance, choose *Restore from backup*, upload the `.tar`
+  and give it the backup key, which is in the password manager and in the bundle's
+  `.storage/backup`.
+- **Secrets**: `age -d -i backup-key.txt <host>-<stamp>.tar.gz.age | tar -xzf - -C <dir>`. The
+  paths inside are the absolute ones without their leading `/`.
+
+### Tests
+
+`linux/scripts/tests/test-ansible-backup.sh` covers the two helpers with a fake `age`: the newest
+Home Assistant archive by its own date, its encryption and its age; a bundle that never holds
+plaintext and leaves nothing behind when a path is missing or `age` misbehaves. Seven
+`mutations.json` entries prove those checks can fail.
+
+`tests/test-backup-playbook.sh` runs the playbook itself against a local fake AIO host, a fake
+Home Assistant and a temporary directory standing in for the NAS, with a real `age` key. It needs
+the venv and `age`, so it is not one of the auto-discovered suites: run it by hand after a change
+to the playbook. It covers the mirror, deletions, retention, `lock.roster`, a foreign and a stale
+`aio-lockfile`, a recreated repo, an AIO that stopped backing up and an unencrypted archive.
+
+Not covered by any test: the CIFS mount and the QTS snapshots, which live on the NAS, and a
+restore. Restore one archive of each kind by hand once a quarter.
+
 ## Layout
 
 | Path | What |
@@ -186,6 +294,10 @@ means never two hosts down at once — pi-1 carries Home Assistant.
 | `ssh_config` | Deploy key + known_hosts for remote hosts |
 | `inventory/hosts.yml` | The fleet |
 | `playbooks/` | What to run |
+| `tasks/` | Task files the playbooks include (Garage, the backup's sources) |
+| `scripts/` | The run wrapper, its status writer and the backup's helpers |
+| `systemd/` | The update and backup timers |
+| `tests/` | `test-backup-playbook.sh`, run by hand |
 
 ## Secrets for remote hosts
 

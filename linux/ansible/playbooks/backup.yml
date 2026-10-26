@@ -1,0 +1,115 @@
+---
+# The hub mounts the NAS share for this run only and pulls every backup onto it; see ../README.md#backups-to-the-nas
+- name: Copy the backups to the NAS
+  hosts: "{{ backup_hub | default('pi-1') }}"
+  gather_facts: false
+  vars:
+    backup_target: "{{ backup_root | default('/mnt/nas-backup') }}"
+    backup_ansible_dir: "{{ playbook_dir | dirname }}"
+    backup_inventory: "{{ groups['all'] | map('extract', hostvars) }}"
+    backup_nextcloud_hosts: "{{ backup_inventory | selectattr('backup_nextcloud_aio_repo', 'defined')
+      | map(attribute='inventory_hostname') | list }}"
+    backup_secret_hosts: "{{ backup_inventory | selectattr('backup_secret_paths', 'defined')
+      | map(attribute='inventory_hostname') | list }}"
+  tasks:
+    - name: The hub knows where to write and whom to encrypt for
+      ansible.builtin.assert:
+        that:
+          - backup_nas_share is defined or backup_root is defined
+          - backup_secret_hosts | length == 0 or backup_age_recipients | default([]) | length > 0
+        fail_msg: "BACKUP: not configured: set backup_nas_share and backup_age_recipients
+          in host_vars/{{ inventory_hostname }}.yml (README, Backups to the NAS)"
+        quiet: true
+
+    - name: Fix the run's start, so every file it writes carries the same stamp
+      ansible.builtin.set_fact:
+        backup_stamp: "{{ now().strftime('%Y%m%d-%H%M%S') }}"
+        backup_failures: []
+
+    - name: Copy every source, with the share mounted only while the run needs it
+      block:
+        - name: Mount the NAS share
+          when: backup_nas_share is defined
+          become: true
+          vars:
+            backup_credentials: "{{ backup_nas_credentials | default('/etc/ansible-backup/nas.credentials') }}"
+          block:
+            - name: Install the tools the run needs
+              ansible.builtin.apt:
+                name: [age, cifs-utils, rsync]
+                state: present
+
+            - name: Find the share's credentials file
+              ansible.builtin.stat:
+                path: "{{ backup_credentials }}"
+              register: backup_credentials_file
+
+            - name: The credentials file is root's alone
+              ansible.builtin.assert:
+                that:
+                  - backup_credentials_file.stat.exists
+                  - backup_credentials_file.stat.pw_name == 'root'
+                  - backup_credentials_file.stat.mode == '0600'
+                fail_msg: "BACKUP: {{ backup_credentials }} must exist, owned by root, mode 0600 (README, Backups to the NAS)"
+                quiet: true
+
+            - name: Create the mount point
+              ansible.builtin.file:
+                path: "{{ backup_target }}"
+                state: directory
+                mode: "0755"
+
+            - name: Mount it without touching fstab, owned by the user ansible runs as
+              ansible.posix.mount:
+                src: "{{ backup_nas_share }}"
+                path: "{{ backup_target }}"
+                fstype: cifs
+                opts: "credentials={{ backup_credentials }},uid={{ lookup('pipe', 'id -u') }},gid={{ lookup('pipe', 'id -g') }},\
+                  file_mode=0600,dir_mode=0700{{ (',' + backup_nas_mount_opts) if backup_nas_mount_opts is defined else '' }}"
+                state: ephemeral
+
+            - name: The target is the NAS share, never the Pi's own disk
+              ansible.builtin.command: findmnt --noheadings --output FSTYPE --mountpoint {{ backup_target }}
+              register: backup_fstype
+              changed_when: false
+              failed_when: backup_fstype.rc != 0 or backup_fstype.stdout | trim != 'cifs'
+
+        - name: Find the target directory
+          ansible.builtin.stat:
+            path: "{{ backup_target }}"
+          register: backup_target_dir
+
+        - name: The target directory exists
+          ansible.builtin.assert:
+            that: backup_target_dir.stat.isdir | default(false)
+            fail_msg: "BACKUP: {{ backup_target }} is not a directory"
+            quiet: true
+
+        - name: Copy each Nextcloud AIO repo
+          ansible.builtin.include_tasks: ../tasks/backup-nextcloud-aio.yml
+          loop: "{{ backup_nextcloud_hosts }}"
+          loop_control:
+            loop_var: backup_source
+
+        - name: Copy Home Assistant's newest backup
+          ansible.builtin.include_tasks: ../tasks/backup-homeassistant.yml
+          when: backup_homeassistant | default(false) | bool
+
+        - name: Bundle each host's secrets
+          ansible.builtin.include_tasks: ../tasks/backup-secrets.yml
+          loop: "{{ backup_secret_hosts }}"
+          loop_control:
+            loop_var: backup_source
+
+      always:
+        - name: Unmount the NAS share
+          ansible.posix.mount:
+            path: "{{ backup_target }}"
+            state: unmounted
+          become: true
+          when: backup_nas_share is defined
+
+    - name: A source that failed fails the run, after every other source was copied
+      ansible.builtin.fail:
+        msg: "BACKUP: {{ backup_failures | length }} source(s) failed: {{ backup_failures | join(', ') }}"
+      when: backup_failures | length > 0

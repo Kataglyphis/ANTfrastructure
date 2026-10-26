@@ -13,6 +13,36 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-26 — the home-lab backups reach the NAS every week
+
+- **`linux/ansible/playbooks/backup.yml`** copies what git does not hold to the QNAP NAS every
+  Saturday, from pi-1, which mounts the share over SMB for the run only. Three sources:
+  - **Nextcloud AIO's Borg repo on srv-1** (39 GB) is mirrored the way AIO's own sync recipe
+    does it: no copy while `lock.roster` exists, `aio-lockfile` held while copying and released
+    in an `always:`. A stale lockfile of ours is taken over and reported, since AIO skips every
+    daily backup while one exists. A source that is not a Borg repo, or whose id is not the NAS
+    copy's, is refused, so `--delete` cannot replace the copy's history with a recreated repo.
+  - **Home Assistant's newest backup**, only when its `backup.json` says it is encrypted and
+    it is under 72 h old, checked by sha256 on the NAS.
+  - **Each host's secrets** (`backup_secret_paths`), streamed as a tar straight into `age`, so
+    no plaintext copy lands on any disk. srv-1's bundle holds the Borg passphrase, pi-1's the
+    deploy key, the host_vars and the Home Assistant backup key.
+  A failed source fails the run after the others were copied. The QTS snapshots of the share
+  are the history; setup and restore: `linux/ansible/README.md` § Backups to the NAS.
+- **`ansible-backup.{service,timer}`** run it through `run-update.sh`, which now takes
+  `ANSIBLE_UPDATE_STATUS_NAME` and `ANSIBLE_UPDATE_TIMER` and a run lock, so the update and the
+  backup never run at once. Home Assistant's Ansible page has a **Backup** view
+  (`packages/ansible_backup.yaml`), and `ansible_run_status.py` collects the `BACKUP:` notes.
+- **Home Assistant's local backups were not encrypted.** The README said they were since
+  2026-09-14; the newest archive's `backup.json` says `protected: false`, because encryption is
+  chosen per location since 2025.2. Its other tip, network storage, does not exist on a Container
+  install. Both are corrected.
+- Tests: `test-ansible-backup.sh` (the two helpers, seven mutations), a `BACKUP:` case in
+  `test-ansible-run-status.sh`, and `linux/ansible/tests/test-backup-playbook.sh`, run by hand,
+  which drives the playbook against a fake AIO host, a fake Home Assistant and a real `age` key.
+  A run against srv-1 and pi-1 into a scratch directory bundled both hosts' secrets and refused
+  the unencrypted Home Assistant archive.
+
 ## 2026-10-26 — Linux chain: runtime lane robustness and image content
 
 - Read GStreamer scan markers without an early-closing pipeline. A large valid

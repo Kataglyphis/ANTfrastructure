@@ -1,0 +1,165 @@
+---
+# One AIO host's Borg repo, mirrored as AIO's own sync recipe does it: refuse while AIO writes, hold aio-lockfile while copying.
+- name: "Nextcloud AIO on {{ backup_source }}"
+  vars:
+    nc_vars: "{{ hostvars[backup_source] }}"
+    nc_local: "{{ nc_vars.ansible_connection | default('ssh') == 'local' }}"
+    nc_user: "{{ nc_vars.ansible_user | default(lookup('env', 'USER')) }}"
+    nc_become: "{{ not nc_local and nc_user != 'root' }}"
+    nc_repo: "{{ nc_vars.backup_nextcloud_aio_repo }}"
+    nc_list: "{{ nc_vars.backup_nextcloud_aio_archives_list
+      | default('/var/lib/docker/volumes/nextcloud_aio_mastercontainer/_data/data/backup_archives.list') }}"
+    nc_dest: "{{ backup_target }}/nextcloud/{{ backup_source }}/borg"
+    nc_source: "{{ (nc_repo + '/') if nc_local else (nc_user + '@' + (nc_vars.ansible_host | default(backup_source)) + ':' + nc_repo + '/') }}"
+    nc_rsync_remote: "{{ [] if nc_local else ['-e', 'ssh -F ssh_config -o BatchMode=yes']
+      + (['--rsync-path=sudo -n rsync'] if nc_become else []) }}"
+    # The lockfile is AIO's, so it is never mirrored and never deleted on the NAS side.
+    nc_rsync: "{{ ['rsync', '--recursive', '--times', '--delete', '--exclude=/aio-lockfile'] + nc_rsync_remote }}"
+    nc_marker: ansible-backup
+  block:
+    - name: "Nextcloud {{ backup_source }}: start without a lock of this run's"
+      ansible.builtin.set_fact:
+        nc_locked: false
+
+    - name: "Nextcloud {{ backup_source }}: read the source repo's config"
+      ansible.builtin.slurp:
+        src: "{{ nc_repo }}/config"
+      delegate_to: "{{ backup_source }}"
+      become: "{{ nc_become }}"
+      register: nc_source_config
+
+    - name: "Nextcloud {{ backup_source }}: find the NAS copy's config"
+      ansible.builtin.stat:
+        path: "{{ nc_dest }}/config"
+      register: nc_dest_config_file
+
+    - name: "Nextcloud {{ backup_source }}: read the NAS copy's config"
+      ansible.builtin.slurp:
+        src: "{{ nc_dest }}/config"
+      register: nc_dest_config
+      when: nc_dest_config_file.stat.exists
+
+    - name: "Nextcloud {{ backup_source }}: name both repos"
+      ansible.builtin.set_fact:
+        nc_source_id: "{{ nc_source_config.content | b64decode | regex_search('(?m)^id = [0-9a-f]+') | regex_replace('^id = ', '') }}"
+        nc_dest_id: "{{ (nc_dest_config.content | b64decode | regex_search('(?m)^id = [0-9a-f]+') | regex_replace('^id = ', ''))
+          if nc_dest_config_file.stat.exists else '' }}"
+
+    - name: "Nextcloud {{ backup_source }}: the source is a Borg repo"
+      ansible.builtin.assert:
+        that: nc_source_id is match('^[0-9a-f]{64}$')
+        fail_msg: "BACKUP: nextcloud {{ backup_source }}: {{ nc_repo }}/config names no Borg repo id; not copied"
+        quiet: true
+
+    # A recreated repo mirrored with --delete would replace the NAS copy's whole history.
+    - name: "Nextcloud {{ backup_source }}: the NAS copy, if there is one, is of the same repo"
+      ansible.builtin.assert:
+        that: nc_dest_id in ['', nc_source_id] or backup_nextcloud_accept_new_repo | default(false) | bool
+        fail_msg: "BACKUP: nextcloud {{ backup_source }}: the repo is {{ nc_source_id }}, the NAS copy is {{ nc_dest_id }};
+          if it was recreated on purpose, run once with -e backup_nextcloud_accept_new_repo=true"
+        quiet: true
+
+    - name: "Nextcloud {{ backup_source }}: look for AIO's locks"
+      ansible.builtin.shell: |
+        cd {{ nc_repo | quote }}
+        [ ! -e lock.roster ] || echo roster
+        [ ! -e aio-lockfile ] || echo "lockfile $(head -c 200 aio-lockfile)"
+      delegate_to: "{{ backup_source }}"
+      become: "{{ nc_become }}"
+      register: nc_locks
+      changed_when: false
+
+    - name: "Nextcloud {{ backup_source }}: AIO is not writing, and no one else holds aio-lockfile"
+      ansible.builtin.assert:
+        that:
+          - "'roster' not in nc_locks.stdout_lines"
+          - nc_locks.stdout_lines | select('match', 'lockfile') | reject('match', 'lockfile ' + nc_marker) | list | length == 0
+        fail_msg: "BACKUP: nextcloud {{ backup_source }}: the repo is busy ({{ nc_locks.stdout_lines | join('; ') }}); not copied"
+        quiet: true
+
+    # AIO skips every daily backup while aio-lockfile exists, so a killed run's lock must not survive the next run.
+    - name: "Nextcloud {{ backup_source }}: report a lock a killed run left behind"
+      ansible.builtin.debug:
+        msg: "BACKUP: nextcloud {{ backup_source }}: took over a stale aio-lockfile from a killed run
+          ({{ nc_locks.stdout_lines | select('match', 'lockfile') | first }}); AIO skipped its backups while it was there"
+      when: nc_locks.stdout_lines | select('match', 'lockfile') | list | length > 0
+
+    - name: "Nextcloud {{ backup_source }}: hold aio-lockfile while copying"
+      ansible.builtin.copy:
+        content: "{{ nc_marker }} {{ backup_stamp }} {{ inventory_hostname }}\n"
+        dest: "{{ nc_repo }}/aio-lockfile"
+        mode: "0644"
+      delegate_to: "{{ backup_source }}"
+      become: "{{ nc_become }}"
+
+    - name: "Nextcloud {{ backup_source }}: remember the lock is this run's"
+      ansible.builtin.set_fact:
+        nc_locked: true
+
+    - name: "Nextcloud {{ backup_source }}: create the NAS directory"
+      ansible.builtin.file:
+        path: "{{ nc_dest }}"
+        state: directory
+        mode: "0700"
+
+    - name: "Nextcloud {{ backup_source }}: mirror the repo onto the NAS"
+      ansible.builtin.command:
+        argv: "{{ nc_rsync + ['--stats', nc_source, nc_dest + '/'] }}"
+        chdir: "{{ backup_ansible_dir }}"
+      register: nc_copy
+      changed_when: "'Number of regular files transferred: 0' not in nc_copy.stdout"
+
+    - name: "Nextcloud {{ backup_source }}: the NAS copy now equals the locked repo"
+      ansible.builtin.command:
+        argv: "{{ nc_rsync + ['--dry-run', '--itemize-changes', nc_source, nc_dest + '/'] }}"
+        chdir: "{{ backup_ansible_dir }}"
+      register: nc_verify
+      changed_when: false
+      failed_when: nc_verify.rc != 0 or nc_verify.stdout | trim | length > 0
+
+    - name: "Nextcloud {{ backup_source }}: read the newest archive in AIO's list"
+      ansible.builtin.command:
+        argv: [tail, -n, "1", "{{ nc_list }}"]
+      delegate_to: "{{ backup_source }}"
+      become: "{{ nc_become }}"
+      register: nc_newest
+      changed_when: false
+      failed_when: nc_newest.rc != 0 or ',' not in nc_newest.stdout
+
+    # AIO's containers keep UTC, and so do the times in its archive list.
+    - name: "Nextcloud {{ backup_source }}: name the newest archive and its age"
+      ansible.builtin.set_fact:
+        nc_newest_name: "{{ nc_newest.stdout.split(',')[0] }}"
+        nc_newest_hours: "{{ ((now(utc=true) - (nc_newest.stdout.split(',')[1] | to_datetime('%Y-%m-%d %H:%M:%S'))).total_seconds()
+          / 3600) | round(1) }}"
+
+    - name: "Nextcloud {{ backup_source }}: report the copy"
+      ansible.builtin.debug:
+        msg: "BACKUP: nextcloud {{ backup_source }}: newest archive {{ nc_newest_name }} ({{ nc_newest_hours }} h old), repo of
+          {{ nc_copy.stdout | regex_search('Total file size: [0-9,]+') | regex_replace('[^0-9]', '') | int | human_readable }},
+          {{ nc_copy.stdout | regex_search('Number of regular files transferred: [0-9,]+') | regex_replace('[^0-9]', '') }} file(s) copied,
+          the NAS copy matches"
+
+    - name: "Nextcloud {{ backup_source }}: AIO still backs up every day"
+      ansible.builtin.assert:
+        that: nc_newest_hours | float <= backup_max_age_hours | default(72) | float
+        fail_msg: "BACKUP: nextcloud {{ backup_source }}: the newest archive is {{ nc_newest_hours }} h old; AIO stopped backing up"
+        quiet: true
+
+  rescue:
+    - name: "Nextcloud {{ backup_source }}: record the failure, then go on with the next source"
+      ansible.builtin.set_fact:
+        backup_failures: "{{ backup_failures + ['nextcloud ' + backup_source] }}"
+
+    - name: "Nextcloud {{ backup_source }}: name the step that failed"
+      ansible.builtin.debug:
+        msg: "BACKUP: FAILED nextcloud {{ backup_source }} at: {{ ansible_failed_task.name }}"
+
+  always:
+    - name: "Nextcloud {{ backup_source }}: release aio-lockfile"
+      ansible.builtin.file:
+        path: "{{ nc_repo }}/aio-lockfile"
+        state: absent
+      delegate_to: "{{ backup_source }}"
+      become: "{{ nc_become }}"
+      when: nc_locked | default(false)

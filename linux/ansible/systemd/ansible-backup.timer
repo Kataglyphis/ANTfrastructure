@@ -1,0 +1,11 @@
+[Unit]
+Description=Schedule the weekly copy of the backups to the NAS
+
+[Timer]
+# Saturday, after that night's AIO and Home Assistant backups and a day away from Sunday's update.
+OnCalendar=Sat *-*-* 07:00:00
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

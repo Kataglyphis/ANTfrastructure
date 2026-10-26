@@ -1,0 +1,15 @@
+---
+# Keeps the newest keep_count files matching keep_pattern in keep_dir and deletes the older ones.
+- name: "Find the copies in {{ keep_dir }}"
+  ansible.builtin.find:
+    paths: "{{ keep_dir }}"
+    patterns: "{{ keep_pattern }}"
+  register: keep_found
+
+- name: "Delete all but the newest {{ keep_count }} copies"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ (keep_found.files | sort(attribute='mtime', reverse=true))[keep_count | int:] }}"
+  loop_control:
+    label: "{{ item.path | basename }}"

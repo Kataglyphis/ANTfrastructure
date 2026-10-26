@@ -12,3 +12,15 @@ ansible_user: <user>
 #   - linux/homeassistant/compose.yaml
 # manage_ansible_venv: true   # pip install --upgrade ansible (runs late)
 # report_nerdctl_upstream: true  # report-only toolchain drift check
+#
+# The weekly backup to the NAS (playbooks/backup.yml, README "Backups to the NAS"):
+# on the hub (pi-1):
+# backup_nas_share: //<nas address>/Backup
+# backup_nas_credentials: /etc/ansible-backup/nas.credentials   # root:root 0600
+# backup_age_recipients: [age1...]   # public key only
+# backup_homeassistant: true
+# on any host, the hub included:
+# backup_secret_paths:               # absolute paths, bundled and age-encrypted
+#   - /etc/wireguard
+# on a Nextcloud AIO host:
+# backup_nextcloud_aio_repo: /root/nextcloud_aio/borg

@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly copy of the backups to the NAS (ansible)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/ANTfrastructure/linux/ansible
+# The update's wrapper, pointed at its own log directory, status file and timer.
+Environment=ANSIBLE_UPDATE_STATE=%h/.local/state/ansible-backup
+Environment=ANSIBLE_UPDATE_STATUS_NAME=backup-status.json
+Environment=ANSIBLE_UPDATE_TIMER=ansible-backup.timer
+ExecStart=%h/ANTfrastructure/linux/ansible/scripts/run-update.sh playbooks/backup.yml

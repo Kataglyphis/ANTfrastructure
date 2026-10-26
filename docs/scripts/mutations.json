@@ -29175,5 +29175,61 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-asset-mirror-setup.sh",
   "why": "every host's setup would leave a copy of the scripts in the Garage host's temp directory"
+ },
+ {
+  "id": "ansible-backup.ha-unencrypted",
+  "target": "linux/ansible/scripts/ha_backup_newest.py",
+  "find": "    if not report[\"protected\"]:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-ansible-backup.sh",
+  "why": "an unencrypted Home Assistant archive must never be copied off the Pi"
+ },
+ {
+  "id": "ansible-backup.ha-stale",
+  "target": "linux/ansible/scripts/ha_backup_newest.py",
+  "find": "    if age_hours > args.max_age_hours:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-ansible-backup.sh",
+  "why": "a Home Assistant that stopped backing up must fail the run, not ship an old archive as current"
+ },
+ {
+  "id": "ansible-backup.ha-newest-by-date",
+  "target": "linux/ansible/scripts/ha_backup_newest.py",
+  "find": "    return max(found, key=lambda item: item[0])",
+  "replace": "    return found[-1]",
+  "test": "bash linux/scripts/tests/test-ansible-backup.sh",
+  "why": "the newest archive is the one backup.json dates latest, not the one whose name sorts last"
+ },
+ {
+  "id": "ansible-backup.secrets-tar-error",
+  "target": "linux/ansible/scripts/backup-secrets.sh",
+  "find": "if [ \"${rc}\" -ne 0 ] || grep -q -e '^tar: ' \"${listing}\"; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-ansible-backup.sh",
+  "why": "a missing secret path must fail the bundle, not ship an incomplete one"
+ },
+ {
+  "id": "ansible-backup.secrets-age-header",
+  "target": "linux/ansible/scripts/backup-secrets.sh",
+  "find": "[ \"$(head -c 21 \"${partial}\")\" = \"age-encryption.org/v1\" ] ||",
+  "replace": "true ||",
+  "test": "bash linux/scripts/tests/test-ansible-backup.sh",
+  "why": "output that is not an age file is plaintext and must never reach the NAS"
+ },
+ {
+  "id": "ansible-backup.secrets-partial-cleanup",
+  "target": "linux/ansible/scripts/backup-secrets.sh",
+  "find": "trap 'rm -f \"${partial}\" \"${listing}\"' EXIT",
+  "replace": "trap 'rm -f \"${listing}\"' EXIT",
+  "test": "bash linux/scripts/tests/test-ansible-backup.sh",
+  "why": "a failed bundle must leave no partial file on the NAS"
+ },
+ {
+  "id": "ansible-run-status.backup-notes",
+  "target": "linux/ansible/scripts/ansible_run_status.py",
+  "find": "|BACKUP: [^\\\"\\\\]*",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ansible-run-status.sh",
+  "why": "the backup's notes are what Home Assistant's Backup view shows"
  }
 ]

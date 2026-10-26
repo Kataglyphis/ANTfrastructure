@@ -1,4 +1,4 @@
-# The Ansible sidebar page: the last weekly update, host by host, its notes, the runs before it and the log's end.
+# The Ansible sidebar page: the weekly update host by host, and the weekly backup to the NAS, each with its notes, runs and log.
 title: Ansible
 views:
   - title: Ansible
@@ -84,4 +84,56 @@ views:
 
           ```
           {{ state_attr('sensor.ansible_update', 'log_tail') }}
+          ```
+
+  - title: Backup
+    path: backup
+    icon: mdi:backup-restore
+    cards:
+      - type: entities
+        title: Last copy to the NAS
+        entities:
+          - entity: sensor.ansible_backup
+            name: Result
+          - entity: binary_sensor.ansible_backup_needs_a_look
+            name: Needs a look
+          - type: attribute
+            entity: sensor.ansible_backup
+            attribute: finished
+            name: Finished
+          - type: attribute
+            entity: sensor.ansible_backup
+            attribute: duration_s
+            name: Took
+            suffix: s
+          - type: attribute
+            entity: sensor.ansible_backup
+            attribute: next_run
+            name: Next run
+
+      - type: markdown
+        title: What was copied
+        content: |
+          {% set notes = state_attr('sensor.ansible_backup', 'notes') or [] %}
+          {% if notes %}{% for n in notes %}
+          - {{ '❌ ' if 'FAILED' in n or ' not ' in n or 'busy' in n else '✅ ' }}{{ n | replace('BACKUP: ', '') }}
+          {% endfor %}{% else %}No copy recorded yet.{% endif %}
+
+      - type: markdown
+        title: Last runs
+        content: |
+          {% set runs = state_attr('sensor.ansible_backup', 'history') or [] %}
+          | Finished | Result | rc |
+          |---|---|---|
+          {% for r in runs -%}
+          | {{ r.finished[:16] | replace('T', ' ') }} | {{ '✅' if r.result == 'ok' else '❌' }} {{ r.result }} | {{ r.rc }} |
+          {% endfor %}
+
+      - type: markdown
+        title: Log (end of the last run)
+        content: |
+          Full log on pi-1: `~/.local/state/ansible-backup/runs/{{ state_attr('sensor.ansible_backup', 'log_file') }}`
+
+          ```
+          {{ state_attr('sensor.ansible_backup', 'log_tail') }}
           ```

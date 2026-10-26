@@ -77,6 +77,19 @@ status "${_work}/red.log" 2 "${_work}/many.json"
 t_assert_eq "10" "$(field "${_work}/many.json" 'len(d["history"])')"
 t_assert_eq "failed ok" "$(field "${_work}/many.json" '" ".join(r["result"] for r in d["history"][:2])')"
 
+{
+  printf '    "msg": "BACKUP: nextcloud srv-1: newest archive 20261026_040135-nextcloud-aio (2.1 h old)"\n'
+  printf 'fatal: [pi-1]: FAILED! => {"rc": 1, "stderr": "BACKUP: homeassistant: a.tar is not encrypted\\nBACKUP: homeassistant: a.tar is 80 h old", "stderr_lines": ["BACKUP: homeassistant: a.tar is not encrypted", "BACKUP: homeassistant: a.tar is 80 h old"]}\n'
+  printf 'PLAY RECAP ***\n'
+  recap pi-1 30 4 0 0 2 1 0
+} > "${_work}/backup.log"
+
+t_case "the backup's BACKUP notes: each once, and a stderr string split at its escaped newlines"
+status "${_work}/backup.log" 2 "${_work}/backup.json"
+t_assert_eq "3" "$(field "${_work}/backup.json" 'len(d["notes"])')"
+t_assert_eq "BACKUP: homeassistant: a.tar is not encrypted" "$(field "${_work}/backup.json" 'd["notes"][1]')"
+t_assert_eq "BACKUP: homeassistant: a.tar is 80 h old" "$(field "${_work}/backup.json" 'd["notes"][2]')"
+
 t_case "a long log keeps only its end, small enough for Home Assistant's recorder"
 for i in $(seq 1 5000); do printf 'TASK [step %d] %s\n' "${i}" "$(printf 'x%.0s' $(seq 1 40))"; done > "${_work}/long.log"
 cat "${_work}/green.log" >> "${_work}/long.log"

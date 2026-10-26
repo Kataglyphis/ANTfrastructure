@@ -1,0 +1,73 @@
+---
+# Home Assistant's newest backup: only an encrypted, recent archive leaves the Pi, copied byte for byte.
+- name: Home Assistant
+  vars:
+    ha_dir: "{{ backup_homeassistant_dir | default(backup_ansible_dir | dirname + '/homeassistant/config/backups') }}"
+    ha_dest: "{{ backup_target }}/homeassistant"
+  block:
+    - name: "Home Assistant: the newest backup is encrypted and recent"
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ backup_ansible_dir }}/scripts/ha_backup_newest.py"
+          - --dir
+          - "{{ ha_dir }}"
+          - --max-age-hours
+          - "{{ backup_max_age_hours | default(72) }}"
+      register: ha_newest
+      changed_when: false
+
+    - name: "Home Assistant: name the archive"
+      ansible.builtin.set_fact:
+        ha_backup: "{{ ha_newest.stdout | from_json }}"
+
+    - name: "Home Assistant: create the NAS directory"
+      ansible.builtin.file:
+        path: "{{ ha_dest }}"
+        state: directory
+        mode: "0700"
+
+    - name: "Home Assistant: copy the archive to the NAS"
+      ansible.builtin.command:
+        argv: [rsync, --times, --stats, "{{ ha_backup.file }}", "{{ ha_dest }}/"]
+      register: ha_copy
+      changed_when: "'Number of regular files transferred: 0' not in ha_copy.stdout"
+
+    - name: "Home Assistant: checksum the archive"
+      ansible.builtin.stat:
+        path: "{{ ha_backup.file }}"
+        checksum_algorithm: sha256
+      register: ha_source_sum
+
+    - name: "Home Assistant: checksum the NAS copy"
+      ansible.builtin.stat:
+        path: "{{ ha_dest }}/{{ ha_backup.file | basename }}"
+        checksum_algorithm: sha256
+      register: ha_dest_sum
+
+    - name: "Home Assistant: the NAS copy is byte for byte the archive"
+      ansible.builtin.assert:
+        that: ha_dest_sum.stat.checksum | default('') == ha_source_sum.stat.checksum
+        fail_msg: "BACKUP: homeassistant: the NAS copy of {{ ha_backup.file | basename }} differs from the archive"
+        quiet: true
+
+    - name: "Home Assistant: keep the newest copies on the NAS"
+      ansible.builtin.include_tasks: backup-keep-newest.yml
+      vars:
+        keep_dir: "{{ ha_dest }}"
+        keep_pattern: "*.tar"
+        keep_count: "{{ backup_homeassistant_keep | default(8) }}"
+
+    - name: "Home Assistant: report the copy"
+      ansible.builtin.debug:
+        msg: "BACKUP: homeassistant: {{ ha_backup.file | basename }} ({{ ha_backup.age_hours }} h old, encrypted,
+          {{ ha_source_sum.stat.size | human_readable }}), the NAS copy's sha256 matches"
+
+  rescue:
+    - name: "Home Assistant: record the failure, then go on with the next source"
+      ansible.builtin.set_fact:
+        backup_failures: "{{ backup_failures + ['homeassistant'] }}"
+
+    - name: "Home Assistant: name the step that failed"
+      ansible.builtin.debug:
+        msg: "BACKUP: FAILED homeassistant at: {{ ansible_failed_task.name }}"

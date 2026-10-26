@@ -1,0 +1,32 @@
+# The weekly backup to the NAS, as linux/ansible/scripts/run-update.sh writes it for playbooks/backup.yml (gitignored).
+command_line:
+  - sensor:
+      name: Ansible backup
+      unique_id: ansible_backup_last_run
+      icon: mdi:backup-restore
+      command: cat /config/ansible/backup-status.json
+      value_template: "{{ value_json.result }}"
+      json_attributes:
+        - playbook
+        - rc
+        - started
+        - finished
+        - duration_s
+        - next_run
+        - notes
+        - slowest
+        - history
+        - log_file
+        - log_tail
+      scan_interval: 300
+
+template:
+  - binary_sensor:
+      - name: Ansible backup needs a look
+        unique_id: ansible_backup_needs_a_look
+        device_class: problem
+        # A failed run, no run yet, or none for 8 days (the timer fires weekly) all mean the NAS copy is not current.
+        state: >-
+          {% set finished = state_attr('sensor.ansible_backup', 'finished') %}
+          {{ states('sensor.ansible_backup') != 'ok' or finished is none
+             or (now() - as_datetime(finished)).days >= 8 }}

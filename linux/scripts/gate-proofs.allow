@@ -204,3 +204,7 @@ mutation-family:ordered-jobs
 mutation-family:runtime-smoke
 # The host's orphan report (linux/host-config/ghost-watch.sh), which no slug owns; proof: test-ghost-watch.sh.
 mutation-family:ghost-watch
+# The weekly NAS backup's helpers (linux/ansible/scripts), which no slug owns; proof: linux/scripts/tests/test-ansible-backup.sh.
+mutation-family:ansible-backup
+# The Ansible run status Home Assistant shows (linux/ansible/scripts/ansible_run_status.py); proof: linux/scripts/tests/test-ansible-run-status.sh.
+mutation-family:ansible-run-status

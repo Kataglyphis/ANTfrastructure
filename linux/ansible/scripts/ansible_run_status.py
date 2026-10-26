@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turns an ansible-playbook log into the status.json that Home Assistant's Ansible dashboard reads."""
+"""Turns an ansible-playbook log into the status file that Home Assistant's Ansible dashboard reads."""
 import argparse
 import datetime
 import json
@@ -12,7 +12,8 @@ RECAP = re.compile(
     r"^(\S+)\s*:\s*ok=(\d+)\s+changed=(\d+)\s+unreachable=(\d+)\s+failed=(\d+)"
     r"\s+skipped=(\d+)\s+rescued=(\d+)\s+ignored=(\d+)"
 )
-NOTE = re.compile(r"(GARAGE: [^\"]*|TOOLCHAIN: [^\"]*|\S+ did not answer, so it was not updated)")
+# A BACKUP note also stops at a backslash, so a stderr string's escaped newlines split it into its lines.
+NOTE = re.compile(r"(GARAGE: [^\"]*|TOOLCHAIN: [^\"]*|BACKUP: [^\"\\]*|\S+ did not answer, so it was not updated)")
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 # profile_tasks' summary line: the task's name, a ruler of dashes, its seconds.
 TIMING = re.compile(r"^(.+?) -{3,} ([0-9.]+)s$")

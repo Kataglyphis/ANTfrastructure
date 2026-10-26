@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The weekly update's ExecStart: runs the playbook, keeps its log across reboots, and writes the status Home Assistant shows.
+# The weekly update's and backup's ExecStart: runs the playbook, keeps its log across reboots, and writes the status Home Assistant shows.
 set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -8,8 +8,14 @@ playbook="${1:-playbooks/update.yml}"
 state="${ANSIBLE_UPDATE_STATE:-${XDG_STATE_HOME:-${HOME}/.local/state}/ansible-update}"
 status_dir="${ANSIBLE_UPDATE_STATUS_DIR:-${repo}/linux/homeassistant/config/ansible}"
 keep="${ANSIBLE_UPDATE_KEEP_RUNS:-20}"
+status_name="${ANSIBLE_UPDATE_STATUS_NAME:-status.json}"
+timer="${ANSIBLE_UPDATE_TIMER:-ansible-update.timer}"
 
-mkdir -p "${state}/runs" "${status_dir}"
+lock_dir="${XDG_STATE_HOME:-${HOME}/.local/state}"
+mkdir -p "${state}/runs" "${status_dir}" "${lock_dir}"
+# One run at a time: a backup that catches up at boot must not copy from a host the update is rebooting.
+exec 9> "${lock_dir}/ansible-run.lock"
+flock 9
 started="$(date -Is)"
 log="${state}/runs/$(date +%Y%m%d-%H%M%S).log"
 # profile_tasks ends the log with the slowest tasks, which status.json and Home Assistant show.
@@ -19,9 +25,9 @@ export PROFILE_TASKS_TASK_OUTPUT_LIMIT="${PROFILE_TASKS_TASK_OUTPUT_LIMIT:-10}"
 (cd "${here}" && exec "${ANSIBLE_PLAYBOOK:-${HOME}/venvs/ansible/bin/ansible-playbook}" "${playbook}") 2>&1 | tee "${log}"
 rc=${PIPESTATUS[0]}
 
-next="$(systemctl --user show ansible-update.timer -p NextElapseUSecRealtime --value 2>/dev/null || true)"
+next="$(systemctl --user show "${timer}" -p NextElapseUSecRealtime --value 2>/dev/null || true)"
 python3 "${here}/scripts/ansible_run_status.py" --log "${log}" --rc "${rc}" --playbook "${playbook}" \
-  --started "${started}" --finished "$(date -Is)" --next-run "${next}" --out "${status_dir}/status.json"
+  --started "${started}" --finished "$(date -Is)" --next-run "${next}" --out "${status_dir}/${status_name}"
 
 find "${state}/runs" -name '*.log' -printf '%T@ %p\n' | sort -rn | tail -n +"$((keep + 1))" | cut -d' ' -f2- |
   xargs -r rm -f --

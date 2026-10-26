@@ -1,6 +1,6 @@
 ---
 # User units on pi-1 — linger must be enabled (the rootless containerd stack needs it).
-- name: Schedule the weekly fleet update
+- name: Schedule the weekly fleet update and the weekly backup
   hosts: pi-1
   gather_facts: false
   vars:
@@ -14,6 +14,8 @@
       loop:
         - ansible-update.service
         - ansible-update.timer
+        - ansible-backup.service
+        - ansible-backup.timer
       register: update_units
 
     - name: Reload the user systemd manager
@@ -21,9 +23,12 @@
         scope: user
         daemon_reload: true
 
-    - name: Enable and start the timer
+    - name: Enable and start the timers
       ansible.builtin.systemd_service:
         scope: user
-        name: ansible-update.timer
+        name: "{{ item }}"
         enabled: true
         state: started
+      loop:
+        - ansible-update.timer
+        - ansible-backup.timer
