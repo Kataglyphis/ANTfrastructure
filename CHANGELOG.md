@@ -37,6 +37,9 @@
 
 ## 2026-10-26 — Reuse and dependency updates
 
+- Share the MSIX manifest and entry reader through `WindowsSmokeTest.Common` for installer
+  consumers; missing or malformed manifests remain fatal, with archive handles closed.
+
 - Add a weekly cross-repository Bash/PowerShell reuse report to the consumer
   inventory. It reuses the existing clones and duplication tokenizer, filters the
   live GitHub list to active owned nonfork repositories, writes only under ignored

@@ -22,6 +22,19 @@ function Get-SmokeCounterScenario {
     return Get-SmokeTestSummary
 }
 
+function New-SmokeMsixFixture {
+    param([string]$Path, [string]$Manifest = '<Package><Identity Name="Fixture" /></Package>', [switch]$OmitManifest)
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::Open($Path, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        if (-not $OmitManifest) {
+            $writer = [System.IO.StreamWriter]::new($zip.CreateEntry('AppxManifest.xml').Open())
+            try { $writer.Write($Manifest) } finally { $writer.Dispose() }
+        }
+        $null = $zip.CreateEntry('Assets/logo.png')
+    } finally { $zip.Dispose() }
+}
+
 Describe 'Smoke harness counters' {
 
     It 'Initialize-SmokeTestRun zeroes every counter' {
@@ -199,6 +212,46 @@ Describe 'TensorRT staged-state detection' {
         Invoke-InTestDir { param($dir)
             New-Item -ItemType Directory -Path (Join-Path $dir 'TensorRT-11.3.0.99') | Out-Null
             Assert-True (Test-TensorRtTreeStaged -Root $dir) 'a versioned tree counts as staged'
+        }
+    }
+}
+
+# Archive fixtures cannot prove desktop AppX deployment or the caller's identity policy.
+Describe 'MSIX archive facts' {
+    It 'returns the manifest and entry names from a closed archive' {
+        Invoke-InTestDir { param($dir)
+            $path = Join-Path $dir 'fixture.msix'
+            New-SmokeMsixFixture -Path $path
+            $facts = Get-MsixArchiveInfo -Path $path
+            Assert-Equal 'Fixture' $facts.Manifest.Package.Identity.Name 'the XML identity survives the archive close'
+            Assert-Equal 2 @($facts.Entries).Count 'both archive members are reported'
+            Assert-True ($facts.Entries -contains 'Assets/logo.png') 'payload names are retained'
+            [System.IO.File]::Delete($path)
+            Assert-False (Test-Path -LiteralPath $path) 'archive handle is released'
+        }
+    }
+
+    It 'fails loudly for a missing manifest or malformed XML' {
+        Invoke-InTestDir { param($dir)
+            $missing = Join-Path $dir 'missing.msix'
+            New-SmokeMsixFixture -Path $missing -OmitManifest
+            Assert-Throws { Get-MsixArchiveInfo -Path $missing } -MessagePattern 'no AppxManifest.xml'
+            $malformed = Join-Path $dir 'malformed.msix'
+            New-SmokeMsixFixture -Path $malformed -Manifest '<Package'
+            Assert-Throws { Get-MsixArchiveInfo -Path $malformed }
+        }
+    }
+
+    It 'catches a reader redirected away from the manifest' {
+        Invoke-InTestDir { param($dir)
+            $path = Join-Path $dir 'valid.msix'
+            New-SmokeMsixFixture -Path $path
+            Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsSmokeTest.Common.psm1' `
+                -FunctionName Get-MsixArchiveInfo -Find "GetEntry('AppxManifest.xml')" `
+                -Replace "GetEntry('Other.xml')" -BodyArgumentList @($path) -Body {
+                    param($msix)
+                    Assert-Throws { Get-MutMsixArchiveInfo -Path $msix } -MessagePattern 'no AppxManifest.xml'
+                }
         }
     }
 }

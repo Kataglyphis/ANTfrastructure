@@ -2201,6 +2201,10 @@ session state, so `$script:passed` read from a caller resolves to a different, a
 and a script parameter is invisible to the module. Both failure modes are silent, which is why they
 are unit-tested.
 
+`Get-MsixArchiveInfo -Path <msix>` returns the parsed `AppxManifest.xml` and archive entry names
+for installer smoke assertions. It closes the ZIP and reader on every exit and throws for a
+missing or malformed manifest; callers keep their own identity and payload checks.
+
 #### `WindowsGstPlugins.Common.psm1`
 
 The mandatory GStreamer plugin CONTRACT (§ Mandatory GStreamer plugins and

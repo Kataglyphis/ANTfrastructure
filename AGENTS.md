@@ -184,6 +184,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Cross-bundle DLL closure uses the architecture graph; retain first-directory precedence, machine checks, indexed API sets and system descendants.
    Git fixtures share checked local repository setup; native tool failures must fail the fixture without changing global identity. Renovate bootstrap tests use the shared Git fixture and supply only their driver and wrapper layout.
    Windows native logging and DLL smoke probes share transport; preserve blank failure evidence, loader cleanup and caller coverage minimums. Smoke module copies carry Shared.
+   MSIX smoke consumers share the archive manifest reader; missing or malformed manifests stay fatal and archive handles close on every path.
    Staging directories share literal-root setup; failed reset or allocation aborts before payload copy and proof.
    Consumer staging suites use the shared stage-directory fixture for AST wiring, stale-byte cleanup and failed allocation; pass their own reset command and callback.
    Windows container drivers pass root-only source exclusions to the shared runner; never rebuild the inbound list locally or use recursive tar exclusions for root-only skips.

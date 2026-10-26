@@ -476,8 +476,22 @@ function Assert-AllDllsLoad {
         -FailMessage ("DLL load failures under {0}: {1}" -f $Root, (($problems | Select-Object -First 12) -join '; '))
 }
 
+function Get-MsixArchiveInfo {
+    param([Parameter(Mandatory)][string]$Path)
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        $entry = $zip.GetEntry('AppxManifest.xml')
+        if (-not $entry) { throw "MSIX has no AppxManifest.xml: $Path" }
+        $reader = [System.IO.StreamReader]::new($entry.Open())
+        try { [xml]$manifest = $reader.ReadToEnd() } finally { $reader.Dispose() }
+        [pscustomobject]@{ Manifest = $manifest; Entries = @($zip.Entries | ForEach-Object FullName) }
+    } finally { $zip.Dispose() }
+}
+
 Export-ModuleMember -Function @(
     'Assert-AllDllsLoad'
+    'Get-MsixArchiveInfo'
     'Initialize-SmokeTestRun'
     'Get-SmokeTestSummary'
     'Skip-Test'
