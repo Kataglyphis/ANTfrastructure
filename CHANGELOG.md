@@ -15,6 +15,10 @@
 
 ## 2026-10-26 — Reuse and dependency updates
 
+- Bind `Test-Elevated` directly in the Windows host lavapipe installer, so consumer
+  Vulkan tests reach the elevation decision after verified downloads. An import-binding
+  and cold-export regression catches the visibility loss; the failure guide names the symptom.
+
 - Preserve `true`, `recursive` and `false` as distinct submodule modes in the
   shared Windows short-path checkout; the preparation and container workflows
   retain their recursive short-path defaults while direct-only consumer builds

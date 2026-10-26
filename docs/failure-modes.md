@@ -145,6 +145,7 @@ Two neighbours, so you land on the right page:
 - [A source build produces UNPATCHED sources and says `SKIP: ... (already applied)`](#a-source-build-produces-unpatched-sources-and-says-skip--already-applied)
 - [`atlbase.h` not found when building LLVM in the container](#atlbaseh-not-found-when-building-llvm-in-the-container)
 - [A build script dies with `The term ... is not recognized`, in the container only](#a-build-script-dies-with-the-term--is-not-recognized-in-the-container-only)
+- [`Test-Elevated` is not recognized during host lavapipe setup](#test-elevated-is-not-recognized-during-host-lavapipe-setup)
 - [A consumer's CMake says clang-cl "is not able to compile a simple test program"](#a-consumers-cmake-says-clang-cl-is-not-able-to-compile-a-simple-test-program)
 - [CodeQL `database create` hangs for hours at near-zero CPU](#codeql-database-create-hangs-for-hours-at-near-zero-cpu)
 - [A Windows chain stops in seconds at `[bk:publish-gate:bk-windows-…]`](#a-windows-chain-stops-in-seconds-at-bkpublish-gatebk-windows-)
@@ -2124,6 +2125,20 @@ in `WindowsSourceBuild.Common.psm1`. `Modules.ScriptCallClosure.Tests.ps1` prove
 importing only what the script itself imports — that every module function a build script CALLS
 resolves; `Modules.ReExport.Tests.ps1` checks the other direction. Neither replaces the other, and
 the check takes seconds where the build takes hours.
+
+### `Test-Elevated` is not recognized during host lavapipe setup
+
+**Symptom.** A Windows consumer finishes its container build and verified lavapipe
+downloads, then its host Vulkan test fails with `The term 'Test-Elevated' is not recognized`.
+
+**Cause.** `Install-LavapipeHost.ps1` imported `WindowsContainerImage.Common.psm1`,
+whose own import of `WindowsScripts.Shared.psm1` was private to the module. The host
+script could not call the shared elevation predicate.
+
+**Fix.** The host entry imports `WindowsScripts.Shared.psm1` directly without `-Force`;
+it keeps elevated-only ICD registration. `Lavapipe.HostVisibility.Tests.ps1` checks the
+host import AST and probes the shared export in a cold PowerShell process; removing
+the direct import makes its mutation check fail.
 
 ### A consumer's CMake says clang-cl "is not able to compile a simple test program"
 

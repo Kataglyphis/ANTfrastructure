@@ -27,6 +27,9 @@ $bootstrapModulePath = Join-Path $ModuleRoot 'modules\WindowsContainerImage.Boot
 Import-Module $bootstrapModulePath -Force
 $containerModulePath = Resolve-ContainerImageModulePath -ModuleRoot $ModuleRoot -Name 'WindowsContainerImage.Common.psm1'
 Import-Module $containerModulePath -Force
+$sharedModulePath = Join-Path $ModuleRoot 'modules\WindowsScripts.Shared.psm1'
+# The image module imports Shared privately; the host's elevation check needs its own binding.
+Import-Module $sharedModulePath -ErrorAction Stop
 
 if (-not $Arch) {
     $Arch = switch ($env:PROCESSOR_ARCHITECTURE) {

@@ -286,8 +286,11 @@ SHA256 pins; the loader also requires a ZIP signature and the correct binary
 prefix. Any download or extraction failure stops before later work and keeps its
 downloaded evidence. The image caller retains PE-machine and ICD checks plus amd64
 registration. The host caller retains its environment settings and elevated-only
-registration. Stubbed acquisition tests cover forwarding and failure order; the
-device gates above prove runtime behavior.
+registration. The host entry imports `WindowsScripts.Shared.psm1` directly, without
+`-Force`, so `Test-Elevated` is visible in its script scope. The image module's private
+import does not expose that command. Stubbed acquisition and host-visibility tests
+cover the shared pins, failure order and this scope boundary; the device gates above
+prove runtime behavior.
 
 ## The Vulkan validation layer
 

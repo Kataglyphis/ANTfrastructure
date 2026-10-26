@@ -106,6 +106,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows probe transports share child cleanup and report parsing; retain stderr, timeout, exit and assertion accounting policies.
    Windows diagnostic and host scripts carry their shared module companions; keep required failures fatal and advisory failures visible.
    Windows disk probes distinguish zero from unknown; shared lavapipe acquisition retains caller PE, registry and environment verdicts.
+   Host lavapipe setup imports WindowsScripts.Shared directly and unforced for Test-Elevated; a private image-module import cannot satisfy the entry script. Keep ICD registration elevated-only.
    Source file-tree staging and patch sweeps share transport and accounting; keep caller selection, ordering and fatal minimums.
    Stateful Windows fixtures use the harness binding APIs; preserve collection identity, fake argv and nested-function restoration.
    Required Windows siblings import unforced into their owner scope and fail on missing companions; test cold, private-warm and global-warm visibility.
@@ -342,6 +343,10 @@ The short-path Windows checkout preserves the submodule mode: `true` initializes
 submodules, `recursive` also initializes nested ones, and `false` skips them. Never turn
 `true` into a recursive clone: this hub and DocumANTation form a nested cycle.
 See [the action contract](.github/actions/README.md#clone-into-short-path).
+
+The host lavapipe entry imports its shared elevation predicate in its own scope. Check
+that boundary with `pwsh windows/scripts/tests/Invoke-Tests.ps1 -Only Lavapipe.HostVisibility.Tests.ps1
+-ResultFile logs/test-results/lavapipe-host-visibility.json` before changing its imports.
 
 ### Running Linux containers (Rancher Desktop)
 
