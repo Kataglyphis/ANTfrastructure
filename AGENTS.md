@@ -185,6 +185,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Git fixtures share checked local repository setup; native tool failures must fail the fixture without changing global identity. Renovate bootstrap tests use the shared Git fixture and supply only their driver and wrapper layout.
    Windows native logging and DLL smoke probes share transport; preserve blank failure evidence, loader cleanup and caller coverage minimums. Smoke module copies carry Shared.
    Staging directories share literal-root setup; failed reset or allocation aborts before payload copy and proof.
+   Consumer staging suites use the shared stage-directory fixture for AST wiring, stale-byte cleanup and failed allocation; pass their own reset command and callback.
    Windows archives share extraction lifecycle; strict failures remain the default and pinned link exceptions stay explicit.
    ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts.
    Python CI suites carry their shared driver fixture; preserve child status, call logs and parent environment isolation.

@@ -2408,6 +2408,14 @@ returns the validated AST and lexer tokens from one parse, so comment-aware scan
 cannot inspect declarations after a parse error. The parser helpers never execute
 the inspected script.
 
+`WindowsStageDirectory.Fixture.psm1` applies those AST helpers to consumer staging
+scripts. A caller passes its stage script, reset command, literal `-Path` argument
+and reset callback. It uses `Assert-TestAstCommand` to require the literal
+`<reset> -Path <argument> -Empty` call before the first copy,
+removes stale files, and requires a failed directory allocation to propagate.
+`WindowsStageDirectory.Fixture.Tests.ps1` breaks each of those guarantees to prove
+the checks fail. It does not build or run the staged application payload.
+
 OpenCV wiring tests use these queries and the shared binder. Structural driver,
 Python, ROCm and smoke suites use the parser helpers; the Torch app census uses the
 parse result's tokens for comment-aware scans, and GenAI's unconditional-site check

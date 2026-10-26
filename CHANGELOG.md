@@ -48,6 +48,9 @@
 - Let the reusable Windows Python CI workflow choose submodule depth; its
   default remains recursive, while consumers with a cyclic documentation tree
   can request direct entries.
+- Share a parameterized Windows stage-directory test fixture between OrchestrANT
+  and OxidANT; its negative cases prove that parse errors, missing resets,
+  stale bytes and swallowed allocation failures are caught.
 - Forward the WSL quality runner's `--jobs` limit to nested Bash tests and ShellCheck,
   avoiding accidental oversubscription during the full suite.
 - Correct the Linux image quick reference to match its installed `jq` tool.
