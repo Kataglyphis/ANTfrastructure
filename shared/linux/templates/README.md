@@ -8,6 +8,7 @@ Copy `antfrastructure.sh` to `<your-repo>/scripts/linux/lib/antfrastructure.sh`
 and adjust `KATAGLYPHIS_REPO_ROOT_RELATIVE` if it does not sit three levels
 below the repo root. Copy `renovate-git-mode.sh` beside it and declare both
 copies in `.antfrastructure-shared.manifest` for drift checks.
+Run ShellCheck with `-x -P SCRIPTDIR` so the copied bootstrap resolves that sibling.
 
 **A consumer with no submodule is a supported shape.** `ANTFRASTRUCTURE_DIR`
 still wins when set; otherwise the bootstrap takes `third_party/ANTfrastructure`

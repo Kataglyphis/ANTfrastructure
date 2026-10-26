@@ -13,7 +13,7 @@ if [ ! -f "${_antfrastructure_lib_dir}/renovate-git-mode.sh" ]; then
     echo "Error: Renovate Git mode companion missing beside antfrastructure.sh" >&2
     return 1
 fi
-# shellcheck source=shared/linux/templates/renovate-git-mode.sh
+# shellcheck source=renovate-git-mode.sh
 . "${_antfrastructure_lib_dir}/renovate-git-mode.sh"
 
 # Overridable because a container bind-mounts the workspace at a different path.
