@@ -2687,6 +2687,12 @@ before changing overlap findings to a strict verdict.
 On Windows, the scanner uses the PowerShell shared-config checker first so a
 `bash` command that enters WSL cannot misread Windows checkout paths.
 
+The weekly [fleet reuse report](consumer-inventory.md#fleet-script-reuse-report)
+also compares consumers with one another, using the inventory's existing clones
+and the same unit/token readers. Code overlap is advisory; missing owned nonfork
+checkouts, tracked source files or shared-copy drift fail. Its bounded report and
+API inventory are written under ignored `logs/reports/`.
+
 ### `env-knobs` — a stale allow row always fails
 
 `linux/scripts/lint-env-knobs.sh` against `linux/scripts/lint-env-knobs.allow`,

@@ -34,6 +34,7 @@ checks; a file that exists can still reject arguments or produce the wrong resul
 | The declared list of consumers and of the entry-point classes | `.github/consumers.json` |
 | The checker that clones them and grades the entry points | `linux/scripts/verify_consumer_inventory.py` |
 | The checker for active consumer CI quality calls | `linux/scripts/verify_consumer_quality_wiring.py` |
+| The shared Bash/PowerShell overlap scanner | `docs/scripts/verify_fleet_reuse.py` |
 | The weekly run that produces the report | `.github/workflows/consumer-inventory.yml` |
 
 A failed weekly run **files or updates a GitHub issue** titled
@@ -61,6 +62,38 @@ python3 linux/scripts/verify_consumer_inventory.py --offline \
 `--local-root DIR` picks up `DIR/<name>` for every consumer whose name matches a
 directory there; `--local NAME=PATH` names one explicitly. Under `--offline` a
 consumer with neither is a **failure**, not a skip.
+
+## Fleet script reuse report
+
+The same weekly workflow reads GitHub's active, owned, nonfork repository list,
+then measures Bash and PowerShell overlap across those repositories using the
+checkouts already obtained by the inventory. It uploads
+`logs/reports/consumer-reuse.md` as a separate artifact. The script reuses the
+existing token and function readers, omits generated/vendor trees, and excludes
+declared shared copies only after the shared-config drift checker passes. A
+consumer such as DocumANTation needs no Hub submodule to be measured. The list
+must contain the Hub and every active owned nonfork repo must have a declared
+checkout; missing entries and broken inputs fail. Findings remain advisory.
+
+To reproduce the report with sibling local checkouts, run:
+
+```bash
+mkdir -p logs/reports
+gh api --paginate '/users/Kataglyphis/repos?type=owner&per_page=100' \
+  --jq '.[] | select(.fork == false and .archived == false and .owner.login == "Kataglyphis") | .full_name' \
+  > logs/reports/owned-active-repos.txt
+python3 docs/scripts/verify_fleet_reuse.py --hub . --local-root .. \
+  --owned-list logs/reports/owned-active-repos.txt \
+  --report logs/reports/consumer-reuse.md
+```
+
+`--checkout NAME=PATH` can supply or override one checkout. A private owned repo
+requires `CONSUMER_INVENTORY_TOKEN` in CI; the workflow then uses the authenticated
+owner inventory. The public fallback sees only public repos. Reports and the API
+list stay under ignored `logs/`. The report caps detailed unit pairs at 100 while
+retaining total and per-repository counts, and lists widely copied blocks above
+the scanner's idiom cutoff. A token overlap is a lead for code review; different
+token structure can hide equivalent behavior.
 
 The same run inspects each consumer's tracked CI workflows. A detected call to
 `lint-gates.yml` must pass literal `ratchets: true`; a direct `run-lint-gates.sh`

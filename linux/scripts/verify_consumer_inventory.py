@@ -565,6 +565,10 @@ def build_args() -> argparse.Namespace:
     ap.add_argument("--offline", action="store_true",
                     help="never clone; a consumer without a local path FAILS")
     ap.add_argument("--report", metavar="PATH", help="write the Markdown report here")
+    ap.add_argument("--reuse-report", metavar="PATH",
+                    help="also measure Bash/PowerShell reuse across active owned nonfork repos")
+    ap.add_argument("--owned-list", metavar="PATH",
+                    help="filtered GitHub API identities, required with --reuse-report")
     return ap.parse_args()
 
 
@@ -585,7 +589,8 @@ def ref_qualifiers(hub: HubSpec) -> list[str]:
 
 
 def collect(data: Inventory, args: argparse.Namespace, hub_root: Path,
-            entries: list[EntryPoint], work: Path) -> tuple[PerConsumer, Dangling, QualityWiring]:
+            entries: list[EntryPoint], work: Path) -> tuple[
+                PerConsumer, Dangling, QualityWiring, dict[str, Path]]:
     """Obtain every consumer and scan paths and CI quality calls."""
     names = [c["name"] for c in data["consumers"]]
     local = parse_local(args.local, args.local_root, names)
@@ -597,8 +602,10 @@ def collect(data: Inventory, args: argparse.Namespace, hub_root: Path,
     per_consumer: PerConsumer = {}
     dangling: Dangling = {}
     quality: QualityWiring = {}
+    checkouts: dict[str, Path] = {}
     for spec in data["consumers"]:
         root = obtain(spec, local, work, args.offline)
+        checkouts[spec["name"]] = root
         files = tracked_files(root, spec["name"])
         ctx = scan_context(files, qualifiers, spec["self"])
         hits = scan_consumer(root, files, entries, ctx)
@@ -611,7 +618,27 @@ def collect(data: Inventory, args: argparse.Namespace, hub_root: Path,
         print(f"   {spec['name']:<22} {len(files):5d} tracked files, "
               f"{len(hits):3d} entry points touched, "
               f"{len(dangling[spec['name']])} dangling")
-    return per_consumer, dangling, quality
+    return per_consumer, dangling, quality, checkouts
+
+
+def report_reuse(args: argparse.Namespace, data: Inventory,
+                 checkouts: dict[str, Path], hub_root: Path) -> None:
+    if not args.reuse_report:
+        return
+    if not args.owned_list:
+        raise Failure("--reuse-report requires --owned-list from the GitHub API")
+    command = [sys.executable, str(HUB_ROOT / "docs/scripts/verify_fleet_reuse.py"),
+               "--owned-list", args.owned_list, "--hub", str(hub_root),
+               "--owner", data["hub"]["owner"], "--hub-name", data["hub"]["repo"],
+               "--report", args.reuse_report]
+    for name, path in checkouts.items():
+        command.extend(("--checkout", f"{name}={path}"))
+    result = subprocess.run(command, capture_output=True, check=False,
+                            text=True, encoding="utf-8")
+    if result.returncode:
+        raise Failure(f"fleet reuse scan exited {result.returncode}: "
+                      f"{(result.stdout + result.stderr).strip()}")
+    print(f"   fleet reuse report written to {args.reuse_report}")
 
 
 def report_out(args: argparse.Namespace, text: str) -> None:
@@ -639,12 +666,14 @@ def main() -> int:
         print(f"== consumer inventory: {len(entries)} entry points, "
               f"{len(data['consumers'])} consumers ==")
         with tempfile.TemporaryDirectory(prefix="consumer-inventory-") as tmp:
-            per_consumer, dangling, quality = collect(data, args, hub_root, entries, Path(tmp))
+            per_consumer, dangling, quality, checkouts = collect(
+                data, args, hub_root, entries, Path(tmp))
+            rows = [grade(e, per_consumer) for e in entries]
+            report_out(args, render_report(rows, data["consumers"], dangling, quality))
+            report_reuse(args, data, checkouts, hub_root)
     except Failure as exc:
         sys.stderr.write(f"FAIL: {exc}\n")
         return 1
-    rows = [grade(e, per_consumer) for e in entries]
-    report_out(args, render_report(rows, data["consumers"], dangling, quality))
     for status in STATUS_ORDER:
         print(f"   {status:<26} {len([r for r in rows if r['status'] == status])}")
     broken_paths = print_dangling(dangling)

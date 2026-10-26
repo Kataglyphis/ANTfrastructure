@@ -11,6 +11,10 @@ on:
       - '.github/consumers.json'
       - 'linux/scripts/verify_consumer_inventory.py'
       - 'linux/scripts/verify_consumer_quality_wiring.py'
+      - 'docs/scripts/verify_fleet_reuse.py'
+      - 'docs/scripts/verify_hub_reuse.py'
+      - 'linux/scripts/tests/test-fleet-reuse.sh'
+      - 'linux/scripts/tests/fleet_reuse_tests.py'
       - 'linux/scripts/tests/test-consumer-quality-wiring.sh'
       - 'linux/scripts/tests/consumer_quality_wiring_tests.py'
       - '.github/workflows/consumer-inventory.yml'
@@ -20,6 +24,10 @@ on:
       - '.github/consumers.json'
       - 'linux/scripts/verify_consumer_inventory.py'
       - 'linux/scripts/verify_consumer_quality_wiring.py'
+      - 'docs/scripts/verify_fleet_reuse.py'
+      - 'docs/scripts/verify_hub_reuse.py'
+      - 'linux/scripts/tests/test-fleet-reuse.sh'
+      - 'linux/scripts/tests/fleet_reuse_tests.py'
       - 'linux/scripts/tests/test-consumer-quality-wiring.sh'
       - 'linux/scripts/tests/consumer_quality_wiring_tests.py'
       - '.github/workflows/consumer-inventory.yml'
@@ -59,11 +67,30 @@ jobs:
         with:
           python-version: ${{ steps.python.outputs.version }}
 
+      - name: List active owned nonfork repositories
+        env:
+          GH_TOKEN: ${{ secrets.CONSUMER_INVENTORY_TOKEN || github.token }}
+        run: |
+          mkdir -p logs/reports
+          if [ -n "${CONSUMER_INVENTORY_TOKEN}" ]; then
+            login="$(gh api user --jq .login)"
+            [ "${login,,}" = kataglyphis ] || { echo "::error::inventory token belongs to ${login}"; exit 1; }
+            gh api --paginate '/user/repos?affiliation=owner&visibility=all&per_page=100' \
+              --jq '.[] | select(.fork == false and .archived == false) | .full_name' \
+              > logs/reports/owned-active-repos.txt
+          else
+            gh api --paginate '/users/Kataglyphis/repos?type=owner&per_page=100' \
+              --jq '.[] | select(.fork == false and .archived == false and .owner.login == "Kataglyphis") | .full_name' \
+              > logs/reports/owned-active-repos.txt
+          fi
+
       # An unclonable consumer is a finding: this must never answer from a partial view of the family.
       - name: Clone every declared consumer and grade entry points and CI quality calls
         run: |
           python3 linux/scripts/verify_consumer_inventory.py \
-            --report logs/reports/consumer-inventory.md
+            --report logs/reports/consumer-inventory.md \
+            --owned-list logs/reports/owned-active-repos.txt \
+            --reuse-report logs/reports/consumer-reuse.md
 
       # The report is written before the verdict, so a red run still hands it over.
       - name: Publish the report to the run summary
@@ -81,6 +108,15 @@ jobs:
         with:
           name: consumer-inventory
           path: logs/reports/consumer-inventory.md
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload the reuse report
+        if: always() && hashFiles('logs/reports/consumer-reuse.md') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: consumer-reuse
+          path: logs/reports/consumer-reuse.md
           if-no-files-found: error
           retention-days: 90
 

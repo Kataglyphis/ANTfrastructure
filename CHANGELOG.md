@@ -37,6 +37,11 @@
 
 ## 2026-10-26 — Reuse and dependency updates
 
+- Add a weekly cross-repository Bash/PowerShell reuse report to the consumer
+  inventory. It reuses the existing clones and duplication tokenizer, filters the
+  live GitHub list to active owned nonfork repositories, writes only under ignored
+  `logs/`, and fails when inputs or repository coverage are incomplete.
+
 - Bind `Test-Elevated` directly in the Windows host lavapipe installer, so consumer
   Vulkan tests reach the elevation decision after verified downloads. An import-binding
   and cold-export regression catches the visibility loss; the failure guide names the symptom.
