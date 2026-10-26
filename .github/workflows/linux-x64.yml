@@ -12,10 +12,10 @@ on:
     branches: [main, develop]
   workflow_dispatch:
 
-# One run per ref; the docs site is docs.yml's, which has no cancelling group.
+# Preserve active develop proofs while newer pending pushes replace older pending pushes.
 concurrency:
   group: linux-x64-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/develop' }}
 
 jobs:
 

@@ -13,6 +13,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-26 — let active develop quality runs finish
+
+- Keep the Hub's active Linux x64 preflight and eight mutation shards running when another `develop` push arrives; the latest pending run follows, while PR and `main` keep cancellation.
+- Guard that concurrency expression with a parsed workflow test and a mutation that restores cancel-on-develop.
+
 ## 2026-10-26 — Every Linux compile goes through sccache
 
 - ONNX Runtime and LiteRT compiled most of their objects through the distro ccache: pthreadpool and XNNPACK FORCE `CCACHE_BINARY` into CMake's launchers, which beat the sccache launcher in the environment (ONNX Runtime's arm64 build: 414 sccache requests over 2740 compiles, 104 min). `append_cmake_compiler_cache_pin` passes the launcher as `CCACHE_BINARY` too, `append_cmake_cache_linker_args` and ONNX Runtime's build args always pin, the riscv64 torch wheel pins through `CMAKE_ARGS`, and `cmake_assert_compiler_cache_pin` fails ONNX Runtime's, both LiteRT and every Vulkan component's build whose launcher was replaced ([docs](docs/build-cache-tiers.md#a-subproject-that-forces-its-own-launcher)).

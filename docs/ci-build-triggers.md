@@ -57,6 +57,14 @@ reacts to a commit-message token. Both name columns follow the family's naming c
 | `develop-red.yml` | Develop red · watch | twice an hour, dispatch | one `develop-red` issue per family workflow whose `develop` run is red, closed once it is green ([`github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue)) |
 | `develop-red-selftest.yml` | Develop red · self-test | dispatch | fails or passes as its `outcome` input says, to prove the watch |
 
+The Hub's `linux-x64.yml` uses one concurrency group per ref. On `develop`, a new
+push leaves the running preflight and eight mutation shards alive; GitHub keeps the
+latest pending run and starts it after the active run ends. Earlier pending runs can
+be replaced. Pull requests and `main` still cancel an older active run in their own
+group. A dispatch on `develop` shares that branch's group. This policy preserves a
+complete quality verdict during consecutive `develop` pushes; it does not change
+the jobs, shards or timeouts.
+
 The `workflow_call` ones run when a caller runs:
 
 | Workflow | Shown as | What it runs |

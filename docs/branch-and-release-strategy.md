@@ -259,6 +259,13 @@ A calling job looks the same in both:
   - **Not `${{ github.workflow }}` alone.** Every lane `on-request.yml` calls would share
     one group and cancel or queue behind each other; OxidANT's lanes did until they moved
     (2026-10-15).
+- **Hub exception.** ANTfrastructure's own `linux-x64.yml` does not use this consumer
+  caller pattern. It keeps `group: linux-x64-${{ github.ref }}` and evaluates
+  `cancel-in-progress: ${{ github.ref != 'refs/heads/develop' }}`. Consecutive
+  `develop` pushes leave the active preflight and mutation shards running, with the
+  latest pending run following them; PR and `main` runs still cancel stale active
+  runs. A dispatch on `develop` shares the same group. See
+  [Hub CI triggers](ci-build-triggers.md#this-repositorys-lanes).
 - **A dry run.** OmniAccelerANT's `release.yml` takes a `dry-run` input: dispatched on
   `develop` it publishes nothing ([first release](#before-a-repositorys-first-release)) and is
   the full round before a merge as well.

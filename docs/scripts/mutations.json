@@ -11420,6 +11420,14 @@
   "why": "without pytest and PyYAML the baselines fail unmutated and every entry under them reads vacuous (2026-09-07)"
  },
  {
+  "id": "linux-lane.hub-develop-running-proof-survives",
+  "target": ".github/workflows/linux-x64.yml",
+  "find": "  cancel-in-progress: ${{ github.ref != 'refs/heads/develop' }}",
+  "replace": "  cancel-in-progress: true",
+  "test": "bash linux/scripts/tests/test-linux-x64-concurrency.sh",
+  "why": "a newer develop push must not cancel a nearly complete preflight and eight mutation shards before they produce a verdict"
+ },
+ {
   "id": "critical-fixes.summary-reaches-exit",
   "target": "linux/scripts/verify-critical-fixes.sh",
   "find": "done\n\nsmoke_summary",

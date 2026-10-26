@@ -1195,6 +1195,11 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
   | every push | `.github/workflows/linux-x64.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, a pinned WebDAV source type gate, plus the `mutations` slug as eight `PREFLIGHT_MUTATION_SHARD=K/8` jobs that together prove every entry | CI |
 
+  The Hub's Linux x64 workflow must finish the active `develop` preflight and mutation
+  shards before the latest pending push runs; keep ref-scoped concurrency and allow
+  active-run cancellation on PRs and `main`. The policy and its queue limit are in
+  [`ci-build-triggers.md` § This repository's lanes](docs/ci-build-triggers.md#this-repositorys-lanes).
+
   Install the hooks once with **`make hooks`**: it sets `core.hooksPath` rather than copying into
   `.git/hooks`, so both hooks are version-controlled and arrive with a clone.
   `git commit --no-verify` bypasses the commit hook; then run `make preflight` before pushing.
