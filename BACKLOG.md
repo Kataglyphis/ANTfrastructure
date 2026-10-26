@@ -433,10 +433,10 @@ owner carries the breakage that costs.
       2026-10-26: Garage S3. In source ([`linux-cross-builds.md` § The asset mirror](docs/linux-cross-builds.md#the-asset-mirror),
       runbook in [`linux/sccache-s3/README.md`](linux/sccache-s3/README.md)): every `download_verified_file`
       asks `<mirror>/<sha256>/<name>` first and falls back upstream, through the `asset_mirror` BuildKit
-      secret. Left, owner: create the `release-assets` bucket and its read and fill keys, write
-      `~/.config/kataglyphis/asset-mirror.env` and `asset-mirror-fill.env` on each chain host, and after
-      the next chain run `linux/host-config/fill-asset-mirror.sh --apply`. Done when the chain after that
-      logs `asset-mirror| hit` for the pinned assets.
+      secret. The bucket, both keys and this host's env files exist since 2026-10-26 (`--check` passes); a
+      new chain host runs `set-asset-mirror.sh --from <ssh-target> --url <bucket-url>`. Left: after the
+      running chain, `linux/host-config/fill-asset-mirror.sh --apply`. Done when the chain after that logs
+      `asset-mirror| hit` for the pinned assets.
 
 - [ ] **CON129 — finish GTK 4 validation on foreign arches and GPU variants** [M, ★★★].
       The mandatory `gui_unix` feature is enabled in OxidANT. On the recorded `3c558d88` index,
