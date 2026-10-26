@@ -1171,6 +1171,10 @@ Mandatory-plugin gate (smoke-depth R1): meson `enabled` guards CONFIGURE,
 but a plugin that ships and then fails to dlopen was only a WARN-count.
 A present-but-unloadable plugin is exactly the observed class
 (webrtcbin2→librice-proto, gtk4→vkCreateWaylandSurfaceKHR).
+The plugin scan reads its completion and absence markers from the captured text.
+Searching a large scan through `printf | grep -q` under `pipefail` can close the
+writer early and misreport a completed scan as `UNKNOWN`; the smoke fixture
+keeps a long trailer after `GST_SCAN_DONE` to prove the verdict stays stable.
 The `libav` plugin is special: this project's gst-libav links the
 source-built FFmpeg libav* (incl. libavfilter, which NEEDs the bundled
 libtensorflow.so.2). Those resolve only once configure-runtime.sh has wired

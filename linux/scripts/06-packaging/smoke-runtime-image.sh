@@ -1771,8 +1771,8 @@ check_gstreamer_plugin_health() {
 gst-inspect-1.0 2>&1 >/dev/null || true
 echo "GST_SCAN_DONE"' 2>/dev/null)" || true
     # A healthy image also prints nothing, so the probe stamps completion to avoid a false green.
-    if ! printf '%s\n' "${scan}" | grep -q '^GST_SCAN_DONE$'; then
-      if printf '%s\n' "${scan}" | grep -q '^GST_SCAN_ABSENT$'; then
+    if ! grep -q '^GST_SCAN_DONE$' <<< "${scan}"; then
+      if grep -q '^GST_SCAN_ABSENT$' <<< "${scan}"; then
         echo "  WARN gst-inspect-1.0 is not on PATH in the ${target_arch} image -- plugin health UNKNOWN, not 0"
       else
         echo "  WARN the GStreamer plugin scan did not complete in the ${target_arch} image -- plugin health UNKNOWN, not 0"

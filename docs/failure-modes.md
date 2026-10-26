@@ -67,6 +67,7 @@ Two neighbours, so you land on the right page:
 - [The Vulkan variables name an arch-specific SDK dir](#vulkan-env-names-an-arch-specific-sdk-dir)
 - [A lane's `ARCH` arrives as `x86_64`](#a-lanes-arch-arrives-as-x86_64)
 - [The core registry blacklists `libgstvalidatessim.so`](#the-core-registry-blacklists-libgstvalidatessimso)
+- [GStreamer scan reports UNKNOWN after Broken pipe](#gstreamer-scan-reports-unknown-after-broken-pipe)
 - [DeepStream: `nvstreammux` stops the pipeline with `reason error (-5)` and no message](#deepstream-nvstreammux-stops-the-pipeline-with-reason-error--5-and-no-message)
 - [DeepStream: `Unable to load library: libnvinfer_builder_resource_sm75.so.10.16.1`](#deepstream-unable-to-load-library-libnvinfer_builder_resource_sm75so10161)
 - [DeepStream: `nvv4l2decoder`: `/dev/nvidia0` "isn't a v4l2 driver"](#deepstream-nvv4l2decoder-devnvidia0-isnt-a-v4l2-driver)
@@ -1241,6 +1242,18 @@ there instead, registering nothing, like the gapplication plugin already does
 The runtime smoke's plugin-health check now fails on any blacklisted plugin that
 `_PARITY_GST_KNOWN_BROKEN` does not document, and `check_gst_validate_ssim` runs the override
 under gst-validate on amd64.
+
+### GStreamer scan reports UNKNOWN after Broken pipe
+
+**Symptom.** A plugin scan contains `GST_SCAN_DONE`, but the smoke reports `UNKNOWN` and
+`printf: write error: Broken pipe` instead of the gtk4/Wayland diagnostic.
+
+**Cause.** `grep -q` closed a `printf` pipeline early. Under `pipefail`, the writer's
+failed status overrode the matched marker.
+
+**Fix.** Search the captured scan without a pipeline. The long-trailer case in
+`test-smoke-arch-parity.sh` keeps this verdict from regressing; see
+[`cross-build-verification.md`](cross-build-verification.md#smoke-media-the-mandatory-plugin-gate-and-its-build-sandbox-deferrals).
 
 ### DeepStream: `nvstreammux` stops the pipeline with `reason error (-5)` and no message
 

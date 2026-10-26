@@ -15,6 +15,9 @@
 
 ## 2026-10-26 — Linux chain: runtime lane robustness and image content
 
+- Read GStreamer scan markers without an early-closing pipeline. A large valid
+  scan could hit `Broken pipe` under `pipefail` and be reported as `UNKNOWN`.
+
 - Reap heartbeat timers with SIGKILL after an interrupt. TERM could be lost while
   Bash started the sleep, hanging parallel mutation baselines; the regression
   fixture now makes the timer ignore TERM and proves bounded cleanup.

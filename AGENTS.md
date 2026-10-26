@@ -774,6 +774,8 @@ Each of these killed or falsified a real build before it was fixed. The full sto
 2. **Guard every pipeline whose empty result is legitimate**: `grep`/`find`/`ls`/`du`/`pgrep`/
    `dpkg -S`/`readelf` in `$(...)` under `set -euo pipefail` needs `|| true` when the code below
    handles the empty case. `find | head -1` also dies of SIGPIPE (rc 141) on multiple matches.
+   A large captured result must not flow through `printf | grep -q` under `pipefail`:
+   an early match can close the pipe and turn a valid marker into `UNKNOWN`.
 3. **Split comma lists with `IFS=',' read -r -a arr <<< "$list"`**, never `${list//,/ }` or
    `$(... tr ',' ' ')`: under a script's `IFS=$'\n\t'` those do not split, and the loop runs once
    with the whole list as one bogus item. Sourced 01-core functions run under the CALLER's IFS.

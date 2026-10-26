@@ -632,10 +632,9 @@ _runtime_smoke_wait() {
   return "${rc}"
 }
 
-# A long step prints its elapsed minutes every 10 min after the first 15, so a wait reads as progress (CON157).
+# Heartbeats show progress; SIGKILL on interrupt closes a timer exec race (CON157).
 _runtime_heartbeat() {
   local step="$1" arch="$2" t0="$3"
-  # A timer child can miss TERM during exec, so stop it before waiting for the heartbeat.
   trap 'kill -KILL "${!:-}" 2>/dev/null || true; wait "${!:-}" 2>/dev/null || true; exit 0' TERM INT
   sleep "${RUNTIME_HEARTBEAT_FIRST_SECS:-900}" & wait "$!" || exit 0
   while :; do

@@ -17540,6 +17540,22 @@
   "why": "a zero process status cannot turn FAIL, SKIP or ABSENT into a successful native probe"
  },
  {
+  "id": "probe.gst-scan-marker-pipefail",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "    if ! grep -q '^GST_SCAN_DONE$' <<< \"${scan}\"; then",
+  "replace": "    if ! printf '%s\\n' \"${scan}\" | grep -q '^GST_SCAN_DONE$'; then",
+  "test": "bash linux/scripts/tests/test-smoke-arch-parity.sh",
+  "why": "a large trailing scanner transcript must not turn a completed scan into UNKNOWN under pipefail"
+ },
+ {
+  "id": "probe.gst-scan-absent-pipefail",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "      if grep -q '^GST_SCAN_ABSENT$' <<< \"${scan}\"; then",
+  "replace": "      if printf '%s\\n' \"${scan}\" | grep -q '^GST_SCAN_ABSENT$'; then",
+  "test": "bash linux/scripts/tests/test-smoke-arch-parity.sh",
+  "why": "a large trailing scanner transcript must not hide the absent-tool marker under pipefail"
+ },
+ {
   "id": "probe.native-absence-policy",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
   "find": "genai) echo \"  SKIP: onnxruntime_genai",

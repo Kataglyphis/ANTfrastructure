@@ -292,6 +292,8 @@ S="$1"; SCAN="$2"
 source "${S}/rt.sh" >/dev/null 2>&1
 # The shipped list is empty (CON41); a fixture entry keeps the exception machinery under test.
 _PARITY_GST_KNOWN_BROKEN="arm64:libgstgtk4.so"
+if [ "${SCAN}" = LARGE_DONE ]; then printf -v SCAN "GST_SCAN_DONE\nWAYLAND yes\n%2097152s" ""; fi
+if [ "${SCAN}" = LARGE_ABSENT ]; then printf -v SCAN "GST_SCAN_ABSENT\n%2097152s" ""; fi
 # The blacklist probe reads the same stub; an empty blacklist keeps these cases about the scanner.
 _rt_run() { printf "%s\nGST_BLACKLIST_DONE\n" "${SCAN}"; }
 FAILURES=0
@@ -321,6 +323,18 @@ t_case "a scan that never completed reports UNKNOWN, not a healthy 0"
 _gst_out="$(_gst_drive "")"
 t_assert_contains "${_gst_out}" "UNKNOWN, not 0"
 t_assert_ok test -z "$(printf '%s\n' "${_gst_out}" | grep -F 'cannot load: 0' || true)"
+
+t_case "a completion stamp survives a long scanner transcript after it"
+# A grep -q pipe can close before printf finishes, turning a completed scan into UNKNOWN.
+_gst_out="$(_gst_drive LARGE_DONE)"
+t_assert_contains "${_gst_out}" "cannot load: 0 (non-fatal)"
+t_assert_contains "${_gst_out}" "FAILURES=0"
+t_assert_fails grep -Fq 'UNKNOWN, not 0' <<< "${_gst_out}"
+
+t_case "an absent-tool stamp survives a long scanner transcript after it"
+_gst_out="$(_gst_drive LARGE_ABSENT)"
+t_assert_contains "${_gst_out}" "gst-inspect-1.0 is not on PATH"
+t_assert_contains "${_gst_out}" "FAILURES=0"
 
 # gtk4: the arm64 exception follows whether the loader exports vkCreateWaylandSurfaceKHR (WAYLAND rides in the stub text)
 _GST_CLEAN='GST_SCAN_DONE'
