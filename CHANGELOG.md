@@ -36,6 +36,8 @@
 
 - Pinned release assets come from the build hosts' Garage bucket first (`release-assets`, `<sha256>/<name>`) and fall back upstream, so a GitHub outage cannot fail an arch (CON153). The pinned sha256 stays the only gate. The host's `~/.config/kataglyphis/asset-mirror.env` reaches every Linux RUN as the BuildKit secret `asset_mirror`, and `linux/host-config/fill-asset-mirror.sh` fills the bucket from a chain's miss lines.
 
+- The asset mirror is set up by two scripts, so another host repeats it without hand steps: `linux/sccache-s3/setup-asset-mirror.sh` creates the bucket and its read and fill keys on the Garage host (idempotent, so every host shares the keys), and `linux/host-config/set-asset-mirror.sh --from <ssh-target> --url <bucket-url>` runs it there from the build host, installs both env files mode 600, removes the Garage host's copies and proves the rights (`--check` re-proves them). The host-config scripts share one argument loop, `linux/host-config/host-cli.sh`.
+
 - A failed arch re-runs alone (CON139): each runtime wrapper carries `org.kataglyphis.build-key` (its build-context files, version args, android parent digest and wrapper knobs), and a published child whose key matches joins the index by digest after every gate has read it; `RUNTIME_REUSE_CHILDREN=0` keeps the same-run index ([docs](docs/linux-cross-builds.md#a-failed-arch-re-runs-alone)).
 
 - Every resource-monitor sample names the runtime lane's arch and step (CON142): `_runtime_timed` and the background pusher hold `<arch>.<step>` markers under `RESOURCE_MONITOR_STEP_DIR`, and the stage column lists them as `arch/step` joined by `+`.

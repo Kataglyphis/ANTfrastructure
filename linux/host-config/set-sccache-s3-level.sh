@@ -5,20 +5,22 @@ set -euo pipefail
 FILE="${KATAGLYPHIS_SCCACHE_S3_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/kataglyphis/sccache-s3.env}"
 ENDPOINT="" KEY_ID="" BUCKET=sccache REGION=garage MODE=set
 
+# Sourced before die(): the logging bootstrap brings its own die, which exits 1.
+# shellcheck source=host-cli.sh
+source "$(dirname "${BASH_SOURCE[0]}")/host-cli.sh"
 die() { printf 'set-sccache-s3-level: %s\n' "$*" >&2; exit 2; }
 
-while [ "$#" -gt 0 ]; do
+_switch() {
   case "$1" in
-    --endpoint) ENDPOINT="${2:?--endpoint needs a URL}"; shift 2 ;;
-    --access-key-id) KEY_ID="${2:?--access-key-id needs an id}"; shift 2 ;;
-    --bucket) BUCKET="${2:?--bucket needs a name}"; shift 2 ;;
-    --region) REGION="${2:?--region needs a name}"; shift 2 ;;
-    --report) MODE=report; shift ;;
-    --clear) MODE=clear; shift ;;
-    -h|--help) sed -n '2p' "$0"; exit 0 ;;
-    *) die "unknown argument: $1" ;;
+    --report) MODE=report; return 1 ;;
+    --clear) MODE=clear; return 1 ;;
   esac
-done
+  return 0
+}
+# shellcheck disable=SC2034  # read by name in parse_cli_value_options
+declare -A VALUE_OPTIONS=([--endpoint]=ENDPOINT [--access-key-id]=KEY_ID [--bucket]=BUCKET [--region]=REGION)
+host_cli_parse "$0" VALUE_OPTIONS _switch "$@"
+[ -n "${BUCKET}" ] && [ -n "${REGION}" ] || die "--bucket and --region need a value"
 
 case "${MODE}" in
   report)

@@ -209,34 +209,31 @@ Objects are content-addressed, `<sha256>/<file name>`, and every reader checks t
 sha256 again. It is a bucket of its own because `sccache-s3-evict` deletes the `sccache`
 bucket's oldest objects, and a pinned asset is old by design.
 
-**One-time setup, on the VPS** (check each command against `garage <command> --help`):
+**Setup, from each Linux chain host.** One command per host, from the hub checkout:
 
 ```bash
-garage bucket create release-assets
-(umask 077; garage key create asset-mirror-read > /root/asset-mirror-read-key.txt)
-garage bucket allow --read release-assets --key asset-mirror-read
-(umask 077; garage key create asset-mirror-fill > /root/asset-mirror-fill-key.txt)
-garage bucket allow --read --write release-assets --key asset-mirror-fill
+bash linux/host-config/set-asset-mirror.sh --from root@<s3-server-lan-ip> --url http://<s3-server-lan-ip>:3900/release-assets
+bash linux/host-config/set-asset-mirror.sh --check
 ```
 
-Nothing evicts it, and its size is not measured yet: an old pin's objects stay until they are
-deleted by hand.
-
-**On each Linux chain host**, two files, both mode 600 and never in a repository:
+`--url` ships `setup-asset-mirror.sh`, with the files it sources, into a temp directory on the VPS
+and runs it there: it creates the bucket and its two keys and writes their env files into `/root`,
+mode 600. Then the script copies both files into place, mode 600, deletes the VPS copies and the
+temp directory, and proves the rights each key needs; `--check` repeats only the proof. The setup
+keeps an existing bucket or key, so every host gets the same keys. `setup-asset-mirror.sh` reads
+`/etc/garage/garage.toml` (`GARAGE_CONFIG_FILE` overrides it) and stops when the
+`garage key info --show-secret` output no longer has a `Key ID:` and a `Secret key:` line.
+Nothing evicts the bucket, and its size is not measured yet: an old pin's objects stay until
+they are deleted by hand.
 
 | File | Key | Read by |
 |---|---|---|
 | `~/.config/kataglyphis/asset-mirror.env` | `asset-mirror-read` | every chain build, as the BuildKit secret `asset_mirror` |
 | `~/.config/kataglyphis/asset-mirror-fill.env` | `asset-mirror-fill` | `fill-asset-mirror.sh` only |
 
-Both hold the same four lines:
-
-```bash
-ASSET_MIRROR_URL=http://<s3-server-lan-ip>:3900/release-assets
-AWS_ACCESS_KEY_ID=<key id>
-AWS_SECRET_ACCESS_KEY=<secret key>
-AWS_REGION=garage
-```
+Both hold `ASSET_MIRROR_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_REGION=garage`,
+and never belong in a repository. The check fails unless the read key lists and reads but cannot
+write, and the fill key writes and deletes.
 
 The firewall rule of § 3 already admits the build hosts. The key reaches curl on stdin and is
 SigV4-signed (`--aws-sigv4`, curl 7.75 or newer), so it shows in no process listing.

@@ -29119,5 +29119,61 @@
   "replace": "      return 0\n",
   "test": "bash linux/scripts/tests/test-runtime-reuse.sh",
   "why": "an unknown 1/0 switch value must stop the lane at its start, not run with a guessed mode"
+ },
+ {
+  "id": "lib.asset-mirror-setup-refuses-unparsed-key",
+  "target": "linux/sccache-s3/setup-asset-mirror.sh",
+  "find": "  [ -n \"${id}\" ] && [ -n \"${secret}\" ] \\\n    || die",
+  "replace": "  [ -n \"${id}\" ] \\\n    || die",
+  "test": "bash linux/scripts/tests/test-asset-mirror-setup.sh",
+  "why": "a Garage whose key output changed shape must stop the setup, not write an env file with an empty secret"
+ },
+ {
+  "id": "lib.asset-mirror-setup-reuses-bucket",
+  "target": "linux/sccache-s3/setup-asset-mirror.sh",
+  "find": "garage bucket info \"${BUCKET}\" >/dev/null 2>&1 || garage bucket create",
+  "replace": "garage bucket create",
+  "test": "bash linux/scripts/tests/test-asset-mirror-setup.sh",
+  "why": "a second host's setup must reuse the bucket and keys, not create them again"
+ },
+ {
+  "id": "lib.asset-mirror-host-removes-remote-copies",
+  "target": "linux/host-config/set-asset-mirror.sh",
+  "find": "  ssh \"${FROM}\" \"rm -f",
+  "replace": "  true \"${FROM}\" \"rm -f",
+  "test": "bash linux/scripts/tests/test-asset-mirror-setup.sh",
+  "why": "the Garage host must not keep a second copy of the secrets once a build host holds them"
+ },
+ {
+  "id": "lib.asset-mirror-host-read-key-may-not-write",
+  "target": "linux/host-config/set-asset-mirror.sh",
+  "find": "_probe \"read key cannot write\" 1",
+  "replace": "_probe \"read key cannot write\" 0",
+  "test": "bash linux/scripts/tests/test-asset-mirror-setup.sh",
+  "why": "a read key that can write would let every chain build overwrite mirrored assets"
+ },
+ {
+  "id": "lib.asset-mirror-host-mode-600",
+  "target": "linux/host-config/set-asset-mirror.sh",
+  "find": "[ \"$(stat -c '%a' \"${f}\")\" = 600 ] || die",
+  "replace": "true || die",
+  "test": "bash linux/scripts/tests/test-asset-mirror-setup.sh",
+  "why": "a world-readable key file leaks the mirror's credentials to every local user"
+ },
+ {
+  "id": "lib.asset-mirror-host-ships-setup-closure",
+  "target": "linux/host-config/set-asset-mirror.sh",
+  "find": " scripts/lib/log-bootstrap.sh)",
+  "replace": ")",
+  "test": "bash linux/scripts/tests/test-asset-mirror-setup.sh",
+  "why": "the Garage host has no checkout, so a file the setup script sources must travel with it"
+ },
+ {
+  "id": "lib.asset-mirror-host-removes-remote-setup",
+  "target": "linux/host-config/set-asset-mirror.sh",
+  "find": "  ssh \"${FROM}\" \"rm -rf $(printf %q \"${d}\")\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-asset-mirror-setup.sh",
+  "why": "every host's setup would leave a copy of the scripts in the Garage host's temp directory"
  }
 ]
