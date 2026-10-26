@@ -105,6 +105,22 @@ _t_modes() { chmod 711 "$1" && [ "$(stat -c %a "$1" 2>/dev/null)" = 711 ]; }
 # t_posix_python: true when python3 is a POSIX one; Windows' python sees drive-letter paths, not the shell's /tmp or /dev/fd.
 t_posix_python() { python3 -c 'import os, sys; sys.exit(os.sep != "/")'; }
 
+# t_windows_git_path_stub <dir>: share WSL path transport fixtures across Git ownership suites.
+t_windows_git_path_stub() {
+  mkdir -p "$1" || return 1
+  cat > "$1/wslpath" <<'SH'
+#!/usr/bin/env bash
+case "$1" in
+  -w) [ "$#" -eq 2 ] || exit 2
+      printf '%s\n' "${TEST_WIN_ROOT:?}" ;;
+  -u) [ "$#" -eq 2 ] && [ "$2" = "${TEST_WIN_CONFIG:?}" ] || exit 2
+      printf '%s\n' "${TEST_WSL_CONFIG:?}" ;;
+  *) exit 2 ;;
+esac
+SH
+  chmod +x "$1/wslpath"
+}
+
 # t_is_elf <file>: true when the file starts with the ELF magic; Git Bash's own binaries are PE.
 t_is_elf() { [ "$(head -c 4 "$1" 2>/dev/null | tail -c 3)" = ELF ]; }
 

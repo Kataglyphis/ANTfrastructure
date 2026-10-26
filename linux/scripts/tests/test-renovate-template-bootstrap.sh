@@ -33,6 +33,7 @@ SH
   git -C "${repo}" config user.email fixture@example.invalid
   cp "${TEMPLATES}/renovate-local.sh" "${repo}/scripts/linux/renovate-local.sh"
   cp "${TEMPLATES}/antfrastructure.sh" "${repo}/scripts/linux/lib/antfrastructure.sh"
+  cp "${TEMPLATES}/renovate-git-mode.sh" "${repo}/scripts/linux/lib/renovate-git-mode.sh"
   printf '[submodule "third_party/ANTfrastructure"]\n\tpath = third_party/ANTfrastructure\n\turl = %s\n' "${remote}" > "${repo}/.gitmodules"
   git -C "${repo}" add .gitmodules scripts/linux
   git -C "${repo}" update-index --add --cacheinfo "160000,${sha},third_party/ANTfrastructure"
@@ -57,6 +58,16 @@ t_assert_fails test -e "${repo}/third_party/ANTfrastructure/linux/scripts/renova
 t_assert_ok cmp -s "${WORK}/read_only/config.before" "${repo}/.git/config"
 t_assert_fails test -e "${WORK}/read_only/driver.args"
 
+t_case "a missing copied Git mode companion fails before hub initialization"
+repo="$(make_consumer missing_git_mode)"
+rm "${repo}/scripts/linux/lib/renovate-git-mode.sh"
+missing_mode_rc=0
+missing_mode_output="$(run_wrapper "${repo}" --apply 2>&1)" || missing_mode_rc=$?
+t_assert_eq 1 "${missing_mode_rc}"
+t_assert_contains "${missing_mode_output}" "Renovate Git mode companion missing"
+t_assert_fails test -e "${repo}/third_party"
+t_assert_ok cmp -s "${WORK}/missing_git_mode/config.before" "${repo}/.git/config"
+
 t_case "an initialized old hub reports its missing driver without bootstrap"
 repo="$(make_consumer old_pin)"
 env GIT_ALLOW_PROTOCOL=file git -C "${repo}" submodule update --init -- third_party/ANTfrastructure >/dev/null 2>&1
@@ -76,6 +87,65 @@ t_assert_eq "$(git -C "${repo}" rev-parse HEAD:third_party/ANTfrastructure)" \
   "$(git -C "${repo}/third_party/ANTfrastructure" rev-parse HEAD)"
 t_assert_fails test -e "${repo}/third_party/ANTfrastructure/nested/.git"
 t_assert_eq "" "$(git -C "${repo}" status --porcelain)"
+
+t_case "a Windows Git checkout uses its own index view for bootstrap and rollback"
+t_windows_git_path_stub "${WORK}/win-git-bin"
+cat > "${WORK}/win-git-bin/git.exe" <<'SH'
+#!/usr/bin/env bash
+[ "$1" = -C ] && [ "$2" = 'C:\Fixture' ] || exit 2
+shift 2
+printf '%s\n' "$*" >> "${WIN_GIT_LOG:?}"
+if [ "$1" = config ] && [ "$2" = --get ] && [ "$3" = core.autocrlf ]; then
+  printf '%s\n' "${WIN_AUTOCRLF:-true}"
+  exit 0
+fi
+if [ "$1" = rev-parse ] && [ "$2" = --path-format=absolute ] &&
+   [ "$3" = --git-path ] && [ "$4" = config ]; then
+  printf 'C:/Fixture/.git/config\n'
+  exit 0
+fi
+exec "${REAL_GIT:?}" -C "${WIN_GIT_ROOT:?}" "$@"
+SH
+cat > "${WORK}/win-git-bin/git" <<'SH'
+#!/usr/bin/env bash
+if [ "$1" = -C ] && [ "$2" = "${WIN_GIT_ROOT:-}" ] &&
+   [ "${3:-}" = diff ] && [ "${4:-}" = --quiet ] && [ "${5:-}" = -- ] &&
+   [ "${6:-}" = .gitmodules ]; then
+  exit 1
+fi
+exec "${REAL_GIT:?}" "$@"
+SH
+chmod +x "${WORK}/win-git-bin/"*
+repo="$(make_consumer win_git_apply)"
+WIN_GIT_ROOT="${repo}" WIN_GIT_LOG="${WORK}/win_git_apply/git.log" \
+  TEST_WIN_ROOT='C:\Fixture' TEST_WIN_CONFIG='C:/Fixture/.git/config' \
+  TEST_WSL_CONFIG="${repo}/.git/config" \
+  REAL_GIT="$(command -v git)" PATH="${WORK}/win-git-bin:${PATH}" \
+  t_assert_rc 0 run_wrapper "${repo}" --apply
+t_assert_ok test -e "${repo}/third_party/ANTfrastructure/.git"
+t_assert_contains "$(cat "${WORK}/win_git_apply/git.log")" "diff --quiet -- .gitmodules"
+t_assert_contains "$(cat "${WORK}/win_git_apply/git.log")" "rev-parse --path-format=absolute --git-path config"
+t_assert_contains "$(cat "${WORK}/win_git_apply/git.log")" "submodule update --init -- third_party/ANTfrastructure"
+repo="$(make_consumer win_git_fatal)"
+WIN_GIT_ROOT="${repo}" WIN_GIT_LOG="${WORK}/win_git_fatal/git.log" \
+  TEST_WIN_ROOT='C:\Fixture' TEST_WIN_CONFIG='C:/Fixture/.git/config' \
+  TEST_WSL_CONFIG="${repo}/.git/config" \
+  REAL_GIT="$(command -v git)" PATH="${WORK}/win-git-bin:${PATH}" DRIVER_EXIT=7 \
+  t_assert_rc 7 run_wrapper "${repo}" --apply
+t_assert_contains "$(cat "${WORK}/win_git_fatal/git.log")" "submodule deinit --force -- third_party/ANTfrastructure"
+t_assert_ok cmp -s "${WORK}/win_git_fatal/config.before" "${repo}/.git/config"
+t_assert_fails test -e "${repo}/third_party"
+
+t_case "a Linux-owned WSL checkout is not claimed by Windows Git"
+repo="$(make_consumer win_git_false)"
+WIN_GIT_ROOT="${repo}" WIN_GIT_LOG="${WORK}/win_git_false/git.log" \
+  WIN_AUTOCRLF=false TEST_WIN_ROOT='C:\Fixture' \
+  REAL_GIT="$(command -v git)" PATH="${WORK}/win-git-bin:${PATH}" \
+  t_assert_rc 1 run_wrapper "${repo}" --apply
+t_assert_contains "$(cat "${WORK}/win_git_false/git.log")" "config --get core.autocrlf"
+t_assert_fails test -e "${repo}/third_party"
+t_assert_ok cmp -s "${WORK}/win_git_false/config.before" "${repo}/.git/config"
+t_assert_fails test -e "${WORK}/win_git_false/driver.args"
 
 t_case "a driver refusal exits two and keeps its initialized hub for review"
 repo="$(make_consumer refused)"

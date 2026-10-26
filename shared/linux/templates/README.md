@@ -6,7 +6,8 @@ Copy-and-edit starting points for the bash side. (The PowerShell equivalent is
 
 Copy `antfrastructure.sh` to `<your-repo>/scripts/linux/lib/antfrastructure.sh`
 and adjust `KATAGLYPHIS_REPO_ROOT_RELATIVE` if it does not sit three levels
-below the repo root. Nothing else.
+below the repo root. Copy `renovate-git-mode.sh` beside it and declare both
+copies in `.antfrastructure-shared.manifest` for drift checks.
 
 **A consumer with no submodule is a supported shape.** `ANTFRASTRUCTURE_DIR`
 still wins when set; otherwise the bootstrap takes `third_party/ANTfrastructure`
@@ -31,7 +32,8 @@ Use `antfrastructure_renovate_exec` in that wrapper. If its pinned hub submodule
 the copied bootstrap initializes only that gitlink for a real `--apply`, then calls the hub
 driver. Report and dry-run do not clone. A fatal failure restores the previous uninitialized
 state and the parent's Git config; status 2 leaves the checkout for review. Sync both templates
-to consumers when this bootstrap changes.
+and the Git mode companion to consumers when this bootstrap changes. In a WSL checkout written
+by Windows Git, bootstrap uses `git.exe` for its Git index check and submodule commands.
 
 `git-hooks/pre-commit` is the third file here, and the one a consumer does
 **not** copy: `git config core.hooksPath

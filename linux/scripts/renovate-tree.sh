@@ -5,6 +5,11 @@
 [ -n "${_RENOVATE_TREE_SH_LOADED:-}" ] && return 0
 _RENOVATE_TREE_SH_LOADED=1
 
+RENOVATE_GIT_MODE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/shared/linux/templates/renovate-git-mode.sh"
+[ -f "${RENOVATE_GIT_MODE}" ] || err "the Windows Git mode companion is missing at ${RENOVATE_GIT_MODE}"
+# shellcheck source=shared/linux/templates/renovate-git-mode.sh
+. "${RENOVATE_GIT_MODE}"
+
 # The pre-run snapshot: porcelain lines, their paths (for exact "already dirty" matches), hashes, ignored paths.
 TREE_BEFORE=""; TREE_BEFORE_PATHS=""; TREE_BEFORE_HASH=""; TREE_BEFORE_IGNORED=""
 TREE_CLASSIFIED=0
@@ -55,35 +60,14 @@ classify_apply_paths() {
 }
 
 # On Windows the report needs WSL's node but the checkout needs the git that wrote it, so switch to git.exe.
-missing_submodule_needs_windows_git() {
-  local i
-  for ((i=0; i<${#APPLY_INITIALIZED[@]}; i++)); do
-    [ "${APPLY_INITIALIZED[i]}" -eq 0 ] && return 0
-  done
-  return 1
-}
-
-windows_git_owns_missing_submodule() {
-  local win_target="$1" autocrlf
-  case "${win_target}" in [A-Za-z]:\\*) ;; *) return 1 ;; esac
-  autocrlf="$(git.exe -C "${win_target}" config --get core.autocrlf 2>/dev/null || true)"
-  [ "${autocrlf}" = true ] || return 1
-  return 0
-}
-
 select_git_for_tree() {
   GIT_BIN=git; GIT_TARGET="${TARGET}"
   classify_apply_paths
-  [ "${#APPLY_EOL[@]}" -gt 0 ] || missing_submodule_needs_windows_git || return 0
-  command -v git.exe >/dev/null 2>&1 || return 0
-  command -v wslpath >/dev/null 2>&1 || return 0
-
   local win_target
-  win_target="$(wslpath -w "${TARGET}" 2>/dev/null || true)"
-  [ -n "${win_target}" ] || return 0
-  git.exe -C "${win_target}" rev-parse --git-dir >/dev/null 2>&1 || return 0
-  if [ "${#APPLY_EOL[@]}" -eq 0 ]; then
-    windows_git_owns_missing_submodule "${win_target}" || return 0
+  if [ "${#APPLY_EOL[@]}" -gt 0 ]; then
+    win_target="$(antfrastructure_renovate_windows_git_root "${TARGET}" --eol-proven)" || return 0
+  else
+    win_target="$(antfrastructure_renovate_windows_git_root "${TARGET}")" || return 0
   fi
 
   GIT_BIN=git.exe

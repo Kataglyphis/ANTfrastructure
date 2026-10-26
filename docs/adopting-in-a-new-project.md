@@ -250,7 +250,9 @@ Bash consumers: copy
 [`shared/linux/templates/antfrastructure.sh`](../shared/linux/templates/README.md)
 to `scripts/linux/lib/antfrastructure.sh` (or `scripts/lib/` in a flat Flutter repo), adjust
 `KATAGLYPHIS_REPO_ROOT_RELATIVE`, and declare it as `antfrastructure-sh` in
-`.antfrastructure-shared.manifest` so the drift gate watches it. It resolves paths from
+`.antfrastructure-shared.manifest` so the drift gate watches it. Copy
+`shared/linux/templates/renovate-git-mode.sh` beside it and declare that file as
+`renovate-git-mode-sh`; the bootstrap requires this shared Git selector. It resolves paths from
 `${BASH_SOURCE[0]}`, never from the caller's working directory, and its failure message names the
 fix.
 
@@ -569,9 +571,9 @@ and `scripts/windows/container/` for scripts that run inside the Windows image, 
 (OxidANT's `Invoke-StevedoreBuild` callees). Two repos used `Scripts/` + `Scripts/Windows/` until
 that sweep; use lowercase in a new consumer, there is no per-repo casing rule to look up. Two
 exceptions: jotrockenmitlocken, a Linux-only Flutter repo, keeps a flat `scripts/`, with the
-bootstrap at `scripts/lib/` and that path declared in `.antfrastructure-shared.manifest`; ANThology
-has no hub submodule and no bootstrap, and its `scripts/lib/find-hub.sh` looks for a hub checkout
-instead.
+bootstrap and Git mode companion at `scripts/lib/`, with both paths declared in
+`.antfrastructure-shared.manifest`. ANThology keeps its `find-hub.sh` candidate priority and uses
+the copied bootstrap for a missing hub on a real Renovate apply.
 
 **Bash filenames are kebab-case everywhere except OrchestrANT** (measured 2026-09-14). There the
 four `ci_*.sh` wrappers mirror the hub's own snake_case drivers under

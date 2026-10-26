@@ -381,11 +381,7 @@ WIN_CHOICE="$(_absent_second_repo default-win-choice)"
 WIN_STUBS="${WORK}/win-choice-stubs"
 WIN_LOG="${WORK}/win-choice-git.log"
 mkdir -p "${WIN_STUBS}"
-cat > "${WIN_STUBS}/wslpath" <<'STUB'
-#!/usr/bin/env bash
-[ "$1" = -w ] || exit 1
-printf '%s\n' 'C:\Fixture\Repo'
-STUB
+t_windows_git_path_stub "${WIN_STUBS}"
 cat > "${WIN_STUBS}/git.exe" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${WIN_LOG}"
@@ -397,16 +393,31 @@ case " $* " in
 esac
 STUB
 chmod +x "${WIN_STUBS}/wslpath" "${WIN_STUBS}/git.exe"
-TARGET="${WIN_CHOICE}"
-APPLY_PATHS=(second); APPLY_INITIALIZED=(0); EDIT_FILES=()
-PATH="${WIN_STUBS}:${BARE_PATH}" WIN_AUTOCRLF="true" WIN_LOG="${WIN_LOG}" select_git_for_tree
-t_assert_eq git.exe "${GIT_BIN}" "Windows Git owns this missing-only checkout"
-t_assert_eq 'C:\Fixture\Repo' "${GIT_TARGET}" "the translated path reaches the checkout half"
+_check_windows_git_choice() {
+  local repo="$1" autocrlf="$2" want_bin="$3" want_root="$4" label="$5"
+  TARGET="${repo}"
+  APPLY_PATHS=(second); EDIT_FILES=()
+  : > "${WIN_LOG}"
+  PATH="${WIN_STUBS}:${BARE_PATH}" TEST_WIN_ROOT='C:\Fixture\Repo' \
+    WIN_AUTOCRLF="${autocrlf}" WIN_LOG="${WIN_LOG}" select_git_for_tree
+  t_assert_eq "${want_bin}" "${GIT_BIN}" "${label} selects the owning Git"
+  t_assert_eq "${want_root}" "${GIT_TARGET}" "${label} retains its Git path form"
+}
+_check_windows_git_choice "${WIN_CHOICE}" true git.exe 'C:\Fixture\Repo' 'missing module'
 t_assert_contains "$(cat "${WIN_LOG}")" 'config --get core.autocrlf' "ownership was checked"
-: > "${WIN_LOG}"
-PATH="${WIN_STUBS}:${BARE_PATH}" WIN_AUTOCRLF="false" WIN_LOG="${WIN_LOG}" select_git_for_tree
-t_assert_eq git "${GIT_BIN}" "a Linux-owned checkout keeps Linux Git"
-t_assert_eq "${WIN_CHOICE}" "${GIT_TARGET}" "the Linux path remains intact"
+_check_windows_git_choice "${WIN_CHOICE}" false git "${WIN_CHOICE}" 'Linux-owned checkout'
+
+t_case "an initialized-only hub still uses Windows Git when autocrlf owns the checkout"
+WIN_INITIAL="$(_default_sub_repo default-win-initialized)"
+_check_windows_git_choice "${WIN_INITIAL}" true git.exe 'C:\Fixture\Repo' 'initialized module'
+t_assert_contains "$(cat "${WIN_LOG}")" 'config --get core.autocrlf' "the choice checks ownership without a missing module"
+
+t_case "a proven EOL-only path keeps the Windows Git fallback without autocrlf"
+printf 'name: fixture\r\ndependencies:\r\n  http: 1.1.0\r\n' > "${WIN_INITIAL}/pubspec.yaml"
+TARGET="${WIN_INITIAL}"
+APPLY_PATHS=(); EDIT_FILES=(pubspec.yaml)
+PATH="${WIN_STUBS}:${BARE_PATH}" TEST_WIN_ROOT='C:\Fixture\Repo' WIN_AUTOCRLF="false" WIN_LOG="${WIN_LOG}" select_git_for_tree
+t_assert_eq git.exe "${GIT_BIN}" "EOL evidence still selects the Windows Git checkout"
 
 t_case "an initialized gitlink symlinked to a sibling is refused before any update"
 LINKED="$(_default_sub_repo default-linked)"

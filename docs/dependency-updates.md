@@ -56,7 +56,9 @@ restore the config bytes, and remove only directories that were absent before th
 rollback leaves the backup path in the error. Driver exit 2 means applied updates with refusals,
 so the initialized hub remains for review. A report or `--apply --dry-run` never bootstraps the
 missing hub: initialize it explicitly or point `ANTFRASTRUCTURE_DIR` at an existing checkout to
-load the driver for a read-only run.
+load the driver for a read-only run. In WSL, a Windows Git checkout with `core.autocrlf=true`
+uses `git.exe` for the wrapper's `.gitmodules` index check, hub initialization and rollback;
+the shell still uses the Linux path to back up the parent Git config.
 
 The hub driver resolves `GITHUB_COM_TOKEN` from the environment, `GH_TOKEN`, `gh`
 or WSL's `gh.exe` before a live run. A missing token or a NOT CHECKED lookup makes
@@ -1193,8 +1195,8 @@ So the script:
 * tells a genuinely dirty tree from the wrong git with `--ignore-cr-at-eol` — if
   every difference is a CR, it is the git that is wrong, not the tree;
 * switches to `git.exe` (via `wslpath -w`) when it is reachable, and says so;
-* also checks a Windows-drive tree's `core.autocrlf` when an uninitialized direct
-  submodule gives no existing child files from which to detect CRLF drift;
+* also checks a Windows-drive tree's `core.autocrlf` after the last missing
+  direct submodule initializes, even when selected files show no CRLF drift;
 * **refuses up front** on detected CRLF drift when Windows Git cannot be used,
   rather than applying part of the change.
 

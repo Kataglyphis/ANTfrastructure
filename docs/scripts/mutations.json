@@ -28257,6 +28257,30 @@
   "why": "ignored Python bytecode caches can contain scanner-shaped bytes but are not source"
  },
  {
+  "id": "renovate.wrapper-windows-git-index-view",
+  "target": "shared/linux/templates/renovate-git-mode.sh",
+  "find": "    [ \"$autocrlf\" = true ] || return 1",
+  "replace": "    [ \"$autocrlf\" = false ] || return 1",
+  "test": "bash linux/scripts/tests/test-renovate-template-bootstrap.sh",
+  "why": "a Windows-authored WSL checkout can show a false .gitmodules modification under WSL Git, so bootstrap must use Windows Git for index checks, initialization and rollback"
+ },
+ {
+  "id": "renovate.wrapper-windows-config-path",
+  "target": "shared/linux/templates/antfrastructure.sh",
+  "find": "        config=\"$(wslpath -u \"$config\")\" || exit 1",
+  "replace": "        config=\"$config\"",
+  "test": "bash linux/scripts/tests/test-renovate-template-bootstrap.sh",
+  "why": "Windows Git emits a Windows config path; the WSL shell must translate it before backing up the parent config"
+ },
+ {
+  "id": "renovate.driver-windows-git-after-initialization",
+  "target": "linux/scripts/renovate-tree.sh",
+  "find": "    win_target=\"$(antfrastructure_renovate_windows_git_root \"${TARGET}\")\" || return 0",
+  "replace": "    return 0",
+  "test": "bash linux/scripts/tests/test-renovate-submodule-default.sh",
+  "why": "a Windows-authored checkout must keep Windows Git after initialization removes the last missing-submodule signal"
+ },
+ {
   "id": "renovate.wrapper-apply-initializes-hub",
   "target": "shared/linux/templates/antfrastructure.sh",
   "find": "            --apply) apply=1 ;;",

@@ -15,6 +15,9 @@
 
 ## 2026-10-26 — Renovate submodule updates
 
+- Use Windows Git for a copied Renovate wrapper's hub bootstrap in Windows-authored WSL
+  checkouts, so a false `.gitmodules` modification under WSL Git cannot reject an apply. Share
+  the Git mode selector with the driver as a copied companion and enforce its drift check.
 - Correct fleet plan wording to name remote default tips for direct gitlinks and distinguish
   its advisory nested-checkout graph from the apply scope.
 - Let a copied consumer Renovate wrapper initialize its own missing hub submodule on `--apply`;

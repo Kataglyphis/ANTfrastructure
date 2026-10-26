@@ -120,6 +120,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
    CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.
    Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; the local driver also requires `renovate-node.sh` and `renovate-submodules.sh`. Preserve their distinct dry-run policies and nonempty-list advice.
+   Copied `antfrastructure.sh` carries `renovate-git-mode.sh` beside it; the hub driver imports the same canonical selector before handling a Windows-authored WSL checkout.
    Renovate planner companions belong in the strict ty and ANN001/ANN201 scopes; the isolated type fixture must detect their removal.
    Gradle wrapper updates change only the version in one distribution URL; duplicate properties and checksum-pinned archives refuse before writing.
    Shared harness mutation suites stay host-portable; native batch execution remains in the separately discovered Windows suite.
@@ -1319,16 +1320,18 @@ The rules; the mechanism is documented once in
   Before auto-initialization, snapshot the parent's complete local Git config; rollback must
   restore it byte-for-byte, even when initialization fails before creating `.git`. Restore
   gitlinks, checkouts and other writes too. Under WSL, select Windows Git for a Windows CRLF
-  checkout with missing submodules even when no initialized submodule exposes CRLF drift. Do not
-  recurse into nested external submodules, stage or commit gitlinks. An explicit `--managers`
-  selection still controls whether the `git-submodules` manager runs. See
+  checkout even after the last missing submodule initializes or selected files show no CRLF
+  drift. Do not recurse into nested external submodules, stage or commit gitlinks. An explicit
+  `--managers` selection still controls whether the `git-submodules` manager runs. See
   [the submodule mechanism](docs/dependency-updates.md#how-the-submodule-half-follows-default-branches).
 - **A consumer wrapper can start from an uninitialized hub.** Its copied bootstrap initializes
   only the tracked direct `third_party/ANTfrastructure` gitlink for a real `--apply`, before the
   hub driver exists to handle the rest. Report and dry-run must not clone. On fatal driver or
   initialization failure, deinitialize that bootstrap checkout, restore the parent's Git config
   byte-for-byte and remove only paths absent before the call. Exit 2 retains the checkout for
-  review; an incomplete rollback retains the config backup and fails visibly.
+  review; an incomplete rollback retains the config backup and fails visibly. In WSL, use Windows
+  Git for the index checks, initialization and deinitialization of a Windows CRLF checkout;
+  keep the Linux path for shell file backups.
 - **`linux/scripts/git-sync-branches.sh` is not that command.** It puts working trees on their
   branch tip for local work, fast-forward only, third-party submodules included unless
   `--owned-only`, and commits no gitlink:
