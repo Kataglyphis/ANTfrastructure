@@ -564,7 +564,9 @@ about **1.5–2 h of cold LLVM rebuilds** for a few GB.
 
 `prune-safe.sh` prunes `type==regular` only, through `buildctl --filter`
 (nerdctl has no such flag), takes `PRUNE_KEEP_GB` and `DRY_RUN`, and proves
-cachemount survival by counting the records before and after. `PRUNE_KEEP_GB`
+cachemount survival by counting the records before and after. It prunes unless
+`DRY_RUN=1` is set, so preview with that; it takes no arguments and refuses any
+but `--help`. `PRUNE_KEEP_GB`
 is GB of *layer cache*: the script adds the cache mounts and local sources to
 the `--keep-storage` it passes, because that flag bounds the whole store
 ([`build-cache-tiers.md` § 3.2.1](build-cache-tiers.md#321-the-buildkit-store-fallback-disk1)).

@@ -2,6 +2,13 @@
 # Prunes layer cache only, never cachemounts ([PRUNE_KEEP_GB=N] [DRY_RUN=1] [PRUNE_DUP_CACHEMOUNTS=1]): docs/linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches
 set -euo pipefail
 
+# Its knobs are environment variables, so an argument is a typo: one must never start the prune it skipped past.
+case "${1:-}" in
+  "") ;;
+  -h|--help) sed -n '2p' "$0"; exit 0 ;;
+  *) echo "FATAL: prune-safe.sh takes no arguments (got '$1'); its knobs are PRUNE_KEEP_GB, DRY_RUN and PRUNE_DUP_CACHEMOUNTS" >&2; exit 2 ;;
+esac
+
 export BUILDKIT_HOST; BUILDKIT_HOST="${BUILDKIT_HOST:-unix:///run/user/$(id -u)/buildkit/buildkitd.sock}"
 PRUNE_KEEP_GB="${PRUNE_KEEP_GB:-0}"
 case "${PRUNE_KEEP_GB}" in ''|*[!0-9]*) echo "FATAL: PRUNE_KEEP_GB must be a whole number of GB, got '${PRUNE_KEEP_GB}'" >&2; exit 2 ;; esac

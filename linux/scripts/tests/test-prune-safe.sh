@@ -98,4 +98,14 @@ PRUNE_KEEP_GB=12G bash "${PRUNE_SAFE}" > "${_ps}/o.txt" 2>&1
 t_assert_eq "2" "$?"
 t_assert_eq "" "$(cat "${BUILDCTL_LOG}")" "buildctl must not be reached"
 
+t_case "--help and any other argument exit before buildctl is asked anything"
+_store
+_out="$(bash "${PRUNE_SAFE}" --help 2>&1)"; _rc=$?
+t_assert_eq "0" "${_rc}" "${_out}"
+t_assert_contains "${_out}" "Prunes layer cache only"
+_rc=0; bash "${PRUNE_SAFE}" --dry-run > "${_ps}/o.txt" 2>&1 || _rc=$?
+t_assert_eq "2" "${_rc}"
+t_assert_contains "$(cat "${_ps}/o.txt")" "takes no arguments (got '--dry-run')"
+t_assert_eq "" "$(cat "${BUILDCTL_LOG}")" "a mistyped flag must not reach buildctl, let alone prune"
+
 t_summary

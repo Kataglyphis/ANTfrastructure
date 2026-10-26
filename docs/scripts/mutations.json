@@ -29351,5 +29351,13 @@
   "replace": "    --mount=type=bind,source=linux/scripts/01-core/sccache-s3-level.sh",
   "test": "bash linux/scripts/tests/test-sccache-s3-level.sh",
   "why": "the Vulkan SDK RUN had no cache mount, so its sccache wrote into a layer that every chain throws away"
+ },
+ {
+  "id": "lib.prune-safe-refuses-arguments",
+  "target": "linux/host-config/prune-safe.sh",
+  "find": "  *) echo \"FATAL: prune-safe.sh takes no arguments",
+  "replace": "  *) : echo \"FATAL: prune-safe.sh takes no arguments",
+  "test": "bash linux/scripts/tests/test-prune-safe.sh",
+  "why": "`prune-safe.sh --help` went straight down the prune path; a flag that is not understood must stop it"
  }
 ]
