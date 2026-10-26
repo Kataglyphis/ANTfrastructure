@@ -192,7 +192,7 @@ Since 2026-10-26, `playbooks/backup.yml` copies what git does not hold to the QN
 Saturday. pi-1 is the hub: it mounts the NAS share over SMB for the run only, pulls each source
 onto it, and unmounts it again.
 
-| Source | On the NAS (share `Backup`) | Encrypted by | Kept |
+| Source | On the NAS share | Encrypted by | Kept |
 | --- | --- | --- | --- |
 | Nextcloud AIO's Borg repo on srv-1 (`/root/nextcloud_aio/borg`, ~39 GB) | `nextcloud/srv-1/borg/`, a mirror | Borg (the passphrase is in srv-1's secrets bundle) | by the QTS snapshots |
 | Home Assistant's newest backup (`config/backups/*.tar`) | `homeassistant/` | Home Assistant's backup key | the newest 8 |
@@ -204,7 +204,9 @@ srv-1 as root for the update.
 
 **What fails the run**, each one loudly and after every other source was copied:
 
-- **Nextcloud.** AIO is writing its repo (`lock.roster`), or someone else holds `aio-lockfile`.
+- **Nextcloud.** The host does not answer (down, or its SSH host key changed); the other
+  sources still go and the share is still unmounted. AIO is writing its repo (`lock.roster`),
+  or someone else holds `aio-lockfile`.
   The source is not a Borg repo, or its repo id is not the NAS copy's: a recreated repo mirrored
   with `--delete` would replace the copy's whole history (`-e backup_nextcloud_accept_new_repo=true`
   for a deliberate one). The copy still differs from the locked repo after the mirror. AIO's
@@ -231,23 +233,32 @@ was taken over. That user cannot delete a snapshot.
 
 ### One-time setup
 
-1. **The NAS (QTS web UI).** Create the shared folder `Backup` on a thin or thick volume (a static
-   volume takes no snapshots). Create a user `pi-backup` outside the administrators group, with
-   read/write on `Backup` and nothing else. Schedule a weekly snapshot of the volume that holds
-   `Backup` for Sunday, after the Saturday run, and keep at least 8.
-2. **The credentials on pi-1**, root's alone (the run checks):
+1. **The NAS (QTS web UI).** Create a shared folder on a thin or thick volume (a static volume
+   takes no snapshots) and a user outside the administrators group with read/write on it. Here
+   they are `AutoBackups` and `Auto_Backups`; the user also reads the shares open to everyone
+   (`Public`, `Multimedia`), which the owner accepted. Snapshots: Storage & Snapshots →
+   Storage/Snapshots → the volume → Snapshot → Snapshot Manager → Schedule Snapshot, weekly on
+   Sunday after the Saturday run, retention a fixed number of 8. QTS snapshots the whole volume.
+2. **The credentials on pi-1**, root's alone (the run checks), then a test mount that writes:
    ```bash
    sudo install -d -m 700 /etc/ansible-backup
    sudo install -m 600 /dev/null /etc/ansible-backup/nas.credentials
-   sudoedit /etc/ansible-backup/nas.credentials   # two lines: username=pi-backup, password=...
+   sudoedit /etc/ansible-backup/nas.credentials   # two lines: username=..., password=...
+   sudo mount -t cifs //192.168.188.135/AutoBackups /mnt/nas-backup \
+     -o credentials=/etc/ansible-backup/nas.credentials,uid=$(id -u),gid=$(id -g)
+   touch /mnt/nas-backup/.t && rm /mnt/nas-backup/.t && sudo umount /mnt/nas-backup
    ```
-3. **The age key**, made on a trusted device and never on pi-1: `age-keygen -o backup-key.txt`.
-   Keep the whole file in the password manager, put the `age1...` public key it prints into
-   `backup_age_recipients` in `host_vars/pi-1.yml`, and delete the file. That one key opens every
-   bundle, and the bundles hold the Borg passphrase and the Home Assistant backup key.
+   `mount error(2)` with `BAD_NETWORK_NAME` in `dmesg` is a share name the NAS does not have; a
+   wrong password fails earlier, with `error(13)`. Put the share into `backup_nas_share`.
+3. **The age key**: `age-keygen` with no `-o` prints the key and writes no file, so pi-1 is fine.
+   Copy all three lines into the password manager and put the `age1...` public key into
+   `backup_age_recipients` in `host_vars/pi-1.yml`. The `AGE-SECRET-KEY-...` line goes nowhere
+   else: that one key opens every bundle, and the bundles hold the Borg passphrase and the Home
+   Assistant backup key.
 4. **Home Assistant encrypts its own backups**: Settings → System → Backups → Backup settings →
-   Locations → *This system* → encryption on. Since 2025.2 encryption is chosen per location, and
-   local was off. The next daily backup is the first one the run will copy.
+   Locations → *This system* → encryption on, and its emergency kit (the backup key) into the
+   password manager. Since 2025.2 encryption is chosen per location, and local was off. Older
+   archives stay unencrypted and are never copied; Home Assistant's retention of 3 drops them.
 5. **Arm it** with `~/venvs/ansible/bin/ansible-playbook playbooks/schedule.yml`, and start the
    first copy by hand: `systemctl --user start ansible-backup.service`. It moves the whole repo
    over WireGuard; later runs move only new Borg segments.
@@ -281,7 +292,8 @@ plaintext and leaves nothing behind when a path is missing or `age` misbehaves. 
 Home Assistant and a temporary directory standing in for the NAS, with a real `age` key. It needs
 the venv and `age`, so it is not one of the auto-discovered suites: run it by hand after a change
 to the playbook. It covers the mirror, deletions, retention, `lock.roster`, a foreign and a stale
-`aio-lockfile`, a recreated repo, an AIO that stopped backing up and an unencrypted archive.
+`aio-lockfile`, a recreated repo, an AIO that stopped backing up, an unreachable AIO host and an
+unencrypted archive.
 
 Not covered by any test: the CIFS mount and the QTS snapshots, which live on the NAS, and a
 restore. Restore one archive of each kind by hand once a quarter.
@@ -304,6 +316,15 @@ restore. Restore one archive of each kind by hand once a quarter.
 ```bash
 ssh-keygen -t ed25519 -f .ssh/id_ed25519     # distribute the .pub to the fleet
 ssh-keyscan <host> >> .ssh/known_hosts
+```
+
+A host whose key changed fails with `REMOTE HOST IDENTIFICATION HAS CHANGED`. Replace the line
+only after the host's own console shows the fingerprint the network now sends:
+
+```bash
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub              # on the host itself
+ssh-keyscan -t ed25519 <ip> | ssh-keygen -lf -                 # here: must match
+ssh-keygen -f .ssh/known_hosts -R <ip> && ssh-keyscan -t ed25519 <ip> >> .ssh/known_hosts
 ```
 
 Vault-encrypted vars: `ansible-vault create secret-vars.yml`, then run with

@@ -115,6 +115,21 @@ t_assert_ok test -e "${copy}/data/0/3"
 t_assert_contains "$(cat "${_work}/run.log")" "AIO stopped backing up"
 archive_list 2
 
+t_case "an unreachable AIO host fails only its own source: the later sources still go"
+cat > "${_work}/gone.yml" <<'EOF'
+all:
+  hosts:
+    gone:
+      ansible_host: 127.0.0.1
+      ansible_port: 1
+      backup_nextcloud_aio_repo: /nonexistent
+EOF
+rm "${nas}/homeassistant/newer.tar"
+t_assert_fails run -i "${_work}/gone.yml"
+t_assert_eq "newer.tar" "$(ls "${nas}/homeassistant")"
+t_assert_contains "$(cat "${_work}/run.log")" "BACKUP: nextcloud gone: unreachable"
+t_assert_contains "$(cat "${_work}/run.log")" "1 source(s) failed: nextcloud gone"
+
 t_case "an unencrypted Home Assistant archive stays on the Pi"
 ha_archive plain.tar 0 false
 t_assert_fails run

@@ -16,10 +16,24 @@
     # The lockfile is AIO's, so it is never mirrored and never deleted on the NAS side.
     nc_rsync: "{{ ['rsync', '--recursive', '--times', '--delete', '--exclude=/aio-lockfile'] + nc_rsync_remote }}"
     nc_marker: ansible-backup
+  # An unreachable delegate would drop the hub from the play: no later source, no unmount.
+  ignore_unreachable: true
   block:
     - name: "Nextcloud {{ backup_source }}: start without a lock of this run's"
       ansible.builtin.set_fact:
         nc_locked: false
+
+    - name: "Nextcloud {{ backup_source }}: reach the host"
+      ansible.builtin.ping:
+      delegate_to: "{{ backup_source }}"
+      register: nc_ping
+
+    - name: "Nextcloud {{ backup_source }}: the host answers"
+      ansible.builtin.assert:
+        that: not (nc_ping.unreachable | default(false))
+        fail_msg: "BACKUP: nextcloud {{ backup_source }}: unreachable,
+          {{ nc_ping.msg | default('') | regex_replace('[@\\s]+', ' ') | truncate(200) }}; not copied"
+        quiet: true
 
     - name: "Nextcloud {{ backup_source }}: read the source repo's config"
       ansible.builtin.slurp:

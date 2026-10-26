@@ -45,6 +45,10 @@
   2026-09-14; the newest archive's `backup.json` says `protected: false`, because encryption is
   chosen per location since 2025.2. Its other tip, network storage, does not exist on a Container
   install. Both are corrected.
+- **An unreachable Nextcloud host fails only its own source.** The first real run met srv-1 with
+  a changed SSH host key; the delegated task dropped pi-1 from the play, which skipped Home
+  Assistant and the secrets and left the share mounted. The block now ignores unreachable
+  delegates and pings the host first, so the failure names the cause and the run goes on.
 - Tests: `test-ansible-backup.sh` (the two helpers, seven mutations), a `BACKUP:` case in
   `test-ansible-run-status.sh`, and `linux/ansible/tests/test-backup-playbook.sh`, run by hand,
   which drives the playbook against a fake AIO host, a fake Home Assistant and a real `age` key.
