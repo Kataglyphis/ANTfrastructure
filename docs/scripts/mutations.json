@@ -28257,6 +28257,14 @@
   "why": "ignored Python bytecode caches can contain scanner-shaped bytes but are not source"
  },
  {
+  "id": "renovate.wrapper-consumer-complexity",
+  "target": "shared/linux/templates/antfrastructure.sh",
+  "find": "    antfrastructure_renovate_check_gitlink \"$git_bin\" \"$git_root\" || return 1",
+  "replace": "    if false || false || false || false || false || false || false || false || false || false || false || false || false || false || false || false; then :; fi\n    antfrastructure_renovate_check_gitlink \"$git_bin\" \"$git_root\" || return 1",
+  "test": "bash linux/scripts/tests/test-renovate-template-bootstrap.sh",
+  "why": "a copied Renovate bootstrap with too many decision paths must fail the consumer complexity gate"
+ },
+ {
   "id": "renovate.wrapper-windows-git-index-view",
   "target": "shared/linux/templates/renovate-git-mode.sh",
   "find": "    [ \"$autocrlf\" = true ] || return 1",

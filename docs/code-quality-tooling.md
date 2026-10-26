@@ -900,7 +900,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3537 entries** over **378 distinct test commands**; both digits are
+manifest holds **3538 entries** over **378 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1972,6 +1972,10 @@ runtime-generated code or call graphs; `verify_code_dupes.py --kind ps` separate
 checks PowerShell duplication.
 
 ## Shell complexity (`code-complexity`)
+
+The Renovate bootstrap is copied into consumers that run this gate over their own tracked shell
+files. `test-renovate-template-bootstrap.sh` measures a copied fixture and plants an oversized
+function to prove that the consumer limit rejects new decision paths there.
 
 `linux/scripts/verify_code_complexity.py`, preflight slug `code-complexity`,
 ~0.4s over the whole tree. Two numbers per function — **cyclomatic complexity**

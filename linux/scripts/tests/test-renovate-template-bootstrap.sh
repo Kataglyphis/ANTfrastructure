@@ -49,6 +49,19 @@ run_wrapper() {
     bash "${repo}/scripts/linux/renovate-local.sh" "$@"
 }
 
+t_case "a copied bootstrap stays within the consumer complexity limit"
+repo="$(make_consumer complexity)"
+t_assert_rc 0 python3 "${_T_SCRIPTS}/verify_code_complexity.py" --root "${repo}"
+printf '\nantfrastructure_complexity_mutant() {\n' >> "${repo}/scripts/linux/lib/antfrastructure.sh"
+for branch in {1..16}; do
+  printf '  if [ %s -gt 0 ]; then :; fi\n' "$branch" >> "${repo}/scripts/linux/lib/antfrastructure.sh"
+done
+printf '}\n' >> "${repo}/scripts/linux/lib/antfrastructure.sh"
+complexity_rc=0
+complexity_output="$(python3 "${_T_SCRIPTS}/verify_code_complexity.py" --root "${repo}" 2>&1)" || complexity_rc=$?
+t_assert_eq 1 "${complexity_rc}"
+t_assert_contains "${complexity_output}" "antfrastructure_complexity_mutant:cc"
+
 t_case "report and dry-run refuse an unavailable hub without cloning it"
 repo="$(make_consumer read_only)"
 t_assert_fails run_wrapper "${repo}"

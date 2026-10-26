@@ -15,6 +15,8 @@
 
 ## 2026-10-26 — Renovate submodule updates
 
+- Split copied hub bootstrap checks and rollback into small helpers so consumer complexity gates
+  pass, and prove the copied fixture rejects a deliberately complex mutant.
 - Resolve the copied Git mode companion through each consumer's script directory in ShellCheck.
 - Use Windows Git for a copied Renovate wrapper's hub bootstrap in Windows-authored WSL
   checkouts, so a false `.gitmodules` modification under WSL Git cannot reject an apply. Share
