@@ -15,6 +15,9 @@
 
 ## 2026-10-26 — the home-lab backups reach the NAS every week
 
+- **Default ShellCheck now covers `linux/ansible/`.** The Ansible shell scripts join the
+  error-level scan and its warning ratchet; the scope suite fails if a tracked script is
+  omitted. The pinned full scan and warning baseline remain green.
 - **`linux/ansible/playbooks/backup.yml`** copies what git does not hold to the QNAP NAS every
   Saturday, from pi-1, which mounts the share over SMB for the run only. Three sources:
   - **Nextcloud AIO's Borg repo on srv-1** (39 GB) is mirrored the way AIO's own sync recipe

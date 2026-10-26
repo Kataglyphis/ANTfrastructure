@@ -925,7 +925,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3652 entries** over **392 distinct test commands**; both digits are
+manifest holds **3653 entries** over **392 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2472,6 +2472,13 @@ cost four hours of chain time. SC2215 got its own hard-fail arm there; this gate
 is the general form.
 
 **One owner per input.** The gate computes neither its scope nor its binary:
+
+The default `lint-shell.sh` sweep includes `linux/ansible/` along with its existing roots.
+Its `--list-files` mode and the error-level ShellCheck run use the same selection; the warning
+ratchet reads that list. `test-lint-shell-scope.sh` checks every Ansible `.sh` in the tree against
+the list, so dropping the directory makes the suite fail. This checks selection, not backup
+behavior; the Ansible suites exercise that behavior. The newly selected files have no warning
+findings at the pinned ShellCheck version, so the frozen baseline did not grow.
 
 | input | owner | why |
 | --- | --- | --- |

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lint-shell.sh must admit extension-less shell-shebang files: the commit hook cannot carry a .sh suffix.
+# A green ShellCheck run can miss hooks and Ansible scripts; this scope suite does not prove their runtime behavior.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -68,6 +68,15 @@ t_assert_contains "$(bash "${SUBJECT}" --list-files)" "linux/host-config/git-hoo
 t_assert_fails grep -q -F -e "outside the lint-shell.sh scope" <<<"$(
   "${PREFLIGHT_PYTHON:-python3}" "${TESTS_DIR}/../verify_shellcheck_warnings.py" \
     --files "${LIVE_HOOK}" 2>&1)"
+
+t_case "the default sweep includes every Ansible shell script in this tree"
+_default_scope="$(bash "${SUBJECT}" --list-files)"
+_ansible_count=0
+while IFS= read -r -d '' _ansible_script; do
+  _ansible_count=$((_ansible_count + 1))
+  t_assert_ok grep -Fxq -- "${_ansible_script}" <<<"${_default_scope}"
+done < <(cd "${TESTS_DIR}/../../.." && find linux/ansible -type f -name '*.sh' -print0)
+t_assert_ok test "${_ansible_count}" -gt 0
 
 t_case "the deleted .githooks copy is really gone"
 t_assert_fails test -e "${TESTS_DIR}/../../../.githooks/pre-commit"

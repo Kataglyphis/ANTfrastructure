@@ -52,6 +52,7 @@ if [ "${#FILES[@]}" -eq 0 ] && [ "${LINT_ROOT_GIVEN}" -eq 1 ]; then
   done < <(lint_root_tracked "${SCAN_ROOT}" '*.sh')
 elif [ "${#FILES[@]}" -eq 0 ]; then
   mapfile -t FILES < <(find \
+    "${REPO_ROOT}/linux/ansible" \
     "${REPO_ROOT}/linux/scripts" \
     "${REPO_ROOT}/linux/host-config" \
     "${REPO_ROOT}/linux/llm-stack" \

@@ -1219,6 +1219,11 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   side by side; `PREFLIGHT_JOBS=1`, `RUN_TESTS_JOBS=1` and `LINT_SHELL_JOBS=1` run them in turn
   ([§ The gates run side by side](docs/code-quality-tooling.md#the-gates-run-side-by-side)).
 
+- **Default ShellCheck includes Ansible.** `linux/scripts/lint-shell.sh` without `--root`
+  scans `linux/ansible/` as well as the build and host trees; `--list-files` owns the warning
+  ratchet's scope. Keep new Ansible shell scripts in both scans. The scope suite proves their
+  selection ([ShellCheck warning ratchet](docs/code-quality-tooling.md#shellcheck-warning-ratchet-shellcheck-warnings)).
+
 - **Linux host config is code.** `linux/host-config/` carries the canonical rootless-BuildKit
   `buildkitd.toml` and the systemd drop-in; `apply-host-config.sh` installs and
   `verify-host-config.sh` warn-diffs live vs repo. Reconcile drift through the repo, never by
