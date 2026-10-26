@@ -1464,6 +1464,14 @@ which turns its former invalid config into a real release lookup.
 
 ### Tagged Torch/vision Git sources in OrchestrANT
 
+TorchVision stays in the published image because `linux/jetson-webcam/app.py` loads its
+SSDLite model and calls `batched_nms`. The image smoke and OrchestrANT smoke also call its
+compiled NMS operation to catch a Torch/vision ABI mismatch. The current pair is Torch
+2.14.1 with TorchVision 0.29.1, as named by the
+[TorchVision 0.29.1 release](https://github.com/pytorch/vision/releases/tag/v0.29.1).
+The Windows arm64 bundle uses upstream's `0.29.1a0+cpu` cp313 wheel because that is the
+[published arm64 wheel](https://download.pytorch.org/whl/cpu/torchvision/) for this source release.
+
 OrchestrANT's `.github/renovate.json` extracts each `pytorch/pytorch` and
 `pytorch/vision` tag with `github-tags`. The shared
 `renovate_pep_git.py` reconciles the seven lookups with every PEP 508 Git URL
@@ -1490,6 +1498,12 @@ also rolls back. The mutation proof is
 proof is `test-renovate-pep621-git.sh`. Neither test contacts GitHub or installs
 wheels, so wheel availability on each PyTorch index remains a separate build
 check.
+
+Selecting `--managers pep621` for a manifest with these tagged Torch/vision Git sources
+also selects `custom.regex`: the Python manager reports the six Git requirements as
+`invalid-value`, and only the seven custom GitHub-tag lookups can verify them. The driver
+prints the added manager before scanning. Other explicit manager lists retain their exact
+scope. To spell out the same selection, use `--managers pep621,custom.regex`.
 
 A pin with no annotation at all is a different gap: Renovate never sees it. Most
 of those are slaved to an annotated key (a SHA256, a commit, a URL, MIGraphX to

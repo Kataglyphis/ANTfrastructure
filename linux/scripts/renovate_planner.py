@@ -740,6 +740,9 @@ def _pairlock(root: str, planpath: str, phase: str) -> None:
 MODES = {
     "config": lambda a: _print_config(a[0]),
     "managers": lambda a: managers(load_obj(a[0]), a[1]),
+    "pep-git-manager": lambda a: print(
+        "required" if renovate_pep_git.needs_regex_manager(a[0]) else "absent"
+    ),
     "rows": lambda a: _print_rows(a[0]),
     "skipped": lambda a: _print_skipped(a[0], a[1] if len(a) > 1 else None),
     "lockmaint": lambda a: _print_lockmaint(a[0], a[1]),

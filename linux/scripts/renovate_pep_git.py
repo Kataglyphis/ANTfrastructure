@@ -21,6 +21,16 @@ PAIR = {
 MANIFEST = "pyproject.toml"
 
 
+def needs_regex_manager(root: str) -> bool:
+    """Require tag lookups when PEP 621 declares a pinned PyTorch Git source."""
+    path = os.path.join(root, MANIFEST)
+    if not os.path.isfile(path):
+        return False
+    with open(path, encoding="utf-8") as fh:
+        struct = renovate_audit.parse("pep621", fh.read())
+    return any(renovate_audit.decl_pep621_git(struct, repo) for repo in PAIR)
+
+
 @dataclass
 class PairState:
     active: bool = False

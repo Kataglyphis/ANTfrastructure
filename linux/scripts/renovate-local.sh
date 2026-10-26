@@ -295,8 +295,23 @@ probe_manager_config() {
   rm -rf "${tmp}" "${log}"
 }
 
+include_torch_tag_manager() {
+  local needed
+  case ",${MANAGERS}," in *,pep621,*) ;; *) return 0 ;; esac
+  case ",${MANAGERS}," in *,custom.regex,*|*,regex,*) return 0 ;; esac
+  needed="$(rl_py pep-git-manager "${TARGET}")" \
+    || err "cannot inspect pinned Torch Git sources in ${TARGET}/pyproject.toml"
+  case "${needed}" in
+    required) MANAGERS="${MANAGERS},custom.regex" ;;
+    absent) ;;
+    *) err "unrecognized Torch Git manager verdict: ${needed}" ;;
+  esac
+}
+
 detect_managers() {
   if [ -n "${MANAGERS}" ]; then
+    # pep621 marks tagged Torch Git URLs invalid; their regex tag lookup completes the scan.
+    include_torch_tag_manager
     note "managers: ${MANAGERS} -- explicit --managers, tree detection skipped."
     return 0
   fi

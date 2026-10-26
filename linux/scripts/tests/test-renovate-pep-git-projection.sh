@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The pair/rollback fixture cannot prove PyTorch wheel availability or compatibility beyond the approved versions.
+# The fixture cannot prove live GitHub lookups, wheel availability or compatibility beyond approved versions.
 set -u
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/renovate-fixtures.sh"
 
@@ -63,7 +63,7 @@ pin_pair() {
 }
 
 pair_run() {
-  RUN_CONFIG="${PAIR_CONFIG}" _run_stubbed "${PAIR_REPO}" "${PAIR_REPORT}" "$@" --managers pep621,regex
+  RUN_CONFIG="${PAIR_CONFIG}" _run_stubbed "${PAIR_REPO}" "${PAIR_REPORT}" "$@" --managers pep621
 }
 
 pair_preview() {
@@ -86,11 +86,63 @@ pair_pins() {
   t_assert_eq 4 "$(grep -Fc "==${vision_wheel}" "${path}")" "${why} vision wheel pins"
 }
 
-t_case "a complete custom lookup covers the native Git URL skips"
+t_case "pep621 alone adds the regex manager for tagged Torch Git sources"
 pair_run
 t_assert_eq 0 "${RC}" "report-only is complete"
+t_assert_contains "${OUT}" "managers: pep621,custom.regex" "the required tag lookup manager is selected"
 case "${OUT}" in *"NOT CHECKED"*) _unchecked=1 ;; *) _unchecked=0 ;; esac
 t_assert_eq 0 "${_unchecked}" "native invalid-value skips are reconciled"
+
+t_case "an explicitly selected tag lookup manager stays unchanged"
+RUN_CONFIG="${PAIR_CONFIG}" _run_stubbed "${PAIR_REPO}" "${PAIR_REPORT}" --managers pep621,regex
+t_assert_eq 0 "${RC}" "the existing paired selection remains complete"
+t_assert_contains "${OUT}" "managers: pep621,regex -- explicit" "the lookup manager is not duplicated"
+
+t_case "removing the manager append makes the selection proof fail"
+SELECTOR="${WORK}/torch-manager-selector.sh"
+MUTANT_SELECTOR="${WORK}/torch-manager-selector-mutant.sh"
+sed -n '/^include_torch_tag_manager() {/,/^}/p' "${SCRIPT}" > "${SELECTOR}"
+t_assert_ok test -s "${SELECTOR}"
+"${PY_ABS}" - "${SELECTOR}" "${MUTANT_SELECTOR}" <<'PY'
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1]).read_text(encoding="utf-8")
+old = 'required) MANAGERS="${MANAGERS},custom.regex"'
+if source.count(old) != 1:
+    raise SystemExit("manager append mutation has no unique target")
+Path(sys.argv[2]).write_text(source.replace(old, "required) :"), encoding="utf-8")
+PY
+selector_verdict() (
+  rl_py() { printf 'required\n'; }
+  err() { exit 1; }
+  MANAGERS=pep621
+  export TARGET="${PAIR_REPO}"
+  # shellcheck disable=SC1090
+  source "$1"
+  include_torch_tag_manager
+  [ "${MANAGERS}" = pep621,custom.regex ]
+)
+selector_verdict "${SELECTOR}"
+t_assert_eq 0 "$?" "the copied selector passes its control"
+selector_verdict "${MUTANT_SELECTOR}"
+t_assert_eq 1 "$?" "the disabled append fails the same selection check"
+
+t_case "pep621 alone keeps its exact scope without tagged Torch Git sources"
+NO_PAIR_REPO="$(_repo pep-git-no-pair)"
+cat > "${NO_PAIR_REPO}/pyproject.toml" <<'TOML'
+[project]
+name = "fixture"
+version = "0.1.0"
+dependencies = ["example @ git+https://github.com/example/example.git@v1.0.0"]
+# "torch @ git+https://github.com/pytorch/pytorch.git@v2.14.1"
+TOML
+_commit "${NO_PAIR_REPO}"
+NO_PAIR_REPORT="${WORK}/pep-git-no-pair.json"
+printf '%s\n' '{"repositories":{"local":{"packageFiles":{"pep621":[{"packageFile":"pyproject.toml","deps":[]}]}}}}' > "${NO_PAIR_REPORT}"
+RUN_CONFIG="${PAIR_CONFIG}" _run_stubbed "${NO_PAIR_REPO}" "${NO_PAIR_REPORT}" --managers pep621
+t_assert_eq 0 "${RC}" "unrelated Git source has no paired lookup requirement"
+t_assert_contains "${OUT}" "managers: pep621 -- explicit" "the explicit manager list stays unchanged"
 
 t_case "dry-run plans all four Git tags, three vision tags and nine wheel pins"
 pair_preview 0 "the accepted pair can be applied"

@@ -15,6 +15,9 @@
 
 ## 2026-10-26 — Renovate submodule updates
 
+- Include Torch/vision Git-tag lookups when a scoped `pep621` Renovate run selects their
+  Python manifest, so valid pinned sources no longer appear as unchecked dependencies.
+- Clarify why TorchVision stays in the image and correct stale release examples beside the pins.
 - Return explicitly from both arms of the copied Renovate apply probe so consumer
   trailing-conditional ratchets pass; prove a planted final test fails in the fixture.
 - Split copied hub bootstrap checks and rollback into small helpers so consumer complexity gates

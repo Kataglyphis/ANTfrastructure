@@ -1304,7 +1304,8 @@ The rules; the mechanism is documented once in
   caller before any apply. Forks and archives are outside this mode; the older sibling-only fleet
   remains available for offline work.
 - **A complete Renovate result includes custom regex managers and successful lookups.** The
-  default manager set includes `custom.regex`; an explicit `--managers` remains exact. Live runs
+  default manager set includes `custom.regex`; an explicit `--managers` remains exact except that
+  `pep621` adds `custom.regex` when the Python manifest has tagged Torch/vision Git sources. Live runs
   require a GitHub token, resolved by the shared driver, and any NOT CHECKED dependency makes the
   report or apply fail before writing. Only source-proved non-version inputs are DESIGN; failed
   lookups, invalid config and unreconciled tagged direct Git pins remain fatal. OrchestrANT's
