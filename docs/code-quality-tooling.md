@@ -3066,6 +3066,11 @@ are joined, and that shape is now a finding on its own, so the join is proven
 instead by `out="$(a \\` + `&& b)"` — a bare `&&` list read alone, an assignment
 once joined.
 
+`test-renovate-template-bootstrap.sh` also checks the copied bootstrap at a
+consumer root. Its clean control must pass this gate, and a planted function
+ending in a conditional test must fail. This covers templates that the hub's
+own tracked-source scan does not grade as consumer files.
+
 Cost: 0.49s over the whole tree, next to `dead-functions` at 0.50s and
 `code-complexity` at 0.66s, both already in the hook's fast tier.
 

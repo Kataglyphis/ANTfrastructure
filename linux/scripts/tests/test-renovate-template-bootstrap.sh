@@ -62,6 +62,19 @@ complexity_output="$(python3 "${_T_SCRIPTS}/verify_code_complexity.py" --root "$
 t_assert_eq 1 "${complexity_rc}"
 t_assert_contains "${complexity_output}" "antfrastructure_complexity_mutant:cc"
 
+t_case "a copied bootstrap has no trailing conditional return"
+repo="$(make_consumer trailing_conditional)"
+t_assert_rc 0 python3 "${_T_SCRIPTS}/verify_trailing_conditional.py" --root "${repo}"
+cat >> "${repo}/scripts/linux/lib/antfrastructure.sh" <<'SH'
+antfrastructure_trailing_mutant() {
+  [ "${1:-}" = yes ]
+}
+SH
+trailing_rc=0
+trailing_output="$(python3 "${_T_SCRIPTS}/verify_trailing_conditional.py" --root "${repo}" 2>&1)" || trailing_rc=$?
+t_assert_eq 1 "${trailing_rc}"
+t_assert_contains "${trailing_output}" "antfrastructure_trailing_mutant"
+
 t_case "report and dry-run refuse an unavailable hub without cloning it"
 repo="$(make_consumer read_only)"
 t_assert_fails run_wrapper "${repo}"

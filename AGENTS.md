@@ -122,6 +122,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; the local driver also requires `renovate-node.sh` and `renovate-submodules.sh`. Preserve their distinct dry-run policies and nonempty-list advice.
    Copied `antfrastructure.sh` carries `renovate-git-mode.sh` beside it; the hub driver imports the same canonical selector before handling a Windows-authored WSL checkout.
    Its bootstrap helpers must fit the consumer's 15-path complexity limit; the copied-template fixture measures that limit and proves a complex mutant fails.
+   The same fixture runs the consumer trailing-conditional gate and must reject a planted final test.
    Renovate planner companions belong in the strict ty and ANN001/ANN201 scopes; the isolated type fixture must detect their removal.
    Gradle wrapper updates change only the version in one distribution URL; duplicate properties and checksum-pinned archives refuse before writing.
    Shared harness mutation suites stay host-portable; native batch execution remains in the separately discovered Windows suite.

@@ -15,6 +15,8 @@
 
 ## 2026-10-26 — Renovate submodule updates
 
+- Return explicitly from both arms of the copied Renovate apply probe so consumer
+  trailing-conditional ratchets pass; prove a planted final test fails in the fixture.
 - Split copied hub bootstrap checks and rollback into small helpers so consumer complexity gates
   pass, and prove the copied fixture rejects a deliberately complex mutant.
 - Resolve the copied Git mode companion through each consumer's script directory in ShellCheck.
