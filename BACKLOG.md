@@ -416,7 +416,7 @@ owner carries the breakage that costs.
 ## Open — Linux image (all arches)
 
 - [ ] **CON163 — the foreign-arch Vulkan SDK build runs without a compiler cache** [M, ★★★]. Found on the
-      2026-10-26 chain: `sdk-arm64` and `sdk-riscv64` each spent over 37 min in the `sdk-dependencies` RUN
+      2026-10-26 chain: `sdk-arm64` spent 4712 s (79 min), and `sdk-riscv64` as long, in the `sdk-dependencies` RUN
       (`Dockerfile.sdk`), building the Vulkan components from source, while `sdk-amd64`'s longest step took 342 s.
       That RUN mounts only the apt caches and a tmpfs, and `02-toolchain/vulkan.sh`'s cross configure passes no
       compiler launcher, so every compile is a miss. Work: route the configure through `compiler_cache_launcher()`
