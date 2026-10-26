@@ -9,14 +9,12 @@ for _sve in /opt/scripts/core/load-versions-env.sh \
   if [ -f "${_sve}" ]; then
     # shellcheck disable=SC1090
     source "${_sve}"
-    for _vef in /opt/scripts/core/versions.env \
-                "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/versions.env"; do
-      [ -f "${_vef}" ] && { load_versions_env "${_vef}"; break; }
-    done
+    # versions.env sits beside its loader in both layouts.
+    [ ! -f "${_sve%/*}/versions.env" ] || load_versions_env "${_sve%/*}/versions.env"
     break
   fi
 done
-unset _sve _vef
+unset _sve
 : "${GCC_VERSION:=16.2.0}"
 : "${LLVM_RELEASE:=23.1.3}"   # was 22.1.8 — a whole MAJOR stale, uncovered by any gate
 : "${PYTHON_VERSION:?versions.env carries PYTHON_VERSION; no fallback, so an upgrade is one line}"

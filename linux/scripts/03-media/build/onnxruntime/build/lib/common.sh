@@ -291,6 +291,7 @@ run_onnx_native_build() {
     fi
     exit 1
   fi
+  cmake_assert_compiler_cache_pin "${build_dir}/${config}" "${_ort_launcher:-}" || exit 1
 }
 
 collect_onnx_native_wheels() {
@@ -607,15 +608,14 @@ append_onnx_ccache_build_args() {
       # The resolved launcher may be sccache, so ccache is only the fallback.
       _ort_launcher=""
       _onnx_compiler_cache_launcher _ort_launcher ccache
-      build_args_ref+=(
-        --cmake_extra_defines
-        "CMAKE_C_COMPILER_LAUNCHER=${_ort_launcher}"
-        "CMAKE_CXX_COMPILER_LAUNCHER=${_ort_launcher}"
-      )
       info "Using ${_ort_launcher} for faster compilation (via cmake_extra_defines)"
     else
+      _ort_launcher="${CMAKE_CXX_COMPILER_LAUNCHER:-${CMAKE_C_COMPILER_LAUNCHER}}"
       info "ccache already configured via environment (CMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER})"
     fi
+    # The environment alone loses to pthreadpool's FORCEd cache entry, so the launcher always travels as a define.
+    build_args_ref+=(--cmake_extra_defines)
+    append_cmake_compiler_cache_pin build_args_ref "${_ort_launcher}" ""
   fi
 }
 

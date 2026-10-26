@@ -44,7 +44,8 @@ t_assert_eq cores "$(_torch_select_max_jobs)"
 t_case "common.sh remains the single owner of parallelism loading"
 t_assert_contains "$(cat "${TESTS_DIR}/../01-core/common.sh")" \
     "[ -f \"\${_COMMON_SH_DIR}/parallelism.sh\" ] && source \"\${_COMMON_SH_DIR}/parallelism.sh\""
-t_assert_contains "$(cat "$WHEELHOUSE")" '"/opt/scripts/core/common.sh"'
+t_assert_contains "$(cat "$WHEELHOUSE")" 'for _core_leaf in common.sh '
+t_assert_contains "$(cat "$WHEELHOUSE")" '"/opt/scripts/core/${_core_leaf}"'
 t_assert_eq 0 "$(grep -c 'source /opt/scripts/core/parallelism.sh' "$WHEELHOUSE" || true)"
 
 t_case "Wheelhouse loads the shared Torch source pin resolver"

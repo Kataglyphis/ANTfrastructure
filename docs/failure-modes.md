@@ -85,6 +85,7 @@ Two neighbours, so you land on the right page:
 - [A push leaves the repo bare: `core.bare and core.worktree do not make sense`](#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense)
 - [A cross-built Rust tool links the build host's libbz2](#a-cross-built-rust-tool-links-the-build-hosts-libbz2)
 - [HailoRT's configure is slow while the cache looks healthy](#hailorts-configure-is-slow-while-the-cache-looks-healthy)
+- [`Using ccache: /usr/bin/ccache` in a build that should use sccache](#using-ccache-usrbinccache-in-a-build-that-should-use-sccache)
 - [`import hailo_platform` fails: `_pyhailort` is a 4 KB module](#import-hailo_platform-fails-_pyhailort-is-a-4-kb-module)
 - [`cmake --list-presets`: `Unrecognized "version" field`](#cmake---list-presets-unrecognized-version-field)
 - [`set: pipefail\r: invalid option name`](#set-pipefailr-invalid-option-name)
@@ -1486,6 +1487,22 @@ build the cache did not reach. `HAILO_NESTED_CACHE=off` is the build as it was
 before 2026-09-24. Run the probe in a fresh container, or give each user its own
 `SCCACHE_ERROR_LOG`.
 [The carrier and its gate](hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches).
+
+### `Using ccache: /usr/bin/ccache` in a build that should use sccache
+
+**Symptom.** A CMake step prints `-- Using ccache: /usr/bin/ccache` while the log says
+`[CACHE] CMAKE_C_COMPILER_LAUNCHER=/opt/scripts/core/sccache-launcher.sh`, and the step's
+`sccache-stats|` line counts far fewer requests than it compiled. Since 2026-10-26 the build
+stops instead: `ERROR: [CACHE] <build dir>: CMAKE_CXX_COMPILER_LAUNCHER is /usr/bin/ccache, not
+/opt/scripts/core/sccache-launcher.sh; a subproject replaced the compiler cache`.
+
+**Cause.** A fetched subproject (pthreadpool and XNNPACK, under ONNX Runtime, LiteRT and
+PyTorch) finds ccache itself and FORCEs it into the launcher cache entries, which beats both the
+environment and a `-D` launcher.
+
+**Fix.** Pass the configure `append_cmake_compiler_cache_pin`'s defines, which add
+`CCACHE_BINARY`, and gate it with `cmake_assert_compiler_cache_pin`.
+[The trap and the gate](build-cache-tiers.md#a-subproject-that-forces-its-own-launcher).
 
 ### `import hailo_platform` fails: `_pyhailort` is a 4 KB module
 

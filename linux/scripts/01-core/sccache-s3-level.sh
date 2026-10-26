@@ -85,33 +85,60 @@ sccache_start_server() {
   sccache --start-server >/dev/null 2>&1 || true
 }
 
-# Echoes the uploads still pending (the most any slower level lags level 0), or nothing without a chain.
+# <python>: runs it on the server's JSON stats, with `s` bound to their "stats" object.
+_sccache_stats_json() {
+  sccache --show-stats --stats-format json 2>/dev/null \
+    | python3 -c $'import json, sys\ns = json.load(sys.stdin).get("stats") or {}\n'"$1" 2>/dev/null
+}
+
+# Echoes the uploads still pending (the most any slower level lags level 0), the failed ones, and a tally; nothing without a chain.
 _sccache_s3_pending() {
-  sccache --show-stats --stats-format json 2>/dev/null | python3 -c '
-import json, sys
-levels = (json.load(sys.stdin).get("stats") or {}).get("multi_level") or []
+  _sccache_stats_json '
+levels = s.get("multi_level") or []
 if len(levels) >= 2:
     l0 = levels[0]["writes"]
     print(max(l0 - l["writes"] - l["write_failures"] for l in levels[1:]),
+          sum(l["write_failures"] for l in levels[1:]),
           "; ".join("%s: %d written, %d failed" % (l["name"], l["writes"], l["write_failures"]) for l in levels[1:]),
           "of", l0)
-' 2>/dev/null
+'
+}
+
+# One line of the server's compile totals, so every sccache RUN's log measures whether its compiles reached the cache.
+_sccache_stats_line() {
+  _sccache_stats_json '
+def n(key):
+    v = s.get(key) or 0
+    return sum((v.get("counts") or {}).values()) if isinstance(v, dict) else int(v)
+print("sccache-stats| %d requests, %d hits, %d misses, %d errors, %d not cacheable"
+      % (n("compile_requests"), n("cache_hits"), n("cache_misses"), n("cache_errors"),
+         n("requests_not_cacheable") + n("non_cacheable_compilations")))
+' >&2 || true
+}
+
+# The server log's last level or S3 lines, since the drain's tally only counts failed writes.
+_sccache_s3_failure_reason() {
+  local log="${SCCACHE_ERROR_LOG:-/tmp/sccache.log}" lines
+  lines="$(grep -iE -e 's3|level|upload|write' "${log}" 2>/dev/null | tail -n 5 || true)"
+  printf 'sccache-drain| failed writes; %s says:\n%s\n' "${log}" "${lines:-nothing about levels or S3}" >&2
 }
 
 # [timeout-s]: the RUN's end kills the server and drops its background uploads, so wait for them first.
 sccache_s3_drain() {
-  local limit="${1:-${SCCACHE_S3_DRAIN_TIMEOUT:-600}}" start now report=-30 pending tally
+  local limit="${1:-${SCCACHE_S3_DRAIN_TIMEOUT:-600}}" start now report=-30 pending failed tally
   : "${SCCACHE_SERVER_UDS:=/tmp/sccache-$(id -u).sock}"
   export SCCACHE_SERVER_UDS
   # Asking a server that is not there would start one.
   [ -S "${SCCACHE_SERVER_UDS}" ] && command -v sccache >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1 || return 0
+  _sccache_stats_line
   start="$(date +%s)"
   while :; do
-    read -r pending tally < <(_sccache_s3_pending) || true
+    read -r pending failed tally < <(_sccache_s3_pending) || true
     [ -n "${pending:-}" ] || return 0
     now=$(( $(date +%s) - start ))
     if [ "${pending}" -le 0 ]; then
       printf 'sccache-drain| every upload done after %d s (%s)\n' "${now}" "${tally}" >&2
+      [ "${failed:-0}" -eq 0 ] || _sccache_s3_failure_reason
       return 0
     fi
     if [ "${now}" -ge "${limit}" ]; then

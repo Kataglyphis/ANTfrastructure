@@ -91,6 +91,15 @@ _stop_resolve_target() {
   return 0
 }
 
+# Only the pidfile of the chain just stopped goes; a newer chain may have written its own since.
+_stop_remove_pidfile_if() {
+  local pidfile="$1" target="$2"
+  if [ -f "${pidfile}" ] && [ "$(cat "${pidfile}" 2>/dev/null || true)" = "${target}" ]; then
+    rm -f "${pidfile}" 2>/dev/null || true
+  fi
+  return 0
+}
+
 # Bind usage aliases at the original parser declaration phase.
 _stop_usage() {
   usage

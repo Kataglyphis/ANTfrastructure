@@ -1397,6 +1397,41 @@ all.
 
 ---
 
+## A subproject that forces its own launcher
+
+**Symptom:** a CMake step logs `-- Using ccache: /usr/bin/ccache` although the resolver chose
+sccache, and the drain's `sccache-stats|` counts far fewer requests than the step's
+`Building … object` lines. On the 2026-10-26 chain, ONNX Runtime's arm64 build counted 414
+requests over 2740 compiles and took 104 minutes; LiteRT's showed the same line four times.
+
+**Cause:** pthreadpool and XNNPACK, which ONNX Runtime, LiteRT and PyTorch fetch, run
+`FIND_PROGRAM(CCACHE_BINARY ccache)` and then `SET(CMAKE_<LANG>_COMPILER_LAUNCHER
+"${CCACHE_BINARY}" CACHE STRING "" FORCE)`. The FORCE replaces the launcher in the whole build
+tree's cache, so every target created after that subproject compiles through the distro ccache:
+it never reaches the S3 level, and its hits are not in sccache's numbers. A launcher passed only
+in the environment loses to it, and so does one passed as `-DCMAKE_<LANG>_COMPILER_LAUNCHER`.
+
+**Fix:** `append_cmake_compiler_cache_pin` (`01-core/cmake-cache-linker.sh`) passes the
+resolver's launcher as both launchers and as `CCACHE_BINARY`. With the variable set,
+`find_program` does not search, and the FORCE writes our launcher. `append_cmake_cache_linker_args`
+always pins, even when the launcher is already in the environment. ONNX Runtime's
+`append_onnx_ccache_build_args` pins through `--cmake_extra_defines`, and the riscv64 torch
+wheel pins through `CMAKE_ARGS`.
+
+**The gate:** `cmake_assert_compiler_cache_pin <build-dir> <launcher>` reads `CMakeCache.txt` after
+the configure and fails the build when either launcher differs. ONNX Runtime's
+`run_onnx_native_build`, both LiteRT configures and every foreign-arch Vulkan component call it.
+`tests/test-cmake-compiler-cache-pin.sh` configures pthreadpool's own lines with a stub ccache on
+`PATH`: without `CCACHE_BINARY` the gate fails, with it the gate passes. The suite does not
+compile, so it does not prove that sccache serves the objects; the drain's totals do.
+
+**The Vulkan SDK had a second gap.** The `sdk-dependencies` RUN of `Dockerfile.sdk` had no cache
+mount at all, and `vulkan.sh` gave its cmake runs no launcher, so `sdk-arm64` and `sdk-riscv64`
+compiled 7768 objects in 79 minutes each, every chain. The RUN now carries both cache mounts,
+the S3 secret and the drain. `_vulkan_export_compiler_cache` exports the launcher for
+`./vulkansdk`, which runs its own cmake and reads the launchers from the environment, and
+`_cross_build_sdk_component` pins and gates each target component.
+
 ## The shipped image's cache dirs
 
 `:latest-cross` shipped `CCACHE_DIR=/workspace/.ccache` and
@@ -1684,6 +1719,12 @@ policy `l0`), and the RUN's end kills the server with whatever is still queued. 
 writes, as `Wait-SccacheUploadDrain` does on Windows, and gives up after 600 s
 (`SCCACHE_S3_DRAIN_TIMEOUT`) with a warning; a later build uploads the rest. It always exits
 0, and without a socket it asks nothing, since asking would start a server.
+
+**The drain is also each RUN's measurement** (2026-10-26). It first prints the server's totals,
+`sccache-stats| <n> requests, <n> hits, <n> misses, <n> errors, <n> not cacheable`, so a step
+whose compiles never reached sccache shows a request count far below its compile lines. When a
+level-1 write failed, it prints the last level, S3 or write lines of `SCCACHE_ERROR_LOG`, or says
+the log names no reason; the 2026-10-26 chain logged `3 written, 9 failed of 12` and nothing else.
 
 **What happens when the level is missing:**
 

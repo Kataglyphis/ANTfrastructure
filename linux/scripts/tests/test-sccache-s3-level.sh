@@ -107,25 +107,48 @@ t_assert_contains "$(_drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 20
   "every upload done after 0 s (L1 (s3): 18 written, 2 failed of 20)"
 t_assert_contains "$(_drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 20 0),$(level 'L1 (s3)' 5 0)]}}" 0)" \
   "15 upload(s) still pending after 0 s"
-t_assert_eq "" "$(_drain '{"stats":{"multi_level":null}}')" "a server without a chain has nothing to drain"
+t_assert_eq "sccache-stats| 0 requests, 0 hits, 0 misses, 0 errors, 0 not cacheable" "$(_drain '{"stats":{"multi_level":null}}')" \
+  "a server without a chain has nothing to drain, but still reports its totals"
+
+t_case "the drain reports the RUN's compile totals and names why a write failed"
+_stats='"compile_requests":414,"cache_hits":{"counts":{"C/C++":365}},"cache_misses":{"counts":{"C/C++":12}},"cache_errors":{"counts":{"C/C++":36}},"requests_not_cacheable":1,"non_cacheable_compilations":0'
+t_assert_contains "$(_drain "{\"stats\":{${_stats},\"multi_level\":null}}")" \
+  "sccache-stats| 414 requests, 365 hits, 12 misses, 36 errors, 1 not cacheable"
+printf 'noise\nWARN level L1 (s3): PutObject failed: SlowDown\n' > "${WORK}/sccache.log"
+_out="$(SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 12 0),$(level 'L1 (s3)' 3 9)]}}")"
+t_assert_contains "${_out}" "L1 (s3): 3 written, 9 failed of 12"
+t_assert_contains "${_out}" "PutObject failed: SlowDown"
+t_assert_contains "$(SCCACHE_ERROR_LOG="${WORK}/none.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 2 0),$(level 'L1 (s3)' 1 1)]}}")" \
+  "says:
+nothing about levels or S3"
+t_assert_eq 0 "$(SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 2 0),$(level 'L1 (s3)' 2 0)]}}" | grep -c 'failed writes')" \
+  "a clean drain reads no log"
 rm -f "${WORK}/s.sock"
 t_assert_eq "" "$(PATH="${WORK}/bin:${PATH}" SCCACHE_SERVER_UDS="${WORK}/s.sock" bash "${LIB}" drain 2>&1)" "no socket, no server to ask"
 
-t_case "every Dockerfile RUN on the sccache mount carries the secret, the library, and ends in the drain"
+# One pass over every Dockerfile RUN: "drain:" for a sccache RUN short of its secret, library or drain, "mounts:" for a compiling one without both caches.
 bad="$(PYTHONPATH="${TESTS_DIR}" python3 - "${LINUX_DIR}" <<'EOF'
-import glob, os, sys
+import glob, os, re, sys
 from dockerfile_runs import dockerfile_runs
 for f in sorted(glob.glob(os.path.join(sys.argv[1], "Dockerfile.*"))):
-    if f.endswith("Dockerfile.base"):  # base only initialises the caches; nothing there compiles
-        continue
     for s, b in dockerfile_runs(f):
-        if "target=/var/cache/sccache" in b:
+        where = "%s:%d" % (os.path.basename(f), s)
+        # Dockerfile.base only initialises the caches; nothing there compiles.
+        if "target=/var/cache/sccache" in b and not f.endswith("Dockerfile.base"):
             lib = "source=linux/scripts/01-core," in b or "source=linux/scripts/01-core/sccache-s3-level.sh," in b
             if not (lib and "type=secret,id=sccache_s3,required=false" in b and b.rstrip().endswith("sccache-s3-level.sh drain")):
-                print("%s:%d" % (os.path.basename(f), s))
+                print("drain:" + where)
+        if re.search(r"setup-dependencies\.sh\b[^;&|]*\b(vulkan|dockerfile-gcc|dockerfile-llvm|target-clang)\b", b):
+            if not ("target=/var/cache/sccache" in b and "target=/var/cache/ccache" in b):
+                print("mounts:" + where)
 EOF
 )"
-t_assert_eq "" "${bad}" "RUNs missing the secret mount, the library or the closing drain"
+
+t_case "every Dockerfile RUN on the sccache mount carries the secret, the library, and ends in the drain"
+t_assert_eq "" "$(grep '^drain:' <<<"${bad}" || true)" "RUNs missing the secret mount, the library or the closing drain"
+
+t_case "every RUN whose setup-dependencies.sh command compiles mounts both compiler caches"
+t_assert_eq "" "$(grep '^mounts:' <<<"${bad}" || true)" "compiling RUNs without the compiler-cache mounts"
 
 t_case "the runtime lane's wrapper build hands the secret over, since Dockerfile.torch mounts it"
 # Lost 2026-10-21: two runs compiled HailoRT with 0 hits, 32 min a run on arm64 under QEMU.

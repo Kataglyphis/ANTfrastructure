@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-26 — Every Linux compile goes through sccache
+
+- ONNX Runtime and LiteRT compiled most of their objects through the distro ccache: pthreadpool and XNNPACK FORCE `CCACHE_BINARY` into CMake's launchers, which beat the sccache launcher in the environment (ONNX Runtime's arm64 build: 414 sccache requests over 2740 compiles, 104 min). `append_cmake_compiler_cache_pin` passes the launcher as `CCACHE_BINARY` too, `append_cmake_cache_linker_args` and ONNX Runtime's build args always pin, the riscv64 torch wheel pins through `CMAKE_ARGS`, and `cmake_assert_compiler_cache_pin` fails ONNX Runtime's, both LiteRT and every Vulkan component's build whose launcher was replaced ([docs](docs/build-cache-tiers.md#a-subproject-that-forces-its-own-launcher)).
+- The foreign-arch Vulkan SDK build was uncached: `sdk-arm64` and `sdk-riscv64` compiled 7768 objects in 79 min each. Its RUN now has both cache mounts, the S3 secret and the drain; `vulkan.sh` exports the launcher for `./vulkansdk` and pins it on each target component.
+- Each sccache RUN's drain prints `sccache-stats|` (requests, hits, misses, errors), and names the server log's reason when an S3 write failed.
+- `stop-cross-chain.sh` exited 1 after a clean stop, since a refactor had dropped `_stop_remove_pidfile_if`; it is back, with an end-to-end case in `test-chain-lifecycle.sh`.
+
 ## 2026-10-26 — Home Assistant's cat cam config is tracked
 
 - The three OmniAccelerANT cat cams' automations, `rest` sensors, counters and the **Katze**

@@ -744,4 +744,15 @@ t_assert_contains "$(sed -n '/^_chain_stage_disk_guard() {$/,/^}$/p' "${CHAIN_SH
 t_assert_contains "$(sed -n '/^_chain_stage_disk_guard() {$/,/^}$/p' "${CHAIN_SH}")" \
   "_chain_runtime_lane_need_gb" "the guard must raise the threshold to the lane need"
 
+t_case "stop-cross-chain.sh stops the pidfile's chain, exits 0 and removes that pidfile"
+_stop_pf="$(mktemp)"
+sleep 300 & _stop_pid=$!
+printf '%s\n' "${_stop_pid}" > "${_stop_pf}"
+_stop_out="$(CROSS_CHAIN_PIDFILE="${_stop_pf}" bash "${TESTS_DIR}/../stop-cross-chain.sh" --timeout 2 2>&1)"; _stop_rc=$?
+t_assert_eq "0" "${_stop_rc}" "${_stop_out}"
+t_assert_rc 1 kill -0 "${_stop_pid}"
+t_assert_rc 1 test -e "${_stop_pf}"
+wait "${_stop_pid}" 2>/dev/null
+rm -f "${_stop_pf}"
+
 t_summary

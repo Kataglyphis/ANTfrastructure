@@ -6,6 +6,7 @@ source "${TESTS_DIR}/compiler-tool-fixture.sh"
 t_compiler_tool_fixture_init ffmpeg-probe-framework.sh "$@"
 t_fn_src "$ORT" append_onnx_ccache_build_args > "$WORK/ort-functions.sh"
 t_fn_src "$ORT" _onnx_compiler_cache_launcher >> "$WORK/ort-functions.sh"
+t_fn_src "${TESTS_DIR}/../01-core/cmake-cache-linker.sh" append_cmake_compiler_cache_pin >> "$WORK/ort-functions.sh"
 cat > "$WORK/worker.sh" <<'BASH'
 set -u
 harness="$1" contexts="$2" utils="$3" ffmpeg="$4" ort="$5" work="$6" consumer="$7" flag="$8" available="$9"
@@ -86,9 +87,9 @@ _tool_toggle_case() {
     expected_out=$'ARGS:<original>\nENV:unset\nRETURNED:0'
     if [ "$enabled" = 1 ]; then
       if [ -n "$preconfigured" ]; then
-        expected_out="INFO:ccache already configured via environment (CMAKE_C_COMPILER_LAUNCHER=${preconfigured})"$'\n'"${expected_out}"
+        expected_out="INFO:ccache already configured via environment (CMAKE_C_COMPILER_LAUNCHER=${preconfigured})"$'\n'"ARGS:<original><--cmake_extra_defines><CMAKE_C_COMPILER_LAUNCHER=${preconfigured}><CMAKE_CXX_COMPILER_LAUNCHER=${preconfigured}><CCACHE_BINARY=${preconfigured}>"$'\nENV:unset\nRETURNED:0'
       else
-        expected_out=$'INFO:Using sccache-guard for faster compilation (via cmake_extra_defines)\nARGS:<original><--cmake_extra_defines><CMAKE_C_COMPILER_LAUNCHER=sccache-guard><CMAKE_CXX_COMPILER_LAUNCHER=sccache-guard>\nENV:retained\nRETURNED:0'
+        expected_out=$'INFO:Using sccache-guard for faster compilation (via cmake_extra_defines)\nARGS:<original><--cmake_extra_defines><CMAKE_C_COMPILER_LAUNCHER=sccache-guard><CMAKE_CXX_COMPILER_LAUNCHER=sccache-guard><CCACHE_BINARY=sccache-guard>\nENV:retained\nRETURNED:0'
       fi
     fi
   fi

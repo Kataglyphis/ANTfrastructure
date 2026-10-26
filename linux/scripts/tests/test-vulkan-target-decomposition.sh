@@ -7,7 +7,8 @@ VULKAN_SH="${TESTS_DIR}/../02-toolchain/vulkan.sh"
 
 # Only the functions under test: sourcing vulkan.sh sets -euo pipefail and pulls in 01-core.
 _FNS=""
-for _fn in _cross_build_sdk_component \
+for _fn in _vulkan_native_host_link_args \
+           _cross_build_sdk_component \
            _vk_note_attempt \
            _vk_note_success \
            _vk_build_target_component \
@@ -34,6 +35,10 @@ for _fn in _cross_build_sdk_component \
   _FNS="${_FNS}
 ${_src}"
 done
+
+_FNS="${_FNS}
+$(t_fn_src "${TESTS_DIR}/../01-core/cmake-cache-linker.sh" append_cmake_compiler_cache_pin)
+$(t_fn_src "${TESTS_DIR}/../01-core/cmake-cache-linker.sh" cmake_assert_compiler_cache_pin)"
 
 # The real table, not a fixture: a lost row silently stops a component being cross-built.
 t_case "vulkan.sh still defines the _VK_TARGET_COMPONENTS table"
@@ -582,5 +587,45 @@ t_assert_contains "${_swapped}" "during=/host/pkgconfig" "the host build searche
 t_assert_contains "${_swapped}" "sysroot=unset" "a cross sysroot has no meaning for a host tool"
 t_assert_contains "${_swapped}" "after=/cross/aarch64-linux-gnu/pkgconfig" \
   "the target build that follows still needs the cross path"
+
+t_case "a Vulkan component configures with the pinned launcher, and a replaced one stops the build"
+_pin_src="$(t_fn_src "${TESTS_DIR}/../01-core/cmake-cache-linker.sh" append_cmake_compiler_cache_pin)
+$(t_fn_src "${TESTS_DIR}/../01-core/cmake-cache-linker.sh" cmake_assert_compiler_cache_pin)
+$(sed -n '/^_vulkan_native_host_link_args() {/,/^}/p' "${VULKAN_SH}")
+$(sed -n '/^_cross_build_sdk_component() {/,/^}/p' "${VULKAN_SH}")"
+# _component <launcher the configure records>: one component, with a cmake that writes what it was told, or what a FORCE left.
+_component() {
+  CMAKE_CXX_COMPILER_LAUNCHER=/l/sccache-launcher.sh RECORD="$1" bash -c '
+    set -euo pipefail
+    eval "$1"
+    log() { :; }; err() { printf "ERR %s\n" "$*"; exit 9; }
+    compute_jobs() { echo 1; }; build_arch_oci() { echo amd64; }; arch_deb_multiarch_triplet_for() { echo x86_64-linux-gnu; }
+    _xbuild_triplet=aarch64-linux-gnu _xbuild_proc=aarch64 _xbuild_cc=cc _xbuild_cxx=c++ SUDO=""
+    cmake() {
+      if [ "$1" = -S ]; then
+        printf "CONFIGURE %s\n" "$*"; mkdir -p "$4"
+        printf "CMAKE_C_COMPILER_LAUNCHER:STRING=%s\nCMAKE_CXX_COMPILER_LAUNCHER:STRING=%s\n" "${RECORD}" "${RECORD}" > "$4/CMakeCache.txt"
+      fi
+      return 0
+    }
+    _cross_build_sdk_component /src glslang-aarch64 && printf "BUILT\n"' _ "${_pin_src}" 2>&1
+}
+_out="$(_component /l/sccache-launcher.sh)"
+t_assert_contains "${_out}" "-DCCACHE_BINARY=/l/sccache-launcher.sh" "the configure carries the pin"
+t_assert_contains "${_out}" "BUILT"
+_rc=0; _out="$(_component /usr/bin/ccache)" || _rc=$?
+t_assert_eq "9" "${_rc}" "${_out}"
+t_assert_contains "${_out}" "ERR glslang-aarch64: the Vulkan component does not compile through /l/sccache-launcher.sh"
+
+t_case "the host SDK build exports the resolved launcher before ./vulkansdk runs"
+_cross_src="$(sed -n '/^_build_vulkan_sdk_cross() {/,/^}/p' "${VULKAN_SH}")"
+t_assert_contains "${_cross_src}" "_vulkan_export_compiler_cache
+    _vulkan_run_vulkansdk" "./vulkansdk's own cmake reads the launchers from the environment"
+_exported="$(bash -c '
+  '"$(sed -n '/^_vulkan_export_compiler_cache() {/,/^}/p' "${VULKAN_SH}")"'
+  log() { :; }; warn() { printf "WARN %s\n" "$*"; }
+  compiler_cache_launcher_env() { :; }; compiler_cache_launcher() { printf /l/sccache-launcher.sh; }
+  _vulkan_export_compiler_cache; printf "%s|%s\n" "${CMAKE_C_COMPILER_LAUNCHER}" "${CMAKE_CXX_COMPILER_LAUNCHER}"' 2>&1)"
+t_assert_eq "/l/sccache-launcher.sh|/l/sccache-launcher.sh" "${_exported}"
 
 t_summary

@@ -281,6 +281,7 @@ _twin_args() (
     eval "$(t_fn_src "${_wh}" "${_f}" 2>/dev/null)"
   done
   eval "$(t_fn_src "${SCRIPTS}/01-core/common.sh" shell_quote_args)"
+  eval "$(t_fn_src "${SCRIPTS}/01-core/cmake-cache-linker.sh" append_cmake_compiler_cache_pin)"
   warn() { :; }; log() { :; }; resolve_cross_gcc_tool() { return 1; }; cross_target_qemu_runner() { return 1; }
   compiler_cache_launcher_env() { :; }; compiler_cache_launcher() { echo ccache; }
   cross_target_python_include_dir() { echo /gil/include/python3.14; }
@@ -302,7 +303,7 @@ for _k in PYTHON_INCLUDE_DIR Python_INCLUDE_DIR Python3_INCLUDE_DIR; do
   t_assert_contains "${_out}" "-D${_k}=/ft/include/python3.14t"
 done
 t_assert_contains "${_out}" "-U _Python\\* -U Python_NumPy\\* -U Python3_NumPy\\*" "FindPython's cached GIL results are dropped"
-t_assert_contains "${_out}" "-DBLAS=OpenBLAS -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache" "the GIL pass's other arguments are kept"
+t_assert_contains "${_out}" "-DBLAS=OpenBLAS -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCCACHE_BINARY=ccache" "the GIL pass's other arguments are kept"
 
 t_case "ft_twin_start: 0 with a venv for a twin, 1 for a package without one, 2 for an error"
 _start() { PATH="${_work}/bin:${PATH}" PYTHON_FT_PREFIX="${_work}/gilpy" bash -c 'source "$1"; shift; ft_twin_start "$@"' _ "${LIB}" "$@"; }

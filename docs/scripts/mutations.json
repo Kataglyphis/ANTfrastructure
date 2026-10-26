@@ -29239,5 +29239,117 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-ansible-run-status.sh",
   "why": "the backup's notes are what Home Assistant's Backup view shows"
+ },
+ {
+  "id": "lib.stop-chain-removes-its-pidfile",
+  "target": "linux/scripts/stop-cross-chain.sh",
+  "find": "_stop_remove_pidfile_if() {",
+  "replace": "_stop_remove_pidfile_if_gone() {",
+  "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+  "why": "a stopped chain's script must exit 0 and drop its pidfile, or the next start sees a stale chain"
+ },
+ {
+  "id": "lib.cmake-pin-carries-ccache-binary",
+  "target": "linux/scripts/01-core/cmake-cache-linker.sh",
+  "find": "for name in CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER CCACHE_BINARY; do",
+  "replace": "for name in CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER; do",
+  "test": "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh",
+  "why": "without CCACHE_BINARY pthreadpool's FORCE puts the distro ccache under most of ONNX Runtime and LiteRT"
+ },
+ {
+  "id": "lib.cmake-pin-gate-compares-launchers",
+  "target": "linux/scripts/01-core/cmake-cache-linker.sh",
+  "find": "if [ \"${got}\" != \"${want}\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh",
+  "why": "a gate that never compares passes a build whose launcher a subproject replaced"
+ },
+ {
+  "id": "lib.cmake-linker-pins-env-launcher",
+  "target": "linux/scripts/01-core/cmake-cache-linker.sh",
+  "find": "_accla_launcher=\"${CMAKE_CXX_COMPILER_LAUNCHER:-${CMAKE_C_COMPILER_LAUNCHER}}\"",
+  "replace": "_accla_launcher=\"\"",
+  "test": "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh",
+  "why": "a launcher that only travels in the environment loses to a FORCEd cache entry"
+ },
+ {
+  "id": "lib.ort-ccache-args-pin",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "append_cmake_compiler_cache_pin build_args_ref \"${_ort_launcher}\" \"\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-compiler-tool-toggles.sh",
+  "why": "ONNX Runtime's build.py must receive the launcher and CCACHE_BINARY as defines"
+ },
+ {
+  "id": "lib.ort-native-build-gates-pin",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "  cmake_assert_compiler_cache_pin \"${build_dir}/${config}\" \"${_ort_launcher:-}\" || exit 1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh",
+  "why": "an ONNX Runtime build that bypassed sccache must fail, not ship after 104 minutes uncached"
+ },
+ {
+  "id": "lib.litert-gates-cache-pin",
+  "target": "linux/scripts/03-media/build/litert/build-litert.sh",
+  "find": "cmake_assert_compiler_cache_pin \"${c_api_build}\" \"${CMAKE_COMPILER_CACHE_PIN:-}\"",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh",
+  "why": "the TFLite C API build fetches pthreadpool too, so its configure needs the gate"
+ },
+ {
+  "id": "lib.vulkan-component-pins-launcher",
+  "target": "linux/scripts/02-toolchain/vulkan.sh",
+  "find": "append_cmake_compiler_cache_pin cache_pin \"${launcher}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+  "why": "the foreign-arch Vulkan components compiled 7768 objects uncached for 79 minutes per arch"
+ },
+ {
+  "id": "lib.vulkan-component-gates-pin",
+  "target": "linux/scripts/02-toolchain/vulkan.sh",
+  "find": "cmake_assert_compiler_cache_pin \"${build_dir}\" \"${launcher}\" || err",
+  "replace": "true || err",
+  "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+  "why": "a Vulkan component whose launcher was replaced must stop the sdk stage"
+ },
+ {
+  "id": "lib.vulkan-exports-launcher-for-vulkansdk",
+  "target": "linux/scripts/02-toolchain/vulkan.sh",
+  "find": "  export CMAKE_C_COMPILER_LAUNCHER=\"${launcher}\" CMAKE_CXX_COMPILER_LAUNCHER=\"${launcher}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+  "why": "./vulkansdk's own cmake runs see no launcher unless the environment carries it"
+ },
+ {
+  "id": "lib.torch-cmake-args-pin",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "append_cmake_compiler_cache_pin _tca_ref \"${_cc_l}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "torch's vendored pthreadpool FORCEs the launcher too, so its CMAKE_ARGS carry the pin"
+ },
+ {
+  "id": "lib.sccache-drain-prints-stats",
+  "target": "linux/scripts/01-core/sccache-s3-level.sh",
+  "find": "  _sccache_stats_line\n  start=",
+  "replace": "  start=",
+  "test": "bash linux/scripts/tests/test-sccache-s3-level.sh",
+  "why": "without per-RUN totals a bypassed cache is invisible, as ONNX Runtime's was"
+ },
+ {
+  "id": "lib.sccache-drain-names-failed-writes",
+  "target": "linux/scripts/01-core/sccache-s3-level.sh",
+  "find": "[ \"${failed:-0}\" -eq 0 ] || _sccache_s3_failure_reason",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-sccache-s3-level.sh",
+  "why": "a drain that only counts failed S3 writes left 9 of 12 failures unexplained"
+ },
+ {
+  "id": "lib.sdk-vulkan-run-mounts-caches",
+  "target": "linux/Dockerfile.sdk",
+  "find": "    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-s3-level.sh",
+  "replace": "    --mount=type=bind,source=linux/scripts/01-core/sccache-s3-level.sh",
+  "test": "bash linux/scripts/tests/test-sccache-s3-level.sh",
+  "why": "the Vulkan SDK RUN had no cache mount, so its sccache wrote into a layer that every chain throws away"
  }
 ]

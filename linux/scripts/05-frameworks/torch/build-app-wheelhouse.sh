@@ -6,29 +6,19 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
     source /opt/scripts/core/cross-env.sh
 fi
 
-# shell_quote_args lives in common.sh, which cross-env.sh does not source.
-for _common in \
-    "/opt/scripts/core/common.sh" \
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../01-core/common.sh"; do
-    if [ -f "${_common}" ]; then
-        # shellcheck disable=SC1090,SC1091
-        source "${_common}"
-        break
-    fi
+# common.sh brings shell_quote_args, which cross-env.sh does not source; top level, so their declarations stay global.
+for _core_leaf in common.sh qnn-sdk.sh cmake-cache-linker.sh; do
+    for _core_file in \
+        "/opt/scripts/core/${_core_leaf}" \
+        "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../01-core/${_core_leaf}"; do
+        if [ -f "${_core_file}" ]; then
+            # shellcheck disable=SC1090,SC1091
+            source "${_core_file}"
+            break
+        fi
+    done
 done
-unset _common
-
-# QNN SDK helpers (backlog QNN-LINUX): same dual-layout source as common.sh.
-for _qnnmod in \
-    "/opt/scripts/core/qnn-sdk.sh" \
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../01-core/qnn-sdk.sh"; do
-    if [ -f "${_qnnmod}" ]; then
-        # shellcheck disable=SC1090,SC1091
-        source "${_qnnmod}"
-        break
-    fi
-done
-unset _qnnmod
+unset _core_leaf _core_file
 
 # The free-threaded twin helpers sit two levels up in the repo and in the RUN's per-file mount alike; a missing one fails the twin pass.
 _ftw="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../03-media/free-threaded-wheels.sh"
@@ -599,9 +589,7 @@ _torch_cmake_args() {
     # Cache the multi-hour aten compile; without a launcher the build runs plain.
     compiler_cache_launcher_env 2>/dev/null || true
     _cc_l="$(compiler_cache_launcher 2>/dev/null || true)"
-    if [ -n "${_cc_l}" ]; then
-        _tca_ref+=("-DCMAKE_C_COMPILER_LAUNCHER=${_cc_l}" "-DCMAKE_CXX_COMPILER_LAUNCHER=${_cc_l}")
-    fi
+    append_cmake_compiler_cache_pin _tca_ref "${_cc_l}"
     return 0
 }
 

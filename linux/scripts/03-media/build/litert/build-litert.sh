@@ -246,6 +246,8 @@ configure_litert() {
 
     info "LiteRT CMake args: ${cmake_args[*]}"
     cmake --preset "${preset}" "${cmake_args[@]}"
+    cmake_assert_compiler_cache_pin "${LITERT_SRC}/litert/$(litert_build_subdir)" "${CMAKE_COMPILER_CACHE_PIN:-}" \
+        || err "LiteRT does not compile through the compiler cache it was given"
 }
 
 litert_build_subdir() {
@@ -362,6 +364,8 @@ build_tflite_c_api() {
         err This is required for GStreamer tflite plugin support.
         err Check the cmake output above for details.
     fi
+    cmake_assert_compiler_cache_pin "${c_api_build}" "${CMAKE_COMPILER_CACHE_PIN:-}" \
+        || err "the TFLite C API does not compile through the compiler cache it was given"
 
     info Building TFLite C API...
     run_cmake_build_with_fallback . "${NPROC}" || err "TFLite C API build failed!"

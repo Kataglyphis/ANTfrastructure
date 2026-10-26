@@ -415,24 +415,22 @@ owner carries the breakage that costs.
 
 ## Open — Linux image (all arches)
 
-- [ ] **CON164 — ONNX Runtime's media build mostly bypasses sccache, and the S3 level drops uploads** [M, ★★★,
-      investigate first]. Found on the 2026-10-26 chain, `media-arm64.log` step `onnxruntime 2/9` (6266 s): 2740
-      `Building … object` lines, but sccache counted 414 compile requests (365 hits, 12 misses, 36 cache errors).
-      CMake prints `-- Using ccache: /usr/bin/ccache` twice in that step, so a fetched subproject detects the
-      distro ccache on its own. The step's drain logged `L1 (s3): 3 written, 9 failed of 12`, and a second step
-      `6 failed of 9`, with no reason in the log. Work: find which targets compile outside the resolver and route
-      them through `compiler_cache_launcher()`; log why an S3 write fails. Done when that step's request count
-      matches its compile lines, its hit rate on a warm second chain is above 90 %, and every drain shows
-      0 failed.
-- [ ] **CON163 — the foreign-arch Vulkan SDK build runs without a compiler cache** [M, ★★★]. Found on the
-      2026-10-26 chain: `sdk-arm64` spent 4712 s (79 min), and `sdk-riscv64` as long, in the `sdk-dependencies` RUN
-      (`Dockerfile.sdk`), building the Vulkan components from source, while `sdk-amd64`'s longest step took 342 s.
-      That RUN mounts only the apt caches and a tmpfs, and `02-toolchain/vulkan.sh`'s cross configure passes no
-      compiler launcher, so every compile is a miss. Work: route the configure through `compiler_cache_launcher()`
-      (or `append_cmake_cache_linker_args`), add both cache mounts to that RUN, and print sccache stats at its end.
-      This re-keys the sdk stage, so it rides a planned rebuild. Done when a second chain's `sdk-arm64` and
-      `sdk-riscv64` log a high hit rate and that step drops below 10 min.
-
+- [ ] **CON163 — every Linux compile reaches sccache; prove it on a chain** [S, ★★★]. In source since 2026-10-26
+      ([`build-cache-tiers.md`](docs/build-cache-tiers.md#a-subproject-that-forces-its-own-launcher)): the Vulkan
+      SDK RUN mounts both caches and pins its launcher, and ONNX Runtime, LiteRT and the riscv64 torch wheel pin
+      `CCACHE_BINARY` against pthreadpool's FORCE, gated by `cmake_assert_compiler_cache_pin`. Done when a second
+      chain's `sdk-arm64`/`sdk-riscv64` dependency step and ONNX Runtime's `onnxruntime 2/9` step log
+      `sccache-stats|` hits above 90 % of their compiles, and the Vulkan step drops below 10 min.
+- [ ] **CON164 — the S3 level drops uploads** [S, ★★, investigate first]. The 2026-10-26 chain's drains logged
+      `L1 (s3): 3 written, 9 failed of 12` and `6 failed of 9`. Since 2026-10-26 a drain with a failed write prints
+      `SCCACHE_ERROR_LOG`'s level and S3 lines. Work: read them on the next chain and fix the cause. Done when
+      every drain of a chain shows 0 failed.
+- [ ] **CON165 — ONNX Runtime builds with one job under `--parallel-archs`** [S, ★★★]. Found 2026-10-26:
+      `Using JOBS=1` in `media-arm64.log`, since `compute_jobs_with_mem_cap "" 2000` divides RAM by
+      `BUILD_MEM_DIVISOR=18` (3 arches × `PAR_INTRA_STEP_BUDGET=6`). With the cache warm a serial build costs
+      little; cold, it is the 104 min step. Work: measure ONNX Runtime's real peak per job, then size its share
+      ([`build-parallelism-memory-tuning.md`](docs/build-parallelism-memory-tuning.md)). Done when that step
+      logs more than one job and no arch is OOM-killed.
 - [ ] **CON151 — riscv64 builds wasm-pack and flutter_rust_bridge_codegen from source on every run** [M, ★★].
       2026-10-21: the riscv64 wrapper spent about two hours compiling hadolint (Haskell) under QEMU. Owner
       decision 2026-10-26: riscv64 ships no hadolint for now (CI lints on amd64), so that build is gone. Left:

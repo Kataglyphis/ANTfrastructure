@@ -56,6 +56,8 @@ collect_wheels_from_tree() {
   return "${collect_rc}"
 }
 maybe_build_source_wheel() { printf 'fallback <%s> <%s> <%s> <%s>\n' "$@" >> "${WORK}/calls"; }
+# The pin gate has its own suite, test-cmake-compiler-cache-pin.sh.
+cmake_assert_compiler_cache_pin() { return 0; }
 # shellcheck source=/dev/null
 source "${WORK}/${backend}.sh"
 RUNNER

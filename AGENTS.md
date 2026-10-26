@@ -895,6 +895,12 @@ The rules:
    - A build that runs its own compiles under `env -i` is out of the resolver's reach. HailoRT's
      nested protobuf build is the known case: `hailo-build-lib.sh` carries the cache into it, and
      a gate fails a build the cache did not reach.
+   - A CMake build passes `append_cmake_compiler_cache_pin`'s defines and is gated by
+     `cmake_assert_compiler_cache_pin`: pthreadpool and XNNPACK FORCE `CCACHE_BINARY` into the
+     launchers, which beats the environment and a `-D` launcher alike
+     ([`build-cache-tiers.md`](docs/build-cache-tiers.md#a-subproject-that-forces-its-own-launcher)).
+   - Every RUN that compiles carries both cache mounts; its closing drain prints
+     `sccache-stats|`, the number to read before calling a step cached.
    `--ccache` is a flag NAME, not a tool choice. Before a multi-hour run rides on a change here,
    `bash linux/scripts/02-toolchain/probe-sccache.sh` inside the compiler image answers in seconds
    whether a cache was actually consulted, which a successful compile does not.

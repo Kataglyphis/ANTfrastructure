@@ -287,7 +287,7 @@ EOF
 
   # --preserve-env only with sudo: with SUDO empty the shell runs the flag as the command (exit 127).
   if [ -n "${SUDO:-}" ]; then
-    ${SUDO} --preserve-env=PATH,LD_LIBRARY_PATH,LIBRARY_PATH,PKG_CONFIG_PATH,PKG_CONFIG_LIBDIR,PKG_CONFIG_ALLOW_CROSS,PKG_CONFIG_SYSROOT_DIR,CMAKE_PREFIX_PATH,CMAKE_INCLUDE_PATH,CPATH,C_INCLUDE_PATH,CPLUS_INCLUDE_PATH,DEBIAN_FRONTEND \
+    ${SUDO} --preserve-env=PATH,CMAKE_C_COMPILER_LAUNCHER,CMAKE_CXX_COMPILER_LAUNCHER,SCCACHE_SERVER_UDS,SCCACHE_DIR,LD_LIBRARY_PATH,LIBRARY_PATH,PKG_CONFIG_PATH,PKG_CONFIG_LIBDIR,PKG_CONFIG_ALLOW_CROSS,PKG_CONFIG_SYSROOT_DIR,CMAKE_PREFIX_PATH,CMAKE_INCLUDE_PATH,CPATH,C_INCLUDE_PATH,CPLUS_INCLUDE_PATH,DEBIAN_FRONTEND \
       ./vulkansdk -j "$JOBS" "$@"
   else
     ./vulkansdk -j "$JOBS" "$@"
@@ -320,11 +320,27 @@ _vulkan_target_prune_nonsdk_dxc() {
   done
 }
 
+# ./vulkansdk runs its own cmake, which takes the launchers from the environment; the target builds also pin them.
+_vulkan_export_compiler_cache() {
+  local launcher=""
+  if ! declare -F compiler_cache_launcher >/dev/null; then
+    warn "compiler_cache_launcher is not loaded: the Vulkan SDK builds uncached"
+    return 0
+  fi
+  compiler_cache_launcher_env 2>/dev/null || true
+  launcher="$(compiler_cache_launcher 2>/dev/null || true)"
+  [ -n "${launcher}" ] || return 0
+  export CMAKE_C_COMPILER_LAUNCHER="${launcher}" CMAKE_CXX_COMPILER_LAUNCHER="${launcher}"
+  log "Vulkan SDK compiles through ${launcher}"
+}
+
 _build_vulkan_sdk_cross() {
   local arch_suffix="$1"
   local target_dir="$2"
   local target_triplet="$3"
 
+  # Lazy, like setup-dependencies.sh's arms: the runtime image's copy of this file never cross-builds.
+  source_toolchain_required "$(dirname "${BASH_SOURCE[0]}")" cmake-cache-linker.sh exit core-paths-only cmake_assert_compiler_cache_pin
   (
     cd "${target_dir}"
     ${SUDO:-} chmod +x vulkansdk
@@ -337,6 +353,7 @@ _build_vulkan_sdk_cross() {
 
     local sdk_components=()
     _vulkan_build_components "${arch_suffix}" sdk_components
+    _vulkan_export_compiler_cache
     _vulkan_run_vulkansdk "${sdk_components[@]}"
 
     # ./vulkansdk built host tools only. See docs/vulkan-foreign-arch-sdk.md
@@ -346,30 +363,36 @@ _build_vulkan_sdk_cross() {
   )
 }
 
+# <ignore-ref> <ldflags-ref>: on a host whose arch is the target's; see docs/vulkan-foreign-arch-sdk.md § Building on a native arm64 host
+_vulkan_native_host_link_args() {
+  local -n _vnh_ignore="$1" _vnh_ldflags="$2"
+  [ "${_xbuild_triplet}" = "$(arch_deb_multiarch_triplet_for "$(build_arch_oci)")" ] || return 0
+  local _o _d
+  for _o in x86_64-linux-gnu aarch64-linux-gnu riscv64-linux-gnu; do
+    [ "${_o}" = "${_xbuild_triplet}" ] && continue
+    [ -d "/usr/lib/${_o}" ] && _vnh_ignore="${_vnh_ignore:+${_vnh_ignore};}/usr/lib/${_o}"
+  done
+  [ -n "${_vnh_ignore}" ] && log "ignoring foreign multiarch lib dirs: ${_vnh_ignore}"
+  # LIBRARY_PATH resolves a bare -lxcb without clobbering per-component CMake flags.
+  for _d in "/usr/lib/${_xbuild_triplet}" "/lib/${_xbuild_triplet}"; do
+    [ -d "${_d}" ] || continue
+    case ":${LIBRARY_PATH:-}:" in *":${_d}:"*) ;; *) export LIBRARY_PATH="${_d}${LIBRARY_PATH:+:${LIBRARY_PATH}}" ;; esac
+    _vnh_ldflags="${_vnh_ldflags:+${_vnh_ldflags} }-L${_d}"
+  done
+  return 0
+}
+
 # Usage: <src> <label> [cmake -D...]; reads the caller's _xbuild_* by dynamic scope, returns non-zero on failure.
 _cross_build_sdk_component() {
   local src="$1" label="$2"
   shift 2
-  local build_dir
+  local build_dir launcher="${CMAKE_CXX_COMPILER_LAUNCHER:-}"
+  local -a cache_pin=()
   build_dir="$(mktemp -d)/${label}"
+  append_cmake_compiler_cache_pin cache_pin "${launcher}"
 
-  # See docs/vulkan-foreign-arch-sdk.md § Building on a native arm64 host
   local _vk_ignore="" _vk_ldflags=""
-  if [ "${_xbuild_triplet}" = "$(arch_deb_multiarch_triplet_for "$(build_arch_oci)")" ]; then
-    local _o
-    for _o in x86_64-linux-gnu aarch64-linux-gnu riscv64-linux-gnu; do
-      [ "${_o}" = "${_xbuild_triplet}" ] && continue
-      [ -d "/usr/lib/${_o}" ] && _vk_ignore="${_vk_ignore:+${_vk_ignore};}/usr/lib/${_o}"
-    done
-    [ -n "${_vk_ignore}" ] && log "ignoring foreign multiarch lib dirs: ${_vk_ignore}"
-    # LIBRARY_PATH resolves a bare -lxcb without clobbering per-component CMake flags.
-    local _d
-    for _d in "/usr/lib/${_xbuild_triplet}" "/lib/${_xbuild_triplet}"; do
-      [ -d "${_d}" ] || continue
-      case ":${LIBRARY_PATH:-}:" in *":${_d}:"*) ;; *) export LIBRARY_PATH="${_d}${LIBRARY_PATH:+:${LIBRARY_PATH}}" ;; esac
-      _vk_ldflags="${_vk_ldflags:+${_vk_ldflags} }-L${_d}"
-    done
-  fi
+  _vulkan_native_host_link_args _vk_ignore _vk_ldflags
 
   if ! cmake -S "${src}" -B "${build_dir}" -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
@@ -384,10 +407,12 @@ _cross_build_sdk_component() {
       -DCMAKE_LIBRARY_ARCHITECTURE="${_xbuild_triplet}" \
       -DCMAKE_INSTALL_LIBDIR=lib \
       -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+      ${cache_pin[@]+"${cache_pin[@]}"} \
       "$@"; then
     log "${label}: cross-configure failed (non-fatal)"
     return 1
   fi
+  cmake_assert_compiler_cache_pin "${build_dir}" "${launcher}" || err "${label}: the Vulkan component does not compile through ${launcher}"
   if ! cmake --build "${build_dir}" --parallel "$(compute_jobs "${JOBS:-}")"; then
     log "${label}: cross-build failed (non-fatal)"
     return 1
