@@ -90,19 +90,17 @@ inputs:
     description: >-
       actions/checkout submodules: 'recursive', 'true' or 'false'. Reaches the
       checkout only when short-path-target is EMPTY - with a short-path clone the
-      checkout deliberately takes none (see below) and this then only decides
-      whether that clone updates them at all.
+      checkout deliberately takes none (see below) and this selects that clone's
+      recursive, direct or no-submodule update.
 
-      Default 'true' is the value this action passed before the input existed,
-      so no caller changes behaviour by upgrading. A lane WITHOUT a short-path
-      clone almost certainly wants 'recursive': 'true' stops at the first level,
-      and a second-level submodule missing from the build tree surfaces much
-      later as a missing header rather than as a checkout error.
+      Omitted preserves the old path-specific defaults: direct submodules for
+      actions/checkout, recursive for the short-path clone. An explicit mode
+      has the same meaning on both paths.
     required: false
-    default: 'true'
+    default: ''
   short-path-target:
     description: >-
-      Clone the full tree with submodules here, in MSYS form (e.g. /d/ws). This
+      Clone the tree with the selected submodule depth here, in MSYS form (e.g. /d/ws). This
       is what keeps a deep submodule chain inside MAX_PATH, and it is also what
       run-in-windows-container mounts by default. Set to an empty string to skip
       it - correct only for a repo with a shallow submodule tree, in which case
@@ -250,17 +248,16 @@ runs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: ${{ inputs.fetch-depth }}
-        submodules: ${{ inputs.short-path-target == '' && inputs.submodules || 'false' }}
+        submodules: ${{ inputs.short-path-target == '' && (inputs.submodules || 'true') || 'false' }}
 
-    - name: Clone full tree with submodules into a short path
+    - name: Clone selected submodules into a short path
       if: ${{ inputs.short-path-target != '' }}
       uses: Kataglyphis/ANTfrastructure/.github/actions/clone-into-short-path@develop
       with:
         target: ${{ inputs.short-path-target }}
         token: ${{ inputs.token || github.token }}
         exclude-submodules: ${{ inputs.exclude-submodules }}
-        # That clone has one mode (--init --recursive), so only 'false' means no submodules.
-        submodules: ${{ inputs.submodules != 'false' }}
+        submodules: ${{ inputs.submodules || 'recursive' }}
 
     # Before the pull: moving the data-root afterwards would hide the fetched image.
     - name: Put the Docker data-root on the big drive

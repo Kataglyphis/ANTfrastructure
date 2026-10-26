@@ -489,6 +489,14 @@ makes them fail the job once the consumer code meets the 15/5/80 limits. Parse
 and scan failures still fail. PowerShell-only repos call the same standalone
 workflow with `strict: true` when their complexity debt is gone.
 
+The build job's `submodules` input accepts `true` for direct entries,
+`recursive` for nested entries, and `false` to skip them. It defaults to
+`recursive` to preserve existing callers. A consumer whose dependency tree
+loops through DocumANTation and back to ANTfrastructure passes
+`submodules: 'true'` when its build needs only direct entries; OrchestrANT
+uses this setting. The checkout then follows the same depth as the shared
+Windows short-path action.
+
 `python-ci-windows.yml`'s build job runs `build-script` in the `:winamd64` container. Left empty,
 that is the repo's own `scripts\windows\Build-Windows.ps1` when the checkout has one, else
 [`windows/scripts/python/Invoke-PythonCiBuild.ps1`](../windows/scripts/python/Invoke-PythonCiBuild.ps1)

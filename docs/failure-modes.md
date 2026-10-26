@@ -131,6 +131,7 @@ Two neighbours, so you land on the right page:
 
 **Windows: build content and toolchain**
 
+- [`fatal: remote helper 'https' aborted session` during Windows CI checkout](#fatal-remote-helper-https-aborted-session-during-windows-ci-checkout)
 - [Windows media build crawls; `Building with ninja -j2`](#windows-media-build-crawls-building-with-ninja--j2)
 - [Rust smoke test: "rustup could not choose a version of cargo/rustc"](#rust-smoke-test-rustup-could-not-choose-a-version-of-cargorustc)
 - [A GitLab download "succeeds" with HTTP 200 but is a few KB](#a-gitlab-download-succeeds-with-http-200-but-is-a-few-kb)
@@ -1778,6 +1779,24 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 ---
 
 ## Windows: build content and toolchain
+
+### `fatal: remote helper 'https' aborted session` during Windows CI checkout
+
+**Symptom.** The short-path Windows clone walks through
+`third_party/ANTfrastructure/third_party/DocumANTation/.../third_party/ANTfrastructure`
+until Git reports `fatal: remote helper 'https' aborted session`; the container
+build never starts.
+
+**Cause.** The clone treated the `submodules: true` input as `--recursive`.
+That descends into a cyclic documentation subtree and eventually exceeds Git's
+internal gitdir limit.
+
+**Fix.** The shared short-path clone now distinguishes `true` (direct entries)
+from `recursive` (nested entries). Use `recursive` only for lanes that need
+nested source trees, and exclude irrelevant cyclic submodules when recursion is
+required. The reusable Windows Python CI workflow exposes the same choice
+through its `submodules` input. See [the action contract](../.github/actions/README.md#clone-into-short-path)
+and [Python CI setup](python-ci.md#the-windows-build-driver).
 
 ### Windows media build crawls; `Building with ninja -j2`
 

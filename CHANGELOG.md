@@ -15,6 +15,13 @@
 
 ## 2026-10-26 — Reuse and dependency updates
 
+- Preserve `true`, `recursive` and `false` as distinct submodule modes in the
+  shared Windows short-path checkout; the preparation and container workflows
+  retain their recursive short-path defaults while direct-only consumer builds
+  can avoid the DocumANTation cycle.
+- Let the reusable Windows Python CI workflow choose submodule depth; its
+  default remains recursive, while consumers with a cyclic documentation tree
+  can request direct entries.
 - Forward the WSL quality runner's `--jobs` limit to nested Bash tests and ShellCheck,
   avoiding accidental oversubscription during the full suite.
 - Correct the Linux image quick reference to match its installed `jq` tool.

@@ -423,6 +423,9 @@ Five lanes are reusable workflows, each called with
   `dist/windows-arm64` in every caller, with the DLL closure the product needs);
   `target-arch: arm64` adds the arch gate and a run on `windows-11-arm`
   ([`windows-cross-builds.md` § Consumer cross lanes](windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml)).
+  Its `submodules` input defaults to `recursive` for existing callers; set it to
+  `'true'` when direct dependencies suffice, so a nested documentation cycle
+  cannot block the Windows build before its script starts.
   Since 2026-09-26 the `windows-x64.yml` and `windows-arm64-cross.yml` of OxidANT, AccelerANTgine
   and BeschleunigerBallett call it. A caller hands its own secrets to the container through the
   `CONTAINER_SECRET_ENV` secret, one `KEY=value` per line, which reaches docker as an

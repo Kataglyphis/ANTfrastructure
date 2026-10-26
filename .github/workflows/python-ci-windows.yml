@@ -55,6 +55,14 @@ on:
         required: false
         type: number
         default: 1
+      submodules:
+        description: >-
+          Checkout depth for submodules: 'true' checks out direct entries,
+          'recursive' also checks out nested entries, and 'false' skips them.
+          The default preserves the existing Python CI checkout behavior.
+        required: false
+        type: string
+        default: recursive
       artifact-name:
         description: Name of the uploaded artifact.
         required: false
@@ -246,7 +254,7 @@ jobs:
           registry-username: Kataglyphis
           registry-password: ${{ secrets.GHCR_PAT }}
           fetch-depth: ${{ inputs.fetch-depth }}
-          submodules: recursive
+          submodules: ${{ inputs.submodules }}
           short-path-target: ''
 
       # Inputs reach the script through env, never interpolated into it.

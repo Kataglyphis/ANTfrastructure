@@ -54,6 +54,13 @@ on:
         required: false
         type: number
         default: 1
+      submodules:
+        description: >-
+          'recursive' preserves this lane's nested checkout; pass 'true' when
+          only direct submodules are needed, or 'false' to skip them.
+        required: false
+        type: string
+        default: recursive
       exclude-submodules:
         description: Submodule paths to leave out of the short-path clone, one per line.
         required: false
@@ -201,6 +208,7 @@ jobs:
           target-arch: ${{ inputs.target-arch }}
           registry-password: ${{ secrets.GHCR_PAT }}
           fetch-depth: ${{ inputs.fetch-depth }}
+          submodules: ${{ inputs.submodules }}
           exclude-submodules: ${{ inputs.exclude-submodules }}
 
       # Before the build, so the packages and the product carry the CI version.

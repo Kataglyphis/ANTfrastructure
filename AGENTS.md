@@ -338,6 +338,11 @@ reconstructed sequence. Role split, lane mechanics, isolation policy and recover
 [`windows-builds.md` § The Windows lane as AGENTS.md carried it](docs/windows-builds.md#the-windows-lane-as-agentsmd-carried-it)
 and [`windows-build-lanes.md`](docs/windows-build-lanes.md).
 
+The short-path Windows checkout preserves the submodule mode: `true` initializes direct
+submodules, `recursive` also initializes nested ones, and `false` skips them. Never turn
+`true` into a recursive clone: this hub and DocumANTation form a nested cycle.
+See [the action contract](.github/actions/README.md#clone-into-short-path).
+
 ### Running Linux containers (Rancher Desktop)
 
 Use `nerdctl`, never `docker`, and check the image contract rather than assuming a host tool is in

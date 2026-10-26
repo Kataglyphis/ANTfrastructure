@@ -131,8 +131,8 @@ jobs:
       # A local action needs a checkout before it can run.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Full clone first: exclusions go into the runner-wide global git config and would prune it too.
-      - name: clone-into-short-path (full tree)
+      # Direct clone first: exclusions go into the runner-wide global git config and would prune it too.
+      - name: clone-into-short-path (direct submodules)
         id: full
         uses: ./.github/actions/clone-into-short-path
         with:
@@ -142,7 +142,7 @@ jobs:
           token: ${{ github.token }}
           submodules: 'true'
 
-      - name: The full clone carries the submodule tree
+      - name: The direct clone stops after the first submodule level
         run: |
           set -euo pipefail
           root='${{ runner.temp }}/clone-full'
@@ -156,6 +156,28 @@ jobs:
           fi
           if [ -z "$(ls -A "${root}/third_party/DocumANTation")" ]; then
             echo "::error::submodules: 'true' left third_party/DocumANTation empty"
+            exit 1
+          fi
+          if [ -e "${root}/third_party/DocumANTation/md2pdfLib/third_party/awesome-beamer/.git" ]; then
+            echo "::error::submodules: 'true' descended into DocumANTation's nested submodules"
+            exit 1
+          fi
+
+      - name: clone-into-short-path (recursive, bounded)
+        uses: ./.github/actions/clone-into-short-path
+        with:
+          target: ${{ runner.temp }}/clone-recursive
+          token: ${{ github.token }}
+          submodules: 'recursive'
+          exclude-submodules: |
+            third_party/ANTfrastructure
+
+      - name: The recursive clone reaches nested sources
+        run: |
+          set -euo pipefail
+          root='${{ runner.temp }}/clone-recursive'
+          if [ ! -f "${root}/third_party/DocumANTation/md2pdfLib/third_party/awesome-beamer/.git" ]; then
+            echo "::error::submodules: 'recursive' did not check out the nested awesome-beamer"
             exit 1
           fi
 

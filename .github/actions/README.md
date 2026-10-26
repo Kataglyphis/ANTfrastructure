@@ -81,10 +81,16 @@ data-root is on D:. Measured per mode:
 
 `submodules` reaches the checkout only when `short-path-target` is empty — with
 a short-path clone the checkout takes none and the clone brings the tree in, so
-it then only decides whether that clone recurses. A lane that mounts
-`GITHUB_WORKSPACE` instead of a short path wants `submodules: recursive` with
-`short-path-target: ''`; that pair is what this repo's own
-`python-ci-windows.yml` passes. `measure-data-root: 'true'` adds the data-root's
+the clone honors the same three modes: `true` initializes direct submodules,
+`recursive` also descends into nested submodules, and `false` skips them. Choose
+`recursive` only when the lane needs nested sources; the hub's DocumANTation
+submodule eventually points back to the hub. Omitting the input preserves the
+previous path-specific behavior: the short-path clone recurses, while a plain
+`actions/checkout` initializes direct submodules. A lane that mounts
+`GITHUB_WORKSPACE` instead of a short path sets `short-path-target: ''` and
+chooses `true` or `recursive` according to the sources it actually uses.
+This repo's `python-ci-windows.yml` exposes that choice to consumers.
+`measure-data-root: 'true'` adds the data-root's
 size on disk to the report after the pull — off by default because it walks
 every layer file the import wrote, on when proving *where* the image landed is
 worth the minute.
@@ -169,6 +175,8 @@ with everything beneath them, one per line). A `ref` the plain clone lacks (a
 pull_request's merge commit, or `refs/pull/<n>/merge` by name) is fetched from
 origin first; output `fetched` says whether that happened, and the self-test
 asserts it on every pull_request touching the action.
+The `submodules` modes match `actions/checkout`: `true` updates direct entries,
+`recursive` updates nested entries as well, and `false` leaves them uninitialized.
 
 ### `run-pester-suite`
 Installs a PINNED Pester and runs a suite, printing Describe/Name plus the
