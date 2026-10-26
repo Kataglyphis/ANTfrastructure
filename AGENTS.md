@@ -1409,6 +1409,10 @@ mount).
   a preflight gate, so a hand edit is caught rather than shipped.
 - **A version with a checksum moves with its checksum.** `bump_versions.py` owns those pairs: a
   pin updated without its digest is an unverified download that still looks pinned.
+- **Security refreshes update tracked locks as well as live tools.** A Renovate baseline bump moves
+  `tool-pins.env`, its npm manifest and lock together. A setuptools bump moves the shared pin,
+  verified arm64 wheel URL and SHA256, LiteRT hash lock and fallback defaults together; the torch
+  `<82` compatibility pin remains separate until its build supports a newer release.
 - `bump_fetch.py` falls back only for expected network or invalid-JSON failures; unexpected Python
   exceptions must propagate instead of becoming missing metadata or an unnecessary asset download.
 

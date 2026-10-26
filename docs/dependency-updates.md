@@ -1396,7 +1396,7 @@ lock that installs another Renovate than `RENOVATE_VERSION`. Its cache prefix is
 The [Renovate CLI is published through npm](https://docs.renovatebot.com/getting-started/running/),
 and [`npm ci` refuses a manifest/lock mismatch](https://docs.npmjs.com/cli/v11/commands/npm-ci/).
 
-**Why a lock (2026-10-19).** `npm install -g renovate@44.157.0` failed with `npm ETARGET
+**Why a lock (historical incident, 2026-10-19).** `npm install -g renovate@44.157.0` failed with `npm ETARGET
 @aws-sdk/credential-provider-http@^3.972.77`. Renovate pins its direct dependencies
 exactly and nothing below them, so each install resolved the registry of that minute:
 `@aws-sdk/credential-provider-node` 3.972.87, published 18:47:51Z, requires
@@ -1415,9 +1415,22 @@ and regenerates its committed lock with `npm install --package-lock-only
 transitive entries. A current CLI can therefore scan and update other repository
 dependencies without making report or dry-run modes mutate this baseline.
 
-`overrides` in that `package.json` holds security pins only: a dependency Renovate pins exactly
+`overrides` in that `package.json`, when present, holds security pins only: a dependency Renovate pins exactly
 at a vulnerable version (markdown-it 15.0.2 → 15.0.3, GHSA-gfr2-rv44-r23c and GHSA-vfgh-jcmw-g37q,
 2026-10-21). Drop an entry once a Renovate bump depends on the fixed version itself.
+The current tracked Renovate release pins fixed markdown-it directly, so its former override is gone.
+
+Dependabot grades the committed npm lock, not the live CLI cache. A newer CLI may resolve a
+patched transitive package while `renovate-npm/package-lock.json` still raises an alert; move
+`RENOVATE_VERSION` in `tool-pins.env`, `renovate-npm/package.json` and its lock together after
+checking npm's latest tag and the resolved package versions. `npm ci` then proves the lock.
+
+For setuptools, the shared `PY_SETUPTOOLS_VERSION` pin, the Windows arm64 wheel URL and SHA256,
+and LiteRT's `requirements_lock_3_15.txt` must name the same verified release. Get the wheel
+digest from [PyPI's JSON API](https://docs.pypi.org/api/json/) and hash the downloaded wheel;
+update the fallback defaults in `assemble-torch-app.sh`, `tvm-python.sh` and
+`setup-package-image.sh` too. The separate `PY_SETUPTOOLS_LT82_VERSION` remains below 82 for
+the Torch wheelhouse's compatibility requirement.
 
 ## A skipped pin is not up to date
 

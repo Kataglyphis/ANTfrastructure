@@ -79,7 +79,7 @@ t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '^uv pip install --no-deps '
 
 t_case "setuptools is backfilled when the torch venv cannot import it (c8192781)"
 _out="$(_torch_calls "sympy mpmath networkx jinja2 markupsafe filelock fsspec typing_extensions")"
-t_assert_contains "${_out}" "uv pip install --no-deps setuptools==84.0.0" "torch declares setuptools unconditionally; riscv64's sync never installed it"
+t_assert_contains "${_out}" "uv pip install --no-deps setuptools==84.2.1" "torch declares setuptools unconditionally; riscv64's sync never installed it"
 
 t_case "a non-torch wheel set never enters the backfill at all"
 _out="$(_uv_calls_env x86_64 "" "numpy-2.5.2-cp314-cp314-linux_x86_64.whl")"

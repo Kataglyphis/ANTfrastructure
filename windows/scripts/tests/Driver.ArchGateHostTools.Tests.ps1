@@ -18,8 +18,8 @@ Describe 'Build-Buildkit: the cross arch gate keeps the merge default host tools
         $driver = Get-Content -Raw -LiteralPath (Join-Path (Get-RepoRoot) 'windows\Build-Buildkit.ps1')
         $null = $driver -match "\`$archArgs\['ARCH_GATE_HOST_TOOLS'\] = '([^']+)'"
         $pattern = $Matches[1]
-        foreach ($p in 'C:\t\3-pip-26.2.1-py3-none-any\pip\_vendor\distlib\t32.exe', 'C:\t\5-setuptools-84.0.0-py3-none-any\setuptools\cli-64.exe',
-            'C:\t\5-setuptools-84.0.0-py3-none-any\setuptools\gui.exe') {
+        foreach ($p in 'C:\t\3-pip-26.2.1-py3-none-any\pip\_vendor\distlib\t32.exe', 'C:\t\5-setuptools-84.2.1-py3-none-any\setuptools\cli-64.exe',
+            'C:\t\5-setuptools-84.2.1-py3-none-any\setuptools\gui.exe') {
             Assert-Match $pattern $p "a pure wheel's launcher is a host tool: $p"
         }
         foreach ($p in 'C:\runtime\onnxruntime\bin\onnxruntime.dll', 'C:\t\7-numpy-2.5.3-cp314-cp314-win_arm64\numpy\_core\_multiarray_umath.pyd') {

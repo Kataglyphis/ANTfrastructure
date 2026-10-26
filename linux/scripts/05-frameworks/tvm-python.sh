@@ -61,7 +61,7 @@ _tvm_wheel_setup() {
 
     # Pinned build executors, plus mlc-z3-static: --no-isolation installs no build-requires.
     uv pip install -U pip \
-      "setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}" \
+      "setuptools==${PY_SETUPTOOLS_VERSION:-84.2.1}" \
       "wheel==${PY_WHEEL_VERSION:-0.48.0}" \
       build \
       "scikit-build-core==${PY_SCIKIT_BUILD_CORE_VERSION:-1.1.1}" \

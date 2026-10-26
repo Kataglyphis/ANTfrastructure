@@ -343,7 +343,7 @@ _backfill_torch_runtime_deps() {
     "${_venv_py}" -c "import ${_mod}" 2>/dev/null || _torch_dep_backfill+=("${_pkg}")
   done
   # torch declares setuptools>=77.0.3 unconditionally; riscv64 skips the sync that would pull it in (2026-10-22).
-  "${_venv_py}" -c "import setuptools" 2>/dev/null || uv pip install --no-deps "setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}"
+  "${_venv_py}" -c "import setuptools" 2>/dev/null || uv pip install --no-deps "setuptools==${PY_SETUPTOOLS_VERSION:-84.2.1}"
   if [ "${#_torch_dep_backfill[@]}" -gt 0 ]; then
     printf 'Backfilling torch runtime deps missing from the sync graph: %s\n' "${_torch_dep_backfill[*]}"
     uv pip install --no-deps "${_torch_dep_backfill[@]}"

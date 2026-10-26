@@ -76,6 +76,10 @@
 
 ## 2026-10-26 — Reuse and dependency updates
 
+- Refresh tracked Renovate to 44.184.1 with patched Zod; drop the obsolete
+  markdown-it override. Raise setuptools to 84.2.1 with a PyPI-verified wheel
+  SHA in the shared pin, arm64 wheel and LiteRT lock.
+
 - Add a reusable Windows Slang parity assertion for every manifest WGSL output.
   Ballett's ARM cross build snapshots pinned OxidANT files before compilation and
   requires every fresh emit to match the originals;

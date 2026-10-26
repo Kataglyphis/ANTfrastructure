@@ -312,7 +312,7 @@ wire_cargo_symlinks() {
 create_runtime_venv() {
     local python_mm="$1"
     # These fallbacks are the live values (nothing loads versions.env here); verify-arg-consistency keeps them equal.
-    local -a pkgs=("wheel==${PY_WHEEL_VERSION:-0.48.0}" "setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}"
+    local -a pkgs=("wheel==${PY_WHEEL_VERSION:-0.48.0}" "setuptools==${PY_SETUPTOOLS_VERSION:-84.2.1}"
         "meson==${PY_MESON_VERSION:-1.12.1}" "ninja==${PY_NINJA_VERSION:-1.13.2}" "cmake==${PY_CMAKE_VERSION:-4.4.4}"
         "packaging==${PY_PACKAGING_VERSION:-26.3}")
 
