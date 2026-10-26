@@ -431,6 +431,11 @@ owner carries the breakage that costs.
       little; cold, it is the 104 min step. Work: measure ONNX Runtime's real peak per job, then size its share
       ([`build-parallelism-memory-tuning.md`](docs/build-parallelism-memory-tuning.md)). Done when that step
       logs more than one job and no arch is OOM-killed.
+- [ ] **CON166 — an asset-mirror miss logs `curl: (22) … error: 404`** [S, ★]. Found 2026-10-26: every
+      miss prints curl's error line before `asset-mirror| miss`, so a log search for `error` hits each pinned
+      download that falls back upstream. Work: keep the mirror GET silent on HTTP errors and let the miss line
+      speak (`01-core/downloads.sh`). It is mounted per file by `Dockerfile.base`, so it rides a planned
+      rebuild from base. Done when a miss logs only its `asset-mirror| miss` line.
 - [ ] **CON151 — riscv64 builds wasm-pack and flutter_rust_bridge_codegen from source on every run** [M, ★★].
       2026-10-21: the riscv64 wrapper spent about two hours compiling hadolint (Haskell) under QEMU. Owner
       decision 2026-10-26: riscv64 ships no hadolint for now (CI lints on amd64), so that build is gone. Left:
