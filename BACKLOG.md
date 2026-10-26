@@ -415,6 +415,15 @@ owner carries the breakage that costs.
 
 ## Open — Linux image (all arches)
 
+- [ ] **CON163 — the foreign-arch Vulkan SDK build runs without a compiler cache** [M, ★★★]. Found on the
+      2026-10-26 chain: `sdk-arm64` and `sdk-riscv64` each spent over 37 min in the `sdk-dependencies` RUN
+      (`Dockerfile.sdk`), building the Vulkan components from source, while `sdk-amd64`'s longest step took 342 s.
+      That RUN mounts only the apt caches and a tmpfs, and `02-toolchain/vulkan.sh`'s cross configure passes no
+      compiler launcher, so every compile is a miss. Work: route the configure through `compiler_cache_launcher()`
+      (or `append_cmake_cache_linker_args`), add both cache mounts to that RUN, and print sccache stats at its end.
+      This re-keys the sdk stage, so it rides a planned rebuild. Done when a second chain's `sdk-arm64` and
+      `sdk-riscv64` log a high hit rate and that step drops below 10 min.
+
 - [ ] **CON151 — riscv64 builds wasm-pack and flutter_rust_bridge_codegen from source on every run** [M, ★★].
       2026-10-21: the riscv64 wrapper spent about two hours compiling hadolint (Haskell) under QEMU. Owner
       decision 2026-10-26: riscv64 ships no hadolint for now (CI lints on amd64), so that build is gone. Left:
