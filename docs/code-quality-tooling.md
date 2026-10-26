@@ -2678,8 +2678,12 @@ over-threshold pair. The reusable `code-quality-report.yml` runs report mode
 for nonfork callers and writes `logs/code-quality/measurements/hub-reuse.txt`;
 the directory is ignored by Git and uploaded with the other measurements.
 Older consumer pins receive an explicit upgrade notice until their hub gitlink
-contains the scanner. Refactor matches into a shared API before changing that
-workflow to the strict verdict.
+contains the scanner. For owned nonfork repositories, that missing scanner also
+fails the job and keeps the upgrade notice in the uploaded report; external
+callers may retain the notice without a failed job. The fixture executes the
+measurement step with and without a pinned scanner, and a mutation proves the
+owned-caller failure cannot be dropped. Refactor matches into a shared API
+before changing overlap findings to a strict verdict.
 On Windows, the scanner uses the PowerShell shared-config checker first so a
 `bash` command that enters WSL cannot misread Windows checkout paths.
 

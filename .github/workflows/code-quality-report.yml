@@ -66,6 +66,10 @@ jobs:
           else
             printf 'Hub reuse comparison needs a newer ANTfrastructure gitlink; update the direct submodule.\n' \
               > logs/code-quality/measurements/hub-reuse.txt
+            if [[ "${GITHUB_REPOSITORY,,}" == kataglyphis/* ]]; then
+              cat logs/code-quality/measurements/hub-reuse.txt >&2
+              exit 1
+            fi
           fi
           for report in logs/code-quality/measurements/*.txt; do
             echo "### ${report##*/}" >> "${GITHUB_STEP_SUMMARY}"

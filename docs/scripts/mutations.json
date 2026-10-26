@@ -28529,6 +28529,14 @@
   "why": "the reusable measurement workflow must execute the Hub reuse scanner rather than only write a report placeholder"
  },
  {
+  "id": "hub-reuse.missing-owned-scanner-fails",
+  "target": ".github/workflows/code-quality-report.yml",
+  "find": "              cat logs/code-quality/measurements/hub-reuse.txt >&2\n              exit 1",
+  "replace": "              cat logs/code-quality/measurements/hub-reuse.txt >&2\n              :",
+  "test": "bash linux/scripts/tests/test-code-quality-report-workflow.sh",
+  "why": "an owned caller with an old ANTfrastructure gitlink must fail instead of publishing a green upgrade notice"
+ },
+ {
   "id": "lib.media-runtime-foreign-directml",
   "target": "windows/scripts/modules/WindowsMediaRuntime.Common.psm1",
   "find": "Where-Object { $_.Name -eq 'DirectML.dll' }",

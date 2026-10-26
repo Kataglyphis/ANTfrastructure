@@ -58,6 +58,9 @@
   blocks in the shared quality-report workflow; declared bootstrap drift stays
   fatal while overlap candidates go to ignored `logs/code-quality/` reports.
   Prefer the native PowerShell drift checker on Windows.
+- Fail the reusable quality report for an owned nonfork consumer whose pinned Hub
+  lacks the reuse scanner; keep the upgrade notice and uploaded artifact, and
+  execute the workflow step in a mutation-backed regression fixture.
 - Teach future consumer `AGENTS.md` files to search their repository and
   submodules before adding another Bash or PowerShell implementation.
 - Share synthetic ELF and gst-inspect test fixtures with OmniAccelerANT; its
