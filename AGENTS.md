@@ -840,8 +840,9 @@ transcript. Each was a child that outlived whatever started it. So:
 4. **A wait loop waits on a PID or a file, with a timeout.** `until ! pgrep -f <pattern>` matches
    its own `bash -c` and never ends; `pkill -f <pattern>` can kill the shell that runs it.
 
-Runtime dry runs start no heartbeat. A live heartbeat terminates and waits for its current
-child directly; a separate PID assignment leaves a signal window that leaks output pipes.
+Runtime dry runs start no heartbeat. A live heartbeat kills its current timer child with SIGKILL
+and waits for it; TERM can be lost while the timer starts, and a separate PID assignment leaves
+a signal window that leaks output pipes.
 
 Shared Chrome cleanup is asynchronous: callers await child exit and profile cleanup;
 an immediate process-exit hook only kills. Cleanup failures remain fatal, and every

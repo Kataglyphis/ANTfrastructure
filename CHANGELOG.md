@@ -15,6 +15,10 @@
 
 ## 2026-10-26 — Linux chain: runtime lane robustness and image content
 
+- Reap heartbeat timers with SIGKILL after an interrupt. TERM could be lost while
+  Bash started the sleep, hanging parallel mutation baselines; the regression
+  fixture now makes the timer ignore TERM and proves bounded cleanup.
+
 - The image's app venv carries OrchestrANT's `frontend` extra (CON106, owner 2026-10-26): the Linux and Windows torch stages sync `--extra frontend`, so the image runs the Flet viewers and the camera stream page; VENV-SET holds the extra on amd64/arm64 and leaves it out on riscv64, whose markers drop every frontend requirement, and APP-PARITY requires flet, flet-desktop, flet-web and FastAPI with recorded riscv64 absences.
 
 - riscv64 ships no hadolint (CON151, owner 2026-10-26): the torch stage's QEMU source build of hadolint (about 2 h per riscv64 wrapper) is gone with `build-hadolint.sh`, `HADOLINT_SOURCE_SHA256` and `HADOLINT_HACKAGE_INDEX_STATE`; `install-lint-tools.sh` prints a NOTE there, and the lint-tools contract row requires no hadolint on riscv64. amd64 and arm64 keep the pinned release binary.

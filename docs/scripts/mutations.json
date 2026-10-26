@@ -17878,10 +17878,18 @@
  {
   "id": "probe.runtime-heartbeat-child-pid",
   "target": "linux/scripts/01-core/runtime-build-fns.sh",
-  "find": "  trap 'kill \"${!:-}\" 2>/dev/null || true; wait \"${!:-}\" 2>/dev/null || true; exit 0' TERM INT\n  sleep \"${RUNTIME_HEARTBEAT_FIRST_SECS:-900}\" & wait \"$!\" || exit 0",
+  "find": "  trap 'kill -KILL \"${!:-}\" 2>/dev/null || true; wait \"${!:-}\" 2>/dev/null || true; exit 0' TERM INT\n  sleep \"${RUNTIME_HEARTBEAT_FIRST_SECS:-900}\" & wait \"$!\" || exit 0",
   "replace": "  trap 'kill \"${s:-}\" 2>/dev/null; exit 0' TERM INT\n  sleep \"${RUNTIME_HEARTBEAT_FIRST_SECS:-900}\" & s=$!; wait \"${s}\" || exit 0",
   "test": "bash linux/scripts/tests/test-runtime-heartbeat.sh",
   "why": "termination between spawning sleep and assigning a PID must not leave an inherited output pipe open"
+ },
+ {
+  "id": "probe.runtime-heartbeat-force-reap",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "  trap 'kill -KILL \"${!:-}\" 2>/dev/null || true; wait \"${!:-}\" 2>/dev/null || true; exit 0' TERM INT",
+  "replace": "  trap 'kill \"${!:-}\" 2>/dev/null || true; wait \"${!:-}\" 2>/dev/null || true; exit 0' TERM INT",
+  "test": "bash linux/scripts/tests/test-runtime-heartbeat.sh",
+  "why": "a timer child that misses TERM during startup must be reaped before the heartbeat exits"
  },
  {
   "id": "gate-fixture.gpu-variant-context-isolated",

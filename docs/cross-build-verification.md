@@ -1461,10 +1461,11 @@ did. The two deliveries are in
 [`linux-cross-builds.md`](linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries).
 
 Runtime dry-run steps retain their timing line and command status but start no
-heartbeat. Live heartbeats kill and wait for the shell's current background sleep,
-so a signal between spawning it and assigning a separate PID cannot leave an output
-pipe open. `test-runtime-heartbeat.sh` injects that startup signal and bounds the
-process group; it also checks normal periodic output and dry-run status propagation.
+heartbeat. Live heartbeats send SIGKILL to the current background sleep and wait for
+it. TERM can be lost while Bash starts the timer, leaving its output pipe open for
+the 900-second interval. `test-runtime-heartbeat.sh` injects that startup signal,
+has the timer ignore TERM, and bounds the pipe wait; it also checks normal periodic
+output and dry-run status propagation.
 GPU graph fixtures supply an immutable parent and disposable runtime context, and
 a stub records any accidental container CLI execution. Neither suite builds images
 or proves GPU runtime support.

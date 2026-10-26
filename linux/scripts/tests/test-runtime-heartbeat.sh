@@ -7,6 +7,8 @@ FNS="$(t_fn_src "${TESTS_DIR}/../01-core/runtime-build-fns.sh" _runtime_heartbea
 FNT="$(t_fn_src "${TESTS_DIR}/../01-core/runtime-build-fns.sh" _runtime_timed)" || exit 1
 _LOG="$(mktemp)"
 trap 'rm -f "${_LOG}"' EXIT
+# Short fixture timers bound failures in startup and cleanup paths.
+export RUNTIME_HEARTBEAT_FIRST_SECS=5
 log() { echo "$*" >> "${_LOG}"; }
 is_dry_run() { if [ "${DRY_RUN:-0}" = 1 ]; then return 0; fi; return 1; }
 eval "${FNS}"
@@ -58,7 +60,7 @@ rm -rf "${RESOURCE_MONITOR_STEP_DIR}" "${_LOG}.seen"
 unset RESOURCE_MONITOR_STEP_DIR
 
 t_case "termination during heartbeat child startup closes inherited output pipes"
-t_assert_ok env HEARTBEAT_FNS="${FNS}" python3 - <<'PYTHON'
+env HEARTBEAT_FNS="${FNS}" python3 - <<'PYTHON'
 import os
 import signal
 import subprocess
@@ -70,7 +72,8 @@ with tempfile.TemporaryDirectory() as work:
     script = r'''
 set -uT
 log() { :; }
-sleep() { : > "$HEARTBEAT_READY"; exec /bin/sleep 20; }
+# An ignored TERM models the timer child missing TERM at exec while its parent exits.
+sleep() { trap '' TERM; : > "$HEARTBEAT_READY"; exec /bin/sleep 20; }
 trap 'if [[ "${FUNCNAME[0]:-}" == _runtime_heartbeat && "$BASH_COMMAND" == *"=\$!" ]]; then kill -TERM "$BASHPID"; fi' DEBUG
 ''' + os.environ["HEARTBEAT_FNS"] + r'''
 _runtime_heartbeat probe amd64 0 &
@@ -89,7 +92,10 @@ wait "$!"
         assert ready.exists() and pidfile.exists(), "heartbeat child did not start"
         if proc.poll() is None:
             os.kill(int(pidfile.read_text()), signal.SIGTERM)
-        stdout, stderr = proc.communicate(timeout=2)
+        try:
+            stdout, stderr = proc.communicate(timeout=2)
+        except subprocess.TimeoutExpired as exc:
+            raise AssertionError("heartbeat timer child survived parent TERM") from exc
         assert proc.returncode == 0, stderr.decode()
     finally:
         try:
@@ -98,5 +104,6 @@ wait "$!"
             pass
         proc.wait()
 PYTHON
+t_assert_eq 0 "$?" "heartbeat timer is reaped after TERM"
 
 t_summary
