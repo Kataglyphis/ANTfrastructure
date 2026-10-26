@@ -2431,11 +2431,17 @@ the body throws; callers keep their fixture state and command policy.
 
 `Resolve-BuildValue` owns raw explicit, ordered environment and default selection.
 Source-build and container-image wrappers keep their distinct version-prefix rules.
+`Get-CmakeBuildArgs` exports the common `cmake --build` argv, with optional
+`-Target` before configuration and the established explicit or unlimited
+parallel form. The caller still chooses the target and handles the build verdict.
 Meson native and cross files share binary rendering. IREE and LiteRT share ordered
 per-file ARM feature selection and application while keeping different minimum
 architectures and source predicates. PE and COFF checks share machine names and layout parsing
 through WindowsTargetArch.Common; Meson keeps its export and BSS-tail policy. Archive and offload
 readers use its bounded ASCII signature check.
+`WindowsMediaRuntime.Common` checks GStreamer roots for foreign ORT, GenAI and
+DirectML DLLs before staging, then verifies the staged files against the chain.
+Consumers can supply the image's fallback bin directory through `-GStreamerRoot`.
 FFmpeg pkg-config edits and OpenCV probe diagnostics share indexed line selection through
 WindowsSourceBuild.Common, while callers keep their match, context and failure policies.
 `Get-MissingBuildChildPaths` shares required-child enumeration for FFmpeg's Vulkan SDK

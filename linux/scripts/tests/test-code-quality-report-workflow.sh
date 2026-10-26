@@ -12,9 +12,13 @@ _report_contract() {
     'set(V.value(lane,"on")) == {"workflow_call", "workflow_dispatch"}' \
     'V.value(V.value(lane,"permissions"),"contents") == "read"' \
     'all(V.value(V.value(s,"with"),"persist-credentials") == "false" for s in steps if "actions/checkout@" in (V.value(s,"uses") or ""))' \
-    'all(name in run_blocks("report") for name in ("verify_code_dupes.py", "verify_code_size.py", "verify_code_complexity.py"))' \
-    'run_blocks("report").count("--root") == 3 and run_blocks("report").count("${GITHUB_WORKSPACE}") == 3' \
-    'run_blocks("report").count("--report-only") == 3' \
+    'all(name in run_blocks("report") for name in ("verify_code_dupes.py", "verify_code_size.py", "verify_code_complexity.py", "verify_hub_reuse.py"))' \
+    'run_blocks("report").count("--root") == 4 and run_blocks("report").count("${GITHUB_WORKSPACE}") == 4' \
+    'run_blocks("report").count("--report-only") == 4' \
+    'run_blocks("report").count("python3 \"${hub}/docs/scripts/verify_hub_reuse.py\"") == 1' \
+    '"--hub \"${hub}\"" in run_blocks("report")' \
+    '"github.event.repository.fork" in str(lane)' \
+    '"hub-reuse.txt" in run_blocks("report")' \
     '"logs/code-quality/measurements" in run_blocks("report")' \
     '"set -euo pipefail" in run_blocks("report")' \
     'any(V.value(s,"name") == "Upload measurements" and V.value(s,"if") == "always()" and V.value(V.value(s,"with"),"path") == "logs/code-quality/measurements/" and V.value(V.value(s,"with"),"if-no-files-found") == "error" for s in steps)'
@@ -22,7 +26,7 @@ _report_contract() {
 
 _changed_contract() { LANE="$1" _report_contract; }
 
-t_case "all three rooted scanners produce ignored, uploaded measurements"
+t_case "all four rooted scanners produce ignored, uploaded measurements"
 t_assert_ok _report_contract
 
 mkdir -p "${ROOT}/logs/code-quality" || exit 1

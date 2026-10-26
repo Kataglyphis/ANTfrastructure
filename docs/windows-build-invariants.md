@@ -841,8 +841,9 @@ Runtime any more:
   or a release zip throws on both halves.
 - `Copy-MediaRuntimeBundle` stages the chain directories last, so the chain's
   `onnxruntime.dll` and `DirectML.dll` win every name collision, never walks
-  `runtimes\<rid>\native`, throws on an ORT DLL in any other directory, and then
-  requires every staged ORT or GenAI DLL to carry the chain's bytes.
+  `runtimes\<rid>\native`, throws on an ORT, GenAI or DirectML DLL in any other
+  directory, and then requires every staged DLL in that family to carry the
+  chain's bytes.
 
 Whether the bytes under `ONNX_ROOT` really are the chain build is the ORT census's
 question, not these modules'

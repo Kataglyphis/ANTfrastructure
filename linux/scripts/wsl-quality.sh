@@ -206,7 +206,8 @@ run_quality_checks() {
   verify_environment
   mkdir -p "${LOG_DIR}"
   run_logged linux-preflight env PREFLIGHT_PYTHON="${python_command}" PREFLIGHT_JOBS="${parallelism}" \
-    PREFLIGHT_SKIP=mutations bash "${REPO_ROOT}/linux/scripts/preflight.sh"
+    RUN_TESTS_JOBS="${parallelism}" LINT_SHELL_JOBS="${parallelism}" PREFLIGHT_SKIP=mutations \
+    bash "${REPO_ROOT}/linux/scripts/preflight.sh"
   run_logged mutation-proofs env PREFLIGHT_PYTHON="${python_command}" \
     uv run --project quality --locked --no-sync --python "${PYTHON_VERSION}" python \
     "${REPO_ROOT}/docs/scripts/verify_mutations.py" --jobs "${parallelism}"

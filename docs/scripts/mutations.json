@@ -1842,7 +1842,7 @@
  {
   "id": "code-dupes.kind-scopes-allow",
   "target": "docs/scripts/verify_code_dupes.py",
-  "find": "             if all(_file_kind(Path(f).name) in kinds for f in k)}",
+  "find": "             if all(file_kind(Path(f).name) in kinds for f in k)}",
   "replace": "             if True}",
   "test": "bash linux/scripts/tests/test-code-dupes.sh",
   "why": "--kind must not call every other kind's row stale"
@@ -28367,5 +28367,37 @@
   "replace": "false",
   "test": "bash linux/scripts/tests/test-python-path-policies.sh",
   "why": "an executable but broken interpreter must fail before consumer tests begin"
+ },
+ {
+  "id": "hub-reuse.finding-is-fatal",
+  "target": "docs/scripts/verify_hub_reuse.py",
+  "find": "    if findings and not args.report_only:\n        return 1",
+  "replace": "    if findings and not args.report_only:\n        return 0",
+  "test": "bash linux/scripts/tests/test-hub-reuse.sh",
+  "why": "an actual copied Bash or PowerShell unit must fail strict mode even though report-only remains advisory"
+ },
+ {
+  "id": "hub-reuse.shared-drift-is-fatal",
+  "target": "docs/scripts/verify_hub_reuse.py",
+  "find": "        if result.returncode:\n            details = (result.stdout + result.stderr).strip()",
+  "replace": "        if False:\n            details = (result.stdout + result.stderr).strip()",
+  "test": "bash linux/scripts/tests/test-hub-reuse.sh",
+  "why": "a declared copied bootstrap that drifts from the hub must fail even when findings are only reported"
+ },
+ {
+  "id": "hub-reuse.workflow-invokes-scanner",
+  "target": ".github/workflows/code-quality-report.yml",
+  "find": "            python3 \"${hub}/docs/scripts/verify_hub_reuse.py\" \\",
+  "replace": "            python3 \"${hub}/docs/scripts/verify_hub_reuse_missing.py\" \\",
+  "test": "bash linux/scripts/tests/test-code-quality-report-workflow.sh",
+  "why": "the reusable measurement workflow must execute the Hub reuse scanner rather than only write a report placeholder"
+ },
+ {
+  "id": "lib.media-runtime-foreign-directml",
+  "target": "windows/scripts/modules/WindowsMediaRuntime.Common.psm1",
+  "find": "Where-Object { $_.Name -eq 'DirectML.dll' }",
+  "replace": "Where-Object { $_.Name -eq 'never-directml.dll' }",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsMediaRuntime.Common.Tests.ps1 -ResultFile logs/code-quality/media-runtime-directml.json",
+  "why": "a GStreamer root must not supply DirectML.dll; only the chain install may stage its redist bytes"
  }
 ]

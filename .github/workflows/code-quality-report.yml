@@ -40,6 +40,7 @@ jobs:
         shell: bash
         env:
           REPORT_HUB_CHECKOUT: ${{ inputs.hub-checkout }}
+          REPORT_REPO_FORK: ${{ github.event.repository.fork }}
         run: |
           set -euo pipefail
           hub='third_party/ANTfrastructure'
@@ -55,9 +56,24 @@ jobs:
           python3 "${hub}/linux/scripts/verify_code_complexity.py" \
             --root "${GITHUB_WORKSPACE}" --report-only \
             > logs/code-quality/measurements/complexity.txt 2>&1
+          if [ "${REPORT_REPO_FORK}" = 'true' ]; then
+            printf 'Hub reuse comparison is scoped to owned nonfork repositories.\n' \
+              > logs/code-quality/measurements/hub-reuse.txt
+          elif [ -f "${hub}/docs/scripts/verify_hub_reuse.py" ]; then
+            python3 "${hub}/docs/scripts/verify_hub_reuse.py" \
+              --root "${GITHUB_WORKSPACE}" --hub "${hub}" --report-only \
+              > logs/code-quality/measurements/hub-reuse.txt 2>&1
+          else
+            printf 'Hub reuse comparison needs a newer ANTfrastructure gitlink; update the direct submodule.\n' \
+              > logs/code-quality/measurements/hub-reuse.txt
+          fi
           for report in logs/code-quality/measurements/*.txt; do
             echo "### ${report##*/}" >> "${GITHUB_STEP_SUMMARY}"
-            tail -n 12 "${report}" >> "${GITHUB_STEP_SUMMARY}"
+            if [ "${report##*/}" = 'hub-reuse.txt' ]; then
+              head -n 12 "${report}" >> "${GITHUB_STEP_SUMMARY}"
+            else
+              tail -n 12 "${report}" >> "${GITHUB_STEP_SUMMARY}"
+            fi
           done
 
       - name: Upload measurements

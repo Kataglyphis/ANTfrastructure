@@ -111,6 +111,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Required Windows siblings import unforced into their owner scope and fail on missing companions; test cold, private-warm and global-warm visibility.
    Windows compiler-wrapper setup and removal share the canonical variable list; emptying an environment variable and removing it remain distinct.
    Windows source builders share Meson binaries, ARM per-file feature selection, handoff transfers and sccache commands; retain caller flags and failure policy.
+   CMake consumers use `Get-CmakeBuildArgs` for target, configuration and parallel flags; keep its argument order and caller-specific build verdict.
    Windows source builders share required-child path enumeration for FFmpeg's Vulkan SDK and the LiteRT wheel smoke; preserve leaf versus directory checks and each caller's fatal diagnostic.
    MIGraphX licence copying uses its existing file-gap helper; keep empty-list behavior and missing-file failures visible.
    Windows mutation fixtures share module lifetime; import or parse failures cannot satisfy an expected assertion failure.
@@ -133,6 +134,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Named mutation-check suites carry their case-executor companion; failed controls and invalid recipes remain failed results.
    Shared mirror enumeration preserves source-file order and original shell-option behavior; artifact and image probes retain caller failure policies.
    ORT and GenAI provenance checks share hashing and chain-byte membership; keep their distinct archive and exemption policies.
+   Windows media staging rejects foreign ORT, GenAI and DirectML DLLs before copying and checks staged bytes against the chain.
    Copy `compiler-cache-utils.sh` beside `common.sh`, cache modules and standalone cache probes and `media-payloads.sh` beside packaging copy/validation scripts; preserve narrow mounts.
    Copy `elf-strip.sh` and `image-ref-args.sh` beside `build-helpers.sh`; `digest-pinning.sh` also requires `image-ref-args.sh`.
    Minimal toolchain bootstraps carry `elf-strip.sh` and `load-versions-env.sh`; keep the narrow GCC/LLVM mounts.
@@ -337,15 +339,15 @@ and [`windows-build-lanes.md`](docs/windows-build-lanes.md).
 
 ### Running Linux containers (Rancher Desktop)
 
-Use `nerdctl`, never `docker`, and never assume a tool is in the image because your dev box has it
-(`jq` is NOT in the Linux image; `python3` is). A GPU container on a Jetson needs three extra flags
+Use `nerdctl`, never `docker`, and check the image contract rather than assuming a host tool is in
+the image (`jq` and `python3` are in the current Linux image). A GPU container on a Jetson needs three extra flags
 under rootless nerdctl:
 [`linux-host-setup.md` § B2b](docs/linux-host-setup.md#b2b-a-gpu-container-on-a-jetson-with-rootless-nerdctl).
 Recipes, mount traps and the one driver that answers them (`run-in-ci-image.sh`):
 [`rancher-desktop-linux-containers.md`](docs/rancher-desktop-linux-containers.md).
 For repeatable Ubuntu WSL2 quality checks, run `bash linux/scripts/wsl-quality.sh setup`, then
 `bash linux/scripts/wsl-quality.sh check`; it installs pinned tools and writes reports below
-ignored `logs/code-quality/wsl/`.
+ignored `logs/code-quality/wsl/`. `--jobs N` also bounds nested Bash suites and ShellCheck.
 
 ### LLM Stack (Ollama + Open WebUI)
 
@@ -442,6 +444,7 @@ hand-rolling any of that in a consumer.
 When adding here:
 
 - **Reuse before adding (owner directive for every owned repo).** Search the current repository and its submodules for an existing implementation before creating functionality. Reuse or extend the canonical repo or submodule surface; when none exists, add it once to a shared repo and wire consumers to it. Keep consumer-specific values as parameters. If a hard technical boundary prevents reuse, record the reason and keep the copy tied to its canonical source.
+  For Bash and PowerShell, review `verify_hub_reuse.py --root <consumer> --hub <hub> --report-only` as well; an advisory CI report does not authorize another local copy.
 - PowerShell 7 (pwsh) is the standard shell and the Windows containers' default SHELL. Every
   `.ps1`/`.psm1` declares `#requires -Version 7.0` on line 1 (or directly under the SPDX header),
   before any `param()`. Exactly two tracked files omit it, on purpose, both pinned 5.1-parsable by

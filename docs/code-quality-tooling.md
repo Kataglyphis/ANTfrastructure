@@ -355,7 +355,8 @@ copies the tree. Python writes no bytecode meanwhile. Each slug's output prints 
 registration order, so the log reads like a serial run, only sooner. One level down the same runner
 drives `run-tests.sh` (`RUN_TESTS_JOBS`, suites in name order, same totals), and `lint-shell.sh`
 runs one shellcheck per file `LINT_SHELL_JOBS` at a time and refuses a run that did not report on
-every file. Each knob set to `1` restores the serial path.
+every file. `wsl-quality.sh check --jobs N` passes the same limit to both nested runners. Each
+knob set to `1` restores the serial path.
 
 The scheduler tracks supervising workers before releasing their commands. Its
 cancellation marker also covers launches in progress; cleanup joins only recorded
@@ -900,7 +901,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3544 entries** over **378 distinct test commands**; both digits are
+manifest holds **3548 entries** over **381 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2634,6 +2635,27 @@ Shell function boundaries use `verify_code_size.code_lines`, so braces inside
 quoted strings, comments and here-doc bodies cannot absorb later functions.
 The shingle stream still uses the original source text. The regression suite
 covers a quoted `${` opener that previously merged every later function into one unit.
+
+### Consumer-to-hub Bash and PowerShell reuse
+
+`python3 docs/scripts/verify_hub_reuse.py --root <consumer> --hub <hub>
+--report-only` compares Git-tracked consumer `.sh`, `.ps1` and `.psm1` units with
+the hub's units. It reuses this gate's tokenization, function and loose-block
+readers, shingle threshold and widespread-idiom suppression, so renamed copies
+remain visible. Each candidate names both files and lines, the shared-shingle
+count and the longest consecutive normalized-line run. These are overlap
+measurements, not a claim that every short match is the same behavior.
+
+Submodule contents, generated files and declared bootstrap copies are outside
+the consumer's own code scope. A bootstrap copy is excluded only after the
+existing shared-config checker verifies that it is synchronized; drift or a
+broken scan exits 2 even with `--report-only`. The default exits 1 for any
+over-threshold pair. The reusable `code-quality-report.yml` runs report mode
+for nonfork callers and writes `logs/code-quality/measurements/hub-reuse.txt`;
+the directory is ignored by Git and uploaded with the other measurements.
+Older consumer pins receive an explicit upgrade notice until their hub gitlink
+contains the scanner. Refactor matches into a shared API before changing that
+workflow to the strict verdict.
 
 ### `env-knobs` — a stale allow row always fails
 

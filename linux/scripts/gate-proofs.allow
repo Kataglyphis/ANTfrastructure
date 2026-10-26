@@ -50,6 +50,8 @@ mutation-family:gst
 mutation-family:guard-helpers
 mutation-family:handoff
 mutation-family:harvest
+# Cross-repo script reuse, including the scanner verdict and shared CI invocation; proof: test-hub-reuse.sh and test-code-quality-report-workflow.sh.
+mutation-family:hub-reuse
 mutation-family:lib
 mutation-family:llvm-target
 mutation-family:pre-commit

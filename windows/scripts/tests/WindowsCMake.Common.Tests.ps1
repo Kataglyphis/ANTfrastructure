@@ -62,11 +62,19 @@ Describe 'WindowsCMake.Common' {
   }
 
   Context 'Get-CmakeBuildArgs' {
-    It 'keeps explicit and unlimited parallelism with their matching verbosity' {
-      Assert-CmakeBuildArgs -Options @{ Context = [pscustomobject]@{}; BuildPath = 'C:\b'; Configuration = 'Debug'; ParallelJobs = 3; CpuCount = 8; VerboseOutput = $true } `
-        -Expected '--build C:\b --config Debug --parallel 3 --verbose'
-      Assert-CmakeBuildArgs -Options @{ Context = [pscustomobject]@{}; BuildPath = 'C:\b'; Configuration = 'Release'; CpuCount = 8 } `
-        -Expected '--build C:\b --config Release --parallel'
+    It 'keeps build and package argument order, parallelism and verbosity (mutation)' {
+      (Get-Command Get-CmakeBuildArgs -ErrorAction Stop).ModuleName | Should -Be 'WindowsCMake.Common'
+      $cases = @(
+        @{ Config = 'Debug'; Target = ''; Jobs = 3; Verbose = $true; Want = '--build C:\b --config Debug --parallel 3 --verbose' }
+        @{ Config = 'Release'; Target = ''; Jobs = 0; Verbose = $false; Want = '--build C:\b --config Release --parallel' }
+        @{ Config = 'Release'; Target = 'package'; Jobs = 3; Verbose = $false; Want = '--build C:\b --target package --config Release --parallel 3' }
+        @{ Config = 'Release'; Target = 'package'; Jobs = 0; Verbose = $false; Want = '--build C:\b --target package --config Release --parallel' }
+      )
+      foreach ($case in $cases) {
+        $options = @{ Context = [pscustomobject]@{}; BuildPath = 'C:\b'; Configuration = $case.Config
+          Target = $case.Target; ParallelJobs = $case.Jobs; CpuCount = 8; VerboseOutput = $case.Verbose }
+        Assert-CmakeBuildArgs -Options $options -Expected $case.Want
+      }
     }
   }
 

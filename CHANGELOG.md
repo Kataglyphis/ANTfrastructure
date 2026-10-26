@@ -13,8 +13,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
-## 2026-10-26 — Renovate submodule updates
+## 2026-10-26 — Reuse and dependency updates
 
+- Forward the WSL quality runner's `--jobs` limit to nested Bash tests and ShellCheck,
+  avoiding accidental oversubscription during the full suite.
+- Correct the Linux image quick reference to match its installed `jq` tool.
+- Measure consumer Bash and PowerShell reuse against hub functions and script
+  blocks in the shared quality-report workflow; declared bootstrap drift stays
+  fatal while overlap candidates go to ignored `logs/code-quality/` reports.
+- Export shared `cmake --build` arguments with an optional target so
+  BeschleunigerBallett can use the same parallel and verbosity policy.
+- Reject a foreign `DirectML.dll` during shared Windows media staging and check
+  staged DirectML bytes against the chain, enabling AccelerANTgine to drop its
+  second GStreamer DLL copier.
 - Share the family-image Python guard in `python-probe.sh`; ModelANT and AssetANT
   can use one tested marker/interpreter check and retain their own diagnostics.
 - Include Torch/vision Git-tag lookups when a scoped `pep621` Renovate run selects their

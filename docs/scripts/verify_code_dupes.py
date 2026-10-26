@@ -301,7 +301,7 @@ def md_units(path: Path) -> list[tuple[int, str]]:
     return units
 
 
-def _file_kind(name: str) -> str | None:
+def file_kind(name: str) -> str | None:
     if name.endswith(".sh"):
         return "shell"
     # Before the Dockerfile prefix: Dockerfile.EolAttributes.Tests.ps1 is a Pester suite.
@@ -325,7 +325,7 @@ def collect() -> list[tuple[Path, str]]:
         for name in names:
             if any(m.lower() in name.lower() for m in SKIP_NAME_MARKERS):
                 continue
-            kind = _file_kind(name)
+            kind = file_kind(name)
             if kind is None:
                 continue
             path = Path(base) / name
@@ -359,35 +359,57 @@ def load_allow() -> dict[frozenset[str], tuple[int, str]]:
     return allow
 
 
-def _index_units(files: list[tuple[Path, str]]) -> tuple[
+def _function_unit(kind: str, body: str) -> bool:
+    marker = SHELL_FUNC if kind == "shell" else PS_FUNC if kind == "ps" else None
+    return marker is not None and bool(marker.match(body.split("\n", 1)[0]))
+
+
+def _selected_shingles(tokens: list[str], allowed: set[Shingle] | None,
+                       ) -> list[tuple[int, Shingle]]:
+    selected = []
+    for offset in range(len(tokens) - SHINGLE + 1):
+        shingle = tuple(tokens[offset:offset + SHINGLE])
+        if allowed is None or shingle in allowed:
+            selected.append((offset, shingle))
+    return selected
+
+
+def index_units(files: list[tuple[Path, str]], *, root: Path | None = None,
+                functions_only: bool = False,
+                only_shingles: set[Shingle] | None = None) -> tuple[
     Owners, set[Shingle], Texts, UnitLines, dict[str, str],
 ]:
-    """(owners, heads, texts, unit_lines, kind_of): shingle holders, unit-opening shingles for excerpts, and report data."""
+    """Index script units; optional root and shingle filters serve cross-repo callers."""
+    scan_root = root if root is not None else REPO_ROOT
     owners: dict[Shingle, set[Unit]] = defaultdict(set)
     heads: set[Shingle] = set()
     texts: dict[Unit, str] = {}
     unit_lines: dict[Unit, list[str]] = {}
     kind_of: dict[str, str] = {}
     for path, kind in files:
-        rel = path.relative_to(REPO_ROOT).as_posix()
+        rel = path.relative_to(scan_root).as_posix()
         kind_of[rel] = kind
         fold = KIND_FOLD.get(kind)
         for line_no, body in UNIT_READERS[kind](path):
+            if functions_only and not _function_unit(kind, body):
+                continue
             folded = fold(body) if fold else body
             toks = normalise(folded)
             if len(toks) < MIN_TOKENS:
                 continue
+            shingles = _selected_shingles(toks, only_shingles)
+            if not shingles:
+                continue
             texts[(rel, line_no)] = " ".join(body.split())
             unit_lines[(rel, line_no)] = normalise_lines(folded)
-            for j in range(len(toks) - SHINGLE + 1):
-                sh = tuple(toks[j:j + SHINGLE])
+            for j, sh in shingles:
                 owners[sh].add((rel, line_no))
                 if j == 0:
                     heads.add(sh)
     return owners, heads, texts, unit_lines, kind_of
 
 
-def _collect_shared(owners: Owners, heads: set[Shingle], kind_of: dict[str, str]) -> tuple[
+def collect_shared(owners: Owners, heads: set[Shingle], kind_of: dict[str, str]) -> tuple[
     Counter[UnitPair], Counter[frozenset[str]], dict[frozenset[str], list], int,
 ]:
     """(shared, spread, families, suppressed); a family is keyed by the block's owner set, never by file adjacency."""
@@ -719,13 +741,13 @@ def main() -> int:
     if not files:
         return _empty_scope_verdict(args)
 
-    owners, heads, texts, unit_lines, kind_of = _index_units(files)
+    owners, heads, texts, unit_lines, kind_of = index_units(files)
 
-    shared, spread, families, suppressed = _collect_shared(owners, heads, kind_of)
+    shared, spread, families, suppressed = collect_shared(owners, heads, kind_of)
     measured, per_file = _collapse_to_files(shared, args.threshold)
 
     allow = {k: v for k, v in load_allow().items()
-             if all(_file_kind(Path(f).name) in kinds for f in k)}
+             if all(file_kind(Path(f).name) in kinds for f in k)}
 
     dispatched = _dispatch_mode(args, owners, texts, unit_lines, per_file, allow)
     if dispatched is not None:

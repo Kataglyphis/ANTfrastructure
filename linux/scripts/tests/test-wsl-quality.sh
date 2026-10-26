@@ -35,6 +35,10 @@ t_assert_contains "${_source}" 'PREFLIGHT_SKIP=mutations' "preflight mutation wo
 t_assert_contains "${_source}" 'verify_mutations.py" --jobs' "the whole mutation manifest still runs"
 t_assert_contains "${_source}" 'logs/code-quality/wsl' "run logs stay in the ignored log tree"
 
+t_case "the worker limit reaches nested shell lint and test suites"
+t_assert_contains "${_source}" "RUN_TESTS_JOBS=\"\${parallelism}\"" "script suites use the requested worker limit"
+t_assert_contains "${_source}" "LINT_SHELL_JOBS=\"\${parallelism}\"" "shell lint uses the requested worker limit"
+
 t_case "unknown commands fail before touching the host"
 _expect_rejected 2 "bad command must not start an install" unknown
 

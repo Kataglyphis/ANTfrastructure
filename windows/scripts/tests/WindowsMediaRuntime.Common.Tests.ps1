@@ -23,6 +23,7 @@ Describe 'WindowsMediaRuntime.Common' {
     $nugetGenAi = 'Microsoft.ML.OnnxRuntimeGenAI.DirectML.0.14.1'
     $peFixture = [ordered]@{
         'gst-foreign\bin\onnxruntime.dll'                         = 'bundled'
+        'gst-dml\bin\DirectML.dll'                               = 'foreign-dml'
         'gst-genai\bin\onnxruntime-genai.dll'                     = 'bundled-genai'
         "$nugetGenAi\runtimes\win-x64\native\onnxruntime-genai.dll" = 'nuget-genai' # GenAI's nupkg holds no ORT file
         'onnxruntime-source\bin\onnxruntime.dll'                  = 'chain-ort'
@@ -128,6 +129,16 @@ Describe 'WindowsMediaRuntime.Common' {
                 -MessagePattern 'outside the chain install.*onnxruntime-genai\.dll' 'a bundled GenAI is as foreign as a bundled ORT'
         }
 
+        It 'refuses DirectML from a GStreamer root before copying (mutation)' {
+            $gstDml = Join-Path $root 'gst-dml\bin'
+            $target = Join-Path $root 'stage-foreign-dml\bin'
+            Assert-Throws { Get-MediaRuntimeDirectory -GStreamerRoot @($gstDml) -OnnxRoot $ortRoot } `
+                -MessagePattern 'outside the chain install.*DirectML\.dll'
+            Assert-Throws { Copy-MediaRuntimeBundle -Context $ctx -TargetDir $target -GStreamerRoot @($gstDml) -OnnxRoot $ortRoot } `
+                -MessagePattern 'outside the chain install.*DirectML\.dll'
+            Assert-False (Test-Path -LiteralPath (Join-Path $target 'DirectML.dll'))
+        }
+
         It 'ignores ONNX headers and import libraries in a GStreamer root during foreign-DLL checks' {
             $r = @(Get-MediaRuntimeDirectory -GStreamerRoot @($gstA) -OnnxRoot $ortRoot)
             Assert-True ($r -contains (Resolve-Path -LiteralPath $gstA).Path)
@@ -136,6 +147,10 @@ Describe 'WindowsMediaRuntime.Common' {
         It 'accepts a chain directory passed as a GStreamer root and still lists it last' {
             $r = @(Get-MediaRuntimeDirectory -GStreamerRoot @($ortBin, $gstA) -OnnxRoot $ortRoot)
             Assert-Equal ((@((Resolve-Path -LiteralPath $gstA).Path, $ortLib, $ortBin)) -join '|') ($r -join '|')
+            $target = Join-Path $root 'stage-chain-as-gst\bin'
+            [void](Copy-MediaRuntimeBundle -Context $ctx -TargetDir $target -GStreamerRoot @($ortBin, $gstA) -OnnxRoot $ortRoot)
+            Assert-Equal (Get-FileHash -LiteralPath (Join-Path $ortBin 'DirectML.dll')).Hash `
+                (Get-FileHash -LiteralPath (Join-Path $target 'DirectML.dll')).Hash
         }
 
         It 'ignores the NuGet-era version parameters' {
@@ -203,6 +218,7 @@ Describe 'WindowsMediaRuntime.Common' {
             $cases = @(
                 @{ Name = 'onnxruntime.dll'; Stale = @{ OnnxRoot = '' }; Clean = @{ OnnxRoot = $ortRoot } }
                 @{ Name = 'onnxruntime-genai.dll'; Stale = @{ OnnxRoot = $ortRoot }; Clean = @{ OnnxRoot = $ortRoot; OnnxGenAiRoot = $genRoot } }
+                @{ Name = 'DirectML.dll'; Stale = @{ OnnxRoot = '' }; Clean = @{ OnnxRoot = $ortRoot } }
             )
             foreach ($case in $cases) {
                 $target = Join-Path $root "stage7\$([IO.Path]::GetFileNameWithoutExtension($case.Name))"

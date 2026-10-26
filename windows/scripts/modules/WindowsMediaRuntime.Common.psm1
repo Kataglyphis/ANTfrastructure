@@ -28,7 +28,11 @@ function Add-MediaRuntimeDirectory {
 
 function Get-MediaRuntimeOnnxDll {
     param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return }
     Get-OnnxRuntimeFile -Path $Path | Where-Object { $_.Extension -eq '.dll' }
+    # DirectML is chain-owned although the general ONNX file enumerator leaves it out.
+    Get-ChildItem -LiteralPath $Path -File -Force -ErrorAction Stop |
+        Where-Object { $_.Name -eq 'DirectML.dll' }
 }
 
 # The chain directories are resolved FIRST (a bad root throws before anything is listed) and staged LAST.
@@ -68,7 +72,7 @@ function Resolve-MediaRuntimeClosure {
     return [pscustomobject]@{ Directories = [string[]]@($directories); Chain = [string[]]@($chain) }
 }
 
-# Every ORT DLL left in TargetDir (top level only) must be byte-identical to the chain file of that name.
+# Every ORT-family DLL left in TargetDir (top level only) must match the chain file's bytes.
 function Assert-MediaRuntimeOnnxFromChain {
     param(
         [Parameter(Mandatory)][string]$TargetDir,
@@ -95,7 +99,7 @@ function Assert-MediaRuntimeOnnxFromChain {
 .SYNOPSIS
     The directories whose DLLs make up the media runtime closure, in load order.
 .DESCRIPTION
-    GStreamer, then GenAI, then ORT last so it wins a collision; absent sources are skipped, non-chain ORT throws.
+    GStreamer, then GenAI, then ORT last so it wins a collision; absent sources are skipped, non-chain ORT or DirectML throws.
 .PARAMETER GStreamerRoot
     Extra GStreamer bin directories probed before $env:GSTREAMER_BIN and the SDK installer's locations.
 .PARAMETER OnnxRoot
@@ -133,7 +137,7 @@ function Get-MediaRuntimeDirectory {
 .SYNOPSIS
     Stages the media runtime DLL closure into a directory beside a built exe.
 .DESCRIPTION
-    Returns the distinct DLL count, 0 for a legitimate no-media build; later dirs win; a non-chain ORT DLL throws.
+    Returns the distinct DLL count, 0 for a legitimate no-media build; later dirs win; non-chain ORT or DirectML throws.
 .PARAMETER Context
     Build context for logging.
 .PARAMETER TargetDir

@@ -216,8 +216,11 @@ function Reset-CmakeBuildRoot {
 }
 
 function Get-CmakeBuildArgs {
-  param($Context, [string]$BuildPath, [string]$Configuration, [int]$ParallelJobs, [int]$CpuCount, [switch]$VerboseOutput)
-  $buildArgs = @('--build', $BuildPath, '--config', $Configuration)
+  param($Context, [string]$BuildPath, [string]$Configuration, [int]$ParallelJobs, [int]$CpuCount, [switch]$VerboseOutput,
+    [string]$Target = '')
+  $buildArgs = @('--build', $BuildPath)
+  if ($Target) { $buildArgs += @('--target', $Target) }
+  $buildArgs += @('--config', $Configuration)
   if ($ParallelJobs -gt 0) {
     $buildArgs += @('--parallel', $ParallelJobs.ToString())
     Write-BuildLog -Context $Context -Message "DEBUG: Using --parallel $ParallelJobs (limited)"
@@ -503,4 +506,4 @@ function Update-CTestMetadataPaths {
     }
 }
 
-Export-ModuleMember -Function Get-CMakeShareDir, Update-CTestMetadataPaths, Get-CompileCommandsDatabase, Remove-BuildRootSafe, Get-CmakeConfigureArgs, Invoke-CmakeConfigureAndBuild, Test-ClangClThreadSanitizerSupport
+Export-ModuleMember -Function Get-CMakeShareDir, Update-CTestMetadataPaths, Get-CompileCommandsDatabase, Remove-BuildRootSafe, Get-CmakeConfigureArgs, Get-CmakeBuildArgs, Invoke-CmakeConfigureAndBuild, Test-ClangClThreadSanitizerSupport
