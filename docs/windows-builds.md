@@ -2413,6 +2413,14 @@ returns the validated AST and lexer tokens from one parse, so comment-aware scan
 cannot inspect declarations after a parse error. The parser helpers never execute
 the inspected script.
 
+`Get-TestSourceCopyLoopText` selects exactly one parsed `foreach` loop by its
+variable, optional condition marker and required copy command.
+`Invoke-TestSourceCopyLoop` parses the selected text before creating source and
+stage trees, then executes it with caller-named path variables and caller-supplied
+fixture files. Ballett and OxidANT keep their distinct source lists and assertions;
+`Harness.SourceCopy.Tests.ps1` covers missing, duplicate and malformed loops plus
+a removed-copy mutant. It does not compile or run the staged binaries.
+
 `WindowsStageDirectory.Fixture.psm1` applies those AST helpers to consumer staging
 scripts. A caller passes its stage script, reset command, literal `-Path` argument
 and reset callback. It uses `Assert-TestAstCommand` to require the literal
@@ -2441,6 +2449,13 @@ mutant imports. The helper owns module and temporary-directory cleanup even when
 the body throws; callers keep their fixture state and command policy.
 
 ## Shared Windows behavior
+
+`Get-BuildWorkspaceConfig` in `WindowsConfig.Common` reads the selected
+`BUILD_WINDOWS_CONFIG` file and resolves the `WORKSPACE_ROOT_ENV` override from
+that file or the environment. It returns the config, its path and the raw
+workspace root; Ballett and OxidANT still call `Resolve-WorkspacePath` and keep
+their own build-specific settings. Its fixture checks missing and malformed
+files, override precedence, an empty value and a removed-override mutant.
 
 `Resolve-BuildValue` owns raw explicit, ordered environment and default selection.
 Source-build and container-image wrappers keep their distinct version-prefix rules.

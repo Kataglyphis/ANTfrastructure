@@ -571,6 +571,40 @@ function Get-TestScriptCommands {
     Get-TestAstCommands -Ast (Get-TestScriptAst -ScriptPath $ScriptPath) -Name $Name
 }
 
+function Get-TestSourceCopyLoopText {
+    param([Parameter(Mandatory)][string]$ScriptPath,
+        [Parameter(Mandatory)][string]$LoopVariable,
+        [string]$ConditionContains = '', [string]$RequiredCommand = 'Copy-Item')
+    $ast = Get-TestScriptAst -ScriptPath $ScriptPath
+    $loops = @($ast.FindAll({ param($node)
+        if ($node -isnot [Management.Automation.Language.ForEachStatementAst]) { return $false }
+        if ($node.Variable.VariablePath.UserPath -ne $LoopVariable) { return $false }
+        if ($ConditionContains -and -not $node.Condition.Extent.Text.Contains($ConditionContains)) { return $false }
+        -not $RequiredCommand -or @(Get-TestAstCommands -Ast $node.Body -Name $RequiredCommand).Count -gt 0
+    }, $true))
+    if ($loops.Count -ne 1) { throw "Expected one source-copy loop, found $($loops.Count) in $ScriptPath" }
+    return $loops[0].Extent.Text
+}
+
+function Invoke-TestSourceCopyLoop {
+    param([Parameter(Mandatory)][string]$Loop,
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][Collections.IDictionary]$Files,
+        [Parameter(Mandatory)][ValidatePattern('^[A-Za-z_][A-Za-z0-9_]*$')][string]$SourceVariableName,
+        [Parameter(Mandatory)][ValidatePattern('^[A-Za-z_][A-Za-z0-9_]*$')][string]$DestinationVariableName)
+    if ($SourceVariableName -eq $DestinationVariableName) { throw 'Source and destination variables must differ' }
+    $source = 'param($' + $SourceVariableName + ', $' + $DestinationVariableName + ")`n" + $Loop
+    $null = ConvertTo-TestScriptAst -Text $source -ErrorLabel 'Invoke-TestSourceCopyLoop'
+    $sourceRoot = Join-Path $Root 'source'
+    $stage = Join-Path $Root 'stage'
+    Write-TestFileTree -Root $sourceRoot -Files $Files
+    $null = New-Item -ItemType Directory -Path $stage -Force
+    $null = & ([scriptblock]::Create($source)) $sourceRoot $stage
+    return $stage
+}
+
+Export-ModuleMember -Function Get-TestSourceCopyLoopText, Invoke-TestSourceCopyLoop
+
 # Executable call-site fixtures must reject missing or extra wiring before creating runnable blocks.
 function Get-TestScriptCommandBlock {
     param([Parameter(Mandatory)][string]$ScriptPath, [Parameter(Mandatory)][string]$Name,

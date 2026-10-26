@@ -20,6 +20,72 @@ Describe 'WindowsConfig.Common' {
     }
   }
 
+  # This fixture does not execute either consumer's full build.
+  Context 'Get-BuildWorkspaceConfig' {
+    It 'reads the default config and its configured workspace environment variable' {
+      Invoke-InTestDir -Files @{ 'default.psd1' = "@{ Build = @{ WorkspaceRootEnv = 'ANT_CFG_ROOT_A' }; Marker = 'default' }" } -Body { param($dir)
+        $path = Join-Path $dir 'default.psd1'
+        Invoke-WithEnv @{ BUILD_WINDOWS_CONFIG = $null; WORKSPACE_ROOT_ENV = $null; ANT_CFG_ROOT_A = 'C:\from-config' } {
+          $result = Get-BuildWorkspaceConfig -DefaultConfigPath $path -RepoRoot 'C:\fallback'
+          $result.ConfigPath | Should -Be $path
+          $result.Config.Marker | Should -Be 'default'
+          $result.WorkspaceRoot | Should -Be 'C:\from-config'
+        }
+      }
+    }
+
+    It 'lets the config path and workspace variable name override the defaults' {
+      Invoke-InTestDir -Files @{
+        'default.psd1' = "@{ Build = @{ WorkspaceRootEnv = 'ANT_CFG_ROOT_A' }; Marker = 'default' }"
+        'override.psd1' = "@{ Build = @{ WorkspaceRootEnv = 'ANT_CFG_ROOT_B' }; Marker = 'override' }"
+      } -Body { param($dir)
+        $path = Join-Path $dir 'override.psd1'
+        Invoke-WithEnv @{ BUILD_WINDOWS_CONFIG = $path; WORKSPACE_ROOT_ENV = 'ANT_CFG_ROOT_C'; ANT_CFG_ROOT_B = 'C:\from-file'; ANT_CFG_ROOT_C = 'D:\from-override' } {
+          $result = Get-BuildWorkspaceConfig -DefaultConfigPath (Join-Path $dir 'default.psd1') -RepoRoot 'C:\fallback'
+          $result.ConfigPath | Should -Be $path
+          $result.Config.Marker | Should -Be 'override'
+          $result.WorkspaceRoot | Should -Be 'D:\from-override'
+        }
+      }
+    }
+
+    It 'uses the repo root when the selected variable is empty' {
+      Invoke-InTestDir -Files @{ 'default.psd1' = "@{ Build = @{ WorkspaceRootEnv = 'ANT_CFG_ROOT_A' } }" } -Body { param($dir)
+        Invoke-WithEnv @{ BUILD_WINDOWS_CONFIG = $null; WORKSPACE_ROOT_ENV = '  '; ANT_CFG_ROOT_A = '  ' } {
+          $result = Get-BuildWorkspaceConfig -DefaultConfigPath (Join-Path $dir 'default.psd1') -RepoRoot 'C:\fallback'
+          $result.WorkspaceRoot | Should -Be 'C:\fallback'
+        }
+      }
+    }
+
+    It 'fails loudly for a missing or malformed config file' {
+      Invoke-InTestDir -Files @{ 'malformed.psd1' = '@{ Build = ' } -Body { param($dir)
+        Invoke-WithEnv @{ BUILD_WINDOWS_CONFIG = $null } {
+          Assert-Throws -MessagePattern 'Build config not found:' -Body {
+            Get-BuildWorkspaceConfig -DefaultConfigPath (Join-Path $dir 'missing.psd1') -RepoRoot $dir
+          }
+          Assert-Throws -Body {
+            Get-BuildWorkspaceConfig -DefaultConfigPath (Join-Path $dir 'malformed.psd1') -RepoRoot $dir
+          }
+        }
+      }
+    }
+
+    It 'detects removal of the workspace variable override' {
+      Invoke-InTestDir -Files @{ 'default.psd1' = "@{ Build = @{ WorkspaceRootEnv = 'ANT_CFG_ROOT_A' } }" } -Body { param($dir)
+        $path = Join-Path $dir 'default.psd1'
+        Invoke-WithEnv @{ BUILD_WINDOWS_CONFIG = $null; WORKSPACE_ROOT_ENV = 'ANT_CFG_ROOT_C'; ANT_CFG_ROOT_A = 'C:\from-file'; ANT_CFG_ROOT_C = 'D:\from-override' } {
+          Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsConfig.Common.psm1' -FunctionName Get-BuildWorkspaceConfig `
+            -Find '$env:WORKSPACE_ROOT_ENV' -Replace '$null' -BodyArgumentList @($path) -Body { param($configPath)
+              Assert-Throws -Body {
+                (Get-MutBuildWorkspaceConfig -DefaultConfigPath $configPath -RepoRoot 'C:\fallback').WorkspaceRoot | Should -Be 'D:\from-override'
+              }
+            }
+        }
+      }
+    }
+  }
+
   Context 'Get-SelectedConfigurations' {
     It 'expands "all" into every available configuration' {
       $set = Get-SelectedConfigurations -Configurations @('all') -AvailableConfigurations @('a', 'b', 'c')

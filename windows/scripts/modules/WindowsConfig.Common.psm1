@@ -28,6 +28,26 @@ function Get-ConfigValue {
   return $cursor
 }
 
+function Get-BuildWorkspaceConfig {
+  param(
+    [Parameter(Mandatory)][string]$DefaultConfigPath,
+    [Parameter(Mandatory)][string]$RepoRoot
+  )
+
+  $configPath = Get-OrDefault $env:BUILD_WINDOWS_CONFIG $DefaultConfigPath
+  if (-not (Test-Path $configPath)) { throw "Build config not found: $configPath" }
+  $config = Import-PowerShellDataFile -Path $configPath
+  $workspaceRootEnvVar = Get-OrDefault $env:WORKSPACE_ROOT_ENV (Get-ConfigValue -Config $config -Path 'Build.WorkspaceRootEnv')
+  $workspaceEnvItem = Get-Item -Path "Env:$workspaceRootEnvVar" -ErrorAction SilentlyContinue
+  $workspaceRootFromEnv = if ($null -ne $workspaceEnvItem) { $workspaceEnvItem.Value } else { $null }
+
+  return [pscustomobject]@{
+    ConfigPath = $configPath
+    Config = $config
+    WorkspaceRoot = Get-OrDefault $workspaceRootFromEnv $RepoRoot
+  }
+}
+
 function Get-SelectedConfigurations {
   param(
     [string[]]$Configurations,
@@ -93,6 +113,7 @@ function Get-BuildConfigurationRow {
 Export-ModuleMember -Function @(
   'Get-OrDefault',
   'Get-ConfigValue',
+  'Get-BuildWorkspaceConfig',
   'Get-SelectedConfigurations',
   'Test-ConfigurationSelected',
   'Get-BuildConfigurationRow'

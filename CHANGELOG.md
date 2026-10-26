@@ -37,6 +37,10 @@
 
 ## 2026-10-26 — Reuse and dependency updates
 
+- Share Windows build config and workspace-root selection between Ballett and OxidANT;
+  keep each build's own path validation. Share parsed source-copy loop fixtures between
+  their ARM64 mutation suites, while retaining each suite's payload assertions.
+
 - Share the MSIX manifest and entry reader through `WindowsSmokeTest.Common` for installer
   consumers; missing or malformed manifests remain fatal, with archive handles closed.
 
