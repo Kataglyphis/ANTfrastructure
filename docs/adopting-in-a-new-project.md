@@ -14,6 +14,8 @@ implementation and consume it through the repo or submodule when one exists. If 
 the functionality once to the shared repo and wire consumers to it with project-specific values
 passed as parameters. When a technical boundary makes reuse impossible, record the reason and keep
 the duplicate connected to its canonical source.
+The [`AGENTS.md` template](../shared/templates/AGENTS.md.template) puts this search rule in new
+consumer repositories; the shared quality report lists Bash and PowerShell overlap candidates.
 
 ## 0. Add the submodule
 
@@ -627,6 +629,7 @@ on 2026-10-05 (CON55), so each consumer links one list instead of keeping its ow
 | Every library a bundle's ELFs need, copied into it (Linux) | `elf-closure.sh` with `--from`, `--search`, `--ldconfig` or `--ldd`, `--exclude` | [`elf-closure.sh`](../linux/scripts/06-packaging/elf-closure.sh), [`linux-build-basics.md`](linux-build-basics.md#the-elf-closure-walker) | a per-repo `walk_queue` or `ldd` loop |
 | Models and scenes a lock pins: cache, hash checks, atomic writes, the scene stamp | `fetch-data-lock.py`; from CMake `kataglyphis_fetch_data` | [`data-repositories.md`](data-repositories.md#the-hubs-fetcher) | a per-repo fetcher in bash, PowerShell, Python or CMake |
 | A bash suite's asserts and its exit code | `t_case`, `t_assert_rc`, `t_assert_grep`, … `t_summary` | [`lib/test-harness.sh`](shared-script-libraries.md#libtest-harnesssh) | an `expect`/`check` pair and a `passed` counter per suite |
+| Parseable ELF64 and gst-inspect test inputs | `t_write_synthetic_elf`, `t_write_gst_inspect_stub` | [`shared-script-libraries.md` § Shared synthetic test fixtures](shared-script-libraries.md#shared-synthetic-test-fixtures) | a second ELF byte writer or gst-inspect heredoc |
 | The family image's pinned Python in a consumer check | `ci_image_python_require` | [`python-probe.sh`](../linux/scripts/01-core/python-probe.sh) | a local `/opt/venv/bin/python3` and `PYTHON_MAJOR_MINOR` guard |
 | Linux packaging (tar, deb, AppImage, Flatpak) | `package_archive.sh` | [`package_archive.sh`](../linux/scripts/06-packaging/package_archive.sh) | bespoke packaging |
 | CI job plumbing | `prepare-linux-ci-host`, `run-in-linux-container`, `run-in-windows-container`, `clone-into-short-path`, `cleanup-disk-space`, `assert-docker-disk-space` | [`.github/actions/`](../.github/actions/README.md) | hand-written `docker run` blocks |

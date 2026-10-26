@@ -2447,6 +2447,7 @@ match, a mixed `versions.env` + CMake report, and a wrong-line plan put back.
 | How every renovate script says things: a fatal, a line, a refusal listing | [`linux/scripts/renovate-say.sh`](../linux/scripts/renovate-say.sh) |
 | The consumer wrapper, copied and edited | [`shared/linux/templates/renovate-local.sh`](../shared/linux/templates/renovate-local.sh) |
 | The world the suites run in | [`linux/scripts/tests/renovate-fixtures.sh`](../linux/scripts/tests/renovate-fixtures.sh) |
+| Shared offline Git bootstrap fixture for the template and consumer wrapper tests | [`linux/scripts/tests/renovate-bootstrap-fixture.sh`](../linux/scripts/tests/renovate-bootstrap-fixture.sh) |
 | The suite that holds every refusal to its word | [`linux/scripts/tests/test-renovate-local.sh`](../linux/scripts/tests/test-renovate-local.sh) |
 | What an ecosystem tool did BESIDE the manifest | [`linux/scripts/tests/test-renovate-collateral.sh`](../linux/scripts/tests/test-renovate-collateral.sh) |
 | Lock file maintenance: the report section, the dry-run counts, the upgrade commands, the opt-out | [`linux/scripts/tests/test-renovate-lockmaint.sh`](../linux/scripts/tests/test-renovate-lockmaint.sh) |

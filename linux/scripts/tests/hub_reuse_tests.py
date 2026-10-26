@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import importlib
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 GATE = ROOT / "docs/scripts/verify_hub_reuse.py"
+sys.path.insert(0, str(GATE.parent))
+reuse = importlib.import_module("verify_hub_reuse")
 
 BASH_BODY = """fetch_asset() {
   local source="$1" target="$2" marker='${'
@@ -165,6 +169,18 @@ class HubReuseTests(unittest.TestCase):
         self.assertEqual(2, result.returncode, result.stdout + result.stderr)
         self.assertIn("shared-config check failed", result.stderr)
         self.assertIn("DRIFTED", result.stderr)
+
+    def test_windows_uses_native_powershell_for_copy_drift(self) -> None:
+        _write(self.consumer, ".antfrastructure-shared.manifest", "fixture scripts/lib/fixture.sh\n")
+        _write(self.hub, "shared/config/Sync-SharedConfig.ps1", "#requires -Version 7.0\n")
+        checked = subprocess.CompletedProcess([], 0,
+                                              "  OK      scripts/lib/fixture.sh\n", "")
+        with (mock.patch.object(reuse.sys, "platform", "win32"),
+              mock.patch.object(reuse.shutil, "which", return_value="available"),
+              mock.patch.object(reuse.subprocess, "run", return_value=checked) as runner):
+            paths = reuse._shared_check(self.consumer, self.hub)
+        self.assertEqual({"scripts/lib/fixture.sh"}, paths)
+        self.assertEqual("pwsh", runner.call_args.args[0][0])
 
     def test_hub_self_comparison_skips(self) -> None:
         _write(self.hub, "scripts/shared.sh", BASH_BODY)

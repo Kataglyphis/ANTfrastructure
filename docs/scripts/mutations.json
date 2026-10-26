@@ -28385,6 +28385,14 @@
   "why": "a declared copied bootstrap that drifts from the hub must fail even when findings are only reported"
  },
  {
+  "id": "hub-reuse.windows-native-drift-check",
+  "target": "docs/scripts/verify_hub_reuse.py",
+  "find": "    if sys.platform == \"win32\":\n        commands = commands[::-1]",
+  "replace": "    if False:\n        commands = commands[::-1]",
+  "test": "bash linux/scripts/tests/test-hub-reuse.sh",
+  "why": "native Windows checkout paths must be checked with PowerShell before a bash command can enter WSL"
+ },
+ {
   "id": "hub-reuse.workflow-invokes-scanner",
   "target": ".github/workflows/code-quality-report.yml",
   "find": "            python3 \"${hub}/docs/scripts/verify_hub_reuse.py\" \\",

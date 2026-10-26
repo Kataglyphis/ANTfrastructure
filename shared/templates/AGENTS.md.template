@@ -18,6 +18,11 @@ Topic -> owning document: third_party/ANTfrastructure/docs/INDEX.md
 
 Guidance for coding agents (and new contributors) working in <PROJECT>.
 
+Before adding a Bash or PowerShell script or function, search this repo and its
+submodules for the same behavior. Call or extend the owning API and pass this
+project's values as arguments. Add missing shared behavior to ANTfrastructure
+before keeping another local implementation.
+
 ## 1. What this project is
 
 <!-- Two or three sentences. What it builds, what language/framework, what the

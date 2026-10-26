@@ -139,6 +139,20 @@ explicitly. `t_capture_command` captures merged output and raw failure status fo
 assertions; it does not turn a failed command into a successful test. These fixtures
 exercise stubbed operations and do not prove live cache servers or package builds.
 
+## Shared synthetic test fixtures
+
+`linux/scripts/tests/synthetic-elf-fixture.sh` provides `t_write_synthetic_elf`
+for parseable ELF64 test files. Callers choose `--strsz` when their probe needs
+`DT_STRSZ`, and `--symbol STYLE:SHNDX` when testing an ORT export through GNU or
+SysV symbol tables. The same writer serves the hub's ORT census and
+OmniAccelerANT's bundle closure test; each suite keeps its own assertions.
+
+`linux/scripts/tests/gst-inspect-fixture.sh` provides
+`t_write_gst_inspect_stub` with an optional `--with-name`. Both GStreamer tests
+exercise element membership and the bundled-plugin path through this stub;
+OmniAccelerANT requests the extra `Name` field its gate parses. These fixtures
+produce controlled test inputs, not a live ELF loader or GStreamer installation.
+
 ## Ordered probes and compatibility fallbacks
 
 Media core shares ordered regular-file checks for TensorFlow SDK completeness and

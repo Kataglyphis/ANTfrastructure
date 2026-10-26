@@ -901,7 +901,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3548 entries** over **381 distinct test commands**; both digits are
+manifest holds **3549 entries** over **381 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2289,7 +2289,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 949 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 955 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -2656,6 +2656,8 @@ the directory is ignored by Git and uploaded with the other measurements.
 Older consumer pins receive an explicit upgrade notice until their hub gitlink
 contains the scanner. Refactor matches into a shared API before changing that
 workflow to the strict verdict.
+On Windows, the scanner uses the PowerShell shared-config checker first so a
+`bash` command that enters WSL cannot misread Windows checkout paths.
 
 ### `env-knobs` — a stale allow row always fails
 

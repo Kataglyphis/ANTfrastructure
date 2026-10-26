@@ -21,6 +21,11 @@
 - Measure consumer Bash and PowerShell reuse against hub functions and script
   blocks in the shared quality-report workflow; declared bootstrap drift stays
   fatal while overlap candidates go to ignored `logs/code-quality/` reports.
+  Prefer the native PowerShell drift checker on Windows.
+- Teach future consumer `AGENTS.md` files to search their repository and
+  submodules before adding another Bash or PowerShell implementation.
+- Share synthetic ELF and gst-inspect test fixtures with OmniAccelerANT; its
+  bundle tests retain their own assertions and request the fields they need.
 - Export shared `cmake --build` arguments with an optional target so
   BeschleunigerBallett can use the same parallel and verbosity policy.
 - Reject a foreign `DirectML.dll` during shared Windows media staging and check

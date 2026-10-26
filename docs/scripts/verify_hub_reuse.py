@@ -34,6 +34,9 @@ def _shared_check(root: Path, hub: Path) -> set[str]:
     commands = (("bash", ["bash", str(bash), "--repo-root", str(root), "--check"]),
                 ("pwsh", ["pwsh", "-NoProfile", "-File", str(pwsh),
                           "-RepoRoot", str(root), "-Check"]))
+    # Windows bash may enter WSL, which cannot interpret native checkout paths.
+    if sys.platform == "win32":
+        commands = commands[::-1]
     for tool, command in commands:
         if not shutil.which(tool):
             continue

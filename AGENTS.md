@@ -115,6 +115,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows source builders share required-child path enumeration for FFmpeg's Vulkan SDK and the LiteRT wheel smoke; preserve leaf versus directory checks and each caller's fatal diagnostic.
    MIGraphX licence copying uses its existing file-gap helper; keep empty-list behavior and missing-file failures visible.
    Windows mutation fixtures share module lifetime; import or parse failures cannot satisfy an expected assertion failure.
+   Synthetic ELF and gst-inspect test fixtures share their writers; retain caller-specific `DT_STRSZ`, symbol-table and `Name` options.
    Windows script workspaces share AST validation before allocation and cleanup; log and Cargo paths use the canonical rooted-path resolver.
    Windows suites share `New-TestDir -Prefix` and `Assert-Throws -MessagePattern`; suite-scoped directories retain their `AfterAll` cleanup.
    Fixture cleanup uses `Remove-TestDir` with literal paths; bracketed diagnostic prefixes must leave no temporary roots.
@@ -180,7 +181,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Temporary process environments restore absent, empty and existing values after setup or callback failure; sanitizer overrides belong to the test child.
    Silo probes share wininit discovery, debugger transport and recursive read grants; preserve attach policy, raw status and manual handle mode.
    Cross-bundle DLL closure uses the architecture graph; retain first-directory precedence, machine checks, indexed API sets and system descendants.
-   Git fixtures share checked local repository setup; native tool failures must fail the fixture without changing global identity.
+   Git fixtures share checked local repository setup; native tool failures must fail the fixture without changing global identity. Renovate bootstrap tests use the shared Git fixture and supply only their driver and wrapper layout.
    Windows native logging and DLL smoke probes share transport; preserve blank failure evidence, loader cleanup and caller coverage minimums. Smoke module copies carry Shared.
    Staging directories share literal-root setup; failed reset or allocation aborts before payload copy and proof.
    Windows archives share extraction lifecycle; strict failures remain the default and pinned link exceptions stay explicit.
@@ -445,6 +446,7 @@ When adding here:
 
 - **Reuse before adding (owner directive for every owned repo).** Search the current repository and its submodules for an existing implementation before creating functionality. Reuse or extend the canonical repo or submodule surface; when none exists, add it once to a shared repo and wire consumers to it. Keep consumer-specific values as parameters. If a hard technical boundary prevents reuse, record the reason and keep the copy tied to its canonical source.
   For Bash and PowerShell, review `verify_hub_reuse.py --root <consumer> --hub <hub> --report-only` as well; an advisory CI report does not authorize another local copy.
+  On Windows, its copied-bootstrap drift proof runs through PowerShell first.
 - PowerShell 7 (pwsh) is the standard shell and the Windows containers' default SHELL. Every
   `.ps1`/`.psm1` declares `#requires -Version 7.0` on line 1 (or directly under the SPDX header),
   before any `param()`. Exactly two tracked files omit it, on purpose, both pinned 5.1-parsable by

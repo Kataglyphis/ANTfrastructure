@@ -3,6 +3,8 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+# shellcheck source=linux/scripts/tests/gst-inspect-fixture.sh
+source "${TESTS_DIR}/gst-inspect-fixture.sh"
 
 GSB="${TESTS_DIR}/../06-packaging/gstreamer-bundle.sh"
 _work="$(mktemp -d)"
@@ -26,15 +28,7 @@ t_assert_fails _copy out2 --plugin coreelements --plugin videotestsrc
 t_assert_ok _copy out3 --plugin coreelements --optional videotestsrc
 t_assert_fails test -e "${_work}/out3/libgstvideotestsrc.so"
 
-# Answers like gst-inspect-1.0 for STUB_ELEMENTS from STUB_DIR, and only under a package's plugin environment.
-cat > "${_work}/gst-inspect" <<'STUB'
-#!/usr/bin/env bash
-[ "${GST_PLUGIN_SYSTEM_PATH-unset}" = "" ] && [ "${GST_PLUGIN_SYSTEM_PATH_1_0-unset}" = "" ] || exit 3
-[ -z "${GST_PLUGIN_PATH_1_0+x}" ] || exit 3
-case " ${STUB_ELEMENTS} " in *" $1 "*) ;; *) exit 255 ;; esac
-printf 'Plugin Details:\n  Filename                 %s/libgststub.so\n' "${STUB_DIR:-${GST_PLUGIN_PATH}}"
-STUB
-chmod +x "${_work}/gst-inspect"
+t_write_gst_inspect_stub "${_work}/gst-inspect"
 _check() { env GST_INSPECT="${_work}/gst-inspect" "$@" bash "${GSB}" check --plugins "${_work}/out1" videoconvert fdsink; }
 
 t_case "check: every element from the package passes, whatever plugin paths the caller had"

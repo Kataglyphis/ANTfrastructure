@@ -3,6 +3,8 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+# shellcheck source=linux/scripts/tests/synthetic-elf-fixture.sh
+source "${TESTS_DIR}/synthetic-elf-fixture.sh"
 PKG="${TESTS_DIR}/../06-packaging"
 CENSUS="${PKG}/check-ort-provenance.sh"
 PY="${PREFLIGHT_PYTHON:-python3}"
@@ -137,44 +139,8 @@ t_assert_contains "$(_v "$(_base; _done)" 0 'no-colons')" "EXEMPT-STALE	no-colon
 # ---- the probe, over synthetic ELF trees ------------------------------------------------------------
 PROBE="$(_ort_host_dir "${PKG}")/ort_census_probe.py"
 _probe() { MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "${PY}" "${PROBE}" "$@"; }
-# _elf <path> <needed,csv> <runpath> <text>...: an x86-64 .so; ORT_TEST_SYM=<gnu|sysv>:<shndx> adds OrtGetApiBase.
-_elf() {
-  mkdir -p "$(dirname "$1")"
-  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "${PY}" - "$(_ort_host_dir "$(dirname "$1")")/$(basename "$1")" "${@:2}" <<'PY'
-import os
-import struct
-import sys
-
-path, needed, runpath, texts = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
-style, _, shndx = os.environ.get("ORT_TEST_SYM", "").partition(":")
-strtab, dyn, syms = b"\0", [], b""
-for tag, value in [(1, n) for n in needed.split(",") if n] + ([(29, runpath)] if runpath else []):
-    dyn.append((tag, len(strtab)))
-    strtab += value.encode() + b"\0"
-if style:
-    h = 5381
-    for c in b"OrtGetApiBase":
-        h = (h * 33 + c) & 0xFFFFFFFF
-    table = struct.pack("<IIIIQII", 1, 1, 1, 6, 2**64 - 1, 1, h | 1) if style == "gnu" else struct.pack("<IIIII", 1, 2, 1, 0, 0)
-    syms = b"\0" * 24 + struct.pack("<IBBHQQ", len(strtab), 0x12, 0, int(shndx), 0x1000 if int(shndx) else 0, 0) + table
-    strtab += b"OrtGetApiBase\0"
-dyn_off = 64 + 2 * 56
-dyn_size = 16 * (len(dyn) + 2 + (3 if style else 0))
-str_off = dyn_off + dyn_size + len(syms)
-if style:
-    dyn += [(6, dyn_off + dyn_size), (11, 24), (0x6FFFFEF5 if style == "gnu" else 4, dyn_off + dyn_size + 48)]
-payload = b"".join(b"\0" + t.encode() + b"\0" for t in texts)
-total = max(str_off + len(strtab) + len(payload), 2048)
-data = b"\x7fELF" + bytes([2, 1, 1, 0]) + b"\0" * 8
-data += struct.pack("<HHIQQQIHHHHHH", 3, 62, 1, 0, 64, 0, 0, 64, 56, 2, 64, 0, 0)
-data += struct.pack("<IIQQQQQQ", 1, 5, 0, 0, 0, total, total, 0x1000)
-data += struct.pack("<IIQQQQQQ", 2, 6, dyn_off, dyn_off, dyn_off, dyn_size, dyn_size, 8)
-data += b"".join(struct.pack("<qQ", t, v) for t, v in dyn) + struct.pack("<qQ", 5, str_off) + struct.pack("<qQ", 0, 0)
-data += syms + strtab + payload
-with open(path, "wb") as fh:
-    fh.write(data + b"\0" * (total - len(data)))
-PY
-}
+# The symbol option retains the ORT export variants; the shared fixture owns the ELF layout.
+_elf() { t_write_synthetic_elf "${PY}" --symbol "${ORT_TEST_SYM:-}" "$@"; }
 CHAIN_SRC=/opt/onnxruntime/onnxruntime/core/session/inference_session.cc
 WINML_SRC='C:\__w\1\s\onnxruntime\core\session\inference_session.cc'
 # FFmpeg compiles its configure line into every lib and tool, and the chain's names an ORT include dir.

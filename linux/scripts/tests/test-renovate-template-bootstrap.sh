@@ -1,56 +1,51 @@
 #!/usr/bin/env bash
 # The copied wrapper bootstraps only a real apply; live Renovate and a Windows container are outside this fixture.
 set -u
-# shellcheck source=linux/scripts/tests/test-harness.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/test-harness.sh"
+# shellcheck source=linux/scripts/tests/renovate-bootstrap-fixture.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/renovate-bootstrap-fixture.sh"
 TEMPLATES="$(cd "${_T_SCRIPTS}/../../shared/linux/templates" && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 
-make_consumer() {
-  local base="${WORK}/$1" seed="${WORK}/$1/seed" remote="${WORK}/$1/hub.git"
-  local repo="${WORK}/$1/consumer" sha
-  mkdir -p "${seed}/linux/scripts" "${repo}/scripts/linux/lib"
-  git -C "${seed}" init -q -b develop
-  git -C "${seed}" config user.name Fixture
-  git -C "${seed}" config user.email fixture@example.invalid
-  cat > "${seed}/linux/scripts/renovate-local.sh" <<'SH'
+_bootstrap_seed() {
+  local seed="$1"
+  t_renovate_bootstrap_driver "${seed}" <<'SH' || return 1
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "${DRIVER_ARGS:?}"
 if [ "${DRIVER_SIGNAL:-0}" = 1 ]; then kill -TERM "$PPID"; fi
 exit "${DRIVER_EXIT:-0}"
 SH
-  printf '[submodule "nested"]\n\tpath = nested\n\turl = /missing/nested\n' > "${seed}/.gitmodules"
-  git -C "${seed}" add .gitmodules linux/scripts/renovate-local.sh
+  printf '[submodule "nested"]\n\tpath = nested\n\turl = /missing/nested\n' > "${seed}/.gitmodules" || return 1
   git -C "${seed}" update-index --add --cacheinfo "160000,1111111111111111111111111111111111111111,nested"
-  git -C "${seed}" commit -qm seed
-  sha="$(git -C "${seed}" rev-parse HEAD)"
-  git clone --quiet --bare "${seed}" "${remote}"
-  git -C "${remote}" symbolic-ref HEAD refs/heads/develop
-
-  git -C "${repo}" init -q -b develop
-  git -C "${repo}" config user.name Fixture
-  git -C "${repo}" config user.email fixture@example.invalid
-  cp "${TEMPLATES}/renovate-local.sh" "${repo}/scripts/linux/renovate-local.sh"
-  cp "${TEMPLATES}/antfrastructure.sh" "${repo}/scripts/linux/lib/antfrastructure.sh"
-  cp "${TEMPLATES}/renovate-git-mode.sh" "${repo}/scripts/linux/lib/renovate-git-mode.sh"
-  printf '[submodule "third_party/ANTfrastructure"]\n\tpath = third_party/ANTfrastructure\n\turl = %s\n' "${remote}" > "${repo}/.gitmodules"
-  git -C "${repo}" add .gitmodules scripts/linux
-  git -C "${repo}" update-index --add --cacheinfo "160000,${sha},third_party/ANTfrastructure"
-  git -C "${repo}" commit -qm consumer
-  printf '\n# preserve the consumer config byte for byte\n' >> "${repo}/.git/config"
-  cp -p "${repo}/.git/config" "${base}/config.before"
-  printf '%s' "${repo}"
 }
 
+_bootstrap_consumer() {
+  local repo="$1"
+  mkdir -p "${repo}/scripts/linux/lib" || return 1
+  cp "${TEMPLATES}/renovate-local.sh" "${repo}/scripts/linux/renovate-local.sh" || return 1
+  cp "${TEMPLATES}/antfrastructure.sh" "${repo}/scripts/linux/lib/antfrastructure.sh" || return 1
+  cp "${TEMPLATES}/renovate-git-mode.sh" "${repo}/scripts/linux/lib/renovate-git-mode.sh"
+}
+
+make_consumer() { t_renovate_bootstrap_fixture "${WORK}/$1" _bootstrap_seed _bootstrap_consumer; }
+
 run_wrapper() {
-  local repo="$1"; shift
-  DRIVER_ARGS="${repo%/consumer}/driver.args" GIT_ALLOW_PROTOCOL=file TMPDIR="${WORK}" \
-    bash "${repo}/scripts/linux/renovate-local.sh" "$@"
+  local repo="$1"
+  shift
+  t_renovate_bootstrap_run "${repo}" "${WORK}" "$@"
+}
+
+run_windows_wrapper() {
+  local repo="$1" scenario="$2"
+  shift 2
+  WIN_GIT_ROOT="${repo}" WIN_GIT_LOG="${WORK}/${scenario}/git.log" \
+    TEST_WIN_ROOT='C:\Fixture' TEST_WIN_CONFIG='C:/Fixture/.git/config' \
+    TEST_WSL_CONFIG="${repo}/.git/config" REAL_GIT="$(command -v git)" \
+    PATH="${WORK}/win-git-bin:${PATH}" run_wrapper "${repo}" "$@"
 }
 
 t_case "a copied bootstrap stays within the consumer complexity limit"
-repo="$(make_consumer complexity)"
+repo="$(make_consumer complexity)" || exit 1
 t_assert_rc 0 python3 "${_T_SCRIPTS}/verify_code_complexity.py" --root "${repo}"
 printf '\nantfrastructure_complexity_mutant() {\n' >> "${repo}/scripts/linux/lib/antfrastructure.sh"
 for branch in {1..16}; do
@@ -63,7 +58,7 @@ t_assert_eq 1 "${complexity_rc}"
 t_assert_contains "${complexity_output}" "antfrastructure_complexity_mutant:cc"
 
 t_case "a copied bootstrap has no trailing conditional return"
-repo="$(make_consumer trailing_conditional)"
+repo="$(make_consumer trailing_conditional)" || exit 1
 t_assert_rc 0 python3 "${_T_SCRIPTS}/verify_trailing_conditional.py" --root "${repo}"
 cat >> "${repo}/scripts/linux/lib/antfrastructure.sh" <<'SH'
 antfrastructure_trailing_mutant() {
@@ -76,16 +71,13 @@ t_assert_eq 1 "${trailing_rc}"
 t_assert_contains "${trailing_output}" "antfrastructure_trailing_mutant"
 
 t_case "report and dry-run refuse an unavailable hub without cloning it"
-repo="$(make_consumer read_only)"
+repo="$(make_consumer read_only)" || exit 1
 t_assert_fails run_wrapper "${repo}"
 t_assert_fails run_wrapper "${repo}" --apply --dry-run
-t_assert_fails test -e "${repo}/third_party/ANTfrastructure/.git"
-t_assert_fails test -e "${repo}/third_party/ANTfrastructure/linux/scripts/renovate-local.sh"
-t_assert_ok cmp -s "${WORK}/read_only/config.before" "${repo}/.git/config"
-t_assert_fails test -e "${WORK}/read_only/driver.args"
+t_renovate_bootstrap_assert_pristine "${repo}"
 
 t_case "a missing copied Git mode companion fails before hub initialization"
-repo="$(make_consumer missing_git_mode)"
+repo="$(make_consumer missing_git_mode)" || exit 1
 rm "${repo}/scripts/linux/lib/renovate-git-mode.sh"
 missing_mode_rc=0
 missing_mode_output="$(run_wrapper "${repo}" --apply 2>&1)" || missing_mode_rc=$?
@@ -95,7 +87,7 @@ t_assert_fails test -e "${repo}/third_party"
 t_assert_ok cmp -s "${WORK}/missing_git_mode/config.before" "${repo}/.git/config"
 
 t_case "an initialized old hub reports its missing driver without bootstrap"
-repo="$(make_consumer old_pin)"
+repo="$(make_consumer old_pin)" || exit 1
 env GIT_ALLOW_PROTOCOL=file git -C "${repo}" submodule update --init -- third_party/ANTfrastructure >/dev/null 2>&1
 rm "${repo}/third_party/ANTfrastructure/linux/scripts/renovate-local.sh"
 old_pin_rc=0
@@ -105,7 +97,7 @@ t_assert_contains "${old_pin_output}" "ANTfrastructure file not found"
 t_assert_ok test -e "${repo}/third_party/ANTfrastructure/.git"
 
 t_case "apply initializes only the direct hub before invoking the driver"
-repo="$(make_consumer apply)"
+repo="$(make_consumer apply)" || exit 1
 t_assert_rc 0 run_wrapper "${repo}" --apply --managers pub
 t_assert_eq "${repo}" "$(sed -n '1p' "${WORK}/apply/driver.args")"
 t_assert_eq --apply "$(sed -n '2p' "${WORK}/apply/driver.args")"
@@ -142,44 +134,33 @@ fi
 exec "${REAL_GIT:?}" "$@"
 SH
 chmod +x "${WORK}/win-git-bin/"*
-repo="$(make_consumer win_git_apply)"
-WIN_GIT_ROOT="${repo}" WIN_GIT_LOG="${WORK}/win_git_apply/git.log" \
-  TEST_WIN_ROOT='C:\Fixture' TEST_WIN_CONFIG='C:/Fixture/.git/config' \
-  TEST_WSL_CONFIG="${repo}/.git/config" \
-  REAL_GIT="$(command -v git)" PATH="${WORK}/win-git-bin:${PATH}" \
-  t_assert_rc 0 run_wrapper "${repo}" --apply
+repo="$(make_consumer win_git_apply)" || exit 1
+t_assert_rc 0 run_windows_wrapper "${repo}" win_git_apply --apply
 t_assert_ok test -e "${repo}/third_party/ANTfrastructure/.git"
 t_assert_contains "$(cat "${WORK}/win_git_apply/git.log")" "diff --quiet -- .gitmodules"
 t_assert_contains "$(cat "${WORK}/win_git_apply/git.log")" "rev-parse --path-format=absolute --git-path config"
 t_assert_contains "$(cat "${WORK}/win_git_apply/git.log")" "submodule update --init -- third_party/ANTfrastructure"
-repo="$(make_consumer win_git_fatal)"
-WIN_GIT_ROOT="${repo}" WIN_GIT_LOG="${WORK}/win_git_fatal/git.log" \
-  TEST_WIN_ROOT='C:\Fixture' TEST_WIN_CONFIG='C:/Fixture/.git/config' \
-  TEST_WSL_CONFIG="${repo}/.git/config" \
-  REAL_GIT="$(command -v git)" PATH="${WORK}/win-git-bin:${PATH}" DRIVER_EXIT=7 \
-  t_assert_rc 7 run_wrapper "${repo}" --apply
+repo="$(make_consumer win_git_fatal)" || exit 1
+DRIVER_EXIT=7 t_assert_rc 7 run_windows_wrapper "${repo}" win_git_fatal --apply
 t_assert_contains "$(cat "${WORK}/win_git_fatal/git.log")" "submodule deinit --force -- third_party/ANTfrastructure"
 t_assert_ok cmp -s "${WORK}/win_git_fatal/config.before" "${repo}/.git/config"
 t_assert_fails test -e "${repo}/third_party"
 
 t_case "a Linux-owned WSL checkout is not claimed by Windows Git"
-repo="$(make_consumer win_git_false)"
-WIN_GIT_ROOT="${repo}" WIN_GIT_LOG="${WORK}/win_git_false/git.log" \
-  WIN_AUTOCRLF=false TEST_WIN_ROOT='C:\Fixture' \
-  REAL_GIT="$(command -v git)" PATH="${WORK}/win-git-bin:${PATH}" \
-  t_assert_rc 1 run_wrapper "${repo}" --apply
+repo="$(make_consumer win_git_false)" || exit 1
+WIN_AUTOCRLF=false t_assert_rc 1 run_windows_wrapper "${repo}" win_git_false --apply
 t_assert_contains "$(cat "${WORK}/win_git_false/git.log")" "config --get core.autocrlf"
 t_assert_fails test -e "${repo}/third_party"
 t_assert_ok cmp -s "${WORK}/win_git_false/config.before" "${repo}/.git/config"
 t_assert_fails test -e "${WORK}/win_git_false/driver.args"
 
 t_case "a driver refusal exits two and keeps its initialized hub for review"
-repo="$(make_consumer refused)"
+repo="$(make_consumer refused)" || exit 1
 DRIVER_EXIT=2 t_assert_rc 2 run_wrapper "${repo}" --apply
 t_assert_ok test -f "${repo}/third_party/ANTfrastructure/linux/scripts/renovate-local.sh"
 
 t_case "a fatal driver status restores the config and originally absent directories"
-repo="$(make_consumer fatal)"
+repo="$(make_consumer fatal)" || exit 1
 DRIVER_EXIT=7 t_assert_rc 7 run_wrapper "${repo}" --apply
 t_assert_ok cmp -s "${WORK}/fatal/config.before" "${repo}/.git/config"
 t_assert_fails test -e "${repo}/third_party"
@@ -187,13 +168,13 @@ t_assert_eq "$(git -C "${repo}" rev-parse HEAD:third_party/ANTfrastructure)" \
   "$(git -C "${repo}" ls-files --stage -- third_party/ANTfrastructure | cut -d' ' -f2)"
 
 t_case "a signal after bootstrap restores the initially missing hub"
-repo="$(make_consumer signal)"
+repo="$(make_consumer signal)" || exit 1
 DRIVER_SIGNAL=1 t_assert_rc 143 run_wrapper "${repo}" --apply
 t_assert_ok cmp -s "${WORK}/signal/config.before" "${repo}/.git/config"
 t_assert_fails test -e "${repo}/third_party"
 
 t_case "an incomplete rollback keeps the config backup for recovery"
-repo="$(make_consumer cleanup_fail)"
+repo="$(make_consumer cleanup_fail)" || exit 1
 mkdir -p "${WORK}/bin"
 cat > "${WORK}/bin/git" <<'SH'
 #!/usr/bin/env bash
@@ -211,7 +192,7 @@ t_assert_ok test -f "${backup}"
 t_assert_ok cmp -s "${WORK}/cleanup_fail/config.before" "${backup}"
 
 t_case "a failed clone restores the config before a driver can run"
-repo="$(make_consumer clone_fail)"
+repo="$(make_consumer clone_fail)" || exit 1
 git -C "${repo}" config -f .gitmodules submodule.third_party/ANTfrastructure.url "${WORK}/missing-remote"
 git -C "${repo}" add .gitmodules
 git -C "${repo}" commit -qm broken-url
@@ -222,7 +203,7 @@ t_assert_fails test -e "${repo}/third_party"
 t_assert_fails test -e "${WORK}/clone_fail/driver.args"
 
 t_case "a missing .gitmodules mapping fails before submodule setup"
-repo="$(make_consumer missing_mapping)"
+repo="$(make_consumer missing_mapping)" || exit 1
 git -C "${repo}" config -f .gitmodules --unset submodule.third_party/ANTfrastructure.path
 git -C "${repo}" add .gitmodules
 git -C "${repo}" commit -qm no-mapping
@@ -232,7 +213,7 @@ t_assert_ok cmp -s "${WORK}/missing_mapping/config.before" "${repo}/.git/config"
 t_assert_fails test -e "${WORK}/missing_mapping/driver.args"
 
 t_case "a preexisting empty hub directory stays after fatal rollback"
-repo="$(make_consumer empty_dir)"
+repo="$(make_consumer empty_dir)" || exit 1
 mkdir -p "${repo}/third_party/ANTfrastructure"
 DRIVER_EXIT=7 t_assert_rc 7 run_wrapper "${repo}" --apply
 t_assert_ok test -d "${repo}/third_party/ANTfrastructure"
@@ -240,20 +221,20 @@ t_assert_eq "" "$(ls -A "${repo}/third_party/ANTfrastructure")"
 t_assert_ok cmp -s "${WORK}/empty_dir/config.before" "${repo}/.git/config"
 
 t_case "a nonempty hub path and an untracked pseudo-gitlink cannot trigger a clone"
-repo="$(make_consumer blocked)"
+repo="$(make_consumer blocked)" || exit 1
 mkdir -p "${repo}/third_party/ANTfrastructure"
 printf 'keep\n' > "${repo}/third_party/ANTfrastructure/sentinel"
 t_assert_fails run_wrapper "${repo}" --apply
 t_assert_eq keep "$(cat "${repo}/third_party/ANTfrastructure/sentinel")"
 t_assert_ok cmp -s "${WORK}/blocked/config.before" "${repo}/.git/config"
-repo="$(make_consumer missing_gitlink)"
+repo="$(make_consumer missing_gitlink)" || exit 1
 git -C "${repo}" update-index --force-remove -- third_party/ANTfrastructure
 git -C "${repo}" commit -qm no-gitlink
 t_assert_fails run_wrapper "${repo}" --apply
 t_assert_fails test -e "${repo}/third_party"
 
 t_case "a redirected hub path cannot be used as a clone destination"
-repo="$(make_consumer symlink)"
+repo="$(make_consumer symlink)" || exit 1
 if t_posix_symlinks; then
   mkdir -p "${repo}/third_party" "${WORK}/outside"
   ln -s "${WORK}/outside" "${repo}/third_party/ANTfrastructure"
