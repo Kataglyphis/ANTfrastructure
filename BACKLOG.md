@@ -415,6 +415,15 @@ owner carries the breakage that costs.
 
 ## Open — Linux image (all arches)
 
+- [ ] **CON164 — ONNX Runtime's media build mostly bypasses sccache, and the S3 level drops uploads** [M, ★★★,
+      investigate first]. Found on the 2026-10-26 chain, `media-arm64.log` step `onnxruntime 2/9` (6266 s): 2740
+      `Building … object` lines, but sccache counted 414 compile requests (365 hits, 12 misses, 36 cache errors).
+      CMake prints `-- Using ccache: /usr/bin/ccache` twice in that step, so a fetched subproject detects the
+      distro ccache on its own. The step's drain logged `L1 (s3): 3 written, 9 failed of 12`, and a second step
+      `6 failed of 9`, with no reason in the log. Work: find which targets compile outside the resolver and route
+      them through `compiler_cache_launcher()`; log why an S3 write fails. Done when that step's request count
+      matches its compile lines, its hit rate on a warm second chain is above 90 %, and every drain shows
+      0 failed.
 - [ ] **CON163 — the foreign-arch Vulkan SDK build runs without a compiler cache** [M, ★★★]. Found on the
       2026-10-26 chain: `sdk-arm64` spent 4712 s (79 min), and `sdk-riscv64` as long, in the `sdk-dependencies` RUN
       (`Dockerfile.sdk`), building the Vulkan components from source, while `sdk-amd64`'s longest step took 342 s.
