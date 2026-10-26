@@ -15,6 +15,11 @@
 
 ## 2026-10-26 — the home-lab backups reach the NAS every week
 
+- **Windows CI module installs share one guarded bootstrap.** Pester and
+  PSScriptAnalyzer reuse a matching installed version or retry transient Gallery
+  lookup failures. An exhausted retry or an installer that returns without the
+  requested version still fails the job; focused fixtures prove both cases. A
+  stale Windows Meson duplication allowance was removed.
 - **Default ShellCheck now covers `linux/ansible/`.** The Ansible shell scripts join the
   error-level scan and its warning ratchet; the scope suite fails if a tracked script is
   omitted. The pinned full scan and warning baseline remain green.

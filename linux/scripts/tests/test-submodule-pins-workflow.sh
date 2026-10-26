@@ -11,7 +11,8 @@ _pin_contract() {
     'V.value(V.value(inputs,"hub-checkout"),"type") == "boolean" and V.value(V.value(inputs,"hub-checkout"),"default") == "false"' \
     'any(V.value(s,"name") == "Get ANTfrastructure tooling without a submodule" and V.value(s,"if") == "${{ inputs.hub-checkout }}" and V.value(V.value(s,"with"),"repository") == "Kataglyphis/ANTfrastructure" and V.value(V.value(s,"with"),"path") == "antfrastructure-tools" and V.value(V.value(s,"with"),"persist-credentials") == "false" for s in steps)' \
     'any(V.value(s,"name") == "Submodule pins sit at their recorded, restorable commits" and "inputs.hub-checkout &&" in V.value(V.value(s,"with"),"path") and V.value(V.value(s,"with"),"path").count("shared/windows/tests/Submodule.Pins.Tests.ps1") == 2 and "inputs.suite-path ||" in V.value(V.value(s,"with"),"path") for s in steps)' \
-    'V.value(V.value(job,"env"),"ANTFRASTRUCTURE_PIN_CHECK_REPO_ROOT") == "${{ github.workspace }}"'
+    'V.value(V.value(job,"env"),"ANTFRASTRUCTURE_PIN_CHECK_REPO_ROOT") == "${{ github.workspace }}"' \
+    'all(p in V.value(V.value(V.value(lane,"on"),trigger),"paths") for trigger in ("push","pull_request") for p in (".github/actions/run-pester-suite/**","windows/scripts/modules/WindowsCi.ModuleBootstrap.psm1"))'
 }
 
 _mutated_pin_contract() { LANE="$1" _pin_contract; }
@@ -34,5 +35,9 @@ t_case "a tool checkout that leaves credentials behind breaks the contract"
 sed '/path: antfrastructure-tools/{n;s/persist-credentials: false/persist-credentials: true/;}' \
   "${LANE}" > "${work}/credentials.yml"
 t_assert_fails _mutated_pin_contract "${work}/credentials.yml"
+
+t_case "the shared installer and action changes always exercise this lane"
+sed '/\.github\/actions\/run-pester-suite\/\*\*/d' "${LANE}" > "${work}/missing-action-trigger.yml"
+t_assert_fails _mutated_pin_contract "${work}/missing-action-trigger.yml"
 
 t_summary

@@ -30,6 +30,8 @@ on:
       - 'third_party/**'
       - 'shared/windows/tests/Submodule.Pins.Tests.ps1'
       - 'windows/scripts/modules/WindowsRepoHygiene.Common.psm1'
+      - 'windows/scripts/modules/WindowsCi.ModuleBootstrap.psm1'
+      - '.github/actions/run-pester-suite/**'
       - '.github/workflows/submodule-pins.yml'
   pull_request:
     branches: [main, develop]
@@ -38,6 +40,8 @@ on:
       - 'third_party/**'
       - 'shared/windows/tests/Submodule.Pins.Tests.ps1'
       - 'windows/scripts/modules/WindowsRepoHygiene.Common.psm1'
+      - 'windows/scripts/modules/WindowsCi.ModuleBootstrap.psm1'
+      - '.github/actions/run-pester-suite/**'
       - '.github/workflows/submodule-pins.yml'
 
 permissions:

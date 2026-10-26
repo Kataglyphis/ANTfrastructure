@@ -26,8 +26,10 @@ runs:
   steps:
     - shell: pwsh
       run: |
-        Install-Module Pester -RequiredVersion '${{ inputs.version }}' -Force -SkipPublisherCheck -Scope CurrentUser
-        Import-Module Pester -RequiredVersion '${{ inputs.version }}'
+        $installer = (Resolve-Path -LiteralPath (Join-Path $env:GITHUB_ACTION_PATH '../../../windows/scripts/modules/WindowsCi.ModuleBootstrap.psm1')).Path
+        Import-Module $installer -ErrorAction Stop
+        $null = Install-PinnedPowerShellModule -Name Pester -Version '${{ inputs.version }}' -SkipPublisherCheck
+        Import-Module Pester -RequiredVersion '${{ inputs.version }}' -ErrorAction Stop
         $r = Invoke-Pester -Path '${{ inputs.path }}' -PassThru -Quiet
         Write-Host "TOTAL=$($r.TotalCount) PASSED=$($r.PassedCount) FAILED=$($r.FailedCount)"
         # A path matching no suite gives TotalCount=0 and FailedCount=0, which must not pass.

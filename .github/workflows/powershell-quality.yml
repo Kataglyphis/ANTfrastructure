@@ -60,7 +60,9 @@ jobs:
           $pins = @(Get-Content -LiteralPath $versions | Where-Object { $_ -match '^\s*PSSCRIPTANALYZER_VERSION\s*=' })
           if ($pins.Count -ne 1) { throw "PSSCRIPTANALYZER_VERSION must occur exactly once in $versions" }
           $pin = ($pins[0] -split '=', 2)[1].Trim().Trim('"', "'")
-          Install-Module PSScriptAnalyzer -RequiredVersion $pin -Force -Scope CurrentUser
+          $installer = (Resolve-Path -LiteralPath (Join-Path $hub 'windows/scripts/modules/WindowsCi.ModuleBootstrap.psm1')).Path
+          Import-Module $installer -ErrorAction Stop
+          $null = Install-PinnedPowerShellModule -Name PSScriptAnalyzer -Version $pin
 
       - name: Lint PowerShell
         shell: pwsh

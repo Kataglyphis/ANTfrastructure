@@ -132,6 +132,7 @@ Two neighbours, so you land on the right page:
 
 **Windows: build content and toolchain**
 
+- [`No match was found` for Pester or PSScriptAnalyzer in Windows CI](#no-match-was-found-for-pester-or-psscriptanalyzer-in-windows-ci)
 - [`fatal: remote helper 'https' aborted session` during Windows CI checkout](#fatal-remote-helper-https-aborted-session-during-windows-ci-checkout)
 - [Windows media build crawls; `Building with ninja -j2`](#windows-media-build-crawls-building-with-ninja--j2)
 - [Rust smoke test: "rustup could not choose a version of cargo/rustc"](#rust-smoke-test-rustup-could-not-choose-a-version-of-cargorustc)
@@ -1793,6 +1794,20 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 ---
 
 ## Windows: build content and toolchain
+
+### `No match was found` for Pester or PSScriptAnalyzer in Windows CI
+
+**Symptom.** A PowerShell quality or submodule-pin job stops during
+`Install-Module` with `No match was found`; lint or Pester assertions never run.
+
+**Cause.** PowerShell Gallery temporarily returned an empty module lookup. The
+requested pinned versions still exist, and another job can succeed on the same
+pin while this job fails.
+
+**Fix.** The shared `WindowsCi.ModuleBootstrap.psm1` accepts an already installed
+matching version, retries Gallery installation with terminating errors, and
+verifies the version after each attempt. A final failure stays red; rerun the
+job after checking the Gallery when the retry budget is exhausted.
 
 ### `fatal: remote helper 'https' aborted session` during Windows CI checkout
 

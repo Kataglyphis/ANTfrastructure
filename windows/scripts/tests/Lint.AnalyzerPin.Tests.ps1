@@ -103,15 +103,15 @@ function Get-Module {
             param([string]$text, [string]$path)
             $install = [regex]::Match($text, '(?ms)^      - name: Install PSScriptAnalyzer\r?\n(?<step>.*?)(?=^      - name:|^      #)').Groups['step'].Value
             Assert-True ($install.Contains("Get-Content -LiteralPath $path")) "install reads $path"
-            Assert-True ($install.Contains('Install-Module PSScriptAnalyzer -RequiredVersion $pin')) 'install uses the parsed pin'
+            Assert-True ($install.Contains('Install-PinnedPowerShellModule -Name PSScriptAnalyzer -Version $pin')) 'shared installer uses the parsed pin'
         }
         foreach ($case in @(
                 @{ Workflow = '.github/workflows/windows-x64.yml'; Path = "'linux/scripts/01-core/versions.env'" }
                 @{ Workflow = '.github/workflows/powershell-quality.yml'; Path = '$versions'; Root = "Join-Path `$hub 'linux/scripts/01-core/versions.env'" }
             )) {
             $root = if ($case.ContainsKey('Root')) { $case.Root } else { '' }
-            Assert-WorkflowMutation -Workflow $case.Workflow -Original 'Install-Module PSScriptAnalyzer -RequiredVersion $pin' `
-                -Replacement 'Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0' -Check $check -Path $case.Path -RequiredText $root
+            Assert-WorkflowMutation -Workflow $case.Workflow -Original 'Install-PinnedPowerShellModule -Name PSScriptAnalyzer -Version $pin' `
+                -Replacement 'Install-PinnedPowerShellModule -Name PSScriptAnalyzer -Version 1.25.0' -Check $check -Path $case.Path -RequiredText $root
         }
         $checkCaller = {
             param([string]$text)

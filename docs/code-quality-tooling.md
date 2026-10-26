@@ -3778,6 +3778,16 @@ pin, or an unavailable pinned module, is an infrastructure failure rather than
 a clean lint result. The fixture supplies a newer installed version to catch a
 regression to "use latest" behavior.
 
+The Windows x64 lane, reusable PowerShell quality workflow and Pester-suite
+action call `Install-PinnedPowerShellModule` from
+`windows/scripts/modules/WindowsCi.ModuleBootstrap.psm1`. It first accepts an
+already installed matching version, then makes at most five Gallery attempts
+with terminating errors and bounded delays. It verifies the module again after
+each apparent install; an exhausted lookup or missing matching version fails
+the job. PSScriptAnalyzer and the consumer Pester suite require exact versions;
+the hub's own test runner retains its Pester 6.2 minimum. The fixture replaces
+the Gallery calls, so it proves retry and failure policy without network access.
+
 The command-element rules share AST traversal and diagnostic rendering. Glued
 PowerShell arguments retain the approved-verb filter; bareword native attributes
 keep their independent policy. Switch-shadow checks retain lexical scope. Local
