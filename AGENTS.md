@@ -120,6 +120,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows script workspaces share AST validation before allocation and cleanup; log and Cargo paths use the canonical rooted-path resolver.
    Windows build drivers share config-file and workspace-root selection; callers still validate the resolved path.
    Windows source-copy mutation suites share AST loop selection and fixture execution; callers keep their source lists and assertions.
+   Windows Slang consumers use the shared WGSL parity assertion for every manifest output; fresh emits and pinned destinations must match after CRLF/LF normalization.
    Windows suites share `New-TestDir -Prefix` and `Assert-Throws -MessagePattern`; suite-scoped directories retain their `AfterAll` cleanup.
    Fixture cleanup uses `Remove-TestDir` with literal paths; bracketed diagnostic prefixes must leave no temporary roots.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.

@@ -37,6 +37,10 @@
 
 ## 2026-10-26 — Reuse and dependency updates
 
+- Add a reusable Windows Slang parity assertion for every manifest WGSL output.
+  Ballett's ARM cross build requires fresh emits that match pinned OxidANT files;
+  source and output checks in its native job use the same staged artifact.
+
 - Share Windows build config and workspace-root selection between Ballett and OxidANT;
   keep each build's own path validation. Share parsed source-copy loop fixtures between
   their ARM64 mutation suites, while retaining each suite's payload assertions.

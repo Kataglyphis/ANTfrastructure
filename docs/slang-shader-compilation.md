@@ -53,12 +53,24 @@ An explicitly configured root that is missing fails the run.
 table. Pass the roots as a string array within the same PowerShell process.
 `Get-SlangShaderManifest` exposes the composed manifest, and
 `Resolve-SlangSourcePath` resolves one logical file against the ordered roots.
+
 The PowerShell driver measures staleness across all source roots and imported
 manifests, then compiles each entry point and target separately. Its combined
 emit helper validates each staged WGSL file before copying it; the caller keeps
 the final failure and artifact counts. The Pester suite checks cache reuse,
 imported-manifest staleness, missing-source failure and destination preservation
 when a combined emit is invalid.
+
+`Assert-SlangWgslOutputsMatch` is the optional Windows CI proof after a combined
+emit. Pass the composed manifest's `wgslMap`, its combined output directory and
+the pinned destination root. It requires a nonempty map, a file for every
+`combined_<out>` name and every pinned `dst/<out>` file, then compares strict
+UTF-8 content after CRLF-to-LF normalization. Missing, duplicate or changed
+outputs fail. A caller that needs freshness must clear its expected combined
+files before compilation, because this assertion cannot identify an old cache
+file by itself. Ballett does that before its ARM test build and carries the
+emits into the native artifact; the local source-time guard still applies to a
+single working tree.
 
 ## Manifest schema
 

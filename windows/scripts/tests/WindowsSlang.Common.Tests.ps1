@@ -131,6 +131,59 @@ Describe 'WindowsSlang.Common' {
     }
   }
 
+  # Parity checks manifest rows, not a compiler that never ran or a missing row in that manifest.
+  Context 'Assert-SlangWgslOutputsMatch' {
+    It 'accepts newline-only differences across every manifest destination' {
+      $combined = Join-Path $script:root 'parity-newlines-combined'
+      $destination = Join-Path $script:root 'parity-newlines-pinned'
+      New-Item -ItemType Directory -Force -Path $combined, (Join-Path $destination 'crate') | Out-Null
+      [IO.File]::WriteAllText((Join-Path $combined 'combined_a.wgsl'), "fn a() {}`n")
+      [IO.File]::WriteAllText((Join-Path $combined 'combined_b.wgsl'), "fn b() {}`n")
+      [IO.File]::WriteAllText((Join-Path $destination 'crate/a.wgsl'), "fn a() {}`r`n")
+      [IO.File]::WriteAllText((Join-Path $destination 'crate/b.wgsl'), "fn b() {}`r`n")
+      $rows = @([pscustomobject]@{ out = 'a.wgsl'; dst = 'crate' }, [pscustomobject]@{ out = 'b.wgsl'; dst = 'crate' })
+      $verified = @(Assert-SlangWgslOutputsMatch -Mappings $rows -CombinedOutputDir $combined -DestinationRoot $destination)
+      $verified.Count | Should -Be 2
+      $verified[0].Name | Should -Be 'a.wgsl'
+      $verified[1].Generated | Should -Be (Join-Path $combined 'combined_b.wgsl')
+    }
+
+    It 'fails on a changed non-newline byte and an omitted emitted file' {
+      $combined = Join-Path $script:root 'parity-mutant-combined'
+      $destination = Join-Path $script:root 'parity-mutant-pinned'
+      New-Item -ItemType Directory -Force -Path $combined, (Join-Path $destination 'crate') | Out-Null
+      [IO.File]::WriteAllText((Join-Path $combined 'combined_a.wgsl'), "fn a() {}`n")
+      [IO.File]::WriteAllText((Join-Path $destination 'crate/a.wgsl'), "fn wrong() {}`n")
+      [IO.File]::WriteAllText((Join-Path $destination 'crate/b.wgsl'), "fn b() {}`n")
+      $rows = @([pscustomobject]@{ out = 'a.wgsl'; dst = 'crate' }, [pscustomobject]@{ out = 'b.wgsl'; dst = 'crate' })
+      { Assert-SlangWgslOutputsMatch -Mappings $rows -CombinedOutputDir $combined -DestinationRoot $destination } |
+        Should -Throw -ExpectedMessage '*a.wgsl differs*missing generated b.wgsl*'
+      [IO.File]::WriteAllText((Join-Path $destination 'crate/a.wgsl'), "fn a() {}`r")
+      { Assert-SlangWgslOutputsMatch -Mappings $rows -CombinedOutputDir $combined -DestinationRoot $destination } |
+        Should -Throw -ExpectedMessage '*a.wgsl differs*'
+    }
+
+    It 'rejects an empty or duplicate manifest mapping' {
+      $combined = Join-Path $script:root 'parity-invalid-combined'
+      $destination = Join-Path $script:root 'parity-invalid-pinned'
+      { Assert-SlangWgslOutputsMatch -Mappings @() -CombinedOutputDir $combined -DestinationRoot $destination } |
+        Should -Throw -ExpectedMessage '*no manifest mappings*'
+      $rows = @([pscustomobject]@{ out = 'a.wgsl'; dst = 'one' }, [pscustomobject]@{ out = 'A.wgsl'; dst = 'two' })
+      { Assert-SlangWgslOutputsMatch -Mappings $rows -CombinedOutputDir $combined -DestinationRoot $destination } |
+        Should -Throw -ExpectedMessage '*duplicate WGSL output name*'
+    }
+
+    It 'rejects invalid UTF-8 rather than comparing replacement characters' {
+      $combined = Join-Path $script:root 'parity-encoding-combined'
+      $destination = Join-Path $script:root 'parity-encoding-pinned'
+      New-Item -ItemType Directory -Force -Path $combined, (Join-Path $destination 'crate') | Out-Null
+      [IO.File]::WriteAllBytes((Join-Path $combined 'combined_a.wgsl'), [byte[]]@(0xff))
+      [IO.File]::WriteAllText((Join-Path $destination 'crate/a.wgsl'), 'fn a() {}')
+      { Assert-SlangWgslOutputsMatch -Mappings @([pscustomobject]@{ out = 'a.wgsl'; dst = 'crate' }) `
+          -CombinedOutputDir $combined -DestinationRoot $destination } | Should -Throw
+    }
+  }
+
   Context 'Test-SlangcVersionAtLeast' {
     It 'rejects the slangc whose combined WGSL emit drops @location' {
       Test-SlangcVersionAtLeast -Have '2026.1-52-gc8ddf20bb' -Want '2026.8' | Should -Be $false

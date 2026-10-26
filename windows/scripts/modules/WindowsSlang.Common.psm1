@@ -134,6 +134,33 @@ function Get-SlangShaderManifest {
     return $doc
 }
 
+function Assert-SlangWgslOutputsMatch {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Mappings,
+        [Parameter(Mandatory)][string]$CombinedOutputDir,
+        [Parameter(Mandatory)][string]$DestinationRoot
+    )
+    if ($Mappings.Count -eq 0) { throw 'WGSL output parity has no manifest mappings' }
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $utf8 = [Text.UTF8Encoding]::new($false, $true)
+    $verified = [Collections.Generic.List[object]]::new()
+    $problems = [Collections.Generic.List[string]]::new()
+    foreach ($mapping in $Mappings) {
+        $name = [string]$mapping.out
+        if ($name -notmatch '^[^\\/]+\.wgsl$' -or -not $seen.Add($name)) { throw "Invalid or duplicate WGSL output name: $name" }
+        $generated = Join-Path $CombinedOutputDir "combined_$name"
+        $destination = Join-Path (Join-Path $DestinationRoot ([string]$mapping.dst)) $name
+        if (-not (Test-Path -LiteralPath $generated -PathType Leaf)) { $problems.Add("missing generated $name"); continue }
+        if (-not (Test-Path -LiteralPath $destination -PathType Leaf)) { $problems.Add("missing pinned $destination"); continue }
+        $emittedText = $utf8.GetString([IO.File]::ReadAllBytes($generated)).Replace("`r`n", "`n")
+        $pinnedText = $utf8.GetString([IO.File]::ReadAllBytes($destination)).Replace("`r`n", "`n")
+        if ($emittedText -cne $pinnedText) { $problems.Add("$name differs from pinned $destination"); continue }
+        $verified.Add([pscustomobject]@{ Name = $name; Generated = $generated; Destination = $destination })
+    }
+    if ($problems.Count -gt 0) { throw "Generated WGSL differs from the pinned tree: $($problems -join '; ')" }
+    return $verified.ToArray()
+}
+
 function Resolve-SlangSourcePath {
     param([string]$Relative, [string]$SourceRoot, [string[]]$AdditionalSourceRoots = @())
     foreach ($root in @($SourceRoot) + $AdditionalSourceRoots) {
@@ -415,4 +442,4 @@ function Invoke-SlangShaderCompile {
 }
 
 Export-ModuleMember -Function Test-WgslVaryingsAreLocated, Test-SlangcVersionAtLeast, Resolve-Slangc,
-    Get-SlangIncludeArgument, Get-SlangShaderManifest, Resolve-SlangSourcePath, Invoke-SlangShaderCompile
+    Get-SlangIncludeArgument, Get-SlangShaderManifest, Assert-SlangWgslOutputsMatch, Resolve-SlangSourcePath, Invoke-SlangShaderCompile
