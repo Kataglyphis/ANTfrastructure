@@ -9,6 +9,50 @@ CORE="${1:-${TESTS_DIR}/../01-core}"
 CI="${2:-${TESTS_DIR}/../02-toolchain/python/ci-common.sh}"
 # shellcheck source=linux/scripts/01-core/python-probe.sh
 source "$CORE/python-probe.sh"
+ci_python="$WORK/ci-python"
+printf '#!/bin/sh\nexit 0\n' > "$ci_python"
+chmod +x "$ci_python"
+t_case "CI image probe requires the image marker and retains a failed caller override"
+t_assert_rc 2 bash -c '
+  source "$1"
+  unset PYTHON_MAJOR_MINOR
+  PREFLIGHT_PYTHON=prior
+  ci_image_python_require check.sh docs/shared-script-libraries.md "$2"
+' _ "$CORE/python-probe.sh" "$ci_python"
+output="$(bash -c '
+  source "$1"
+  unset PYTHON_MAJOR_MINOR
+  ci_image_python_require check.sh docs/shared-script-libraries.md "$2"
+' _ "$CORE/python-probe.sh" "$ci_python" 2>&1)"
+t_assert_contains "$output" 'check.sh runs in the family Linux image (docs/shared-script-libraries.md)'
+t_assert_rc 0 bash -c '
+  source "$1"
+  unset PYTHON_MAJOR_MINOR
+  PREFLIGHT_PYTHON=prior
+  ci_image_python_require check.sh docs/shared-script-libraries.md "$2" >/dev/null 2>&1
+  test "$?" -eq 2 && test "$PREFLIGHT_PYTHON" = prior
+' _ "$CORE/python-probe.sh" "$ci_python"
+t_case "CI image probe rejects missing and broken interpreters"
+t_assert_rc 2 bash -c '
+  source "$1"
+  PYTHON_MAJOR_MINOR=3.12
+  ci_image_python_require check.sh docs/shared-script-libraries.md "$2"
+' _ "$CORE/python-probe.sh" "$WORK/missing-python"
+printf '#!/bin/sh\nexit 9\n' > "$ci_python"
+t_assert_rc 2 bash -c '
+  source "$1"
+  PYTHON_MAJOR_MINOR=3.12
+  ci_image_python_require check.sh docs/shared-script-libraries.md "$2"
+' _ "$CORE/python-probe.sh" "$ci_python"
+printf '#!/bin/sh\nexit 0\n' > "$ci_python"
+t_case "CI image probe exports the pinned interpreter on success"
+t_assert_rc 0 bash -c '
+  source "$1"
+  PYTHON_MAJOR_MINOR=3.12
+  ci_image_python_require check.sh docs/shared-script-libraries.md "$2" || exit
+  test "$PREFLIGHT_PYTHON" = "$2" || exit
+  bash -c '\''test "$PREFLIGHT_PYTHON" = "$1"'\'' _ "$2"
+' _ "$CORE/python-probe.sh" "$ci_python"
 venv="$WORK/venv with spaces"
 mkdir -p "$venv/bin" "$venv/Scripts"
 printf '#!/bin/sh\nexit 0\n' > "$venv/bin/python"

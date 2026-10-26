@@ -15,6 +15,8 @@
 
 ## 2026-10-26 — Renovate submodule updates
 
+- Share the family-image Python guard in `python-probe.sh`; ModelANT and AssetANT
+  can use one tested marker/interpreter check and retain their own diagnostics.
 - Include Torch/vision Git-tag lookups when a scoped `pep621` Renovate run selects their
   Python manifest, so valid pinned sources no longer appear as unchecked dependencies.
 - Clarify why TorchVision stays in the image and correct stale release examples beside the pins.

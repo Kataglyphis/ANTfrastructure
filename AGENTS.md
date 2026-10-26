@@ -141,6 +141,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Standalone Android, GCC and Vulkan entries carry `bootstrap-import.sh` and `bootstrap.sh` beside them; Vulkan also carries `vulkan-install.sh`, and supplied download helpers retain precedence.
    Copied ORT provenance and GStreamer ORT checks carry `path-helpers.sh` in their relative `01-core` layout.
    Copies of `python_uv.sh` and `webdav-download.sh` carry `python-probe.sh`; missing companions fail rather than restoring interpreter-selection copies.
+   Consumer checks running inside the family Linux image use `ci_image_python_require` from `python-probe.sh`; retain its image marker, pinned interpreter probe and caller-specific diagnostic.
    Runtime consumer probes retain lazy required-fact checks and distinguish missing facts from failed facts.
    Copied Torch setup carries `package-image-wiring.sh`, `wheelhouse-manifest.sh` and `native-gcc-system-paths.sh` before its first execution.
    Copied `build-app-wheelhouse.sh` carries `torch-source-pins.sh` beside it.

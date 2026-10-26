@@ -1102,6 +1102,15 @@ repo's own pre-commit/pre-push hooks joined them on 2026-09-15. Expand the value
 unquoted, as `preflight.sh` does: it may be a command line such as
 `uv run --no-project python`, the very hint the failure message gives.
 
+`ci_image_python_require <caller> <docs-hint> [python-path]` is the stricter
+consumer entry point for scripts that must run inside the family Linux image.
+It requires the image's `PYTHON_MAJOR_MINOR` marker and a working
+`/opt/venv/bin/python3` (the optional path is for isolated tests). Success
+exports `PREFLIGHT_PYTHON`; failure returns 2 with the caller's documentation
+hint and leaves an existing interpreter override untouched. ModelANT and
+AssetANT source this file through their hub resolver instead of each keeping
+the image check locally.
+
 ### `run-in-ci-image.sh` — run a command in the CI image
 
 ```bash

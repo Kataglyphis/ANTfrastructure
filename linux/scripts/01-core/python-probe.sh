@@ -18,6 +18,18 @@ preflight_python_require() {
   return 1
 }
 
+ci_image_python_require() {
+  local caller="${1:?caller required}" docs="${2:-}" python="${3:-/opt/venv/bin/python3}"
+  # The marker refuses a runnable host Python that is not the family image's pinned interpreter.
+  if [ -z "${PYTHON_MAJOR_MINOR:-}" ] || [ ! -x "$python" ] ||
+     ! (PREFLIGHT_PYTHON="$python"; preflight_python_require "$caller") >/dev/null 2>&1; then
+    printf '%s runs in the family Linux image%s\n' "$caller" "${docs:+ ($docs)}" >&2
+    return 2
+  fi
+  PREFLIGHT_PYTHON="$python"
+  export PREFLIGHT_PYTHON
+}
+
 python_venv_executable() {
   local venv="$1" candidate
   for candidate in "$venv/bin/python" "$venv/Scripts/python.exe"; do

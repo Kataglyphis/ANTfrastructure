@@ -28351,5 +28351,21 @@
   "replace": "    if [ \"$status\" -ne 0 ]; then",
   "test": "bash linux/scripts/tests/test-renovate-template-bootstrap.sh",
   "why": "driver exit two can carry applied updates and explicit refusals, so its initialized hub must remain for review"
+ },
+ {
+  "id": "lib.ci-image-python-marker",
+  "target": "linux/scripts/01-core/python-probe.sh",
+  "find": "[ -z \"${PYTHON_MAJOR_MINOR:-}\" ]",
+  "replace": "false",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "a runnable host interpreter alone must not satisfy the family image requirement"
+ },
+ {
+  "id": "lib.ci-image-python-runs",
+  "target": "linux/scripts/01-core/python-probe.sh",
+  "find": "! (PREFLIGHT_PYTHON=\"$python\"; preflight_python_require \"$caller\") >/dev/null 2>&1",
+  "replace": "false",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "an executable but broken interpreter must fail before consumer tests begin"
  }
 ]
