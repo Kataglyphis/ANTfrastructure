@@ -46,7 +46,6 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --lo
 ```
 
 A fresh host starts at [Linux Host Setup](docs/linux-host-setup.md) or [Windows Host Setup](docs/windows-host-setup.md).
-Windows consumer Vulkan tests use the shared [lavapipe host provisioner](docs/windows-cross-builds.md#vulkan-on-lavapipe), whose elevation import is covered by a cold-process export and host AST regression.
 From Ubuntu WSL2, run `bash linux/scripts/wsl-quality.sh setup` to install pinned tools, then `bash linux/scripts/wsl-quality.sh check --jobs 4` to run Linux and PowerShell checks with bounded workers. Use `bash linux/scripts/refactor-python.sh --root <checkout> --check` to preview another repo's Python format debt, or `--apply -- path/to/file.py` to create a reviewable fix. Consumers call the reusable report, locked Ruff and ty, refactor, mutation and PowerShell workflows at `@develop`; [quality tooling](docs/code-quality-tooling.md#python-refactor-preview) and [adoption](docs/adopting-in-a-new-project.md#9-quality-gates). Generated reports go in ignored `logs/`.
 
 ## Published images
