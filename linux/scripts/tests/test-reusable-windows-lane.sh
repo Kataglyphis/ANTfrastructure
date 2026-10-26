@@ -74,12 +74,16 @@ t_assert_eq "True" "$(_q "any(V.value(s,'name') == 'Get ANTfrastructure tooling'
 
 t_case "the standalone lane pins PSScriptAnalyzer and grades the caller path"
 t_assert_eq "True" "$(_q "'PSSCRIPTANALYZER_VERSION' in run_blocks('lint-powershell')")"
-t_assert_eq "True" "$(_q "'-RequiredVersion \$pin' in run_blocks('lint-powershell')")"
+t_assert_eq "True" "$(_q "'Install-PinnedPowerShellModule -Name PSScriptAnalyzer -Version \$pin' in run_blocks('lint-powershell')")"
 t_assert_eq "True" "$(_raw_has "\$gate = Join-Path \$hub 'windows/scripts/Invoke-Lint.ps1'")"
 t_assert_eq "True" "$(_raw_has 'if ($env:LINT_ANALYZER_STRICT -eq '\''true'\'') { $lintArgs += '\''-FailOnAnalyzer'\'' }')"
 t_assert_eq "True" "$(_raw_has 'pwsh @lintArgs')"
 t_assert_eq "True" "$(_raw_has 'if ($LASTEXITCODE -ne 0) { throw')"
 t_assert_eq "True" "$(_raw_has 'if (-not (Test-Path -LiteralPath $gate -PathType Leaf))')"
+
+t_case "a copied local Gallery installer does not satisfy the shared bootstrap contract"
+sed 's/Install-PinnedPowerShellModule -Name PSScriptAnalyzer -Version $pin/Install-Module PSScriptAnalyzer -RequiredVersion $pin/' "${LANE}" > "${faulted}"
+t_assert_eq "False" "$(LANE="${faulted}" _q "'Install-PinnedPowerShellModule -Name PSScriptAnalyzer -Version \$pin' in run_blocks('lint-powershell')")"
 
 t_case "the standalone lane reports complexity and gates only when strict is selected"
 t_assert_eq "True" "$(_q "len([s for s in steps if V.value(s,'name') == 'Report PowerShell complexity' and V.value(s,'if') is None]) == 1")"
