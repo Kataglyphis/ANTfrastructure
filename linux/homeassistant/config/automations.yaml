@@ -1,1 +1,227 @@
-[]
+- id: catcam_arrival_notification
+  alias: Katze ist da (Cat Cam)
+  description: >-
+    The OmniAccelerANT cat cams post each arrival, finished clip and departure to a
+    webhook of their own (notify_url in /etc/omni-accelerant/catcam.toml): the office's
+    (Büro, on this host), the feeding trough's (Futtertrog, tabblscatcam) and the living
+    room's (Wohnzimmer, mintberrycrunch). An arrival
+    it is at least 45 % sure of is counted and goes to the phone with the frame it was
+    confirmed on; its clip adds a tap to the video and its departure how long the cat
+    stayed, both by updating that camera's notification. Below 0.45 were the false visits
+    of 2026-10-12 (a drying rack at the bottom of the office frame, 0.26 to 0.44).
+  # Parallel and 40 deep: each run waits ~2 min for its tries, and clip and departure updates must not queue behind them.
+  mode: parallel
+  max: 40
+  triggers:
+    - trigger: webhook
+      webhook_id: !secret catcam_webhook_id
+      allowed_methods:
+        - POST
+      local_only: true
+      id: buero
+    - trigger: webhook
+      webhook_id: !secret catcam_futtertrog_webhook_id
+      allowed_methods:
+        - POST
+      local_only: true
+      id: futtertrog
+    - trigger: webhook
+      webhook_id: !secret catcam_mintberry_webhook_id
+      allowed_methods:
+        - POST
+      local_only: true
+      id: mintberry
+  variables:
+    bases:
+      buero: !secret catcam_base_url
+      futtertrog: !secret catcam_futtertrog_base_url
+      mintberry: !secret catcam_mintberry_base_url
+    places:
+      buero: [Büro, im Büro, sensor.cat_cam_video]
+      futtertrog: [Futtertrog, am Futtertrog, sensor.futtertrog_video]
+      mintberry: [Wohnzimmer, im Wohnzimmer, sensor.wohnzimmer_video]
+    catcam: "{{ bases[trigger.id] }}"
+    place: "{{ places[trigger.id][0] }}"
+    where: "{{ places[trigger.id][1] }}"
+    video_sensor: "{{ places[trigger.id][2] }}"
+    # The arrival this event is about: a departure names it, the others are it.
+    at: >-
+      {{ (trigger.json.arrived if trigger.json.event == 'left' else trigger.json.time) | int(0) }}
+  conditions:
+    - condition: template
+      value_template: >-
+        {{ trigger.json.event in ['arrived', 'clip', 'left']
+           and (trigger.json.best_score | float(0)) >= 0.45 }}
+  actions:
+    - if:
+        - condition: template
+          value_template: "{{ trigger.json.event == 'arrived' }}"
+      then:
+        - action: counter.increment
+          target:
+            entity_id:
+              - counter.katzenbesuche_heute
+              - counter.katzenbesuche_gesamt
+        - action: input_text.set_value
+          target:
+            entity_id: input_text.katzenbesuche_zeiten
+          data:
+            value: >-
+              {% set before = states('input_text.katzenbesuche_zeiten') %}
+              {% set now_at = (at | timestamp_custom('%H:%M')) ~ ' ' ~ place %}
+              {{ ((before ~ ', ' ~ now_at) if before not in ['', 'unknown', 'unavailable'] else now_at)[-255:] }}
+    - if:
+        - condition: template
+          value_template: "{{ trigger.json.event == 'left' }}"
+      then:
+        - action: input_text.set_value
+          target:
+            entity_id: input_text.katze_besuch_ende
+          data:
+            value: "{{ trigger.id }} {{ at }} {{ trigger.json.stayed_s | int(0) }}"
+    # The minimal companion app gets pushes only while connected: a later try reaches it, and alert_once keeps the repeats silent.
+    - repeat:
+        count: 3
+        sequence:
+          # Each try asks again, so a later try keeps the video and the stay an earlier event added.
+          - variables:
+              video: >-
+                {{ trigger.json.event == 'clip'
+                   or (as_timestamp(states(video_sensor), 0) | int) >= at }}
+              ende: "{{ states('input_text.katze_besuch_ende').split(' ') }}"
+              stayed: >-
+                {% if trigger.json.stayed_s is defined %}{{ trigger.json.stayed_s | int }}
+                {% elif ende | length == 3 and ende[0] == trigger.id and (ende[1] | int(0)) == at %}{{ ende[2] | int(-1) }}
+                {% else %}-1{% endif %}
+          - action: notify.mobile_app_le2123
+            continue_on_error: true
+            data:
+              title: >-
+                🐱 Katze {{ 'war' if (stayed | int) >= 0 else 'ist' }} {{ where }}
+              message: >-
+                Um {{ at | timestamp_custom('%H:%M') }} gesehen,
+                {{ ((trigger.json.best_score | float(0)) * 100) | round(0) | int }} % sicher.
+                {%- set s = stayed | int %}
+                {%- if s >= 60 %} War {{ s // 60 }} Min. da.
+                {%- elif s >= 0 %} War {{ s }} s da.{% endif %}
+                {{- ' Antippen für das Video.' if video else '' }}
+              data:
+                image: "{{ catcam }}/arrival.jpg?t={{ at }}"
+                clickAction: >-
+                  {{ catcam ~ ('/arrival.mp4?t=' ~ at if video else '/') }}
+                tag: "catcam-arrival-{{ trigger.id }}"
+                alert_once: true
+                channel: Cat Cam
+          - delay: "00:01:00"
+- id: catcam_reset_daily_visits
+  alias: Katzenbesuche heute zurücksetzen
+  triggers:
+    - trigger: time
+      at: "00:00:00"
+  actions:
+    - action: counter.reset
+      target:
+        entity_id: counter.katzenbesuche_heute
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.katzenbesuche_zeiten
+      data:
+        value: ""
+- id: catcam_evening_summary
+  alias: Katzenbesuche Tageszusammenfassung
+  description: >-
+    At 21:00 the phone gets the day's notified cat visits at all cameras with their
+    times and places, or that none came; three tries a minute apart under its own tag,
+    as the minimal companion app may be disconnected.
+  triggers:
+    - trigger: time
+      at: "21:00:00"
+  variables:
+    count: "{{ states('counter.katzenbesuche_heute') | int(0) }}"
+    times: "{{ states('input_text.katzenbesuche_zeiten') }}"
+  actions:
+    - repeat:
+        count: 3
+        sequence:
+          - action: notify.mobile_app_le2123
+            continue_on_error: true
+            data:
+              title: "🐱 Katzen-Tagesbilanz"
+              message: >-
+                {% if count == 0 %}Heute keine Katze gesehen.
+                {%- elif count == 1 %}Heute 1 Katzenbesuch: {{ times }}.
+                {%- else %}Heute {{ count }} Katzenbesuche: {{ times }}.{% endif %}
+              data:
+                tag: catcam-summary
+                alert_once: true
+                channel: Cat Cam
+          - delay: "00:01:00"
+- id: catcam_offline_alert
+  alias: Cat cam offline (Benachrichtigung)
+  description: >-
+    Tells the phone when a cat cam's /healthz has not answered, or has said its camera
+    delivers no picture, for five minutes, and again when it is back after such an
+    outage, one notification per camera; an HA restart's short gap stays quiet.
+  mode: parallel
+  max: 6
+  triggers:
+    - trigger: state
+      entity_id:
+        - binary_sensor.cat_cam_online
+        - binary_sensor.cat_cam_futtertrog_online
+        - binary_sensor.cat_cam_wohnzimmer_online
+      to:
+        - "off"
+        - unavailable
+      for: "00:05:00"
+      id: down
+    - trigger: state
+      entity_id:
+        - binary_sensor.cat_cam_online
+        - binary_sensor.cat_cam_futtertrog_online
+        - binary_sensor.cat_cam_wohnzimmer_online
+      from:
+        - "off"
+        - unavailable
+      to: "on"
+      id: up
+  conditions:
+    - condition: template
+      value_template: >-
+        {{ trigger.id == 'down'
+           or (now() - trigger.from_state.last_changed).total_seconds() >= 300 }}
+  variables:
+    cams:
+      binary_sensor.cat_cam_online: [Die Cat Cam im Büro, catcam-offline, sensor.cat_cam_problem]
+      binary_sensor.cat_cam_futtertrog_online: [Die Cat Cam am Futtertrog, catcam-offline-futtertrog, sensor.futtertrog_problem]
+      binary_sensor.cat_cam_wohnzimmer_online: [Die Cat Cam im Wohnzimmer, catcam-offline-wohnzimmer, sensor.wohnzimmer_problem]
+    cam: "{{ cams[trigger.entity_id][0] }}"
+    offline_tag: "{{ cams[trigger.entity_id][1] }}"
+    # Off is a cat cam that answers but has no picture; unavailable is one that does not answer.
+    silent: >-
+      {{ (trigger.to_state.state if trigger.id == 'down' else trigger.from_state.state) == 'unavailable' }}
+    problem: "{{ states(cams[trigger.entity_id][2]) }}"
+    minutes_down: >-
+      {{ ((now() - trigger.from_state.last_changed).total_seconds() / 60) | round(0) | int }}
+  actions:
+    # Three tries a minute apart, as in the arrival automation above.
+    - repeat:
+        count: 3
+        sequence:
+          - action: notify.mobile_app_le2123
+            continue_on_error: true
+            data:
+              title: >-
+                {% if trigger.id == 'up' %}📷 Cat cam wieder da
+                {%- elif silent %}📷 Cat cam offline
+                {%- else %}📷 Cat cam ohne Bild{% endif %}
+              message: >-
+                {% if trigger.id == 'down' and silent %}{{ cam }} antwortet seit 5 Minuten nicht.
+                {%- elif trigger.id == 'down' %}{{ cam }} hat seit 5 Minuten kein Bild ({{ problem }}).
+                {%- elif silent %}{{ cam }} antwortet wieder, nach {{ minutes_down }} Minuten Ausfall.
+                {%- else %}{{ cam }} liefert wieder Bilder, nach {{ minutes_down }} Minuten.{% endif %}
+              data:
+                tag: "{{ offline_tag }}"
+                alert_once: true
+                channel: Cat Cam
+          - delay: "00:01:00"

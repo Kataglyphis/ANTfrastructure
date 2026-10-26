@@ -13,6 +13,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-26 — Home Assistant's cat cam config is tracked
+
+- The three OmniAccelerANT cat cams' automations, `rest` sensors, counters and the **Katze**
+  dashboard ran from an uncommitted working tree since 2026-10-13; they are in git now, with
+  their `catcam_*` keys in `secrets.yaml.example` and a section in `linux/homeassistant/README.md`.
+
 ## 2026-10-26 — the home-lab backups reach the NAS every week
 
 - **Windows CI module installs share one guarded bootstrap.** Pester and

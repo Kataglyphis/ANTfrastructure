@@ -1,0 +1,79 @@
+# The cat cams' dashboard: their state, the visits they notified about, and when the cat was in view.
+title: Katze
+views:
+  - title: Katze
+    path: katze
+    icon: mdi:cat
+    cards:
+      - type: entities
+        title: Katzenbesuche
+        entities:
+          - entity: counter.katzenbesuche_heute
+          - entity: input_text.katzenbesuche_zeiten
+            name: Heute um
+          - entity: counter.katzenbesuche_gesamt
+      - type: entities
+        title: Cat Cam Büro
+        entities:
+          - entity: binary_sensor.cat_cam_online
+            name: Cat cam
+          - entity: binary_sensor.katze_im_bild
+          - entity: sensor.cat_cam_zuletzt_erkannt
+            name: Zuletzt erkannt
+          - entity: sensor.cat_cam_letzter_besuch_dauer
+            name: Letzter Besuch Dauer
+          - entity: sensor.cat_cam_video
+            name: Letztes Video
+          - entity: sensor.cat_cam_erkennungen
+            name: Erkennungen (auch unsichere)
+      - type: entities
+        title: Cat Cam Futtertrog
+        entities:
+          - entity: binary_sensor.cat_cam_futtertrog_online
+            name: Cat cam
+          - entity: binary_sensor.katze_am_futtertrog
+            name: Katze im Bild
+          - entity: sensor.futtertrog_zuletzt_erkannt
+            name: Zuletzt erkannt
+          - entity: sensor.futtertrog_letzter_besuch_dauer
+            name: Letzter Besuch Dauer
+          - entity: sensor.futtertrog_video
+            name: Letztes Video
+          - entity: sensor.futtertrog_erkennungen
+            name: Erkennungen (auch unsichere)
+      - type: entities
+        title: Cat Cam Wohnzimmer
+        entities:
+          - entity: binary_sensor.cat_cam_wohnzimmer_online
+            name: Cat cam
+          - entity: binary_sensor.katze_im_wohnzimmer
+            name: Katze im Bild
+          - entity: sensor.wohnzimmer_zuletzt_erkannt
+            name: Zuletzt erkannt
+          - entity: sensor.wohnzimmer_letzter_besuch_dauer
+            name: Letzter Besuch Dauer
+          - entity: sensor.wohnzimmer_video
+            name: Letztes Video
+          - entity: sensor.wohnzimmer_erkennungen
+            name: Erkennungen (auch unsichere)
+      - type: statistics-graph
+        title: Katzenbesuche pro Tag
+        chart_type: bar
+        period: day
+        days_to_show: 14
+        stat_types:
+          - change
+        entities:
+          - sensor.katzenbesuche
+      - type: history-graph
+        title: Katze im Bild, letzte 24 Stunden
+        hours_to_show: 24
+        entities:
+          - entity: binary_sensor.katze_im_bild
+            name: Katze im Büro
+          - entity: binary_sensor.katze_am_futtertrog
+          - entity: binary_sensor.katze_im_wohnzimmer
+          - entity: binary_sensor.cat_cam_online
+            name: Cat cam Büro online
+          - entity: binary_sensor.cat_cam_futtertrog_online
+          - entity: binary_sensor.cat_cam_wohnzimmer_online

@@ -73,6 +73,14 @@ template:
         state_class: total_increasing
         state: *meter_guard
 
+  # Cat visits the cat cam notified (0.45 or more), with a state_class so the recorder keeps daily statistics.
+  - sensor:
+      - name: Katzenbesuche
+        unique_id: catcam_notified_visits_total
+        state: "{{ states('counter.katzenbesuche_gesamt') | int(0) }}"
+        state_class: total_increasing
+        icon: mdi:paw
+
 switch:
   - platform: wake_on_lan
     name: "rechenkiste"
@@ -83,6 +91,157 @@ switch:
 shell_command:
   turn_off_rechenkiste: !secret cmd_turn_off_rechenkiste
 
+# OmniAccelerANT cat cams: the office's on this host (http://<this-host>:8080), read over loopback, the feeding trough's and the living room's.
+rest:
+  - resource: http://127.0.0.1:8080/healthz
+    scan_interval: 30
+    timeout: 10
+    sensor:
+      - name: Cat cam zuletzt erkannt
+        unique_id: catcam_last_seen
+        device_class: timestamp
+        # Unavailable until the first sighting: a template's none renders as the text "None", which no timestamp takes.
+        availability: "{{ value_json.detection.last_seen is number }}"
+        value_template: "{{ value_json.detection.last_seen | as_datetime }}"
+      - name: Cat cam letzter Besuch Dauer
+        unique_id: catcam_last_visit_duration
+        device_class: duration
+        unit_of_measurement: s
+        # Unavailable before the first visit and while one lasts, as its stayed_s is null then.
+        availability: >-
+          {{ value_json.detection.recent | count > 0 and value_json.detection.recent[0].stayed_s is number }}
+        value_template: "{{ value_json.detection.recent[0].stayed_s }}"
+      - name: Cat cam Video
+        unique_id: catcam_clip_arrival
+        icon: mdi:movie-open
+        device_class: timestamp
+        # The arrival the newest /arrival.mp4 shows; the notification checks it against its own.
+        availability: "{{ value_json.detection.clip is number }}"
+        value_template: "{{ value_json.detection.clip | as_datetime }}"
+      - name: Cat cam Erkennungen
+        unique_id: catcam_detections_total
+        state_class: total_increasing
+        icon: mdi:cat
+        value_template: "{{ value_json.detection.visits }}"
+      - name: Cat cam Problem
+        unique_id: catcam_problem
+        icon: mdi:camera-off
+        # The cat cam's own words when its camera delivers no picture, "ok" while it does.
+        value_template: "{{ value_json.problem or 'ok' }}"
+    binary_sensor:
+      - name: Katze im Bild
+        unique_id: catcam_cat_in_view
+        icon: mdi:cat
+        value_template: "{{ value_json.detection.in_view }}"
+      - name: Cat cam online
+        unique_id: catcam_online
+        device_class: connectivity
+        value_template: "{{ value_json.ok }}"
+  # The second cat cam, at the feeding trough (tabblscatcam); its address stays in secrets.yaml.
+  - resource: !secret catcam_futtertrog_healthz_url
+    scan_interval: 30
+    timeout: 10
+    sensor:
+      - name: Futtertrog zuletzt erkannt
+        unique_id: catcam_futtertrog_last_seen
+        device_class: timestamp
+        # Unavailable until the first sighting: a template's none renders as the text "None", which no timestamp takes.
+        availability: "{{ value_json.detection.last_seen is number }}"
+        value_template: "{{ value_json.detection.last_seen | as_datetime }}"
+      - name: Futtertrog letzter Besuch Dauer
+        unique_id: catcam_futtertrog_last_visit_duration
+        device_class: duration
+        unit_of_measurement: s
+        # Unavailable before the first visit and while one lasts, as its stayed_s is null then.
+        availability: >-
+          {{ value_json.detection.recent | count > 0 and value_json.detection.recent[0].stayed_s is number }}
+        value_template: "{{ value_json.detection.recent[0].stayed_s }}"
+      - name: Futtertrog Video
+        unique_id: catcam_futtertrog_clip_arrival
+        icon: mdi:movie-open
+        device_class: timestamp
+        availability: "{{ value_json.detection.clip is number }}"
+        value_template: "{{ value_json.detection.clip | as_datetime }}"
+      - name: Futtertrog Erkennungen
+        unique_id: catcam_futtertrog_detections_total
+        state_class: total_increasing
+        icon: mdi:cat
+        value_template: "{{ value_json.detection.visits }}"
+      - name: Futtertrog Problem
+        unique_id: catcam_futtertrog_problem
+        icon: mdi:camera-off
+        # The cat cam's own words when its camera delivers no picture, "ok" while it does.
+        value_template: "{{ value_json.problem or 'ok' }}"
+    binary_sensor:
+      - name: Katze am Futtertrog
+        unique_id: catcam_futtertrog_cat_in_view
+        icon: mdi:cat
+        value_template: "{{ value_json.detection.in_view }}"
+      - name: Cat cam Futtertrog online
+        unique_id: catcam_futtertrog_online
+        device_class: connectivity
+        value_template: "{{ value_json.ok }}"
+  # The third cat cam, in the living room (mintberrycrunch, riscv64); its address stays in secrets.yaml.
+  - resource: !secret catcam_mintberry_healthz_url
+    scan_interval: 30
+    timeout: 10
+    sensor:
+      - name: Wohnzimmer zuletzt erkannt
+        unique_id: catcam_mintberry_last_seen
+        device_class: timestamp
+        availability: "{{ value_json.detection.last_seen is number }}"
+        value_template: "{{ value_json.detection.last_seen | as_datetime }}"
+      - name: Wohnzimmer letzter Besuch Dauer
+        unique_id: catcam_mintberry_last_visit_duration
+        device_class: duration
+        unit_of_measurement: s
+        availability: >-
+          {{ value_json.detection.recent | count > 0 and value_json.detection.recent[0].stayed_s is number }}
+        value_template: "{{ value_json.detection.recent[0].stayed_s }}"
+      - name: Wohnzimmer Video
+        unique_id: catcam_mintberry_clip_arrival
+        icon: mdi:movie-open
+        device_class: timestamp
+        availability: "{{ value_json.detection.clip is number }}"
+        value_template: "{{ value_json.detection.clip | as_datetime }}"
+      - name: Wohnzimmer Erkennungen
+        unique_id: catcam_mintberry_detections_total
+        state_class: total_increasing
+        icon: mdi:cat
+        value_template: "{{ value_json.detection.visits }}"
+      - name: Wohnzimmer Problem
+        unique_id: catcam_mintberry_problem
+        icon: mdi:camera-off
+        # The cat cam's own words when its camera delivers no picture, "ok" while it does.
+        value_template: "{{ value_json.problem or 'ok' }}"
+    binary_sensor:
+      - name: Katze im Wohnzimmer
+        unique_id: catcam_mintberry_cat_in_view
+        icon: mdi:cat
+        value_template: "{{ value_json.detection.in_view }}"
+      - name: Cat cam Wohnzimmer online
+        unique_id: catcam_mintberry_online
+        device_class: connectivity
+        value_template: "{{ value_json.ok }}"
+
+input_text:
+  # Today's notified arrivals as "HH:MM <place>", for the 21:00 summary; cleared at midnight.
+  katzenbesuche_zeiten:
+    name: Katzenbesuche heute (Zeiten)
+    max: 255
+  # The last departure as "<arrival time> <seconds stayed>", so a notification's later tries keep the stay.
+  katze_besuch_ende:
+    name: Letzter Katzenbesuch Ende
+    max: 64
+
+counter:
+  katzenbesuche_heute:
+    name: Katzenbesuche heute
+    icon: mdi:cat
+  katzenbesuche_gesamt:
+    name: Katzenbesuche gesamt
+    icon: mdi:paw
+
 lovelace:
   dashboards:
     ansible-update:
@@ -91,3 +250,9 @@ lovelace:
       icon: mdi:ansible
       show_in_sidebar: true
       filename: dashboards/ansible.yaml
+    katze-cam:
+      mode: yaml
+      title: Katze
+      icon: mdi:cat
+      show_in_sidebar: true
+      filename: dashboards/katze.yaml

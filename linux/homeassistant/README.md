@@ -24,7 +24,7 @@ Gitignored (see `.gitignore`): `secrets.yaml`, `.storage/` (auth tokens),
 
 ```bash
 cp config/secrets.yaml.example config/secrets.yaml
-# fill in the WoL MAC and the shutdown SSH command
+# fill in the WoL MAC, the shutdown SSH command and the cat cams' webhook ids and addresses
 ```
 
 The `rechenkiste` switch's turn-off runs `ssh` inside the container, which has
@@ -131,6 +131,18 @@ instead. A `ufsu` "Nicht genug Speicherplatz" right after flashing is
 transient; retry. With the SMR app installed (step 3), future updates are
 one click in the device's web UI — `bitShake SMR öffnen` → `Update`.
 
+## The cat cams
+
+Three OmniAccelerANT cat cams post each arrival, finished clip and departure to a webhook of their
+own: the office's (on this host), the feeding trough's (`tabblscatcam`) and the living room's
+(`mintberrycrunch`). Their webhook ids and addresses are in `secrets.yaml` (`catcam_*`).
+
+| File | What |
+| --- | --- |
+| `config/automations.yaml` | `catcam_arrival_notification` counts an arrival at 0.45 or more and sends it to the phone with its frame, then adds the clip and the stay to that notification; a midnight reset, a 21:00 summary and an offline alert |
+| `config/configuration.yaml` | each cam's `/healthz` as `rest` sensors (last seen, last stay, clip, detections, problem), the visit counters and `input_text` helpers, and the `Katzenbesuche` statistic |
+| `config/dashboards/katze.yaml` | the **Katze** page, registered under `lovelace: dashboards: katze-cam` |
+
 ## The Ansible page
 
 **Ansible** in the sidebar (since 2026-10-16) shows the weekly fleet update
@@ -156,10 +168,9 @@ Automatic backups run daily into `config/backups/`, and 3 copies are kept. The b
 set 2026-09-13 and lives in `.storage/backup`; keep it in your password manager, since an
 encrypted archive cannot be restored without it.
 
-**The local archives were not encrypted** (measured 2026-10-26: the newest archive's
-`backup.json` says `protected: false`). Since 2025.2 Home Assistant chooses encryption per
-location, and *This system* had it off. Turn it on under Settings → System → Backups → Backup
-settings → Locations → *This system*: the weekly copy to the NAS refuses an unencrypted archive.
+**Encrypt the local archives**: Settings → System → Backups → Backup settings → Locations →
+*This system*. Since 2025.2 Home Assistant chooses encryption per location; *This system* was off
+until 2026-10-26, and the weekly copy to the NAS refuses an unencrypted archive.
 
 **Off the Pi**: `linux/ansible/playbooks/backup.yml` copies the newest archive to the NAS every
 Saturday ([Backups to the NAS](../ansible/README.md#backups-to-the-nas)). Home Assistant's own
