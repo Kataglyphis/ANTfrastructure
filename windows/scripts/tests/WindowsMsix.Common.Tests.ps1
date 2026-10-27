@@ -1,8 +1,23 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
+# Staging and tool wiring are tested here; this suite does not build or install a real MSI or MSIX.
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.TextFixtures.psm1') -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'WindowsMsixLicenseFixture.psm1') -DisableNameChecking -ErrorAction Stop
+function script:Assert-MsixRenderedImage {
+  param([string]$Path, [int]$Width, [int]$Height)
+  $image = [System.Drawing.Bitmap]::new($Path)
+  try {
+    $image.Width | Should -Be $Width
+    $image.Height | Should -Be $Height
+    $center = $image.GetPixel([int]($Width / 2), [int]($Height / 2))
+    $center.A | Should -BeGreaterThan 0
+    $center.R | Should -BeGreaterThan 200
+    $image.GetPixel(0, 0).A | Should -Be 0
+  } finally { $image.Dispose() }
+}
+
 
 Describe 'WindowsMsix.Common' {
   BeforeAll {
@@ -14,6 +29,11 @@ Describe 'WindowsMsix.Common' {
 
   AfterAll {
     Remove-TestDir -Path $script:tmp
+  }
+  Context 'Copy-PackageLicense' {
+    It 'copies the complete licence and refuses missing or empty terms' {
+      Invoke-InTestDir -Body { param($ws) Assert-TestPackageLicense -Root $ws }
+    }
   }
 
   Context 'Expand-XmlTemplateTokens' {
@@ -156,6 +176,43 @@ Describe 'WindowsMsix.Common' {
       Test-Path $out | Should -BeTrue
     }
 
+    It 'resizes a visible project logo to every required size without stretching it' {
+      $ws = Join-Path $script:tmp 'real-logos'
+      New-Item -ItemType Directory -Path $ws -Force | Out-Null
+      $logoPath = Join-Path $ws 'logo.png'
+      Copy-Item -LiteralPath (Join-Path (Get-RepoRoot) 'images/logo.png') -Destination $logoPath
+      $staging = Join-Path $ws 'staging'
+      Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir $staging -LogoPath $logoPath `
+        -ManifestTemplatePath $script:bareTemplate -OutputPath (Join-Path $ws 'app.msix') `
+        -TokenMap @{} -InvokerScriptBlock $script:fakeMakeappx | Out-Null
+      $cases = @('StoreLogo.png 50 50', 'Square44x44Logo.png 44 44',
+        'Square150x150Logo.png 150 150', 'Wide310x150Logo.png 310 150')
+      foreach ($case in $cases) {
+        $parts = $case -split ' '
+        Assert-MsixRenderedImage -Path (Join-Path $staging "Assets\$($parts[0])") -Width $parts[1] -Height $parts[2]
+      }
+    }
+
+    It 'rejects missing, malformed, non-PNG and fully transparent project logos' {
+      $ws = Join-Path $script:tmp 'bad-logos'
+      New-Item -ItemType Directory -Path $ws -Force | Out-Null
+      $packageArguments = @{ Context = [pscustomobject]@{}; StagingDir = (Join-Path $ws 'stage');
+        ManifestTemplatePath = $script:bareTemplate; OutputPath = (Join-Path $ws 'out.msix');
+        TokenMap = @{}; InvokerScriptBlock = $script:fakeMakeappx }
+      Assert-Throws -MessagePattern 'logo not found' -Body { Invoke-MsixPackage @packageArguments -LogoPath (Join-Path $ws 'missing.png') }
+      $bad = Join-Path $ws 'bad.png'
+      [IO.File]::WriteAllText($bad, 'not an image')
+      Assert-Throws -MessagePattern 'not a readable image' -Body { Invoke-MsixPackage @packageArguments -LogoPath $bad }
+      $transparent = Join-Path $ws 'transparent.png'
+      New-TransparentPng -Path $transparent -Width 8 -Height 8
+      Assert-Throws -MessagePattern 'visible PNG' -Body { Invoke-MsixPackage @packageArguments -LogoPath $transparent }
+      $jpeg = Join-Path $ws 'logo.jpg'
+      $image = [System.Drawing.Bitmap]::new(8, 8)
+      try { $image.Save($jpeg, [System.Drawing.Imaging.ImageFormat]::Jpeg) } finally { $image.Dispose() }
+      Assert-Throws -MessagePattern 'visible PNG' -Body { Invoke-MsixPackage @packageArguments -LogoPath $jpeg }
+      Test-Path -LiteralPath $packageArguments.OutputPath | Should -BeFalse
+    }
+
     It 'throws when makeappx reports success and produces nothing' {
       # Without this check the lane goes green and the artifact upload finds no file.
       $ws = Join-Path $script:tmp 'pkg2'
@@ -240,6 +297,25 @@ Describe 'WindowsMsix.Common' {
         $script:wixCall.Argv | Should -Contain $d
       }
       $argv | Should -Not -BeLike '*PayloadFiles=1*' -Because 'no payload list means no fragment for main.wxs to include'
+    }
+
+    It 'passes additional WiX variables as distinct argv tokens and preserves spaces' {
+      $icon = Join-Path $script:tmp 'icon dir\project icon.ico'
+      Invoke-MsiPackage @script:msiArgs -OutFile (Join-Path $script:tmp 'msi-out\extra.msi') `
+        -WixVariables @{ IconSource = $icon } | Out-Null
+      $idx = [array]::IndexOf($script:wixCall.Argv, "IconSource=$icon")
+      $idx | Should -BeGreaterThan 0
+      $script:wixCall.Argv[$idx - 1] | Should -Be '-d'
+    }
+
+    It 'rejects invalid and reserved WiX variables before invoking the tool' {
+      foreach ($name in 'Version', 'ExeSource', 'PayloadFiles', 'bad-name', 'x y') {
+        $script:wixCall = $null
+        Assert-Throws -MessagePattern 'Invalid or reserved WiX variable name' -Body {
+          Invoke-MsiPackage @script:msiArgs -OutFile (Join-Path $script:tmp 'msi-out\invalid.msi') -WixVariables @{ $name = 'x' }
+        }
+        $script:wixCall | Should -BeNullOrEmpty
+      }
     }
 
     It 'writes one component per payload file, a Subdirectory only where one is given' {

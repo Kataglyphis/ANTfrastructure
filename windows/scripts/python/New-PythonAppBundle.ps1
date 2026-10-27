@@ -29,13 +29,27 @@ Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsOrtPayload.Common.psm1
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsTargetArch.Common.psm1') -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsPythonApp.Common.psm1') -Force -DisableNameChecking
 
+function Initialize-PythonAppBundleWorkspace {
+    param($App, [string]$RepoRoot, [string]$Bundle)
+    $license = Resolve-PackageLicense -Path (Get-PythonAppBundleInputPath -App $App -RepoRoot $RepoRoot -Name 'license_file' -Required)
+    Initialize-PythonAppDirectory -Path $Bundle -Empty
+    $null = Copy-PackageLicense -Path $license -Destination $Bundle
+}
+
+function Initialize-PythonAppBundleIcon {
+    param($App, [string]$RepoRoot, [string]$WorkDir)
+    $png = Get-PythonAppBundleInputPath -App $App -RepoRoot $RepoRoot -Name 'icon'
+    if (-not $png) { return '' }
+    return New-WindowsIconResource -PngPath $png -WorkDir $WorkDir
+}
+
 function New-PythonAppBundleLaunchers {
-    param($App, [string]$SitePackages, [string]$Bundle, [string]$WorkDir, [string]$Arch)
+    param($App, [string]$SitePackages, [string]$Bundle, [string]$WorkDir, [string]$Arch, [string]$IconResource = '')
     $entryPoints = Get-PythonAppEntryPoint -SitePackages $SitePackages -Distribution $App['distribution']
     $wanted = if ($App.ContainsKey('scripts')) { @($App['scripts']) } else { @($entryPoints.Keys) }
     foreach ($name in $wanted) {
         if (-not $entryPoints.Contains($name)) { throw "$($App['distribution']) declares no console script '$name'" }
-        $exe = New-PythonAppLauncher -Name $name -EntryPoint $entryPoints[$name] -Destination $Bundle -DataEnv $App['data_env'] -DataDir $App['data_dir'] -WorkDir $WorkDir -Arch $Arch
+        $exe = New-PythonAppLauncher -Name $name -EntryPoint $entryPoints[$name] -Destination $Bundle -DataEnv $App['data_env'] -DataDir $App['data_dir'] -WorkDir $WorkDir -Arch $Arch -IconResource $IconResource
         Write-Host "  $name -> $($entryPoints[$name]) ($exe)"
     }
     return $wanted
@@ -59,7 +73,8 @@ $app = Get-PythonAppConfig -Path (Resolve-PythonAppPath $RepoRoot $Config)
 if (-not $OutDir) { $OutDir = "dist/windows-$packageArch/bundle" }
 $bundle = Resolve-PythonAppPath $RepoRoot $OutDir
 $WorkDir = New-PythonAppWorkDirectory -Path $WorkDir -DefaultName "python-app-$($app['id'])-$arch"
-Initialize-PythonAppDirectory -Path $bundle -Empty
+Initialize-PythonAppBundleWorkspace -App $app -RepoRoot $RepoRoot -Bundle $bundle
+$launcherIcon = Initialize-PythonAppBundleIcon -App $app -RepoRoot $RepoRoot -WorkDir $WorkDir
 $hostPython = Join-Path $PythonBuild 'python.exe'
 # Host and target come from one CPython tree, so the host reports the target's version and ABI tag.
 $pythonVersion = "$(& $hostPython -c 'import sys; print(sys.version.split()[0])')".Trim()
@@ -106,7 +121,7 @@ if ($chainOpenCv) {
 }
 
 Write-Host '== launchers'
-$wanted = @(New-PythonAppBundleLaunchers -App $app -SitePackages $sitePackages -Bundle $bundle -WorkDir $WorkDir -Arch $arch)
+$wanted = @(New-PythonAppBundleLaunchers -App $app -SitePackages $sitePackages -Bundle $bundle -WorkDir $WorkDir -Arch $arch -IconResource $launcherIcon)
 
 Write-Host '== data'
 Copy-PythonAppBundleData -App $app -RepoRoot $RepoRoot -Bundle $bundle

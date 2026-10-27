@@ -28,12 +28,16 @@ jobs:
       # The Python lint and type gates resolve their pinned Ruff and ty through uvx.
       - name: Install uv (provides uvx for the python-lint gate)
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.0
+      - name: Ensure PE icon test tools
+        run: bash linux/scripts/ensure-pe-icon-test-tools.sh --install-missing
       # The runner image ships no pytest, and without it every mutation baseline fails unmutated.
       - name: Install pytest (mutation-gate baselines)
         run: pip install --quiet pytest
       # Unpinned runner convenience, owned by no image: docs/dependency-updates.md#what-this-costs
       - name: Install PyYAML (renovate_audit.py's real YAML parser)
         run: pip install --quiet pyyaml
+      - name: Verify locked compatibility exports
+        run: bash linux/scripts/verify-uv-exports.sh
       - name: Check WebDAV downloader types against the pinned client source
         run: bash linux/scripts/01-core/check-webdav-types.sh
       # Every slug but the mutation gate, which the mutations job runs in shards.
@@ -67,6 +71,8 @@ jobs:
       # Same setup as preflight: without pytest and PyYAML the baselines fail unmutated.
       - name: Install uv (provides uvx for the python-lint gate)
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.0
+      - name: Ensure PE icon test tools
+        run: bash linux/scripts/ensure-pe-icon-test-tools.sh --install-missing
       - name: Install pytest (mutation-gate baselines)
         run: pip install --quiet pytest
       - name: Install PyYAML (renovate_audit.py's real YAML parser)

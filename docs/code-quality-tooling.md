@@ -49,11 +49,15 @@ own `command not found` at the call site. Put LLVM on `PATH` yourself.
 
 `cmake-format` is the one tool the library will provision: when it is not on
 `PATH`, `code_quality_ensure_cmake_format` (`code-quality.sh`) creates a venv
-with `uv` at `CODE_QUALITY_VENV_DIR` and installs the hub's pinned
-`linux/scripts/cmake-format.requirements.txt` through `01-core/python_uv.sh`.
-That default has applied since 2026-09-15; `CODE_QUALITY_UV_VENV_CREATE_SCRIPT`
-and `CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT` only override it. It still
-hard-errors when `uv` is missing or the hub's requirements file is absent.
+with `uv` at `CODE_QUALITY_VENV_DIR` and installs the hash-locked
+`quality/cmake-format` project through `01-core/python_uv.sh`. The installer
+exports the lock and installs its packages without removing unrelated venv content.
+`CODE_QUALITY_UV_VENV_CREATE_SCRIPT` and `CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT`
+override it. Missing uv, project files or a stale lock fail. The old
+`linux/scripts/cmake-format.requirements.txt` remains a compatibility export while
+existing consumers migrate; it must not be removed before the consumer inventory permits it.
+CI runs `bash linux/scripts/verify-uv-exports.sh` to compare both legacy exports
+byte for byte against their locked projects; Renovate regenerates them during updates.
 
 ### clang-format
 
@@ -183,7 +187,7 @@ the caller's shell options.
 | `CODE_QUALITY_GCC_TOOLCHAIN_PREFIX` | prefix matched when stripping container-only toolchain flags | `/opt/gcc-` |
 | `CODE_QUALITY_VENV_DIR` | virtualenv used to obtain cmake-format | `<project root>/.venv` |
 | `CODE_QUALITY_UV_VENV_CREATE_SCRIPT` | script that creates the venv | the hub's `uv_venv_create` (`01-core/python_uv.sh`) |
-| `CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT` | script that installs its requirements | installs the hub's `linux/scripts/cmake-format.requirements.txt` |
+| `CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT` | script that installs its requirements | installs the hub's locked `quality/cmake-format` project |
 
 Both `UV_*` scripts run with the project root as cwd and only override the hub's
 default bootstrap, which runs only when cmake-format is not already on `PATH`.
@@ -247,6 +251,9 @@ build step checks:
 - every PNG under `web/` and `android/app/src/main/res/` is 8 bits per channel.
   `flutter_launcher_icons` writes 16 bits, and a browser fetched a 123 kB `Icon-192.png` instead
   of 26 kB on every cold load;
+- an Android manifest, when present, names an `@mipmap` launcher with a structurally valid PNG
+  at each of mdpi through xxxhdpi. The source check does not decode pixels, compare visual
+  identity or inspect the built APK; other Android icon configurations fail explicitly;
 - every icon `web/manifest.json` and `web/index.html` name (icon links, `og:image`) is on disk,
   and the manifest's lie in `web/<--icons-dir>/` (default `icons`);
 - with a `web/.htaccess`, so Apache serves the site, nothing is under `web/icons/` or named at
@@ -368,6 +375,8 @@ workers and stops their watchdogs and command groups. Nested runners receive a
 chance to run their own exit cleanup before forced termination. A lost supervisor
 or failed cleanup must reach the job report as an error. Caller-owned background
 jobs and returning or ignored signal handlers retain their existing policies.
+When a returning INT or QUIT interrupts the command wait, the supervisor waits
+again even if the child has just exited, so the report records its actual status.
 Supervisor and watchdog diagnostics append to the job log, so a lingering child
 cannot retain the caller's stdout or stderr pipe after the job report finishes.
 Commands append too, preserving diagnostics written before the command starts.
@@ -896,6 +905,12 @@ slug `mutations`. For each recorded entry it makes a literal edit that **neuters
 one guarantee**, runs the named test, and requires the test to FAIL. A mutation
 the tests survive is reported and fails the gate.
 
+Use `python3 docs/scripts/merge_mutation_recipes.py <manifest>` to preview
+adding reviewed recipes; pass `--write` to apply and `--replace <id>` for an
+intentional change to an existing recipe. It checks unique in-repo anchors before
+writing atomically. Run the mutation gate afterwards: an applicable anchor does
+not prove the test catches the mutation.
+
 Consumers can call `.github/workflows/mutation-gates.yml@develop` with a tracked
 `manifest` path and an optional tracked `setup-script`. The shared validator
 rejects missing or empty recipes, absolute or parent-traversal recipe targets,
@@ -929,7 +944,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3690 entries** over **400 distinct test commands**; both digits are
+manifest holds **3872 entries** over **441 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1076,6 +1091,12 @@ proved all 532 selected entries, printed a passed preflight summary, and was the
 canceled at the job boundary. Eight shards halve that 532-entry slice without
 sampling or raising the timeout; baseline failures still fail.
 
+The shards install no Pester, so a recipe whose test is a Pester-style suite
+(`BeforeAll`, `Context` and the other Pester-only keywords) skips there and fails
+every run as a vacuous bite. Put the cases a recipe needs in a harness-style
+suite; `test-mutation-pester-targets.sh` refuses a recipe that names a
+Pester-style one.
+
 A failed baseline reports its first three and last three nonempty lines, capped
 at 500 characters per line. This retains the first diagnostic and final summary
 when a multiline browser report would otherwise hide the failure. It changes
@@ -1195,7 +1216,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 57 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 58 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
@@ -1924,8 +1945,17 @@ the chain reads them there. PowerShell complexity JSON belongs under ignored
 `logs/code-quality/`.
 The Windows test runner writes a JSON summary for each parent run to
 `logs/windows-tests/summary-<timestamp>-<pid>.json`; child runs do not write durable copies.
+An explicit child `-ResultFile` creates its parent and fails on a write error, so a
+fresh mutation mirror can run the actual PowerShell baseline before testing a mutant.
 
 ## Windows Pester coverage
+
+The shared PE-icon fixture also links actual x64 and ARM64 executables and reads
+their resources. Linux preflight and mutation runners call
+`bash linux/scripts/ensure-pe-icon-test-tools.sh --install-missing` first: it
+reuses existing LLVM/Clang, LLD, Ninja, Rust, Cargo, CMake, Python and PowerShell, and
+installs missing Ubuntu packages only when asked. Missing PowerShell and failed
+installation remain fatal; this fixture does not run Windows executables.
 
 `pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1` measures command coverage
 for fifteen modules, each with a focused Pester suite:
@@ -2320,7 +2350,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 987 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1004 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -2331,7 +2361,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **392** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **396** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **1** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.
@@ -3462,7 +3492,7 @@ the document.
 An inline preflight function that drives `lib/code-quality.sh` end to end:
 `code_quality_ensure_cmake_format` provisions the tool through uv into
 `logs/tools/cmake-format-linux` when it is not on `PATH` (pins in
-`linux/scripts/cmake-format.requirements.txt` — `pyyaml` is in there because
+`quality/cmake-format/uv.lock` — `pyyaml` is included because
 `cmake-format==0.6.13` does not depend on it and dies with
 `ModuleNotFoundError` the moment it reads a YAML config; after the install
 `lib/cmakelang-py315.py` gives its lexer 3.14's `re.Scanner`, which Python 3.15

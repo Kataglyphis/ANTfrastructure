@@ -113,9 +113,15 @@ t_case "cross mode never shows uv the target platform tag (uv refuses it at venv
 t_assert_eq "2" "$(grep -c '^uv .*PLAT= CFLAGS=' "${CALLS}")" "both sdists build with no platform in uv's environment"
 t_assert_eq "0" "$(grep -c '^uv .*PLAT=linux_riscv64' "${CALLS}")" "uv must never see the tag"
 
-t_case "without a staged target Python the sysroot's headers carry the build"
+t_case "without a staged target Python the sysroot's distro headers carry the build"
 t_assert_ok _run_cross --no-py
-t_assert_contains "$(cat "${CALLS}")" "CFLAGS=-O2 -I/usr/include/python3.14" "the sysroot-relative include the cross wrapper roots"
+t_assert_contains "$(cat "${CALLS}")" "CFLAGS=-O2 -I${SYSROOT_DIR}/usr/include/python3.14" "the sysroot's own path, not a host path --sysroot leaves alone"
+
+t_case "the image's source-built Python under usr/local wins over distro headers"
+mkdir -p "${SYSROOT_DIR}/usr/local/include/python3.14"
+t_assert_ok _run_cross --no-py
+rmdir "${SYSROOT_DIR}/usr/local/include/python3.14"
+t_assert_contains "$(cat "${CALLS}")" "CFLAGS=-O2 -I${SYSROOT_DIR}/usr/local/include/python3.14" "the interpreter the image ships"
 
 t_case "cross riscv64 ships wheels only even though uname is amd64"
 t_assert_eq "0" "$(_calls)" "the cross target decides the verdict, not the host arch"

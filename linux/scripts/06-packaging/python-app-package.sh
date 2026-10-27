@@ -42,6 +42,10 @@ DESCRIPTION="$(app description)"
 PUBLISHER="$(app publisher)"
 HOMEPAGE="$(app homepage)"
 ICON="$(app icon)"
+LICENSE_FILE="$(app license_file)"
+[ -n "${LICENSE_FILE}" ] || err "app.json must name license_file"
+app_packaging_validate_project_license "${LICENSE_FILE}" || err "the Python app license is required"
+LICENSE_FILE="$(realpath "${LICENSE_FILE}")"
 GUI_SCRIPT="$(app gui_script)"
 # A deb needs "Name <address>"; without one in app.json, the reserved .invalid TLD says plainly there is none.
 MAINTAINER="$(app maintainer)"
@@ -63,6 +67,12 @@ prove() {
   info "  started: $* -> ok"
 }
 
+# This checks the declared project text, not the completeness of bundled dependency licenses.
+verify_python_app_package_license() {
+  local artifact="${1:?artifact required}" member="${2:?license member required}"
+  python3 "${SCRIPT_DIR}/../verify_package_license.py" "${artifact}" --require "${member}=${LICENSE_FILE}"
+}
+
 package_tar() {
   local name="${APP_ID}-${VERSION}-linux-${UNAME_ARCH}" stage test_dir
   stage="${WORK_DIR}/tar"
@@ -70,6 +80,7 @@ package_tar() {
   cp -a "${BUNDLE}" "${stage}/${name}"
   tar -C "${stage}" -czf "${OUT_DIR}/${name}.tar.gz" "${name}"
   app_packaging_assert_artifact "${OUT_DIR}/${name}.tar.gz"
+  verify_python_app_package_license "${OUT_DIR}/${name}.tar.gz" "${name}/LICENSE" || return $?
   test_dir="${WORK_DIR}/tar-test"
   rm -rf "${test_dir}" && mkdir -p "${test_dir}"
   tar -C "${test_dir}" -xzf "${OUT_DIR}/${name}.tar.gz"
@@ -159,6 +170,7 @@ package_deb() {
   chmod 0755 "${root}/DEBIAN"
   dpkg-deb --root-owner-group --build "${root}" "${output}" > /dev/null
   app_packaging_assert_artifact "${output}"
+  verify_python_app_package_license "${output}" "opt/${APP_ID}/LICENSE" || return $?
   [ "${RUN_TESTS}" = true ] || return 0
   if [ "$(id -u)" -eq 0 ] || sudo -n true > /dev/null 2>&1; then
     app_packaging_run_privileged_cmd dpkg -i "${output}" > /dev/null
@@ -196,6 +208,7 @@ EOF
   cp "${ICON}" "${appdir}/${APP_ID}.png"
   APPIMAGE_EXTRACT_AND_RUN=1 NO_APPSTREAM=1 ARCH="${UNAME_ARCH}" "${tool}" ${runtime_file:+--runtime-file "${runtime_file}"} "${appdir}" "${output}" > /dev/null
   app_packaging_assert_artifact "${output}"
+  bash "${SCRIPT_DIR}/verify-native-appimage-license.sh" "${output}" "${UNAME_ARCH}" "usr/lib/${APP_ID}/LICENSE" "${LICENSE_FILE}" || return $?
   link="${WORK_DIR}/appimage-test/${SELF_TEST[0]}"
   mkdir -p "$(dirname "${link}")" "${WORK_DIR}/appimage-run" && ln -sf "${output}" "${link}"
   # Extract-and-run needs no FUSE, which a container lacks; its temp dir is the root ORT must come from.

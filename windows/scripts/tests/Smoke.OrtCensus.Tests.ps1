@@ -17,14 +17,7 @@ $script:SmokeScript = 'windows\scripts\build\Test-Container.ps1'
 
 function New-OrtTestWheel {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][hashtable]$Member)
-    $null = New-Item -ItemType Directory -Force -Path (Split-Path $Path -Parent)
-    $zip = [System.IO.Compression.ZipFile]::Open($Path, 'Create')
-    try {
-        foreach ($name in $Member.Keys) {
-            $s = $zip.CreateEntry($name).Open()
-            try { $bytes = [System.IO.File]::ReadAllBytes($Member[$name]); $s.Write($bytes, 0, $bytes.Length) } finally { $s.Dispose() }
-        }
-    } finally { $zip.Dispose() }
+    New-TestZipFile -Path $Path -Member $Member -FileValues
 }
 
 function New-OrtTestDist {

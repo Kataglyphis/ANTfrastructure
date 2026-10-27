@@ -21,7 +21,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/cli-value-options.sh" || { unset _CODE_QU
 # cmake-format availability; paths resolve from this file, so a vendored checkout works too.
 _CQ_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _CQ_CORE="${_CQ_LIB_DIR}/../01-core"
-_CQ_REQS="${_CQ_LIB_DIR}/../cmake-format.requirements.txt"
+_CQ_PROJECT="${_CQ_LIB_DIR}/../../../quality/cmake-format"
 
 _code_quality_default_venv_create() {
   # shellcheck source=../01-core/python_uv.sh
@@ -33,11 +33,11 @@ _code_quality_default_venv_create() {
 _code_quality_default_install_requirements() {
   # shellcheck source=../01-core/python_uv.sh
   source "${_CQ_CORE}/python_uv.sh"
-  uv_pip_install_requirements "${venv_dir}" "${_CQ_REQS}"
+  uv_pip_install_locked_project "${venv_dir}" "${_CQ_PROJECT}"
 }
 
 _code_quality_apply_default_bootstrap() {
-  [[ -f "${_CQ_REQS}" ]] || err "cmake-format not found and the hub's ${_CQ_REQS} is missing -- this is a broken checkout, not a gate to skip."
+  [[ -f "${_CQ_PROJECT}/pyproject.toml" && -f "${_CQ_PROJECT}/uv.lock" ]] || err "cmake-format not found and the hub's locked project ${_CQ_PROJECT} is missing."
   [[ -n "${create_script}" ]] || create_script=_code_quality_default_venv_create
   [[ -n "${install_script}" ]] || install_script=_code_quality_default_install_requirements
 }

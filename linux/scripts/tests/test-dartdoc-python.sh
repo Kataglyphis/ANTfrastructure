@@ -5,7 +5,8 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 LIB="$(cd "${TESTS_DIR}/../lib" && pwd)"
 REAL_PY="$(command -v "${PREFLIGHT_PYTHON:-python3}")"
-PIN="$(sed -n 's/^markdown-it-py==//p' "${LIB}/dartdoc-guides.requirements.txt")"
+t_source_functions "${LIB}/dartdoc-build.sh" _dartdoc_build_parser_pin || exit 1
+PIN="$(_dartdoc_build_parser_pin "${LIB}/dartdoc-guides.requirements.txt")"
 _WORK="$(mktemp -d)"
 trap 'rm -rf "${_WORK}"' EXIT
 
@@ -71,5 +72,34 @@ t_assert_contains "${out}" "rc=0"
 t_case "a requirements file without the pin fails before any probe"
 printf 'something-else==1.0\n' > "${_WORK}/req.txt"
 t_assert_contains "$(_prepare "${PIN}" "${NO_IMAGE}" DARTDOC_BUILD_REQUIREMENTS="${_WORK}/req.txt")" "rc=1"
+
+mkdir -p "${_WORK}/host/linux/scripts/lib" "${_WORK}/host/linux/scripts/01-core"
+export DARTDOC_TEST_RC=0
+cat > "${_WORK}/host/linux/scripts/01-core/python_uv.sh" <<'STUB'
+uv_ensure_installed() { return 0; }
+uv_venv_create() { mkdir -p "$1/bin"; printf '#!/usr/bin/env bash\nexit 0\n' > "$1/bin/python"; chmod +x "$1/bin/python"; }
+uv_pip_install_requirements() { printf 'requirements:%s\n' "$2" > "$DARTDOC_TEST_LOG"; return "${DARTDOC_TEST_RC:-0}"; }
+uv_pip_install_locked_project() { printf 'project:%s\n' "$2" > "$DARTDOC_TEST_LOG"; return "${DARTDOC_TEST_RC:-0}"; }
+STUB
+_host_prepare() {
+  env DARTDOC_TEST_LOG="${_WORK}/host.log" DARTDOC_BUILD_VENV_DIR="${_WORK}/venv space" "$@" bash -c '
+    source "$1/dartdoc-build.sh"
+    _DARTDOC_BUILD_LIB_DIR="$2"
+    warn() { :; }
+    _dartdoc_build_host_venv "$3" || exit $?
+    printf "python=%s\n" "$DARTDOC_BUILD_PYTHON"' _ "${LIB}" "${_WORK}/host/linux/scripts/lib" "${_WORK}/req.txt"
+}
+
+t_case "the default host installation uses the shared locked project"
+t_assert_rc 0 _host_prepare
+t_assert_contains "$(cat "${_WORK}/host.log")" "project:${_WORK}/host/linux/scripts/lib/../../../quality/dartdoc"
+
+t_case "the caller's requirements override keeps its original installation path"
+t_assert_rc 0 _host_prepare DARTDOC_BUILD_REQUIREMENTS="${_WORK}/req.txt"
+t_assert_contains "$(cat "${_WORK}/host.log")" "requirements:${_WORK}/req.txt"
+
+t_case "failed installation cannot report a usable host environment"
+t_assert_rc 1 _host_prepare DARTDOC_TEST_RC=42
+t_assert_rc 1 _host_prepare DARTDOC_TEST_RC=42 DARTDOC_BUILD_REQUIREMENTS="${_WORK}/req.txt"
 
 t_summary

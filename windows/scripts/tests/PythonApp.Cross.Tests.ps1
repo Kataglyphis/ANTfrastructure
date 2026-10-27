@@ -117,6 +117,13 @@ Describe 'Get-LockSdist and Add-RequirementHash' {
             Expected = @('other==1 \', '    --hash=sha256:other', 'pkg.name==2 \', '    --hash=sha256:first \',
                 '    --hash=sha256:built', '    # via app', 'pkg.name==2 \', '    --hash=sha256:last \', '    --hash=sha256:built')
             Unhashed = @(@('pkg.name==2', '    # via app'), @('pkgXname==2 \', '    --hash=sha256:other'))
+        },
+        @{
+            Name = 'keeps the blank lines a requirements export carries'
+            Package = 'pkg'; Sha = 'built'
+            Lines = @('# header', '', 'pkg==1 \', '    --hash=sha256:a', '')
+            Expected = @('# header', '', 'pkg==1 \', '    --hash=sha256:a \', '    --hash=sha256:built', '')
+            Unhashed = ,@('', 'pkg==1')
         }
     )) {
         It $hashCase.Name {

@@ -17,7 +17,7 @@ trap 'rm -rf "${WORK}"' EXIT
 t_emit_optional_functions package_deb _app_packaging_bundle_deb app_packaging_write_deb_control > "${WORK}/worker"
 cat >> "${WORK}/worker" <<'WORKER'
 set -euo pipefail
-WORK="$1"; caller="$2"; profile="$3"; builder_status="$4"
+WORK="$1"; caller="$2"; profile="$3"; builder_status="$4"; license_status="${5:-0}"
 WORK_DIR="${WORK}/python work"; OUT_DIR="${WORK}/out"; BUNDLE="${WORK}/payload"
 KATAGLYPHIS_PACKAGING_WORKDIR="${WORK}/native work"
 APP_ID=org.example.fixture APP_NAME='Demo % App' VERSION=2.4.6 DEB_ARCH=arm64
@@ -32,6 +32,7 @@ case "${profile}" in
   multiline) DESCRIPTION=$'first line\n second line'; APP_PACKAGING_DESCRIPTION="${DESCRIPTION}" ;;
 esac
 mkdir -p "${OUT_DIR}" "${BUNDLE}"
+rm -f "${WORK}/license-check"
 : > "${BUNDLE}/payload"
 info() { :; }
 err() { printf '%s\n' "$*" >&2; exit 1; }
@@ -42,6 +43,10 @@ app_packaging_create_desktop_file() { :; }
 _app_packaging_stage_desktop_icon() { :; }
 _app_packaging_copy_bundle() { mkdir -p "$2"; cp -a "$1/." "$2/"; }
 app_packaging_assert_artifact() { test -s "$1"; }
+verify_python_app_package_license() {
+  printf '%s\n%s\n' "$1" "$2" > "${WORK}/license-check"
+  return "${license_status}"
+}
 dpkg-deb() {
   local root="${@: -2:1}" output="${@: -1}"
   cp "${root}/DEBIAN/control" "${WORK}/control"
@@ -77,10 +82,21 @@ for caller in python native; do
       printf '%s' "${expected}" > "${WORK}/expected"
       t_assert_ok cmp "${WORK}/expected" "${WORK}/control"
       t_assert_eq "${first_flag}" "$(cat "${WORK}/first-flag")"
+      if [ "${caller}" = python ] && [ "${builder_status}" -eq 0 ]; then
+        t_assert_ok test -f "${WORK}/license-check"
+        t_assert_eq "$(printf '%s\n%s' "${WORK}/out/org.example.fixture_2.4.6_arm64.deb" 'opt/org.example.fixture/LICENSE')" "$(cat "${WORK}/license-check")"
+      else
+        t_assert_fails test -e "${WORK}/license-check"
+      fi
       if [ "${builder_status}" -eq 0 ]; then t_assert_contains "${output}" REACHED; else t_assert_eq 1 "$(t_rc grep -q REACHED <<< "${output}")"; fi
     done
   done
 done
+
+t_case 'a failed Python license check propagates its status and stops the worker'
+t_capture_command output status bash "${WORK}/worker" "${WORK}" python explicit 0 17
+t_assert_eq 17 "${status}" "${output}"
+t_assert_eq 1 "$(t_rc grep -q REACHED <<< "${output}")"
 
 t_case "a failed readelf command cannot produce a partial package dependency list"
 _DEP_BUNDLE="${WORK}/dependency-bundle"

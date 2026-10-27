@@ -228,11 +228,17 @@ Describe 'Shared compiler wrapper environment policy' {
     @('WindowsMsix.Signing', 'WindowsConfig.Common', 'Get-OrDefault'),
     @('WindowsMsix.Signing', 'WindowsBuild.Common', 'Write-BuildLog'),
     @('WindowsMsix.Common', 'WindowsScripts.Shared', 'Resolve-PathFromRoot'),
+    @('WindowsIcon.Common', 'WindowsMsix.Common', 'Read-MsixLogo'),
     @('WindowsUv.Common', 'WindowsScripts.Shared', 'Resolve-PathFromRoot'),
     @('WindowsUv.Common', 'WindowsPythonWheel.Common', 'Resolve-SharedLinuxScriptFile'),
     @('WindowsPythonApp.Common', 'WindowsScripts.Shared', 'Initialize-BuildDirectory'),
     @('WindowsPythonApp.Common', 'WindowsPythonWheel.Common', 'Invoke-PythonAbiProbe'),
+    @('WindowsPythonApp.Common', 'WindowsIcon.Common', 'ConvertTo-PythonAppIcon'),
+    @('WindowsPythonApp.Common', 'WindowsMsix.Common', 'Copy-PackageLicense'),
     @('WindowsOrtPayload.Common', 'WindowsScripts.Shared', 'Initialize-BuildDirectory'),
+    @('WindowsOrtLicense.Common', 'WindowsOrtProvenance.Common', 'Get-OrtChainWheel'),
+    @('WindowsOrtLicense.Common', 'WindowsMsiLicense.Common', 'Assert-PackageLicense'),
+    @('WindowsOrtLicense.Common', 'WindowsPythonWheel.Common', 'Get-WheelEntryHash'),
     @('WindowsBuildDriver.Common', 'WindowsScripts.Shared', 'Get-DriveFreeSpaceGb'),
     @('WindowsTesting.Common', 'WindowsScripts.Shared', 'Invoke-WithProcessEnvironment'),
     @('WindowsSmokeTest.Common', 'WindowsScripts.Shared', 'Invoke-WithProcessEnvironment'),
@@ -270,7 +276,7 @@ foreach (`$case in `$cases) {
         $result = Invoke-TestPwshProbe -Source $probe
         Assert-Equal 0 $result.ExitCode $result.Output
         Invoke-InTestDir { param($dir)
-            $seeds = @('WindowsBuild.Common', 'WindowsCMake.Common', 'WindowsCodeQL.Common', 'WindowsGstPlugins.Common', 'WindowsSourceBuild.Common', 'WindowsRustToolchain.Common', 'WindowsContainerImage.Common', 'WindowsMigraphx.Common', 'WindowsTvm.Common', 'WindowsFlutter.Common', 'WindowsFormatting.Common', 'WindowsMsix.Signing', 'WindowsMsix.Common', 'WindowsUv.Common', 'WindowsPythonApp.Common', 'WindowsOrtPayload.Common', 'WindowsBuildDriver.Common', 'WindowsTesting.Common', 'WindowsSmokeTest.Common', 'WindowsCrossBundle.Common')
+            $seeds = @('WindowsBuild.Common', 'WindowsCMake.Common', 'WindowsCodeQL.Common', 'WindowsGstPlugins.Common', 'WindowsSourceBuild.Common', 'WindowsRustToolchain.Common', 'WindowsContainerImage.Common', 'WindowsMigraphx.Common', 'WindowsTvm.Common', 'WindowsFlutter.Common', 'WindowsFormatting.Common', 'WindowsMsix.Signing', 'WindowsMsix.Common', 'WindowsIcon.Common', 'WindowsUv.Common', 'WindowsPythonApp.Common', 'WindowsOrtPayload.Common', 'WindowsBuildDriver.Common', 'WindowsTesting.Common', 'WindowsSmokeTest.Common', 'WindowsCrossBundle.Common')
             Copy-TestModuleClosure -Seed $seeds -Destination $dir
             $mutations = @(
                 @{ Module = 'WindowsSourceBuild.Common'; Find = 'Import-Module $targetArchPath -ErrorAction Stop'; Replace = 'if (-not (Get-Module -Name WindowsTargetArch.Common)) { Import-Module $targetArchPath -ErrorAction Stop }'; Message = 'source-build architecture re-export missing' },
@@ -305,9 +311,12 @@ foreach (`$case in `$cases) {
                 @{ Owner = 'WindowsFormatting.Common'; Copy = @(); Message = 'WindowsUv.Common.psm1' },
                 @{ Owner = 'WindowsMsix.Signing'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
                 @{ Owner = 'WindowsMsix.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
+                @{ Owner = 'WindowsIcon.Common'; Copy = @(); Message = 'WindowsMsix.Common.psm1' },
                 @{ Owner = 'WindowsUv.Common'; Copy = @(); Message = 'WindowsUvLock.Common.psm1' },
                 @{ Owner = 'WindowsPythonApp.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
                 @{ Owner = 'WindowsPythonApp.Common'; Copy = @('WindowsScripts.Shared'); Message = 'WindowsPythonWheel.Common.psm1' },
+                @{ Owner = 'WindowsPythonApp.Common'; Copy = @('WindowsScripts.Shared', 'WindowsPythonWheel.Common', 'WindowsOrtPayload.Common', 'WindowsOrtProvenance.Common', 'WindowsOnnx.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common'); Message = 'WindowsIcon.Common.psm1' },
+                @{ Owner = 'WindowsPythonApp.Common'; Copy = @('WindowsScripts.Shared', 'WindowsPythonWheel.Common', 'WindowsOrtPayload.Common', 'WindowsOrtProvenance.Common', 'WindowsOnnx.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common', 'WindowsIcon.Common'); Message = 'WindowsMsix.Common.psm1' },
                 @{ Owner = 'WindowsOrtPayload.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
                 @{ Owner = 'WindowsBuildDriver.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
                 @{ Owner = 'WindowsTesting.Common'; Copy = @(); Message = 'WindowsBuild.Common.psm1' },

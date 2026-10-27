@@ -2,9 +2,10 @@
 # Sourced core, so it sets no shell options; knobs APP_PACKAGING_*. docs/shared-script-libraries.md#app-packagingsh--the-two-flatpak-entry-points
 
 [ -n "${_APP_PACKAGING_SH_LOADED:-}" ] && return 0
-_APP_PACKAGING_SH_LOADED=1
-
 _APP_PACKAGING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./app-packaging-license.sh
+source "${_APP_PACKAGING_DIR}/app-packaging-license.sh" || return $?
+_APP_PACKAGING_SH_LOADED=1
 # shellcheck source=./log-bootstrap.sh
 source "${_APP_PACKAGING_DIR}/log-bootstrap.sh"
 # shellcheck source=../01-core/platform.sh
@@ -443,10 +444,15 @@ _app_packaging_copy_bundle() {
 }
 
 _app_packaging_stage_desktop_icon() {
-  app_packaging_create_desktop_file "$1" "$2" "$3" "$4" "$5"
-  if [[ -n "$6" ]]; then
-    cp "$6" "$7"
+  local icon="${6:-}" dimensions
+  if [[ ! -r "$icon" || ! -s "$icon" ]] || [[ "$(head -c 16 "$icon" | od -An -tx1 | tr -d ' \n')" != '89504e470d0a1a0a0000000d49484452' ]] || [[ "$(tail -c 12 "$icon" | od -An -tx1 | tr -d ' \n')" != '0000000049454e44ae426082' ]]; then
+    echo "Error: project icon is missing or not a complete PNG: ${icon:-<empty>}" >&2
+    return 1
   fi
+  dimensions="$(app_packaging_icon_size "$icon")"
+  [[ "$dimensions" =~ ^[1-9][0-9]*x[1-9][0-9]*$ ]] || { echo "Error: project icon has invalid dimensions: $icon" >&2; return 1; }
+  app_packaging_create_desktop_file "$1" "$2" "$3" "$4" "$5" || return $?
+  cp "$icon" "$7"
 }
 
 app_packaging_write_deb_control() {

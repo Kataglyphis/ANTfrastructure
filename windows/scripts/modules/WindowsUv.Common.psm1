@@ -214,11 +214,17 @@ function Install-UvRequirements {
         [string]$VenvPython,
         [Parameter(Mandatory)]
         [string]$RequirementsPath,
+        [string]$LockedProjectPath = '',
         [scriptblock]$CommandRunner,
         [scriptblock]$LogInfo
     )
 
-    Invoke-UvCommand -Arguments @('pip', 'install', '--python', $VenvPython, '-r', $RequirementsPath) `
+    $installArgs = @('pip', 'install', '--python', $VenvPython)
+    if ($LockedProjectPath) {
+        $installArgs += @('--no-deps', '--require-hashes', '--directory', (Get-Location).ProviderPath, '--project', $LockedProjectPath)
+    }
+    $installArgs += @('-r', $RequirementsPath)
+    Invoke-UvCommand -Arguments $installArgs `
         -CommandRunner $CommandRunner -LogInfo $LogInfo
 
     # cmake-format 0.6.13 dies on 3.15's re.Scanner; the helper patches its lexer and is a no-op without it.
@@ -230,6 +236,44 @@ function Install-UvRequirements {
     }
     & $VenvPython -I $compat
     if ($LASTEXITCODE -ne 0) { throw "cmakelang-py315.py failed in ${VenvPython} with exit code $LASTEXITCODE" }
+}
+
+function Assert-UvLockedProject {
+    param([Parameter(Mandatory)][string]$ProjectPath)
+    foreach ($name in @('pyproject.toml', 'uv.lock')) {
+        $path = Join-Path $ProjectPath $name
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing locked uv project file: $path" }
+    }
+}
+
+function Install-UvLockedProject {
+    param(
+        [Parameter(Mandatory)][string]$VenvPython,
+        [Parameter(Mandatory)][string]$ProjectPath,
+        [scriptblock]$CommandRunner,
+        [scriptblock]$LogInfo
+    )
+
+    Assert-UvLockedProject -ProjectPath $ProjectPath
+    $ProjectPath = (Resolve-Path -LiteralPath $ProjectPath).ProviderPath
+    $exportPath = [IO.Path]::GetTempFileName()
+    try {
+        $exportArgs = @('export', '--project', $ProjectPath, '--python', $VenvPython, '--locked', '--no-dev', '--quiet',
+            '--no-emit-project', '--format', 'requirements-txt', '--directory', (Get-Location).ProviderPath, '--output-file', $exportPath)
+        Invoke-UvCommand -Arguments $exportArgs -CommandRunner $CommandRunner -LogInfo $LogInfo | Out-Host
+        $requirements = @(Get-Content -LiteralPath $exportPath -ErrorAction Stop | Where-Object {
+            $_ -match '^\s*[A-Za-z0-9][A-Za-z0-9._-]*(?:\[[^\]]+\])?==[^\s;\\]+'
+        })
+        if ($requirements.Count -eq 0) { throw 'uv export produced an empty lock export' }
+        if ($env:ORT_CHAIN_WHEEL_DIR -and @($requirements | Where-Object { $_ -match '^\s*onnxruntime(?:[-_.][A-Za-z0-9._-]+)?(?:\[[^\]]+\])?==' }).Count) {
+            throw 'The locked project contains ONNX Runtime while the chain wheel store is active.'
+        }
+        Install-UvRequirements -VenvPython $VenvPython -RequirementsPath $exportPath -LockedProjectPath $ProjectPath `
+            -CommandRunner $CommandRunner -LogInfo $LogInfo | Out-Host
+    } finally {
+        Remove-Item -LiteralPath $exportPath -Force -ErrorAction Stop
+        if (Test-Path -LiteralPath $exportPath) { throw "Could not remove uv lock export: $exportPath" }
+    }
 }
 
 <#
@@ -733,6 +777,8 @@ Export-ModuleMember -Function @(    'Get-UvPythonRequest',
     'Test-UvVenvHealthy',
     'Initialize-UvVenv',
     'Install-UvRequirements',
+    'Assert-UvLockedProject',
+    'Install-UvLockedProject',
     # Exported runner seam, so consumers drive uv through the module's own code path.
     'Invoke-UvCommand'
 )

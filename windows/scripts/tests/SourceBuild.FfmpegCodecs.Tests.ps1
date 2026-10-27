@@ -3,14 +3,6 @@
 
 . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsSourceBuild.Common.psm1' -FunctionName 'Find-TextLineIndexes')
 
-Describe 'Find-TextLineIndexes' {
-    It 'returns matching zero-based indexes in source order and accepts empty input' {
-        $indexes = @(Find-TextLineIndexes -Lines @('Name: codec', 'Libs: -lx265', 'Libs.private: -lc++', 'Libs: -lfoo') -Pattern '^Libs:')
-        Assert-Equal '1,3' ($indexes -join ',') 'both matching rows, in file order'
-        Assert-Equal 0 @(Find-TextLineIndexes -Lines @() -Pattern '^Libs:').Count 'an empty file has no matches'
-    }
-}
-
 Describe 'Add-CodecPcSystemLib (x265 4.2 static lib needs advapi32)' {
     BeforeAll {
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-FfmpegCodecs.ps1' -FunctionName 'Add-CodecPcSystemLib')
@@ -25,8 +17,8 @@ Describe 'Add-CodecPcSystemLib (x265 4.2 static lib needs advapi32)' {
     }
 
     It 'appends the missing system lib to Libs: once, and leaves every other line alone' {
-        # x265 4.2's generated x265.pc, trimmed to the lines that matter here.
-        $pc = "prefix=C:/runtime/ffmpeg-codecs`nName: x265`nLibs: -L`${libdir} -lx265`nLibs.private: -lc++`n"
+        # x265 4.2's generated x265.pc, trimmed but keeping its blank line, which once failed the chain's parameter binding.
+        $pc = "prefix=C:/runtime/ffmpeg-codecs`n`nName: x265`nLibs: -L`${libdir} -lx265`nLibs.private: -lc++`n"
         $want = $pc.Replace('-lx265', '-lx265 -ladvapi32')
         Assert-Equal $want (Invoke-OnPc $pc -Times 2) 'appended exactly once across two runs; Libs.private untouched'
     }

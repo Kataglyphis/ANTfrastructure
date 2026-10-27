@@ -937,3 +937,23 @@ function Assert-TestAstCommand {
 }
 
 Export-ModuleMember -Function Get-TestAstAncestor, Assert-TestAstCommand, ConvertTo-TestScriptParseResult
+
+function New-TestZipFile {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][Collections.IDictionary]$Member,
+        [switch]$FileValues, [string[]]$DuplicateName = @())
+    $null = New-Item -ItemType Directory -Force -Path (Split-Path $Path -Parent)
+    $archive = [IO.Compression.ZipFile]::Open($Path, [IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($name in $Member.Keys) {
+            $stream = $archive.CreateEntry($name).Open()
+            try {
+                if ($FileValues) { $bytes = [IO.File]::ReadAllBytes($Member[$name]) }
+                else { $bytes = [Text.Encoding]::UTF8.GetBytes($Member[$name]) }
+                $stream.Write($bytes, 0, $bytes.Length)
+            }
+            finally { $stream.Dispose() }
+        }
+        foreach ($name in $DuplicateName) { $archive.CreateEntry($name).Open().Dispose() }
+    } finally { $archive.Dispose() }
+}
+Export-ModuleMember -Function New-TestZipFile

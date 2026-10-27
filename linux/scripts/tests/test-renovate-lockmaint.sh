@@ -123,8 +123,11 @@ _dry_stubs() {
   local d="${WORK}/dry-$1"
   mkdir -p "${d}"
   printf '%b' "$4" > "${d}/out.txt"
-  printf '#!/usr/bin/env bash\nprintf "%%s | %%s | %%s\\n" "$(basename "$0")" "$*" "${PWD##*/}" >> "%s"\ncat "%s" >&2\nexit %s\n' \
-    "${ARGV_LOG}" "${d}/out.txt" "$3" > "${d}/$2"
+  printf '#!/usr/bin/env bash\n' > "${d}/$2"
+  if [ "$2" = uv ]; then printf '[ "${UV_WORKING_DIR+x}" = "" ] || exit 9\n' >> "${d}/$2"; fi
+  if [ "${5:-}" = check-env ]; then printf '[ "${UV_WORKING_DIR-}" = /missing ] || exit 9\n' >> "${d}/$2"; fi
+  printf 'printf "%%s | %%s | %%s\\n" "$(basename "$0")" "$*" "${PWD##*/}" >> "%s"\ncat "%s" >&2\nexit %s\n' \
+    "${ARGV_LOG}" "${d}/out.txt" "$3" >> "${d}/$2"
   chmod +x "${d}/$2"
   printf '%s' "${d}"
 }
@@ -148,6 +151,10 @@ M11="$(_plant_all m11 pyproject.toml "${PEP_TOML}" uv.lock '# lock-before\n')"
 _dry "$(_dry_stubs m11 uv 0 "${UV_DRY}")" "${M11}" "${PEP_REPORT}" --managers pep621
 t_assert_eq "0" "${RC}" "a report exits 0"
 t_assert_contains "${OUT}" "uv lock --upgrade  (3 entries would move)" "Remove, Update and Add each count"
+UV_WORKING_DIR=/missing _dry "$(_dry_stubs m11-poison uv 0 "${UV_DRY}")" "${M11}" "${PEP_REPORT}" --managers pep621
+t_assert_contains "${OUT}" "uv lock --upgrade  (3 entries would move)" "dry run ignores an inherited working-directory override"
+UV_WORKING_DIR=/missing _dry "$(_dry_stubs m11-poison-fail uv 2 "${UV_DRY}")" "${M11}" "${PEP_REPORT}" --managers pep621
+t_assert_contains "${OUT}" "failed (exit 2)" "the isolated dry run still reports a tool failure"
 t_assert_eq "uv | lock --upgrade --dry-run | m11" "${ARGV}" "the dry run, once, in the lock's directory"
 t_assert_eq "# lock-before" "$(cat "${M11}/uv.lock")" "the lock keeps its bytes"
 
@@ -158,6 +165,8 @@ _lock_report "${M12_REPORT}" cargo Cargo.toml
 _dry "$(_dry_stubs m12 cargo 0 "${CARGO_DRY}")" "${M12}" "${M12_REPORT}" --managers cargo
 t_assert_contains "${OUT}" "cargo update  (3 entries would move)" "two updates and one add"
 t_assert_eq "cargo | update --dry-run | m12" "${ARGV}" "cargo update --dry-run ran"
+UV_WORKING_DIR=/missing _dry "$(_dry_stubs m12-env cargo 0 "${CARGO_DRY}" check-env)" "${M12}" "${M12_REPORT}" --managers cargo
+t_assert_contains "${OUT}" "cargo update  (3 entries would move)" "other managers retain the original environment"
 
 t_case "(M13) report: dart's own summary line is the count, and one is singular"
 M13="$(_plant_all m13 pubspec.yaml 'name: fixture\ndependencies:\n  path: ^1.8.0\n' pubspec.lock '# placeholder\n')"

@@ -28,6 +28,8 @@ Arch="${ARCH:-}"
 DesktopFile="${DESKTOP_FILE}"
 : "${ICON_FILE:=}"
 IconFile="${ICON_FILE}"
+: "${LICENSE_FILE:=LICENSE}"
+LicenseFile="${LICENSE_FILE}"
 AppID="${APP_ID:-}"
 
 # Output behavior
@@ -49,6 +51,7 @@ while [ $# -gt 0 ]; do
         --package-types) shift; PackageTypes="$1" ;;
         --desktop-file) shift; DesktopFile="$1" ;;
         --icon-file) shift; IconFile="$1" ;;
+        --license-file) shift; LicenseFile="$1" ;;
         --app-id) shift; AppID="$1" ;;
         # Accepted and never read until 2026-10-06: the flatpak manifest is generated from the staged bundle now.
         --flatpak-manifest|--appdata-file)
@@ -101,6 +104,10 @@ cd "$Workspace"
 for project_file in "$DesktopFile" "$IconFile"; do
     [ -f "$project_file" ] || { err "project file not found: $project_file"; exit 1; }
 done
+# shellcheck source=../lib/app-packaging.sh
+source "$SCRIPT_DIR/../lib/app-packaging.sh"
+app_packaging_validate_project_license "$LicenseFile"
+[ "$Binary" != LICENSE ] || { err "binary name LICENSE conflicts with the license file"; exit 1; }
 # Absolute, since the packagers run from their own staging dirs.
 DesktopFile="$(cd "$(dirname "$DesktopFile")" && pwd)/$(basename "$DesktopFile")"
 IconFile="$(cd "$(dirname "$IconFile")" && pwd)/$(basename "$IconFile")"
@@ -134,9 +141,11 @@ else
     err "Release binary not found: target/release/$BinaryFile (or provide --binary-path)"
     exit 1
 fi
-cp "$SourceBinary" "$ArchiveDir/$Binary"
-tar -C "$ArchiveDir" -czvf "$ArchiveName" "$Binary"
-rm "$ArchiveDir/$Binary"
+ArchiveStage="$(mktemp -d "${TMPDIR:-/tmp}/package-archive.XXXXXX")"
+trap 'rm -rf "$ArchiveStage"' EXIT
+install -m 0755 "$SourceBinary" "$ArchiveStage/$Binary"
+app_packaging_stage_project_license "$LicenseFile" "$ArchiveStage"
+tar -C "$ArchiveStage" -czvf "$ArchiveName" "$Binary" LICENSE
 
 info "Archive created successfully: $ArchiveName"
 
@@ -149,6 +158,7 @@ if [ "$NeedsBundle" = true ]; then
     rm -rf "$Stage"
     mkdir -p "$Stage"
     install -m 0755 "$SourceBinary" "$Stage/$Binary"
+    app_packaging_stage_project_license "$LicenseFile" "$Stage"
     # deb wants a version that starts with a digit; a tag's leading v is not part of it.
     PackageVersion="${Version#v}"
     PackageVersion="${PackageVersion//\//-}"
@@ -161,8 +171,6 @@ if [ "$NeedsBundle" = true ]; then
     # A Rust binary links libc, libm and libgcc_s, not the GTK a Flutter bundle needs.
     export APP_PACKAGING_DEB_DEPENDS="${APP_PACKAGING_DEB_DEPENDS:-libc6, libgcc-s1}"
     if [ -n "$AppID" ]; then export APP_PACKAGING_APP_ID="$AppID"; fi
-    # shellcheck source=../lib/app-packaging.sh
-    source "$SCRIPT_DIR/../lib/app-packaging.sh"
     for format in "${Formats[@]}"; do
         case "$format" in
             deb) app_packaging_package_linux_bundle_deb "$Arch" "$Binary" ;;

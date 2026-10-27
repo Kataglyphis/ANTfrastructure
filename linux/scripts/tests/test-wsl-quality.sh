@@ -212,6 +212,14 @@ t_assert_contains "${_failed}" 'RC=1'
 t_assert_contains "${_failed}" 'Windows Pester >= 6.2 is missing'
 t_assert_no_grep "${_WORK}/native-commands" 'Install-PinnedPowerShellModule'
 
+t_case "check accepts the tag-shaped shellcheck pin and still rejects another version (mutation)"
+: > "${_WORK}/pester-installed"
+t_assert_contains "$(_fixture "${_DRIVER}" verify SHELLCHECK_VERSION=v9.8.7)" 'RC=0'
+_failed="$(_fixture "${_DRIVER}" verify SHELLCHECK_VERSION=v9.8.8)"
+t_assert_contains "${_failed}" 'RC=1'
+t_assert_contains "${_failed}" 'shellcheck is not v9.8.8'
+rm -f -- "${_WORK}/pester-installed"
+
 _missing_pester_is_fatal() {
   local outcome
   outcome="$(_fixture "$1" verify)"

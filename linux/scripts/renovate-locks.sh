@@ -168,6 +168,16 @@ maint_dry_count() {
   return 0
 }
 
+run_lock_argv() {
+  local tool="$1" dir="$2"
+  shift 2
+  if [ "${tool}" = uv ]; then
+    (cd "${dir}" && env -u UV_WORKING_DIR "$@")
+  else
+    (cd "${dir}" && "$@")
+  fi
+}
+
 # One report cell: how far behind the lock at <dir>/<lock> is. The lock is compared after, and put back if the tool wrote it.
 maint_behind() {
   local tool="$1" dir="$2" lock="$3" keep before n out rc
@@ -183,7 +193,7 @@ maint_behind() {
   cp -p "${dir}/${lock}" "${keep}"
   # git, not cmp: git is the one tool every host of this script has.
   before="$(git hash-object "${dir}/${lock}")"
-  out="$(cd "${dir}" && "${argv[@]}" </dev/null 2>&1)"
+  out="$(run_lock_argv "${tool}" "${dir}" "${argv[@]}" </dev/null 2>&1)"
   rc=$?
   if [ "$(git hash-object "${dir}/${lock}")" != "${before}" ]; then
     cp -p "${keep}" "${dir}/${lock}"; rm -f "${keep}"
@@ -208,7 +218,7 @@ run_lock_tool() {
     # A failure here is LOCK_FAILED, so the undo runs; plan_lock_maintenance keeps unknown tools out anyway.
     mapfile -t argv < <(maint_argv "${tool}")
     [ "${#argv[@]}" -gt 0 ] || return 1
-    ( cd "${dir}" && "${argv[@]}" )
+    run_lock_argv "${tool}" "${dir}" "${argv[@]}"
     return $?
   fi
   case "${tool}" in
@@ -222,7 +232,7 @@ run_lock_tool() {
     pnpm)         argv=(pnpm install --lockfile-only) ;;
     *)            err "no lockfile command known for ${tool}" ;;
   esac
-  ( cd "${dir}" && "${argv[@]}" )
+  run_lock_argv "${tool}" "${dir}" "${argv[@]}"
 }
 
 # One walk for all four consumers; a manifest beside several lockfiles lands in LOCK_AMBIGUOUS instead.

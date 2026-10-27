@@ -2,6 +2,7 @@
 # This exercises real Pester suite verdicts, not coverage instrumentation.
 
 . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/tests/Runner.Parallel.Tests.ps1' -FunctionName New-RunnerCopy)
+. (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/tests/Runner.Parallel.Tests.ps1' -FunctionName Update-RunnerCopy)
 
 $script:SkippedPesterFixture = @(
     "Describe 'skipped' {"
@@ -94,12 +95,9 @@ Describe 'Invoke-Tests Pester suite verdicts' {
             $tests = New-PesterOutcomeRunner -Dir $dir -Candidate $script:SkippedPesterFixture
             $control = Invoke-PesterOutcomeRunner -Tests $tests -Jobs 2
             Assert-Equal 1 $control.Exit $control.Text
-            $runner = Join-Path $tests 'Invoke-Tests.ps1'
-            $source = [IO.File]::ReadAllText($runner)
             $anchor = 'if ([int]$run.FailedCount -eq 0) { $failures += 1 }'
-            $mutated = Update-TestLiteralText -Text $source -Find $anchor `
+            Update-RunnerCopy -Tests $tests -Find $anchor `
                 -Replace 'if ([int]$run.FailedCount -eq 0) { $failures += 0 }' -ErrorLabel 'Pester runner mutant'
-            [IO.File]::WriteAllText($runner, $mutated)
             $mutant = Invoke-PesterOutcomeRunner -Tests $tests -Jobs 2
             Assert-Throws { Assert-Equal 1 $mutant.Exit } -MessagePattern 'expected \[1\] but got \[0\]'
         }

@@ -6,12 +6,12 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**Groomed 2026-10-23 against the merged source and recorded checks; re-checked 2026-10-26.** The immutable Linux index
-observed on 2026-10-22 was
-`sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
-(hub `c819278171c47b9c6462dcc239377808b324476e`, run `20261022-055503-544d57b9`),
-with amd64, arm64 and riscv64 children. The recorded consumer runs on this index use Python 3.15
-and chain ORT 1.31.0. This replaces the earlier default-image baseline of Python 3.14/ORT 1.30;
+**Groomed 2026-10-23 against the merged source and recorded checks; re-checked 2026-10-27.** The immutable Linux index
+published on 2026-10-27 is
+`sha256:7d4d4129472cbb854217d6dd444f1813a90371f1a5f9c839247051d814207282`
+(hub `8119595e93b83d7e623089a3536879dedebf8ede`, run `20261027-125309-76ffcd44`),
+with amd64, arm64 and riscv64 children; its consumer acceptance passed for six consumers.
+The recorded consumer runs on this index use Python 3.15 and chain ORT 1.31.0. This replaces the earlier default-image baseline of Python 3.14/ORT 1.30;
 it is not a fresh assertion about a mutable tag or either GPU variant.
 Earlier Windows and GPU measurements remain dated evidence in their individual entries.
 Decisions and checked closures live in [`docs/image-decisions.md`](docs/image-decisions.md).
@@ -118,22 +118,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       follow-up `--target-arches riscv64 --from-stage runtime` logs `[runtime-reuse] amd64: reusing …` and
       the same for arm64, builds riscv64 only, gates all three, and publishes a 3-child `:latest` that
       passes freshness.
-
-- [ ] **CON140 — the runtime lane's input preflight, proved on a chain** [S, ★★].
-      In source since 2026-10-26 ([`linux-cross-builds.md` § The runtime lane input preflight](docs/linux-cross-builds.md#the-runtime-lane-input-preflight),
-      `RUNTIME_INPUT_PREFLIGHT`): each arch's package-stage apt set through `apt-get install --simulate` in
-      the base's pinned parent, and the rustup and uv installers re-hashed. Done when the next chain shows,
-      before any `step=base`, `[runtime-preflight <arch>] OK: apt plan: N package(s) resolve` for all three
-      arches, the two installer `OK` lines and `[runtime-preflight] passed`. riscv64's plan takes about
-      8 min under QEMU and the lane waits for it; overlap it with amd64's build if that shows up as idle.
-
-- [ ] **CON141 — the summed runtime disk gate and the post-push image drop, proved on a chain** [M, ★★].
-      In source since 2026-10-26 ([`build-cache-tiers.md`](docs/build-cache-tiers.md)): the gate sums
-      165 GB for amd64 and 105 GB for each other arch, 50 GB less per wrapper already local, plus the 40 GB
-      floor; after the index the lane removes each pushed arch's `latest-<arch>`,
-      `-tmp-reduced-platform` and `latest-package-<arch>` (`RUNTIME_DROP_PUSHED_IMAGES=0` keeps them).
-      Done when a 3-arch pushing run logs `[runtime-drop] removed N … 0 refused` and its resource summary
-      shows `samples below 40 GB free disk: 0` with no `[disk-watch] … reclaiming` in the runtime stage.
 
 - [ ] **CON112 — ModelANT's release build runs on the pinned CPython and the chain ORT** [M, ★★].
       `.github/workflows/release.yml` builds on `ubuntu-latest` with `actions/setup-python`
@@ -390,11 +374,10 @@ owner carries the breakage that costs.
       `audioplayers_linux` links `-lgstreamer-1.0` without pkg-config's `-L`, so
       `/opt/gstreamer/lib/x86_64-linux-gnu` has to be on `LIBRARY_PATH` (or the plugin's CMake
       patched). Both are moot for CON102's core-only client.
-- [ ] **CON106 — the app venv's `frontend` extra in the published images** [S, ★]. Owner decision
-      2026-10-26: add it. In source: both torch stages sync `--extra frontend`
-      ([`consumer-image-contract.md`](docs/consumer-image-contract.md)). Done when the next chain's
-      APP-PARITY passes with flet, flet-desktop, flet-web and FastAPI on amd64 and arm64, riscv64 shows
-      them absent by decision, and `:winamd64`'s torch stage prints `extras: ml-ai docs frontend`.
+- [ ] **CON106 — the app venv's `frontend` extra in `:winamd64`** [S, ★]. Owner decision 2026-10-26.
+      Linux proven on the 2026-10-27 index `7d4d4129…`: APP-PARITY passes with flet, flet-desktop, flet-web
+      and FastAPI on amd64 and arm64, absent by decision on riscv64. Done when `:winamd64`'s torch stage
+      prints `extras: ml-ai docs frontend`.
 - [b] **CON109 — ANThology widgets as a Flet extension** [M, ★]. Blocked on CON102, and on a
       UI that needs a widget Flet lacks (owner, 2026-10-19). OrchestrANT's Flet UIs take
       ANThology's look from Python alone (Material 3, `color_scheme_seed` green accent) and use
@@ -425,7 +408,7 @@ owner carries the breakage that costs.
       `L1 (s3): 3 written, 9 failed of 12` and `6 failed of 9`. Since 2026-10-26 a drain with a failed write prints
       `SCCACHE_ERROR_LOG`'s level and S3 lines. Work: read them on the next chain and fix the cause. Done when
       every drain of a chain shows 0 failed.
-- [ ] **CON165 — ONNX Runtime builds with one job under `--parallel-archs`** [S, ★★★]. Found 2026-10-26:
+- [ ] **CON165 — ONNX Runtime builds with one job under `--parallel-archs`; prove the governor on a chain** [S, ★★★]. In source since 2026-10-27: the launcher's compile governor and `PAR_INTRA_STEP_BUDGET=2` ([docs](docs/build-parallelism-memory-tuning.md#the-compile-governor)). Done when a chain's resource trace keeps `compilers` at or under 32 with no OOM kill and ONNX Runtime and IREE log more than one job. Found 2026-10-26:
       `Using JOBS=1` in `media-arm64.log`, since `compute_jobs_with_mem_cap "" 2000` divides RAM by
       `BUILD_MEM_DIVISOR=18` (3 arches × `PAR_INTRA_STEP_BUDGET=6`). With the cache warm a serial build costs
       little; cold, it is the 104 min step. Measured 2026-10-27 (`resources-20261027-024119-*.csv`, 32 cores,
@@ -435,7 +418,8 @@ owner carries the breakage that costs.
       riscv64 have moved on. Work: measure ONNX Runtime's peak per job, then size its jobs from `MemAvailable` when
       the step starts instead of the static `BUILD_MEM_DIVISOR` share
       ([`build-parallelism-memory-tuning.md`](docs/build-parallelism-memory-tuning.md)). Done when that step
-      logs more than one job on an idle host and no arch is OOM-killed.
+      logs more than one job on an idle host and no arch is OOM-killed. IREE's wheelhouse build has the same
+      cause: both its host and target LLVM builds ran `cmake --build … -- -j1` for over 3 h on arm64 and riscv64.
 - [ ] **CON167 — a knob defaulted inside one function and read before it runs** [S, ★★★]. The 2026-10-22
       knob moves (`72d3aa76`, `96cbe525`) put `: "${X:=…}"` at the top of one function while another reader, or
       the top level, could run first. Under `set -u` that stopped GStreamer twice on the 2026-10-27 chain
@@ -446,32 +430,48 @@ owner carries the breakage that costs.
       has run on every path; the pattern scan that found these also listed three safe callers (sccache-s3-level,
       iree-wheelhouse, build-runtime-manifest), so it needs call order, not just scope. Done when the gate
       catches both GStreamer cases as mutations and `build-clang.sh` has one defined default.
+- [ ] **CON168 — arm64 and riscv64 build the same IREE host LLVM at the same time** [M, ★★]. Found 2026-10-27:
+      both media lanes run `/tmp/app-wheelhouse/iree-build-host` with the build host's `/usr/bin/g++` at once, so
+      the second lane cannot hit the cache the first is still filling. Work: build the host stage once per chain
+      (a shared step or a cached artifact keyed on the IREE pin), or let the second lane wait for the first's
+      cache. Done when only one lane compiles the IREE host LLVM per chain.
+- [ ] **CON169 — an arch waits for every other arch before its next stage** [L, ★★★]. Measured 2026-10-27:
+      `media-arm64` and `media-riscv64` were pushed at ~09:35 and their android stages waited ~2 h for amd64's
+      ONNX Runtime and OpenCV. `build-cross-chain.sh` runs one `run_parallel_arch_loop` per stage and joins it,
+      although `android-<arch>` needs only `media-<arch>`. The join carries three things: the image-store lever
+      runs only with nothing in flight ([`build-cache-tiers.md` § 3.2.2](docs/build-cache-tiers.md#322-the-image-store-lever-disk3)),
+      pins and ancestry are harvested per stage, and the disk estimate assumes all lanes are in one stage. Work:
+      one pipeline per arch through the stages, with an image lever scoped to the tags of arches that are not
+      building, and a disk gate per arch. Done when a chain starts an arch's next stage as soon as that arch's
+      previous one is pushed, without an image removal under a running build.
+- [ ] **CON170 — the uv installer pin follows a moving URL** [S, ★★]. `python_uv.sh` (`uv_ensure_installed`, used by
+      `lib/dartdoc-build.sh` and consumer hosts) runs `https://astral.sh/uv/install.sh`, which installs the newest uv
+      (0.13.6 on 2026-10-27) and changes with every release, so `UV_INSTALL_SH_SHA256` (`283cbef4…`) matches neither it
+      nor the pinned `UV_VERSION=0.13.1`. Work: run `https://astral.sh/uv/${UV_VERSION}/install.sh` and pin
+      `7c482d409673a53f4d9bd34ae95c9166be3b8d89ca82f27dd7bca3cab457afff`, byte-identical on 2026-10-27 to the
+      GitHub release asset `uv-installer.sh` of 0.13.1, and let `bump_versions.py` move it with `UV_VERSION`.
+      `versions.env` re-keys `Dockerfile.base`, so this rides a planned rebuild. Done when `uv_ensure_installed`
+      installs exactly `UV_VERSION` through a hash that no uv release can rotate. The 2026-10-27 mirror fill refused it
+      (`FAILED 283cbef4bdac install.sh`), the only one of 33 assets.
+- [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★★]. Found 2026-10-27: after a
+      stopped run, the runtime lane's entry reclaim freed 0 of 165 GiB layer cache and refused at 376 GB free;
+      once `systemctl --user restart buildkit` ran with nothing building, `prune-safe.sh` freed 116 GB and kept
+      all 114 cache mounts. The disk preflight also adds the lane's ~415 GB to the stage cost under
+      `--from-stage runtime` (~535 GB) and only warns. Work: in the reclaim, with no build in flight, restart
+      buildkitd before the layer prune; count the lane once. Done when a chain resumed after a stop reclaims
+      without a hand restart.
 - [ ] **CON166 — an asset-mirror miss logs `curl: (22) … error: 404`** [S, ★]. Found 2026-10-26: every
       miss prints curl's error line before `asset-mirror| miss`, so a log search for `error` hits each pinned
       download that falls back upstream. Work: keep the mirror GET silent on HTTP errors and let the miss line
       speak (`01-core/downloads.sh`). It is mounted per file by `Dockerfile.base`, so it rides a planned
       rebuild from base. Done when a miss logs only its `asset-mirror| miss` line.
-- [ ] **CON151 — riscv64 builds wasm-pack and flutter_rust_bridge_codegen from source on every run** [M, ★★].
-      2026-10-21: the riscv64 wrapper spent about two hours compiling hadolint (Haskell) under QEMU. Owner
-      decision 2026-10-26: riscv64 ships no hadolint for now (CI lints on amd64), so that build is gone. Left:
-      the log says `no wasm-pack release binary for riscv64; building it from source` and the same for
-      `flutter_rust_bridge_codegen`. Work: build each once and publish it SHA-pinned like `tool-pins.env`, or
-      keep the tool-build caches out of the trim (CON152). Done when a riscv64 wrapper with a warm tool cache
-      spends under 5 minutes in tool builds.
-
-- [ ] **CON152 — the disk trim's eviction log, proved on a chain** [S, ★].
-      In source since 2026-10-26: `[disk-trim]` lists the slugs it removed and kept, and the buildkit
-      fallback logs its layer cache before and after. The tool-build caches are BuildKit cache mounts,
-      which the trim cannot reach ([`build-cache-tiers.md` § 3.1](docs/build-cache-tiers.md)). Done when a
-      chain that trims shows both lines, and a second run's riscv64 web-lane tool builds hit the cache.
-
 - [ ] **CON153 — the pinned release assets come from the Garage mirror** [S, ★★★]. Owner decision
       2026-10-26: Garage S3. In source ([`linux-cross-builds.md` § The asset mirror](docs/linux-cross-builds.md#the-asset-mirror),
       runbook in [`linux/sccache-s3/README.md`](linux/sccache-s3/README.md)): every `download_verified_file`
       asks `<mirror>/<sha256>/<name>` first and falls back upstream, through the `asset_mirror` BuildKit
       secret. The bucket, both keys and this host's env files exist since 2026-10-26 (`--check` passes); a
-      new chain host runs `set-asset-mirror.sh --from <ssh-target> --url <bucket-url>`. Left: after the
-      running chain, `linux/host-config/fill-asset-mirror.sh --apply`. Done when the chain after that logs
+      new chain host runs `set-asset-mirror.sh --from <ssh-target> --url <bucket-url>`. Filled on 2026-10-27 from that chain's
+      misses: 32 of 33 assets; the uv installer refused its pin (CON170). Done when the next chain logs
       `asset-mirror| hit` for the pinned assets.
 
 - [ ] **CON129 — finish GTK 4 validation on foreign arches and GPU variants** [M, ★★★].
@@ -495,16 +495,14 @@ owner carries the breakage that costs.
       riscv64 has neither. Proved in throwaway containers of `:latest` `b52f8c34`, no chain build:
       amd64 and arm64 (QEMU) install both and list the module as uid 1001, riscv64 prints the note, and
       OrchestrANT's contract command passes 2411, skips 2 on 3.14 and 3.14t (2370 and 43 without pwsh).
-      The next `:latest` must show:
-      1. Package stage: `OK: pwsh 7.6.7 at /usr/local/bin/pwsh (x64)` (arm64: `(arm64)`) and
-         `OK: PSScriptAnalyzer 1.25.0 in /opt/microsoft/powershell/7/Modules`; riscv64 `NOTE: PowerShell
-         publishes no riscv64 build`.
-      2. Then OrchestrANT's contract job moves in, prepared in CON124: its checkout, `setup-uv` and `run`
-         become `prepare-linux-ci-host` (`fetch-depth: '1'`, `submodules: 'true'`) and two
-         `run-in-linux-container` steps, `extra-args: --network host -e OLLAMA_BASE_URL -e TEST_TIMEOUT`,
-         `script: bash benchmarks/ci-image-leg.sh pinned` (then `pinnedt`, `if: ${{ !cancelled() }}`)
-         `--extra test bash benchmarks/ci-contract-tests.sh "${OLLAMA_BASE_URL}"`, the two variables as
-         job `env:`, `timeout-minutes: 45`, and the "On the runner until" comment gone.
+      The 2026-10-27 chain installed pwsh 7.6.7 and PSScriptAnalyzer 1.25.0 on amd64 and arm64 and printed
+      the riscv64 note.
+      Left: OrchestrANT's contract job moves in, prepared in CON124: its checkout, `setup-uv` and `run`
+      become `prepare-linux-ci-host` (`fetch-depth: '1'`, `submodules: 'true'`) and two
+      `run-in-linux-container` steps, `extra-args: --network host -e OLLAMA_BASE_URL -e TEST_TIMEOUT`,
+      `script: bash benchmarks/ci-image-leg.sh pinned` (then `pinnedt`, `if: ${{ !cancelled() }}`)
+      `--extra test bash benchmarks/ci-contract-tests.sh "${OLLAMA_BASE_URL}"`, the two variables as
+      job `env:`, `timeout-minutes: 45`, and the "On the runner until" comment gone.
       Done when that job's run shows the PowerShell tests passed on both legs.
 
 - [ ] **CON99 — measure, then maybe publish `:latest` with zstd layers** [M, ★★]. Every Linux CI
@@ -608,6 +606,8 @@ owner carries the breakage that costs.
       `verify_dockerfile_step_labels.py`, and `layer-audit.py` prints each layer's step. Done when
       `nerdctl history` of the next `:latest` names every step and `layer-audit.py` names the Android SDK
       layer `step=android-sdk`, with already-built layers still `CACHED` across each stage handoff.
+      The 2026-10-27 amd64 child's history carries 17 `kataglyphis.step` labels (package and torch);
+      left: `layer-audit.py` on `:latest` and the `CACHED` check.
 
 ## Open — Linux arm64 and riscv64
 
@@ -638,6 +638,9 @@ owner carries the breakage that costs.
       `:winamd64` carries it (everything-in-the-image rule). Pin `CXXBRIDGE_CMD_VERSION` in
       `versions.env` to the `cxx` OxidANT's `kataglyphis_cxx_bridge` locks (the two must match),
       install it in both images, and make BB's helper refuse a missing or mismatched binary in CI.
+      **Windows in source since 2026-10-27:** `CXXBRIDGE_CMD_VERSION=1.0.205` (OxidANT's lock), baked by
+      `Install-RustToolchain.ps1`, asserted by the smoke. Left: the next `:winamd64` passing that assert,
+      `:latest` (web-lane tools, three arches), and BB's helper.
 
 - [ ] **CON110 — OrchestrANT's riscv64 free-threaded leg needs a seeded cache** [M, ★]. Its
       riscv64 lane (`linux-riscv64.yml`) runs `pinned` alone: run 38562273950 (2026-10-14) took
@@ -782,8 +785,7 @@ owner carries the breakage that costs.
       bk-20261016-211745: 138,210 lines, against 6.2 M for the VVL vertex alone), bazel, the JDK and git-lfs from the
       pinned tool cache, and the patched LLVM built with the pinned clang-cl (rocm chain bk-20261016-184041). Left:
       - IREE's VM ISA genrule on the GIL interpreter (`IREE_ISA_PYTHON`, CON79 item 1, optional).
-      - `UV_WINDOWS_ARM64_SHA256` and its `bump_versions.py` spec: nothing reads them since CON113 deleted
-        `Invoke-PythonTestLegs.ps1` (2026-10-20); dropping the key re-keys the Windows base, so it waits for this rebuild.
+      - `UV_WINDOWS_ARM64_SHA256`: removed in source 2026-10-27 with its `bump_tools.py` row; rides the next chain.
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [ ] **CON108 — the Windows arm64 device runs OrchestrANT's Flet tests** [S, ★].
@@ -791,6 +793,9 @@ owner carries the breakage that costs.
       `test_view.py`, `test_flet_viewer.py` and `test_streaming.py` skip on the device. flet,
       flet-desktop, oauthlib and repath are pure Python; msgpack 1.2.3 has a cp315 `win_arm64`
       wheel. Add them to the store and to OrchestrANT's staging list.
+      **Store in source since 2026-10-27:** the closure at OrchestrANT's lock (flet/flet-desktop 1.0.4, httpx,
+      httpcore, h11, anyio, rich, markdown-it-py, mdurl, oauthlib, repath, msgpack) as `PYTEST_WINDOWS_ARM64_*`.
+      Left: the next `:winarm64`, then OrchestrANT's staging list and a device run without those skips.
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
       - The aarch64 ASan runtime ships in the bundle since 2026-10-03: VS 2026's MSVC
@@ -947,10 +952,11 @@ owner carries the breakage that costs.
       fixes do not establish the cause of the HTTP stall
       ([`docs-sites.md`](docs/docs-sites.md#the-sidebar-toggle-check)).
 
-- [ ] **CON142 — the resource monitor names the runtime lane's arch and step, proved on a chain** [S, ★].
-      In source since 2026-10-26 ([`build-resource-monitoring.md`](docs/build-resource-monitoring.md)):
-      `<arch>.<step>` markers under `RESOURCE_MONITOR_STEP_DIR`. Done when a runtime run's summary shows
-      `stage=amd64/package`-style values (`+`-joined when arches overlap) and no `stage=?`.
+- [ ] **CON142 — the resource monitor names every runtime-lane phase** [S, ★].
+      `<arch>.<step>` markers under `RESOURCE_MONITOR_STEP_DIR` ([`build-resource-monitoring.md`](docs/build-resource-monitoring.md))
+      name each arch step on the 2026-10-27 chain (`stage=amd64/smoke+amd64/wrapper+amd64/wrapper-build`). Its
+      peaks of memory, disk and load fell after the arch loop, in the manifest gates and consumer acceptance,
+      and read `stage=?`. Work: mark those phases too. Done when a runtime summary has no `stage=?`.
 
 - [ ] **CON143 — the hub's tests leave their `mktemp` trees in `/tmp`** [S, ★]. On 2026-10-21 the
       build host's `/tmp` (a 31 GB tmpfs, so RAM) held 31,668 entries and 2.7 GB: 23,865 `tmp.*`,

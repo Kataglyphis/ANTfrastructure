@@ -178,6 +178,20 @@ t_assert_eq pure "$(cat "$WHEELS_DIR/pure-none-any.whl")"
 t_assert_eq repacked "$(cat "$WHEELS_DIR/native.whl")"
 t_assert_eq --strip-all "$(cat "$STRIP_FLAGS")"
 t_assert_eq 2 "$(wc -l < "$STRIP_FILES" | tr -d ' ')"
-t_assert_eq 'module.so' "$(basename "$(head -1 "$STRIP_FILES")")"
-t_assert_eq 'module.so.1' "$(basename "$(tail -1 "$STRIP_FILES")")"
+wheel_strip_names_match() {
+  local actual
+  actual="$(awk -F/ '{print $NF}' "$1" | LC_ALL=C sort)" || return $?
+  if [ "$actual" = $'module.so\nmodule.so.1' ]; then return 0; fi
+  return 1
+}
+t_assert_ok wheel_strip_names_match "$STRIP_FILES"
+t_case 'wheel strip checks accept either filesystem order but reject omitted or repeated libraries'
+printf '%s\n' '/wheel/pkg/module.so' '/wheel/pkg/nested/module.so.1' > "$work/strip-forward"
+printf '%s\n' '/wheel/pkg/nested/module.so.1' '/wheel/pkg/module.so' > "$work/strip-reverse"
+printf '%s\n' '/wheel/pkg/module.so' '/wheel/pkg/module.so' > "$work/strip-duplicate"
+printf '%s\n' '/wheel/pkg/module.so' > "$work/strip-missing"
+t_assert_ok wheel_strip_names_match "$work/strip-forward"
+t_assert_ok wheel_strip_names_match "$work/strip-reverse"
+t_assert_fails wheel_strip_names_match "$work/strip-duplicate"
+t_assert_fails wheel_strip_names_match "$work/strip-missing"
 t_summary

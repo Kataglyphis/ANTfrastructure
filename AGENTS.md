@@ -88,6 +88,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Compiler smoke callbacks stay unconditional; preserve GStreamer's separate target lookups, temporary cleanup and raw failure statuses.
    ORT tree scans retain archive candidates; record scans stay shallow and preserve component-name exclusions.
    Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion.
+   Locked tool installs also require `uv-image-overlay.sh` beside `python_uv.sh`; copied code-quality libraries carry `quality/cmake-format/{pyproject.toml,uv.lock}` and retain the Python 3.15 lexer patch.
    Validate the host binfmt owner's source API marker before sourcing its probe mode; an older installer ignores unknown arguments and could install.
    Invoke selected Meson providers and callbacks unconditionally; retain availability guards, order, partial flags and raw failures.
    Callback dispatch preserves caller-visible bindings and positional context; generic helper locals must not hide configuration used by supplied shell wrappers.
@@ -125,7 +126,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Fixture cleanup uses `Remove-TestDir` with literal paths; bracketed diagnostic prefixes must leave no temporary roots.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
    CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.
-   Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; the local driver also requires `renovate-node.sh` and `renovate-submodules.sh`. Preserve their distinct dry-run policies and nonempty-list advice.
+   Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; the local driver also requires `renovate-node.sh`, `renovate-submodules.sh` and `renovate-uv-exports.sh`. `renovate_planner.py` carries `renovate_uv_exports.py`. Preserve dry-run, rollback and nonempty-list policies.
    Copied `antfrastructure.sh` carries `renovate-git-mode.sh` beside it; the hub driver imports the same canonical selector before handling a Windows-authored WSL checkout.
    Its bootstrap helpers must fit the consumer's 15-path complexity limit; the copied-template fixture measures that limit and proves a complex mutant fails.
    The same fixture runs the consumer trailing-conditional gate and must reject a planted final test.
@@ -133,6 +134,22 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Gradle wrapper updates change only the version in one distribution URL; duplicate properties and checksum-pinned archives refuse before writing.
    Shared harness mutation suites stay host-portable; native batch execution remains in the separately discovered Windows suite.
    Copied code-quality and coverage libraries carry `cli-value-options.sh`; preserve empty-argument filtering, prefixing and caller argv order.
+   Copied `app-packaging.sh` carries `app-packaging-license.sh`; both it and `pe-icon-tools.sh` carry `log-bootstrap.sh` in the shared lib layout. Package the original project license and validate declared texts in built artifacts.
+   Python app bundle copies carry `lib/app-packaging-license.sh` and `lib/log-bootstrap.sh`; validate the declared project license before resetting the bundle and stage its original text.
+   Linux desktop packaging rejects missing or structurally invalid PNG icons; preserve exact icon bytes and test the packaged result.
+   Flutter apps with an Android manifest validate its mipmap launcher reference and every standard-density PNG; the source check does not prove image identity or inspect an APK.
+   The native ONNX finalizer stages the checked-out LICENSE and ThirdPartyNotices before deleting its source; consumers must carry those files with the corresponding native output.
+   Cargo license collection retains original files and source provenance; absent or unreviewed sources fail rather than fabricating notices, and the dependency graph is not proof of linkage.
+   Copied `stage-cargo-licenses.py` carries `cargo_license_tree.py`; live tree selection preserves the build's target and feature flags and records both tree and metadata scopes.
+   Child Windows test reports create the requested result directory, including in isolated mutation mirrors, and failures to write remain fatal.
+   Copied `WindowsPythonApp.Common.psm1` carries `WindowsIcon.Common.psm1` and `WindowsMsix.Common.psm1`; unforced imports and re-exports keep their icon and license APIs visible.
+   Standalone `WindowsIcon.Common.psm1` carries `WindowsMsix.Common.psm1` and `WindowsScripts.Shared.psm1`; its PNG decoder rejects corrupt or invisible inputs.
+   Windows EXE icons use the shared CMake, Rust or Python resource helpers; test actual x64 and ARM64 PE resources and retain the Linux PE-tool setup in preflight and mutation jobs.
+   MSI license checks map each unique File-table ID through its sequence to the embedded Media cabinet before verifying the real text; copied callers carry `WindowsMsiLicense.Common.psm1` and the Python verifier.
+   Windows ORT license staging matches the shipped DLL's SHA256 against exactly one wheel before copying both original texts; copied `WindowsOrtLicense.Common.psm1` carries its provenance, MSI and Python-wheel companions.
+   Python app packages that contain Windows ORT must compare the installed texts with the matched wheel and check them in ZIP, MSI and MSIX; apps without ORT remain supported.
+   Linux ORT license staging compares every selected native ELF with one wheel, directly or after target-compatible stripping; copied `stage-ort-wheel-licenses.py` carries `ort_census_probe.py`, and the shell companion carries both package verifiers.
+   Use `docs/scripts/merge_mutation_recipes.py` to preview or merge recurring mutation recipe updates; stale anchors and unintended replacements fail before writing.
    Core disk probes share validation without merging zero-disabled and nonnegative-free-space policies.
    Test workers use the harness optional-function emitter; keep required definitions mandatory.
    Stream receipt suites carry `stream-receipt-fixture.sh`; keep their expected results independent of production code.
@@ -195,7 +212,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts.
    Python CI suites carry their shared driver fixture; preserve child status, call logs and parent environment isolation.
    Consumer inventory includes shared shell libraries and requirements; ambiguous consumer basenames remain mentions, not proof of a hub call or absence.
-   Image-backed uv overlays validate the complete active lock and isolated install plan against image packages before installation; preserve pinned runtime provenance and reject non-venv targets.
+   Image-backed uv overlays validate the complete active lock and isolated install plan against image packages before installation; preserve pinned runtime provenance and reject non-venv targets. Overlay and locked-tool uv calls ignore inherited project and working-directory overrides so relative paths retain their caller meaning.
    Consumer pin checks parse pyproject TOML and ignore only uv's exclusion list; genuine dependency pins, overrides and malformed manifests retain their fatal verdicts.
    `uv_sync_project --only-group` excludes the project, default groups and extras; when the chain store is active, reject an unreadable lock or any ORT in it before syncing.
    Windows Python CI build, packaging and installed-wheel drivers share the summary, log-close and fatal-step verdict in `Complete-CiBuildSession`; preserve that order and verdict.
@@ -210,6 +227,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Consumer Windows PowerShell lint jobs report complexity over the same selected path and upload JSON; enable strict verdicts with `complexity-strict` after the consumer meets the limits. PowerShell-only repos call `powershell-quality.yml` with `strict: true` when clean.
    Windows CI installs Pester and PSScriptAnalyzer through `WindowsCi.ModuleBootstrap.psm1`; reuse an installed matching version, retry transient Gallery lookup failures, and verify the requested exact or minimum version. Exhausted retries and missing installed modules remain fatal.
    Consumer mutation jobs supply a tracked, nonempty recipe manifest; an empty shard or missing setup file cannot pass as proof. Python refactor previews target the caller root and upload a patch without publishing it.
+   Child Windows test reports create the requested result directory, including in isolated mutation mirrors, and failures to write remain fatal.
 
 ## Container Architecture
 
@@ -841,7 +859,8 @@ transcript. Each was a child that outlived whatever started it. So:
    covers pending launches and joins owned supervisors and watchdogs. Supervisors and watchdogs
    write to job logs, never to a caller's captured pipe; commands append so earlier diagnostics
    survive. Cleanup in a signal or EXIT trap checks group disappearance without reentering Bash's
-   `wait`; a trapped wait can hang after a watchdog timeout. The mutation gate ends each test's
+   `wait`; a trapped wait can hang after a watchdog timeout. Supervisors retry an interrupted
+   command wait before recording its status, including when the child has just exited. The mutation gate ends each test's
    session after it, and
    every live one when it is itself killed, SIGTERM first so a runner inside can reap its own. A new
    runner that starts tests uses one of the two (`test-run-tests-reaping.sh`, the reaping cases of
@@ -907,6 +926,9 @@ The rules:
      ([`build-cache-tiers.md`](docs/build-cache-tiers.md#a-subproject-that-forces-its-own-launcher)).
    - Every RUN that compiles carries both cache mounts; its closing drain prints
      `sccache-stats|`, the number to read before calling a step cached.
+   - The launcher's compile governor caps host-wide compiles by `flock` slots in the sccache mount;
+     keep its fd 9 off every child, and keep it on while `PAR_INTRA_STEP_BUDGET` is 2: it holds the peaks
+     ([`build-parallelism-memory-tuning.md`](docs/build-parallelism-memory-tuning.md#the-compile-governor)).
    `--ccache` is a flag NAME, not a tool choice. Before a multi-hour run rides on a change here,
    `bash linux/scripts/02-toolchain/probe-sccache.sh` inside the compiler image answers in seconds
    whether a cache was actually consulted, which a successful compile does not.

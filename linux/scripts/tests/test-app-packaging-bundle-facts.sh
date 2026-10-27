@@ -9,14 +9,17 @@ for fn in _app_packaging_arch_for_format app_packaging_map_arch_to_deb app_packa
   app_packaging_map_arch_to_flatpak app_packaging_resolve_bundle_facts app_packaging_sanitize_package_name \
   _app_packaging_package_bundle app_packaging_package_linux_bundle_deb app_packaging_package_linux_bundle_appimage \
   app_packaging_package_linux_bundle_flatpak _app_packaging_stage_desktop_icon app_packaging_create_desktop_file \
-  app_packaging_assert_artifact _app_packaging_copy_bundle; do
+  app_packaging_assert_artifact _app_packaging_copy_bundle app_packaging_icon_size; do
   eval "$(t_fn_src "$LIB" "$fn")"
+done
+for fn in app_packaging_validate_project_license app_packaging_stage_project_license; do
+  eval "$(t_fn_src "${TESTS_DIR}/../lib/app-packaging-license.sh" "$fn")"
 done
 _work=$(mktemp -d)
 trap 'rm -rf "$_work"' EXIT
 export APP_PACKAGING_VERSION=1.2.3 APP_PACKAGING_OUT_DIR="$_work/out" APP_PACKAGING_ICON_FILE="$_work/icon.png"
 export APP_PACKAGING_DESKTOP_FILE='' APP_PACKAGING_APP_ID=org.example.fixture
-printf icon > "$APP_PACKAGING_ICON_FILE"
+t_write_png "$APP_PACKAGING_ICON_FILE" 2 3
 app_packaging_detect_bundle_dir() { printf 'bundle/%s' "$1"; }
 app_packaging_detect_bundle_binary() { printf 'runner'; }
 _capture_bundle() {
@@ -68,14 +71,25 @@ for format in deb appimage flatpak; do
   t_assert_eq "Error: unsupported architecture for $label: riscv64" "$_out"
 done
 
-t_case 'desktop and icon staging keeps the entry fields and optional icon behavior'
+t_case 'desktop and icon staging keeps entry fields and exact project image bytes'
 _app_packaging_stage_desktop_icon "$_work/app.desktop" org.example.fixture 'Demo App' AppRun demo "$APP_PACKAGING_ICON_FILE" "$_work/copied.png"
 t_assert_contains "$(cat "$_work/app.desktop")" 'Exec=AppRun'
 t_assert_contains "$(cat "$_work/app.desktop")" 'Icon=demo'
-t_assert_eq icon "$(cat "$_work/copied.png")"
-_app_packaging_stage_desktop_icon "$_work/no-icon.desktop" org.example.fixture 'Demo App' runner demo '' "$_work/absent.png"
+t_assert_ok cmp "$APP_PACKAGING_ICON_FILE" "$_work/copied.png"
+t_assert_eq 1 "$(t_rc _app_packaging_stage_desktop_icon "$_work/no-icon.desktop" org.example.fixture 'Demo App' runner demo '' "$_work/absent.png")"
 t_assert_fails test -e "$_work/absent.png"
-t_assert_ok test -s "$_work/no-icon.desktop"
+t_assert_fails test -e "$_work/no-icon.desktop"
+
+t_case 'empty, non-PNG and truncated icons fail before desktop staging'
+: > "$_work/empty-icon.png"
+printf 'not a png' > "$_work/invalid-icon.png"
+head -c 24 "$APP_PACKAGING_ICON_FILE" > "$_work/truncated-icon.png"
+t_write_png "$_work/zero-width.png" 0 2
+for invalid in "$_work/empty-icon.png" "$_work/invalid-icon.png" "$_work/truncated-icon.png" "$_work/zero-width.png"; do
+  t_assert_eq 1 "$(t_rc _app_packaging_stage_desktop_icon "$_work/invalid.desktop" org.example.fixture Demo runner demo "$invalid" "$_work/invalid.png")"
+done
+t_assert_fails test -e "$_work/invalid.desktop"
+t_assert_fails test -e "$_work/invalid.png"
 
 t_case 'bundle staging preserves hidden files, executable bits and symlinks'
 t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
@@ -89,6 +103,26 @@ t_assert_eq hidden "$(cat "$_work/staged/payload/.hidden")"
 t_assert_ok test -x "$_work/staged/payload/runner"
 t_assert_eq runner "$(readlink "$_work/staged/payload/link")"
 t_assert_eq 1 "$(t_rc _app_packaging_copy_bundle "$_work/missing" "$_work/staged/missing")"
+
+t_case 'project license staging preserves exact text and rejects missing or empty input and missing destination'
+printf 'Project license\n' > "$_work/project-license"
+mkdir -p "$_work/staged/license"
+t_assert_ok app_packaging_stage_project_license "$_work/project-license" "$_work/staged/license"
+t_assert_ok cmp "$_work/project-license" "$_work/staged/license/LICENSE"
+t_assert_eq 1 "$(t_rc app_packaging_stage_project_license "$_work/missing" "$_work/staged/license")"
+: > "$_work/empty-license"
+t_assert_eq 1 "$(t_rc app_packaging_stage_project_license "$_work/empty-license" "$_work/staged/license")"
+printf '  \n\t' > "$_work/whitespace-license"
+t_assert_eq 1 "$(t_rc app_packaging_stage_project_license "$_work/whitespace-license" "$_work/staged/license")"
+t_assert_eq 1 "$(t_rc app_packaging_stage_project_license "$_work/project-license" "$_work/missing")"
+
+t_case 'a copied packaging library fails visibly if its license companion is missing'
+mkdir -p "$_work/missing-companion"
+cp "$LIB" "$_work/missing-companion/app-packaging.sh"
+_rc=0
+bash -c 'source "$1" || exit "$?"' _ "$_work/missing-companion/app-packaging.sh" > "$_work/missing-companion-output" 2>&1 || _rc=$?
+t_assert_eq 1 "$_rc"
+t_assert_contains "$(cat "$_work/missing-companion-output")" 'app-packaging-license.sh'
 
 t_case 'an unconditional packaging call retains errexit inside its renderer'
 mkdir -p "$_work/bundle"

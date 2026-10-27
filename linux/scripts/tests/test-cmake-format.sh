@@ -11,9 +11,12 @@ preflight_gate_fixture_init WORK check_cmake_format || exit 1
 TREE="${WORK}/tree"
 mkdir -p "${TREE}/cmake"
 # Every file code-quality.sh sources, or each case below reads "No such file" instead.
-for _m in lib/code-quality.sh lib/log-bootstrap.sh lib/cli-value-options.sh lib/cmakelang-py315.py 01-core/python_uv.sh 01-core/python-probe.sh 01-core/verified-script-install.sh \
-          01-core/logging.sh 01-core/tool-checks.sh cmake-format.requirements.txt; do
+for _m in lib/code-quality.sh lib/log-bootstrap.sh lib/cli-value-options.sh lib/cmakelang-py315.py 01-core/python_uv.sh 01-core/python-probe.sh 01-core/verified-script-install.sh 01-core/uv-image-overlay.sh \
+          01-core/logging.sh 01-core/tool-checks.sh; do
   install -D -m 0644 "${REPO_ROOT}/linux/scripts/${_m}" "${TREE}/linux/scripts/${_m}"
+done
+for _f in pyproject.toml uv.lock; do
+  install -D -m 0644 "${REPO_ROOT}/quality/cmake-format/${_f}" "${TREE}/quality/cmake-format/${_f}"
 done
 cp "${REPO_ROOT}/.cmake-format.yaml" "${TREE}/.cmake-format.yaml"
 
@@ -33,9 +36,21 @@ t_assert_eq "0" "${rc}" "clean fixture corpus must pass; output was: ${OUT}"
 t_assert_contains "${OUT}" "checking 1 CMake file(s)" "the walk must report what it checked"
 t_assert_contains "${OUT}" "cmakelang-py315: " "the bootstrap runs the Python 3.15 lexer fix after the install"
 
+t_case "a locked tool install preserves other content in the existing venv"
+_vpy="${TREE}/logs/tools/cmake-format-linux/bin/python"; [ -x "${_vpy}" ] || _vpy="${TREE}/logs/tools/cmake-format-linux/Scripts/python.exe"
+_site="$("${_vpy}" -I -c 'import sysconfig; print(sysconfig.get_path("purelib"))' | tr -d '\r')"
+printf 'value = 1\n' > "${_site}/unrelated_fixture.py"
+t_assert_ok bash -c 'source "$1/linux/scripts/01-core/python_uv.sh"; uv_pip_install_locked_project "$1/logs/tools/cmake-format-linux" "$1/quality/cmake-format"' _ "${TREE}"
+t_assert_ok test -f "${_site}/unrelated_fixture.py"
+
+t_case "a stale lock cannot install even when cmake-format was previously installed"
+cp "${TREE}/quality/cmake-format/pyproject.toml" "${WORK}/project.orig"
+sed -i 's/pyyaml==[^" ]*/pyyaml==0.0.0/' "${TREE}/quality/cmake-format/pyproject.toml"
+t_assert_fails bash -c 'source "$1/linux/scripts/01-core/python_uv.sh"; uv_pip_install_locked_project "$1/logs/tools/cmake-format-linux" "$1/quality/cmake-format"' _ "${TREE}"
+cp "${WORK}/project.orig" "${TREE}/quality/cmake-format/pyproject.toml"
+
 # --force patches below 3.15 too, so every case after this one grades with the 3.15 lexer.
 t_case "cmakelang-py315.py patches cmake-format's lexer once, and the verdicts stay those of re.Scanner"
-_vpy="${TREE}/logs/tools/cmake-format-linux/bin/python"; [ -x "${_vpy}" ] || _vpy="${TREE}/logs/tools/cmake-format-linux/Scripts/python.exe"
 _first_force="cmakelang-py315: patched "
 if "${_vpy}" -I -c 'import sys; sys.exit(sys.version_info < (3, 15))'; then
   t_assert_contains "${OUT}" "cmakelang-py315: patched " "Python 3.15 bootstrap already applied the fix"

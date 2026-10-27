@@ -25,6 +25,92 @@
   each bundle's paths, since the host_vars are gitignored, and what is left out on purpose:
   Garage's buckets, the Context Chat index and the cat cams' frames.
 
+## 2026-10-27 — GenAI's yvals_core.h patch writes the text its check expects
+
+- The 2026-10-24 refactor moved `Install-GenaiClangStlPatch` into a function and indented its
+  multi-line replacement literal, so the patch wrote `    #define` lines and its own check then
+  failed the amd64 chain with a misleading "MSVC likely changed the macro format". The replacement is
+  joined from single-line strings now, and `-SkipIfMatch` keeps a second run from wrapping the
+  define twice. An AST comparison of every multi-line literal that refactor moved found no other
+  changed text. `SourceBuild.GenaiClangStlPatch.Tests.ps1` runs the patch on a fake header.
+
+## 2026-10-27 — blank lines no longer fail the FFmpeg codec branch
+
+- `Find-TextLineIndexes`, `Get-RequirementLineGroup` and `Add-RequirementHash` accept empty
+  elements. A mandatory `[string[]]` refuses one, so x265.pc's blank line failed the FFmpeg branch
+  of the amd64 chain with `Cannot bind argument to parameter 'Lines' because it is an empty
+  string`; OpenCV's NEON scan and the requirements hash rewrite carried the same trap. The suites'
+  fixtures keep the blank lines the real files have.
+
+## 2026-10-27 — what rides the next Windows chain, and a fresh host's gate tooling
+
+- `:winarm64`'s wheel store carries OrchestrANT's Flet client closure at its lock's versions (CON108):
+  flet and flet-desktop 1.0.4, httpx, httpcore, h11, anyio, rich, markdown-it-py, mdurl, oauthlib,
+  repath and msgpack 1.2.3 (cp315 `win_arm64`, arch-checked), each SHA256-pinned as `PYTEST_WINDOWS_ARM64_*`.
+- `:winamd64` bakes `cxxbridge` at `CXXBRIDGE_CMD_VERSION` 1.0.205, the `cxx` OxidANT locks, beside
+  `flutter_rust_bridge_codegen`; the smoke asserts the version (CON145, Windows half).
+- `UV_WINDOWS_ARM64_SHA256` and its `bump_tools.py` row are gone; nothing read them since CON113 (CON89).
+- Every sccache RUN ends with a `sccache-levels|` stderr line, each level's hits, misses and backfills,
+  so a chain log shows how much the shared S3 level served (the drain logged only writes).
+- `wsl-quality.sh` compares shellcheck against the pin without its tag `v`; `v0.11.0` never matched
+  `--version`'s `0.11.0`, so `check` failed on every host and `setup` reinstalled each time.
+- `windows-host-setup.md` B3, B4 and a new B7: the Pester/PSScriptAnalyzer bootstrap, where scoop's uv
+  puts the pinned CPython, a real `python` ahead of the Store stub, ripgrep, s5cmd, and the Linux
+  suites through `wsl-quality.sh`.
+- `Install-RustToolchain.ps1` installs both cargo tools through one helper; the `$env:` pin reads
+  stay at the call sites, where `Build.BaseRustArgs` finds them.
+- gitleaks allowlists oauthlib's public wheel SHA256 by value; its key name tripped `generic-api-key`.
+- The ORT CUDA-launcher suite configures its language-less fixture with Ninja when present, so a host
+  without Visual Studio no longer fails on a missing NMake.
+
+## 2026-10-27 — Windows launcher icons with several resource compilers
+
+- Run the GenAI yvals patch suite harness-style, so its mutation runs on the Linux shards.
+- Refuse mutation recipes whose test is a Pester-style suite (`test-mutation-pester-targets.sh`), move the blank-line `Find-TextLineIndexes` cases to a harness-style suite, and drop two code-dupes allowlist rows whose pairs fell under the threshold.
+- Prove the per-level sccache hit line in a harness-style suite: its mutation ran on the Linux shards, which carry no Pester, so the Pester-style baseline skipped and failed every run.
+- Find the riscv64 cross wheel's Python headers under the sysroot's `usr/local/include`, where the image's source-built Python 3.15 lives, and pass the sysroot path itself instead of a host path `--sysroot` never rerooted.
+- Resolve the shared CMake/uv wiring gate's relative `-ScriptPath` against the consumer's working directory, not the hub.
+- Invoke the first `llvm-rc` on PATH when building a launcher icon resource; the Windows images carry three copies, and the whole match list failed as a command name in every consumer's Windows packaging.
+
+## 2026-10-27 — the develop-red watch survives a bad gateway
+
+- `develop_red.py` retries a GET that answers 5xx twice, after 5 s and 15 s; a 4xx and every write
+  still fail at once. A single 502 had turned the watch itself red and blocked pushes in the family.
+
+## 2026-10-27 — reliable parallel test reports
+
+- Retry command waits interrupted by a returning signal so completed commands retain their actual exit status.
+- Compare wheel strip results as exact members without depending on filesystem enumeration order.
+- End the wheel-strip membership predicate on explicit returns so the trailing-conditional gate passes.
+
+## 2026-10-27 — isolated Windows mutation results
+
+- Create child test-result directories before writing, fail on write errors and repair two stale mutation anchors.
+
+## 2026-10-27 — packaged licences and desktop icons
+
+- Keep new shared shell libraries on the common logging bootstrap, initialize the AppImage fixture and preserve Debian fixture license-check verdicts.
+- Stage the original project license in shared Linux bundles and CPack outputs; generate WiX RTF from its full text.
+- Validate and stage the declared project license before building a Linux Python app bundle.
+- Check declared license texts in package payloads, including compressed Flutter notices, without claiming automatic dependency coverage.
+- Stage original Cargo dependency licence files with pinned provenance and fail on missing or unreviewed sources.
+- Fail Linux desktop packaging when its project PNG is missing or structurally invalid.
+- Check Android launcher references and their five standard-density PNGs in the shared Flutter artefact gate.
+- Render project MSIX logos and embed project icons in CMake, Cargo and Python Windows executables; verify x64 and ARM64 PE resources.
+- Resolve MSI file identifiers dynamically before checking the original project licence in installer payloads.
+- Preserve ONNX Runtime's own licence and upstream notices from the actual native source checkout.
+- Match a Windows ONNX Runtime DLL to one wheel before staging and checking that wheel's original licence texts.
+- Verify wheel-matched ONNX Runtime texts in Windows Python app ZIP, MSI and MSIX packages when ORT is present.
+- Match Linux ONNX Runtime libraries to one wheel, including byte-identical stripped builds, before staging its original texts.
+- Add a reusable, preview-first mutation recipe merger with anchor and overwrite checks.
+
+## 2026-10-27 — locked cmake-format tooling
+
+- Install cmake-format from a shared uv lock on Linux and Windows while preserving existing venv packages and the legacy consumer interface.
+- Lock dartdoc's parser and regenerate legacy exports transactionally during Renovate updates.
+- Keep locked tool and image-overlay uv calls on their intended project and working directory even when the environment selects another.
+- Split the shared Windows CMake wiring check so it meets the existing complexity limit while preserving its validation.
+
 ## 2026-10-27 — consumer uv exclusion pins
 
 - Parse consumer manifests and ignore uv exclusion names while continuing to check actual dependency pins and reject invalid TOML.
@@ -54,9 +140,14 @@
 
 ## 2026-10-26 — Every Linux compile goes through sccache
 
+- The compile governor (CON165): `sccache-launcher.sh` takes one of `nproc` host-wide `flock` slots in the shared sccache cache mount before each compile, and a slot past the first admits only while `MemAvailable` is at least 3 GB. It can only lower concurrency, so the chain profile's `PAR_INTRA_STEP_BUDGET` drops from 6 to 2 (`BUILD_MEM_DIVISOR` 18 → 6): the 2026-10-27 media stage idled at a median 12 % CPU while ONNX Runtime and IREE built at one job, yet peaked at 39 compilers and a full swap ([docs](docs/build-parallelism-memory-tuning.md#the-compile-governor)).
 - ONNX Runtime and LiteRT compiled most of their objects through the distro ccache: pthreadpool and XNNPACK FORCE `CCACHE_BINARY` into CMake's launchers, which beat the sccache launcher in the environment (ONNX Runtime's arm64 build: 414 sccache requests over 2740 compiles, 104 min). `append_cmake_compiler_cache_pin` passes the launcher as `CCACHE_BINARY` too, `append_cmake_cache_linker_args` and ONNX Runtime's build args always pin, the riscv64 torch wheel pins through `CMAKE_ARGS`, and `cmake_assert_compiler_cache_pin` fails ONNX Runtime's, both LiteRT and every Vulkan component's build whose launcher was replaced ([docs](docs/build-cache-tiers.md#a-subproject-that-forces-its-own-launcher)).
 - The foreign-arch Vulkan SDK build was uncached: `sdk-arm64` and `sdk-riscv64` compiled 7768 objects in 79 min each. Its RUN now has both cache mounts, the S3 secret and the drain; `vulkan.sh` exports the launcher for `./vulkansdk` and pins it on each target component.
 - Each sccache RUN's drain prints `sccache-stats|` (requests, hits, misses, errors), and names the server log's reason when an S3 write failed.
+- The runtime input preflight (CON140) checked `astral.sh/uv/install.sh`, which no runtime stage runs (the base ships uv's release binary), and refused the 2026-10-27 lane when Astral rotated it. It now re-hashes only `sh.rustup.rs`, which the package stage does run on foreign arches.
+- A single error page under HTTP 200 (sqlite.org, riscv64 only) failed a Cerbero checksum, which Cerbero neither retries nor sends to its mirrors. `cerbero_fetch_package_retry` runs `fetch-package` up to three times before `package`, so only downloads repeat ([failure mode](docs/failure-modes.md#cerbero-a-checksum-fails-once)).
+- Cerbero's spandsp source host `www.soft-switch.org` now redirects to an unrelated site and serves HTML, so the recipe's checksum stopped android-gstreamer on every arch. `cerbero_redirect_source_host` points that recipe at GStreamer's mirror, which serves the 2014 tarball with the recipe's own checksum; the pkg-config override uses the same helper.
+- The Android GStreamer and IREE builds looked for `01-core` four levels up, which in the image is `/opt` (`/opt/core/modules.sh: No such file or directory`): `Dockerfile.android` copies `<lib>/android/` one level shallower than the repo. Both now fall back to `/opt/scripts/core`, and `test-android-image-core-paths.sh` fails a relative-only core source.
 - GStreamer's setup died under `set -u` at its first top-level line (`GSTREAMER_DEBUG_LOGS: unbound variable`): the 2026-10-22 knob move had put the default inside `save_logs`. The default now sits beside that reader; `GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR`, from the same move, had its default in the linker wrapper while the C++ wrapper ran first, and is now set at top level. Both are covered by `test-gstreamer-debug-logs-knob.sh`.
 - `prune-safe.sh` ignored its arguments, so `--help` or a mistyped `--dry-run` started a real layer-cache prune; it now prints its header for `-h`/`--help` and refuses any other argument before buildctl runs (the knobs stay `PRUNE_KEEP_GB`, `DRY_RUN`, `PRUNE_DUP_CACHEMOUNTS`).
 - `stop-cross-chain.sh` exited 1 after a clean stop, since a refactor had dropped `_stop_remove_pidfile_if`; it is back, with an end-to-end case in `test-chain-lifecycle.sh`.

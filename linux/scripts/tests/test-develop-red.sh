@@ -135,4 +135,43 @@ t_assert_eq "" "$(_watch closed-floor)" "run 12 finished before the issue closed
 t_case "the newest run counts however old it is"
 t_assert_contains "$(_watch old-red-newest)" "opened: develop is red: Fam · Lane"
 
+# _flaky <code> <method> <failures>: a Client call against an API that fails <failures> times; prints the outcome and the attempts.
+_flaky() {
+  "${PY}" - "${SCRIPT}" "$@" <<'PY' 2>/dev/null
+import importlib.util
+import io
+import sys
+import urllib.error
+from email.message import Message
+
+spec = importlib.util.spec_from_file_location("develop_red", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+code, method, failures = int(sys.argv[2]), sys.argv[3], int(sys.argv[4])
+calls = []
+def urlopen(req, timeout):
+    calls.append(1)
+    if len(calls) <= failures:
+        raise urllib.error.HTTPError(req.full_url, code, "fail", Message(), None)
+    return io.BytesIO(b'{"ok": true}')
+mod.urllib.request.urlopen = urlopen
+mod.time.sleep = lambda s: None
+try:
+    mod.Client("", False, None).call(method, "/x", None if method == "GET" else {})
+    print(f"ok {len(calls)}")
+except urllib.error.HTTPError as e:
+    print(f"raised {e.code} {len(calls)}")
+PY
+}
+
+t_case "a GET retries a 5xx and succeeds"
+t_assert_eq "ok 3" "$(_flaky 502 GET 2)"
+
+t_case "a GET gives up after its retries"
+t_assert_eq "raised 502 3" "$(_flaky 502 GET 5)"
+
+t_case "a 4xx and a failed write are never retried"
+t_assert_eq "raised 404 1" "$(_flaky 404 GET 1)"
+t_assert_eq "raised 502 1" "$(_flaky 502 POST 1)"
+
 t_summary

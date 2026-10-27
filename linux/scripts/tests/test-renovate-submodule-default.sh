@@ -3,6 +3,7 @@
 set -u
 # shellcheck source=linux/scripts/tests/renovate-fixtures.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/renovate-fixtures.sh"
+source "${TESTS_DIR}/test-uv-fixture.sh"
 
 _default_upstream() {
   local dir="${WORK}/up-$1"
@@ -77,10 +78,11 @@ _module_at() {
 
 _run_checkout_failure() {
   local repo="$1" once="$2" observed="$3"
-  STUB_PATH="${ROLL_STUBS}:${BARE_PATH}" RL_MODE=checkout RL_REAL_GIT="$(command -v git)" \
+  local report="${4:-${MIXED_REPORT}}" uv_stubs="${5:-}" uv_observed="${6:-}" managers="${7:-pub,git-submodules}"
+  STUB_PATH="${ROLL_STUBS}:${uv_stubs:+${uv_stubs}:}${BARE_PATH}" RL_MODE=checkout RL_REAL_GIT="$(command -v git)" \
     RL_FIRST_PATH="${repo}/first" RL_FAIL_SECOND="${repo}/second" \
-    RL_FAIL_ONCE="${once}" RL_OBSERVED_FIRST="${observed}" \
-    _run "${repo}" "${MIXED_REPORT}" --apply --managers pub,git-submodules
+    RL_FAIL_ONCE="${once}" RL_OBSERVED_FIRST="${observed}" RL_UV_OBSERVED_DIR="${uv_observed}" \
+    _run "${repo}" "${report}" --apply --managers "${managers}"
 }
 
 _assert_restored_tree() {
@@ -316,6 +318,12 @@ fi
 if [ "${RL_MODE}" = checkout ] && [ "${second}" = 1 ] && [ "${checkout}" = 1 ] \
     && [ ! -e "${RL_FAIL_ONCE}" ]; then
   "${RL_REAL_GIT}" -C "${RL_FIRST_PATH}" rev-parse HEAD > "${RL_OBSERVED_FIRST}" || exit 1
+  if [ -n "${RL_UV_OBSERVED_DIR:-}" ]; then
+    for path in quality/one/uv.lock quality/two/uv.lock legacy/one.txt legacy/two.txt; do
+      mkdir -p "${RL_UV_OBSERVED_DIR}/$(dirname "${path}")"
+      cp "${RL_FIRST_PATH}/../${path}" "${RL_UV_OBSERVED_DIR}/${path}" || exit 1
+    done
+  fi
   : > "${RL_FAIL_ONCE}"
   exit 42
 fi
@@ -325,6 +333,56 @@ chmod +x "${ROLL_STUBS}/git"
 _run_checkout_failure "${ROLLBACK_REPO}" "${ROLLBACK_ONCE}" "${ROLLBACK_OBSERVED}"
 _assert_checkout_failure_undone "${ROLLBACK_REPO}" "${ROLLBACK_FIRST_AT}" "${ROLLBACK_SECOND_AT}" \
   "${ROLLBACK_OBSERVED}" "${ROLLBACK_UP}" "${ROLLBACK_STATUS}"
+
+_uv_sub_repo() {
+  local repo project
+  repo="$(_default_sub_repo "$1")"
+  mkdir -p "${repo}/quality/one" "${repo}/quality/two" "${repo}/legacy" "${repo}/.github"
+  for project in one two; do
+    printf '[project]\nname = "fixture"\ndependencies = [\n  "demo==1.0",\n]\n' > "${repo}/quality/${project}/pyproject.toml"
+    printf 'version = 1\n[[package]]\nname = "demo"\nversion = "1.0"\n' > "${repo}/quality/${project}/uv.lock"
+    printf 'fixture==0\n' > "${repo}/legacy/${project}.txt"
+  done
+  printf '{"exports":[{"project":"quality/one","output":"legacy/one.txt"},{"project":"quality/two","output":"legacy/two.txt"}]}\n' > "${repo}/.github/renovate-uv-exports.json"
+  _commit "${repo}"
+  printf '%s' "${repo}"
+}
+
+_assert_uv_sub_files() {
+  local project
+  for project in one two; do
+    t_assert_contains "$(cat "$1/quality/${project}/uv.lock")" "version = \"$2\""
+    t_assert_eq "$3" "$(cat "$1/legacy/${project}.txt")"
+  done
+}
+
+t_case 'uv updates and direct submodule checkouts succeed together'
+UV_MIXED_REPORT="${WORK}/uv-submodule-report.json"
+_report_pair "${UV_MIXED_REPORT}" pep621 demo ==1.0 ==2.0 quality/one/pyproject.toml quality/two/pyproject.toml
+UV_MIXED_STUBS="${WORK}/uv-submodule-stubs"
+t_uv_fixture_write "${UV_MIXED_STUBS}"
+UV_SUCCESS="$(_uv_sub_repo uv-submodule-success)"
+STUB_PATH="${UV_MIXED_STUBS}:${BARE_PATH}" _run "${UV_SUCCESS}" "${UV_MIXED_REPORT}" --apply --managers pep621,git-submodules
+t_assert_eq 0 "${RC}" "combined update succeeds: ${OUT}"
+_assert_uv_sub_files "${UV_SUCCESS}" '2.0' 'fixture==1'
+t_assert_eq "$(git -C "${WORK}/up-uv-submodule-success-first" rev-parse trunk)" "$(git -C "${UV_SUCCESS}/first" rev-parse HEAD)"
+t_assert_eq "$(git -C "${WORK}/up-uv-submodule-success-second" rev-parse trunk)" "$(git -C "${UV_SUCCESS}/second" rev-parse HEAD)"
+
+t_case 'submodule failure rolls back both completed uv exports and locks'
+UV_FAIL="$(_uv_sub_repo uv-submodule-failure)"
+UV_FAIL_FIRST="$(_module_at "${UV_FAIL}" first)"
+UV_FAIL_SECOND="$(_module_at "${UV_FAIL}" second)"
+UV_OBSERVED="${WORK}/uv-submodule-observed"
+_run_checkout_failure "${UV_FAIL}" "${WORK}/uv-submodule-failed" "${WORK}/uv-submodule-first" \
+  "${UV_MIXED_REPORT}" "${UV_MIXED_STUBS}" "${UV_OBSERVED}" pep621,git-submodules
+t_assert_eq 1 "${RC}" "late checkout failure cannot pass: ${OUT}"
+t_assert_contains "${OUT}" 'submodule checkout failed for second'
+t_assert_eq "$(git -C "${WORK}/up-uv-submodule-failure-first" rev-parse trunk)" "$(cat "${WORK}/uv-submodule-first")"
+_assert_uv_sub_files "${UV_OBSERVED}" '2.0' 'fixture==1'
+_assert_uv_sub_files "${UV_FAIL}" '1.0' 'fixture==0'
+t_assert_eq "${UV_FAIL_FIRST}" "$(_module_at "${UV_FAIL}" first)"
+t_assert_eq "${UV_FAIL_SECOND}" "$(_module_at "${UV_FAIL}" second)"
+t_assert_ok git -C "${UV_FAIL}" diff --quiet HEAD
 
 t_case "rollback removes a checkout initialized by this run after its checkout fails"
 _prepare_rollback_repo default-init-rollback absent

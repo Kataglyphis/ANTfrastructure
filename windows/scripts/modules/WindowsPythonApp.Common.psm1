@@ -8,12 +8,22 @@ Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -ErrorAction Stop
 
 # Unforced imports bind each required companion into this owner without unloading the caller's copy.
-foreach ($sibling in 'WindowsPythonWheel.Common', 'WindowsOrtPayload.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common') {
+foreach ($sibling in 'WindowsPythonWheel.Common', 'WindowsOrtPayload.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common', 'WindowsIcon.Common', 'WindowsMsix.Common') {
     Import-Module (Join-Path $PSScriptRoot "$sibling.psm1") -DisableNameChecking -ErrorAction Stop
 }
 
 $script:LauncherSource = Join-Path (Split-Path $PSScriptRoot -Parent) 'python\app-launcher\launcher.c'
 $script:SelfTestScript = Join-Path (Split-Path $PSScriptRoot -Parent) 'python\Test-PythonAppSelfTest.ps1'
+
+function Get-PythonAppBundleInputPath {
+    param($App, [string]$RepoRoot, [string]$Name, [switch]$Required)
+    if (-not $App.ContainsKey($Name)) {
+        if ($Required) { throw "app.json must name $Name" }
+        return ''
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$App[$Name])) { throw "app.json $Name must name a file" }
+    return Resolve-PythonAppPath $RepoRoot $App[$Name]
+}
 
 function Initialize-PythonAppDirectory {
     param([Parameter(Mandatory)][string[]]$Path, [switch]$Empty)
@@ -236,7 +246,7 @@ function Get-LockSdist {
 }
 
 function Get-RequirementLineGroup {
-    param([Parameter(Mandatory)][string[]]$Lines)
+    param([Parameter(Mandatory)][AllowEmptyString()][string[]]$Lines)
     $group = [Collections.Generic.List[string]]::new()
     foreach ($line in $Lines) {
         if ($group.Count -gt 0 -and $line -notmatch '^\s+--hash=') {
@@ -251,7 +261,7 @@ function Get-RequirementLineGroup {
 # Hash groups retain their original bytes except the continued final hash and the inserted wheel hash.
 function Add-RequirementHash {
     [OutputType([string[]])]
-    param([Parameter(Mandatory)][string[]]$Lines, [Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Sha256)
+    param([Parameter(Mandatory)][AllowEmptyString()][string[]]$Lines, [Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Sha256)
     $out = [Collections.Generic.List[string]]::new()
     $added = $false
     foreach ($group in @(Get-RequirementLineGroup -Lines $Lines)) {
@@ -556,7 +566,8 @@ function New-PythonAppLauncher {
         [Parameter(Mandatory)][string]$DataEnv,
         [Parameter(Mandatory)][string]$DataDir,
         [Parameter(Mandatory)][string]$WorkDir,
-        [ValidateSet('amd64', 'arm64')][string]$Arch = 'amd64'
+        [ValidateSet('amd64', 'arm64')][string]$Arch = 'amd64',
+        [string]$IconResource = ''
     )
 
     if ($EntryPoint -notmatch '^(?<m>[\w.]+):(?<f>\w+)$') { throw "Entry point '$EntryPoint' is not 'module:function'" }
@@ -575,8 +586,12 @@ function New-PythonAppLauncher {
     $obj = Join-Path $WorkDir "$Name.obj"
     # A bare clang-cl targets x64 even in the arm64 bundle's VS environment, so a cross build names its triple.
     $target = @(if ($Arch -ne 'amd64') { "/clang:--target=$(Get-ClangTargetTriple -Arch $Arch)" })
+    $icon = @(if ($IconResource) {
+        if (-not (Test-Path -LiteralPath $IconResource -PathType Leaf)) { throw "Launcher icon resource not found: $IconResource" }
+        $IconResource
+    })
     # /MT: the launcher sits beside runtime\, not in it, so it cannot lean on the VC++ DLLs the runtime carries.
-    & clang-cl /nologo /O2 /MT /W3 @target /FI $header "/Fo$obj" "/Fe$exe" $script:LauncherSource /link /SUBSYSTEM:CONSOLE
+    & clang-cl /nologo /O2 /MT /W3 @target /FI $header "/Fo$obj" "/Fe$exe" $script:LauncherSource /link /SUBSYSTEM:CONSOLE @icon
     if ($LASTEXITCODE -ne 0) { throw "clang-cl could not build the $Name launcher (exit $LASTEXITCODE)" }
     return $exe
 }
@@ -612,34 +627,6 @@ function Invoke-PythonAppSelfTest {
 
     # One checker, which a cross lane also copies beside the bundle for a runner without this module.
     return & $script:SelfTestScript -Bundle $Bundle -Command $Command -Root $Root
-}
-
-function ConvertTo-PythonAppIcon {
-    <#
-    .SYNOPSIS
-        Wraps a PNG as a one-image .ico, which MSI shortcuts and Add/Remove Programs need; Windows reads PNG frames.
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][string]$PngPath,
-        [Parameter(Mandatory)][string]$Destination
-    )
-
-    $png = [IO.File]::ReadAllBytes($PngPath)
-    if ($png.Length -lt 24 -or [Text.Encoding]::ASCII.GetString($png, 1, 3) -cne 'PNG') { throw "$PngPath is not a PNG" }
-    # IHDR's width and height are big-endian; an .ico entry stores 256 as 0.
-    $width = ([int]$png[16] -shl 24) -bor ([int]$png[17] -shl 16) -bor ([int]$png[18] -shl 8) -bor [int]$png[19]
-    $height = ([int]$png[20] -shl 24) -bor ([int]$png[21] -shl 16) -bor ([int]$png[22] -shl 8) -bor [int]$png[23]
-    if ($width -gt 256 -or $height -gt 256) { throw "$PngPath is ${width}x${height}; an .ico image is at most 256x256" }
-    $stream = [IO.MemoryStream]::new()
-    $writer = [IO.BinaryWriter]::new($stream)
-    $writer.Write([uint16]0); $writer.Write([uint16]1); $writer.Write([uint16]1)
-    $writer.Write([byte]($width % 256)); $writer.Write([byte]($height % 256)); $writer.Write([byte]0); $writer.Write([byte]0)
-    $writer.Write([uint16]1); $writer.Write([uint16]32); $writer.Write([uint32]$png.Length); $writer.Write([uint32]22)
-    $writer.Write($png)
-    $writer.Flush()
-    [IO.File]::WriteAllBytes($Destination, $stream.ToArray())
-    return $Destination
 }
 
 # One Component per file, ids counted: proven since WiX 4.0.6, which had no <Files> harvesting, and still valid under 7.
@@ -832,5 +819,5 @@ $(($apps -join "`n").TrimEnd())
 }
 
 Export-ModuleMember -Function Get-PythonAppWheelFile, Initialize-PythonAppDirectory, New-PythonAppWorkDirectory, Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, New-PythonAppCrossRuntime, Get-PythonAbiTag, Select-PythonAppWheel, Install-PythonAppPackage, Install-PythonCrossSite, Install-PythonAppCrossPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
-    New-PythonAppLauncher, Copy-PythonAppRuntimeClosure, Invoke-PythonAppSelfTest, ConvertTo-PythonAppIcon, New-PythonAppWxs,
+    New-PythonAppLauncher, Copy-PythonAppRuntimeClosure, Invoke-PythonAppSelfTest, ConvertTo-PythonAppIcon, New-WindowsIconResource, Resolve-PackageLicense, Copy-PackageLicense, New-PythonAppWxs, Get-PythonAppBundleInputPath,
     New-PythonAppAppxManifest

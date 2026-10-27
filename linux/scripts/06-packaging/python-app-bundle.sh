@@ -5,6 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../01-core/logging.sh
 source "${SCRIPT_DIR}/../01-core/logging.sh"
+# shellcheck source=../lib/app-packaging-license.sh
+source "${SCRIPT_DIR}/../lib/app-packaging-license.sh"
 
 source "${SCRIPT_DIR}/python-app-cli.sh"
 
@@ -48,6 +50,8 @@ APP_ID="$(cfg id)"
 DISTRIBUTION="$(cfg distribution)"
 DATA_ENV="$(cfg data_env)"
 DATA_DIR="$(cfg data_dir)"
+LICENSE_FILE="$(cfg license_file)"
+app_packaging_validate_project_license "${LICENSE_FILE}" || err "the Python app license is required"
 mapfile -t EXTRAS < <(cfg extras)
 mapfile -t SCRIPTS < <(cfg scripts)
 mapfile -t SELF_TEST < <(cfg self_test)
@@ -62,6 +66,7 @@ BUNDLE="$(realpath -m "${OUT_DIR}")"
 RUNTIME="${BUNDLE}/runtime"
 rm -rf "${BUNDLE}"
 mkdir -p "${BUNDLE}/bin"
+app_packaging_stage_project_license "${LICENSE_FILE}" "${BUNDLE}" || err "could not stage the Python app license"
 
 # select_app_wheel <dir> <dist key> <arch> <abi>: the binary wheel for the runtime's ABI (or abi3), else the pure one; another ABI's binaries alone are an error.
 select_app_wheel() {

@@ -203,6 +203,32 @@ uv_pip_install_requirements() {
   uv pip install --python "$venv_python" -r "$requirements_file"
 }
 
+# Export the lock to a temporary file so a tool install preserves the rest of the venv.
+uv_pip_install_locked_project() {
+  local venv_path="${1:?venv required}" project="${2:?project required}" venv_python output status=0
+  # shellcheck source=linux/scripts/01-core/uv-image-overlay.sh
+  source "${_MODULE_DIR}/uv-image-overlay.sh" || { printf 'ERROR: uv-image-overlay.sh is missing\n' >&2; return 1; }
+  declare -F uv_image_overlay_cleanup >/dev/null || { printf 'ERROR: uv-image-overlay cleanup is missing\n' >&2; return 1; }
+  venv_python="$(python_venv_executable "$venv_path")" || return 1
+  [ -f "${project}/pyproject.toml" ] && [ -f "${project}/uv.lock" ] || return 1
+  output="$(mktemp)" || return 1
+  env -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT -u UV_WORKING_DIR -u UV_PROJECT uv export --project "$project" --python "$venv_python" \
+    --locked --no-dev --no-emit-project --format requirements-txt --output-file "$output" >/dev/null || status=$?
+  if [ "$status" -eq 0 ] && ! grep -qE '^[[:space:]]*[[:alnum:]][[:alnum:]_.-]*(\[[^]]+\])?==' "$output"; then
+    printf 'ERROR: locked project exported no pinned packages\n' >&2
+    status=1
+  fi
+  if [ "$status" -eq 0 ] && [ -n "${ORT_CHAIN_WHEEL_DIR:-}" ] && grep -qiE '^[[:space:]]*onnxruntime([_.-][[:alnum:]._-]+)?(\[[^]]+\])?==' "$output"; then
+    printf 'ERROR: locked tool project would replace chain ONNX Runtime\n' >&2
+    status=1
+  fi
+  if [ "$status" -eq 0 ]; then
+    env -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT -u UV_WORKING_DIR -u UV_PROJECT uv pip install --python "$venv_python" \
+      --no-deps --require-hashes -r "$output" || status=$?
+  fi
+  uv_image_overlay_cleanup "$status" "$output"
+}
+
 uv_venv_activate() {
   local venv_path="$1"
   

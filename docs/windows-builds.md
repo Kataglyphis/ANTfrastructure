@@ -982,7 +982,8 @@ the Git-ignored `logs/windows-build-logs/` directory. Python CI reports and cove
 The repository's `windows/scripts/tests/Invoke-Tests.ps1` writes one parent-run result to
 `logs/windows-tests/summary-<timestamp>-<pid>.json`, including counts, failed and skipped
 suites, the discovery floor, targeted Pester coverage and the exit code. Child suites only
-hand tallies to the parent. Coverage XML for the fifteen measured modules also stays under
+hand tallies to the parent; `-ResultFile` creates its parent directory and fails if it
+cannot write the tally, including in a fresh mutation mirror. Coverage XML for the fifteen measured modules also stays under
 `logs/windows-tests/`; Windows x64 CI uploads the test and coverage reports. The MSIX,
 Slang and wasm-opt module floors are 80%, 65% and 80%, against measured command coverage
 of 233/282, 229/342 and 87/108 respectively. The wasm-opt suite now exercises cached
@@ -1392,8 +1393,10 @@ records a resolved clang-cl (SKIP on older images).
 
 Rust is provisioned **exclusively via rustup**: `Install-RustToolchain.ps1` runs
 `rustup-init.exe -y --default-toolchain <RUST_VERSION> --profile minimal`, and bakes
-`flutter_rust_bridge_codegen` at `FLUTTER_RUST_BRIDGE_VERSION` alongside, so Flutter+Rust consumers
-skip a minutes-long cold `cargo install` per fresh container.
+`flutter_rust_bridge_codegen` at `FLUTTER_RUST_BRIDGE_VERSION` and `cxxbridge` at
+`CXXBRIDGE_CMD_VERSION` alongside, so Flutter+Rust and cxx consumers skip a minutes-long cold
+`cargo install` per fresh container. `CXXBRIDGE_CMD_VERSION` must equal the `cxx` OxidANT's
+`kataglyphis_cxx_bridge` locks: the generated bridge and the `cxx` runtime are one ABI (CON145).
 
 - **rustup is required**, not merely tolerated. Flutter's **Cargokit** (the build glue of
   `flutter_rust_bridge`-style plugins, e.g. `rust_builder/cargokit` in OmniAccelerANT) enumerates

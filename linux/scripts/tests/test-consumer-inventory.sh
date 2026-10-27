@@ -87,10 +87,11 @@ _inventory() {
 JSON
 }
 
-_CLASSES='[ { "kind": "linux-script", "glob": "linux/scripts/*.sh", "needle": "path" } ]'
-_ROOT_CLASS='[ { "kind": "root-file", "glob": "requirements.txt", "needle": "path", "match": "root-file" } ]'
-_CLASSES_EMPTY='[ { "kind": "linux-script", "glob": "linux/scripts/*.sh", "needle": "path" },
-                  { "kind": "nothing-here", "glob": "no/such/dir/*.sh", "needle": "path" } ]'
+# _class <kind> <glob> [extra json members]: one entry-point class matched by path.
+_class() { printf '{ "kind": "%s", "glob": "%s", "needle": "path"%s }' "$1" "$2" "${3:+, $3}"; }
+_CLASSES="[ $(_class linux-script 'linux/scripts/*.sh') ]"
+_ROOT_CLASS="[ $(_class root-file requirements.txt '"match": "root-file"') ]"
+_CLASSES_EMPTY="[ $(_class linux-script 'linux/scripts/*.sh'), $(_class nothing-here 'no/such/dir/*.sh') ]"
 
 REPORT=""
 OUT=""; rc=0
@@ -193,8 +194,6 @@ printf '%s\n' 'source third_party/ANTfrastructure/linux/scripts/lib/shared-libra
   'cat "${SOME_DIR}/unreferenced.requirements.txt.bak"' >> "${_c}/scripts/build.sh"
 t_git_commit "${_h}"
 t_git_commit "${_c}"
-_LIB_CLASSES='[ { "kind": "linux-lib", "glob": "linux/scripts/lib/*.sh", "needle": "path", "alias": "filename" },
-                { "kind": "linux-requirements", "glob": "linux/scripts/lib/*.requirements.txt", "needle": "path", "alias": "filename" } ]'
 t_case "the real inventory declares each shared file class with conservative filename matching"
 t_assert_ok "${PY}" -c 'import json, sys
 classes = json.load(open(sys.argv[1], encoding="utf-8"))["entry_point_classes"]
@@ -203,6 +202,10 @@ expected = {("linux-shared-library", "linux/scripts/lib/*.sh", "filename"),
             ("linux-shared-requirements", "linux/scripts/lib/*.requirements.txt", "filename"),
             ("linux-requirements", "linux/scripts/*.requirements.txt", "filename")}
 sys.exit(not expected <= actual)' "${SCRIPTS}/../../.github/consumers.json"
+_LIB_CLASSES="$("${PY}" -c 'import json, sys
+classes = json.load(open(sys.argv[1], encoding="utf-8"))["entry_point_classes"]
+print(json.dumps([c for c in classes if c["kind"] in ("linux-shared-library", "linux-shared-requirements")]))' \
+  "${SCRIPTS}/../../.github/consumers.json")"
 _inventory "${_work}/lib-classes.json" "${_LIB_CLASSES}"
 _run "${_h}" "${_c}" "${_work}/lib-classes.json"
 t_assert_eq 0 "${rc}" "the shared library fixture must scan successfully"

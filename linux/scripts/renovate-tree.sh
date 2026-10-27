@@ -57,6 +57,9 @@ classify_apply_paths() {
     [ -f "${TARGET}/${q}" ] || continue
     classify_one "${GIT_TARGET}" "${q}" "${q}"
   done
+  for q in ${UV_EXPORT_PATHS[@]+"${UV_EXPORT_PATHS[@]}"}; do
+    classify_one "${GIT_TARGET}" "${q}" "${q}"
+  done
 }
 
 # On Windows the report needs WSL's node but the checkout needs the git that wrote it, so switch to git.exe.

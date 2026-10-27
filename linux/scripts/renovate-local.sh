@@ -258,6 +258,9 @@ SUBMODULES="${HUB_ROOT}/linux/scripts/renovate-submodules.sh"
 # shellcheck source=renovate-submodules.sh
 . "${SUBMODULES}"
 
+# shellcheck source=renovate-uv-exports.sh
+. "${HUB_ROOT}/linux/scripts/renovate-uv-exports.sh" || err "cannot load renovate-uv-exports.sh beside me"
+
 # Manager selection: by default every manager whose own file patterns match a tracked file.
 MGR_CFG=""
 RUN_DIR=""
@@ -575,6 +578,7 @@ git that owns the working tree (on Windows: Git Bash or PowerShell)." \
   rl_py verify "${TARGET}" "${PLAN_JSON}" \
     || err "the planned edits cannot all be written (above); nothing was written"
   assert_locks_runnable
+  assert_uv_exports_tracked
 }
 
 print_plan_notes() {
@@ -606,6 +610,8 @@ print_dry_run() {
     -- ${PLAN_EDITS[@]+"${PLAN_EDITS[@]}"} || true
   note_listing "lockfile(s) that would then be refreshed:" \
     -- ${LOCK_PLANNED[@]+"${LOCK_PLANNED[@]}"} || true
+  note_listing "uv compatibility export(s) that would then be refreshed:" \
+    -- ${UV_EXPORT_PATHS[@]+"${UV_EXPORT_PATHS[@]}"} || true
 }
 
 # Every target was copied aside first, so a failing lock tool puts all back. See docs/dependency-updates.md#all-of-it-or-none-of-it
@@ -626,6 +632,7 @@ apply_files() {
   fi
   assert_manifests_unchanged
   assert_locks_sane
+  refresh_uv_exports || undo_run "uv compatibility export failed"
 }
 
 # The only place EXIT_CODE becomes 2; --dry-run runs it too, so a reviewer sees the real rc.
@@ -645,6 +652,7 @@ run_apply() {
   build_plan
   # After the edits' jobs, so a maintained lock is refreshed last and ends at the newest it allows.
   LOCK_JOBS+=(${MAINT_JOBS[@]+"${MAINT_JOBS[@]}"})
+  plan_uv_exports
   print_plan_notes
 
   if [ "${#APPLY_PATHS[@]}" -eq 0 ] && [ "${#LOCK_JOBS[@]}" -eq 0 ] && [ "${EDIT_LINES}" -eq 0 ]; then
@@ -668,7 +676,7 @@ run_apply() {
 
   # One snapshot over both halves, tree first, so not even the in-flight marker reads as a tool's write.
   tree_snapshot
-  snapshot_targets ${EDIT_FILES[@]+"${EDIT_FILES[@]}"}
+  snapshot_targets ${EDIT_FILES[@]+"${EDIT_FILES[@]}"} ${UV_EXPORT_PATHS[@]+"${UV_EXPORT_PATHS[@]}"}
   # Either half failing restores both, so this order is for reviewability only.
   apply_files
   apply_default_submodules
@@ -690,6 +698,7 @@ trap 'on_signal PIPE 141' PIPE
 
 cleanup() {
   local f
+  if [ -n "${UV_EXPORT_TEMP:-}" ]; then rm -f -- "${UV_EXPORT_TEMP}"; fi
   # Every mktemp of this run; never PLANNER/LOCATOR or an injected report/config, which are not ours.
   for f in "${PLAN_TSV}" "${PLAN_JSON}" "${MGR_TSV}" "${ROWS_TSV}" "${SKIP_TSV}" "${MAINT_TSV}" \
            "${TREE_BEFORE}" "${TREE_BEFORE_PATHS}" "${TREE_BEFORE_HASH}" \

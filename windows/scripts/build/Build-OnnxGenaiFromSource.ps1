@@ -78,12 +78,11 @@ function Install-GenaiClangStlPatch {
     # Wrapping the _EMIT_STL_ERROR define no-ops every STL error code under clang-cl.
     $yvalsCore = Join-Path $msvcVersionDir 'include\yvals_core.h'
     $yvalsOld = '#define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)'
-    $yvalsNew = '#ifdef __clang__
-    #define _EMIT_STL_ERROR(NUMBER, MESSAGE)
-    #else
-    #define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)
-    #endif'
+    # Joined, not a multi-line literal: re-indenting a literal changes the text it writes, and the check below then refuses it.
+    $yvalsNew = @('#ifdef __clang__', '#define _EMIT_STL_ERROR(NUMBER, MESSAGE)', '#else', $yvalsOld, '#endif') -join "`r`n"
+    # The replacement keeps the original define under #else, so only SkipIfMatch stops a second run from wrapping it again.
     [void](Invoke-InlineRegexPatch -Path $yvalsCore -Guard '#define _EMIT_STL_ERROR' `
+            -SkipIfMatch '#ifdef __clang__\r?\n#define _EMIT_STL_ERROR\(NUMBER, MESSAGE\)\r?\n' `
             -Pattern ([regex]::Escape($yvalsOld)) -Replacement $yvalsNew `
             -Description 'MSVC yvals_core.h for clang compat')
     # The define without the exact target line means MSVC changed the macro format: fail here, not mid-compile.

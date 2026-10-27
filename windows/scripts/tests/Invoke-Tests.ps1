@@ -39,6 +39,13 @@ function New-TestTally {
     }
 }
 
+function Write-TestResult {
+    param([Collections.IDictionary]$Tally, [string]$Path, [int]$Depth = 4)
+    $resultParent = Split-Path -Parent $Path
+    if ($resultParent) { $null = New-Item -ItemType Directory -Force -Path $resultParent -ErrorAction Stop }
+    ConvertTo-Json -InputObject $Tally -Depth $Depth | Set-Content -LiteralPath $Path -Encoding utf8 -ErrorAction Stop
+}
+
 function Merge-TestTallies {
     param([object[]]$Tallies)
     $total = 0; $passed = 0; $pesterFailures = 0
@@ -144,8 +151,6 @@ function Write-TestSummary {
         $repoRoot = Split-Path (Split-Path (Split-Path $here -Parent) -Parent) -Parent
         Join-Path $repoRoot ("logs\windows-tests\summary-{0}-{1}.json" -f (Get-Date -Format 'yyyyMMdd-HHmmss'), $PID)
     }
-    $parent = Split-Path -Parent $summaryPath
-    if ($parent) { $null = New-Item -ItemType Directory -Force -Path $parent -ErrorAction Stop }
     $tally['RunAtUtc'] = [datetime]::UtcNow.ToString('o')
     $tally['FailedCount'] = $failCount
     $tally['Broken'] = @($Broken)
@@ -154,7 +159,7 @@ function Write-TestSummary {
     $tally['CoverageFailures'] = @($CoverageFailures)
     $tally['CoverageFloorMet'] = $CoverageFailures.Count -eq 0
     $tally['ExitCode'] = $exitCode
-    ConvertTo-Json -InputObject $tally -Depth 5 | Set-Content -LiteralPath $summaryPath -Encoding utf8 -ErrorAction Stop
+    Write-TestResult -Tally $tally -Path $summaryPath -Depth 5
     Write-Host "Run summary: $summaryPath"
     return $exitCode
 }
@@ -182,17 +187,8 @@ function Get-CoverageTargets {
 # NOT covered: Pester's instrumentation internals; this verifies the saved module report and measured command counts.
 function Get-CoberturaModuleFailure {
     param([Parameter(Mandatory)][string]$ReportPath, [Parameter(Mandatory)][string]$ExpectedClass)
-    $settings = [Xml.XmlReaderSettings]::new()
-    $settings.DtdProcessing = [Xml.DtdProcessing]::Ignore
-    $settings.XmlResolver = $null
-    try {
-        $reader = [Xml.XmlReader]::Create($ReportPath, $settings)
-        try {
-            $document = [xml]::new()
-            $document.XmlResolver = $null
-            $document.Load($reader)
-        } finally { $reader.Dispose() }
-    } catch { return "invalid Cobertura XML: $($_.Exception.Message)" }
+    try { $document = Read-SafeXmlDocument -Path $ReportPath -DtdPolicy Ignore }
+    catch { return "invalid Cobertura XML: $($_.Exception.Message)" }
     if ($document.DocumentElement.Name -ne 'coverage') { return 'Cobertura report has no coverage root' }
     $classes = @($document.SelectNodes('/coverage/packages/package/classes/class'))
     if ($classes.Count -ne 1) { return "expected one Cobertura class, got $($classes.Count)" }
@@ -357,7 +353,7 @@ $tally = Merge-TestTallies -Tallies @($harnessTally, $pesterTally)
 
 # A child hands its tallies to the parent, which prints the one summary and applies the floor to the sum.
 if ($ResultFile) {
-    ConvertTo-Json -InputObject $tally -Depth 4 | Set-Content -LiteralPath $ResultFile
+    Write-TestResult -Tally $tally -Path $ResultFile
     if ($tally.Failed.Count -gt 0 -or $tally.PesterFailures -gt 0 -or $tally.Skipped.Count -gt 0 -or
         $tally.CoverageFailures.Count -gt 0) { exit 1 }
     exit 0

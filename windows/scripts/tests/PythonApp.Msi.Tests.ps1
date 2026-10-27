@@ -4,14 +4,7 @@
 # NOT covered: wix build and msiexec (New-PythonAppPackage.ps1 runs both inside :winamd64, installing and uninstalling).
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonApp.Common.psm1') -Force -DisableNameChecking
-
-# The 24 bytes ConvertTo-PythonAppIcon reads: PNG signature, IHDR length and tag, then big-endian width and height.
-function script:New-TestPng {
-    param([Parameter(Mandatory)][string]$Path, [int]$Width, [int]$Height)
-    $bytes = [byte[]](0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13) + [Text.Encoding]::ASCII.GetBytes('IHDR')
-    foreach ($v in $Width, $Height) { $bytes += [byte[]]((($v -shr 24) -band 255), (($v -shr 16) -band 255), (($v -shr 8) -band 255), ($v -band 255)) }
-    [IO.File]::WriteAllBytes($Path, [byte[]]($bytes + [byte[]](1, 2, 3)))
-}
+Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsMsix.Common.psm1') -DisableNameChecking
 
 function script:New-TestApp {
     param([string]$Name = 'Demo')
@@ -19,12 +12,16 @@ function script:New-TestApp {
         scripts = @('demo-gui', 'demo-cli'); gui_script = 'demo-gui'; msi_upgrade_code = '{B7345903-A839-44F0-9784-35FA77657D53}' }
 }
 
-Describe 'ConvertTo-PythonAppIcon' {
+if ($IsWindows) { Describe 'ConvertTo-PythonAppIcon' {
 
     It 'wraps the PNG as the one image of an .ico, 256 stored as 0' {
         Invoke-InTestDir { param($d)
-            foreach ($size in 128, 256) {
-                New-TestPng -Path "$d\logo.png" -Width $size -Height $size
+            foreach ($size in 1, 256) {
+                if ($size -eq 256) { Copy-Item -LiteralPath (Join-Path (Get-RepoRoot) 'images/logo.png') -Destination "$d\logo.png" }
+                else {
+                    $onePixel = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAANSURBVBhXY/jPwPAfAAUAAf+mXJtdAAAAAElFTkSuQmCC'
+                    [IO.File]::WriteAllBytes("$d\logo.png", [Convert]::FromBase64String($onePixel))
+                }
                 $png = [IO.File]::ReadAllBytes("$d\logo.png")
                 $ico = [IO.File]::ReadAllBytes((ConvertTo-PythonAppIcon -PngPath "$d\logo.png" -Destination "$d\app.ico"))
                 Assert-Equal '0,1,1' "$([BitConverter]::ToUInt16($ico, 0)),$([BitConverter]::ToUInt16($ico, 2)),$([BitConverter]::ToUInt16($ico, 4))" "$size`: ICONDIR"
@@ -39,11 +36,29 @@ Describe 'ConvertTo-PythonAppIcon' {
         Invoke-InTestDir { param($d)
             Set-Content -LiteralPath "$d\logo.png" -Value 'not an image at all, just text' -Encoding ASCII
             Assert-Throws { ConvertTo-PythonAppIcon -PngPath "$d\logo.png" -Destination "$d\a.ico" } -MessagePattern 'is not a PNG'
-            New-TestPng -Path "$d\big.png" -Width 512 -Height 512
+            $png = [IO.File]::ReadAllBytes((Join-Path (Get-RepoRoot) 'images/logo.png'))
+            $png[18] = 2; $png[19] = 0; $png[22] = 2; $png[23] = 0
+            [IO.File]::WriteAllBytes("$d\big.png", $png)
             Assert-Throws { ConvertTo-PythonAppIcon -PngPath "$d\big.png" -Destination "$d\b.ico" } -MessagePattern '512x512'
         }
     }
-}
+
+    It 'rejects a truncated PNG' {
+        Invoke-InTestDir { param($d)
+            $bad = Join-Path $d 'truncated.png'
+            [IO.File]::WriteAllBytes($bad, [byte[]](0x89,0x50,0x4e,0x47,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,1,0,0,0,1))
+            Assert-Throws { ConvertTo-PythonAppIcon -PngPath $bad -Destination "$d\bad.ico" } -MessagePattern 'not a readable image'
+        }
+    }
+
+    It 'rejects a completely transparent PNG' {
+        Invoke-InTestDir { param($d)
+            $blank = Join-Path $d 'transparent.png'
+            New-TransparentPng -Path $blank -Width 1 -Height 1
+            Assert-Throws { ConvertTo-PythonAppIcon -PngPath $blank -Destination "$d\blank.ico" } -MessagePattern 'visible PNG'
+        }
+    }
+} }
 
 Describe 'New-PythonAppWxs' {
 

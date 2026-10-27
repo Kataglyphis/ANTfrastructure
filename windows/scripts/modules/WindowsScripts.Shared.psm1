@@ -1101,3 +1101,18 @@ function New-TemporaryDirectory {
 }
 
 Export-ModuleMember -Function New-TemporaryDirectory
+
+function Read-SafeXmlDocument {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][ValidateSet('Ignore', 'Prohibit')][string]$DtdPolicy)
+    $settings = [Xml.XmlReaderSettings]::new()
+    $settings.DtdProcessing = [Xml.DtdProcessing]::$DtdPolicy
+    $settings.XmlResolver = $null
+    $reader = [Xml.XmlReader]::Create($Path, $settings)
+    try {
+        $document = [Xml.XmlDocument]::new()
+        $document.XmlResolver = $null
+        $document.Load($reader)
+        return $document
+    } finally { $reader.Dispose() }
+}
+Export-ModuleMember -Function Read-SafeXmlDocument

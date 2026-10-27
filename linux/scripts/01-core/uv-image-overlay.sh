@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install a locked overlay without replacing image packages; see docs/python-ci.md.
+# Install a locked overlay without replacing image packages; see docs/python-ci.md#locked-overlays-on-image-packages
 [ -n "${_UV_IMAGE_OVERLAY_LOADED:-}" ] && return 0
 _UV_IMAGE_OVERLAY_LOADED=1
 
@@ -28,6 +28,10 @@ uv_image_overlay_verify_modules() {
   "${python}" -I "${_UV_IMAGE_OVERLAY_DIR}/verify-uv-image-modules.py" "${image_root}" "$@"
 }
 
+uv_image_overlay_uv() {
+  env -u UV_WORKING_DIR -u UV_PROJECT uv "$@"
+}
+
 uv_image_overlay_install() {
   local image_python="${1:?image Python required}" target_python="${2:?target Python required}" work="${3:?work directory required}"
   local name
@@ -38,12 +42,12 @@ uv_image_overlay_install() {
   while IFS='=' read -r name _; do
     [ -z "${name}" ] || omit+=(--no-emit-package "${name}")
   done < "${work}/image-constraints.txt"
-  uv export "${export_args[@]}" --no-hashes --output-file "${work}/lock-all.txt" >/dev/null || return 1
-  uv export "${export_args[@]}" "${omit[@]}" --no-hashes --output-file "${work}/lock-plan.txt" >/dev/null || return 1
-  uv export "${export_args[@]}" "${omit[@]}" --output-file "${work}/lock-install.txt" >/dev/null || return 1
+  uv_image_overlay_uv export "${export_args[@]}" --no-hashes --output-file "${work}/lock-all.txt" >/dev/null || return 1
+  uv_image_overlay_uv export "${export_args[@]}" "${omit[@]}" --no-hashes --output-file "${work}/lock-plan.txt" >/dev/null || return 1
+  uv_image_overlay_uv export "${export_args[@]}" "${omit[@]}" --output-file "${work}/lock-install.txt" >/dev/null || return 1
   "${target_python}" -I -m pip --isolated install --dry-run --report "${work}/install-plan.json" \
     --constraint "${work}/image-constraints.txt" --requirement "${work}/lock-plan.txt" || return 1
   "${target_python}" -I "${_UV_IMAGE_OVERLAY_DIR}/verify-uv-image-plan.py" "${work}/lock-plan.txt" \
     "${work}/install-plan.json" "${work}/lock-all.txt" "${work}/image-constraints.txt" || return 1
-  uv pip install --python "${target_python}" --no-deps --require-hashes --requirement "${work}/lock-install.txt"
+  uv_image_overlay_uv pip install --python "${target_python}" --no-deps --require-hashes --requirement "${work}/lock-install.txt"
 }

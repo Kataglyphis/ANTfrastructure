@@ -131,8 +131,10 @@ These are recorded so nobody files them as gaps:
   that drive pwsh skip there with their reason, `pwsh is not on PATH` (CON131).
 - ORT QNN is opt-in on arm64.
 - The Android host tools are x86-64 only (upstream's shape).
-- `wasm-bindgen-cli` and `cxxbridge-cmd` are installed at lane time, because
-  their version must match the consumer's own `Cargo.lock`.
+- `wasm-bindgen-cli` is installed at lane time, because its version must match the
+  consumer's own `Cargo.lock`. `cxxbridge` is baked into `:winamd64` at
+  `CXXBRIDGE_CMD_VERSION`, the `cxx` OxidANT locks, which its consumers follow (CON145);
+  `:latest` still installs it at lane time until a Linux chain carries it.
 - `:latest` is not pinned by digest.
 - No GPU inside a Windows container.
 - There is no ATL in the VS Build Tools. It affects only this hub's own builds.
