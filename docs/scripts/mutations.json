@@ -30855,5 +30855,21 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-cerbero-source-redirect.sh",
   "why": "a redirect that only counts the recipes leaves every dead URL in place"
+ },
+ {
+  "id": "lib.cerbero-fetch-retries",
+  "target": "linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh",
+  "find": "    for attempt in 1 2 3; do\n        uv run ./cerbero-uninstalled",
+  "replace": "    for attempt in 1; do\n        uv run ./cerbero-uninstalled",
+  "test": "bash linux/scripts/tests/test-cerbero-fetch-retry.sh",
+  "why": "one error page from sqlite.org under HTTP 200 stopped riscv64's android-gstreamer (2026-10-27)"
+ },
+ {
+  "id": "lib.cerbero-fetch-before-package",
+  "target": "linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh",
+  "find": "    cerbero_fetch_package_retry || exit 1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cerbero-fetch-retry.sh",
+  "why": "without the fetch pass cerbero downloads inside package, where a failed checksum is fatal on the first try"
  }
 ]

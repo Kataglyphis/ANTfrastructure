@@ -451,6 +451,17 @@ echo "    Prefix: ${CERBERO_PREFIX}"
 # Proof-of-effect: the mirror line as WRITTEN into the .cbc, not the heredoc source.
 echo "    Extra mirrors: $(grep -m1 '^extra_mirrors = ' "${CONFIG_NAME}.cbc" || echo 'MISSING — FD-OUTAGE fallback NOT configured') (FD-OUTAGE)"
 
+# A 200 error page fails the checksum, which cerbero does not retry or mirror: re-run the fetch alone. See docs/failure-modes.md#cerbero-a-checksum-fails-once
+cerbero_fetch_package_retry() {
+    local attempt
+    for attempt in 1 2 3; do
+        uv run ./cerbero-uninstalled -c "${CONFIG_NAME}.cbc" "${CERBERO_JOBS_ARGS[@]}" fetch-package gstreamer-1.0 && return 0
+        echo "WARNING: cerbero fetch-package failed (attempt ${attempt}/3); retrying the downloads only" >&2
+        [ "${attempt}" -eq 3 ] || sleep 30
+    done
+    return 1
+}
+
 # Try to pass the job limit through Cerbero's CLI if supported (different Cerbero versions vary).
 CERBERO_JOBS_ARGS=()
 if uv run ./cerbero-uninstalled --help 2>&1 | grep -q -- '--jobs'; then
@@ -487,6 +498,9 @@ fi
     echo "==> Running Cerbero Bootstrap..."
     uv run ./cerbero-uninstalled -c ${CONFIG_NAME}.cbc "${CERBERO_JOBS_ARGS[@]}" bootstrap
     
+    echo "==> Fetching GStreamer's sources..."
+    cerbero_fetch_package_retry || exit 1
+
     echo "==> Building GStreamer..."
     uv run ./cerbero-uninstalled -c ${CONFIG_NAME}.cbc "${CERBERO_JOBS_ARGS[@]}" package gstreamer-1.0
 )

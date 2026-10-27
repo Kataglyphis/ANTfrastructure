@@ -87,6 +87,7 @@ Two neighbours, so you land on the right page:
 - [HailoRT's configure is slow while the cache looks healthy](#hailorts-configure-is-slow-while-the-cache-looks-healthy)
 - [`Using ccache: /usr/bin/ccache` in a build that should use sccache](#using-ccache-usrbinccache-in-a-build-that-should-use-sccache)
 - [Cerbero: `Checksum for … spandsp-0.0.6.tar.gz is 'eed29aa6…'`](#cerbero-checksum-for--spandsp-006targz-is-eed29aa6)
+- [Cerbero: a checksum fails once](#cerbero-a-checksum-fails-once)
 - [`import hailo_platform` fails: `_pyhailort` is a 4 KB module](#import-hailo_platform-fails-_pyhailort-is-a-4-kb-module)
 - [`cmake --list-presets`: `Unrecognized "version" field`](#cmake---list-presets-unrecognized-version-field)
 - [`set: pipefail\r: invalid option name`](#set-pipefailr-invalid-option-name)
@@ -1502,6 +1503,21 @@ recipe that names it. For spandsp the replacement is `https://gstreamer.freedesk
 which serves the 2014 tarball with the recipe's checksum. Before adding a redirect for another dead
 host, download from the replacement and compare its sha256 with the recipe's `tarball_checksum`, and
 never edit the checksum to match what came back.
+
+### Cerbero: a checksum fails once
+
+**Symptom.** One arch's `android-gstreamer` stops at `Recipe '<name>' failed at the build step 'fetch'`
+with a wrong checksum, while the other arches fetched the same file. On 2026-10-27 riscv64 got
+`41516c51…` for `sqlite-amalgamation-3490100.zip`. Fetched again by hand, the file had the recipe's
+checksum, with and without Cerbero's user agent.
+
+**Cause.** The host answered one request with something else under HTTP 200. Cerbero tries its
+`extra_mirrors` only when a download itself fails. A checksum failure moves the file aside as
+`.failed-checksum` and is fatal on the first try (`cerbero/build/source.py`, `fetch` and `verify`).
+
+**Fix.** `cerbero_fetch_package_retry` runs `fetch-package gstreamer-1.0` up to three times, 30 s apart,
+before `package`. Only downloads repeat, and the checksum stays the gate. A host that is gone for good
+fails all three tries; see the spandsp entry above for that case.
 
 ### `Using ccache: /usr/bin/ccache` in a build that should use sccache
 
