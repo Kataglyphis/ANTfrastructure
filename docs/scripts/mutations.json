@@ -30965,8 +30965,16 @@
   "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
   "find": "[Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]]$Lines,",
   "replace": "[Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Lines,",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.FfmpegCodecs.Tests.ps1 -ResultFile logs/code-quality/text-line-indexes-mutation.json",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TextLineIndexes.Tests.ps1 -ResultFile logs/code-quality/text-line-indexes-mutation.json",
   "why": "a mandatory string array rejects an empty element, and x265.pc's blank line failed the FFmpeg branch of a chain"
+ },
+ {
+  "id": "mutations.pester-target-guard-fails",
+  "target": "linux/scripts/tests/test-mutation-pester-targets.sh",
+  "find": "sys.exit(1 if found else 0)",
+  "replace": "sys.exit(0)",
+  "test": "bash linux/scripts/tests/test-mutation-pester-targets.sh",
+  "why": "a recipe on a Pester-style suite skips on the Linux shards and fails every run; the guard must refuse it before CI does"
  },
  {
   "id": "lib.requirement-groups-accept-blank-lines",

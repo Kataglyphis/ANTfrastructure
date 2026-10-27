@@ -1091,6 +1091,12 @@ proved all 532 selected entries, printed a passed preflight summary, and was the
 canceled at the job boundary. Eight shards halve that 532-entry slice without
 sampling or raising the timeout; baseline failures still fail.
 
+The shards install no Pester, so a recipe whose test is a Pester-style suite
+(`BeforeAll`, `Context` and the other Pester-only keywords) skips there and fails
+every run as a vacuous bite. Put the cases a recipe needs in a harness-style
+suite; `test-mutation-pester-targets.sh` refuses a recipe that names a
+Pester-style one.
+
 A failed baseline reports its first three and last three nonempty lines, capped
 at 500 characters per line. This retains the first diagnostic and final summary
 when a multiline browser report would otherwise hide the failure. It changes
@@ -1210,7 +1216,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 57 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 58 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
