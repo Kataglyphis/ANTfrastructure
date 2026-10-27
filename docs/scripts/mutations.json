@@ -30997,7 +30997,7 @@
   "target": "windows/Dockerfile.media-builder",
   "find": "$env:UV_CACHE_DIR = 'C:\\lw\\ty-uv-cache'",
   "replace": "$env:UV_CACHE_DIR = 'C:\\bzl-repo-cache\\ty-uv-cache'",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.LitertWheelBazel.Tests.ps1 -ResultFile logs/code-quality/litert-ty-uv-cache-mutation.json",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.LitertUvCache.Tests.ps1 -ResultFile logs/code-quality/litert-ty-uv-cache-mutation.json",
   "why": "uv's renames into a cache mount an earlier RUN filled fail with os error 3, which stopped the amd64 chain's LiteRT stage"
  },
  {
