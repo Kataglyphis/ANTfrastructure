@@ -178,7 +178,7 @@ Configures the shared CPack variables; sets KATAGLYPHIS_CPACK_ARCH, the normalis
     [NSIS_HEADER_IMAGE     <path.bmp>]
     [NSIS_MUI_ICON         <path.ico>]
     [WIX_PRODUCT_ICON      <path.ico>]
-    [WIX_LICENSE_RTF       <path.rtf>]       # default ${PROJECT_SOURCE_DIR}/LICENSE.rtf, synthesised if absent
+    [WIX_LICENSE_RTF       <path.rtf>]       # default generated from LICENSE_FILE in the build directory
     [WIX_DEFAULT           ON|OFF]           # default OFF: initial ENABLE_WIX_PACKAGING
     [APPIMAGE_DEFAULT      ON|OFF]           # default ON:  initial CPACK_ENABLE_APPIMAGE
     [APPIMAGE_DESKTOP_FILE <name.desktop>]   # required once AppImage packaging can run
@@ -190,3 +190,12 @@ Configures the shared CPack variables; sets KATAGLYPHIS_CPACK_ARCH, the normalis
     [SHORT_WINDOWS_FILE_NAME])               # Windows: <project>-<version>-<config>-<arch>, within NSIS's MAX_PATH
 A Linux package that bundles libraries calls kataglyphis_install_linux_closure (below) as well.
 ```
+
+Every CPack payload includes the original `LICENSE_FILE` under `share/licenses/<project>/LICENSE`.
+For WiX, the default RTF is generated from the full UTF-8 licence text and preserves Unicode.
+An explicit `WIX_LICENSE_RTF` remains supported and must name an existing RTF with the correct text.
+These settings cover the project licence; bundled third-party notices still need their own staging.
+
+`kataglyphis_add_windows_icon(<target> <ico>)` adds the ICO resource to a Windows executable,
+rejects a missing or invalid ICO, and does nothing for non-Windows targets. The real PE tests
+link and inspect x64 and ARM64 resources; they require Clang, llvm-rc, lld-link and llvm-readobj.

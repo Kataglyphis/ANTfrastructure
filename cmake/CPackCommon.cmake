@@ -7,6 +7,176 @@ include_guard(GLOBAL)
 
 # See cmake/README.md for the CPack API; product upgrade GUIDs must be unique.
 
+# WiX requires RTF, so encode the actual UTF-8 licence rather than displaying a placeholder.
+function(kataglyphis_write_license_rtf source destination)
+  file(READ "${source}" _text)
+  string(STRIP "${_text}" _nonempty)
+  string(LENGTH "${_nonempty}" _nonempty_length)
+  if(_nonempty_length EQUAL 0)
+    message(FATAL_ERROR "The project license is empty: ${source}")
+  endif()
+  string(
+    REPLACE "\r\n"
+            "\n"
+            _text
+            "${_text}")
+  string(
+    REPLACE "\r"
+            "\n"
+            _text
+            "${_text}")
+  string(HEX "${_text}" _bytes)
+  string(LENGTH "${_bytes}" _length)
+  set(_rtf "{\\rtf1\\ansi\\uc1\\deff0{\\fonttbl{\\f0 Arial;}}\\fs20 ")
+  set(_offset 0)
+  while(_offset LESS _length)
+    string(
+      SUBSTRING "${_bytes}"
+                ${_offset}
+                2
+                _hex)
+    math(EXPR _code "0x${_hex}")
+    math(EXPR _offset "${_offset} + 2")
+    if(_code GREATER_EQUAL 194 AND _code LESS_EQUAL 244)
+      if(_code LESS 224)
+        set(_remaining 1)
+        math(EXPR _code "${_code} & 31")
+        set(_minimum 128)
+      elseif(_code LESS 240)
+        set(_remaining 2)
+        math(EXPR _code "${_code} & 15")
+        set(_minimum 2048)
+      else()
+        set(_remaining 3)
+        math(EXPR _code "${_code} & 7")
+        set(_minimum 65536)
+      endif()
+      foreach(_unused RANGE 1 ${_remaining})
+        if(_offset GREATER_EQUAL _length)
+          message(FATAL_ERROR "Invalid UTF-8 in project license: ${source}")
+        endif()
+        string(
+          SUBSTRING "${_bytes}"
+                    ${_offset}
+                    2
+                    _hex)
+        math(EXPR _continuation "0x${_hex}")
+        if(_continuation LESS 128 OR _continuation GREATER 191)
+          message(FATAL_ERROR "Invalid UTF-8 in project license: ${source}")
+        endif()
+        math(EXPR _code "(${_code} << 6) | (${_continuation} & 63)")
+        math(EXPR _offset "${_offset} + 2")
+      endforeach()
+      if(_code LESS _minimum
+         OR _code GREATER 1114111
+         OR (_code GREATER_EQUAL 55296 AND _code LESS_EQUAL 57343))
+        message(FATAL_ERROR "Invalid UTF-8 in project license: ${source}")
+      endif()
+    elseif(_code GREATER 127 OR _code EQUAL 0)
+      message(FATAL_ERROR "Invalid UTF-8 in project license: ${source}")
+    endif()
+    if(_code EQUAL 10)
+      string(APPEND _rtf "\\par\n")
+    elseif(_code EQUAL 9)
+      string(APPEND _rtf "\\tab ")
+    elseif(_code LESS 32)
+      message(FATAL_ERROR "Invalid control byte in project license: ${source}")
+    elseif(_code LESS 128)
+      string(ASCII ${_code} _char)
+      if(_char STREQUAL "\\"
+         OR _char STREQUAL "{"
+         OR _char STREQUAL "}")
+        string(APPEND _rtf "\\")
+      endif()
+      string(APPEND _rtf "${_char}")
+    else()
+      if(_code GREATER 65535)
+        math(EXPR _code "${_code} - 65536")
+        math(EXPR _high "55296 + (${_code} >> 10) - 65536")
+        string(APPEND _rtf "\\u${_high}?")
+        math(EXPR _code "56320 + (${_code} & 1023)")
+      endif()
+      if(_code GREATER 32767)
+        math(EXPR _code "${_code} - 65536")
+      endif()
+      string(APPEND _rtf "\\u${_code}?")
+    endif()
+  endwhile()
+  file(WRITE "${destination}" "${_rtf}}")
+endfunction()
+
+# Embedding the project ICO gives the executable its own icon in Explorer and taskbars.
+function(kataglyphis_add_windows_icon target icon)
+  if(NOT WIN32)
+    return()
+  endif()
+  if(NOT TARGET "${target}")
+    message(FATAL_ERROR "kataglyphis_add_windows_icon: target does not exist: ${target}")
+  endif()
+  get_target_property(_type "${target}" TYPE)
+  if(NOT
+     _type
+     STREQUAL
+     "EXECUTABLE")
+    message(FATAL_ERROR "kataglyphis_add_windows_icon: ${target} is not an executable")
+  endif()
+  if(NOT EXISTS "${icon}" OR IS_DIRECTORY "${icon}")
+    message(FATAL_ERROR "kataglyphis_add_windows_icon: icon does not exist: ${icon}")
+  endif()
+  file(
+    READ "${icon}" _header
+    LIMIT 6
+    HEX)
+  string(LENGTH "${_header}" _header_length)
+  if(NOT
+     _header_length
+     EQUAL
+     12)
+    message(FATAL_ERROR "kataglyphis_add_windows_icon: invalid ICO: ${icon}")
+  endif()
+  string(
+    SUBSTRING "${_header}"
+              0
+              8
+              _magic)
+  string(
+    SUBSTRING "${_header}"
+              8
+              4
+              _count)
+  if(NOT
+     _magic
+     STREQUAL
+     "00000100"
+     OR _count STREQUAL "0000")
+    message(FATAL_ERROR "kataglyphis_add_windows_icon: invalid ICO: ${icon}")
+  endif()
+  get_target_property(_prior "${target}" KATAGLYPHIS_WINDOWS_ICON)
+  if(_prior)
+    message(FATAL_ERROR "kataglyphis_add_windows_icon: ${target} already has a project icon")
+  endif()
+  get_filename_component(_icon "${icon}" ABSOLUTE)
+  file(TO_CMAKE_PATH "${_icon}" _icon)
+  if(_icon MATCHES "[\"\r\n]")
+    message(FATAL_ERROR "kataglyphis_add_windows_icon: icon path cannot contain quotes or newlines")
+  endif()
+  set(_resource "${CMAKE_CURRENT_BINARY_DIR}/${target}-icon.rc")
+  set(_resource_text "1 ICON \"${_icon}\"\n")
+  set(_existing_text "")
+  if(EXISTS "${_resource}")
+    file(READ "${_resource}" _existing_text)
+  endif()
+  if(NOT
+     _existing_text
+     STREQUAL
+     _resource_text)
+    file(WRITE "${_resource}" "${_resource_text}")
+  endif()
+  set_source_files_properties("${_resource}" PROPERTIES OBJECT_DEPENDS "${_icon}")
+  target_sources("${target}" PRIVATE "${_resource}")
+  set_property(TARGET "${target}" PROPERTY KATAGLYPHIS_WINDOWS_ICON "${_icon}")
+endfunction()
+
 # Drops vcruntime<ver>_1.dll: the arm64 redist ships it as ARM64EC, which the cross lanes' arch gate refuses.
 function(kataglyphis_arm64_system_runtime_libs out_var)
   set(_libs ${ARGN})
@@ -220,8 +390,10 @@ macro(kataglyphis_cpack_common)
   if(NOT KGCPACK_WELCOME_FILE)
     set(KGCPACK_WELCOME_FILE "${PROJECT_SOURCE_DIR}/docs/packaging/WelcomeFile.txt")
   endif()
+  set(_kgcpack_generate_license_rtf FALSE)
   if(NOT KGCPACK_WIX_LICENSE_RTF)
-    set(KGCPACK_WIX_LICENSE_RTF "${PROJECT_SOURCE_DIR}/LICENSE.rtf")
+    set(KGCPACK_WIX_LICENSE_RTF "${PROJECT_BINARY_DIR}/kataglyphis-license.rtf")
+    set(_kgcpack_generate_license_rtf TRUE)
   endif()
   if(NOT DEFINED KGCPACK_WIX_DEFAULT)
     set(KGCPACK_WIX_DEFAULT OFF)
@@ -247,6 +419,20 @@ macro(kataglyphis_cpack_common)
     endif()
   endforeach()
   unset(_kgcpack_resource)
+
+  file(READ "${KGCPACK_LICENSE_FILE}" _kgcpack_license_text)
+  string(STRIP "${_kgcpack_license_text}" _kgcpack_license_text)
+  string(LENGTH "${_kgcpack_license_text}" _kgcpack_license_length)
+  if(_kgcpack_license_length EQUAL 0)
+    message(FATAL_ERROR "kataglyphis_cpack_common: LICENSE_FILE is empty: ${KGCPACK_LICENSE_FILE}")
+  endif()
+  unset(_kgcpack_license_text)
+  unset(_kgcpack_license_length)
+
+  install(
+    FILES "${KGCPACK_LICENSE_FILE}"
+    DESTINATION "share/licenses/${PROJECT_NAME}"
+    RENAME LICENSE)
 
   # PROJECT_ARCH lets a cross build name its target, not its host.
   if(NOT DEFINED PROJECT_ARCH)
@@ -376,12 +562,14 @@ macro(kataglyphis_cpack_common)
         set(CPACK_WIX_ARCHITECTURE "arm64")
       endif()
 
-      # WiX accepts only real RTF; this synthesis is the fallback for a tree without LICENSE.rtf.
-      if(NOT EXISTS "${KGCPACK_WIX_LICENSE_RTF}")
-        file(
-          WRITE "${KGCPACK_WIX_LICENSE_RTF}"
-          "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Arial;}}\\fs20 This software is licensed under the terms described in the accompanying LICENSE file.\\par}"
-        )
+      if(_kgcpack_generate_license_rtf)
+        set_property(
+          DIRECTORY
+          APPEND
+          PROPERTY CMAKE_CONFIGURE_DEPENDS "${KGCPACK_LICENSE_FILE}")
+        kataglyphis_write_license_rtf("${KGCPACK_LICENSE_FILE}" "${KGCPACK_WIX_LICENSE_RTF}")
+      elseif(NOT EXISTS "${KGCPACK_WIX_LICENSE_RTF}")
+        message(FATAL_ERROR "kataglyphis_cpack_common: WIX_LICENSE_RTF does not exist: ${KGCPACK_WIX_LICENSE_RTF}")
       endif()
       set(CPACK_WIX_LICENSE_RTF "${KGCPACK_WIX_LICENSE_RTF}")
     endif()
@@ -496,6 +684,7 @@ macro(kataglyphis_cpack_common)
   # A macro expands in the caller's scope, so clear every temporary.
   unset(_kgcpack_package_icon)
   unset(_kgcpack_arch_lc)
+  unset(_kgcpack_generate_license_rtf)
   unset(_kgcpack_flags)
   unset(_kgcpack_args)
   unset(KGCPACK_UNPARSED_ARGUMENTS)

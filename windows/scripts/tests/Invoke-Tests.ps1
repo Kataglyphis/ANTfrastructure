@@ -187,17 +187,8 @@ function Get-CoverageTargets {
 # NOT covered: Pester's instrumentation internals; this verifies the saved module report and measured command counts.
 function Get-CoberturaModuleFailure {
     param([Parameter(Mandatory)][string]$ReportPath, [Parameter(Mandatory)][string]$ExpectedClass)
-    $settings = [Xml.XmlReaderSettings]::new()
-    $settings.DtdProcessing = [Xml.DtdProcessing]::Ignore
-    $settings.XmlResolver = $null
-    try {
-        $reader = [Xml.XmlReader]::Create($ReportPath, $settings)
-        try {
-            $document = [xml]::new()
-            $document.XmlResolver = $null
-            $document.Load($reader)
-        } finally { $reader.Dispose() }
-    } catch { return "invalid Cobertura XML: $($_.Exception.Message)" }
+    try { $document = Read-SafeXmlDocument -Path $ReportPath -DtdPolicy Ignore }
+    catch { return "invalid Cobertura XML: $($_.Exception.Message)" }
     if ($document.DocumentElement.Name -ne 'coverage') { return 'Cobertura report has no coverage root' }
     $classes = @($document.SelectNodes('/coverage/packages/package/classes/class'))
     if ($classes.Count -ne 1) { return "expected one Cobertura class, got $($classes.Count)" }

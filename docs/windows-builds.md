@@ -982,7 +982,8 @@ the Git-ignored `logs/windows-build-logs/` directory. Python CI reports and cove
 The repository's `windows/scripts/tests/Invoke-Tests.ps1` writes one parent-run result to
 `logs/windows-tests/summary-<timestamp>-<pid>.json`, including counts, failed and skipped
 suites, the discovery floor, targeted Pester coverage and the exit code. Child suites only
-hand tallies to the parent. Coverage XML for the fifteen measured modules also stays under
+hand tallies to the parent; `-ResultFile` creates its parent directory and fails if it
+cannot write the tally, including in a fresh mutation mirror. Coverage XML for the fifteen measured modules also stays under
 `logs/windows-tests/`; Windows x64 CI uploads the test and coverage reports. The MSIX,
 Slang and wasm-opt module floors are 80%, 65% and 80%, against measured command coverage
 of 233/282, 229/342 and 87/108 respectively. The wasm-opt suite now exercises cached

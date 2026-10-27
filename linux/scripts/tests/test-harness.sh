@@ -94,6 +94,17 @@ _t_probe_file() {
   return "${rc}"
 }
 
+# Real PNG bytes make image staging tests exercise an installable asset.
+t_write_png() {
+  python3 -c 'import struct, sys, zlib
+def chunk(kind, data):
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+width, height = int(sys.argv[2]), int(sys.argv[3])
+header = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+rows = (b"\x00" + b"\xff\x00\x00\xff" * width) * height
+open(sys.argv[1], "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))' "$1" "$2" "$3"
+}
+
 # t_posix_symlinks: true when ln -s makes a link; Git Bash copies the file instead.
 t_posix_symlinks() { _t_probe_file _t_links; }
 _t_links() { ln -s a "$2/b" 2>/dev/null && [ -L "$2/b" ]; }

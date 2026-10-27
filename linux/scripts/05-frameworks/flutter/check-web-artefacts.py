@@ -8,12 +8,16 @@ import hashlib
 import json
 import pathlib
 import re
+import struct
 import sys
 import urllib.parse
+import xml.etree.ElementTree as ET
 
 VERSIONS_ENV = pathlib.Path(__file__).resolve().parents[2] / "01-core" / "versions.env"
 # The generated icons: flutter_launcher_icons writes 16 bits per channel, a browser shows 8.
 ICON_DIRS = ("web", "android/app/src/main/res")
+ANDROID_NS = "http://schemas.android.com/apk/res/android"
+ANDROID_DENSITIES = ("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi")
 
 
 def pins() -> dict[str, str]:
@@ -77,6 +81,34 @@ def check_icons(root: pathlib.Path) -> list[str]:
     ]
 
 
+def check_android_launcher(root: pathlib.Path) -> list[str]:
+    """Check declared Flutter mipmap resources; does not decode pixels or inspect a built APK."""
+    manifest = root / "android/app/src/main/AndroidManifest.xml"
+    if not manifest.is_file():
+        return []
+    try:
+        application = ET.parse(manifest).getroot().find("application")
+    except ET.ParseError as exc:
+        return [f"{manifest.relative_to(root)} is malformed: {exc}"]
+    icon = application.get(f"{{{ANDROID_NS}}}icon", "") if application is not None else ""
+    match = re.fullmatch(r"@mipmap/([a-z][a-z0-9_]*)", icon)
+    if not match:
+        return [f"{manifest.relative_to(root)} needs a supported @mipmap launcher icon; found {icon!r}"]
+    res = manifest.parent / "res"
+    problems = []
+    for density in ANDROID_DENSITIES:
+        png = res / f"mipmap-{density}" / f"{match.group(1)}.png"
+        if not png.is_file():
+            problems.append(f"missing Android launcher icon: {png.relative_to(root)}")
+            continue
+        data = png.read_bytes()
+        if (len(data) < 45 or data[:16] != b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+                or data[-12:] != b"\x00\x00\x00\x00IEND\xaeB`\x82"
+                or 0 in struct.unpack(">II", data[16:24])):
+            problems.append(f"invalid Android launcher PNG: {png.relative_to(root)}")
+    return problems
+
+
 def icon_refs(root: pathlib.Path) -> list[tuple[str, str, str]]:
     """The icons web/manifest.json and web/index.html name: (file, value, path on the site)."""
     refs = []
@@ -120,7 +152,7 @@ def main() -> int:
     if not (root / "pubspec.yaml").is_file():
         print(f"check-web-artefacts: {root} has no pubspec.yaml", file=sys.stderr)
         return 2
-    problems = check_title(root) + check_sqlite(root, pins()) + check_icons(root) + check_icon_paths(root, args.icons_dir.strip("/"))
+    problems = check_title(root) + check_sqlite(root, pins()) + check_icons(root) + check_icon_paths(root, args.icons_dir.strip("/")) + check_android_launcher(root)
     for problem in problems:
         print(f"FAIL: {problem}")
     if not problems:

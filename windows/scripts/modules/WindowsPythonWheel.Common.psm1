@@ -414,6 +414,13 @@ function Get-FreeThreadedWheelFinding {
     } finally { $zip.Dispose() }
 }
 
+function Get-WheelEntryHash {
+    param([Parameter(Mandatory)]$Entry)
+    $stream = $Entry.Open()
+    try { return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($stream)) }
+    finally { $stream.Dispose() }
+}
+
 function Get-WheelMemberDifference {
     <#
     .SYNOPSIS
@@ -428,8 +435,7 @@ function Get-WheelMemberDifference {
         $zip = [System.IO.Compression.ZipFile]::OpenRead($Wheel)
         try {
             foreach ($e in @($zip.Entries | Where-Object { $n = $_.Name; @($Include | Where-Object { $n -like $_ }).Count -gt 0 })) {
-                $s = $e.Open()
-                try { $map[$e.FullName] = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($s)) } finally { $s.Dispose() }
+                $map[$e.FullName] = Get-WheelEntryHash -Entry $e
             }
         } finally { $zip.Dispose() }
         return $map
@@ -448,4 +454,4 @@ Export-ModuleMember -Function Resolve-SharedLinuxScriptFile, Resolve-FreeThreade
     Resolve-PythonLegList, Get-NativeWheelCheck,
     Get-FreeThreadedWheelPlan, Select-FreeThreadedWheel, Add-PythonLibPath, Invoke-FreeThreadedWheelProof,
     Invoke-FreeThreadedWheelVenvProof, Get-TwinInstallArgument, Invoke-TwinDeviceProof, Get-FreeThreadedTwinTable, ConvertTo-PythonDistributionName, Get-FreeThreadedTwinRow, Get-FreeThreadedWheelFinding,
-    Get-WheelMemberDifference
+    Get-WheelMemberDifference, Get-WheelEntryHash

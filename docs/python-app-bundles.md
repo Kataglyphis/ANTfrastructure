@@ -29,6 +29,7 @@ proven by moving the bundle elsewhere and running it again.
   "name": "OrchestrANT",
   "id": "orchestrant",
   "distribution": "OrchestrANT",
+  "license_file": "LICENSE",
   "extras": ["app"],
   "chain_opencv": true,
   "scripts": ["yolo-monitor", "orchestrant-bench", "orchestrant-smoke"],
@@ -39,9 +40,18 @@ proven by moving the bundle elsewhere and running it again.
 }
 ```
 
-`name`, `id`, `distribution`, `extras`, `data_env`, `data_dir` and `self_test` are required.
+`name`, `id`, `distribution`, `extras`, `data_env`, `data_dir`, `license_file` and `self_test` are required.
 The packagers read `description`, `publisher`, `homepage`, `license_file`, `icon`,
 `gui_script` and `msi_upgrade_code`.
+The Linux and Windows builders validate the declared project license before
+resetting an existing bundle, and stage its original text at `LICENSE`. A missing,
+empty or whitespace-only source fails. Linux copies carry
+`lib/app-packaging-license.sh`; Windows copies of `WindowsPythonApp.Common.psm1`
+carry `WindowsIcon.Common.psm1` and `WindowsMsix.Common.psm1`.
+When `icon` is set, the Windows builder compiles it once and links the resource
+into each launcher; an omitted icon retains the old behavior. `WindowsIcon.Common`
+imports `WindowsMsix.Common` and its `WindowsScripts.Shared` companion to decode
+the PNG and reject corrupt or fully transparent images.
 An app that runs GStreamer adds a `gstreamer` block (Linux; [below](#gstreamer)).
 
 What the app itself must do:

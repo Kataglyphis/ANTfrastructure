@@ -25,6 +25,7 @@ param(
     [string]$CertificatePath,
     [string]$CertificatePassword,
     [string]$LogoPath = "images\logo.png",
+    [string]$LicensePath = "LICENSE",
     [string]$ManifestTemplatePath = "packaging\msix\AppxManifest.template.xml",
     [string]$ResourcesDir = "resources",
     [switch]$CreateTestCertificate,
@@ -53,6 +54,12 @@ Open-BuildLog -Context $Context
 function New-PasswordSecureString([string]$Password) {
     if ([string]::IsNullOrWhiteSpace($Password)) { throw "A non-empty -CertificatePassword is required" }
     return ConvertTo-MsixSigningPassword -Password $Password
+}
+
+function Set-RustMsixProjectAssets {
+    param([string]$License, [string]$Logo, [string]$StagingDir)
+    $null = Copy-PackageLicense -Path $License -Destination $StagingDir
+    Write-MsixStageAssets -StagingDir $StagingDir -LogoPath $Logo
 }
 
 # NOTE: Scripting.FileSystemObject COM object may not be available in minimal Windows containers
@@ -149,6 +156,7 @@ try {
     Write-BuildLog -Context $Context -Message "PackageName: $PackageName"
     
     $Workspace = (Resolve-Path $Workspace).Path
+    $projectLicense = Resolve-PackageLicense -Path (Resolve-PathFromRoot -Root $Workspace -Path $LicensePath)
     $Version = ConvertTo-NormalizedVersion $Version
     
     # Join-Path with an absolute second argument yields C:\ws\D:\cache, which cargo creates literally.
@@ -195,10 +203,8 @@ try {
 
         $script:outDir = Join-Path $Workspace $OutputDirectory
         $script:stagingRoot = Join-Path $outDir "staging"
-        $assetsDir = Join-Path $stagingRoot "Assets"
-
         if (Test-Path $stagingRoot) { Remove-Item $stagingRoot -Recurse -Force }
-        New-Item -ItemType Directory -Path $assetsDir -Force | Out-Null
+        New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 
         Write-BuildLog -Context $Context -Message "Copying binary and DLLs..."
         Copy-Item $exePath -Destination $stagingRoot -Force
@@ -211,14 +217,8 @@ try {
             Copy-Item $resourcesSource -Destination (Join-Path $stagingRoot "resources") -Recurse -Force
         }
 
-        $resolvedLogoPath = Join-Path $Workspace $LogoPath
-        if (-not (Test-Path $resolvedLogoPath)) { throw "Logo file not found at $resolvedLogoPath" }
-
-        Write-BuildLog -Context $Context -Message "Copying logos..."
-        Copy-Item $resolvedLogoPath -Destination (Join-Path $assetsDir "StoreLogo.png") -Force
-        Copy-Item $resolvedLogoPath -Destination (Join-Path $assetsDir "Square44x44Logo.png") -Force
-        Copy-Item $resolvedLogoPath -Destination (Join-Path $assetsDir "Square150x150Logo.png") -Force
-        Copy-Item $resolvedLogoPath -Destination (Join-Path $assetsDir "Wide310x150Logo.png") -Force
+        Write-BuildLog -Context $Context -Message "Staging project licence and logos..."
+        Set-RustMsixProjectAssets -License $projectLicense -Logo (Resolve-PathFromRoot -Root $Workspace -Path $LogoPath) -StagingDir $stagingRoot
 
         $resolvedManifestPath = Join-Path $Workspace $ManifestTemplatePath
         if (-not (Test-Path $resolvedManifestPath)) { throw "Manifest template not found: $resolvedManifestPath" }

@@ -10,6 +10,7 @@ param(
     [Parameter(Mandatory)][string]$Bundle,
     [string]$OutDir = '',
     [string]$Formats = 'zip,msi,msix',
+    [string]$OrtWheelDir = '',
     [switch]$SkipTest,
     [string]$WorkDir = ''
 )
@@ -21,9 +22,14 @@ Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsMsix.Common.psm1') -Fo
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsMsix.Signing.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsTargetArch.Common.psm1') -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsPythonApp.Common.psm1') -Force -DisableNameChecking
+foreach ($sibling in 'WindowsMsiLicense.Common', 'WindowsOrtLicense.Common') {
+    Import-Module (Join-Path $PSScriptRoot "..\modules\$sibling.psm1") -DisableNameChecking -ErrorAction Stop
+}
 
 $app = Get-PythonAppConfig -Path (Resolve-PythonAppPath $RepoRoot $Config)
+$licensePath = Resolve-PackageLicense -Path (Get-PythonAppBundleInputPath -App $app -RepoRoot $RepoRoot -Name 'license_file' -Required)
 $Bundle = (Resolve-Path -LiteralPath (Resolve-PythonAppPath $RepoRoot $Bundle)).ProviderPath
+$ortLicenses = Resolve-PythonOrtLicenses -Bundle $Bundle -WheelDir $OrtWheelDir
 $manifest = Get-Content -LiteralPath (Join-Path $Bundle 'bundle.json') -Raw | ConvertFrom-Json -AsHashtable
 # The wheel name's second field is its version: orchestrant-0.0.28-py3-none-any.whl.
 $version = ($manifest['wheel'] -split '-')[1]
@@ -44,10 +50,7 @@ $throwaway = (Test-Elevated) -and [bool](Get-Service -Name cexecsvc -ErrorAction
 Write-Host "$($app['name']) $version from $Bundle"
 
 # The app's icon PNG; the MSI's shortcut and the MSIX's logos both need one.
-function Get-AppIconPng([string]$For) {
-    if (-not $app.ContainsKey('icon') -or -not $app['icon']) { throw "app.json names no icon; $For needs one" }
-    return Resolve-PythonAppPath $RepoRoot $app['icon']
-}
+function Get-AppIconPng([string]$For) { return Get-PythonAppBundleInputPath -App $app -RepoRoot $RepoRoot -Name 'icon' -Required }
 
 function Write-Created([string]$Path, [string]$Note = '') {
     Write-Host "Created: $Path ($([math]::Round((Get-Item -LiteralPath $Path).Length / 1MB)) MB)$Note"
@@ -65,6 +68,13 @@ function Test-StartedFrom([string]$Root, [string]$What) {
     Write-Host "  started from $($What): ok"
 }
 
+function Assert-PythonAppArchiveLicenses([string]$Path, [string]$ArchivePrefix = '') {
+    if ($ortLicenses) {
+        Assert-OrtWheelLicensesInPackage -Path $Path -LicenseDirectory $ortLicenses -Format archive -ArchivePrefix $ArchivePrefix `
+            -ArchiveDirectory 'runtime/Lib/site-packages/onnxruntime'
+    }
+}
+
 function Invoke-ZipPackage {
     $zip = Join-Path $OutDir "$stem.zip"
     if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
@@ -78,6 +88,8 @@ function Invoke-ZipPackage {
     } finally {
         if ($staged -ne $Bundle) { Rename-Item -LiteralPath $staged -NewName (Split-Path $Bundle -Leaf) }
     }
+    Assert-PackageLicense -Path $zip -Pattern "$stem/LICENSE" -LicensePath $licensePath
+    Assert-PythonAppArchiveLicenses -Path $zip -ArchivePrefix $stem
     Write-Created $zip
     if (-not $test) { return }
     $unpacked = New-EmptyWorkDir 'zip-test'
@@ -99,6 +111,9 @@ function Invoke-MsiAppPackage {
     if (-not $wix) { throw 'wix.exe not found under $env:WIX or on PATH; the Windows image installs it' }
     & $wix build -arch $packageArch -pdbtype none -o $msi $wxs
     if ($LASTEXITCODE -ne 0) { throw "wix build failed (exit $LASTEXITCODE)" }
+    $licenseId = Get-WixSourceFileId -WixPath $wxs -SourcePath (Join-Path $Bundle 'LICENSE')
+    Assert-PackageLicense -Path $msi -Pattern $licenseId -LicensePath $licensePath
+    if ($ortLicenses) { Assert-OrtWheelLicensesInPackage -Path $msi -LicenseDirectory $ortLicenses -Format msi -WixPath $wxs }
     Write-Created $msi
     if (-not $test) { return }
     if (-not $throwaway) {
@@ -155,6 +170,8 @@ function Invoke-MsixAppPackage {
     } finally {
         Remove-Item -LiteralPath $pfx -Force
     }
+    Assert-PackageLicense -Path $msix -Pattern 'LICENSE' -LicensePath $licensePath
+    Assert-PythonAppArchiveLicenses -Path $msix
     Write-Created $msix ", signed by a test certificate for $publisher ($(Split-Path $cer -Leaf))"
     if (-not $test) { return }
     $unpacked = New-EmptyWorkDir 'msix-test'

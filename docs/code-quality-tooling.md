@@ -251,6 +251,9 @@ build step checks:
 - every PNG under `web/` and `android/app/src/main/res/` is 8 bits per channel.
   `flutter_launcher_icons` writes 16 bits, and a browser fetched a 123 kB `Icon-192.png` instead
   of 26 kB on every cold load;
+- an Android manifest, when present, names an `@mipmap` launcher with a structurally valid PNG
+  at each of mdpi through xxxhdpi. The source check does not decode pixels, compare visual
+  identity or inspect the built APK; other Android icon configurations fail explicitly;
 - every icon `web/manifest.json` and `web/index.html` name (icon links, `og:image`) is on disk,
   and the manifest's lie in `web/<--icons-dir>/` (default `icons`);
 - with a `web/.htaccess`, so Apache serves the site, nothing is under `web/icons/` or named at
@@ -902,6 +905,12 @@ slug `mutations`. For each recorded entry it makes a literal edit that **neuters
 one guarantee**, runs the named test, and requires the test to FAIL. A mutation
 the tests survive is reported and fails the gate.
 
+Use `python3 docs/scripts/merge_mutation_recipes.py <manifest>` to preview
+adding reviewed recipes; pass `--write` to apply and `--replace <id>` for an
+intentional change to an existing recipe. It checks unique in-repo anchors before
+writing atomically. Run the mutation gate afterwards: an applicable anchor does
+not prove the test catches the mutation.
+
 Consumers can call `.github/workflows/mutation-gates.yml@develop` with a tracked
 `manifest` path and an optional tracked `setup-script`. The shared validator
 rejects missing or empty recipes, absolute or parent-traversal recipe targets,
@@ -935,7 +944,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3732 entries** over **408 distinct test commands**; both digits are
+manifest holds **3848 entries** over **433 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1935,6 +1944,13 @@ fresh mutation mirror can run the actual PowerShell baseline before testing a mu
 
 ## Windows Pester coverage
 
+The shared PE-icon fixture also links actual x64 and ARM64 executables and reads
+their resources. Linux preflight and mutation runners call
+`bash linux/scripts/ensure-pe-icon-test-tools.sh --install-missing` first: it
+reuses existing LLVM/Clang, LLD, Ninja, Rust, Cargo, CMake, Python and PowerShell, and
+installs missing Ubuntu packages only when asked. Missing PowerShell and failed
+installation remain fatal; this fixture does not run Windows executables.
+
 `pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1` measures command coverage
 for fifteen modules, each with a focused Pester suite:
 
@@ -2328,7 +2344,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 992 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1004 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -2339,7 +2355,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **392** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **396** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **1** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.

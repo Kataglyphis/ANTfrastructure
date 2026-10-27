@@ -425,6 +425,31 @@ append_onnx_rocm_isolation_args() {
   rocm_iso_ref+=(--cmake_extra_defines "CMAKE_IGNORE_PREFIX_PATH=${root}")
 }
 
+# The checkout disappears after installation; preserve its own notices, not a possibly different release's files.
+stage_onnx_native_licenses() {
+  local src_dir="${1:?source dir required}" output_dir="${2:?output dir required}" file
+  for file in LICENSE ThirdPartyNotices.txt; do
+    if [[ ! -f "${src_dir}/${file}" || -L "${src_dir}/${file}" || ! -s "${src_dir}/${file}" || ! -r "${src_dir}/${file}" ]]; then
+      printf 'ERROR: ONNX Runtime source license missing, empty, unreadable or not a regular file: %s\n' "${src_dir}/${file}" >&2
+      return 1
+    fi
+  done
+  if [[ -L "${output_dir}/licenses" ]]; then
+    printf 'ERROR: ONNX Runtime license output must not be a symlink: %s\n' "${output_dir}/licenses" >&2
+    return 1
+  fi
+  mkdir -p "${output_dir}/licenses" || return $?
+  for file in LICENSE ThirdPartyNotices.txt; do
+    if [[ -L "${output_dir}/licenses/${file}" ]]; then
+      printf 'ERROR: ONNX Runtime license output must not be a symlink: %s\n' "${output_dir}/licenses/${file}" >&2
+      return 1
+    fi
+  done
+  for file in LICENSE ThirdPartyNotices.txt; do
+    install -m 0644 "${src_dir}/${file}" "${output_dir}/licenses/${file}" || return $?
+  done
+}
+
 # finalize_onnx_native_output <build_dir> <config> <output_dir> <src_dir>: the install tail every native build shares.
 finalize_onnx_native_output() {
   local build_dir="${1:?build dir required}"
@@ -434,6 +459,7 @@ finalize_onnx_native_output() {
 
   verify_onnxruntime_core_header "${output_dir}" "${src_dir}" "${build_dir}"
   copy_onnx_libraries_to_output "${build_dir}" "${build_config}" "${output_dir}"
+  stage_onnx_native_licenses "${src_dir}" "${output_dir}" || return $?
   ensure_onnxruntime_symlink "${output_dir}"
   symlink_output_libraries_into_usr_local "${output_dir}"
 }

@@ -107,6 +107,99 @@ not enumerate transitive dependencies — the apt closure, cargo crates, Python
 wheels. Those come from an image scan; see [`sbom.md`](sbom.md) for how the two
 halves fit together and why neither is sufficient alone.
 
+### Checking delivered package licences
+
+`linux/scripts/verify_package_license.py` checks the **complete supplied text** in
+the named members of a built package. Rules are explicit; repeat `--require` for
+each project or third-party text the consumer has verified against its actual
+payload:
+
+```bash
+python3 third_party/ANTfrastructure/linux/scripts/verify_package_license.py \
+  out/app.deb --require 'opt/app/LICENSE=LICENSE'
+```
+
+The same command accepts directories, tar archives, ZIP/MSIX/APK and wheel files,
+and Debian packages (`dpkg-deb`); MSI and AppImage require `7z`. Flatpak packages
+are read using `flatpak` and `ostree` in a disposable local repository, without
+installation. On a matching Linux architecture, `linux/scripts/06-packaging/verify-native-appimage-license.sh`
+can instead extract the declared license from an AppImage without `7z` or FUSE;
+it rejects a foreign architecture. MSI paths are cabinet file identifiers, not installed paths;
+for multiple embedded cabinets the Python verifier requires `cabinet.cab::file-id`.
+Gzip-compressed notice members such
+as Flutter `NOTICES.Z` are checked after decompression. The test suite plants
+missing, altered, empty and corrupt inputs. This checks only the rules supplied:
+it does not discover linked libraries, prove provenance, or establish
+that all legal obligations have been satisfied. Compare an inventory of the actual
+shipped dependencies and their exact source/build provenance before declaring the
+third-party notices complete; an unrelated wheel's notices do not prove a separately
+built native library's coverage.
+
+Windows consumers can import `windows/scripts/modules/WindowsMsiLicense.Common.psm1`
+and call `Assert-MsiPackageLicense` with the actual MSI, license filename and
+expected text. It reads the MSI File table using Windows Installer COM, requires
+one unique match and checks the resulting cabinet ID through the same Python
+verifier and 7-Zip. For an MSI, `Assert-PackageLicense` maps either that ID or
+an ID from WiX to its embedded cabinet using the File and Media tables; external
+or ambiguous cabinets fail. `Assert-PackageLicense` also checks other supported formats.
+Neither call inventories native or transitive dependencies.
+
+`WindowsOrtLicense.Common.psm1` provides `Copy-OrtWheelLicenses` and
+`Assert-OrtWheelLicensesInPackage`: the former requires the actual DLL's SHA256
+to match exactly one wheel's DLL before copying its original `LICENSE` and
+`ThirdPartyNotices.txt`; the latter checks those texts in an archive or MSI.
+Copies also require `WindowsOrtProvenance.Common.psm1`,
+`WindowsMsiLicense.Common.psm1`, `WindowsPythonWheel.Common.psm1` and their companions. Missing or ambiguous
+matches and missing, empty or duplicate texts fail. This proves that one ORT
+DLL matches the wheel; it does not cover other shipped dependencies.
+The shared Windows Python app packager applies the same check when its runtime
+contains ONNX Runtime: it compares the installed texts to the matched wheel and
+checks their real runtime paths in ZIP, MSI and MSIX. Apps without that runtime
+do not require an ORT wheel.
+
+`linux/scripts/06-packaging/stage-cargo-licenses.py` collects original texts for
+the target-filtered normal Cargo dependency graph after the locked dependencies
+are available offline; copies must carry `cargo_license_tree.py` beside it. Invoke it with `--workspace`, `--root-package`, `--target`,
+`--policy` and a new `--output-dir`. Its version-1 JSON policy maps
+`packages["name@version"].files` to `root` (`package` or `workspace`), `path`,
+`sha256` and `provenance`; an SPDX `AND` expression also needs an explicitly
+reviewed matching `reviewed_expression`. Missing, empty, symlinked or
+hash-mismatched sources fail, and a notice alone cannot stand in for a license.
+The optional `--graph-scope tree-normal-build` runs live `cargo tree` for the
+specified root and target and includes normal and build edges; pass exactly the
+same feature flags as the build. Every selected name and version must resolve to
+one metadata source. The manifest records both the selected IDs and the
+conservative metadata graph, feature flags, Cargo version, compiler host,
+package sources and file hashes. Resolve the graph on each relevant build host;
+cross-target selection on another host does not establish the native host graph.
+The optional `--metadata` input is for test fixtures or analysis and cannot be
+used with tree selection or feature flags. Neither the Cargo graph
+nor this collector proves what was actually linked, covers native dependencies,
+or resolves corresponding-source obligations.
+
+The native ONNX Runtime finalizer now copies `LICENSE` and
+`ThirdPartyNotices.txt` from the checkout it actually builds to the corresponding
+output's `licenses/` directory, before the source tree is removed. A consumer
+must copy that directory with the corresponding native binary; this does not
+assert coverage of other shipped components or retrofit already-published images.
+
+For an existing Linux image with wheels, `linux/scripts/06-packaging/stage-ort-wheel-licenses.py`
+accepts `--wheel-dir`, one or more `--library` paths, `--destination` and a
+target-compatible `--strip` executable. It requires every selected library to
+match the same unique wheel, either byte-for-byte or after stripping its wheel
+copy, before staging both original texts. Copies of the script require
+`ort_census_probe.py` beside it. Verify the staged texts in each final package;
+the caller must still identify every library actually shipped and its other
+dependencies.
+
+`linux/scripts/06-packaging/ort-wheel-licenses.sh` shares bundle library
+selection and archive or native AppImage verification. Its relative layout
+includes `stage-ort-wheel-licenses.py`, `ort_census_probe.py`,
+`verify-native-appimage-license.sh`, `../01-core/platform.sh` and
+`../verify_package_license.py`. Set `ORT_CHAIN_WHEEL_DIR` for a different wheel
+store or `STRIP` for the target architecture's strip tool. Already staged texts
+must still match exactly on repeated runs.
+
 <!-- generated:deps-table:start -->
 
 ## Linux Images (`ghcr.io/kataglyphis/kataglyphis_beschleuniger`)

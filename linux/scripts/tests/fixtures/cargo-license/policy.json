@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "packages": {
+    "app@1.0.0": {"files": [{"root": "workspace", "path": "LICENSE", "sha256": "@APP_SHA@", "provenance": "workspace commit abc"}]},
+    "crate@1.2.0": {"reviewed_expression": "MIT AND OFL-1.1", "files": [{"root": "package", "path": "licenses/OFL.txt", "sha256": "@FONT_SHA@", "provenance": "crate archive 1.2.0"}]}
+  }
+}

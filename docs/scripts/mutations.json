@@ -1213,7 +1213,7 @@
   "find": "  sccache \"$@\" 2>\"${_err}\" 9>&-\n  _rc2=$?",
   "replace": "  _rc2=1  # retry removed",
   "test": "bash linux/scripts/tests/test-sccache-launcher.sh",
-  "why": "YB: the ENOENT class is intermittent, so one retry keeps the cache entry instead of bypassing it -- thousands of units per chain"
+  "why": "Transient cache failures must be retried once while the server cannot hold the compile slot."
  },
  {
   "id": "artifact-parity.completeness-check",
@@ -14801,7 +14801,7 @@
   "find": "    _dartdoc_build_host_venv \"${requirements}\" || return 1\n",
   "replace": "    err \"no parser\"\n",
   "test": "bash linux/scripts/tests/test-dartdoc-python.sh",
-  "why": "a workstation without the image (OmniAccelerANT's documented generate-docs.sh run) still needs the venv"
+  "why": "A workstation without the pinned parser must provision the isolated host environment."
  },
  {
   "id": "lib.dartdoc-python-pin-required",
@@ -18454,10 +18454,10 @@
  {
   "id": "package.bundle-desktop-icon",
   "target": "linux/scripts/lib/app-packaging.sh",
-  "find": "    cp \"$6\" \"$7\"",
-  "replace": "    :",
+  "find": "  cp \"$icon\" \"$7\"",
+  "replace": "  :",
   "test": "bash linux/scripts/tests/test-app-packaging-bundle-facts.sh",
-  "why": "The shared desktop staging operation must copy a provided icon to the requested destination."
+  "why": "Packaged icon must preserve source bytes."
  },
  {
   "id": "package.bundle-hidden-files",
@@ -29857,6 +29857,158 @@
   "why": "relative Windows tool projects must resolve before uv reads inherited settings"
  },
  {
+  "id": "packaging.archive-tar-project-license",
+  "target": "linux/scripts/06-packaging/package_archive.sh",
+  "find": "tar -C \"$ArchiveStage\" -czvf \"$ArchiveName\" \"$Binary\" LICENSE",
+  "replace": "tar -C \"$ArchiveStage\" -czvf \"$ArchiveName\" \"$Binary\"",
+  "test": "bash linux/scripts/tests/test-package-archive.sh",
+  "why": "Archive must carry project license."
+ },
+ {
+  "id": "packaging.archive-bundle-project-license",
+  "target": "linux/scripts/06-packaging/package_archive.sh",
+  "find": "    app_packaging_stage_project_license \"$LicenseFile\" \"$Stage\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-package-archive.sh",
+  "why": "All bundle formats must carry project license."
+ },
+ {
+  "id": "packaging.project-license-rejects-empty",
+  "target": "linux/scripts/lib/app-packaging-license.sh",
+  "find": "  if [[ ! -f \"$source\" || ! -s \"$source\" || ! -r \"$source\" ]] || ! LC_ALL=C grep -q '[^[:space:]]' \"$source\"; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-app-packaging-bundle-facts.sh",
+  "why": "A missing, empty or whitespace-only project license must fail."
+ },
+ {
+  "id": "packaging.project-license-staging",
+  "target": "linux/scripts/lib/app-packaging-license.sh",
+  "find": "  install -m 0644 \"$source\" \"$destination/LICENSE\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-app-packaging-bundle-facts.sh",
+  "why": "Staging must copy source license bytes."
+ },
+ {
+  "id": "packaging.project-license-companion",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "source \"${_APP_PACKAGING_DIR}/app-packaging-license.sh\" || return $?",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-app-packaging-bundle-facts.sh",
+  "why": "Copied packaging library must fail if its license companion is missing."
+ },
+ {
+  "id": "package.desktop-icon-requires-png",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "  if [[ ! -r \"$icon\" || ! -s \"$icon\" ]] || [[ \"$(head -c 16 \"$icon\" | od -An -tx1 | tr -d ' \\n')\" != '89504e470d0a1a0a0000000d49484452' ]] || [[ \"$(tail -c 12 \"$icon\" | od -An -tx1 | tr -d ' \\n')\" != '0000000049454e44ae426082' ]]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-app-packaging-bundle-facts.sh",
+  "why": "Missing, corrupt and truncated project icons must fail."
+ },
+ {
+  "id": "package.desktop-icon-valid-dimensions",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "  [[ \"$dimensions\" =~ ^[1-9][0-9]*x[1-9][0-9]*$ ]] || { echo \"Error: project icon has invalid dimensions: $icon\" >&2; return 1; }",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-app-packaging-bundle-facts.sh",
+  "why": "An icon with zero dimensions must fail."
+ },
+ {
+  "id": "packaging.cpack-installs-license",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "    RENAME LICENSE)",
+  "replace": "    RENAME LICENSE.mutant)",
+  "test": "bash linux/scripts/tests/test-cmake-package-license.sh",
+  "why": "Every CPack output must contain the actual project license."
+ },
+ {
+  "id": "packaging.cpack-wix-actual-license",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "        kataglyphis_write_license_rtf(\"${KGCPACK_LICENSE_FILE}\" \"${KGCPACK_WIX_LICENSE_RTF}\")",
+  "replace": "        file(WRITE \"${KGCPACK_WIX_LICENSE_RTF}\" \"PLACEHOLDER\")",
+  "test": "bash linux/scripts/tests/test-cmake-package-license.sh",
+  "why": "WiX must display the real terms rather than a placeholder."
+ },
+ {
+  "id": "windows-lane.package-license-copies",
+  "target": "windows/scripts/modules/WindowsMsix.Common.psm1",
+  "find": "  Copy-Item -LiteralPath $source -Destination $target -Force -ErrorAction Stop",
+  "replace": "  $null = $target",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PackageLicense.Portable.Tests.ps1 -ResultFile logs/code-quality/package-license-mutation.json",
+  "why": "Windows package staging must copy the complete project text."
+ },
+ {
+  "id": "packaging.license-verifier-full-text",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "and expected in content:",
+  "replace": "and True:",
+  "test": "bash linux/scripts/tests/test-package-license-verifier.sh",
+  "why": "A named file containing different text cannot pass the verifier."
+ },
+ {
+  "id": "packaging.license-verifier-every-rule",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "return [pattern for (pattern, _), matched in zip(rules, found, strict=True) if not matched]",
+  "replace": "return []",
+  "test": "bash linux/scripts/tests/test-package-license-verifier.sh",
+  "why": "Every declared project and dependency rule must pass."
+ },
+ {
+  "id": "packaging.license-verifier-zip-symlinks",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "and not stat.S_ISLNK(mode) and wanted(name, rules):",
+  "replace": "and wanted(name, rules):",
+  "test": "bash linux/scripts/tests/test-package-license-verifier.sh",
+  "why": "A ZIP symlink cannot replace a delivered regular license file."
+ },
+ {
+  "id": "ort-chain.onnx-native-license-finalizer-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "  stage_onnx_native_licenses \"${src_dir}\" \"${output_dir}\" || return $?",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-onnx-native-licenses.sh",
+  "why": "Every CPU and GPU native build must stage checked-out notices."
+ },
+ {
+  "id": "ort-chain.onnx-native-license-finalizer-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "  stage_onnx_native_licenses \"${src_dir}\" \"${output_dir}\" || return $?",
+  "replace": "  stage_onnx_native_licenses \"${src_dir}\" \"${output_dir}\" || true",
+  "test": "bash linux/scripts/tests/test-onnx-native-licenses.sh",
+  "why": "Missing license or copy failure must prevent publication."
+ },
+ {
+  "id": "ort-chain.onnx-native-license-require-source",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "    if [[ ! -f \"${src_dir}/${file}\" || -L \"${src_dir}/${file}\" || ! -s \"${src_dir}/${file}\" || ! -r \"${src_dir}/${file}\" ]]; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-onnx-native-licenses.sh",
+  "why": "Missing, empty or substituted checkout files must fail."
+ },
+ {
+  "id": "ort-chain.onnx-native-license-copy-notices",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "  for file in LICENSE ThirdPartyNotices.txt; do\n    install -m 0644 \"${src_dir}/${file}\" \"${output_dir}/licenses/${file}\" || return $?\n  done",
+  "replace": "  for file in LICENSE; do\n    install -m 0644 \"${src_dir}/${file}\" \"${output_dir}/licenses/${file}\" || return $?\n  done",
+  "test": "bash linux/scripts/tests/test-onnx-native-licenses.sh",
+  "why": "Project license and upstream third-party notices must both be retained."
+ },
+ {
+  "id": "ort-chain.onnx-native-license-output-directory-symlink",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "  if [[ -L \"${output_dir}/licenses\" ]]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-onnx-native-licenses.sh",
+  "why": "A symlinked output directory must be refused."
+ },
+ {
+  "id": "ort-chain.onnx-native-license-output-file-symlink",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "    if [[ -L \"${output_dir}/licenses/${file}\" ]]; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-onnx-native-licenses.sh",
+  "why": "A symlinked output file must be refused."
+ },
+ {
   "id": "windows-lane.result-file-parent",
   "target": "windows/scripts/tests/Invoke-Tests.ps1",
   "find": "    if ($resultParent) { $null = New-Item -ItemType Directory -Force -Path $resultParent -ErrorAction Stop }",
@@ -29871,5 +30023,781 @@
   "replace": "    :",
   "test": "bash linux/scripts/tests/test-ordered-jobs-lifecycle.sh",
   "why": "A signal-interrupted wait must not replace a just-finished command's real exit status."
+ },
+ {
+  "id": "windows-lane.msix-project-logo",
+  "target": "windows/scripts/modules/WindowsMsix.Common.psm1",
+  "find": "  if ($GenerateTransparentLogos) {",
+  "replace": "  if ($true) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only MsixLogo.Portable.Tests.ps1 -ResultFile logs/code-quality/msix-logo-mutation.json",
+  "why": "A selected project logo must not be replaced with transparent placeholders."
+ },
+ {
+  "id": "flutter.android-launcher-gate",
+  "target": "linux/scripts/05-frameworks/flutter/check-web-artefacts.py",
+  "find": " + check_android_launcher(root)",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-check-web-artefacts.sh",
+  "why": "A missing or corrupt Android launcher must fail the shared Flutter gate."
+ },
+ {
+  "id": "flutter.android-launcher-all-densities",
+  "target": "linux/scripts/05-frameworks/flutter/check-web-artefacts.py",
+  "find": "ANDROID_DENSITIES = (\"mdpi\", \"hdpi\", \"xhdpi\", \"xxhdpi\", \"xxxhdpi\")",
+  "replace": "ANDROID_DENSITIES = (\"mdpi\", \"xhdpi\", \"xxhdpi\", \"xxxhdpi\")",
+  "test": "bash linux/scripts/tests/test-check-web-artefacts.sh",
+  "why": "A missing standard Android icon density must not pass."
+ },
+ {
+  "id": "windows-lane.wix-variable-forwarding",
+  "target": "windows/scripts/modules/WindowsMsix.Common.psm1",
+  "find": "  $wixArgs += @(Get-WixVariableArguments -Variables $WixVariables)",
+  "replace": "  $null = $WixVariables",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WixVariables.Portable.Tests.ps1 -ResultFile logs/code-quality/wix-variables-mutation.json",
+  "why": "WiX must receive the selected project icon and other validated variables without losing argument boundaries."
+ },
+ {
+  "id": "rust.cargo-license-source-digest",
+  "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
+  "find": "if expected_digest and digest != expected_digest:",
+  "replace": "if False and expected_digest and digest != expected_digest:",
+  "test": "bash linux/scripts/tests/test-stage-cargo-licenses.sh",
+  "why": "A policy source whose hash differs from the reviewed original must fail."
+ },
+ {
+  "id": "rust.cargo-license-and-review",
+  "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
+  "find": "if not extras or entry.get(\"reviewed_expression\") != license_expression:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-stage-cargo-licenses.sh",
+  "why": "An AND license needs an explicit reviewed expression and sources."
+ },
+ {
+  "id": "rust.cargo-license-source-nonempty",
+  "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
+  "find": "if not data.strip() or len(data) > MAX_FILE_BYTES:",
+  "replace": "if len(data) > MAX_FILE_BYTES:",
+  "test": "bash linux/scripts/tests/test-stage-cargo-licenses.sh",
+  "why": "Empty license texts must not satisfy an inventory."
+ },
+ {
+  "id": "rust.cargo-license-notice-not-text",
+  "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
+  "find": "not Path(relative).name.lower().startswith(\"notice\")",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-stage-cargo-licenses.sh",
+  "why": "A notice alone must not be accepted as a license text."
+ },
+ {
+  "id": "packaging.python-bundle-license-required",
+  "target": "linux/scripts/06-packaging/python-app-bundle.sh",
+  "find": "app_packaging_validate_project_license \"${LICENSE_FILE}\" || err \"the Python app license is required\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-python-app-bundle-license.sh",
+  "why": "A missing license must stop before deleting an existing bundle."
+ },
+ {
+  "id": "packaging.python-bundle-license-staging",
+  "target": "linux/scripts/06-packaging/python-app-bundle.sh",
+  "find": "app_packaging_stage_project_license \"${LICENSE_FILE}\" \"${BUNDLE}\" || err \"could not stage the Python app license\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-python-app-bundle-license.sh",
+  "why": "Every Python app bundle must contain the original project license."
+ },
+ {
+  "id": "rust.cargo-license-atomic-noreplace",
+  "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
+  "find": "if rename(-100, os.fsencode(staging), -100, os.fsencode(output), 1) != 0:",
+  "replace": "if rename(-100, os.fsencode(staging), -100, os.fsencode(output), 0) != 0:",
+  "test": "python3 linux/scripts/tests/test_stage_cargo_publish.py",
+  "why": "Publishing a license inventory must not overwrite a concurrently created destination."
+ },
+ {
+  "id": "package.cmake-pe-icon-source",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "  target_sources(\"${target}\" PRIVATE \"${_resource}\")",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-windows-icon-pe.sh",
+  "why": "Both x64 and ARM64 PE executables must contain their configured icon."
+ },
+ {
+  "id": "package.rust-pe-icon-names",
+  "target": "shared/rust/windows_icon.rs",
+  "find": "    let resource = dir.join(format!(\"{binary}-icon.res\"));",
+  "replace": "    let resource = dir.join(\"project-icon.res\");",
+  "test": "bash linux/scripts/tests/test-windows-icon-pe.sh",
+  "why": "Different Cargo binary targets must not overwrite each other's icon resources."
+ },
+ {
+  "id": "package.pe-test-setup-failfast",
+  "target": "linux/scripts/ensure-pe-icon-test-tools.sh",
+  "find": "  pe_icon_as_root apt-get update || return $?",
+  "replace": "  pe_icon_as_root apt-get update",
+  "test": "bash linux/scripts/tests/test-pe-icon-tool-setup.sh",
+  "why": "Failed apt updates must not continue into installation."
+ },
+ {
+  "id": "windows-lane.python-licence-reset-order",
+  "target": "windows/scripts/python/New-PythonAppBundle.ps1",
+  "find": "    $license = Resolve-PackageLicense -Path (Get-PythonAppBundleInputPath -App $App -RepoRoot $RepoRoot -Name 'license_file' -Required)\n    Initialize-PythonAppDirectory -Path $Bundle -Empty",
+  "replace": "    Initialize-PythonAppDirectory -Path $Bundle -Empty\n    $license = Resolve-PackageLicense -Path (Get-PythonAppBundleInputPath -App $App -RepoRoot $RepoRoot -Name 'license_file' -Required)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleStaging.Tests.ps1 -ResultFile logs/code-quality/python-app-icon-mutation.json",
+  "why": "Invalid license inputs must fail before clearing an existing bundle."
+ },
+ {
+  "id": "windows-lane.python-launcher-icon-link",
+  "target": "windows/scripts/modules/WindowsPythonApp.Common.psm1",
+  "find": "$script:LauncherSource /link /SUBSYSTEM:CONSOLE @icon",
+  "replace": "$script:LauncherSource /link /SUBSYSTEM:CONSOLE",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleStaging.Tests.ps1 -ResultFile logs/code-quality/python-app-icon-mutation.json",
+  "why": "The linker must receive the icon resource after its linker options."
+ },
+ {
+  "id": "windows-lane.python-bundle-icon-wiring",
+  "target": "windows/scripts/python/New-PythonAppBundle.ps1",
+  "find": " -IconResource $launcherIcon)",
+  "replace": ")",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleStaging.Tests.ps1 -ResultFile logs/code-quality/python-app-icon-mutation.json",
+  "why": "The bundle driver must forward the generated icon to its launchers."
+ },
+ {
+  "id": "windows-lane.icon-compiler-exit-status",
+  "target": "windows/scripts/modules/WindowsIcon.Common.psm1",
+  "find": "        if ($status -ne 0) { throw \"Icon resource compiler failed with exit $status\" }",
+  "replace": "        $null = $status",
+  "test": "bash linux/scripts/tests/test-windows-icon-pe.sh",
+  "why": "A failed resource compiler must not pass even if it leaves output bytes."
+ },
+ {
+  "id": "windows-lane.msi-license-unique",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "    if ($matchingRows.Count -ne 1) { throw \"MSI file name '$FileName' matched $($matchingRows.Count) rows; expected exactly one\" }",
+  "replace": "    if ($matchingRows.Count -eq 0) { throw \"MSI file name '$FileName' matched $($matchingRows.Count) rows; expected exactly one\" }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-license-mutation.json",
+  "why": "An ambiguous MSI filename must fail instead of choosing one row."
+ },
+ {
+  "id": "windows-lane.msi-license-long-name",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "        $names = @([string]$_.FileName -split '\\|', 2)",
+  "replace": "        $names = @([string]$_.FileName)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-license-mutation.json",
+  "why": "Short and long names must both match exactly."
+ },
+ {
+  "id": "windows-lane.msi-license-identifier",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "    if ($Id -notmatch '^[A-Za-z_][A-Za-z0-9_.]*$') { throw \"invalid MSI file identifier: $Id\" }",
+  "replace": "    $null = $Id",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-license-mutation.json",
+  "why": "MSI identifiers may not become wildcard patterns."
+ },
+ {
+  "id": "windows-lane.msi-license-verdict",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "    if ($LASTEXITCODE -ne 0) { throw \"package license verification failed for '$Pattern' (exit $LASTEXITCODE)\" }",
+  "replace": "    $null = $LASTEXITCODE",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-license-mutation.json",
+  "why": "The shared verifier's nonzero status must fail the package."
+ },
+ {
+  "id": "windows-lane.msi-license-dynamic-id",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "    $id = Get-MsiLicenseFileId -Path $Path -FileName $FileName",
+  "replace": "    $id = 'payloadFile109'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-license-mutation.json",
+  "why": "The cabinet identifier must come from this MSI, never a release-specific number."
+ },
+ {
+  "id": "packaging.license-verifier-flatpak-dispatch",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "elif path.suffix.lower() == \".flatpak\":",
+  "replace": "elif path.suffix.lower() == \".flatpak-mutant\":",
+  "test": "bash linux/scripts/tests/test-package-license-verifier.sh",
+  "why": "Flatpak inputs must reach the isolated artifact reader."
+ },
+ {
+  "id": "packaging.license-verifier-flatpak-import",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "subprocess.run([\"flatpak\", \"build-import-bundle\", str(repo), str(path.resolve())], check=True, capture_output=True)",
+  "replace": "subprocess.run([\"flatpak\", \"build-import-bundle\", str(repo), str(path.resolve())], check=False, capture_output=True)",
+  "test": "bash linux/scripts/tests/test-package-license-verifier.sh",
+  "why": "A failed Flatpak import must not be treated as a valid package."
+ },
+ {
+  "id": "packaging.license-verifier-flatpak-unique-ref",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "if len(refs) != 1 or not refs[0].startswith(\"app/\"):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-package-license-verifier.sh",
+  "why": "A Flatpak must produce exactly one application reference."
+ },
+ {
+  "id": "windows-lane.icon-decode",
+  "target": "windows/scripts/modules/WindowsIcon.Common.psm1",
+  "find": "    $decoded = Read-MsixLogo -Path $PngPath\n    $decoded.Dispose()",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsIcon.Portable.Tests.ps1 -ResultFile logs/test-results/icon-validation-mutation.json",
+  "why": "Icon conversion must reject images the shared decoder rejects."
+ },
+ {
+  "id": "windows-lane.icon-transparency-verdict",
+  "target": "windows/scripts/modules/WindowsMsix.Common.psm1",
+  "find": "  if (-not $IsPng -or -not $IsVisible) { throw \"MSIX logo must be a visible PNG: $Path\" }",
+  "replace": "  if (-not $IsPng) { throw \"MSIX logo must be a visible PNG: $Path\" }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsIcon.Portable.Tests.ps1 -ResultFile logs/test-results/icon-validation-mutation.json",
+  "why": "A transparent image cannot satisfy the shared logo verdict."
+ },
+ {
+  "id": "windows-lane.icon-transparency-wiring",
+  "target": "windows/scripts/modules/WindowsMsix.Common.psm1",
+  "find": "-IsVisible (Test-MsixImageVisible -Image $logo)",
+  "replace": "-IsVisible $true",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsIcon.Portable.Tests.ps1 -ResultFile logs/test-results/icon-validation-mutation.json",
+  "why": "The decoder must pass measured visibility into the shared verdict."
+ },
+ {
+  "id": "packaging.python-app-tar-license",
+  "target": "linux/scripts/06-packaging/python-app-package.sh",
+  "find": "  verify_python_app_package_license \"${OUT_DIR}/${name}.tar.gz\" \"${name}/LICENSE\" || return $?",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-python-app-package-licenses.sh",
+  "why": "The tar must contain the complete project license even when self-tests are disabled."
+ },
+ {
+  "id": "packaging.python-app-deb-license",
+  "target": "linux/scripts/06-packaging/python-app-package.sh",
+  "find": "  verify_python_app_package_license \"${output}\" \"opt/${APP_ID}/LICENSE\" || return $?",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-python-app-package-licenses.sh",
+  "why": "The actual deb payload must contain the complete project license."
+ },
+ {
+  "id": "packaging.python-app-appimage-license",
+  "target": "linux/scripts/06-packaging/python-app-package.sh",
+  "find": "  bash \"${SCRIPT_DIR}/verify-native-appimage-license.sh\" \"${output}\" \"${UNAME_ARCH}\" \"usr/lib/${APP_ID}/LICENSE\" \"${LICENSE_FILE}\" || return $?",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-python-app-package-licenses.sh",
+  "why": "The built native AppImage must be checked by the shared extractor."
+ },
+ {
+  "id": "packaging.python-app-license-source",
+  "target": "linux/scripts/06-packaging/python-app-package.sh",
+  "find": "app_packaging_validate_project_license \"${LICENSE_FILE}\" || err \"the Python app license is required\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-python-app-package-licenses.sh",
+  "why": "A missing or empty source license must fail before an artifact is created."
+ },
+ {
+  "id": "packaging.native-appimage-license-verdict",
+  "target": "linux/scripts/06-packaging/verify-native-appimage-license.sh",
+  "find": "  python3 \"${script_dir}/../verify_package_license.py\" squashfs-root --require \"${entry}=${license}\"",
+  "replace": "  true",
+  "test": "bash linux/scripts/tests/test-verify-native-appimage-license.sh",
+  "why": "Extracting an AppImage without checking its license cannot certify its payload."
+ },
+ {
+  "id": "windows-lane.rust-msix-license",
+  "target": "windows/scripts/rust/New-MsixPackage.ps1",
+  "find": "    $null = Copy-PackageLicense -Path $License -Destination $StagingDir",
+  "replace": "    $null = $License",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only RustMsix.ProjectAssets.Tests.ps1 -ResultFile logs/test-results/rust-msix-mutation.json",
+  "why": "The Rust MSIX must contain the original project license."
+ },
+ {
+  "id": "windows-lane.rust-msix-logo",
+  "target": "windows/scripts/rust/New-MsixPackage.ps1",
+  "find": "    Write-MsixStageAssets -StagingDir $StagingDir -LogoPath $Logo",
+  "replace": "    Write-MsixStageAssets -StagingDir $StagingDir -LogoPath 'wrong.png'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only RustMsix.ProjectAssets.Tests.ps1 -ResultFile logs/test-results/rust-msix-mutation.json",
+  "why": "The Rust MSIX must render the configured logo."
+ },
+ {
+  "id": "windows-lane.rust-msix-dispatch",
+  "target": "windows/scripts/rust/New-MsixPackage.ps1",
+  "find": "        Set-RustMsixProjectAssets -License $projectLicense -Logo (Resolve-PathFromRoot -Root $Workspace -Path $LogoPath) -StagingDir $stagingRoot",
+  "replace": "        $null = $projectLicense",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only RustMsix.ProjectAssets.Tests.ps1 -ResultFile logs/test-results/rust-msix-mutation.json",
+  "why": "The real Rust package script must call its license and logo staging helper."
+ },
+ {
+  "id": "packaging.native-appimage-license-path",
+  "target": "linux/scripts/06-packaging/verify-native-appimage-license.sh",
+  "find": "case \"$part\" in .|..)",
+  "replace": "case \"$part\" in impossible_literal)",
+  "test": "bash linux/scripts/tests/test-verify-native-appimage-license.sh",
+  "why": "An AppImage entry must not traverse outside the extracted payload."
+ },
+ {
+  "id": "rust.cargo-tree-build-edges",
+  "target": "linux/scripts/06-packaging/cargo_license_tree.py",
+  "find": "\"normal,build\",",
+  "replace": "\"normal\",",
+  "test": "bash linux/scripts/tests/test-cargo-license-tree.sh",
+  "why": "The selected Cargo tree must retain build dependencies and proc macros."
+ },
+ {
+  "id": "rust.cargo-tree-ambiguous-source",
+  "target": "linux/scripts/06-packaging/cargo_license_tree.py",
+  "find": "if len(matches) != 1:",
+  "replace": "if not matches:",
+  "test": "bash linux/scripts/tests/test-cargo-license-tree.sh",
+  "why": "A package name and version must resolve to exactly one metadata source."
+ },
+ {
+  "id": "rust.cargo-tree-root-match",
+  "target": "linux/scripts/06-packaging/cargo_license_tree.py",
+  "find": "if index == 0 and package[\"id\"] != roots[0][\"id\"]:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-cargo-license-tree.sh",
+  "why": "The live Cargo tree must start at the requested workspace package."
+ },
+ {
+  "id": "rust.cargo-tree-fixture-refusal",
+  "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
+  "find": "if args.metadata and (args.graph_scope != \"metadata-normal\" or feature_args):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-cargo-license-tree.sh",
+  "why": "Fixture metadata cannot stand in for a live target-filtered Cargo tree."
+ },
+ {
+  "id": "package.pe-setup-requires-cargo",
+  "target": "linux/scripts/ensure-pe-icon-test-tools.sh",
+  "find": "  if ! command -v cargo >/dev/null; then echo cargo; fi",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-pe-icon-tool-setup.sh",
+  "why": "Offline Cargo fixtures require Cargo independently of rustc."
+ },
+ {
+  "id": "windows-lane.wix-license-source-unique",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "    if ($matched.Count -ne 1) { throw \"WiX source '$source' matched $($matched.Count) files; expected exactly one\" }",
+  "replace": "    if ($matched.Count -eq 0) { throw \"WiX source '$source' matched $($matched.Count) files; expected exactly one\" }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-license-mutation.json",
+  "why": "Reject duplicate source matches."
+ },
+ {
+  "id": "windows-lane.wix-license-source-absolute",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "        [IO.Path]::IsPathFullyQualified($candidate) -and\n            [string]::Equals([IO.Path]::GetFullPath($candidate), $source, [StringComparison]::OrdinalIgnoreCase)",
+  "replace": "        [IO.Path]::GetFileName($candidate) -eq [IO.Path]::GetFileName($source)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-license-mutation.json",
+  "why": "Only absolute exact source paths can select a package entry."
+ },
+ {
+  "id": "windows-lane.wix-license-dtd",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "    $document = Read-SafeXmlDocument -Path $wix -DtdPolicy Prohibit",
+  "replace": "    $document = Read-SafeXmlDocument -Path $wix -DtdPolicy Ignore",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-license-mutation.json",
+  "why": "Prohibit DTDs in WiX source."
+ },
+ {
+  "id": "windows-lane.python-package-zip-license",
+  "target": "windows/scripts/python/New-PythonAppPackage.ps1",
+  "find": "    Assert-PackageLicense -Path $zip -Pattern \"$stem/LICENSE\" -LicensePath $licensePath",
+  "replace": "    $null = $zip",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.PackageLicense.Tests.ps1 -ResultFile logs/code-quality/python-package-license-mutation.json",
+  "why": "Verify project license in built ZIP."
+ },
+ {
+  "id": "windows-lane.python-package-msi-license",
+  "target": "windows/scripts/python/New-PythonAppPackage.ps1",
+  "find": "    Assert-PackageLicense -Path $msi -Pattern $licenseId -LicensePath $licensePath",
+  "replace": "    $null = $msi",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.PackageLicense.Tests.ps1 -ResultFile logs/code-quality/python-package-license-mutation.json",
+  "why": "Verify project license in built MSI."
+ },
+ {
+  "id": "windows-lane.python-package-msix-license",
+  "target": "windows/scripts/python/New-PythonAppPackage.ps1",
+  "find": "    Assert-PackageLicense -Path $msix -Pattern 'LICENSE' -LicensePath $licensePath",
+  "replace": "    $null = $msix",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.PackageLicense.Tests.ps1 -ResultFile logs/code-quality/python-package-license-mutation.json",
+  "why": "Verify project license in built MSIX."
+ },
+ {
+  "id": "windows-lane.python-package-msi-source",
+  "target": "windows/scripts/python/New-PythonAppPackage.ps1",
+  "find": "    $licenseId = Get-WixSourceFileId -WixPath $wxs -SourcePath (Join-Path $Bundle 'LICENSE')",
+  "replace": "    $licenseId = 'f1'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.PackageLicense.Tests.ps1 -ResultFile logs/code-quality/python-package-license-mutation.json",
+  "why": "Map the MSI cabinet entry from the current WiX source."
+ },
+ {
+  "id": "python.mutation-merge-anchor-unique",
+  "target": "docs/scripts/merge_mutation_recipes.py",
+  "find": "    if count != 1:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-merge-mutation-recipes.sh",
+  "why": "A stale or ambiguous mutation anchor must not be written."
+ },
+ {
+  "id": "python.mutation-merge-explicit-replacement",
+  "target": "docs/scripts/merge_mutation_recipes.py",
+  "find": "            if name not in updates:",
+  "replace": "            if False:",
+  "test": "bash linux/scripts/tests/test-merge-mutation-recipes.sh",
+  "why": "Existing recipes cannot be overwritten without an explicit ID."
+ },
+ {
+  "id": "python.mutation-merge-target-containment",
+  "target": "docs/scripts/merge_mutation_recipes.py",
+  "find": "    if not target.is_relative_to(root):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-merge-mutation-recipes.sh",
+  "why": "A symlink must not redirect mutation anchor validation outside the checkout."
+ },
+ {
+  "id": "rust.cargo-tree-host-unique",
+  "target": "linux/scripts/06-packaging/cargo_license_tree.py",
+  "find": "or len(hosts) != 1",
+  "replace": "or len(hosts) == 0",
+  "test": "bash linux/scripts/tests/test-cargo-license-tree.sh",
+  "why": "The recorded compiler host must be unambiguous."
+ },
+ {
+  "id": "windows-lane.ort-license-match-dll",
+  "target": "windows/scripts/modules/WindowsOrtLicense.Common.psm1",
+  "find": "            if ((Get-WheelEntryHash -Entry $dll) -ceq $digest) { $matchingWheels.Add($wheel) }",
+  "replace": "            $matchingWheels.Add($wheel)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/ort-wheel-licenses-mutation.json",
+  "why": "Keep wheel provenance and complete installed license texts fail-closed."
+ },
+ {
+  "id": "windows-lane.ort-license-unique-wheel",
+  "target": "windows/scripts/modules/WindowsOrtLicense.Common.psm1",
+  "find": "    if ($matchingWheels.Count -ne 1) { throw \"ORT DLL '$OrtDll' matched $($matchingWheels.Count) wheels in '$WheelDir'; expected one\" }",
+  "replace": "    if ($matchingWheels.Count -eq 0) { throw \"ORT DLL '$OrtDll' matched $($matchingWheels.Count) wheels in '$WheelDir'; expected one\" }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/ort-wheel-licenses-mutation.json",
+  "why": "Keep wheel provenance and complete installed license texts fail-closed."
+ },
+ {
+  "id": "windows-lane.ort-license-unique-entry",
+  "target": "windows/scripts/modules/WindowsOrtLicense.Common.psm1",
+  "find": "    if ($entries.Count -ne 1) { throw \"ORT wheel entry '$Name' matched $($entries.Count) entries; expected one\" }",
+  "replace": "    if ($entries.Count -eq 0) { throw \"ORT wheel entry '$Name' matched $($entries.Count) entries; expected one\" }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/ort-wheel-licenses-mutation.json",
+  "why": "Keep wheel provenance and complete installed license texts fail-closed."
+ },
+ {
+  "id": "windows-lane.ort-license-nonempty",
+  "target": "windows/scripts/modules/WindowsOrtLicense.Common.psm1",
+  "find": "    if ($entries[0].Length -le 0) { throw \"ORT wheel entry is empty: $Name\" }",
+  "replace": "    $null = $entries[0].Length",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/ort-wheel-licenses-mutation.json",
+  "why": "Keep wheel provenance and complete installed license texts fail-closed."
+ },
+ {
+  "id": "windows-lane.ort-license-original-bytes",
+  "target": "windows/scripts/modules/WindowsOrtLicense.Common.psm1",
+  "find": "        [IO.File]::WriteAllBytes($target, $texts[$name])",
+  "replace": "        [IO.File]::WriteAllText($target, 'wrong text')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/ort-wheel-licenses-mutation.json",
+  "why": "Keep wheel provenance and complete installed license texts fail-closed."
+ },
+ {
+  "id": "windows-lane.ort-license-verifier",
+  "target": "windows/scripts/modules/WindowsOrtLicense.Common.psm1",
+  "find": "        Assert-PackageLicense -Path $Path -Pattern $member -LicensePath $source",
+  "replace": "        $null = $member",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/ort-wheel-licenses-mutation.json",
+  "why": "Keep wheel provenance and complete installed license texts fail-closed."
+ },
+ {
+  "id": "windows-lane.ort-license-msi-wix-required",
+  "target": "windows/scripts/modules/WindowsOrtLicense.Common.psm1",
+  "find": "            if (-not $WixPath) { throw 'WiX source is required for MSI license mapping' }",
+  "replace": "            $null = $WixPath",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/ort-wheel-licenses-mutation.json",
+  "why": "Keep wheel provenance and complete installed license texts fail-closed."
+ },
+ {
+  "id": "windows-lane.ort-license-notice-required",
+  "target": "windows/scripts/modules/WindowsOrtLicense.Common.psm1",
+  "find": "        foreach ($name in 'LICENSE', 'ThirdPartyNotices.txt') {\n            $entry = Get-OrtWheelEntry -Archive $archive -Name \"onnxruntime/$name\"",
+  "replace": "        foreach ($name in 'LICENSE') {\n            $entry = Get-OrtWheelEntry -Archive $archive -Name \"onnxruntime/$name\"",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/ort-wheel-licenses-mutation.json",
+  "why": "Keep wheel provenance and complete installed license texts fail-closed."
+ },
+ {
+  "id": "windows-lane.ort-license-blank",
+  "target": "windows/scripts/modules/WindowsOrtLicense.Common.psm1",
+  "find": "            if ([string]::IsNullOrWhiteSpace([Text.Encoding]::UTF8.GetString($texts[$name]))) { throw \"ORT wheel text is blank: $name\" }",
+  "replace": "            $null = $texts[$name]",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/ort-wheel-licenses-mutation.json",
+  "why": "Blank texts cannot satisfy ONNX license staging."
+ },
+ {
+  "id": "package.ort-wheel-identity",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "    return file_sha(str(copied)) == expected",
+  "replace": "    return True",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "A different ELF must never acquire another wheel's notices."
+ },
+ {
+  "id": "package.ort-wheel-all-libraries",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "if all(wheel_has_library(archive, library, strip, scratch) for library in libraries):",
+  "replace": "if any(wheel_has_library(archive, library, strip, scratch) for library in libraries):",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "Every selected packaged ORT library must match the same wheel."
+ },
+ {
+  "id": "package.ort-wheel-unique",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "    if len(matches) != 1:",
+  "replace": "    if len(matches) == 0:",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "Multiple matching wheels cannot establish a unique source."
+ },
+ {
+  "id": "package.ort-wheel-duplicate-entry",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "    if len(entries) != 1:\n        raise ValueError(f\"duplicate wheel entry: {name}\")",
+  "replace": "    if len(entries) == 0:\n        raise ValueError(f\"duplicate wheel entry: {name}\")",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "Duplicate wheel members cannot silently override original bytes."
+ },
+ {
+  "id": "package.ort-wheel-blank-notice",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": " or not content.decode(\"utf-8\").strip()",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "A blank text is not a license."
+ },
+ {
+  "id": "package.ort-wheel-original-text",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "            texts[name] = content",
+  "replace": "            texts[name] = content.upper()",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "The delivered texts must retain the exact original bytes."
+ },
+ {
+  "id": "package.ort-wheel-output-symlink",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "        if path.is_symlink():",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "License output cannot be redirected by a symlink."
+ },
+ {
+  "id": "package.ort-stage-bundled-libraries",
+  "target": "linux/scripts/06-packaging/ort-wheel-licenses.sh",
+  "find": "    libraries+=(--library \"$library\")",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "Stage notices for the actual bundled ORT files only."
+ },
+ {
+  "id": "package.ort-archive-notices",
+  "target": "linux/scripts/06-packaging/ort-wheel-licenses.sh",
+  "find": "  for name in LICENSE ThirdPartyNotices.txt; do\n    rules+=(--require",
+  "replace": "  for name in LICENSE; do\n    rules+=(--require",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "Every archive must contain both original notice texts."
+ },
+ {
+  "id": "package.ort-appimage-notices",
+  "target": "linux/scripts/06-packaging/ort-wheel-licenses.sh",
+  "find": "  for name in LICENSE ThirdPartyNotices.txt; do\n    bash \"${_ORT_WHEEL_LICENSE_DIR}/verify-native-appimage-license.sh\"",
+  "replace": "  for name in LICENSE; do\n    bash \"${_ORT_WHEEL_LICENSE_DIR}/verify-native-appimage-license.sh\"",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "A native AppImage must contain both original notice texts."
+ },
+ {
+  "id": "package.ort-appimage-failure",
+  "target": "linux/scripts/06-packaging/ort-wheel-licenses.sh",
+  "find": "\"${prefix:+${prefix%/}/}licenses/onnxruntime/${name}\" \"${bundle}/licenses/onnxruntime/${name}\" || return $?",
+  "replace": "\"${prefix:+${prefix%/}/}licenses/onnxruntime/${name}\" \"${bundle}/licenses/onnxruntime/${name}\" || true",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "AppImage extraction or content failures remain fatal."
+ },
+ {
+  "id": "package.ort-wheel-architecture",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "    if elf_target(content[:20]) != native_target:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "A foreign ELF must not reach the target-specific strip provider."
+ },
+ {
+  "id": "package.ort-wheel-elf-valid",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "        raise ValueError(\"invalid ELF identity\")",
+  "replace": "        return (0, 0, 0)",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "A corrupt wheel ELF must not be silently treated as an unrelated architecture."
+ },
+ {
+  "id": "package.ort-wheel-existing-text",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": " or target.read_bytes() != content",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "A repeated staging run must refuse a stale or changed license."
+ },
+ {
+  "id": "package.ort-appimage-root-prefix",
+  "target": "linux/scripts/06-packaging/ort-wheel-licenses.sh",
+  "find": "  [ \"$prefix\" != . ] || prefix=''",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "An AppImage whose payload is at the root must still check both safe paths."
+ },
+ {
+  "id": "package.pe-setup-requires-elf-lld",
+  "target": "linux/scripts/ensure-pe-icon-test-tools.sh",
+  "find": " || ! pe_icon_find_tool ld.lld >/dev/null",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-pe-icon-tool-setup.sh",
+  "why": "Cross-architecture ELF fixtures require ld.lld even if lld-link is already installed."
+ },
+ {
+  "id": "package.msi-require-media-cabinet",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "            if len(cabinets) != 1:\n                raise ValueError(\"MSI with multiple cabinets requires a Media-table cabinet mapping\")",
+  "replace": "            if False:\n                raise ValueError(\"MSI with multiple cabinets requires a Media-table cabinet mapping\")",
+  "test": "bash linux/scripts/tests/test-package-license-verifier.sh",
+  "why": "Preserve fail-closed File/Media cabinet selection and actual payload verification."
+ },
+ {
+  "id": "package.msi-require-existing-cabinet",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "            if cabinet not in cabinets or not member or \"::\" in member:",
+  "replace": "            if not member or \"::\" in member:",
+  "test": "bash linux/scripts/tests/test-package-license-verifier.sh",
+  "why": "Preserve fail-closed File/Media cabinet selection and actual payload verification."
+ },
+ {
+  "id": "package.msi-compound-listing",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "    selected = msi_cabinet_checks(sevenzip_member_names(path, compound=True), rules)",
+  "replace": "    selected = msi_cabinet_checks(sevenzip_member_names(path), rules)",
+  "test": "bash linux/scripts/tests/test-package-license-verifier.sh",
+  "why": "Preserve fail-closed File/Media cabinet selection and actual payload verification."
+ },
+ {
+  "id": "package.msi-cabinet-failure",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "        subprocess.run([\"7z\", \"e\", \"-tCompound\", \"-so\", \"-spd\", \"--\", str(path), cabinet], stdout=stream, check=True)",
+  "replace": "        subprocess.run([\"7z\", \"e\", \"-tCompound\", \"-so\", \"-spd\", \"--\", str(path), cabinet], stdout=stream, check=False)",
+  "test": "bash linux/scripts/tests/test-package-license-verifier.sh",
+  "why": "Preserve fail-closed File/Media cabinet selection and actual payload verification."
+ },
+ {
+  "id": "package.msi-duplicate-member",
+  "target": "linux/scripts/verify_package_license.py",
+  "find": "        if name in seen:\n            raise ValueError(f\"duplicate MSI cabinet member: {name}\")",
+  "replace": "        if False:\n            raise ValueError(f\"duplicate MSI cabinet member: {name}\")",
+  "test": "bash linux/scripts/tests/test-package-license-verifier.sh",
+  "why": "Preserve fail-closed File/Media cabinet selection and actual payload verification."
+ },
+ {
+  "id": "package.msi-map-pattern",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "    if ([IO.Path]::GetExtension($Path) -ieq '.msi') { $Pattern = Get-MsiCabinetPattern -Path $Path -FileId $Pattern }",
+  "replace": "    $null = $Pattern",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-media-mutation.json",
+  "why": "Preserve fail-closed File/Media cabinet selection and actual payload verification."
+ },
+ {
+  "id": "package.msi-media-selection",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "    $eligible = @($Media | Where-Object { [int]$_.LastSequence -ge [int]$file[0].Sequence } | Sort-Object DiskId)",
+  "replace": "    $eligible = @($Media | Where-Object { [int]$_.LastSequence -ge [int]$file[0].Sequence } | Sort-Object DiskId -Descending)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-media-mutation.json",
+  "why": "Preserve fail-closed File/Media cabinet selection and actual payload verification."
+ },
+ {
+  "id": "package.msi-media-ambiguous",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "        if ([int]$row.DiskId -le $previousDisk -or [int]$row.LastSequence -le $previousSequence) { throw 'MSI media boundaries are ambiguous or unordered' }",
+  "replace": "        $null = $row",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-media-mutation.json",
+  "why": "Preserve fail-closed File/Media cabinet selection and actual payload verification."
+ },
+ {
+  "id": "package.msi-embedded-only",
+  "target": "windows/scripts/modules/WindowsMsiLicense.Common.psm1",
+  "find": "    if ($cabinet -notmatch '^#[^\\\\/:*?\\[\\]\\x00-\\x1f]+\\.cab$') { throw \"MSI media is not a safe embedded cabinet: $cabinet\" }",
+  "replace": "    $null = $cabinet",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msi.LicenseMapping.Tests.ps1 -ResultFile logs/code-quality/msi-media-mutation.json",
+  "why": "Preserve fail-closed File/Media cabinet selection and actual payload verification."
+ },
+ {
+  "id": "windows-lane.python-ort-optional",
+  "target": "windows/scripts/modules/WindowsOrtLicense.Common.psm1",
+  "find": "    if (-not (Test-Path -LiteralPath $dir)) { return '' }",
+  "replace": "    return ''",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/python-ort-license-mutation.json",
+  "why": "Check installed ONNX wheel texts and each completed Python package when ORT is present."
+ },
+ {
+  "id": "windows-lane.python-ort-wheel-text",
+  "target": "windows/scripts/modules/WindowsOrtLicense.Common.psm1",
+  "find": "        if ([Convert]::ToBase64String($actual) -cne [Convert]::ToBase64String($texts[$name])) { throw \"Python ONNX Runtime text differs from matching wheel: $path\" }",
+  "replace": "        $null = $actual",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/python-ort-license-mutation.json",
+  "why": "Check installed ONNX wheel texts and each completed Python package when ORT is present."
+ },
+ {
+  "id": "windows-lane.python-ort-archive-directory",
+  "target": "windows/scripts/modules/WindowsOrtLicense.Common.psm1",
+  "find": "        'archive' { return (@($ArchivePrefix.Trim('/'), $ArchiveDirectory.Trim('/'), $Name) | Where-Object { $_ }) -join '/' }",
+  "replace": "        'archive' { return (@($ArchivePrefix.Trim('/'), 'licenses/onnxruntime', $Name) | Where-Object { $_ }) -join '/' }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/python-ort-license-mutation.json",
+  "why": "Check installed ONNX wheel texts and each completed Python package when ORT is present."
+ },
+ {
+  "id": "windows-lane.python-ort-preflight",
+  "target": "windows/scripts/python/New-PythonAppPackage.ps1",
+  "find": "$ortLicenses = Resolve-PythonOrtLicenses -Bundle $Bundle -WheelDir $OrtWheelDir",
+  "replace": "$ortLicenses = ''",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.PackageLicense.Tests.ps1 -ResultFile logs/code-quality/python-package-ort-mutation.json",
+  "why": "Check installed ONNX wheel texts and each completed Python package when ORT is present."
+ },
+ {
+  "id": "windows-lane.python-ort-zip",
+  "target": "windows/scripts/python/New-PythonAppPackage.ps1",
+  "find": "    Assert-PythonAppArchiveLicenses -Path $zip -ArchivePrefix $stem",
+  "replace": "    $null = $zip",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.PackageLicense.Tests.ps1 -ResultFile logs/code-quality/python-package-ort-mutation.json",
+  "why": "Check installed ONNX wheel texts and each completed Python package when ORT is present."
+ },
+ {
+  "id": "windows-lane.python-ort-msi",
+  "target": "windows/scripts/python/New-PythonAppPackage.ps1",
+  "find": "    if ($ortLicenses) { Assert-OrtWheelLicensesInPackage -Path $msi -LicenseDirectory $ortLicenses -Format msi -WixPath $wxs }",
+  "replace": "    $null = $msi",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.PackageLicense.Tests.ps1 -ResultFile logs/code-quality/python-package-ort-mutation.json",
+  "why": "Check installed ONNX wheel texts and each completed Python package when ORT is present."
+ },
+ {
+  "id": "windows-lane.python-ort-msix",
+  "target": "windows/scripts/python/New-PythonAppPackage.ps1",
+  "find": "    Assert-PythonAppArchiveLicenses -Path $msix",
+  "replace": "    $null = $msix",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.PackageLicense.Tests.ps1 -ResultFile logs/code-quality/python-package-ort-mutation.json",
+  "why": "Check installed ONNX wheel texts and each completed Python package when ORT is present."
+ },
+ {
+  "id": "windows-lane.python-ort-archive-gate",
+  "target": "windows/scripts/python/New-PythonAppPackage.ps1",
+  "find": "    if ($ortLicenses) {\n        Assert-OrtWheelLicensesInPackage -Path $Path",
+  "replace": "    if ($false) {\n        Assert-OrtWheelLicensesInPackage -Path $Path",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.PackageLicense.Tests.ps1 -ResultFile logs/code-quality/python-package-ort-mutation.json",
+  "why": "Optional ONNX archive checks must execute when ONNX is present."
+ },
+ {
+  "id": "windows-lane.python-ort-wheel-store",
+  "target": "windows/scripts/modules/WindowsOrtLicense.Common.psm1",
+  "find": "    if (-not $WheelDir) { $WheelDir = if ($env:ORT_CHAIN_WHEEL_DIR) { $env:ORT_CHAIN_WHEEL_DIR } else { Get-OrtChainWheelStore } }",
+  "replace": "    if (-not $WheelDir) { $WheelDir = Get-OrtChainWheelStore }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/python-ort-license-mutation.json",
+  "why": "Package verification uses the same explicit wheel-store precedence as bundle construction."
  }
 ]

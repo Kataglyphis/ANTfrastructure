@@ -100,4 +100,26 @@ t_case "a directory without pubspec.yaml is a usage error"
 mkdir -p "${work}/empty"
 t_assert_rc 2 _gate "${work}/empty"
 
+t_case "an Android application ships its declared launcher in every standard density"
+_app "${work}/android"
+_android="${work}/android/android/app/src/main"
+mkdir -p "${_android}"
+printf '%s\n' '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:icon="@mipmap/launcher_icon" /></manifest>' > "${_android}/AndroidManifest.xml"
+for _density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+  mkdir -p "${_android}/res/mipmap-${_density}"
+  t_write_png "${_android}/res/mipmap-${_density}/launcher_icon.png" 1 1
+done
+t_assert_rc 0 _gate "${work}/android"
+rm "${_android}/res/mipmap-hdpi/launcher_icon.png"
+t_assert_rc 1 _gate "${work}/android"
+t_assert_contains "$(t_out _gate "${work}/android")" 'missing Android launcher icon: android/app/src/main/res/mipmap-hdpi/launcher_icon.png'
+t_write_png "${_android}/res/mipmap-hdpi/launcher_icon.png" 1 1
+printf 'corrupt' > "${_android}/res/mipmap-xxhdpi/launcher_icon.png"
+t_assert_contains "$(t_out _gate "${work}/android")" 'invalid Android launcher PNG: android/app/src/main/res/mipmap-xxhdpi/launcher_icon.png'
+t_write_png "${_android}/res/mipmap-xxhdpi/launcher_icon.png" 1 1
+printf '%s\n' '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application /></manifest>' > "${_android}/AndroidManifest.xml"
+t_assert_contains "$(t_out _gate "${work}/android")" 'needs a supported @mipmap launcher icon'
+printf '<manifest' > "${_android}/AndroidManifest.xml"
+t_assert_contains "$(t_out _gate "${work}/android")" 'is malformed'
+
 t_summary

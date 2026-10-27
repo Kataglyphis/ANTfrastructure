@@ -253,6 +253,80 @@ function Copy-MsixStageFiles {
   }
 }
 
+function Resolve-PackageLicense {
+  param([Parameter(Mandatory)][string]$Path)
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Project license not found: $Path" }
+  $source = (Resolve-Path -LiteralPath $Path).Path
+  if ([string]::IsNullOrWhiteSpace([IO.File]::ReadAllText($source))) { throw "Project license is empty: $Path" }
+  return $source
+}
+
+# Every package needs the actual project terms, independent of the installer dialog.
+function Copy-PackageLicense {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [Parameter(Mandatory)][string]$Destination
+  )
+  $source = Resolve-PackageLicense -Path $Path
+  New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+  $target = Join-Path (Resolve-Path -LiteralPath $Destination).Path 'LICENSE'
+  Copy-Item -LiteralPath $source -Destination $target -Force -ErrorAction Stop
+  return $target
+}
+
+# A visible logo is required, since a transparent bitmap silently produces a blank Start-menu icon.
+function Test-MsixImageVisible {
+  param([Parameter(Mandatory)][System.Drawing.Bitmap]$Image)
+  for ($y = 0; $y -lt $Image.Height; $y++) {
+    for ($x = 0; $x -lt $Image.Width; $x++) {
+      if ($Image.GetPixel($x, $y).A -gt 0) { return $true }
+    }
+  }
+  return $false
+}
+
+function Assert-MsixLogoContent {
+  param([bool]$IsPng, [bool]$IsVisible, [string]$Path)
+  if (-not $IsPng -or -not $IsVisible) { throw "MSIX logo must be a visible PNG: $Path" }
+}
+
+function Read-MsixLogo {
+  param([string]$Path)
+  if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "MSIX logo not found: $Path" }
+  Add-Type -AssemblyName System.Drawing
+  try { $logo = [System.Drawing.Bitmap]::new((Resolve-Path -LiteralPath $Path).Path) }
+  catch { throw "MSIX logo is not a readable image: $Path" }
+  try {
+    Assert-MsixLogoContent -IsPng ($logo.RawFormat.Guid -eq [System.Drawing.Imaging.ImageFormat]::Png.Guid) -IsVisible (Test-MsixImageVisible -Image $logo) -Path $Path
+    return $logo
+  } catch {
+    $logo.Dispose()
+    throw
+  }
+}
+
+function Write-MsixResizedLogo {
+  param([System.Drawing.Bitmap]$Image, [string]$Path, [int]$Width, [int]$Height)
+  $output = [System.Drawing.Bitmap]::new($Width, $Height)
+  $graphics = $null
+  try {
+    $graphics = [System.Drawing.Graphics]::FromImage($output)
+    $graphics.Clear([System.Drawing.Color]::Transparent)
+    $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $scale = [Math]::Min($Width / [double]$Image.Width, $Height / [double]$Image.Height)
+    $drawWidth = [Math]::Max(1, [int][Math]::Round($Image.Width * $scale))
+    $drawHeight = [Math]::Max(1, [int][Math]::Round($Image.Height * $scale))
+    $left = [int][Math]::Floor(($Width - $drawWidth) / 2)
+    $top = [int][Math]::Floor(($Height - $drawHeight) / 2)
+    $graphics.DrawImage($Image, [System.Drawing.Rectangle]::new($left, $top, $drawWidth, $drawHeight))
+    if (-not (Test-MsixImageVisible -Image $output)) { throw "Resized MSIX logo has no visible pixels: $Path" }
+    $output.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+  } finally {
+    if ($graphics) { $graphics.Dispose() }
+    $output.Dispose()
+  }
+}
+
 function Write-MsixStageAssets {
   param([string]$StagingDir, [string]$LogoPath, [switch]$GenerateTransparentLogos)
   # All four conventional logo names, always: a missing one fails the install without naming it.
@@ -260,13 +334,19 @@ function Write-MsixStageAssets {
   New-Item -ItemType Directory -Path $assetsDir -Force | Out-Null
   $logos = @{ 'StoreLogo.png' = @(50, 50); 'Square44x44Logo.png' = @(44, 44)
               'Square150x150Logo.png' = @(150, 150); 'Wide310x150Logo.png' = @(310, 150) }
-  foreach ($name in $logos.Keys) {
-    $target = Join-Path $assetsDir $name
-    if ($LogoPath -and -not $GenerateTransparentLogos -and (Test-Path -LiteralPath $LogoPath)) {
-      Copy-Item -LiteralPath $LogoPath -Destination $target -Force
-    } else {
-      New-TransparentPng -Path $target -Width $logos[$name][0] -Height $logos[$name][1]
+  if ($GenerateTransparentLogos) {
+    foreach ($name in $logos.Keys) {
+      New-TransparentPng -Path (Join-Path $assetsDir $name) -Width $logos[$name][0] -Height $logos[$name][1]
     }
+    return
+  }
+  $logo = Read-MsixLogo -Path $LogoPath
+  try {
+    foreach ($name in $logos.Keys) {
+      Write-MsixResizedLogo -Image $logo -Path (Join-Path $assetsDir $name) -Width $logos[$name][0] -Height $logos[$name][1]
+    }
+  } finally {
+    $logo.Dispose()
   }
 }
 
@@ -388,6 +468,19 @@ function New-WixPayloadFragment {
   return $Path
 }
 
+# Preprocessor values are separate native argv tokens so spaces in paths cannot be split.
+function Get-WixVariableArguments {
+  param([hashtable]$Variables)
+  $reserved = @('Version', 'ExeSource', 'LicenseRtf', 'ProductName', 'Manufacturer', 'PayloadFiles')
+  foreach ($name in $Variables.Keys) {
+    if ($name -notmatch '^[A-Za-z_][A-Za-z0-9_]*$' -or $name -in $reserved) {
+      throw "Invalid or reserved WiX variable name: $name"
+    }
+    '-d'
+    "{0}={1}" -f $name, $Variables[$name]
+  }
+}
+
 function Invoke-MsiPackage {
   <#
     .SYNOPSIS
@@ -397,6 +490,8 @@ function Invoke-MsiPackage {
       ProductName and Manufacturer, plus PayloadFiles=1 when -PayloadFiles is given.
     .PARAMETER PayloadFiles
       Objects with Source and Subdirectory, written to -FragmentPath by New-WixPayloadFragment.
+    .PARAMETER WixVariables
+      Additional WiX preprocessor values; reserved names and malformed identifiers fail before invoking WiX.
   #>
   param(
     [Parameter(Mandatory)] [pscustomobject]$Context,
@@ -412,6 +507,7 @@ function Invoke-MsiPackage {
     [string]$FragmentPath = '',
     [string[]]$Extensions = @('WixToolset.UI.wixext'),
     [string]$WixPath = '',
+    [hashtable]$WixVariables = @{},
     # Test seam, as in Invoke-MsixPackage: real builds need WiX.
     [scriptblock]$InvokerScriptBlock
   )
@@ -430,6 +526,7 @@ function Invoke-MsiPackage {
 
   $wixArgs = @('build', '-arch', $Arch)
   foreach ($ext in $Extensions) { $wixArgs += @('-ext', $ext) }
+  $wixArgs += @(Get-WixVariableArguments -Variables $WixVariables)
   $wixArgs += @(
     '-d', "Version=$Version", '-d', "ExeSource=$ExeSource", '-d', "LicenseRtf=$LicenseFile",
     '-d', "ProductName=$ProductName", '-d', "Manufacturer=$Manufacturer", '-out', $OutFile, $WxsFile)
@@ -448,4 +545,4 @@ function ConvertTo-XmlSafeText { param($Text) return ConvertTo-XmlEscapedText -V
 
 function New-TransparentImage { param($Path,$Width,$Height) return New-TransparentPng -Path $Path -Width $Width -Height $Height }
 
-Export-ModuleMember -Function Resolve-WindowsSdkToolPath, Expand-XmlTemplateTokens, New-TransparentPng, Get-WindowsSdkToolPath, ConvertTo-XmlSafeText, New-TransparentImage, Get-PackageVersion, Invoke-MsixPackage, Resolve-WixExe, New-WixPayloadFragment, Invoke-MsiPackage
+Export-ModuleMember -Function Resolve-WindowsSdkToolPath, Expand-XmlTemplateTokens, New-TransparentPng, Get-WindowsSdkToolPath, ConvertTo-XmlSafeText, New-TransparentImage, Get-PackageVersion, Invoke-MsixPackage, Resolve-WixExe, New-WixPayloadFragment, Invoke-MsiPackage, Resolve-PackageLicense, Copy-PackageLicense, Write-MsixStageAssets, Read-MsixLogo

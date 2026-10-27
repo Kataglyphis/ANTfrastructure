@@ -21,6 +21,22 @@
 
 - Create child test-result directories before writing, fail on write errors and repair two stale mutation anchors.
 
+## 2026-10-27 — packaged licences and desktop icons
+
+- Stage the original project license in shared Linux bundles and CPack outputs; generate WiX RTF from its full text.
+- Validate and stage the declared project license before building a Linux Python app bundle.
+- Check declared license texts in package payloads, including compressed Flutter notices, without claiming automatic dependency coverage.
+- Stage original Cargo dependency licence files with pinned provenance and fail on missing or unreviewed sources.
+- Fail Linux desktop packaging when its project PNG is missing or structurally invalid.
+- Check Android launcher references and their five standard-density PNGs in the shared Flutter artefact gate.
+- Render project MSIX logos and embed project icons in CMake, Cargo and Python Windows executables; verify x64 and ARM64 PE resources.
+- Resolve MSI file identifiers dynamically before checking the original project licence in installer payloads.
+- Preserve ONNX Runtime's own licence and upstream notices from the actual native source checkout.
+- Match a Windows ONNX Runtime DLL to one wheel before staging and checking that wheel's original licence texts.
+- Verify wheel-matched ONNX Runtime texts in Windows Python app ZIP, MSI and MSIX packages when ORT is present.
+- Match Linux ONNX Runtime libraries to one wheel, including byte-identical stripped builds, before staging its original texts.
+- Add a reusable, preview-first mutation recipe merger with anchor and overwrite checks.
+
 ## 2026-10-27 — locked cmake-format tooling
 
 - Install cmake-format from a shared uv lock on Linux and Windows while preserving existing venv packages and the legacy consumer interface.

@@ -1,0 +1,14 @@
+{
+  "workspace_root": "@WORKSPACE@",
+  "workspace_members": ["app-id"],
+  "packages": [
+    {"id": "app-id", "name": "app", "version": "1.0.0", "manifest_path": "@APP@/Cargo.toml", "license": "MIT", "license_file": null, "source": null, "repository": "https://example.test/app"},
+    {"id": "crate-id", "name": "crate", "version": "1.2.0", "manifest_path": "@CRATE@/Cargo.toml", "license": "MIT AND OFL-1.1", "license_file": "@CRATE@/LICENSE", "source": "registry+https://example.test/index", "repository": "https://example.test/crate"},
+    {"id": "dev-id", "name": "dev", "version": "2.0.0", "manifest_path": "@DEV@/Cargo.toml", "license": "MIT", "license_file": null, "source": "registry+https://example.test/index"}
+  ],
+  "resolve": {"nodes": [
+    {"id": "app-id", "deps": [{"pkg": "crate-id", "dep_kinds": [{"kind": null, "target": null}]}, {"pkg": "dev-id", "dep_kinds": [{"kind": "dev", "target": null}]}]},
+    {"id": "crate-id", "deps": []},
+    {"id": "dev-id", "deps": []}
+  ]}
+}
