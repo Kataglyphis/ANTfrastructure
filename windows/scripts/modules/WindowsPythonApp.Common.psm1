@@ -246,7 +246,7 @@ function Get-LockSdist {
 }
 
 function Get-RequirementLineGroup {
-    param([Parameter(Mandatory)][string[]]$Lines)
+    param([Parameter(Mandatory)][AllowEmptyString()][string[]]$Lines)
     $group = [Collections.Generic.List[string]]::new()
     foreach ($line in $Lines) {
         if ($group.Count -gt 0 -and $line -notmatch '^\s+--hash=') {
@@ -261,7 +261,7 @@ function Get-RequirementLineGroup {
 # Hash groups retain their original bytes except the continued final hash and the inserted wheel hash.
 function Add-RequirementHash {
     [OutputType([string[]])]
-    param([Parameter(Mandatory)][string[]]$Lines, [Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Sha256)
+    param([Parameter(Mandatory)][AllowEmptyString()][string[]]$Lines, [Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Sha256)
     $out = [Collections.Generic.List[string]]::new()
     $added = $false
     foreach ($group in @(Get-RequirementLineGroup -Lines $Lines)) {

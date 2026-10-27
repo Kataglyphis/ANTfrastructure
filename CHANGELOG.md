@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-27 — blank lines no longer fail the FFmpeg codec branch
+
+- `Find-TextLineIndexes`, `Get-RequirementLineGroup` and `Add-RequirementHash` accept empty
+  elements. A mandatory `[string[]]` refuses one, so x265.pc's blank line failed the FFmpeg branch
+  of the amd64 chain with `Cannot bind argument to parameter 'Lines' because it is an empty
+  string`; OpenCV's NEON scan and the requirements hash rewrite carried the same trap. The suites'
+  fixtures keep the blank lines the real files have.
+
 ## 2026-10-27 — what rides the next Windows chain, and a fresh host's gate tooling
 
 - `:winarm64`'s wheel store carries OrchestrANT's Flet client closure at its lock's versions (CON108):

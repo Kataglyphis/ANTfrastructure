@@ -331,7 +331,7 @@ function Assert-CmakeArgsConsumed {
 # Source-build readers share the same indexed line scan; see docs/windows-builds.md under Shared Windows behavior.
 function Find-TextLineIndexes {
     param(
-        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Lines,
+        [Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]]$Lines,
         [Parameter(Mandatory)][string]$Pattern
     )
     $indexes = [Collections.Generic.List[int]]::new()
