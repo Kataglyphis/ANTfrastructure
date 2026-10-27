@@ -51,12 +51,19 @@ packaging_cross_env() {
   if [ -n "${python_root}" ]; then
     include_flag="-I${python_root}/include/python${PYTHON_VERSION}"
   else
-    # No staged cross Python in this image: the sysroot carries the target's headers, and the cross wrapper roots absolute -I paths into it.
-    [ -d "${RISCV64_SYSROOT}/usr/include/python${PYTHON_VERSION}" ] || {
-      err "no staged ${target} Python and no ${RISCV64_SYSROOT}/usr/include/python${PYTHON_VERSION} in the sysroot"
+    # The image's source-built Python sits under usr/local; --sysroot does not reroot a plain -I, so name the sysroot path itself.
+    local header_dir=""
+    for candidate in usr/local/include usr/include; do
+      if [ -d "${RISCV64_SYSROOT}/${candidate}/python${PYTHON_VERSION}" ]; then
+        header_dir="${RISCV64_SYSROOT}/${candidate}/python${PYTHON_VERSION}"
+        break
+      fi
+    done
+    if [ -z "${header_dir}" ]; then
+      err "no staged ${target} Python and no python${PYTHON_VERSION} headers under ${RISCV64_SYSROOT}/usr/local/include or /usr/include"
       return 1
-    }
-    include_flag="-I/usr/include/python${PYTHON_VERSION}"
+    fi
+    include_flag="-I${header_dir}"
   fi
   mm="$(printf '%s' "${PYTHON_VERSION}" | tr -d '.')"
 

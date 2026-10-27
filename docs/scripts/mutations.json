@@ -13124,6 +13124,22 @@
   "why": "a host-tagged wheel installs on the target and never imports; the build command is what turns this value into the tag"
  },
  {
+  "id": "python.packaging.cross-headers-prefer-the-image-python",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "    for candidate in usr/local/include usr/include; do",
+  "replace": "    for candidate in usr/include usr/local/include; do",
+  "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
+  "why": "the image ships PYTHON_VERSION under /usr/local; a distro python3.X header set of the same minor would build against a different interpreter"
+ },
+ {
+  "id": "python.packaging.cross-headers-name-the-sysroot",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "        header_dir=\"${RISCV64_SYSROOT}/${candidate}/python${PYTHON_VERSION}\"",
+  "replace": "        header_dir=\"/${candidate}/python${PYTHON_VERSION}\"",
+  "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
+  "why": "--sysroot does not reroot a plain -I, so a host path compiles the riscv64 extension against the amd64 container's own pyconfig.h"
+ },
+ {
   "id": "python.packaging.cross-link-takes-the-sysroot-libc",
   "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
   "find": "  export LDSHARED=\"${CC} -shared -L${RISCV64_SYSROOT}/lib/riscv64-linux-gnu -L${RISCV64_SYSROOT}/usr/lib/riscv64-linux-gnu\"",

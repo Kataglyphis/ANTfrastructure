@@ -36,6 +36,7 @@
 
 ## 2026-10-27 — Windows launcher icons with several resource compilers
 
+- Find the riscv64 cross wheel's Python headers under the sysroot's `usr/local/include`, where the image's source-built Python 3.15 lives, and pass the sysroot path itself instead of a host path `--sysroot` never rerooted.
 - Resolve the shared CMake/uv wiring gate's relative `-ScriptPath` against the consumer's working directory, not the hub.
 - Invoke the first `llvm-rc` on PATH when building a launcher icon resource; the Windows images carry three copies, and the whole match list failed as a command name in every consumer's Windows packaging.
 

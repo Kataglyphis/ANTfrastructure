@@ -142,7 +142,9 @@ the staged target Python under `/opt/python-cross/riscv64`), under the five setu
 pins:
 
 - `CC`/`LDSHARED` are the riscv64 cross wrapper, `CFLAGS` carries the target include dir,
-  `SETUPTOOLS_EXT_SUFFIX` the target SOABI suffix.
+  `SETUPTOOLS_EXT_SUFFIX` the target SOABI suffix. Without a staged target Python the include
+  dir is the sysroot's own path, the image's source-built `usr/local/include/python3.X` first and
+  distro `usr/include/python3.X` second: `--sysroot` does not reroot a plain `-I`.
 - `_PYTHON_HOST_PLATFORM` is the target tag, on the wheel's `python -m pip wheel` command alone:
   uv reads it while inspecting the interpreter and refuses the riscv64 tag at `uv venv` and
   `uv build` alike (`Unknown operating system: linux_riscv64`). The sdist stays on
