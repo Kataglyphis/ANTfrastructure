@@ -1,5 +1,21 @@
 [
  {
+  "id": "consumer-pins.uv-exclusions",
+  "target": "docs/scripts/consumer_pins.py",
+  "find": "    if path == (\"tool\", \"uv\", \"exclude-dependencies\"):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-consumer-pins-toml.sh",
+  "why": "uv exclusion names must not be misreported as unpinned declared dependencies"
+ },
+ {
+  "id": "consumer-pins.invalid-toml",
+  "target": "docs/scripts/consumer_pins.py",
+  "find": "            except tomllib.TOMLDecodeError as exc:",
+  "replace": "            except TypeError as exc:",
+  "test": "bash linux/scripts/tests/test-consumer-pins-toml.sh",
+  "why": "a malformed manifest must fail with the TOML error rather than an uncaught exception"
+ },
+ {
   "id": "uv-image.cleanup-forward",
   "target": "linux/scripts/01-core/uv-image-overlay.sh",
   "find": "  uv_image_overlay_cleanup \"${status}\" \"${path}\" || status=$?",

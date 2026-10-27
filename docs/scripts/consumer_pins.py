@@ -3,9 +3,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sys
+import tomllib
 from pathlib import Path
+from typing import Any
 
 # key, file, mention regex, version regex, label; mention vs version tells unused from unpinned; PEP 621 shape only (a poetry table is skipped).
 CONSUMER_PIN_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
@@ -99,6 +102,25 @@ def consumer_pin_values(text: str, value_rx: str) -> list[str]:
     return seen
 
 
+def _manifest_strings(value: Any, path: tuple[str, ...] = ()) -> list[str]:
+    """Collect TOML strings except uv's non-dependency exclusion list."""
+    if path == ("tool", "uv", "exclude-dependencies"):
+        return []
+    if isinstance(value, dict):
+        return [text for name, child in value.items() for text in _manifest_strings(child, (*path, name))]
+    if isinstance(value, list):
+        return [text for child in value for text in _manifest_strings(child, path)]
+    return [json.dumps(value, ensure_ascii=False)] if isinstance(value, str) else []
+
+
+def _consumer_text(path: Path) -> str:
+    """Read TOML semantically while retaining the existing YAML comment policy."""
+    text = path.read_text(encoding="utf-8")
+    if path.name == "pyproject.toml":
+        return "\n".join(_manifest_strings(tomllib.loads(text)))
+    return _strip_hash_comments(text)
+
+
 def consumer_pin_roots(
     named: list[str], repo_root: Path
 ) -> tuple[list[Path], list[str], int]:
@@ -164,6 +186,7 @@ def _check_root(versions: dict[str, str], root: Path) -> tuple[int, int, list[st
     compared = 0
     bad = 0
     looked_for: list[str] = []
+    texts: dict[str, str | None] = {}
     for key, rel, mention_rx, value_rx, what in CONSUMER_PIN_ROWS:
         if rel not in looked_for:
             looked_for.append(rel)
@@ -181,7 +204,17 @@ def _check_root(versions: dict[str, str], root: Path) -> tuple[int, int, list[st
         path = root / rel
         if not path.is_file():
             continue
-        text = _strip_hash_comments(path.read_text(encoding="utf-8"))
+        if rel not in texts:
+            try:
+                texts[rel] = _consumer_text(path)
+            except tomllib.TOMLDecodeError as exc:
+                print(f"{path}: invalid TOML: {exc}", file=sys.stderr)
+                texts[rel] = None
+                compared += 1
+                bad += 1
+        text = texts[rel]
+        if text is None:
+            continue
         if not re.search(mention_rx, text):
             continue
         compared += 1

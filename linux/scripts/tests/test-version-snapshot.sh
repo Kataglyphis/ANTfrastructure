@@ -213,6 +213,37 @@ _env() { sed -n "s/^$1=v\{0,1\}//p" "${REPO}/linux/scripts/01-core/versions.env"
 _TORCH="$(_env PYTORCH_VERSION)"
 _VISION="$(_env TORCHVISION_VERSION)"
 _GENAI="$(_env ONNXRUNTIME_GENAI_VERSION)"
+t_case 'uv exclusion names are not dependency declarations'
+_excluded="$(_consumer "${_PIN}" '[project]
+dependencies = []
+[tool.uv]
+exclude-dependencies = ["torch", "torchvision", { package = { name = "torch" }, dependencies = ["torchvision"] }]' '')"
+t_assert_eq 0 "$(t_rc _pins_only "${_ok}" --consumer-root "${_excluded}")" 'exclusions alone pass'
+t_assert_contains "$(t_out _pins_only "${_ok}" --consumer-root "${_excluded}")" '0 pins compared' 'exclusions are not counted as pinned dependencies'
+t_case 'a real unpinned dependency still fails beside an exclusion'
+_unpin="$(_consumer "${_PIN}" '[project]
+dependencies = ["torch", "torchvision"]
+[tool.uv]
+exclude-dependencies = ["torch", "torchvision"]' '')"
+t_assert_eq 1 "$(t_rc _pins_only "${_ok}" --consumer-root "${_unpin}")" 'real unpinned packages fail'
+t_assert_contains "$(t_out _pins_only "${_ok}" --consumer-root "${_unpin}")" '(2 of 2 checked pin(s) wrong)' 'both real dependencies are graded'
+t_case 'a conflicting real pin cannot hide inside the excluded names'
+_badpin="$(_consumer "${_PIN}" '[project]
+dependencies = ["torch==0.0.0"]
+[tool.uv]
+exclude-dependencies = ["torch"]' '')"
+t_assert_eq 1 "$(t_rc _pins_only "${_ok}" --consumer-root "${_badpin}")" 'the declared pin is compared'
+t_assert_contains "$(t_out _pins_only "${_ok}" --consumer-root "${_badpin}")" 'torch==<version>' 'the pin failure is named'
+t_case 'uv overrides remain checked even though exclusions are not'
+_override="$(_consumer "${_PIN}" '[tool.uv]
+override-dependencies = ["torch"]
+exclude-dependencies = ["torch"]' '')"
+t_assert_eq 1 "$(t_rc _pins_only "${_ok}" --consumer-root "${_override}")" 'unpinned overrides fail'
+t_case 'invalid pyproject TOML is a failed check'
+_invalid="$(_consumer "${_PIN}" '[project
+dependencies = []' '')"
+t_assert_eq 1 "$(t_rc _pins_only "${_ok}" --consumer-root "${_invalid}")" 'malformed manifest fails'
+t_assert_contains "$(t_out _pins_only "${_ok}" --consumer-root "${_invalid}")" 'invalid TOML' 'the parse failure is visible'
 # _ml <torch> <torchvision> <genai> -> a consumer shaped like OrchestrANT's extras
 _ml() {
   _consumer "${_PIN}" "dependencies = [

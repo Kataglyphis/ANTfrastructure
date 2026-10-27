@@ -929,7 +929,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3682 entries** over **399 distinct test commands**; both digits are
+manifest holds **3684 entries** over **400 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -3532,6 +3532,14 @@ the verdict is an OR, a suite that reddens ONE sub-check would un-freeze the slu
 while seven stayed unproven — the hollow-proof shape this list exists to prevent.
 `test-version-snapshot.sh` reddens all eight independently, plus the
 subprocess — the sixth only since its KNOWN GAP (below) was closed on 2026-09-17.
+
+### Consumer pins and uv exclusions
+
+The consumer pin gate parses `pyproject.toml` as TOML and inspects its string values. The
+`tool.uv.exclude-dependencies` list names packages that uv must not install, so it is not a
+dependency declaration and its contents are not pin candidates. A same-named real dependency
+or override is still checked; malformed TOML fails the gate. `test-consumer-pins-toml.sh`
+and `test-version-snapshot.sh` cover exclusions, actual pins and parser failure.
 
 **The eighth arrived unproven, and that is exactly the shape described above.**
 It shipped with nine mutations in the registry and none of them touching
