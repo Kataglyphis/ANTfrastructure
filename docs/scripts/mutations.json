@@ -29375,5 +29375,13 @@
   "replace": "if [ \"${GSTREAMER_DEBUG_LOGS}\" = \"true\" ]; then",
   "test": "bash linux/scripts/tests/test-gstreamer-debug-logs-knob.sh",
   "why": "with the default only inside save_logs, set -u killed every GStreamer build at its first line (2026-10-27 chain)"
+ },
+ {
+  "id": "lib.gstreamer-cargo-toolchain-default-top-level",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": ": \"${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:=/tmp/gstreamer-cargo-host-toolchain}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-gstreamer-debug-logs-knob.sh",
+  "why": "defaulted inside the linker wrapper only, set -u killed GStreamer's C++ cargo wrapper, which ran first (2026-10-27 chain)"
  }
 ]

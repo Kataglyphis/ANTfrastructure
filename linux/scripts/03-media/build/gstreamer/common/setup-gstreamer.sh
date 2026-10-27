@@ -39,6 +39,8 @@ BUILD_TYPE="${3:-Release}"
 EXTRA_MESON_ARGS="${4:-}"
 setup_host_python_environment
 : "${GSTREAMER_ENABLE_PYTHON_BINDINGS:=true}"
+# Top level: both cargo wrappers read it, and the C++ one can run first.
+: "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:=/tmp/gstreamer-cargo-host-toolchain}"
 
 if cross_build_is_active && \
    command -v cross_target_python_dev_ready >/dev/null 2>&1 && \
@@ -83,7 +85,6 @@ resolve_host_gcc_for_cargo() {
 }
 
 prepare_cargo_host_linker_wrapper() {
-  : "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:=/tmp/gstreamer-cargo-host-toolchain}"
   local compiler="$1"
   prepare_host_compiler_wrapper "${compiler}" host-gcc "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR}"
 }

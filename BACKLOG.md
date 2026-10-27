@@ -431,6 +431,16 @@ owner carries the breakage that costs.
       little; cold, it is the 104 min step. Work: measure ONNX Runtime's real peak per job, then size its share
       ([`build-parallelism-memory-tuning.md`](docs/build-parallelism-memory-tuning.md)). Done when that step
       logs more than one job and no arch is OOM-killed.
+- [ ] **CON167 — a knob defaulted inside one function and read before it runs** [S, ★★★]. The 2026-10-22
+      knob moves (`72d3aa76`, `96cbe525`) put `: "${X:=…}"` at the top of one function while another reader, or
+      the top level, could run first. Under `set -u` that stopped GStreamer twice on the 2026-10-27 chain
+      (`GSTREAMER_DEBUG_LOGS`, `GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR`; fixed). `build-clang.sh` reads
+      `CLANG_NUM_JOBS` and `CLANG_BUILD_MB_PER_JOB` at top level before `run_preflight_checks` sets them, and
+      `test-clang-job-policy.sh`, red since before, pins an `unbound variable` receipt for that path: decide
+      the intended behaviour there first. Work: a gate that flags a bare `${X}` read where no default of `X`
+      has run on every path; the pattern scan that found these also listed three safe callers (sccache-s3-level,
+      iree-wheelhouse, build-runtime-manifest), so it needs call order, not just scope. Done when the gate
+      catches both GStreamer cases as mutations and `build-clang.sh` has one defined default.
 - [ ] **CON166 — an asset-mirror miss logs `curl: (22) … error: 404`** [S, ★]. Found 2026-10-26: every
       miss prints curl's error line before `asset-mirror| miss`, so a log search for `error` hits each pinned
       download that falls back upstream. Work: keep the mirror GET silent on HTTP errors and let the miss line
