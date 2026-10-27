@@ -182,13 +182,16 @@ _oj_start() {
   _OJ_COMMAND_PID=""; _OJ_WATCH_PID=""; _OJ_COMPLETED=0; OJ_REAPING=0
   trap '_oj_worker_exit $?' EXIT
   trap '_oj_signal 143' TERM
-  trap ':' QUIT
+  trap '_OJ_WAIT_INTERRUPTED=1' QUIT
   _oj_child_int_trap ':'
+  [ -z "${OJ_INT_POLICY}" ] || trap '_OJ_WAIT_INTERRUPTED=1' INT
   trap '_oj_signal 124' USR1
   _oj_spawn_command "${index}"
   if [ "${OJ_GROUPS}" -ne 0 ] && [ -n "${OJ_TIMEOUT:-}" ]; then _oj_start_watchdog "${index}"; fi
   while :; do
+    _OJ_WAIT_INTERRUPTED=0
     rc=0; wait "${_OJ_COMMAND_PID}" || rc=$?
+    [ "${_OJ_WAIT_INTERRUPTED}" -eq 0 ] || continue
     kill -0 "${_OJ_COMMAND_PID}" 2>/dev/null || break
   done
   _OJ_COMPLETED=1

@@ -80,6 +80,26 @@ BASH
   t_assert_contains "$(cat "$dir/out")" "calls=$expected"
 done
 
+for interrupted in INT QUIT; do
+  t_case "a completed worker keeps its actual status when wait is interrupted by $interrupted"
+  result="$(bash -u -s -- "$library" "$interrupted" <<'BASH'
+source "$1"
+signal=$2; trap ':' INT QUIT
+wait() {
+  if [ "${1:-}" = "${_OJ_COMMAND_PID:-}" ] && [ "${injected:-0}" -eq 0 ]; then
+    builtin wait "$1"; injected=1; kill -s "$signal" "$BASHPID"; return 130
+  fi
+  builtin wait "$@"
+}
+report() { printf 'report=%s\n' "$2"; }
+oj_add true
+oj_add bash -c 'exit 130'
+oj_run 1 report
+BASH
+)"
+  t_assert_eq $'report=0\nreport=130' "$result"
+done
+
 t_case 'the groupless fallback does not add a timeout supervisor'
 result="$(bash -u -s -- "$library" <<'BASH'
 source "$1"

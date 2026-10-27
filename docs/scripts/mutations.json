@@ -21963,7 +21963,7 @@
  {
   "id": "ordered-jobs.supervisor-ignores-group-interrupt",
   "target": "linux/scripts/lib-ordered-jobs.sh",
-  "find": "  _oj_child_int_trap ':'\n  trap '_oj_signal 124' USR1",
+  "find": "  _oj_child_int_trap ':'\n  [ -z \"${OJ_INT_POLICY}\" ] || trap '_OJ_WAIT_INTERRUPTED=1' INT\n  trap '_oj_signal 124' USR1",
   "replace": "  trap '_oj_signal 130' INT\n  trap '_oj_signal 124' USR1",
   "test": "bash linux/scripts/tests/test-ordered-jobs-lifecycle.sh",
   "timeout": 90,
@@ -29863,5 +29863,13 @@
   "replace": "    $null = $resultParent",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Runner.ResultFile.Tests.ps1 -ResultFile logs/code-quality/result-file-mutation.json",
   "why": "An isolated mutation mirror must create the requested result parent before writing the real tally."
+ },
+ {
+  "id": "ordered-jobs.interrupted-wait-retries",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "    [ \"${_OJ_WAIT_INTERRUPTED}\" -eq 0 ] || continue",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-ordered-jobs-lifecycle.sh",
+  "why": "A signal-interrupted wait must not replace a just-finished command's real exit status."
  }
 ]

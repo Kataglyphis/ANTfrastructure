@@ -372,6 +372,8 @@ workers and stops their watchdogs and command groups. Nested runners receive a
 chance to run their own exit cleanup before forced termination. A lost supervisor
 or failed cleanup must reach the job report as an error. Caller-owned background
 jobs and returning or ignored signal handlers retain their existing policies.
+When a returning INT or QUIT interrupts the command wait, the supervisor waits
+again even if the child has just exited, so the report records its actual status.
 Supervisor and watchdog diagnostics append to the job log, so a lingering child
 cannot retain the caller's stdout or stderr pipe after the job report finishes.
 Commands append too, preserving diagnostics written before the command starts.
@@ -933,7 +935,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3731 entries** over **408 distinct test commands**; both digits are
+manifest holds **3732 entries** over **408 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
