@@ -51,6 +51,11 @@ if [ "${log_child}" -eq 0 ]; then
   exit "${_status}"
 fi
 
+resolve_windows_pwsh() {
+  type -P pwsh.exe || true
+}
+
+WINDOWS_PWSH_BIN="$(resolve_windows_pwsh)"
 PATH="/usr/local/sbin:/usr/local/bin:${HOME}/.local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 export PATH
 
@@ -165,14 +170,57 @@ if (\$null -eq \$module) {
 "
 }
 
+require_windows_interop() {
+  [ -n "${WINDOWS_PWSH_BIN}" ] && [ -x "${WINDOWS_PWSH_BIN}" ] \
+    || die "Windows PowerShell 7 (pwsh.exe) is missing from WSL interop PATH"
+  command -v wslpath >/dev/null 2>&1 || die "wslpath is missing; enable WSL interop"
+}
+
+native_ps_command() {
+  local encoded
+  encoded="$(printf '%s' "$1" | python3 -c '
+import base64
+import sys
+
+print(base64.b64encode(sys.stdin.buffer.read().decode("utf-8").encode("utf-16le")).decode("ascii"))
+')" || return 1
+  "${WINDOWS_PWSH_BIN}" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "${encoded}"
+}
+
+windows_pwsh7_ready() {
+  native_ps_command 'if (-not $IsWindows -or $PSVersionTable.PSVersion.Major -lt 7) { exit 1 }' >/dev/null 2>&1
+}
+
+windows_pester_ready() {
+  local command
+  command="\$m = Get-Module -ListAvailable Pester | Where-Object { \$_.Version -ge [version]'${PESTER_MIN_VERSION}' }; if (-not \$m) { exit 1 }"
+  native_ps_command "${command}" >/dev/null 2>&1
+}
+
+ensure_windows_pester() {
+  local bootstrap quoted command
+  require_windows_interop
+  windows_pwsh7_ready || die "pwsh.exe must be native Windows PowerShell 7 or newer"
+  windows_pester_ready && return 0
+  bootstrap="$(wslpath -w "${REPO_ROOT}/windows/scripts/modules/WindowsCi.ModuleBootstrap.psm1")" \
+    || die "cannot map the Windows Pester bootstrap path"
+  [ -n "${bootstrap}" ] || die "cannot map the Windows Pester bootstrap path"
+  quoted="${bootstrap//\'/\'\'}"
+  command="\$ErrorActionPreference = 'Stop'; Import-Module '${quoted}' -ErrorAction Stop; Install-PinnedPowerShellModule -Name Pester -Version '${PESTER_MIN_VERSION}' -Minimum -SkipPublisherCheck | Out-Null"
+  native_ps_command "${command}" || die "Windows Pester installation failed"
+  windows_pester_ready || die "Windows Pester >= ${PESTER_MIN_VERSION} is still missing after setup"
+}
+
 setup_environment() {
   require_wsl_ubuntu
+  require_windows_interop
   install_os_packages
   ensure_uv
   uv python install "${PYTHON_VERSION}"
   uv sync --project quality --locked --python "${PYTHON_VERSION}"
   ensure_pwsh
   ensure_pester
+  ensure_windows_pester
   ensure_shellcheck
   verify_environment
 }
@@ -189,6 +237,9 @@ verify_environment() {
   [ "${shellcheck_version}" = "${SHELLCHECK_VERSION}" ] \
     || die "shellcheck is not ${SHELLCHECK_VERSION}; run bash linux/scripts/wsl-quality.sh setup"
   pwsh_modules_are_ready || die "pinned pwsh, PSScriptAnalyzer or Pester is missing; run bash linux/scripts/wsl-quality.sh setup"
+  require_windows_interop
+  windows_pwsh7_ready || die "pwsh.exe must be native Windows PowerShell 7 or newer"
+  windows_pester_ready || die "Windows Pester >= ${PESTER_MIN_VERSION} is missing; run bash linux/scripts/wsl-quality.sh setup"
   uv run --project quality --locked --no-sync \
     --python "${PYTHON_VERSION}" python -c 'import pytest, yaml; print("Locked Python quality environment is ready.")'
 }
@@ -198,6 +249,14 @@ run_logged() {
   shift
   printf '\n== %s ==\n' "${name}"
   "$@" 2>&1 | tee "${LOG_DIR}/${name}.log"
+}
+
+run_windows_tests() {
+  local windows_test_script
+  windows_test_script="$(wslpath -w "${REPO_ROOT}/windows/scripts/tests/Invoke-Tests.ps1")" \
+    || die "cannot map the Windows test runner path"
+  [ -n "${windows_test_script}" ] || die "cannot map the Windows test runner path"
+  run_logged windows-tests "${WINDOWS_PWSH_BIN}" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${windows_test_script}" -Jobs "$1"
 }
 
 run_quality_checks() {
@@ -215,8 +274,7 @@ run_quality_checks() {
     -FailOnAnalyzer -Jobs "${parallelism}"
   run_logged windows-complexity pwsh -NoLogo -NoProfile -File "${REPO_ROOT}/windows/scripts/Invoke-CodeComplexity.ps1" \
     -Strict -JsonPath "${LOG_DIR}/windows-complexity.json"
-  run_logged windows-tests pwsh -NoLogo -NoProfile -File "${REPO_ROOT}/windows/scripts/tests/Invoke-Tests.ps1" \
-    -Jobs "${parallelism}"
+  run_windows_tests "${parallelism}"
 }
 
 main() {

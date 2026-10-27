@@ -947,13 +947,17 @@ bash linux/scripts/wsl-quality.sh check
 ```
 
 `setup` reads the uv, Python, PowerShell, PSScriptAnalyzer and ShellCheck pins
-from the repo and syncs `quality/` from its locked project file. It installs
-Pester at the minimum version required by `Invoke-Tests.ps1`. `check` runs the
-Linux preflight, every mutation proof, PowerShell lint, complexity and Pester
-suites. Use `bash linux/scripts/wsl-quality.sh all` to do both in one run.
-The runner removes Windows interop directories from child `PATH` values so
-Linux probes only enumerate Linux tools. Logs and complexity JSON go under
-ignored `logs/code-quality/wsl/`.
+from the repo and syncs `quality/` from its locked project file. Windows PowerShell
+7 (`pwsh.exe`) must be reachable through WSL interop. Setup reuses a suitable native
+Pester or installs the runner's minimum version in the Windows user profile using
+the shared module bootstrap. `check` runs Linux preflight, mutation proofs and
+PowerShell lint and complexity in WSL, then runs the Windows suites with native
+`pwsh.exe`; `.cmd` fixtures require Windows. Use `all` to do both steps in one run.
+The runner resolves `pwsh.exe` before removing Windows interop directories from
+Linux child `PATH` values. It maps the checkout path with `wslpath` and applies
+`-ExecutionPolicy Bypass` process-locally to native PowerShell calls, including WSL UNC paths.
+Failures propagate through the logging pipe. Logs and complexity JSON go under
+ignored `logs/code-quality/wsl/`; test summaries go under `logs/windows-tests/`.
 
 Run it from a WSL-side checkout under the Linux filesystem for faster scans.
 Setup needs `sudo` for Ubuntu packages and network access for pinned tools and

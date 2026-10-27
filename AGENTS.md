@@ -201,6 +201,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Consumer Python lint maps tracked shell heredocs back to source lines across Windows path separators and forces UTF-8 when it prints remapped findings; extraction failure is fatal, and a valid no-block scan is green.
    Stable Python CI test legs require fresh JUnit and measured, covered package lines; a configured coverage floor must reach every leg.
    Windows Pester coverage must measure one file and executed commands in each of its fifteen named modules, including Vulkan validation at 80%; missing or empty reports, missing targets and scores below the module floor fail the test run.
+   Bash script discovery fails when no suite runs; the hub runner requires a pass per Pester file, and the shared Pester action requires one across its selected path. Preserve legitimate partial skips.
    Detected consumer lint calls keep ratchets enabled and failures fatal; the weekly inventory reports missing calls as advisory. Duplication reporting is available in every reusable lint run, while `--code-dupes` / `code-dupes: true` is a separate fatal gate for consumers that have removed the measured debt; do not freeze that debt with new allowances. The report-only size, complexity and duplication lane writes ignored artifacts and keeps broken inputs fatal.
    Consumer Windows PowerShell lint jobs report complexity over the same selected path and upload JSON; enable strict verdicts with `complexity-strict` after the consumer meets the limits. PowerShell-only repos call `powershell-quality.yml` with `strict: true` when clean.
    Windows CI installs Pester and PSScriptAnalyzer through `WindowsCi.ModuleBootstrap.psm1`; reuse an installed matching version, retry transient Gallery lookup failures, and verify the requested exact or minimum version. Exhausted retries and missing installed modules remain fatal.
@@ -365,7 +366,8 @@ Recipes, mount traps and the one driver that answers them (`run-in-ci-image.sh`)
 [`rancher-desktop-linux-containers.md`](docs/rancher-desktop-linux-containers.md).
 For repeatable Ubuntu WSL2 quality checks, run `bash linux/scripts/wsl-quality.sh setup`, then
 `bash linux/scripts/wsl-quality.sh check`; it installs pinned tools and writes reports below
-ignored `logs/code-quality/wsl/`. `--jobs N` also bounds nested Bash suites and ShellCheck.
+ignored `logs/code-quality/wsl/`. The Windows test leg uses native `pwsh.exe` through WSL interop;
+Linux PowerShell runs lint and complexity. `--jobs N` also bounds nested Bash suites and ShellCheck.
 
 ### LLM Stack (Ollama + Open WebUI)
 

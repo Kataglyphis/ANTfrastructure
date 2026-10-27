@@ -13,6 +13,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-27 — require executed script tests
+
+- Fail empty or entirely skipped Bash runs and Pester suites, with regression and mutation proofs.
+- Run the WSL quality driver's Windows tests with native PowerShell, bootstrap its Pester dependency and preserve test failures through logging.
+- Test the pip failure policy with a real child on both hosts and verify the error and warning paths.
+
 ## 2026-10-26 — let active develop quality runs finish
 
 - Keep the Hub's active Linux x64 preflight and eight mutation shards running when another `develop` push arrives; the latest pending run follows, while PR and `main` keep cancellation.

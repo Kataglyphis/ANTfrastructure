@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-tests.sh runs suites side by side but reports them as a serial run would: in name order, with the same totals.
+# This checks runner verdicts and scheduling, not the coverage of individual suites.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -26,6 +26,35 @@ _runner() {
 }
 _blocks() { printf '%s\n' "$1" | sed -n 's/^== \(.*\) ==$/\1/p' | tr '\n' ' ' | sed 's/ $//'; }
 _said() { printf '%s\n' "$1" | sed -n 's/^SAID=//p'; }
+
+t_case "no discovered suites fail instead of reporting success"
+empty="$(_runner RUN_TESTS_JOBS=1)"
+t_assert_contains "${empty}" "RC=1"
+t_assert_contains "${empty}" "No linux script test suites ran successfully (discovered: 0, skipped: 0)"
+
+mkdir -p "${_WORK}/fakebin"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\n" "${TEST_RUNNER_UNAME:?}"' > "${_WORK}/fakebin/uname"
+chmod +x "${_WORK}/fakebin/uname"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 77' > "${_WORK}/tests/test-skipped.sh"
+
+t_case "all permitted Git Bash skips fail when no suite runs"
+all_skipped="$(_runner PATH="${_WORK}/fakebin:${PATH}" TEST_RUNNER_UNAME=MINGW64_NT RUN_TESTS_JOBS=1)"
+t_assert_contains "${all_skipped}" "RC=1"
+t_assert_contains "${all_skipped}" "No linux script test suites ran successfully (discovered: 1, skipped: 1)"
+t_assert_contains "${all_skipped}" "skipped on this host: test-skipped.sh"
+
+t_case "a permitted skip alongside a passing suite stays green"
+_suite test-pass.sh 0 't_assert_ok true'
+mixed="$(_runner PATH="${_WORK}/fakebin:${PATH}" TEST_RUNNER_UNAME=MINGW64_NT RUN_TESTS_JOBS=1)"
+t_assert_contains "${mixed}" "RC=0"
+t_assert_contains "${mixed}" "skipped on this host: test-skipped.sh"
+t_assert_contains "${mixed}" "All linux script test suites passed (1 suites, 2 assertions)."
+
+t_case "Linux still treats a suite exit 77 as a failure"
+linux_skip="$(_runner PATH="${_WORK}/fakebin:${PATH}" TEST_RUNNER_UNAME=Linux RUN_TESTS_JOBS=1)"
+t_assert_contains "${linux_skip}" "RC=1"
+t_assert_contains "${linux_skip}" "1 suite(s) failed: test-skipped.sh"
+rm -f "${_WORK}/tests/test-pass.sh" "${_WORK}/tests/test-skipped.sh"
 
 # a and c wait for each other, so b ends first: completion order differs from name order (a, b, c).
 _suite test-a.sh 2 't_assert_ok true'

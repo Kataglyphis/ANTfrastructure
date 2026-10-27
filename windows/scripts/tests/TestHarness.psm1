@@ -641,6 +641,20 @@ function ConvertTo-TestScriptAst {
     (ConvertTo-TestScriptParseResult -Text $Text -ErrorLabel $ErrorLabel).Ast
 }
 
+function Update-TestLiteralText {
+    param([AllowEmptyString()][string]$Text, [Parameter(Mandatory)][string]$Find,
+        [AllowEmptyString()][string]$Replace, [string]$ErrorLabel = 'Update-TestLiteralText')
+    if (-not $Text.Contains($Find)) { throw "${ErrorLabel}: find text is gone: $Find" }
+    return $Text.Replace($Find, $Replace)
+}
+
+function ConvertTo-TestPwshLiteral {
+    param([AllowEmptyString()][string]$Value)
+    return "'" + $Value.Replace("'", "''") + "'"
+}
+
+Export-ModuleMember -Function Update-TestLiteralText, ConvertTo-TestPwshLiteral
+
 <#
 .SYNOPSIS
     Returns the named functions of a build script as one scriptblock for a suite to dot-source.
@@ -695,10 +709,7 @@ function Import-FunctionModule {
         [IO.File]::WriteAllText("$stem.ps1", $Text)
         $body = (Get-ScriptFunctionDefinition -ScriptPath "$stem.ps1" -FunctionName $FunctionName).ToString()
     }
-    if ($Find) {
-        if (-not $body.Contains($Find)) { throw "Import-FunctionModule: find text is gone: $Find" }
-        $body = $body.Replace($Find, $Replace)
-    }
+    if ($Find) { $body = Update-TestLiteralText -Text $body -Find $Find -Replace $Replace -ErrorLabel 'Import-FunctionModule' }
     [IO.File]::WriteAllText("$stem.psm1", $Prelude + "`n" + $body + "`n")
     Import-Module "$stem.psm1" -Global -Prefix $Prefix -Force -PassThru -DisableNameChecking -ArgumentList $ArgumentList
 }
@@ -879,8 +890,8 @@ Export-ModuleMember -Function Assert-TestPwshFailure
 
 function Test-ColdModuleCommands {
     param([Parameter(Mandatory)][string[]]$ModulePath, [Parameter(Mandatory)][string[]]$CommandName, [switch]$Force)
-    $paths = ($ModulePath | ForEach-Object { "'" + $_.Replace("'", "''") + "'" }) -join ','
-    $names = ($CommandName | ForEach-Object { "'" + $_.Replace("'", "''") + "'" }) -join ','
+    $paths = ($ModulePath | ForEach-Object { ConvertTo-TestPwshLiteral -Value $_ }) -join ','
+    $names = ($CommandName | ForEach-Object { ConvertTo-TestPwshLiteral -Value $_ }) -join ','
     $probe = @"
 `$ErrorActionPreference = 'Stop'
 foreach (`$path in @($paths)) { Import-Module `$path -Force:`$$($Force.IsPresent.ToString().ToLowerInvariant()) -DisableNameChecking }

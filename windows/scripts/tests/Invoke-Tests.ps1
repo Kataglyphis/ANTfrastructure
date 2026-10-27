@@ -104,7 +104,7 @@ function Write-TallyDetails {
         Write-TestFailure -Name "[$($item.Group)] $($item.Name)" -Message @($item.Err)
     }
     if ($Tally.PesterFailures -gt 0) {
-        Write-Host "  $($Tally.PesterFailures) Pester test(s) failed (see the per-file lines above)" -ForegroundColor Red
+        Write-Host "  $($Tally.PesterFailures) Pester test or suite failure(s) (see the per-file lines above)" -ForegroundColor Red
     }
     Write-CoverageDetails -Reports @($Tally.Coverage) -Failures $CoverageFailures
     # A skipped suite is a failed gate, or a host without Pester reports a green "0 tests" run.
@@ -257,6 +257,10 @@ function Invoke-PesterSuites {
             $configuration.CodeCoverage.CoveragePercentTarget = $target.MinimumPercent
         }
         $run = Invoke-Pester -Configuration $configuration
+        if ([int]$run.PassedCount -lt 1) {
+            Write-Host "   FAIL: no tests passed in $($file.Name)" -ForegroundColor Red
+            if ([int]$run.FailedCount -eq 0) { $failures += 1 }
+        }
         if ($target) {
             $failure = Get-CoverageFailure -Coverage $run.CodeCoverage -ReportPath $reportPath `
                 -ExpectedClass "windows/scripts/modules/$($target.Module)" `
@@ -276,7 +280,7 @@ function Invoke-PesterSuites {
             }
         }
         Write-Host ("   Pester: {0}/{1} passed" -f $run.PassedCount, $run.TotalCount) `
-            -ForegroundColor $(if ($run.FailedCount -gt 0) { 'Red' } else { 'Green' })
+            -ForegroundColor $(if ($run.FailedCount -gt 0 -or $run.PassedCount -lt 1) { 'Red' } else { 'Green' })
         foreach ($failedTest in @($run.Failed)) {
             $messages = @($failedTest.ErrorRecord | Where-Object { $_ } |
                 ForEach-Object { ($_.Exception.Message -split "`r?`n")[0] })

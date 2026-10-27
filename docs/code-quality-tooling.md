@@ -358,6 +358,10 @@ runs one shellcheck per file `LINT_SHELL_JOBS` at a time and refuses a run that 
 every file. `wsl-quality.sh check --jobs N` passes the same limit to both nested runners. Each
 knob set to `1` restores the serial path.
 
+`PREFLIGHT_ONLY=script-tests bash linux/scripts/preflight.sh` runs the Bash suites locally;
+Linux x64 CI runs them on pushes and pull requests. Discovery fails when there are no suites,
+and a host that permits skips must still run at least one suite successfully.
+
 The scheduler tracks supervising workers before releasing their commands. Its
 cancellation marker also covers launches in progress; cleanup joins only recorded
 workers and stops their watchdogs and command groups. Nested runners receive a
@@ -925,7 +929,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3671 entries** over **396 distinct test commands**; both digits are
+manifest holds **3675 entries** over **398 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1946,6 +1950,9 @@ for fifteen modules, each with a focused Pester suite:
 
 The target-inventory test pins every suite/module pair and floor, and mutations prove
 that removing the ONNX, wasm-opt, WebDAV, MSIX signing, container-image bootstrap or Vulkan target or lowering its floor fails the test.
+The hub runner requires at least one passing test per Pester file. The reusable
+`run-pester-suite` action requires at least one pass across its selected path, which may be a
+file or a directory. Individual skipped tests remain allowed alongside a pass.
 The runner rejects a missing, empty, malformed or wrong-module Cobertura XML report,
 zero measured files or commands, inconsistent counts, a missing or duplicate target,
 or a score below its floor. Parallel child suites pass their results to the parent, which writes the verdict

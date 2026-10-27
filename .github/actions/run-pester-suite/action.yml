@@ -4,9 +4,8 @@ description: >-
   failed test and printing enough to act on: the Describe/Name, the assertion's
   FailureMessage and its StackTrace.
 
-  It also fails when the suite ran NOTHING (TotalCount 0): a path that matches
-  no test file reports zero failures, and a gate that is green because it never
-  ran is worse than one that is red.
+  It also fails when no test passes, including an empty, entirely skipped or
+  entirely pending suite.
 
   The version is pinned because Pester 3.x and 5.x are not compatible dialects:
   a suite written in 3.4's dash-less assertion syntax (`Should Be 0`) does not
@@ -44,5 +43,9 @@ runs:
             if ($_.FailureMessage) { Write-Host "      $($_.FailureMessage)" }
             if ($_.StackTrace)     { Write-Host "      $($_.StackTrace)" }
           }
+          exit 1
+        }
+        if ($r.PassedCount -lt 1) {
+          Write-Host "::error::run-pester-suite: '${{ inputs.path }}' had no passing test; skipped or pending tests are not execution evidence."
           exit 1
         }

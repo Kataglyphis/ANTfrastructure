@@ -29383,5 +29383,37 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-gstreamer-debug-logs-knob.sh",
   "why": "defaulted inside the linker wrapper only, set -u killed GStreamer's C++ cargo wrapper, which ran first (2026-10-27 chain)"
+ },
+ {
+  "id": "script-tests.no-zero-executed-pass",
+  "target": "linux/scripts/tests/run-tests.sh",
+  "find": "elif [ \"$((SUITES - ${#SKIPPED[@]}))\" -eq 0 ]; then",
+  "replace": "elif [ \"$((SUITES - ${#SKIPPED[@]}))\" -lt 0 ]; then",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "empty discovery and allowed Git Bash skips cannot pass when no suite succeeded"
+ },
+ {
+  "id": "windows-lane.pester-action-requires-passing-test",
+  "target": ".github/actions/run-pester-suite/action.yml",
+  "find": "if ($r.PassedCount -lt 1) {",
+  "replace": "if ($false) {",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ci.PesterAction.Tests.ps1 -ResultFile logs/code-quality/pester-action-mutation.json",
+  "why": "a skipped or pending Pester suite cannot count as a passing test run"
+ },
+ {
+  "id": "lib.wsl-quality-windows-test-exit-is-fatal",
+  "target": "linux/scripts/wsl-quality.sh",
+  "find": "  run_logged windows-tests \"${WINDOWS_PWSH_BIN}\" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${windows_test_script}\" -Jobs \"$1\"",
+  "replace": "  run_logged windows-tests \"${WINDOWS_PWSH_BIN}\" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${windows_test_script}\" -Jobs \"$1\" || true",
+  "test": "bash linux/scripts/tests/test-wsl-quality.sh",
+  "why": "a failed native Windows test run must retain its nonzero exit through the WSL logging pipe"
+ },
+ {
+  "id": "lib.wsl-quality-requires-native-pester",
+  "target": "linux/scripts/wsl-quality.sh",
+  "find": "  windows_pester_ready || die \"Windows Pester >= ${PESTER_MIN_VERSION} is missing; run bash linux/scripts/wsl-quality.sh setup\"",
+  "replace": "  true",
+  "test": "bash linux/scripts/tests/test-wsl-quality.sh",
+  "why": "the check must reject a missing Windows Pester before trying to run native suites"
  }
 ]

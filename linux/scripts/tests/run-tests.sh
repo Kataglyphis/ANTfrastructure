@@ -55,6 +55,10 @@ done
 if [ "${#FAILED[@]}" -gt 0 ]; then
   printf '\n%d suite(s) failed: %s\n' "${#FAILED[@]}" "${FAILED[*]}" >&2
   exit 1
+elif [ "$((SUITES - ${#SKIPPED[@]}))" -eq 0 ]; then
+  printf '\nNo linux script test suites ran successfully (discovered: %d, skipped: %d).\n' "${SUITES}" "${#SKIPPED[@]}" >&2
+  exit 1
+else
+  # The aggregate makes a coverage collapse visible ("24 suites, 3 assertions" reads as the alarm it is).
+  printf '\nAll linux script test suites passed (%d suites, %d assertions).\n' "$((SUITES - ${#SKIPPED[@]}))" "${TOTAL_ASSERTS}"
 fi
-# The aggregate makes a coverage collapse visible ("24 suites, 3 assertions" reads as the alarm it is).
-printf '\nAll linux script test suites passed (%d suites, %d assertions).\n' "$((SUITES - ${#SKIPPED[@]}))" "${TOTAL_ASSERTS}"
