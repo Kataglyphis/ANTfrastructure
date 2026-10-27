@@ -41,4 +41,30 @@ function Read-MsixLogo {
         }
     }
   }
+
+  It 'runs the first resource compiler on PATH when several copies are installed' {
+    Invoke-InTestDir { param($dir)
+      $bins = foreach ($name in 'first', 'second') {
+        $bin = Join-Path $dir $name
+        $null = New-Item -ItemType Directory -Path $bin
+        if ($IsWindows) {
+          Set-Content -LiteralPath (Join-Path $bin 'fake-rc.cmd') -Encoding ascii -Value @('@echo off', "echo $name> %2")
+        } else {
+          $tool = Join-Path $bin 'fake-rc'
+          Set-Content -LiteralPath $tool -Encoding ascii -Value @('#!/bin/sh', "printf $name > `"`$2`"")
+          & chmod +x $tool
+        }
+        $bin
+      }
+      $prelude = "function ConvertTo-PythonAppIcon { param(`$PngPath, `$Destination) [IO.File]::WriteAllText(`$Destination, 'ico') }"
+      Invoke-WithEnv @{ PATH = ($bins -join [IO.Path]::PathSeparator) + [IO.Path]::PathSeparator + $env:PATH } {
+        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsIcon.Common.psm1' -FunctionName New-WindowsIconResource `
+          -Prelude $prelude -BodyArgumentList (Join-Path $dir 'work') -Body { param($work)
+            $png = Join-Path (Get-RepoRoot) 'images/logo.png'
+            $resource = New-MutWindowsIconResource -PngPath $png -WorkDir $work -ResourceCompiler 'fake-rc'
+            Assert-Equal 'first' ([IO.File]::ReadAllText($resource).Trim())
+          }
+      }
+    }
+  }
 }

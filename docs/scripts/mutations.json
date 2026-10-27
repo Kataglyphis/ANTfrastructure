@@ -30241,6 +30241,14 @@
   "why": "Icon conversion must reject images the shared decoder rejects."
  },
  {
+  "id": "windows-lane.icon-first-resource-compiler",
+  "target": "windows/scripts/modules/WindowsIcon.Common.psm1",
+  "find": "-ErrorAction Stop | Select-Object -First 1).Source",
+  "replace": "-ErrorAction Stop).Source",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsIcon.Portable.Tests.ps1 -ResultFile logs/test-results/icon-validation-mutation.json",
+  "why": "Images carry several llvm-rc copies on PATH; the helper must invoke one of them, not the match list."
+ },
+ {
   "id": "windows-lane.icon-transparency-verdict",
   "target": "windows/scripts/modules/WindowsMsix.Common.psm1",
   "find": "  if (-not $IsPng -or -not $IsVisible) { throw \"MSIX logo must be a visible PNG: $Path\" }",

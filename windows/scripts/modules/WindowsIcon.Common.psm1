@@ -45,7 +45,8 @@ function New-WindowsIconResource {
         [string]$ResourceCompiler = 'llvm-rc'
     )
     $png = (Resolve-Path -LiteralPath $PngPath -ErrorAction Stop).Path
-    $compiler = (Get-Command -Name $ResourceCompiler -CommandType Application -ErrorAction Stop).Source
+    # Images carry several llvm-rc copies on PATH; invoking the whole match list fails as one bogus command name.
+    $compiler = (Get-Command -Name $ResourceCompiler -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
     if (-not (Test-Path -LiteralPath $WorkDir -PathType Container)) { New-Item -ItemType Directory -Path $WorkDir -Force -ErrorAction Stop | Out-Null }
     $directory = (Resolve-Path -LiteralPath $WorkDir -ErrorAction Stop).Path
     $name = 'app-icon-' + [Guid]::NewGuid().ToString('N')
