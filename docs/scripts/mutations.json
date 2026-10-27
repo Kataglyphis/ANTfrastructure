@@ -30831,5 +30831,13 @@
   "replace": "  verify_python_app_package_license \"${output}\" \"opt/${APP_ID}/LICENSE\" || true",
   "test": "bash linux/scripts/tests/test-deb-control-rendering.sh",
   "why": "A failed license check must preserve its status and stop packaging."
+ },
+ {
+  "id": "lib.android-image-core-fallback",
+  "target": "linux/scripts/03-media/build/iree/android/build-android.sh",
+  "find": "  . /opt/scripts/core/logging.sh\n",
+  "replace": "  . \"$(dirname \"${BASH_SOURCE[0]}\")/../../../../01-core/logging.sh\"\n",
+  "test": "bash linux/scripts/tests/test-android-image-core-paths.sh",
+  "why": "the image copies <lib>/android/ one level shallower, so a relative-only core source killed android-gstreamer on the 2026-10-27 chain"
  }
 ]

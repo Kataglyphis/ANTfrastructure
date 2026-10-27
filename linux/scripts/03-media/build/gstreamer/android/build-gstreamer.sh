@@ -13,7 +13,9 @@ if [ -f "${SCRIPTS_ROOT}/01-core/modules.sh" ]; then
   # shellcheck source=../../../../01-core/modules.sh
   source "${SCRIPTS_ROOT}/01-core/modules.sh"
 else
-  source "${SCRIPTS_ROOT}/core/modules.sh"
+  # The image copies this file one level shallower than the repo, so its core is absolute: see Dockerfile.android.
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/modules.sh
 fi
 source_module download-loader.sh
 download_module_load

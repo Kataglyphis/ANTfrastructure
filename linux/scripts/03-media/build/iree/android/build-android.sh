@@ -6,8 +6,14 @@ set -euo pipefail
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/../../android-build-preamble.sh"
 
-# shellcheck source=/dev/null
-. "$(dirname "${BASH_SOURCE[0]}")/../../../../01-core/logging.sh"
+# The repo path first, then the image's absolute core: the image copies this file one level shallower.
+if [ -f "$(dirname "${BASH_SOURCE[0]}")/../../../../01-core/logging.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$(dirname "${BASH_SOURCE[0]}")/../../../../01-core/logging.sh"
+else
+  # shellcheck disable=SC1091
+  . /opt/scripts/core/logging.sh
+fi
 
 android_build_preamble_init "Android IREE build" "${ANDROID_API_LEVEL:-34}"
 
