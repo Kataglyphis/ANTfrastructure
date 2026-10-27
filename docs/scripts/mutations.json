@@ -30927,5 +30927,21 @@
   "replace": "  \"RUSTUP_INIT_SHA256 https://sh.rustup.rs\"\n  \"UV_INSTALL_SH_SHA256 https://astral.sh/uv/install.sh\"\n)",
   "test": "bash linux/scripts/tests/test-runtime-input-preflight.sh",
   "why": "a check on an installer no runtime stage runs refused the 2026-10-27 lane over uv's rotation"
+ },
+ {
+  "id": "lib.wsl-quality-shellcheck-tag-pin",
+  "target": "linux/scripts/wsl-quality.sh",
+  "find": "  [ \"${shellcheck_version}\" = \"${SHELLCHECK_VERSION#v}\" ] \\",
+  "replace": "  [ \"${shellcheck_version}\" = \"${SHELLCHECK_VERSION}\" ] \\",
+  "test": "bash linux/scripts/tests/test-wsl-quality.sh",
+  "why": "the shellcheck pin is a release tag (v0.11.0) while --version prints the bare number, so check must compare without the v"
+ },
+ {
+  "id": "sccache.level-hits-named",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "$(& $n $_ 'hits') hit(s)",
+  "replace": "$(& $n $_ 'writes') hit(s)",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.SccacheUploadDrain.Tests.ps1 -ResultFile logs/code-quality/sccache-level-hits-mutation.json",
+  "why": "the per-level line is the evidence that the shared S3 level served a compile, so each level's hits must be its own counter"
  }
 ]

@@ -13,6 +13,27 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-27 — what rides the next Windows chain, and a fresh host's gate tooling
+
+- `:winarm64`'s wheel store carries OrchestrANT's Flet client closure at its lock's versions (CON108):
+  flet and flet-desktop 1.0.4, httpx, httpcore, h11, anyio, rich, markdown-it-py, mdurl, oauthlib,
+  repath and msgpack 1.2.3 (cp315 `win_arm64`, arch-checked), each SHA256-pinned as `PYTEST_WINDOWS_ARM64_*`.
+- `:winamd64` bakes `cxxbridge` at `CXXBRIDGE_CMD_VERSION` 1.0.205, the `cxx` OxidANT locks, beside
+  `flutter_rust_bridge_codegen`; the smoke asserts the version (CON145, Windows half).
+- `UV_WINDOWS_ARM64_SHA256` and its `bump_tools.py` row are gone; nothing read them since CON113 (CON89).
+- Every sccache RUN ends with a `sccache-levels|` stderr line, each level's hits, misses and backfills,
+  so a chain log shows how much the shared S3 level served (the drain logged only writes).
+- `wsl-quality.sh` compares shellcheck against the pin without its tag `v`; `v0.11.0` never matched
+  `--version`'s `0.11.0`, so `check` failed on every host and `setup` reinstalled each time.
+- `windows-host-setup.md` B3, B4 and a new B7: the Pester/PSScriptAnalyzer bootstrap, where scoop's uv
+  puts the pinned CPython, a real `python` ahead of the Store stub, ripgrep, s5cmd, and the Linux
+  suites through `wsl-quality.sh`.
+- `Install-RustToolchain.ps1` installs both cargo tools through one helper; the `$env:` pin reads
+  stay at the call sites, where `Build.BaseRustArgs` finds them.
+- gitleaks allowlists oauthlib's public wheel SHA256 by value; its key name tripped `generic-api-key`.
+- The ORT CUDA-launcher suite configures its language-less fixture with Ninja when present, so a host
+  without Visual Studio no longer fails on a missing NMake.
+
 ## 2026-10-27 — Windows launcher icons with several resource compilers
 
 - Resolve the shared CMake/uv wiring gate's relative `-ScriptPath` against the consumer's working directory, not the hub.

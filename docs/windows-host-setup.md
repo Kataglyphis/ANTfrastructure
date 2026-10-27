@@ -10,7 +10,7 @@ path through it, not a replacement.
 
 > **Check yourself against the machine, not against this page.**
 > `windows/scripts/host/Test-HostSetup.ps1` asserts most host-side claims below
-> and prints a fix for each failure. It does not cover Phase B's gate tooling,
+> and prints a fix for each failure. It does not cover Phase B's gate tooling (B3–B7),
 > C2's step-log env or buildkitd's `--debug` flag, and it checks two of C4's
 > exclusions (2026-09-25); the driver refuses a launch without the step-log env
 > itself. Run it **first** (to see
@@ -437,12 +437,15 @@ Verify: `pwsh -NoProfile -c '$PSVersionTable.PSVersion'` → 7.x.
 ### B3. PSScriptAnalyzer + Pester (the PowerShell gates)
 
 CI parity pins (`.github/workflows/windows-x64.yml`): PSScriptAnalyzer
-**1.25.0**, Pester **>= 6.2**. `Invoke-Tests.ps1` FAILS (never silently
-skips) when Pester >= 5 is missing.
+**1.25.0**, Pester **>= 6.2**. Without that Pester, `Invoke-Tests.ps1` reports each Pester
+suite `SKIPPED (… Pester >= 6.2 is not installed)` and exits 1, so a run never looks green.
+CI installs both through the shared bootstrap, which retries Gallery lookups and verifies the
+version; use it here too:
 
 ```pwsh
-Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
-Install-Module Pester -MinimumVersion 6.2 -Scope CurrentUser -Force -SkipPublisherCheck
+Import-Module .\windows\scripts\modules\WindowsCi.ModuleBootstrap.psm1
+Install-PinnedPowerShellModule -Name PSScriptAnalyzer -Version 1.25.0
+Install-PinnedPowerShellModule -Name Pester -Version 6.2 -Minimum -SkipPublisherCheck
 ```
 
 Verify:
@@ -459,7 +462,19 @@ Store instead of running). `preflight.sh` provides the escape hatch
 
 ```pwsh
 scoop install uv          # or: winget install astral-sh.uv (install scoop first: https://scoop.sh)
-uv python install 3.15    # the pin's X.Y; puts python3.15.exe into %USERPROFILE%\.local\bin
+uv python install 3.15    # the pin's X.Y; puts python3.15.exe into uv's bin dir
+```
+
+`uv python dir --bin` names that dir: `%USERPROFILE%\.local\bin` for a standalone uv,
+`%USERPROFILE%\scoop\persist\uv\python\shims` for scoop's, which scoop already puts on PATH.
+
+Several Pester suites start a bare `python`; with only the Store stub they fail with exit 9009
+(15 of them on a fresh host, 2026-10-27). Put a real `python` and `python3` in that dir, ahead of
+the stub, and check that it wins:
+
+```pwsh
+uv python install 3.15 --default
+(Get-Command python -All).Source    # uv's bin dir first, WindowsApps after it
 ```
 
 The version is the X.Y of `PYTHON_VERSION` in `linux/scripts/01-core/versions.env`, the
@@ -469,7 +484,7 @@ Verify:
 
 ```pwsh
 uv run --no-project python -V                              # Python 3.x
-& "$env:USERPROFILE\.local\bin\python3.15.exe" -V          # if installed via uv python install
+python3.15 -V                                              # from uv's bin dir on PATH
 ```
 
 `PREFLIGHT_PYTHON` is **not** preflight-only, and it is not a `python3` alias
@@ -525,6 +540,34 @@ Verify: all three exit 0. Preflight's `KNOWN_SLUGS` array is the single
 source of the no-build gate list (don't enumerate it in docs — enumerations
 drift; `tests/test-preflight-slugs.sh` keeps the array honest) — see
 AGENTS.md § Validation.
+
+### B7. ripgrep, s5cmd and the Linux suites in WSL
+
+```pwsh
+winget install --id BurntSushi.ripgrep.MSVC -e --scope user   # the family's search tool (AGENTS.md)
+scoop install s5cmd                                            # C7 checks the S3 key with it
+scoop install 7zip                                             # the FFmpeg AMF header suite extracts with 7z
+winget install --id Ninja-build.Ninja -e --scope user          # CMake fixture suites; without VS the default NMake is absent
+```
+
+Git Bash runs preflight, but most Linux unit suites call a bare `python3`, which is the Store
+stub there: on 2026-10-27 a fresh host failed 197 of them that way. Run those suites, and the
+full local check, in an Ubuntu WSL2 distro instead:
+
+```pwsh
+wsl -d Ubuntu-26.04 -- bash -lc 'cd /mnt/c/<checkout> && bash linux/scripts/wsl-quality.sh setup'
+wsl -d Ubuntu-26.04 -- bash -lc 'cd /mnt/c/<checkout> && bash linux/scripts/wsl-quality.sh check'
+```
+
+`setup` installs Ubuntu packages and the pinned uv through `sudo`. When `sudo` wants a password
+the non-interactive call cannot give, install that half as root, then rerun `setup`:
+
+```pwsh
+wsl -d Ubuntu-26.04 -u root -- bash -c 'apt-get update -qq && apt-get install -y --no-install-recommends ca-certificates curl git jq libgssapi-krb5-2 libicu-dev python3 python3-venv ripgrep tar unzip xz-utils'
+wsl -d Ubuntu-26.04 -u root -- bash /mnt/c/<checkout>/linux/scripts/01-core/base-image.sh install-uv --version <UV_VERSION>
+```
+
+Verify: `setup` ends with `Locked Python quality environment is ready.`
 
 ---
 

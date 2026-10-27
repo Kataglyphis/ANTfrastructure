@@ -161,19 +161,33 @@ Invoke-NativeRustStep -Description 'cargo clippy --version' -Command { cargo cli
 Invoke-NativeRustStep -Description 'rustup show active-toolchain' -Command { rustup show active-toolchain }
 Invoke-NativeRustStep -Description 'rustup which cargo' -Command { rustup which cargo }
 
-# Baked, or every fresh consumer container pays minutes to cargo-install it; pinned, since bindings must match the runtime's frb.
-$frbVersion = [string]$env:FLUTTER_RUST_BRIDGE_VERSION
-if ([string]::IsNullOrWhiteSpace($frbVersion)) {
-    throw 'FLUTTER_RUST_BRIDGE_VERSION is not set (versions.env not loaded?) — refusing a floating codegen.'
+# Baked, or every fresh consumer container pays minutes to cargo-install them; pinned, since generated code must match the consumer's runtime crate.
+function Install-PinnedCargoTool {
+    param(
+        [Parameter(Mandatory)][string]$Crate,
+        [Parameter(Mandatory)][string]$Binary,
+        [Parameter(Mandatory)][AllowEmptyString()][AllowNull()][string]$Version,
+        [Parameter(Mandatory)][string]$VersionVariable,
+        [Parameter(Mandatory)][string]$Description,
+        [int]$TimeoutSec = 1800
+    )
+    if ([string]::IsNullOrWhiteSpace($Version)) {
+        throw "$VersionVariable is not set (versions.env not loaded?) — refusing a floating $Crate."
+    }
+    Write-Host "Baking $Crate $Version (cargo install)..."
+    Invoke-RustProcessWithHeartbeat -Description $Description `
+        -FilePath (Join-Path $cargoBin 'cargo.exe') `
+        -ArgumentList @('install', $Crate, '--locked', '--version', $Version) `
+        -TimeoutSec $TimeoutSec
+    Invoke-NativeRustStep -Description "$Binary --version" -Command { & $Binary --version }
 }
-Write-Host "Baking flutter_rust_bridge_codegen $frbVersion (cargo install)..."
-Invoke-RustProcessWithHeartbeat -Description 'cargo-install-frb-codegen' `
-    -FilePath (Join-Path $cargoBin 'cargo.exe') `
-    -ArgumentList @('install', 'flutter_rust_bridge_codegen', '--locked', '--version', $frbVersion) `
-    -TimeoutSec 2400
-Invoke-NativeRustStep -Description 'flutter_rust_bridge_codegen --version' -Command {
-    flutter_rust_bridge_codegen --version
-}
+
+# The $env: reads stay at the call sites, where Build.BaseRustArgs finds the pins that need an ARG.
+Install-PinnedCargoTool -Crate flutter_rust_bridge_codegen -Binary flutter_rust_bridge_codegen -Version $env:FLUTTER_RUST_BRIDGE_VERSION `
+    -VersionVariable FLUTTER_RUST_BRIDGE_VERSION -Description 'cargo-install-frb-codegen' -TimeoutSec 2400
+# cxxbridge must equal the cxx the consumers lock (CON145).
+Install-PinnedCargoTool -Crate cxxbridge-cmd -Binary cxxbridge -Version $env:CXXBRIDGE_CMD_VERSION `
+    -VersionVariable CXXBRIDGE_CMD_VERSION -Description 'cargo-install-cxxbridge-cmd' -TimeoutSec 1200
 
 #endregion
 #region 3. sccache from a released zip, the hub's own build since 2026-10-17

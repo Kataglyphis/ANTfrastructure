@@ -2389,6 +2389,9 @@ function Wait-SccacheUploadDrain {
         }
         $elapsed = [int]$clock.Elapsed.TotalSeconds
         $tally = ($levels[1..($levels.Count - 1)] | ForEach-Object { "$($_.name): $($_.writes) written, $($_.write_failures) failed" }) -join '; '
+        if ($pending -le 0 -or $elapsed -ge $TimeoutSec) {
+            [Console]::Error.WriteLine("sccache-levels| $(Format-SccacheLevelHits -Levels $levels)")
+        }
         if ($pending -le 0) {
             Write-Host "  sccache-drain| every upload done after $elapsed s ($tally of $($levels[0].writes))"
             return 0
@@ -2403,6 +2406,17 @@ function Wait-SccacheUploadDrain {
         }
         Start-Sleep -Seconds $PollSec
     }
+}
+
+function Format-SccacheLevelHits {
+    # Which level served each hit: the shared S3 level's hits are compiles another host paid for.
+    [OutputType([string])]
+    param([Parameter(Mandatory)][object[]]$Levels)
+    # Absent counters read 0: the line is evidence, and a drain must never fail on it under strict mode.
+    $n = { param($Level, $Name) [long]$Level.PSObject.Properties[$Name]?.Value }
+    return ($Levels | ForEach-Object {
+            "$($_.name): $(& $n $_ 'hits') hit(s), $(& $n $_ 'misses') miss(es), backfills_from $(& $n $_ 'backfills_from'), backfills_to $(& $n $_ 'backfills_to')"
+        }) -join '; '
 }
 
 function Complete-SccacheServerSession {

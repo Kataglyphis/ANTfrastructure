@@ -129,7 +129,8 @@ ensure_shellcheck() {
   if command -v shellcheck >/dev/null 2>&1; then
     current="$(shellcheck --version | sed -n 's/^version: //p' | head -n 1)"
   fi
-  if [ "${current}" != "${SHELLCHECK_VERSION}" ]; then
+  # The pin is the release tag (v0.11.0); --version prints the bare number.
+  if [ "${current}" != "${SHELLCHECK_VERSION#v}" ]; then
     pinned_bin="$(bash "${REPO_ROOT}/linux/scripts/lint-shell.sh" --print-bin)"
     install -d "${HOME}/.local/bin"
     install -m 0755 "${pinned_bin}" "${HOME}/.local/bin/shellcheck"
@@ -234,7 +235,7 @@ verify_environment() {
   [ "$(uv --version | awk '{print $2}')" = "${UV_VERSION}" ] \
     || die "uv is not ${UV_VERSION}; run bash linux/scripts/wsl-quality.sh setup"
   shellcheck_version="$(shellcheck --version | sed -n 's/^version: //p' | head -n 1)"
-  [ "${shellcheck_version}" = "${SHELLCHECK_VERSION}" ] \
+  [ "${shellcheck_version}" = "${SHELLCHECK_VERSION#v}" ] \
     || die "shellcheck is not ${SHELLCHECK_VERSION}; run bash linux/scripts/wsl-quality.sh setup"
   pwsh_modules_are_ready || die "pinned pwsh, PSScriptAnalyzer or Pester is missing; run bash linux/scripts/wsl-quality.sh setup"
   require_windows_interop

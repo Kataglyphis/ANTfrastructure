@@ -87,7 +87,9 @@ add_custom_target(plugin_llm)
 set_target_properties(plugin_llm PROPERTIES CUDA_ARCHITECTURES "75-real;121-virtual" CUDA_COMPILER_LAUNCHER sccache)
 '@
             $include = (Join-Path $ortPatchDir 'sccache-ptx-exempt.cmake') -replace '\\', '/'
-            $out = (& $cmake -S "$d\src" -B "$d\build" "-DCMAKE_PROJECT_onnxruntime_INCLUDE=$include" 2>&1) -join "`n"
+            # A NONE-language project needs only a generator; without Visual Studio CMake's default is a missing NMake.
+            $generator = if (Get-Command ninja -ErrorAction SilentlyContinue) { @('-G', 'Ninja') } else { @() }
+            $out = (& $cmake @generator -S "$d\src" -B "$d\build" "-DCMAKE_PROJECT_onnxruntime_INCLUDE=$include" 2>&1) -join "`n"
             Assert-Equal 0 $LASTEXITCODE "configure failed: $out"
             Assert-Match 'LAUNCHER llm=\[\]' $out 'the PTX-only target goes bare'
             Assert-Match 'LAUNCHER plugin_llm=\[\]' $out 'a -virtual target in a subdirectory goes bare too'

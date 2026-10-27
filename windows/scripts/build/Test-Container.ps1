@@ -451,6 +451,13 @@ Assert-Test -Name 'flutter_rust_bridge_codegen at FLUTTER_RUST_BRIDGE_VERSION' -
     return ($LASTEXITCODE -eq 0) -and $pin -and ("$ver" -match "\b$([regex]::Escape($pin))\b")
 } -FailMessage "flutter_rust_bridge_codegen missing, or not at FLUTTER_RUST_BRIDGE_VERSION '$env:FLUTTER_RUST_BRIDGE_VERSION'"
 
+# Baked so cxx consumers never cargo-install it at configure time (CON145); a mismatch with their cxx breaks the bridge ABI.
+Assert-Test -Name 'cxxbridge at CXXBRIDGE_CMD_VERSION' -Condition {
+    $pin = [string]$env:CXXBRIDGE_CMD_VERSION
+    $ver = & cxxbridge --version 2>&1
+    return ($LASTEXITCODE -eq 0) -and $pin -and ("$ver" -match "\b$([regex]::Escape($pin))\b")
+} -FailMessage "cxxbridge missing, or not at CXXBRIDGE_CMD_VERSION '$env:CXXBRIDGE_CMD_VERSION'"
+
 # Pinned like Linux since 2026-10-05 (CON60); an unset pin fails rather than passing vacuously.
 Assert-Test -Name 'Rust at RUST_VERSION' -Condition {
     $pin = [string]$env:RUST_VERSION

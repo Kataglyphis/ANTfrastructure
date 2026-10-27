@@ -638,6 +638,9 @@ owner carries the breakage that costs.
       `:winamd64` carries it (everything-in-the-image rule). Pin `CXXBRIDGE_CMD_VERSION` in
       `versions.env` to the `cxx` OxidANT's `kataglyphis_cxx_bridge` locks (the two must match),
       install it in both images, and make BB's helper refuse a missing or mismatched binary in CI.
+      **Windows in source since 2026-10-27:** `CXXBRIDGE_CMD_VERSION=1.0.205` (OxidANT's lock), baked by
+      `Install-RustToolchain.ps1`, asserted by the smoke. Left: the next `:winamd64` passing that assert,
+      `:latest` (web-lane tools, three arches), and BB's helper.
 
 - [ ] **CON110 — OrchestrANT's riscv64 free-threaded leg needs a seeded cache** [M, ★]. Its
       riscv64 lane (`linux-riscv64.yml`) runs `pinned` alone: run 38562273950 (2026-10-14) took
@@ -782,8 +785,7 @@ owner carries the breakage that costs.
       bk-20261016-211745: 138,210 lines, against 6.2 M for the VVL vertex alone), bazel, the JDK and git-lfs from the
       pinned tool cache, and the patched LLVM built with the pinned clang-cl (rocm chain bk-20261016-184041). Left:
       - IREE's VM ISA genrule on the GIL interpreter (`IREE_ISA_PYTHON`, CON79 item 1, optional).
-      - `UV_WINDOWS_ARM64_SHA256` and its `bump_versions.py` spec: nothing reads them since CON113 deleted
-        `Invoke-PythonTestLegs.ps1` (2026-10-20); dropping the key re-keys the Windows base, so it waits for this rebuild.
+      - `UV_WINDOWS_ARM64_SHA256`: removed in source 2026-10-27 with its `bump_tools.py` row; rides the next chain.
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [ ] **CON108 — the Windows arm64 device runs OrchestrANT's Flet tests** [S, ★].
@@ -791,6 +793,9 @@ owner carries the breakage that costs.
       `test_view.py`, `test_flet_viewer.py` and `test_streaming.py` skip on the device. flet,
       flet-desktop, oauthlib and repath are pure Python; msgpack 1.2.3 has a cp315 `win_arm64`
       wheel. Add them to the store and to OrchestrANT's staging list.
+      **Store in source since 2026-10-27:** the closure at OrchestrANT's lock (flet/flet-desktop 1.0.4, httpx,
+      httpcore, h11, anyio, rich, markdown-it-py, mdurl, oauthlib, repath, msgpack) as `PYTEST_WINDOWS_ARM64_*`.
+      Left: the next `:winarm64`, then OrchestrANT's staging list and a device run without those skips.
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
       - The aarch64 ASan runtime ships in the bundle since 2026-10-03: VS 2026's MSVC

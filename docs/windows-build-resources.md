@@ -489,6 +489,11 @@ build host, so the shared level speaks S3 instead.
   write starts exactly one write per slower level; backfills count apart (`backfills_to`), and
   preprocessor entries count in neither. A cold stage over a slow upload therefore ends with a
   wait, not with lost objects; whatever is left after 600 s, a later build uploads again.
+- **Each RUN names which level served it.** When the drain ends it writes one line to stderr, which
+  a clipped step log keeps: `sccache-levels| L0 (webdav): H hit(s), M miss(es), backfills_from …;
+  L1 (s3): …`. Hits on L1 are compiles another host paid for, so a fresh host's first chain proves
+  the shared level by `grep 'sccache-levels|'` over its logs: L1 hits well above 0, and its misses
+  close to the RUN's real misses.
 
 **Measured end to end on 2026-10-15** (BuildKit probe on `bk-windows-toolchain`, sccache 0.18.0,
 clang-cl, 20 fresh one-function C files, the real key as env secrets):

@@ -44,24 +44,33 @@ function Get-Arm64WheelStack {
         JINJA2      = $false
         FSSPEC      = $false
     }
-    # PYTHON_VERSION's cpXY pytest stack the bundle's own interpreter runs a consumer's suite with (CON67); it shares jinja2 and setuptools with the torch stack.
+    # PYTHON_VERSION's cpXY pytest stack and Flet client closure a consumer's suite runs on the bundle's own interpreter (CON67, CON108); it shares jinja2 and setuptools with the torch stack.
     [ordered]@{
         TORCH_WINDOWS_ARM64  = $torch
         PYTEST_WINDOWS_ARM64 = [ordered]@{
+            ANYIO              = $false
             CERTIFI            = $false
             CHARDET            = $false
             CHARSET_NORMALIZER = $true
             COLORAMA           = $false
             COVERAGE           = $true
             DATAPROPERTY       = $false
+            FLET               = $false
+            FLET_DESKTOP       = $false
+            H11                = $false
+            HTTPCORE           = $false
+            HTTPX              = $false
             IDNA               = $false
             INICONFIG          = $false
+            MARKDOWN_IT_PY     = $false
             MARKUPSAFE         = $true
             MBSTRDECODER       = $false
+            MDURL              = $false
+            MSGPACK            = $true
+            OAUTHLIB           = $false
             PACKAGING          = $false
             PATHVALIDATE       = $false
             PLUGGY             = $false
-            PY_CPUINFO         = $false
             PYGMENTS           = $false
             PYTABLEWRITER      = $false
             PYTEST             = $false
@@ -73,7 +82,10 @@ function Get-Arm64WheelStack {
             PYTEST_METADATA    = $false
             PYTHON_DATEUTIL    = $false
             PYTZ               = $false
+            PY_CPUINFO         = $false
+            REPATH             = $false
             REQUESTS           = $false
+            RICH               = $false
             SIX                = $false
             TABLEDATA          = $false
             TCOLORPY           = $false
