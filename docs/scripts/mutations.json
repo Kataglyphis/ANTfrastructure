@@ -30839,5 +30839,21 @@
   "replace": "  . \"$(dirname \"${BASH_SOURCE[0]}\")/../../../../01-core/logging.sh\"\n",
   "test": "bash linux/scripts/tests/test-android-image-core-paths.sh",
   "why": "the image copies <lib>/android/ one level shallower, so a relative-only core source killed android-gstreamer on the 2026-10-27 chain"
+ },
+ {
+  "id": "lib.cerbero-spandsp-redirect",
+  "target": "linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh",
+  "find": "cerbero_redirect_source_host SPANDSP-MIRROR https://www.soft-switch.org/downloads/spandsp/ https://gstreamer.freedesktop.org/src/mirror/\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cerbero-source-redirect.sh",
+  "why": "soft-switch.org now serves an unrelated site's HTML, so android-gstreamer failed spandsp's checksum on every arch (2026-10-27)"
+ },
+ {
+  "id": "lib.cerbero-redirect-rewrites",
+  "target": "linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh",
+  "find": "        sed -i \"s|${dead}|${live}|g\" \"${f}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cerbero-source-redirect.sh",
+  "why": "a redirect that only counts the recipes leaves every dead URL in place"
  }
 ]

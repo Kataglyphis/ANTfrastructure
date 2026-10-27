@@ -86,6 +86,7 @@ Two neighbours, so you land on the right page:
 - [A cross-built Rust tool links the build host's libbz2](#a-cross-built-rust-tool-links-the-build-hosts-libbz2)
 - [HailoRT's configure is slow while the cache looks healthy](#hailorts-configure-is-slow-while-the-cache-looks-healthy)
 - [`Using ccache: /usr/bin/ccache` in a build that should use sccache](#using-ccache-usrbinccache-in-a-build-that-should-use-sccache)
+- [Cerbero: `Checksum for … spandsp-0.0.6.tar.gz is 'eed29aa6…'`](#cerbero-checksum-for--spandsp-006targz-is-eed29aa6)
 - [`import hailo_platform` fails: `_pyhailort` is a 4 KB module](#import-hailo_platform-fails-_pyhailort-is-a-4-kb-module)
 - [`cmake --list-presets`: `Unrecognized "version" field`](#cmake---list-presets-unrecognized-version-field)
 - [`set: pipefail\r: invalid option name`](#set-pipefailr-invalid-option-name)
@@ -1487,6 +1488,20 @@ build the cache did not reach. `HAILO_NESTED_CACHE=off` is the build as it was
 before 2026-09-24. Run the probe in a fresh container, or give each user its own
 `SCCACHE_ERROR_LOG`.
 [The carrier and its gate](hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches).
+
+### Cerbero: `Checksum for … spandsp-0.0.6.tar.gz is 'eed29aa6…'`
+
+**Symptom.** `android-gstreamer` stops at `Recipe 'spandsp' failed at the build step 'fetch'`, on
+every arch, with a checksum that is not the recipe's `cc053ac6…`.
+
+**Cause.** The recipe's host `www.soft-switch.org` redirects to an unrelated site since October 2026,
+and curl saves that site's HTML page under the tarball's name. The checksum did its job.
+
+**Fix.** `cerbero_redirect_source_host` (`build-android-from-source.sh`) rewrites a dead host in every
+recipe that names it. For spandsp the replacement is `https://gstreamer.freedesktop.org/src/mirror/`,
+which serves the 2014 tarball with the recipe's checksum. Before adding a redirect for another dead
+host, download from the replacement and compare its sha256 with the recipe's `tarball_checksum`, and
+never edit the checksum to match what came back.
 
 ### `Using ccache: /usr/bin/ccache` in a build that should use sccache
 

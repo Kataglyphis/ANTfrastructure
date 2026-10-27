@@ -63,25 +63,25 @@ patch_cerbero_system_m4_usage() {
       "$(pwd)" "Cerbero drop m4 dependency from autoconf/libtool recipes"
 }
 
-override_pkgconfig_dead_mirror() {
-    # PKGCFG-MIRROR: macports serves the byte-identical tarball, still guarded by the recipe's checksum.
-    local f patched=0
-    for f in recipes/pkg-config.recipe \
-             $(grep -rl "pkgconfig\.freedesktop\.org/releases\|gstreamer\.freedesktop\.org/src/mirror/pkg-config" recipes/ packages/ 2>/dev/null); do
-        [ -f "${f}" ] || continue
-        case " ${_pkgcfg_seen:-} " in *" ${f} "*) continue ;; esac
-        _pkgcfg_seen="${_pkgcfg_seen:-} ${f}"
-        sed -i \
-          -e 's|https://gstreamer.freedesktop.org/src/mirror/pkg-config|https://distfiles.macports.org/pkgconfig/pkg-config|g' \
-          -e 's|https://pkgconfig.freedesktop.org/releases|https://distfiles.macports.org/pkgconfig|g' \
-          "${f}"
+# <tag> <dead url prefix> <live url prefix>: the live host serves the byte-identical tarball, still guarded by the recipe's checksum.
+cerbero_redirect_source_host() {
+    local tag="$1" dead="$2" live="$3" f patched=0
+    while IFS= read -r f; do
+        [ -n "${f}" ] || continue
+        sed -i "s|${dead}|${live}|g" "${f}"
         patched=$((patched + 1))
-    done
-    unset _pkgcfg_seen
+    done < <(grep -rlF -e "${dead}" recipes/ packages/ 2>/dev/null || true)
+    echo "cerbero: ${dead} -> ${live} (${patched} file(s) patched, ${tag})"
+}
+
+override_pkgconfig_dead_mirror() {
+    # PKGCFG-MIRROR: macports serves the byte-identical tarball.
+    cerbero_redirect_source_host PKGCFG-MIRROR https://gstreamer.freedesktop.org/src/mirror/pkg-config https://distfiles.macports.org/pkgconfig/pkg-config
+    cerbero_redirect_source_host PKGCFG-MIRROR https://pkgconfig.freedesktop.org/releases https://distfiles.macports.org/pkgconfig
     if [ -f recipes/pkg-config.recipe ]; then
-        echo "cerbero: pkg-config mirror override → $(grep -m1 "url = " recipes/pkg-config.recipe | tr -d ' ') (${patched} file(s) patched, PKGCFG-MIRROR)"
+        echo "cerbero: pkg-config mirror override → $(grep -m1 "url = " recipes/pkg-config.recipe | tr -d ' ') (PKGCFG-MIRROR)"
     else
-        echo "WARNING: recipes/pkg-config.recipe missing — pkg-config mirror override patched ${patched} file(s) blind" >&2
+        echo "WARNING: recipes/pkg-config.recipe missing — the pkg-config mirror override found no recipe" >&2
     fi
 }
 
@@ -240,6 +240,8 @@ fi
 patch_cerbero_system_m4_usage
 override_soundtouch_codeberg_checksum
 override_pkgconfig_dead_mirror
+# SPANDSP-MIRROR: soft-switch.org now redirects to an unrelated site and serves HTML; GStreamer's mirror has the recipe's tarball.
+cerbero_redirect_source_host SPANDSP-MIRROR https://www.soft-switch.org/downloads/spandsp/ https://gstreamer.freedesktop.org/src/mirror/
 override_glib_libiconv_dep
 
 # Python venv
