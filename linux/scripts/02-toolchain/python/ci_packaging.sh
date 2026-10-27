@@ -21,6 +21,19 @@ fi
 # Cross mode (PACKAGING_CROSS_TARGET): build the target's wheel on the native host; docs/linux-cross-builds.md - Cross Python wheels.
 CROSS_TARGET="${PACKAGING_CROSS_TARGET:-}"
 
+# The image's source-built Python sits under usr/local; --sysroot does not reroot a plain -I, so name the sysroot path itself.
+packaging_sysroot_python_headers() {
+  local target="$1" dir
+  for dir in usr/local/include usr/include; do
+    if [ -d "${RISCV64_SYSROOT}/${dir}/python${PYTHON_VERSION}" ]; then
+      printf '%s' "${RISCV64_SYSROOT}/${dir}/python${PYTHON_VERSION}"
+      return 0
+    fi
+  done
+  err "no staged ${target} Python and no python${PYTHON_VERSION} headers under ${RISCV64_SYSROOT}/usr/local/include or /usr/include"
+  return 1
+}
+
 packaging_cross_env() {
   local target="$1" cross_env="" riscv_cross="" python_root="" mm=""
 
@@ -51,19 +64,7 @@ packaging_cross_env() {
   if [ -n "${python_root}" ]; then
     include_flag="-I${python_root}/include/python${PYTHON_VERSION}"
   else
-    # The image's source-built Python sits under usr/local; --sysroot does not reroot a plain -I, so name the sysroot path itself.
-    local header_dir=""
-    for candidate in usr/local/include usr/include; do
-      if [ -d "${RISCV64_SYSROOT}/${candidate}/python${PYTHON_VERSION}" ]; then
-        header_dir="${RISCV64_SYSROOT}/${candidate}/python${PYTHON_VERSION}"
-        break
-      fi
-    done
-    if [ -z "${header_dir}" ]; then
-      err "no staged ${target} Python and no python${PYTHON_VERSION} headers under ${RISCV64_SYSROOT}/usr/local/include or /usr/include"
-      return 1
-    fi
-    include_flag="-I${header_dir}"
+    include_flag="-I$(packaging_sysroot_python_headers "${target}")" || return 1
   fi
   mm="$(printf '%s' "${PYTHON_VERSION}" | tr -d '.')"
 
