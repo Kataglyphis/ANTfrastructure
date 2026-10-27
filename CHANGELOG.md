@@ -15,6 +15,7 @@
 
 ## 2026-10-27 — Windows launcher icons with several resource compilers
 
+- Resolve the shared CMake/uv wiring gate's relative `-ScriptPath` against the consumer's working directory, not the hub.
 - Invoke the first `llvm-rc` on PATH when building a launcher icon resource; the Windows images carry three copies, and the whole match list failed as a command name in every consumer's Windows packaging.
 
 ## 2026-10-27 — reliable parallel test reports

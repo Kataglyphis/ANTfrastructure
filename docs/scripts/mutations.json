@@ -29785,6 +29785,14 @@
   "why": "an empty or header-only export cannot pass as a locked tool install"
  },
  {
+  "id": "windows-lane.cmake-uv-wiring-consumer-relative",
+  "target": "shared/windows/tests/Test-CmakeUvProjectWiring.ps1",
+  "find": "$ScriptPath = [IO.Path]::GetFullPath($ScriptPath, (Get-Location -PSProvider FileSystem).ProviderPath)\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Shared.CmakeUvWiring.Tests.ps1 -ResultFile logs/code-quality/cmake-uv-wiring-mutation.json",
+  "why": "consumers pass repo-relative paths; resolving them against the hub makes every consumer call fail"
+ },
+ {
   "id": "windows-lane.cmake-uv-wiring-legacy",
   "target": "shared/windows/tests/Test-CmakeUvProjectWiring.ps1",
   "find": "if (-not $Arguments.ContainsKey('UvProjectPath') -or $Arguments.ContainsKey('RequirementsPath')) {",

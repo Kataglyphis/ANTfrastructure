@@ -23,6 +23,16 @@ Describe 'shared CMake uv project wiring' {
         }
     }
 
+    It 'resolves a relative script path against the consumer working directory' {
+        Invoke-CmakeWiringFixture { param($gate, $file)
+            Set-Content -LiteralPath $file -Value ('$project = Join-Path $workspace ''third_party/ANTfrastructure/quality/cmake-format''' + "`n" +
+                'Invoke-CmakeFormatStep -WorkspacePath $workspace -UvProjectPath $project')
+            Push-Location -LiteralPath (Split-Path -Parent $file)
+            try { & $gate -ScriptPath (Split-Path -Leaf $file) -CommandName Invoke-CmakeFormatStep }
+            finally { Pop-Location }
+        }
+    }
+
     It 'rejects malformed scripts, missing or legacy arguments and incorrect project assignments' {
         Invoke-CmakeWiringFixture { param($gate, $file)
             $good = @'

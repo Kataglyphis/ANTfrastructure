@@ -54,6 +54,8 @@ function Assert-CmakeProjectAssignment {
     Assert-CmakeProjectJoin -Right $assignments[0].Right -Workspace $workspace
 }
 
+# Consumers pass repo-relative paths; the harness would otherwise resolve them against the hub.
+$ScriptPath = [IO.Path]::GetFullPath($ScriptPath, (Get-Location -PSProvider FileSystem).ProviderPath)
 $ast = Get-TestScriptAst -ScriptPath $ScriptPath -ErrorLabel 'Consumer formatting script'
 $calls = @(Get-TestAstCommands -Ast $ast -Name $CommandName)
 if ($calls.Count -ne $ExpectedCount) { throw "Expected $ExpectedCount $CommandName call(s), got $($calls.Count)." }
