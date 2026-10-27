@@ -428,9 +428,14 @@ owner carries the breakage that costs.
 - [ ] **CON165 — ONNX Runtime builds with one job under `--parallel-archs`** [S, ★★★]. Found 2026-10-26:
       `Using JOBS=1` in `media-arm64.log`, since `compute_jobs_with_mem_cap "" 2000` divides RAM by
       `BUILD_MEM_DIVISOR=18` (3 arches × `PAR_INTRA_STEP_BUDGET=6`). With the cache warm a serial build costs
-      little; cold, it is the 104 min step. Work: measure ONNX Runtime's real peak per job, then size its share
+      little; cold, it is the 104 min step. Measured 2026-10-27 (`resources-20261027-024119-*.csv`, 32 cores,
+      62 GB): over the media stage the median CPU was 12 % with 4 compilers running, while memory peaked at 54 GB
+      used and the 8 GB swap filled, so a fixed divisor is too tight for the long idle tail and right for the
+      peaks. amd64 builds its ONNX Runtime variants one after another at one job each, hours after arm64 and
+      riscv64 have moved on. Work: measure ONNX Runtime's peak per job, then size its jobs from `MemAvailable` when
+      the step starts instead of the static `BUILD_MEM_DIVISOR` share
       ([`build-parallelism-memory-tuning.md`](docs/build-parallelism-memory-tuning.md)). Done when that step
-      logs more than one job and no arch is OOM-killed.
+      logs more than one job on an idle host and no arch is OOM-killed.
 - [ ] **CON167 — a knob defaulted inside one function and read before it runs** [S, ★★★]. The 2026-10-22
       knob moves (`72d3aa76`, `96cbe525`) put `: "${X:=…}"` at the top of one function while another reader, or
       the top level, could run first. Under `set -u` that stopped GStreamer twice on the 2026-10-27 chain
