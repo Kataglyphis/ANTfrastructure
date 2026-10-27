@@ -3,22 +3,21 @@
 # SPDX-License-Identifier: MIT
 # A re-indented multi-line literal once changed the text this patch writes, so its own check refused it mid-chain; NOT covered: a real MSVC header.
 
-BeforeAll {
-    Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsSourceBuild.Patches.psm1') -Force -DisableNameChecking
-    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-OnnxGenaiFromSource.ps1' -FunctionName 'Install-GenaiClangStlPatch')
-    $script:YvalsDefine = '#define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)'
-    function script:Invoke-OnYvals([string]$Text, [int]$Times = 1) {
-        Invoke-InTestDir { param($root)
-            $null = New-Item -ItemType Directory -Path (Join-Path $root 'include')
-            $header = Join-Path $root 'include\yvals_core.h'
-            [IO.File]::WriteAllText($header, $Text)
-            $script:MsvcRoot = $root
-            for ($n = 0; $n -lt $Times; $n++) { Install-GenaiClangStlPatch 6>$null }
-            [IO.File]::ReadAllText($header)
-        }
+# Harness-style (no BeforeAll) so the Linux mutation shards, which carry no Pester, can run it.
+Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsSourceBuild.Patches.psm1') -Force -DisableNameChecking
+. (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-OnnxGenaiFromSource.ps1' -FunctionName 'Install-GenaiClangStlPatch')
+$script:YvalsDefine = '#define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)'
+function script:Invoke-OnYvals([string]$Text, [int]$Times = 1) {
+    Invoke-InTestDir { param($root)
+        $null = New-Item -ItemType Directory -Path (Join-Path $root 'include')
+        $header = Join-Path $root 'include\yvals_core.h'
+        [IO.File]::WriteAllText($header, $Text)
+        $script:MsvcRoot = $root
+        for ($n = 0; $n -lt $Times; $n++) { Install-GenaiClangStlPatch 6>$null }
+        [IO.File]::ReadAllText($header)
     }
-    function script:Get-MsvcToolsRoot { $script:MsvcRoot }
 }
+function script:Get-MsvcToolsRoot { $script:MsvcRoot }
 
 Describe 'Install-GenaiClangStlPatch: the MSVC yvals_core.h clang no-op' {
 
