@@ -593,6 +593,7 @@ function Initialize-TvmRocmSource {
 function Get-TvmRocmLlvmTargets {
     param([object]$Plan, [string]$LlvmConfig)
 
+    $tvmLlvmTargetsBuilt = $null
     if ($Plan.OnLane) {
         # Read back, never assumed: the AMDGPU gate and the marker describe the LLVM TVM really links.
         $tvmLlvmTargetsBuilt = ConvertTo-TvmLlvmTargetString -TargetsBuilt (Get-TvmLlvmTargetsBuilt -LlvmConfig $LlvmConfig)

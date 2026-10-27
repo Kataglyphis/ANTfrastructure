@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-28 — TVM and IREE return $null off their rocm and cross branches
+
+- The 2026-10-24 refactor turned top-level code into `Get-TvmRocmLlvmTargets` and
+  `Install-IreeHostTools`, whose `return` reads a variable only the rocm or cross branch sets; strict
+  mode stopped the amd64 chain's media-tvm stage with "The variable '$tvmLlvmTargetsBuilt' cannot be
+  retrieved because it has not been set", and IREE would have failed the same way next. Both start
+  at `$null` now, and the harness suite runs them on the default lane under strict mode. An AST scan
+  of every Windows build function for reads of variables set only in nested blocks found no other case.
+
 ## 2026-10-27 — LiteRT's ty prewarm keeps uv's cache container-local
 
 - The LiteRT RUN pointed `UV_CACHE_DIR` into its Bazel cache mount, which an earlier RUN had filled,

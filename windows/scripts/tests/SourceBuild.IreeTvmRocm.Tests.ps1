@@ -521,7 +521,7 @@ Describe 'Build-IreeFromSource + Build-TvmFromSource: rocm-only steps sit behind
                 @{ S = $script:TvmScript; V = '$tvmRocmPlan'; R = 'Get-TvmRocmPlan -GpuEnv $gpuEnv -Cross $tvmCross -SpikeFlag $env:TVM_ROCM' }
                 @{ S = $script:TvmScript; V = '$tvmLlvm'; R = 'Get-TvmLlvmChoice -PathLlvmConfig $pathLlvmConfig -Rocm $tvmRocmPlan.Rocm -Cross $tvmCross -GetTargetsBuilt ${function:Get-TvmLlvmTargetsBuilt}' }
                 @{ S = $script:TvmScript; V = '$llvmConfig'; R = 'Join-Path $llvmInstall ''bin\llvm-config.exe''|Get-TvmLlvmBuildConfig -Cross $tvmCross -Plan $tvmLlvm' }
-                @{ S = $script:TvmScript; V = '$tvmLlvmTargetsBuilt'; R = 'ConvertTo-TvmLlvmTargetString -TargetsBuilt (Get-TvmLlvmTargetsBuilt -LlvmConfig $LlvmConfig)|Get-TvmRocmLlvmTargets -Plan $tvmRocmPlan -LlvmConfig $llvmConfig' })) {
+                @{ S = $script:TvmScript; V = '$tvmLlvmTargetsBuilt'; R = '$null|ConvertTo-TvmLlvmTargetString -TargetsBuilt (Get-TvmLlvmTargetsBuilt -LlvmConfig $LlvmConfig)|Get-TvmRocmLlvmTargets -Plan $tvmRocmPlan -LlvmConfig $llvmConfig' })) {
             $sets = $script:RocmStepTree[$c.S].FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq $c.V }, $true)
             Assert-Equal $c.R (@($sets | ForEach-Object { $_.Right.Extent.Text }) -join '|') "$($c.V): every assignment, in order"
         }
@@ -874,5 +874,19 @@ Describe 'rocm-checks: IREE.ps1 and TVM.ps1 follow the check contract' {
             Assert-Match '(?m)^#requires -Version 7\.0' (Get-Content -Raw $path) "$rel requires"
             Assert-Null $ast.ParamBlock "$rel has no param block"
         }
+    }
+}
+
+Describe 'IREE and TVM off their cross and rocm branches return $null under strict mode' {
+    It 'Get-TvmRocmLlvmTargets returns $null off the rocm lane instead of reading an unset variable (mutation)' {
+        . (Get-ScriptFunctionDefinition -ScriptPath $script:TvmScript -FunctionName 'Get-TvmRocmLlvmTargets')
+        Set-StrictMode -Version Latest
+        Assert-Equal $null (Get-TvmRocmLlvmTargets -Plan ([pscustomobject]@{ OnLane = $false; Rocm = $false }) -LlvmConfig 'C:\llvm\bin\llvm-config.exe') 'the default lane'
+    }
+
+    It 'Install-IreeHostTools returns $null on a native build instead of reading an unset variable (mutation)' {
+        . (Get-ScriptFunctionDefinition -ScriptPath $script:IreeScript -FunctionName 'Install-IreeHostTools')
+        Set-StrictMode -Version Latest
+        Assert-Equal $null (Install-IreeHostTools -Cross $false -SourceDir 'C:\iree' -BuildType Release -EhscInclude 'C:\ehsc.cmake' -Masm 'ml64') 'the native lane'
     }
 }

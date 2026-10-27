@@ -239,6 +239,7 @@ function Get-IreePythonBuildPlan {
 function Install-IreeHostTools {
     param([bool]$Cross, [string]$SourceDir, [string]$BuildType, [string]$EhscInclude, [string]$Masm)
 
+    $ireeHostBinDir = $null
     if ($Cross) {
         # Phase A: host tools, a native runtime-only configure of the same tree (upstream's cross recipe).
         $hostBuildDir   = Join-Path $SourceDir 'build-host'

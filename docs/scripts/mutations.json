@@ -30999,5 +30999,21 @@
   "replace": "$env:UV_CACHE_DIR = 'C:\\bzl-repo-cache\\ty-uv-cache'",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.LitertWheelBazel.Tests.ps1 -ResultFile logs/code-quality/litert-ty-uv-cache-mutation.json",
   "why": "uv's renames into a cache mount an earlier RUN filled fail with os error 3, which stopped the amd64 chain's LiteRT stage"
+ },
+ {
+  "id": "lib.tvm-rocm-llvm-targets-null-off-lane",
+  "target": "windows/scripts/build/Build-TvmFromSource.ps1",
+  "find": "    $tvmLlvmTargetsBuilt = $null",
+  "replace": "    $tvmLlvmTargetsUnset = $null",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmRocm.Tests.ps1 -ResultFile logs/code-quality/tvm-llvm-targets-mutation.json",
+  "why": "off the rocm lane the variable is never set, and strict mode stopped the amd64 chain's TVM build on its return"
+ },
+ {
+  "id": "lib.iree-host-tools-null-native",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "    $ireeHostBinDir = $null",
+  "replace": "    $ireeHostBinDirUnset = $null",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmRocm.Tests.ps1 -ResultFile logs/code-quality/iree-host-tools-mutation.json",
+  "why": "a native build never sets the host-tool directory, and strict mode would stop the media-tvm stage on its return"
  }
 ]
