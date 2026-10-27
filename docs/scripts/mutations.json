@@ -30957,7 +30957,7 @@
   "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
   "find": "$(& $n $_ 'hits') hit(s)",
   "replace": "$(& $n $_ 'writes') hit(s)",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.SccacheUploadDrain.Tests.ps1 -ResultFile logs/code-quality/sccache-level-hits-mutation.json",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.SccacheLevelHits.Tests.ps1 -ResultFile logs/code-quality/sccache-level-hits-mutation.json",
   "why": "the per-level line is the evidence that the shared S3 level served a compile, so each level's hits must be its own counter"
  }
 ]

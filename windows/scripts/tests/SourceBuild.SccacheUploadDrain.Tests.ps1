@@ -75,17 +75,6 @@ Describe 'Wait-SccacheUploadDrain' {
         }
     }
 
-    It 'names each level''s hits, misses and backfills, so a chain log shows which level served it' {
-        $levels = '[{"name":"L0 (webdav)","hits":3,"misses":7,"backfills_from":0,"backfills_to":5},{"name":"L1 (s3)","hits":5,"misses":2,"backfills_from":5,"backfills_to":0}]' | ConvertFrom-Json
-        $line = InModuleScope WindowsSourceBuild.Common -Parameters @{ L = $levels } { param($L) Format-SccacheLevelHits -Levels $L }
-        Assert-Equal 'L0 (webdav): 3 hit(s), 7 miss(es), backfills_from 0, backfills_to 5; L1 (s3): 5 hit(s), 2 miss(es), backfills_from 5, backfills_to 0' $line
-    }
-
-    It 'writes the per-level line to stderr, which a clipped step log keeps, once the drain ends' {
-        $text = [IO.File]::ReadAllText((Join-Path $script:repo 'windows\scripts\modules\WindowsSourceBuild.Common.psm1'))
-        Assert-Match '(?s)function Wait-SccacheUploadDrain.*?\[Console\]::Error\.WriteLine\("sccache-levels\| \$\(Format-SccacheLevelHits -Levels \$levels\)"\).*?every upload done' $text
-    }
-
     It 'runs before the server stop in Complete-SccacheServerSession' {
         $text = [IO.File]::ReadAllText((Join-Path $script:repo 'windows\scripts\modules\WindowsSourceBuild.Common.psm1'))
         Assert-Match '(?s)function Complete-SccacheServerSession.*?Wait-SccacheUploadDrain -SccachePath \$SccachePath.*?--stop-server' $text
