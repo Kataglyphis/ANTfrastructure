@@ -198,6 +198,16 @@ onto it, and unmounts it again.
 | Home Assistant's newest backup (`config/backups/*.tar`) | `homeassistant/` | Home Assistant's backup key | the newest 8 |
 | each host's `backup_secret_paths` | `secrets/<host>/<host>-<stamp>.tar.gz.age` | `age`, for `backup_age_recipients` | the newest 12 |
 
+The host_vars that list the secrets are gitignored, so here is what they hold. srv-1:
+`/etc/wireguard`, `/etc/garage`, `/root/sccache-s3-key.txt` (the client key, for
+`garage key import` on a rebuilt Garage) and AIO's `configuration.json`. pi-1: the deploy key
+(`linux/ansible/.ssh`), the host_vars, Home Assistant's `secrets.yaml` and `.storage/backup`,
+and `site.local.env`.
+
+Not copied, on purpose: Garage's buckets (the sccache cache refills; `release-assets` is
+re-fetched against its pinned sha256s), the Context Chat index, and the cat cams' frames. Each cam's
+settings are in [the Home Assistant README](../homeassistant/README.md#the-cat-cams).
+
 **Why pi-1 pulls**: srv-1 is on the internet and gets no NAS credential; QTS allows SSH only
 for administrators, while SMB takes a user who can see one share; and pi-1 already logs in to
 srv-1 as root for the update.

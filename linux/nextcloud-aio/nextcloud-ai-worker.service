@@ -1,0 +1,13 @@
+[Unit]
+Description=Nextcloud AIO - AI TaskProcessing Worker
+After=docker.service
+Requires=docker.service
+
+[Service]
+ExecStartPre=/bin/bash -c 'until docker exec nextcloud-aio-nextcloud true 2>/dev/null; do sleep 5; done'
+ExecStart=/usr/bin/docker exec -u www-data nextcloud-aio-nextcloud php occ background-job:worker -t 60 'OC\TaskProcessing\SynchronousBackgroundJob'
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

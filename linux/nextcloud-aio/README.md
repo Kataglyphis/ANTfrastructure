@@ -1,6 +1,7 @@
 # Nextcloud AIO — nerdctl compose
 
-Manual-install variant without the mastercontainer (no docker socket needed).
+Manual-install variant without the mastercontainer (no docker socket needed). srv-1 does not
+run it: see [srv-1](#srv-1).
 
 ## Quick Start
 
@@ -41,3 +42,23 @@ nerdctl compose -f linux/nextcloud-aio/compose.yaml --env-file linux/nextcloud-a
 - Admin user: `admin` (password set in `.env`)
 - The `custom-bin/caddy` wrapper strips TLS from the Caddyfile (local HTTP setup)
 - The `custom-bin/dig` wrapper resolves `nextcloud-aio-apache` from `/etc/hosts`
+
+## srv-1
+
+srv-1 runs AIO's standard mastercontainer under Docker, with no extra environment:
+
+```bash
+docker run -d --init --sig-proxy=false --name nextcloud-aio-mastercontainer --restart always \
+  -p 80:80 -p 8080:8080 -p 8443:8443 \
+  -v nextcloud_aio_mastercontainer:/mnt/docker-aio-config \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  ghcr.io/nextcloud-releases/all-in-one:latest
+```
+
+AIO's daily Borg backup goes to `/root/nextcloud_aio/borg`; the weekly copy to the NAS and the
+restore are in [Backups to the NAS](../ansible/README.md#backups-to-the-nas).
+
+`nextcloud-ai-worker.service` (here) runs Nextcloud's AI task worker, so Assistant tasks do not
+wait for the next cron run: copy it to `/etc/systemd/system/`, then
+`systemctl enable --now nextcloud-ai-worker.service`. The Context Chat backend is an ExApp
+installed from the app store through HaRP; its index rebuilds itself and is not backed up.

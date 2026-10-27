@@ -13,6 +13,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-27 — what the backups leave out is written down
+
+- A walk over every reachable host found three things only the hosts knew. srv-1's
+  `nextcloud-ai-worker.service` is now tracked in `linux/nextcloud-aio/`, whose README also
+  says that srv-1 runs AIO's standard mastercontainer, not the compose variant. pi-1's Mosquitto,
+  which the Tasmota plugs report through, and each cat cam's `observant.toml` are in
+  `linux/homeassistant/README.md`.
+- srv-1's secrets bundle now holds `/root/sccache-s3-key.txt`, so a rebuilt Garage can import
+  the client key instead of every build host getting a new one. `linux/ansible/README.md` lists
+  each bundle's paths, since the host_vars are gitignored, and what is left out on purpose:
+  Garage's buckets, the Context Chat index and the cat cams' frames.
+
 ## 2026-10-27 — consumer uv exclusion pins
 
 - Parse consumer manifests and ignore uv exclusion names while continuing to check actual dependency pins and reject invalid TOML.
