@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-27 — LiteRT's ty prewarm keeps uv's cache container-local
+
+- The LiteRT RUN pointed `UV_CACHE_DIR` into its Bazel cache mount, which an earlier RUN had filled,
+  and uv's tempfile rename there failed with `os error 3`, the cache-mount write loss known from
+  sccache; the amd64 chain stopped with `pinned ty 0.0.91 is unavailable`. The cache is under
+  `C:\lw` now, at the cost of one 13 MiB `ty` download per build, and a stage-parser test holds it there.
+
 ## 2026-10-27 — what the backups leave out is written down
 
 - A walk over every reachable host found three things only the hosts knew. srv-1's
