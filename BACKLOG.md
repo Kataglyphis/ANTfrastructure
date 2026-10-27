@@ -6,7 +6,7 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**Groomed 2026-10-23 against the merged source and recorded checks; re-checked 2026-10-26.** The immutable Linux index
+**Groomed 2026-10-23 against the merged source and recorded checks; re-checked 2026-10-27.** The immutable Linux index
 published on 2026-10-27 is
 `sha256:7d4d4129472cbb854217d6dd444f1813a90371f1a5f9c839247051d814207282`
 (hub `8119595e93b83d7e623089a3536879dedebf8ede`, run `20261027-125309-76ffcd44`),
@@ -465,27 +465,13 @@ owner carries the breakage that costs.
       download that falls back upstream. Work: keep the mirror GET silent on HTTP errors and let the miss line
       speak (`01-core/downloads.sh`). It is mounted per file by `Dockerfile.base`, so it rides a planned
       rebuild from base. Done when a miss logs only its `asset-mirror| miss` line.
-- [ ] **CON151 — riscv64 builds wasm-pack and flutter_rust_bridge_codegen from source on every run** [M, ★★].
-      2026-10-21: the riscv64 wrapper spent about two hours compiling hadolint (Haskell) under QEMU. Owner
-      decision 2026-10-26: riscv64 ships no hadolint for now (CI lints on amd64), so that build is gone. Left:
-      the log says `no wasm-pack release binary for riscv64; building it from source` and the same for
-      `flutter_rust_bridge_codegen`. Work: build each once and publish it SHA-pinned like `tool-pins.env`, or
-      keep the tool-build caches out of the trim (CON152). Done when a riscv64 wrapper with a warm tool cache
-      spends under 5 minutes in tool builds.
-
-- [ ] **CON152 — the disk trim's eviction log, proved on a chain** [S, ★].
-      In source since 2026-10-26: `[disk-trim]` lists the slugs it removed and kept, and the buildkit
-      fallback logs its layer cache before and after. The tool-build caches are BuildKit cache mounts,
-      which the trim cannot reach ([`build-cache-tiers.md` § 3.1](docs/build-cache-tiers.md)). Done when a
-      chain that trims shows both lines, and a second run's riscv64 web-lane tool builds hit the cache.
-
 - [ ] **CON153 — the pinned release assets come from the Garage mirror** [S, ★★★]. Owner decision
       2026-10-26: Garage S3. In source ([`linux-cross-builds.md` § The asset mirror](docs/linux-cross-builds.md#the-asset-mirror),
       runbook in [`linux/sccache-s3/README.md`](linux/sccache-s3/README.md)): every `download_verified_file`
       asks `<mirror>/<sha256>/<name>` first and falls back upstream, through the `asset_mirror` BuildKit
       secret. The bucket, both keys and this host's env files exist since 2026-10-26 (`--check` passes); a
-      new chain host runs `set-asset-mirror.sh --from <ssh-target> --url <bucket-url>`. Left: after the
-      running chain, `linux/host-config/fill-asset-mirror.sh --apply`. Done when the chain after that logs
+      new chain host runs `set-asset-mirror.sh --from <ssh-target> --url <bucket-url>`. Filled on 2026-10-27 from that chain's
+      misses: 32 of 33 assets; the uv installer refused its pin (CON170). Done when the next chain logs
       `asset-mirror| hit` for the pinned assets.
 
 - [ ] **CON129 — finish GTK 4 validation on foreign arches and GPU variants** [M, ★★★].
@@ -509,16 +495,14 @@ owner carries the breakage that costs.
       riscv64 has neither. Proved in throwaway containers of `:latest` `b52f8c34`, no chain build:
       amd64 and arm64 (QEMU) install both and list the module as uid 1001, riscv64 prints the note, and
       OrchestrANT's contract command passes 2411, skips 2 on 3.14 and 3.14t (2370 and 43 without pwsh).
-      The next `:latest` must show:
-      1. Package stage: `OK: pwsh 7.6.7 at /usr/local/bin/pwsh (x64)` (arm64: `(arm64)`) and
-         `OK: PSScriptAnalyzer 1.25.0 in /opt/microsoft/powershell/7/Modules`; riscv64 `NOTE: PowerShell
-         publishes no riscv64 build`.
-      2. Then OrchestrANT's contract job moves in, prepared in CON124: its checkout, `setup-uv` and `run`
-         become `prepare-linux-ci-host` (`fetch-depth: '1'`, `submodules: 'true'`) and two
-         `run-in-linux-container` steps, `extra-args: --network host -e OLLAMA_BASE_URL -e TEST_TIMEOUT`,
-         `script: bash benchmarks/ci-image-leg.sh pinned` (then `pinnedt`, `if: ${{ !cancelled() }}`)
-         `--extra test bash benchmarks/ci-contract-tests.sh "${OLLAMA_BASE_URL}"`, the two variables as
-         job `env:`, `timeout-minutes: 45`, and the "On the runner until" comment gone.
+      The 2026-10-27 chain installed pwsh 7.6.7 and PSScriptAnalyzer 1.25.0 on amd64 and arm64 and printed
+      the riscv64 note.
+      Left: OrchestrANT's contract job moves in, prepared in CON124: its checkout, `setup-uv` and `run`
+      become `prepare-linux-ci-host` (`fetch-depth: '1'`, `submodules: 'true'`) and two
+      `run-in-linux-container` steps, `extra-args: --network host -e OLLAMA_BASE_URL -e TEST_TIMEOUT`,
+      `script: bash benchmarks/ci-image-leg.sh pinned` (then `pinnedt`, `if: ${{ !cancelled() }}`)
+      `--extra test bash benchmarks/ci-contract-tests.sh "${OLLAMA_BASE_URL}"`, the two variables as
+      job `env:`, `timeout-minutes: 45`, and the "On the runner until" comment gone.
       Done when that job's run shows the PowerShell tests passed on both legs.
 
 - [ ] **CON99 — measure, then maybe publish `:latest` with zstd layers** [M, ★★]. Every Linux CI
@@ -622,6 +606,8 @@ owner carries the breakage that costs.
       `verify_dockerfile_step_labels.py`, and `layer-audit.py` prints each layer's step. Done when
       `nerdctl history` of the next `:latest` names every step and `layer-audit.py` names the Android SDK
       layer `step=android-sdk`, with already-built layers still `CACHED` across each stage handoff.
+      The 2026-10-27 amd64 child's history carries 17 `kataglyphis.step` labels (package and torch);
+      left: `layer-audit.py` on `:latest` and the `CACHED` check.
 
 ## Open — Linux arm64 and riscv64
 
@@ -961,10 +947,11 @@ owner carries the breakage that costs.
       fixes do not establish the cause of the HTTP stall
       ([`docs-sites.md`](docs/docs-sites.md#the-sidebar-toggle-check)).
 
-- [ ] **CON142 — the resource monitor names the runtime lane's arch and step, proved on a chain** [S, ★].
-      In source since 2026-10-26 ([`build-resource-monitoring.md`](docs/build-resource-monitoring.md)):
-      `<arch>.<step>` markers under `RESOURCE_MONITOR_STEP_DIR`. Done when a runtime run's summary shows
-      `stage=amd64/package`-style values (`+`-joined when arches overlap) and no `stage=?`.
+- [ ] **CON142 — the resource monitor names every runtime-lane phase** [S, ★].
+      `<arch>.<step>` markers under `RESOURCE_MONITOR_STEP_DIR` ([`build-resource-monitoring.md`](docs/build-resource-monitoring.md))
+      name each arch step on the 2026-10-27 chain (`stage=amd64/smoke+amd64/wrapper+amd64/wrapper-build`). Its
+      peaks of memory, disk and load fell after the arch loop, in the manifest gates and consumer acceptance,
+      and read `stage=?`. Work: mark those phases too. Done when a runtime summary has no `stage=?`.
 
 - [ ] **CON143 — the hub's tests leave their `mktemp` trees in `/tmp`** [S, ★]. On 2026-10-21 the
       build host's `/tmp` (a 31 GB tmpfs, so RAM) held 31,668 entries and 2.7 GB: 23,865 `tmp.*`,
