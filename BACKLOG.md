@@ -435,7 +435,8 @@ owner carries the breakage that costs.
       riscv64 have moved on. Work: measure ONNX Runtime's peak per job, then size its jobs from `MemAvailable` when
       the step starts instead of the static `BUILD_MEM_DIVISOR` share
       ([`build-parallelism-memory-tuning.md`](docs/build-parallelism-memory-tuning.md)). Done when that step
-      logs more than one job on an idle host and no arch is OOM-killed.
+      logs more than one job on an idle host and no arch is OOM-killed. IREE's wheelhouse build has the same
+      cause: both its host and target LLVM builds ran `cmake --build … -- -j1` for over 3 h on arm64 and riscv64.
 - [ ] **CON167 — a knob defaulted inside one function and read before it runs** [S, ★★★]. The 2026-10-22
       knob moves (`72d3aa76`, `96cbe525`) put `: "${X:=…}"` at the top of one function while another reader, or
       the top level, could run first. Under `set -u` that stopped GStreamer twice on the 2026-10-27 chain
@@ -446,6 +447,11 @@ owner carries the breakage that costs.
       has run on every path; the pattern scan that found these also listed three safe callers (sccache-s3-level,
       iree-wheelhouse, build-runtime-manifest), so it needs call order, not just scope. Done when the gate
       catches both GStreamer cases as mutations and `build-clang.sh` has one defined default.
+- [ ] **CON168 — arm64 and riscv64 build the same IREE host LLVM at the same time** [M, ★★]. Found 2026-10-27:
+      both media lanes run `/tmp/app-wheelhouse/iree-build-host` with the build host's `/usr/bin/g++` at once, so
+      the second lane cannot hit the cache the first is still filling. Work: build the host stage once per chain
+      (a shared step or a cached artifact keyed on the IREE pin), or let the second lane wait for the first's
+      cache. Done when only one lane compiles the IREE host LLVM per chain.
 - [ ] **CON166 — an asset-mirror miss logs `curl: (22) … error: 404`** [S, ★]. Found 2026-10-26: every
       miss prints curl's error line before `asset-mirror| miss`, so a log search for `error` hits each pinned
       download that falls back upstream. Work: keep the mirror GET silent on HTTP errors and let the miss line
