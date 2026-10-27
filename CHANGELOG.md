@@ -18,6 +18,11 @@
 - Resolve the shared CMake/uv wiring gate's relative `-ScriptPath` against the consumer's working directory, not the hub.
 - Invoke the first `llvm-rc` on PATH when building a launcher icon resource; the Windows images carry three copies, and the whole match list failed as a command name in every consumer's Windows packaging.
 
+## 2026-10-27 — the develop-red watch survives a bad gateway
+
+- `develop_red.py` retries a GET that answers 5xx twice, after 5 s and 15 s; a 4xx and every write
+  still fail at once. A single 502 had turned the watch itself red and blocked pushes in the family.
+
 ## 2026-10-27 — reliable parallel test reports
 
 - Retry command waits interrupted by a returning signal so completed commands retain their actual exit status.

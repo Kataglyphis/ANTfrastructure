@@ -13,6 +13,8 @@ import datetime as dt
 import json
 import os
 import sys
+import time
+import urllib.error
 import urllib.request
 from collections.abc import Callable
 from typing import Any
@@ -30,6 +32,8 @@ WALK = 10
 MARK = "<!-- develop-red "
 ISO = "%Y-%m-%dT%H:%M:%SZ"
 API = "https://api.github.com"
+# A GET is safe to repeat, and one 502 from the API must not turn the watch itself red.
+RETRY_DELAYS = (5, 15)
 
 
 class Client:
@@ -52,8 +56,16 @@ class Client:
         req.add_header("X-GitHub-Api-Version", "2022-11-28")
         if self.token:
             req.add_header("Authorization", "Bearer " + self.token)
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            return json.load(resp)
+        for delay in (*RETRY_DELAYS, None):
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    return json.load(resp)
+            except urllib.error.HTTPError as error:
+                if method != "GET" or error.code < 500 or delay is None:
+                    raise
+                print(f"retrying GET {path} after HTTP {error.code}", file=sys.stderr)
+                time.sleep(delay)
+        raise AssertionError("unreachable")
 
 
 def family_repos(client: Client) -> list[str]:

@@ -16524,6 +16524,22 @@
   "why": "an issue that never closes is the noise that teaches everyone to ignore the label"
  },
  {
+  "id": "develop-red.get-retries-5xx",
+  "target": "linux/scripts/develop_red.py",
+  "find": "                if method != \"GET\" or error.code < 500 or delay is None:",
+  "replace": "                if True:",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "one 502 from the API turned the watch itself red on 2026-10-27, and the next push in the family was blocked on it"
+ },
+ {
+  "id": "develop-red.writes-never-retry",
+  "target": "linux/scripts/develop_red.py",
+  "find": "                if method != \"GET\" or error.code < 500 or delay is None:",
+  "replace": "                if error.code < 500 or delay is None:",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "a write that failed after the server applied it would post the same comment or issue twice"
+ },
+ {
   "id": "doc-links.link-roots-follow-root",
   "target": "docs/scripts/verify_doc_links.py",
   "find": "        LINK_ROOTS = REPO_ROOT / LINK_ROOTS.name\n",

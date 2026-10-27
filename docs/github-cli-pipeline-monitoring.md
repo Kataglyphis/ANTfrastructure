@@ -130,6 +130,8 @@ gh issue list -R Kataglyphis/ANTfrastructure -l develop-red   # empty: every dev
   `release.yml` keeps the issue open, and a re-run of an older commit never closes it.
 - A job that was renamed or removed never passes again: close its issue by hand. A closed issue
   marks the runs it covered, so the watch does not reopen it on them.
+- An API GET that answers 5xx is tried twice more (5 s, then 15 s), so one bad gateway does not
+  turn the watch itself red. A write is never repeated: it may have landed.
 - `develop-red-selftest.yml` concludes as its `outcome` input says: dispatch it with `failure` and
   then the watch to see an issue open, with `success` to see it close.
 
