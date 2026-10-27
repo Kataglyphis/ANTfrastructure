@@ -13,6 +13,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-27 — shared uv dependency groups
+
+- Let consumers sync a locked dependency group without installing the project or unrelated extras, while retaining the shared environment and ORT checks.
+
 ## 2026-10-27 — require executed script tests
 
 - Fail empty or entirely skipped Bash runs and Pester suites, with regression and mutation proofs.

@@ -194,6 +194,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows archives share extraction lifecycle; strict failures remain the default and pinned link exceptions stay explicit.
    ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts.
    Python CI suites carry their shared driver fixture; preserve child status, call logs and parent environment isolation.
+   `uv_sync_project --only-group` excludes the project, default groups and extras; when the chain store is active, reject an unreadable lock or any ORT in it before syncing.
    Windows Python CI build, packaging and installed-wheel drivers share the summary, log-close and fatal-step verdict in `Complete-CiBuildSession`; preserve that order and verdict.
    The hub's full Ruff scan, all-file annotations and compatible Linux/Windows type checks fail on findings. Keep the tracked-file coverage and pinned tools intact; run dependency-specific checks in the workflow or build that provides their imports. See [Python type analysis](docs/code-quality-tooling.md#python-type-analysis) for the current scopes and test requirements. Ty checks inferred types but does not require annotations.
    Dependency-specific checks run in their owning workflow or image build; keep checker tools out of shipped images. The version probe catches only expected import, metadata, lock-parse and OpenCV failures; malformed present locks and unexpected runtime exceptions must fail.

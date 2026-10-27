@@ -327,30 +327,68 @@ _uv_sync_extra_args() {
 
 }
 
-uv_sync_project() {
+_uv_group_ort_guard() {
+  [ -n "${ORT_CHAIN_WHEEL_DIR:-}" ] || return 0
+  if [ ! -f uv.lock ] || [ ! -r uv.lock ]; then
+    printf 'ERROR: group sync needs a readable uv.lock to protect chain ORT\n' >&2
+    return 1
+  fi
+  if ! python3 -c 'import sys, tomllib
+with open(sys.argv[1], "rb") as source:
+    packages = tomllib.load(source).get("package", [])
+sys.exit(any(p["name"].lower().replace("_", "-").startswith("onnxruntime") for p in packages))' uv.lock; then
+    printf 'ERROR: group sync cannot prove ORT selection in uv.lock; use a full chain sync\n' >&2
+    return 1
+  fi
+}
+
+_uv_sync_args() {
+  local -n _sync_out="$1"
+  shift
   local use_locked=0
+  local -a only_groups=()
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --locked) use_locked=1; shift ;;
+      --only-group)
+        if [ "$#" -lt 2 ] || [[ -z "$2" || "$2" == -* ]]; then
+          printf 'ERROR: --only-group requires a group name\n' >&2
+          return 2
+        fi
+        only_groups+=(--only-group "$2"); shift 2 ;;
       *) shift ;;
     esac
   done
 
-  local sync_args=(sync --dev)
+  _sync_out=(sync --dev)
 
-  _uv_sync_extra_args sync_args
+  if [ "${#only_groups[@]}" -gt 0 ]; then
+    _sync_out=(sync "${only_groups[@]}")
+  else
+    _uv_sync_extra_args _sync_out
+  fi
 
   if [ $use_locked -eq 1 ] || [ -f uv.lock ]; then
     if [ -f uv.lock ]; then
       info "uv.lock found — using locked sync"
     fi
-    sync_args+=(--locked)
+    _sync_out+=(--locked)
   else
     info "No uv.lock found — performing non-locked sync"
   fi
   
-  _uv_chain_ort_skip_args sync_args
+  if [ "${#only_groups[@]}" -gt 0 ]; then
+    _uv_group_ort_guard || return 1
+    _UV_CHAIN_ORT_SKIPPED=""
+  else
+    _uv_chain_ort_skip_args _sync_out
+  fi
+}
+
+uv_sync_project() {
+  local -a sync_args=()
+  _uv_sync_args sync_args "$@" || return $?
 
   # Why venv creation branches on the interpreter: docs/cross-build-verification.md
   local _venv="${_CURRENT_VENV_PATH:-${VIRTUAL_ENV:-}}"

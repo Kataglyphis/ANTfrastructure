@@ -28,6 +28,7 @@ actions, reusable workflows, shell libraries and gates serve the family at `@dev
 - **A Windows build image**, `:winamd64`, with MSVC, clang-cl, DirectML and HailoRT; `:winarm64` is its arm64 bundle.
 - **Accelerators**: Hailo-10H in `:latest`, CUDA and DeepStream in `:latest-nvidia`, MIGraphX in `:latest-rocm`.
 - **The family's CI surface**: composite actions and reusable workflows, called at `@develop`.
+- **Shared Python setup**: locked dependency-only environments via `uv_sync_project --only-group`; see [Python CI](docs/python-ci.md).
 - **Gates that fail loudly**: a shell preflight, a mutation gate that proves each gate can go red, runtime smokes ([ORT census failure contract](docs/failure-modes.md#the-torch-stage-fails-with-ort-census-fail)); active `develop` proofs finish before the latest queued push ([CI triggers](docs/ci-build-triggers.md#this-repositorys-lanes)).
 - **Home-lab stacks, deliberately here**: an Ollama + Open WebUI server, Home Assistant, Nextcloud AIO, Ansible, [weekly backups to the NAS](linux/ansible/README.md#backups-to-the-nas).
 

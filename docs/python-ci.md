@@ -297,6 +297,14 @@ died here, whatever it had been asked to do.
    extras are excluded via `--no-extra` to make `--all-extras` satisfiable. Greedy in
    **declaration order**: keep an extra unless it conflicts with one already kept.
 
+For a dependency-only environment, call `uv_sync_project --locked --only-group docs`
+from the project root. The option may be repeated. It omits the project, the dev
+group and extras, and retains the existing venv pin and environment cleanup. It does
+refuses a missing or unreadable lock and any lock containing an ORT package when
+the chain store is active: it cannot prove which transitive packages belong to the
+group. The normal post-sync provenance check still handles installed ORT packages.
+A missing group name fails before uv runs.
+
 Declaration order keeps the first-declared member of each family: for OrchestrANT `ml-ai` and
 `pytorch-cpu`, the right pair for CI. The choice is logged, with a pointer to `UV_SYNC_EXTRAS`. A
 project with no conflicts gets an empty exclusion list and a byte-identical command.
