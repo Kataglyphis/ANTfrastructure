@@ -835,9 +835,12 @@ side) after the QEMU binfmt check and before any arch builds. It runs on every b
   image's own sources (`-updates` and `-security` included), then `apt-get install --simulate
   --no-install-recommends` over the set `select_dev_packages` computes: the package stage's strict
   install, where the xvfb skew failed. A conflict prints apt's own lines and refuses the lane.
-- **The pinned installers.** `sh.rustup.rs` and `astral.sh/uv/install.sh` are downloaded again and
-  hashed against `RUSTUP_INIT_SHA256` and `UV_INSTALL_SH_SHA256`. A mismatch refuses the lane and
-  names the pin; an empty pin is the documented skip and says so.
+- **The pinned installer.** `sh.rustup.rs` is downloaded again and hashed against
+  `RUSTUP_INIT_SHA256`: the package stage reinstalls Rust natively on a foreign arch through it. A
+  mismatch refuses the lane and names the pin; an empty pin is the documented skip and says so. The
+  uv installer is not checked: the base ships uv's release binary, so no runtime stage runs
+  `astral.sh/uv/install.sh`. The check had been there, and on 2026-10-27 it refused a lane over that
+  unused installer's rotation.
 - `RUNTIME_INPUT_PREFLIGHT=0` builds without it, as before; `--dry-run` only reports what it would
   check.
 

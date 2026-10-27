@@ -461,6 +461,14 @@ owner carries the breakage that costs.
       one pipeline per arch through the stages, with an image lever scoped to the tags of arches that are not
       building, and a disk gate per arch. Done when a chain starts an arch's next stage as soon as that arch's
       previous one is pushed, without an image removal under a running build.
+- [ ] **CON170 — the uv installer pin follows a moving URL** [S, ★★]. `python_uv.sh` (`uv_ensure_installed`, used by
+      `lib/dartdoc-build.sh` and consumer hosts) runs `https://astral.sh/uv/install.sh`, which installs the newest uv
+      (0.13.6 on 2026-10-27) and changes with every release, so `UV_INSTALL_SH_SHA256` (`283cbef4…`) matches neither it
+      nor the pinned `UV_VERSION=0.13.1`. Work: run `https://astral.sh/uv/${UV_VERSION}/install.sh` and pin
+      `7c482d409673a53f4d9bd34ae95c9166be3b8d89ca82f27dd7bca3cab457afff`, byte-identical on 2026-10-27 to the
+      GitHub release asset `uv-installer.sh` of 0.13.1, and let `bump_versions.py` move it with `UV_VERSION`.
+      `versions.env` re-keys `Dockerfile.base`, so this rides a planned rebuild. Done when `uv_ensure_installed`
+      installs exactly `UV_VERSION` through a hash that no uv release can rotate.
 - [ ] **CON166 — an asset-mirror miss logs `curl: (22) … error: 404`** [S, ★]. Found 2026-10-26: every
       miss prints curl's error line before `asset-mirror| miss`, so a log search for `error` hits each pinned
       download that falls back upstream. Work: keep the mirror GET silent on HTTP errors and let the miss line

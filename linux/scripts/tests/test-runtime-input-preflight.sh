@@ -65,8 +65,7 @@ t_assert_contains "${_out}" "[runtime-preflight riscv64] OK: apt plan"
 for _a in amd64 arm64 riscv64; do
   t_assert_grep "${_work}/w/run.${_a}" "^linux/${_a}$"
 done
-t_assert_eq "https://sh.rustup.rs
-https://astral.sh/uv/install.sh" "$(cat "${_work}/w/downloads")"
+t_assert_eq "https://sh.rustup.rs" "$(cat "${_work}/w/downloads")" "uv's installer is not checked: the package stage never runs it"
 
 t_case "the container is the base's pinned parent, with the package stage's scripts and pins"
 _run="$(cat "${_work}/w/run.arm64")"
@@ -91,14 +90,13 @@ t_case "a rotated installer refuses the lane and names its pin, even when every 
 _out="$(BAD_URL=https://sh.rustup.rs _lane runtime_input_preflight)"
 t_assert_contains "${_out}" "RC=1"
 t_assert_contains "${_out}" "https://sh.rustup.rs no longer matches RUSTUP_INIT_SHA256"
-t_assert_contains "${_out}" "OK: https://astral.sh/uv/install.sh matches UV_INSTALL_SH_SHA256"
 
 t_case "an empty pin is the documented skip: not downloaded, said out loud"
 # After the libraries load: versions.env fills a pin the environment leaves empty.
-_out="$(_lane "UV_INSTALL_SH_SHA256='' runtime_preflight_installers")"
+_out="$(_lane "RUSTUP_INIT_SHA256='' runtime_preflight_installers")"
 t_assert_contains "${_out}" "RC=0"
-t_assert_contains "${_out}" "UV_INSTALL_SH_SHA256 is empty"
-t_assert_eq "https://sh.rustup.rs" "$(cat "${_work}/w/downloads")"
+t_assert_contains "${_out}" "RUSTUP_INIT_SHA256 is empty"
+t_assert_eq "" "$(cat "${_work}/w/downloads" 2>/dev/null)"
 
 t_case "off and dry-run touch neither nerdctl nor the network"
 _out="$(RUNTIME_INPUT_PREFLIGHT=0 _lane runtime_input_preflight)"

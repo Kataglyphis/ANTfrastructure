@@ -30887,5 +30887,13 @@
   "replace": "  :",
   "test": "bash linux/scripts/tests/test-onnx-cross-staging.sh",
   "why": "A missing or repeated library must not satisfy the wheel-strip membership check."
+ },
+ {
+  "id": "runtime-gates.preflight-checks-only-executed-installers",
+  "target": "linux/scripts/lib-runtime-preflight.sh",
+  "find": "  \"RUSTUP_INIT_SHA256 https://sh.rustup.rs\"\n)",
+  "replace": "  \"RUSTUP_INIT_SHA256 https://sh.rustup.rs\"\n  \"UV_INSTALL_SH_SHA256 https://astral.sh/uv/install.sh\"\n)",
+  "test": "bash linux/scripts/tests/test-runtime-input-preflight.sh",
+  "why": "a check on an installer no runtime stage runs refused the 2026-10-27 lane over uv's rotation"
  }
 ]

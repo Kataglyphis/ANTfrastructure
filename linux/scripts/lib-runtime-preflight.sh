@@ -6,10 +6,9 @@ _LIB_RUNTIME_PREFLIGHT_SH_LOADED=1
 # shellcheck source=linux/scripts/lib-runtime-switch.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-runtime-switch.sh"
 
-# Installers the package stage executes, as "<pin variable> <url>"; an empty pin is the documented skip.
+# Installers the package stage executes, as "<pin variable> <url>"; uv is absent because the base ships uv's release binary.
 RUNTIME_PREFLIGHT_INSTALLERS=(
   "RUSTUP_INIT_SHA256 https://sh.rustup.rs"
-  "UV_INSTALL_SH_SHA256 https://astral.sh/uv/install.sh"
 )
 
 # Prints on or off. An unknown value is rc 2, so a typo stops a lane at its start.
