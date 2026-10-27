@@ -350,7 +350,6 @@ dump_debug_info() {
 }
 
 save_logs() {
-  : "${GSTREAMER_DEBUG_LOGS:=false}"
   echo "Collecting logs to ${LOG_DIR}..."
   cp -a /tmp/meson-compile.log "${LOG_DIR}/" 2>/dev/null || true
   cp -a builddir/meson-logs/* "${LOG_DIR}/" 2>/dev/null || true
@@ -361,6 +360,7 @@ save_logs() {
   echo "Logs preserved in ${LOG_DIR}"
 }
 
+: "${GSTREAMER_DEBUG_LOGS:=false}"
 if [ "${GSTREAMER_DEBUG_LOGS}" = "true" ]; then
   mkdir -p "${LOG_DIR}"
   trap save_logs EXIT

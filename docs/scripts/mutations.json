@@ -29367,5 +29367,13 @@
   "replace": "  *) : echo \"FATAL: prune-safe.sh takes no arguments",
   "test": "bash linux/scripts/tests/test-prune-safe.sh",
   "why": "`prune-safe.sh --help` went straight down the prune path; a flag that is not understood must stop it"
+ },
+ {
+  "id": "lib.gstreamer-debug-logs-default-at-reader",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": ": \"${GSTREAMER_DEBUG_LOGS:=false}\"\nif [ \"${GSTREAMER_DEBUG_LOGS}\" = \"true\" ]; then",
+  "replace": "if [ \"${GSTREAMER_DEBUG_LOGS}\" = \"true\" ]; then",
+  "test": "bash linux/scripts/tests/test-gstreamer-debug-logs-knob.sh",
+  "why": "with the default only inside save_logs, set -u killed every GStreamer build at its first line (2026-10-27 chain)"
  }
 ]
