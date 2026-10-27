@@ -17,6 +17,7 @@
 
 - Retry command waits interrupted by a returning signal so completed commands retain their actual exit status.
 - Compare wheel strip results as exact members without depending on filesystem enumeration order.
+- End the wheel-strip membership predicate on explicit returns so the trailing-conditional gate passes.
 
 ## 2026-10-27 — isolated Windows mutation results
 

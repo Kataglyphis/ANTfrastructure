@@ -30883,8 +30883,8 @@
  {
   "id": "lib.onnx-wheel-exact-members",
   "target": "linux/scripts/tests/test-onnx-cross-staging.sh",
-  "find": "  [ \"$actual\" = $'module.so\\nmodule.so.1' ]",
-  "replace": "  :",
+  "find": "  if [ \"$actual\" = $'module.so\\nmodule.so.1' ]; then return 0; fi",
+  "replace": "  return 0",
   "test": "bash linux/scripts/tests/test-onnx-cross-staging.sh",
   "why": "A missing or repeated library must not satisfy the wheel-strip membership check."
  },

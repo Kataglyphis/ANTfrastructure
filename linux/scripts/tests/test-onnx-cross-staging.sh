@@ -181,7 +181,8 @@ t_assert_eq 2 "$(wc -l < "$STRIP_FILES" | tr -d ' ')"
 wheel_strip_names_match() {
   local actual
   actual="$(awk -F/ '{print $NF}' "$1" | LC_ALL=C sort)" || return $?
-  [ "$actual" = $'module.so\nmodule.so.1' ]
+  if [ "$actual" = $'module.so\nmodule.so.1' ]; then return 0; fi
+  return 1
 }
 t_assert_ok wheel_strip_names_match "$STRIP_FILES"
 t_case 'wheel strip checks accept either filesystem order but reject omitted or repeated libraries'
