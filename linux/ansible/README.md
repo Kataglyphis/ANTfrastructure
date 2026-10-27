@@ -209,7 +209,9 @@ srv-1 as root for the update.
   or someone else holds `aio-lockfile`.
   The source is not a Borg repo, or its repo id is not the NAS copy's: a recreated repo mirrored
   with `--delete` would replace the copy's whole history (`-e backup_nextcloud_accept_new_repo=true`
-  for a deliberate one). The copy still differs from the locked repo after the mirror. AIO's
+  for a deliberate one). The copy still differs from the locked repo after the mirror, file
+  times included: the share is mounted with `closetimeo=0`, because the kernel's deferred close
+  lets the NAS stamp every file with its close time. AIO's
   newest archive is older than `backup_max_age_hours` (72).
 - **Home Assistant.** The newest archive is not encrypted (it carries every token in `.storage`),
   is older than 72 h, or its NAS copy's sha256 differs.

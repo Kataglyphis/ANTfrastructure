@@ -87,10 +87,15 @@
   2026-09-14; the newest archive's `backup.json` says `protected: false`, because encryption is
   chosen per location since 2025.2. Its other tip, network storage, does not exist on a Container
   install. Both are corrected.
-- **An unreachable Nextcloud host fails only its own source.** The first real run met srv-1 with
-  a changed SSH host key; the delegated task dropped pi-1 from the play, which skipped Home
-  Assistant and the secrets and left the share mounted. The block now ignores unreachable
-  delegates and pings the host first, so the failure names the cause and the run goes on.
+- **An unreachable Nextcloud host fails only its own source.** The first real run met another
+  host's SSH key on srv-1's address (a laptop had loaded srv-1's WireGuard config); the delegated
+  task dropped pi-1 from the play, which skipped Home Assistant and the secrets and left the
+  share mounted. The block now ignores unreachable delegates and pings the host first, so the
+  failure names the cause and the run goes on.
+- **The NAS share is mounted with `closetimeo=0`.** The first full copy failed its own check:
+  every file on the NAS carried its copy time. The kernel defers each SMB close, and the QNAP
+  sets the write time at that close, after rsync has set the source's. Measured on the share:
+  the time survives with `closetimeo=0` and is lost with the default and with `cache=none`.
 - Tests: `test-ansible-backup.sh` (the two helpers, seven mutations), a `BACKUP:` case in
   `test-ansible-run-status.sh`, and `linux/ansible/tests/test-backup-playbook.sh`, run by hand,
   which drives the playbook against a fake AIO host, a fake Home Assistant and a real `age` key.
