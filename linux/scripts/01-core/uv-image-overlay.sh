@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install a locked overlay without replacing image packages; see docs/python-ci.md.
+# Install a locked overlay without replacing image packages; see docs/python-ci.md#locked-overlays-on-image-packages
 [ -n "${_UV_IMAGE_OVERLAY_LOADED:-}" ] && return 0
 _UV_IMAGE_OVERLAY_LOADED=1
 

@@ -79,4 +79,15 @@ t_assert_rc 0 env PYTHONPATH="${work}/image" python3 "${modules}" "${work}/image
 t_assert_rc 1 env PYTHONPATH="${work}/shadow" python3 "${modules}" "${work}/image" overlay_fixture
 t_case 'missing image modules fail'
 t_assert_rc 1 env PYTHONPATH="${work}/image" python3 "${modules}" "${work}/image" missing_overlay_fixture
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" > "$PY_ARGS"\nexit "${PY_RC:-0}"\n' > "${work}/record-python"
+chmod +x "${work}/record-python"
+t_case 'the module check needs at least one module and runs the verifier beside it, isolated'
+t_assert_rc 1 bash -c 'source "$1"; uv_image_overlay_verify_modules "$2" "$3"' _ "${here}/01-core/uv-image-overlay.sh" "${work}/record-python" "${work}/image"
+t_assert_rc 0 env PY_ARGS="${work}/py-args" bash -c 'source "$1"; uv_image_overlay_verify_modules "$2" "$3" overlay_fixture numpy' _ "${here}/01-core/uv-image-overlay.sh" "${work}/record-python" "${work}/image"
+t_assert_eq "-I
+${modules}
+${work}/image
+overlay_fixture
+numpy" "$(cat "${work}/py-args")"
+t_assert_rc 3 env PY_ARGS="${work}/py-args" PY_RC=3 bash -c 'source "$1"; uv_image_overlay_verify_modules "$2" "$3" overlay_fixture' _ "${here}/01-core/uv-image-overlay.sh" "${work}/record-python" "${work}/image"
 t_summary
