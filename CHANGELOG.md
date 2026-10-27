@@ -16,6 +16,7 @@
 ## 2026-10-27 — reliable parallel test reports
 
 - Retry command waits interrupted by a returning signal so completed commands retain their actual exit status.
+- Compare wheel strip results as exact members without depending on filesystem enumeration order.
 
 ## 2026-10-27 — isolated Windows mutation results
 

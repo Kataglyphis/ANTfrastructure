@@ -30871,5 +30871,21 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-cerbero-fetch-retry.sh",
   "why": "without the fetch pass cerbero downloads inside package, where a failed checksum is fatal on the first try"
+ },
+ {
+  "id": "lib.onnx-wheel-order-independent",
+  "target": "linux/scripts/tests/test-onnx-cross-staging.sh",
+  "find": "  actual=\"$(awk -F/ '{print $NF}' \"$1\" | LC_ALL=C sort)\" || return $?",
+  "replace": "  actual=\"$(awk -F/ '{print $NF}' \"$1\")\" || return $?",
+  "test": "bash linux/scripts/tests/test-onnx-cross-staging.sh",
+  "why": "Both real filesystem enumeration orders must pass the same wheel-strip check."
+ },
+ {
+  "id": "lib.onnx-wheel-exact-members",
+  "target": "linux/scripts/tests/test-onnx-cross-staging.sh",
+  "find": "  [ \"$actual\" = $'module.so\\nmodule.so.1' ]",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-onnx-cross-staging.sh",
+  "why": "A missing or repeated library must not satisfy the wheel-strip membership check."
  }
 ]
