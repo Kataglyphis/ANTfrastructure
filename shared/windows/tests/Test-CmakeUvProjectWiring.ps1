@@ -13,6 +13,25 @@ $ErrorActionPreference = 'Stop'
 $hub = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 Import-Module (Join-Path $hub 'windows/scripts/tests/TestHarness.psm1') -ErrorAction Stop -DisableNameChecking
 
+function Assert-CmakeProjectJoin {
+    param($Right, $Workspace)
+    if ($right -isnot [Management.Automation.Language.PipelineAst] -or $right.PipelineElements.Count -ne 1 -or
+        $right.PipelineElements[0] -isnot [Management.Automation.Language.CommandAst]) {
+        throw 'UvProjectPath must be assigned by one Join-Path command.'
+    }
+    $joins = @(Get-TestAstCommands -Ast $right -Name 'Join-Path')
+    if ($joins.Count -ne 1) { throw 'UvProjectPath must be assigned by one Join-Path command.' }
+    $bound = Get-TestCommandArguments -Command $joins[0] -AsAst
+    $base = if ($bound.ContainsKey('Path')) { $bound['Path'] } else { $bound['0'] }
+    $child = if ($bound.ContainsKey('ChildPath')) { $bound['ChildPath'] } else { $bound['1'] }
+    if ($bound.Count -ne 2 -or $base -isnot [Management.Automation.Language.VariableExpressionAst] -or
+        $child -isnot [Management.Automation.Language.StringConstantExpressionAst] -or
+        $base.VariablePath.UserPath -ine $workspace.VariablePath.UserPath -or
+        $child.Value.Replace('\', '/') -cne $ExpectedProjectPath.Replace('\', '/')) {
+        throw 'UvProjectPath must join WorkspacePath with the hub cmake-format project.'
+    }
+}
+
 function Assert-CmakeProjectAssignment {
     param($Ast, $Call, $Arguments)
     if (-not $Arguments.ContainsKey('UvProjectPath') -or $Arguments.ContainsKey('RequirementsPath')) {
@@ -32,22 +51,7 @@ function Assert-CmakeProjectAssignment {
     if ($assignments.Count -ne 1 -or $assignments[0].Extent.StartOffset -ge $Call.Extent.StartOffset) {
         throw 'UvProjectPath must have one preceding assignment.'
     }
-    $right = $assignments[0].Right
-    if ($right -isnot [Management.Automation.Language.PipelineAst] -or $right.PipelineElements.Count -ne 1 -or
-        $right.PipelineElements[0] -isnot [Management.Automation.Language.CommandAst]) {
-        throw 'UvProjectPath must be assigned by one Join-Path command.'
-    }
-    $joins = @(Get-TestAstCommands -Ast $right -Name 'Join-Path')
-    if ($joins.Count -ne 1) { throw 'UvProjectPath must be assigned by one Join-Path command.' }
-    $bound = Get-TestCommandArguments -Command $joins[0] -AsAst
-    $base = if ($bound.ContainsKey('Path')) { $bound['Path'] } else { $bound['0'] }
-    $child = if ($bound.ContainsKey('ChildPath')) { $bound['ChildPath'] } else { $bound['1'] }
-    if ($bound.Count -ne 2 -or $base -isnot [Management.Automation.Language.VariableExpressionAst] -or
-        $child -isnot [Management.Automation.Language.StringConstantExpressionAst] -or
-        $base.VariablePath.UserPath -ine $workspace.VariablePath.UserPath -or
-        $child.Value.Replace('\', '/') -cne $ExpectedProjectPath.Replace('\', '/')) {
-        throw 'UvProjectPath must join WorkspacePath with the hub cmake-format project.'
-    }
+    Assert-CmakeProjectJoin -Right $assignments[0].Right -Workspace $workspace
 }
 
 $ast = Get-TestScriptAst -ScriptPath $ScriptPath -ErrorLabel 'Consumer formatting script'

@@ -18,6 +18,7 @@
 - Install cmake-format from a shared uv lock on Linux and Windows while preserving existing venv packages and the legacy consumer interface.
 - Lock dartdoc's parser and regenerate legacy exports transactionally during Renovate updates.
 - Keep locked tool and image-overlay uv calls on their intended project and working directory even when the environment selects another.
+- Split the shared Windows CMake wiring check so it meets the existing complexity limit while preserving its validation.
 
 ## 2026-10-27 — consumer uv exclusion pins
 

@@ -15,6 +15,9 @@ Describe 'shared CMake uv project wiring' {
                     $text = '$project = Join-Path $workspace ' + "'$path'`n" + $command + ' -WorkspacePath $workspace -UvProjectPath $project'
                     Set-Content -LiteralPath $file -Value $text
                     & $gate -ScriptPath $file -CommandName $command
+                    $named = $text.Replace('Join-Path $workspace ', 'Join-Path -Path $workspace -ChildPath ')
+                    Set-Content -LiteralPath $file -Value $named
+                    & $gate -ScriptPath $file -CommandName $command
                 }
             }
         }
@@ -32,6 +35,8 @@ Invoke-CmakeFormatStep -WorkspacePath $workspace -UvProjectPath $project
                 @{ Find = '-UvProjectPath $project'; Replace = '-UvProjectPath $project -RequirementsPath old'; Error = 'UvProjectPath' },
                 @{ Find = 'quality/cmake-format'; Replace = 'linux/scripts/cmake-format.requirements.txt'; Error = 'hub cmake-format project' },
                 @{ Find = 'Join-Path $workspace'; Replace = 'Join-Path $different'; Error = 'WorkspacePath' },
+                @{ Find = 'Join-Path $workspace'; Replace = 'Get-Item $workspace | Join-Path'; Error = 'one Join-Path command' },
+                @{ Find = 'Join-Path $workspace'; Replace = 'Join-Path $workspace extra'; Error = 'hub cmake-format project' },
                 @{ Find = 'Invoke-CmakeFormatStep'; Replace = 'if ('; Error = 'parse' },
                 @{ Find = 'Invoke-CmakeFormatStep'; Replace = '$project = "stale"' + "`n" + 'Invoke-CmakeFormatStep'; Error = 'one preceding assignment' }
             )
