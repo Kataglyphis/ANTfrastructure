@@ -7,11 +7,11 @@ The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
 **Groomed 2026-10-23 against the merged source and recorded checks; re-checked 2026-10-26.** The immutable Linux index
-observed on 2026-10-22 was
-`sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
-(hub `c819278171c47b9c6462dcc239377808b324476e`, run `20261022-055503-544d57b9`),
-with amd64, arm64 and riscv64 children. The recorded consumer runs on this index use Python 3.15
-and chain ORT 1.31.0. This replaces the earlier default-image baseline of Python 3.14/ORT 1.30;
+published on 2026-10-27 is
+`sha256:7d4d4129472cbb854217d6dd444f1813a90371f1a5f9c839247051d814207282`
+(hub `8119595e93b83d7e623089a3536879dedebf8ede`, run `20261027-125309-76ffcd44`),
+with amd64, arm64 and riscv64 children; its consumer acceptance passed for six consumers.
+The recorded consumer runs on this index use Python 3.15 and chain ORT 1.31.0. This replaces the earlier default-image baseline of Python 3.14/ORT 1.30;
 it is not a fresh assertion about a mutable tag or either GPU variant.
 Earlier Windows and GPU measurements remain dated evidence in their individual entries.
 Decisions and checked closures live in [`docs/image-decisions.md`](docs/image-decisions.md).
@@ -118,22 +118,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       follow-up `--target-arches riscv64 --from-stage runtime` logs `[runtime-reuse] amd64: reusing …` and
       the same for arm64, builds riscv64 only, gates all three, and publishes a 3-child `:latest` that
       passes freshness.
-
-- [ ] **CON140 — the runtime lane's input preflight, proved on a chain** [S, ★★].
-      In source since 2026-10-26 ([`linux-cross-builds.md` § The runtime lane input preflight](docs/linux-cross-builds.md#the-runtime-lane-input-preflight),
-      `RUNTIME_INPUT_PREFLIGHT`): each arch's package-stage apt set through `apt-get install --simulate` in
-      the base's pinned parent, and the rustup and uv installers re-hashed. Done when the next chain shows,
-      before any `step=base`, `[runtime-preflight <arch>] OK: apt plan: N package(s) resolve` for all three
-      arches, the two installer `OK` lines and `[runtime-preflight] passed`. riscv64's plan takes about
-      8 min under QEMU and the lane waits for it; overlap it with amd64's build if that shows up as idle.
-
-- [ ] **CON141 — the summed runtime disk gate and the post-push image drop, proved on a chain** [M, ★★].
-      In source since 2026-10-26 ([`build-cache-tiers.md`](docs/build-cache-tiers.md)): the gate sums
-      165 GB for amd64 and 105 GB for each other arch, 50 GB less per wrapper already local, plus the 40 GB
-      floor; after the index the lane removes each pushed arch's `latest-<arch>`,
-      `-tmp-reduced-platform` and `latest-package-<arch>` (`RUNTIME_DROP_PUSHED_IMAGES=0` keeps them).
-      Done when a 3-arch pushing run logs `[runtime-drop] removed N … 0 refused` and its resource summary
-      shows `samples below 40 GB free disk: 0` with no `[disk-watch] … reclaiming` in the runtime stage.
 
 - [ ] **CON112 — ModelANT's release build runs on the pinned CPython and the chain ORT** [M, ★★].
       `.github/workflows/release.yml` builds on `ubuntu-latest` with `actions/setup-python`
@@ -390,11 +374,10 @@ owner carries the breakage that costs.
       `audioplayers_linux` links `-lgstreamer-1.0` without pkg-config's `-L`, so
       `/opt/gstreamer/lib/x86_64-linux-gnu` has to be on `LIBRARY_PATH` (or the plugin's CMake
       patched). Both are moot for CON102's core-only client.
-- [ ] **CON106 — the app venv's `frontend` extra in the published images** [S, ★]. Owner decision
-      2026-10-26: add it. In source: both torch stages sync `--extra frontend`
-      ([`consumer-image-contract.md`](docs/consumer-image-contract.md)). Done when the next chain's
-      APP-PARITY passes with flet, flet-desktop, flet-web and FastAPI on amd64 and arm64, riscv64 shows
-      them absent by decision, and `:winamd64`'s torch stage prints `extras: ml-ai docs frontend`.
+- [ ] **CON106 — the app venv's `frontend` extra in `:winamd64`** [S, ★]. Owner decision 2026-10-26.
+      Linux proven on the 2026-10-27 index `7d4d4129…`: APP-PARITY passes with flet, flet-desktop, flet-web
+      and FastAPI on amd64 and arm64, absent by decision on riscv64. Done when `:winamd64`'s torch stage
+      prints `extras: ml-ai docs frontend`.
 - [b] **CON109 — ANThology widgets as a Flet extension** [M, ★]. Blocked on CON102, and on a
       UI that needs a widget Flet lacks (owner, 2026-10-19). OrchestrANT's Flet UIs take
       ANThology's look from Python alone (Material 3, `color_scheme_seed` green accent) and use
@@ -468,7 +451,15 @@ owner carries the breakage that costs.
       `7c482d409673a53f4d9bd34ae95c9166be3b8d89ca82f27dd7bca3cab457afff`, byte-identical on 2026-10-27 to the
       GitHub release asset `uv-installer.sh` of 0.13.1, and let `bump_versions.py` move it with `UV_VERSION`.
       `versions.env` re-keys `Dockerfile.base`, so this rides a planned rebuild. Done when `uv_ensure_installed`
-      installs exactly `UV_VERSION` through a hash that no uv release can rotate.
+      installs exactly `UV_VERSION` through a hash that no uv release can rotate. The 2026-10-27 mirror fill refused it
+      (`FAILED 283cbef4bdac install.sh`), the only one of 33 assets.
+- [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★★]. Found 2026-10-27: after a
+      stopped run, the runtime lane's entry reclaim freed 0 of 165 GiB layer cache and refused at 376 GB free;
+      once `systemctl --user restart buildkit` ran with nothing building, `prune-safe.sh` freed 116 GB and kept
+      all 114 cache mounts. The disk preflight also adds the lane's ~415 GB to the stage cost under
+      `--from-stage runtime` (~535 GB) and only warns. Work: in the reclaim, with no build in flight, restart
+      buildkitd before the layer prune; count the lane once. Done when a chain resumed after a stop reclaims
+      without a hand restart.
 - [ ] **CON166 — an asset-mirror miss logs `curl: (22) … error: 404`** [S, ★]. Found 2026-10-26: every
       miss prints curl's error line before `asset-mirror| miss`, so a log search for `error` hits each pinned
       download that falls back upstream. Work: keep the mirror GET silent on HTTP errors and let the miss line
