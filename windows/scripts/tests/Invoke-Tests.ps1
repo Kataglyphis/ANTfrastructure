@@ -40,10 +40,10 @@ function New-TestTally {
 }
 
 function Write-TestResult {
-    param([Collections.IDictionary]$Tally, [string]$Path)
+    param([Collections.IDictionary]$Tally, [string]$Path, [int]$Depth = 4)
     $resultParent = Split-Path -Parent $Path
     if ($resultParent) { $null = New-Item -ItemType Directory -Force -Path $resultParent -ErrorAction Stop }
-    ConvertTo-Json -InputObject $Tally -Depth 4 | Set-Content -LiteralPath $Path -Encoding utf8 -ErrorAction Stop
+    ConvertTo-Json -InputObject $Tally -Depth $Depth | Set-Content -LiteralPath $Path -Encoding utf8 -ErrorAction Stop
 }
 
 function Merge-TestTallies {
@@ -151,8 +151,6 @@ function Write-TestSummary {
         $repoRoot = Split-Path (Split-Path (Split-Path $here -Parent) -Parent) -Parent
         Join-Path $repoRoot ("logs\windows-tests\summary-{0}-{1}.json" -f (Get-Date -Format 'yyyyMMdd-HHmmss'), $PID)
     }
-    $parent = Split-Path -Parent $summaryPath
-    if ($parent) { $null = New-Item -ItemType Directory -Force -Path $parent -ErrorAction Stop }
     $tally['RunAtUtc'] = [datetime]::UtcNow.ToString('o')
     $tally['FailedCount'] = $failCount
     $tally['Broken'] = @($Broken)
@@ -161,7 +159,7 @@ function Write-TestSummary {
     $tally['CoverageFailures'] = @($CoverageFailures)
     $tally['CoverageFloorMet'] = $CoverageFailures.Count -eq 0
     $tally['ExitCode'] = $exitCode
-    ConvertTo-Json -InputObject $tally -Depth 5 | Set-Content -LiteralPath $summaryPath -Encoding utf8 -ErrorAction Stop
+    Write-TestResult -Tally $tally -Path $summaryPath -Depth 5
     Write-Host "Run summary: $summaryPath"
     return $exitCode
 }

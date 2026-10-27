@@ -28,8 +28,7 @@ actions, reusable workflows, shell libraries and gates serve the family at `@dev
 - **A Windows build image**, `:winamd64`, with MSVC, clang-cl, DirectML and HailoRT; `:winarm64` is its arm64 bundle.
 - **Accelerators**: Hailo-10H in `:latest`, CUDA and DeepStream in `:latest-nvidia`, MIGraphX in `:latest-rocm`.
 - **Reusable CI and Python setup**: workflows, locked cmake-format and dartdoc tools, dependency environments, image-backed overlays isolated from conflicting uv project settings and [consumer inventory](docs/consumer-inventory.md); see [Python CI](docs/python-ci.md).
-- **Gates that fail loudly**: preflight, mutation proofs, consumer pin checks ([uv exclusions](docs/code-quality-tooling.md#consumer-pins-and-uv-exclusions)) and runtime smokes ([ORT census](docs/failure-modes.md#the-torch-stage-fails-with-ort-census-fail)); active `develop` proofs finish before the latest queued push ([CI triggers](docs/ci-build-triggers.md#this-repositorys-lanes)).
-- **Windows test result paths** are created when needed, including for isolated mutation runs; failed writes fail the run ([test reports](docs/code-quality-tooling.md#windows-pester-coverage)).
+- **Gates that fail loudly**: preflight, mutation proofs, consumer pin checks ([uv exclusions](docs/code-quality-tooling.md#consumer-pins-and-uv-exclusions)) and runtime smokes ([ORT census](docs/failure-modes.md#the-torch-stage-fails-with-ort-census-fail)); active `develop` proofs finish before the latest queued push ([CI triggers](docs/ci-build-triggers.md#this-repositorys-lanes)). Windows test result paths are created when needed; failed writes fail the run ([test reports](docs/code-quality-tooling.md#windows-pester-coverage)).
 - **Home-lab stacks, deliberately here**: an Ollama + Open WebUI server, Home Assistant, Nextcloud AIO, Ansible, [weekly backups to the NAS](linux/ansible/README.md#backups-to-the-nas).
 
 ## Quick start

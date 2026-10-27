@@ -2,6 +2,7 @@
 # Tests a real child result file, not test coverage or report-upload behavior.
 
 . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/tests/Runner.Parallel.Tests.ps1' -FunctionName New-RunnerCopy)
+. (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/tests/Runner.Parallel.Tests.ps1' -FunctionName Update-RunnerCopy)
 
 Describe 'Invoke-Tests.ps1 child result paths' {
     It 'creates a missing result directory and writes the actual tally' {
@@ -18,11 +19,8 @@ Describe 'Invoke-Tests.ps1 child result paths' {
             Assert-Equal 1 $tally.Passed 'the saved tally reports the real pass'
 
             $runner = Join-Path $tests 'Invoke-Tests.ps1'
-            $source = [IO.File]::ReadAllText($runner)
             $anchor = '    if ($resultParent) { $null = New-Item -ItemType Directory -Force -Path $resultParent -ErrorAction Stop }'
-            $mutant = Update-TestLiteralText -Text $source -Find $anchor -Replace '    $null = $resultParent' `
-                -ErrorLabel 'result-directory mutant'
-            [IO.File]::WriteAllText($runner, $mutant)
+            Update-RunnerCopy -Tests $tests -Find $anchor -Replace '    $null = $resultParent' -ErrorLabel 'result-directory mutant'
             $broken = Join-Path $dir 'missing/again/tally.json'
             $null = @(& pwsh -NoProfile -NonInteractive -File $runner -Only 'A.Tests.ps1' -ResultFile $broken 2>&1)
             Assert-Equal 1 $LASTEXITCODE 'removing directory creation must fail the child'

@@ -20,6 +20,14 @@ function New-RunnerCopy {
     return $tests
 }
 
+function Update-RunnerCopy {
+    param([string]$Tests, [string]$Find, [string]$Replace, [string]$ErrorLabel)
+    $runner = Join-Path $Tests 'Invoke-Tests.ps1'
+    $source = [IO.File]::ReadAllText($runner)
+    $updated = Update-TestLiteralText -Text $source -Find $Find -Replace $Replace -ErrorLabel $ErrorLabel
+    [IO.File]::WriteAllText($runner, $updated)
+}
+
 # <tests dir> <jobs> [meet secs]: the runner's output, its exit code and what each suite said at the rendezvous.
 function Invoke-RunnerCopy {
     param([Parameter(Mandatory)][string]$Tests, [Parameter(Mandatory)][int]$Jobs, [int]$MeetSecs = 20)
