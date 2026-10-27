@@ -452,6 +452,15 @@ owner carries the breakage that costs.
       the second lane cannot hit the cache the first is still filling. Work: build the host stage once per chain
       (a shared step or a cached artifact keyed on the IREE pin), or let the second lane wait for the first's
       cache. Done when only one lane compiles the IREE host LLVM per chain.
+- [ ] **CON169 — an arch waits for every other arch before its next stage** [L, ★★★]. Measured 2026-10-27:
+      `media-arm64` and `media-riscv64` were pushed at ~09:35 and their android stages waited ~2 h for amd64's
+      ONNX Runtime and OpenCV. `build-cross-chain.sh` runs one `run_parallel_arch_loop` per stage and joins it,
+      although `android-<arch>` needs only `media-<arch>`. The join carries three things: the image-store lever
+      runs only with nothing in flight ([`build-cache-tiers.md` § 3.2.2](docs/build-cache-tiers.md#322-the-image-store-lever-disk3)),
+      pins and ancestry are harvested per stage, and the disk estimate assumes all lanes are in one stage. Work:
+      one pipeline per arch through the stages, with an image lever scoped to the tags of arches that are not
+      building, and a disk gate per arch. Done when a chain starts an arch's next stage as soon as that arch's
+      previous one is pushed, without an image removal under a running build.
 - [ ] **CON166 — an asset-mirror miss logs `curl: (22) … error: 404`** [S, ★]. Found 2026-10-26: every
       miss prints curl's error line before `asset-mirror| miss`, so a log search for `error` hits each pinned
       download that falls back upstream. Work: keep the mirror GET silent on HTTP errors and let the miss line
