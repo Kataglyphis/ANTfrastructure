@@ -13,6 +13,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-27 — isolated Windows mutation results
+
+- Create child test-result directories before writing, fail on write errors and repair two stale mutation anchors.
+
 ## 2026-10-27 — locked cmake-format tooling
 
 - Install cmake-format from a shared uv lock on Linux and Windows while preserving existing venv packages and the legacy consumer interface.

@@ -933,7 +933,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3730 entries** over **407 distinct test commands**; both digits are
+manifest holds **3731 entries** over **408 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1928,6 +1928,8 @@ the chain reads them there. PowerShell complexity JSON belongs under ignored
 `logs/code-quality/`.
 The Windows test runner writes a JSON summary for each parent run to
 `logs/windows-tests/summary-<timestamp>-<pid>.json`; child runs do not write durable copies.
+An explicit child `-ResultFile` creates its parent and fails on a write error, so a
+fresh mutation mirror can run the actual PowerShell baseline before testing a mutant.
 
 ## Windows Pester coverage
 

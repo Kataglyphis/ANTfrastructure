@@ -39,6 +39,13 @@ function New-TestTally {
     }
 }
 
+function Write-TestResult {
+    param([Collections.IDictionary]$Tally, [string]$Path)
+    $resultParent = Split-Path -Parent $Path
+    if ($resultParent) { $null = New-Item -ItemType Directory -Force -Path $resultParent -ErrorAction Stop }
+    ConvertTo-Json -InputObject $Tally -Depth 4 | Set-Content -LiteralPath $Path -Encoding utf8 -ErrorAction Stop
+}
+
 function Merge-TestTallies {
     param([object[]]$Tallies)
     $total = 0; $passed = 0; $pesterFailures = 0
@@ -357,7 +364,7 @@ $tally = Merge-TestTallies -Tallies @($harnessTally, $pesterTally)
 
 # A child hands its tallies to the parent, which prints the one summary and applies the floor to the sum.
 if ($ResultFile) {
-    ConvertTo-Json -InputObject $tally -Depth 4 | Set-Content -LiteralPath $ResultFile
+    Write-TestResult -Tally $tally -Path $ResultFile
     if ($tally.Failed.Count -gt 0 -or $tally.PesterFailures -gt 0 -or $tally.Skipped.Count -gt 0 -or
         $tally.CoverageFailures.Count -gt 0) { exit 1 }
     exit 0

@@ -1210,7 +1210,7 @@
  {
   "id": "sccache.retry-once",
   "target": "linux/scripts/01-core/sccache-launcher.sh",
-  "find": "  sccache \"$@\" 2>\"${_err}\"\n  _rc2=$?",
+  "find": "  sccache \"$@\" 2>\"${_err}\" 9>&-\n  _rc2=$?",
   "replace": "  _rc2=1  # retry removed",
   "test": "bash linux/scripts/tests/test-sccache-launcher.sh",
   "why": "YB: the ENOENT class is intermittent, so one retry keeps the cache entry instead of bypassing it -- thousands of units per chain"
@@ -14798,7 +14798,7 @@
  {
   "id": "lib.dartdoc-python-host-venv",
   "target": "linux/scripts/lib/dartdoc-build.sh",
-  "find": "    _dartdoc_build_host_venv \"${requirements}\"\n",
+  "find": "    _dartdoc_build_host_venv \"${requirements}\" || return 1\n",
   "replace": "    err \"no parser\"\n",
   "test": "bash linux/scripts/tests/test-dartdoc-python.sh",
   "why": "a workstation without the image (OmniAccelerANT's documented generate-docs.sh run) still needs the venv"
@@ -29855,5 +29855,13 @@
   "replace": "    $null = $ProjectPath",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Uv.LockedProject.Tests.ps1 -ResultFile logs/code-quality/uv-locked-project-mutation.json",
   "why": "relative Windows tool projects must resolve before uv reads inherited settings"
+ },
+ {
+  "id": "windows-lane.result-file-parent",
+  "target": "windows/scripts/tests/Invoke-Tests.ps1",
+  "find": "    if ($resultParent) { $null = New-Item -ItemType Directory -Force -Path $resultParent -ErrorAction Stop }",
+  "replace": "    $null = $resultParent",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Runner.ResultFile.Tests.ps1 -ResultFile logs/code-quality/result-file-mutation.json",
+  "why": "An isolated mutation mirror must create the requested result parent before writing the real tally."
  }
 ]

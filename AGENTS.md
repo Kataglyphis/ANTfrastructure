@@ -211,6 +211,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Consumer Windows PowerShell lint jobs report complexity over the same selected path and upload JSON; enable strict verdicts with `complexity-strict` after the consumer meets the limits. PowerShell-only repos call `powershell-quality.yml` with `strict: true` when clean.
    Windows CI installs Pester and PSScriptAnalyzer through `WindowsCi.ModuleBootstrap.psm1`; reuse an installed matching version, retry transient Gallery lookup failures, and verify the requested exact or minimum version. Exhausted retries and missing installed modules remain fatal.
    Consumer mutation jobs supply a tracked, nonempty recipe manifest; an empty shard or missing setup file cannot pass as proof. Python refactor previews target the caller root and upload a patch without publishing it.
+   Child Windows test reports create the requested result directory, including in isolated mutation mirrors, and failures to write remain fatal.
 
 ## Container Architecture
 
