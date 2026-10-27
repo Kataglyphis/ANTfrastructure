@@ -49,11 +49,15 @@ own `command not found` at the call site. Put LLVM on `PATH` yourself.
 
 `cmake-format` is the one tool the library will provision: when it is not on
 `PATH`, `code_quality_ensure_cmake_format` (`code-quality.sh`) creates a venv
-with `uv` at `CODE_QUALITY_VENV_DIR` and installs the hub's pinned
-`linux/scripts/cmake-format.requirements.txt` through `01-core/python_uv.sh`.
-That default has applied since 2026-09-15; `CODE_QUALITY_UV_VENV_CREATE_SCRIPT`
-and `CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT` only override it. It still
-hard-errors when `uv` is missing or the hub's requirements file is absent.
+with `uv` at `CODE_QUALITY_VENV_DIR` and installs the hash-locked
+`quality/cmake-format` project through `01-core/python_uv.sh`. The installer
+exports the lock and installs its packages without removing unrelated venv content.
+`CODE_QUALITY_UV_VENV_CREATE_SCRIPT` and `CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT`
+override it. Missing uv, project files or a stale lock fail. The old
+`linux/scripts/cmake-format.requirements.txt` remains a compatibility export while
+existing consumers migrate; it must not be removed before the consumer inventory permits it.
+CI runs `bash linux/scripts/verify-uv-exports.sh` to compare both legacy exports
+byte for byte against their locked projects; Renovate regenerates them during updates.
 
 ### clang-format
 
@@ -183,7 +187,7 @@ the caller's shell options.
 | `CODE_QUALITY_GCC_TOOLCHAIN_PREFIX` | prefix matched when stripping container-only toolchain flags | `/opt/gcc-` |
 | `CODE_QUALITY_VENV_DIR` | virtualenv used to obtain cmake-format | `<project root>/.venv` |
 | `CODE_QUALITY_UV_VENV_CREATE_SCRIPT` | script that creates the venv | the hub's `uv_venv_create` (`01-core/python_uv.sh`) |
-| `CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT` | script that installs its requirements | installs the hub's `linux/scripts/cmake-format.requirements.txt` |
+| `CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT` | script that installs its requirements | installs the hub's locked `quality/cmake-format` project |
 
 Both `UV_*` scripts run with the project root as cwd and only override the hub's
 default bootstrap, which runs only when cmake-format is not already on `PATH`.
@@ -929,7 +933,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3695 entries** over **401 distinct test commands**; both digits are
+manifest holds **3730 entries** over **407 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2320,7 +2324,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 987 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 992 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -3462,7 +3466,7 @@ the document.
 An inline preflight function that drives `lib/code-quality.sh` end to end:
 `code_quality_ensure_cmake_format` provisions the tool through uv into
 `logs/tools/cmake-format-linux` when it is not on `PATH` (pins in
-`linux/scripts/cmake-format.requirements.txt` — `pyyaml` is in there because
+`quality/cmake-format/uv.lock` — `pyyaml` is included because
 `cmake-format==0.6.13` does not depend on it and dies with
 `ModuleNotFoundError` the moment it reads a YAML config; after the install
 `lib/cmakelang-py315.py` gives its lexer 3.14's `re.Scanner`, which Python 3.15

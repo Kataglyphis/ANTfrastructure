@@ -15,6 +15,7 @@ Subcommands (argv[1]); every line of output is tab-separated:
   verify   <root> <plan.json>                    the pre-flight and predicted audit, writing nothing
   edit     <root> <plan.json>                    write, then audit the file or put it back
   pairlock <root> <plan.json> <before|after>     Torch/vision uv lock projection proof
+  uv-exports <root>                              validated compatibility export pairs
 """
 import collections
 import json
@@ -29,6 +30,7 @@ from typing import NotRequired, TypedDict, cast
 import renovate_audit
 import renovate_locator
 import renovate_pep_git
+import renovate_uv_exports
 
 
 class RenovateUpdate(TypedDict, total=False):
@@ -736,6 +738,15 @@ def _pairlock(root: str, planpath: str, phase: str) -> None:
         sys.exit(why)
 
 
+def _print_uv_exports(root: str) -> None:
+    try:
+        exports = renovate_uv_exports.rows(root)
+    except (OSError, ValueError) as exc:
+        sys.exit(f"invalid uv export configuration: {exc}")
+    for project, output in exports:
+        print(f"{project}\t{output}")
+
+
 # A table, not an if-chain: every mode is one entry, so a new one adds no branch to main.
 MODES = {
     "config": lambda a: _print_config(a[0]),
@@ -751,6 +762,7 @@ MODES = {
     "edit": lambda a: apply_edits(a[0], a[1]),
     "lockcheck": lambda a: lock_readable(a[0], a[1], a[2]),
     "pairlock": lambda a: _pairlock(a[0], a[1], a[2]),
+    "uv-exports": lambda a: _print_uv_exports(a[0]),
 }
 
 

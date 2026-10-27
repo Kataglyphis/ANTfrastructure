@@ -114,9 +114,12 @@ function Initialize-UvVenvPython {
     [string]$PythonVersion = '',
     [string]$EnvName = '.venv',
     # Default <workspace>/requirements.txt if present; cmake-format alone needs only linux/scripts/cmake-format.requirements.txt.
-    [string]$RequirementsPath = ''
+    [string]$RequirementsPath = '',
+    [string]$UvProjectPath = ''
   )
 
+  if ($RequirementsPath -and $UvProjectPath) { throw 'Choose either RequirementsPath or UvProjectPath.' }
+  if ($UvProjectPath) { Assert-UvLockedProject -ProjectPath $UvProjectPath }
   $uvCommand = Get-Command 'uv' -ErrorAction SilentlyContinue
   if (-not $uvCommand) {
     throw 'uv not found on PATH. Install Astral uv before running formatting steps.'
@@ -130,6 +133,11 @@ function Initialize-UvVenvPython {
   $venvPython = Initialize-UvVenv -Workspace $WorkspacePath -PythonVersion $PythonVersion -EnvName $EnvName `
     -CommandRunner $commandRunner -LogInfo $logInfo -LogWarning $logWarning
 
+  if ($UvProjectPath) {
+    Install-UvLockedProject -VenvPython $venvPython -ProjectPath $UvProjectPath -CommandRunner $commandRunner -LogInfo $logInfo | Out-Host
+    return $venvPython
+  }
+
   $requirementsPath = if ($RequirementsPath) { $RequirementsPath }
                       else { Join-Path $WorkspacePath 'requirements.txt' }
   if (-not (Test-Path $requirementsPath)) {
@@ -139,7 +147,7 @@ function Initialize-UvVenvPython {
 
   Write-BuildLog -Context $Context -Message "Installing requirements from $requirementsPath..."
   Install-UvRequirements -VenvPython $venvPython -RequirementsPath $requirementsPath `
-    -CommandRunner $commandRunner -LogInfo $logInfo
+    -CommandRunner $commandRunner -LogInfo $logInfo | Out-Host
 
   return $venvPython
 }
@@ -153,11 +161,12 @@ function Invoke-CmakeFormatStep {
     # Report instead of rewriting: with --in-place a gate can only pass and the change lands in someone's git status.
     [switch]$Check,
     [string]$RequirementsPath = '',
+    [string]$UvProjectPath = '',
     [string[]]$ExcludePattern = @()
   )
 
   $venvPython = Initialize-UvVenvPython -Context $Context -WorkspacePath $WorkspacePath `
-    -RequirementsPath $RequirementsPath
+    -RequirementsPath $RequirementsPath -UvProjectPath $UvProjectPath
   $cmakeFormatExe = Join-Path (Split-Path $venvPython -Parent) 'cmake-format.exe'
   if (-not (Test-Path $cmakeFormatExe)) {
     throw "cmake-format not found in venv: $cmakeFormatExe"

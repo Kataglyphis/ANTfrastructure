@@ -1,0 +1,12 @@
+{
+  "exports": [
+    {
+      "project": "quality/cmake-format",
+      "output": "linux/scripts/cmake-format.requirements.txt"
+    },
+    {
+      "project": "quality/dartdoc",
+      "output": "linux/scripts/lib/dartdoc-guides.requirements.txt"
+    }
+  ]
+}

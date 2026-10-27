@@ -27,7 +27,7 @@ actions, reusable workflows, shell libraries and gates serve the family at `@dev
 - **One multi-arch `:latest`** for Linux: ONNX Runtime (+GenAI), OpenCV, FFmpeg, GStreamer, LiteRT, TVM, IREE ([GenAI smoke contract](docs/gen1-riscv64-genai.md); [RISC-V cross tests](docs/riscv64-cross-test-lanes.md#the-pieces)).
 - **A Windows build image**, `:winamd64`, with MSVC, clang-cl, DirectML and HailoRT; `:winarm64` is its arm64 bundle.
 - **Accelerators**: Hailo-10H in `:latest`, CUDA and DeepStream in `:latest-nvidia`, MIGraphX in `:latest-rocm`.
-- **Reusable CI and Python setup**: workflows, locked dependency groups, image-backed overlays and [consumer inventory](docs/consumer-inventory.md); see [Python CI](docs/python-ci.md).
+- **Reusable CI and Python setup**: workflows, locked cmake-format and dartdoc tools, dependency environments, image-backed overlays isolated from conflicting uv project settings and [consumer inventory](docs/consumer-inventory.md); see [Python CI](docs/python-ci.md).
 - **Gates that fail loudly**: preflight, mutation proofs, consumer pin checks ([uv exclusions](docs/code-quality-tooling.md#consumer-pins-and-uv-exclusions)) and runtime smokes ([ORT census](docs/failure-modes.md#the-torch-stage-fails-with-ort-census-fail)); active `develop` proofs finish before the latest queued push ([CI triggers](docs/ci-build-triggers.md#this-repositorys-lanes)).
 - **Home-lab stacks, deliberately here**: an Ollama + Open WebUI server, Home Assistant, Nextcloud AIO, Ansible, [weekly backups to the NAS](linux/ansible/README.md#backups-to-the-nas).
 

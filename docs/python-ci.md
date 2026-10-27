@@ -30,6 +30,8 @@ versions and an isolated pip dry-run plan before installing the remaining hash-l
 Use `uv_image_overlay_verify_modules` before and after installation for image-provided modules,
 and run the ORT census separately for chain provenance. Create a fresh venv per invocation;
 the helper does not remove unrelated packages or prove what bytes the image contains.
+Overlay uv calls ignore inherited `UV_WORKING_DIR` and `UV_PROJECT`, so they use the caller's
+working directory and lock even when another project was selected in the environment.
 
 The image and the lock can diverge when either changes. Resolve the mismatch by updating the
 image-aligned constraints and lock together; a mismatch fails instead of replacing image bytes.
@@ -350,6 +352,15 @@ error: failed to remove file `/opt/venv/lib/python3.14/site-packages/...`:
 So `uv_sync_project()` and `uv_pip_install_requirements()` pin `--python <venv>/bin/python`; the pin
 is load-bearing, not tidiness. Pin any new uv entry point too, and end it in
 `uv_reconcile_chain_ort` (Trap 3).
+
+`uv_pip_install_locked_project` is the non-destructive tool-only path: it exports a pinned uv
+lock, installs only its hashed packages into the requested venv and leaves unrelated packages
+there. It ignores inherited uv project and working-directory overrides, including for relative
+project and venv paths. When a chain store is active, it refuses an export containing ONNX Runtime. It requires
+`uv-image-overlay.sh` beside `python_uv.sh` for checked temporary-file cleanup; missing companions,
+empty exports, stale locks and installation failures are fatal. Windows offers the corresponding
+`Install-UvLockedProject` and `-UvProjectPath` formatting option; the existing requirements-file
+option remains supported for older consumers.
 
 The image after CON11 exports neither `UV_PYTHON` nor `VIRTUAL_ENV` (in source since
 2026-09-26): `Dockerfile.torch` empties both, since Docker cannot unset an inherited ENV, and the

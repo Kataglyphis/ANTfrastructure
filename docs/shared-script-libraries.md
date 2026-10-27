@@ -924,10 +924,17 @@ recording executables; it does not substitute for that real documentation build.
 3. otherwise, with `CI=true` or inside the image (`/opt/venv` exists), it fails:
    `python3 (...) lacks markdown-it-py 4.2.0; CI and the image never download it`;
 4. on a workstation without the image, a uv venv at `DARTDOC_BUILD_VENV_DIR` with
-   the pinned parser. OmniAccelerANT's `getting-started.md` § *Build API docs*
+   the parser and dependencies locked by `quality/dartdoc/uv.lock`. An explicit
+   `DARTDOC_BUILD_REQUIREMENTS` still installs the caller's requirements file.
+   OmniAccelerANT's `getting-started.md` § *Build API docs*
    runs `generate-docs.sh` on a host, which is the one caller of this path.
 
-Suite: `tests/test-dartdoc-python.sh`.
+The default requirements file is a generated compatibility export for existing
+consumers; `renovate-local.sh --apply` refreshes it with the uv lock in one
+transaction. A copied `dartdoc-build.sh` must carry `quality/dartdoc/` and the
+shared `python_uv.sh` companions. Suite: `tests/test-dartdoc-python.sh` checks
+the image policy, workstation selection, override and install failure; it does
+not download from a package index.
 
 ## The rustdoc theme sheet
 

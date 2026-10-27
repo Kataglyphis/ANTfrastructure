@@ -88,6 +88,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Compiler smoke callbacks stay unconditional; preserve GStreamer's separate target lookups, temporary cleanup and raw failure statuses.
    ORT tree scans retain archive candidates; record scans stay shallow and preserve component-name exclusions.
    Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion.
+   Locked tool installs also require `uv-image-overlay.sh` beside `python_uv.sh`; copied code-quality libraries carry `quality/cmake-format/{pyproject.toml,uv.lock}` and retain the Python 3.15 lexer patch.
    Validate the host binfmt owner's source API marker before sourcing its probe mode; an older installer ignores unknown arguments and could install.
    Invoke selected Meson providers and callbacks unconditionally; retain availability guards, order, partial flags and raw failures.
    Callback dispatch preserves caller-visible bindings and positional context; generic helper locals must not hide configuration used by supplied shell wrappers.
@@ -125,7 +126,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Fixture cleanup uses `Remove-TestDir` with literal paths; bracketed diagnostic prefixes must leave no temporary roots.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
    CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.
-   Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; the local driver also requires `renovate-node.sh` and `renovate-submodules.sh`. Preserve their distinct dry-run policies and nonempty-list advice.
+   Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; the local driver also requires `renovate-node.sh`, `renovate-submodules.sh` and `renovate-uv-exports.sh`. `renovate_planner.py` carries `renovate_uv_exports.py`. Preserve dry-run, rollback and nonempty-list policies.
    Copied `antfrastructure.sh` carries `renovate-git-mode.sh` beside it; the hub driver imports the same canonical selector before handling a Windows-authored WSL checkout.
    Its bootstrap helpers must fit the consumer's 15-path complexity limit; the copied-template fixture measures that limit and proves a complex mutant fails.
    The same fixture runs the consumer trailing-conditional gate and must reject a planted final test.
@@ -195,7 +196,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts.
    Python CI suites carry their shared driver fixture; preserve child status, call logs and parent environment isolation.
    Consumer inventory includes shared shell libraries and requirements; ambiguous consumer basenames remain mentions, not proof of a hub call or absence.
-   Image-backed uv overlays validate the complete active lock and isolated install plan against image packages before installation; preserve pinned runtime provenance and reject non-venv targets.
+   Image-backed uv overlays validate the complete active lock and isolated install plan against image packages before installation; preserve pinned runtime provenance and reject non-venv targets. Overlay and locked-tool uv calls ignore inherited project and working-directory overrides so relative paths retain their caller meaning.
    Consumer pin checks parse pyproject TOML and ignore only uv's exclusion list; genuine dependency pins, overrides and malformed manifests retain their fatal verdicts.
    `uv_sync_project --only-group` excludes the project, default groups and extras; when the chain store is active, reject an unreadable lock or any ORT in it before syncing.
    Windows Python CI build, packaging and installed-wheel drivers share the summary, log-close and fatal-step verdict in `Complete-CiBuildSession`; preserve that order and verdict.

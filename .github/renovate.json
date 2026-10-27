@@ -7,6 +7,12 @@
   "extends": ["github>Kataglyphis/ANTfrastructure"],
   "packageRules": [
     {
+      "description": "The requirements files are generated from the cmake-format and dartdoc uv locks for existing consumers; update their PEP 621 projects and locks instead.",
+      "matchManagers": ["pip_requirements"],
+      "matchFileNames": ["linux/scripts/cmake-format.requirements.txt", "linux/scripts/lib/dartdoc-guides.requirements.txt"],
+      "enabled": false
+    },
+    {
       "description": "versions.env keys are notification-only by DEFAULT: most bumps are coupled to a paired *_SHA256/*_COMMIT in the same file or to a source patch, so they keep the human ritual (AGENTS.md § Version Bumping). Matched by FILE, not by manager id, so it holds for the local CLI's report (manager 'regex') and the platform's ('custom.regex') alike.",
       "matchFileNames": ["linux/scripts/01-core/versions.env", "linux/scripts/01-core/tool-pins.env"],
       "dependencyDashboardApproval": true

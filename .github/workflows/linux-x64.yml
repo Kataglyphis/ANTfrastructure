@@ -34,6 +34,8 @@ jobs:
       # Unpinned runner convenience, owned by no image: docs/dependency-updates.md#what-this-costs
       - name: Install PyYAML (renovate_audit.py's real YAML parser)
         run: pip install --quiet pyyaml
+      - name: Verify locked compatibility exports
+        run: bash linux/scripts/verify-uv-exports.sh
       - name: Check WebDAV downloader types against the pinned client source
         run: bash linux/scripts/01-core/check-webdav-types.sh
       # Every slug but the mutation gate, which the mutations job runs in shards.

@@ -810,8 +810,8 @@
  {
   "id": "shellcheck.extensionless-arm",
   "target": "linux/scripts/lint-shell.sh",
-  "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
-  "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
+  "find": "    *)\n      # No extension at all — admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
+  "replace": "    *)\n      continue\n      # No extension at all — admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
   "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
   "why": "without the extension-less arm the live commit hook is linted by nothing, and the scan reports 'no shell scripts to check' -- a miss that looks like a pass"
  },
@@ -1245,7 +1245,7 @@
   "find": "            if m.group(\"sec\") in have:\n                continue",
   "replace": "            if True:\n                continue",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
-  "why": "a bare (\u00a7 1a) pointing at no section must be caught, not merely counted"
+  "why": "a bare (§ 1a) pointing at no section must be caught, not merely counted"
  },
  {
   "id": "doc-links.git-free-floor",
@@ -2930,7 +2930,7 @@
  {
   "id": "pre-commit.fast-tier-aborts",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED \u2014 fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
+  "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED — fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
   "replace": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || true",
   "test": "bash linux/scripts/tests/test-precommit-hook.sh",
   "why": "a failing fast gate must REFUSE the commit, not print and continue"
@@ -3530,7 +3530,7 @@
  {
   "id": "pre-commit.pinned-shellcheck-or-refuse",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck \u2014 see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
+  "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck — see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
   "replace": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || _sc_bin=shellcheck",
   "test": "bash linux/scripts/tests/test-precommit-hook.sh",
   "why": "with no pinned binary the hook must REFUSE; falling back to whatever shellcheck PATH offers lints the commit against an unknown version and calls it green"
@@ -4362,8 +4362,8 @@
  {
   "id": "mutations.push-stale-check-aborts",
   "target": "linux/host-config/git-hooks/pre-push",
-  "find": "  exit 1\n}\n\necho \"pre-push: mutation gate over everything since ${_base}\u2026\"",
-  "replace": "  exit 0\n}\n\necho \"pre-push: mutation gate over everything since ${_base}\u2026\"",
+  "find": "  exit 1\n}\n\necho \"pre-push: mutation gate over everything since ${_base}…\"",
+  "replace": "  exit 0\n}\n\necho \"pre-push: mutation gate over everything since ${_base}…\"",
   "test": "bash linux/scripts/tests/test-prepush-hook.sh",
   "why": "a rotted manifest entry must STOP the push; printing and pushing anyway is the state this hook was written to end"
  },
@@ -4962,8 +4962,8 @@
  {
   "id": "arg-consistency.gcc-literal-drift-fatal",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
-  "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"",
+  "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
+  "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "these ~25 sites all name the same /opt/gcc-<ver> toolchain, so unlike the generic scan there is no legitimate divergence to be advisory about"
  },
@@ -5002,8 +5002,8 @@
  {
   "id": "arg-consistency.script-drift-advisory",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
-  "replace": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
+  "find": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
+  "replace": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "script defaults legitimately diverge -- a standalone run pins a branch, not the built ref -- so this scan must never be an exit code"
  },
@@ -5221,7 +5221,7 @@
   "find": "            if SECTION_SIGN in line:\n                continue",
   "replace": "            if False:\n                continue",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
-  "why": "`page.md \u00a7 Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
+  "why": "`page.md § Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
  },
  {
   "id": "doc-links.header-stale-row",
@@ -15230,8 +15230,8 @@
  {
   "id": "docs-site.publish-no-tolerance",
   "target": ".github/workflows/build-docs.yml",
-  "find": "      - name: \ud83d\udcc2 Sync files to domain\n",
-  "replace": "      - name: \ud83d\udcc2 Sync files to domain\n        continue-on-error: true\n",
+  "find": "      - name: 📂 Sync files to domain\n",
+  "replace": "      - name: 📂 Sync files to domain\n        continue-on-error: true\n",
   "test": "bash linux/scripts/tests/test-docs-site.sh",
   "why": "a publish that may fail is a site that stops updating while the lane stays green"
  },
@@ -28334,7 +28334,7 @@
   "find": "--select ANN001,ANN201 --output-format concise",
   "replace": "--select ANN201 --output-format concise",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-   "why": "Missing parameter types in all 37 selected Python files must fail the strict Ruff gate."
+  "why": "Missing parameter types in all 37 selected Python files must fail the strict Ruff gate."
  },
  {
   "id": "python-types.public-return-annotation-gate",
@@ -28342,7 +28342,7 @@
   "find": "--select ANN001,ANN201 --output-format concise",
   "replace": "--select ANN001 --output-format concise",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-   "why": "Missing public return types in all 37 selected Python files must fail the strict Ruff gate."
+  "why": "Missing public return types in all 37 selected Python files must fail the strict Ruff gate."
  },
  {
   "id": "python-types.parameter-return-file-scope",
@@ -28350,7 +28350,7 @@
   "find": "'docs/scripts/verify_code_dupes.py' 'docs/scripts/verify_doc_dupes.py'",
   "replace": "'docs/scripts/verify_code_dupes.py' 'docs/scripts/subject.py'",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-   "why": "All 37 typed Python files must remain in the strict parameter and public-return scope."
+  "why": "All 37 typed Python files must remain in the strict parameter and public-return scope."
  },
  {
   "id": "python-types.complexity-file-scope",
@@ -29575,5 +29575,285 @@
   "replace": "if [ -r \"${_gov_slot}\" ] && command exec 9<\"${_gov_slot}\" 2>/dev/null && flock -n 9; then",
   "test": "bash linux/scripts/tests/test-compile-governor.sh",
   "why": "a 2> on the bare exec stays on the shell and swallows every compiler message"
+ },
+ {
+  "id": "renovate.uv-exports-plan",
+  "target": "linux/scripts/renovate-local.sh",
+  "find": "  plan_uv_exports\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-renovate-uv-exports.sh",
+  "why": "declared compatibility exports must join the lock update plan"
+ },
+ {
+  "id": "renovate.uv-exports-rollback",
+  "target": "linux/scripts/renovate-local.sh",
+  "find": "  refresh_uv_exports || undo_run \"uv compatibility export failed\"",
+  "replace": "  refresh_uv_exports || true",
+  "test": "bash linux/scripts/tests/test-renovate-uv-exports.sh",
+  "why": "a failed derived export must undo every touched manifest, lock and export"
+ },
+ {
+  "id": "renovate.uv-exports-tracked",
+  "target": "linux/scripts/renovate-local.sh",
+  "find": "  assert_uv_exports_tracked\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-renovate-uv-exports.sh",
+  "why": "a dirty configuration or untracked export must refuse before writing"
+ },
+ {
+  "id": "renovate.uv-submodule-rollback",
+  "target": "linux/scripts/renovate-local.sh",
+  "find": "  snapshot_targets ${EDIT_FILES[@]+\"${EDIT_FILES[@]}\"} ${UV_EXPORT_PATHS[@]+\"${UV_EXPORT_PATHS[@]}\"}",
+  "replace": "  snapshot_targets ${EDIT_FILES[@]+\"${EDIT_FILES[@]}\"}",
+  "test": "bash linux/scripts/tests/test-renovate-submodule-default.sh",
+  "why": "a late submodule checkout failure must restore completed uv exports"
+ },
+ {
+  "id": "renovate.uv-lock-dry-working-dir",
+  "target": "linux/scripts/renovate-locks.sh",
+  "find": "out=\"$(run_lock_argv \"${tool}\" \"${dir}\" \"${argv[@]}\" </dev/null 2>&1)\"",
+  "replace": "out=\"$(cd \"${dir}\" && \"${argv[@]}\" </dev/null 2>&1)\"",
+  "test": "bash linux/scripts/tests/test-renovate-lockmaint.sh",
+  "why": "the report-only uv dry run must not follow an inherited working-directory override"
+ },
+ {
+  "id": "renovate.uv-lock-working-dir",
+  "target": "linux/scripts/renovate-locks.sh",
+  "find": "env -u UV_WORKING_DIR \"$@\"",
+  "replace": "\"$@\"",
+  "test": "bash linux/scripts/tests/test-renovate-uv-exports.sh && bash linux/scripts/tests/test-renovate-lockmaint.sh",
+  "why": "uv lock updates and reports must not follow an inherited working-directory override"
+ },
+ {
+  "id": "renovate.uv-exports-group-env",
+  "target": "linux/scripts/renovate-uv-exports.sh",
+  "find": "env -u UV_NO_GROUP -u UV_NO_DEFAULT_GROUPS -u UV_NO_DEV -u UV_WORKING_DIR",
+  "replace": "env",
+  "test": "bash linux/scripts/tests/test-renovate-uv-exports.sh",
+  "why": "ambient uv group and directory settings must not change the export"
+ },
+ {
+  "id": "renovate.uv-exports-default-groups",
+  "target": "linux/scripts/renovate-uv-exports.sh",
+  "find": "--locked --no-dev --no-default-groups --no-emit-project",
+  "replace": "--locked --no-dev --no-emit-project",
+  "test": "bash linux/scripts/tests/test-renovate-uv-exports.sh",
+  "why": "a compatibility export must exclude default dependency groups"
+ },
+ {
+  "id": "renovate.uv-exports-config-clean",
+  "target": "linux/scripts/renovate-uv-exports.sh",
+  "find": "  \"${GIT_BIN}\" -C \"${GIT_TARGET}\" diff --quiet HEAD -- \"${path}\" \\\n    || err \"uv export configuration has local changes; nothing written\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-renovate-uv-exports.sh",
+  "why": "a deleted or modified export mapping must block the lock update"
+ },
+ {
+  "id": "renovate.uv-exports-independent-edit",
+  "target": "linux/scripts/renovate-uv-exports.sh",
+  "find": "    rl_has \"${output}\" ${EDIT_FILES[@]+\"${EDIT_FILES[@]}\"} && err \"generated uv export ${output} has an independent planned edit; disable its separate manager\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-renovate-uv-exports.sh",
+  "why": "a generated file cannot also carry an independent package-manager edit"
+ },
+ {
+  "id": "renovate.uv-exports-symlink",
+  "target": "linux/scripts/renovate_uv_exports.py",
+  "find": " or has_symlink or not path.is_file()",
+  "replace": " or not path.is_file()",
+  "test": "bash linux/scripts/tests/test-renovate-uv-exports.sh",
+  "why": "a symlink in an output path within the checkout must not redirect the transaction"
+ },
+ {
+  "id": "renovate.uv-exports-parent-symlink",
+  "target": "linux/scripts/renovate_uv_exports.py",
+  "find": "    has_symlink = any(root.joinpath(*parts[:index]).is_symlink() for index in range(1, len(parts) + 1))",
+  "replace": "    has_symlink = path.is_symlink()",
+  "test": "bash linux/scripts/tests/test-renovate-uv-exports.sh",
+  "why": "a symlinked ancestor cannot alias a tracked project input"
+ },
+ {
+  "id": "renovate.uv-exports-overlap",
+  "target": "linux/scripts/renovate_uv_exports.py",
+  "find": "    if outputs & inputs:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-renovate-uv-exports.sh",
+  "why": "one generated output cannot overwrite another configured project's lock"
+ },
+ {
+  "id": "python.dartdoc-locked-project",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "    uv_pip_install_locked_project \"${venv_dir}\" \"${_DARTDOC_BUILD_LIB_DIR}/../../../quality/dartdoc\" || return 1",
+  "replace": "    uv_pip_install_requirements \"${venv_dir}\" \"$1\" || return 1",
+  "test": "bash linux/scripts/tests/test-dartdoc-python.sh",
+  "why": "dartdoc's default must install its shared locked project rather than an independent requirements pin"
+ },
+ {
+  "id": "python.dartdoc-locked-failure",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "    uv_pip_install_locked_project \"${venv_dir}\" \"${_DARTDOC_BUILD_LIB_DIR}/../../../quality/dartdoc\" || return 1",
+  "replace": "    uv_pip_install_locked_project \"${venv_dir}\" \"${_DARTDOC_BUILD_LIB_DIR}/../../../quality/dartdoc\" || true",
+  "test": "bash linux/scripts/tests/test-dartdoc-python.sh",
+  "why": "a failed dartdoc lock install cannot produce a successful build"
+ },
+ {
+  "id": "python.locked-project-chain-ort",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "  if [ \"$status\" -eq 0 ] && [ -n \"${ORT_CHAIN_WHEEL_DIR:-}\" ] && grep -qiE '^[[:space:]]*onnxruntime([_.-][[:alnum:]._-]+)?(\\[[^]]+\\])?==' \"$output\"; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-uv-locked-project.sh",
+  "why": "a tool install must not replace a chain-owned ONNX Runtime with PyPI bytes"
+ },
+ {
+  "id": "python.locked-project-empty-export",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "  if [ \"$status\" -eq 0 ] && ! grep -qE '^[[:space:]]*[[:alnum:]][[:alnum:]_.-]*(\\[[^]]+\\])?==' \"$output\"; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-uv-locked-project.sh",
+  "why": "a successful but empty export cannot produce a green tool install"
+ },
+ {
+  "id": "python.locked-project-cleanup-companion",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "  declare -F uv_image_overlay_cleanup >/dev/null || { printf 'ERROR: uv-image-overlay cleanup is missing\\n' >&2; return 1; }",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-uv-locked-project.sh",
+  "why": "a copied companion without its cleanup API must fail before running uv"
+ },
+ {
+  "id": "python.locked-project-export",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "    --locked --no-dev --no-emit-project --format requirements-txt --output-file \"$output\" >/dev/null || status=$?",
+  "replace": "    --no-dev --no-emit-project --format requirements-txt --output-file \"$output\" >/dev/null || status=$?",
+  "test": "bash linux/scripts/tests/test-uv-locked-project.sh",
+  "why": "a tool install must refuse an outdated lock instead of resolving a new one"
+ },
+ {
+  "id": "python.locked-project-hashes",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "      --no-deps --require-hashes -r \"$output\" || status=$?",
+  "replace": "      --no-deps -r \"$output\" || status=$?",
+  "test": "bash linux/scripts/tests/test-uv-locked-project.sh",
+  "why": "the exported uv lock's wheel hashes must be verified on installation"
+ },
+ {
+  "id": "python.locked-project-export-failure",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "    --locked --no-dev --no-emit-project --format requirements-txt --output-file \"$output\" >/dev/null || status=$?",
+  "replace": "    --locked --no-dev --no-emit-project --format requirements-txt --output-file \"$output\" >/dev/null || true",
+  "test": "bash linux/scripts/tests/test-uv-locked-project.sh",
+  "why": "a failed lock export must stop before package installation and reach the caller"
+ },
+ {
+  "id": "python.uv-compatibility-export-drift",
+  "target": "linux/scripts/verify-uv-exports.sh",
+  "find": "  if ! cmp -s \"${tmp}/requirements.txt\" \"${root}/${output}\"; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-uv-export-drift.sh",
+  "why": "a stale compatibility export must fail CI even when the locked export succeeds"
+ },
+ {
+  "id": "windows-lane.uv-tool-lock-required",
+  "target": "windows/scripts/modules/WindowsUv.Common.psm1",
+  "find": "'--python', $VenvPython, '--locked', '--no-dev'",
+  "replace": "'--python', $VenvPython, '--no-dev'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Uv.LockedProject.Tests.ps1 -ResultFile logs/code-quality/uv-locked-project-mutation.json",
+  "why": "the Windows installer must export the existing lock"
+ },
+ {
+  "id": "windows-lane.uv-tool-hashes-required",
+  "target": "windows/scripts/modules/WindowsUv.Common.psm1",
+  "find": "'--no-deps', '--require-hashes', '--directory', (Get-Location).ProviderPath, '--project', $LockedProjectPath",
+  "replace": "'--no-deps', '--directory', (Get-Location).ProviderPath, '--project', $LockedProjectPath",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Uv.LockedProject.Tests.ps1 -ResultFile logs/code-quality/uv-locked-project-mutation.json",
+  "why": "Windows tool installs must verify lock hashes"
+ },
+ {
+  "id": "windows-lane.uv-tool-no-dependencies",
+  "target": "windows/scripts/modules/WindowsUv.Common.psm1",
+  "find": "'--no-deps', '--require-hashes', '--directory', (Get-Location).ProviderPath, '--project', $LockedProjectPath",
+  "replace": "'--require-hashes', '--directory', (Get-Location).ProviderPath, '--project', $LockedProjectPath",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Uv.LockedProject.Tests.ps1 -ResultFile logs/code-quality/uv-locked-project-mutation.json",
+  "why": "the locked tool install must not resolve or replace other packages"
+ },
+ {
+  "id": "windows-lane.uv-tool-empty-export",
+  "target": "windows/scripts/modules/WindowsUv.Common.psm1",
+  "find": "if ($requirements.Count -eq 0) { throw 'uv export produced an empty lock export' }",
+  "replace": "if ($false) { throw 'uv export produced an empty lock export' }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Uv.LockedProject.Tests.ps1 -ResultFile logs/code-quality/uv-locked-project-mutation.json",
+  "why": "an empty or header-only export cannot pass as a locked tool install"
+ },
+ {
+  "id": "windows-lane.cmake-uv-wiring-legacy",
+  "target": "shared/windows/tests/Test-CmakeUvProjectWiring.ps1",
+  "find": "if (-not $Arguments.ContainsKey('UvProjectPath') -or $Arguments.ContainsKey('RequirementsPath')) {",
+  "replace": "if (-not $Arguments.ContainsKey('UvProjectPath')) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Shared.CmakeUvWiring.Tests.ps1 -ResultFile logs/code-quality/cmake-uv-wiring-mutation.json",
+  "why": "the consumer wiring check must reject a simultaneous legacy requirements argument"
+ },
+ {
+  "id": "python.overlay-working-directory-isolation",
+  "target": "linux/scripts/01-core/uv-image-overlay.sh",
+  "find": "env -u UV_WORKING_DIR -u UV_PROJECT uv \"$@\"",
+  "replace": "env -u UV_PROJECT uv \"$@\"",
+  "test": "bash linux/scripts/tests/test-uv-image-overlay.sh",
+  "why": "all overlay uv commands must use the caller's working directory"
+ },
+ {
+  "id": "python.overlay-project-isolation",
+  "target": "linux/scripts/01-core/uv-image-overlay.sh",
+  "find": "env -u UV_WORKING_DIR -u UV_PROJECT uv \"$@\"",
+  "replace": "env -u UV_WORKING_DIR uv \"$@\"",
+  "test": "bash linux/scripts/tests/test-uv-image-overlay.sh",
+  "why": "all overlay uv commands must use the caller's project"
+ },
+ {
+  "id": "python.tool-export-working-directory-isolation",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "env -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT -u UV_WORKING_DIR -u UV_PROJECT uv export",
+  "replace": "env -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT -u UV_PROJECT uv export",
+  "test": "bash linux/scripts/tests/test-uv-locked-project.sh",
+  "why": "relative tool projects must use the caller's working directory"
+ },
+ {
+  "id": "python.tool-install-working-directory-isolation",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "env -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT -u UV_WORKING_DIR -u UV_PROJECT uv pip install",
+  "replace": "env -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT -u UV_PROJECT uv pip install",
+  "test": "bash linux/scripts/tests/test-uv-locked-project.sh",
+  "why": "relative tool environments must use the caller's working directory"
+ },
+ {
+  "id": "windows-lane.uv-tool-export-directory",
+  "target": "windows/scripts/modules/WindowsUv.Common.psm1",
+  "find": "'--no-emit-project', '--format', 'requirements-txt', '--directory', (Get-Location).ProviderPath, '--output-file', $exportPath",
+  "replace": "'--no-emit-project', '--format', 'requirements-txt', '--output-file', $exportPath",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Uv.LockedProject.Tests.ps1 -ResultFile logs/code-quality/uv-locked-project-mutation.json",
+  "why": "Windows lock export must preserve the caller's working directory"
+ },
+ {
+  "id": "windows-lane.uv-tool-install-directory",
+  "target": "windows/scripts/modules/WindowsUv.Common.psm1",
+  "find": "'--no-deps', '--require-hashes', '--directory', (Get-Location).ProviderPath",
+  "replace": "'--no-deps', '--require-hashes'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Uv.LockedProject.Tests.ps1 -ResultFile logs/code-quality/uv-locked-project-mutation.json",
+  "why": "Windows tool installation must preserve the caller's working directory"
+ },
+ {
+  "id": "windows-lane.uv-tool-install-project",
+  "target": "windows/scripts/modules/WindowsUv.Common.psm1",
+  "find": "'--no-deps', '--require-hashes', '--directory', (Get-Location).ProviderPath, '--project', $LockedProjectPath",
+  "replace": "'--no-deps', '--require-hashes', '--directory', (Get-Location).ProviderPath",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Uv.LockedProject.Tests.ps1 -ResultFile logs/code-quality/uv-locked-project-mutation.json",
+  "why": "Windows tool installation must override a foreign UV_PROJECT"
+ },
+ {
+  "id": "windows-lane.uv-tool-absolute-project",
+  "target": "windows/scripts/modules/WindowsUv.Common.psm1",
+  "find": "    $ProjectPath = (Resolve-Path -LiteralPath $ProjectPath).ProviderPath",
+  "replace": "    $null = $ProjectPath",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Uv.LockedProject.Tests.ps1 -ResultFile logs/code-quality/uv-locked-project-mutation.json",
+  "why": "relative Windows tool projects must resolve before uv reads inherited settings"
  }
 ]

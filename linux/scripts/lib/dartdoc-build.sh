@@ -49,10 +49,14 @@ _dartdoc_build_host_venv() {
   venv_dir="${DARTDOC_BUILD_VENV_DIR:-${TMPDIR:-/tmp}/kataglyphis-dartdoc-venv}"
   warn "No python3 with the pinned markdown-it-py; installing it into ${venv_dir} (a workstation only)"
   # shellcheck source=../01-core/python_uv.sh
-  source "${_DARTDOC_BUILD_LIB_DIR}/../01-core/python_uv.sh"
-  uv_ensure_installed
-  uv_venv_create "${venv_dir}" "" # "" skips the --python pin, honouring UV_PYTHON
-  uv_pip_install_requirements "${venv_dir}" "$1"
+  source "${_DARTDOC_BUILD_LIB_DIR}/../01-core/python_uv.sh" || return 1
+  uv_ensure_installed || return 1
+  uv_venv_create "${venv_dir}" "" || return 1 # "" skips the --python pin, honouring UV_PYTHON
+  if [[ -n "${DARTDOC_BUILD_REQUIREMENTS:-}" ]]; then
+    uv_pip_install_requirements "${venv_dir}" "$1" || return 1
+  else
+    uv_pip_install_locked_project "${venv_dir}" "${_DARTDOC_BUILD_LIB_DIR}/../../../quality/dartdoc" || return 1
+  fi
 
   python="${venv_dir}/bin/python"
   if [[ ! -x "${python}" ]]; then
@@ -82,7 +86,7 @@ dartdoc_build_prepare_python_env() {
   elif [[ "${CI:-}" == "true" || -d "${_DARTDOC_BUILD_IMAGE_VENV}" ]]; then
     err "python3 (${python:-not found}) lacks markdown-it-py ${pin}; CI and the image never download it. Put it in the image from ${requirements}, or set DARTDOC_BUILD_PYTHON."
   else
-    _dartdoc_build_host_venv "${requirements}"
+    _dartdoc_build_host_venv "${requirements}" || return 1
     python="${DARTDOC_BUILD_PYTHON}"
   fi
   DARTDOC_BUILD_PYTHON="${python}"

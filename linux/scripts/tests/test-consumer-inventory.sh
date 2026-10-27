@@ -194,8 +194,6 @@ printf '%s\n' 'source third_party/ANTfrastructure/linux/scripts/lib/shared-libra
   'cat "${SOME_DIR}/unreferenced.requirements.txt.bak"' >> "${_c}/scripts/build.sh"
 t_git_commit "${_h}"
 t_git_commit "${_c}"
-_LIB_CLASSES="[ $(_class linux-lib 'linux/scripts/lib/*.sh' '"alias": "filename"'),
-                $(_class linux-requirements 'linux/scripts/lib/*.requirements.txt' '"alias": "filename"') ]"
 t_case "the real inventory declares each shared file class with conservative filename matching"
 t_assert_ok "${PY}" -c 'import json, sys
 classes = json.load(open(sys.argv[1], encoding="utf-8"))["entry_point_classes"]
@@ -204,6 +202,10 @@ expected = {("linux-shared-library", "linux/scripts/lib/*.sh", "filename"),
             ("linux-shared-requirements", "linux/scripts/lib/*.requirements.txt", "filename"),
             ("linux-requirements", "linux/scripts/*.requirements.txt", "filename")}
 sys.exit(not expected <= actual)' "${SCRIPTS}/../../.github/consumers.json"
+_LIB_CLASSES="$("${PY}" -c 'import json, sys
+classes = json.load(open(sys.argv[1], encoding="utf-8"))["entry_point_classes"]
+print(json.dumps([c for c in classes if c["kind"] in ("linux-shared-library", "linux-shared-requirements")]))' \
+  "${SCRIPTS}/../../.github/consumers.json")"
 _inventory "${_work}/lib-classes.json" "${_LIB_CLASSES}"
 _run "${_h}" "${_c}" "${_work}/lib-classes.json"
 t_assert_eq 0 "${rc}" "the shared library fixture must scan successfully"

@@ -1020,6 +1020,39 @@ and OmniAccelerANT's `pubspec.lock` 17, while every manager called those repos u
 to date. Each of those releases fell inside the manifest's range, so no manifest
 line was behind.
 
+### Generated uv compatibility exports
+
+Some consumers still read a requirements-format file by path. The authoritative
+dependencies and hashes live in a uv project and `uv.lock`; the old file is an
+export, not an independently maintained pin. A repository can declare pairs in
+`.github/renovate-uv-exports.json`:
+
+```json
+{"exports":[{"project":"quality/cmake-format","output":"linux/scripts/cmake-format.requirements.txt"}]}
+```
+
+When a selected uv lock is refreshed, `renovate-local.sh --apply` includes each
+matching export in the same transaction. It refuses a dirty or untracked output,
+a changed configuration, an independent planned edit of the export, invalid paths,
+symlinks and outputs that overlap any configured project input. It snapshots the
+output before writing, then exports the refreshed lock with hashes. The export
+contains project dependencies without development or other default groups;
+group-selection and working-directory environment overrides are cleared. An export
+failure restores every touched manifest, lock, output and gitlink. `--dry-run`
+lists the output without invoking uv or writing it. The configuration and outputs
+must already be tracked, and the corresponding `pyproject.toml` and `uv.lock` must
+exist inside the checkout. A project's lock must be beside its manifest.
+The uv lock update and its report-only dry run also clear `UV_WORKING_DIR`, so an
+inherited override cannot redirect them to another project.
+
+Do not update a generated file through a second Renovate manager: exclude that
+specific output from `pip_requirements` while keeping its uv project enabled.
+CI must compare each committed export with a fresh locked export, including after
+an upstream bot's changes, since this local transaction does not run on that bot.
+The fixture `linux/scripts/tests/test-renovate-uv-exports.sh` proves dirty refusal,
+lock maintenance, multiple projects and rollback; it stubs uv and does not prove
+network resolution or a hosted Renovate bot's behavior.
+
 ### Renovate builds it locally, and never says so
 
 Measured on 44.140.0 against DocumANTation before its lock maintenance, with

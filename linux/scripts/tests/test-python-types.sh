@@ -7,18 +7,16 @@ S="$(cd "${TESTS_DIR}/.." && pwd)"
 ROOT="$(mktemp -d)"
 trap 'rm -rf -- "${ROOT}"' EXIT
 
-mkdir -p "${ROOT}/linux/scripts/01-core" "${ROOT}/linux/scripts/tests" \
-  "${ROOT}/linux/ansible/scripts" \
-  "${ROOT}/linux/jetson-webcam" \
-  "${ROOT}/linux/scripts/05-frameworks/flutter" "${ROOT}/linux/webserver/scripts" "${ROOT}/docs/scripts" \
-  "${ROOT}/windows/scripts/certificates" "${ROOT}/windows/scripts/build" "${ROOT}/shared/python" \
-  "${ROOT}/linux/llm-stack/tests" "${ROOT}/linux/llm-stack/gateway" \
-  "${ROOT}/linux/llm-stack/tests/gateway_e2e" \
-  "${ROOT}/linux/scripts/02-toolchain/python" \
-  "${ROOT}/linux/scripts/06-packaging" \
-  "${ROOT}/linux/scripts/03-media/build/gstreamer/common" "${ROOT}/linux/scripts/03-media/runtime" \
-  "${ROOT}/linux/scripts/lib" "${ROOT}/linux/host-config" "${ROOT}/quality" \
-  "${ROOT}/third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis"
+source_root="$(cd "${S}/../.." && pwd)"
+find "${source_root}/linux" "${source_root}/docs" "${source_root}/windows" "${source_root}/shared" \
+  -type d \( -name third_party -o -name node_modules -o -name .venv -o -name logs \
+    -o \( -name build ! -path "${source_root}/windows/scripts/build" ! -path "${source_root}/linux/scripts/03-media/build" \) \) -prune \
+  -o -type d -print0 > "${ROOT}/fixture-directories" || exit 1
+while IFS= read -r -d '' directory; do
+  mkdir -p "${ROOT}/${directory#"${source_root}/"}" || exit 1
+done < "${ROOT}/fixture-directories"
+rm "${ROOT}/fixture-directories"
+mkdir -p "${ROOT}/quality" "${ROOT}/third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis"
 cp "${S}/../Dockerfile.torch" "${ROOT}/linux/Dockerfile.torch"
 cp "${S}/lint-python-types.sh" "${ROOT}/linux/scripts/"
 cp "${S}/01-core/load-versions-env.sh" "${ROOT}/linux/scripts/01-core/"
@@ -39,9 +37,9 @@ _set_answer() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (125 files)"
+  t_assert_contains "$1" "ty quality gate: clean (126 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
-  t_assert_contains "$1" "Linux Python report: clean (125 files)"
+  t_assert_contains "$1" "Linux Python report: clean (126 files)"
   t_assert_contains "$1" "Windows Python report: clean (2 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -137,6 +135,7 @@ printf 'import pytest\ndef answer() -> int:\n    return 42\n' > "${ROOT}/linux/s
 printf 'import yaml\ndef answer() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_audit.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/renovate_pep_git.py"
 printf 'def _plan() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_planner.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/renovate_uv_exports.py"
 printf 'def _plan() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_cmake.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/llm-stack/gateway/render_apisix.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/llm-stack/tests/test_gateway_render.py"
@@ -187,9 +186,9 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-  t_assert_contains "${out}" "Ruff signature annotation gate: clean (132 files)"
-  t_assert_contains "${out}" "Ruff private return gate: clean (132 files)"
-  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (122 files)"
+  t_assert_contains "${out}" "Ruff signature annotation gate: clean (133 files)"
+  t_assert_contains "${out}" "Ruff private return gate: clean (133 files)"
+  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (123 files)"
 
 t_case "ambient checker versions cannot replace the repository pins"
 out="$(TY_VERSION=bogus RUFF_VERSION=bogus _run)"
@@ -309,6 +308,14 @@ t_assert_contains "${out}" "ANN202"
 t_assert_contains "${out}" "rc=1"
 printf 'def _plan() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_planner.py"
 
+t_case "a type error in the uv export planner fails the strict scope"
+printf 'def answer(value: int) -> int:\n    return "wrong"\n' > "${ROOT}/linux/scripts/renovate_uv_exports.py"
+out="$(_run)"
+t_assert_contains "${out}" "ty quality gate failed (exit 1)"
+t_assert_contains "${out}" "renovate_uv_exports.py"
+t_assert_contains "${out}" "invalid-return-type"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/renovate_uv_exports.py"
+
 t_case "a missing private Windows return fails the tracked-tree Ruff gate"
 printf 'def _answer():\n    return 42\n' > "${ROOT}/windows/scripts/subject.py"
 out="$(_run)"
@@ -373,7 +380,7 @@ parameter_targets=(
   linux/jetson-webcam/app.py \
   linux/ansible/scripts/ansible_run_status.py \
   linux/scripts/develop_red.py linux/scripts/layer-audit.py \
-  linux/scripts/renovate_audit.py linux/scripts/renovate_cmake.py linux/scripts/renovate_locator.py linux/scripts/renovate_pep_git.py linux/scripts/renovate_planner.py \
+  linux/scripts/renovate_audit.py linux/scripts/renovate_cmake.py linux/scripts/renovate_locator.py linux/scripts/renovate_pep_git.py linux/scripts/renovate_planner.py linux/scripts/renovate_uv_exports.py \
   linux/scripts/verify_large_files.py linux/scripts/verify_masked_assignments.py \
   linux/scripts/verify_consumer_inventory.py linux/scripts/verify_package_names.py \
   linux/llm-stack/gateway/render_apisix.py linux/llm-stack/tests/test_gateway_render.py \
