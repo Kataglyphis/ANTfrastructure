@@ -7,7 +7,10 @@ source "${TESTS_DIR}/test-harness.sh"
 # _relative_only <build dir>: each Android script and core file it sources only by a relative path.
 _relative_only() {
   python3 - "$1" <<'PY'
-import pathlib, re, sys
+import pathlib
+import re
+import sys
+
 for f in sorted(pathlib.Path(sys.argv[1]).glob("*/android/*.sh")):
     text = f.read_text()
     for leaf in sorted(set(re.findall(r'(?:\.\./)+01-core/([\w.-]+\.sh)', text))):
