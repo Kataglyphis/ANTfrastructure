@@ -46,7 +46,7 @@ The packagers read `description`, `publisher`, `homepage`, `license_file`, `icon
 The Linux and Windows builders validate the declared project license before
 resetting an existing bundle, and stage its original text at `LICENSE`. A missing,
 empty or whitespace-only source fails. Linux copies carry
-`lib/app-packaging-license.sh`; Windows copies of `WindowsPythonApp.Common.psm1`
+`lib/app-packaging-license.sh` and `lib/log-bootstrap.sh`; Windows copies of `WindowsPythonApp.Common.psm1`
 carry `WindowsIcon.Common.psm1` and `WindowsMsix.Common.psm1`.
 When `icon` is set, the Windows builder compiles it once and links the resource
 into each launcher; an omitted icon retains the old behavior. `WindowsIcon.Common`

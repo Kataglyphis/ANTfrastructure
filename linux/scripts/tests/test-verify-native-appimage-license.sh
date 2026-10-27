@@ -24,7 +24,7 @@ case "${APPIMAGE_FIXTURE:-good}" in
 esac
 SH
 chmod +x "$work/appimage"
-export EXPECTED_LICENSE="$work/LICENSE" TMPDIR="$work/tmp" APPIMAGE_TRACE="$work/trace"
+export EXPECTED_LICENSE="$work/LICENSE" TMPDIR="$work/tmp" APPIMAGE_TRACE="$work/trace" APPIMAGE_FIXTURE=good
 arch="$(arch_normalize "$(uname -m)")"
 entry=usr/lib/oxidant/LICENSE
 t_case 'extracts and verifies the original license'

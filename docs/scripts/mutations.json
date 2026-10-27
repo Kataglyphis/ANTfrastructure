@@ -30799,5 +30799,37 @@
   "replace": "    if (-not $WheelDir) { $WheelDir = Get-OrtChainWheelStore }",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/python-ort-license-mutation.json",
   "why": "Package verification uses the same explicit wheel-store precedence as bundle construction."
+ },
+ {
+  "id": "lib.app-packaging-license-bootstrap",
+  "target": "linux/scripts/lib/app-packaging-license.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/log-bootstrap.sh\" || return $?",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-lib-modules.sh",
+  "why": "The shared license module must import the common logging bootstrap."
+ },
+ {
+  "id": "lib.pe-icon-tools-bootstrap",
+  "target": "linux/scripts/lib/pe-icon-tools.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/log-bootstrap.sh\" || return $?",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-lib-modules.sh",
+  "why": "The shared PE tool module must import the common logging bootstrap."
+ },
+ {
+  "id": "packaging.deb-control-license-call",
+  "target": "linux/scripts/06-packaging/python-app-package.sh",
+  "find": "  verify_python_app_package_license \"${output}\" \"opt/${APP_ID}/LICENSE\" || return $?",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-deb-control-rendering.sh",
+  "why": "The Debian control fixture must detect a removed license check."
+ },
+ {
+  "id": "packaging.deb-control-license-failure",
+  "target": "linux/scripts/06-packaging/python-app-package.sh",
+  "find": "  verify_python_app_package_license \"${output}\" \"opt/${APP_ID}/LICENSE\" || return $?",
+  "replace": "  verify_python_app_package_license \"${output}\" \"opt/${APP_ID}/LICENSE\" || true",
+  "test": "bash linux/scripts/tests/test-deb-control-rendering.sh",
+  "why": "A failed license check must preserve its status and stop packaging."
  }
 ]

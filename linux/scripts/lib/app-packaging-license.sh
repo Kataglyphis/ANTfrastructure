@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Project text must accompany the binary; this does not inventory third-party licenses.
+# shellcheck source=linux/scripts/lib/log-bootstrap.sh
+source "$(dirname "${BASH_SOURCE[0]}")/log-bootstrap.sh" || return $?
 
 app_packaging_validate_project_license() {
   local source="${1:?license source required}"

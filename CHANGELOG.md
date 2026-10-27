@@ -23,6 +23,7 @@
 
 ## 2026-10-27 — packaged licences and desktop icons
 
+- Keep new shared shell libraries on the common logging bootstrap, initialize the AppImage fixture and preserve Debian fixture license-check verdicts.
 - Stage the original project license in shared Linux bundles and CPack outputs; generate WiX RTF from its full text.
 - Validate and stage the declared project license before building a Linux Python app bundle.
 - Check declared license texts in package payloads, including compressed Flutter notices, without claiming automatic dependency coverage.

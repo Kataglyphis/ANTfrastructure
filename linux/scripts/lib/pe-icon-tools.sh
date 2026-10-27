@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # The cross-PE tests need a host LLVM with both target backends, independent of the family image.
+# shellcheck source=linux/scripts/lib/log-bootstrap.sh
+source "$(dirname "${BASH_SOURCE[0]}")/log-bootstrap.sh" || return $?
 
 pe_icon_find_tool() {
   local tool="$1" path

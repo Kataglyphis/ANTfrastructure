@@ -134,8 +134,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Gradle wrapper updates change only the version in one distribution URL; duplicate properties and checksum-pinned archives refuse before writing.
    Shared harness mutation suites stay host-portable; native batch execution remains in the separately discovered Windows suite.
    Copied code-quality and coverage libraries carry `cli-value-options.sh`; preserve empty-argument filtering, prefixing and caller argv order.
-   Copied `app-packaging.sh` carries `app-packaging-license.sh`; package the original project license and validate declared license texts in built artifacts. This check does not establish third-party license completeness.
-   Python app bundle copies carry `lib/app-packaging-license.sh`; validate the declared project license before resetting the bundle and stage its original text.
+   Copied `app-packaging.sh` carries `app-packaging-license.sh`; both it and `pe-icon-tools.sh` carry `log-bootstrap.sh` in the shared lib layout. Package the original project license and validate declared texts in built artifacts.
+   Python app bundle copies carry `lib/app-packaging-license.sh` and `lib/log-bootstrap.sh`; validate the declared project license before resetting the bundle and stage its original text.
    Linux desktop packaging rejects missing or structurally invalid PNG icons; preserve exact icon bytes and test the packaged result.
    Flutter apps with an Android manifest validate its mipmap launcher reference and every standard-density PNG; the source check does not prove image identity or inspect an APK.
    The native ONNX finalizer stages the checked-out LICENSE and ThirdPartyNotices before deleting its source; consumers must carry those files with the corresponding native output.

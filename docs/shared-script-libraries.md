@@ -626,7 +626,8 @@ read.
 It requires the project's nonempty `LICENSE` (or `--license-file`) and stages it
 with the binary in the tar and bundle. `app_packaging_stage_project_license`
 is available to other callers that build their own bundles; copies of
-`app-packaging.sh` must carry `app-packaging-license.sh` beside it. The helper
+`app-packaging.sh` must carry `app-packaging-license.sh` beside it. Copies of that
+helper and `pe-icon-tools.sh` also carry `log-bootstrap.sh` beside them. The helper
 does not inventory third-party licenses. After the tar it stages that bundle in
 `${KATAGLYPHIS_PACKAGING_WORKDIR:-/tmp/packaging-work}/bundle`. It hands that tree to
 the three bundle packagers above, the ones a Flutter lane calls, through seven
