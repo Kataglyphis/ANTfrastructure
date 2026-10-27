@@ -67,6 +67,7 @@
 
 - Run the GenAI yvals patch suite harness-style, so its mutation runs on the Linux shards.
 - Refuse mutation recipes whose test is a Pester-style suite (`test-mutation-pester-targets.sh`), move the blank-line `Find-TextLineIndexes` cases to a harness-style suite, and drop two code-dupes allowlist rows whose pairs fell under the threshold.
+- File that guard's own recipe under the `gate-fixture` family: the `mutations` slug does not own the suite, so the gate-proof registry failed preflight.
 - Prove the per-level sccache hit line in a harness-style suite: its mutation ran on the Linux shards, which carry no Pester, so the Pester-style baseline skipped and failed every run.
 - Find the riscv64 cross wheel's Python headers under the sysroot's `usr/local/include`, where the image's source-built Python 3.15 lives, and pass the sysroot path itself instead of a host path `--sysroot` never rerooted.
 - Resolve the shared CMake/uv wiring gate's relative `-ScriptPath` against the consumer's working directory, not the hub.
