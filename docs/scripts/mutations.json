@@ -30975,5 +30975,13 @@
   "replace": "param([Parameter(Mandatory)][string[]]$Lines)",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.Cross.Tests.ps1 -ResultFile logs/code-quality/requirement-groups-mutation.json",
   "why": "a requirements export carries blank lines, which a mandatory string array would refuse"
+ },
+ {
+  "id": "lib.genai-yvals-patch-unindented",
+  "target": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+  "find": "'#ifdef __clang__', '#define _EMIT_STL_ERROR(NUMBER, MESSAGE)'",
+  "replace": "'#ifdef __clang__', '    #define _EMIT_STL_ERROR(NUMBER, MESSAGE)'",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.GenaiClangStlPatch.Tests.ps1 -ResultFile logs/code-quality/genai-yvals-mutation.json",
+  "why": "an indented replacement no longer matches the patch's own check, which stopped the amd64 chain's GenAI build"
  }
 ]

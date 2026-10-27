@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-27 — GenAI's yvals_core.h patch writes the text its check expects
+
+- The 2026-10-24 refactor moved `Install-GenaiClangStlPatch` into a function and indented its
+  multi-line replacement literal, so the patch wrote `    #define` lines and its own check then
+  failed the amd64 chain with a misleading "MSVC likely changed the macro format". The replacement is
+  joined from single-line strings now, and `-SkipIfMatch` keeps a second run from wrapping the
+  define twice. An AST comparison of every multi-line literal that refactor moved found no other
+  changed text. `SourceBuild.GenaiClangStlPatch.Tests.ps1` runs the patch on a fake header.
+
 ## 2026-10-27 — blank lines no longer fail the FFmpeg codec branch
 
 - `Find-TextLineIndexes`, `Get-RequirementLineGroup` and `Add-RequirementHash` accept empty
