@@ -181,6 +181,36 @@ t_assert_contains "$(_section 'Reached by a consumer')" 'consumer-a (`scripts/bu
   "the report preserves the executable caller's location"
 rm -rf "${_root_c}"
 
+t_case "shared library and requirements paths and dynamic basenames stay visible"
+mkdir -p "${_h}/linux/scripts/lib" "${_c}/scripts/local"
+printf 'source "${HERE}/internal.requirements.txt"\n' > "${_h}/linux/scripts/lib/shared-library.sh"
+printf 'unused\n' > "${_h}/linux/scripts/lib/internal.requirements.txt"
+printf 'unused\n' > "${_h}/linux/scripts/lib/unreferenced.requirements.txt"
+printf 'unused\n' > "${_h}/linux/scripts/lib/dynamic.requirements.txt"
+printf 'local\n' > "${_c}/scripts/local/dynamic.requirements.txt"
+printf '%s\n' 'source third_party/ANTfrastructure/linux/scripts/lib/shared-library.sh' \
+  'cat "${SOME_DIR}/dynamic.requirements.txt"' \
+  'cat "${SOME_DIR}/unreferenced.requirements.txt.bak"' >> "${_c}/scripts/build.sh"
+t_git_commit "${_h}"
+t_git_commit "${_c}"
+_LIB_CLASSES='[ { "kind": "linux-lib", "glob": "linux/scripts/lib/*.sh", "needle": "path", "alias": "filename" },
+                { "kind": "linux-requirements", "glob": "linux/scripts/lib/*.requirements.txt", "needle": "path", "alias": "filename" } ]'
+t_case "the real inventory declares each shared file class with conservative filename matching"
+t_assert_ok "${PY}" -c 'import json, sys
+classes = json.load(open(sys.argv[1], encoding="utf-8"))["entry_point_classes"]
+actual = {(c["kind"], c["glob"], c.get("alias")) for c in classes}
+expected = {("linux-shared-library", "linux/scripts/lib/*.sh", "filename"),
+            ("linux-shared-requirements", "linux/scripts/lib/*.requirements.txt", "filename"),
+            ("linux-requirements", "linux/scripts/*.requirements.txt", "filename")}
+sys.exit(not expected <= actual)' "${SCRIPTS}/../../.github/consumers.json"
+_inventory "${_work}/lib-classes.json" "${_LIB_CLASSES}"
+_run "${_h}" "${_c}" "${_work}/lib-classes.json"
+t_assert_eq 0 "${rc}" "the shared library fixture must scan successfully"
+t_assert_contains "$(_section 'Reached by a consumer')" 'linux/scripts/lib/shared-library.sh' "a qualified library path is reached"
+t_assert_contains "$(_section 'Mentioned, never reached')" 'linux/scripts/lib/dynamic.requirements.txt' "an ambiguous basename is retained even when the consumer owns another file of that name"
+t_assert_contains "$(_section 'Hub-internal only')" 'linux/scripts/lib/internal.requirements.txt' "a sibling basename is a hub-internal use"
+t_assert_contains "$(_section 'Named by nobody')" 'linux/scripts/lib/unreferenced.requirements.txt' "a longer suffix must not impersonate the basename"
+
 t_case "a BACKSLASH-spelled hub path is a hub path"
 # Half the fleet writes hub paths with backslashes.
 _cb="$(_consumer backslash)"

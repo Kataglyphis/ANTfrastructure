@@ -201,6 +201,27 @@
       "why": "The top-level shell entry points (preflight, the lint gates, the build drivers). Stage scripts under 01-core/ .. 06-packaging/ are deliberately out of scope, though a consumer CAN reach one directly: OxidANT's Linux lane calls 06-packaging/package_archive.sh (found 2026-09-18), so this class under-reports those trees."
     },
     {
+      "kind": "linux-shared-library",
+      "glob": "linux/scripts/lib/*.sh",
+      "needle": "path",
+      "alias": "filename",
+      "why": "Shared shell libraries are also sourced by basename through dynamically selected module directories."
+    },
+    {
+      "kind": "linux-shared-requirements",
+      "glob": "linux/scripts/lib/*.requirements.txt",
+      "needle": "path",
+      "alias": "filename",
+      "why": "Shared bootstrap dependencies can be opened by basename beside their library."
+    },
+    {
+      "kind": "linux-requirements",
+      "glob": "linux/scripts/*.requirements.txt",
+      "needle": "path",
+      "alias": "filename",
+      "why": "Consumer scripts can install a shared root-level bootstrap file by path or basename."
+    },
+    {
       "kind": "docs-gate",
       "glob": "docs/scripts/*.py",
       "needle": "path",

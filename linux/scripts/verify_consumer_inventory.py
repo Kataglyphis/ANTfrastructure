@@ -57,6 +57,7 @@ REF_TRAIL = "`'\").,;:)]}>*_"
 STEM_ALIASES = {
     "stem-word": r"(?<![\w.-])%s(?![\w.-])",
     "cmake-include": r"include\s*\(\s*%s\s*\)",
+    "filename": r"(?<![\w.-])%s(?![\w.-])",
 }
 
 
@@ -71,6 +72,7 @@ class EntryPoint(TypedDict):
     alias_stem: str | None
     alias_re: re.Pattern[str] | None
     alias_name: str | None
+    conservative_alias: bool
 
 
 class HubSpec(TypedDict):
@@ -159,16 +161,18 @@ def entry_forms(spec: EntryClass, path: Path, rel: str) -> EntryPoint:
     needle = rel.rsplit("/", 1)[0] if spec.get("needle") == "dir" else rel
     entry: EntryPoint = {"kind": spec["kind"], "needle": needle,
                          "root_file": spec.get("match") == "root-file", "alias_stem": None,
-                         "alias_re": None, "alias_name": None}
+                         "alias_re": None, "alias_name": None, "conservative_alias": False}
     alias = spec.get("alias")
     if not alias:
         return entry
     if alias not in STEM_ALIASES:
         raise Failure(f"entry point class {spec['kind']!r} declares alias {alias!r}; "
                       f"known: {', '.join(sorted(STEM_ALIASES))}")
-    entry["alias_stem"] = path.stem
-    entry["alias_re"] = re.compile(STEM_ALIASES[alias] % re.escape(path.stem))
+    alias_value = path.name if alias == "filename" else path.stem
+    entry["alias_stem"] = alias_value
+    entry["alias_re"] = re.compile(STEM_ALIASES[alias] % re.escape(alias_value))
     entry["alias_name"] = path.name
+    entry["conservative_alias"] = alias == "filename"
     return entry
 
 
@@ -280,7 +284,7 @@ def is_hub_reference(text: str, start: int, matched: str,
     if any(before.endswith(q) for q in ctx["qualifiers"]):
         return True
     if matched != entry["needle"]:
-        return entry["alias_name"] not in ctx["basenames"]
+        return entry["conservative_alias"] or entry["alias_name"] not in ctx["basenames"]
     return entry["needle"] not in ctx["paths"]
 
 
@@ -301,7 +305,10 @@ def scan_file(rel: str, text: str, entries: list[EntryPoint],
                 continue
             lineno, line = line_at(text, start)
             bucket = hits.setdefault(needle, {REACHED: [], MENTIONED: []})
-            bucket[use_kind(rel, line)].append(f"{rel}:{lineno}")
+            kind = use_kind(rel, line)
+            if entry["conservative_alias"] and matched != needle and not ctx["is_self"]:
+                kind = MENTIONED
+            bucket[kind].append(f"{rel}:{lineno}")
 
 
 def scan_consumer(root: Path, files: list[str], entries: list[EntryPoint],

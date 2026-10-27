@@ -1,5 +1,53 @@
 [
  {
+  "id": "consumer-inventory.shared-library-class",
+  "target": ".github/consumers.json",
+  "find": "\"glob\": \"linux/scripts/lib/*.sh\"",
+  "replace": "\"glob\": \"linux/scripts/lib/none/*.sh\"",
+  "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+  "why": "shared shell libraries must remain in the consumer inventory"
+ },
+ {
+  "id": "consumer-inventory.shared-requirements-class",
+  "target": ".github/consumers.json",
+  "find": "\"glob\": \"linux/scripts/lib/*.requirements.txt\"",
+  "replace": "\"glob\": \"linux/scripts/lib/none/*.requirements.txt\"",
+  "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+  "why": "shared sibling requirements must remain in the consumer inventory"
+ },
+ {
+  "id": "consumer-inventory.root-requirements-class",
+  "target": ".github/consumers.json",
+  "find": "\"glob\": \"linux/scripts/*.requirements.txt\"",
+  "replace": "\"glob\": \"linux/scripts/none/*.requirements.txt\"",
+  "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+  "why": "shared root requirements must remain in the consumer inventory"
+ },
+ {
+  "id": "consumer-inventory.shared-filename-alias",
+  "target": "linux/scripts/verify_consumer_inventory.py",
+  "find": "    alias_value = path.name if alias == \"filename\" else path.stem",
+  "replace": "    alias_value = path.stem",
+  "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+  "why": "a dynamically constructed shared filename must not vanish from the inventory"
+ },
+ {
+  "id": "consumer-inventory.shared-ambiguous-basename",
+  "target": "linux/scripts/verify_consumer_inventory.py",
+  "find": "        return entry[\"conservative_alias\"] or entry[\"alias_name\"] not in ctx[\"basenames\"]",
+  "replace": "        return entry[\"alias_name\"] not in ctx[\"basenames\"]",
+  "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+  "why": "a same-named local file cannot prove that an ambiguous basename is not the hub file"
+ },
+ {
+  "id": "consumer-inventory.shared-alias-evidence",
+  "target": "linux/scripts/verify_consumer_inventory.py",
+  "find": "            if entry[\"conservative_alias\"] and matched != needle and not ctx[\"is_self\"]:",
+  "replace": "            if False:",
+  "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+  "why": "an ambiguous basename is a mention, not evidence of an actual hub call"
+ },
+ {
   "id": "consumer-pins.uv-exclusions",
   "target": "docs/scripts/consumer_pins.py",
   "find": "    if path == (\"tool\", \"uv\", \"exclude-dependencies\"):",

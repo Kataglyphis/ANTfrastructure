@@ -129,17 +129,22 @@ the grep did.
 points to grade. A class that expands to zero files fails the run — a silently
 empty class would quietly shrink the surface being examined.
 
-Two classes carry an `alias`, because their entry points are not reached by
-path at all:
+Some classes carry an `alias`, because their entry points are not always reached
+by full path:
 
 - `windows-module` — a consumer writes `Resolve-BuildModulePath -Name
   'WindowsBuild.Common'`. Grading on the path alone reported all
   twenty-two modules dead.
 - `cmake-module` — a consumer puts the hub's `cmake/` on `CMAKE_MODULE_PATH`
   and writes `include(Sanitizers)`.
+- `linux-shared-library`, `linux-shared-requirements` and `linux-requirements`
+  also scan complete filenames, including dynamic sibling paths. An unqualified
+  consumer basename is an ambiguous mention, even when a local file has the same
+  name; it blocks a "named by nobody" conclusion without claiming a proven call.
 
-An alias hit is discarded when the consumer owns a file of that basename: its
-own module shadows the hub's, so the reference is not evidence about the hub.
+Windows-module and CMake aliases are discarded when the consumer owns a file of
+that basename: its own module shadows the hub's. The conservative filename aliases
+above do not make that assumption.
 
 For a root file slated for deletion, a one-off class can use `"match": "root-file"`.
 It counts a consumer path only when it is explicitly qualified with the hub's

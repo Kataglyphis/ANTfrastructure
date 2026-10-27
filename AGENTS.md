@@ -194,6 +194,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows archives share extraction lifecycle; strict failures remain the default and pinned link exceptions stay explicit.
    ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts.
    Python CI suites carry their shared driver fixture; preserve child status, call logs and parent environment isolation.
+   Consumer inventory includes shared shell libraries and requirements; ambiguous consumer basenames remain mentions, not proof of a hub call or absence.
    Image-backed uv overlays validate the complete active lock and isolated install plan against image packages before installation; preserve pinned runtime provenance and reject non-venv targets.
    Consumer pin checks parse pyproject TOML and ignore only uv's exclusion list; genuine dependency pins, overrides and malformed manifests retain their fatal verdicts.
    `uv_sync_project --only-group` excludes the project, default groups and extras; when the chain store is active, reject an unreadable lock or any ORT in it before syncing.

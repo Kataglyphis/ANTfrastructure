@@ -17,6 +17,10 @@
 
 - Parse consumer manifests and ignore uv exclusion names while continuing to check actual dependency pins and reject invalid TOML.
 
+## 2026-10-27 — inventory shared dependency files
+
+- Track shared shell libraries and requirements by path and conservative basename before considering their removal.
+
 ## 2026-10-27 — shared uv dependency groups
 
 - Let consumers sync a locked dependency group without installing the project or unrelated extras, while retaining the shared environment and ORT checks.
