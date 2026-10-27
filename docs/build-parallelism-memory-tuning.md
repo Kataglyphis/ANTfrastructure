@@ -256,7 +256,8 @@ full rebuild.
 
 ### What IS achievable (both unbuilt; pick one and validate with a real build)
 
-- **PAR4-hard — a host-level memory governor.** Stop encoding "how much RAM may
+- **PAR4-hard — a host-level memory governor.** Built 2026-10-27 as the launcher's
+  compile governor, below. Stop encoding "how much RAM may
   I use" in an immutable build-arg and enforce it from outside, where it *can*
   change while a build runs: `systemd-run --scope -p MemoryHigh=…` per build, or
   a global compile-job governor. This is the only real answer to "the host's
@@ -279,6 +280,41 @@ or accept the throttle. Do not kill and relaunch a straggler to "fix" its
 divisor.
 
 ---
+
+## The compile governor
+
+**Since 2026-10-27 every compile that goes through `01-core/sccache-launcher.sh` takes a
+host-wide slot first.** The slots are `flock`s on files in `${SCCACHE_DIR}/.compile-slots`. That
+directory is in the sccache cache mount, which every build on the host shares, and its contents are
+not part of any cache key. A slot belongs to the launcher process and is released when the process
+exits, so a killed RUN leaves no stale lease.
+
+**Admission.** There are as many slots as `nproc` reports. Slot 0 always admits, so a lone build
+always makes progress. Any other slot admits only while `MemAvailable` is at least
+`KATAGLYPHIS_COMPILE_GOVERNOR_ADMIT_MB` (3072). A compile that finds no slot polls every 0.2 s; after
+`KATAGLYPHIS_COMPILE_GOVERNOR_MAX_WAIT` (1800 s) it warns and compiles ungoverned. The governor can only lower
+concurrency, never raise it: without `flock`, or with an unwritable directory, the launcher works as
+before. `KATAGLYPHIS_COMPILE_GOVERNOR=off` turns it off.
+
+**What it changes.** The measured problem (`BACKLOG.md` CON165, 2026-10-27) was two-sided: over a
+media stage the host's median CPU was 12 % with 4 compilers running, while fan-out moments (gst-plugins-rs,
+libcamera and OpenCV at once) reached 39 compilers, 54 GB used and a full swap. A fixed divisor cannot
+serve both. With the governor holding the peaks, the chain profile lowers `PAR_INTRA_STEP_BUDGET`
+from 6 to the default 2 (`BUILD_MEM_DIVISOR` 18 → 6), so a lone serial step such as amd64's
+ONNX Runtime or IREE's LLVM gets about three times the jobs.
+
+**Traps.** Every child the launcher starts gets `9>&-`. The slot fd must not reach a sccache server that
+the client autostarts, or that server holds the slot for good. The slot opens read-only through
+`command exec`, without a `2>` on it. A redirection on a bare `exec` stays on the shell, and one there
+swallowed every compiler message in the first draft. `flock` needs no write access, so builds that run
+as different uids share the slots.
+
+**What it does not cover:** linkers and anything that does not go through the launcher, a compile's
+memory after it was admitted, and the runtime lane's QEMU builds. Their `TARGETARCH` gives them their own
+`sccache-<arch>` cache mount, so their slots are separate. Tests:
+`linux/scripts/tests/test-compile-governor.sh` runs real concurrent launchers against real `flock` slots.
+The first chain that runs it validates the peak: read the resource monitor's `compilers` and
+`mem_used_mb` columns.
 
 ## How to tune safely (procedure for an agent)
 

@@ -425,7 +425,7 @@ owner carries the breakage that costs.
       `L1 (s3): 3 written, 9 failed of 12` and `6 failed of 9`. Since 2026-10-26 a drain with a failed write prints
       `SCCACHE_ERROR_LOG`'s level and S3 lines. Work: read them on the next chain and fix the cause. Done when
       every drain of a chain shows 0 failed.
-- [ ] **CON165 — ONNX Runtime builds with one job under `--parallel-archs`** [S, ★★★]. Found 2026-10-26:
+- [ ] **CON165 — ONNX Runtime builds with one job under `--parallel-archs`; prove the governor on a chain** [S, ★★★]. In source since 2026-10-27: the launcher's compile governor and `PAR_INTRA_STEP_BUDGET=2` ([docs](docs/build-parallelism-memory-tuning.md#the-compile-governor)). Done when a chain's resource trace keeps `compilers` at or under 32 with no OOM kill and ONNX Runtime and IREE log more than one job. Found 2026-10-26:
       `Using JOBS=1` in `media-arm64.log`, since `compute_jobs_with_mem_cap "" 2000` divides RAM by
       `BUILD_MEM_DIVISOR=18` (3 arches × `PAR_INTRA_STEP_BUDGET=6`). With the cache warm a serial build costs
       little; cold, it is the 104 min step. Measured 2026-10-27 (`resources-20261027-024119-*.csv`, 32 cores,

@@ -29535,5 +29535,45 @@
   "replace": "  true",
   "test": "bash linux/scripts/tests/test-wsl-quality.sh",
   "why": "the check must reject a missing Windows Pester before trying to run native suites"
+ },
+ {
+  "id": "lib.compile-governor-caps-slots",
+  "target": "linux/scripts/01-core/sccache-launcher.sh",
+  "find": "if [ -r \"${_gov_slot}\" ] && command exec 9<\"${_gov_slot}\" && flock -n 9; then",
+  "replace": "if [ -r \"${_gov_slot}\" ] && command exec 9<\"${_gov_slot}\"; then",
+  "test": "bash linux/scripts/tests/test-compile-governor.sh",
+  "why": "without the lock every launcher takes slot 0, and the fan-out peak of 39 compilers comes back"
+ },
+ {
+  "id": "lib.compile-governor-admits-by-memory",
+  "target": "linux/scripts/01-core/sccache-launcher.sh",
+  "find": "[ \"${_gov_avail:-0}\" -ge \"${KATAGLYPHIS_COMPILE_GOVERNOR_ADMIT_MB}\" ] 2>/dev/null && return 0",
+  "replace": "return 0",
+  "test": "bash linux/scripts/tests/test-compile-governor.sh",
+  "why": "a second slot must not start a compile the host has no memory for"
+ },
+ {
+  "id": "lib.compile-governor-slot-off-children",
+  "target": "linux/scripts/01-core/sccache-launcher.sh",
+  "find": "sccache \"$@\" 2>\"${_err}\" 9>&-\n_rc=$?",
+  "replace": "sccache \"$@\" 2>\"${_err}\"\n_rc=$?",
+  "test": "bash linux/scripts/tests/test-compile-governor.sh",
+  "why": "a sccache server the client autostarts would inherit the slot fd and hold the slot for good"
+ },
+ {
+  "id": "lib.compile-governor-waits-bounded",
+  "target": "linux/scripts/01-core/sccache-launcher.sh",
+  "find": "if [ $(( $(date +%s) - _gov_start )) -ge \"${KATAGLYPHIS_COMPILE_GOVERNOR_MAX_WAIT}\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-compile-governor.sh",
+  "why": "a slot held forever must slow a compile, never stop the build"
+ },
+ {
+  "id": "lib.compile-governor-keeps-diagnostics",
+  "target": "linux/scripts/01-core/sccache-launcher.sh",
+  "find": "if [ -r \"${_gov_slot}\" ] && command exec 9<\"${_gov_slot}\" && flock -n 9; then",
+  "replace": "if [ -r \"${_gov_slot}\" ] && command exec 9<\"${_gov_slot}\" 2>/dev/null && flock -n 9; then",
+  "test": "bash linux/scripts/tests/test-compile-governor.sh",
+  "why": "a 2> on the bare exec stays on the shell and swallows every compiler message"
  }
 ]

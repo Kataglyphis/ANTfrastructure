@@ -10,7 +10,7 @@ trap 'rm -f "${_out}"' EXIT
 t_case "the plan names the profile's arches, stages and parallelism, and the command that would run"
 bash "${CHAIN}" --plan > "${_out}" 2>&1
 t_assert_contains "$(cat "${_out}")" "MAX_PARALLEL_ARCHS=3"
-t_assert_contains "$(cat "${_out}")" "BUILD_MEM_DIVISOR=18 (min(arches, 3) x PAR_INTRA_STEP_BUDGET"
+t_assert_contains "$(cat "${_out}")" "BUILD_MEM_DIVISOR=6 (min(arches, 3) x PAR_INTRA_STEP_BUDGET"
 t_assert_contains "$(cat "${_out}")" "bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --parallel-archs --from-stage base"
 
 # A start refused by a gate: exit 4 and the gate's message, before any unit is touched.

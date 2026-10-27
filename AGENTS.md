@@ -907,6 +907,9 @@ The rules:
      ([`build-cache-tiers.md`](docs/build-cache-tiers.md#a-subproject-that-forces-its-own-launcher)).
    - Every RUN that compiles carries both cache mounts; its closing drain prints
      `sccache-stats|`, the number to read before calling a step cached.
+   - The launcher's compile governor caps host-wide compiles by `flock` slots in the sccache mount;
+     keep its fd 9 off every child, and keep it on while `PAR_INTRA_STEP_BUDGET` is 2: it holds the peaks
+     ([`build-parallelism-memory-tuning.md`](docs/build-parallelism-memory-tuning.md#the-compile-governor)).
    `--ccache` is a flag NAME, not a tool choice. Before a multi-hour run rides on a change here,
    `bash linux/scripts/02-toolchain/probe-sccache.sh` inside the compiler image answers in seconds
    whether a cache was actually consulted, which a successful compile does not.
