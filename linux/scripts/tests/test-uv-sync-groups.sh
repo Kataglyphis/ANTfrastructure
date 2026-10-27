@@ -3,7 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
-UV_SH="${UV_SYNC_SOURCE:-${TESTS_DIR}/../01-core/python_uv.sh}"
+UV_SH="${1:-${TESTS_DIR}/../01-core/python_uv.sh}"
 t_source_functions "${UV_SH}" _uv_group_ort_guard _uv_sync_args uv_sync_project || exit 1
 WORK="$(mktemp -d)"; trap 'rm -rf "${WORK}"' EXIT
 mkdir -p "${WORK}/bin" "${WORK}/venv/bin" "${WORK}/venv/lib" "${WORK}/project"

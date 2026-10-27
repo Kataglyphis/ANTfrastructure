@@ -17,6 +17,10 @@
 
 - Let consumers sync a locked dependency group without installing the project or unrelated extras, while retaining the shared environment and ORT checks.
 
+## 2026-10-27 — locked image overlays
+
+- Validate a uv overlay against image package versions and an isolated dependency plan before installing hash-locked wheels.
+
 ## 2026-10-27 — require executed script tests
 
 - Fail empty or entirely skipped Bash runs and Pester suites, with regression and mutation proofs.

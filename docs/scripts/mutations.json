@@ -1,5 +1,61 @@
 [
  {
+  "id": "uv-image.cleanup-forward",
+  "target": "linux/scripts/01-core/uv-image-overlay.sh",
+  "find": "  uv_image_overlay_cleanup \"${status}\" \"${path}\" || status=$?",
+  "replace": "  uv_image_overlay_cleanup \"${status}\" \"${path}\" || true",
+  "test": "bash linux/scripts/tests/test-uv-image-overlay.sh",
+  "why": "the EXIT handler must forward cleanup errors as its final status"
+ },
+ {
+  "id": "uv-image.cleanup-status",
+  "target": "linux/scripts/01-core/uv-image-overlay.sh",
+  "find": "    [ \"${status}\" -ne 0 ] || status=1",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-uv-image-overlay.sh",
+  "why": "failed overlay removal must fail a previously successful build"
+ },
+ {
+  "id": "uv-image.cleanup-receipt",
+  "target": "linux/scripts/01-core/uv-image-overlay.sh",
+  "find": "  if ! rm -rf -- \"${path}\" || [ -e \"${path}\" ] || [ -L \"${path}\" ]; then",
+  "replace": "  if ! rm -rf -- \"${path}\"; then",
+  "test": "bash linux/scripts/tests/test-uv-image-overlay.sh",
+  "why": "a successful removal command must not hide a temporary path that remains"
+ },
+ {
+  "id": "uv-image.unlocked-install",
+  "target": "linux/scripts/01-core/verify-uv-image-plan.py",
+  "find": "        if version not in allowed.get(key(name), set()):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-uv-image-overlay.sh",
+  "why": "a pip plan must not install a package or version absent from the uv lock"
+ },
+ {
+  "id": "uv-image.image-version",
+  "target": "linux/scripts/01-core/verify-uv-image-plan.py",
+  "find": "        if name in image and Version(image[name]) != Version(specs[0].version):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-uv-image-overlay.sh",
+  "why": "an omitted image distribution must match the active uv lock version exactly"
+ },
+ {
+  "id": "uv-image.module-provenance",
+  "target": "linux/scripts/01-core/verify-uv-image-modules.py",
+  "find": "        if not path.is_relative_to(root):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-uv-image-overlay.sh",
+  "why": "an overlay must not shadow the image's required runtime modules"
+ },
+ {
+  "id": "uv-image.target-venv",
+  "target": "linux/scripts/01-core/uv-image-overlay.sh",
+  "find": "sys.exit(sys.prefix == sys.base_prefix)",
+  "replace": "sys.exit(0)",
+  "test": "bash linux/scripts/tests/test-uv-image-overlay.sh",
+  "why": "a system interpreter must fail before any package operation even under Python optimization"
+ },
+ {
   "id": "lib.cmake-policy-single-argument",
   "target": "linux/scripts/01-core/cross-env.sh",
   "find": "    \"-DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5}\"",

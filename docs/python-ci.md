@@ -14,11 +14,28 @@ The Python consumers (OrchestrANT, WebDavClient) share their whole CI surface wi
 | Step drivers | `linux/scripts/02-toolchain/python/ci_{tests,static_analysis,build_docs,packaging}.sh` |
 | Test report verifier | `linux/scripts/02-toolchain/python/verify-test-reports.py` |
 | uv primitives | `linux/scripts/01-core/python_uv.sh` |
+| Image-backed overlays | `linux/scripts/01-core/uv-image-overlay.sh` and its `verify-uv-image-*.py` companions |
 | Chain ORT reconcile | `uv_reconcile_chain_ort` in `python_uv.sh`, `Sync-UvChainOnnxRuntime` in `windows/scripts/modules/WindowsUv.Common.psm1`; both run the ORT census `linux/scripts/03-media/runtime/ort-venv-census.py` (the Windows image's module copy runs the one `windows/Dockerfile` puts in `C:\temp\scripts\`) |
 | Chain OpenCV (Windows) | `Sync-UvChainOpenCv` in `WindowsUv.Common.psm1`, over `Copy-ChainOpenCvPackage` in `WindowsPythonApp.Common.psm1` |
 | App bundles (zip/MSI/deb/… inputs) | [`python-app-bundles.md`](python-app-bundles.md) |
 | Free-threaded wheel (declared, proved) | `linux/scripts/02-toolchain/python/free-threaded-wheel.py`, run by both packaging drivers (§ Two wheels: GIL and free-threaded) |
 | Tests on the installed cp3XYt wheel | `test-free-threaded-wheel.sh`, `windows/scripts/python/Invoke-FreeThreadedWheelTests.ps1` and the arm64 stage, over `free-threaded-wheel-tests.py` (§ The suite on the installed wheel) |
+
+## Locked overlays on image packages
+
+`uv_image_overlay_install <image-python> <venv-python> <work-dir>` installs a uv-locked
+project into an existing isolated venv that can already import the image's packages. It exports
+the full lock, omits image distributions from the overlay, and checks both the image's exact
+versions and an isolated pip dry-run plan before installing the remaining hash-locked packages.
+Use `uv_image_overlay_verify_modules` before and after installation for image-provided modules,
+and run the ORT census separately for chain provenance. Create a fresh venv per invocation;
+the helper does not remove unrelated packages or prove what bytes the image contains.
+
+The image and the lock can diverge when either changes. Resolve the mismatch by updating the
+image-aligned constraints and lock together; a mismatch fails instead of replacing image bytes.
+The helper requires pip, uv and both Python companions alongside it. It rejects direct URL
+requirements in this workflow. `test-uv-image-overlay.sh` checks version, plan and shadowing
+failures; ModelANT runs an additional image-backed installation and ORT census in CI.
 
 A consumer's workflow is configuration, not steps: its `scripts/linux/ci_*.sh` wrappers
 `antfrastructure_exec` into the drivers above
@@ -299,7 +316,7 @@ died here, whatever it had been asked to do.
 
 For a dependency-only environment, call `uv_sync_project --locked --only-group docs`
 from the project root. The option may be repeated. It omits the project, the dev
-group and extras, and retains the existing venv pin and environment cleanup. It does
+group and extras, and retains the existing venv pin and environment cleanup. It
 refuses a missing or unreadable lock and any lock containing an ORT package when
 the chain store is active: it cannot prove which transitive packages belong to the
 group. The normal post-sync provenance check still handles installed ORT packages.
