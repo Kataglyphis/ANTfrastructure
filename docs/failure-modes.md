@@ -1777,7 +1777,23 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** **CHECK `du -v` FOR `Shared: true` FIRST — that is almost always the answer.** `Shared` records are pinned by containerd IMAGE TAGS and NO prune flag can take them; prune only ever gets the `Private` slice, and `Reclaimable` describes the LEASE state, not what prune will hand back. **`reservedSpace` is a red herring for this symptom.** Otherwise: refs pinned by BUILD HISTORY (every record incl. failed attempts pins its refs indefinitely) and/or by named `bk-*` image generations
 
-**Fix.** In order: **(1)** `buildctl du -v` and look for `Shared: true` — those records are pinned by containerd image tags and no prune flag can take them, so the lever is an admin `nerdctl --namespace buildkit rmi` of dead stage tags. **(2)** Non-admin and safe mid-build: `buildctl prune --free-storage <MB>` — a minimum-free *target*, not an amount to delete. **(3)** `prune-histories` second, never first. **(4)** Look for a superseded lineage, the big hidden reclaim. The full decision procedure with every measurement: [`windows-build-lanes.md`](windows-build-lanes.md#store-gc).
+**Fix.** In order: **(1)** `buildctl du -v` and look for `Shared: true` — those records are pinned by containerd image tags and no prune flag can take them, so the lever is an admin `nerdctl --namespace buildkit rmi` of dead stage tags. **(2)** Non-admin: `buildctl prune --free-storage <MB>` — a minimum-free *target*, not an amount to delete; it takes the least recently used records first, which can be the chain's own base (next entry). **(3)** `prune-histories` second, never first. **(4)** Look for a superseded lineage, the big hidden reclaim. The full decision procedure with every measurement: [`windows-build-lanes.md`](windows-build-lanes.md#store-gc).
+
+### After a `prune --free-storage`, the next chain rebuilds `Dockerfile.base` from step 2
+
+**Symptom.** A chain that was fully cached minutes earlier rebuilds `Dockerfile.base` from step 2/17 (about 65 min), every later stage misses, and free disk drops by 80+ GB until a stage gate refuses with `below the 40 GB floor`.
+
+**Cause.** A `bk-*` tag pins only the image's layers (`Shared`), not the exec records a cache lookup needs (`Private`). `--free-storage` evicts `Private` records least recently used first, and in a warm chain those are base's: hit at the start of the last run, then idle for hours. The rebuilt base gets a new digest, so every older stage tag becomes a superseded lineage that still pins its full layer copy (measured 2026-10-28: 101 → 17.9 GB free).
+
+**Fix.** Before a reclaim on a warm chain, prefer `buildctl prune --keep-duration <window>` covering the chain's last run. After it has happened: rebuild `-Stages base` at once while its records still exist, admin `nerdctl --namespace buildkit rmi` of the superseded stage tags, then `buildctl prune --keep-duration 30m` (2026-10-28: 89 → 134.9 GB, base cached in 433 s). Use Stevedore's nerdctl by full path (next entry).
+
+### `nerdctl --namespace buildkit images` lists nothing in an admin shell
+
+**Symptom.** `nerdctl namespace ls` shows `k8s.io` and `rancher-desktop-extensions`, the `buildkit` namespace has 0 images, and `rmi` of a `bk-*` tag fails `no such image`.
+
+**Cause.** Rancher Desktop's `nerdctl.exe` precedes Stevedore's on `PATH` and talks to Rancher's Linux VM, not the Windows containerd that holds the `bk-*` images.
+
+**Fix.** Call `& 'C:\Program Files\Stevedore\bin\nerdctl.exe' --namespace buildkit ...`; `Get-Command nerdctl -All` shows the order. Its image list prints `local/kataglyphis:bk-*` without the `docker.io/` prefix, so match tags on that form.
 
 ### `buildctl` local export dies `file already closed` on a Windows rootfs
 

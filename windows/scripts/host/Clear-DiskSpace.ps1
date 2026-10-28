@@ -180,7 +180,7 @@ function Write-DaemonPruneAdvice {
             else { Write-HostMaintenanceMessage '  docker reachable but `system df` failed - run it in an elevated shell for the layer report.' 'DarkGray' }
         } catch { Write-HostMaintenanceMessage '  docker not on PATH in this shell - no layer report (the prune levers below still apply).' 'DarkGray' }
         Write-HostMaintenanceMessage ('levers: buildctl prune --free-storage {0}  |  docker image prune -f' -f ($KeepGB * 1024))
-        Write-HostMaintenanceMessage 'Both leave in-use and freshly-referenced records alone. See docs\windows-builds.md § Store GC.'
+        Write-HostMaintenanceMessage '--free-storage takes least recently used records first, which can be a warm chain''s base. See docs\failure-modes.md.'
         Write-HostMaintenanceMessage 'The file allowlist excludes compile caches; daemon GC is separate. Use -StoreHusksOnly to disable it.' 'DarkGray'
     }
 

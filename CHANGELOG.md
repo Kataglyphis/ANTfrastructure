@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-28 — A free-storage prune can evict a warm chain's base
+
+- `buildctl prune --free-storage 102400` freed 72.6 GB and evicted base's exec records, which the
+  `bk-*` tag does not pin; the next chain rebuilt base from step 2 and left a superseded lineage
+  holding 83 GB. `failure-modes.md` records the symptom and recovery, plus the admin-shell trap
+  where Rancher Desktop's `nerdctl` precedes Stevedore's; `Clear-DiskSpace.ps1` no longer calls
+  that prune safe for fresh records.
+
 ## 2026-10-28 — The riscv64 cross environment reaches only the target wheel
 
 - `ci_packaging.sh` exported the riscv64 compilers, link line, SOABI suffix and pkg-config paths
