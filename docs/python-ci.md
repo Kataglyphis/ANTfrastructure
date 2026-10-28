@@ -149,6 +149,10 @@ pins:
   uv reads it while inspecting the interpreter and refuses the riscv64 tag at `uv venv` and
   `uv build` alike (`Unknown operating system: linux_riscv64`). The sdist stays on
   `uv build --sdist`.
+- The knobs and the riscv64 cross environment reach that wheel build alone, in a subshell. The
+  two packaging venvs sync for the host and build their own sdists there; exported before the
+  syncs, line-profiler's C++ extension compiled for riscv64 and linked with the host `g++`
+  (run 40613187784).
 
 The wheel link searches the sysroot's libraries first (`LDSHARED` carries
 `-L<sysroot>/lib/riscv64-linux-gnu -L<sysroot>/usr/lib/riscv64-linux-gnu`). setuptools appends the

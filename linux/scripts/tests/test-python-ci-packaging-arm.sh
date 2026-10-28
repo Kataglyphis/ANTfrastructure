@@ -23,7 +23,10 @@ uv_venv_ensure() { :; }
 uv_venv_activate() { :; }
 uv_venv_deactivate() { :; }
 uv_venv_remove() { :; }
-uv_sync_project() { printf 'sync extras=%s\n' "${UV_SYNC_EXTRAS:-}" >> "${CALLS}"; }
+uv_sync_project() {
+  printf 'sync extras=%s\n' "${UV_SYNC_EXTRAS:-}" >> "${CALLS}"
+  printf 'sync-env CC=%s LDSHARED=%s SUFFIX=%s CFLAGS=%s PKGLIB=%s\n' "${CC:-}" "${LDSHARED:-}" "${SETUPTOOLS_EXT_SUFFIX:-}" "${CFLAGS:-}" "${PKG_CONFIG_LIBDIR:-}" >> "${CALLS}"
+}
 CI_COMMON
 
 # The cross mode's two sourced helpers: cross-env.sh's target Python resolver and riscv64-cross.sh's env.
@@ -31,7 +34,7 @@ cat > "${TREE}/01-core/cross-env.sh" <<'CROSS_ENV'
 cross_target_python_root() { [ -z "${FIXTURE_NO_PY:-}" ] || return 1; printf '%s' "${FIXTURE_PY_ROOT}"; }
 CROSS_ENV
 cat > "${TREE}/lib/riscv64-cross.sh" <<'RISCV_CROSS'
-riscv64_cross_env() { export RISCV64_CROSS_BIN="${FIXTURE_CROSS_BIN}"; }
+riscv64_cross_env() { export RISCV64_CROSS_BIN="${FIXTURE_CROSS_BIN}" PKG_CONFIG_LIBDIR=riscv64-fixture-pkgconfig; }
 RISCV_CROSS
 
 printf '{ "name": "FixtureApp" }\n' > "${WS}/packaging/app.json"
@@ -108,6 +111,10 @@ t_assert_contains "$(cat "${CALLS}")" "CFLAGS=-O2 -I${PYROOT}/include/python3.14
 t_assert_eq "2" "$(grep -c '^wheel .*PLAT=linux_riscv64' "${CALLS}")" "both wheels carry the target platform tag"
 t_assert_eq "2" "$(grep -cF -- "-shared -L${SYSROOT_DIR}/lib/riscv64-linux-gnu -L${SYSROOT_DIR}/usr/lib/riscv64-linux-gnu" "${CALLS}")" \
   "both wheel links search the sysroot's libc before the host LIBDIR setuptools appends"
+
+t_case "cross mode keeps the target toolchain out of both venv syncs, whose sdists build for the host"
+t_assert_eq "2" "$(grep -c '^sync-env ' "${CALLS}")" "both syncs ran"
+t_assert_eq "0" "$(grep '^sync-env ' "${CALLS}" | grep -c -e 'riscv64' -e '-O2 -I')" "no cross compiler, link, suffix, headers or pkg-config in a sync"
 
 t_case "cross mode never shows uv the target platform tag (uv refuses it at venv and build time)"
 t_assert_eq "2" "$(grep -c '^uv .*PLAT= CFLAGS=' "${CALLS}")" "both sdists build with no platform in uv's environment"

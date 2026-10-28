@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-28 — The riscv64 cross environment reaches only the target wheel
+
+- `ci_packaging.sh` exported the riscv64 compilers, link line, SOABI suffix and pkg-config paths
+  before the packaging venvs synced, so their sdists built for riscv64 on the amd64 host:
+  line-profiler's C++ extension failed to link (OrchestrANT run 40613187784) and pyyaml installed a
+  riscv64 module. The cross environment is now set in a subshell around the wheel build; the arm
+  suite records each sync's environment, and two mutation recipes prove it.
+
 ## 2026-10-28 — TVM and IREE return $null off their rocm and cross branches
 
 - The 2026-10-24 refactor turned top-level code into `Get-TvmRocmLlvmTargets` and

@@ -31015,5 +31015,21 @@
   "replace": "    $ireeHostBinDirUnset = $null",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmNullReturn.Tests.ps1 -ResultFile logs/code-quality/iree-host-tools-mutation.json",
   "why": "a native build never sets the host-tool directory, and strict mode would stop the media-tvm stage on its return"
+ },
+ {
+  "id": "python.packaging.cross-env-stays-off-the-syncs",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "VENV_SOURCES=\"$WORKSPACE_ROOT/.venv_packaging_sources\"\n",
+  "replace": "[ -z \"${CROSS_TARGET}\" ] || packaging_cross_env \"${CROSS_TARGET}\"\nVENV_SOURCES=\"$WORKSPACE_ROOT/.venv_packaging_sources\"\n",
+  "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
+  "why": "the venv syncs would build their sdists with the riscv64 compiler and the host linker, so a C++ extension such as line-profiler fails to link (run 40613187784) and a C one installs a riscv64 module into the amd64 venv"
+ },
+ {
+  "id": "python.packaging.cross-env-ends-with-the-wheel",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "    (\n      packaging_cross_env \"${CROSS_TARGET}\" || exit 1\n      _PYTHON_HOST_PLATFORM=\"${PYTHON_HOST_PLATFORM_TARGET}\" \"${venv}/bin/python\" -m pip wheel . --no-deps -w dist\n    )\n",
+  "replace": "    {\n      packaging_cross_env \"${CROSS_TARGET}\" || exit 1\n      _PYTHON_HOST_PLATFORM=\"${PYTHON_HOST_PLATFORM_TARGET}\" \"${venv}/bin/python\" -m pip wheel . --no-deps -w dist\n    }\n",
+  "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
+  "why": "the first wheel's cross environment would outlive it, so the binary venv's sync builds its sdists for riscv64 again"
  }
 ]
