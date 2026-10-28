@@ -79,3 +79,16 @@ jobs:
         run: pip install --quiet pyyaml
       - name: Mutation gate, shard ${{ matrix.shard }} of 8
         run: PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD="${{ matrix.shard }}/8" bash linux/scripts/preflight.sh
+
+  # Recursive on purpose: the gate reads every level's .gitmodules, and a submodule that vendors this hub again shows here first.
+  submodule-cycles:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+      - name: No submodule at any depth vendors this hub
+        run: python3 linux/scripts/verify_submodule_cycles.py --root .

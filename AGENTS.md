@@ -372,7 +372,8 @@ and [`windows-build-lanes.md`](docs/windows-build-lanes.md).
 The short-path Windows checkout preserves the submodule mode: `true` initializes direct
 submodules, `recursive` also initializes nested ones, and `false` skips them. No family repo
 below this hub may vendor it again: smile and awesome-beamer did, through DocumANTation, until
-2026-10-28, and no recursive clone could end. Consumers below the hub call its workflows with `hub-checkout: true`.
+2026-10-28, and no recursive clone could end. Consumers below the hub call its workflows with `hub-checkout: true`;
+the `submodule-cycles` job in `linux-x64.yml` fails a submodule at any depth that vendors the hub.
 See [the action contract](.github/actions/README.md#clone-into-short-path).
 
 The host lavapipe entry imports its shared elevation predicate in its own scope. Check

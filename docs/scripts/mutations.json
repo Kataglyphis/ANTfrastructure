@@ -31079,5 +31079,37 @@
   "replace": "  if(FALSE)\n",
   "test": "bash linux/scripts/tests/test-cmake-crash-dump.sh",
   "why": "a library would take the handler's static initializer into every executable that links it"
+ },
+ {
+  "id": "consumer-inventory.submodule-cycle-is-refused",
+  "target": "linux/scripts/verify_submodule_cycles.py",
+  "find": "            if repo_key(url) == forbidden:\n",
+  "replace": "            if False:\n",
+  "test": "bash linux/scripts/tests/test-submodule-cycles.sh",
+  "why": "a family repo that vendors the hub again passes, and every recursive clone loops as smile and awesome-beamer made it"
+ },
+ {
+  "id": "consumer-inventory.submodule-cycle-walk-recurses",
+  "target": "linux/scripts/verify_submodule_cycles.py",
+  "find": "            pending.append((child, f\"{shown}/\"))\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-submodule-cycles.sh",
+  "why": "only the hub's own .gitmodules is read, and the cycle sat two levels down"
+ },
+ {
+  "id": "consumer-inventory.submodule-cycle-unread-fails",
+  "target": "linux/scripts/verify_submodule_cycles.py",
+  "find": "    if cycles or unchecked:\n",
+  "replace": "    if cycles:\n",
+  "test": "bash linux/scripts/tests/test-submodule-cycles.sh",
+  "why": "a checkout without the nested submodules reads nothing below them and passes vacuously"
+ },
+ {
+  "id": "consumer-inventory.submodule-cycle-url-spellings",
+  "target": "linux/scripts/verify_submodule_cycles.py",
+  "find": "    return (\n        f\"{match.group(1)}/{match.group(2)}\".lower() if match else url.strip().lower()\n    )\n",
+  "replace": "    return f\"{match.group(1)}/{match.group(2)}\" if match else url.strip()\n",
+  "test": "bash linux/scripts/tests/test-submodule-cycles.sh",
+  "why": "an ssh or lowercase spelling of the hub's URL would slip past the comparison"
  }
 ]

@@ -40,9 +40,9 @@ reacts to a commit-message token. Both name columns follow the family's naming c
 
 | Workflow | Shown as | Trigger | What it runs |
 |---|---|---|---|
-| `linux-x64.yml` | Linux x64 · preflight + mutation gate | every push and PR to `main`/`develop`, and dispatch | the shell preflight gate suite and its mutation gate as eight sharded jobs |
+| `linux-x64.yml` | Linux x64 · preflight + mutation gate | every push and PR to `main`/`develop`, and dispatch | the shell preflight gate suite and its mutation gate as eight sharded jobs; a recursive checkout in which `verify_submodule_cycles.py` fails any submodule, at any depth, that vendors this hub again |
 | `docs.yml` | Docs · build + publish | every push and PR to `main`/`develop`, and dispatch | the hub's site through `build-docs.yml`: `build-docs.sh`, the link gate, and on a push the upload |
-| `windows-x64.yml` | Windows x64 · script tests | push/PR that touches `windows/**`, `shared/windows/**`, `.github/actions/**`, `versions.env` or the workflow itself, and dispatch | PowerShell lint, strict complexity with an uploaded JSON report, `windows/scripts/tests`, and targeted Pester coverage reports |
+| `windows-x64.yml` | Windows x64 · script tests | push/PR that touches `windows/**`, `shared/windows/**`, `.github/actions/**`, `versions.env`, `cmake/CrashDump.cmake`, `cmake/crash_dump/**` or the workflow itself, and dispatch | PowerShell lint, strict complexity with an uploaded JSON report, `windows/scripts/tests`, and targeted Pester coverage reports |
 | `python-refactor.yml` | Python refactor · patch preview | dispatch or `workflow_call`, with one tracked Python file path | pinned safe Ruff fixes and formatting, quality checks, then an uploaded patch and logs; read-only repository token |
 | `python-static.yml` | Python static analysis (reusable) | dispatch or `workflow_call` | uv-locked Ruff and ty over tracked Python; reports findings by default and gates them with `strict: true` |
 | `code-quality-report.yml` | Code quality measurements (reusable) | dispatch or `workflow_call` | rooted size, complexity, duplication and consumer-to-hub Bash/PowerShell reuse reports under ignored `logs/`; owned nonfork callers fail if their pinned Hub lacks the reuse scanner |

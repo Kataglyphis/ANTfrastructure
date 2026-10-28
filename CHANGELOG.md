@@ -18,7 +18,9 @@
 - smile and awesome-beamer vendored this hub again below DocumANTation, so `git clone --recursive`
   never ended. smile ae4926c and awesome-beamer 4c5fc05 drop that submodule and call the hub's
   workflows with `hub-checkout: true`; DocumANTation 5851e9a pins both, and the hub pins that. AGENTS.md now forbids vendoring the hub
-  below itself instead of forbidding recursive clones.
+  below itself instead of forbidding recursive clones. `verify_submodule_cycles.py`, run by a
+  recursive-checkout job in `linux-x64.yml`, fails a submodule at any depth that names this hub;
+  `test-submodule-cycles.sh` and four mutation recipes hold it, and it flags the pre-fix clone.
 
 ## 2026-10-28 — A Windows crash on any thread leaves a minidump
 
