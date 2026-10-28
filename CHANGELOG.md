@@ -19,6 +19,8 @@
   both 2026-10-28 chains was `sample-error`. `Get-ResourceSampleRow` reports `vmmemGB` 0 instead;
   `BuildDriver.ResourceSampleRow.Tests.ps1` and `lib.resource-sampler-without-vmmem` prove it. The
   summary suite builds its CSV paths with `Join-Path`, so it passes on Linux too.
+- `docs/failure-modes.md` corrects why a chain rebuilds base after a `buildctl prune`: any prune drops
+  the cache keys, even one by ID that leaves base's records in place, so every reclaim costs a full chain.
 
 ## 2026-10-28 — The arm64 merge stages its Vulkan validation layer again
 
