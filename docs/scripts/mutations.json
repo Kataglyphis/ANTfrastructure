@@ -31159,5 +31159,29 @@
   "replace": "-m pip $argLine 2>&1\"",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Pip.Tests.ps1 -ResultFile logs/code-quality/cpython-pip-output.json",
   "why": "pip's lines turned the TVM python plan into an array, and the arm64 media-tvm stage died on a missing PythonModule property"
+ },
+ {
+  "id": "lib.lint-scriptblock-scope-leak-reads",
+  "target": "windows/scripts/modules/WindowsLint.Common.psm1",
+  "find": "$_.Extent.StartOffset -gt $command.Extent.EndOffset -and $leaked",
+  "replace": "$false -and $leaked",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Lint.Diagnostics.Tests.ps1 -ResultFile logs/code-quality/lint-scope-leak-reads.json",
+  "why": "the VVL build read $vvlPrefix after the Invoke-WithProcessEnvironment block that alone set it, and the arm64 merge died after 40 minutes"
+ },
+ {
+  "id": "lib.lint-scriptblock-scope-leak-dot-sourcing",
+  "target": "windows/scripts/modules/WindowsLint.Common.psm1",
+  "find": "if ($dotSourcing -contains $command.GetCommandName() -or $command.InvocationOperator -eq 'Dot') { continue }",
+  "replace": "if ($command.InvocationOperator -eq 'Dot') { continue }",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Lint.Diagnostics.Tests.ps1 -ResultFile logs/code-quality/lint-scope-leak-dot-sourcing.json",
+  "why": "ForEach-Object runs its block in the caller's scope, so flagging it would bury the real findings"
+ },
+ {
+  "id": "lib.lint-scriptblock-scope-leak-same-scope",
+  "target": "windows/scripts/modules/WindowsLint.Common.psm1",
+  "find": "-and (Get-LintEnclosingScope $_) -eq $scope } |",
+  "replace": "} |",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Lint.Diagnostics.Tests.ps1 -ResultFile logs/code-quality/lint-scope-leak-same-scope.json",
+  "why": "a later block that assigns the name itself reads its own variable, which flooded the first scan with 282 false findings"
  }
 ]

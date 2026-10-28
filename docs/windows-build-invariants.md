@@ -29,6 +29,7 @@ lives in [`failure-modes.md`](failure-modes.md).
 - [`Import-Module -Force` only at entry-script top level](#import-module--force-only-at-entry-script-top-level)
 - [Never splat a string array of `-Param`-shaped tokens](#never-splat-a-string-array-of--param-shaped-tokens)
 - [Four more pwsh traps: bareword comma-attributes, switch-name collisions, glued parameter tokens, null env restores](#four-more-pwsh-traps-bareword-comma-attributes-switch-name-collisions-glued-parameter-tokens-null-env-restores)
+- [A variable set inside a scriptblock argument is gone after the call](#a-variable-set-inside-a-scriptblock-argument-is-gone-after-the-call)
 - [Windows stage scripts must end with an explicit `exit 0`](#windows-stage-scripts-must-end-with-an-explicit-exit-0)
 - [Production scripts run under `Set-StrictMode -Version Latest`](#production-scripts-run-under-set-strictmode--version-latest)
 
@@ -217,6 +218,15 @@ Double-quote the whole attribute string (`--output "type=image,name=$tag"`).
 to the switch-typed PARAMETER variable and throws `Cannot convert ... String
 to ... SwitchParameter` at runtime — the probe's docker lane had never
 executed. Never reuse a switch parameter's name for a local variable.
+
+### A variable set inside a scriptblock argument is gone after the call
+
+A scriptblock passed to a command (`Invoke-WithProcessEnvironment -ScriptBlock { … }`, `& { … }`) runs in a
+child scope; only `ForEach-Object` and `Where-Object` dot-source theirs. Wrapping a `try`/`finally` into such a
+call turned `$vvlPrefix` into a child-scope local, and the arm64 merge died after 40 minutes on `The variable
+'$vvlPrefix' cannot be retrieved because it has not been set` (2026-10-28; amd64 never reaches that branch).
+Assign what the code after the call reads before the call. `Get-ScriptBlockScopeLeakViolation` is an AST trap
+in `Invoke-Lint.ps1`; it does not follow names across files, dot-sourced helpers or loop variables.
 
 ### Windows stage scripts must end with an explicit `exit 0`
 

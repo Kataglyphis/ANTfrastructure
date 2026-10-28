@@ -13,6 +13,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-28 — The arm64 merge stages its Vulkan validation layer again
+
+- e8dbde78 moved the VVL build into `Invoke-WithProcessEnvironment -ScriptBlock`, whose child scope kept
+  `$vvlPrefix`, so the arm64 merge died after the layer had built. The path is now set before the call.
+  `Get-ScriptBlockScopeLeakViolation` flags a variable read after the child-scope scriptblock that alone
+  assigns it; `Invoke-Lint.ps1` runs it over every file (no other finding), and three
+  `lib.lint-scriptblock-scope-leak-*` recipes prove its checks bite. The Driver.ClosureScope duplication
+  budget drops from 17 to 13.
+- Reclaiming BuildKit records by ID must not keep only what the newest run reaches through `parents`:
+  those stop at each `FROM`, and that rule deleted base's records again (`docs/failure-modes.md`).
+
 ## 2026-10-28 — The arm64 media-tvm stage builds its python plan again
 
 - `Invoke-CpythonPip` and `Install-CpythonPip` wrote pip's lines to the output stream. On the

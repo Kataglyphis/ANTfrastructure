@@ -107,9 +107,43 @@ function Get-UndeclaredParameterViolation {
     }
 }
 
+$script:AutomaticVariables = @('null', 'true', 'false', '_', 'PSItem', 'args', 'Matches', 'LASTEXITCODE', 'input', 'this', 'Error')
+
+function Get-LintEnclosingScope {
+    param([System.Management.Automation.Language.Ast]$Node)
+    $scope = $Node.Parent
+    while ($scope -and $scope -isnot [System.Management.Automation.Language.ScriptBlockAst]) { $scope = $scope.Parent }
+    return $scope
+}
+
+function Get-ScriptBlockScopeLeakViolation {
+    # A scriptblock argument runs in a child scope unless the command dot-sources it, as ForEach-Object and Where-Object do.
+    param([Parameter(Mandatory)][System.Management.Automation.Language.Ast]$Ast, [string]$Label = '<text>')
+    $lang = 'System.Management.Automation.Language'
+    $dotSourcing = @('ForEach-Object', '%', 'foreach', 'Where-Object', '?', 'where')
+    foreach ($command in $Ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true)) {
+        if ($dotSourcing -contains $command.GetCommandName() -or $command.InvocationOperator -eq 'Dot') { continue }
+        $blocks = @($command.CommandElements | Where-Object { $_ -is "$lang.ScriptBlockExpressionAst" })
+        if (-not $blocks) { continue }
+        $scope = Get-LintEnclosingScope $command
+        $assignedInScope = @($scope.FindAll({ param($node) $node -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true) |
+                Where-Object { $_.Extent.StartOffset -lt $command.Extent.StartOffset -or $_.Extent.StartOffset -gt $command.Extent.EndOffset } |
+                ForEach-Object { $_.Left } | Where-Object { $_ -is "$lang.VariableExpressionAst" } | ForEach-Object { $_.VariablePath.UserPath })
+        $leaked = @($blocks | ForEach-Object { $_.FindAll({ param($node) $node -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true) } |
+                ForEach-Object { $_.Left } | Where-Object { $_ -is "$lang.VariableExpressionAst" -and $_.VariablePath.IsUnscopedVariable } |
+                ForEach-Object { $_.VariablePath.UserPath } | Where-Object { $assignedInScope -notcontains $_ -and $script:AutomaticVariables -notcontains $_ } | Sort-Object -Unique)
+        if (-not $leaked) { continue }
+        $scope.FindAll({ param($node) $node -is [System.Management.Automation.Language.VariableExpressionAst] }, $true) |
+            Where-Object { $_.Extent.StartOffset -gt $command.Extent.EndOffset -and $leaked -contains $_.VariablePath.UserPath -and
+                $_.Parent -isnot "$lang.ParameterAst" -and (Get-LintEnclosingScope $_) -eq $scope } |
+            ForEach-Object { Format-LintViolation -Node $_ -Label $Label -Suffix " (assigned only inside the scriptblock passed to $($command.GetCommandName()))" }
+    }
+}
+
 Export-ModuleMember -Function @(
     'Get-BarewordCommaAttrViolation',
     'Get-SwitchShadowViolation',
     'Get-GluedParameterViolation',
-    'Get-UndeclaredParameterViolation'
+    'Get-UndeclaredParameterViolation',
+    'Get-ScriptBlockScopeLeakViolation'
 )
