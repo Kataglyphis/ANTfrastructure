@@ -1728,13 +1728,16 @@ if ($torchAppDir -and (Test-Path $torchAppDir) -and -not $torchAppScript) {
 }
 if ($torchAppDir -and (Test-Path $torchAppDir) -and $torchAppScript) {
     Assert-DirectoryExists -Path (Join-Path $torchAppDir '.venv') -Description 'torch-app venv'
-    # The verify re-runs Build-TorchApp's ORT census (every ORT dist a chain wheel); its FAIL lines are the message.
-    $torchAppVerify = & pwsh -NoProfile -ExecutionPolicy Bypass -File $torchAppScript -AppDir $torchAppDir -Mode verify 2>&1 | Out-String
+    # The verify re-runs the ORT census from the image's copy, since the gate mounts windows/scripts alone.
+    $torchAppCensus = Resolve-SmokeCompanion -ScriptRoot $PSScriptRoot -Name 'ort-venv-census.py'
+    $torchAppVerify = & pwsh -NoProfile -ExecutionPolicy Bypass -File $torchAppScript -AppDir $torchAppDir -OrtCensusPath "$torchAppCensus" -Mode verify 2>&1 | Out-String
     $torchAppVerifyOk = ($LASTEXITCODE -eq 0) -and ($torchAppVerify -match 'torch-app-env OK') -and ($torchAppVerify -match '(?m)^ORT-CENSUS PASS')
     $torchAppCensusFails = @([regex]::Matches($torchAppVerify, '(?m)^ORT-CENSUS FAIL (.+?)\r?$') | ForEach-Object { $_.Groups[1].Value })
+    # Without census findings the verifier's own last lines are the only evidence of why it failed.
+    $torchAppEvidence = if ($torchAppCensusFails) { $torchAppCensusFails } else { @($torchAppVerify -split '\r?\n' | Where-Object { $_.Trim() } | Select-Object -Last 3) }
     Assert-Test -Name "torch-app venv verifies (numpy/cv2/torch/ort+CUDA-EP/genai/tvm/av/iree, chain-only ORT)" `
         -Condition { $torchAppVerifyOk }.GetNewClosure() `
-        -FailMessage "Build-TorchApp.ps1 -Mode verify failed (baked venv broken, local wheels lost, or an ORT that is not the chain's)$(if ($torchAppCensusFails) { ': ' + ($torchAppCensusFails -join '; ') })"
+        -FailMessage "Build-TorchApp.ps1 -Mode verify failed (baked venv broken, local wheels lost, or an ORT that is not the chain's)$(if ($torchAppEvidence) { ': ' + ($torchAppEvidence -join '; ') })"
     # PyPI's onnxruntime lacks the DML EP but shares the version, so only the bytes prove the chain wheel.
     $ortWheel = Resolve-ChainOrtWheel -WheelDir $(if ($env:PYTHON_WHEELS) { $env:PYTHON_WHEELS } else { 'C:\runtime\wheels' })
     $ortReport = $null
