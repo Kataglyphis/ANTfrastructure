@@ -31,6 +31,17 @@
   frame. `test-cmake-crash-dump.sh` and six mutation recipes hold the CMake wiring;
   `CrashDump.Native.Tests.ps1` crashes a real MSVC fixture on a worker thread and reads its dump.
 
+## 2026-10-28 — The amd64 smoke gate runs sections 10, 15 and 21 again
+
+- The 2026-10-24 refactor left three gaps that only a chain's smoke gate exercises. A missing
+  brace nested `Invoke-OpenCvLinkSmoke` inside `Assert-OpenCvCudaSmoke`, so section 10 called a
+  function that did not exist; `Assert-CmakeSmokeBuild -Directory` bound nothing, so section 15
+  ran no assertion; and the torch-app verify looked for `ort-venv-census.py` beside the mounted
+  `Build-TorchApp.ps1`, where only the image's `C:\temp\scripts` copy exists. The verify now
+  takes that copy and reports the verifier's last lines when it fails without census findings.
+  `Smoke.ScriptStructure.Tests.ps1` fails a nested function or an undeclared named argument in
+  `Test-Container.ps1`, through the new `Get-UndeclaredParameterViolation` lint detector.
+
 ## 2026-10-28 — A free-storage prune can evict a warm chain's base
 
 - `buildctl prune --free-storage 102400` freed 72.6 GB and evicted base's exec records, which the

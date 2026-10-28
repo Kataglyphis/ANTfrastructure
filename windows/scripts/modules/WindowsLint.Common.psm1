@@ -89,8 +89,27 @@ function Get-GluedParameterViolation {
     }
 }
 
+function Get-UndeclaredParameterViolation {
+    # Calls into the same file only: an imported command's parameters are not visible to the parser.
+    param([Parameter(Mandatory)][System.Management.Automation.Language.Ast]$Ast, [string]$Label = '<text>')
+    $script:DeclaredParameters = @{}
+    foreach ($fn in $Ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) {
+        $block = if ($fn.Body.ParamBlock) { $fn.Body.ParamBlock.Parameters } else { $fn.Parameters }
+        $script:DeclaredParameters[$fn.Name] = @($block | Where-Object { $_ } | ForEach-Object { $_.Name.VariablePath.UserPath })
+    }
+    Invoke-LintCommandElementRule -Ast $Ast -Label $Label -Rule {
+        param($element, $next, $sourceLabel)
+        $owner = if ($element -is [System.Management.Automation.Language.CommandParameterAst]) { $element.Parent.GetCommandName() }
+        if ($owner -and $script:DeclaredParameters.ContainsKey($owner) -and
+            -not @($script:DeclaredParameters[$owner] | Where-Object { $_ -like "$($element.ParameterName)*" })) {
+            Format-LintViolation -Node $element -Label $sourceLabel -Suffix " (no such parameter on $owner)"
+        }
+    }
+}
+
 Export-ModuleMember -Function @(
     'Get-BarewordCommaAttrViolation',
     'Get-SwitchShadowViolation',
-    'Get-GluedParameterViolation'
+    'Get-GluedParameterViolation',
+    'Get-UndeclaredParameterViolation'
 )

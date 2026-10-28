@@ -952,6 +952,7 @@ int main() { std::printf("%s\n", cv::getBuildInformation().c_str()); return 0; }
         # The cv::dnn CUDA backend + cudaarithm contrib module ship as their own DLLs.
         Assert-ArtifactPresent -Root $opencvSearchRoot -Filter 'opencv_cudaarithm*.dll' -Description 'OpenCV CUDA arithm module DLL (opencv_cudaarithm*.dll)'
         Assert-ArtifactPresent -Root $opencvSearchRoot -Filter 'opencv_dnn*.dll' -Description 'OpenCV DNN module DLL (opencv_dnn*.dll)'
+    }
 }
 
 function Invoke-OpenCvLinkSmoke {
@@ -977,7 +978,6 @@ int main() {
 '@ -IncludeDirs @($cvIncDir) -LibDir $cvCoreLib.DirectoryName -LibName $cvCoreLib.Name -DllDir $cvCoreDll.DirectoryName -ExpectMatch 'opencv' -FailMessage 'OpenCV core API did not compile/link/run (header+core lib+DLL mismatch or missing dependent DLL)'
 
     Assert-OpenCvCudaSmoke -OpencvSearchRoot $opencvSearchRoot -CvIncDir $cvIncDir -CvCoreLib $cvCoreLib -CvCoreDll $cvCoreDll
-}
 }
 }
 
@@ -1294,7 +1294,7 @@ int main() { std::cout << "cmake+clangcl ok" << std::endl; return 0; }
 
 Set-SmokeSourceFiles -Directory $tmpDir2 -Files @{ 'CMakeLists.txt' = $cmakeLists; 'smoke_cmake.cpp' = $cppSource2 }
 
-Assert-CmakeSmokeBuild -Directory $tmpDir2
+Assert-CmakeSmokeBuild -tmpDir2 $tmpDir2
 }
 
 Invoke-SmokeCompilerWorkspace -Header '15. CMake + Ninja + clang-cl integration' -DirectoryName 'kataglyphis-smoke-cmake' -Body ${function:Invoke-CmakeSmokeBody}

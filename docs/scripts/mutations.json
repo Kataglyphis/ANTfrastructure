@@ -31135,5 +31135,21 @@
   "replace": "Where-Object { $_.Trim() } | Select-Object -First 3) }",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrt.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-verify-evidence.json",
   "why": "the verifier's error is its last output, and a message without it hid a missing census behind a bare failed"
+ },
+ {
+  "id": "lib.smoke-cmake-build-binds-its-directory",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "Assert-CmakeSmokeBuild -tmpDir2 $tmpDir2",
+  "replace": "Assert-CmakeSmokeBuild -Directory $tmpDir2",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-cmake-build-binds.json",
+  "why": "an undeclared name left the CMake smoke's directory empty, so section 15 ran no assertion and the amd64 smoke gate failed its floor"
+ },
+ {
+  "id": "lib.smoke-functions-at-script-level",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "function Invoke-SmokeSection10 {",
+  "replace": "function Invoke-SmokeSection10 { function Get-NestedSmokeProbe { }",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-functions-at-script-level.json",
+  "why": "a missing brace nested the OpenCV link smoke inside the CUDA helper, so section 10 called a function that did not exist"
  }
 ]
