@@ -575,6 +575,13 @@ owner carries the breakage that costs.
         `ci-container-steps.sh` (580e097) and BeschleunigerBallett's `run-cargo-tests.sh`
         export 128 on aarch64. Four of about twenty OxidANT arm64 runs since 2026-10-05 had
         died on it, one as a SIGSEGV in `forward_ambient` rather than an `LLVM ERROR`.
+      - **The Windows lane pins 256 too** (`Install-LavapipeHost.ps1`, `Dockerfile.media-merge-builder`,
+        `Test-Arm64Bundle.ps1`), and BeschleunigerBallett's arm64 GPU suites crash intermittently
+        with `0xC0000005` on a worker thread in the cloud passes (its #97, from 2026-10-16), the
+        prime suspect being the same JIT. Its suites now link `kataglyphis_add_crash_dump`, so the
+        next crash shows whether the frame is JIT code (no module) or `vulkan_lvp.dll`. The fix:
+        when mmozeiko/build-mesa publishes 26.3.x (26.2.5 is its newest on 2026-10-28; ebcfbe60 is
+        in `26.3.0-rc2`), move `LAVAPIPE_VERSION` and drop the 256 pin on arm64 on both lanes.
 
 - [ ] **CON137 — Playwright in `:latest`, so the Flutter web console capture runs in a lane** [S, ★★].
       Found 2026-10-21, sharing OmniAccelerANT's web side with jotrockenmitlocken.
