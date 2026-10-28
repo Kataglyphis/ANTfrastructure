@@ -578,6 +578,13 @@ Flathub builds these for x86_64 and aarch64 only. On any other arch the install 
 a guaranteed 404 rather than a flake, so the function returns early and the row is
 exempt on riscv64.
 
+The install passes `--no-related` (2026-10-28). Without it flatpak adds the extensions
+that match the **build host's** GPU, so the image's content depended on who built it:
+the published `cross-sdk-amd64` carries `org.freedesktop.Platform.VAAPI.nvidia`, and a
+build on an AMD host pulled `org.freedesktop.Platform.amd.amf`, whose `libamfrt64.so`
+embeds its own ONNX Runtime and failed the ORT census (`UNREGISTERED`) in the
+`:latest-rocm` runtime smoke. The seven refs above are the whole set now.
+
 ### The AppImage runtime ships with the tool
 
 `appimagetool` embeds a type-2 runtime into every AppImage it builds, and fetches

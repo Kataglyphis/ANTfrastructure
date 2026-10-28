@@ -316,7 +316,8 @@ install_flatpak_runtime() {
         [ -n "${ref}" ] || continue
         total=$((total + 1))
         info "Installing ${ref}"
-        try_or_sudo flatpak install -y --noninteractive flathub "${ref}" \
+        # --no-related: flatpak adds extensions by the BUILD HOST's GPU (amd.amf on an AMD host, VAAPI.nvidia on an NVIDIA one); libamfrt64 embeds a foreign ORT and failed the census on 2026-10-28.
+        try_or_sudo flatpak install -y --noninteractive --no-related flathub "${ref}" \
             || { _flatpak_diagnose_ref "${ref}"
                  warn "${ref} did not install; consumers will fetch it per run"
                  failed=$((failed + 1)); }

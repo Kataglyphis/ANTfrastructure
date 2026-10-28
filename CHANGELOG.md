@@ -13,6 +13,24 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-28 — the first GPU chains after TensorRT 11: two gates that only a real build could trip
+
+- **DeepStream linked the image's TensorRT 11.** `deepstream.sh` put its TensorRT 10 build SDK on
+  `LIBRARY_PATH` and assumed that wins; GCC 16 searches `/usr/lib/x86_64-linux-gnu` before a bare
+  `LIBRARY_PATH` dir, so `libnvds_infer.so` and every component linking `-lnvinfer` took
+  `libnvinfer.so.11`, and the TRT-origin gate failed the nvidia media stage. Proved in the sdk image
+  with a decoy library on `LIBRARY_PATH` that lost to the system dir. The components' compiler word
+  now carries `-L<trt-sdk>/lib`, which precedes every search dir; `test-deepstream.sh` pins it. The
+  rerun's package stage and smoke print `DeepStream links TensorRT 10 from …/tensorrt-10.16.1.11 only`.
+- **The Flatpak install pulled the build host's GPU extension.** `flatpak install` adds related refs
+  by the host's hardware: the published `cross-sdk-amd64` carries `org.freedesktop.Platform.VAAPI.nvidia`,
+  and the rocm runtime built on an AMD host got `org.freedesktop.Platform.amd.amf`, whose
+  `libamfrt64.so` embeds its own ONNX Runtime and failed the ORT census (`UNREGISTERED`) in the
+  `:latest-rocm` smoke. `packaging-deps.sh` installs with `--no-related`; the seven declared refs are
+  the whole set on any host (`docs/consumer-image-contract.md`, `test-packaging-deps.sh`).
+- Both chains ran with sccache's shared S3 level; every compile RUN drained its uploads
+  (`L1 (s3): n written, 0 failed of n`).
+
 ## 2026-10-29 — A release with one upload collects it
 
 - `download-artifact` extracts a lone upload straight into `artifacts/`, without its folder, so
@@ -142,7 +160,6 @@
   and uv's tempfile rename there failed with `os error 3`, the cache-mount write loss known from
   sccache; the amd64 chain stopped with `pinned ty 0.0.91 is unavailable`. The cache is under
   `C:\lw` now, at the cost of one 13 MiB `ty` download per build, and a stage-parser test holds it there.
-
 ## 2026-10-27 — what the backups leave out is written down
 
 - A walk over every reachable host found three things only the hosts knew. srv-1's

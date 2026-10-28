@@ -277,8 +277,8 @@ ds_write_gst_ldconf() {
 # nvstreammux is a static archive gst-nvmultistream2 links, so it is built but not installed, as in build.sh.
 ds_build_component() {
   local src="$1" dir="$2" log="$3" cxx cc jobs
-  cxx="$(ds_component_compiler "${src}/${dir}/Makefile" CXX "${DS_COMPAT_H}")"
-  cc="$(ds_component_compiler "${src}/${dir}/Makefile" CC "${DS_COMPAT_H}")"
+  cxx="$(ds_component_compiler "${src}/${dir}/Makefile" CXX "${DS_COMPAT_H}")${DS_TRT_LINK_FLAGS:+ ${DS_TRT_LINK_FLAGS}}"
+  cc="$(ds_component_compiler "${src}/${dir}/Makefile" CC "${DS_COMPAT_H}")${DS_TRT_LINK_FLAGS:+ ${DS_TRT_LINK_FLAGS}}"
   jobs="${DS_JOBS:-$(nproc)}"
   local -a mk=(make -C "${src}/${dir}" -j"${jobs}" "CUDA_VER=${DS_CUDA_VER}" "CXX=${cxx}" "CC=${cc}"
                "NVDS_VERSION=${DEEPSTREAM_VERSION%.*}" PROTOBUF_BIN_DIR=/usr/bin)
@@ -302,6 +302,8 @@ ds_build_components() {
   [ -e "/usr/local/cuda-${DS_CUDA_VER}" ] || ds_die "the Makefiles expect /usr/local/cuda-${DS_CUDA_VER}"
   export CPATH="${sdk}/include${CPATH:+:${CPATH}}"
   export LIBRARY_PATH="${sdk}/lib:${trt}/lib:/usr/local/cuda-${DS_CUDA_VER}/lib64:/usr/local/cuda-${DS_CUDA_VER}/lib64/stubs${LIBRARY_PATH:+:${LIBRARY_PATH}}"
+  # GCC 16 searches /usr/lib/x86_64-linux-gnu (TensorRT 11's dev links) before a bare LIBRARY_PATH dir: on 2026-10-28 -lnvinfer linked .so.11; only an explicit -L precedes it.
+  DS_TRT_LINK_FLAGS="-L${sdk}/lib"
   export NVCC_PREPEND_FLAGS="${NVCC_PREPEND_FLAGS:-} -include ${logdir}/gcc16-compat.h"
   PKG_CONFIG_PATH="$(ds_gst_pkgconfig_path)"
   export PKG_CONFIG_PATH

@@ -219,6 +219,9 @@ ship; a gate fails an image that carries one.
 - **DeepStream's TensorRT 10.** `ds_stage_tensorrt` puts the three runtime debs' `.so.10*` files
   and their docs into the prefix, and the three header debs into `ds_build`'s tmp (`ds_trt_sdk`,
   with the dev links), which the components compile against and the same RUN deletes. The
+  components link it through an explicit `-L` on their compiler word, not `LIBRARY_PATH`: GCC 16
+  searches `/usr/lib/x86_64-linux-gnu`, where TensorRT 11's dev links live, before a bare
+  `LIBRARY_PATH` dir, and the 2026-10-28 chain linked `libnvinfer.so.11` that way. The
   published `0e9dec34…` carried 13 headers (0.88 MB) and three dev links there; `lib/`'s 22
   runtime files and links (2.5 GB) stay. A custom `nvinfer` parser includes
   `nvdsinfer_custom_impl.h`, which includes `NvInfer.h`: build one in a stage that installs
