@@ -135,15 +135,15 @@ Describe 'A stopped BK run keeps its record (hub #184)' {
 
     It 'summarises the free-disk minimum, and reads a CSV from before the column without it' {
         Invoke-InTestDir { param($d)
-            [IO.File]::WriteAllLines("$d\new.csv", [string[]]('ts,phase,cpuPct,freeGB,usedGB,committedGB,vmmemGB,diskFreeGB',
+            [IO.File]::WriteAllLines((Join-Path $d new.csv), [string[]]('ts,phase,cpuPct,freeGB,usedGB,committedGB,vmmemGB,diskFreeGB',
                     '2026-10-12 10:00:00,litert,50,30,30,40,2,41.5', '2026-10-12 10:00:20,litert,60,29,31,41,2,18.2'))
             # A CSV the sampler wrote before 2026-10-12 has seven columns.
-            [IO.File]::WriteAllLines("$d\old.csv", [string[]]('ts,phase,cpuPct,freeGB,usedGB,committedGB,vmmemGB', '2026-10-12 10:00:00,litert,50,30,30,40,2'))
+            [IO.File]::WriteAllLines((Join-Path $d old.csv), [string[]]('ts,phase,cpuPct,freeGB,usedGB,committedGB,vmmemGB', '2026-10-12 10:00:00,litert,50,30,30,40,2'))
             $sampler = Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-ResourceSampler.ps1'
-            $new = (& $sampler -Summarize -CsvPath "$d\new.csv" 6>&1 | Out-String)
+            $new = (& $sampler -Summarize -CsvPath (Join-Path $d new.csv) 6>&1 | Out-String)
             Assert-Match 'MinDiskFreeGB' $new 'the new column in the summary'
             Assert-Match '18[.,]2' $new 'the lowest free disk, in the host''s number format'
-            $old = (& $sampler -Summarize -CsvPath "$d\old.csv" 6>&1 | Out-String)
+            $old = (& $sampler -Summarize -CsvPath (Join-Path $d old.csv) 6>&1 | Out-String)
             Assert-Match 'litert' $old 'an old CSV still summarises'
         }
     }

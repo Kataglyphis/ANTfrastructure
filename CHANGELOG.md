@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-29 — The resource sampler measures a host without a running WSL VM
+
+- With no `vmmem` process, `.Sum` over the empty measurement threw under StrictMode, so every row of
+  both 2026-10-28 chains was `sample-error`. `Get-ResourceSampleRow` reports `vmmemGB` 0 instead;
+  `BuildDriver.ResourceSampleRow.Tests.ps1` and `lib.resource-sampler-without-vmmem` prove it. The
+  summary suite builds its CSV paths with `Join-Path`, so it passes on Linux too.
+
 ## 2026-10-28 — The arm64 merge stages its Vulkan validation layer again
 
 - e8dbde78 moved the VVL build into `Invoke-WithProcessEnvironment -ScriptBlock`, whose child scope kept

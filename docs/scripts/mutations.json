@@ -31183,5 +31183,13 @@
   "replace": "} |",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Lint.Diagnostics.Tests.ps1 -ResultFile logs/code-quality/lint-scope-leak-same-scope.json",
   "why": "a later block that assigns the name itself reads its own variable, which flooded the first scan with 282 false findings"
+ },
+ {
+  "id": "lib.resource-sampler-without-vmmem",
+  "target": "windows/scripts/build/Build-ResourceSampler.ps1",
+  "find": "$vmmemGB = if ($vmmemProcs) {",
+  "replace": "$vmmemGB = if ($true) {",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildDriver.ResourceSampleRow.Tests.ps1 -ResultFile logs/code-quality/resource-sampler-without-vmmem.json",
+  "why": "with no WSL VM running every sample threw on the empty vmmem sum, and whole chains left only sample-error rows"
  }
 ]
