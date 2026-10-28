@@ -1,6 +1,7 @@
 #requires -Version 7.0
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsNative.Common.psm1') -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'WindowsSmoke.TorchAppFixture.psm1') -DisableNameChecking
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
@@ -237,9 +238,7 @@ Describe 'Smoke §21: the probe runner' {
 Describe 'Smoke §21: wiring in Test-Container.ps1' {
     $ast = Get-TestScriptAst -ScriptPath $script:SmokeScript
     $text = $ast.Extent.Text
-    # The branch that runs once the venv and its verifier exist; every statement in it is unconditional.
-    $venvBranch = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.IfStatementAst] -and
-                "$($n.Clauses[0].Item1.Extent.Text)" -match '^\$torchAppDir -and \(Test-Path \$torchAppDir\) -and \$torchAppScript$' }, $true))
+    $venvBranch = Get-TorchAppVenvBranch
 
     It 'asserts DML and provenance with the venv interpreter against the venv site-packages' {
         Assert-Equal 1 $venvBranch.Count 'exactly one torch-app venv branch'
@@ -299,48 +298,5 @@ Describe 'Smoke §21: wiring in Test-Container.ps1' {
         Assert-Equal $n ([int]$m.Groups[1].Value) 'Gpu floor'
         Assert-Equal $n ([int]$m.Groups[2].Value) 'Cpu floor'
         Assert-Equal 0 ([int]$m.Groups[3].Value) 'Arm64: section 21 is payload work, skipped on cross'
-    }
-
-    It 'the app verify must print the ORT census PASS line, and its FAIL lines are the message (mutation)' {
-        $text = $venvBranch[0].Clauses[0].Item2.Extent.Text
-        $rhsOf = { param($name) [regex]::Match($text, '(?m)^\s*\$' + $name + ' = (.+?)\r?$').Groups[1].Value }
-        Assert-Match '-File \$torchAppScript -AppDir \$torchAppDir -OrtCensusPath "\$torchAppCensus" -Mode verify 2>&1 \| Out-String$' (& $rhsOf 'torchAppVerify') 'the verify output is kept'
-        $verdict = [scriptblock]::Create("param(`$torchAppVerify) $(& $rhsOf 'torchAppVerifyOk')")
-        $fails = [scriptblock]::Create("param(`$torchAppVerify) $(& $rhsOf 'torchAppCensusFails')")
-        $ok = "torch-app-env OK`r`nORT-CENSUS PASS: 2 chain distribution(s) from C:\runtime\wheels`r`n"
-        $global:LASTEXITCODE = 0
-        Assert-True (& $verdict $ok) 'imports and census both pass'
-        Assert-False (& $verdict "torch-app-env OK`r`n") 'a verify without the census line fails'
-        Assert-False (& $verdict "torch-app-env OK`r`nnoise ORT-CENSUS PASS`r`n") 'PASS must start its line'
-        Assert-False (& $verdict "ORT-CENSUS PASS: 1`r`n") 'the census alone is not the verify'
-        $global:LASTEXITCODE = 1
-        Assert-False (& $verdict $ok) 'a non-zero exit fails'
-        $global:LASTEXITCODE = 0
-        $out = "ORT-CENSUS FAIL onnxruntime-ep-webgpu 0.4.0 at C:\v is not a chain wheel`r`nORT-CENSUS FAIL two owners`r`nORT-CENSUS FAILED: 2`r`n"
-        Assert-Equal 'onnxruntime-ep-webgpu 0.4.0 at C:\v is not a chain wheel|two owners' (@(& $fails $out) -join '|') 'each finding, without its CR'
-        $verifyAssert = @([regex]::Matches($text, '(?s)Assert-Test -Name "torch-app venv verifies.+?-FailMessage "[^\r\n]*'))
-        Assert-Equal 1 $verifyAssert.Count 'one app-verify assertion'
-        Assert-Match '-Condition \{ \$torchAppVerifyOk \}' $verifyAssert[0].Value 'its condition is the verdict above'
-        Assert-Match '-FailMessage "[^"]*\$torchAppEvidence' $verifyAssert[0].Value 'its message carries the evidence'
-        $evidence = [scriptblock]::Create("param(`$torchAppCensusFails, `$torchAppVerify) $(& $rhsOf 'torchAppEvidence')")
-        Assert-Equal 'a|b' (@(& $evidence @('a', 'b') "x`r`n") -join '|') 'census findings win'
-        Assert-Equal 'two|three|four' (@(& $evidence @() "one`r`ntwo`r`n`r`nthree`r`nfour`r`n") -join '|') 'otherwise the last three nonblank lines'
-    }
-
-    It 'hands the verifier the image census, which the windows/scripts mount lacks (mutation)' {
-        $text = $venvBranch[0].Clauses[0].Item2.Extent.Text
-        Assert-Match "(?m)^\s*\`$torchAppCensus = Resolve-SmokeCompanion -ScriptRoot \`$PSScriptRoot -Name 'ort-venv-census.py'\r?$" $text 'resolved like the other companions'
-        $torch = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\Dockerfile.torch'))
-        Assert-Match '(?m)^COPY linux\\scripts\\03-media\\runtime\\ort-venv-census\.py C:\\temp\\scripts\\' $torch 'the image bakes it where the resolver falls back'
-        Assert-False (Test-Path (Join-Path (Get-RepoRoot) 'windows\scripts\build\ort-venv-census.py')) 'the mount has no copy, so the fallback is load-bearing'
-    }
-
-    It 'compares against the store Build-TorchApp.ps1 installed the venv from' {
-        $body = $venvBranch[0].Clauses[0].Item2.Extent.Text
-        Assert-Match "Resolve-ChainOrtWheel -WheelDir \`$\(if \(\`$env:PYTHON_WHEELS\) \{ \`$env:PYTHON_WHEELS \} else \{ 'C:\\runtime\\wheels' \}\)" $body 'PYTHON_WHEELS, else the default'
-        $torchApp = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-TorchApp.ps1'))
-        Assert-Match "\[string\]\`$WheelDir = 'C:\\runtime\\wheels'" $torchApp 'Build-TorchApp.ps1 installs from the same store'
-        $merge = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\Dockerfile.media-merge-builder'))
-        Assert-Match 'PYTHON_WHEELS="C:\\runtime\\wheels"' $merge 'and the image names it PYTHON_WHEELS'
     }
 }

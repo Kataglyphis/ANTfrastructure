@@ -31117,7 +31117,7 @@
   "target": "windows/scripts/build/Test-Container.ps1",
   "find": " -OrtCensusPath \"$torchAppCensus\" -Mode verify",
   "replace": " -Mode verify",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrt.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-passed.json",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-passed.json",
   "why": "the gate mounts windows/scripts alone, so the verifier looked for the census beside itself and the amd64 smoke gate failed"
  },
  {
@@ -31125,7 +31125,7 @@
   "target": "windows/scripts/build/Test-Container.ps1",
   "find": "$torchAppCensus = Resolve-SmokeCompanion -ScriptRoot $PSScriptRoot -Name 'ort-venv-census.py'",
   "replace": "$torchAppCensus = Join-Path $PSScriptRoot 'ort-venv-census.py'",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrt.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-image-copy.json",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-image-copy.json",
   "why": "only the image's C:\\temp\\scripts copy exists in the gate, so a mount-only path fails every amd64 smoke run"
  },
  {
@@ -31133,7 +31133,7 @@
   "target": "windows/scripts/build/Test-Container.ps1",
   "find": "Where-Object { $_.Trim() } | Select-Object -Last 3) }",
   "replace": "Where-Object { $_.Trim() } | Select-Object -First 3) }",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrt.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-verify-evidence.json",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-verify-evidence.json",
   "why": "the verifier's error is its last output, and a message without it hid a missing census behind a bare failed"
  },
  {

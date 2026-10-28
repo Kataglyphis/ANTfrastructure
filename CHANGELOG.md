@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-28 — The torch-app census recipes get a suite the Linux shards can run
+
+- The three `lib.smoke-torchapp-*` recipes from 78f63fc9 named `Smoke.TorchAppOrt.Tests.ps1`, one of whose
+  other cases fails on the Linux mutation shards, so shards 0, 1 and 7 reported a vacuous bite and
+  turned develop red. Their cases and the store case move to `Smoke.TorchAppOrtVerify.Tests.ps1`, and
+  `WindowsSmoke.TorchAppFixture.psm1` gives both suites the one lookup of section 21's venv branch.
+
 ## 2026-10-28 — A recursive clone of the hub ends
 
 - smile and awesome-beamer vendored this hub again below DocumANTation, so `git clone --recursive`
