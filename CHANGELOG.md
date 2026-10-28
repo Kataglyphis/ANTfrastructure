@@ -86,6 +86,7 @@
 - File that guard's own recipe under the `gate-fixture` family: the `mutations` slug does not own the suite, so the gate-proof registry failed preflight.
 - Write that guard's Python heredoc to the full Ruff ruleset (one import per line, no unclosed `open`), which the preflight sweep fails on.
 - Move the LiteRT RUN's uv-cache check into its own harness-style suite, `Build.LitertUvCache.Tests.ps1`: the wheel suite's Windows-only cases failed its mutation baseline on the Linux shards.
+- Move the IREE and TVM strict-mode `$null` returns into `SourceBuild.IreeTvmNullReturn.Tests.ps1` for the same reason; the rocm suite failed both recipes' baselines on the Linux shards.
 - Prove the per-level sccache hit line in a harness-style suite: its mutation ran on the Linux shards, which carry no Pester, so the Pester-style baseline skipped and failed every run.
 - Find the riscv64 cross wheel's Python headers under the sysroot's `usr/local/include`, where the image's source-built Python 3.15 lives, and pass the sysroot path itself instead of a host path `--sysroot` never rerooted.
 - Resolve the shared CMake/uv wiring gate's relative `-ScriptPath` against the consumer's working directory, not the hub.
