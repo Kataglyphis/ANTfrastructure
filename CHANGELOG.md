@@ -17,7 +17,9 @@
 
 - `buildctl prune --free-storage 102400` freed 72.6 GB and evicted base's exec records, which the
   `bk-*` tag does not pin; the next chain rebuilt base from step 2 and left a superseded lineage
-  holding 83 GB. `failure-modes.md` records the symptom and recovery, plus the admin-shell trap
+  holding 83 GB. A later `--keep-duration 30m` evicted the re-cached base again, because a cache
+  hit does not refresh `lastUsedAt`. `failure-modes.md` records the symptom and the ID-based
+  reclaim, plus the admin-shell trap
   where Rancher Desktop's `nerdctl` precedes Stevedore's; `Clear-DiskSpace.ps1` no longer calls
   that prune safe for fresh records.
 

@@ -1779,13 +1779,13 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Fix.** In order: **(1)** `buildctl du -v` and look for `Shared: true` — those records are pinned by containerd image tags and no prune flag can take them, so the lever is an admin `nerdctl --namespace buildkit rmi` of dead stage tags. **(2)** Non-admin: `buildctl prune --free-storage <MB>` — a minimum-free *target*, not an amount to delete; it takes the least recently used records first, which can be the chain's own base (next entry). **(3)** `prune-histories` second, never first. **(4)** Look for a superseded lineage, the big hidden reclaim. The full decision procedure with every measurement: [`windows-build-lanes.md`](windows-build-lanes.md#store-gc).
 
-### After a `prune --free-storage`, the next chain rebuilds `Dockerfile.base` from step 2
+### After a `buildctl prune`, the next chain rebuilds `Dockerfile.base` from step 2
 
 **Symptom.** A chain that was fully cached minutes earlier rebuilds `Dockerfile.base` from step 2/17 (about 65 min), every later stage misses, and free disk drops by 80+ GB until a stage gate refuses with `below the 40 GB floor`.
 
 **Cause.** A `bk-*` tag pins only the image's layers (`Shared`), not the exec records a cache lookup needs (`Private`). `--free-storage` evicts `Private` records least recently used first, and in a warm chain those are base's: hit at the start of the last run, then idle for hours. The rebuilt base gets a new digest, so every older stage tag becomes a superseded lineage that still pins its full layer copy (measured 2026-10-28: 101 → 17.9 GB free).
 
-**Fix.** Before a reclaim on a warm chain, prefer `buildctl prune --keep-duration <window>` covering the chain's last run. After it has happened: rebuild `-Stages base` at once while its records still exist, admin `nerdctl --namespace buildkit rmi` of the superseded stage tags, then `buildctl prune --keep-duration 30m` (2026-10-28: 89 → 134.9 GB, base cached in 433 s). Use Stevedore's nerdctl by full path (next entry).
+**Fix.** A cache hit does not refresh a record's `lastUsedAt`, so neither `--free-storage` nor `--keep-duration` protects a warm chain: on 2026-10-28 base came back fully `CACHED` at 08:07 and `--keep-duration 30m` at 08:16 still evicted it, because its records dated from their 02:28 build. Reclaim on a warm chain only by record ID: select `buildctl du --format '{{json .}}'` rows that are not `shared`, not `inUse` and idle since before the current lineage was built, add every record whose `parents` reach them, and prune those leaves first with `buildctl prune --filter id==<id>`, repeating until a pass removes nothing. Superseded stage tags go first by admin `nerdctl --namespace buildkit rmi`, Stevedore's nerdctl by full path (next entry).
 
 ### `nerdctl --namespace buildkit images` lists nothing in an admin shell
 
