@@ -18,7 +18,8 @@
 - The three `lib.smoke-torchapp-*` recipes from 78f63fc9 named `Smoke.TorchAppOrt.Tests.ps1`, one of whose
   other cases fails on the Linux mutation shards, so shards 0, 1 and 7 reported a vacuous bite and
   turned develop red. Their cases and the store case move to `Smoke.TorchAppOrtVerify.Tests.ps1`, and
-  `WindowsSmoke.TorchAppFixture.psm1` gives both suites the one lookup of section 21's venv branch.
+  `WindowsSmoke.TorchAppFixture.psm1` gives both suites the one lookup of section 21's venv branch. It returns
+  the branch list with `return ,`, since a one-element array unrolls to an AST node with no `Count`.
 
 ## 2026-10-28 — A recursive clone of the hub ends
 
