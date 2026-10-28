@@ -161,6 +161,7 @@ Two neighbours, so you land on the right page:
 - [`webrtcbin`'s action signals never reply; `ffi_prep_cif` returns `FFI_BAD_TYPEDEF`](#webrtcbins-action-signals-never-reply-ffi_prep_cif-returns-ffi_bad_typedef)
 - [`dtlsconnection ... unexpected eof while reading` at the first DTLS step](#dtlsconnection--unexpected-eof-while-reading-at-the-first-dtls-step)
 - [`static_assert failed: 'unexpected size'` from `std::find` under clang-cl](#static_assert-failed-unexpected-size-from-stdfind-under-clang-cl)
+- [A Windows test exits `0xC0000005` with no gtest line and no dump](#a-windows-test-exits-0xc0000005-with-no-gtest-line-and-no-dump)
 
 
 ---
@@ -2454,6 +2455,25 @@ yet in a VC Tools release the image ships.
 **Fix.** `find_if` with a predicate, which is a plain loop; or a hand-written `operator==`,
 which is not trivially comparable. Drop the workaround once the image's VC Tools carry the
 fix.
+
+### A Windows test exits `0xC0000005` with no gtest line and no dump
+
+**Symptom.** A GoogleTest executable on a Windows runner ends with exit code `-1073741819`
+(`0xC0000005`, access violation) and prints no `[  FAILED  ]` line; a rerun often passes.
+BeschleunigerBallett's arm64 lavapipe suites showed it from 2026-10-16 (#97), and a WER
+`LocalDumps` key set in the job left no dump.
+
+**Cause.** gtest catches an SEH exception on the main thread and reports it as a failure, so
+a raw exit code means another thread crashed: a worker of the engine or of the Vulkan
+driver. GitHub's runners queue WER reports (`ForceQueue=1`) and set AeDebug to `-`, so
+`LocalDumps` writes nothing there.
+
+**Fix.** Link the hub's handler with `kataglyphis_add_crash_dump(<exe>)`
+([`cmake/README.md`](../cmake/README.md#what-is-here)) and set `KATAGLYPHIS_CRASH_DUMP_DIR` for
+the test step. The crashing process then prints the exception, the faulting thread's frames
+as `module+0xRVA` and the path of its minidump on stderr, and still exits with the original
+code. Upload the dump with the executable's PDB; `llvm-symbolizer --obj=<exe> 0x<base+RVA>`
+names a frame in that executable.
 
 ### A regex patch inserts the same header after every include
 

@@ -31031,5 +31031,53 @@
   "replace": "    {\n      packaging_cross_env \"${CROSS_TARGET}\" || exit 1\n      _PYTHON_HOST_PLATFORM=\"${PYTHON_HOST_PLATFORM_TARGET}\" \"${venv}/bin/python\" -m pip wheel . --no-deps -w dist\n    }\n",
   "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
   "why": "the first wheel's cross environment would outlive it, so the binary venv's sync builds its sdists for riscv64 again"
+ },
+ {
+  "id": "windows-lane.crash-dump-stays-off-non-windows",
+  "target": "cmake/CrashDump.cmake",
+  "find": "  if(NOT WIN32)\n    return()\n  endif()\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cmake-crash-dump.sh",
+  "why": "every Linux and macOS configure would warn about a missing Windows toolchain"
+ },
+ {
+  "id": "windows-lane.crash-dump-needs-the-msvc-driver",
+  "target": "cmake/CrashDump.cmake",
+  "find": "  if(NOT MSVC)\n",
+  "replace": "  if(FALSE)\n",
+  "test": "bash linux/scripts/tests/test-cmake-crash-dump.sh",
+  "why": "a MinGW build would compile __try and dbghelp code its compiler cannot build, and fail far from this call"
+ },
+ {
+  "id": "windows-lane.crash-dump-compiles-into-the-target",
+  "target": "cmake/CrashDump.cmake",
+  "find": "  target_sources(\"${target}\" PRIVATE \"${_KATAGLYPHIS_CRASH_DUMP_SOURCE}\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cmake-crash-dump.sh",
+  "why": "the call would look wired while the executable carries no handler, so a crash leaves no dump again"
+ },
+ {
+  "id": "windows-lane.crash-dump-keeps-consumer-warnings-off",
+  "target": "cmake/CrashDump.cmake",
+  "find": "    PROPERTIES COMPILE_OPTIONS \"/w\"\n               SKIP_LINTING ON\n",
+  "replace": "    PROPERTIES SKIP_LINTING ON\n",
+  "test": "bash linux/scripts/tests/test-cmake-crash-dump.sh",
+  "why": "a consumer's /WX and its warning set would fail its build on the hub's handler"
+ },
+ {
+  "id": "windows-lane.crash-dump-release-writes-a-pdb",
+  "target": "cmake/CrashDump.cmake",
+  "find": "$<$<CONFIG:Release,MinSizeRel>:/DEBUG;/OPT:REF;/OPT:ICF>",
+  "replace": "$<$<CONFIG:Release,MinSizeRel>:/OPT:REF;/OPT:ICF>",
+  "test": "bash linux/scripts/tests/test-cmake-crash-dump.sh",
+  "why": "a Release crash would print module+RVA frames that no PDB can name"
+ },
+ {
+  "id": "windows-lane.crash-dump-executables-only",
+  "target": "cmake/CrashDump.cmake",
+  "find": "  if(NOT\n     _type\n     STREQUAL\n     \"EXECUTABLE\")\n",
+  "replace": "  if(FALSE)\n",
+  "test": "bash linux/scripts/tests/test-cmake-crash-dump.sh",
+  "why": "a library would take the handler's static initializer into every executable that links it"
  }
 ]

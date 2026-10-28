@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-28 — A Windows crash on any thread leaves a minidump
+
+- `cmake/CrashDump.cmake` adds `kataglyphis_add_crash_dump(<exe>)`. With `KATAGLYPHIS_CRASH_DUMP_DIR` set,
+  an unhandled exception writes `<exe>.<pid>.dmp`, prints the exception and the faulting thread's
+  `module+0xRVA` frames, and keeps the exit code; a Release link also writes the PDB. GitHub's runners
+  write no WER `LocalDumps`, which left BeschleunigerBallett's arm64 lavapipe crash (#97) without a
+  frame. `test-cmake-crash-dump.sh` and six mutation recipes hold the CMake wiring;
+  `CrashDump.Native.Tests.ps1` crashes a real MSVC fixture on a worker thread and reads its dump.
+
 ## 2026-10-28 — A free-storage prune can evict a warm chain's base
 
 - `buildctl prune --free-storage 102400` freed 72.6 GB and evicted base's exec records, which the

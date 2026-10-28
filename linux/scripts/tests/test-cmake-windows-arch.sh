@@ -8,16 +8,13 @@ HUB_CMAKE="$(cmake_fixture_module_root --native)"
 
 # _hardening_link_options <CMAKE_SYSTEM_PROCESSOR> -> the link options an MSVC target gets
 _hardening_link_options() {
-  local proj
-  proj="$(_cmake_project "set(MSVC TRUE)
+  cmake_fixture_output "set(MSVC TRUE)
 set(CMAKE_SYSTEM_PROCESSOR \"$1\")
 include(\"${HUB_CMAKE}/Hardening.cmake\")
 add_library(t INTERFACE)
 myproject_enable_hardening(t OFF OFF)
 get_target_property(_o t INTERFACE_LINK_OPTIONS)
-message(STATUS \"LINK=[\${_o}]\")")"
-  cmake -S "${proj}" -B "${proj}/b" 2>&1 | sed -n 's/^-- LINK=\[\(.*\)\]$/\1/p'
-  rm -rf "${proj}"
+message(STATUS \"LINK=[\${_o}]\")" | sed -n 's/^-- LINK=\[\(.*\)\]$/\1/p'
 }
 
 t_case "cmake is here: the cases below configure a real project"
