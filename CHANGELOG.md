@@ -15,9 +15,9 @@
 
 ## 2026-10-28 — A recursive clone of the hub ends
 
-- smile vendored this hub again below DocumANTation, so `git clone --recursive` never ended. smile
-  ae4926c drops that submodule and calls the hub's workflows with `hub-checkout: true`;
-  DocumANTation 207b22a pins it, and the hub pins that. AGENTS.md now forbids vendoring the hub
+- smile and awesome-beamer vendored this hub again below DocumANTation, so `git clone --recursive`
+  never ended. smile ae4926c and awesome-beamer 4c5fc05 drop that submodule and call the hub's
+  workflows with `hub-checkout: true`; DocumANTation 5851e9a pins both, and the hub pins that. AGENTS.md now forbids vendoring the hub
   below itself instead of forbidding recursive clones.
 
 ## 2026-10-28 — A Windows crash on any thread leaves a minidump
