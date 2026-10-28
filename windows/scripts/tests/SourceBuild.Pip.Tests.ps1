@@ -7,6 +7,7 @@ function New-CpythonPipFixture {
     Set-Content -LiteralPath $child -Value @(
         'param([string]$Marker)'
         '[IO.File]::WriteAllText($Marker, ''child ran'')'
+        'Write-Output ''pip progress line'''
         'exit 7'
     )
     return @{
@@ -43,7 +44,10 @@ function Assert-CpythonPipPolicy {
     Assert-CpythonPipChild $State
     Remove-Item -LiteralPath $State.Marker -Force
     $State.Exit = -1
-    $warnings = @(Invoke-MutCpythonPip -Python $python -Arguments @('install', 'x') -Optional 3>&1)
+    $output = @(Invoke-MutCpythonPip -Python $python -Arguments @('install', 'x') -Optional 3>$null)
+    Assert-Equal '' ($output -join '; ') 'pip output must stay off the output stream'
+    Remove-Item -LiteralPath $State.Marker -Force
+    $warnings = @(Invoke-MutCpythonPip -Python $python -Arguments @('install', 'x') -Optional 3>&1 | Where-Object { $_ -is [System.Management.Automation.WarningRecord] })
     Assert-Equal 1 $warnings.Count 'optional failure must emit one warning'
     Assert-Match '^pip install x failed \(exit 7\) -- continuing$' $warnings[0]
     Assert-CpythonPipChild $State
@@ -51,6 +55,12 @@ function Assert-CpythonPipPolicy {
     Assert-Throws { Invoke-MutCpythonPip -Python @{ Exe = "$($State.Child).missing" } -Arguments @('install', 'x') } `
         -MessagePattern '^Source-built Python not found at '
     Assert-Equal $calls $State.Calls.Count 'a missing interpreter must not launch a child'
+}
+
+function Invoke-CpythonPipMutation {
+    param([string]$Find, [string]$Replace, [string]$Expected)
+    Invoke-TestFunctionMutations -ModuleArgumentsFactory ${function:New-CpythonPipFixture} -IncludeControl `
+        -Find $Find -Replace $Replace -Expected $Expected -Body { param($state) Assert-CpythonPipPolicy $state }
 }
 
 Describe 'Invoke-CpythonPip' {
@@ -62,14 +72,15 @@ Describe 'Invoke-CpythonPip' {
     }
 
     It 'detects a swallowed required failure (mutation)' {
-        Invoke-TestFunctionMutations -ModuleArgumentsFactory ${function:New-CpythonPipFixture} -IncludeControl `
-            -Find 'if ($exit -ne 0) {' -Replace 'if ($false) {' -Expected 'expected an exception but none was thrown' `
-            -Body { param($state) Assert-CpythonPipPolicy $state }
+        Invoke-CpythonPipMutation 'if ($exit -ne 0) {' 'if ($false) {' 'expected an exception but none was thrown'
+    }
+
+    It 'detects pip output leaking into the caller''s return value (mutation)' {
+        Invoke-CpythonPipMutation '2>&1" | Out-Host' '2>&1"' 'pip output must stay off the output stream'
     }
 
     It 'detects a missing optional warning (mutation)' {
-        Invoke-TestFunctionMutations -ModuleArgumentsFactory ${function:New-CpythonPipFixture} -IncludeControl `
-            -Find 'if ($Optional) { Write-Warning "$msg -- continuing"; return }' -Replace 'if ($Optional) { return }' `
-            -Expected 'optional failure must emit one warning' -Body { param($state) Assert-CpythonPipPolicy $state }
+        Invoke-CpythonPipMutation 'if ($Optional) { Write-Warning "$msg -- continuing"; return }' 'if ($Optional) { return }' `
+            'optional failure must emit one warning'
     }
 }

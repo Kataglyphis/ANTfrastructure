@@ -31151,5 +31151,13 @@
   "replace": "function Invoke-SmokeSection10 { function Get-NestedSmokeProbe { }",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-functions-at-script-level.json",
   "why": "a missing brace nested the OpenCV link smoke inside the CUDA helper, so section 10 called a function that did not exist"
+ },
+ {
+  "id": "lib.cpython-pip-output-off-the-return-value",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "-m pip $argLine 2>&1\" | Out-Host",
+  "replace": "-m pip $argLine 2>&1\"",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Pip.Tests.ps1 -ResultFile logs/code-quality/cpython-pip-output.json",
+  "why": "pip's lines turned the TVM python plan into an array, and the arm64 media-tvm stage died on a missing PythonModule property"
  }
 ]

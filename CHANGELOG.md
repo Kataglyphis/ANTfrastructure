@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-28 — The arm64 media-tvm stage builds its python plan again
+
+- `Invoke-CpythonPip` and `Install-CpythonPip` wrote pip's lines to the output stream. On the
+  arm64 cross lane `Get-TvmPythonBuildPlan` installs Cython through them, so it returned an array
+  and the stage died on `The property 'PythonModule' cannot be found`. Both now send pip to
+  `Out-Host`; `SourceBuild.Pip.Tests.ps1` asserts an empty output stream, and
+  `lib.cpython-pip-output-off-the-return-value` proves the assertion bites.
+
 ## 2026-10-28 — The torch-app census recipes get a suite the Linux shards can run
 
 - The three `lib.smoke-torchapp-*` recipes from 78f63fc9 named `Smoke.TorchAppOrt.Tests.ps1`, one of whose
