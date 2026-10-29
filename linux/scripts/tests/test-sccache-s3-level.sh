@@ -127,6 +127,42 @@ t_assert_contains "$(SCCACHE_ERROR_LOG="${WORK}/none.log" _drain "{\"stats\":{\"
 nothing about levels or S3"
 t_assert_eq 0 "$(SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 2 0),$(level 'L1 (s3)' 2 0)]}}" | grep -c 'failed writes')" \
   "a clean drain reads no log"
+t_case "a failed S3 write is re-put from the disk level (sccache does not retry; 3 of 232 GStreamer objects stayed local on 2026-10-29)"
+_key=a338e2ed182c58687268cd88c3630ca7b4f22b8771afd27e85872cd3bb624e7f
+mkdir -p "${WORK}/disk/a/3" "${WORK}/s3"
+printf 'object bytes' > "${WORK}/disk/a/3/${_key}"
+python3 - "${WORK}/s3" > "${WORK}/s3/port" 2>/dev/null <<'PY' &
+import http.server, sys, threading
+root = sys.argv[1]
+class H(http.server.BaseHTTPRequestHandler):
+    def do_PUT(self):
+        body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        with open(root + "/put", "w") as f:
+            f.write("%s %s %s\n" % (self.path, self.headers.get("Authorization", ""), body.decode()))
+        self.send_response(200); self.end_headers()
+    def log_message(self, *a): pass
+srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+print(srv.server_address[1], flush=True)
+srv.serve_forever()
+PY
+_s3pid=$!
+until [ -s "${WORK}/s3/port" ]; do sleep 0.1; done
+_port="$(cat "${WORK}/s3/port")"
+printf 'SCCACHE_BUCKET=sccache\nSCCACHE_ENDPOINT=http://127.0.0.1:%s\nSCCACHE_REGION=garage\nAWS_ACCESS_KEY_ID=GKtest\nAWS_SECRET_ACCESS_KEY=secret\n' "${_port}" > "${WORK}/secret-s3"
+printf '[ERROR opendal::services] service=s3 name=sccache path=a/3/3/%s written=12: write close failed Unexpected (temporary) at write => send http request\n' "${_key}" > "${WORK}/sccache.log"
+_out="$(SCCACHE_S3_SECRET_FILE="${WORK}/secret-s3" SCCACHE_DIR="${WORK}/disk" SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 2 0),$(level 'L1 (s3)' 1 1)]}}")"
+t_assert_contains "${_out}" "re-uploaded 1 of 1 failed write(s) from the disk level" "the drain re-puts it: ${_out}"
+t_assert_contains "$(cat "${WORK}/s3/put" 2>/dev/null)" "/sccache/a/3/3/${_key} AWS4-HMAC-SHA256 Credential=GKtest/" "a SigV4 PUT of the S3 path, under the bucket"
+t_assert_contains "$(cat "${WORK}/s3/put" 2>/dev/null)" "/garage/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=" "signed for the secret's region"
+t_assert_contains "$(cat "${WORK}/s3/put" 2>/dev/null)" " object bytes" "with the disk level's bytes"
+printf '[ERROR opendal::services] service=s3 name=sccache path=f/f/f/%s written=1: write close failed\n' "ffff${_key:4}" >> "${WORK}/sccache.log"
+_out="$(SCCACHE_S3_SECRET_FILE="${WORK}/secret-s3" SCCACHE_DIR="${WORK}/disk" SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 3 0),$(level 'L1 (s3)' 1 2)]}}")"
+t_assert_contains "${_out}" "re-upload: ffff${_key:4:8} is not on the disk level" "a key the disk level evicted is named, not invented"
+t_assert_contains "${_out}" "re-uploaded 1 of 2 failed write(s)" "and the tally says so"
+kill "${_s3pid}" 2>/dev/null || true
+_out="$(SCCACHE_S3_SECRET_FILE="${WORK}/none" SCCACHE_DIR="${WORK}/disk" SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 2 0),$(level 'L1 (s3)' 1 1)]}}")"
+t_assert_contains "${_out}" "no S3 level in this RUN, so nothing to re-upload" "without the secret the drain only reports"
+
 rm -f "${WORK}/s.sock"
 t_assert_eq "" "$(PATH="${WORK}/bin:${PATH}" SCCACHE_SERVER_UDS="${WORK}/s.sock" bash "${LIB}" drain 2>&1)" "no socket, no server to ask"
 

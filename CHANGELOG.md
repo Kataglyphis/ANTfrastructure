@@ -13,6 +13,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-29 — the drain re-puts a failed S3 write from the disk level
+
+- sccache does not retry a level-1 write: the arm64 GStreamer RUN lost 3 of 232 objects to
+  `write close failed Unexpected (temporary) at write => send http request`, each left on the disk
+  mount alone (CON164's cause, finally logged). `sccache-s3-level.sh drain` now reads the paths the
+  server log names, finds each on the disk level (`<k0>/<k1>/<key>` there, `<k0>/<k1>/<k2>/<key>` in
+  S3) and PUTs it with a standard-library SigV4 request (`_sccache_s3_put`; the images carry no S3
+  client): `sccache-drain| re-uploaded N of M failed write(s) from the disk level`. An evicted key is
+  named. `test-sccache-s3-level.sh` runs it against a fake S3 server (42 assertions).
+
 ## 2026-10-29 — NVIDIA arm64, cross route phase E: the package stage assembles the target's toolkit
 
 - **`copy-media-payloads.sh` is target-aware.** When the artifact's `cross-target.env` names the image's

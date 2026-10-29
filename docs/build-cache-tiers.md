@@ -1728,6 +1728,16 @@ whose compiles never reached sccache shows a request count far below its compile
 level-1 write failed, it prints the last level, S3 or write lines of `SCCACHE_ERROR_LOG`, or says
 the log names no reason; the 2026-10-26 chain logged `3 written, 9 failed of 12` and nothing else.
 
+**A failed write is re-put from the disk level** (2026-10-29). sccache does not retry a level-1
+write: the 2026-10-29 arm64 GStreamer RUN lost 3 of 232 objects to `write close failed Unexpected
+(temporary) at write => send http request`, and each stayed on the disk mount alone, where the next
+`nerdctl system prune` drops it. The drain now reads the paths the server log names
+(`service=s3 name=sccache path=a/3/3/<key>`), finds each on the disk level (`<k0>/<k1>/<key>`, the
+layouts differ by one directory), and PUTs it with a SigV4 request from the standard library
+(`_sccache_s3_put`; the images carry no S3 client), printing
+`sccache-drain| re-uploaded <n> of <m> failed write(s) from the disk level`. A key the disk level
+has already evicted is named, not invented. Without the secret in the RUN there is nothing to re-put.
+
 **What happens when the level is missing:**
 
 | Situation | Effect |

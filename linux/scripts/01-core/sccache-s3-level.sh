@@ -127,6 +127,62 @@ _sccache_s3_failure_reason() {
   printf 'sccache-drain| failed writes; %s says:\n%s\n' "${log}" "${lines:-nothing about levels or S3}" >&2
 }
 
+# <s3 path> <file> <NAME=value>...: one SigV4 PUT with the standard library (the images carry no S3 client); 0 on 2xx.
+_sccache_s3_put() {
+  env "${@:3}" python3 - "$1" "$2" <<'PY'
+import datetime, hashlib, hmac, os, sys, urllib.request
+env = os.environ
+path, name = sys.argv[1], sys.argv[2]
+endpoint = env["SCCACHE_ENDPOINT"].rstrip("/")
+if "://" not in endpoint:
+    endpoint = ("https://" if env.get("SCCACHE_S3_USE_SSL", "true").lower() == "true" else "http://") + endpoint
+host = endpoint.split("://", 1)[1]
+region, bucket = env.get("SCCACHE_REGION") or "us-east-1", env["SCCACHE_BUCKET"]
+body = open(name, "rb").read()
+now = datetime.datetime.now(datetime.timezone.utc)
+amz, day = now.strftime("%Y%m%dT%H%M%SZ"), now.strftime("%Y%m%d")
+digest = hashlib.sha256(body).hexdigest()
+canonical = "\n".join(["PUT", "/%s/%s" % (bucket, path), "", "host:%s" % host, "x-amz-content-sha256:%s" % digest, "x-amz-date:%s" % amz, "", "host;x-amz-content-sha256;x-amz-date", digest])
+scope = "%s/%s/s3/aws4_request" % (day, region)
+to_sign = "\n".join(["AWS4-HMAC-SHA256", amz, scope, hashlib.sha256(canonical.encode()).hexdigest()])
+key = ("AWS4" + env["AWS_SECRET_ACCESS_KEY"]).encode()
+for part in (day, region, "s3", "aws4_request"):
+    key = hmac.new(key, part.encode(), hashlib.sha256).digest()
+auth = "AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=%s" % (
+    env["AWS_ACCESS_KEY_ID"], scope, hmac.new(key, to_sign.encode(), hashlib.sha256).hexdigest())
+req = urllib.request.Request("%s/%s/%s" % (endpoint, bucket, path), data=body, method="PUT",
+                             headers={"x-amz-content-sha256": digest, "x-amz-date": amz, "Authorization": auth})
+try:
+    with urllib.request.urlopen(req, timeout=120) as r:
+        sys.exit(0 if 200 <= r.status < 300 else 1)
+except Exception as e:  # noqa: BLE001 -- the caller prints the path; one line of cause is enough
+    print("%s: %s" % (path, e), file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
+# A failed S3 write leaves the object on the disk level only (sccache does not retry); re-put each one the server log names, so every miss reaches the shared level.
+_sccache_s3_reupload_failed() {
+  local log="${SCCACHE_ERROR_LOG:-/tmp/sccache.log}" disk="${SCCACHE_DIR:-/var/cache/sccache}" path key file n=0 ok=0
+  local -a env=()
+  sccache_s3_env env
+  [ "${#env[@]}" -gt 0 ] || { _sccache_s3_log "sccache: no S3 level in this RUN, so nothing to re-upload"; return 0; }
+  while IFS= read -r path; do
+    [ -n "${path}" ] || continue
+    n=$((n + 1))
+    key="${path##*/}"
+    # The disk level files a key as k[0]/k[1]/key, the S3 level as k[0]/k[1]/k[2]/key (sccache disk.rs, opendal).
+    file="${disk}/${key:0:1}/${key:1:1}/${key}"
+    if [ ! -f "${file}" ]; then
+      printf 'sccache-drain| re-upload: %s is not on the disk level (%s)\n' "${key:0:12}" "${file}" >&2
+      continue
+    fi
+    if _sccache_s3_put "${path}" "${file}" "${env[@]}"; then ok=$((ok + 1)); fi
+  done < <(grep -oE 'service=s3 name=[^ ]+ path=[0-9a-f/]+' "${log}" 2>/dev/null | sed 's/.*path=//' | sort -u)
+  printf 'sccache-drain| re-uploaded %d of %d failed write(s) from the disk level\n' "${ok}" "${n}" >&2
+  return 0
+}
+
 # [timeout-s]: the RUN's end kills the server and drops its background uploads, so wait for them first.
 sccache_s3_drain() {
   local limit="${1:-${SCCACHE_S3_DRAIN_TIMEOUT:-600}}" start now report=-30 pending failed tally
@@ -142,7 +198,10 @@ sccache_s3_drain() {
     now=$(( $(date +%s) - start ))
     if [ "${pending}" -le 0 ]; then
       printf 'sccache-drain| every upload done after %d s (%s)\n' "${now}" "${tally}" >&2
-      [ "${failed:-0}" -eq 0 ] || _sccache_s3_failure_reason
+      if [ "${failed:-0}" -ne 0 ]; then
+        _sccache_s3_failure_reason
+        _sccache_s3_reupload_failed
+      fi
       return 0
     fi
     if [ "${now}" -ge "${limit}" ]; then

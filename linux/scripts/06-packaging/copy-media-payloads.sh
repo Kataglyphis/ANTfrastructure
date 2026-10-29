@@ -120,7 +120,8 @@ cuda_payload_arch_gate() {
     [ "${bad}" -gt 3 ] || printf '[ERROR] CUDA payload: %s has ELF machine 0x%s, the image needs 0x%s\n' "${f}" "${h:36:2}" "${want}" >&2
   done < <(find "$@" -type f \( -name '*.so*' -o -perm -u+x \) -print0 2>/dev/null)
   echo "CUDA payload arch gate: ${n} ELF files, ${bad} not the target's"
-  [ "${bad}" -eq 0 ]
+  [ "${bad}" -eq 0 ] || return 1
+  return 0
 }
 
 # The low byte of e_machine for the image's arch.
@@ -159,7 +160,8 @@ copy_cuda_payload() {
     copy_glob "${pattern}"
   done
   [ "${cross}" -eq 1 ] || return 0
-  cuda_payload_arch_gate "$(_cuda_payload_elf_machine)" "$(_dest "/usr/local/cuda-${ver}")" "$(_dest "/usr/lib/${m}")"
+  cuda_payload_arch_gate "$(_cuda_payload_elf_machine)" "$(_dest "/usr/local/cuda-${ver}")" "$(_dest "/usr/lib/${m}")" || return 1
+  return 0
 }
 
 # The SLA lets only TensorRT's runtime .so files ship, so headers and dev links stay behind: docs/linux-accelerator-images.md#tensorrt-11
