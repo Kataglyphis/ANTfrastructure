@@ -31199,5 +31199,21 @@
   "replace": "$vmmemGB = if ($true) {",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildDriver.ResourceSampleRow.Tests.ps1 -ResultFile logs/code-quality/resource-sampler-without-vmmem.json",
   "why": "with no WSL VM running every sample threw on the empty vmmem sum, and whole chains left only sample-error rows"
+ },
+ {
+  "id": "lib.bind-target-base-lacks",
+  "target": "windows/Dockerfile.base",
+  "find": "     windows\\scripts\\modules\\WindowsContainerImage.Common.psm1 `",
+  "replace": "",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.MountStub.Tests.ps1 -ResultFile logs/code-quality/bind-target-base-lacks.json",
+  "why": "the nvidia sdk bind-mounted a module base lacked, and the directory it left made the final module COPY fail after five hours of chain"
+ },
+ {
+  "id": "lib.nvidia-bootstrap-copied-not-mounted",
+  "target": "windows/Dockerfile.nvidia",
+  "find": "RUN & 'C:\\temp\\scripts\\Install-Cuda.ps1'",
+  "replace": "RUN --mount=type=bind,source=scripts/modules/WindowsContainerImage.Bootstrap.psm1,target=C:\\temp\\scripts\\modules\\WindowsContainerImage.Bootstrap.psm1 & 'C:\\temp\\scripts\\Install-Cuda.ps1'",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsContainerImage.Bootstrap.Tests.ps1 -ResultFile logs/code-quality/nvidia-bootstrap-copied.json",
+  "why": "the CUDA layer's bootstrap mount left a directory at the module path, and final's COPY windows\\scripts\\modules failed on it"
  }
 ]

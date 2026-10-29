@@ -89,6 +89,7 @@ lives in [`failure-modes.md`](failure-modes.md).
 - [graphene needs `-Dgraphene:sse2=false` plus the meson.build patch](#graphene-needs--dgraphenesse2false-plus-the-mesonbuild-patch)
 - [In `RUN --mount=...,from=<stage>` the SOURCE path is Unix-style](#in-run---mountfromstage-the-source-path-is-unix-style)
 - [A whole-directory `modules` mount puts EVERY module in the cache key](#a-whole-directory-modules-mount-puts-every-module-in-the-cache-key)
+- [A file bind mount the image lacks leaves a directory behind](#a-file-bind-mount-the-image-lacks-leaves-a-directory-behind)
 - [The "unreferenced" `windows/scripts` modules are external-consumer API](#the-unreferenced-windowsscripts-modules-are-external-consumer-api)
 - [Rust: rustup WITH a default toolchain is the sole provider](#rust-rustup-with-a-default-toolchain-is-the-sole-provider)
 - [`versions.env` is the single source of truth](#versionsenv-is-the-single-source-of-truth)
@@ -812,6 +813,19 @@ re-introduces the directory form. `Dockerfile.probe` is exempt BY DESIGN
 (`PROBE_NONCE` busts its layer regardless, and it dispatches arbitrary
 diagnostic scripts — its own header says so). Corollary: "a module edit is
 cheap" is a claim about the MOUNTS, not about the module.
+
+### A file bind mount the image lacks leaves a directory behind
+
+**Bind-mount a file into `C:\temp\scripts` only where the stage already has
+that file; otherwise `COPY` it.** On a Windows container the mount point for a
+missing target is created as a directory and stays in the layer. Every stage
+above inherits it, and `Dockerfile`'s `COPY windows\scripts\modules` then fails
+with `cannot replace to directory ...\WindowsContainerImage.Bootstrap.psm1 with
+file`. `Dockerfile.nvidia` mounted that module, which `Dockerfile.base` does
+not copy, so the CPU lane stayed green and the nvidia chain failed in final
+after five hours (2026-10-29). A `COPY` costs the same cache as the mount: the
+file's bytes key the layer either way. `BuildKit.MountStub.Tests.ps1` grades
+every mount under `C:\temp\scripts` against base's copies and the stage's own.
 
 ### The "unreferenced" `windows/scripts` modules are external-consumer API
 

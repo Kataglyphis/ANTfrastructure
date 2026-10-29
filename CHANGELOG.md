@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-29 — The nvidia final stage copies its modules again
+
+- `Dockerfile.nvidia` bind-mounted `WindowsContainerImage.Bootstrap.psm1`, which base does not copy;
+  the mount point stayed as a directory and final's `COPY windows\scripts\modules` failed on it. Both
+  nvidia stages now `COPY` the module. `BuildKit.MountStub.Tests.ps1` fails a bind target under
+  `C:\temp\scripts` that its stage lacks; `lib.bind-target-base-lacks` and
+  `lib.nvidia-bootstrap-copied-not-mounted` prove both checks
+  (`docs/windows-build-invariants.md`). The Rocm.LlamaCpp duplication budget drops from 29 to 26.
+
 ## 2026-10-29 — The ShellCheck baseline suite survives midnight
 
 - `test-shellcheck-warnings.sh` read the date at start, so a run crossing midnight expected the old day
