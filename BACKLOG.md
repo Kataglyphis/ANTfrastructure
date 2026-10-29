@@ -413,7 +413,8 @@ owner carries the breakage that costs.
       amd64 build of the `onnxruntime` stage (2026-10-29: `18 unsupported compiler calls, 738 non-cacheable calls`,
       `Could NOT find Iconv`, 6 of 6 tests failed), so `40-build-wasm.sh` exports `EM_COMPILER_WRAPPER=ccache`
       (emscripten's documented wrapper) and prints `ccache-stats|`; the RUN mounts both caches and the S3 secret
-      and drains. ccache is disk-level only: this RUN's objects live on the host's cache mount, not in the shared
+      and drains. Proved the same day on the same targeted build: all four wasm flavors in 25 min, `Cacheable
+      calls: 47015 / 52217 (90.04%)`, `Hits: 12853`, `Misses: 34162` on the first fill. ccache is disk-level only: this RUN's objects live on the host's cache mount, not in the shared
       S3 level. Work: find why sccache rejects emcc's clang (its debug log names the parse failure) or give the
       wasm step its own S3-backed ccache remote. Done when a media chain's web RUN shows `ccache-stats|` hits and,
       for the S3 half, an upload path.

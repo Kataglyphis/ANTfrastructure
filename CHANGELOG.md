@@ -52,8 +52,10 @@
   puts it in front of every clang call; emscripten's own documented wrapper) and the RUN mounts both caches
   and the S3 secret and drains (CON173). sccache in that seat was tried first and failed every CMake
   try_compile of the wasm configure (`18 unsupported compiler calls, 738 non-cacheable calls`, `Could NOT
-  find Iconv`), proved on a targeted amd64 build of the `onnxruntime` stage; ccache is disk-level only, so
-  this one RUN's objects stay on the host's cache mount rather than in S3.
+  find Iconv`), proved on a targeted amd64 build of the `onnxruntime` stage; the same build with ccache
+  compiled all four wasm flavors in 25 min and logged `ccache-stats| Cacheable calls: 47015 / 52217
+  (90.04%)`, `Hits: 12853`, `Misses: 34162` (the first fill). ccache is disk-level only, so this one RUN's
+  objects stay on the host's cache mount rather than in S3.
 
 ## 2026-10-29 — NVIDIA arm64, cross route phase D: the media consumers build against the SBSA target
 
