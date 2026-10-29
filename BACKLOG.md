@@ -398,15 +398,15 @@ owner carries the breakage that costs.
 
 ## Open — Linux image (all arches)
 
-- [ ] **CON172 — the sdk stage points the target multiarch `libstdc++.so` at the host's** [S, ★★]. Found 2026-10-29
-      on the first arm64 nvidia media build: `vulkan.sh`'s `_vulkan_setup_gcc_runtime` links `libstdc++.so` and
-      `libgcc_s.so` from every `LIBRARY_PATH` dir (the HOST's `/opt/gcc-16.2.0/lib64`) into
-      `/usr/lib/<target triplet>`, so the cross media images carry an x86-64 `libstdc++.so` there; lld rejects
-      it on any link line with an explicit `-lstdc++` (OpenCV's CUDA line), bfd only skips it. ffmpeg, GStreamer
-      and now OpenCV repin GCC's target library per build. Work: make the Vulkan step link only libraries whose
-      ELF machine matches the dir's arch, or skip the target dir under a cross build; drop the three repins once
-      a rebuilt sdk proves the link correct. Done when `file -L /usr/lib/aarch64-linux-gnu/libstdc++.so` in a
-      fresh `cross-sdk-arm64` says AArch64 and no consumer needs the pin.
+- [ ] **CON172 — the sdk stage points the target multiarch `libstdc++.so` at the host's; prove the fix on an sdk rebuild** [S, ★★].
+      Found 2026-10-29 on the first arm64 nvidia media build: `vulkan.sh`'s `_vulkan_setup_gcc_runtime` linked
+      `libstdc++.so` and `libgcc_s.so` from every `LIBRARY_PATH` dir (the HOST's `/opt/gcc-16.2.0/lib64`) into
+      `/usr/lib/<target triplet>`, so the cross media images carry an x86-64 `libstdc++.so` there; lld rejects it
+      on any link line with an explicit `-lstdc++` (OpenCV's CUDA line), bfd only skips it. In source since
+      2026-10-30: `_vulkan_lib_fits_dir` reads each candidate's ELF machine and refuses one that is not the dir's
+      arch (`test-vulkan-gcc-runtime-links.sh`); ffmpeg, GStreamer and OpenCV keep their repins until the published
+      sdk is rebuilt. Done when `file -L /usr/lib/aarch64-linux-gnu/libstdc++.so` in a fresh `cross-sdk-arm64`
+      says AArch64 and the three repins can go.
 - [ ] **CON173 — `onnxruntime-web`: ccache holds the seat and rides S3 as an archive; prove it on a chain** [S, ★★].
       The 2026-10-28 audit found one compile RUN with no cache at all: the WebAssembly ORT build (emcc, 3857
       objects, ~40 min). sccache cannot take it: with a real emsdk its clang parser refuses emcc's `-Xclang
@@ -422,25 +422,12 @@ owner carries the breakage that costs.
       are CMake's probes in fresh temp dirs and fresh-clone mtimes, so the step sets `CCACHE_NOHASHDIR=1` and
       mtime/ctime sloppiness. Done when a media chain's web RUN (an amd64 chain, since arm64 skips wasm) logs
       `ccache-s3| restored …` and a hit share above 60 % of the cacheable calls.
-- [ ] **CON174 — image acceptance clones the cyclic submodules recursively** [S, ★]. `image-acceptance.py`'s
-      consumer clones use `--recursive`; the ANTfrastructure → DocumANTation → awesome-beamer → ANTfrastructure
-      cycle is finite but cost 29 GB and 15 min per receipt on 2026-10-28 (`logs/image-acceptance/*/consumers`).
-      Work: clone each consumer with `--recurse-submodules=<the paths the smoke needs>` or depth-limited, and
-      remove the tree after the receipt. Done when a receipt's consumer tree stays under 5 GB and the directory
-      is gone afterwards.
-
 - [ ] **CON163 — every Linux compile reaches sccache; prove it on a chain** [S, ★★★]. In source since 2026-10-26
       ([`build-cache-tiers.md`](docs/build-cache-tiers.md#a-subproject-that-forces-its-own-launcher)): the Vulkan
       SDK RUN mounts both caches and pins its launcher, and ONNX Runtime, LiteRT and the riscv64 torch wheel pin
       `CCACHE_BINARY` against pthreadpool's FORCE, gated by `cmake_assert_compiler_cache_pin`. Done when a second
       chain's `sdk-arm64`/`sdk-riscv64` dependency step and ONNX Runtime's `onnxruntime 2/9` step log
       `sccache-stats|` hits above 90 % of their compiles, and the Vulkan step drops below 10 min.
-- [ ] **CON164 — the S3 level drops uploads; prove the re-put on a chain** [S, ★★]. The 2026-10-26 chain's drains logged
-      `L1 (s3): 3 written, 9 failed of 12` and `6 failed of 9`; on 2026-10-29 the arm64 GStreamer RUN logged
-      `229 written, 3 failed of 232` with the cause: `write close failed Unexpected (temporary) at write => send
-      http request` (a transient S3 write that sccache never retries). In source since 2026-10-29: the drain re-puts
-      every object the server log names from the disk level (`docs/build-cache-tiers.md` § The shared S3 level).
-      Done when a chain's drain with failed writes prints `re-uploaded N of N` and the next chain shows the hits.
 - [ ] **CON165 — ONNX Runtime builds with one job under `--parallel-archs`; prove the governor on a chain** [S, ★★★]. In source since 2026-10-27: the launcher's compile governor and `PAR_INTRA_STEP_BUDGET=2` ([docs](docs/build-parallelism-memory-tuning.md#the-compile-governor)). Done when a chain's resource trace keeps `compilers` at or under 32 with no OOM kill and ONNX Runtime and IREE log more than one job. Found 2026-10-26:
       `Using JOBS=1` in `media-arm64.log`, since `compute_jobs_with_mem_cap "" 2000` divides RAM by
       `BUILD_MEM_DIVISOR=18` (3 arches × `PAR_INTRA_STEP_BUDGET=6`). With the cache warm a serial build costs

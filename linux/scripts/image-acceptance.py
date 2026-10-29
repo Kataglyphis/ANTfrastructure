@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -330,6 +331,12 @@ def run_consumer(args: EngineArgs, plan: AcceptancePlan, work: Path, index: int,
         raise ValueError(f"{spec['name']}: consumer modified tracked acceptance sources")
 
 
+def prune_consumer_checkouts(plan: AcceptancePlan, work: Path) -> None:
+    """A passed receipt keeps the logs; the checkouts (28 GB a run on 2026-10-29) are re-cloned by any replay."""
+    for spec in plan["consumers"]:
+        shutil.rmtree(work / spec["name"], ignore_errors=True)
+
+
 def check(args: CheckArgs) -> None:
     image_parts(args.image)
     plan = read_plan(args.plan)
@@ -359,6 +366,7 @@ def check(args: CheckArgs) -> None:
             expected = previous["consumers"][index] if previous else None
             run_consumer(args, plan, work, index, spec, row, expected, rootless)
         receipt["status"] = "passed"
+        prune_consumer_checkouts(plan, work)
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         receipt["error"] = str(exc)
     output = Path(args.receipt)

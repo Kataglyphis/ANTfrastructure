@@ -13,6 +13,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-30 — three backlog items closed at the source: re-put layout, acceptance checkouts, Vulkan runtime links
+
+- **The drain's re-put reads sccache 0.18's real disk layout.** A re-put against the real bucket found that
+  compile objects sit at `k0/k1/<key>` on disk (S3 keys them `k0/k1/k2/<key>`) while the preprocessor cache
+  keeps its full `preprocessor/k0/k1/k2/<key>` path on both; the drain tries both forms. Proved on the host:
+  a genuine object re-put through the drain's code path, `re-uploaded 1 of 1`, fetched back from the bucket
+  (499 bytes). CON164 closed.
+- **A passed acceptance receipt prunes its consumer checkouts** (`prune_consumer_checkouts`): three runs left
+  28 GB each under `logs/image-acceptance/*/consumers`; the logs stay, a replay re-clones. A failed run keeps
+  the checkout for inspection. CON174 closed.
+- **The Vulkan step links only runtime libraries of the dir's own arch** (`_vulkan_lib_fits_dir`): the sdk stage
+  had linked the host's x86-64 `libstdc++.so` into `/usr/lib/aarch64-linux-gnu`, which lld refused on OpenCV's
+  CUDA link line. The repins in ffmpeg, GStreamer and OpenCV stay until the published sdk is rebuilt (CON172).
+
 ## 2026-10-29 — the Android GStreamer build fetches zbar from the Wayback Machine
 
 - linuxtv.org now answers every non-browser client with a JavaScript bot challenge, so cerbero's

@@ -201,14 +201,16 @@ _sccache_s3_reupload_failed() {
     [ -n "${path}" ] || continue
     n=$((n + 1))
     key="${path##*/}"
-    # The disk level files a key as k[0]/k[1]/key, the S3 level as k[0]/k[1]/k[2]/key (sccache disk.rs, opendal).
-    file="${disk}/${key:0:1}/${key:1:1}/${key}"
+    # S3 keys an object <prefix>k0/k1/k2/key (opendal); sccache 0.18's disk level files compile objects at k0/k1/key and keeps the preprocessor cache at its full path.
+    pre="${path%/*}"; pre="${pre%"${key:0:1}/${key:1:1}/${key:2:1}"}"
+    file="${disk}/${path}"
+    [ -f "${file}" ] || file="${disk}/${pre}${key:0:1}/${key:1:1}/${key}"
     if [ ! -f "${file}" ]; then
       printf 'sccache-drain| re-upload: %s is not on the disk level (%s)\n' "${key:0:12}" "${file}" >&2
       continue
     fi
     if _sccache_s3_put "${path}" "${file}" "${env[@]}"; then ok=$((ok + 1)); fi
-  done < <(grep -oE 'service=s3 name=[^ ]+ path=[0-9a-f/]+' "${log}" 2>/dev/null | sed 's/.*path=//' | sort -u)
+  done < <(grep -oE 'service=s3 name=[^ ]+ path=[A-Za-z0-9_./-]+' "${log}" 2>/dev/null | sed 's/.*path=//' | sort -u)
   printf 'sccache-drain| re-uploaded %d of %d failed write(s) from the disk level\n' "${ok}" "${n}" >&2
   return 0
 }

@@ -129,8 +129,9 @@ t_assert_eq 0 "$(SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"m
   "a clean drain reads no log"
 t_case "a failed S3 write is re-put from the disk level (sccache does not retry; 3 of 232 GStreamer objects stayed local on 2026-10-29)"
 _key=a338e2ed182c58687268cd88c3630ca7b4f22b8771afd27e85872cd3bb624e7f
-mkdir -p "${WORK}/disk/a/3" "${WORK}/s3"
+mkdir -p "${WORK}/disk/a/3" "${WORK}/disk/preprocessor/b/4/b" "${WORK}/s3"
 printf 'object bytes' > "${WORK}/disk/a/3/${_key}"
+printf 'preprocessor entry' > "${WORK}/disk/preprocessor/b/4/b/b4${_key:2}"
 python3 - "${WORK}/s3" > "${WORK}/s3/port" 2>/dev/null <<'PY' &
 import http.server, sys, threading
 root = sys.argv[1]
@@ -159,10 +160,12 @@ t_assert_contains "${_out}" "re-uploaded 1 of 1 failed write(s) from the disk le
 t_assert_contains "$(cat "${WORK}/s3/put" 2>/dev/null)" "/sccache/a/3/3/${_key} AWS4-HMAC-SHA256 Credential=GKtest/" "a SigV4 PUT of the S3 path, under the bucket"
 t_assert_contains "$(cat "${WORK}/s3/put" 2>/dev/null)" "/garage/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=" "signed for the secret's region"
 t_assert_contains "$(cat "${WORK}/s3/put" 2>/dev/null)" " object bytes" "with the disk level's bytes"
+printf '[ERROR opendal::services] service=s3 name=sccache path=preprocessor/b/4/b/%s written=1: write close failed\n' "b4${_key:2}" >> "${WORK}/sccache.log"
 printf '[ERROR opendal::services] service=s3 name=sccache path=f/f/f/%s written=1: write close failed\n' "ffff${_key:4}" >> "${WORK}/sccache.log"
-_out="$(SCCACHE_S3_SECRET_FILE="${WORK}/secret-s3" SCCACHE_DIR="${WORK}/disk" SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 3 0),$(level 'L1 (s3)' 1 2)]}}")"
+_out="$(SCCACHE_S3_SECRET_FILE="${WORK}/secret-s3" SCCACHE_DIR="${WORK}/disk" SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 4 0),$(level 'L1 (s3)' 1 3)]}}")"
 t_assert_contains "${_out}" "re-upload: ffff${_key:4:8} is not on the disk level" "a key the disk level evicted is named, not invented"
-t_assert_contains "${_out}" "re-uploaded 1 of 2 failed write(s)" "and the tally says so"
+t_assert_contains "${_out}" "re-uploaded 2 of 3 failed write(s)" "a compile object (k0/k1/key on disk, k0/k1/k2/key in S3) and a preprocessor entry (its full path on both) are both found"
+t_assert_contains "$(cat "${WORK}/s3/put" 2>/dev/null)" "/sccache/preprocessor/b/4/b/b4${_key:2} " "the preprocessor entry went up under its S3 path"
 t_case "sccache_s3_fetch and sccache_s3_store move one object of the shared level with the RUN's secret"
 _fetch() { SCCACHE_S3_SECRET_FILE="${WORK}/secret-s3" bash -c 'source "$1"; sccache_s3_fetch "$2" "$3"' _ "${LIB}" "$@" 2>&1; echo "rc=$?"; }
 t_assert_contains "$(_fetch ccache/have.tgz "${WORK}/got.tgz")" "rc=0" "a present object is fetched"
