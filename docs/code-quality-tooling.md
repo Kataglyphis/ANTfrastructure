@@ -944,7 +944,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3897 entries** over **456 distinct test commands**; both digits are
+manifest holds **3898 entries** over **456 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2590,7 +2590,7 @@ gate with exit 2, naming the file, the line and the expected format.
 
 **Coverage.** `tests/test-shellcheck-warnings.sh`, over throwaway trees whose subjects provoke SC2034,
 SC2155 and a source-directive pair, plus stub binaries for the paths a real
-shellcheck cannot produce; 21 mutations (`shellcheck-warnings.*`), every one
+shellcheck cannot produce; 22 mutations (`shellcheck-warnings.*`), every one
 proven to bite. `tests/test-shellcheck-batching.sh` simulates Windows' process
 limit and proves each input is checked once and every batch's findings are merged.
 The suite's

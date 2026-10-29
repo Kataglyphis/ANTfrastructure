@@ -1864,6 +1864,14 @@
   "why": "--write-baseline must keep a reviewed reason, or every rewrite erases the review"
  },
  {
+  "id": "shellcheck-warnings.stamp-date",
+  "target": "linux/scripts/verify_shellcheck_warnings.py",
+  "find": "    today = datetime.date.today().isoformat()",
+  "replace": "    today = \"2000-01-01\"",
+  "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+  "why": "a frozen row carries the day it was written; the midnight tolerance must not accept any date"
+ },
+ {
   "id": "shellcheck-warnings.partial-rewrite",
   "target": "linux/scripts/verify_shellcheck_warnings.py",
   "find": "    keep = {k: v for k, v in old.items() if partial and k[0] not in checked}",
