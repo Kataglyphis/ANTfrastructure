@@ -407,17 +407,16 @@ owner carries the breakage that costs.
       ELF machine matches the dir's arch, or skip the target dir under a cross build; drop the three repins once
       a rebuilt sdk proves the link correct. Done when `file -L /usr/lib/aarch64-linux-gnu/libstdc++.so` in a
       fresh `cross-sdk-arm64` says AArch64 and no consumer needs the pin.
-- [ ] **CON173 — `onnxruntime-web` compiles uncached; ccache holds the seat, S3 does not reach it** [S, ★★]. The
-      2026-10-28 audit found one compile RUN with no cache at all: the WebAssembly ORT build (emcc, 3857 objects,
-      ~40 min). sccache as `EM_COMPILER_WRAPPER` failed every CMake try_compile of the wasm configure on a targeted
-      amd64 build of the `onnxruntime` stage (2026-10-29: `18 unsupported compiler calls, 738 non-cacheable calls`,
-      `Could NOT find Iconv`, 6 of 6 tests failed), so `40-build-wasm.sh` exports `EM_COMPILER_WRAPPER=ccache`
-      (emscripten's documented wrapper) and prints `ccache-stats|`; the RUN mounts both caches and the S3 secret
-      and drains. Proved the same day on the same targeted build: all four wasm flavors in 25 min, `Cacheable
-      calls: 47015 / 52217 (90.04%)`, `Hits: 12853`, `Misses: 34162` on the first fill. ccache is disk-level only: this RUN's objects live on the host's cache mount, not in the shared
-      S3 level. Work: find why sccache rejects emcc's clang (its debug log names the parse failure) or give the
-      wasm step its own S3-backed ccache remote. Done when a media chain's web RUN shows `ccache-stats|` hits and,
-      for the S3 half, an upload path.
+- [ ] **CON173 — `onnxruntime-web`: ccache holds the seat and rides S3 as an archive; prove it on a chain** [S, ★★].
+      The 2026-10-28 audit found one compile RUN with no cache at all: the WebAssembly ORT build (emcc, 3857
+      objects, ~40 min). sccache cannot take it: with a real emsdk its clang parser refuses emcc's `-Xclang
+      -iwithsysroot/include/fakesdl` (`CannotCache(Can't handle UnknownFlag arguments …)`), and as the launcher
+      script it even failed the wasm configure (2026-10-29). In source since 2026-10-29: `40-build-wasm.sh`
+      exports `EM_COMPILER_WRAPPER=ccache` in its own dir `/var/cache/ccache/onnxruntime-web`, restores it from
+      `ccache/onnxruntime-web-<ORT_VERSION>.tar.gz` in the shared S3 level when empty and stores it back when it
+      grew (`sccache_s3_fetch`/`sccache_s3_store`); proved on a targeted amd64 build: four flavors in 25 min,
+      `Cacheable calls: 47015 / 52217 (90.04%)`, `Hits: 12853`. Done when a media chain's web RUN logs
+      `ccache-s3| stored …` once and `ccache-s3| restored …` plus hits on a host whose mount was empty.
 - [ ] **CON175 — the CUDA cross compiles bypass sccache; prove the fix on a chain** [S, ★★]. The arm64 nvidia
       media chain's ORT GPU RUN (2026-10-29) logged `3856 requests, 3210 hits, 0 misses, 36 errors, 609 not
       cacheable`: every C/C++ object hit, the 609 kernels ran uncached, the RUN's two hours. Cause, reproduced

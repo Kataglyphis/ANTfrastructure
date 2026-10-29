@@ -1728,6 +1728,15 @@ whose compiles never reached sccache shows a request count far below its compile
 level-1 write failed, it prints the last level, S3 or write lines of `SCCACHE_ERROR_LOG`, or says
 the log names no reason; the 2026-10-26 chain logged `3 written, 9 failed of 12` and nothing else.
 
+**The wasm build's ccache rides the level as an archive** (2026-10-29). sccache cannot cache
+emscripten at all: its clang parser refuses `-Xclang -iwithsysroot/include/fakesdl`, which emcc
+passes on every compile. The onnxruntime-web RUN therefore uses ccache (`EM_COMPILER_WRAPPER`) in
+its own dir `/var/cache/ccache/onnxruntime-web`; `40-build-wasm.sh` restores that dir from
+`ccache/onnxruntime-web-<ORT_VERSION>.tar.gz` in the bucket when the mount is empty
+(`sccache_s3_fetch`) and stores it back when the build added objects (`sccache_s3_store`), both
+SigV4 requests from the standard library with the RUN's secret. One archive per ORT version, a few
+hundred MB; the log lines are `ccache-s3| restored …`, `ccache-s3| stored …`, `ccache-stats| …`.
+
 **A failed write is re-put from the disk level** (2026-10-29). sccache does not retry a level-1
 write: the 2026-10-29 arm64 GStreamer RUN lost 3 of 232 objects to `write close failed Unexpected
 (temporary) at write => send http request`, and each stayed on the disk mount alone, where the next
