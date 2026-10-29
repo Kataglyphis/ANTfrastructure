@@ -146,7 +146,9 @@ fast-forward of `main` releases that commit.
 `linux/scripts/06-packaging/collect-release-assets.sh [options] <artifacts dir> <out dir>` turns the
 run's uploads, one folder each as `actions/download-artifact` writes them, into one flat directory of
 release files. It fails when two files would get one name, when it collects nothing, and on an
-`--expect` the release would lack. An upload named `*-docs-site` or `docs-site-*` is always skipped:
+`--expect` the release would lack. `download-artifact` extracts a lone upload without its folder, so
+`release-publish.yml` passes `--lone-upload` when `artifacts` names one upload literally; files outside
+any upload fail without it rather than drop out of the release. An upload named `*-docs-site` or `docs-site-*` is always skipped:
 `build-docs.yml` uploads the site in the same run.
 
 | Option | Does |
@@ -161,6 +163,7 @@ release files. It fails when two files would get one name, when it collects noth
 | `--unpack UPLOAD_GLOB` | collect from the contents of the upload's tarballs |
 | `--expect NAME` | the release must carry `NAME` |
 | `--strict` | an upload neither skipped nor collected from fails |
+| `--lone-upload NAME` | the artifacts directory is the one upload `NAME`, unless it holds a `NAME` folder |
 | `--version V`, `--options FILE` | the value of `{version}`; more options, one per line |
 
 Globs are `case` patterns, so `*` crosses `/`. A `NAME` takes `{version}`, `{stem}` (the file's name

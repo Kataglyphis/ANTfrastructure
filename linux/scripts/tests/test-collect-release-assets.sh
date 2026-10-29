@@ -452,6 +452,37 @@ cp "${w}/dist/${p}-cp314-cp314-win_amd64.whl" "${a}/packages-linux-x64-copy/"
 t_assert_fails collect wdc-2 --options "${work}/webdavclient.options" "${a}" "${work}/wdc-r2"
 t_assert_contains "$(log wdc-2)" "two artifacts carry ${p}-cp314-cp314-win_amd64.whl"
 
+# DocumANTation: one upload, which download-artifact extracts without its folder.
+cat > "${work}/documantation.options" <<'OPTS'
+--include *.whl
+--include *.tar.gz
+--expect sphinx_kataglyphis_theme-{version}-py3-none-any.whl
+--expect sphinx_kataglyphis_theme-{version}.tar.gz
+OPTS
+
+a="${work}/doc-flat"
+mkdir -p "${a}"
+printf 'whl' > "${a}/sphinx_kataglyphis_theme-0.1.0-py3-none-any.whl"
+printf 'sdist' > "${a}/sphinx_kataglyphis_theme-0.1.0.tar.gz"
+doc() { collect "$1" --options "${work}/documantation.options" --version 0.1.0 "${@:2}"; }
+
+t_case "DocumANTation: a lone upload extracted without its folder is collected under its name"
+t_assert_ok doc doc-1 --lone-upload theme-dist "${a}" "${work}/doc-r1"
+t_assert_eq 2 "$(count "${work}/doc-r1" '*')"
+
+t_case "DocumANTation: files outside any upload fail without --lone-upload rather than vanish"
+t_assert_fails doc doc-2 "${a}" "${work}/doc-r2"
+t_assert_contains "$(log doc-2)" "files lie directly in ${a}, outside any upload"
+
+t_case "DocumANTation: --lone-upload reads the upload's folder when the download kept it"
+mkdir -p "${work}/doc-nested/theme-dist"
+cp "${a}"/* "${work}/doc-nested/theme-dist/"
+t_assert_ok doc doc-3 --lone-upload theme-dist "${work}/doc-nested" "${work}/doc-r3"
+t_assert_eq 2 "$(count "${work}/doc-r3" '*')"
+
+t_case "DocumANTation: a lone upload that matches --skip gives nothing"
+t_assert_fails doc doc-4 --lone-upload theme-dist --skip 'theme-*' "${a}" "${work}/doc-r4"
+
 # _job <name>: the lines of one job of the workflow, from its key to the next job's; a CRLF checkout's \r is dropped.
 _job() { awk -v job="  $1:" '{ sub(/\r$/, "") } $0 == job { on = 1; next } on && /^  [a-z-]+:$/ { exit } on' "${WORKFLOW}"; }
 
@@ -470,6 +501,7 @@ t_assert_contains "${publish}" "if: \${{ !inputs.dry-run }}"
 t_assert_contains "${publish}" "publish-github-release.sh"
 t_assert_contains "${publish}" '[ "${GITHUB_REF}" = refs/heads/main ] ||'
 t_assert_contains "${publish}" "collect-release-assets.sh"
+t_assert_contains "${publish}" 'lone=(--lone-upload "${ARTIFACTS}")'
 t_assert_eq 0 "$(grep -c 'continue-on-error' "${WORKFLOW}")" "a release step that may fail is a release that silently stops"
 
 t_summary

@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-29 — A release with one upload collects it
+
+- `download-artifact` extracts a lone upload straight into `artifacts/`, without its folder, so
+  DocumANTation's dry run (run 40902174002) collected nothing from `theme-dist` and failed its
+  `--expect`. `release-publish.yml` passes `--lone-upload <name>` when `artifacts` names one upload
+  literally, and `collect-release-assets.sh` now fails on files outside any upload instead of
+  dropping them. `test-collect-release-assets.sh` covers both layouts; three `release.*` recipes.
+
 ## 2026-10-29 — riscv64 test processes load only riscv64 GStreamer plugins
 
 - The image's `GST_PLUGIN_PATH` starts with the host-triplet plugin dir, which the riscv64 sysroot

@@ -15326,8 +15326,8 @@
  {
   "id": "release.collect-skip",
   "target": "linux/scripts/06-packaging/collect-release-assets.sh",
-  "find": "    if any_match \"$upload\" \"${SKIP[@]}\"; then continue; fi",
-  "replace": "    if false; then continue; fi",
+  "find": "  if any_match \"$upload\" \"${SKIP[@]}\"; then return 0; fi",
+  "replace": "  if false; then return 0; fi",
   "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
   "why": "test bundles and reports would ship as release files"
  },
@@ -15342,8 +15342,8 @@
  {
   "id": "release.collect-strict",
   "target": "linux/scripts/06-packaging/collect-release-assets.sh",
-  "find": "    [ \"$GAVE\" = 1 ] || [ \"$STRICT\" = 0 ] || die",
-  "replace": "    [ \"$GAVE\" = 1 ] || true || die",
+  "find": "  [ \"$GAVE\" = 1 ] || [ \"$STRICT\" = 0 ] || die",
+  "replace": "  [ \"$GAVE\" = 1 ] || true || die",
   "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
   "why": "with --strict a new upload nobody decided about must stop the release, not vanish"
  },
@@ -31239,5 +31239,29 @@
   "replace": "RUN --mount=type=bind,source=scripts/modules/WindowsContainerImage.Bootstrap.psm1,target=C:\\temp\\scripts\\modules\\WindowsContainerImage.Bootstrap.psm1 & 'C:\\temp\\scripts\\Install-Cuda.ps1'",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsContainerImage.Bootstrap.Tests.ps1 -ResultFile logs/code-quality/nvidia-bootstrap-copied.json",
   "why": "the CUDA layer's bootstrap mount left a directory at the module path, and final's COPY windows\\scripts\\modules failed on it"
+ },
+ {
+  "id": "release.collect-lone-upload",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "  if [ -n \"$LONE\" ] && [ ! -d \"${artifacts}/${LONE}\" ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a lone upload is extracted without its folder, so its files would never be collected"
+ },
+ {
+  "id": "release.collect-loose-files-fail",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "      die \"files lie directly in ${artifacts}, outside any upload: name the lone upload with --lone-upload\"",
+  "replace": "      true",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "files outside any upload folder would be dropped from the release without a word"
+ },
+ {
+  "id": "release.publish-passes-lone-upload",
+  "target": ".github/workflows/release-publish.yml",
+  "find": "then lone=(--lone-upload \"${ARTIFACTS}\"); fi",
+  "replace": "then lone=(); fi",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a release whose artifacts input names one upload would collect nothing from it"
  }
 ]
