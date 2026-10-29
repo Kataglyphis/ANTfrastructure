@@ -215,6 +215,12 @@ The copy ran slower than in the probe because three jobs fetched the same blobs 
   - `VULKAN_SDK` (from the same `setup-env.sh`) names the x86_64 prefix:
     `Could NOT find Vulkan (missing: Vulkan_LIBRARY Vulkan_INCLUDE_DIR)`.
     `/opt/vulkan/active` re-roots to riscv64 in CMake and stays x86_64 for `glslc`.
+- **A host-triplet path falls through to amd64.** The entrypoint's `gstreamer-env.sh` puts
+  `/opt/gstreamer/lib/x86_64-linux-gnu` ahead of `lib/multiarch` in `GST_PLUGIN_PATH`,
+  `GI_TYPELIB_PATH` and `LD_LIBRARY_PATH`. The sysroot has no such directory, so QEMU opened the
+  host's, and every riscv64 test process warned `Failed to load plugin` about 300 times (OxidANT
+  run 40837860172: 1224 warnings, all green). `riscv64_cross_env` drops `/opt/*/lib/<triplet>`
+  entries of other arches; `lib/multiarch` reaches the riscv64 files.
 - **`execve` is not remapped.** A riscv64 process that starts `/opt/.../tool` gets the
   amd64 tool, natively. That is right for helper tools, wrong for GStreamer's plugin
   scanner, so `GST_REGISTRY_FORK=no`.

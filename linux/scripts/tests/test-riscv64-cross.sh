@@ -106,6 +106,16 @@ t_assert_contains "${_pc}" "/opt/rv/opt/gstreamer/lib/pkgconfig" "the image's ow
 t_assert_contains "${_pc}" "/opt/rv/usr/lib/riscv64-linux-gnu/pkgconfig" "the distro's multiarch .pc files"
 t_assert_eq "" "$(printf '%s' "${_pc}" | tr ':' '\n' | grep -v -e '^/opt/rv/' || true)" "every entry is inside the sysroot"
 
+t_case "host-triplet dirs under /opt leave a runtime list; riscv64, multiarch and distro dirs stay"
+_strip() { bash -c "source '${LIB}'; riscv64_cross_strip_host_dirs \"\$1\"" _ "$1"; }
+t_assert_eq "/opt/gstreamer/lib/gstreamer-1.0:/opt/gstreamer/lib/multiarch/gstreamer-1.0:/opt/libcamera/lib/gstreamer-1.0" \
+  "$(_strip /opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0:/opt/gstreamer/lib/gstreamer-1.0:/opt/gstreamer/lib/multiarch/gstreamer-1.0:/opt/libcamera/lib/gstreamer-1.0)" \
+  "the amd64 plugin dir is dropped, order kept"
+t_assert_eq "/opt/gstreamer/lib/riscv64-linux-gnu:/usr/lib/x86_64-linux-gnu" \
+  "$(_strip /opt/gstreamer/lib/aarch64-linux-gnu:/opt/gstreamer/lib/riscv64-linux-gnu:/usr/lib/x86_64-linux-gnu)" \
+  "an arm64 host dir goes too; riscv64 and distro dirs stay"
+t_assert_eq "" "$(_strip "")" "an empty list stays empty"
+
 t_case "cross environment hides amd64 pkg-config metadata from Rust and direct probes"
 _cross_sysroot="${_tmp}/cross-pc/sysroot"
 _cross_llvm="${_tmp}/cross-pc/llvm"
@@ -120,6 +130,9 @@ _cross_env="$(env RISCV64_SYSROOT="${_cross_sysroot}" \
   PKG_CONFIG_PATH=/opt/gstreamer/lib/x86_64-linux-gnu/pkgconfig \
   PKG_CONFIG_PATH_riscv64gc_unknown_linux_gnu=/opt/gstreamer/lib/x86_64-linux-gnu/pkgconfig \
   PKG_CONFIG_LIBDIR=/usr/lib/x86_64-linux-gnu/pkgconfig PKG_CONFIG_SYSROOT_DIR=/ \
+  GST_PLUGIN_PATH=/opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0:/opt/gstreamer/lib/multiarch/gstreamer-1.0 \
+  GI_TYPELIB_PATH=/opt/gstreamer/lib/x86_64-linux-gnu/girepository-1.0 \
+  LD_LIBRARY_PATH=/opt/gstreamer/lib/x86_64-linux-gnu:/opt/gstreamer/lib/multiarch \
   bash -c '
     source "$1"
     _fake_llvm="$3"
@@ -130,6 +143,9 @@ _cross_env="$(env RISCV64_SYSROOT="${_cross_sysroot}" \
     printf "libdir=%s\n" "${PKG_CONFIG_LIBDIR}"
     printf "sysroot=%s\n" "${PKG_CONFIG_SYSROOT_DIR}"
     printf "target-libdir=%s\n" "${PKG_CONFIG_LIBDIR_riscv64gc_unknown_linux_gnu}"
+    printf "plugins=%s\n" "${GST_PLUGIN_PATH}"
+    printf "typelibs=%s\n" "${GI_TYPELIB_PATH}"
+    printf "libs=%s\n" "${LD_LIBRARY_PATH}"
   ' _ "${LIB}" "${_tmp}/cross-pc/bin" "${_cross_llvm}")"; _rc=$?
 t_assert_eq 0 "${_rc}" "the fixture must reach the exported environment"
 t_assert_contains "${_cross_env}" 'path=' "host PKG_CONFIG_PATH must not outrank the target library directory"
@@ -143,6 +159,11 @@ t_assert_contains "${_cross_env}" "sysroot=${_cross_sysroot}" \
   "direct pkg-config probes must rewrite target paths into the sysroot"
 t_assert_contains "${_cross_env}" "target-libdir=${_cross_libdir}" \
   "pkg-config-rs must receive the same target directory"
+t_assert_contains "${_cross_env}" "plugins=/opt/gstreamer/lib/multiarch/gstreamer-1.0" \
+  "QEMU must not reach the amd64 plugins through GST_PLUGIN_PATH"
+t_assert_contains "${_cross_env}" "typelibs=" "an all-host GI_TYPELIB_PATH is emptied"
+t_assert_eq "" "$(printf '%s\n' "${_cross_env}" | grep -e '^typelibs=.' || true)" "no amd64 typelib dir survives"
+t_assert_contains "${_cross_env}" "libs=/opt/gstreamer/lib/multiarch" "the loader keeps the arch-neutral dir only"
 
 t_case "riscv64_cross_env refuses a missing sysroot instead of building for the host"
 _out="$(RISCV64_SYSROOT="${_tmp}/none" bash -c "source '${LIB}'; riscv64_cross_env '${_tmp}/bin2'" 2>&1)"; _rc=$?

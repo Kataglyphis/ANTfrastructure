@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-29 — riscv64 test processes load only riscv64 GStreamer plugins
+
+- The image's `GST_PLUGIN_PATH` starts with the host-triplet plugin dir, which the riscv64 sysroot
+  lacks, so QEMU opened the amd64 plugins and each test process warned about 300 times.
+  `riscv64_cross_env` drops `/opt/*/lib/<triplet>` entries of other arches from `GST_PLUGIN_PATH`,
+  `GI_TYPELIB_PATH` and `LD_LIBRARY_PATH` (`riscv64_cross_strip_host_dirs`); `lib/multiarch` stays.
+  `test-riscv64-cross.sh` and three `riscv64-cross.*` recipes prove it. No image re-keys.
+
 ## 2026-10-29 — The nvidia final stage copies its modules again
 
 - `Dockerfile.nvidia` bind-mounted `WindowsContainerImage.Bootstrap.psm1`, which base does not copy;

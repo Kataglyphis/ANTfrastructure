@@ -12852,6 +12852,30 @@
   "why": "clang does not search a cross GCC's lib/ for libstdc++; every C++ link fails 'unable to find library -lstdc++'"
  },
  {
+  "id": "riscv64-cross.strip-host-triplet-dirs",
+  "target": "linux/scripts/lib/riscv64-cross.sh",
+  "find": "      /opt/*/lib/*-linux-gnu | /opt/*/lib/*-linux-gnu/*) continue ;;\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-riscv64-cross.sh",
+  "why": "QEMU opens the host's amd64 dir when the sysroot lacks it; every riscv64 test then warns through ~300 amd64 plugins"
+ },
+ {
+  "id": "riscv64-cross.strip-keeps-riscv64-dirs",
+  "target": "linux/scripts/lib/riscv64-cross.sh",
+  "find": "      /opt/*/lib/riscv64-linux-gnu | /opt/*/lib/riscv64-linux-gnu/*) ;;\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-riscv64-cross.sh",
+  "why": "the riscv64 dirs are the ones the sysroot does have; dropping them would hide the target's own plugins"
+ },
+ {
+  "id": "riscv64-cross.env-strips-runtime-lists",
+  "target": "linux/scripts/lib/riscv64-cross.sh",
+  "find": "  for var in GST_PLUGIN_PATH GI_TYPELIB_PATH LD_LIBRARY_PATH; do",
+  "replace": "  for var in GI_TYPELIB_PATH; do",
+  "test": "bash linux/scripts/tests/test-riscv64-cross.sh",
+  "why": "the helper is only half the fix; riscv64_cross_env must apply it to the plugin and loader paths"
+ },
+ {
   "id": "riscv64-cross.env-refuses-missing-sysroot",
   "target": "linux/scripts/lib/riscv64-cross.sh",
   "find": "if [ ! -e \"${sysroot}/lib/ld-linux-riscv64-lp64d.so.1\" ]; then",
