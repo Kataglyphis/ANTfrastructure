@@ -242,6 +242,8 @@ override_soundtouch_codeberg_checksum
 override_pkgconfig_dead_mirror
 # SPANDSP-MIRROR: soft-switch.org now redirects to an unrelated site and serves HTML; GStreamer's mirror has the recipe's tarball.
 cerbero_redirect_source_host SPANDSP-MIRROR https://www.soft-switch.org/downloads/spandsp/ https://gstreamer.freedesktop.org/src/mirror/
+# ZBAR-MIRROR: linuxtv.org answers every non-browser client with a JavaScript bot challenge (2026-10-29); the Wayback Machine's id_ view serves the recipe's byte-identical tarball.
+cerbero_redirect_source_host ZBAR-MIRROR https://linuxtv.org/downloads/zbar/ https://web.archive.org/web/2025id_/https://linuxtv.org/downloads/zbar/
 override_glib_libiconv_dep
 
 # Python venv

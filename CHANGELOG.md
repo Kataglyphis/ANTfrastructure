@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-29 — the Android GStreamer build fetches zbar from the Wayback Machine
+
+- linuxtv.org now answers every non-browser client with a JavaScript bot challenge, so cerbero's
+  `fetch-package` got HTML for `zbar-0.23.93.tar.gz` three times over (`Checksum … is '1fc9…' instead of
+  '78ae…'`, a different hash each time) and the arm64 android stage of chain 11 failed. No mirror carries
+  the dist tarball (MacPorts, Debian and the GitHub tag archive all serve the repository snapshot, another
+  checksum), but the Wayback Machine's `id_` view serves the byte-identical file; `build-android-from-source.sh`
+  redirects the recipe's host there (`ZBAR-MIRROR`, like `SPANDSP-MIRROR`), the recipe's checksum still guards it.
+
 ## 2026-10-29 — the drain re-puts a failed S3 write from the disk level
 
 - sccache does not retry a level-1 write: the arm64 GStreamer RUN lost 3 of 232 objects to
