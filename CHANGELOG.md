@@ -73,8 +73,10 @@
   SigV4 helper with GET). `ccache-s3| restored …` / `stored …` are the RUN's lines. Proved on the targeted
   amd64 build: `ccache-s3| stored ccache/onnxruntime-web-v1.31.0.tar.gz (127M) in the S3 level`, fetched back
   from the bucket on the host (3585 entries). In its own dir the wasm build's true figures are `Cacheable calls:
-  1511 / 5020 (30.10%)`; the 70 % ccache calls uncacheable are the next question (the RUN now prints ccache's
-  verbose reasons), and the 2026-10-29 `47015 / 52217` figure was the shared root dir's cumulative count.
+  1511 / 5020 (30.10%)`; the next build restored the archive (`141M`) and hit 1411 of 3022 cacheable calls, and
+  ccache's verbose reasons say the "uncacheable" 70 % are emcc's own preprocessing calls (86 %) and multi-source
+  calls (13 %), not lost compiles. The step sets `CCACHE_NOHASHDIR=1` and mtime/ctime sloppiness so CMake's probe
+  dirs and a fresh clone's mtimes stop costing misses. The `47015 / 52217` figure was the shared root dir's count.
 
 ## 2026-10-29 — NVIDIA arm64, cross route phase D: the media consumers build against the SBSA target
 

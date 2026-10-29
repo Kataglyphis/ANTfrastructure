@@ -416,11 +416,12 @@ owner carries the breakage that costs.
       `ccache/onnxruntime-web-<ORT_VERSION>.tar.gz` in the shared S3 level when empty and stores it back when it
       grew (`sccache_s3_fetch`/`sccache_s3_store`); proved on a targeted amd64 build (2026-10-29 19:52): four
       flavors in 22 min, `ccache-s3| stored ccache/onnxruntime-web-v1.31.0.tar.gz (127M)`, fetched back from the
-      bucket on the host. In its own dir the build's true ccache figures are `Cacheable calls: 1511 / 5020
-      (30.10%)`: 70 % of emcc's calls are uncacheable to ccache (the RUN now prints `ccache -s -v`'s reasons;
-      `-flto` and multi-output calls are the suspects). Work: read the reasons on the next amd64 media chain and
-      lift what ccache's sloppiness or emcc's flags allow. Done when a media chain's web RUN logs `ccache-s3|
-      restored …` plus hits on a host whose mount was empty, and the cacheable share passes 60 %.
+      bucket on the host; the next targeted build restored it (`ccache-s3| restored … (141M)`) and hit 1411 of
+      3022 cacheable calls. The "70 % uncacheable" is not lost compiles: `ccache -s -v` says 86 % of those are
+      `Called for preprocessing` (emcc's own `-E` steps) and 13 % `Multiple source files`; the remaining misses
+      are CMake's probes in fresh temp dirs and fresh-clone mtimes, so the step sets `CCACHE_NOHASHDIR=1` and
+      mtime/ctime sloppiness. Done when a media chain's web RUN (an amd64 chain, since arm64 skips wasm) logs
+      `ccache-s3| restored …` and a hit share above 60 % of the cacheable calls.
 - [ ] **CON174 — image acceptance clones the cyclic submodules recursively** [S, ★]. `image-acceptance.py`'s
       consumer clones use `--recursive`; the ANTfrastructure → DocumANTation → awesome-beamer → ANTfrastructure
       cycle is finite but cost 29 GB and 15 min per receipt on 2026-10-28 (`logs/image-acceptance/*/consumers`).

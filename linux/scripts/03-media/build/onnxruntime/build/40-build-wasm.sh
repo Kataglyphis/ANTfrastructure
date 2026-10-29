@@ -56,6 +56,8 @@ _ORT_WASM_CCACHE_MARK=""
 if command -v ccache >/dev/null 2>&1 && mkdir -p "${CCACHE_DIR:-/var/cache/ccache}/onnxruntime-web" 2>/dev/null; then
   export CCACHE_DIR="${CCACHE_DIR:-/var/cache/ccache}/onnxruntime-web"
   export EM_COMPILER_WRAPPER="ccache"
+  # A fresh clone gives every header a new mtime and CMake's probes a new temp dir; neither changes the object.
+  export CCACHE_NOHASHDIR=1 CCACHE_SLOPPINESS="time_macros,include_file_mtime,include_file_ctime"
   info "EM_COMPILER_WRAPPER=ccache (emcc's clang calls go through ccache on ${CCACHE_DIR})"
   _ort_wasm_ccache_restore
   _ORT_WASM_CCACHE_MARK="$(mktemp)"

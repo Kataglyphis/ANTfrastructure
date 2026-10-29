@@ -66,6 +66,8 @@ t_assert_eq $'build:simd\nbuild:jsep\nbuild:asyncify\nbuild:jspi' "$(grep '^buil
 t_assert_eq "wrapper:ccache" "$(grep '^wrapper:' "${work}/events" | sort -u)" \
   "every pass runs emcc with EM_COMPILER_WRAPPER=ccache (the wasm RUN compiled 3857 objects uncached before 2026-10-29; sccache cannot parse emcc's -Xclang -iwithsysroot, CON173)"
 t_assert_eq "ccache_dir:${work}/ccache/onnxruntime-web" "$(grep '^ccache_dir:' "${work}/events" | sort -u)" "in its own ccache dir under the mount"
+t_assert_contains "$(cat "${STEP}")" 'export CCACHE_NOHASHDIR=1 CCACHE_SLOPPINESS="time_macros,include_file_mtime,include_file_ctime"' \
+  "a fresh clone's mtimes and CMake's probe dirs do not change an object (46.7 % hits on the second run before this, 2026-10-29)"
 t_assert_contains "${output}" "no ccache/onnxruntime-web-v1.31.0.tar.gz in the S3 level yet; this build fills it" "an empty dir asks the S3 level for the archive"
 t_assert_eq "0" "$(grep -c '^store:' "${work}/events")" "and with nothing compiled, nothing goes up"
 common="<--build_dir><${work}/build tree><--config><Release><--build_wasm><--parallel><3><--cmake_extra_defines><CMAKE_POLICY_VERSION_MINIMUM=3.5><--skip_tests><--disable_wasm_exception_catching><--disable_rtti><--allow_running_as_root>"
