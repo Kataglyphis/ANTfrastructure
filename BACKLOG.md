@@ -411,15 +411,20 @@ owner carries the breakage that costs.
       of every S3-wired RUN found one compile RUN with no cache at all: the WebAssembly ORT build (emcc, 3857
       objects, ~40 min). In source since 2026-10-29: `40-build-wasm.sh` exports `EM_COMPILER_WRAPPER` (emcc.py
       puts `config.COMPILER_WRAPPER` in front of every clang call) and the RUN mounts both caches and the S3
-      secret and drains. Done when the RUN logs `sccache-stats|` with hits on a rerun; if sccache marks emcc's
-      clang calls not cacheable, the reasons are in its debug log.
+      secret and drains. A non-amd64 target skips the wasm build by design (the amd64 lane fills the shared cache),
+      so the arm64 chain of 2026-10-29 only showed the mounts and the drain in place. Done when the next amd64 media
+      chain's RUN logs `EM_COMPILER_WRAPPER=` and `sccache-stats|` with hits; if sccache marks emcc's clang calls
+      not cacheable, the reasons are in its debug log.
 - [ ] **CON175 — the CUDA cross compiles bypass sccache; prove the fix on a chain** [S, ★★]. The arm64 nvidia
       media chain's ORT GPU RUN (2026-10-29) logged `3856 requests, 3210 hits, 0 misses, 36 errors, 609 not
       cacheable`: every C/C++ object hit, the 609 kernels ran uncached, the RUN's two hours. Cause, reproduced
       in the gpu image with `SCCACHE_LOG=debug`: sccache's nvcc parser reads `-target-dir sbsa-linux` as a second
       input file (`CannotCache(multiple input files)`); `--target-directory=sbsa-linux` parses and hits. In
-      source since 2026-10-29 (`cross-cuda.sh`, `verify-cuda-stack.sh`, OpenCV's `CUDA_NVCC_FLAGS`). Done when
-      a rerun of the RUN shows `Cache hits (CUDA)` above 90 % and the RUN takes under 30 min.
+      source since 2026-10-29 (`cross-cuda.sh`, `verify-cuda-stack.sh`, OpenCV's `CUDA_NVCC_FLAGS`). First run with
+      the flag (2026-10-29 14:25): `Cache misses (CUDA) 598`, `(CUBIN) 1188`, `(PTX) 1533`, `Non-cacheable calls 0`,
+      `L1 (s3): 3928 written, 0 failed` -- every kernel is cached now; the 609 "non-cacheable compilations" are
+      sccache's count of the outer nvcc calls whose sub-compilations it caches. Done when the NEXT rerun of the RUN
+      shows `Cache hits (CUDA)` above 90 % and the RUN takes under 30 min.
 - [ ] **CON174 — image acceptance clones the cyclic submodules recursively** [S, ★]. `image-acceptance.py`'s
       consumer clones use `--recursive`; the ANTfrastructure → DocumANTation → awesome-beamer → ANTfrastructure
       cycle is finite but cost 29 GB and 15 min per receipt on 2026-10-28 (`logs/image-acceptance/*/consumers`).
