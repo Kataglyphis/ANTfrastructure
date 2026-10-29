@@ -140,6 +140,10 @@ class H(http.server.BaseHTTPRequestHandler):
         with open(root + "/put", "w") as f:
             f.write("%s %s %s\n" % (self.path, self.headers.get("Authorization", ""), body.decode()))
         self.send_response(200); self.end_headers()
+    def do_GET(self):
+        if not self.path.endswith("/have.tgz"):
+            self.send_response(404); self.end_headers(); return
+        self.send_response(200); self.send_header("Content-Length", "9"); self.end_headers(); self.wfile.write(b"archive-9")
     def log_message(self, *a): pass
 srv = http.server.HTTPServer(("127.0.0.1", 0), H)
 print(srv.server_address[1], flush=True)
@@ -159,6 +163,12 @@ printf '[ERROR opendal::services] service=s3 name=sccache path=f/f/f/%s written=
 _out="$(SCCACHE_S3_SECRET_FILE="${WORK}/secret-s3" SCCACHE_DIR="${WORK}/disk" SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 3 0),$(level 'L1 (s3)' 1 2)]}}")"
 t_assert_contains "${_out}" "re-upload: ffff${_key:4:8} is not on the disk level" "a key the disk level evicted is named, not invented"
 t_assert_contains "${_out}" "re-uploaded 1 of 2 failed write(s)" "and the tally says so"
+t_case "sccache_s3_fetch and sccache_s3_store move one object of the shared level with the RUN's secret"
+_fetch() { SCCACHE_S3_SECRET_FILE="${WORK}/secret-s3" bash -c 'source "$1"; sccache_s3_fetch "$2" "$3"' _ "${LIB}" "$@" 2>&1; echo "rc=$?"; }
+t_assert_contains "$(_fetch ccache/have.tgz "${WORK}/got.tgz")" "rc=0" "a present object is fetched"
+t_assert_eq "archive-9" "$(cat "${WORK}/got.tgz" 2>/dev/null)" "byte for byte"
+t_assert_contains "$(_fetch ccache/missing.tgz "${WORK}/none.tgz")" "rc=2" "an absent one says 2 (HTTP 404), the caller's cue to fill it"
+t_assert_contains "$(SCCACHE_S3_SECRET_FILE="${WORK}/none" bash -c 'source "$1"; sccache_s3_store x "$2"' _ "${LIB}" "${WORK}/got.tgz" 2>&1; echo "rc=$?")" "rc=1" "no secret, no level: 1, nothing sent"
 kill "${_s3pid}" 2>/dev/null || true
 _out="$(SCCACHE_S3_SECRET_FILE="${WORK}/none" SCCACHE_DIR="${WORK}/disk" SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 2 0),$(level 'L1 (s3)' 1 1)]}}")"
 t_assert_contains "${_out}" "no S3 level in this RUN, so nothing to re-upload" "without the secret the drain only reports"

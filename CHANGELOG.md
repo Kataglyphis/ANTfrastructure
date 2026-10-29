@@ -54,8 +54,13 @@
   try_compile of the wasm configure (`18 unsupported compiler calls, 738 non-cacheable calls`, `Could NOT
   find Iconv`), proved on a targeted amd64 build of the `onnxruntime` stage; the same build with ccache
   compiled all four wasm flavors in 25 min and logged `ccache-stats| Cacheable calls: 47015 / 52217
-  (90.04%)`, `Hits: 12853`, `Misses: 34162` (the first fill). ccache is disk-level only, so this one RUN's
-  objects stay on the host's cache mount rather than in S3.
+  (90.04%)`, `Hits: 12853`, `Misses: 34162` (the first fill). Why sccache cannot take that seat, found with a
+  real emsdk: its clang parser refuses `-Xclang -iwithsysroot/include/fakesdl`, which emcc always passes
+  (`CannotCache(Can't handle UnknownFlag arguments with -Xclang …)`), so nothing emcc compiles could ever
+  reach it. The wasm step therefore keeps its own ccache dir (`/var/cache/ccache/onnxruntime-web`) and
+  moves it through the shared S3 level as one archive per ORT version (`ccache/onnxruntime-web-<ver>.tar.gz`):
+  an empty dir is restored from it, a grown dir is stored back (`sccache_s3_fetch`/`sccache_s3_store`, the
+  SigV4 helper with GET). `ccache-s3| restored …` / `stored …` are the RUN's lines.
 
 ## 2026-10-29 — NVIDIA arm64, cross route phase D: the media consumers build against the SBSA target
 

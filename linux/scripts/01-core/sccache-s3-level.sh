@@ -127,22 +127,22 @@ _sccache_s3_failure_reason() {
   printf 'sccache-drain| failed writes; %s says:\n%s\n' "${log}" "${lines:-nothing about levels or S3}" >&2
 }
 
-# <s3 path> <file> <NAME=value>...: one SigV4 PUT with the standard library (the images carry no S3 client); 0 on 2xx.
-_sccache_s3_put() {
-  env "${@:3}" python3 - "$1" "$2" <<'PY'
-import datetime, hashlib, hmac, os, sys, urllib.request
+# <PUT|GET> <s3 path> <file> <NAME=value>...: one SigV4 request with the standard library (the images carry no S3 client); 0 on 2xx, 2 on 404.
+_sccache_s3_request() {
+  env "${@:4}" python3 - "$1" "$2" "$3" <<'PY'
+import datetime, hashlib, hmac, os, sys, urllib.request, urllib.error
 env = os.environ
-path, name = sys.argv[1], sys.argv[2]
+method, path, name = sys.argv[1], sys.argv[2], sys.argv[3]
 endpoint = env["SCCACHE_ENDPOINT"].rstrip("/")
 if "://" not in endpoint:
     endpoint = ("https://" if env.get("SCCACHE_S3_USE_SSL", "true").lower() == "true" else "http://") + endpoint
 host = endpoint.split("://", 1)[1]
 region, bucket = env.get("SCCACHE_REGION") or "us-east-1", env["SCCACHE_BUCKET"]
-body = open(name, "rb").read()
+body = open(name, "rb").read() if method == "PUT" else b""
 now = datetime.datetime.now(datetime.timezone.utc)
 amz, day = now.strftime("%Y%m%dT%H%M%SZ"), now.strftime("%Y%m%d")
 digest = hashlib.sha256(body).hexdigest()
-canonical = "\n".join(["PUT", "/%s/%s" % (bucket, path), "", "host:%s" % host, "x-amz-content-sha256:%s" % digest, "x-amz-date:%s" % amz, "", "host;x-amz-content-sha256;x-amz-date", digest])
+canonical = "\n".join([method, "/%s/%s" % (bucket, path), "", "host:%s" % host, "x-amz-content-sha256:%s" % digest, "x-amz-date:%s" % amz, "", "host;x-amz-content-sha256;x-amz-date", digest])
 scope = "%s/%s/s3/aws4_request" % (day, region)
 to_sign = "\n".join(["AWS4-HMAC-SHA256", amz, scope, hashlib.sha256(canonical.encode()).hexdigest()])
 key = ("AWS4" + env["AWS_SECRET_ACCESS_KEY"]).encode()
@@ -150,15 +150,45 @@ for part in (day, region, "s3", "aws4_request"):
     key = hmac.new(key, part.encode(), hashlib.sha256).digest()
 auth = "AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=%s" % (
     env["AWS_ACCESS_KEY_ID"], scope, hmac.new(key, to_sign.encode(), hashlib.sha256).hexdigest())
-req = urllib.request.Request("%s/%s/%s" % (endpoint, bucket, path), data=body, method="PUT",
+req = urllib.request.Request("%s/%s/%s" % (endpoint, bucket, path), data=body if method == "PUT" else None, method=method,
                              headers={"x-amz-content-sha256": digest, "x-amz-date": amz, "Authorization": auth})
 try:
-    with urllib.request.urlopen(req, timeout=120) as r:
+    with urllib.request.urlopen(req, timeout=600) as r:
+        if method == "GET":
+            with open(name, "wb") as out:
+                while chunk := r.read(1 << 20):
+                    out.write(chunk)
         sys.exit(0 if 200 <= r.status < 300 else 1)
+except urllib.error.HTTPError as e:
+    print("%s: HTTP %s" % (path, e.code), file=sys.stderr)
+    sys.exit(2 if e.code == 404 else 1)
 except Exception as e:  # noqa: BLE001 -- the caller prints the path; one line of cause is enough
     print("%s: %s" % (path, e), file=sys.stderr)
     sys.exit(1)
 PY
+}
+
+# <s3 path> <file> <NAME=value>...: the PUT half, kept for its callers.
+_sccache_s3_put() {
+  _sccache_s3_request PUT "$@"
+}
+
+# <GET|PUT> <s3 path> <file>: one object of the shared level, with the RUN's secret; 1 without a level, 2 when a GET finds nothing.
+_sccache_s3_transfer() {
+  local -a env=()
+  sccache_s3_env env
+  [ "${#env[@]}" -gt 0 ] || return 1
+  _sccache_s3_request "$1" "$2" "$3" "${env[@]}"
+}
+
+# <s3 path> <file>: GET into <file>.
+sccache_s3_fetch() {
+  _sccache_s3_transfer GET "$@"
+}
+
+# <s3 path> <file>: PUT <file>.
+sccache_s3_store() {
+  _sccache_s3_transfer PUT "$@"
 }
 
 # A failed S3 write leaves the object on the disk level only (sccache does not retry); re-put each one the server log names, so every miss reaches the shared level.
