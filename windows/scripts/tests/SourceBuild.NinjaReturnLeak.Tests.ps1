@@ -22,15 +22,20 @@ Describe 'Ninja output never leaks into a used return value' {
         return $outer -is [AssignmentStatementAst] -or $outer -is [ReturnStatementAst]
     }
 
+    # Starts from the ninja call sites and indexes callers by name once: a scan per function timed out the CI shard.
     function Get-NinjaReturnLeak {
         param([hashtable]$Trees)
-        $calls = @($Trees.Values | ForEach-Object { $_.FindAll({ param($n) $n -is [CommandAst] }, $true) })
+        $callers = @{}
+        foreach ($call in @($Trees.Values | ForEach-Object { $_.FindAll({ param($n) $n -is [CommandAst] }, $true) })) {
+            $name = $call.GetCommandName()
+            if ($name) { if (-not $callers.ContainsKey($name)) { $callers[$name] = [System.Collections.Generic.List[object]]::new() }; $callers[$name].Add($call) }
+        }
         foreach ($label in ($Trees.Keys | Sort-Object)) {
-            foreach ($fn in $Trees[$label].FindAll({ param($n) $n -is [FunctionDefinitionAst] }, $true)) {
-                $leaks = @(Get-TestAstCommands -Ast $fn.Body -Name 'Invoke-NinjaBuildWithRetry' | Where-Object { -not (Test-OutputCaptured -Node $_ -Stop $fn) })
-                $returns = $fn.Body.Find({ param($n) $n -is [ReturnStatementAst] -and $n.Pipeline }, $true)
-                $kept = @($calls | Where-Object { $_.GetCommandName() -eq $fn.Name -and (Test-ReturnKept -Call $_) })
-                if ($leaks -and $returns -and $kept) { $leaks | ForEach-Object { "${label}:$($_.Extent.StartLineNumber): $($fn.Name)" } }
+            foreach ($site in @(Get-TestAstCommands -Ast $Trees[$label] -Name 'Invoke-NinjaBuildWithRetry')) {
+                $fn = Get-TestAstAncestor -Node $site -Type ([FunctionDefinitionAst]) -First
+                if (-not $fn -or (Test-OutputCaptured -Node $site -Stop $fn)) { continue }
+                if (-not $fn.Body.Find({ param($n) $n -is [ReturnStatementAst] -and $n.Pipeline }, $true)) { continue }
+                if (@($callers[$fn.Name] | Where-Object { $_ -and (Test-ReturnKept -Call $_) })) { "${label}:$($site.Extent.StartLineNumber): $($fn.Name)" }
             }
         }
     }

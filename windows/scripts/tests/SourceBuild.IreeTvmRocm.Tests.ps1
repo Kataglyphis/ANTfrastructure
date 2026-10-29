@@ -219,21 +219,7 @@ Describe 'Build-IreeFromSource: HIP dylib-name patch (IREE v3.11.0 dynamic_symbo
     }
 }
 
-Describe 'Build-IreeFromSource: device bitcode from the rocm layer' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:IreeScript -FunctionName 'Get-IreeRocmDeviceBitcodeArg')
-
-    It 'points IREE at the rocm layer''s ocml/ockl and refuses a missing file or a dropped option (mutation)' {
-        Invoke-InTestDir -Files @{ 'bc/ocml.bc' = 'x'; 'bc/ockl.bc' = 'x'; 'partial/ocml.bc' = 'x' } -Body {
-            param($d)
-            $f = Join-Path $d 'CMakeLists.txt'
-            [System.IO.File]::WriteAllText($f, $script:IreeRocmCMake)
-            $bc = Join-Path $d 'bc'
-            Assert-Equal "-DIREE_TARGET_BACKEND_ROCM_DEVICE_BC_PATH=$($bc -replace '\\', '/')" (Get-IreeRocmDeviceBitcodeArg -CMakeListsPath $f -BitcodeDir $bc) 'local bitcode, no download'
-            Assert-Throws { Get-IreeRocmDeviceBitcodeArg -CMakeListsPath $f -BitcodeDir (Join-Path $d 'partial') } 'ockl missing' -MessagePattern 'ockl\.bc missing'
-            [System.IO.File]::WriteAllText($f, ($script:IreeRocmCMake -replace 'set\(IREE_TARGET_BACKEND_ROCM_DEVICE_BC_PATH', 'set(SOMETHING_ELSE'))
-            Assert-Throws { Get-IreeRocmDeviceBitcodeArg -CMakeListsPath $f -BitcodeDir $bc } 'option gone' -MessagePattern 'no longer takes'
-        }
-    }
+Describe 'Build-IreeFromSource: device-bitcode plumbing' {
 
     It 'pins the same hash in versions.env, the media-tvm ARG and the driver map, and never in the merge' {
         $v = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')

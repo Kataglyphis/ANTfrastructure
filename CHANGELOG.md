@@ -168,6 +168,14 @@
   `GI_TYPELIB_PATH` and `LD_LIBRARY_PATH` (`riscv64_cross_strip_host_dirs`); `lib/multiarch` stays.
   `test-riscv64-cross.sh` and three `riscv64-cross.*` recipes prove it. No image re-keys.
 
+## 2026-10-29 — Two new Windows gates run within the Linux mutation shards
+
+- `SourceBuild.NinjaReturnLeak.Tests.ps1` scanned every function against every call and hit the
+  shard's 300 s timeout; it now starts at the ninja call sites with one caller index (213 s to 5.5 s).
+- The IREE device-bitcode test moves to `SourceBuild.IreeRocmBitcode.Tests.ps1`: the
+  `lib.iree-rocm-bitcode-*` recipes targeted `SourceBuild.IreeTvmRocm.Tests.ps1`, whose `cmd.exe`
+  and Windows-path cases fail on a Linux runner before any mutation.
+
 ## 2026-10-29 — The ROCm torch build caches its HIP kernels
 
 - `Build-TorchRocmFromSource.ps1` set only the C and CXX launchers, so ATen's 262 HIP-language

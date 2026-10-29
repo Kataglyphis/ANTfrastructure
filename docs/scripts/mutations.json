@@ -31277,7 +31277,7 @@
   "target": "windows/scripts/build/Build-IreeFromSource.ps1",
   "find": "$missing = @('ocml.bc', 'ockl.bc' | Where-Object",
   "replace": "$missing = @('ocml.bc' | Where-Object",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmRocm.Tests.ps1 -ResultFile logs/code-quality/iree-rocm-bitcode-both.json",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeRocmBitcode.Tests.ps1 -ResultFile logs/code-quality/iree-rocm-bitcode-both.json",
   "why": "IREE's rocm target links ocml and ockl into every HIP executable; a layer without ockl would fail only when a model compiles"
  },
  {
@@ -31285,7 +31285,7 @@
   "target": "windows/scripts/build/Build-IreeFromSource.ps1",
   "find": "-notmatch 'set\\(IREE_TARGET_BACKEND_ROCM_DEVICE_BC_PATH\\s'",
   "replace": "-notmatch 'set\\('",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmRocm.Tests.ps1 -ResultFile logs/code-quality/iree-rocm-bitcode-option.json",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeRocmBitcode.Tests.ps1 -ResultFile logs/code-quality/iree-rocm-bitcode-option.json",
   "why": "an IREE bump that drops the local-bitcode option would silently fall back to the deleted shark-infra download"
  },
  {
