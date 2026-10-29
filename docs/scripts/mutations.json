@@ -31263,5 +31263,13 @@
   "replace": "then lone=(); fi",
   "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
   "why": "a release whose artifacts input names one upload would collect nothing from it"
+ },
+ {
+  "id": "lib.tvm-minimal-llvm-ninja-off-the-return-value",
+  "target": "windows/scripts/build/Build-TvmFromSource.ps1",
+  "find": "-LogFile $llvmBuildLog -Install -InstallConfig 'Release' | Out-Host",
+  "replace": "-LogFile $llvmBuildLog -Install -InstallConfig 'Release'",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.NinjaReturnLeak.Tests.ps1 -ResultFile logs/code-quality/tvm-minimal-llvm-ninja.json",
+  "why": "the ROCm TVM branch returned ninja's whole log as its llvm-config path, and cmd.exe refused the resulting command line"
  }
 ]

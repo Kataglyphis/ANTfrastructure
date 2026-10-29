@@ -30,6 +30,7 @@ lives in [`failure-modes.md`](failure-modes.md).
 - [Never splat a string array of `-Param`-shaped tokens](#never-splat-a-string-array-of--param-shaped-tokens)
 - [Four more pwsh traps: bareword comma-attributes, switch-name collisions, glued parameter tokens, null env restores](#four-more-pwsh-traps-bareword-comma-attributes-switch-name-collisions-glued-parameter-tokens-null-env-restores)
 - [A variable set inside a scriptblock argument is gone after the call](#a-variable-set-inside-a-scriptblock-argument-is-gone-after-the-call)
+- [A function's native output becomes part of its return value](#a-functions-native-output-becomes-part-of-its-return-value)
 - [Windows stage scripts must end with an explicit `exit 0`](#windows-stage-scripts-must-end-with-an-explicit-exit-0)
 - [Production scripts run under `Set-StrictMode -Version Latest`](#production-scripts-run-under-set-strictmode--version-latest)
 
@@ -228,6 +229,16 @@ call turned `$vvlPrefix` into a child-scope local, and the arm64 merge died afte
 '$vvlPrefix' cannot be retrieved because it has not been set` (2026-10-28; amd64 never reaches that branch).
 Assign what the code after the call reads before the call. `Get-ScriptBlockScopeLeakViolation` is an AST trap
 in `Invoke-Lint.ps1`; it does not follow names across files, dot-sourced helpers or loop variables.
+
+### A function's native output becomes part of its return value
+
+Everything a function writes to the output stream is returned with its `return` value. A native tool or a
+helper that passes one through (`Invoke-NinjaBuildWithRetry`, `pip`) inside a function whose result a caller
+keeps must end in `| Out-Host`, or the caller receives an array. The ROCm TVM branch returned ninja's whole
+LLVM log as its `llvm-config` path, and `cmd.exe` refused the command line built from it (2026-10-29); the
+nvidia and CPU lanes find `llvm-config` on PATH and never build that LLVM. `SourceBuild.NinjaReturnLeak.Tests.ps1`
+fails a value-returning function that leaves `Invoke-NinjaBuildWithRetry` uncaptured while a caller keeps its
+result; it does not cover other native calls.
 
 ### Windows stage scripts must end with an explicit `exit 0`
 

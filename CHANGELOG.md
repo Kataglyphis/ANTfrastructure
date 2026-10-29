@@ -147,6 +147,15 @@
   `GI_TYPELIB_PATH` and `LD_LIBRARY_PATH` (`riscv64_cross_strip_host_dirs`); `lib/multiarch` stays.
   `test-riscv64-cross.sh` and three `riscv64-cross.*` recipes prove it. No image re-keys.
 
+## 2026-10-29 — The ROCm TVM branch reads its llvm-config path again
+
+- `Install-TvmMinimalLlvm` left `Invoke-NinjaBuildWithRetry`'s output on the pipeline, so the ROCm lane,
+  the only one that builds this LLVM, got ninja's log as its `llvm-config` path and `cmd.exe` refused it.
+  The build now ends in `| Out-Host`. `SourceBuild.NinjaReturnLeak.Tests.ps1` fails any value-returning
+  function that leaves ninja output uncaptured while a caller keeps its result;
+  `lib.tvm-minimal-llvm-ninja-off-the-return-value` proves it (`docs/windows-build-invariants.md`). The
+  Modules.Orchestrators duplication budget drops from 12 to 11.
+
 ## 2026-10-29 — The nvidia final stage copies its modules again
 
 - `Dockerfile.nvidia` bind-mounted `WindowsContainerImage.Bootstrap.psm1`, which base does not copy;
