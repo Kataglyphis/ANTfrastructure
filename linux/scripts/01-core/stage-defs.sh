@@ -33,7 +33,14 @@ if [ "${ENABLE_DEEPSTREAM:-false}" = "true" ] && [ "${CROSS_GPU_VARIANT}" != "nv
   return 1
 fi
 
-# <first_stage> <arches>: prints why a variant run must not start. docs/linux-accelerator-images.md#nvidia-gpu-build-linux
+# nvidia + arm64 target + amd64 build platform under CROSS_NVIDIA_SBSA=1: NVIDIA's cross-linux-sbsa packages make the gpu stage cross-buildable.
+cross_nvidia_sbsa_active() {
+  [ "${CROSS_GPU_VARIANT:-}" = "nvidia" ] && [ "${CROSS_NVIDIA_SBSA:-0}" = "1" ] \
+    && [ "${1:-}" = "arm64" ] && [ "${2:-}" = "amd64" ] || return 1
+  return 0
+}
+
+# <first_stage> <arches> [last_stage]: prints why a variant run must not start. docs/linux-accelerator-images.md#nvidia-gpu-build-linux
 cross_variant_refusal() {
   [ -n "${CROSS_GPU_VARIANT}" ] || return 0
   local v="${CROSS_GPU_VARIANT}" first="$1" arches="$2" a plat plat_arch
@@ -53,7 +60,11 @@ cross_variant_refusal() {
       return 0
     fi
     if [ "${a}" != "${plat_arch}" ]; then
-      printf 'the %s variant cannot cross-build %s on the %s build platform: the GPU stack is installed for, and compiled against, the build platform. Build %s natively.' "${v}" "${a}" "${plat}" "${a}"
+      if cross_nvidia_sbsa_active "${a}" "${plat_arch}"; then
+        # The cross route (phases C to E): gpu, media and android cross-build, and the package stage assembles the target's toolkit from the staged debs.
+        continue
+      fi
+      printf 'the %s variant cannot cross-build %s on the %s build platform: the GPU stack is installed for, and compiled against, the build platform. Build %s natively, or set CROSS_NVIDIA_SBSA=1 for the arm64 gpu stage.' "${v}" "${a}" "${plat}" "${a}"
       return 0
     fi
   done
@@ -234,7 +245,12 @@ cross_stage_build_args() {
       # ENABLE_TENSORRT=false keeps the CUDA EP without TensorRT (Jetson); TVM_USE_CUDA would otherwise inherit 0.
       append_optional_build_arg _csba_out ENABLE_TENSORRT "${ENABLE_TENSORRT:-}"
       append_optional_build_arg _csba_out TVM_USE_CUDA "${TVM_USE_CUDA:-}"
-      append_optional_build_arg _csba_out ENABLE_DEEPSTREAM "${ENABLE_DEEPSTREAM:-}"
+      # DeepStream is an amd64 payload (no SBSA runtime from NVIDIA); a foreign target gets it switched off, never the host's build.
+      if [ -n "${ENABLE_DEEPSTREAM:-}" ] && [ "${arch}" != "amd64" ]; then
+        append_optional_build_arg _csba_out ENABLE_DEEPSTREAM false
+      else
+        append_optional_build_arg _csba_out ENABLE_DEEPSTREAM "${ENABLE_DEEPSTREAM:-}"
+      fi
       # CUDA_MB_PER_CICC sizes the CUDA job count; merely exported, it never reaches the container.
       append_optional_build_arg _csba_out CUDA_MB_PER_CICC "${CUDA_MB_PER_CICC:-}"
       ;;

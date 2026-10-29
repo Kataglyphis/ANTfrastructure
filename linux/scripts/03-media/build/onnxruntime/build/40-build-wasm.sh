@@ -9,6 +9,13 @@ source "${SCRIPT_DIR}/lib/common.sh"
 parse_common_args "$@"
 detect_jobs
 
+# Emscripten puts this in front of every clang call (emcc.py, config.COMPILER_WRAPPER): the wasm RUN was the one compile RUN with no cache at all (CON173, 2026-10-29).
+if command -v compiler_cache_launcher >/dev/null 2>&1 && _ort_wasm_launcher="$(compiler_cache_launcher 2>/dev/null)" && [ -n "${_ort_wasm_launcher}" ]; then
+  export EM_COMPILER_WRAPPER="${_ort_wasm_launcher}"
+  info "EM_COMPILER_WRAPPER=${EM_COMPILER_WRAPPER} (emcc's clang calls go through the compiler cache)"
+fi
+unset _ort_wasm_launcher
+
 # wasm32 output ignores the target arch, so whichever arch finds the shared cache empty builds it for all.
 
 cd "${ORT_SRC_DIR}"

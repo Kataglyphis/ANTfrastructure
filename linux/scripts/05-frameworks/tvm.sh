@@ -22,6 +22,8 @@ source_module gcc.sh
 source_module vulkan.sh
 
 source_module cross-env.sh
+# The CUDA cross target (gpu stage, CROSS_NVIDIA_SBSA=1): tvm-config.sh's _tvm_emit_cuda_cross_args reads it.
+source_module cross-cuda.sh
 source_module qnn-sdk.sh
 
 # shellcheck disable=SC1091

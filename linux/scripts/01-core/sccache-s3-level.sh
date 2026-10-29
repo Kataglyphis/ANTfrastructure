@@ -8,16 +8,20 @@ _sccache_s3_log() {
   printf '[CACHE] %s\n' "$*" >&2
 }
 
-# <url>: 0 when its host:port takes a TCP connection within 2 s; a dead level costs the server its whole startup.
+# <url>: 0 when its host:port takes a TCP connection within 2 s on one of SCCACHE_S3_PROBE_TRIES tries (a WireGuard re-handshake dropped a whole stage's level on 2026-10-28).
 sccache_s3_endpoint_reachable() {
-  local rest="${1#*://}" host port
+  local rest="${1#*://}" host port try
   rest="${rest%%/*}"
   host="${rest%:*}"
   port="${rest##*:}"
   [ "${host}" != "${rest}" ] || port=80
   [ -n "${host}" ] && [ -n "${port}" ] || return 1
-  # shellcheck disable=SC2016 # expanded by the inner bash, from its arguments
-  timeout 2 bash -c ': >"/dev/tcp/$1/$2"' _ "${host}" "${port}" 2>/dev/null
+  for try in $(seq 1 "${SCCACHE_S3_PROBE_TRIES:-3}"); do
+    # shellcheck disable=SC2016 # expanded by the inner bash, from its arguments
+    timeout 2 bash -c ': >"/dev/tcp/$1/$2"' _ "${host}" "${port}" 2>/dev/null && return 0
+    [ "${try}" -ge "${SCCACHE_S3_PROBE_TRIES:-3}" ] || sleep 1
+  done
+  return 1
 }
 
 # <array-name>: fills it with NAME=value pairs for the server, or leaves it empty and says why.
@@ -43,7 +47,7 @@ sccache_s3_env() {
     fi
   done
   if ! sccache_s3_endpoint_reachable "${_s3_kv[SCCACHE_ENDPOINT]}"; then
-    _sccache_s3_log "sccache: the S3 level (${_s3_kv[SCCACHE_ENDPOINT]}) takes no TCP connection within 2 s -- this RUN caches on disk alone"
+    _sccache_s3_log "sccache: the S3 level (${_s3_kv[SCCACHE_ENDPOINT]}) takes no TCP connection within 2 s on ${SCCACHE_S3_PROBE_TRIES:-3} tries -- this RUN caches on disk alone"
     return 0
   fi
   for name in "${!_s3_kv[@]}"; do _s3_out+=("${name}=${_s3_kv[${name}]}"); done

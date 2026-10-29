@@ -398,6 +398,35 @@ owner carries the breakage that costs.
 
 ## Open — Linux image (all arches)
 
+- [ ] **CON172 — the sdk stage points the target multiarch `libstdc++.so` at the host's** [S, ★★]. Found 2026-10-29
+      on the first arm64 nvidia media build: `vulkan.sh`'s `_vulkan_setup_gcc_runtime` links `libstdc++.so` and
+      `libgcc_s.so` from every `LIBRARY_PATH` dir (the HOST's `/opt/gcc-16.2.0/lib64`) into
+      `/usr/lib/<target triplet>`, so the cross media images carry an x86-64 `libstdc++.so` there; lld rejects
+      it on any link line with an explicit `-lstdc++` (OpenCV's CUDA line), bfd only skips it. ffmpeg, GStreamer
+      and now OpenCV repin GCC's target library per build. Work: make the Vulkan step link only libraries whose
+      ELF machine matches the dir's arch, or skip the target dir under a cross build; drop the three repins once
+      a rebuilt sdk proves the link correct. Done when `file -L /usr/lib/aarch64-linux-gnu/libstdc++.so` in a
+      fresh `cross-sdk-arm64` says AArch64 and no consumer needs the pin.
+- [ ] **CON173 — `onnxruntime-web` compiles uncached; prove the wiring on a chain** [S, ★★]. The 2026-10-28 audit
+      of every S3-wired RUN found one compile RUN with no cache at all: the WebAssembly ORT build (emcc, 3857
+      objects, ~40 min). In source since 2026-10-29: `40-build-wasm.sh` exports `EM_COMPILER_WRAPPER` (emcc.py
+      puts `config.COMPILER_WRAPPER` in front of every clang call) and the RUN mounts both caches and the S3
+      secret and drains. Done when the RUN logs `sccache-stats|` with hits on a rerun; if sccache marks emcc's
+      clang calls not cacheable, the reasons are in its debug log.
+- [ ] **CON175 — the CUDA cross compiles bypass sccache; prove the fix on a chain** [S, ★★]. The arm64 nvidia
+      media chain's ORT GPU RUN (2026-10-29) logged `3856 requests, 3210 hits, 0 misses, 36 errors, 609 not
+      cacheable`: every C/C++ object hit, the 609 kernels ran uncached, the RUN's two hours. Cause, reproduced
+      in the gpu image with `SCCACHE_LOG=debug`: sccache's nvcc parser reads `-target-dir sbsa-linux` as a second
+      input file (`CannotCache(multiple input files)`); `--target-directory=sbsa-linux` parses and hits. In
+      source since 2026-10-29 (`cross-cuda.sh`, `verify-cuda-stack.sh`, OpenCV's `CUDA_NVCC_FLAGS`). Done when
+      a rerun of the RUN shows `Cache hits (CUDA)` above 90 % and the RUN takes under 30 min.
+- [ ] **CON174 — image acceptance clones the cyclic submodules recursively** [S, ★]. `image-acceptance.py`'s
+      consumer clones use `--recursive`; the ANTfrastructure → DocumANTation → awesome-beamer → ANTfrastructure
+      cycle is finite but cost 29 GB and 15 min per receipt on 2026-10-28 (`logs/image-acceptance/*/consumers`).
+      Work: clone each consumer with `--recurse-submodules=<the paths the smoke needs>` or depth-limited, and
+      remove the tree after the receipt. Done when a receipt's consumer tree stays under 5 GB and the directory
+      is gone afterwards.
+
 - [ ] **CON163 — every Linux compile reaches sccache; prove it on a chain** [S, ★★★]. In source since 2026-10-26
       ([`build-cache-tiers.md`](docs/build-cache-tiers.md#a-subproject-that-forces-its-own-launcher)): the Vulkan
       SDK RUN mounts both caches and pins its launcher, and ONNX Runtime, LiteRT and the riscv64 torch wheel pin
@@ -837,8 +866,12 @@ owner carries the breakage that costs.
         it falls back with `No devices detected that match the filter criteria`).
       - Still unproven on a device: a camera pipeline and a GPU execution provider. No `windows-11-arm`
         runner has either; the Snapdragon X's DirectML is the one adapter in reach.
-- [b] **CON31 — Variants that are not published** [L, ★]. Blocked on the next nvidia and rocm chains (the owner's
-      build host), and for arm64 on an owner decision. The owner chose on 2026-10-20: TensorRT 11 and the ORT TensorRT
+- [b] **CON31 — Variants that are not published** [L, ★]. `:latest-nvidia` and `:latest-rocm` (amd64) were
+      published on 2026-10-28 from this host (TensorRT 11, DeepStream, ROCm; two gates fixed on the way, CHANGELOG).
+      The owner reversed the arm64 decision on 2026-10-28: NVIDIA arm64 must build natively AND cross. Plan with
+      phases A-E in `logs/research/nvidia-arm64-native-and-cross.md` (local); phase C (the cross gpu stage,
+      `CROSS_NVIDIA_SBSA=1`) landed the same day, phases D (media CUDA consumers) and E (package stage) are next,
+      then A/B (native route first-class, manifest merge). Earlier decision for the record (2026-10-20): TensorRT 11 and the ORT TensorRT
       EP in `:latest-nvidia`, and a `:latest-rocm` that finds its ROCm and opens an AMD GPU; not the arm64 nvidia route.
       Both are in the source since 2026-10-21, hub f6771ee4 (`docs/linux-accelerator-images.md` § TensorRT 11,
       § Running it on an AMD GPU, § The GPU runtime gate). No image carries them yet.

@@ -172,7 +172,7 @@ _cross_build_append_sccache_s3_secret() {
     SCCACHE_BUCKET SCCACHE_ENDPOINT AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY || return 0
   endpoint="$(sed -n 's/^SCCACHE_ENDPOINT=//p' "${file}" | tail -n 1)"
   if ! sccache_s3_endpoint_reachable "${endpoint}"; then
-    warn "sccache S3: ${endpoint} takes no TCP connection from this host within 2 s -- building without the S3 level"
+    warn "sccache S3: ${endpoint} takes no TCP connection from this host within 2 s on ${SCCACHE_S3_PROBE_TRIES:-3} tries -- building without the S3 level"
     return 0
   fi
   info "sccache levels: disk -> s3 ${endpoint} (BuildKit secret sccache_s3 from ${file})"
@@ -609,11 +609,12 @@ cross_stage_assemble_runtime_helper_args() {
       export "${_arha_var}=${_arha_android_pin[$_arha_arch]}"
     done
   fi
-  # `nerdctl manifest create` resolves members from the registry, which --no-push never fills.
+  # `nerdctl manifest create` resolves members from the registry, which --no-push never fills; CROSS_RUNTIME_SKIP_MANIFEST=1 pushes the children and leaves the index alone (a new arch joins the published set in a later merge).
   if [ "${CROSS_NO_PUSH:-0}" = "1" ]; then
     _arha_out+=(--skip-manifest)
   else
     _arha_out+=(--push)
+    [ "${CROSS_RUNTIME_SKIP_MANIFEST:-0}" != "1" ] || _arha_out+=(--skip-manifest)
   fi
   if _bool_truthy "${USE_FAST_UBUNTU_MIRROR:-false}"; then
     _arha_out+=(--fast-ubuntu-mirror --fast-ubuntu-mirror-url "${FAST_UBUNTU_MIRROR_URL}")

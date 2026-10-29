@@ -233,7 +233,7 @@ _chain_resolve_final_image() {
 # A variant chain's refusals (stage-defs.sh cross_variant_refusal says why).
 _chain_validate_variant() {
   [ -n "${CROSS_GPU_VARIANT:-}" ] || return 0
-  local why; why="$(cross_variant_refusal "${FROM_STAGE}" "${TARGET_ARCHES}")"
+  local why; why="$(cross_variant_refusal "${FROM_STAGE}" "${TARGET_ARCHES}" "${TO_STAGE}")"
   [ -z "${why}" ] || err "${why}"
 }
 

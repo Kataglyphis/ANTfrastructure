@@ -363,7 +363,8 @@ ds_fix_layout() {
 ds_build() {
   ds_load_pins
   local problem tmp
-  problem="$(ds_arch_problem "$(dpkg --print-architecture)")"; [ -z "${problem}" ] || ds_die "${problem}"
+  # In a cross media build dpkg says amd64 while the image is the target's: judge TARGET_ARCH.
+  problem="$(ds_arch_problem "${TARGET_ARCH:-$(dpkg --print-architecture)}")"; [ -z "${problem}" ] || ds_die "${problem}"
   problem="$(ds_gate_problem)"; [ -z "${problem}" ] || ds_die "${problem}"
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/deepstream.XXXXXX")"
   ds_apt_install "${DS_BUILD_PACKAGES[@]}" "${DS_RUNTIME_PACKAGES[@]}"

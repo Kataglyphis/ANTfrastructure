@@ -10,6 +10,7 @@ cp "${TESTS_DIR}/../01-core/logging.sh" "${work}/lib/logging.sh"
 cat > "${work}/lib/common.sh" <<'STUB'
 parse_common_args() { :; }
 detect_jobs() { JOBS=3; }
+compiler_cache_launcher() { printf /launchers/sccache-launcher.sh; }
 source "$(dirname "${BASH_SOURCE[0]}")/logging.sh"
 err() { _log_emit ERROR 2 "$@"; exit 87; }
 STUB
@@ -20,6 +21,7 @@ for arg in "$@"; do
   case "$arg" in --use_jsep) pass=jsep ;; --use_webgpu) pass=asyncify ;; --enable_wasm_jspi) pass=jspi ;; esac
 done
 printf 'build:%s\n' "$pass" >> "$FIXTURE_ROOT/events"
+printf 'wrapper:%s\n' "${EM_COMPILER_WRAPPER:-unset}" >> "$FIXTURE_ROOT/events"
 printf '<%s>' "$@" > "$FIXTURE_ROOT/args.$pass"
 [ "$FIXTURE_FAIL_PASS" != "$pass" ] || exit 9
 mkdir -p "$BUILD_DIR/$WASM_CONFIG/nested space"
@@ -55,6 +57,8 @@ t_case "all passes retain ordered flags, flavor distinctions and artifact patter
 _wasm_case '' true 0 0
 t_assert_eq 0 "${status}" "${output}"
 t_assert_eq $'build:simd\nbuild:jsep\nbuild:asyncify\nbuild:jspi' "$(grep '^build:' "${work}/events")"
+t_assert_eq "wrapper:/launchers/sccache-launcher.sh" "$(grep '^wrapper:' "${work}/events" | sort -u)" \
+  "every pass runs emcc with EM_COMPILER_WRAPPER = the compiler cache launcher (the wasm RUN compiled 3857 objects uncached before 2026-10-29, CON173)"
 common="<--build_dir><${work}/build tree><--config><Release><--build_wasm><--parallel><3><--cmake_extra_defines><CMAKE_POLICY_VERSION_MINIMUM=3.5><--skip_tests><--disable_wasm_exception_catching><--disable_rtti><--allow_running_as_root>"
 simd='<--enable_wasm_simd><--enable_wasm_threads>'
 reduced="<--disable_ml_ops><--disable_generation_ops><--disable_types><string><float4><float8><optional><sparsetensor><--include_ops_by_config><${work}/source tree/onnxruntime/wasm/reduced_types.config><--enable_reduced_operator_type_support>"

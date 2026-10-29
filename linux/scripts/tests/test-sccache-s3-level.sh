@@ -58,6 +58,10 @@ out="$(SCCACHE_S3_SECRET_FILE="${WORK}/secret" _env_of 1)"
 t_assert_contains "${out}" "takes no TCP connection within 2 s"
 t_assert_eq "" "$(printf '%s\n' "${out}" | grep '=' || true)" "an unreachable level still produced variables"
 
+t_case "the TCP probe retries before a stage loses its S3 level"
+t_assert_contains "$(t_fn_src "${LIB}" sccache_s3_endpoint_reachable)" 'for try in $(seq 1 "${SCCACHE_S3_PROBE_TRIES:-3}")' \
+  "one 2 s connect lost a stage's level during a WireGuard re-handshake (2026-10-28)"
+
 t_case "the TCP probe tells a listening port from a closed one"
 port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')"
 python3 -c 'import socket,sys,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1",int(sys.argv[1]))); s.listen(4); time.sleep(20)' "${port}" &

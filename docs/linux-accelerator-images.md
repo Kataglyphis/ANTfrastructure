@@ -394,6 +394,66 @@ USB-camera object detection at 30 fps with 13 ms GPU inference.
   lane on the amd64 host, which does not exist yet (`BACKLOG.md` CON31: no arm64
   route).
 
+### Cross from the amd64 host (SBSA), phases C and D: the gpu stage and the media consumers
+
+Since 2026-10-28 `CROSS_NVIDIA_SBSA=1` lets the nvidia chain cross-build the **arm64 gpu
+stage** on the amd64 host, from NVIDIA's `ubuntu2604/cross-linux-sbsa` packages:
+
+```bash
+CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1 bash linux/scripts/build-cross-chain.sh --target-arches arm64 --only gpu
+CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1 bash linux/scripts/build-cross-stage.sh --stage gpu --arch arm64
+```
+
+What the stage installs beside the host CUDA (`install-cuda-stack.sh`, `install-tensorrt.sh`),
+every step logged and gated:
+
+| Piece | Source | Where it lands |
+|---|---|---|
+| CUDA 13.4 target (cudart, math libs, headers) | `cuda-cross-sbsa-13-4` and the `lib*-cross-sbsa-13-4` set | `/usr/local/cuda-13.4/targets/sbsa-linux` |
+| cuDNN target, pinned to `CUDNN_VERSION` | `libcudnn9-cross-sbsa-cuda-13` | `/usr/lib/aarch64-linux-gnu`; the deb ships `.so.9.X.Y` and `cudnn*_v9.h` only, so the stage adds the `.so.9`/`.so` links and `cudnn*.h` |
+| TensorRT target, the host's twelve packages as `-cross-sbsa` | `libnvinfer11-cross-sbsa` … | `/usr/lib/aarch64-linux-gnu`, farmed into `/usr/local/tensorrt-sbsa-linux/{include,lib}` |
+| The target's shared runtime: cudart, nvrtc, nvtx, cupti, cuBLAS, cuFFT, cuRAND, cuSOLVER, cuSPARSE, NPP, nvjpeg, nvjitlink, nvfatbin, the `nvcc` set, NCCL (19 debs; the cross debs carry the math libs as link stubs and static archives only, and NCCL/nvcc have no cross package) | the `sbsa` repo's arm64 debs at the HOST's versions, `apt-get download` + `dpkg-deb -x` (`cuda_cross_target_runtime_packages`) | `/opt/cuda-target/arm64/` (a staging root for the package stage) |
+
+Gates: every target ELF is AArch64 (`cross ELF gate: 83 target ELF files, all AArch64`;
+only the GPU libs are judged in the multiarch dir, where binutils' `bfd-plugins/libdep.so`
+is legitimately x86-64), the cross TensorRT's `libnvinfer` is AArch64, and `verify-cuda-stack.sh`
+cross-compiles a kernel device-less with `nvcc -ccbin aarch64-linux-gnu-g++ -target-dir sbsa-linux`
+and checks the object is AArch64. The stage writes `/usr/local/cuda/cross-target.env`
+(`CUDA_CROSS_TARGET_DIR`, `_ARCH`, `_TRIPLET`, `_STAGING`) for later RUNs and stages.
+
+**Phase D (2026-10-29): the media consumers.** `cross-cuda.sh` is opt-in (`source_module
+cross-cuda.sh` in the ORT common library, `build-opencv.sh`, `build-ffmpeg.sh`, `tvm.sh`;
+`cross-env.sh` stays a pure aggregator). Under an active cross build with `cross-target.env`
+present, `cuda_cross_load` exports the target dir, triplet, staging root, stub `libcuda`,
+cuDNN and TensorRT roots, `CUDAHOSTCXX`, and for CMake's classic `FindCUDA` the two
+environment variables it reads when cross-compiling, `CUDA_TOOLKIT_ROOT` and `CUDA_LIB_PATH`
+(the stubs dir). `append_cmake_cuda_cross_args` adds `CMAKE_CUDA_COMPILER`,
+`CMAKE_CUDA_HOST_COMPILER`, `CUDAToolkit_ROOT` and the stub `CUDA_CUDA_LIBRARY`; OpenCV also
+passes `CUDA_TOOLKIT_TARGET_DIR` and `CUDA_NVCC_FLAGS=-target-dir sbsa-linux`, TVM points
+`USE_CUDA`/`USE_CUDNN` at the target roots, ffmpeg takes the target include and lib dirs.
+Every consumer links the math libraries from `lib/stubs`; the shared runtime the image ships is
+the staged set above. Two cross-link traps the first real build found: the sdk stage's Vulkan
+step leaves `/usr/lib/<triplet>/libstdc++.so` pointing at the HOST's library (OpenCV repins
+GCC's target one, like ffmpeg and GStreamer), and Meson derives rustc's linker from the `c`
+entry, so with the sccache launcher list the Meson files also set `rust_ld = '<cc>'`.
+Proved on the amd64 host: `onnxruntime_gpu-1.31.0-…-linux_aarch64.whl`,
+`onnxruntime_genai_cuda-0.17.0-…-linux_aarch64.whl`, OpenCV `NVIDIA CUDA: YES`, `cuDNN: YES`.
+
+**Phase E (2026-10-29): the package stage.** `copy-media-payloads.sh` reads the artifact's
+`cross-target.env`; when it names the image's arch, `copy_cuda_payload` assembles the target's
+`/usr/local/cuda-X.Y` from the cross debs' `targets/sbsa-linux` (headers, link stubs, static
+archives) under the staged sbsa debs (`bin/nvcc`, `nvvm`, the shared math runtime, NCCL), ships
+cuDNN, NCCL and TensorRT from the target multiarch dir only, and reads every shipped ELF's
+machine (`CUDA payload arch gate: N ELF files, 0 not the target's`; a host binary fails the copy).
+The chain no longer stops at android: `CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1 … --from-stage
+runtime --target-arches arm64` runs the runtime lane (base, package, torch wrapper with the
+`cu130` aarch64 wheels, smokes under QEMU; `setup-rootless-binfmt.sh --arches arm64` registers the
+emulator without sudo). A non-amd64 package gets `ENABLE_DEEPSTREAM=false`, as its media stage did.
+`CROSS_RUNTIME_SKIP_MANIFEST=1` pushes the children and leaves `:latest-nvidia` alone: the
+completeness gate refuses an arm64-only index against the published amd64 one, so joining both
+arches in one index is a separate merge step (the research plan's phase B).
+The first local cross gpu stage took 35 min on 2026-10-28, +~5 GB of debs; with the runtime staging ~50 min.
+
 ## DeepStream (nvidia variant)
 
 > **On in every amd64 nvidia build, and never in `:latest` or `:latest-rocm`.** Since

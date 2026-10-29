@@ -1685,7 +1685,9 @@ layer:
 - `_cross_build_append_sccache_s3_secret` (`cross-stage-build.sh`) passes the host's
   `~/.config/kataglyphis/sccache-s3.env` as `--secret id=sccache_s3,src=…` when it is mode 600,
   names the bucket, the endpoint and both key halves, and the endpoint takes a TCP connection
-  within 2 s. Otherwise it warns, names why, and the stage builds on disk alone. Each stage's
+  within 2 s on one of `SCCACHE_S3_PROBE_TRIES` (3) tries, a second apart; one try lost a whole
+  stage's level to a WireGuard re-handshake on 2026-10-28. Otherwise it warns, names why, and
+  the stage builds on disk alone. Each stage's
   log says `sccache levels: disk -> s3 <endpoint>`. `KATAGLYPHIS_SCCACHE_S3=off` turns it off
   for a run, and `KATAGLYPHIS_SCCACHE_S3_FILE` names another file. The runtime lane's wrapper
   build (`_runtime_build_wrapper`, `runtime-build-fns.sh`) calls it too, since 2026-10-21: before,

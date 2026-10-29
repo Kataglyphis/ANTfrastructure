@@ -9,6 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../core/common.sh"
 media_common_init "${SCRIPT_DIR}"
 install_warn_trap
+# The CUDA cross target (gpu stage, CROSS_NVIDIA_SBSA=1): _opencv_cmake_cuda_opts reads it under cross_build_is_active.
+source_module cross-cuda.sh
 # shellcheck source=opencv-ort.sh
 source "${SCRIPT_DIR}/opencv-ort.sh"
 # shellcheck source=../../ort-provenance.sh
@@ -378,6 +380,14 @@ _opencv_cmake_core_opts() {
     fi
 }
 
+_opencv_pin_available() {
+    command -v pin_target_libstdcxx
+}
+
+_opencv_pin_target_libstdcxx() {
+    pin_target_libstdcxx "$(cross_target_arch)"
+}
+
 _opencv_cmake_cross_opts() {
     local -n _opencv_cmake_cross_opts_result="$1"
     local target_zlib_include="$2" target_zlib_library="$3" target_shared_include_fallback="$4"
@@ -387,6 +397,9 @@ _opencv_cmake_cross_opts() {
     fi
 
     if cross_build_is_active; then
+        # The sdk stage leaves /usr/lib/<triplet>/libstdc++.so pointing at the host's; the CUDA link line's explicit -lstdc++ under lld takes it (chain 4, 2026-10-29).
+        declare -F media_pin_target_libstdcxx_if_available >/dev/null || { printf 'ERROR: runtime pinning requires media_pin_target_libstdcxx_if_available from media common.sh\n' >&2; return 1; }
+        media_pin_target_libstdcxx_if_available _opencv_pin_available _opencv_pin_target_libstdcxx
         # BOTH: the target sysroot lives under /usr, while generated artifacts stay in the build tree.
         _opencv_cmake_cross_opts_result+=("-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH")
         _opencv_cmake_cross_opts_result+=("-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH")
@@ -529,7 +542,12 @@ _opencv_cmake_cuda_opts() {
         fi
 
         # Explicitly provide the CUDA library stub so we can build without a GPU present
-        if [ -f "/usr/local/cuda/lib64/stubs/libcuda.so" ]; then
+        if command -v cuda_cross_active >/dev/null 2>&1 && cuda_cross_active; then
+            # Stub, -ccbin, cuDNN root; OpenCV's classic FindCUDA knows only Tegra's aarch64-linux when cross-compiling, so the sbsa target dir and nvcc's target directory are named outright (2026-10-28).
+            append_cmake_cuda_cross_args _ocmcd_out || return 1
+            _ocmcd_out+=("-DCUDA_TOOLKIT_TARGET_DIR=${CUDA_CROSS_TARGET_ROOT}" "-DCUDA_NVCC_FLAGS=--target-directory=${CUDA_CROSS_TARGET_DIR}")
+            _ocmcd_out+=("-DCUDNN_LIBRARY=${CUDA_CROSS_CUDNN_HOME}/lib/libcudnn.so" "-DCUDNN_INCLUDE_DIR=${CUDA_CROSS_CUDNN_HOME}/include")
+        elif [ -f "/usr/local/cuda/lib64/stubs/libcuda.so" ]; then
             _ocmcd_out+=("-DCUDA_CUDA_LIBRARY=/usr/local/cuda/lib64/stubs/libcuda.so")
         elif [ -f "/usr/local/cuda/targets/x86_64-linux/lib/stubs/libcuda.so" ]; then
             _ocmcd_out+=("-DCUDA_CUDA_LIBRARY=/usr/local/cuda/targets/x86_64-linux/lib/stubs/libcuda.so")

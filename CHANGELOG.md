@@ -13,6 +13,90 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-29 — NVIDIA arm64, cross route phase E: the package stage assembles the target's toolkit
+
+- **`copy-media-payloads.sh` is target-aware.** When the artifact's `cross-target.env` names the image's
+  arch, `copy_cuda_payload` ships the cross debs' `targets/sbsa-linux` (headers, link stubs, static
+  archives) overlaid with the staged sbsa debs (`bin/nvcc`, `nvvm`, the shared math runtime, NCCL) and
+  nothing of the host toolkit (`bin`, `nvvm`, `targets/x86_64-linux`); cuDNN, NCCL and TensorRT come
+  from the TARGET multiarch dir only, where the old `*-linux-gnu` globs would have shipped the host's
+  x86-64 copies beside them. A gate reads every shipped ELF's machine and fails the copy on a foreign
+  one (`CUDA payload arch gate: N ELF files, 0 not the target's`). `Dockerfile.package` hands the RUN
+  `TARGET_ARCH`; `test-cuda-runtime-payload.sh` has the cross fixture (54 assertions).
+- **The runtime lane follows.** `cross_variant_refusal` no longer stops a `CROSS_NVIDIA_SBSA=1` chain
+  at android; `append_runtime_accelerator_build_args` takes the arch and hands a non-amd64 package
+  `ENABLE_DEEPSTREAM=false` as the media stage already did (its artifact has no `/opt/nvidia/deepstream`);
+  `CROSS_RUNTIME_SKIP_MANIFEST=1` pushes the per-arch children and leaves the published index alone, since
+  the completeness gate rightly refuses an arm64-only `:latest-nvidia` against the published amd64 one.
+  The merge of both arches into one index is the next step (the research plan's phase B).
+  Proved on the amd64 host the same morning (chain 8, exit 0, 2 h under QEMU): `cross CUDA payload: sbsa-linux
+  headers and stubs, the staged arm64 runtime, nvcc and NCCL`, `CUDA payload arch gate: 849 ELF files, 0 not the
+  target's`, the package and wrapper smokes `0 failure(s)` with `GPU-RUNTIME: the ORT TensorRT EP loads TensorRT 11`,
+  torch `2.14.1+cu130` and torchvision `0.29.1+cu130` matching the pins; `:latest-nvidia-arm64` is pushed.
+- **Two sccache holes closed in source.** The CUDA cross compiles ran uncached (`3856 requests, 3210 hits,
+  609 not cacheable` in the arm64 ORT GPU RUN, the RUN's two hours): sccache's nvcc parser reads
+  `-target-dir X` as a second input file; `cross-cuda.sh`, `verify-cuda-stack.sh` and OpenCV now pass
+  `--target-directory=X`, which parses and hits (reproduced in the gpu image, CON175). And `onnxruntime-web`
+  was the one compile RUN with no cache at all: `40-build-wasm.sh` exports `EM_COMPILER_WRAPPER` (emcc puts
+  it in front of every clang call) and the RUN mounts both caches and the S3 secret and drains (CON173).
+  Both prove themselves on the next chain.
+
+## 2026-10-29 — NVIDIA arm64, cross route phase D: the media consumers build against the SBSA target
+
+- **The gpu stage stages the target's whole CUDA runtime.** NVIDIA's `lib*-cross-sbsa` debs carry
+  cuBLAS, cuFFT, cuRAND, cuSOLVER, cuSPARSE and NPP as link stubs (`lib/stubs/lib*.so`) and static
+  archives only; the consumers link the stubs, but the arm64 image needs the shared libraries.
+  `cuda_cross_target_runtime_packages` lists the 19 sbsa-repo debs (cudart, nvrtc, nvtx, cupti, the
+  six math libs, nvjpeg, nvjitlink, nvfatbin, the nvcc set, NCCL) the stage downloads at the host's
+  versions into `/opt/cuda-target/arm64`; the ELF gate now judges 83 target files. `verify-cuda-stack.sh`
+  looks for the stubs and the staged `libcublas.so.*`, not for dev links that never existed (a wrong
+  check of mine failed the strict stage once).
+- **`cross-cuda.sh`** (opt-in: ORT, GenAI, OpenCV, TVM, ffmpeg source it) reads `cross-target.env` and
+  exports what the three CUDA detections need. CMake's CUDA language gets `CMAKE_CUDA_HOST_COMPILER`
+  and `-target-dir sbsa-linux`; CMake's classic `FindCUDA` (OpenCV, `ENABLE_CUDA_FIRST_CLASS_LANGUAGE`
+  off) refuses to derive the toolkit from `nvcc` when cross-compiling and takes `ENV CUDA_TOOLKIT_ROOT`,
+  `ENV CUDA_LIB_PATH` (the stubs) and `CUDA_TOOLKIT_TARGET_DIR` instead; TVM's `USE_CUDA`/`USE_CUDNN`
+  take the target roots. Results on the amd64 host: `onnxruntime_gpu-1.31.0-cp315-cp315t-linux_aarch64.whl`
+  (all artifact checks), `onnxruntime_genai_cuda-0.17.0-…-linux_aarch64.whl` (every ELF arm64; Cargo's
+  build scripts needed `LIBRARY_PATH` unset in both GenAI branches), OpenCV `NVIDIA CUDA: YES … cuDNN: YES`.
+- **Two cross-link traps the first real media build found.** The sdk stage's Vulkan step links GCC's
+  runtime from `LIBRARY_PATH` into the target multiarch dir, so `/usr/lib/aarch64-linux-gnu/libstdc++.so`
+  is the host's x86-64 library; the CUDA link line's explicit `-lstdc++` under lld takes it where bfd
+  would skip it. OpenCV now repins GCC's target libstdc++ as ffmpeg and GStreamer already did. And
+  Meson derives rustc's linker from the `c` entry, so the 2026-10-28 `['<launcher>', '<cc>']` form became
+  `-C linker=<launcher>`, whose response file sccache rejects (`gst-plugins-rs … cannot compile programs`,
+  reproduced in the image); both Meson files now set `rust_ld = '<cc>'`. Re-keys the Meson RUNs once more.
+- Still refused past `--to-stage android` for a cross arm64 target: phase E (package stage) follows.
+
+## 2026-10-28 — sccache reaches Meson's C compiles, and the S3 probe retries
+
+- **GStreamer's C and C++ compiles bypassed sccache.** The RUN had the mounts, the secret and the
+  drain, but Meson ignores `CMAKE_*_COMPILER_LAUNCHER` and its cross and native files named the bare
+  compilers: the amd64 media chain's GStreamer RUN showed 1869 Rust hits and 150 C/C++ requests for
+  thousands of C objects. `cross-meson.sh` now writes `c = ['<launcher>', '<cc>']` (Meson runs the list
+  as one command) in the cross file, the cross build's native file, and a new cache-only native file
+  that `append_meson_native_flags` emits for NATIVE builds, so GStreamer and libcamera get it on every
+  arch (`test-meson-files.sh`). Re-keys every Meson RUN once.
+- **The S3 endpoint probe retries.** `sccache_s3_endpoint_reachable` tries `SCCACHE_S3_PROBE_TRIES` (3)
+  times, a second apart; a single 2 s connect dropped the arm64 gpu stage's level during a WireGuard
+  re-handshake. Both probe sites (RUN and chain) name the tries in their warning.
+- Audit of every stage log of the day: all 23 S3-wired RUNs drained with 0 failed uploads; the only
+  compile RUN with no cache at all is `onnxruntime-web` (emcc, 3857 objects), an open item.
+
+## 2026-10-28 — NVIDIA arm64, cross route phase C: the gpu stage builds on the amd64 host
+
+- `CROSS_NVIDIA_SBSA=1` lifts the "cannot cross-build arm64" refusal for the nvidia gpu stage and
+  nothing after it (`stage-defs.sh` `cross_nvidia_sbsa_active`; both entry points pass the last
+  stage). `install-cuda-stack.sh` pins the cross cuDNN to `CUDNN_VERSION`, adds the `.so.9`/`.so`
+  and `cudnn*.h` links the -dev package would have provided, stages the target's own NCCL and nvcc
+  debs at the host's versions under `/opt/cuda-target/arm64`, and gates every target ELF as AArch64.
+  `install-tensorrt.sh` installs the twelve `-cross-sbsa` twins into `/usr/local/tensorrt-sbsa-linux`;
+  `verify-cuda-stack.sh` cross-compiles a kernel with `-ccbin aarch64-linux-gnu-g++ -target-dir sbsa-linux`.
+  Proved locally: `cross ELF gate: 51 target ELF files, all AArch64`, `TensorRT cross: 11.4.0.106-1+cuda13.4
+  installed (12 packages)`, `nvcc cross compile … AArch64 object`
+  (`docs/linux-accelerator-images.md` § Cross from the amd64 host). Phases D/E (media consumers,
+  package stage) follow; the research plan is the owner's 2026-10-28 decision for both routes.
+
 ## 2026-10-28 — the first GPU chains after TensorRT 11: two gates that only a real build could trip
 
 - **DeepStream linked the image's TensorRT 11.** `deepstream.sh` put its TensorRT 10 build SDK on
