@@ -168,6 +168,12 @@
   `GI_TYPELIB_PATH` and `LD_LIBRARY_PATH` (`riscv64_cross_strip_host_dirs`); `lib/multiarch` stays.
   `test-riscv64-cross.sh` and three `riscv64-cross.*` recipes prove it. No image re-keys.
 
+## 2026-10-29 — The ROCm torch build caches its HIP kernels
+
+- `Build-TorchRocmFromSource.ps1` set only the C and CXX launchers, so ATen's 262 HIP-language
+  objects compiled uncached on every rocm run. It now sets `CMAKE_HIP_COMPILER_LAUNCHER` too;
+  `lib.torch-rocm-hip-launcher` proves the test sees it (`docs/build-cache-tiers.md`).
+
 ## 2026-10-29 — IREE's rocm target takes its device bitcode from TheRock
 
 - shark-infra/amdgpu-device-libs, where IREE v3.12.0 downloads ocml/ockl, returns 404. The rocm

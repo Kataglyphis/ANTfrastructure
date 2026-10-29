@@ -985,6 +985,11 @@ Measured with clang 21.1 for `gfx90a` and `gfx1100` (2026-10-17):
 - No AMD GPU here ran the code, which is why HIP has its own switch: `ENABLE_SCCACHE_HIP=0`
   takes it out without touching nvcc.
 
+On the Windows rocm lane llama.cpp compiles its HIP sources as CXX, so the CXX launcher covers
+them, but PyTorch builds ATen's kernels as CMake's HIP language: `Build-TorchRocmFromSource.ps1`
+sets `CMAKE_HIP_COMPILER_LAUNCHER` beside C and CXX. Without it, 262 of the 2695 objects compiled
+uncached on every run (2026-10-29).
+
 #### **cross-machine tier** (`SCCACHE_MULTILEVEL_CHAIN`, webdav L2)
 
 Out of scope for this document. Note only that the mechanism is real and version-gated: on an older sccache the chain variable is **ignored silently**, which is exactly the failure shape this repo keeps eliminating — so it would need a pinned sccache and a hit-rate assertion before it could be considered on the Linux lane.

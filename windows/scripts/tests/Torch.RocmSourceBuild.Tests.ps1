@@ -119,6 +119,8 @@ Describe 'Build-TorchRocmFromSource: the ROCm loader and the build env' {
         Assert-False $e.Contains('CMAKE_CXX_COMPILER_LAUNCHER') 'no sccache unless configured'
         $s = Get-TorchRocmTorchEnv -Common $common -BuildVersion 'x' -Release '10.0.0' -Jobs 1 -Sccache
         Assert-Equal 'sccache' $s['CMAKE_CXX_COMPILER_LAUNCHER'] 'sccache when configured'
+        Assert-Equal 'sccache' $s['CMAKE_HIP_COMPILER_LAUNCHER'] 'the HIP kernels go through sccache too'
+        Assert-False $e.Contains('CMAKE_HIP_COMPILER_LAUNCHER') 'no HIP launcher unless configured'
         Assert-Equal 1 $common.Count 'the common env is copied, never changed'
     }
 

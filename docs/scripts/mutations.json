@@ -31287,5 +31287,13 @@
   "replace": "-notmatch 'set\\('",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmRocm.Tests.ps1 -ResultFile logs/code-quality/iree-rocm-bitcode-option.json",
   "why": "an IREE bump that drops the local-bitcode option would silently fall back to the deleted shark-infra download"
+ },
+ {
+  "id": "lib.torch-rocm-hip-launcher",
+  "target": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+  "find": "foreach ($lang in 'C', 'CXX', 'HIP')",
+  "replace": "foreach ($lang in 'C', 'CXX')",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Torch.RocmSourceBuild.Tests.ps1 -ResultFile logs/code-quality/torch-rocm-hip-launcher.json",
+  "why": "without the HIP launcher the 262 ATen HIP kernels of the ROCm torch build compiled uncached on every run"
  }
 ]

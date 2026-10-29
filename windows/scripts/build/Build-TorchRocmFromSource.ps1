@@ -101,7 +101,8 @@ function Get-TorchRocmTorchEnv {
     $vars['BUILD_TEST'] = '0'
     $vars['PYTORCH_BUILD_VERSION'] = $BuildVersion; $vars['PYTORCH_BUILD_NUMBER'] = '1'
     $vars['PYTORCH_EXTRA_INSTALL_REQUIREMENTS'] = "rocm[libraries]==$Release"
-    if ($Sccache) { $vars['CMAKE_C_COMPILER_LAUNCHER'] = 'sccache'; $vars['CMAKE_CXX_COMPILER_LAUNCHER'] = 'sccache' }
+    # ATen's kernels build as CMake's HIP language, which takes neither the C nor the CXX launcher.
+    if ($Sccache) { foreach ($lang in 'C', 'CXX', 'HIP') { $vars["CMAKE_${lang}_COMPILER_LAUNCHER"] = 'sccache' } }
     return $vars
 }
 
