@@ -165,6 +165,8 @@ ls -alh "${WASM_OUTPUT_DIR}" || true
 # The RUN's measurement, as sccache-stats| is for the other RUNs; then the dir goes up.
 if [ -n "${EM_COMPILER_WRAPPER:-}" ]; then
   ccache -s 2>/dev/null | grep -E "Hits|Misses|Cacheable|Uncacheable" | sed 's/^/ccache-stats| /' || true
+  # 70 % of emcc's calls were uncacheable on 2026-10-29; the verbose breakdown names why (CON173).
+  ccache -s -v 2>/dev/null | sed -n '/^Uncacheable/,/^[A-Z]/p' | grep -E "^\s+[A-Za-z]" | sed 's/^/ccache-stats|   why uncacheable: /' || true
   _ort_wasm_ccache_store
   rm -f "${_ORT_WASM_CCACHE_MARK}"
 fi

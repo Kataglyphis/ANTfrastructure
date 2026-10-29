@@ -414,19 +414,13 @@ owner carries the breakage that costs.
       script it even failed the wasm configure (2026-10-29). In source since 2026-10-29: `40-build-wasm.sh`
       exports `EM_COMPILER_WRAPPER=ccache` in its own dir `/var/cache/ccache/onnxruntime-web`, restores it from
       `ccache/onnxruntime-web-<ORT_VERSION>.tar.gz` in the shared S3 level when empty and stores it back when it
-      grew (`sccache_s3_fetch`/`sccache_s3_store`); proved on a targeted amd64 build: four flavors in 25 min,
-      `Cacheable calls: 47015 / 52217 (90.04%)`, `Hits: 12853`. Done when a media chain's web RUN logs
-      `ccache-s3| stored …` once and `ccache-s3| restored …` plus hits on a host whose mount was empty.
-- [ ] **CON175 — the CUDA cross compiles bypass sccache; prove the fix on a chain** [S, ★★]. The arm64 nvidia
-      media chain's ORT GPU RUN (2026-10-29) logged `3856 requests, 3210 hits, 0 misses, 36 errors, 609 not
-      cacheable`: every C/C++ object hit, the 609 kernels ran uncached, the RUN's two hours. Cause, reproduced
-      in the gpu image with `SCCACHE_LOG=debug`: sccache's nvcc parser reads `-target-dir sbsa-linux` as a second
-      input file (`CannotCache(multiple input files)`); `--target-directory=sbsa-linux` parses and hits. In
-      source since 2026-10-29 (`cross-cuda.sh`, `verify-cuda-stack.sh`, OpenCV's `CUDA_NVCC_FLAGS`). First run with
-      the flag (2026-10-29 14:25): `Cache misses (CUDA) 598`, `(CUBIN) 1188`, `(PTX) 1533`, `Non-cacheable calls 0`,
-      `L1 (s3): 3928 written, 0 failed` -- every kernel is cached now; the 609 "non-cacheable compilations" are
-      sccache's count of the outer nvcc calls whose sub-compilations it caches. Done when the NEXT rerun of the RUN
-      shows `Cache hits (CUDA)` above 90 % and the RUN takes under 30 min.
+      grew (`sccache_s3_fetch`/`sccache_s3_store`); proved on a targeted amd64 build (2026-10-29 19:52): four
+      flavors in 22 min, `ccache-s3| stored ccache/onnxruntime-web-v1.31.0.tar.gz (127M)`, fetched back from the
+      bucket on the host. In its own dir the build's true ccache figures are `Cacheable calls: 1511 / 5020
+      (30.10%)`: 70 % of emcc's calls are uncacheable to ccache (the RUN now prints `ccache -s -v`'s reasons;
+      `-flto` and multi-output calls are the suspects). Work: read the reasons on the next amd64 media chain and
+      lift what ccache's sloppiness or emcc's flags allow. Done when a media chain's web RUN logs `ccache-s3|
+      restored …` plus hits on a host whose mount was empty, and the cacheable share passes 60 %.
 - [ ] **CON174 — image acceptance clones the cyclic submodules recursively** [S, ★]. `image-acceptance.py`'s
       consumer clones use `--recursive`; the ANTfrastructure → DocumANTation → awesome-beamer → ANTfrastructure
       cycle is finite but cost 29 GB and 15 min per receipt on 2026-10-28 (`logs/image-acceptance/*/consumers`).

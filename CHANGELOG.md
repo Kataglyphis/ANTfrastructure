@@ -47,7 +47,8 @@
   609 not cacheable` in the arm64 ORT GPU RUN, the RUN's two hours): sccache's nvcc parser reads
   `-target-dir X` as a second input file; `cross-cuda.sh`, `verify-cuda-stack.sh` and OpenCV now pass
   `--target-directory=X`, which parses and hits (reproduced in the gpu image, CON175; the first chain with the
-  flag wrote every kernel: `Cache misses (CUDA) 598`, `(CUBIN) 1188`, `(PTX) 1533`, `3928 written, 0 failed`). And `onnxruntime-web`
+  flag wrote every kernel: `Cache misses (CUDA) 598`, `(CUBIN) 1188`, `(PTX) 1533`, `3928 written, 0 failed`; the
+  chain after it read them back: `Cache hits (CUDA) 609`, `0 misses`, the RUN in 15 min instead of 2 h, CON175 closed). And `onnxruntime-web`
   was the one compile RUN with no cache at all: `40-build-wasm.sh` exports `EM_COMPILER_WRAPPER=ccache` (emcc
   puts it in front of every clang call; emscripten's own documented wrapper) and the RUN mounts both caches
   and the S3 secret and drains (CON173). sccache in that seat was tried first and failed every CMake
@@ -60,7 +61,11 @@
   reach it. The wasm step therefore keeps its own ccache dir (`/var/cache/ccache/onnxruntime-web`) and
   moves it through the shared S3 level as one archive per ORT version (`ccache/onnxruntime-web-<ver>.tar.gz`):
   an empty dir is restored from it, a grown dir is stored back (`sccache_s3_fetch`/`sccache_s3_store`, the
-  SigV4 helper with GET). `ccache-s3| restored …` / `stored …` are the RUN's lines.
+  SigV4 helper with GET). `ccache-s3| restored …` / `stored …` are the RUN's lines. Proved on the targeted
+  amd64 build: `ccache-s3| stored ccache/onnxruntime-web-v1.31.0.tar.gz (127M) in the S3 level`, fetched back
+  from the bucket on the host (3585 entries). In its own dir the wasm build's true figures are `Cacheable calls:
+  1511 / 5020 (30.10%)`; the 70 % ccache calls uncacheable are the next question (the RUN now prints ccache's
+  verbose reasons), and the 2026-10-29 `47015 / 52217` figure was the shared root dir's cumulative count.
 
 ## 2026-10-29 — NVIDIA arm64, cross route phase D: the media consumers build against the SBSA target
 
