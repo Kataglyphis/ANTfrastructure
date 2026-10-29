@@ -407,14 +407,16 @@ owner carries the breakage that costs.
       ELF machine matches the dir's arch, or skip the target dir under a cross build; drop the three repins once
       a rebuilt sdk proves the link correct. Done when `file -L /usr/lib/aarch64-linux-gnu/libstdc++.so` in a
       fresh `cross-sdk-arm64` says AArch64 and no consumer needs the pin.
-- [ ] **CON173 — `onnxruntime-web` compiles uncached; prove the wiring on a chain** [S, ★★]. The 2026-10-28 audit
-      of every S3-wired RUN found one compile RUN with no cache at all: the WebAssembly ORT build (emcc, 3857
-      objects, ~40 min). In source since 2026-10-29: `40-build-wasm.sh` exports `EM_COMPILER_WRAPPER` (emcc.py
-      puts `config.COMPILER_WRAPPER` in front of every clang call) and the RUN mounts both caches and the S3
-      secret and drains. A non-amd64 target skips the wasm build by design (the amd64 lane fills the shared cache),
-      so the arm64 chain of 2026-10-29 only showed the mounts and the drain in place. Done when the next amd64 media
-      chain's RUN logs `EM_COMPILER_WRAPPER=` and `sccache-stats|` with hits; if sccache marks emcc's clang calls
-      not cacheable, the reasons are in its debug log.
+- [ ] **CON173 — `onnxruntime-web` compiles uncached; ccache holds the seat, S3 does not reach it** [S, ★★]. The
+      2026-10-28 audit found one compile RUN with no cache at all: the WebAssembly ORT build (emcc, 3857 objects,
+      ~40 min). sccache as `EM_COMPILER_WRAPPER` failed every CMake try_compile of the wasm configure on a targeted
+      amd64 build of the `onnxruntime` stage (2026-10-29: `18 unsupported compiler calls, 738 non-cacheable calls`,
+      `Could NOT find Iconv`, 6 of 6 tests failed), so `40-build-wasm.sh` exports `EM_COMPILER_WRAPPER=ccache`
+      (emscripten's documented wrapper) and prints `ccache-stats|`; the RUN mounts both caches and the S3 secret
+      and drains. ccache is disk-level only: this RUN's objects live on the host's cache mount, not in the shared
+      S3 level. Work: find why sccache rejects emcc's clang (its debug log names the parse failure) or give the
+      wasm step its own S3-backed ccache remote. Done when a media chain's web RUN shows `ccache-stats|` hits and,
+      for the S3 half, an upload path.
 - [ ] **CON175 — the CUDA cross compiles bypass sccache; prove the fix on a chain** [S, ★★]. The arm64 nvidia
       media chain's ORT GPU RUN (2026-10-29) logged `3856 requests, 3210 hits, 0 misses, 36 errors, 609 not
       cacheable`: every C/C++ object hit, the 609 kernels ran uncached, the RUN's two hours. Cause, reproduced

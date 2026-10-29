@@ -9,12 +9,11 @@ source "${SCRIPT_DIR}/lib/common.sh"
 parse_common_args "$@"
 detect_jobs
 
-# Emscripten puts this in front of every clang call (emcc.py, config.COMPILER_WRAPPER): the wasm RUN was the one compile RUN with no cache at all (CON173, 2026-10-29).
-if command -v compiler_cache_launcher >/dev/null 2>&1 && _ort_wasm_launcher="$(compiler_cache_launcher 2>/dev/null)" && [ -n "${_ort_wasm_launcher}" ]; then
-  export EM_COMPILER_WRAPPER="${_ort_wasm_launcher}"
-  info "EM_COMPILER_WRAPPER=${EM_COMPILER_WRAPPER} (emcc's clang calls go through the compiler cache)"
+# Emscripten puts this in front of every clang call (emcc.py, config.COMPILER_WRAPPER); ccache, as its docs say: sccache failed every try_compile (18 unsupported, 738 non-cacheable calls, CON173 2026-10-29).
+if command -v ccache >/dev/null 2>&1; then
+  export EM_COMPILER_WRAPPER="ccache"
+  info "EM_COMPILER_WRAPPER=ccache (emcc's clang calls go through ccache on ${CCACHE_DIR:-the default dir})"
 fi
-unset _ort_wasm_launcher
 
 # wasm32 output ignores the target arch, so whichever arch finds the shared cache empty builds it for all.
 
@@ -117,3 +116,5 @@ fi
 
 info "WASM artifacts in ${WASM_OUTPUT_DIR}"
 ls -alh "${WASM_OUTPUT_DIR}" || true
+# The RUN's measurement, as sccache-stats| is for the other RUNs.
+[ -z "${EM_COMPILER_WRAPPER:-}" ] || ccache -s 2>/dev/null | grep -E "Hits|Misses|Cacheable|Uncacheable" | sed 's/^/ccache-stats| /' || true

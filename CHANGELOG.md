@@ -48,9 +48,12 @@
   `-target-dir X` as a second input file; `cross-cuda.sh`, `verify-cuda-stack.sh` and OpenCV now pass
   `--target-directory=X`, which parses and hits (reproduced in the gpu image, CON175; the first chain with the
   flag wrote every kernel: `Cache misses (CUDA) 598`, `(CUBIN) 1188`, `(PTX) 1533`, `3928 written, 0 failed`). And `onnxruntime-web`
-  was the one compile RUN with no cache at all: `40-build-wasm.sh` exports `EM_COMPILER_WRAPPER` (emcc puts
-  it in front of every clang call) and the RUN mounts both caches and the S3 secret and drains (CON173).
-  Both prove themselves on the next chain.
+  was the one compile RUN with no cache at all: `40-build-wasm.sh` exports `EM_COMPILER_WRAPPER=ccache` (emcc
+  puts it in front of every clang call; emscripten's own documented wrapper) and the RUN mounts both caches
+  and the S3 secret and drains (CON173). sccache in that seat was tried first and failed every CMake
+  try_compile of the wasm configure (`18 unsupported compiler calls, 738 non-cacheable calls`, `Could NOT
+  find Iconv`), proved on a targeted amd64 build of the `onnxruntime` stage; ccache is disk-level only, so
+  this one RUN's objects stay on the host's cache mount rather than in S3.
 
 ## 2026-10-29 — NVIDIA arm64, cross route phase D: the media consumers build against the SBSA target
 
