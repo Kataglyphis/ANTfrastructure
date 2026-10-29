@@ -31271,5 +31271,21 @@
   "replace": "-LogFile $llvmBuildLog -Install -InstallConfig 'Release'",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.NinjaReturnLeak.Tests.ps1 -ResultFile logs/code-quality/tvm-minimal-llvm-ninja.json",
   "why": "the ROCm TVM branch returned ninja's whole log as its llvm-config path, and cmd.exe refused the resulting command line"
+ },
+ {
+  "id": "lib.iree-rocm-bitcode-requires-both-libs",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "$missing = @('ocml.bc', 'ockl.bc' | Where-Object",
+  "replace": "$missing = @('ocml.bc' | Where-Object",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmRocm.Tests.ps1 -ResultFile logs/code-quality/iree-rocm-bitcode-both.json",
+  "why": "IREE's rocm target links ocml and ockl into every HIP executable; a layer without ockl would fail only when a model compiles"
+ },
+ {
+  "id": "lib.iree-rocm-bitcode-option-still-exists",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "-notmatch 'set\\(IREE_TARGET_BACKEND_ROCM_DEVICE_BC_PATH\\s'",
+  "replace": "-notmatch 'set\\('",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmRocm.Tests.ps1 -ResultFile logs/code-quality/iree-rocm-bitcode-option.json",
+  "why": "an IREE bump that drops the local-bitcode option would silently fall back to the deleted shark-infra download"
  }
 ]

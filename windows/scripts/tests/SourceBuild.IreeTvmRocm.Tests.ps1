@@ -52,6 +52,8 @@ static const char* iree_hal_hip_dylib_names[] = {
           status = iree_string_builder_append_string(&path_builder, path_entry);
 '@
 $script:IreeRocmCMake = @'
+set(IREE_TARGET_BACKEND_ROCM_DEVICE_BC_PATH "" CACHE PATH
+    "Optional path to load device bitcode from (default to dynamic fetch)")
 set(_amd_device_bc_sha256 "336362416c68fdd8bb80328f65ca7ebaa0c119ea19c95df6df30c832a4df39b9")
 set(_amd_device_bc_stamp "${_amd_device_bc_url} : ${_amd_device_bc_sha256}")
     file(DOWNLOAD "${_amd_device_bc_url}" "${_platform_lib_archive}"
@@ -217,28 +219,19 @@ Describe 'Build-IreeFromSource: HIP dylib-name patch (IREE v3.11.0 dynamic_symbo
     }
 }
 
-Describe 'Build-IreeFromSource: device-bitcode pin' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:IreeScript -FunctionName 'Assert-IreeRocmDeviceBitcodePin')
+Describe 'Build-IreeFromSource: device bitcode from the rocm layer' {
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:IreeScript -FunctionName 'Get-IreeRocmDeviceBitcodeArg')
 
-    It 'accepts upstream''s hash-pinned fetch when it equals the versions.env pin' {
-        Invoke-InTestDir {
+    It 'points IREE at the rocm layer''s ocml/ockl and refuses a missing file or a dropped option (mutation)' {
+        Invoke-InTestDir -Files @{ 'bc/ocml.bc' = 'x'; 'bc/ockl.bc' = 'x'; 'partial/ocml.bc' = 'x' } -Body {
             param($d)
             $f = Join-Path $d 'CMakeLists.txt'
             [System.IO.File]::WriteAllText($f, $script:IreeRocmCMake)
-            Assert-IreeRocmDeviceBitcodePin -CMakeListsPath $f -ExpectedSha256 $script:DeviceBcSha
-            Assert-True $true 'no throw'
-        }
-    }
-
-    It 'refuses a moved pin, a dropped EXPECTED_HASH and an empty versions.env pin' {
-        Invoke-InTestDir {
-            param($d)
-            $f = Join-Path $d 'CMakeLists.txt'
-            [System.IO.File]::WriteAllText($f, $script:IreeRocmCMake)
-            Assert-Throws { Assert-IreeRocmDeviceBitcodePin -CMakeListsPath $f -ExpectedSha256 ('0' * 64) } 'moved' -MessagePattern 'an IREE bump moved it'
-            Assert-Throws { Assert-IreeRocmDeviceBitcodePin -CMakeListsPath $f -ExpectedSha256 '' } 'empty pin' -MessagePattern 'IREE_ROCM_DEVICE_BC_SHA256'
-            [System.IO.File]::WriteAllText($f, ($script:IreeRocmCMake -replace '\s+EXPECTED_HASH SHA256=\$\{_amd_device_bc_sha256\}', ''))
-            Assert-Throws { Assert-IreeRocmDeviceBitcodePin -CMakeListsPath $f -ExpectedSha256 $script:DeviceBcSha } 'unpinned fetch' -MessagePattern 'unverified fetch'
+            $bc = Join-Path $d 'bc'
+            Assert-Equal "-DIREE_TARGET_BACKEND_ROCM_DEVICE_BC_PATH=$($bc -replace '\\', '/')" (Get-IreeRocmDeviceBitcodeArg -CMakeListsPath $f -BitcodeDir $bc) 'local bitcode, no download'
+            Assert-Throws { Get-IreeRocmDeviceBitcodeArg -CMakeListsPath $f -BitcodeDir (Join-Path $d 'partial') } 'ockl missing' -MessagePattern 'ockl\.bc missing'
+            [System.IO.File]::WriteAllText($f, ($script:IreeRocmCMake -replace 'set\(IREE_TARGET_BACKEND_ROCM_DEVICE_BC_PATH', 'set(SOMETHING_ELSE'))
+            Assert-Throws { Get-IreeRocmDeviceBitcodeArg -CMakeListsPath $f -BitcodeDir $bc } 'option gone' -MessagePattern 'no longer takes'
         }
     }
 
@@ -516,7 +509,9 @@ Describe 'Build-IreeFromSource + Build-TvmFromSource: rocm-only steps sit behind
 
     It 'derives the lane, the LLVM TVM links and the targets it records from the helpers the tests cover' {
         foreach ($c in @(
-                @{ S = $script:IreeScript; V = '$ireeRocmArgs'; R = '@(Get-IreeRocmCmakeArgs -GpuEnv $gpuEnv -Cross $ireeCross)' }
+                @{ S = $script:IreeScript; V = '$ireeRocmArgs'; R = ('@(Get-IreeRocmCmakeArgs -GpuEnv $gpuEnv -Cross $ireeCross)|' +
+                        "Get-IreeRocmDeviceBitcodeArg -CMakeListsPath (Join-Path `$SourceDir 'compiler\plugins\target\ROCM\CMakeLists.txt') ``" + "`n" +
+                        "        -BitcodeDir (Join-Path `$gpuEnv.RocmRoot 'lib\llvm\amdgcn\bitcode')") }
                 @{ S = $script:IreeScript; V = '$ireeRocm'; R = '$ireeRocmArgs.Count -gt 0' }
                 @{ S = $script:TvmScript; V = '$tvmRocmPlan'; R = 'Get-TvmRocmPlan -GpuEnv $gpuEnv -Cross $tvmCross -SpikeFlag $env:TVM_ROCM' }
                 @{ S = $script:TvmScript; V = '$tvmLlvm'; R = 'Get-TvmLlvmChoice -PathLlvmConfig $pathLlvmConfig -Rocm $tvmRocmPlan.Rocm -Cross $tvmCross -GetTargetsBuilt ${function:Get-TvmLlvmTargetsBuilt}' }
@@ -555,7 +550,7 @@ Describe 'Build-IreeFromSource + Build-TvmFromSource: rocm-only steps sit behind
     }
 
     function Assert-IreeRocmGuardedSites {
-        foreach ($name in 'Invoke-IreeHipDylibNamePatch', 'Assert-IreeRocmDeviceBitcodePin') {
+        foreach ($name in 'Invoke-IreeHipDylibNamePatch', 'Get-IreeRocmDeviceBitcodeArg') {
             $sites = @(Get-RocmStepSite -RelPath $script:IreeScript -Command $name)
             Assert-Equal 1 $sites.Count "$name has one script-level site"
             Assert-Equal '$ireeRocm' "$($sites[0].Guards | Select-Object -First 1)" "$name innermost guard (line $($sites[0].Line))"
@@ -563,7 +558,7 @@ Describe 'Build-IreeFromSource + Build-TvmFromSource: rocm-only steps sit behind
         }
     }
 
-    It 'patches IREE sources and checks the bitcode pin only on the rocm lane' {
+    It 'patches IREE sources and points at the device bitcode only on the rocm lane' {
         Assert-IreeRocmGuardedSites
     }
 }

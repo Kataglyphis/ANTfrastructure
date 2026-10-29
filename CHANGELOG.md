@@ -147,6 +147,15 @@
   `GI_TYPELIB_PATH` and `LD_LIBRARY_PATH` (`riscv64_cross_strip_host_dirs`); `lib/multiarch` stays.
   `test-riscv64-cross.sh` and three `riscv64-cross.*` recipes prove it. No image re-keys.
 
+## 2026-10-29 — IREE's rocm target takes its device bitcode from TheRock
+
+- shark-infra/amdgpu-device-libs, where IREE v3.12.0 downloads ocml/ockl, returns 404. The rocm
+  lane now points `IREE_TARGET_BACKEND_ROCM_DEVICE_BC_PATH` at TheRock's pinned
+  `lib\llvm\amdgcn\bitcode` and fails if a file or the option is missing
+  (`lib.iree-rocm-bitcode-requires-both-libs`, `lib.iree-rocm-bitcode-option-still-exists`).
+  The unused `IREE_ROCM_DEVICE_BC_SHA256` waits for the next planned versions.env edit
+  (`docs/windows-rocm.md`).
+
 ## 2026-10-29 — The ROCm TVM branch reads its llvm-config path again
 
 - `Install-TvmMinimalLlvm` left `Invoke-NinjaBuildWithRetry`'s output on the pipeline, so the ROCm lane,

@@ -47,20 +47,15 @@ function Invoke-IreeHipDylibNamePatch {
     }
 }
 
-# The rocm target downloads ocml/ockl bitcode at configure time; upstream's pin must equal versions.env's.
-function Assert-IreeRocmDeviceBitcodePin {
-    param([Parameter(Mandatory)][string]$CMakeListsPath, [string]$ExpectedSha256)
-    if ($ExpectedSha256 -notmatch '^[0-9a-fA-F]{64}$') {
-        throw "IREE_ROCM_DEVICE_BC_SHA256 is '$ExpectedSha256' -- the rocm lane needs the versions.env pin of IREE's device-bitcode download"
+# The rocm target's default ocml/ockl download points at a deleted repository; the pinned TheRock tree ships both.
+function Get-IreeRocmDeviceBitcodeArg {
+    param([Parameter(Mandatory)][string]$CMakeListsPath, [Parameter(Mandatory)][string]$BitcodeDir)
+    if ([System.IO.File]::ReadAllText($CMakeListsPath) -notmatch 'set\(IREE_TARGET_BACKEND_ROCM_DEVICE_BC_PATH\s') {
+        throw "IREE's rocm plugin no longer takes IREE_TARGET_BACKEND_ROCM_DEVICE_BC_PATH ($CMakeListsPath) -- re-derive where it reads ocml/ockl from"
     }
-    $text = [System.IO.File]::ReadAllText($CMakeListsPath)
-    $pin = [regex]::Match($text, 'set\(_amd_device_bc_sha256\s+"([0-9a-fA-F]{64})"\)')
-    if (-not $pin.Success -or $text -notmatch 'EXPECTED_HASH\s+SHA256=\$\{_amd_device_bc_sha256\}') {
-        throw "IREE's rocm plugin no longer hash-pins its device-bitcode download ($CMakeListsPath) -- refusing an unverified fetch"
-    }
-    if ($pin.Groups[1].Value -ne $ExpectedSha256) {
-        throw "IREE pins device bitcode sha256 $($pin.Groups[1].Value) but versions.env IREE_ROCM_DEVICE_BC_SHA256 is $ExpectedSha256 -- an IREE bump moved it; verify the new archive, then update the pin"
-    }
+    $missing = @('ocml.bc', 'ockl.bc' | Where-Object { -not (Test-Path -LiteralPath (Join-Path $BitcodeDir $_) -PathType Leaf) })
+    if ($missing) { throw "IREE rocm target: $($missing -join ', ') missing under $BitcodeDir -- the rocm layer ships no device bitcode" }
+    return "-DIREE_TARGET_BACKEND_ROCM_DEVICE_BC_PATH=$($BitcodeDir -replace '\\', '/')"
 }
 
 # v3.12.0's profile statistics sink divides 128-bit integers (__udivti3), which lld-link finds only in compiler-rt's builtins.
@@ -437,7 +432,8 @@ $ireeRocm = $ireeRocmArgs.Count -gt 0
 if ($ireeRocm) {
     Write-Host 'ROCm lane -> enabling IREE HIP HAL driver + rocm target backend (vendored HIP headers; no TheRock at build time)'
     Invoke-IreeHipDylibNamePatch -Path (Join-Path $SourceDir 'runtime\src\iree\hal\drivers\hip\dynamic_symbols.c')
-    Assert-IreeRocmDeviceBitcodePin -CMakeListsPath (Join-Path $SourceDir 'compiler\plugins\target\ROCM\CMakeLists.txt') -ExpectedSha256 $env:IREE_ROCM_DEVICE_BC_SHA256
+    $ireeRocmArgs += Get-IreeRocmDeviceBitcodeArg -CMakeListsPath (Join-Path $SourceDir 'compiler\plugins\target\ROCM\CMakeLists.txt') `
+        -BitcodeDir (Join-Path $gpuEnv.RocmRoot 'lib\llvm\amdgcn\bitcode')
 }
 
 $ireeEhscInclude = (Join-Path $scriptAssetRoot 'patches\iree\enable-ehsc.cmake') -replace '\\', '/'
