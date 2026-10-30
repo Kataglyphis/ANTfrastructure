@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-30 — a tiny GenAI model for every binding test (LAI-H4)
+
+- `linux/scripts/lib/tiny-genai-model.py` writes a 270 KB GenAI model with the standard library:
+  each byte token predicts its successor, so greedy decoding of `abc` is `defg`, and
+  `fixture.json` is the oracle. `--check` decodes it through the installed wheel. Proven on the
+  published amd64 image through the Python wheel and the C API; `test-tiny-genai-model.sh` reads
+  the bytes back on any host, and four `lib.tiny-genai-*` mutations prove it can fail.
+
 ## 2026-10-30 — GenAI's headers are part of the image contract (LAI-H1)
 
 - The media stage's `onnxruntime-genai` artifact check requires `libonnxruntime-genai.so`,

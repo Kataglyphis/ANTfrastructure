@@ -101,6 +101,28 @@ app that ships the model carry them out.
 German and English are required, which is why the chat and embedding models are multilingual.
 Each licence and each model's support in the pinned GenAI release is checked before its export.
 
+## The test model
+
+`linux/scripts/lib/tiny-genai-model.py --out DIR` writes a complete GenAI model directory of about
+270 KB with the standard library alone: `model.onnx`, `genai_config.json`, a byte-level BPE
+`tokenizer.json` with its `tokenizer_config.json` and chat template, and `fixture.json`.
+
+- **The rule:** every byte token predicts its successor, and byte 255 predicts the end token. Greedy
+  decoding of `abc` with `max_length` 7 therefore yields `defg`, token ids 100 to 103.
+- **The oracle:** `fixture.json` holds the prompt, its ids, the continuation and `max_length`.
+  A binding test reads it instead of retyping the numbers.
+- **The cache:** one layer whose `present` outputs concatenate the past with one embedding per
+  token, so GenAI exercises its KV-cache loop exactly as with a real decoder.
+
+`--check` decodes the model through the installed `onnxruntime_genai`: exit 0 when tokens, decoded
+text and chat template match, 1 on a mismatch, 2 when the wheel is absent.
+
+**Proven 2026-10-30** on the published index `7d4d4129` (amd64): the Python wheel and a C17 program
+against `ort_genai_c.h` (GCC 16.2, `-Wall -Werror`) both decode `defg`. `test-tiny-genai-model.sh`
+reads the bytes back on any host: graph, weights, names, tokenizer, and the check mode's verdict.
+**Not covered:** arm64 and riscv64, and the decode itself on a host without the wheel; the image
+smoke gets both with LAI-H5.
+
 ## Roadmap
 
 Every item is open until its row says otherwise. Each repository's backlog names the IDs.
@@ -112,7 +134,8 @@ Every item is open until its row says otherwise. Each repository's backlog names
 | LAI-H1 | Require the GenAI library and both headers in the Linux artifact check; the header copy fails instead of `\|\| true`. Done 2026-10-30. | hub |
 | LAI-H2 | Build GenAI with llguidance on Windows. Needs a Windows chain to prove. | hub |
 | LAI-H3 | This page: the decisions, the contract, the model search order. Done 2026-10-30. | hub |
-| LAI-H4 | A fixture that writes a tiny GenAI model, its config and tokenizer, so no test loads a model file. | hub |
+| LAI-H4 | A fixture that writes a tiny GenAI model, its config and tokenizer, so no test loads a model file ([§ The test model](#the-test-model)). Done 2026-10-30. | hub |
+| LAI-H5 | The image smoke's GenAI tier 4 decodes the test model on every arch instead of reporting `generate()` as unproven. | hub |
 | LAI-M1 | ModelANT's licence rule, README and model guide follow [§ Licences](#licences). | ModelANT |
 | LAI-M2 | The `text-generation-v1` contract and its release check. | ModelANT |
 | LAI-M3 | GenAI export and package scripts. | ModelANT |

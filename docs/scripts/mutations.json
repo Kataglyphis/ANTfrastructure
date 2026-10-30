@@ -20116,6 +20116,38 @@
   "why": "the old copy swallowed its own failure with || true, so an install tree without the C header looked complete"
  },
  {
+  "id": "lib.tiny-genai-successor",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "return min(token + 1, EOS_ID)",
+  "replace": "return min(token + 2, EOS_ID)",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "the oracle every binding test reads must follow the weights; a drifted rule turns a correct decoder red everywhere"
+ },
+ {
+  "id": "lib.tiny-genai-present-value",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "_len(12, _value_info(\"present.0.value\", FLOAT, present)),",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "GenAI feeds every present output back as the next past input; a graph missing one fails only inside a consumer"
+ },
+ {
+  "id": "lib.tiny-genai-byte-symbols",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "printable = [*range(0x21, 0x7F), *range(0xA1, 0xAD), *range(0xAE, 0x100)]",
+  "replace": "printable = [*range(0x21, 0x7F), *range(0xA1, 0x100)]",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "byte-level BPE needs GPT-2's exact byte symbols, or the tokenizer encodes another byte than the oracle names"
+ },
+ {
+  "id": "lib.tiny-genai-no-wheel-status",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "        return 2",
+  "replace": "        return 0",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "a host without the GenAI wheel must not report a checked model; exit 2 keeps the missing proof visible"
+ },
+ {
   "id": "lib.parity-import-status",
   "target": "linux/scripts/06-packaging/verify-parity.sh",
   "find": ")\" || _pair_status=$?",
