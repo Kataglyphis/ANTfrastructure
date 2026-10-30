@@ -160,8 +160,6 @@ function Get-MediaBranchVersionArg {
                 PY_CYTHON_VERSION = Get-VersionTableValue $VersionTable 'PY_CYTHON_VERSION'
                 # This branch mounts windows/qnn-sdk too; without the pin the SDK is extracted unverified.
                 QNN_SDK_ZIP_SHA256 = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
-                # rocm lane: IREE's device-bitcode download pin (Build-IreeFromSource.ps1); unused on cpu/nvidia.
-                IREE_ROCM_DEVICE_BC_SHA256 = Get-VersionTableValue $VersionTable 'IREE_ROCM_DEVICE_BC_SHA256'
             }
         }
         'rocm-migraphx' {
@@ -195,8 +193,7 @@ function Get-MediaMergeVersionArg {
         'TEMURIN_JDK_WINDOWS_X64_SHA256', 'GIT_LFS_WINDOWS_VERSION', 'GIT_LFS_WINDOWS_AMD64_SHA256',
         # media-litert: the ai-edge-litert wheel's source, bazel and accelerator pins (CON91).
         'LITERT_WINDOWS_SOURCE_COMMIT', 'LITERT_BAZEL_WINDOWS_VERSION', 'LITERT_BAZEL_WINDOWS_AMD64_SHA256',
-        'LITERT_WINDOWS_ACCELERATOR_WHEEL_URL', 'LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256', 'LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256',
-        'IREE_ROCM_DEVICE_BC_SHA256'          # media-tvm: IREE rocm target's device-bitcode pin
+        'LITERT_WINDOWS_ACCELERATOR_WHEEL_URL', 'LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256', 'LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256'
     )
     $merge = @{}
     foreach ($branch in 'media-core', 'media-litert', 'media-tvm') {

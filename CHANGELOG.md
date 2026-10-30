@@ -26,6 +26,8 @@
   - `vulkan.sh` is back under 800 lines: the CON172 arch check reuses `platform.sh`'s triple and
     ELF-machine helpers, and a mutation recipe proves its test fails without it.
   - `docs/uv.lock` follows the theme's dynamic version (DocumANTation `d4866a6`), locked with the pinned uv.
+- `IREE_ROCM_DEVICE_BC_SHA256` is gone from `versions.env`, the media-tvm ARG and the driver map:
+  IREE reads ocml/ockl from TheRock. The edit re-keys the Windows base and the Linux compiler image.
 - Windows: LiteRT prefetches Eigen at tflite's pinned commit with eight clone attempts and points
   FetchContent at it; HailoRT's externals take the same budget
   ([failure-modes.md](docs/failure-modes.md#gitlab-is-currently-unable-to-handle-this-request-due-to-load-clones-eigen)).

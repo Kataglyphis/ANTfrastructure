@@ -10,7 +10,6 @@ $script:TvmCheck = 'windows\scripts\build\rocm-checks\TVM.ps1'
 $script:CpuEnv = @{ GpuType = 'cpu'; HasCuda = $false; HasRocm = $false; RocmRoot = $null }
 $script:NvidiaEnv = @{ GpuType = 'nvidia'; HasCuda = $true; HasRocm = $false; RocmRoot = $null }
 $script:RocmEnv = @{ GpuType = 'rocm'; HasCuda = $false; HasRocm = $true; RocmRoot = 'C:\TheRock\build' }
-$script:DeviceBcSha = '336362416c68fdd8bb80328f65ca7ebaa0c119ea19c95df6df30c832a4df39b9'
 # C:\llvm-patched is first on PATH on every amd64 lane (AArch64;X86, Build-LlvmFromSource.ps1).
 $script:PatchedLlvm = 'C:\llvm-patched\bin\llvm-config.exe'
 $script:NeverAsked = { param($c) throw "llvm-config --targets-built of $c was queried off the ROCm spike" }
@@ -216,25 +215,6 @@ Describe 'Build-IreeFromSource: HIP dylib-name patch (IREE v3.11.0 dynamic_symbo
             }
             Assert-Throws { Invoke-IreeHipDylibNamePatch -Path (Join-Path $d 'absent.c') } 'missing file' -MessagePattern 'not found'
         }
-    }
-}
-
-Describe 'Build-IreeFromSource: device-bitcode plumbing' {
-
-    It 'pins the same hash in versions.env, the media-tvm ARG and the driver map, and never in the merge' {
-        $v = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
-        Assert-Match '^[0-9a-f]{64}$' $v['IREE_ROCM_DEVICE_BC_SHA256'] 'versions.env pin'
-        if ($v['IREE_VERSION'] -eq 'v3.12.0') { Assert-Equal $script:DeviceBcSha $v['IREE_ROCM_DEVICE_BC_SHA256'] 'the v3.12.0 CMake pin' }
-        $df = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\Dockerfile.media-builder')
-        $envStage = [regex]::Match($df, '(?s)FROM common AS media-tvm-env\r?\n(.+?)\r?\nFROM ').Groups[1].Value
-        Assert-Match "(?m)^ARG IREE_ROCM_DEVICE_BC_SHA256=$($v['IREE_ROCM_DEVICE_BC_SHA256'])\s*$" $envStage 'ARG in media-tvm-env'
-        Assert-Match 'IREE_ROCM_DEVICE_BC_SHA256="\$\{IREE_ROCM_DEVICE_BC_SHA256\}"' $envStage 'ENV mirror'
-        $tvm = Get-MediaBranchVersionArg -Branch 'media-tvm' -VersionTable $v
-        Assert-Equal $v['IREE_ROCM_DEVICE_BC_SHA256'] $tvm['IREE_ROCM_DEVICE_BC_SHA256'] 'forwarded to media-tvm'
-        Assert-False ((Get-MediaMergeVersionArg -VersionTable $v).Contains('IREE_ROCM_DEVICE_BC_SHA256')) 'not a merge arg'
-        $lines = [System.IO.File]::ReadAllLines((Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'))
-        $at = [Array]::FindIndex($lines, [Predicate[string]] { param($l) $l.StartsWith('IREE_ROCM_DEVICE_BC_SHA256=') })
-        Assert-Match 'bump:hold' $lines[$at - 1] 'bump:hold sits directly above the key (it is slaved to IREE_VERSION)'
     }
 }
 
