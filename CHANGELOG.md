@@ -90,7 +90,9 @@
   1511 / 5020 (30.10%)`; the next build restored the archive (`141M`) and hit 1411 of 3022 cacheable calls, and
   ccache's verbose reasons say the "uncacheable" 70 % are emcc's own preprocessing calls (86 %) and multi-source
   calls (13 %), not lost compiles. The step sets `CCACHE_NOHASHDIR=1` and mtime/ctime sloppiness so CMake's probe
-  dirs and a fresh clone's mtimes stop costing misses. The `47015 / 52217` figure was the shared root dir's count.
+  dirs and a fresh clone's mtimes stop costing misses: the third targeted build hit 1023 of its 1511 cacheable
+  calls (67.7 %; ccache's counters are the dir's whole life, so the step zeroes them after the restore and prints
+  the RUN's own). CON173 closed. The `47015 / 52217` figure was the shared root dir's count.
 
 ## 2026-10-29 — NVIDIA arm64, cross route phase D: the media consumers build against the SBSA target
 

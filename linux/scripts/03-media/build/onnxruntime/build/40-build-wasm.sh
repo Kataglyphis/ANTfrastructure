@@ -60,6 +60,8 @@ if command -v ccache >/dev/null 2>&1 && mkdir -p "${CCACHE_DIR:-/var/cache/ccach
   export CCACHE_NOHASHDIR=1 CCACHE_SLOPPINESS="time_macros,include_file_mtime,include_file_ctime"
   info "EM_COMPILER_WRAPPER=ccache (emcc's clang calls go through ccache on ${CCACHE_DIR})"
   _ort_wasm_ccache_restore
+  # The counters are the dir's whole life otherwise; zeroed, ccache-stats| is this RUN's.
+  ccache -z >/dev/null 2>&1 || true
   _ORT_WASM_CCACHE_MARK="$(mktemp)"
 fi
 

@@ -407,21 +407,6 @@ owner carries the breakage that costs.
       arch (`test-vulkan-gcc-runtime-links.sh`); ffmpeg, GStreamer and OpenCV keep their repins until the published
       sdk is rebuilt. Done when `file -L /usr/lib/aarch64-linux-gnu/libstdc++.so` in a fresh `cross-sdk-arm64`
       says AArch64 and the three repins can go.
-- [ ] **CON173 — `onnxruntime-web`: ccache holds the seat and rides S3 as an archive; prove it on a chain** [S, ★★].
-      The 2026-10-28 audit found one compile RUN with no cache at all: the WebAssembly ORT build (emcc, 3857
-      objects, ~40 min). sccache cannot take it: with a real emsdk its clang parser refuses emcc's `-Xclang
-      -iwithsysroot/include/fakesdl` (`CannotCache(Can't handle UnknownFlag arguments …)`), and as the launcher
-      script it even failed the wasm configure (2026-10-29). In source since 2026-10-29: `40-build-wasm.sh`
-      exports `EM_COMPILER_WRAPPER=ccache` in its own dir `/var/cache/ccache/onnxruntime-web`, restores it from
-      `ccache/onnxruntime-web-<ORT_VERSION>.tar.gz` in the shared S3 level when empty and stores it back when it
-      grew (`sccache_s3_fetch`/`sccache_s3_store`); proved on a targeted amd64 build (2026-10-29 19:52): four
-      flavors in 22 min, `ccache-s3| stored ccache/onnxruntime-web-v1.31.0.tar.gz (127M)`, fetched back from the
-      bucket on the host; the next targeted build restored it (`ccache-s3| restored … (141M)`) and hit 1411 of
-      3022 cacheable calls. The "70 % uncacheable" is not lost compiles: `ccache -s -v` says 86 % of those are
-      `Called for preprocessing` (emcc's own `-E` steps) and 13 % `Multiple source files`; the remaining misses
-      are CMake's probes in fresh temp dirs and fresh-clone mtimes, so the step sets `CCACHE_NOHASHDIR=1` and
-      mtime/ctime sloppiness. Done when a media chain's web RUN (an amd64 chain, since arm64 skips wasm) logs
-      `ccache-s3| restored …` and a hit share above 60 % of the cacheable calls.
 - [ ] **CON163 — every Linux compile reaches sccache; prove it on a chain** [S, ★★★]. In source since 2026-10-26
       ([`build-cache-tiers.md`](docs/build-cache-tiers.md#a-subproject-that-forces-its-own-launcher)): the Vulkan
       SDK RUN mounts both caches and pins its launcher, and ONNX Runtime, LiteRT and the riscv64 torch wheel pin
