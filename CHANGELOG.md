@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-30 — language AI: the plan and the contract
+
+- `docs/language-ai.md` records the owner's goal and decisions: chain GenAI is the one local
+  engine, ModelANT ships model packages, Llama and Gemma are allowed with their obligations, and
+  chat widgets live in ANThology. It defines the text contract every binding offers, the model
+  search order and the `LAI-*` roadmap; `BACKLOG.md` carries the hub's items.
+- `t_write_exec_stub` ends on `chmod` with an explicit failure return, so the trailing-conditional
+  gate is green again.
+
 ## 2026-10-30 — one harness helper for executable test stubs
 
 - `t_write_exec_stub` in `test-harness.sh` writes an executable stub; the Vulkan

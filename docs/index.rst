@@ -146,6 +146,7 @@ Common development targets:
    failure-modes
    adopting-in-a-new-project
    data-repositories
+   language-ai
    overview
    onnxruntime-single-source
 

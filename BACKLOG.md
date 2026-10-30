@@ -396,6 +396,27 @@ owner carries the breakage that costs.
          `AnthologyTable` calls `context.go`, `SkillTable` and `single_page` read
          `UserSettings`/`AppSettings`, and `open_button` needs `AnthologyLocalizations`.
 
+## Open — language AI in the images
+
+Owner goal 2026-10-30: text, LLM and speech apps in the four code repositories on the chain's
+GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs/language-ai.md).
+
+- [ ] **LAI-H1 — the Linux artifact check requires GenAI's library and both headers** [S, ★★].
+      `verify-media-artifacts.sh onnxruntime-genai` accepts a wheel alone, and `60-build-genai.sh`
+      copies `ort_genai_c.h` with `|| true`; the Rust binding (LAI-O1) needs exactly that header.
+      Done when a missing header or a missing `libonnxruntime-genai.so` fails the stage, and a
+      mutation proves each.
+- [ ] **LAI-H2 — GenAI builds with llguidance on Windows** [M, ★★]. `Build-OnnxGenaiFromSource.ps1`
+      passes `-DUSE_GUIDANCE=OFF`, so `json_schema` works on Linux only. Needs Rust in the
+      media-core builder and a Windows chain to prove; done when the smoke gate runs a
+      schema-constrained `generate()` on `:winamd64`.
+- [ ] **LAI-H4 — a fixture writes a tiny GenAI model** [M, ★★★]. A stdlib-plus-`onnx` script
+      writes a decoder with GenAI's input and output names, `genai_config.json` and a tokenizer,
+      small enough to generate per test run. Done when greedy decoding in `:latest` yields the
+      fixture's expected tokens through the Python wheel and the C API.
+- [b] **LAI-H6 — GenAI for Android** [L, ★★]. Neither ORT nor GenAI is built for Android; blocked
+      on milestone 1 ([`docs/language-ai.md` § Roadmap](docs/language-ai.md#roadmap)).
+
 ## Open — Linux image (all arches)
 
 - [ ] **CON172 — the sdk stage points the target multiarch `libstdc++.so` at the host's; prove the fix on an sdk rebuild** [S, ★★].
