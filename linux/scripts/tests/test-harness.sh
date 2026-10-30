@@ -210,7 +210,8 @@ t_fn_src() {
 
 # t_write_exec_stub <path>: an executable that exits 0; its directory must exist.
 t_write_exec_stub() {
-  printf '#!/bin/sh\n' > "${1:?t_write_exec_stub: path required}" && chmod +x "$1"
+  printf '#!/bin/sh\n' > "${1:?t_write_exec_stub: path required}" || return 1
+  chmod +x "$1"
 }
 
 # t_stubbed_script <library> <fn> [args...]: a `bash -c` body calling one library function; env prefixes stay on the caller's line.
