@@ -4,6 +4,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
 
+# <src_dir> <out_dir>: both headers or no build, since the C, C++ and Rust bindings compile against them.
+genai_copy_headers() {
+  local hdr
+  for hdr in ort_genai.h ort_genai_c.h; do
+    [ -s "$1/src/${hdr}" ] || err "GenAI header ${hdr} not found in $1/src"
+    cp "$1/src/${hdr}" "$2/include/" || err "cannot copy GenAI header ${hdr} to $2/include"
+  done
+  info "Copied GenAI headers to $2/include/"
+}
+
 parse_common_args "$@"
 detect_jobs
 
@@ -249,13 +259,7 @@ elif [ -z "$(ls -A "${GENAI_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ]; then
   maybe_build_source_wheel "${GENAI_SRC_DIR}" "${GENAI_OUTPUT_DIR}" "${HOST_PYTHON}" "GenAI"
 fi
 
-if [[ -f "${GENAI_SRC_DIR}/src/ort_genai.h" ]]; then
-  cp "${GENAI_SRC_DIR}/src/ort_genai.h" "${GENAI_OUTPUT_DIR}/include/"
-  cp "${GENAI_SRC_DIR}/src/ort_genai_c.h" "${GENAI_OUTPUT_DIR}/include/" 2>/dev/null || true
-  info "Copied GenAI headers to ${GENAI_OUTPUT_DIR}/include/"
-else
-  warn "GenAI headers not found at ${GENAI_SRC_DIR}/src/"
-fi
+genai_copy_headers "${GENAI_SRC_DIR}" "${GENAI_OUTPUT_DIR}"
 
 GENAI_LIB_DIR="${GENAI_SRC_DIR}/build/Linux/${GENAI_CONFIG}"
 if [[ -d "${GENAI_LIB_DIR}" ]]; then

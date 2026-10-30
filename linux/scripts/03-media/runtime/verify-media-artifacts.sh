@@ -187,11 +187,12 @@ case "${STAGE}" in
       echo "SKIP [${STAGE}]: only the arm64/riscv64 cross lanes build GenAI (producer skips ${_vma_target})"
       exit 0
     fi
-    # The producer creates the dirs on every path, so require an artifact.
-    verify_any_lib "ONNX Runtime GenAI artifact" \
+    # A wheel serves Python only; the C, C++ and Rust bindings need the library and both headers. See docs/language-ai.md
+    verify_any_lib "ONNX Runtime GenAI library" \
       "${PREFIX}/lib:libonnxruntime-genai*.so*" \
-      "${PREFIX}/lib:libonnxruntime_genai*.so*" \
-      "${PREFIX}/wheels:*.whl"
+      "${PREFIX}/lib:libonnxruntime_genai*.so*" || true
+    verify_file_exists "${PREFIX}/include/ort_genai.h" "GenAI C++ header" || true
+    verify_file_exists "${PREFIX}/include/ort_genai_c.h" "GenAI C header" || true
     ;;
 
   onnxruntime-gpu)

@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-30 — GenAI's headers are part of the image contract (LAI-H1)
+
+- The media stage's `onnxruntime-genai` artifact check requires `libonnxruntime-genai.so`,
+  `ort_genai.h` and `ort_genai_c.h`; a wheel alone no longer passes. `60-build-genai.sh` copies
+  both headers through `genai_copy_headers`, which stops the build on a missing, empty or
+  uncopyable header instead of `|| true`. `test-genai-artifact-gate.sh` and five `lib.genai-*`
+  mutations prove both halves. The android stages of all three arches and the published amd64
+  image already carry the three files, so no lane changes behaviour.
+
 ## 2026-10-30 — language AI: the plan and the contract
 
 - `docs/language-ai.md` records the owner's goal and decisions: chain GenAI is the one local

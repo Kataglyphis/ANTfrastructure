@@ -1051,6 +1051,19 @@ NuGet, PyPI or pyke ORT (statically linked ones included), and UNRESOLVED when a
 importer has no app-local chain copy or a Linux `.so` has no `$ORIGIN` RUNPATH to
 one.
 
+## GenAI's library and headers
+
+The text bindings of [`language-ai.md`](language-ai.md) compile against the chain GenAI, never a
+download. On Linux it is `/usr/local/lib/onnxruntime-genai`: `lib/libonnxruntime-genai.so`,
+`lib/libllguidance.so`, `include/ort_genai.h` (C++) and `include/ort_genai_c.h` (C, the Rust
+binding's input). On Windows it is `ONNX_GENAI_ROOT`.
+
+**How it is proven.** Since 2026-10-30 the media stage's `onnxruntime-genai` artifact check fails
+without the library or either header, and the producer stops when a header is missing
+(`test-genai-artifact-gate.sh`). Before, a wheel alone passed and the C header was copied with
+`|| true`. Not covered: the stages after media copy the tree without re-checking it, and the
+Windows smoke gate only looks for `ort_genai*.h`.
+
 ## GTK 4 for gtk4-rs
 
 OxidANT's GTK GUI (`gui_unix`, gtk4-rs 0.11 with `v4_10`) is mandatory since 2026-10-20, so

@@ -26,7 +26,7 @@ the text API, the model packages and the order of work. Owner goal of 2026-10-30
 |---|---|---|
 | GenAI at `ONNXRUNTIME_GENAI_VERSION` | Linux `/usr/local/lib/onnxruntime-genai` on amd64, arm64 and riscv64 (CPU; CUDA in the nvidia variant); Windows `ONNX_GENAI_ROOT` (DirectML; CUDA in the nvidia variant); the `:winarm64` bundle | no Android build, no web build |
 | llguidance: JSON schema and grammars | Linux, `--use_guidance` in `60-build-genai.sh` | Windows builds with `-DUSE_GUIDANCE=OFF` |
-| `ort_genai.h`, `ort_genai_c.h` | GenAI's `include/` | the Linux artifact check does not require them (LAI-H1) |
+| `ort_genai.h`, `ort_genai_c.h` | GenAI's `include/` | required by the Linux artifact check since LAI-H1 ([contract](consumer-image-contract.md#genais-library-and-headers)) |
 | Ollama, Open WebUI, the APISIX gateway | [`linux/llm-stack/`](../linux/llm-stack/README.md) | none |
 | GenieX on Snapdragon | [`geniex-local-ai-setup.md`](geniex-local-ai-setup.md) | HTTP only |
 | HailoRT for Hailo-10H | [`hailo-support.md`](hailo-support.md) | its GenAI part is not built |
@@ -109,7 +109,7 @@ Every item is open until its row says otherwise. Each repository's backlog names
 
 | ID | Work | Repo |
 |---|---|---|
-| LAI-H1 | Require the GenAI library and both headers in the Linux artifact check; the header copy fails instead of `\|\| true`. | hub |
+| LAI-H1 | Require the GenAI library and both headers in the Linux artifact check; the header copy fails instead of `\|\| true`. Done 2026-10-30. | hub |
 | LAI-H2 | Build GenAI with llguidance on Windows. Needs a Windows chain to prove. | hub |
 | LAI-H3 | This page: the decisions, the contract, the model search order. Done 2026-10-30. | hub |
 | LAI-H4 | A fixture that writes a tiny GenAI model, its config and tokenizer, so no test loads a model file. | hub |

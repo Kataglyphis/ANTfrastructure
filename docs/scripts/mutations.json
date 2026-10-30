@@ -20076,6 +20076,46 @@
   "why": "empty files and admitted dangling symlinks must fail once with the existing empty-artifact diagnostic"
  },
  {
+  "id": "lib.genai-artifact-c-header",
+  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
+  "find": "verify_file_exists \"${PREFIX}/include/ort_genai_c.h\" \"GenAI C header\" || true",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-genai-artifact-gate.sh",
+  "why": "a GenAI tree without its C header ships, and the Rust binding fails at its first build in a consumer"
+ },
+ {
+  "id": "lib.genai-artifact-cpp-header",
+  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
+  "find": "verify_file_exists \"${PREFIX}/include/ort_genai.h\" \"GenAI C++ header\" || true",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-genai-artifact-gate.sh",
+  "why": "a GenAI tree without its C++ header ships, and the C++ binding fails at its first build in a consumer"
+ },
+ {
+  "id": "lib.genai-artifact-wheel-not-library",
+  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
+  "find": "\"${PREFIX}/lib:libonnxruntime_genai*.so*\" || true",
+  "replace": "\"${PREFIX}/lib:libonnxruntime_genai*.so*\" \"${PREFIX}/wheels:*.whl\" || true",
+  "test": "bash linux/scripts/tests/test-genai-artifact-gate.sh",
+  "why": "a wheel serves Python only; accepting it as the GenAI artifact passes a tree no native binding can link"
+ },
+ {
+  "id": "lib.genai-producer-header-fatal",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh",
+  "find": "[ -s \"$1/src/${hdr}\" ] || err \"GenAI header ${hdr} not found in $1/src\"",
+  "replace": "[ -s \"$1/src/${hdr}\" ] || continue",
+  "test": "bash linux/scripts/tests/test-genai-artifact-gate.sh",
+  "why": "a missing header used to warn and the stage shipped without it; the producer must stop the build"
+ },
+ {
+  "id": "lib.genai-producer-copy-fatal",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh",
+  "find": "cp \"$1/src/${hdr}\" \"$2/include/\" || err \"cannot copy GenAI header ${hdr} to $2/include\"",
+  "replace": "cp \"$1/src/${hdr}\" \"$2/include/\" 2>/dev/null || true",
+  "test": "bash linux/scripts/tests/test-genai-artifact-gate.sh",
+  "why": "the old copy swallowed its own failure with || true, so an install tree without the C header looked complete"
+ },
+ {
   "id": "lib.parity-import-status",
   "target": "linux/scripts/06-packaging/verify-parity.sh",
   "find": ")\" || _pair_status=$?",
