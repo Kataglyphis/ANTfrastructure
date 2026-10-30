@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# PYTHON_APP_PYTHON_RUNTIME_API=1
 # Builds the sdist and wheels (GIL, plus free-threaded when declared), auditwheel-repairing platform wheels, then any packaging/app.json app; PYTHON_VERSION (arg 1) defaults to the pinned X.Y.
 
 set -euo pipefail
@@ -7,6 +8,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/ci-common.sh" || { echo "Error: failed to source ci-common.sh" >&2; exit 1; }
 
 detect_workspace
+
+APP_PYTHON_RUNTIME="${PYTHON_APP_PYTHON_RUNTIME:-image}"
+case "${APP_PYTHON_RUNTIME}" in
+  image|standalone) ;;
+  *) err "PYTHON_APP_PYTHON_RUNTIME must be image or standalone" ;;
+esac
 
 PYTHON_VERSION="${1:-${PYTHON_VERSION:-${DEFAULT_PYTHON_VERSION:?no pinned Python: keep versions.env beside python_uv.sh, or pass a version}}}"
 info "Using Python version: $PYTHON_VERSION"
@@ -242,7 +249,7 @@ if [ -f packaging/app.json ]; then
   if [ "$(uname -m)" = "riscv64" ] || [ "${CROSS_TARGET}" = "riscv64" ]; then
     warn "packaging/app.json present: the tar/deb/AppImage packages are amd64/arm64, so riscv64 ships wheels only"
   else
-    bash "$SCRIPT_DIR/../../06-packaging/python-app-bundle.sh" --wheel-dir dist --out-dir build/app-bundle
+    bash "$SCRIPT_DIR/../../06-packaging/python-app-bundle.sh" --wheel-dir dist --out-dir build/app-bundle --python-runtime "${APP_PYTHON_RUNTIME}"
     bash "$SCRIPT_DIR/../../06-packaging/python-app-package.sh" --bundle build/app-bundle --out-dir dist/packages
   fi
 fi

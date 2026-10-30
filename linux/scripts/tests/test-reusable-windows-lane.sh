@@ -13,6 +13,9 @@ t_case "the optional build job requires an artifact when it runs, including afte
 upload_step="next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Upload files, logs & Zip')"
 t_assert_contains "$(_q "V.value(${upload_step},'if')")" 'always()'
 t_assert_contains "$(_q "V.value(V.value(${upload_step},'with'),'path')")" 'inputs.artifact-paths'
+t_case "candidate artifact replacement is opt-in and leaves existing callers unchanged"
+workflow_assert_input_fields overwrite-artifact type 'boolean' default 'false' required 'false'
+t_assert_contains "$(_q "V.value(V.value(${upload_step},'with'),'overwrite')")" 'inputs.overwrite-artifact'
 upload_findings="[r[2] for r in V.check_artifact_error('', lane) if r[2] == 'Upload files, logs & Zip']"
 _artifact_gate() {
   if [ "$(LANE="$1" _q "${upload_findings}")" = '[]' ]; then

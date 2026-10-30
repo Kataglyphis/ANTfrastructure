@@ -502,7 +502,7 @@ EOF
     "$app_name" "${APP_PACKAGING_DESCRIPTION:-${app_name} desktop application.}"
 
   chmod 0755 "$deb_root/DEBIAN"
-  if ! dpkg-deb --build "$deb_root" "${out_dir}/${output_name}"; then
+  if ! dpkg-deb --root-owner-group -Zgzip --build "$deb_root" "${out_dir}/${output_name}"; then
     echo "Error: dpkg-deb failed for ${out_dir}/${output_name}" >&2
     return 1
   fi

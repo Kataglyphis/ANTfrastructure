@@ -388,6 +388,8 @@ every lock entry the census counts as ONNX Runtime (`onnxruntime` and `onnxrunti
 unlocked retry too, and the reconcile installs the chain wheels in their place. The chain's ORT
 then serves a Python that PyPI's has no wheel for yet: 1.31.0 stopped at cp314 when 3.15.0 came out, and
 a locked sync on 3.15 failed on it.
+Linux chain exclusions accept both LF and CRLF `uv.lock` files, including a Windows
+checkout mounted into the Linux container.
 
 Every `uv_sync_project` (Linux) and `Sync-UvProjectDependencies` (Windows) ends by reconciling the
 venv it synced:

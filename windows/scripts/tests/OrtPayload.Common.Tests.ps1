@@ -50,6 +50,21 @@ function Get-SortedLeaf {
 }
 
 Describe 'WindowsOrtPayload.Common: staging' {
+    It 'resolves a chain DLL from lib or bin with the same precedence as staging' {
+        Invoke-PayloadCase -Unstaged { param($c)
+            $name = 'onnxruntime_providers_cuda.dll'
+            New-OrtTestPe -Path "$($c.Chain)\lib\$name" -Text @('lib provider')
+            Assert-Equal "$($c.Chain)\lib\$name" (Get-ChainOrtRuntimeFile -OnnxRoot $c.Chain -Name $name)
+            New-OrtTestPe -Path "$($c.Chain)\bin\$name" -Text @('bin provider')
+            Assert-Equal "$($c.Chain)\bin\$name" (Get-ChainOrtRuntimeFile -OnnxRoot $c.Chain -Name $name)
+            $null = Copy-ChainOrtBeside -OnnxRoot $c.Chain -Destination $c.Release -RequiredProvider $name
+            Assert-Equal (Get-FileHash -LiteralPath "$($c.Chain)\bin\$name").Hash (Get-FileHash -LiteralPath "$($c.Release)\$name").Hash
+            Assert-Throws { Get-ChainOrtRuntimeFile -OnnxRoot $c.Chain -Name '..\other.dll' } -MessagePattern 'Invalid ONNX Runtime DLL name'
+            Assert-Throws { Get-ChainOrtRuntimeFile -OnnxRoot $c.Chain -Name 'onnxruntime_providers_missing.dll' } -MessagePattern 'is missing'
+            Assert-Null (Get-ChainOrtRuntimeFile -OnnxRoot $c.Chain -Name 'onnxruntime_providers_missing.dll' -AllowMissing)
+        }
+    }
+
     It 'tells an ORT consumer from a plain exe the way G6 does' {
         Invoke-InTestDir { param($dir)
             Assert-True (Test-ExeLoadsOrt -Path (New-PayloadCase -Dir "$dir\c").Exe) 'names OrtGetApiBase'
@@ -76,6 +91,20 @@ Describe 'WindowsOrtPayload.Common: staging' {
         Invoke-InTestDir { param($dir)
             Assert-Throws { Copy-ChainOrtBeside -OnnxRoot '' -Destination "$dir\out" } -MessagePattern 'ONNX_ROOT is not set'
             Assert-Throws { Copy-ChainOrtBeside -OnnxRoot "$dir\nowhere" -Destination "$dir\out" } -MessagePattern 'not the chain install'
+        }
+    }
+
+    It 'stages an explicitly required provider and refuses missing or unsafe names without modifying the destination' {
+        Invoke-PayloadCase -Unstaged { param($c)
+            $name = 'onnxruntime_providers_cuda.dll'
+            New-OrtTestPe -Path "$($c.Chain)\bin\$name" -Text @('cuda provider')
+            $copied = @(Copy-ChainOrtBeside -OnnxRoot $c.Chain -Destination $c.Release -RequiredProvider $name)
+            Assert-Equal 'DirectML.dll,onnxruntime.dll,onnxruntime_providers_cuda.dll,onnxruntime_providers_shared.dll' (Get-SortedLeaf $copied) 'only the requested provider is added'
+            Assert-Equal '' (Get-PayloadRefusal $c) 'the selected provider is proved against the chain'
+            Remove-Item -LiteralPath "$($c.Chain)\bin\$name"
+            Assert-Throws { Copy-ChainOrtBeside -OnnxRoot $c.Chain -Destination $c.Release -RequiredProvider $name } -MessagePattern 'Required ONNX Runtime provider .* is missing'
+            Assert-True (Test-Path -LiteralPath "$($c.Release)\$name") 'a failed selection leaves the existing destination intact'
+            Assert-Throws { Copy-ChainOrtBeside -OnnxRoot $c.Chain -Destination $c.Release -RequiredProvider '..\other.dll' } -MessagePattern 'Invalid ONNX Runtime provider DLL name'
         }
     }
 }

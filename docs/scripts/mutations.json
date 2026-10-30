@@ -1,5 +1,37 @@
 [
  {
+  "id": "packaging.ort-runtime-preflight",
+  "target": "linux/scripts/06-packaging/ort-runtime-bundle.sh",
+  "find": "[ -f \"${ort_dir}/${ort_file}\" ] ||",
+  "replace": "[ -n \"${ort_dir}/${ort_file}\" ] ||",
+  "test": "bash linux/scripts/tests/test-ort-runtime-bundle.sh",
+  "why": "a missing provider must fail before existing output is overwritten"
+ },
+ {
+  "id": "packaging.ort-runtime-provider-choice",
+  "target": "linux/scripts/06-packaging/ort-runtime-bundle.sh",
+  "find": "amd) ort_files+=(libonnxruntime_providers_shared.so libonnxruntime_providers_migraphx.so)",
+  "replace": "amd) ort_files+=(libonnxruntime_providers_shared.so libonnxruntime_providers_cuda.so)",
+  "test": "bash linux/scripts/tests/test-ort-runtime-bundle.sh",
+  "why": "AMD packages must carry the MIGraphX provider, not CUDA"
+ },
+ {
+  "id": "packaging.external-library-loader",
+  "target": "linux/scripts/06-packaging/bundle-loader.sh",
+  "find": "external_suffix=\"\\${external_library_path}\"",
+  "replace": "external_suffix=\"\"",
+  "test": "bash linux/scripts/tests/test-linux-closure-install.sh",
+  "why": "the bundled loader must search the external runtime directories"
+ },
+ {
+  "id": "packaging.cmake-closure-no-default-system",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "list(APPEND _args --no-default-system)",
+  "replace": "list(APPEND _args --system \"libGL.so.1\")",
+  "test": "bash linux/scripts/tests/test-linux-closure-install.sh",
+  "why": "CMake must pass the caller's requested system exclusion policy to the ELF walker"
+ },
+ {
   "id": "consumer-inventory.shared-library-class",
   "target": ".github/consumers.json",
   "find": "\"glob\": \"linux/scripts/lib/*.sh\"",
@@ -30667,10 +30699,74 @@
  {
   "id": "package.ort-wheel-architecture",
   "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
-  "find": "    if elf_target(content[:20]) != native_target:",
-  "replace": "    if False:",
+  "find": "        if elf_target(header) != native_target:",
+  "replace": "        if False:",
   "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
   "why": "A foreign ELF must not reach the target-specific strip provider."
+ },
+ {
+  "id": "package.ort-wheel-large-cap",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "MAX_LIBRARY_BYTES = 1024 * 1024 * 1024",
+  "replace": "MAX_LIBRARY_BYTES = 256 * 1024 * 1024",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "NVIDIA's provider exceeds the former 256 MiB limit."
+ },
+ {
+  "id": "package.ort-wheel-bounded-stream",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "while chunk := stream.read(CHUNK_BYTES):",
+  "replace": "while chunk := stream.read():",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "Wheel libraries must be read in bounded chunks."
+ },
+ {
+  "id": "package.python-gpu-available",
+  "target": "linux/scripts/06-packaging/python-app-selftest.py",
+  "find": "    if args.require_available_provider and args.require_available_provider not in report.get(\"available_providers\", []):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-python-app-selftest.sh",
+  "why": "GPU builds must reject a runtime missing the requested provider."
+ },
+ {
+  "id": "package.python-gpu-active",
+  "target": "linux/scripts/06-packaging/python-app-selftest.py",
+  "find": "    if args.require_provider and args.require_provider not in report.get(\"providers\", []):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-python-app-selftest.sh",
+  "why": "The hardware proof must reject CPU fallback."
+ },
+ {
+  "id": "package.python-gpu-no-test",
+  "target": "linux/scripts/06-packaging/python-app-package.sh",
+  "find": "if [ -n \"${required_provider}\" ] && [ \"${RUN_TESTS}\" != true ]; then err",
+  "replace": "if false; then err",
+  "test": "bash linux/scripts/tests/test-python-app-package-licenses.sh",
+  "why": "A GPU package cannot bypass its recorded provider check."
+ },
+ {
+  "id": "package.python-gpu-hardware-option",
+  "target": "linux/scripts/06-packaging/python-app-package.sh",
+  "find": "if [ \"${PYTHON_APP_REQUIRE_ACTIVE_PROVIDER:-false}\" = true ]; then provider_args+=(--require-provider \"${required_provider}\"); fi",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-python-app-package-licenses.sh",
+  "why": "The hardware validation option must reach the installed package self-test."
+ },
+ {
+  "id": "package.python-gpu-absolute-needed",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "  if [ \"${RELOCATABLE}\" = true ] && [ \"${USE_LDD}\" = true ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "The ldd walk must reject absolute NEEDED paths outside the bundle."
+ },
+ {
+  "id": "package.python-gpu-loader-alias",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "  if [[ \"${soname}\" == /* ]] && [[ \"${3##*/}\" == ld-linux*.so* ]] && [ \"$(realpath -m \"${soname}\")\" = \"$(realpath -m \"${file}\")\" ]; then return 0; fi",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "The ldd loader alias must not be mistaken for an external library."
  },
  {
   "id": "package.ort-wheel-elf-valid",
@@ -30865,6 +30961,38 @@
   "why": "The shared PE tool module must import the common logging bootstrap."
  },
  {
+  "id": "packaging.native-deb-gzip",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "dpkg-deb --root-owner-group -Zgzip --build \"$deb_root\"",
+  "replace": "dpkg-deb --root-owner-group --build \"$deb_root\"",
+  "test": "bash linux/scripts/tests/test-package-archive.sh",
+  "why": "A real native DEB must retain gzip control and payload archives for older dpkg."
+ },
+ {
+  "id": "packaging.python-deb-gzip",
+  "target": "linux/scripts/06-packaging/python-app-package.sh",
+  "find": "dpkg-deb --root-owner-group -Zgzip --build \"${root}\"",
+  "replace": "dpkg-deb --root-owner-group --build \"${root}\"",
+  "test": "bash linux/scripts/tests/test-python-app-package-licenses.sh",
+  "why": "A real Python DEB must retain gzip control and payload archives for older dpkg."
+ },
+ {
+  "id": "packaging.deb-control-gpu-call",
+  "target": "linux/scripts/06-packaging/python-app-package.sh",
+  "find": "  verify_gpu_package \"${output}\" \"opt/${APP_ID}\" || return $?",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-deb-control-rendering.sh",
+  "why": "The Python DEB must verify the finished GPU payload before its license check."
+ },
+ {
+  "id": "packaging.deb-control-gpu-failure",
+  "target": "linux/scripts/06-packaging/python-app-package.sh",
+  "find": "  verify_gpu_package \"${output}\" \"opt/${APP_ID}\" || return $?",
+  "replace": "  verify_gpu_package \"${output}\" \"opt/${APP_ID}\" || true",
+  "test": "bash linux/scripts/tests/test-deb-control-rendering.sh",
+  "why": "A failed GPU payload verification must stop Python DEB packaging."
+ },
+ {
   "id": "packaging.deb-control-license-call",
   "target": "linux/scripts/06-packaging/python-app-package.sh",
   "find": "  verify_python_app_package_license \"${output}\" \"opt/${APP_ID}/LICENSE\" || return $?",
@@ -30991,5 +31119,53 @@
   "replace": "'#ifdef __clang__', '    #define _EMIT_STL_ERROR(NUMBER, MESSAGE)'",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.GenaiClangStlPatch.Tests.ps1 -ResultFile logs/code-quality/genai-yvals-mutation.json",
   "why": "an indented replacement no longer matches the patch's own check, which stopped the amd64 chain's GenAI build"
+ },
+ {
+  "id": "gpu-host.direct-only-closure",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "DIRECT_ONLY+=(\"${2:?}\")",
+  "replace": "PROTECT+=(\"${2:?}\")",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "host runtime transitive dependencies must not be copied by an ldd walk"
+ },
+ {
+  "id": "gpu-host.reject-sdk-root",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "case \"$(realpath \"${found}\")/\" in",
+  "replace": "case \"/not-the-source/\" in",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "libraries from the host SDK tree must not silently enter a host-runtime bundle"
+ },
+ {
+  "id": "gpu-host.unknown-provider-import",
+  "target": "linux/scripts/06-packaging/ort-runtime-bundle.sh",
+  "find": "*) printf 'unexpected %s provider dependency: %s\\n' \"${ort_kind}\" \"${ort_soname}\" >&2; return 1 ;;",
+  "replace": "*) continue ;;",
+  "test": "bash linux/scripts/tests/test-ort-host-runtime.sh",
+  "why": "a new unreviewed provider dependency cannot silently disappear from the host contract"
+ },
+ {
+  "id": "gpu-host.reject-bundled-runtime",
+  "target": "linux/scripts/06-packaging/ort-runtime-bundle.sh",
+  "find": "migraphx:libhsa-runtime*.so*",
+  "replace": "migraphx:never-libhsa-runtime*.so*",
+  "test": "bash linux/scripts/tests/test-ort-host-runtime.sh",
+  "why": "the host-runtime option must reject an accidentally copied ROCm library"
+ },
+ {
+  "id": "gpu-host.provider-required",
+  "target": "linux/scripts/06-packaging/python-app-bundle.sh",
+  "find": "*) err 'host GPU runtime requires CUDA or MIGraphX' ;;",
+  "replace": "*) : ;;",
+  "test": "bash linux/scripts/tests/test-python-app-bundle-license.sh",
+  "why": "host GPU runtime mode cannot be enabled for a CPU bundle"
+ },
+ {
+  "id": "gpu-host.artifact-name",
+  "target": "linux/scripts/06-packaging/python-app-package.sh",
+  "find": "ARTIFACT_ID=\"${APP_ID}-gpu-amd\"",
+  "replace": "ARTIFACT_ID=\"${APP_ID}\"",
+  "test": "bash linux/scripts/tests/test-python-app-package-licenses.sh",
+  "why": "an AMD artifact must not collide with the CPU artifact"
  }
 ]

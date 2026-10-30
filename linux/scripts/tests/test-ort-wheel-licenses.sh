@@ -98,6 +98,73 @@ mkdir -p "$work/bundles/raw"
 t_assert_ok python3 "$SCRIPT" --wheel-dir "$work/valid" --destination "$work/bundles/raw" --strip strip \
   --library "$work/build/libonnxruntime.so.1.2.3"
 t_assert_ok cmp "$work/LICENSE" "$work/bundles/raw/licenses/onnxruntime/LICENSE"
+t_case '--require-unstripped accepts exact wheel bytes without a strip tool and rejects stripped copies'
+mkdir -p "$work/bundles/exact" "$work/bundles/stripped-refused"
+t_assert_ok python3 "$SCRIPT" --wheel-dir "$work/valid" --destination "$work/bundles/exact" \
+  --strip missing-strip-tool-for-ort-test --require-unstripped --library "$work/build/libonnxruntime.so.1.2.3"
+t_assert_fails python3 "$SCRIPT" --wheel-dir "$work/valid" --destination "$work/bundles/stripped-refused" \
+  --strip missing-strip-tool-for-ort-test --require-unstripped --library "$work/native/libonnxruntime.so.1.2.3"
+t_assert_fails test -e "$work/bundles/stripped-refused/licenses/onnxruntime"
+ln -s libonnxruntime.so.1.2.3 "$work/build/libonnxruntime.so.1"
+mkdir -p "$work/bundles/exact-soname"
+t_assert_ok python3 "$SCRIPT" --wheel-dir "$work/valid" --destination "$work/bundles/exact-soname" \
+  --strip missing-strip-tool-for-ort-test --require-unstripped --library "$work/build/libonnxruntime.so.1"
+ln -s libonnxruntime_providers_shared.so "$work/native/libonnxruntime_providers_migraphx.so"
+mkdir -p "$work/bundles/provider-alias"
+t_assert_fails python3 "$SCRIPT" --wheel-dir "$work/valid" --destination "$work/bundles/provider-alias" \
+  --strip strip --library "$work/native/libonnxruntime_providers_migraphx.so"
+t_assert_fails test -e "$work/bundles/provider-alias/licenses/onnxruntime"
+t_assert_ok python3 - "$SCRIPT" "$work" <<'PY'
+import importlib.util
+import pathlib
+import sys
+import zipfile
+
+script, root = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+sys.path.insert(0, str(script.parent))
+spec = importlib.util.spec_from_file_location("stage_ort_exact", script)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+scratch = root / "unused-exact-scratch"
+with zipfile.ZipFile(root / "valid/onnxruntime-1-cp315-linux.whl") as archive:
+    assert module.wheel_has_library(archive, root / "build/libonnxruntime.so.1.2.3", "missing-strip", scratch, True)
+    assert not module.wheel_has_library(archive, root / "native/libonnxruntime.so.1.2.3", "missing-strip", scratch, True)
+assert not scratch.exists()
+PY
+t_case 'large library matching uses bounded reads and rejects a member over its limit'
+t_assert_ok python3 - "$SCRIPT" "$work" <<'PY'
+import importlib.util
+import pathlib
+import sys
+import zipfile
+
+script, root = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+sys.path.insert(0, str(script.parent))
+spec = importlib.util.spec_from_file_location("stage_ort", script)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+assert module.MAX_LIBRARY_BYTES > 256 * 1024 * 1024
+module.CHUNK_BYTES = 32
+library = root / "build/libonnxruntime.so.1.2.3"
+with zipfile.ZipFile(root / "valid/onnxruntime-1-cp315-linux.whl") as archive:
+    original_open = archive.open
+    class LimitedRead:
+        def __init__(self, stream): self.stream = stream
+        def __enter__(self): return self
+        def __exit__(self, *args): self.stream.close()
+        def read(self, size=-1):
+            assert 0 < size <= module.CHUNK_BYTES
+            return self.stream.read(size)
+    archive.open = lambda *args, **kwargs: LimitedRead(original_open(*args, **kwargs))
+    assert module.wheel_has_library(archive, library, "strip", root / "build")
+    module.MAX_LIBRARY_BYTES = library.stat().st_size - 1
+    try:
+        module.wheel_has_library(archive, library, "strip", root / "build")
+    except ValueError as error:
+        assert "invalid wheel entry" in str(error)
+    else:
+        raise AssertionError("an over-limit archive member was accepted")
+PY
 t_case 'a copied soname still matches the uniquely named versioned wheel entry'
 cp "$work/native/libonnxruntime.so.1.2.3" "$work/native/libonnxruntime.so.1"
 mkdir -p "$work/bundles/soname"

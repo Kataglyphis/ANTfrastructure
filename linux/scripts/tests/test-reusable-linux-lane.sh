@@ -40,8 +40,10 @@ t_assert_rc 1 _q '1 / 0'
 STEP="${_work}/plan-step.sh"
 EXTRA="${_work}/extra-args"
 STEPS="${_work}/conditions"
+GPU_PIN="${_work}/gpu-pin-check.sh"
+GPU_FORMATS="${_work}/gpu-format-check.sh"
 # shellcheck disable=SC2086
-${_PY} - "${ROOT}/linux/scripts" "${LANE}" "${STEP}" "${EXTRA}" "${STEPS}" <<'PY'
+${_PY} - "${ROOT}/linux/scripts" "${LANE}" "${STEP}" "${EXTRA}" "${STEPS}" "${GPU_PIN}" "${GPU_FORMATS}" <<'PY'
 import importlib
 import pathlib
 import sys
@@ -67,6 +69,10 @@ plan = next(s for s in V.value(V.value(V.value(lane, 'jobs'), 'plan'), 'steps') 
 pathlib.Path(sys.argv[3]).write_text(textwrap.dedent('\n'.join(cut(V.line_of(plan, 'run') - 1))).strip() + '\n', encoding='utf-8')
 
 build = V.value(V.value(lane, 'jobs'), 'build')
+pin_step = next(s for s in V.value(build, 'steps') if V.value(s, 'name') == 'Check pinned host GPU packaging contract')
+pathlib.Path(sys.argv[6]).write_text(textwrap.dedent('\n'.join(cut(V.line_of(pin_step, 'run') - 1))).strip() + '\n', encoding='utf-8')
+format_step = next(s for s in V.value(build, 'steps') if V.value(s, 'name') == 'Check GPU candidate formats')
+pathlib.Path(sys.argv[7]).write_text(textwrap.dedent('\n'.join(cut(V.line_of(format_step, 'run') - 1))).strip() + '\n', encoding='utf-8')
 with open(sys.argv[4], 'w', encoding='utf-8') as extra, open(sys.argv[5], 'w', encoding='utf-8') as conds:
     for step in (V.value(build, 'steps') or []):
         name = V.value(step, 'name')
@@ -122,6 +128,99 @@ t_assert_eq "string|false|0" "$(_input_meta coverage-min)"
 t_assert_contains "$(grep -F 'Run Python tests|' "${EXTRA}")" \
   '-e PYTHON_COVERAGE_MIN=${{ inputs.coverage-min }}' \
   "a declared input with no test-step forwarding cannot raise the coverage floor"
+
+t_case "host GPU runtime is an explicit packaging-only opt-in"
+t_assert_eq "boolean|false|false" "$(_input_meta host-gpu-runtime)"
+t_assert_eq "string|false|" "$(_input_meta gpu-artifact-label)"
+t_assert_eq "string|false|image" "$(_input_meta app-python-runtime)"
+t_assert_contains "$(grep -F 'Packaging application|' "${EXTRA}")" '-e PYTHON_APP_PYTHON_RUNTIME=${{ inputs.app-python-runtime }}'
+t_assert_fails grep -F 'PYTHON_APP_PYTHON_RUNTIME=' < <(grep -F 'Run Python tests|' "${EXTRA}")
+
+t_case "GPU reruns replace each vendor and architecture artifact without changing CPU behavior"
+_gpu_overwrite_query='all(V.value(V.value(s,"with"),"overwrite") == "${{ inputs.host-gpu-runtime }}" for s in V.value(build,"steps") if V.value(s,"name") in ("Upload test results", "Upload packages (source/binary only)"))'
+t_assert_eq 'True' "$(_q "${_gpu_overwrite_query}")"
+_gpu_overwrite_count='len([s for s in V.value(build,"steps") if V.value(s,"name") in ("Upload test results", "Upload packages (source/binary only)")]) == 2'
+t_assert_eq 'True' "$(_q "${_gpu_overwrite_count}")"
+t_assert_contains "$(grep -F 'Packaging application|' "${EXTRA}")" \
+  "inputs.host-gpu-runtime && '-e PYTHON_APP_HOST_GPU_RUNTIME=true' || ''"
+t_assert_contains "$(grep -F 'Packaging application|' "${EXTRA}")" "inputs.host-gpu-runtime && format('-e PYTHON_APP_REQUIRE_PROVIDER={0}'"
+t_assert_fails grep -F 'PYTHON_APP_HOST_GPU_RUNTIME=' < <(grep -F 'Run Python tests|' "${EXTRA}")
+_gpu_packaging_forwarded() {
+  grep -F 'Packaging application|' "$1" | grep -Fq -- "inputs.host-gpu-runtime && '-e PYTHON_APP_HOST_GPU_RUNTIME=true' || ''"
+}
+t_assert_ok _gpu_packaging_forwarded "${EXTRA}"
+sed 's/PYTHON_APP_HOST_GPU_RUNTIME/PYTHON_APP_MISSING_GPU_RUNTIME/' "${EXTRA}" > "${_work}/missing-gpu-extra"
+t_assert_fails _gpu_packaging_forwarded "${_work}/missing-gpu-extra"
+t_assert_ok env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL=amd GPU_CONTAINER_IMAGE=image ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_ok env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL=amd GPU_CONTAINER_IMAGE=image APP_PYTHON_RUNTIME=standalone ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_fails env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL=amd GPU_CONTAINER_IMAGE=image APP_PYTHON_RUNTIME=unsafe ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_fails env HOST_GPU_RUNTIME=false APP_PYTHON_RUNTIME=standalone ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_ok env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL=nvidia GPU_CONTAINER_IMAGE=image ARCHES='x64 arm64' GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_fails env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL=amd GPU_CONTAINER_IMAGE=image ARCHES=arm64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_fails env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL=nvidia GPU_CONTAINER_IMAGE=image ARCHES=riscv64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_fails env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL=amd GPU_CONTAINER_IMAGE='' ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_fails env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL='' ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_fails env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL='AMD/unsafe' ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_fails env HOST_GPU_RUNTIME=false GPU_ARTIFACT_LABEL=amd ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_contains "$(grep -F 'Upload packages (source/binary only)|' "${STEPS}")" '!inputs.host-gpu-runtime || success()'
+_artifact_name="$(_q "V.value(V.value(next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Upload packages (source/binary only)'), 'with'), 'name')")"
+t_assert_contains "${_artifact_name}" 'unverified-gpu-{0}-packages-linux-{1}'
+t_assert_contains "${_artifact_name}" 'packages-linux-{0}-source-and-binary'
+t_case "the GPU path refuses an old or incomplete consumer hub pin"
+t_assert_eq 'inputs.host-gpu-runtime' "$(_q "V.value(next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Check pinned host GPU packaging contract'), 'if')")"
+t_assert_eq 'True' "$(_q "[V.value(s,'name') for s in V.value(build,'steps')].index('Check pinned host GPU packaging contract') < [V.value(s,'name') for s in V.value(build,'steps')].index('Prepare CI host')")"
+t_assert_contains "$(_q "V.value(V.value(next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Prepare CI host'),'with'),'checkout')")" "inputs.host-gpu-runtime && 'false' || 'true'"
+t_assert_contains "$(_q "V.value(V.value(next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Prepare CI host'),'with'),'pull-first')")" "inputs.host-gpu-runtime && 'false' || 'true'"
+_pin_dir="${_work}/pin/third_party/ANTfrastructure/linux/scripts/06-packaging"
+mkdir -p "${_pin_dir}"
+mkdir -p "${_work}/pin/third_party/ANTfrastructure/linux/scripts/02-toolchain/python"
+cp "${ROOT}/linux/scripts/02-toolchain/python/ci_packaging.sh" "${_work}/pin/third_party/ANTfrastructure/linux/scripts/02-toolchain/python/"
+mkdir -p "${_work}/pin/packaging"
+touch "${_work}/pin/packaging/app.json"
+cp "${ROOT}/linux/scripts/06-packaging/python-app-bundle.sh" "${_pin_dir}/"
+cp "${ROOT}/linux/scripts/06-packaging/python-app-package.sh" "${_pin_dir}/"
+cp "${ROOT}/linux/scripts/06-packaging/ort-runtime-bundle.sh" "${_pin_dir}/"
+cp "${ROOT}/linux/scripts/06-packaging/elf-needed.sh" "${_pin_dir}/"
+cp "${ROOT}/linux/scripts/06-packaging/verify-python-gpu-package.py" "${_pin_dir}/"
+cp "${ROOT}/linux/scripts/06-packaging/python-app-deb-depends.py" "${_pin_dir}/"
+t_assert_ok bash -c 'cd "$1" && bash "$2"' _ "${_work}/pin" "${GPU_PIN}"
+sed -i '/^# PYTHON_APP_PYTHON_RUNTIME_API=1$/d' "${_work}/pin/third_party/ANTfrastructure/linux/scripts/02-toolchain/python/ci_packaging.sh"
+t_assert_fails bash -c 'cd "$1" && bash "$2"' _ "${_work}/pin" "${GPU_PIN}"
+cp "${ROOT}/linux/scripts/02-toolchain/python/ci_packaging.sh" "${_work}/pin/third_party/ANTfrastructure/linux/scripts/02-toolchain/python/"
+rm "${_pin_dir}/python-app-deb-depends.py"
+t_assert_fails bash -c 'cd "$1" && bash "$2"' _ "${_work}/pin" "${GPU_PIN}"
+cp "${ROOT}/linux/scripts/06-packaging/python-app-deb-depends.py" "${_pin_dir}/"
+rm "${_pin_dir}/verify-python-gpu-package.py"
+t_assert_fails bash -c 'cd "$1" && bash "$2"' _ "${_work}/pin" "${GPU_PIN}"
+cp "${ROOT}/linux/scripts/06-packaging/verify-python-gpu-package.py" "${_pin_dir}/"
+sed -i '/^# PYTHON_APP_GPU_FINISHED_BINARY_API=1$/d' "${_pin_dir}/python-app-package.sh"
+t_assert_fails bash -c 'cd "$1" && bash "$2"' _ "${_work}/pin" "${GPU_PIN}"
+cp "${ROOT}/linux/scripts/06-packaging/python-app-package.sh" "${_pin_dir}/"
+sed -i '/^# PYTHON_APP_OPTIONAL_TENSORRT_HOST_RUNTIME_API=1$/d' "${_pin_dir}/python-app-bundle.sh"
+t_assert_fails bash -c 'cd "$1" && bash "$2"' _ "${_work}/pin" "${GPU_PIN}"
+cp "${ROOT}/linux/scripts/06-packaging/python-app-bundle.sh" "${_pin_dir}/"
+sed -i '/^# ORT_PYTHON_GPU_HOST_IMPORTS_API=1$/d' "${_pin_dir}/ort-runtime-bundle.sh"
+t_assert_fails bash -c 'cd "$1" && bash "$2"' _ "${_work}/pin" "${GPU_PIN}"
+cp "${ROOT}/linux/scripts/06-packaging/ort-runtime-bundle.sh" "${_pin_dir}/"
+sed -i '/^# ELF_NEEDED_API=1$/d' "${_pin_dir}/elf-needed.sh"
+t_assert_fails bash -c 'cd "$1" && bash "$2"' _ "${_work}/pin" "${GPU_PIN}"
+cp "${ROOT}/linux/scripts/06-packaging/elf-needed.sh" "${_pin_dir}/"
+sed -i '/^# PYTHON_APP_GPU_PACKAGE_API=1$/d' "${_pin_dir}/python-app-package.sh"
+t_assert_fails bash -c 'cd "$1" && bash "$2"' _ "${_work}/pin" "${GPU_PIN}"
+rm "${_work}/pin/packaging/app.json"
+t_assert_fails bash -c 'cd "$1" && bash "$2"' _ "${_work}/pin" "${GPU_PIN}"
+t_case "GPU outputs require all matching package formats and do not publish docs"
+mkdir -p "${_work}/formats/dist/packages"
+touch "${_work}/formats/dist/packages/app-gpu-amd-1-linux-x86_64.tar.gz" \
+  "${_work}/formats/dist/packages/app-gpu-amd_1_amd64.deb" \
+  "${_work}/formats/dist/packages/app-gpu-amd-1-x86_64.AppImage"
+t_assert_ok env GPU_LABEL=amd GPU_ARCH=x64 bash -c 'cd "$1" && bash "$2"' _ "${_work}/formats" "${GPU_FORMATS}"
+t_assert_fails env GPU_LABEL=nvidia GPU_ARCH=x64 bash -c 'cd "$1" && bash "$2"' _ "${_work}/formats" "${GPU_FORMATS}"
+t_assert_fails env GPU_LABEL=amd GPU_ARCH=arm64 bash -c 'cd "$1" && bash "$2"' _ "${_work}/formats" "${GPU_FORMATS}"
+t_assert_contains "$(grep -F 'Build Docs|' "${STEPS}")" '!inputs.host-gpu-runtime'
+t_assert_contains "$(_q "V.value(V.value(V.value(lane,'jobs'),'docs'),'if')")" '!inputs.host-gpu-runtime'
+_test_artifact_name="$(_q "V.value(V.value(next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Upload test results'), 'with'), 'name')")"
+t_assert_contains "${_test_artifact_name}" 'unverified-gpu-{0}-test-reports-{1}'
 
 t_case "the DEFAULT yields exactly the rows the static matrix held, in order"
 # A changed row silently renames the caller's jobs (matrix.arch) and artifacts (matrix.runs_on).

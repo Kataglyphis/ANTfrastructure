@@ -26,6 +26,13 @@ for Windows and `AGENTS.md` § Linux Build Rules for Linux.
 | Python wheel | `C:\runtime\wheels` (`PYTHON_WHEELS`) | `/opt/wheels` at build time; the installed flavour is kept in `/opt/onnxruntime-wheels` (`ORT_CHAIN_WHEEL_DIR`). Its `cp3XYt` twin, built natively from the same tree, ships in `/opt/wheels-free-threaded` ([`consumer-image-contract.md` § The free-threaded wheels](consumer-image-contract.md#the-free-threaded-wheels)) |
 | Source root compiled into it | `C:\temp\onnx-src` | `/opt/onnxruntime` (`/opt/onnxruntime-android` for Android) |
 
+For a Windows DirectML hardware profile with an **explicit** device ID, run
+`python windows/scripts/diagnostics/verify-dxgi-adapter.py --vendor amd --index 0`
+(or `--vendor nvidia`) on the device. It checks that the selected `EnumAdapters1`
+index is a physical GPU of that vendor. ONNX Runtime 1.31.0 uses that index when
+DirectML is registered with an explicit device ID; a preference-selected default
+is not proven by this check. Pair it with a model operator profile to prove execution.
+
 The last row is the fingerprint every guard uses. ORT compiles its source paths
 into its binaries through `__FILE__`, so the chain's DLL carries
 `C:\temp\onnx-src\onnxruntime\core\...` and its `.so` carries
@@ -446,6 +453,15 @@ it under their own names until 2026-09-25.
   `lib\` and `bin\` instead, EP sidecars included (QNN's backends, WebGPU's DXC).
   The install is `Get-OnnxChainLayout`'s, so an unset `ONNX_ROOT`, a NuGet tree
   and another arch's `onnxruntime.dll` all throw before anything is copied.
+  `-RequiredProvider onnxruntime_providers_cuda.dll` adds that chain provider
+  without copying unrelated SDK DLLs. An invalid name or missing provider fails
+  before changing the destination. This stages the provider only; the CUDA
+  runtime and GPU execution still need a separate host proof.
+- `Copy-OrtWheelLicenses -ProviderDll <paths>` additionally checks each selected
+  provider's exact bytes in the same uniquely matched wheel as the core before copying
+  notices. A missing, duplicate, empty or different provider fails the match. This is
+  a staging check; completed packages still need their own binary-byte verification.
+  `-DirectMlDll <path>` also requires the selected `DirectML.dll` to match that wheel.
 - `Assert-ChainOrtTree -Root <tree>` is G6 over the tree, plus three checks G6
   does not make, in `-OrtDirectory`, where the exe loads ORT from:
   `onnxruntime.dll` missing there (MISSING), an ORT-family name the chain has not

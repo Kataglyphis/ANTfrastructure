@@ -115,6 +115,7 @@ if command -v 7z >/dev/null 2>&1; then
 fi
 
 t_case 'MSI media mappings select the right embedded cabinet and reject ambiguity'
+t_assert_ok python3 "$TESTS_DIR/test_package_license_msi_batch.py"
 cat > "$work/tools/7z" <<'SH'
 #!/usr/bin/env bash
 set -u
@@ -126,11 +127,12 @@ if [ "$operation" = l ]; then
   printf '%s\n' '----------'
   if [[ "$archive" == *.msi ]]; then
     if [[ " $* " != *' -tCompound '* ]]; then printf '%s\n' 'Path = f9179'; exit 0; fi
-    printf '%s\n' 'Path = cab1.cab'
-    [ "${FAKE_MSI_SINGLE:-0}" = 1 ] || printf '%s\n' 'Path = cab2.cab'
+    printf '%s\n\n' 'Path = cab1.cab'
+    [ "${FAKE_MSI_SINGLE:-0}" = 1 ] || printf '%s\n\n' 'Path = cab2.cab'
   elif [ "$(cat "$archive")" = CAB2 ] || [ "${FAKE_MSI_SINGLE:-0}" = 1 ] || [ "${FAKE_BOTH_CONTAIN:-0}" = 1 ]; then
-    printf '%s\n' 'Path = f9179'
-    [ "${FAKE_DUPLICATE:-0}" = 0 ] || printf '%s\n' 'Path = f9179'
+    printf 'Path = f9179\nSize = 40\n\nPath = f9180\nSize = 40\n\n'
+    [ "${FAKE_DUPLICATE:-0}" = 0 ] || printf 'Path = f9179\nSize = 40\n\n'
+    [ "${FAKE_ALIASED:-0}" = 0 ] || printf 'Path = ./f9179\nSize = 40\n\n'
   fi
 elif [ "$operation" = e ]; then
   if [ "${FAKE_EXTRACT_FAIL:-0}" != 0 ] && [[ "$archive" == *.msi ]]; then printf CAB2; exit 9; fi
@@ -140,6 +142,17 @@ elif [ "$operation" = e ]; then
     [ "$member" = f9179 ] || exit 1
     cat "$FAKE_LICENSE"
   fi
+elif [ "$operation" = x ]; then
+  output=''
+  while [ "$#" -gt 0 ]; do
+    case "$1" in -o*) output="${1#-o}" ;; --) shift; break ;; esac
+    shift
+  done
+  shift
+  [ -z "${FAKE_COUNT_FILE:-}" ] || printf 'x\n' >> "$FAKE_COUNT_FILE"
+  for member in "$@"; do
+    case "$member" in f9179|f9180) cp "$FAKE_LICENSE" "$output/$member" ;; *) exit 1 ;; esac
+  done
 else
   exit 1
 fi
@@ -148,6 +161,16 @@ chmod +x "$work/tools/7z"
 touch "$work/multi.msi"
 export FAKE_LICENSE="$work/LICENSE"
 PATH="$work/tools:$PATH" t_assert_ok python3 "$SCRIPT" "$work/multi.msi" --require "cab2.cab::f9179=$work/LICENSE"
+PATH="$work/tools:$PATH" FAKE_COUNT_FILE="$work/count" t_assert_ok python3 "$SCRIPT" "$work/multi.msi" \
+  --require "cab2.cab::f9179=$work/LICENSE" --require "cab2.cab::f9180=$work/LICENSE"
+t_assert_ok test "$(grep -c '^x$' "$work/count" 2>/dev/null || :)" = 1
+FAKE_BOTH_CONTAIN=1 PATH="$work/tools:$PATH" t_assert_ok python3 "$SCRIPT" "$work/multi.msi" \
+  --require "cab1.cab::f9179=$work/LICENSE" --require "cab2.cab::f9180=$work/LICENSE"
+FAKE_LICENSE="$work/wrong-license" PATH="$work/tools:$PATH" t_assert_fails python3 "$SCRIPT" "$work/multi.msi" \
+  --require "cab2.cab::f9179=$work/LICENSE" --require "cab2.cab::f9180=$work/LICENSE"
+PATH="$work/tools:$PATH" t_assert_ok python3 "$SCRIPT" "$work/multi.msi" --require "cab2.cab::f91*=$work/LICENSE"
+PATH="$work/tools:$PATH" t_assert_fails python3 "$SCRIPT" "$work/multi.msi" \
+  --require "cab2.cab::f9179=$work/LICENSE" --require "cab2.cab::absent=$work/LICENSE"
 PATH="$work/tools:$PATH" t_assert_fails python3 "$SCRIPT" "$work/multi.msi" --require "cab1.cab::f9179=$work/LICENSE"
 PATH="$work/tools:$PATH" t_assert_fails python3 "$SCRIPT" "$work/multi.msi" --require "f9179=$work/LICENSE"
 FAKE_BOTH_CONTAIN=1 PATH="$work/tools:$PATH" t_assert_fails python3 "$SCRIPT" "$work/multi.msi" --require "f9179=$work/LICENSE"
@@ -155,6 +178,7 @@ FAKE_ACCEPT_EXTERNAL=1 PATH="$work/tools:$PATH" t_assert_fails python3 "$SCRIPT"
 FAKE_MSI_SINGLE=1 PATH="$work/tools:$PATH" t_assert_ok python3 "$SCRIPT" "$work/multi.msi" --require "f9179=$work/LICENSE"
 FAKE_MSI_SINGLE=1 PATH="$work/tools:$PATH" t_assert_ok python3 "$SCRIPT" "$work/multi.msi" --require "cab1.cab::f9179=$work/LICENSE"
 FAKE_DUPLICATE=1 PATH="$work/tools:$PATH" t_assert_fails python3 "$SCRIPT" "$work/multi.msi" --require "cab2.cab::f9179=$work/LICENSE"
+FAKE_ALIASED=1 PATH="$work/tools:$PATH" t_assert_fails python3 "$SCRIPT" "$work/multi.msi" --require "cab2.cab::f9179=$work/LICENSE"
 FAKE_EXTRACT_FAIL=1 PATH="$work/tools:$PATH" t_assert_fails python3 "$SCRIPT" "$work/multi.msi" --require "cab2.cab::f9179=$work/LICENSE"
 unset FAKE_LICENSE
 

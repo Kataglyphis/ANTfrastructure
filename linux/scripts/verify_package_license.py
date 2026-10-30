@@ -16,6 +16,7 @@ import argparse
 import fnmatch
 import gzip
 import io
+import re
 import stat
 import subprocess
 import sys
@@ -108,7 +109,7 @@ def deb_entries(path: Path, rules: list[tuple[str, bytes]]) -> list[tuple[str, b
     return result
 
 
-def sevenzip_member_names(path: Path, *, compound: bool = False) -> list[str]:
+def sevenzip_member_records(path: Path, *, compound: bool = False) -> list[tuple[str, int | None]]:
     """Read archive metadata before selecting exact members."""
     listing = subprocess.run(
         ["7z", "l", "-slt", *(["-tCompound"] if compound else []), "--", str(path)],
@@ -117,7 +118,24 @@ def sevenzip_member_names(path: Path, *, compound: bool = False) -> list[str]:
     _, separator, members = listing.partition("----------")
     if not separator:
         raise ValueError("7-Zip did not return an archive member list")
-    return [safe_name(line.removeprefix("Path = ")) for line in members.splitlines() if line.startswith("Path = ")]
+    result: list[tuple[str, int | None]] = []
+    name: str | None = None
+    size: int | None = None
+    for line in members.splitlines():
+        if line.startswith("Path = "):
+            if name is not None:
+                result.append((name, size))
+            name, size = line.removeprefix("Path = "), None
+        elif name is not None and line.startswith("Size = "):
+            value = line.removeprefix("Size = ")
+            size = int(value) if value.isdecimal() else None
+    if name is not None:
+        result.append((name, size))
+    return result
+
+
+def sevenzip_member_names(path: Path, *, compound: bool = False) -> list[str]:
+    return [safe_name(name) for name, _ in sevenzip_member_records(path, compound=compound)]
 
 
 def sevenzip_selected_entries(path: Path, names: list[str], rules: list[tuple[str, bytes]]) -> Iterator[tuple[str, bytes]]:
@@ -158,20 +176,49 @@ def msi_cabinet_checks(names: list[str], rules: list[tuple[str, bytes]]) -> dict
     return selected
 
 
+def msi_selected_names(staged: Path, checks: list[tuple[str, str, bytes]]) -> list[str]:
+    """Reject unsafe or ambiguous matching identifiers before extracting them."""
+    inner_rules = [(member, expected) for _, member, expected in checks]
+    folded_rules = [(member.casefold(), expected) for member, expected in inner_rules]
+    names = []
+    seen: set[str] = set()
+    for raw, size in sevenzip_member_records(staged):
+        name = safe_name(raw)
+        if not wanted(name.casefold(), folded_rules):
+            continue
+        if name != raw or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", name):
+            raise ValueError(f"unsafe MSI cabinet member: {raw}")
+        if name.casefold() in seen:
+            raise ValueError(f"duplicate MSI cabinet member: {name}")
+        if size is None or size > MAX_LICENSE_BYTES:
+            raise ValueError(f"invalid or oversized MSI cabinet member: {name}")
+        seen.add(name.casefold())
+        names.append(name)
+    return names
+
+
 def msi_cabinet_entries(path: Path, cabinet: str, staged: Path,
                         checks: list[tuple[str, str, bytes]]) -> Iterator[tuple[str, bytes]]:
-    """Stage only the selected CAB stream and reject duplicate matching identifiers."""
+    """Stage the CAB stream once, then extract the selected files together."""
     with staged.open("wb") as stream:
         subprocess.run(["7z", "e", "-tCompound", "-so", "-spd", "--", str(path), cabinet], stdout=stream, check=True)
-    inner_rules = [(member, expected) for _, member, expected in checks]
-    seen: set[str] = set()
-    for name, content in sevenzip_selected_entries(staged, sevenzip_member_names(staged), inner_rules):
-        if name in seen:
-            raise ValueError(f"duplicate MSI cabinet member: {name}")
-        seen.add(name)
-        for pattern, member, _ in checks:
-            if fnmatch.fnmatchcase(name, member):
-                yield f"{cabinet}::{name}" if "::" in pattern else name, content
+    names = msi_selected_names(staged, checks)
+    if not names:
+        return
+    with tempfile.TemporaryDirectory(prefix="package-msi-members-") as temporary:
+        subprocess.run(["7z", "x", "-y", "-spd", f"-o{temporary}", "--", str(staged), *names],
+                       check=True, capture_output=True)
+        if {entry.name for entry in Path(temporary).iterdir()} != set(names):
+            raise ValueError("MSI cabinet extraction returned unexpected members")
+        for name in names:
+            extracted = Path(temporary) / name
+            if extracted.is_symlink() or not extracted.is_file():
+                raise ValueError(f"MSI cabinet member is not a regular file: {name}")
+            with extracted.open("rb") as stream:
+                content = limited_read(stream)
+            for pattern, member, _ in checks:
+                if fnmatch.fnmatchcase(name, member):
+                    yield f"{cabinet}::{name}" if "::" in pattern else name, content
 
 
 def msi_entries(path: Path, rules: list[tuple[str, bytes]]) -> Iterator[tuple[str, bytes]]:

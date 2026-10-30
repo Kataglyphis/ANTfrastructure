@@ -525,7 +525,7 @@ _uv_chain_ort_skip_args() {
   local ort
   _UV_CHAIN_ORT_SKIPPED=""
   [ -n "${ORT_CHAIN_WHEEL_DIR:-}" ] && [ -f uv.lock ] || return 0
-  for ort in $(sed -n 's/^name = "\(onnxruntime[a-z0-9-]*\)"$/\1/p' uv.lock | grep -E '^onnxruntime(-|$)' | sort -u); do
+  for ort in $(sed -n 's/^name = "\(onnxruntime[a-z0-9-]*\)"[[:space:]]*$/\1/p' uv.lock | grep -E '^onnxruntime(-|$)' | sort -u); do
     _args+=(--no-install-package "${ort}")
     _UV_CHAIN_ORT_SKIPPED+="${ort} "
   done

@@ -5,6 +5,7 @@
 
 Each supplied library must match its uniquely named wheel component, either as-is
 or after stripping the wheel entry with the selected target-architecture tool.
+With --require-unstripped, only exact wheel bytes are accepted and no copy is made.
 The check does not enumerate other native libraries or their legal obligations.
 """
 from __future__ import annotations
@@ -18,12 +19,14 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from contextlib import nullcontext
 from pathlib import Path
 
 from ort_census_probe import file_sha
 
-MAX_LIBRARY_BYTES = 256 * 1024 * 1024
+MAX_LIBRARY_BYTES = 1024 * 1024 * 1024
 MAX_TEXT_BYTES = 16 * 1024 * 1024
+CHUNK_BYTES = 1024 * 1024
 TEXTS = ("LICENSE", "ThirdPartyNotices.txt")
 ORT_LIBRARY = re.compile(r"^(libonnxruntime(?:_providers_[a-zA-Z0-9_]+)?\.so)(?:\.\d+)*$")
 
@@ -39,7 +42,7 @@ def elf_target(header: bytes) -> tuple[int, int, int]:
     return header[4], header[5], machine
 
 
-def entry_bytes(archive: zipfile.ZipFile, name: str, limit: int) -> bytes | None:
+def checked_entry(archive: zipfile.ZipFile, name: str, limit: int) -> zipfile.ZipInfo | None:
     """Reject duplicate, linked, empty or excessively large expected entries."""
     entries = [entry for entry in archive.infolist() if entry.filename == name]
     if not entries:
@@ -49,6 +52,14 @@ def entry_bytes(archive: zipfile.ZipFile, name: str, limit: int) -> bytes | None
     entry = entries[0]
     if entry.is_dir() or stat.S_ISLNK(entry.external_attr >> 16) or not 0 < entry.file_size <= limit:
         raise ValueError(f"invalid wheel entry: {name}")
+    return entry
+
+
+def entry_bytes(archive: zipfile.ZipFile, name: str, limit: int) -> bytes | None:
+    """Read a bounded text entry after validating its archive metadata."""
+    entry = checked_entry(archive, name, limit)
+    if entry is None:
+        return None
     with archive.open(entry) as stream:
         content = stream.read(limit + 1)
     if len(content) != entry.file_size or len(content) > limit:
@@ -56,36 +67,75 @@ def entry_bytes(archive: zipfile.ZipFile, name: str, limit: int) -> bytes | None
     return content
 
 
-def wheel_has_library(archive: zipfile.ZipFile, library: Path, strip: str, scratch: Path) -> bool:
-    """Require byte identity, not just a release version or a source marker."""
-    component = ORT_LIBRARY.fullmatch(library.resolve(strict=True).name)
-    if component is None:
-        raise ValueError(f"invalid ONNX Runtime library name: {library}")
+def wheel_component(archive: zipfile.ZipFile, library: Path) -> tuple[zipfile.ZipInfo, str] | None:
+    """Find the library's unique component in a wheel, or return None."""
+    component = ORT_LIBRARY.fullmatch(library.name)
+    target = ORT_LIBRARY.fullmatch(library.resolve(strict=True).name)
+    if component is None or target is None or component.group(1) != target.group(1):
+        raise ValueError(f"ONNX Runtime library name does not match its target: {library}")
     prefix = "onnxruntime/capi/"
     entries = [entry.filename for entry in archive.infolist() if entry.filename.startswith(prefix)
                and (match := ORT_LIBRARY.fullmatch(entry.filename[len(prefix):]))
                and match.group(1) == component.group(1)]
     if not entries:
-        return False
+        return None
     if len(entries) != 1:
         raise ValueError(f"ambiguous wheel component: {component.group(1)}")
-    content = entry_bytes(archive, entries[0], MAX_LIBRARY_BYTES)
-    if content is None:
+    entry = checked_entry(archive, entries[0], MAX_LIBRARY_BYTES)
+    if entry is None:
         raise ValueError(f"missing wheel component: {entries[0]}")
+    return entry, component.group(1)
+
+
+def copy_wheel_component(archive: zipfile.ZipFile, entry: zipfile.ZipInfo,
+                         native_target: tuple[int, int, int], copied: Path | None) -> str | None:
+    """Hash in bounded chunks, writing a scratch copy only if stripping may be needed."""
+    digest = hashlib.sha256()
+    with archive.open(entry) as stream:
+        header = stream.read(20)
+        if elf_target(header) != native_target:
+            return None
+        size = len(header)
+        digest.update(header)
+        with copied.open("wb") if copied is not None else nullcontext() as target:
+            if target is not None:
+                target.write(header)
+            while chunk := stream.read(CHUNK_BYTES):
+                size += len(chunk)
+                if size > entry.file_size or size > MAX_LIBRARY_BYTES:
+                    raise ValueError(f"invalid wheel entry size: {entry.filename}")
+                digest.update(chunk)
+                if target is not None:
+                    target.write(chunk)
+    if size != entry.file_size:
+        raise ValueError(f"invalid wheel entry size: {entry.filename}")
+    return digest.hexdigest()
+
+
+def wheel_has_library(archive: zipfile.ZipFile, library: Path, strip: str, scratch: Path,
+                      require_unstripped: bool = False) -> bool:
+    """Require byte identity, not just a release version or a source marker."""
+    component = wheel_component(archive, library)
+    if component is None:
+        return False
+    entry, name = component
     with library.open("rb") as stream:
         native_target = elf_target(stream.read(20))
-    if elf_target(content[:20]) != native_target:
-        return False
     expected = file_sha(str(library))
-    if hashlib.sha256(content).hexdigest() == expected:
+    copied = None if require_unstripped else scratch / name
+    digest = copy_wheel_component(archive, entry, native_target, copied)
+    if digest is None:
+        return False
+    if digest == expected:
         return True
-    copied = scratch / component.group(1)
-    copied.write_bytes(content)
+    if copied is None:
+        return False
     subprocess.run([strip, "--strip-all", "--", str(copied)], check=True, capture_output=True)
     return file_sha(str(copied)) == expected
 
 
-def selected_wheel(directory: Path, libraries: list[Path], strip: str, scratch: Path) -> Path:
+def selected_wheel(directory: Path, libraries: list[Path], strip: str, scratch: Path,
+                   require_unstripped: bool = False) -> Path:
     """One wheel must independently match every requested delivered library."""
     if not directory.is_dir():
         raise ValueError(f"wheel directory is missing: {directory}")
@@ -94,7 +144,7 @@ def selected_wheel(directory: Path, libraries: list[Path], strip: str, scratch: 
         if wheel.name.startswith("onnxruntime_genai-"):
             continue
         with zipfile.ZipFile(wheel) as archive:
-            if all(wheel_has_library(archive, library, strip, scratch) for library in libraries):
+            if all(wheel_has_library(archive, library, strip, scratch, require_unstripped) for library in libraries):
                 matches.append(wheel)
     if len(matches) != 1:
         raise ValueError(f"expected one wheel matching every native library; found {len(matches)}")
@@ -147,15 +197,16 @@ def main() -> int:
     parser.add_argument("--library", type=Path, action="append", required=True)
     parser.add_argument("--destination", type=Path, required=True)
     parser.add_argument("--strip", required=True, help="target-compatible strip executable")
+    parser.add_argument("--require-unstripped", action="store_true", help="require byte-identical wheel libraries without a strip fallback")
     args = parser.parse_args()
     try:
-        if not shutil.which(args.strip):
+        if not args.require_unstripped and not shutil.which(args.strip):
             raise ValueError(f"strip executable not found: {args.strip}")
         for library in args.library:
             if not library.is_file() or not ORT_LIBRARY.fullmatch(library.resolve().name):
                 raise ValueError(f"not a native ONNX Runtime library: {library}")
         with tempfile.TemporaryDirectory(prefix="ort-wheel-license-") as temp:
-            wheel = selected_wheel(args.wheel_dir, args.library, args.strip, Path(temp))
+            wheel = selected_wheel(args.wheel_dir, args.library, args.strip, Path(temp), args.require_unstripped)
             texts = read_texts(wheel)
         output = write_texts(args.destination, texts)
     except (OSError, ValueError, UnicodeError, zipfile.BadZipFile, subprocess.CalledProcessError) as error:

@@ -20,6 +20,8 @@ def last_report(text: str) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default="", help="the report's onnxruntime_module must lie under this directory")
+    parser.add_argument("--require-available-provider", default="", help="require the named provider in the installed runtime")
+    parser.add_argument("--require-provider", default="", help="require the named execution provider in the inference session")
     parser.add_argument("command", nargs=argparse.REMAINDER, help="the launcher and its self-test arguments")
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
@@ -35,6 +37,10 @@ def main() -> int:
         sys.exit(str(exc))
     if not report.get("ok"):
         sys.exit("the self-test did not report ok")
+    if args.require_available_provider and args.require_available_provider not in report.get("available_providers", []):
+        sys.exit(f"the self-test did not list {args.require_available_provider} as available: {report.get('available_providers', [])}")
+    if args.require_provider and args.require_provider not in report.get("providers", []):
+        sys.exit(f"the self-test did not activate {args.require_provider}: {report.get('providers', [])}")
     module = report.get("onnxruntime_module", "")
     if args.root and module and not module.startswith(args.root.rstrip("/") + "/"):
         sys.exit(f"the self-test loaded ONNX Runtime from {module}, outside {args.root}")

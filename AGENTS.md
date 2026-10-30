@@ -135,8 +135,14 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Shared harness mutation suites stay host-portable; native batch execution remains in the separately discovered Windows suite.
    Copied code-quality and coverage libraries carry `cli-value-options.sh`; preserve empty-argument filtering, prefixing and caller argv order.
    Copied `app-packaging.sh` carries `app-packaging-license.sh`; both it and `pe-icon-tools.sh` carry `log-bootstrap.sh` in the shared lib layout. Package the original project license and validate declared texts in built artifacts.
+   Native and Python app DEBs use gzip compression and root-owned payloads; retain both properties when changing their builders.
+   Shared bundle DEBs must store payload entries as uid 0 and gid 0 even when built by an unprivileged container user.
    Python app bundle copies carry `lib/app-packaging-license.sh` and `lib/log-bootstrap.sh`; validate the declared project license before resetting the bundle and stage its original text.
    Linux desktop packaging rejects missing or structurally invalid PNG icons; preserve exact icon bytes and test the packaged result.
+   ONNX Runtime staging checks every selected provider before writing; external loader paths and dropping the default system list stay explicit opt-ins.
+   Linux uv chain exclusions must recognize ORT entries in both LF and CRLF lockfiles.
+   The reusable Python Linux GPU lane checks the consumer pin before pulling, forwards the default-off host-runtime input only to packaging, and isolates unverified outputs.
+   Windows ORT provider staging validates requested DLL names and their presence before changing the destination; unrelated SDK DLLs remain opt-in.
    Flutter apps with an Android manifest validate its mipmap launcher reference and every standard-density PNG; the source check does not prove image identity or inspect an APK.
    The native ONNX finalizer stages the checked-out LICENSE and ThirdPartyNotices before deleting its source; consumers must carry those files with the corresponding native output.
    Cargo license collection retains original files and source provenance; absent or unreviewed sources fail rather than fabricating notices, and the dependency graph is not proof of linkage.
@@ -147,8 +153,16 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows EXE icons use the shared CMake, Rust or Python resource helpers; test actual x64 and ARM64 PE resources and retain the Linux PE-tool setup in preflight and mutation jobs.
    MSI license checks map each unique File-table ID through its sequence to the embedded Media cabinet before verifying the real text; copied callers carry `WindowsMsiLicense.Common.psm1` and the Python verifier.
    Windows ORT license staging matches the shipped DLL's SHA256 against exactly one wheel before copying both original texts; copied `WindowsOrtLicense.Common.psm1` carries its provenance, MSI and Python-wheel companions.
+   When selected Windows ORT providers are supplied, their bytes must match that same wheel before its texts are copied.
+   Finished-package binary checks use streaming exact hashes, not text-license normalization; copied `WindowsPackageBinary.Common.psm1` carries the MSI module and both Python verifiers, and MSI members map through the File and Media tables.
    Python app packages that contain Windows ORT must compare the installed texts with the matched wheel and check them in ZIP, MSI and MSIX; apps without ORT remain supported.
    Linux ORT license staging compares every selected native ELF with one wheel, directly or after target-compatible stripping; copied `stage-ort-wheel-licenses.py` carries `ort_census_probe.py`, and the shell companion carries both package verifiers.
+   GPU AppImages must retain the wheel's unstripped ORT bytes and verify the finished artifact, including both notices; a staged-tree match alone is insufficient.
+   Linux GPU app bundles require the image's provider in the self-test's available list and a relocatable ELF scan; packaging retains that requirement, and a separate GPU-host test must require the active provider before distribution.
+   Python DEB dependency discovery must prove isolated launcher and sitecustomize startup before omitting preloaded site-package libraries; executable `.pth` lines invalidate that proof.
+   GPU DEB library-path and Python preload assumptions require generated wrappers for detected runnable ELFs; CON188 records remaining limits to these assumptions.
+   Python DEB ELF dynamic entries, strings and version-needs records must match the loader's file-backed segments, including split segments; reject ambiguous mappings and section-only mutations.
+   Python DEBs without bundled glibc require libc6 >= 2.36 for DT_RELR or its GLIBC_ABI_DT_RELR marker; reject unrecognized GLIBC_ABI markers rather than understate the host requirement.
    Use `docs/scripts/merge_mutation_recipes.py` to preview or merge recurring mutation recipe updates; stale anchors and unintended replacements fail before writing.
    Core disk probes share validation without merging zero-disabled and nonnegative-free-space policies.
    Test workers use the harness optional-function emitter; keep required definitions mandatory.
@@ -1135,6 +1149,8 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
   - The venv census reports known input errors as findings; unexpected implementation errors keep their traceback and cannot pass.
   - Linux app bundles exclude PyPI ORT providers before exporting the lock and pass the chain
     wheel to the first requirements install; a later replacement cannot rescue a failed resolver.
+  - Python's opt-in host GPU runtime path must record exact provider imports, reject bundled SDK
+    libraries and preserve external loader paths; provider availability does not prove GPU execution.
   - Debian app dependency scans fail on unsuccessful `readelf` or `ldconfig`; only `dpkg -S`
     nonzero means no package owns a soname.
   - The census's ORT fingerprint is a whole NUL-terminated `__FILE__` source path, never the bare

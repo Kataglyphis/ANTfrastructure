@@ -36,9 +36,11 @@ set_target_properties(vendor PROPERTIES IMPORTED_LOCATION "${_work}/vendor/libve
 add_library(core SHARED core.cpp)
 target_link_libraries(core PRIVATE vendor)
 add_executable(app app.cpp)
-target_link_libraries(app PRIVATE core)
-install(TARGETS app core)
-kataglyphis_install_linux_closure(PRIVATE_DIR fixture TARGETS app core missing_target SEARCH "${_work}/vendor" $1)
+target_link_libraries(app PRIVATE core \${CMAKE_DL_LIBS})
+add_executable(demo app.cpp)
+target_link_libraries(demo PRIVATE core \${CMAKE_DL_LIBS})
+install(TARGETS app demo core)
+kataglyphis_install_linux_closure(PRIVATE_DIR fixture TARGETS app demo core missing_target SEARCH "${_work}/vendor" $1)
 EOF
 }
 _install() {
@@ -104,6 +106,10 @@ mv "${_work}/stage" "${_work}/moved"
 t_assert_eq "closure-ok 42" "$(env -i LD_BIND_NOW=1 "${_work}/moved/bin/app" 2>&1)" "relocated launcher runs"
 t_assert_eq "closure-ok 42" "$(env -i KATAGLYPHIS_BUNDLED_GLIBC=1 LD_BIND_NOW=1 "${_work}/moved/bin/app" 2>&1)" \
   "relocated launcher runs through the bundled loader too"
+t_assert_eq "#!/bin/bash" "$(head -1 "${_work}/moved/bin/demo")" "the second executable is also a launcher"
+t_assert_eq "closure-ok 42" "$(env -i LD_BIND_NOW=1 "${_work}/moved/bin/demo" 2>&1)" "second launcher runs on the host loader"
+t_assert_eq "closure-ok 42" "$(env -i KATAGLYPHIS_BUNDLED_GLIBC=1 LD_BIND_NOW=1 "${_work}/moved/bin/demo" 2>&1)" \
+  "second launcher also runs through the bundled loader"
 mv "${_work}/moved" "${_work}/stage"
 
 t_case "--beside: data/ beside /proc/self/exe is found on both paths, argv[0] stays, no child is left behind; a rerun changes nothing"
@@ -144,11 +150,79 @@ t_assert_eq "" "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" 
 t_assert_eq "" "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --set-rpath x /a/libc.so.6)" "libc kept"
 t_assert_eq "patched --set-rpath x /a/libfoo.so" \
   "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --set-rpath x /a/libfoo.so)" "others patched"
+t_assert_eq "patched --set-rpath x /a/libonnxruntime.so.1" \
+  "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --set-rpath x /a/libonnxruntime.so.1)" "CPU behavior unchanged"
+t_assert_eq "" "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --keep-ort --set-rpath x /a/libonnxruntime_providers_shared.so)" "GPU provider kept"
+t_assert_eq "" "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --keep-ort --set-rpath x /a/libonnxruntime.so.1)" "GPU core kept"
+t_assert_eq "patched --set-rpath x /a/libfoo.so" \
+  "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --keep-ort --set-rpath x /a/libfoo.so)" "other GPU bundle libraries patched"
 
 t_case "an unresolvable library fails the install instead of shipping"
 _project ''
 mv "${_work}/vendor/libvendor.so.1" "${_work}/vendor/hidden.so"
 t_assert_fails _install
 mv "${_work}/vendor/hidden.so" "${_work}/vendor/libvendor.so.1"
+
+t_case "NO_DEFAULT_SYSTEM copies a default graphics dependency when the caller leaves it out of SYSTEM"
+printf 'int graphics_value() { return 1; }\n' > "${_work}/vendor/graphics.cpp"
+c++ -shared -fPIC -Wl,-soname,libGL.so.1 -o "${_work}/vendor/libGL.so.1" "${_work}/vendor/graphics.cpp"
+patchelf --add-needed libGL.so.1 "${_work}/vendor/libvendor.so.1"
+_project ''
+t_assert_ok _install
+t_assert_fails test -e "${_work}/stage/lib/fixture/libGL.so.1"
+_project 'NO_DEFAULT_SYSTEM SYSTEM "libc.so.6" "libm.so.6" "libgcc_s.so.1" "libpthread.so.0" "libdl.so.2" "librt.so.1" "ld-linux*.so*"'
+t_assert_ok _install
+t_assert_ok test -f "${_work}/stage/lib/fixture/libGL.so.1"
+patchelf --remove-needed libGL.so.1 "${_work}/vendor/libvendor.so.1"
+
+t_case "EXTERNAL_LIBRARY_PATH requires LOADER and preserves nonempty SDK paths for dlopen on both loader branches"
+_project 'EXTERNAL_LIBRARY_PATH'
+t_assert_fails _install
+mkdir -p "${_work}/sdk"
+printf 'extern "C" int external_value() { return 17; }\n' > "${_work}/sdk/external.cpp"
+c++ -shared -fPIC -o "${_work}/sdk/libexternal.so" "${_work}/sdk/external.cpp"
+cat > "${_work}/src/app.cpp" <<'EOF'
+#include <dlfcn.h>
+#include <cstdlib>
+#include <iostream>
+#include <string>
+int main() {
+  void *module = dlopen("libexternal.so", RTLD_NOW);
+  if (!module) return 1;
+  auto fn = reinterpret_cast<int (*)()>(dlsym(module, "external_value"));
+  std::string path = std::getenv("LD_LIBRARY_PATH") ? std::getenv("LD_LIBRARY_PATH") : "";
+  if (!fn || fn() != 17 || path.empty() || path.front() == ':' || path.back() == ':' || path.find("::") != path.npos) return 2;
+  std::cout << "external-ok\n";
+}
+EOF
+_project 'LOADER EXTERNAL_LIBRARY_PATH PROTECT "lib/fixture/libvendor*"'
+t_assert_ok _install
+t_assert_fails env -i "${_work}/stage/bin/app"
+t_assert_eq "external-ok" "$(env -i LD_LIBRARY_PATH="::${_work}/sdk::" "${_work}/stage/bin/app")" "host loader finds external runtime"
+t_assert_eq "external-ok" "$(env -i KATAGLYPHIS_BUNDLED_GLIBC=1 LD_LIBRARY_PATH="::${_work}/sdk::" "${_work}/stage/bin/app")" "bundled loader finds external runtime"
+
+t_case "AppImage ORT preservation requires the external launcher and creates an executable wrapper"
+_project 'LOADER PRESERVE_ORT_IN_APPIMAGE'
+t_assert_fails _install
+_project 'LOADER EXTERNAL_LIBRARY_PATH PRESERVE_ORT_IN_APPIMAGE'
+t_assert_ok _install
+_appimage_wrapper="${_work}/build/tools/patchelf-keep-glibc-and-ort.sh"
+t_assert_ok test -x "${_appimage_wrapper}"
+t_assert_eq "" "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" "${_appimage_wrapper}" --set-rpath x /a/libonnxruntime_providers_migraphx.so)" "generated wrapper preserves provider"
+t_assert_eq "patched --set-rpath x /a/libfoo.so" "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" "${_appimage_wrapper}" --set-rpath x /a/libfoo.so)" "generated wrapper patches unrelated libraries"
+
+t_case "--beside and --external-library-path work together and are idempotent"
+mkdir -p "${_work}/external-beside/lib"
+c++ -o "${_work}/external-beside/app" "${_work}/src/app.cpp" -ldl
+t_assert_ok bash "${_loader}" --external-library-path --beside "${_work}/external-beside" "${_work}/external-beside/lib" app
+t_assert_ok bash "${_loader}" --beside --external-library-path "${_work}/external-beside" "${_work}/external-beside/lib" app
+t_assert_eq "external-ok" "$(env -i LD_LIBRARY_PATH="::${_work}/sdk::" "${_work}/external-beside/app")" "beside host loader finds external runtime"
+t_assert_eq "external-ok" "$(env -i KATAGLYPHIS_BUNDLED_GLIBC=1 LD_LIBRARY_PATH="::${_work}/sdk::" "${_work}/external-beside/app")" "beside bundled loader finds external runtime"
+
+t_case "an existing non-external launcher is not silently accepted as external"
+mkdir -p "${_work}/upgrade/lib"
+cp "${_work}/stage/lib/fixture/app" "${_work}/upgrade/app"
+t_assert_ok bash "${_loader}" --beside "${_work}/upgrade" "${_work}/upgrade/lib" app
+t_assert_fails bash "${_loader}" --beside --external-library-path "${_work}/upgrade" "${_work}/upgrade/lib" app
 
 t_summary

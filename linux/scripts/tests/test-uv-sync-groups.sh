@@ -60,4 +60,16 @@ ORT_CHAIN_WHEEL_DIR="${WORK}/chain" t_assert_ok uv_sync_project --locked --only-
 t_case "the existing default still includes dev, extras and chain exclusions"
 t_assert_ok uv_sync_project
 t_assert_contains "$(cat "${UV_TEST_LOG}")" $'sync\n--dev\n--all-extras\n--locked\n--no-install-package\nonnxruntime'
+
+t_case "chain exclusions read Windows CRLF locks as well as Linux LF locks"
+t_source_functions "${UV_SH}" _uv_chain_ort_skip_args || exit 1
+printf '[[package]]\r\nname = "onnxruntime"\r\n[[package]]\r\nname = "onnxruntime-gpu"\r\n[[package]]\r\nname = "onnxruntimeother"\r\n' > uv.lock
+args=()
+ORT_CHAIN_WHEEL_DIR="${WORK}/chain" _uv_chain_ort_skip_args args
+t_assert_eq "${args[*]}" '--no-install-package onnxruntime --no-install-package onnxruntime-gpu'
+t_assert_eq "${_UV_CHAIN_ORT_SKIPPED}" 'onnxruntime onnxruntime-gpu '
+printf '[[package]]\nname = "onnxruntime"\n' > uv.lock
+args=()
+ORT_CHAIN_WHEEL_DIR="${WORK}/chain" _uv_chain_ort_skip_args args
+t_assert_eq "${args[*]}" '--no-install-package onnxruntime'
 t_summary

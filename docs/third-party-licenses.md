@@ -126,6 +126,9 @@ installation. On a matching Linux architecture, `linux/scripts/06-packaging/veri
 can instead extract the declared license from an AppImage without `7z` or FUSE;
 it rejects a foreign architecture. MSI paths are cabinet file identifiers, not installed paths;
 for multiple embedded cabinets the Python verifier requires `cabinet.cab::file-id`.
+Repeated rules extract all selected files in each cabinet together into temporary
+storage. Selected members must be unique, safe MSI file identifiers no larger
+than 16 MiB; ambiguous or aliased entries fail.
 Gzip-compressed notice members such
 as Flutter `NOTICES.Z` are checked after decompression. The test suite plants
 missing, altered, empty and corrupt inputs. This checks only the rules supplied:
@@ -142,7 +145,27 @@ one unique match and checks the resulting cabinet ID through the same Python
 verifier and 7-Zip. For an MSI, `Assert-PackageLicense` maps either that ID or
 an ID from WiX to its embedded cabinet using the File and Media tables; external
 or ambiguous cabinets fail. `Assert-PackageLicense` also checks other supported formats.
-Neither call inventories native or transitive dependencies.
+For multiple texts, `Assert-PackageLicenses` takes paired `Pattern` and
+`LicensePath` arrays, and `Assert-MsiPackageLicenses` takes paired `FileName`
+and `LicensePath` arrays. Counts must match and each MSI filename must resolve
+uniquely; all rules are checked together.
+These checks do not inventory native or transitive dependencies.
+
+For a binary that has already been proven against its source, import
+`windows/scripts/modules/WindowsPackageBinary.Common.psm1` and call
+`Assert-PackageBinary -Path <package> -Member <member> -SourcePath <file>`.
+Parallel `-Member` and `-SourcePath` arrays check several files together, staging
+each MSI cabinet once; the arrays must have the same nonzero length.
+The member is an exact ZIP/MSIX/wheel archive path, or an MSI File-table ID; for MSI
+the helper uses `Get-MsiCabinetPattern` to select its embedded cabinet. WiX
+callers can obtain the ID with `Get-WixSourceFileId`. The verifier streams SHA-256
+and file length, rejects missing, duplicate, aliased or changed members, and does
+not normalize binary bytes. It stages the selected MSI cabinet in temporary disk
+space and requires 7-Zip. This proves equality with the supplied source only; it
+neither proves that source's wheel provenance nor discovers additional files.
+The standalone `linux/scripts/verify_package_binary.py` also accepts repeated
+`--require MEMBER=SOURCE` rules; MSI rules use `cabinet.cab::file-id`. It needs
+`verify_package_license.py` beside it for the shared cabinet listing and mapping.
 
 `WindowsOrtLicense.Common.psm1` provides `Copy-OrtWheelLicenses` and
 `Assert-OrtWheelLicensesInPackage`: the former requires the actual DLL's SHA256
@@ -150,8 +173,9 @@ to match exactly one wheel's DLL before copying its original `LICENSE` and
 `ThirdPartyNotices.txt`; the latter checks those texts in an archive or MSI.
 Copies also require `WindowsOrtProvenance.Common.psm1`,
 `WindowsMsiLicense.Common.psm1`, `WindowsPythonWheel.Common.psm1` and their companions. Missing or ambiguous
-matches and missing, empty or duplicate texts fail. This proves that one ORT
-DLL matches the wheel; it does not cover other shipped dependencies.
+matches and missing, empty or duplicate texts fail. Optional `-ProviderDll` and
+`-DirectMlDll` arguments also match the selected provider and DirectML bytes
+against that same wheel; other shipped dependencies need separate proof.
 The shared Windows Python app packager applies the same check when its runtime
 contains ONNX Runtime: it compares the installed texts to the matched wheel and
 checks their real runtime paths in ZIP, MSI and MSIX. Apps without that runtime
@@ -187,7 +211,9 @@ For an existing Linux image with wheels, `linux/scripts/06-packaging/stage-ort-w
 accepts `--wheel-dir`, one or more `--library` paths, `--destination` and a
 target-compatible `--strip` executable. It requires every selected library to
 match the same unique wheel, either byte-for-byte or after stripping its wheel
-copy, before staging both original texts. Copies of the script require
+copy, before staging both original texts. `--require-unstripped` enforces exact
+wheel bytes and hashes them without a scratch copy or invoking `--strip`; the
+argument remains required for CLI compatibility. Copies of the script require
 `ort_census_probe.py` beside it. Verify the staged texts in each final package;
 the caller must still identify every library actually shipped and its other
 dependencies.
@@ -199,6 +225,14 @@ includes `stage-ort-wheel-licenses.py`, `ort_census_probe.py`,
 `../verify_package_license.py`. Set `ORT_CHAIN_WHEEL_DIR` for a different wheel
 store or `STRIP` for the target architecture's strip tool. Already staged texts
 must still match exactly on repeated runs.
+
+`linux/scripts/06-packaging/verify-ort-appimage-payload.sh` extracts the finished
+native GPU AppImage's ONNX Runtime files and original texts, then requires an
+exact, unstripped match to one wheel. It checks the selected NVIDIA or AMD
+provider, rejects unsupported architectures and scans the whole payload for host
+GPU SDK libraries. Run it after AppImage generation:
+the generator can alter ELF files after an install-tree check has passed. It does
+not prove GPU execution or account for other dependencies.
 
 <!-- generated:deps-table:start -->
 

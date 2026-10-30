@@ -85,6 +85,155 @@ function Get-MsiLicenseFileId {
     return Resolve-MsiLicenseFileId -FileName $FileName -Rows @(Get-MsiLicenseFileRows -Path $resolved)
 }
 
+function Get-MsiInstalledPathTables {
+    param($Database)
+    $files = @(Invoke-MsiLicenseQuery -Database $Database -Sql 'SELECT `File`, `FileName`, `Component_` FROM `File`' -ReadRecord {
+        param($record) [pscustomobject]@{ Id = $record.StringData(1); Name = $record.StringData(2); Component = $record.StringData(3) }
+    })
+    $components = @(Invoke-MsiLicenseQuery -Database $Database -Sql 'SELECT `Component`, `Directory_` FROM `Component`' -ReadRecord {
+        param($record) [pscustomobject]@{ Id = $record.StringData(1); Directory = $record.StringData(2) }
+    })
+    $directories = @(Invoke-MsiLicenseQuery -Database $Database -Sql 'SELECT `Directory`, `Directory_Parent`, `DefaultDir` FROM `Directory`' -ReadRecord {
+        param($record) [pscustomobject]@{ Id = $record.StringData(1); Parent = $record.StringData(2); Name = $record.StringData(3) }
+    })
+    return @{ Files = $files; Components = $components; Directories = $directories }
+}
+
+function Get-MsiTargetLongName {
+    param([Parameter(Mandatory)][string]$Name)
+    $target = ($Name -split ':', 2)[0]
+    $parts = @($target -split '\|', 2)
+    $name = $parts[-1]
+    if (-not $name -or $name -match '[\\/:*?\[\]<>"|\x00-\x1f]' -or $name -eq '..' -or
+        ($name -ne '.' -and $name -match '[ .]$')) { throw "unsafe MSI target name: $Name" }
+    return $name
+}
+
+function Resolve-MsiInstalledFileId {
+    <#
+    .SYNOPSIS
+        Maps a unique relative installed path to its MSI File-table identifier.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$RelativePath, [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Files,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Components, [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Directories,
+        [string]$RootDirectoryId = '', [string]$RootDirectoryName = '')
+    $relative = $RelativePath.Replace('\', '/')
+    if ($relative -match '(^/|//|(^|/)\.{1,2}(/|$)|[:*?\[\]<>"|\x00-\x1f]|[ .](/|$))' -or $relative.EndsWith('/')) { throw "unsafe MSI relative path: $RelativePath" }
+    $componentById = @{}; $directoryById = @{}
+    foreach ($component in $Components) {
+        if (-not $component.Id -or $componentById.ContainsKey($component.Id)) { throw 'duplicate or empty MSI component identifier' }
+        $componentById[$component.Id] = $component
+    }
+    foreach ($directory in $Directories) {
+        if (-not $directory.Id -or $directoryById.ContainsKey($directory.Id)) { throw 'duplicate or empty MSI directory identifier' }
+        $directoryById[$directory.Id] = $directory
+    }
+    if ($RootDirectoryName -and -not $RootDirectoryId) { throw 'MSI root directory name requires a root directory identifier' }
+    if ($RootDirectoryId) {
+        Assert-MsiLicenseFileId -Id $RootDirectoryId
+        if (-not $directoryById.ContainsKey($RootDirectoryId)) { throw "missing MSI root directory: $RootDirectoryId" }
+        $rootName = Get-MsiTargetLongName -Name $directoryById[$RootDirectoryId].Name
+        if ($RootDirectoryName -and -not [string]::Equals($rootName, $RootDirectoryName, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "MSI root directory '$RootDirectoryId' names '$rootName', expected '$RootDirectoryName'"
+        }
+    }
+    $matchedIds = @()
+    foreach ($file in $Files) {
+        if ($file.Name -match ':') { throw "unsafe MSI file name: $($file.Name)" }
+        $leaf = Get-MsiTargetLongName -Name $file.Name
+        if (-not [string]::Equals($leaf, ($relative -split '/')[-1], [StringComparison]::OrdinalIgnoreCase)) { continue }
+        if (-not $componentById.ContainsKey($file.Component)) { throw "missing MSI component: $($file.Component)" }
+        $path = @($leaf); $visited = @{}; $dir = [string]$componentById[$file.Component].Directory; $underRoot = $false
+        while ($dir) {
+            if ($visited.ContainsKey($dir) -or -not $directoryById.ContainsKey($dir)) { throw "cyclic or missing MSI directory: $dir" }
+            $visited[$dir] = $true
+            $node = $directoryById[$dir]
+            if ($RootDirectoryId -and [string]::Equals($dir, $RootDirectoryId, [StringComparison]::OrdinalIgnoreCase)) {
+                $underRoot = $true
+                break
+            }
+            $name = Get-MsiTargetLongName -Name $node.Name
+            if ($name -ne '.') { $path = @($name) + $path }
+            $dir = [string]$node.Parent
+        }
+        if ($RootDirectoryId -and -not $underRoot) { continue }
+        $installed = $path -join '/'
+        if ([string]::Equals($installed, $relative, [StringComparison]::OrdinalIgnoreCase) -or (-not $RootDirectoryId -and
+            $installed.EndsWith("/$relative", [StringComparison]::OrdinalIgnoreCase))) {
+            Assert-MsiLicenseFileId -Id $file.Id
+            $matchedIds += $file.Id
+        }
+    }
+    if ($matchedIds.Count -ne 1) { throw "MSI installed path '$RelativePath' matched $($matchedIds.Count) rows; expected exactly one" }
+    return $matchedIds[0]
+}
+
+function Get-MsiInstalledFileId {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$RelativePath,
+        [string]$RootDirectoryId = '', [string]$RootDirectoryName = '')
+    $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
+    return Invoke-WithMsiLicenseDatabase -Path $resolved -Mode 0 -ArgumentList @($RelativePath, $RootDirectoryId, $RootDirectoryName) -Body {
+        param($database, $relative, $rootId, $rootName)
+        $tables = Get-MsiInstalledPathTables -Database $database
+        Resolve-MsiInstalledFileId -RelativePath $relative -Files $tables.Files -Components $tables.Components -Directories $tables.Directories -RootDirectoryId $rootId -RootDirectoryName $rootName
+    }
+}
+
+function Resolve-MsiDirectoryFileNames {
+    [CmdletBinding()]
+    param([AllowEmptyString()][string]$Directory = '', [Parameter(Mandatory)][string]$RootDirectoryId,
+        [string]$RootDirectoryName = '', [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Files,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Components, [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Directories)
+    if ($Directory -match '(^/|//|(^|/)\.{1,2}(/|$)|[:*?\[\]<>"|\x00-\x1f\\]|[ .](/|$))' -or $Directory.EndsWith('/')) {
+        throw "unsafe MSI relative directory: $Directory"
+    }
+    Assert-MsiLicenseFileId -Id $RootDirectoryId
+    $byId = @{}
+    foreach ($row in $Directories) {
+        if (-not $row.Id -or $byId.ContainsKey($row.Id)) { throw 'duplicate or empty MSI directory identifier' }
+        $byId[$row.Id] = $row
+    }
+    if (-not $byId.ContainsKey($RootDirectoryId)) { throw "missing MSI root directory: $RootDirectoryId" }
+    $rootName = Get-MsiTargetLongName -Name $byId[$RootDirectoryId].Name
+    if ($RootDirectoryName -and -not [string]::Equals($rootName, $RootDirectoryName, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "MSI root directory '$RootDirectoryId' names '$rootName', expected '$RootDirectoryName'"
+    }
+    $dir = $RootDirectoryId
+    foreach ($segment in @($Directory -split '/' | Where-Object { $_ })) {
+        $children = @($Directories | Where-Object {
+                $_.Parent -eq $dir -and [string]::Equals((Get-MsiTargetLongName -Name $_.Name), $segment, [StringComparison]::OrdinalIgnoreCase)
+            })
+        if ($children.Count -ne 1) { throw "MSI directory '$segment' matched $($children.Count) rows under '$dir'; expected one" }
+        if ((Get-MsiTargetLongName -Name $children[0].Name) -cne $segment) { throw "MSI directory case differs: $segment" }
+        $dir = [string]$children[0].Id
+    }
+    $componentIds = @{}
+    foreach ($component in $Components) {
+        if (-not $component.Id -or $componentIds.ContainsKey($component.Id)) { throw 'duplicate or empty MSI component identifier' }
+        $componentIds[$component.Id] = [string]$component.Directory
+    }
+    foreach ($file in $Files) {
+        if (-not $componentIds.ContainsKey($file.Component)) { throw "missing MSI component: $($file.Component)" }
+        if ($componentIds[$file.Component] -ne $dir) { continue }
+        if ($file.Name -match ':') { throw "unsafe MSI file name: $($file.Name)" }
+        Get-MsiTargetLongName -Name $file.Name
+    }
+}
+
+function Get-MsiDirectoryFileNames {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path, [AllowEmptyString()][string]$Directory = '',
+        [Parameter(Mandatory)][string]$RootDirectoryId, [string]$RootDirectoryName = '')
+    $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
+    return Invoke-WithMsiLicenseDatabase -Path $resolved -Mode 0 -ArgumentList @($Directory, $RootDirectoryId, $RootDirectoryName) -Body {
+        param($database, $directory, $rootId, $rootName)
+        $tables = Get-MsiInstalledPathTables -Database $database
+        Resolve-MsiDirectoryFileNames -Directory $directory -RootDirectoryId $rootId -RootDirectoryName $rootName -Files $tables.Files -Components $tables.Components -Directories $tables.Directories
+    }
+}
+
 function Resolve-MsiCabinetPattern {
     param([Parameter(Mandatory)][string]$FileId, [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Files,
         [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Media)
@@ -171,4 +320,48 @@ function Assert-MsiPackageLicense {
     Assert-PackageLicense -Path $Path -Pattern $id -LicensePath $LicensePath -PythonPath $PythonPath -VerifierPath $VerifierPath
 }
 
-Export-ModuleMember -Function Resolve-MsiLicenseFileId, Get-MsiLicenseFileId, Resolve-MsiCabinetPattern, Get-MsiCabinetPattern, Get-WixSourceFileId, Assert-PackageLicense, Assert-MsiPackageLicense
+function Get-MsiLicenseBatchPatterns {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string[]]$Names, [switch]$FileNames)
+    $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
+    return Invoke-WithMsiLicenseDatabase -Path $resolved -Mode 0 -ArgumentList @($Names, [bool]$FileNames) -Body {
+        param($database, $items, $useNames)
+        $tables = Get-MsiCabinetTables -Database $database -FileId ''
+        foreach ($item in $items) {
+            $id = if ($useNames) { Resolve-MsiLicenseFileId -FileName $item -Rows $tables.Files } else { $item }
+            Resolve-MsiCabinetPattern -FileId $id -Files $tables.Files -Media $tables.Media
+        }
+    }
+}
+
+function Invoke-PackageLicenseBatch {
+    param([string]$Path, [string[]]$Pattern, [string[]]$LicensePath, [string]$PythonPath, [string]$VerifierPath, [switch]$MsiFileNames)
+    if ($Pattern.Count -eq 0 -or $Pattern.Count -ne $LicensePath.Count) {
+        throw 'Package license patterns and source paths must have equal, nonzero counts.'
+    }
+    if (-not (Test-Path -LiteralPath $VerifierPath -PathType Leaf)) { throw "package license verifier is missing: $VerifierPath" }
+    $isMsi = [IO.Path]::GetExtension($Path) -ieq '.msi'
+    if ($MsiFileNames -and -not $isMsi) { throw 'MSI file-name mapping requires an MSI package.' }
+    $mapped = if ($isMsi) { @(Get-MsiLicenseBatchPatterns -Path $Path -Names $Pattern -FileNames:$MsiFileNames) } else { @($Pattern) }
+    $rules = @()
+    for ($i = 0; $i -lt $mapped.Count; $i++) { $rules += '--require', "$($mapped[$i])=$($LicensePath[$i])" }
+    & $PythonPath $VerifierPath $Path @rules
+    if ($LASTEXITCODE -ne 0) { throw "package license batch verification failed (exit $LASTEXITCODE)" }
+}
+
+function Assert-PackageLicenses {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string[]]$Pattern,
+        [Parameter(Mandatory)][string[]]$LicensePath, [string]$PythonPath = 'python',
+        [string]$VerifierPath = (Join-Path $PSScriptRoot '../../../linux/scripts/verify_package_license.py'))
+    Invoke-PackageLicenseBatch -Path $Path -Pattern $Pattern -LicensePath $LicensePath -PythonPath $PythonPath -VerifierPath $VerifierPath
+}
+
+function Assert-MsiPackageLicenses {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string[]]$FileName,
+        [Parameter(Mandatory)][string[]]$LicensePath, [string]$PythonPath = 'python',
+        [string]$VerifierPath = (Join-Path $PSScriptRoot '../../../linux/scripts/verify_package_license.py'))
+    Invoke-PackageLicenseBatch -Path $Path -Pattern $FileName -LicensePath $LicensePath -PythonPath $PythonPath -VerifierPath $VerifierPath -MsiFileNames
+}
+
+Export-ModuleMember -Function Resolve-MsiLicenseFileId, Get-MsiLicenseFileId, Resolve-MsiInstalledFileId, Get-MsiInstalledFileId, Resolve-MsiDirectoryFileNames, Get-MsiDirectoryFileNames, Resolve-MsiCabinetPattern, Get-MsiCabinetPattern, Get-WixSourceFileId, Assert-PackageLicense, Assert-MsiPackageLicense, Assert-PackageLicenses, Assert-MsiPackageLicenses

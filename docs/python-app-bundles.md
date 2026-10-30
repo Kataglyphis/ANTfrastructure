@@ -125,6 +125,56 @@ Both run in the family image, from a built app wheel (`--wheel-dir`, default `di
 8. **`bundle.json`**: the wheels, the Python version, the bundled glibc's version (Linux) and the
    self-test report.
 
+### Linux GPU bundles
+
+A Linux NVIDIA or ROCm image requires its respective CUDA or MIGraphX execution provider in
+the self-test's `available_providers` report, including the packaged launchers. This permits a
+build without GPU hardware; it does not prove GPU inference. `PYTHON_APP_REQUIRE_PROVIDER`
+can require a provider explicitly and must agree with the image variant. The bundle manifest
+records the requirement, and a package from that bundle cannot use `--no-test` to bypass it.
+On a host with a compatible GPU, set `PYTHON_APP_REQUIRE_ACTIVE_PROVIDER=true` while running the
+packager to require the provider in the actual inference session. A CPU fallback then fails, but
+session activation alone does not prove that any operator ran on the GPU. Profile an inference
+with a GPU-supported operator and confirm its placement before releasing the package.
+
+By default the ELF walker resolves transitive dependencies from the image and refuses
+external absolute `NEEDED` paths. This static closure does not prove that dynamically loaded GPU
+assets travel with the package, nor does it cover third-party licence inventory. Verify those
+assets and notices and run the package on a clean host with the compatible vendor driver and GPU
+before distributing it. The build container's GPU SDK or its available-provider list alone is not evidence of GPU inference or a portable package.
+The default CPU bundle path is unchanged.
+
+`PYTHON_APP_HOST_GPU_RUNTIME=true` instead leaves the selected CUDA or MIGraphX provider's
+vendor libraries to the host. The option requires a GPU provider and a matching SDK tree in
+the build image. The builder matches the core, shared bridge and selected provider to one
+unstripped wheel, reads the provider's direct imports, refuses unknown imports, records their
+exact vendor SONAMEs in `bundle.json` and `REQUIRES-GPU-RUNTIME.txt`, and rejects accidentally
+bundled SDK libraries. If a CUDA wheel also contains the TensorRT provider, its bytes must match
+that same wheel; its additional direct imports are recorded separately as optional TensorRT
+host requirements, not as CUDA requirements. The selected CUDA and optional TensorRT providers
+remain in the package, while their vendor SDK libraries stay on the host. A library listed as an
+additional TensorRT import can still be needed dynamically by another provider. It preserves nonempty `LD_LIBRARY_PATH` entries
+through either bundled-loader path. The installed host needs a compatible GPU driver and
+CUDA/cuDNN or ROCm/MIGraphX runtime, including dynamically loaded assets; the package does
+not install that runtime. CUDA and MIGraphX package filenames carry `-gpu-nvidia` and
+`-gpu-amd` respectively. The installed application ID stays the same, so a GPU DEB replaces
+the CPU DEB rather than installing beside it. Provider-wheel notices, clean-host tests and
+actual GPU inference remain the consumer's responsibility.
+The reusable `python-ci-linux.yml` workflow exposes this as the boolean
+`host-gpu-runtime` input, defaulting to `false`. A GPU caller also sets
+`gpu-artifact-label` to `nvidia` or `amd` and supplies `container-image`. The lane
+requires the corresponding provider and permits NVIDIA on x64/arm64 and AMD on x64.
+`app-python-runtime` defaults to `image`; a GPU inventory may explicitly select
+`standalone` when its image lacks a relocatable CPython. The standalone interpreter
+is downloaded for the image's Python version, so its native dependencies and license
+inventory must be checked from the resulting package.
+Before pulling the GPU image it requires `packaging/app.json` and a hub pin with the
+GPU bundle and package APIs. It skips docs publication, uses full runner cleanup and
+requires a vendor-matched tar, DEB and AppImage. Its uploads are named
+`unverified-gpu-*` and occur only after the build succeeds. Image size may still exceed
+hosted-runner storage; the lane and finished packages need a real run, complete notice
+checks and GPU execution before release.
+
 ```powershell
 # Windows, inside :winamd64
 & <hub>\windows\scripts\python\New-PythonAppBundle.ps1 -RepoRoot <repo> -WheelDir dist -OutDir dist\windows-x64\bundle
@@ -321,12 +371,32 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
 - **deb:** the bundle goes to `/opt/<id>`, with one `/usr/bin` symlink per script; the
   launchers resolve themselves with `readlink -f`. There is also a desktop file for
   `gui_script` and the icon at its real size.
+  Control and payload archives use gzip so older Debian package managers can read them;
+  payload entries are root-owned even when the builder runs unprivileged. Archive
+  compatibility does not establish runtime compatibility with every host library.
   - `Depends` is computed, not written by hand: the packages (`dpkg -S`) owning every library
     the bundle leaves to the host, and `libc6`, unversioned since the bundle carries its glibc
     (`bundle.json`'s `glibc`; a bundle without it asks for the newest `GLIBC_` any ELF needs). A soname that no installed package provides fails the build. The builder's
     waived sonames (`unresolved_allowed` in `bundle.json`) are skipped.
+    Without bundled glibc, a `GLIBC_ABI_DT_RELR` requirement or DT_RELR entries require
+    `libc6 (>= 2.36)`; an unknown `GLIBC_ABI_` marker fails the build rather than guessing.
   - `readelf` and `ldconfig` must succeed before the dependency list is accepted; only a nonzero
-    `dpkg -S` result means that a soname has no package owner.
+    `dpkg -S` result means that a soname has no package owner. Dynamic entries, their string
+    table and version-needs records must also agree with bytes mapped by ELF load segments,
+    including split-segment layouts;
+    ambiguous mappings or a section-only mismatch fail the build.
+  - The scanner counts Python site-package preloads as bundled only when the generated
+    isolated app and interpreter launchers and `sitecustomize.py` are intact, isolated Python
+    confirms the bundled prefix, site and loaded preload paths on both loader paths, and no
+    bundled `.pth` file executes an import before `sitecustomize`. A conflicting mapped SONAME
+    or directory symlink in the runtime also disables
+    the proof because they could hide startup files from the scan. Otherwise it conservatively
+    discovers the host library's package, or fails if it has no owner. Passive `.pth` paths
+    are accepted. This does not establish non-glibc minimum package versions; see CON188.
+  - GPU library-path assumptions also require generated external-path wrappers for all detected
+    runnable ELF executables. An unwrapped standalone executable disables that assumption and
+    the scanner retains host requirements or fails on unowned libraries. Wrapper coverage
+    does not establish all process scopes or inherited legacy RPATH precedence; see CON188.
   - `Maintainer` comes from `app.json`'s `maintainer`. Without one it is
     `<publisher> <noreply@invalid>`, which says plainly that no address was given.
 - **AppImage:** `AppRun` starts `gui_script`. Started through a symlink named after another

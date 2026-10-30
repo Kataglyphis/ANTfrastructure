@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# PYTHON_APP_HOST_GPU_RUNTIME_API=1
+# PYTHON_APP_OPTIONAL_TENSORRT_HOST_RUNTIME_API=1
 # Builds a consumer's Python app into a relocatable folder and proves it runs; see docs/python-app-bundles.md § What the builders do
 set -euo pipefail
 
@@ -43,6 +45,27 @@ esac
 [ -n "${WORK_DIR}" ] || WORK_DIR="$(mktemp -d)"
 [ -f "${CONFIG}" ] || err "no app config at ${CONFIG}"
 [ -n "${PYTHON_VERSION}" ] || err "no PYTHON_VERSION: pass --python-version, or keep versions.env beside the scripts"
+
+required_provider="${PYTHON_APP_REQUIRE_PROVIDER:-}"
+case "${ENABLE_NVIDIA:-false}:${ENABLE_AMD:-false}" in
+  true:false) image_provider=CUDAExecutionProvider ;;
+  false:true) image_provider=MIGraphXExecutionProvider ;;
+  false:false) image_provider="" ;;
+  *) err "a Python app bundle needs at most one GPU image variant" ;;
+esac
+if [ -n "${image_provider}" ]; then
+  [ -z "${required_provider}" ] || [ "${required_provider}" = "${image_provider}" ] || err "GPU image requires ${image_provider}, not ${required_provider}"
+  required_provider="${image_provider}"
+fi
+host_gpu_runtime="${PYTHON_APP_HOST_GPU_RUNTIME:-false}"
+case "${host_gpu_runtime}" in
+  false) ;;
+  true)
+    case "${required_provider}" in CUDAExecutionProvider|MIGraphXExecutionProvider) ;; *) err 'host GPU runtime requires CUDA or MIGraphX' ;; esac
+    [ "${image_provider}" = "${required_provider}" ] || err 'host GPU runtime requires a matching GPU image variant'
+    ;;
+  *) err 'PYTHON_APP_HOST_GPU_RUNTIME must be true or false' ;;
+esac
 
 # One JSON read per key, with the image's python; the bundle's interpreter does not exist yet.
 cfg() { python3 -c 'import json, sys; v = json.load(open(sys.argv[1]))[sys.argv[2]]; print("\n".join(v) if isinstance(v, list) else v)' "${CONFIG}" "$1"; }
@@ -227,12 +250,55 @@ fi
 info "== ELF closure"
 # G6 needs the chain ORT byte-identical, so it is protected and preloaded; oneDNN is absent image-wide, unloaded unless asked for.
 ALLOWED_UNRESOLVED=(libdnnl.so.3)
+HOST_GPU_SONAMES=()
+HOST_GPU_OPTIONAL_SONAMES=()
 closure_args=()
+site_packages="$("${PY}" -I -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
+if [ "${host_gpu_runtime}" = true ]; then
+  source "${SCRIPT_DIR}/ort-runtime-bundle.sh"
+  case "${required_provider}" in
+    CUDAExecutionProvider) host_kind=cuda; host_sdk_root=/usr/local/cuda ;;
+    MIGraphXExecutionProvider) host_kind=migraphx; host_sdk_root=/opt/rocm ;;
+  esac
+  [ -d "${host_sdk_root}" ] || err "host GPU runtime build requires ${host_sdk_root} in the image"
+  host_provider="${site_packages}/onnxruntime/capi/libonnxruntime_providers_${host_kind}.so"
+  [ -f "${host_provider}" ] || err "host GPU runtime requires ${host_provider}"
+  host_imports="$(ort_python_host_runtime_needed "${site_packages}/onnxruntime/capi" "${host_kind}" "${ORT_WHEEL_DIR}" "${WORK_DIR}/ort-wheel-proof")" ||
+    err "cannot verify ${host_kind} provider wheel and host runtime dependencies"
+  while IFS=$'\t' read -r scope soname; do
+    [ -n "${soname}" ] || continue
+    case "${scope}" in
+      required) HOST_GPU_SONAMES+=("${soname}") ;;
+      optional) HOST_GPU_OPTIONAL_SONAMES+=("${soname}") ;;
+      *) err "unexpected GPU host dependency scope: ${scope}" ;;
+    esac
+    ALLOWED_UNRESOLVED+=("${soname}")
+    closure_args+=(--system "${soname}")
+  done <<< "${host_imports}"
+  closure_args+=(--direct-only "${host_provider#"${BUNDLE}"/}" --reject-source-root "${host_sdk_root}")
+  optional_provider="${site_packages}/onnxruntime/capi/libonnxruntime_providers_tensorrt.so"
+  if [ "${host_kind}" = cuda ] && [ -f "${optional_provider}" ]; then
+    closure_args+=(--direct-only "${optional_provider#"${BUNDLE}"/}")
+  fi
+fi
 for soname in "${ALLOWED_UNRESOLVED[@]}"; do closure_args+=(--allow-unresolved "${soname}"); done
+if [ -n "${required_provider}" ]; then
+  closure_args+=(--ldd --relocatable)
+fi
 bash "${SCRIPT_DIR}/python-app-closure.sh" --bundle "${BUNDLE}" --lib-dir "${RUNTIME}/lib" \
   --search /opt/gcc-*/lib64 "${gst_search[@]}" --search "/usr/lib/${MULTIARCH}" --search "/lib/${MULTIARCH}" \
   --protect '*/site-packages/onnxruntime/*' "${closure_args[@]}"
-site_packages="$("${PY}" -I -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
+if [ "${host_gpu_runtime}" = true ]; then
+  ort_assert_no_bundled_host_runtime "${BUNDLE}" "${host_kind}" || err 'GPU SDK libraries belong to the host runtime'
+  {
+    printf 'This package requires a compatible %s GPU driver and host runtime.\n' "${host_kind}"
+    printf 'Install the matching vendor SDK runtime and make its libraries available to the dynamic loader.\n'
+    printf 'Required direct host libraries: %s\n' "${HOST_GPU_SONAMES[*]}"
+    if [ "${#HOST_GPU_OPTIONAL_SONAMES[@]}" -gt 0 ]; then
+      printf 'Additional direct host libraries for the optional TensorRT provider: %s\n' "${HOST_GPU_OPTIONAL_SONAMES[*]}"
+    fi
+  } > "${BUNDLE}/REQUIRES-GPU-RUNTIME.txt"
+fi
 cat > "${site_packages}/sitecustomize.py" <<'PY'
 # Written by python-app-bundle.sh: loads what the protected chain ORT needs from runtime/lib, so its sonames resolve.
 import ctypes
@@ -251,7 +317,9 @@ info "== loader: the image's glibc travels, for hosts with an older one"
 # On the interpreter itself: a child that runs sys.executable starts through the same launcher, which --argv0 keeps as its path.
 gst_tools=()
 for tool in "${GST_TOOLS[@]}"; do gst_tools+=("runtime/libexec/gstreamer/${tool}"); done
-bash "${SCRIPT_DIR}/bundle-loader.sh" --beside "${BUNDLE}" "${RUNTIME}/lib" "runtime/bin/$(basename "$(readlink -f "${PY}")")" "${gst_tools[@]}"
+loader_args=(--beside)
+if [ "${host_gpu_runtime}" = true ]; then loader_args+=(--external-library-path); fi
+bash "${SCRIPT_DIR}/bundle-loader.sh" "${loader_args[@]}" "${BUNDLE}" "${RUNTIME}/lib" "runtime/bin/$(basename "$(readlink -f "${PY}")")" "${gst_tools[@]}"
 GLIBC_VERSION="$(getconf GNU_LIBC_VERSION | awk '{ print $2 }')"
 
 if [ "${#GST_ELEMENTS[@]}" -gt 0 ]; then
@@ -271,19 +339,26 @@ info "== G6: ONNX Runtime is the chain build"
 bash "${SCRIPT_DIR}/check-ort-provenance.sh" "${BUNDLE}"
 
 info "== self-test: ${SELF_TEST[*]}"
-report="$(python3 "${SCRIPT_DIR}/python-app-selftest.py" --root "${BUNDLE}" -- "${BUNDLE}/bin/${SELF_TEST[0]}" "${SELF_TEST[@]:1}")" ||
+self_test_args=()
+if [ -n "${required_provider}" ]; then
+  self_test_args+=(--require-available-provider "${required_provider}")
+  if [ "${PYTHON_APP_REQUIRE_ACTIVE_PROVIDER:-false}" = true ]; then self_test_args+=(--require-provider "${required_provider}"); fi
+fi
+report="$(python3 "${SCRIPT_DIR}/python-app-selftest.py" --root "${BUNDLE}" "${self_test_args[@]}" -- "${BUNDLE}/bin/${SELF_TEST[0]}" "${SELF_TEST[@]:1}")" ||
   err "self-test '${SELF_TEST[*]}' failed"
 info "== self-test through the bundled loader, as on a host with an older glibc"
-KATAGLYPHIS_BUNDLED_GLIBC=1 python3 "${SCRIPT_DIR}/python-app-selftest.py" --root "${BUNDLE}" -- "${BUNDLE}/bin/${SELF_TEST[0]}" "${SELF_TEST[@]:1}" >/dev/null ||
+KATAGLYPHIS_BUNDLED_GLIBC=1 python3 "${SCRIPT_DIR}/python-app-selftest.py" --root "${BUNDLE}" "${self_test_args[@]}" -- "${BUNDLE}/bin/${SELF_TEST[0]}" "${SELF_TEST[@]:1}" >/dev/null ||
   err "self-test '${SELF_TEST[*]}' failed through the bundled loader"
 # The packagers read the waived sonames back: a deb must not depend on a library nothing loads.
-python3 - "${BUNDLE}" "${report}" "$(basename "${app_wheel}")" "$(basename "${ort_wheel}")" "${PYTHON_VERSION}" "${GLIBC_VERSION}" "${ALLOWED_UNRESOLVED[*]}" "${SCRIPTS[@]}" <<'PY'
+python3 - "${BUNDLE}" "${report}" "$(basename "${app_wheel}")" "$(basename "${ort_wheel}")" "${PYTHON_VERSION}" "${GLIBC_VERSION}" "${ALLOWED_UNRESOLVED[*]}" "${required_provider}" "${HOST_GPU_SONAMES[*]}" "${HOST_GPU_OPTIONAL_SONAMES[*]}" "${SCRIPTS[@]}" <<'PY'
 import json
 import sys
 
-bundle, report, wheel, ort, python, glibc, allowed, *scripts = sys.argv[1:]
+bundle, report, wheel, ort, python, glibc, allowed, provider, host_gpu, optional_host_gpu, *scripts = sys.argv[1:]
 manifest = {"wheel": wheel, "ort_wheel": ort, "python": python, "glibc": glibc, "scripts": scripts,
-            "unresolved_allowed": allowed.split(), "self_test": json.loads(report)}
+            "unresolved_allowed": allowed.split(), "required_provider": provider,
+            "host_gpu_sonames": host_gpu.split(), "optional_host_gpu_sonames": optional_host_gpu.split(),
+            "self_test": json.loads(report)}
 with open(f"{bundle}/bundle.json", "w", encoding="utf-8") as manifest_file:
     json.dump(manifest, manifest_file, indent=2)
     manifest_file.write("\n")

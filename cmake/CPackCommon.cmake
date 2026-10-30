@@ -222,12 +222,18 @@ function(kataglyphis_install_linux_closure)
   endif()
   cmake_parse_arguments(
     ARG
-    "LOADER"
+    "LOADER;EXTERNAL_LIBRARY_PATH;NO_DEFAULT_SYSTEM;PRESERVE_ORT_IN_APPIMAGE"
     "PRIVATE_DIR"
     "TARGETS;SEARCH;SYSTEM;PROTECT"
     ${ARGN})
   if(NOT ARG_PRIVATE_DIR OR NOT ARG_TARGETS)
     message(FATAL_ERROR "kataglyphis_install_linux_closure: PRIVATE_DIR and TARGETS are required")
+  endif()
+  if(ARG_EXTERNAL_LIBRARY_PATH AND NOT ARG_LOADER)
+    message(FATAL_ERROR "kataglyphis_install_linux_closure: EXTERNAL_LIBRARY_PATH requires LOADER")
+  endif()
+  if(ARG_PRESERVE_ORT_IN_APPIMAGE AND NOT ARG_EXTERNAL_LIBRARY_PATH)
+    message(FATAL_ERROR "kataglyphis_install_linux_closure: PRESERVE_ORT_IN_APPIMAGE requires EXTERNAL_LIBRARY_PATH")
   endif()
 
   include(GNUInstallDirs)
@@ -259,6 +265,9 @@ function(kataglyphis_install_linux_closure)
 
   # The image has two libstdc++ (the distro's and GCC's); the code needs the one its compiler links.
   set(_args)
+  if(ARG_NO_DEFAULT_SYSTEM)
+    list(APPEND _args --no-default-system)
+  endif()
   execute_process(
     COMMAND "${CMAKE_CXX_COMPILER}" -print-file-name=libstdc++.so.6
     OUTPUT_VARIABLE _stdcxx
@@ -301,16 +310,41 @@ function(kataglyphis_install_linux_closure)
   # LOADER first: the closure then sees each executable where it will run, beside the loader.
   set(_loader_step "")
   if(ARG_LOADER)
+    set(_external_loader_flag "")
+    if(ARG_EXTERNAL_LIBRARY_PATH)
+      set(_external_loader_flag "--external-library-path")
+    endif()
     # The AppImage generator would patch the bundled loader, which then segfaults (measured 2026-10-17).
-    set(CPACK_APPIMAGE_PATCHELF_EXECUTABLE
-        "${_KATAGLYPHIS_PATCHELF_KEEP_GLIBC}"
-        PARENT_SCOPE)
+    if(ARG_PRESERVE_ORT_IN_APPIMAGE)
+      set(_keep_ort_wrapper "${PROJECT_BINARY_DIR}/tools/patchelf-keep-glibc-and-ort.sh")
+      file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/tools")
+      file(WRITE "${_keep_ort_wrapper}"
+           "#!/usr/bin/env bash\nexec bash \"${_KATAGLYPHIS_PATCHELF_KEEP_GLIBC}\" --keep-ort \"$@\"\n")
+      file(
+        CHMOD
+        "${_keep_ort_wrapper}"
+        PERMISSIONS
+        OWNER_READ
+        OWNER_WRITE
+        OWNER_EXECUTE
+        GROUP_READ
+        GROUP_EXECUTE
+        WORLD_READ
+        WORLD_EXECUTE)
+      set(CPACK_APPIMAGE_PATCHELF_EXECUTABLE
+          "${_keep_ort_wrapper}"
+          PARENT_SCOPE)
+    else()
+      set(CPACK_APPIMAGE_PATCHELF_EXECUTABLE
+          "${_KATAGLYPHIS_PATCHELF_KEEP_GLIBC}"
+          PARENT_SCOPE)
+    endif()
     # dpkg-shlibdeps reads the bundled glibc as the system's and pins libc6 (<< 2.44); DEBIAN_DEPENDS names the rest.
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS
         OFF
         PARENT_SCOPE)
     set(_loader_step
-        "execute_process(COMMAND bash \"${_KATAGLYPHIS_BUNDLE_LOADER}\" \"\${_kg_root}\"
+        "execute_process(COMMAND bash \"${_KATAGLYPHIS_BUNDLE_LOADER}\" ${_external_loader_flag} \"\${_kg_root}\"
   \"\${_kg_root}/${_libdir}/${ARG_PRIVATE_DIR}\"${_loader_args} COMMAND_ERROR_IS_FATAL ANY)
 ")
   endif()

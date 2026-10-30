@@ -136,6 +136,25 @@ t_assert_contains "${_list}" "./opt/oxidant/LICENSE"
 t_assert_contains "${_list}" "./usr/bin/oxidant"
 t_assert_contains "${_list}" "./usr/share/icons/hicolor/2x3/apps/oxidant.png" "the icon goes where its real size says"
 t_assert_contains "$(dpkg-deb -f "${_deb}" Depends 2>/dev/null)" "libc6, libgcc-s1"
+t_assert_contains "$(ar t "${_deb}")" 'control.tar.gz' 'older dpkg must read the control archive'
+t_assert_contains "$(ar t "${_deb}")" 'data.tar.gz' 'older dpkg must read the payload archive'
+assert_deb_root_owned() {
+  python3 - "$1" <<'PY'
+import subprocess
+import sys
+import tarfile
+
+process = subprocess.Popen(["dpkg-deb", "--fsys-tarfile", sys.argv[1]], stdout=subprocess.PIPE)
+with tarfile.open(fileobj=process.stdout, mode="r|") as archive:
+    members = list(archive)
+if process.wait() or not members:
+    raise SystemExit("could not read the Debian payload")
+bad = [member.name for member in members if member.uid != 0 or member.gid != 0]
+if bad:
+    raise SystemExit(f"Debian payload has non-root ownership: {bad[:5]}")
+PY
+}
+t_assert_ok assert_deb_root_owned "${_deb}"
 mkdir -p "${_work}/debx" && dpkg-deb -x "${_deb}" "${_work}/debx" 2>/dev/null
 t_assert_eq 'Project license text and copyright' "$(cat "${_work}/debx/opt/oxidant/LICENSE")"
 t_assert_ok cmp "${_project}/packaging/icon.png" "${_work}/debx/usr/share/icons/hicolor/2x3/apps/oxidant.png"

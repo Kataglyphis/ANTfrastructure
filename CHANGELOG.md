@@ -13,6 +13,61 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-30 — Linux GPU bundle checks reject CPU fallback
+
+- Native and Python app DEBs use gzip archives so older Debian package managers can read them.
+- Shared bundle DEBs use root ownership for every payload entry when built by an unprivileged user.
+- Python DEBs without bundled glibc require libc6 2.36 for packed relative relocations and reject unknown glibc ABI markers.
+- Python DEB dependency discovery checks both isolated interpreter loader paths and executable
+  `.pth` files before treating site-package preloads as bundled; otherwise it retains host
+  requirements or fails on unowned libraries. Non-glibc ABI minimums remain in CON188.
+- Python DEB discovery compares dynamic entries, strings and version needs against ELF load-segment bytes, retaining
+  valid split-segment copies while rejecting changed or ambiguous section-only evidence.
+- Python DEB discovery verifies generated launcher coverage before assuming GPU library paths or Python preloads;
+  CON188 records remaining loader-scope limitations.
+
+- Linux uv chain ORT exclusions recognize CRLF locks from Windows checkouts as well as LF locks.
+
+- Windows package license verification supports paired batch rules; MSI checks
+  map each filename through the File and Media tables and extract selected
+  texts together per cabinet, rejecting ambiguous or unsafe members.
+
+- The reusable Python Linux workflow now forwards a default-off `host-gpu-runtime`
+  input to its packaging container. GPU callers select an image and a vendor label;
+  the lane rejects unsupported architecture rows and keeps its unverified outputs
+  distinct from CPU artifacts.
+
+- Add a streaming binary equality check for ZIP, MSIX and embedded MSI cabinet members.
+  MSI uses the existing File/Media mapping; source provenance remains a separate check.
+  A companion provider-set check enumerates the exact archive directory or an anchored
+  MSI install directory, rejecting duplicate, aliased or malformed ORT provider names.
+
+- Windows ONNX Runtime staging accepts explicitly required provider DLLs, checks their
+  names and existence before changing the destination, and retains the existing CPU default.
+  Wheel license staging can also require each selected provider to match the core's wheel.
+  Fixture tests refuse missing, duplicate or changed providers. Consumer adoption of the
+  finished-package verifier and real GPU execution remain separate work.
+
+- Python GPU bundles can opt into a host CUDA or ROCm runtime. The provider's exact direct
+  imports are recorded, unknown imports and bundled SDK libraries fail, and the loader retains
+  host library paths. CUDA and AMD package filenames are distinct from CPU filenames; their
+  installed package ID stays the same. GPU hardware execution and SDK compatibility still need proof.
+
+- Linux packaging adds opt-in external SDK search paths, an explicit CMake switch for the ELF
+  walker's system allowlist, and shared CPU, NVIDIA and AMD ONNX Runtime staging. These APIs
+  do not prove GPU execution or make a consumer package distributable on their own.
+- CPack GPU AppImages can opt to preserve ONNX Runtime bytes after install-time wheel matching.
+  The caller must use the external-runtime launcher; a shared verifier checks the finished
+  AppImage's core, provider and notices against one wheel using `--require-unstripped`, and
+  rejects host GPU SDK libraries anywhere in its extracted payload.
+
+- NVIDIA and ROCm app bundles require the corresponding ONNX Runtime provider to be available in
+  their self-test and record it for package testing. A separate GPU-host check can require it to
+  be active. Their ELF scan no longer accepts
+  image-only paths; dynamically loaded assets and licences still need a clean-host proof before
+  distribution. ORT wheel licence staging reads native members in bounded chunks and supports
+  provider libraries above 256 MiB, with a 1 GiB per-library limit.
+
 ## 2026-10-27 — GenAI's yvals_core.h patch writes the text its check expects
 
 - The 2026-10-24 refactor moved `Install-GenaiClangStlPatch` into a function and indented its

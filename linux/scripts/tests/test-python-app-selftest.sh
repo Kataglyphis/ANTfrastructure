@@ -39,4 +39,13 @@ t_case "an ONNX Runtime loaded from outside --root fails: a package must not run
 t_assert_contains "$(t_out _run --root "${W}" foreign 0)" "outside ${W}"
 t_assert_ok _run foreign 0
 
+t_case "a required GPU provider must be active, not just offered before CPU fallback"
+printf '{\n  "ok": true,\n  "available_providers": ["MIGraphXExecutionProvider"],\n  "providers": ["MIGraphXExecutionProvider", "CPUExecutionProvider"]\n}\n' > "${_work}/gpu.out"
+printf '{\n  "ok": true,\n  "available_providers": ["MIGraphXExecutionProvider"],\n  "providers": ["CPUExecutionProvider"]\n}\n' > "${_work}/fallback.out"
+t_assert_ok python3 "${SELFTEST}" --require-available-provider MIGraphXExecutionProvider -- python3 "${W}/app.py" "${W}/fallback.out" 0
+t_assert_contains "$(t_out python3 "${SELFTEST}" --require-available-provider MIGraphXExecutionProvider -- python3 "${W}/app.py" "${W}/good.out" 0)" 'did not list MIGraphXExecutionProvider as available'
+t_assert_ok python3 "${SELFTEST}" --require-provider MIGraphXExecutionProvider -- python3 "${W}/app.py" "${W}/gpu.out" 0
+t_assert_contains "$(t_out python3 "${SELFTEST}" --require-provider MIGraphXExecutionProvider -- python3 "${W}/app.py" "${W}/fallback.out" 0)" 'did not activate MIGraphXExecutionProvider'
+t_assert_contains "$(t_out python3 "${SELFTEST}" --require-provider MIGraphXExecutionProvider -- python3 "${W}/app.py" "${W}/good.out" 0)" 'did not activate MIGraphXExecutionProvider'
+
 t_summary

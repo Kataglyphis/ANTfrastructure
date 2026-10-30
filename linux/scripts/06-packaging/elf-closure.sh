@@ -5,6 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../01-core/logging.sh
 source "${SCRIPT_DIR}/../01-core/logging.sh"
+# shellcheck source=elf-needed.sh
+source "${SCRIPT_DIR}/elf-needed.sh"
 
 usage() {
   cat <<'USAGE'
@@ -13,6 +15,8 @@ usage: elf-closure.sh --bundle DIR --lib-dir DIR [options]
   --from SONAME-GLOB=DIR     such a library comes from DIR or nowhere (the chain ORT, the compiler's libstdc++)
   --ldconfig                 then the ld.so cache
   --ldd                      a file's libraries are what ldd lists for it, transitively, found where the loader finds them
+  --direct-only GLOB         inspect only direct NEEDED entries for matching bundle-relative files
+  --reject-source-root DIR   fail rather than copy a library from this source tree
   --system SONAME-GLOB       the target provides it
   --exclude SONAME-GLOB      never bundled: the target's own copy is the one to load (libcamera)
   --no-default-system        drop the built-in glibc and desktop graphics list, for a bundle that carries its C runtime
@@ -35,6 +39,8 @@ DEFAULT_SYSTEM=true
 SEARCH=()
 FROM=()
 PROTECT=()
+DIRECT_ONLY=()
+REJECT_SOURCE_ROOTS=()
 EXTRA_SYSTEM=()
 declare -A ALLOWED_UNRESOLVED=()
 while [ $# -gt 0 ]; do
@@ -45,6 +51,8 @@ while [ $# -gt 0 ]; do
     --from) FROM+=("${2:?}"); shift 2 ;;
     --ldconfig) USE_LDCONFIG=true; shift ;;
     --ldd) USE_LDD=true; shift ;;
+    --direct-only) DIRECT_ONLY+=("${2:?}"); shift 2 ;;
+    --reject-source-root) [ -d "${2:?}" ] || err "no rejected source root: $2"; REJECT_SOURCE_ROOTS+=("$(realpath "$2")"); shift 2 ;;
     --allow-unresolved) ALLOWED_UNRESOLVED[${2:?}]=1; shift 2 ;;
     --protect) PROTECT+=("${2:?}"); shift 2 ;;
     --system | --exclude) EXTRA_SYSTEM+=("${2:?}"); shift 2 ;;
@@ -100,8 +108,6 @@ in_bundle() {
   return 1
 }
 
-needed() { readelf -d "$1" 2>/dev/null | awk '/\(NEEDED\)/ { gsub(/[][]/, "", $NF); print $NF }'; }
-
 runpath_dirs() {
   local file="$1" origin raw dir
   origin="$(dirname "$(realpath "${file}")")"
@@ -132,16 +138,81 @@ resolvable() {
   return 1
 }
 
-# deps <file>: "<soname> <path>" per library the file loads; the path is "-" for a NEEDED entry, "?" when ldd found none.
-deps() {
-  if [ "${USE_LDD}" = false ]; then
-    needed "$1" | awk '{ print $1, "-" }'
-    return 0
+ldd_has_direct_dependency() {
+  local soname="$1" origin="$2" rows="$3" name path expanded
+  expanded="${soname//\$\{ORIGIN\}/${origin}}"
+  expanded="${expanded//\$ORIGIN/${origin}}"
+  while read -r name path; do
+    [ -n "${name}" ] || continue
+    [ "${name}" != "${soname}" ] || return 0
+    if [[ "${soname}" == */* && "${path}" == /* ]] &&
+      [ "$(realpath -m "${expanded}")" = "$(realpath -m "${path}")" ]; then return 0; fi
+  done <<< "${rows}"
+  return 1
+}
+
+validate_ldd_direct_dependencies() {
+  local file="$1" direct="$2" rows="$3" soname origin
+  origin="$(dirname "$(realpath "${file}")")"
+  while IFS= read -r soname; do
+    [ -n "${soname}" ] || continue
+    if ! ldd_has_direct_dependency "${soname}" "${origin}" "${rows}"; then
+      printf 'ERROR: ldd omitted direct dependency %s from %s\n' "${soname}" "${file}" >&2
+      return 1
+    fi
+  done <<< "${direct}"
+}
+
+# Some glibc ldd versions label the loader with the inspected object's path.
+# When that loader is itself DT_NEEDED, retain it under its real SONAME so it
+# is both validated and handled by the closure walker like any other library.
+normalize_ldd_loader_aliases() {
+  local file="$1" direct="$2" rows="$3" name path loader
+  while read -r name path; do
+    [ -n "${name}" ] || continue
+    loader="${path##*/}"
+    if is_loader_self_alias "${file}" "${name}" "${path}" && [ -f "${path}" ] &&
+      [[ $'\n'${direct}$'\n' == *$'\n'"${loader}"$'\n'* ]]; then
+      printf '%s %s\n' "${loader}" "${path}"
+    else
+      printf '%s %s\n' "${name}" "${path}"
+    fi
+  done <<< "${rows}"
+}
+
+ldd_dependencies() {
+  local file="$1" direct="$2" output rows status=0
+  output="$(LC_ALL=C ldd "${file}" 2>&1)" || status=$?
+  if [ "${status}" -ne 0 ]; then
+    if [ -z "${direct}" ] && [[ "${output}" == *'not a dynamic executable'* || "${output}" == *'statically linked'* ]]; then
+      return 0
+    fi
+    printf 'ERROR: ldd failed for %s (exit %s): %s\n' "${file}" "${status}" "${output}" >&2
+    return 1
   fi
-  ldd "$1" 2>/dev/null | awk '
+  rows="$(printf '%s\n' "${output}" | awk '
     $2 == "=>" && $3 ~ /^\// { print $1, $3; next }
     $2 == "=>" && $3 == "not" { print $1, "?"; next }
-    $1 ~ /^\// { m = $1; sub(/.*\//, "", m); print m, $1 }' || true
+    $1 ~ /^\// { m = $1; sub(/.*\//, "", m); print m, $1 }')"
+  rows="$(normalize_ldd_loader_aliases "${file}" "${direct}" "${rows}")"
+  validate_ldd_direct_dependencies "${file}" "${direct}" "${rows}" || return 1
+  [ -z "${rows}" ] || printf '%s\n' "${rows}"
+}
+
+# deps <file>: "<soname> <path>" per library the file loads; the path is "-" for a NEEDED entry, "?" when ldd found none.
+deps() {
+  local file="$1" direct="$2" rel="${1#"${BUNDLE}"/}" glob
+  for glob in "${DIRECT_ONLY[@]}"; do
+    if glob_match "${rel}" "${glob}"; then
+      [ -z "${direct}" ] || printf '%s\n' "${direct}" | awk '{ print $1, "-" }'
+      return 0
+    fi
+  done
+  if [ "${USE_LDD}" = false ]; then
+    [ -z "${direct}" ] || printf '%s\n' "${direct}" | awk '{ print $1, "-" }'
+    return 0
+  fi
+  ldd_dependencies "${file}" "${direct}"
 }
 
 # find_source <soname> <ldd path>: the library to copy, from --from, --search, --ldconfig, then where ldd found it.
@@ -215,14 +286,44 @@ already_in_lib_dir() {
   add_origin_runpath "${file}"
 }
 
-# close_needed <file> <soname> <ldd path>: one library is the system's, inside the bundle, copied in, or unresolved.
-close_needed() {
-  local file="$1" soname="$2" found
+is_loader_self_alias() {
+  [[ "$2" == /* ]] && [[ "${3##*/}" == ld-linux*.so* ]] && [ "$(realpath -m "$2")" = "$(realpath -m "$1")" ]
+}
+
+# An already resolved dependency needs no copy; a non-relocatable path is recorded here too.
+handle_existing_dependency() {
+  local file="$1" soname="$2"
   if is_system "${soname}"; then return 0; fi
+  # ldd can label the loader with the inspected library's own absolute path; it is not a dependency on itself.
+  if is_loader_self_alias "$@"; then return 0; fi
+  # A pathname NEEDED cannot be redirected by a RUNPATH; copying its basename would leave it pointing at the image.
+  if [[ "${soname}" == */* ]] && [ "${RELOCATABLE}" = true ]; then
+    if [ "$3" != - ] && [ "$3" != '?' ] && in_bundle "$3"; then return 0; fi
+    if [ "$3" = - ] && resolvable "${file}" "${soname}"; then return 0; fi
+    unresolved+=("${file#"${BUNDLE}"/}: non-relocatable dependency ${soname}")
+    return 0
+  fi
   case "$3" in
     -) if resolvable "${file}" "${soname}"; then return 0; fi ;;
     /*) if in_bundle "$3"; then return 0; fi ;;
   esac
+  return 1
+}
+
+source_is_allowed() {
+  local file="$1" soname="$2" found="$3" reject_root
+  for reject_root in "${REJECT_SOURCE_ROOTS[@]}"; do
+    case "$(realpath "${found}")/" in
+      "${reject_root}"/*) unresolved+=("${file#"${BUNDLE}"/}: ${soname} from host runtime ${reject_root}"); return 1 ;;
+    esac
+  done
+  return 0
+}
+
+# close_needed <file> <soname> <ldd path>: one library is the system's, inside the bundle, copied in, or unresolved.
+close_needed() {
+  local file="$1" soname="$2" found
+  if handle_existing_dependency "$@"; then return 0; fi
   if [ -e "${LIB_DIR}/${soname}" ]; then
     already_in_lib_dir "${file}" "${soname}"
     return 0
@@ -236,6 +337,7 @@ close_needed() {
     unresolved+=("${file#"${BUNDLE}"/}: ${soname}")
     return 0
   fi
+  if ! source_is_allowed "${file}" "${soname}" "${found}"; then return 0; fi
   cp -L -- "${found}" "${LIB_DIR}/${soname}"
   chmod 0644 "${LIB_DIR}/${soname}"
   copied+=("${soname} <- ${found}")
@@ -251,10 +353,18 @@ while [ "${#queue[@]}" -gt 0 ]; do
   [ -z "${seen[${file}]:-}" ] || continue
   seen[${file}]=1
   is_elf "${file}" || continue
+  direct="$(elf_dynamic_needed "${file}")" || exit 1
+  if [ "${RELOCATABLE}" = true ] && [ "${USE_LDD}" = true ]; then
+    while read -r soname; do
+      [[ "${soname}" == */* ]] || continue
+      resolvable "${file}" "${soname}" || unresolved+=("${file#"${BUNDLE}"/}: non-relocatable dependency ${soname}")
+    done <<< "${direct}"
+  fi
+  dependency_rows="$(deps "${file}" "${direct}")" || exit 1
   while read -r soname path; do
     [ -n "${soname}" ] || continue
     close_needed "${file}" "${soname}" "${path}"
-  done < <(deps "${file}")
+  done <<< "${dependency_rows}"
 done
 
 if [ "${CHECK_ONLY}" != true ] && [ "${#PRELOAD[@]}" -gt 0 ]; then

@@ -563,12 +563,18 @@ for why.
 
 ## `app-packaging.sh` — the two flatpak entry points
 
+The shared native-app DEB builder uses gzip control and data archives for older
+Debian package managers, and makes payload entries root-owned.
+
 Every packager in the file obeys three rules. Staging trees are container-native,
 never inside the mounted workspace: a bind-mounted host drive refuses chmod/fchmod
 for the container uid, so dpkg-deb, appimagetool and flatpak-builder fail there,
 and only finished artifacts are copied into `out/`. flatpak-builder's exit code is
 reported but never the verdict; `ostree --repo=<repo> refs` decides whether the app
-is committed. And nothing prints `Created:` without `app_packaging_assert_artifact`. Two entry
+is committed. And nothing prints `Created:` without `app_packaging_assert_artifact`.
+Bundle DEBs use `dpkg-deb --root-owner-group` so payload ownership is root even when the
+staging tree is owned by the unprivileged build user; an unsupported dpkg fails the build.
+Two entry
 points were added on 2026-09-15 for a consumer that packages a **CMake install
 tree** rather than a Flutter bundle; the finish-args block and the CON2 probe
 landed on 2026-09-17:

@@ -20,9 +20,10 @@ function New-MsiLicenseTableFixture {
                 'INSERT INTO `File` (`File`, `FileName`, `Sequence`) VALUES (''payloadA'', ''NOTICE~1.Z|NOTICES.Z'', 1)',
                 'INSERT INTO `File` (`File`, `FileName`, `Sequence`) VALUES (''payloadB'', ''same.txt'', 2)',
                 'INSERT INTO `File` (`File`, `FileName`, `Sequence`) VALUES (''payloadC'', ''same.txt'', 3)',
+                'INSERT INTO `File` (`File`, `FileName`, `Sequence`) VALUES (''payloadD'', ''second.txt'', 4)',
                 'CREATE TABLE `Media` (`DiskId` SHORT NOT NULL, `LastSequence` SHORT NOT NULL, `Cabinet` CHAR(255) PRIMARY KEY `DiskId`)',
                 'INSERT INTO `Media` (`DiskId`, `LastSequence`, `Cabinet`) VALUES (1, 2, ''#cab1.cab'')',
-                'INSERT INTO `Media` (`DiskId`, `LastSequence`, `Cabinet`) VALUES (2, 3, ''#cab2.cab'')'
+                'INSERT INTO `Media` (`DiskId`, `LastSequence`, `Cabinet`) VALUES (2, 4, ''#cab2.cab'')'
             )
             foreach ($sql in $statements) {
                 $view = $database.OpenView($sql)
@@ -130,6 +131,25 @@ Describe 'MSI license filename mapping' {
                 Assert-Throws { Get-MsiLicenseFileId -Path $msi -FileName 'same.txt' } -MessagePattern 'matched 2 rows'
                 Assert-Throws { Get-MsiLicenseFileId -Path $msi -FileName 'missing' } -MessagePattern 'matched 0 rows'
                 Rename-Item -LiteralPath $msi -NewName 'renamed.msi' -ErrorAction Stop
+            }
+        }
+
+        It 'batches exact filename mappings across cabinets in one verifier call' {
+            Invoke-InTestDir { param($dir)
+                $msi = Join-Path $dir 'batch.msi'; $verifier = Join-Path $dir 'verifier.py'
+                $one = Join-Path $dir 'one'; $two = Join-Path $dir 'two'
+                New-MsiLicenseTableFixture -Path $msi
+                Set-Content -LiteralPath $one -Value 'first text'
+                Set-Content -LiteralPath $two -Value 'second text'
+                Set-Content -LiteralPath $verifier -Value "import sys; sys.exit(0 if len(sys.argv) == 6 and sys.argv[2] == '--require' and sys.argv[3].startswith('cab1.cab::payloadA=') and sys.argv[4] == '--require' and sys.argv[5].startswith('cab2.cab::payloadD=') else 9)"
+                $python = (Get-Command python, python3 -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+                Assert-MsiPackageLicenses -Path $msi -FileName @('NOTICES.Z', 'second.txt') -LicensePath @($one, $two) -VerifierPath $verifier -PythonPath $python
+                Assert-Throws { Assert-MsiPackageLicenses -Path $msi -FileName @('NOTICES.Z', 'same.txt') -LicensePath @($one, $two) -VerifierPath $verifier -PythonPath $python } -MessagePattern 'matched 2 rows'
+                Assert-Throws { Assert-MsiPackageLicenses -Path $msi -FileName @('NOTICES.Z', 'missing') -LicensePath @($one, $two) -VerifierPath $verifier -PythonPath $python } -MessagePattern 'matched 0 rows'
+                Assert-Throws { Assert-MsiPackageLicenses -Path $msi -FileName @('NOTICES.Z', 'second.txt') -LicensePath @($one) -VerifierPath $verifier -PythonPath $python } -MessagePattern 'equal, nonzero counts'
+                Set-Content -LiteralPath $verifier -Value 'import sys; sys.exit(42)'
+                Assert-Throws { Assert-MsiPackageLicenses -Path $msi -FileName @('NOTICES.Z', 'second.txt') -LicensePath @($one, $two) -VerifierPath $verifier -PythonPath $python } -MessagePattern 'exit 42'
+                Rename-Item -LiteralPath $msi -NewName 'renamed-batch.msi' -ErrorAction Stop
             }
         }
 

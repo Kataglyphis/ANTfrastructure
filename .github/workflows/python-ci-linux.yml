@@ -90,6 +90,13 @@ on:
         required: false
         type: string
         default: ''
+      app-python-runtime:
+        description: >-
+          Python runtime for an app bundle: image (default) stages the image's source-built
+          interpreter; standalone downloads python-build-standalone for a GPU inventory.
+        required: false
+        type: string
+        default: image
       free-threaded-wheel:
         description: >-
           PYTHON_FREE_THREADED_WHEEL for ci_packaging.sh - auto builds the proved
@@ -98,6 +105,21 @@ on:
         required: false
         type: string
         default: auto
+      host-gpu-runtime:
+        description: >-
+          Build a GPU Python app bundle against the selected image's CUDA or MIGraphX
+          provider while leaving the GPU SDK on the host. The image must select exactly
+          one GPU provider; false preserves the existing package behavior.
+        required: false
+        type: boolean
+        default: false
+      gpu-artifact-label:
+        description: >-
+          Distinguishes unverified GPU package artifacts from CPU artifacts and other
+          GPU variants. Required with host-gpu-runtime: nvidia or amd.
+        required: false
+        type: string
+        default: ''
       deploy-docs:
         description: >-
           Whether to publish the built docs on a push to develop or main (build-docs.yml).
@@ -161,13 +183,30 @@ jobs:
         id: rows
         env:
           ARCHES: ${{ inputs.arches }}
+          HOST_GPU_RUNTIME: ${{ inputs.host-gpu-runtime }}
+          GPU_ARTIFACT_LABEL: ${{ inputs.gpu-artifact-label }}
+          GPU_CONTAINER_IMAGE: ${{ inputs.container-image }}
+          APP_PYTHON_RUNTIME: ${{ inputs.app-python-runtime }}
         run: |
           set -euo pipefail
+          case "${APP_PYTHON_RUNTIME:-image}" in image|standalone) ;; *) echo '::error::app-python-runtime must be image or standalone'; exit 1 ;; esac
+          if [ "${APP_PYTHON_RUNTIME:-image}" = standalone ] && [ "${HOST_GPU_RUNTIME:-false}" != true ]; then
+            echo '::error::standalone app-python-runtime requires host-gpu-runtime'; exit 1
+          fi
+          if [ "${HOST_GPU_RUNTIME:-false}" = true ]; then
+            case "${GPU_ARTIFACT_LABEL:-}" in nvidia|amd) ;; *) echo '::error::host-gpu-runtime needs gpu-artifact-label nvidia or amd'; exit 1 ;; esac
+            [ -n "${GPU_CONTAINER_IMAGE:-}" ] || { echo '::error::host-gpu-runtime needs an explicit GPU container-image'; exit 1; }
+          elif [ -n "${GPU_ARTIFACT_LABEL:-}" ]; then
+            echo '::error::gpu-artifact-label requires host-gpu-runtime'; exit 1
+          fi
           rows=""
           seen=" "
           # -d '': a block-scalar input spans lines; one plain read would drop all but the first.
           read -r -d '' -a want <<< "${ARCHES}" || true
           for arch in "${want[@]}"; do
+            if [ "${HOST_GPU_RUNTIME:-false}" = true ]; then
+              case "${GPU_ARTIFACT_LABEL}:${arch}" in nvidia:x64|nvidia:arm64|amd:x64) ;; *) echo "::error::unsupported GPU architecture: ${GPU_ARTIFACT_LABEL}/${arch}"; exit 1 ;; esac
+            fi
             case "${arch}" in
               x64) row='{"runs_on":"ubuntu-26.04","arch":"x64","platform":"linux/amd64"}' ;;
               arm64) row='{"runs_on":"ubuntu-26.04-arm","arch":"arm64","platform":"linux/arm64"}' ;;
@@ -203,6 +242,28 @@ jobs:
     timeout-minutes: ${{ matrix.timeout || 60 }}
 
     steps:
+      - name: Check out GPU consumer pin
+        if: inputs.host-gpu-runtime
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: '1'
+          submodules: recursive
+
+      - name: Check pinned host GPU packaging contract
+        if: inputs.host-gpu-runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=third_party/ANTfrastructure/linux/scripts/06-packaging
+          [ -f packaging/app.json ] || { echo '::error::host GPU packaging requires packaging/app.json'; exit 1; }
+          grep -Fxq '# PYTHON_APP_PYTHON_RUNTIME_API=1' third_party/ANTfrastructure/linux/scripts/02-toolchain/python/ci_packaging.sh || { echo '::error::pinned hub lacks explicit app Python runtime selection'; exit 1; }
+          grep -Fxq '# PYTHON_APP_HOST_GPU_RUNTIME_API=1' "$root/python-app-bundle.sh" || { echo '::error::pinned hub lacks the host GPU bundle API'; exit 1; }
+          grep -Fxq '# PYTHON_APP_OPTIONAL_TENSORRT_HOST_RUNTIME_API=1' "$root/python-app-bundle.sh" || { echo '::error::pinned hub lacks optional TensorRT host-runtime handling'; exit 1; }
+          grep -Fxq '# ORT_PYTHON_GPU_HOST_IMPORTS_API=1' "$root/ort-runtime-bundle.sh" || { echo '::error::pinned hub lacks wheel-proven GPU host imports'; exit 1; }
+          grep -Fxq '# ELF_NEEDED_API=1' "$root/elf-needed.sh" || { echo '::error::pinned hub lacks complete ELF dynamic-section verification'; exit 1; }
+          grep -Fxq '# PYTHON_APP_GPU_PACKAGE_API=1' "$root/python-app-package.sh" || { echo '::error::pinned hub lacks the GPU package API'; exit 1; }
+          grep -Fxq '# PYTHON_APP_GPU_FINISHED_BINARY_API=1' "$root/python-app-package.sh" && test -f "$root/verify-python-gpu-package.py" && test -f "$root/python-app-deb-depends.py" || { echo '::error::pinned hub lacks finished GPU package verification'; exit 1; }
+
       # The shared prologue keeps the pull retry count and timeout in one place for every repo.
       - name: Prepare CI host
         uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-linux-ci-host@develop
@@ -212,8 +273,10 @@ jobs:
           registry-password: ${{ secrets.GHCR_PAT }}
           fetch-depth: '1'
           submodules: recursive
+          checkout: ${{ inputs.host-gpu-runtime && 'false' || 'true' }}
+          pull-first: ${{ inputs.host-gpu-runtime && 'false' || 'true' }}
           # The riscv64 row pulls the riscv64 child as a second image, which the fast cleanup leaves too little room for.
-          free-disk-space: ${{ matrix.arch == 'riscv64' && 'true' || 'fast' }}
+          free-disk-space: ${{ (matrix.arch == 'riscv64' || inputs.host-gpu-runtime) && 'true' || 'fast' }}
 
       # The riscv64 test row runs the riscv64 image under QEMU; the packaging step crosses on the native row, so it needs the sysroot.
       - name: Register QEMU binfmt (riscv64)
@@ -255,14 +318,15 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: test-reports-${{ matrix.arch }}
+          name: ${{ inputs.host-gpu-runtime && format('unverified-gpu-{0}-test-reports-{1}', inputs.gpu-artifact-label, matrix.arch) || format('test-reports-{0}', matrix.arch) }}
+          overwrite: ${{ inputs.host-gpu-runtime }}
           path: logs/test-results/
           if-no-files-found: error
 
       # After a red test too: the site carries the test report, and a red test must not leave it stale.
       - name: Build Docs
         id: docs
-        if: ${{ !cancelled() && matrix.arch == 'x64' && (success() || steps.tests.outcome == 'failure') }}
+        if: ${{ !inputs.host-gpu-runtime && !cancelled() && matrix.arch == 'x64' && (success() || steps.tests.outcome == 'failure') }}
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
           image: ${{ env.CONTAINER_IMAGE }}
@@ -295,9 +359,30 @@ jobs:
             ${{ matrix.arch == 'riscv64' && inputs.package-emulated && '-e PACKAGING_CROSS_TARGET=riscv64' || '' }}
             -e SYNC_EXTRAS=${{ matrix.arch == 'riscv64' && inputs.test-extras || '' }}
             -e PYTHON_FREE_THREADED_WHEEL=${{ inputs.free-threaded-wheel }}
+            -e PYTHON_APP_PYTHON_RUNTIME=${{ inputs.app-python-runtime }}
+            ${{ inputs.host-gpu-runtime && '-e PYTHON_APP_HOST_GPU_RUNTIME=true' || '' }}
+            ${{ inputs.host-gpu-runtime && format('-e PYTHON_APP_REQUIRE_PROVIDER={0}', inputs.gpu-artifact-label == 'nvidia' && 'CUDAExecutionProvider' || 'MIGraphXExecutionProvider') || '' }}
           script: >-
             bash -lc "bash scripts/linux/ci_packaging.sh
             '${{ inputs.packaging-python-version }}'"
+
+      - name: Check GPU candidate formats
+        if: inputs.host-gpu-runtime
+        shell: bash
+        env:
+          GPU_LABEL: ${{ inputs.gpu-artifact-label }}
+          GPU_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          case "$GPU_ARCH" in x64) machine=x86_64; deb=amd64 ;; arm64) machine=aarch64; deb=arm64 ;; *) exit 1 ;; esac
+          shopt -s nullglob
+          tarballs=(dist/packages/*-gpu-"$GPU_LABEL"-*-linux-"$machine".tar.gz)
+          debs=(dist/packages/*-gpu-"$GPU_LABEL"_*_"$deb".deb)
+          images=(dist/packages/*-gpu-"$GPU_LABEL"-*-"$machine".AppImage)
+          if [ "${#tarballs[@]}" -ne 1 ] || [ "${#debs[@]}" -ne 1 ] || [ "${#images[@]}" -ne 1 ]; then
+            echo '::error::expected exactly one vendor-matched tar, deb and AppImage candidate'
+            exit 1
+          fi
 
       - name: Fix permissions for dist directory
         if: matrix.arch != 'riscv64' || inputs.package-emulated
@@ -339,17 +424,18 @@ jobs:
             '${{ inputs.package-name }}' '${{ inputs.packaging-python-version }}'"
 
       - name: Upload packages (source/binary only)
-        if: ${{ always() && (matrix.arch != 'riscv64' || inputs.package-emulated) }}
+        if: ${{ always() && (matrix.arch != 'riscv64' || inputs.package-emulated) && (!inputs.host-gpu-runtime || success()) }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: packages-linux-${{ matrix.arch }}-source-and-binary
+          name: ${{ inputs.host-gpu-runtime && format('unverified-gpu-{0}-packages-linux-{1}', inputs.gpu-artifact-label, matrix.arch) || format('packages-linux-{0}-source-and-binary', matrix.arch) }}
+          overwrite: ${{ inputs.host-gpu-runtime }}
           path: ${{ github.workspace }}/dist/
           if-no-files-found: error
 
   # The x64 row's docs, staged, link-checked and published by the family's one docs lane; a red test does not hold them back.
   docs:
     needs: build
-    if: ${{ !cancelled() && contains(inputs.arches, 'x64') }}
+    if: ${{ !inputs.host-gpu-runtime && !cancelled() && contains(inputs.arches, 'x64') }}
     uses: Kataglyphis/ANTfrastructure/.github/workflows/build-docs.yml@develop
     with:
       artifact: python-docs-site

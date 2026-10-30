@@ -35,12 +35,38 @@ function Get-OrtFamilyFile {
     return @(Get-ChildItem -LiteralPath $Directory -File -Recurse:$Recurse -ErrorAction SilentlyContinue | Where-Object { Test-OrtFamilyName -Name $_.Name })
 }
 
+function Get-ChainOrtRuntimeFile {
+    <#
+    .SYNOPSIS
+        Resolves a named chain runtime DLL in lib or bin, matching the staging precedence.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$OnnxRoot,
+        [Parameter(Mandatory)][string]$Name,
+        [switch]$AllowMissing
+    )
+
+    if ($Name -notmatch '^(onnxruntime(?:_providers_[a-z0-9_]+)?|DirectML)\.dll$') {
+        throw "Invalid ONNX Runtime DLL name: $Name"
+    }
+    $layout = Get-OnnxChainLayout -OnnxRoot $OnnxRoot -OnnxGenAiRoot ''
+    $selected = $null
+    foreach ($dir in @($layout.LibDir, $layout.BinDir)) {
+        $candidate = Join-Path $dir $Name
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { $selected = (Get-Item -LiteralPath $candidate).FullName }
+    }
+    if (-not $selected -and -not $AllowMissing) { throw "Required ONNX Runtime DLL $Name is missing from $OnnxRoot" }
+    return $selected
+}
+
 function Copy-ChainOrtBeside {
     <#
     .SYNOPSIS
         Replaces every ORT-family DLL at the top of -Destination with the chain install's; returns the copies.
     .DESCRIPTION
         Core, provider bridge and DirectML.dll when the chain has them; -All adds every runtime DLL, EP sidecars included.
+        -RequiredProvider adds named ORT provider DLLs and refuses a missing provider before changing the destination.
         Get-OnnxChainLayout validates the source; Assert-ChainOrtTree (G6) judges provenance afterwards.
     #>
     [CmdletBinding(SupportsShouldProcess)]
@@ -48,15 +74,24 @@ function Copy-ChainOrtBeside {
     param(
         [Parameter(Mandatory)][AllowEmptyString()][string]$OnnxRoot,
         [Parameter(Mandatory)][string]$Destination,
+        [string[]]$RequiredProvider = @(),
         [switch]$All
     )
 
+    foreach ($name in $RequiredProvider) {
+        if ($name -notmatch '^onnxruntime_providers_[a-z0-9_]+\.dll$') {
+            throw "Invalid ONNX Runtime provider DLL name: $name"
+        }
+    }
     $layout = Get-OnnxChainLayout -OnnxRoot $OnnxRoot -OnnxGenAiRoot ''
     $source = [ordered]@{}
     foreach ($dir in @($layout.LibDir, $layout.BinDir)) {
         foreach ($dll in @(Get-ChildItem -LiteralPath $dir -Filter '*.dll' -File -ErrorAction SilentlyContinue)) {
-            if ($All -or $script:OrtRuntimeFiles -contains $dll.Name) { $source[$dll.Name] = $dll.FullName }
+            if ($All -or $script:OrtRuntimeFiles -contains $dll.Name -or $RequiredProvider -contains $dll.Name) { $source[$dll.Name] = $dll.FullName }
         }
+    }
+    foreach ($name in $RequiredProvider) {
+        if (-not $source.Contains($name)) { throw "Required ONNX Runtime provider $name is missing from $OnnxRoot" }
     }
     if (-not $PSCmdlet.ShouldProcess($Destination, 'stage the chain ONNX Runtime')) { return }
     $null = New-Item -ItemType Directory -Force -Path $Destination
@@ -209,5 +244,5 @@ function New-OrtProvenPayload {
     }
 }
 
-Export-ModuleMember -Function Test-OrtFamilyName, Get-OrtFamilyFile, Copy-ChainOrtBeside, Get-OrtPayloadFinding,
+Export-ModuleMember -Function Test-OrtFamilyName, Get-OrtFamilyFile, Get-ChainOrtRuntimeFile, Copy-ChainOrtBeside, Get-OrtPayloadFinding,
     Assert-ChainOrtTree, Test-ExeLoadsOrt, Test-PayloadLoadsOrt, New-OrtProvenPayload

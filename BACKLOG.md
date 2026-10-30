@@ -484,6 +484,440 @@ owner carries the breakage that costs.
          all three default children and the next nvidia/rocm builds. Preserve riscv64's GLib
          handoff, plugin health and SHIPPED-TRUTH D checks.
       2. Prove the mandatory GUI build in OxidANT's arm64 lane and its riscv64 sysroot test.
+      **GPU consumer evidence, 2026-10-30:** the locally cached amd64 `:latest-rocm`
+      (index `a5d68fbe…`) and `:latest-nvidia` (index `0e9dec34…`) lacked the GTK 4 /
+      `graphene-gobject-1.0` development surface needed by OxidANT's mandatory GUI build.
+      Installing `libgtk-4-dev` in disposable containers let both release builds finish; that
+      is a local workaround, not the image fix. Keep the selective amd64 package choice in the
+      consumer contract: do not pull a second distro GTK/GStreamer stack into the image just
+      to reproduce the workaround. Before the next GPU image publication, make both candidate
+      variants pass `verify_gtk4_dev_surface` and the `gtk4-dev` runtime contract as uid 1001,
+      then build OxidANT's GUI without installing packages in the consumer lane. Record the
+      image digests, architectures and results; verify the NVIDIA arm64 child separately.
+      The NVIDIA arm64 child `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11`
+      resolves `gtk4` 4.22.4 and `graphene-gobject-1.0` 1.10.8 through `pkg-config --exists`
+      as uid 1001 under user-mode emulation (2026-10-30). This is not a GUI build or the full
+      development-surface contract; retain the native arm64 checks.
+
+- [ ] **CON176 — verify the Vulkan development surface in GPU consumer images** [S, ★★].
+      On 2026-10-30 the cached amd64 `:latest-nvidia` (`0e9dec34…`) and `:latest-rocm`
+      (`a5d68fbe…`) had neither `/usr/include/vulkan/vulkan.h` nor `pkg-config vulkan`.
+      The local OmniAccelerANT CUDA build installed `libvulkan-dev` in its disposable
+      container, along with the missing graphene metadata in CON129. Determine which Vulkan
+      development files the supported consumer builds require, add and verify that surface
+      in the GPU image build as appropriate, and rerun the consumers without ad hoc package
+      installation. Check the published NVIDIA arm64 child separately; do not infer its
+      contents from amd64.
+      The NVIDIA arm64 child `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11`
+      contains `/usr/include/vulkan/vulkan.h` and resolves `vulkan` 1.4.341 through
+      `pkg-config --exists` as uid 1001 under user-mode emulation (2026-10-30). That does not
+      prove a consumer build.
+
+- [ ] **CON177 — verify ShellCheck in the ROCm consumer image** [S, ★★]. The cached amd64
+      `:latest-rocm` (`a5d68fbe…`) did not have `shellcheck` on PATH on 2026-10-30, while
+      the cached amd64 `:latest-nvidia` did. The image source already installs pinned lint
+      tools in `Dockerfile.torch`; prove the runtime contract in the next ROCm image, then
+      run the consumer's shell lint without an ad hoc install. Check the published image
+      digest rather than assuming the cached image reflects the current registry tag.
+
+- [ ] **CON178 — verify offline Ruff availability in consumer images** [S, ★★]. The
+      cached amd64 `:latest-nvidia` (`0e9dec34…`) had no `ruff` on PATH on 2026-10-30;
+      `uvx --offline ruff@0.17.0` also failed because that pinned version was not cached.
+      Determine the intended offline contract, ensure
+      the pinned Ruff is available by that route in the next GPU images, and verify it on
+      the NVIDIA amd64/arm64 and ROCm amd64 children without an ad hoc download. Record
+      the image digests; the cached image is not evidence about today's mutable tag.
+      On 2026-10-30 the NVIDIA arm64 child
+      `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11` had
+      no `ruff` on PATH and a filename scan found no Ruff entry under `/opt/uv-cache-seed`,
+      `/opt/venv`, or the normal user's uv cache. OrchestrANT's lock pins Ruff 0.17.0, but
+      does not itself supply the wheel. A subsequent isolated PRoot/QEMU test, with child
+      execution enabled without host binfmt registration, ran `uvx --offline ruff@0.17.0
+      --version` as uid 1001 and reported that Ruff was not found in its selected cache.
+      This is emulated evidence for that image and user; verify the intended offline cache
+      and command on native ARM before the next image is published.
+      Separately, the cached x64 CPU `:latest` digest
+      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
+      had no `ruff` executable on PATH; as uid 1001 with networking disabled,
+      `uvx --offline ruff@0.17.0 --version` also reported Ruff absent from its selected
+      cache. This does not establish the contents of another cache or the online route.
+
+- [ ] **CON179 — check optional libcamera GStreamer plugin in consumer images** [S, ★★].
+      The cached amd64 `:latest-nvidia` (`0e9dec34…`) did not expose the optional
+      GStreamer `libcamera` plugin to an OrchestrANT bundle on 2026-10-30. Its required
+      GStreamer elements and CPU self-test passed; this is not evidence that all camera
+      paths work. Check the intended image contract and the current NVIDIA amd64/arm64
+      and ROCm amd64 children, restore the plugin if the contract requires it, and
+      record digest-specific plugin and camera-path results. The NVIDIA arm64 child
+      `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11`
+      supplied `/opt/libcamera/lib/gstreamer-1.0/libgstlibcamera.so` to an isolated
+      OrchestrANT bundle on 2026-10-30. File staging alone does not prove that the plugin
+      loads or that a camera works; retain the native ARM checks.
+      The cached x64 CPU `:latest` digest
+      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
+      also reported that optional plugin missing during a fresh OrchestrANT bundle build;
+      this does not establish the status of any other GStreamer plugin or camera path.
+
+- [ ] **CON186 — decide whether the NVIDIA ARM image must seed locked application dependencies** [S, ★★].
+      On 2026-10-30 the cached NVIDIA arm64 child
+      `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11`
+      reported that its uv cache seed is intentionally limited to riscv64. As uid 1001,
+      an isolated PRoot/QEMU test exported OrchestrANT's locked `app` requirements with
+      the shared ORT-provider exclusions, then ran `uv pip install --dry-run --offline`
+      against a fresh Python 3.15 venv and the image's chain ORT wheel. Resolution stopped
+      at `antlr4-python3-runtime==4.9.3`, which was unavailable to the selected offline
+      cache. Decide whether offline ARM consumer builds are part of the image contract;
+      if so, seed and verify the locked wheels on native ARM in the next image. This probe
+      does not show that a network-backed build fails or that the image's existing Python
+      environment lacks the package.
+
+- [ ] **CON189 — decide whether the Linux x64 CPU image should seed pip for offline uv venvs** [S, ★].
+      On 2026-10-30 the cached x64 CPU `:latest` registry digest
+      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
+      contained pip 26.2.2 in `/opt/venv`, but a fresh OrchestrANT Python 3.15 packaging
+      venv with `UV_OFFLINE=1` and networking disabled failed to seed pip because uv's
+      selected cache did not contain it. The normal network-backed retry seeded pip and
+      proceeded to install the locked app dependencies and the image's chain ORT wheels.
+      Decide whether offline consumer packaging is part of this image's contract; if so,
+      seed the required wheel and verify fresh venv creation as the image's normal user.
+      This finding does not show that pip is absent or that the networked path fails.
+
+- [ ] **CON190 — provide auditwheel for the Linux CPU image's Python wheels** [S, ★★].
+      On 2026-10-30 the cached x64 CPU `:latest` registry digest
+      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
+      had no `auditwheel` on PATH and `python3.15` could not locate its module as uid
+      1001. In an isolated OrchestrANT CPU build using its recorded hub pin and app extra,
+      the packaging driver found no `auditwheel` in its binary packaging venv either and
+      warned that `orchestrant-0.0.32-cp315-cp315-linux_x86_64.whl` would be shipped
+      unrepaired; the app bundle build continued. Add a compatible pinned auditwheel to
+      the image, then verify wheel repair and its resulting platform tags and dependencies
+      with a real consumer build. This observation does not establish that the app bundle
+      fails, nor that unrepaired wheels work on every target distribution.
+
+- [ ] **CON191 — resolve or document the Linux CPU image's optional DNNL provider** [S, ★★].
+      On 2026-10-30 the cached x64 CPU `:latest` registry digest
+      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
+      carried ONNX Runtime's `libonnxruntime_providers_dnnl.so`, but `ldd` reported its
+      `libdnnl.so.3` as not found; neither `ldconfig -p` nor scans of `/opt`, `/usr/local`
+      and `/usr/lib` found that SONAME. The pinned OrchestrANT bundle builder explicitly
+      allows this optional provider dependency to remain unresolved. Decide whether the
+      image should supply the matching oneDNN runtime and its redistributable license, or
+      whether the provider is intentionally unavailable; verify the resulting provider
+      on a clean host. The ordinary model self-test subsequently passed with the CPU
+      execution provider and output shape `[1, 300, 6]` on both the host and bundled
+      glibc loader paths. An explicit DNNL session in the same bundle reported the missing
+      `libdnnl.so.3` and fell back to `CPUExecutionProvider`, despite listing DNNL as
+      available; that proves neither DNNL acceleration nor its clean-host behavior.
+
+- [ ] **CON192 — decide whether the Windows x64 CPU image should cache locked app dependencies** [S, ★★].
+      On 2026-10-30 the cached `:winamd64` registry image digest
+      `sha256:bec12ad0afe6a5f0a90ae7c58ac06e605ee64b2a06c555842019bb1f00062927`
+      built OrchestrANT 0.0.32's CPython 3.15 wheel, but its isolated app bundle build
+      with `UV_OFFLINE=1` and networking disabled could not resolve the locked
+      `antlr4-python3-runtime==4.9.3` in the selected cache. Decide whether offline
+      consumer packaging belongs to this image's contract; if so, seed and verify the
+      locked app dependencies in a fresh bundle. A normal network-backed retry resolved
+      the 25 app dependencies and built the locked antlr4 source package successfully.
+      This shows a missing offline cache entry, not that the image's existing Python
+      environment lacks the package.
+
+- [ ] **CON193 — decide whether Linux CPU images should include actionlint** [S, ★★].
+      On 2026-10-30, the cached Linux CPU image digest
+      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
+      had no `actionlint` on PATH. The shared checksum-verified bootstrap downloaded
+      pinned actionlint 1.7.12 and successfully checked the OrchestrANT and hub Linux GPU
+      workflows. Decide whether to include the pinned binary in the next image to support
+      offline workflow checks, and verify its version and ShellCheck integration if added.
+
+- [ ] **CON194 — eliminate build-directory TCL RPATHs from Python runtimes used in GPU images** [M, ★★].
+      On 2026-10-30, retained OrchestrANT GPU x64 bundles built with cached NVIDIA index
+      `sha256:0e9dec3401f012fe6a5e4e47798aacbd7c2447ba5d8f6308635a3238db79f5cc` and ROCm
+      index `sha256:a5d68fbe64e579de09473290489b6953b5bce9aeb7644c18b86d6969bf37ace8`
+      contained `runtime/lib/libtcl9.0.so` and `libtcl9tk9.0.so` with legacy absolute
+      `/tools/deps/lib` RPATH. Their builds downloaded python-build-standalone 3.15.0 and
+      3.14.4 respectively; the provenance of those individual libraries is not yet proven.
+      Legacy RPATH can take precedence over a bundle's `LD_LIBRARY_PATH` and affect inherited
+      dependency lookup. Determine whether the image, Python distribution or packaging stage
+      supplies the paths; remove or replace build-only paths without disturbing legitimate
+      local dependencies or protected wheel bytes. Verify fresh CPU and supported GPU bundles,
+      both glibc modes and native architectures, and prove no external build-directory RPATH
+      remains. Removing just these two paths in disposable GPU copies allowed their dependency
+      scans to pass, but is not a fresh image or application build proof.
+
+- [ ] **CON195 — decide whether the NVIDIA ARM image should seed consumer Cargo dependencies** [S, ★★].
+      On 2026-10-30, the cached NVIDIA arm64 child
+      `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11`
+      provided Rust and Cargo 1.99.0 under uid 1001 and QEMU, but its default
+      `/usr/local/cargo/registry` was absent. With networking disabled, `cargo fetch
+      --locked --offline --target aarch64-unknown-linux-gnu` against OxidANT's current
+      lockfile failed because `chrono` was unavailable in the crates.io index. A separately
+      populated temporary cache allowed an offline emulated compilation to start. Decide
+      whether the next image should seed locked consumer crates or document that consumer
+      builds require network access; if seeding, verify the lockfile and target offline as
+      uid 1001 on the rebuilt native ARM image. This is an optional offline-cache gap, not
+      evidence of a missing compiler or a broken network-backed build.
+
+- [ ] **CON187 — make the Linux GPU image's sccache log writable and honor disabled caching** [S, ★★].
+      On 2026-10-30, the cached `:latest-rocm` digest
+      `sha256:a5d68fbe64e579de09473290489b6953b5bce9aeb7644c18b86d6969bf37ace8`
+      running as uid 1001 exported `SCCACHE_ERROR_LOG=/tmp/sccache.log`, but that file was
+      owned by root with mode 0644. During an isolated AccelerANTgine amd64 build with
+      `SCCACHE_DISABLE=1`, the shared launcher nevertheless retried a failed sccache server
+      twice, reporting that it could not write the log, before falling back to direct
+      compilation. For the local test only, the copied launcher was changed to honor the
+      existing disabled-cache setting; no packaging or license checks were bypassed. Before
+      the next image build, arrange a writable per-user log or remove the stale image log,
+      define the disabled-cache contract in the shared launcher, and verify both enabled and
+      disabled modes as uid 1001. Check the other image digests and architectures separately.
+
+- [ ] **CON188 — derive versioned host-library dependencies for Python DEBs** [L, ★★★].
+      The Python app DEB dependency scanner currently names host packages without their
+      minimum ABI versions, except for unbundled glibc. On 2026-10-30, the retained
+      OrchestrANT AMD GPU candidate's bundled `libgstreamer-1.0.so.0` used the host's
+      `libgobject-2.0.so.0` and `libglib-2.0.so.0`; Debian's symbol metadata derived
+      `libglib2.0-0t64 (>= 2.81.1)`, while that candidate declared only unversioned
+      `libglib2.0-0t64`. A separate C++ ELF requiring `GLIBCXX_3.4.32` similarly needed
+      `libstdc++6 (>= 13.1)` according to `dpkg-shlibdeps`, but the scanner emitted
+      unversioned `libstdc++6`. A clean-host test on the image's own base does not prove
+      compatibility with an older package satisfying those unversioned dependencies.
+      On 2026-10-30, an installed fixture requiring `GLIBCXX_3.4.34` confirmed the
+      failure on offline `debian:13` image
+      `sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5`:
+      dpkg configured the scanner's unversioned DEB with `libstdc++6` 14.2.0-19,
+      but loading its library failed. The symbol-derived bound `libstdc++6 (>= 15)`
+      made dpkg refuse configuration on the same image. Reproduce with
+      `_implementation/deb-depends-audit-20261030/older-abi-proof.sh` in the workspace.
+      Do not simply merge `dpkg-shlibdeps` output: a real CPU preload fixture loaded its
+      bundled libz through both launcher paths, yet the tool reported host `zlib1g`, and
+      a copied AMD MIGraphX provider caused it to report bundled C++ runtimes as host
+      dependencies. It also exits successfully after warning about an unresolved host
+      symbol, while intentionally waived GPU symbols produce similar warnings.
+      Debian's `Dpkg::Shlibs::Objdump` also injects version-node pseudo-symbols and
+      does not match an unversioned reference to a default-versioned export. A real
+      MIGraphX provider imports unversioned `Provider_GetHost`, supplied by the separately
+      loaded bundled `libonnxruntime_providers_shared.so` as `@@VERS_1.0`. The workspace
+      `default-export-proof.sh` reproduces successful loader binding and a false unresolved
+      result from that API; version needs and the actual global loading scope matter.
+      Isolated 2026-10-30 prototypes covered `readelf`'s required imports and exports on all
+      250 AMD candidate ELFs and 328 Linux ARM NVIDIA candidate ELFs. For the AMD bundle,
+      matching the exact host's symbols/shlibs metadata produced GLib `>= 2.81.1`, ICE
+      `>= 1:1.0.0` and SM `>= 2:1.2.6`; a missing GLib symbol, missing symbol metadata and
+      a waived HIP provider removed from the candidate cache were rejected. A CPU fixture
+      loaded bundled zlib, GCC and C++ runtimes through both glibc paths. Separate loader
+      fixtures reject missing, reversed and wrong-SONAME preloads and show standalone
+      executables do not inherit Python's
+      preloads. These are experiments in `_implementation/deb-depends-audit-20261030`, not
+      a production scanner or proof of GPU execution. A separate ABI-aware owner lookup in
+      `_implementation/deb-owner-prototype` rejects ambiguous or hwcaps cache entries.
+      Later prototypes reject an unloaded-libpython symbol and an ORT provider lookalike,
+      compare version nodes with the named provider, and preserve Debian's private-symbol and
+      unversioned metadata templates. A test-only AMD DEB using the derived bounds installs
+      and runs CPU inference on the image baseline in both glibc modes. That does not prove
+      compatibility on older hosts or establish all process-global and plugin scopes.
+      The x64 NVIDIA prototype checks 326 ELFs using the image's CUDA stub solely as
+      evidence for the waived `libcuda.so.1` symbol, without shipping or running that stub;
+      hiding it rejects the unresolved symbol. An emulated ARM NVIDIA scan also checked 328
+      ELFs with no unresolved symbols using that image's same-SONAME stub as evidence only;
+      native-device execution remains unproved. An inherited-RPATH fixture
+      shows that a standalone launcher's legacy RPATH can resolve a dlopened plugin's
+      dependency. The production scanner now rejects dynamic-entry, string and version-needs
+      sections that disagree with loader-mapped bytes; this does not solve symbol binding.
+      A standalone GPU executable fixture loaded host zlib without the Python launcher's
+      library path; production discovery now retains `zlib1g` unless detected executables
+      have generated wrappers. SONAME-bearing shared objects in `runtime/lib` are treated
+      as libraries, so intentionally executing one directly is outside that guard's proof.
+      A wrapped standalone executable can also load a site-package DSO without Python
+      preloads; a fixture observes host zlib in that process, but the current production
+      scanner can omit it. Legacy inherited RPATH can also precede the wrapper's library
+      path. GPU x64 bundles contain `libtcl9tk9.0.so` and `libtcl9.0.so` with legacy
+      `/tools/deps/lib` RPATH. A stricter experimental guard rejects those and the real CPU
+      bundle's wrapped GStreamer executable, so it was not integrated. In disposable tests,
+      removing those TCL RPATHs passed GPU scans, and CPU runtime-path wrappers passed CPU
+      inference on both glibc modes; fresh package builds and complete loader ancestry still
+      need proof. Experimental scanner and fixtures are in
+      `_implementation/deb-depends-audit-20261030`.
+      Further 2026-10-31 loader fixtures in `_implementation/loader-scope-con188` show the
+      current scanner omits host zlib when an earlier host RPATH or RUNPATH wins over a later
+      bundled path, and when a program first loads host zlib before a plugin with a purely
+      bundled RUNPATH. The latter proves a possible dynamic-load scope, not that a retained
+      bundle exercises it. A third fixture shows a local library with the wrong ELF machine
+      is skipped by the loader while the scanner still treats it as bundled. An independent
+      global-interposition fixture shows both unversioned and versioned plugin references
+      binding to a previously global different-SONAME host library while the named bundled
+      dependency is mapped; even its unversioned export can satisfy the versioned reference.
+      These are synthetic process scopes, not demonstrated real-bundle behavior. The exact-symbol
+      prototype also rejected 58 unresolved DNNL and
+      OpenMP symbols in the retained CPU ORT provider; the simpler CPU fixture is not full
+      CPU-provider proof. In `_implementation/deb-metadata-review`, zeroing a GNU-hash bloom
+      filter leaves the prototype claiming an export that the real loader cannot find, and
+      malformed Debian symbols metadata can emit a parse warning while the prototype reports
+      success. Integration must validate loader-visible hash lookup and reject metadata parse
+      warnings as well as failures.
+      Blanket preloading by SONAME is not a safe substitute for that scope analysis: the
+      retained NVIDIA bundle has different OpenCV and Pillow `libXau-154567c4.so.6.0.0`
+      copies, both referenced by bundled libxcb libraries. Importing cv2 before PIL.ImageGrab
+      maps the OpenCV copy; reversing the order maps the Pillow copy instead. Reproduce with
+      `_implementation/loader-scope-con188/import-order.sh`; equivalence of the two copies
+      and GPU hardware execution were not established.
+      An all-DT_NEEDED host-package superset also needs a proven process context. In
+      `_implementation/loader-scope-con188/slashed-needed.sh`, a previously global host
+      plugin with a different SONAME interposes a symbol even when an explicit bundled
+      `$ORIGIN` dependency is mapped; an unowned RPATH shadow is another possible provider.
+      The retained CPU bundle has 108 distinct needs, of which 60 are absent from the build
+      image cache and 11 have ambiguous or unpackaged candidates; rejecting all such cases
+      would reject the bundle. The NVIDIA bundle includes libv4l2 but mapping every image
+      candidate adds `libv4l-0t64`, while Debian 11/12 use `libv4l-0`. Debian 12 also runs
+      a bundled-zlib fixture but rejects it when the image's newer installed zlib version
+      is imposed as a host minimum. This does not prove a symbol-derived minimum fails.
+      Reproduce with `all-host-inventory.py` in the loader-scope directory and
+      `conservative-build.sh` / `conservative-debian12.sh` in `deb-metadata-review`.
+      A separate valid packed-relative-relocation fixture requires `GLIBC_ABI_DT_RELR`; the
+      former numeric-only scanner reported `libc6 (>= 2.17)` although Debian metadata derives
+      `libc6 (>= 2.36)`. Reproduce with `_implementation/deb-metadata-review/glibc-relr.sh`.
+      The scanner now applies the 2.36 bound to that marker and DT_RELR, and rejects unknown
+      `GLIBC_ABI_` markers when glibc is not bundled; this targeted correction does not
+      establish bounds for the other host packages or resolve bundled loader scope.
+      A gzip fixture in `_implementation/deb-relr-fix-20261031` confirmed the boundary:
+      offline Debian 11 index `sha256:6f519a81440354a85eb592c5f32109ab80605f6b892455983a6f618bf87fabe9`
+      configured the old `>= 2.17` package with libc6 2.31 but its binary could not load;
+      `>= 2.36` refused configuration. Debian 12 index
+      `sha256:d74df7598108a173a621eda4d58a2adbf850b2d9a9d81bc2cca1a6c21174a880`
+      installed and ran the corrected fixture. The independent metadata audit also found
+      that a symbols lookup can return an entry tagged for the wrong target architecture;
+      validate that tag rather than assuming installed metadata was prefiltered.
+      A later strict metadata prototype in `_implementation/deb-metadata-review` completed
+      retained AMD x64 (251 ELFs), NVIDIA x64 (250 ELFs), and emulated NVIDIA ARM (328 ELFs)
+      scans with no unresolved symbols; the CUDA stub was waiver evidence only. The CPU scan
+      still fails closed on 58 unclassified oneDNN-provider symbols. It rejects some valid
+      pattern/include and duplicate metadata; its experimental classifier skips libc metadata
+      and does not use the separate strict package-control query helper. These results do not
+      establish actual loader scope or GPU execution.
+      Derive and verify minimum versions against the exact host-resolved library's Debian
+      symbols or shlibs metadata, fail closed on unmapped required host symbols, and
+      distinguish proven GPU waivers from other unresolved symbols. Verify real and
+      mutated CPU/GPU bundles, private RPATHs, Python preloads, both glibc launcher paths,
+      native architectures, and a clean host with an older incompatible package; retain
+      no false dependency for bundled or waived libraries. The versioned fixture above
+      must refuse configuration on that older image while a compatible host can load it.
+      Integration still needs a validated dynamic-symbol count and section/segment mappings,
+      architecture-aware loader search and actual process scopes, recursive ordered preload
+      closure, bundled-glibc resolution, Debian metadata alternatives and copied-script
+      wiring. The current scanner rejects unowned host libraries but does not yet prove
+      non-glibc version bounds.
+
+- [ ] **CON180 — record DirectML redistributable provenance and license in Windows images** [M, ★★★].
+      AccelerANTgine's existing native inventory says the image does not carry the Microsoft
+      DirectML license text. This is a repository statement, not a fresh inspection of a
+      cached or current GPU image: the NVIDIA digest `b472f91b…` was later pulled locally on
+      2026-10-30, but its DirectML redistributable source and original license text have not
+      yet been established. Its chain `DirectML.dll` reports version 1.15.4 and matches the
+      DirectML file in the image's ORT 1.31.0 wheel and a finished AccelerANTgine NVIDIA ZIP.
+      Inspect the published `:winamd64`, `:winamd64-nvidia` and `:winamd64-rocm` digests;
+      record the source NuGet package/version, redistribution terms and original license text,
+      and prove that the installed `DirectML.dll` matches that source. Provide a stable
+      image path and consumer verification contract for both bytes and license, then rerun
+      Windows candidate packaging against the next images. Do not infer GPU hardware support
+      from a DLL or infer today's mutable tag contents from older observations.
+
+- [ ] **CON182 — publish CUDA/cuDNN runtime license and origin metadata for Windows consumers** [M, ★★★].
+      The cached `:winamd64-nvidia` image digest `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777`
+      was inspected on 2026-10-30. Its chain OpenCV Python import closure includes 13
+      CUDA and cuDNN DLLs from `C:\runtime\cuda-runtime\bin`; that runtime directory contains
+      no license text or origin manifest. Their bytes matched the CUDA 13.4 toolkit and
+      cuDNN 9.27.0.42 installs in the same image; their original `LICENSE` files reside under
+      the respective SDK install roots. All 31 flattened DLLs match one SDK source each;
+      [the digest-specific evidence](docs/windows-nvidia-runtime-evidence-2026-10-30.md)
+      records each file's SHA-256, SDK origin and both license hashes. Clarify the
+      redistribution status of `nvfatbin_130_0.dll` and define the runtime set needed by
+      real GPU inference before shipping the image's flattened directory as-is. Provide a
+      stable runtime-side license/provenance handoff with exact version and file hashes, and
+      verify those texts and DLLs during the next NVIDIA image build. Check the current
+      mutable tag and supported architectures separately; this observation is for the
+      cached digest, not later images.
+
+- [ ] **CON183 — restore Windows GPU image VP8 GStreamer capability** [M, ★★★].
+      On 2026-10-30 the cached `:winamd64-nvidia` digest
+      `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777` had
+      no `gstvpx.dll`, and its own `gst-inspect-1.0 vp8enc` reported no such element.
+      The cached `:winamd64-rocm` digest `774af209a9282b8e8439653eb55756228a6ebdd219076ddc54a1e012e550c99c` also lacks
+      `gstvpx.dll` and reports no `vp8enc`.
+      The cached CPU image `:winamd64` digest
+      `bec12ad0afe6a5f0a90ae7c58ac06e605ee64b2a06c555842019bb1f00062927` also reports no `vp8enc`.
+      The cached `:winarm64` CPU digest
+      `d265a950d502f49462ad378e4fd062ba416c6f2f304567a00b16a8fd4c5e6b54` also lacks `gstvpx.dll` (file inspection only).
+      Its WebRTC, Rust WebRTC and OpenH264 plugin DLLs were present. Restore or provide
+      the VP8 encoder plugin and its runtime dependencies, verify `vp8enc` and VP9 if
+      promised, and record the plugin's original license and provenance in the image.
+      Check the current NVIDIA and AMD Windows image digests and CPU images independently;
+      the cached digest does not establish the contents of today's mutable tags. A local
+      AccelerANTgine package using this image cannot pass its required VP8 capability check.
+
+
+- [ ] **CON184 - provide provenance and license texts for Windows GStreamer runtime dependencies** [M].
+      Cached `:winamd64-nvidia` digest `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777`
+      ships GStreamer plugins whose PE closure includes `jpeg-8.3.2.dll`, `libcrypto-4-x64.dll`,
+      `libssl-4-x64.dll`, `openh264-7.dll`, `png16-16.dll`, `srtp2-1.dll`, and `z-1.dll`;
+      the runtime share tree has no corresponding license texts or source provenance.
+      Cached `:winamd64-rocm` digest `774af209a9282b8e8439653eb55756228a6ebdd219076ddc54a1e012e550c99c` also has
+      all seven DLLs and no corresponding texts under `C:\runtime\share`. Image pkg-config
+      identifies libjpeg 3.1.4.1, libpng 1.6.58, libsrtp 2.8.0, OpenH264 2.6.0, and zlib 1.3.2;
+      the OpenSSL DLL file metadata reports 4.1.0. Preserve each actual binary's source, version, license
+      texts and a verifiable association with the installed DLL (including transitive/static notices),
+      and expose these to consumers. Check CPU and AMD/ARM images independently. Until then the
+      AccelerANTgine install-time third-party notice gate correctly rejects this closure.
+
+
+- [ ] **CON185 - provide Windows GStreamer tensor inference elements** [M].
+      Cached `:winamd64-nvidia` image digest
+      `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777` reports no
+      `tensor_transform`, `onnxruntime`, or `tensor_decoder` via `gst-inspect-1.0`.
+      Cached `:winamd64-rocm` digest `774af209a9282b8e8439653eb55756228a6ebdd219076ddc54a1e012e550c99c` likewise
+      reports all three elements missing.
+      AccelerANTgine's `Src/gstreamer_pipeline.cpp` constructs its inference pipeline using
+      these elements. Add the compatible plugins and runtime dependencies, their source and
+      license provenance, and image checks for the elements; verify other Windows image variants
+      independently. Until then that pipeline is unavailable in this image.
+
+- [ ] **CON181 — document and harmonize Windows GPU ORT provider paths** [S, ★★]. The
+      published `:winamd64-nvidia` image digest `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777`
+      was inspected locally on 2026-10-30: `onnxruntime.dll` and its shared provider bridge
+      are in `ONNX_ROOT\bin`, while `onnxruntime_providers_cuda.dll` is in `ONNX_ROOT\lib`.
+      The installed ORT 1.31.0 wheel contains the CUDA provider and shared bridge, and Python reports CUDA,
+      DirectML and CPU as available. This is a split-layout mismatch, not a missing CUDA SDK
+      or proof of GPU inference. Document a stable consumer contract and either stage the
+      provider consistently beside the core or test the split location across NVIDIA images
+      and consumers before the next image publication. Verify source and wheel bytes match.
+
+- [ ] **CON172 — select the GPU ONNX Runtime reliably in consumer images** [M, ★★★].
+      On 2026-10-30 both cached GPU images exported `ORT_LIB_LOCATION` pointing at
+      `/usr/local/lib/onnxruntime-cpu/lib`, even though the CUDA or MIGraphX runtime was at
+      `/usr/local/lib/onnxruntime-gpu/lib`. That CPU default is intentional. In a local
+      AccelerANTgine probe the image's library search path could also resolve OpenCV's ORT
+      ahead of the requested GPU core despite the executable's RPATH. Provide and document an
+      explicit provider-specific setup for builds and runtime loading without changing the CPU
+      default. Before the next GPU image publication, prove on each published child that a
+      consumer links and loads the requested chain GPU core and matching provider, with no
+      foreign or stale ORT; exercise the CPU setup too and make a missing provider fail clearly.
+      An actual GPU inference and operator-placement profile remains a separate hardware check.
+      On 2026-10-30 the NVIDIA arm64 child
+      `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11`
+      passed the shared unstripped wheel check for its aarch64 GPU ORT core, shared bridge and
+      CUDA provider under user-mode QEMU. The image's Python ORT also ran its bundled sigmoid
+      sample using CPU, while advertising CUDA; the image retains the CPU default. These checks
+      do not prove requested consumer linking, chain runtime selection or GPU execution.
+
+- [ ] **CON174 — measure GPU image disk needs for consumer workflows** [M, ★★]. On
+      2026-10-30 the locally cached amd64 NVIDIA and ROCm images reported 53.24 GB and
+      74.75 GB respectively in `nerdctl images`. OxidANT's GPU build also needs compiler
+      targets and package output, so image size alone cannot establish whether a hosted runner
+      has enough space. Measure pull, unpack, build and artifact peaks for both variants on
+      their intended runners, including cleanup and cache behavior. Establish a supported
+      runner/storage configuration and an early actionable space check; retain measured image
+      digests and do not claim a hosted lane works until it has completed.
+      On 2026-10-30 the pinned NVIDIA arm64 child
+      `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11`
+      reported 36.12 GB image size and 17.22 GB compressed blobs in nerdctl. This is not a
+      measurement of build or runner peak disk use.
 
 - [ ] **CON131 — pwsh in the Linux image; then OrchestrANT's `benchmarks.yml` contract job moves into
       `:latest`** [S, ★★]. Found with CON124 (2026-10-20): in `:latest` the contract job's 41 PowerShell
@@ -525,6 +959,21 @@ owner carries the breakage that costs.
       runs and its sysconfig `AR` exists. Left:
       1. Prove the 3.15 `:latest-rocm` rebuild, including its ABI-specific wheels and twins.
          The nvidia 3.15 publish was already proved on 2026-10-19 (run `20261019-055155`).
+         The locally cached ROCm index `a5d68fbe…` still used distro Python 3.14.4 on
+         2026-10-30; an OrchestrANT image-CPython bundle refused it and needed the standalone
+         Python option. Prove the rebuilt GPU image's source-built interpreter can be relocated
+         by the normal consumer bundle path as well as proving the wheels.
+         In the 2026-10-30 local AMD overlay, the standalone fallback reached a working CPU
+         self-test, but OrchestrANT's notice generator initially rejected five unlisted native
+         files: Tcl 9.0, Tk 9.0, Itcl 4.3.5, Tcl Thread 3.0.4 and PCRE2. OrchestrANT now
+         inventories those observed versions and ships their original texts; its local AMD
+         overlay generated and checked a notice from the provisional archive. The tracked
+         multi-platform notice still needs regeneration from the release artifact set. Recheck
+         the inventory with the rebuilt image's own interpreter, since it can have a different
+         native closure; do not suppress the notice check.
+         The actual GPU workflow driver on this cached image also failed to relocate its
+         distro `/usr` Python 3.14.4. The explicit standalone-runtime GPU input is a temporary
+         path until the rebuilt image supplies and proves relocatable source-built CPython.
       2. Retain explicit per-ABI wheel/store verdicts on foreign arches; the x64 consumer runs
          do not prove every arm64/riscv64 wheel or free-threaded leg.
       3. PGO on arm64 needs a native arm64 toolchain build; cross arches currently get LTO alone.
@@ -641,6 +1090,12 @@ owner carries the breakage that costs.
       **Windows in source since 2026-10-27:** `CXXBRIDGE_CMD_VERSION=1.0.205` (OxidANT's lock), baked by
       `Install-RustToolchain.ps1`, asserted by the smoke. Left: the next `:winamd64` passing that assert,
       `:latest` (web-lane tools, three arches), and BB's helper.
+      The cached amd64 `:latest-rocm` (`a5d68fbe…`) also lacked `cxxbridge` on 2026-10-30, so an
+      AccelerANTgine GPU package verification had to compile it in the disposable container. The
+      cached NVIDIA image (`0e9dec34…`) also lacked it during an OmniAccelerANT CUDA build; its
+      automatic install failed with an incomplete offline Cargo cache. Verify the pinned binary and
+      its version in both NVIDIA and ROCm candidate images before publication; consumers should not
+      install it during their build.
 
 - [ ] **CON110 — OrchestrANT's riscv64 free-threaded leg needs a seeded cache** [M, ★]. Its
       riscv64 lane (`linux-riscv64.yml`) runs `pinned` alone: run 38562273950 (2026-10-14) took
@@ -692,6 +1147,9 @@ owner carries the breakage that costs.
       The recorded default index `3c558d88`, Windows images and `:latest-nvidia` already carry
       chain ORT 1.31.0. Left: prove it in the next `:latest-rocm`, then move OxidANT from its
       current exact `ort` 2.0.0-rc.13 pin to rc.14 with its own tests.
+      The locally cached ROCm index `a5d68fbe…` still carried ORT 1.30.0 and MIGraphX on
+      2026-10-30; prove the next image's GPU core, provider and wheel together with a real
+      consumer session, not just the version of its CPU twin.
       Compatibility evidence for the remaining rebuild (read from the two tags' sources):
       - Dawn v20260818.211311 → v20260916.214021: `ORT_WEBGPU_WINDOWS_DAWN_SHA256` is
         `507949fd45d7ca0cfc672617fd1e06ee02ce23c4f32856b342c48133e71d682e` (full download, 2026-10-13), its SHA1 equal
@@ -788,6 +1246,24 @@ owner carries the breakage that costs.
       - `UV_WINDOWS_ARM64_SHA256`: removed in source 2026-10-27 with its `bump_tools.py` row; rides the next chain.
 ## Open — the Windows arm64 bundle and unpublished variants
 
+- [ ] **CON173 — reconcile and prove the GPU image architecture matrix** [L, ★★★]. A live
+      registry manifest check on 2026-10-30 found `:latest-nvidia` has Linux amd64 and arm64
+      entries; `:latest-rocm` has amd64 only, and `:latest-rocm-arm64`, `:winarm64-nvidia`
+      and `:winarm64-rocm` returned not found. The Windows x64 NVIDIA and ROCm tags existed.
+      **Owner matrix, 2026-10-30:** use the images in
+      `ghcr.io/kataglyphis/kataglyphis_beschleuniger`: Linux NVIDIA on amd64 and arm64 from
+      `:latest-nvidia`, Linux AMD on amd64 from `:latest-rocm`, and Windows NVIDIA and AMD
+      on x64 from `:winamd64-nvidia` and `:winamd64-rocm`. Skip Linux arm64 ROCm and Windows
+      arm64 NVIDIA and ROCm GPU builds; do not create image routes or artifact lanes for them.
+      CPU-only Linux and Windows builds, including their existing arm64 lanes, remain supported
+      using the registry's CPU images. Windows x64 DirectML may use the registry's `:winamd64`
+      image where that provider is appropriate.
+      A manifest entry does not prove its SDK, provider or device works. Reconcile CON31 and
+      `docs/linux-accelerator-images.md` with the published NVIDIA arm64 entry; inspect its
+      digest, SDK and ORT provider and run an arm64 consumer build. Before publishing each
+      supported route, prove its architecture, provider and dependency closure, and record
+      inference on suitable hardware; keep CPU images and tags independent.
+
 - [ ] **CON108 — the Windows arm64 device runs OrchestrANT's Flet tests** [S, ★].
       `Stage-Arm64Tests.ps1` stages from `:winarm64`'s `PYTHON_WHEELS`, which has no Flet, so
       `test_view.py`, `test_flet_viewer.py` and `test_streaming.py` skip on the device. flet,
@@ -830,11 +1306,13 @@ owner carries the breakage that costs.
         it falls back with `No devices detected that match the filter criteria`).
       - Still unproven on a device: a camera pipeline and a GPU execution provider. No `windows-11-arm`
         runner has either; the Snapdragon X's DirectML is the one adapter in reach.
-- [b] **CON31 — Variants that are not published** [L, ★]. Blocked on the next nvidia and rocm chains (the owner's
-      build host), and for arm64 on an owner decision. The owner chose on 2026-10-20: TensorRT 11 and the ORT TensorRT
-      EP in `:latest-nvidia`, and a `:latest-rocm` that finds its ROCm and opens an AMD GPU; not the arm64 nvidia route.
+- [b] **CON31 — GPU variant capabilities awaiting publication and device proof** [L, ★]. Blocked on the next nvidia
+      and rocm chains and the device runs. The owner chose on 2026-10-20: TensorRT 11 and the ORT TensorRT
+      EP in `:latest-nvidia`, and a `:latest-rocm` that finds its ROCm and opens an AMD GPU. The earlier arm64
+      NVIDIA exclusion is superseded by the published manifest entry and current GPU consumer request; see CON173.
       Both are in the source since 2026-10-21, hub f6771ee4 (`docs/linux-accelerator-images.md` § TensorRT 11,
-      § Running it on an AMD GPU, § The GPU runtime gate). No image carries them yet.
+      § Running it on an AMD GPU, § The GPU runtime gate). The older recorded image baselines did not prove them;
+      recheck the current published digests before repeating a chain.
       - `:latest-nvidia`, TensorRT 11: `ENABLE_TENSORRT=true` on amd64; exactly `11.4.0.106-1+cuda13.4` from NVIDIA's
         `ubuntu2604` repo; only the runtime `.so` files ship, which the SLA names distributable (§ Redistribution).
         Proved in a throwaway container on the published `0e9dec34…` (no GPU): the hub's `install-tensorrt.sh`
@@ -859,7 +1337,8 @@ owner carries the breakage that costs.
         `GPU-RUNTIME` row passing, and on a native Linux host with an AMD GPU, as uid 1001 with the documented run line:
         `rocminfo` listing the GPU, a `hipcc`-built program running, the Add graph through MIGraphX, and torch
         `cuda.is_available()` with a tensor op; without `--group-add`, the entrypoint's warning.
-      - `:latest-nvidia` has no arm64 route; out of scope (owner 2026-10-20).
+      - The 2026-10-20 arm64 exclusion is stale: on 2026-10-30 the live `:latest-nvidia`
+        manifest contained an arm64 entry. Its contents and device execution still need CON173.
       - The stale `tensorrt.conf` naming `/usr/local/tensorrt/lib` is gone: checked in the published `0e9dec34…`
         (2026-10-19) on 2026-10-21.
       - `:winamd64-rocm`: published (first 2026-09-28 at 73a8dd74, again 2026-10-03 at
@@ -917,11 +1396,24 @@ owner carries the breakage that costs.
       - OmniAccelerANT's `nvinfer` path: later, by owner decision (2026-10-12).
       - `nvblender` upstream: a forum draft (both defects, with the RTX 2080's repro) waits for the owner's review in
         `~/upstream-drafts/2026-10-12/nvidia-deepstream/` on the build host; nothing is posted.
-      - **Phase 7 (arm64)**: out of scope until CON31 has an arm64 CUDA route. The Jetson runtime `.deb` is pinned
-        (`DEEPSTREAM_BINARIES_ARM64_SHA256`); nothing installs it.
+      - **Phase 7 (arm64)**: the live NVIDIA manifest has an arm64 entry (CON173), but that alone does not prove
+        DeepStream there. The Jetson runtime `.deb` is pinned (`DEEPSTREAM_BINARIES_ARM64_SHA256`); nothing
+        in the recorded build installs it. Recheck the published child's contents before planning this phase.
       Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only); the pin stays on 9.1.0.
 
 ## Open — hub tooling and the dev host
+
+- [ ] **CON175 — prove Linux package system-library dependencies on a clean host** [M, ★★].
+      On 2026-10-30 an AccelerANTgine AMD CPack prototype passed the image's ELF walk but its
+      archive failed on clean Ubuntu 26.04 because `libgobject-2.0.so.0` was absent. The shared
+      closure's default system allowlist excludes GLib/GObject from the bundle while that
+      consumer's declared Debian dependencies cover only `libc6` and `libegl1`; the existing CPU
+      package may have the same gap. A scratch `--no-default-system` closure that bundled those
+      libraries started on the clean host with only the declared EGL dependency, under both host
+      and bundled glibc. Reproduce against the recorded CPU and GPU consumers, choose and document
+      whether to bundle or declare each dependency, and gate finished tar/deb/AppImage artifacts
+      on clean-host startup and inference. Do not treat libraries merely present in the build image
+      as proof that the installed package has them.
 
 - [ ] **CON146 — TVM's cross sysconfig export lags the wheelhouse's** [S, ★]. Found 2026-10-21 with
       CON114: `_tvm_target_python_sysconfig_export` (`tvm-python.sh`) still takes its triplet from

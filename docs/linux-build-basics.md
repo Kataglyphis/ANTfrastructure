@@ -323,6 +323,11 @@ library the installed files need goes to `lib/<PRIVATE_DIR>`, found through `$OR
 - The C++ compiler's runtime directory is searched first, since the image has two `libstdc++`.
 - `SYSTEM` names what the package's `Depends` bring instead (a distro's GStreamer); `PROTECT` copies
   the chain ORT unpatched for G6.
+- `NO_DEFAULT_SYSTEM` removes the walker's built-in system list; provide each actual host dependency
+  with `SYSTEM`. `EXTERNAL_LIBRARY_PATH` requires `LOADER` and preserves nonempty host SDK paths.
+- `PRESERVE_ORT_IN_APPIMAGE` requires that external launcher and prevents CPack's AppImage generator
+  from patching wheel-matched `libonnxruntime*.so*` files after the install-time provenance check.
+  Verify the finished AppImage against the wheel as well as the staged tree.
 - Never `lib/` itself: `ldconfig` would serve a bundled `libstdc++` to every program.
 - Only the top-level project's call counts: AccelerANTgine, embedded in OmniAccelerANT's plugin by
   `add_subdirectory`, would otherwise rewrite the Flutter bundle, chain ORT included.
@@ -344,7 +349,12 @@ for, and by default an `$ORIGIN` RUNPATH to them.
 - **Where a library comes from:** `--from SONAME-GLOB=DIR`, that directory or nowhere (the chain ORT,
   the compiler's `libstdc++`); then each `--search` in order; then `--ldconfig`, the ld.so cache.
 - **`--ldd`** takes a file's libraries from `ldd` instead of its NEEDED entries: transitively, found
-  where the loader finds them. A library that an excluded one needs therefore still travels.
+  where the loader finds them. A library that an excluded one needs therefore still travels. The
+  walker rejects a failed or incomplete inspection, including output that omits a direct NEEDED
+  entry; a valid ELF with no dynamic dependencies may still be static or the loader itself.
+- **Host SDK dependencies:** `--direct-only GLOB` limits matching bundle files to their direct
+  NEEDED entries; `--reject-source-root DIR` refuses to copy from a host-runtime source tree.
+  Only use these with explicitly declared host dependencies and a clean-host package test.
 - **Never copied:** the built-in glibc and desktop graphics list (`--no-default-system` drops it, for a
   bundle that carries its C runtime), `--system` (the package's `Depends` bring it) and `--exclude`
   (the target's own copy has to load: libcamera, whose IPA and tuning match the target's kernel).
@@ -385,6 +395,23 @@ launcher reads the host's version through a command substitution: with `read < <
 outlived the `exec` as a stray child of the program, which Python's `forkserver` warns about. A
 Python app bundle puts the same launcher on its interpreter
 ([`python-app-bundles.md`](python-app-bundles.md#the-images-glibc-travels)).
+
+### ONNX Runtime providers and host SDK paths
+
+Source `linux/scripts/06-packaging/ort-runtime-bundle.sh` and call
+`stage_ort_runtime DEST ORT_DIR cpu|nvidia|amd`, or invoke the script with the same arguments.
+It stages the two chain ORT aliases and, for a GPU variant, the shared provider and its CUDA or
+MIGraphX provider. It checks all requested inputs before writing and copies their bytes unchanged.
+The caller must prove provenance, match all staged ORT files to their wheel, and carry its license
+texts. Staging does not test a GPU or make vendor runtime libraries available.
+
+`bundle-loader.sh --external-library-path` preserves nonempty `LD_LIBRARY_PATH` entries for host
+SDK libraries while putting the bundle's private library directory first. It supports either the
+normal layout or `--beside`, on both host and bundled glibc paths. CMake callers opt in with
+`kataglyphis_install_linux_closure(LOADER EXTERNAL_LIBRARY_PATH ...)`. An existing launcher made
+without the option must be restaged. Specify the vendor libraries separately as host dependencies;
+an empty path element never adds the current directory to the loader search. The staging and closure
+suites exercise these behaviors, but do not establish GPU compatibility or runtime redistribution.
 
 `LOADER` turns `dpkg-shlibdeps` off (it reads the bundled glibc as the system's and pins
 `libc6 (<< 2.44)`), so `DEBIAN_DEPENDS` names what the system still brings; it also hands CPack's

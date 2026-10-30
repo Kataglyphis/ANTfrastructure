@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# PYTHON_APP_GPU_PACKAGE_API=1
+# PYTHON_APP_GPU_FINISHED_BINARY_API=1
 # Wraps a python-app-bundle.sh folder as tar.gz, deb and AppImage, and starts each as a user would; see docs/python-app-bundles.md § Packages
 set -euo pipefail
 
@@ -28,6 +30,8 @@ cd "${REPO_ROOT}"
 [ -n "${BUNDLE}" ] || { usage >&2; exit 2; }
 BUNDLE="$(realpath "${BUNDLE}")"
 [ -f "${BUNDLE}/bundle.json" ] || err "no bundle.json in ${BUNDLE}: build it with python-app-bundle.sh first"
+required_provider="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("required_provider", ""))' "${BUNDLE}/bundle.json")"
+if [ -n "${required_provider}" ] && [ "${RUN_TESTS}" != true ]; then err "a GPU package must run its ${required_provider} self-test"; fi
 OUT_DIR="$(realpath -m "${OUT_DIR:-$(dirname "${BUNDLE}")}")"
 mkdir -p "${OUT_DIR}" "${WORK_DIR}"
 SELFTEST="${SCRIPT_DIR}/python-app-selftest.py"
@@ -38,6 +42,11 @@ app() {
 }
 APP_ID="$(app id)"
 APP_NAME="$(app name)"
+ARTIFACT_ID="${APP_ID}"
+case "${required_provider}" in
+  CUDAExecutionProvider) ARTIFACT_ID="${APP_ID}-gpu-nvidia" ;;
+  MIGraphXExecutionProvider) ARTIFACT_ID="${APP_ID}-gpu-amd" ;;
+esac
 DESCRIPTION="$(app description)"
 PUBLISHER="$(app publisher)"
 HOMEPAGE="$(app homepage)"
@@ -62,8 +71,13 @@ info "${APP_NAME} ${VERSION} (${UNAME_ARCH}) from ${BUNDLE}"
 # Runs the self-test through a packaged launcher; --root pins where its ONNX Runtime must come from.
 prove() {
   local root="$1"; shift
+  local -a provider_args=()
   [ "${RUN_TESTS}" = true ] || return 0
-  python3 "${SELFTEST}" --root "${root}" -- "$@" > /dev/null || err "the packaged self-test failed: $*"
+  if [ -n "${required_provider}" ]; then
+    provider_args+=(--require-available-provider "${required_provider}")
+    if [ "${PYTHON_APP_REQUIRE_ACTIVE_PROVIDER:-false}" = true ]; then provider_args+=(--require-provider "${required_provider}"); fi
+  fi
+  python3 "${SELFTEST}" --root "${root}" "${provider_args[@]}" -- "$@" > /dev/null || err "the packaged self-test failed: $*"
   info "  started: $* -> ok"
 }
 
@@ -73,13 +87,20 @@ verify_python_app_package_license() {
   python3 "${SCRIPT_DIR}/../verify_package_license.py" "${artifact}" --require "${member}=${LICENSE_FILE}"
 }
 
+verify_gpu_package() {
+  [ -n "${required_provider}" ] || return 0
+  python3 "${SCRIPT_DIR}/verify-python-gpu-package.py" --bundle "${BUNDLE}" \
+    --wheel-dir "${ORT_CHAIN_WHEEL_DIR:-/opt/onnxruntime-wheels}" --artifact "$1" --prefix "$2"
+}
+
 package_tar() {
-  local name="${APP_ID}-${VERSION}-linux-${UNAME_ARCH}" stage test_dir
+  local name="${ARTIFACT_ID}-${VERSION}-linux-${UNAME_ARCH}" stage test_dir
   stage="${WORK_DIR}/tar"
   rm -rf "${stage}" && mkdir -p "${stage}"
   cp -a "${BUNDLE}" "${stage}/${name}"
   tar -C "${stage}" -czf "${OUT_DIR}/${name}.tar.gz" "${name}"
   app_packaging_assert_artifact "${OUT_DIR}/${name}.tar.gz"
+  verify_gpu_package "${OUT_DIR}/${name}.tar.gz" "${name}" || return $?
   verify_python_app_package_license "${OUT_DIR}/${name}.tar.gz" "${name}/LICENSE" || return $?
   test_dir="${WORK_DIR}/tar-test"
   rm -rf "${test_dir}" && mkdir -p "${test_dir}"
@@ -92,64 +113,12 @@ icon_size() { python3 -c 'import struct, sys; d = open(sys.argv[1], "rb").read(2
 
 # The packages owning the sonames left to the host, and libc6: unversioned when the bundle carries its glibc, else at the newest GLIBC_ any ELF asks for.
 deb_depends() {
-  python3 - "${BUNDLE}" <<'PY'
-import json
-import os
-import re
-import subprocess
-import sys
-
-bundle = sys.argv[1]
-# What the bundle builder waived on purpose (the chain ORT's DNNL provider without oneDNN) is no dependency.
-with open(os.path.join(bundle, "bundle.json"), encoding="utf-8") as source:
-    manifest = json.load(source)
-waived = set(manifest.get("unresolved_allowed", []))
-names, needed, glibc = set(waived), set(), (2, 17)
-for root, _, files in os.walk(bundle):
-    for f in files:
-        names.add(f)
-for root, _, files in os.walk(bundle):
-    for f in files:
-        path = os.path.join(root, f)
-        if os.path.islink(path):
-            continue
-        with open(path, "rb") as fh:
-            if fh.read(4) != b"\x7fELF":
-                continue
-        dyn = subprocess.run(["readelf", "-dW", path], capture_output=True, check=True, text=True).stdout
-        # An $ORIGIN/../lib/... entry (python-build-standalone's python3) names a bundled file by path.
-        needed.update(n for n in re.findall(r"\(NEEDED\)\s+Shared library: \[([^\]]+)\]", dyn) if n.rsplit("/", 1)[-1] not in names)
-        ver = subprocess.run(["readelf", "-VW", path], capture_output=True, check=True, text=True).stdout
-        for v in re.findall(r"GLIBC_(\d+)\.(\d+)", ver):
-            glibc = max(glibc, (int(v[0]), int(v[1])))
-cache = subprocess.run(["ldconfig", "-p"], capture_output=True, check=True, text=True).stdout
-packages, missing = {"libc6"}, []
-for soname in sorted(needed):
-    m = re.search(r"^\s*" + re.escape(soname) + r" \(.*?\) => (\S+)$", cache, re.MULTILINE)
-    path = m.group(1) if m else ""
-    # usrmerge: ldconfig says /lib/..., dpkg recorded /usr/lib/... or the versioned file the link names.
-    candidates = [path, "/usr" + path if path.startswith("/lib") else "", os.path.realpath(path) if path else ""]
-    owner = ""
-    for candidate in filter(None, candidates):
-        found = subprocess.run(["dpkg", "-S", candidate], capture_output=True, check=False, text=True)
-        if found.returncode == 0:
-            owner = found.stdout.split(":")[0]
-            break
-    if not owner:
-        missing.append(soname)
-        continue
-    packages.add(owner)
-if missing:
-    sys.exit("no installed package provides " + ", ".join(missing) + "; the deb could not name its dependencies")
-packages.discard("libc6")
-libc6 = "libc6" if manifest.get("glibc") else f"libc6 (>= {glibc[0]}.{glibc[1]})"
-print(", ".join([libc6] + sorted(packages)))
-PY
+  python3 "${SCRIPT_DIR}/python-app-deb-depends.py" "${BUNDLE}"
 }
 
 package_deb() {
   local root="${WORK_DIR}/deb" depends file script size
-  local output="${OUT_DIR}/${APP_ID}_${VERSION}_${DEB_ARCH}.deb"
+  local output="${OUT_DIR}/${ARTIFACT_ID}_${VERSION}_${DEB_ARCH}.deb"
   command -v dpkg-deb > /dev/null || err "dpkg-deb not found"
   depends="$(deb_depends)"
   info "  Depends: ${depends}"
@@ -168,8 +137,9 @@ package_deb() {
   app_packaging_write_deb_control "${root}/DEBIAN/control" "${APP_ID}" "${VERSION}" "${DEB_ARCH}" \
     "${MAINTAINER}" "${depends}" "${APP_NAME}" "${DESCRIPTION}" "${HOMEPAGE}"
   chmod 0755 "${root}/DEBIAN"
-  dpkg-deb --root-owner-group --build "${root}" "${output}" > /dev/null
+  dpkg-deb --root-owner-group -Zgzip --build "${root}" "${output}" > /dev/null
   app_packaging_assert_artifact "${output}"
+  verify_gpu_package "${output}" "opt/${APP_ID}" || return $?
   verify_python_app_package_license "${output}" "opt/${APP_ID}/LICENSE" || return $?
   [ "${RUN_TESTS}" = true ] || return 0
   if [ "$(id -u)" -eq 0 ] || sudo -n true > /dev/null 2>&1; then
@@ -187,7 +157,7 @@ package_deb() {
 
 package_appimage() {
   local appdir="${WORK_DIR}/${APP_ID}.AppDir" tool link runtime_file
-  local output="${OUT_DIR}/${APP_ID}-${VERSION}-${UNAME_ARCH}.AppImage"
+  local output="${OUT_DIR}/${ARTIFACT_ID}-${VERSION}-${UNAME_ARCH}.AppImage"
   [ -n "${ICON}" ] || err "an AppImage needs an icon; app.json names none"
   tool="$(app_packaging_resolve_appimagetool)"
   runtime_file="$(app_packaging_appimage_runtime_file)"
@@ -208,6 +178,7 @@ EOF
   cp "${ICON}" "${appdir}/${APP_ID}.png"
   APPIMAGE_EXTRACT_AND_RUN=1 NO_APPSTREAM=1 ARCH="${UNAME_ARCH}" "${tool}" ${runtime_file:+--runtime-file "${runtime_file}"} "${appdir}" "${output}" > /dev/null
   app_packaging_assert_artifact "${output}"
+  verify_gpu_package "${output}" "usr/lib/${APP_ID}" || return $?
   bash "${SCRIPT_DIR}/verify-native-appimage-license.sh" "${output}" "${UNAME_ARCH}" "usr/lib/${APP_ID}/LICENSE" "${LICENSE_FILE}" || return $?
   link="${WORK_DIR}/appimage-test/${SELF_TEST[0]}"
   mkdir -p "$(dirname "${link}")" "${WORK_DIR}/appimage-run" && ln -sf "${output}" "${link}"
