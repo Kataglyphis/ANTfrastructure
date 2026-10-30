@@ -21,7 +21,7 @@ what is true for all of them, so each README stays a short overview that links h
 | [OrchestrANT](https://github.com/Kataglyphis/OrchestrANT) | Python AI prototyping package, the LLM benchmark lab and its viewer | its app environment is baked into the build images |
 | [ANTfrastructure](https://github.com/Kataglyphis/ANTfrastructure) | The build images, the CI actions and reusable workflows, the quality gates, and this page | submodule of the code repos, including ANThology; DocumANTation uses a separate checkout to avoid a cycle |
 | [DocumANTation](https://github.com/Kataglyphis/DocumANTation) | Markdown to a LaTeX book or Beamer slides, and the theme every docs site uses | submodule of ANTfrastructure |
-| [ModelANT](https://github.com/Kataglyphis/ModelANT) | Permissively licensed ML models, one release each | fetched by SHA-256: OxidANT, OmniAccelerANT and OrchestrANT through a lock, AccelerANTgine through `sha256sum -c` |
+| [ModelANT](https://github.com/Kataglyphis/ModelANT) | ML models under permissive, Llama or Gemma licences with their obligations on record, one release each | fetched by SHA-256: OxidANT, OmniAccelerANT and OrchestrANT through a lock, AccelerANTgine through `sha256sum -c` |
 | [AssetANT](https://github.com/Kataglyphis/AssetANT) | 3D scenes and textures, one archive per release | fetched by SHA-256 lock: BeschleunigerBallett |
 | [WebDavClient](https://github.com/Kataglyphis/WebDavClient) | Python client that downloads files and folders from WebDAV storage, in CI for example | nobody |
 | [jotrockenmitlocken](https://github.com/Kataglyphis/jotrockenmitlocken) | The owner's website and blog, a Flutter web app | its build is what the hub's `:webserver` image serves |

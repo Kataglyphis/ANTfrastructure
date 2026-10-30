@@ -136,7 +136,7 @@ Every item is open until its row says otherwise. Each repository's backlog names
 | LAI-H3 | This page: the decisions, the contract, the model search order. Done 2026-10-30. | hub |
 | LAI-H4 | A fixture that writes a tiny GenAI model, its config and tokenizer, so no test loads a model file ([§ The test model](#the-test-model)). Done 2026-10-30. | hub |
 | LAI-H5 | The image smoke's GenAI tier 4 decodes the test model on every arch instead of reporting `generate()` as unproven. | hub |
-| LAI-M1 | ModelANT's licence rule, README and model guide follow [§ Licences](#licences). | ModelANT |
+| LAI-M1 | ModelANT's licence rule, README and model guide follow [§ Licences](#licences). Done 2026-10-30 (`scripts/license_policy.py`); its release notes still state Apache-2.0 for every model. | ModelANT |
 | LAI-M2 | The `text-generation-v1` contract and its release check. | ModelANT |
 | LAI-M3 | GenAI export and package scripts. | ModelANT |
 | LAI-M4 | The first release, SmolLM2-135M-Instruct for CPU; then the default chat model. | ModelANT |

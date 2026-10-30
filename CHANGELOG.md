@@ -13,6 +13,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-30 — ModelANT accepts Llama and Gemma (LAI-M1)
+
+- ModelANT's `license_policy.py` accepts the Llama and Gemma community licences with their
+  recorded obligations; `repository-family.md` and `language-ai.md` say so.
+
 ## 2026-10-30 — a tiny GenAI model for every binding test (LAI-H4)
 
 - `linux/scripts/lib/tiny-genai-model.py` writes a 270 KB GenAI model with the standard library:
