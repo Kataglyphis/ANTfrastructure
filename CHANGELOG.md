@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-30 — the image smoke decodes the tiny GenAI model (LAI-H5)
+
+- `check_genai_binding` hands `lib/tiny-genai-model.py` into the container as `GENAI_TINY_MODEL_PY`,
+  and the GenAI smoke's tier 4 decodes that model and requires `abc` to become `defg` token for
+  token, instead of reporting `generate()` as UNPROVEN. On the published amd64 image every tier is
+  now PROVEN; arm64 and riscv64 follow at the next chain. A checkout without the generator fails
+  the check. Five new suite cases and five `lib.genai-smoke-*` mutations prove the branch.
+
 ## 2026-10-30 — ModelANT builds GenAI models (LAI-M2, LAI-M3)
 
 - ModelANT exports `smollm2_135m_instruct` with the image's chain GenAI builder, checks it against

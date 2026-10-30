@@ -20148,6 +20148,46 @@
   "why": "a host without the GenAI wheel must not report a checked model; exit 2 keeps the missing proof visible"
  },
  {
+  "id": "lib.genai-smoke-tiny-mismatch",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "        fails.extend(f\"tiny model: {problem}\" for problem in tiny_problems)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+  "why": "a binding that decodes the tiny model wrongly must fail tier 4, not merely miss its proof line"
+ },
+ {
+  "id": "lib.genai-smoke-tiny-proven",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "            proven.append(\"generate() decoded the tiny test model token for token: 'abc' -> 'defg'\")",
+  "replace": "            pass",
+  "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+  "why": "an exact decode is the only generate() proof the image smoke has; it must be reported"
+ },
+ {
+  "id": "lib.genai-smoke-tiny-not-skipped",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "if not MODEL_DIR and not TINY_MODEL_PY:",
+  "replace": "if not MODEL_DIR:",
+  "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+  "why": "a run that decoded the tiny model must not also claim that no generation was attempted"
+ },
+ {
+  "id": "lib.genai-smoke-tiny-handed-in",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "\"$(smoke_genai_py)\" -e \"GENAI_TINY_MODEL_PY=${tiny_src}\" \\",
+  "replace": "\"$(smoke_genai_py)\" \\",
+  "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+  "why": "without the generator in the container tier 4 falls back to UNPROVEN on every arch"
+ },
+ {
+  "id": "lib.genai-smoke-tiny-missing-fails",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "else fail \"no tiny GenAI model generator at ${tiny_py}\"; fi",
+  "replace": "else :; fi",
+  "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
+  "why": "a checkout without the generator would hand tier 4 nothing and report generate() as merely unproven"
+ },
+ {
   "id": "lib.parity-import-status",
   "target": "linux/scripts/06-packaging/verify-parity.sh",
   "find": ")\" || _pair_status=$?",

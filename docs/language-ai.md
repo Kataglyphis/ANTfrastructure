@@ -120,8 +120,9 @@ text and chat template match, 1 on a mismatch, 2 when the wheel is absent.
 **Proven 2026-10-30** on the published index `7d4d4129` (amd64): the Python wheel and a C17 program
 against `ort_genai_c.h` (GCC 16.2, `-Wall -Werror`) both decode `defg`. `test-tiny-genai-model.sh`
 reads the bytes back on any host: graph, weights, names, tokenizer, and the check mode's verdict.
-**Not covered:** arm64 and riscv64, and the decode itself on a host without the wheel; the image
-smoke gets both with LAI-H5.
+The image smoke's GenAI tier 4 decodes it on every arch it runs on (LAI-H5): proven on the amd64
+image on 2026-10-30, arm64 and riscv64 from the next chain. **Not covered:** the decode on a host
+without the wheel.
 
 ## Roadmap
 
@@ -135,7 +136,7 @@ Every item is open until its row says otherwise. Each repository's backlog names
 | LAI-H2 | Build GenAI with llguidance on Windows. Needs a Windows chain to prove. | hub |
 | LAI-H3 | This page: the decisions, the contract, the model search order. Done 2026-10-30. | hub |
 | LAI-H4 | A fixture that writes a tiny GenAI model, its config and tokenizer, so no test loads a model file ([§ The test model](#the-test-model)). Done 2026-10-30. | hub |
-| LAI-H5 | The image smoke's GenAI tier 4 decodes the test model on every arch instead of reporting `generate()` as unproven. | hub |
+| LAI-H5 | The image smoke's GenAI tier 4 decodes the test model on every arch instead of reporting `generate()` as unproven. Done 2026-10-30; arm64 and riscv64 prove it at the next chain. | hub |
 | LAI-M1 | ModelANT's licence rule, README and model guide follow [§ Licences](#licences). Done 2026-10-30 (`scripts/license_policy.py`); its release notes still state Apache-2.0 for every model. | ModelANT |
 | LAI-M2 | The `text-generation-v1` contract and its release check. Done 2026-10-30. | ModelANT |
 | LAI-M3 | GenAI export and package scripts. Done 2026-10-30 (`scripts/export_genai.py`): a reproducible `.tar.xz` and a `.deb`; no `.msi` yet. | ModelANT |

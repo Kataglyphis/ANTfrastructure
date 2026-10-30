@@ -405,12 +405,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       passes `-DUSE_GUIDANCE=OFF`, so `json_schema` works on Linux only. Needs Rust in the
       media-core builder and a Windows chain to prove; done when the smoke gate runs a
       schema-constrained `generate()` on `:winamd64`.
-- [ ] **LAI-H5 — the image smoke decodes the test model on every arch** [S, ★★★].
-      `_smoke_genai_py_tier4_generate` reports `generate()` as UNPROVEN because no model ships.
-      Writing `lib/tiny-genai-model.py`'s model inside the smoke container turns that into an exact
-      `defg` assertion on amd64, arm64 and riscv64 (QEMU), the last of which GEN1 never had. Done
-      when tier 4 fails on a wrong token and the smoke's closure mounts the generator per file
-      ([`docs/language-ai.md` § The test model](docs/language-ai.md#the-test-model)).
 - [b] **LAI-H6 — GenAI for Android** [L, ★★]. Neither ORT nor GenAI is built for Android; blocked
       on milestone 1 ([`docs/language-ai.md` § Roadmap](docs/language-ai.md#roadmap)).
 
