@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from types import ModuleType
+from unittest import mock
 
 GENERATOR = pathlib.Path(sys.argv.pop(1)).resolve()
 
@@ -135,8 +136,8 @@ class TinyGenaiModel(unittest.TestCase):
         self.assertEqual("GPT2Tokenizer", self.config("tokenizer_config.json")["tokenizer_class"])
 
     def test_a_continuation_off_the_rule_is_refused(self) -> None:
-        self.gen.CONTINUATION = "dxfg"
-        with self.assertRaisesRegex(AssertionError, "successor rule"):
+        with mock.patch.object(self.gen, "CONTINUATION", "dxfg"), \
+                self.assertRaisesRegex(AssertionError, "successor rule"):
             self.gen.write(pathlib.Path(self.tmp.name) / "broken")
 
     def test_the_check_mode_reports_its_verdict(self) -> None:
