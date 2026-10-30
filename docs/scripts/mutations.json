@@ -20998,8 +20998,8 @@
  {
   "id": "lib.vulkan-fixture-glslang-install-name",
   "target": "linux/scripts/tests/test-vulkan-target-decomposition.sh",
-  "find": "  printf '#!/bin/sh\\n' > \"${SDK}/aarch64/bin/$1\"",
-  "replace": "  printf '#!/bin/sh\\n' > \"${SDK}/aarch64/bin/glslang\"",
+  "find": "  t_write_exec_stub \"${SDK}/aarch64/bin/$1\"",
+  "replace": "  t_write_exec_stub \"${SDK}/aarch64/bin/glslang\"",
   "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
   "why": "forward and reverse alias cases must start with their different installed tool names"
  },

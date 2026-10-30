@@ -30,6 +30,8 @@
   search order and the `LAI-*` roadmap; `BACKLOG.md` carries the hub's items.
 - `t_write_exec_stub` ends on `chmod` with an explicit failure return, so the trailing-conditional
   gate is green again.
+- The `lib.vulkan-fixture-glslang-install-name` mutation finds the helper call that replaced
+  its `printf`, so mutation shard 3 proves it again instead of reporting it stale.
 
 ## 2026-10-30 — one harness helper for executable test stubs
 
