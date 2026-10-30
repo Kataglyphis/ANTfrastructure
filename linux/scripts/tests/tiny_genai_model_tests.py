@@ -117,6 +117,11 @@ class TinyGenaiModel(unittest.TestCase):
         self.assertEqual(outputs, named_out)
         self.assertEqual(1, decoder["num_hidden_layers"])
 
+    def test_the_context_holds_a_run_to_the_end_token(self) -> None:
+        context = self.config("genai_config.json")["model"]["context_length"]
+        self.assertGreaterEqual(context, len("\u00ff".encode()) + 0x100 - 0xBF)
+        self.assertEqual(context, self.config("tokenizer_config.json")["model_max_length"])
+
     def test_every_logit_row_picks_the_successor(self) -> None:
         tensors = {text(t, 8): t for t in get(self.graph, 5)}
         table = tensors["successor_logits"]

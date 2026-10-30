@@ -13,6 +13,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-30 — the tiny GenAI model holds 512 tokens
+
+- `tiny-genai-model.py` writes a context of 512 tokens instead of 64, so a binding test can decode
+  from the highest UTF-8 continuation byte to the end token (65 tokens); a suite case and the
+  `lib.tiny-genai-context` mutation pin it.
+
 ## 2026-10-30 — the first language model is released (LAI-M4)
 
 - ModelANT published `smollm2_135m_instruct-v1`: the GenAI model for the CPU as a `.tar.xz` and a

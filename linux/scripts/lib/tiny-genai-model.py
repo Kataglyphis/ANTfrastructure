@@ -17,6 +17,8 @@ EOS_ID = BYTE_TOKENS
 VOCAB = BYTE_TOKENS + 1
 HEAD_SIZE = 4
 OPSET, IR_VERSION = 17, 8
+# Room for the 65 tokens from the highest UTF-8 continuation byte to the end token.
+CONTEXT = 512
 ATTR_INT = 2
 PROMPT, CONTINUATION = "abc", "defg"
 CHAT_TEMPLATE = "{% for message in messages %}{{ message['content'] }}{% endfor %}"
@@ -142,7 +144,7 @@ def tokenizer() -> tuple[dict[str, object], dict[str, object]]:
                      "end_of_word_suffix": None, "fuse_unk": False, "byte_fallback": False,
                      "vocab": vocab, "merges": []}}
     config = {"tokenizer_class": "GPT2Tokenizer", "bos_token": eos, "eos_token": eos, "unk_token": eos,
-              "add_bos_token": False, "add_prefix_space": False, "model_max_length": 64,
+              "add_bos_token": False, "add_prefix_space": False, "model_max_length": CONTEXT,
               "chat_template": CHAT_TEMPLATE}
     return tok, config
 
@@ -158,7 +160,7 @@ def write(out: Path) -> dict[str, object]:
     oracle = {"prompt": PROMPT, "prompt_ids": prompt_ids, "continuation": CONTINUATION,
               "continuation_ids": expected_ids, "max_length": len(prompt_ids) + len(expected_ids),
               "eos_token_id": EOS_ID}
-    files = {"genai_config.json": genai_config(64), "tokenizer.json": tok,
+    files = {"genai_config.json": genai_config(CONTEXT), "tokenizer.json": tok,
              "tokenizer_config.json": tok_config, "fixture.json": oracle}
     for name, data in files.items():
         (out / name).write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")

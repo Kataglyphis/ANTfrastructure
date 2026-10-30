@@ -20148,6 +20148,14 @@
   "why": "a host without the GenAI wheel must not report a checked model; exit 2 keeps the missing proof visible"
  },
  {
+  "id": "lib.tiny-genai-context",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "CONTEXT = 512",
+  "replace": "CONTEXT = 64",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "a binding test decodes from the highest UTF-8 continuation byte to the end token, 65 tokens after a two-token prompt"
+ },
+ {
   "id": "lib.genai-smoke-tiny-mismatch",
   "target": "linux/scripts/06-packaging/smoke-common.sh",
   "find": "        fails.extend(f\"tiny model: {problem}\" for problem in tiny_problems)",
