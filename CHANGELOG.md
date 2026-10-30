@@ -13,6 +13,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-30 — the first language model is released (LAI-M4)
+
+- ModelANT published `smollm2_135m_instruct-v1`: the GenAI model for the CPU as a `.tar.xz` and a
+  `.deb`, with its contract. `language-ai.md` § Fetching a released model shows the `llm.lock`
+  line; the hub fetcher's `--extract` was run against the release itself.
+
 ## 2026-10-30 — the image smoke decodes the tiny GenAI model (LAI-H5)
 
 - `check_genai_binding` hands `lib/tiny-genai-model.py` into the container as `GENAI_TINY_MODEL_PY`,

@@ -140,7 +140,7 @@ Every item is open until its row says otherwise. Each repository's backlog names
 | LAI-M1 | ModelANT's licence rule, README and model guide follow [§ Licences](#licences). Done 2026-10-30 (`scripts/license_policy.py`); its release notes still state Apache-2.0 for every model. | ModelANT |
 | LAI-M2 | The `text-generation-v1` contract and its release check. Done 2026-10-30. | ModelANT |
 | LAI-M3 | GenAI export and package scripts. Done 2026-10-30 (`scripts/export_genai.py`): a reproducible `.tar.xz` and a `.deb`; no `.msi` yet. | ModelANT |
-| LAI-M4 | The first release, SmolLM2-135M-Instruct for CPU; then the default chat model. Built and contract-checked in `:latest` on 2026-10-30; publishing waits for ModelANT's release workflow to check out the hub submodule. | ModelANT |
+| LAI-M4 | The first release, SmolLM2-135M-Instruct for CPU; then the default chat model. `smollm2_135m_instruct-v1` published 2026-10-30; the default chat model is open. | ModelANT |
 
 ### Milestone 1: text in every repository
 
@@ -166,6 +166,19 @@ Every item is open until its row says otherwise. Each repository's backlog names
 | 3 Speech | LAI-A4, LAI-F4 | A GStreamer audio appsink and Whisper captions as `textoverlay` and WebRTC data; microphone input in the app. |
 | 4 Language meets vision | LAI-O4, LAI-P5, LAI-F5 | ObservANT's `/ask` and a daily summary over `/visits`; `yolo-monitor --describe`; questions on the Stream page. |
 | 5 Extensions | LAI-H6 and spikes | GenAI for Android; HailoRT GenAI on Hailo-10H; QNN in process; a tool-calling agent over OrchestrANT's metrics; speech output. |
+
+## Fetching a released model
+
+A consumer's `llm.lock` pins the archive like any other data file, and the hub fetcher unpacks it:
+
+```text
+# sha256                                                          file                               url
+b3853a1cd5c0af0d604fdae0b3d495a2f3d4ec7ab0653704b4e6b896d5a27f8f  smollm2_135m_instruct-cpu.tar.xz  https://github.com/Kataglyphis/ModelANT/releases/download/smollm2_135m_instruct-v1/smollm2_135m_instruct-cpu.tar.xz
+```
+
+`fetch-data-lock.py --lock llm.lock --dest DIR --extract` leaves the GenAI model directory at
+`DIR/smollm2_135m_instruct-cpu/`. The release's `contract.tar.gz` holds the cases a binding replays
+against it, such as "What is the capital of France?" decoding to "The capital of France is Paris."
 
 ## Rules every item keeps
 
