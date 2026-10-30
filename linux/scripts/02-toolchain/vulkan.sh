@@ -107,15 +107,9 @@ source_vulkan_sdk_env() {
 
 # <multiarch dir> <library>: 0 when the library's ELF machine is the dir's arch; a foreign or unreadable one is refused (CON172: the host's x86-64 libstdc++ sat in /usr/lib/aarch64-linux-gnu).
 _vulkan_lib_fits_dir() {
-  local want machine
-  case "${1##*/}" in
-    x86_64-linux-gnu)  want="X86-64" ;;
-    aarch64-linux-gnu) want="AArch64" ;;
-    riscv64-linux-gnu) want="RISC-V" ;;
-    *) return 0 ;;
-  esac
-  machine="$(elf_machine_name "$(readlink -f "$2")" 2>/dev/null || true)"
-  case "${machine}" in *"${want}"*) return 0 ;; esac
+  local want
+  want="$(arch_from_target_triple "${1##*/}")" && want="$(arch_elf_machine_grep_for "${want}")" || return 0
+  case "$(elf_machine_name "$(readlink -f "$2")" 2>/dev/null || true)" in *"${want}"*) return 0 ;; esac
   return 1
 }
 
@@ -130,18 +124,10 @@ _vulkan_setup_gcc_runtime() {
     for libdir in "${_vk_libdirs[@]}"; do
       [ -n "${libdir}" ] || continue
       for lib in libgcc_s.so.1 libgcc_s.so libstdc++.so.6 libstdc++.so; do
-        if [[ -f "${libdir}/${lib}" ]] && ! _vulkan_lib_fits_dir "${ARCH_LIB_DIR}" "${libdir}/${lib}"; then
-          log "GCC runtime: ${libdir}/${lib} is not ${ARCH_LIB_DIR##*/}'s arch; not linked there (CON172)"
-          continue
-        fi
-        if [[ -f "${libdir}/${lib}" ]]; then
-          if [[ ! -e "${ARCH_LIB_DIR}/${lib}" ]]; then
-            ${SUDO:-} ln -sf "${libdir}/${lib}" "${ARCH_LIB_DIR}/${lib}" 2>/dev/null || true
-          fi
-          if [[ ! -e "/usr/lib/${lib}" ]]; then
-            ${SUDO:-} ln -sf "${libdir}/${lib}" "/usr/lib/${lib}" 2>/dev/null || true
-          fi
-        fi
+        [[ -f "${libdir}/${lib}" ]] || continue
+        _vulkan_lib_fits_dir "${ARCH_LIB_DIR}" "${libdir}/${lib}" || { log "GCC runtime: ${libdir}/${lib} is not ${ARCH_LIB_DIR##*/}'s arch; not linked there (CON172)"; continue; }
+        [[ -e "${ARCH_LIB_DIR}/${lib}" ]] || ${SUDO:-} ln -sf "${libdir}/${lib}" "${ARCH_LIB_DIR}/${lib}" 2>/dev/null || true
+        [[ -e "/usr/lib/${lib}" ]] || ${SUDO:-} ln -sf "${libdir}/${lib}" "/usr/lib/${lib}" 2>/dev/null || true
       done
     done
     log "Symlinked GCC runtime libraries to ${ARCH_LIB_DIR} and /usr/lib"

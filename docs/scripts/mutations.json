@@ -31327,5 +31327,13 @@
   "replace": "Commit = '3147391d946bb4b6c68edd901f2add6ac1f31f8c' }",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/hailort-gitlab-budget.json",
   "why": "only the GitLab-hosted Eigen external needs minutes of retries; without its row's budget it falls back to three tries"
+ },
+ {
+  "id": "vulkan.gcc-runtime-refuses-foreign-arch",
+  "target": "linux/scripts/02-toolchain/vulkan.sh",
+  "find": "  case \"$(elf_machine_name \"$(readlink -f \"$2\")\" 2>/dev/null || true)\" in *\"${want}\"*) return 0 ;; esac\n  return 1",
+  "replace": "  return 0",
+  "test": "bash linux/scripts/tests/test-vulkan-gcc-runtime-links.sh",
+  "why": "the sdk stage linked the host's x86-64 libstdc++ into /usr/lib/aarch64-linux-gnu until the ELF machine check refused it"
  }
 ]

@@ -4,13 +4,16 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 VULKAN_SH="${TESTS_DIR}/../02-toolchain/vulkan.sh"
+PLATFORM_SH="${TESTS_DIR}/../01-core/platform.sh"
+ARCH_FNS="$(for f in arch_normalize arch_from_target_triple arch_elf_machine_grep_for; do t_fn_src "${PLATFORM_SH}" "${f}"; done)"
 
 t_case "the host's x86-64 libstdc++ on LIBRARY_PATH is refused for /usr/lib/aarch64-linux-gnu, the target's own is linked"
 W="$(mktemp -d)"
 mkdir -p "${W}/host/lib64" "${W}/target/lib64" "${W}/root/usr/lib/aarch64-linux-gnu" "${W}/root/usr/lib"
 printf host > "${W}/host/lib64/libstdc++.so"; printf host > "${W}/host/lib64/libgcc_s.so.1"
 printf target > "${W}/target/lib64/libstdc++.so.6"
-_out="$(bash -c "$(t_fn_src "${VULKAN_SH}" _vulkan_lib_fits_dir)
+_out="$(bash -c "${ARCH_FNS}
+$(t_fn_src "${VULKAN_SH}" _vulkan_lib_fits_dir)
 $(t_fn_src "${VULKAN_SH}" _vulkan_setup_gcc_runtime)"'
 log() { printf "%s\n" "$*"; }
 elf_machine_name() { case "$(cat "$1")" in host) printf "Advanced Micro Devices X86-64" ;; target) printf "AArch64" ;; esac; }
@@ -26,7 +29,7 @@ t_assert_contains "${_out}" "ln /usr/lib/aarch64-linux-gnu/libstdc++.so.6 -> ${W
 t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c "ln /usr/lib/aarch64-linux-gnu/libstdc++.so ")" "and nothing foreign reaches the dir"
 
 t_case "a dir whose arch the rule does not know keeps the old behaviour"
-eval "$(t_fn_src "${VULKAN_SH}" _vulkan_lib_fits_dir)"
+eval "${ARCH_FNS}"; eval "$(t_fn_src "${VULKAN_SH}" _vulkan_lib_fits_dir)"
 elf_machine_name() { printf "Advanced Micro Devices X86-64"; }
 t_assert_ok _vulkan_lib_fits_dir /usr/lib/x86_64-linux-gnu "${W}/host/lib64/libstdc++.so" "x86-64 into the x86-64 dir"
 t_assert_fails _vulkan_lib_fits_dir /usr/lib/aarch64-linux-gnu "${W}/host/lib64/libstdc++.so" "x86-64 into the aarch64 dir"
