@@ -45,8 +45,11 @@ Every binding (C++, C, Rust, Python, Dart) offers the same calls against two bac
 | generate | Messages (`system`, `user`, `assistant`, `tool`) and options in; text deltas out through a callback or a stream. The chat template is the model's own. |
 | options | `max_new_tokens`, `temperature`, `top_p`, `top_k`, `seed`, and an optional `json_schema`. |
 | cancel | Allowed at any time from another thread; the result's finish reason is `cancelled`. |
-| result | `finish_reason` (`stop`, `length`, `cancelled`), prompt and completion token counts, time to first token, decode tokens per second. |
+| result | `finish_reason` (`stop`, `length`, `cancelled`), prompt and completion token counts, time to first token with the prefill included, decode tokens per second. |
 | embed | Texts in, one L2-normalised float vector per text out. |
+
+No binding implements `seed` or `json_schema` yet, and only the endpoint backends embed; GenAI's
+embeddings arrive with LAI-O5.
 
 Each failure has its own error and is never an empty answer: model not found, invalid model
 directory, execution provider unavailable, `json_schema` unsupported on this lane, endpoint
@@ -146,17 +149,17 @@ Every item is open until its row says otherwise. Each repository's backlog names
 
 | ID | Work | Repo |
 |---|---|---|
-| LAI-A1 | `kataglyphis.text_generation` over `ort_genai.h`, beside the detector; the execution provider comes from the config. | AccelerANTgine |
-| LAI-A2 | C API with opaque handles and a token callback. An ABI change for OmniAccelerANT's plugin. | AccelerANTgine |
-| LAI-A3 | nanobind class with a lock, CLI `chat`, a `[text_generation]` config section. | AccelerANTgine |
-| LAI-O1 | A text crate over `ort_genai_c.h`, loaded dynamically and verified like ORT; the endpoint through `ureq`. | OxidANT |
-| LAI-O2 | CLI `chat` and `embed`. | OxidANT |
-| LAI-O3 | FRB `api/text.rs` with a `StreamSink` for tokens. | OxidANT |
-| LAI-P1 | `orchestrant/genai/`, `orchestrant-chat`, and `orchestrant-serve` as an OpenAI-compatible server over GenAI. | OrchestrANT |
-| LAI-P2 | `orchestrant-bench` measures the chain's own engine next to Ollama and GenieX. | OrchestrANT |
-| LAI-F1 | The AI Playground page (`aiPlayground`) with streaming and the speed figures. | OmniAccelerANT |
-| LAI-F2 | Endpoint settings on every platform; local through LAI-O3 on Windows and Linux. | OmniAccelerANT |
-| LAI-F3 | Chat widgets: message list, Markdown answer, input. | ANThology |
+| LAI-A1 | `kataglyphis.text_generation` over `ort_genai.h`, beside the detector; the execution provider comes from the config. Done 2026-10-30: GenAI is loaded at run time, and the provider is an argument of `initialize`. | AccelerANTgine |
+| LAI-A2 | C API with opaque handles and a token callback. An ABI change for OmniAccelerANT's plugin. Done 2026-10-30 (`kataglyphis_c_api.h`); the plugin does not call it yet. | AccelerANTgine |
+| LAI-A3 | nanobind class with a lock, CLI `chat`, a `[text_generation]` config section. Done 2026-10-30 without the config section, which nothing would read yet. | AccelerANTgine |
+| LAI-O1 | A text crate over `ort_genai_c.h`, loaded dynamically and verified like ORT; the endpoint through `ureq`. Done 2026-10-30 (`crates/text`): a GenAI that does not embed the chain's build tree is refused. | OxidANT |
+| LAI-O2 | CLI `chat` and `embed`. Done 2026-10-30: `chat` on both backends, `embed` on an endpoint. | OxidANT |
+| LAI-O3 | FRB `api/text.rs` with a `StreamSink` for tokens. Done 2026-10-30. | OxidANT |
+| LAI-P1 | `orchestrant/genai/`, `orchestrant-chat`, and `orchestrant-serve` as an OpenAI-compatible server over GenAI. Done 2026-10-30. | OrchestrANT |
+| LAI-P2 | `orchestrant-bench` measures the chain's own engine next to Ollama and GenieX. Done 2026-10-30: `backends.json` names it `chain-genai`. The first figures are SmolLM2 alone on the amd64 build host's CPU; a run beside Ollama and GenieX needs their hosts. | OrchestrANT |
+| LAI-F1 | The AI Playground page (`aiPlayground`) with streaming and the speed figures. Done 2026-10-30. | OmniAccelerANT |
+| LAI-F2 | Endpoint settings on every platform; local through LAI-O3 on Windows and Linux. Done 2026-10-30; the web build fetches whole answers, and the settings are not saved yet. | OmniAccelerANT |
+| LAI-F3 | Chat widgets: message list, Markdown answer, input. Done 2026-10-30 (`lib/Widgets/Chat/`). | ANThology |
 
 ### Milestones 2 to 5
 

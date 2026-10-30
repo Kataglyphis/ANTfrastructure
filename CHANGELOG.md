@@ -13,6 +13,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-30 — language models in every repository (milestone 1)
+
+- `docs/language-ai.md` marks LAI-A1 to A3, O1 to O3, P1, P2 and F1 to F3 done: AccelerANTgine's
+  `kataglyphis.text_generation` with its C API, binding and CLI; OxidANT's `crates/text` with the CLI's
+  `chat` and `embed` and the Flutter bridge; OrchestrANT's engine, `orchestrant-chat` and
+  `orchestrant-serve`; ANThology's chat widgets; OmniAccelerANT's AI Playground. Each suite decodes the
+  tiny GenAI model, and each lane that carries GenAI requires it.
+- The contract states that the time to the first token includes the prefill; all three engines had
+  started their clock after GenAI took the prompt in. `seed`, `json_schema` and GenAI embeddings are
+  in no binding yet.
+
 ## 2026-10-30 — `chain-genai` names OrchestrANT's GenAI server
 
 - `linux/llm-stack/backends.json` gains `chain-genai` at `http://127.0.0.1:18200`, the default
