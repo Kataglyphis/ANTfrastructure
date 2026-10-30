@@ -857,15 +857,17 @@ owner carries the breakage that costs.
         it falls back with `No devices detected that match the filter criteria`).
       - Still unproven on a device: a camera pipeline and a GPU execution provider. No `windows-11-arm`
         runner has either; the Snapdragon X's DirectML is the one adapter in reach.
-- [b] **CON31 — Variants that are not published** [L, ★]. `:latest-nvidia` and `:latest-rocm` (amd64) were
-      published on 2026-10-28 from this host (TensorRT 11, DeepStream, ROCm; two gates fixed on the way, CHANGELOG).
-      The owner reversed the arm64 decision on 2026-10-28: NVIDIA arm64 must build natively AND cross. Plan with
-      phases A-E in `logs/research/nvidia-arm64-native-and-cross.md` (local); phase C (the cross gpu stage,
-      `CROSS_NVIDIA_SBSA=1`) landed the same day, phases D (media CUDA consumers) and E (package stage) are next,
-      then A/B (native route first-class, manifest merge). Earlier decision for the record (2026-10-20): TensorRT 11 and the ORT TensorRT
-      EP in `:latest-nvidia`, and a `:latest-rocm` that finds its ROCm and opens an AMD GPU; not the arm64 nvidia route.
-      Both are in the source since 2026-10-21, hub f6771ee4 (`docs/linux-accelerator-images.md` § TensorRT 11,
-      § Running it on an AMD GPU, § The GPU runtime gate). No image carries them yet.
+- [b] **CON31 — the native arm64 nvidia route (phases A/B); the variants themselves are published** [L, ★]. `:latest-nvidia`
+      (amd64 + arm64, one index) and `:latest-rocm` (amd64) are published with passed acceptance receipts: amd64 on
+      2026-10-28, arm64 on 2026-10-29 through the CROSS route from this amd64 host (phases C, D and E of
+      `logs/research/nvidia-arm64-native-and-cross.md`, local; `CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1`,
+      `docs/linux-accelerator-images.md` § Cross from the amd64 host). What is left of the owner's 2026-10-28 decision
+      ("natively AND cross") is the NATIVE route: phase A (an arm64 host builds gpu..runtime first-class, the tag and
+      refusal changes G1-G12 of the plan) and phase B (the merge of a native child into the published index). Blocked
+      on an arm64 build host (Orin or another arm64 box); the cross route is the default owner of the arm64 child.
+      Earlier decision for the record (2026-10-20): TensorRT 11 and the ORT TensorRT EP in `:latest-nvidia`, and a
+      `:latest-rocm` that finds its ROCm and opens an AMD GPU; both ship since 2026-10-28 (hub f6771ee4 and later,
+      `docs/linux-accelerator-images.md` § TensorRT 11, § Running it on an AMD GPU, § The GPU runtime gate).
       - `:latest-nvidia`, TensorRT 11: `ENABLE_TENSORRT=true` on amd64; exactly `11.4.0.106-1+cuda13.4` from NVIDIA's
         `ubuntu2604` repo; only the runtime `.so` files ship, which the SLA names distributable (§ Redistribution).
         Proved in a throwaway container on the published `0e9dec34…` (no GPU): the hub's `install-tensorrt.sh`
@@ -948,8 +950,11 @@ owner carries the breakage that costs.
       - OmniAccelerANT's `nvinfer` path: later, by owner decision (2026-10-12).
       - `nvblender` upstream: a forum draft (both defects, with the RTX 2080's repro) waits for the owner's review in
         `~/upstream-drafts/2026-10-12/nvidia-deepstream/` on the build host; nothing is posted.
-      - **Phase 7 (arm64)**: out of scope until CON31 has an arm64 CUDA route. The Jetson runtime `.deb` is pinned
-        (`DEEPSTREAM_BINARIES_ARM64_SHA256`); nothing installs it.
+      - **Phase 7 (arm64)**: the arm64 CUDA route exists since 2026-10-29 (CON31, cross from amd64), but the
+        cross media stage sets `ENABLE_DEEPSTREAM=false` off amd64: NVIDIA's arm64 DeepStream is the Jetson (L4T)
+        package with its own TensorRT binding, not an SBSA one. The Jetson runtime `.deb` is pinned
+        (`DEEPSTREAM_BINARIES_ARM64_SHA256`); nothing installs it. Work: decide whether the SBSA image may carry the
+        Jetson deb at all (its libs link L4T's TensorRT), else leave arm64 without DeepStream by design.
       Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only); the pin stays on 9.1.0.
 
 ## Open — hub tooling and the dev host
