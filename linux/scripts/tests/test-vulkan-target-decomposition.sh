@@ -105,8 +105,7 @@ _target_sources() {
 _installed_glslang() {
   _fixture full
   mkdir -p "${SDK}/aarch64/bin"
-  printf '#!/bin/sh\n' > "${SDK}/aarch64/bin/$1"
-  chmod +x "${SDK}/aarch64/bin/$1"
+  t_write_exec_stub "${SDK}/aarch64/bin/$1"
 }
 
 t_case "component fixtures retain the host header and each requested source directory"
@@ -288,8 +287,7 @@ t_assert_contains "${_out}" "-Dvalijson_INSTALL_HEADERS=ON" "valijson is header-
 # Canadian-cross rows: a generator or moc that must run on the build host
 t_case "slang takes the host generators when ./vulkansdk left them behind"
 _target_sources slang slang/build/generators/Release/bin
-printf '#!/bin/sh\n' > "${SDK}/source/slang/build/generators/Release/bin/slang-embed"
-chmod +x "${SDK}/source/slang/build/generators/Release/bin/slang-embed"
+t_write_exec_stub "${SDK}/source/slang/build/generators/Release/bin/slang-embed"
 _out="$(_trace 0 0)"
 t_assert_contains "${_out}" "-DSLANG_GENERATORS_PATH=SDK/source/slang/build/generators/Release/bin" \
   "without this the cross build links slang-embed for the TARGET and runs it: exit 127"
@@ -356,8 +354,7 @@ t_case "dxc gets the vendor cache file and the HOST tblgens"
 _target_sources DirectXShaderCompiler/cmake/caches DirectXShaderCompiler/build/bin
 : > "${SDK}/source/DirectXShaderCompiler/cmake/caches/PredefinedParams.cmake"
 for _g in llvm-tblgen clang-tblgen; do
-  printf '#!/bin/sh\n' > "${SDK}/source/DirectXShaderCompiler/build/bin/${_g}"
-  chmod +x "${SDK}/source/DirectXShaderCompiler/build/bin/${_g}"
+  t_write_exec_stub "${SDK}/source/DirectXShaderCompiler/build/bin/${_g}"
 done
 _out="$(_trace 0 0)"
 t_assert_contains "${_out}" "-CSDK/source/DirectXShaderCompiler/cmake/caches/PredefinedParams.cmake" \
@@ -447,8 +444,7 @@ done
 
 t_case "slang gets the vendor's between-build-and-install copy step"
 _target_sources slang slang/build/generators/Release/bin
-printf '#!/bin/sh\n' > "${SDK}/source/slang/build/generators/Release/bin/slang-embed"
-chmod +x "${SDK}/source/slang/build/generators/Release/bin/slang-embed"
+t_write_exec_stub "${SDK}/source/slang/build/generators/Release/bin/slang-embed"
 t_assert_contains "$(awk '/^_vulkan_target_dynamic_args\(\) \{/,/^\}/' "${VULKAN_SH}")" \
   "copy-gfx-slang-modules" \
   "./vulkansdk build_slang() copies gfx.slang and slang.slang between --build and --install; the generic helper had no such step"

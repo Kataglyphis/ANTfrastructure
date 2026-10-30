@@ -13,6 +13,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-30 — one harness helper for executable test stubs
+
+- `t_write_exec_stub` in `test-harness.sh` writes an executable stub; the Vulkan
+  target-decomposition suite's four `printf`/`chmod` pairs use it. Same 167 assertions;
+  a helper without `chmod` fails six cases.
+
 ## 2026-10-30 — develop green again; Eigen survives GitLab load shedding
 
 - The Linux preflight and every mutation shard were red after the cross-CUDA and S3-drain work:

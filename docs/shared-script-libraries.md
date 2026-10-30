@@ -452,6 +452,10 @@ The Flatpak and bind-mount ownership suites retain their own stub defaults and
 expected results. Both suites pass the same assertions before and after the
 extraction; status-swallowing and dropped-environment mutations must fail.
 
+`t_write_exec_stub <path>` writes an executable that exits 0. The Vulkan
+target-decomposition suite uses it for every host tool it fakes; dropping its
+`chmod` turns six of that suite's cases red.
+
 ## The logging bootstrap
 
 The bootstrap also owns fallback registration for standalone Abseil, Torch
