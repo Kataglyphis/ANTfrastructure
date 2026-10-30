@@ -87,6 +87,19 @@ _tvm_emit_cuda_companion_args() {
   )
 }
 
+# $1=array $2=ON/OFF: TVM's FindCUDA hard-codes targets/x86_64-linux, so a cross build names the target's roots (later -D wins).
+_tvm_emit_cuda_cross_args() {
+  local -n _tvm_cuda_cross_ref="$1"
+  [ "${2}" = "ON" ] || return 0
+  command -v cuda_cross_active >/dev/null 2>&1 && cuda_cross_active || return 0
+  append_cmake_cuda_cross_args "$1" || die "append_cmake_cuda_cross_args failed"
+  _tvm_cuda_cross_ref+=(
+    -DUSE_CUDA="${CUDA_CROSS_TARGET_ROOT}"
+  )
+  [ "${TVM_USE_CUDNN:-1}" -eq 1 ] && _tvm_cuda_cross_ref+=( -DUSE_CUDNN="${CUDA_CROSS_CUDNN_HOME}" )
+  return 0
+}
+
 # $1=array $2=use (0/1) $3..$5=Vulkan loader, headers, SPIRV-Tools; cross builds must pass the target's.
 _tvm_emit_vulkan_args() {
   local -n _tvm_emit_vulkan_args_result="$1"
@@ -198,6 +211,7 @@ append_tvm_cmake_args() {
   )
 
   _tvm_emit_cuda_companion_args "${_tvm_out_name}" "${_tvm_cuda_flag}"
+  _tvm_emit_cuda_cross_args "${_tvm_out_name}" "${_tvm_cuda_flag}"
 
   _tvm_emit_cross_args "${_tvm_out_name}" "${_tvm_cross_link_flags}"
   _tvm_emit_llvm_args "${_tvm_out_name}" "${_tvm_llvm_dir}" "${_tvm_llvm_ignore_paths}"

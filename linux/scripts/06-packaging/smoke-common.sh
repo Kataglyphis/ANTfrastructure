@@ -432,6 +432,7 @@ import sys
 EXPECT_VERSION = os.environ.get("GENAI_EXPECT_VERSION", "").strip().lstrip("vV")
 EXPECT_ARCH = os.environ.get("GENAI_EXPECT_ARCH", "").strip()
 MODEL_DIR = os.environ.get("GENAI_MODEL_DIR", "").strip()
+TINY_MODEL_PY = os.environ.get("GENAI_TINY_MODEL_PY", "")
 
 # ELF e_machine (SysV gABI); read from the header, no readelf in the image.
 ELF_MACHINE = {"amd64": (62, "X86-64"), "arm64": (183, "AArch64"),
@@ -618,11 +619,27 @@ if hasattr(og, "Config"):
 GENAI_PY_T3
 }
 
-# tier 4: a real generate(); UNARMED unless GENAI_MODEL_DIR is set.
+# tier 4: a real generate() on GENAI_MODEL_DIR, else on the tiny model GENAI_TINY_MODEL_PY writes. See docs/language-ai.md
 _smoke_genai_py_tier4_generate() {
   cat <<'GENAI_PY_T4'
 # ── tier 4: a REAL generate(), when a model is available ───────────────────
-if not MODEL_DIR:
+if not MODEL_DIR and TINY_MODEL_PY:
+    try:
+        import runpy
+        import tempfile
+        from pathlib import Path
+        tiny_py = Path(tempfile.mkdtemp(prefix="tiny-genai-")) / "tiny_genai_model.py"
+        tiny_py.write_text(TINY_MODEL_PY, encoding="utf-8")
+        tiny = runpy.run_path(str(tiny_py), run_name="tiny_genai_model")
+        tiny_dir = tiny_py.parent / "model"
+        tiny["write"](tiny_dir)
+        tiny_problems = tiny["check"](tiny_dir)
+        fails.extend(f"tiny model: {problem}" for problem in tiny_problems)
+        if not tiny_problems:
+            proven.append("generate() decoded the tiny test model token for token: 'abc' -> 'defg'")
+    except (*NATIVE_FAILURES, ImportError, AssertionError, KeyError) as exc:
+        record_exception("tiny-model generate()", exc)
+elif not MODEL_DIR:
     unproven.append("generate() token content -- no GENAI_MODEL_DIR; no model ships in this image")
 elif not os.path.isdir(MODEL_DIR):
     fails.append(f"GENAI_MODEL_DIR={MODEL_DIR} is not a directory")
@@ -668,7 +685,7 @@ for line in unproven:
 for line in fails:
     print(f"  DEFECT   {line}")
 
-if not MODEL_DIR:
+if not MODEL_DIR and not TINY_MODEL_PY:
     print("GENAI-GEN SKIP: no GENAI_MODEL_DIR set, so no real generation was attempted.")
 
 if fails:

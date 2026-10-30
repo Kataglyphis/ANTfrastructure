@@ -236,6 +236,9 @@ t_assert_eq "${_PFX}/lib/libnvinfer.so.10" "$(readlink "${_BT}/trt-sdk/lib/libnv
 t_assert_eq "3" "$(find "${_BT}/trt-sdk/include" -name 'NvInfer-*' | wc -l | tr -d ' ')" "all three header debs' headers"
 t_assert_contains "$(t_fn_src "${DS}" ds_build)" 'ds_build_components "${tmp}/src" "${tmp}/logs" "$(ds_trt_sdk "${tmp}")"' "the components compile against it"
 t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'export CPATH="${sdk}/include' "headers from the tmp dir"
+t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'DS_TRT_LINK_FLAGS="-L${sdk}/lib"' "an explicit -L: GCC 16 searches the system multiarch dir (TensorRT 11) before a bare LIBRARY_PATH dir"
+t_assert_contains "$(t_fn_src "${DS}" ds_build_component)" 'CXX "${DS_COMPAT_H}")${DS_TRT_LINK_FLAGS:+ ${DS_TRT_LINK_FLAGS}}"' "the link dir rides on the compiler word, ahead of every Makefile -L"
+t_assert_contains "$(t_fn_src "${DS}" ds_build_component)" 'CC "${DS_COMPAT_H}")${DS_TRT_LINK_FLAGS:+ ${DS_TRT_LINK_FLAGS}}"' "for the components that link with CC too"
 
 t_case "nvv4l2decoder reaches NVDEC only through NVIDIA's plugin in the distro libv4l2's dir"
 t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks

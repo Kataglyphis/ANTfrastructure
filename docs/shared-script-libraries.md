@@ -452,6 +452,10 @@ The Flatpak and bind-mount ownership suites retain their own stub defaults and
 expected results. Both suites pass the same assertions before and after the
 extraction; status-swallowing and dropped-environment mutations must fail.
 
+`t_write_exec_stub <path>` writes an executable that exits 0. The Vulkan
+target-decomposition suite uses it for every host tool it fakes; dropping its
+`chmod` turns six of that suite's cases red.
+
 ## The logging bootstrap
 
 The bootstrap also owns fallback registration for standalone Abseil, Torch
@@ -996,6 +1000,14 @@ options and names: [`branch-and-release-strategy.md` § *Collecting the release 
 `python3 -I fetch-data-lock.py --lock FILE [--dest DIR] [--extract] [--only NAME]...`: the files
 or scenes a data lock pins, checked by SHA-256, through a cache; CMake reaches it through
 `kataglyphis_fetch_data`. The contract: [`data-repositories.md` § *The hub's fetcher*](data-repositories.md#the-hubs-fetcher).
+
+### `lib/tiny-genai-model.py`
+
+`python3 -I tiny-genai-model.py --out DIR [--check]`: a GenAI model of a few hundred KB whose greedy
+output is known, so a binding test needs no model file. `fixture.json` beside it is the oracle the
+tests read; `--check` decodes it through the installed `onnxruntime_genai` and exits 2 where there is
+none. The model, and what the stdlib suite cannot prove:
+[`language-ai.md` § *The test model*](language-ai.md#the-test-model).
 
 ### `lib/test-harness.sh`
 

@@ -13,6 +13,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../core/common.sh"
 media_common_init "${SCRIPT_DIR}"
 source_module compiler-resolution.sh
+# The CUDA cross target (gpu stage, CROSS_NVIDIA_SBSA=1): _ffmpeg_hwaccel_args links the target's cudart under cross_build_is_active.
+source_module cross-cuda.sh
 
 # The Dockerfile bind-mounts the whole ffmpeg dir, so these siblings are always present.
 # shellcheck disable=SC1091
@@ -270,15 +272,21 @@ _ffmpeg_hwaccel_args() {
 
     # NVIDIA Hardware acceleration — auto-probe for CUDA SDK
     CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
-    if [ -f "${CUDA_HOME}/include/cuda.h" ] && [ -d "${CUDA_HOME}/lib64" ]; then
-        echo "NVIDIA CUDA SDK detected at ${CUDA_HOME}. Enabling NVENC/NVDEC/CUDA..."
+    local _ff_cuda_inc="${CUDA_HOME}/include" _ff_cuda_lib="${CUDA_HOME}/lib64"
+    # A cross build links the target's cudart, not the host's lib64 (cross-cuda.sh, from the gpu stage's descriptor).
+    if command -v cuda_cross_active >/dev/null 2>&1 && cuda_cross_active; then
+        cuda_cross_load || return 1
+        _ff_cuda_inc="${CUDA_CROSS_TARGET_ROOT}/include"; _ff_cuda_lib="${CUDA_CROSS_TARGET_ROOT}/lib"
+    fi
+    if [ -f "${_ff_cuda_inc}/cuda.h" ] && [ -d "${_ff_cuda_lib}" ]; then
+        echo "NVIDIA CUDA SDK detected at ${CUDA_HOME} (${_ff_cuda_lib}). Enabling NVENC/NVDEC/CUDA..."
         _ffha_out+=("--enable-nvenc")
         _ffha_out+=("--enable-nvdec")
         _ffha_out+=("--enable-cuvid")
         _ffha_out+=("--enable-ffnvcodec")
         # No --enable-cuda-nvcc: it needs --enable-nonfree, which with --enable-gpl makes the binary non-redistributable.
-        _ffha_out+=("--extra-cflags=-I${CUDA_HOME}/include")
-        _ffha_out+=("--extra-ldflags=-L${CUDA_HOME}/lib64")
+        _ffha_out+=("--extra-cflags=-I${_ff_cuda_inc}")
+        _ffha_out+=("--extra-ldflags=-L${_ff_cuda_lib}")
     elif [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
         echo "ENABLE_NVIDIA=true but CUDA SDK not found at ${CUDA_HOME}. Skipping NVIDIA acceleration."
     fi

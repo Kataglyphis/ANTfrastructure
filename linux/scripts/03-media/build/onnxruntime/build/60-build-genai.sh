@@ -4,6 +4,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
 
+# <src_dir> <out_dir>: both headers or no build, since the C, C++ and Rust bindings compile against them.
+genai_copy_headers() {
+  local hdr
+  for hdr in ort_genai.h ort_genai_c.h; do
+    [ -s "$1/src/${hdr}" ] || err "GenAI header ${hdr} not found in $1/src"
+    cp "$1/src/${hdr}" "$2/include/" || err "cannot copy GenAI header ${hdr} to $2/include"
+  done
+  info "Copied GenAI headers to $2/include/"
+}
+
 parse_common_args "$@"
 detect_jobs
 
@@ -174,12 +184,25 @@ if [ "${GENAI_CROSS_BUILD}" = "true" ]; then
   _PYTHON_HOST_PLATFORM="$(cross_wheel_platform_tag)" \
     || err "cross_wheel_platform_tag failed for ${ARCH}"
   export _PYTHON_HOST_PLATFORM
+  # A GPU cross build: nvcc's host compiler and the target's driver stub, as 30-build-native-nvidia.sh passes them.
+  if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
+    _genai_cuda_cross=()
+    append_cmake_cuda_cross_args _genai_cuda_cross || err "append_cmake_cuda_cross_args failed"
+    [ "${#_genai_cuda_cross[@]}" -gt 0 ] || err "GenAI GPU cross build, but the base image has no CUDA cross target (gpu stage with CROSS_NVIDIA_SBSA=1)"
+    GENAI_BASE_ARGS+=("${_genai_cuda_cross[@]#-D}")
+  fi
 fi
 
 # G2 (verify-genai-ort.sh) reads build.py's output for ORT fetch traces; each retry appends, so a fetch in a failed attempt counts.
 GENAI_BUILD_LOG="${GENAI_SRC_DIR}/build/genai-build.log"
 mkdir -p "${GENAI_SRC_DIR}/build"
 : > "${GENAI_BUILD_LOG}"
+
+# The cross env's target LIBRARY_PATH breaks cargo's host build-script links ("libgcc_s.so.1 is incompatible with elf64-x86-64"); GPU and CPU builds alike drop it. docs/gen1-riscv64-genai.md § Corrosion cross wiring
+if [ "${GENAI_CROSS_BUILD}" = "true" ]; then
+  info "GenAI cross: clearing LIBRARY_PATH for the build (host build-script links; was: ${LIBRARY_PATH:-<unset>})"
+  unset LIBRARY_PATH
+fi
 
 if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
   ORT_HOME="${NATIVE_GPU_OUTPUT_DIR:-/usr/local/lib/onnxruntime-gpu}"
@@ -201,12 +224,6 @@ else
   ORT_HOME="${NATIVE_CPU_OUTPUT_DIR}"
   info "Building onnxruntime-genai with CPU ORT from ${ORT_HOME}"
 
-  # The cross env's target LIBRARY_PATH breaks cargo's host build-script links; see docs/gen1-riscv64-genai.md § Corrosion cross wiring, for reference
-  if [ "${GENAI_CROSS_BUILD}" = "true" ]; then
-    info "GenAI cross: clearing LIBRARY_PATH for the build (host build-script links; was: ${LIBRARY_PATH:-<unset>})"
-    unset LIBRARY_PATH
-  fi
-
   info "GenAI build args: ${GENAI_BASE_ARGS[*]}"
   retry 3 10 "ONNX Runtime GenAI CPU build" "${HOST_PYTHON}" build.py \
     "${GENAI_BASE_ARGS[@]}" \
@@ -216,10 +233,12 @@ fi
 collect_wheels_from_tree "${GENAI_SRC_DIR}/build" "${GENAI_OUTPUT_DIR}" "GenAI wheel"
 
 if [ "${GENAI_CROSS_BUILD}" = "true" ]; then
-  # See docs/gen1-riscv64-genai.md § The cross-wheel gate in the producer
-  _genai_whl="$(ls "${GENAI_OUTPUT_DIR}/wheels"/onnxruntime_genai-*.whl 2>/dev/null | head -1 || true)"
+  # See docs/gen1-riscv64-genai.md § The cross-wheel gate in the producer; the GPU build's distribution is onnxruntime_genai_cuda (2026-10-28).
+  _genai_dist="onnxruntime_genai"
+  [ "${ENABLE_NVIDIA:-false}" != "true" ] || _genai_dist="onnxruntime_genai_cuda"
+  _genai_whl="$(ls "${GENAI_OUTPUT_DIR}/wheels/${_genai_dist}"-*.whl 2>/dev/null | head -1 || true)"
   [ -n "${_genai_whl}" ] \
-    || err "cross GenAI build produced no onnxruntime_genai wheel in ${GENAI_OUTPUT_DIR}/wheels"
+    || err "cross GenAI build produced no ${_genai_dist} wheel in ${GENAI_OUTPUT_DIR}/wheels"
 
   # A host-arch ELF or host-suffixed module would install fine and fail only at import.
   _genai_tmp="$(mktemp -d)"
@@ -240,13 +259,7 @@ elif [ -z "$(ls -A "${GENAI_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ]; then
   maybe_build_source_wheel "${GENAI_SRC_DIR}" "${GENAI_OUTPUT_DIR}" "${HOST_PYTHON}" "GenAI"
 fi
 
-if [[ -f "${GENAI_SRC_DIR}/src/ort_genai.h" ]]; then
-  cp "${GENAI_SRC_DIR}/src/ort_genai.h" "${GENAI_OUTPUT_DIR}/include/"
-  cp "${GENAI_SRC_DIR}/src/ort_genai_c.h" "${GENAI_OUTPUT_DIR}/include/" 2>/dev/null || true
-  info "Copied GenAI headers to ${GENAI_OUTPUT_DIR}/include/"
-else
-  warn "GenAI headers not found at ${GENAI_SRC_DIR}/src/"
-fi
+genai_copy_headers "${GENAI_SRC_DIR}" "${GENAI_OUTPUT_DIR}"
 
 GENAI_LIB_DIR="${GENAI_SRC_DIR}/build/Linux/${GENAI_CONFIG}"
 if [[ -d "${GENAI_LIB_DIR}" ]]; then

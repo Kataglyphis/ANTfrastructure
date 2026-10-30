@@ -64,8 +64,9 @@
                 src: "{{ backup_nas_share }}"
                 path: "{{ backup_target }}"
                 fstype: cifs
+                # A deferred close lets the NAS stamp each file with its close time, over the time rsync set.
                 opts: "credentials={{ backup_credentials }},uid={{ lookup('pipe', 'id -u') }},gid={{ lookup('pipe', 'id -g') }},\
-                  file_mode=0600,dir_mode=0700{{ (',' + backup_nas_mount_opts) if backup_nas_mount_opts is defined else '' }}"
+                  file_mode=0600,dir_mode=0700,closetimeo=0{{ (',' + backup_nas_mount_opts) if backup_nas_mount_opts is defined else '' }}"
                 state: ephemeral
 
             - name: The target is the NAS share, never the Pi's own disk

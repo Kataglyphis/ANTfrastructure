@@ -229,6 +229,17 @@ class ReceiptTests(unittest.TestCase):
                 module.check(args)
         return json.loads(args.receipt.read_text()), run.call_args_list
 
+    def test_passed_receipt_prunes_the_consumer_checkouts_and_keeps_the_logs(self) -> None:
+        receipt, _ = self.run_check()
+        self.assertEqual(receipt["status"], "passed")
+        sources = Path(self.directory.name) / "sources"
+        self.assertFalse((sources / "first").exists(), "a passed run leaves no 28 GB checkout behind (CON174)")
+        self.assertTrue((sources / "first.log").exists(), "its log stays with the receipt")
+
+    def test_failed_receipt_keeps_the_consumer_checkout_for_inspection(self) -> None:
+        self.run_check(exit_code=1)
+        self.assertTrue((Path(self.directory.name) / "sources" / "first").exists())
+
     def test_successful_command_that_changes_tracked_sources_keeps_failed_receipt(self) -> None:
         receipt, _ = self.run_check(dirty_after=True)
         self.assertEqual(receipt["status"], "failed")

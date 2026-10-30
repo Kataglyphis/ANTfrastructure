@@ -31,6 +31,10 @@
       "base_url": "http://summy-server:11434",
       "note": "Ollama on another host; see docker-compose.lan.yml."
     },
+    "chain-genai": {
+      "base_url": "http://127.0.0.1:18200",
+      "note": "OrchestrANT's orchestrant-serve over the chain's ONNX Runtime GenAI, one model directory per server; see docs/language-ai.md."
+    },
     "geniex-npu": {
       "base_url": "http://127.0.0.1:18181",
       "model": "qualcomm/Qwen3-4B-Instruct-2507:W4A16",

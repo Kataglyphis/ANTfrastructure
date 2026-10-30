@@ -17,6 +17,9 @@ elif [ -f "${_ONNX_LIB_DIR}/../../../../core/common.sh" ]; then
   media_common_init "${_ONNX_LIB_DIR}"
 fi
 
+# The CUDA cross target's helpers (cross-cuda.sh), opt-in: 30-build-native-nvidia.sh and 60-build-genai.sh read them under cross_build_is_active.
+source_module cross-cuda.sh
+
 # A broken 01-core bootstrap must fail here, not later as a confusing "command not found".
 for _req_fn in info warn err arch_oci cross_build_enabled host_python_bin host_python_major_minor resolve_qnn_sdk stage_qnn_runtime apply_shared_library_action; do
   if ! command -v "${_req_fn}" >/dev/null 2>&1; then
@@ -521,6 +524,22 @@ append_onnx_cross_toolchain_args() {
     CMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
     CMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
   )
+}
+
+# <array>: a cross build takes the toolchain defines and builds the wheel only with the target's Python dev files; native always builds it.
+append_onnx_wheel_mode_args() {
+  local -n _aowma_out="$1"
+  if cross_build_is_active; then
+    append_onnx_cross_cmake_build_args "$1"
+    if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
+      info "Target Python dev files available; enabling ONNX Runtime wheel build in cross mode"
+      _aowma_out+=(--build_wheel)
+    else
+      info "Skipping ONNX Runtime wheel build in cross mode; target Python headers/wheels are not safely buildable in the amd64 host container"
+    fi
+  else
+    _aowma_out+=(--build_wheel)
+  fi
 }
 
 append_onnx_cross_cmake_build_args() {

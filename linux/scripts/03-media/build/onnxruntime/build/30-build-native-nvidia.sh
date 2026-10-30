@@ -59,8 +59,21 @@ init_nvidia_defaults() {
   NATIVE_GPU_BUILD_DIR="${NATIVE_GPU_BUILD_DIR:-${ORT_SRC_DIR}/build_native_gpu}"
 }
 
+# A CUDA cross target (gpu stage, CROSS_NVIDIA_SBSA=1): the target's TensorRT and cuDNN roots, nvcc's -ccbin and -target-dir.
+enter_nvidia_cross_env() {
+  cross_build_is_active || return 0
+  setup_linux_cross_env
+  cuda_cross_active || err "cross build with ENABLE_NVIDIA=true, but the base image has no CUDA cross target ($(cuda_cross_env_file)); build the gpu stage with CROSS_NVIDIA_SBSA=1"
+  cuda_cross_load || err "cuda_cross_load failed"
+  TENSORRT_HOME="${CUDA_CROSS_TENSORRT_HOME}"
+  CUDNN_HOME="${CUDA_CROSS_CUDNN_HOME}"
+  # ORT's cuDNN.cmake takes HINTS from CUDNN_PATH; the host's /usr/include/x86_64-linux-gnu must never win the probe.
+  export CUDNN_PATH="${CUDA_CROSS_CUDNN_HOME}"
+}
+
 parse_nvidia_args() {
   parse_common_args "$@"
+  enter_nvidia_cross_env
   init_nvidia_defaults
 }
 
@@ -143,14 +156,20 @@ ensure_onnx_output_tree "${NATIVE_GPU_OUTPUT_DIR}"
 ONNX_CUDA_ARCHS="${CUDA_ARCHITECTURES:-86;87;89;120}"
 
 BUILD_ARGS=()
+_ort_cuda_cross_defines=()
 append_onnx_native_base_build_args BUILD_ARGS "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${JOBS}"
 BUILD_ARGS+=(
-  --build_wheel
   --use_cuda
   --cuda_home          "${CUDA_HOME}"
   --cudnn_home         "${CUDNN_HOME}"
   --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${ONNX_CUDA_ARCHS}"
 )
+# The GPU wheel follows the CPU build's rule (cross only with the target's Python dev files), plus nvcc's cross defines.
+append_onnx_wheel_mode_args BUILD_ARGS
+if cuda_cross_active; then
+  append_cmake_cuda_cross_args _ort_cuda_cross_defines
+  BUILD_ARGS+=(--cmake_extra_defines "${_ort_cuda_cross_defines[@]#-D}")
+fi
 # --use_full_protobuf travels WITH the TensorRT EP: it is the TRT EP that needs it.
 if [ "${_ORT_USE_TENSORRT}" = "1" ]; then
   BUILD_ARGS+=(

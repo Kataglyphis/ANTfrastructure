@@ -8,16 +8,20 @@ _sccache_s3_log() {
   printf '[CACHE] %s\n' "$*" >&2
 }
 
-# <url>: 0 when its host:port takes a TCP connection within 2 s; a dead level costs the server its whole startup.
+# <url>: 0 when its host:port takes a TCP connection within 2 s on one of SCCACHE_S3_PROBE_TRIES tries (a WireGuard re-handshake dropped a whole stage's level on 2026-10-28).
 sccache_s3_endpoint_reachable() {
-  local rest="${1#*://}" host port
+  local rest="${1#*://}" host port try
   rest="${rest%%/*}"
   host="${rest%:*}"
   port="${rest##*:}"
   [ "${host}" != "${rest}" ] || port=80
   [ -n "${host}" ] && [ -n "${port}" ] || return 1
-  # shellcheck disable=SC2016 # expanded by the inner bash, from its arguments
-  timeout 2 bash -c ': >"/dev/tcp/$1/$2"' _ "${host}" "${port}" 2>/dev/null
+  for try in $(seq 1 "${SCCACHE_S3_PROBE_TRIES:-3}"); do
+    # shellcheck disable=SC2016 # expanded by the inner bash, from its arguments
+    timeout 2 bash -c ': >"/dev/tcp/$1/$2"' _ "${host}" "${port}" 2>/dev/null && return 0
+    [ "${try}" -ge "${SCCACHE_S3_PROBE_TRIES:-3}" ] || sleep 1
+  done
+  return 1
 }
 
 # <array-name>: fills it with NAME=value pairs for the server, or leaves it empty and says why.
@@ -43,7 +47,7 @@ sccache_s3_env() {
     fi
   done
   if ! sccache_s3_endpoint_reachable "${_s3_kv[SCCACHE_ENDPOINT]}"; then
-    _sccache_s3_log "sccache: the S3 level (${_s3_kv[SCCACHE_ENDPOINT]}) takes no TCP connection within 2 s -- this RUN caches on disk alone"
+    _sccache_s3_log "sccache: the S3 level (${_s3_kv[SCCACHE_ENDPOINT]}) takes no TCP connection within 2 s on ${SCCACHE_S3_PROBE_TRIES:-3} tries -- this RUN caches on disk alone"
     return 0
   fi
   for name in "${!_s3_kv[@]}"; do _s3_out+=("${name}=${_s3_kv[${name}]}"); done
@@ -123,6 +127,104 @@ _sccache_s3_failure_reason() {
   printf 'sccache-drain| failed writes; %s says:\n%s\n' "${log}" "${lines:-nothing about levels or S3}" >&2
 }
 
+# <PUT|GET> <s3 path> <file> <NAME=value>...: one SigV4 request with the standard library (the images carry no S3 client); 0 on 2xx, 2 on 404.
+_sccache_s3_request() {
+  env "${@:4}" python3 - "$1" "$2" "$3" <<'PY'
+import datetime
+import hashlib
+import hmac
+import os
+import sys
+import urllib.error
+import urllib.request
+
+env = os.environ
+method, path, name = sys.argv[1], sys.argv[2], sys.argv[3]
+endpoint = env["SCCACHE_ENDPOINT"].rstrip("/")
+if "://" not in endpoint:
+    endpoint = ("https://" if env.get("SCCACHE_S3_USE_SSL", "true").lower() == "true" else "http://") + endpoint
+host = endpoint.split("://", 1)[1]
+region, bucket = env.get("SCCACHE_REGION") or "us-east-1", env["SCCACHE_BUCKET"]
+body = b""
+if method == "PUT":
+    with open(name, "rb") as f:
+        body = f.read()
+now = datetime.datetime.now(datetime.UTC)
+amz, day = now.strftime("%Y%m%dT%H%M%SZ"), now.strftime("%Y%m%d")
+digest = hashlib.sha256(body).hexdigest()
+canonical = "\n".join([method, f"/{bucket}/{path}", "", f"host:{host}", f"x-amz-content-sha256:{digest}", f"x-amz-date:{amz}", "", "host;x-amz-content-sha256;x-amz-date", digest])
+scope = f"{day}/{region}/s3/aws4_request"
+to_sign = "\n".join(["AWS4-HMAC-SHA256", amz, scope, hashlib.sha256(canonical.encode()).hexdigest()])
+key = ("AWS4" + env["AWS_SECRET_ACCESS_KEY"]).encode()
+for part in (day, region, "s3", "aws4_request"):
+    key = hmac.new(key, part.encode(), hashlib.sha256).digest()
+signature = hmac.new(key, to_sign.encode(), hashlib.sha256).hexdigest()
+auth = f"AWS4-HMAC-SHA256 Credential={env['AWS_ACCESS_KEY_ID']}/{scope}, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature={signature}"
+req = urllib.request.Request(f"{endpoint}/{bucket}/{path}", data=body if method == "PUT" else None, method=method,
+                             headers={"x-amz-content-sha256": digest, "x-amz-date": amz, "Authorization": auth})
+try:
+    with urllib.request.urlopen(req, timeout=600) as r:
+        if method == "GET":
+            with open(name, "wb") as out:
+                while chunk := r.read(1 << 20):
+                    out.write(chunk)
+        sys.exit(0 if 200 <= r.status < 300 else 1)
+except urllib.error.HTTPError as e:
+    print(f"{path}: HTTP {e.code}", file=sys.stderr)
+    sys.exit(2 if e.code == 404 else 1)
+except Exception as e:  # noqa: BLE001 -- the caller prints the path; one line of cause is enough
+    print(f"{path}: {e}", file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
+# <s3 path> <file> <NAME=value>...: the PUT half, kept for its callers.
+_sccache_s3_put() {
+  _sccache_s3_request PUT "$@"
+}
+
+# <GET|PUT> <s3 path> <file>: one object of the shared level, with the RUN's secret; 1 without a level, 2 when a GET finds nothing.
+_sccache_s3_transfer() {
+  local -a env=()
+  sccache_s3_env env
+  [ "${#env[@]}" -gt 0 ] || return 1
+  _sccache_s3_request "$1" "$2" "$3" "${env[@]}"
+}
+
+# <s3 path> <file>: GET into <file>.
+sccache_s3_fetch() {
+  _sccache_s3_transfer GET "$@"
+}
+
+# <s3 path> <file>: PUT <file>.
+sccache_s3_store() {
+  _sccache_s3_transfer PUT "$@"
+}
+
+# A failed S3 write leaves the object on the disk level only (sccache does not retry); re-put each one the server log names, so every miss reaches the shared level.
+_sccache_s3_reupload_failed() {
+  local log="${SCCACHE_ERROR_LOG:-/tmp/sccache.log}" disk="${SCCACHE_DIR:-/var/cache/sccache}" path key file n=0 ok=0
+  local -a env=()
+  sccache_s3_env env
+  [ "${#env[@]}" -gt 0 ] || { _sccache_s3_log "sccache: no S3 level in this RUN, so nothing to re-upload"; return 0; }
+  while IFS= read -r path; do
+    [ -n "${path}" ] || continue
+    n=$((n + 1))
+    key="${path##*/}"
+    # S3 keys an object <prefix>k0/k1/k2/key (opendal); sccache 0.18's disk level files compile objects at k0/k1/key and keeps the preprocessor cache at its full path.
+    pre="${path%/*}"; pre="${pre%"${key:0:1}/${key:1:1}/${key:2:1}"}"
+    file="${disk}/${path}"
+    [ -f "${file}" ] || file="${disk}/${pre}${key:0:1}/${key:1:1}/${key}"
+    if [ ! -f "${file}" ]; then
+      printf 'sccache-drain| re-upload: %s is not on the disk level (%s)\n' "${key:0:12}" "${file}" >&2
+      continue
+    fi
+    if _sccache_s3_put "${path}" "${file}" "${env[@]}"; then ok=$((ok + 1)); fi
+  done < <(grep -oE 'service=s3 name=[^ ]+ path=[A-Za-z0-9_./-]+' "${log}" 2>/dev/null | sed 's/.*path=//' | sort -u)
+  printf 'sccache-drain| re-uploaded %d of %d failed write(s) from the disk level\n' "${ok}" "${n}" >&2
+  return 0
+}
+
 # [timeout-s]: the RUN's end kills the server and drops its background uploads, so wait for them first.
 sccache_s3_drain() {
   local limit="${1:-${SCCACHE_S3_DRAIN_TIMEOUT:-600}}" start now report=-30 pending failed tally
@@ -138,7 +240,10 @@ sccache_s3_drain() {
     now=$(( $(date +%s) - start ))
     if [ "${pending}" -le 0 ]; then
       printf 'sccache-drain| every upload done after %d s (%s)\n' "${now}" "${tally}" >&2
-      [ "${failed:-0}" -eq 0 ] || _sccache_s3_failure_reason
+      if [ "${failed:-0}" -ne 0 ]; then
+        _sccache_s3_failure_reason
+        _sccache_s3_reupload_failed
+      fi
       return 0
     fi
     if [ "${now}" -ge "${limit}" ]; then

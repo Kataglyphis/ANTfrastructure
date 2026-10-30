@@ -1896,6 +1896,14 @@
   "why": "--write-baseline must keep a reviewed reason, or every rewrite erases the review"
  },
  {
+  "id": "shellcheck-warnings.stamp-date",
+  "target": "linux/scripts/verify_shellcheck_warnings.py",
+  "find": "    today = datetime.date.today().isoformat()",
+  "replace": "    today = \"2000-01-01\"",
+  "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
+  "why": "a frozen row carries the day it was written; the midnight tolerance must not accept any date"
+ },
+ {
   "id": "shellcheck-warnings.partial-rewrite",
   "target": "linux/scripts/verify_shellcheck_warnings.py",
   "find": "    keep = {k: v for k, v in old.items() if partial and k[0] not in checked}",
@@ -12876,6 +12884,30 @@
   "why": "clang does not search a cross GCC's lib/ for libstdc++; every C++ link fails 'unable to find library -lstdc++'"
  },
  {
+  "id": "riscv64-cross.strip-host-triplet-dirs",
+  "target": "linux/scripts/lib/riscv64-cross.sh",
+  "find": "      /opt/*/lib/*-linux-gnu | /opt/*/lib/*-linux-gnu/*) continue ;;\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-riscv64-cross.sh",
+  "why": "QEMU opens the host's amd64 dir when the sysroot lacks it; every riscv64 test then warns through ~300 amd64 plugins"
+ },
+ {
+  "id": "riscv64-cross.strip-keeps-riscv64-dirs",
+  "target": "linux/scripts/lib/riscv64-cross.sh",
+  "find": "      /opt/*/lib/riscv64-linux-gnu | /opt/*/lib/riscv64-linux-gnu/*) ;;\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-riscv64-cross.sh",
+  "why": "the riscv64 dirs are the ones the sysroot does have; dropping them would hide the target's own plugins"
+ },
+ {
+  "id": "riscv64-cross.env-strips-runtime-lists",
+  "target": "linux/scripts/lib/riscv64-cross.sh",
+  "find": "  for var in GST_PLUGIN_PATH GI_TYPELIB_PATH LD_LIBRARY_PATH; do",
+  "replace": "  for var in GI_TYPELIB_PATH; do",
+  "test": "bash linux/scripts/tests/test-riscv64-cross.sh",
+  "why": "the helper is only half the fix; riscv64_cross_env must apply it to the plugin and loader paths"
+ },
+ {
   "id": "riscv64-cross.env-refuses-missing-sysroot",
   "target": "linux/scripts/lib/riscv64-cross.sh",
   "find": "if [ ! -e \"${sysroot}/lib/ld-linux-riscv64-lp64d.so.1\" ]; then",
@@ -15326,8 +15358,8 @@
  {
   "id": "release.collect-skip",
   "target": "linux/scripts/06-packaging/collect-release-assets.sh",
-  "find": "    if any_match \"$upload\" \"${SKIP[@]}\"; then continue; fi",
-  "replace": "    if false; then continue; fi",
+  "find": "  if any_match \"$upload\" \"${SKIP[@]}\"; then return 0; fi",
+  "replace": "  if false; then return 0; fi",
   "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
   "why": "test bundles and reports would ship as release files"
  },
@@ -15342,8 +15374,8 @@
  {
   "id": "release.collect-strict",
   "target": "linux/scripts/06-packaging/collect-release-assets.sh",
-  "find": "    [ \"$GAVE\" = 1 ] || [ \"$STRICT\" = 0 ] || die",
-  "replace": "    [ \"$GAVE\" = 1 ] || true || die",
+  "find": "  [ \"$GAVE\" = 1 ] || [ \"$STRICT\" = 0 ] || die",
+  "replace": "  [ \"$GAVE\" = 1 ] || true || die",
   "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
   "why": "with --strict a new upload nobody decided about must stop the release, not vanish"
  },
@@ -16710,8 +16742,8 @@
  {
   "id": "cuda-stack.tensorrt-copy-runtime-only",
   "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
-  "find": "\"/usr/lib/*-linux-gnu/libnvinfer*.so.${m}\" \"/usr/lib/*-linux-gnu/libnvinfer*.so.${m}.*\"",
-  "replace": "\"/usr/lib/*-linux-gnu/libnvinfer*\"",
+  "find": "\"/usr/lib/${ma}/libnvinfer*.so.${m}\" \"/usr/lib/${ma}/libnvinfer*.so.${m}.*\"",
+  "replace": "\"/usr/lib/${ma}/libnvinfer*\"",
   "test": "bash linux/scripts/tests/test-cuda-runtime-payload.sh",
   "why": "the dev links and the shim must stay behind: the SLA names only the runtime .so files"
  },
@@ -20076,6 +20108,126 @@
   "why": "empty files and admitted dangling symlinks must fail once with the existing empty-artifact diagnostic"
  },
  {
+  "id": "lib.genai-artifact-c-header",
+  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
+  "find": "verify_file_exists \"${PREFIX}/include/ort_genai_c.h\" \"GenAI C header\" || true",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-genai-artifact-gate.sh",
+  "why": "a GenAI tree without its C header ships, and the Rust binding fails at its first build in a consumer"
+ },
+ {
+  "id": "lib.genai-artifact-cpp-header",
+  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
+  "find": "verify_file_exists \"${PREFIX}/include/ort_genai.h\" \"GenAI C++ header\" || true",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-genai-artifact-gate.sh",
+  "why": "a GenAI tree without its C++ header ships, and the C++ binding fails at its first build in a consumer"
+ },
+ {
+  "id": "lib.genai-artifact-wheel-not-library",
+  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
+  "find": "\"${PREFIX}/lib:libonnxruntime_genai*.so*\" || true",
+  "replace": "\"${PREFIX}/lib:libonnxruntime_genai*.so*\" \"${PREFIX}/wheels:*.whl\" || true",
+  "test": "bash linux/scripts/tests/test-genai-artifact-gate.sh",
+  "why": "a wheel serves Python only; accepting it as the GenAI artifact passes a tree no native binding can link"
+ },
+ {
+  "id": "lib.genai-producer-header-fatal",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh",
+  "find": "[ -s \"$1/src/${hdr}\" ] || err \"GenAI header ${hdr} not found in $1/src\"",
+  "replace": "[ -s \"$1/src/${hdr}\" ] || continue",
+  "test": "bash linux/scripts/tests/test-genai-artifact-gate.sh",
+  "why": "a missing header used to warn and the stage shipped without it; the producer must stop the build"
+ },
+ {
+  "id": "lib.genai-producer-copy-fatal",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh",
+  "find": "cp \"$1/src/${hdr}\" \"$2/include/\" || err \"cannot copy GenAI header ${hdr} to $2/include\"",
+  "replace": "cp \"$1/src/${hdr}\" \"$2/include/\" 2>/dev/null || true",
+  "test": "bash linux/scripts/tests/test-genai-artifact-gate.sh",
+  "why": "the old copy swallowed its own failure with || true, so an install tree without the C header looked complete"
+ },
+ {
+  "id": "lib.tiny-genai-successor",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "return min(token + 1, EOS_ID)",
+  "replace": "return min(token + 2, EOS_ID)",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "the oracle every binding test reads must follow the weights; a drifted rule turns a correct decoder red everywhere"
+ },
+ {
+  "id": "lib.tiny-genai-present-value",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "_len(12, _value_info(\"present.0.value\", FLOAT, present)),",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "GenAI feeds every present output back as the next past input; a graph missing one fails only inside a consumer"
+ },
+ {
+  "id": "lib.tiny-genai-byte-symbols",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "printable = [*range(0x21, 0x7F), *range(0xA1, 0xAD), *range(0xAE, 0x100)]",
+  "replace": "printable = [*range(0x21, 0x7F), *range(0xA1, 0x100)]",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "byte-level BPE needs GPT-2's exact byte symbols, or the tokenizer encodes another byte than the oracle names"
+ },
+ {
+  "id": "lib.tiny-genai-no-wheel-status",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "        return 2",
+  "replace": "        return 0",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "a host without the GenAI wheel must not report a checked model; exit 2 keeps the missing proof visible"
+ },
+ {
+  "id": "lib.tiny-genai-context",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "CONTEXT = 512",
+  "replace": "CONTEXT = 64",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "a binding test decodes from the highest UTF-8 continuation byte to the end token, 65 tokens after a two-token prompt"
+ },
+ {
+  "id": "lib.genai-smoke-tiny-mismatch",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "        fails.extend(f\"tiny model: {problem}\" for problem in tiny_problems)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+  "why": "a binding that decodes the tiny model wrongly must fail tier 4, not merely miss its proof line"
+ },
+ {
+  "id": "lib.genai-smoke-tiny-proven",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "            proven.append(\"generate() decoded the tiny test model token for token: 'abc' -> 'defg'\")",
+  "replace": "            pass",
+  "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+  "why": "an exact decode is the only generate() proof the image smoke has; it must be reported"
+ },
+ {
+  "id": "lib.genai-smoke-tiny-not-skipped",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "if not MODEL_DIR and not TINY_MODEL_PY:",
+  "replace": "if not MODEL_DIR:",
+  "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+  "why": "a run that decoded the tiny model must not also claim that no generation was attempted"
+ },
+ {
+  "id": "lib.genai-smoke-tiny-handed-in",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "\"$(smoke_genai_py)\" -e \"GENAI_TINY_MODEL_PY=${tiny_src}\" \\",
+  "replace": "\"$(smoke_genai_py)\" \\",
+  "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+  "why": "without the generator in the container tier 4 falls back to UNPROVEN on every arch"
+ },
+ {
+  "id": "lib.genai-smoke-tiny-missing-fails",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "else fail \"no tiny GenAI model generator at ${tiny_py}\"; fi",
+  "replace": "else :; fi",
+  "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
+  "why": "a checkout without the generator would hand tier 4 nothing and report generate() as merely unproven"
+ },
+ {
   "id": "lib.parity-import-status",
   "target": "linux/scripts/06-packaging/verify-parity.sh",
   "find": ")\" || _pair_status=$?",
@@ -20958,8 +21110,8 @@
  {
   "id": "lib.vulkan-fixture-glslang-install-name",
   "target": "linux/scripts/tests/test-vulkan-target-decomposition.sh",
-  "find": "  printf '#!/bin/sh\\n' > \"${SDK}/aarch64/bin/$1\"",
-  "replace": "  printf '#!/bin/sh\\n' > \"${SDK}/aarch64/bin/glslang\"",
+  "find": "  t_write_exec_stub \"${SDK}/aarch64/bin/$1\"",
+  "replace": "  t_write_exec_stub \"${SDK}/aarch64/bin/glslang\"",
   "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
   "why": "forward and reverse alias cases must start with their different installed tool names"
  },
@@ -29531,8 +29683,8 @@
  {
   "id": "lib.sccache-drain-names-failed-writes",
   "target": "linux/scripts/01-core/sccache-s3-level.sh",
-  "find": "[ \"${failed:-0}\" -eq 0 ] || _sccache_s3_failure_reason",
-  "replace": ":",
+  "find": "        _sccache_s3_failure_reason\n        _sccache_s3_reupload_failed",
+  "replace": "        :\n        _sccache_s3_reupload_failed",
   "test": "bash linux/scripts/tests/test-sccache-s3-level.sh",
   "why": "a drain that only counts failed S3 writes left 9 of 12 failures unexplained"
  },
@@ -31097,7 +31249,7 @@
   "why": "a mandatory string array rejects an empty element, and x265.pc's blank line failed the FFmpeg branch of a chain"
  },
  {
-  "id": "mutations.pester-target-guard-fails",
+  "id": "gate-fixture.pester-target-guard-fails",
   "target": "linux/scripts/tests/test-mutation-pester-targets.sh",
   "find": "sys.exit(1 if found else 0)",
   "replace": "sys.exit(0)",
@@ -31167,5 +31319,317 @@
   "replace": "ARTIFACT_ID=\"${APP_ID}\"",
   "test": "bash linux/scripts/tests/test-python-app-package-licenses.sh",
   "why": "an AMD artifact must not collide with the CPU artifact"
+ },
+ {
+  "id": "lib.litert-ty-uv-cache-container-local",
+  "target": "windows/Dockerfile.media-builder",
+  "find": "$env:UV_CACHE_DIR = 'C:\\lw\\ty-uv-cache'",
+  "replace": "$env:UV_CACHE_DIR = 'C:\\bzl-repo-cache\\ty-uv-cache'",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.LitertUvCache.Tests.ps1 -ResultFile logs/code-quality/litert-ty-uv-cache-mutation.json",
+  "why": "uv's renames into a cache mount an earlier RUN filled fail with os error 3, which stopped the amd64 chain's LiteRT stage"
+ },
+ {
+  "id": "lib.tvm-rocm-llvm-targets-null-off-lane",
+  "target": "windows/scripts/build/Build-TvmFromSource.ps1",
+  "find": "    $tvmLlvmTargetsBuilt = $null",
+  "replace": "    $tvmLlvmTargetsUnset = $null",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmNullReturn.Tests.ps1 -ResultFile logs/code-quality/tvm-llvm-targets-mutation.json",
+  "why": "off the rocm lane the variable is never set, and strict mode stopped the amd64 chain's TVM build on its return"
+ },
+ {
+  "id": "lib.iree-host-tools-null-native",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "    $ireeHostBinDir = $null",
+  "replace": "    $ireeHostBinDirUnset = $null",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmNullReturn.Tests.ps1 -ResultFile logs/code-quality/iree-host-tools-mutation.json",
+  "why": "a native build never sets the host-tool directory, and strict mode would stop the media-tvm stage on its return"
+ },
+ {
+  "id": "python.packaging.cross-env-stays-off-the-syncs",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "VENV_SOURCES=\"$WORKSPACE_ROOT/.venv_packaging_sources\"\n",
+  "replace": "[ -z \"${CROSS_TARGET}\" ] || packaging_cross_env \"${CROSS_TARGET}\"\nVENV_SOURCES=\"$WORKSPACE_ROOT/.venv_packaging_sources\"\n",
+  "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
+  "why": "the venv syncs would build their sdists with the riscv64 compiler and the host linker, so a C++ extension such as line-profiler fails to link (run 40613187784) and a C one installs a riscv64 module into the amd64 venv"
+ },
+ {
+  "id": "python.packaging.cross-env-ends-with-the-wheel",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "    (\n      packaging_cross_env \"${CROSS_TARGET}\" || exit 1\n      _PYTHON_HOST_PLATFORM=\"${PYTHON_HOST_PLATFORM_TARGET}\" \"${venv}/bin/python\" -m pip wheel . --no-deps -w dist\n    )\n",
+  "replace": "    {\n      packaging_cross_env \"${CROSS_TARGET}\" || exit 1\n      _PYTHON_HOST_PLATFORM=\"${PYTHON_HOST_PLATFORM_TARGET}\" \"${venv}/bin/python\" -m pip wheel . --no-deps -w dist\n    }\n",
+  "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
+  "why": "the first wheel's cross environment would outlive it, so the binary venv's sync builds its sdists for riscv64 again"
+ },
+ {
+  "id": "windows-lane.crash-dump-stays-off-non-windows",
+  "target": "cmake/CrashDump.cmake",
+  "find": "  if(NOT WIN32)\n    return()\n  endif()\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cmake-crash-dump.sh",
+  "why": "every Linux and macOS configure would warn about a missing Windows toolchain"
+ },
+ {
+  "id": "windows-lane.crash-dump-needs-the-msvc-driver",
+  "target": "cmake/CrashDump.cmake",
+  "find": "  if(NOT MSVC)\n",
+  "replace": "  if(FALSE)\n",
+  "test": "bash linux/scripts/tests/test-cmake-crash-dump.sh",
+  "why": "a MinGW build would compile __try and dbghelp code its compiler cannot build, and fail far from this call"
+ },
+ {
+  "id": "windows-lane.crash-dump-compiles-into-the-target",
+  "target": "cmake/CrashDump.cmake",
+  "find": "  target_sources(\"${target}\" PRIVATE \"${_KATAGLYPHIS_CRASH_DUMP_SOURCE}\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cmake-crash-dump.sh",
+  "why": "the call would look wired while the executable carries no handler, so a crash leaves no dump again"
+ },
+ {
+  "id": "windows-lane.crash-dump-keeps-consumer-warnings-off",
+  "target": "cmake/CrashDump.cmake",
+  "find": "    PROPERTIES COMPILE_OPTIONS \"/w\"\n               SKIP_LINTING ON\n",
+  "replace": "    PROPERTIES SKIP_LINTING ON\n",
+  "test": "bash linux/scripts/tests/test-cmake-crash-dump.sh",
+  "why": "a consumer's /WX and its warning set would fail its build on the hub's handler"
+ },
+ {
+  "id": "windows-lane.crash-dump-release-writes-a-pdb",
+  "target": "cmake/CrashDump.cmake",
+  "find": "$<$<CONFIG:Release,MinSizeRel>:/DEBUG;/OPT:REF;/OPT:ICF>",
+  "replace": "$<$<CONFIG:Release,MinSizeRel>:/OPT:REF;/OPT:ICF>",
+  "test": "bash linux/scripts/tests/test-cmake-crash-dump.sh",
+  "why": "a Release crash would print module+RVA frames that no PDB can name"
+ },
+ {
+  "id": "windows-lane.crash-dump-executables-only",
+  "target": "cmake/CrashDump.cmake",
+  "find": "  if(NOT\n     _type\n     STREQUAL\n     \"EXECUTABLE\")\n",
+  "replace": "  if(FALSE)\n",
+  "test": "bash linux/scripts/tests/test-cmake-crash-dump.sh",
+  "why": "a library would take the handler's static initializer into every executable that links it"
+ },
+ {
+  "id": "consumer-inventory.submodule-cycle-is-refused",
+  "target": "linux/scripts/verify_submodule_cycles.py",
+  "find": "            if repo_key(url) == forbidden:\n",
+  "replace": "            if False:\n",
+  "test": "bash linux/scripts/tests/test-submodule-cycles.sh",
+  "why": "a family repo that vendors the hub again passes, and every recursive clone loops as smile and awesome-beamer made it"
+ },
+ {
+  "id": "consumer-inventory.submodule-cycle-walk-recurses",
+  "target": "linux/scripts/verify_submodule_cycles.py",
+  "find": "            pending.append((child, f\"{shown}/\"))\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-submodule-cycles.sh",
+  "why": "only the hub's own .gitmodules is read, and the cycle sat two levels down"
+ },
+ {
+  "id": "consumer-inventory.submodule-cycle-unread-fails",
+  "target": "linux/scripts/verify_submodule_cycles.py",
+  "find": "    if cycles or unchecked:\n",
+  "replace": "    if cycles:\n",
+  "test": "bash linux/scripts/tests/test-submodule-cycles.sh",
+  "why": "a checkout without the nested submodules reads nothing below them and passes vacuously"
+ },
+ {
+  "id": "consumer-inventory.submodule-cycle-url-spellings",
+  "target": "linux/scripts/verify_submodule_cycles.py",
+  "find": "    return (\n        f\"{match.group(1)}/{match.group(2)}\".lower() if match else url.strip().lower()\n    )\n",
+  "replace": "    return f\"{match.group(1)}/{match.group(2)}\" if match else url.strip()\n",
+  "test": "bash linux/scripts/tests/test-submodule-cycles.sh",
+  "why": "an ssh or lowercase spelling of the hub's URL would slip past the comparison"
+ },
+ {
+  "id": "lib.smoke-torchapp-census-passed",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": " -OrtCensusPath \"$torchAppCensus\" -Mode verify",
+  "replace": " -Mode verify",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-passed.json",
+  "why": "the gate mounts windows/scripts alone, so the verifier looked for the census beside itself and the amd64 smoke gate failed"
+ },
+ {
+  "id": "lib.smoke-torchapp-census-image-copy",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "$torchAppCensus = Resolve-SmokeCompanion -ScriptRoot $PSScriptRoot -Name 'ort-venv-census.py'",
+  "replace": "$torchAppCensus = Join-Path $PSScriptRoot 'ort-venv-census.py'",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-image-copy.json",
+  "why": "only the image's C:\\temp\\scripts copy exists in the gate, so a mount-only path fails every amd64 smoke run"
+ },
+ {
+  "id": "lib.smoke-torchapp-verify-evidence",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "Where-Object { $_.Trim() } | Select-Object -Last 3) }",
+  "replace": "Where-Object { $_.Trim() } | Select-Object -First 3) }",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-verify-evidence.json",
+  "why": "the verifier's error is its last output, and a message without it hid a missing census behind a bare failed"
+ },
+ {
+  "id": "lib.smoke-cmake-build-binds-its-directory",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "Assert-CmakeSmokeBuild -tmpDir2 $tmpDir2",
+  "replace": "Assert-CmakeSmokeBuild -Directory $tmpDir2",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-cmake-build-binds.json",
+  "why": "an undeclared name left the CMake smoke's directory empty, so section 15 ran no assertion and the amd64 smoke gate failed its floor"
+ },
+ {
+  "id": "lib.smoke-functions-at-script-level",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "function Invoke-SmokeSection10 {",
+  "replace": "function Invoke-SmokeSection10 { function Get-NestedSmokeProbe { }",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-functions-at-script-level.json",
+  "why": "a missing brace nested the OpenCV link smoke inside the CUDA helper, so section 10 called a function that did not exist"
+ },
+ {
+  "id": "lib.cpython-pip-output-off-the-return-value",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "-m pip $argLine 2>&1\" | Out-Host",
+  "replace": "-m pip $argLine 2>&1\"",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Pip.Tests.ps1 -ResultFile logs/code-quality/cpython-pip-output.json",
+  "why": "pip's lines turned the TVM python plan into an array, and the arm64 media-tvm stage died on a missing PythonModule property"
+ },
+ {
+  "id": "lib.lint-scriptblock-scope-leak-reads",
+  "target": "windows/scripts/modules/WindowsLint.Common.psm1",
+  "find": "$_.Extent.StartOffset -gt $command.Extent.EndOffset -and $leaked",
+  "replace": "$false -and $leaked",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Lint.Diagnostics.Tests.ps1 -ResultFile logs/code-quality/lint-scope-leak-reads.json",
+  "why": "the VVL build read $vvlPrefix after the Invoke-WithProcessEnvironment block that alone set it, and the arm64 merge died after 40 minutes"
+ },
+ {
+  "id": "lib.lint-scriptblock-scope-leak-dot-sourcing",
+  "target": "windows/scripts/modules/WindowsLint.Common.psm1",
+  "find": "if ($dotSourcing -contains $command.GetCommandName() -or $command.InvocationOperator -eq 'Dot') { continue }",
+  "replace": "if ($command.InvocationOperator -eq 'Dot') { continue }",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Lint.Diagnostics.Tests.ps1 -ResultFile logs/code-quality/lint-scope-leak-dot-sourcing.json",
+  "why": "ForEach-Object runs its block in the caller's scope, so flagging it would bury the real findings"
+ },
+ {
+  "id": "lib.lint-scriptblock-scope-leak-same-scope",
+  "target": "windows/scripts/modules/WindowsLint.Common.psm1",
+  "find": "-and (Get-LintEnclosingScope $_) -eq $scope } |",
+  "replace": "} |",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Lint.Diagnostics.Tests.ps1 -ResultFile logs/code-quality/lint-scope-leak-same-scope.json",
+  "why": "a later block that assigns the name itself reads its own variable, which flooded the first scan with 282 false findings"
+ },
+ {
+  "id": "lib.resource-sampler-without-vmmem",
+  "target": "windows/scripts/build/Build-ResourceSampler.ps1",
+  "find": "$vmmemGB = if ($vmmemProcs) {",
+  "replace": "$vmmemGB = if ($true) {",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildDriver.ResourceSampleRow.Tests.ps1 -ResultFile logs/code-quality/resource-sampler-without-vmmem.json",
+  "why": "with no WSL VM running every sample threw on the empty vmmem sum, and whole chains left only sample-error rows"
+ },
+ {
+  "id": "lib.bind-target-base-lacks",
+  "target": "windows/Dockerfile.base",
+  "find": "     windows\\scripts\\modules\\WindowsContainerImage.Common.psm1 `",
+  "replace": "",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.MountStub.Tests.ps1 -ResultFile logs/code-quality/bind-target-base-lacks.json",
+  "why": "the nvidia sdk bind-mounted a module base lacked, and the directory it left made the final module COPY fail after five hours of chain"
+ },
+ {
+  "id": "lib.nvidia-bootstrap-copied-not-mounted",
+  "target": "windows/Dockerfile.nvidia",
+  "find": "RUN & 'C:\\temp\\scripts\\Install-Cuda.ps1'",
+  "replace": "RUN --mount=type=bind,source=scripts/modules/WindowsContainerImage.Bootstrap.psm1,target=C:\\temp\\scripts\\modules\\WindowsContainerImage.Bootstrap.psm1 & 'C:\\temp\\scripts\\Install-Cuda.ps1'",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only WindowsContainerImage.Bootstrap.Tests.ps1 -ResultFile logs/code-quality/nvidia-bootstrap-copied.json",
+  "why": "the CUDA layer's bootstrap mount left a directory at the module path, and final's COPY windows\\scripts\\modules failed on it"
+ },
+ {
+  "id": "release.collect-lone-upload",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "  if [ -n \"$LONE\" ] && [ ! -d \"${artifacts}/${LONE}\" ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a lone upload is extracted without its folder, so its files would never be collected"
+ },
+ {
+  "id": "release.collect-loose-files-fail",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "      die \"files lie directly in ${artifacts}, outside any upload: name the lone upload with --lone-upload\"",
+  "replace": "      true",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "files outside any upload folder would be dropped from the release without a word"
+ },
+ {
+  "id": "release.publish-passes-lone-upload",
+  "target": ".github/workflows/release-publish.yml",
+  "find": "then lone=(--lone-upload \"${ARTIFACTS}\"); fi",
+  "replace": "then lone=(); fi",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a release whose artifacts input names one upload would collect nothing from it"
+ },
+ {
+  "id": "lib.tvm-minimal-llvm-ninja-off-the-return-value",
+  "target": "windows/scripts/build/Build-TvmFromSource.ps1",
+  "find": "-LogFile $llvmBuildLog -Install -InstallConfig 'Release' | Out-Host",
+  "replace": "-LogFile $llvmBuildLog -Install -InstallConfig 'Release'",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.NinjaReturnLeak.Tests.ps1 -ResultFile logs/code-quality/tvm-minimal-llvm-ninja.json",
+  "why": "the ROCm TVM branch returned ninja's whole log as its llvm-config path, and cmd.exe refused the resulting command line"
+ },
+ {
+  "id": "lib.iree-rocm-bitcode-requires-both-libs",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "$missing = @('ocml.bc', 'ockl.bc' | Where-Object",
+  "replace": "$missing = @('ocml.bc' | Where-Object",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeRocmBitcode.Tests.ps1 -ResultFile logs/code-quality/iree-rocm-bitcode-both.json",
+  "why": "IREE's rocm target links ocml and ockl into every HIP executable; a layer without ockl would fail only when a model compiles"
+ },
+ {
+  "id": "lib.iree-rocm-bitcode-option-still-exists",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "-notmatch 'set\\(IREE_TARGET_BACKEND_ROCM_DEVICE_BC_PATH\\s'",
+  "replace": "-notmatch 'set\\('",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeRocmBitcode.Tests.ps1 -ResultFile logs/code-quality/iree-rocm-bitcode-option.json",
+  "why": "an IREE bump that drops the local-bitcode option would silently fall back to the deleted shark-infra download"
+ },
+ {
+  "id": "lib.torch-rocm-hip-launcher",
+  "target": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+  "find": "foreach ($lang in 'C', 'CXX', 'HIP')",
+  "replace": "foreach ($lang in 'C', 'CXX')",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Torch.RocmSourceBuild.Tests.ps1 -ResultFile logs/code-quality/torch-rocm-hip-launcher.json",
+  "why": "without the HIP launcher the 262 ATen HIP kernels of the ROCm torch build compiled uncached on every run"
+ },
+ {
+  "id": "lib.litert-eigen-prefetch-retries",
+  "target": "windows/scripts/build/Build-LitertFromSource.ps1",
+  "find": "[void](Invoke-GitClone -RepoUrl $repo -Tag $commit -SourceDir $Destination -MaxAttempts $MaxAttempts)",
+  "replace": "[void](Invoke-GitClone -RepoUrl $repo -Tag $commit -SourceDir $Destination)",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/litert-eigen-retries.json",
+  "why": "GitLab shed load for minutes on 2026-10-29 and CMake's own three quick clone tries failed the LiteRT build"
+ },
+ {
+  "id": "lib.litert-eigen-host-pass-override",
+  "target": "windows/scripts/build/Build-LitertFromSource.ps1",
+  "find": "'-DTFLITE_ENABLE_BENCHMARK_MODEL=OFF', $eigenSourceArg",
+  "replace": "'-DTFLITE_ENABLE_BENCHMARK_MODEL=OFF'",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/litert-eigen-host-pass.json",
+  "why": "the arm64 lane's host flatc pass configures the same tflite tree and would clone Eigen from GitLab on its own"
+ },
+ {
+  "id": "lib.hailort-externals-retry-budget",
+  "target": "windows/scripts/build/Build-HailortFromSource.ps1",
+  "find": "-SourceDir $dir -MaxAttempts ($ext['MaxAttempts'] ?? 3) | Out-Null",
+  "replace": "-SourceDir $dir | Out-Null",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/hailort-externals-retries.json",
+  "why": "HailoRT's Eigen external clones from the same GitLab, and three tries within 30 s failed the media-core hailo branch on 2026-10-29"
+ },
+ {
+  "id": "lib.hailort-gitlab-external-budget",
+  "target": "windows/scripts/build/Build-HailortFromSource.ps1",
+  "find": "Commit = '3147391d946bb4b6c68edd901f2add6ac1f31f8c'; MaxAttempts = 8 }",
+  "replace": "Commit = '3147391d946bb4b6c68edd901f2add6ac1f31f8c' }",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/hailort-gitlab-budget.json",
+  "why": "only the GitLab-hosted Eigen external needs minutes of retries; without its row's budget it falls back to three tries"
+ },
+ {
+  "id": "vulkan.gcc-runtime-refuses-foreign-arch",
+  "target": "linux/scripts/02-toolchain/vulkan.sh",
+  "find": "  case \"$(elf_machine_name \"$(readlink -f \"$2\")\" 2>/dev/null || true)\" in *\"${want}\"*) return 0 ;; esac\n  return 1",
+  "replace": "  return 0",
+  "test": "bash linux/scripts/tests/test-vulkan-gcc-runtime-links.sh",
+  "why": "the sdk stage linked the host's x86-64 libstdc++ into /usr/lib/aarch64-linux-gnu until the ELF machine check refused it"
  }
 ]

@@ -138,6 +138,10 @@ t_assert_contains "$(_diag_run "printf ''" "org.freedesktop.Platform.nosuch//1.0
 t_assert_contains "$(t_fn_src "${SUBJECT}" install_flatpak_runtime)" '_flatpak_diagnose_ref "${ref}"' \
   "a diagnosis nothing invokes leaves the next run with the same one-line WARN"
 
+t_case "the install takes no host-dependent related refs"
+t_assert_contains "$(t_fn_src "${SUBJECT}" install_flatpak_runtime)" 'flatpak install -y --noninteractive --no-related flathub "${ref}"' \
+  "without --no-related the build host's GPU picks extensions: amd.amf (a foreign ORT inside libamfrt64, census FAIL 2026-10-28) or VAAPI.nvidia"
+
 t_case "an arch Flathub does not build for is skipped, not retried"
 _ifr="$(t_fn_src "${SUBJECT}" install_flatpak_runtime)"
 t_assert_contains "${_ifr}" "x86_64|aarch64" \

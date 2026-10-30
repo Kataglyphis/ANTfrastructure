@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.14"
 
 [[package]]
@@ -495,7 +495,6 @@ wheels = [
 
 [[package]]
 name = "sphinx-kataglyphis-theme"
-version = "0.1.0"
 source = { editable = "../third_party/DocumANTation/sphinx-kataglyphis-theme" }
 dependencies = [
     { name = "myst-parser" },

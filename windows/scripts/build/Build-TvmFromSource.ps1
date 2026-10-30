@@ -548,8 +548,9 @@ function Install-TvmMinimalLlvm {
         -BuildDir (Join-Path $llvmDevRoot 'build') -InstallPrefix $llvmInstall `
         -ExtraArgs $llvmCmakeArgs | Out-Null
     $llvmBuildLog = Get-PersistentBuildLogPath -Name 'llvm-minimal-build.log' -FallbackDir (Join-Path $llvmDevRoot 'build')
+    # ninja's lines on the output stream would become part of the returned llvm-config path.
     Invoke-NinjaBuildWithRetry -BuildDir (Join-Path $llvmDevRoot 'build') -RetryJobs 1 -MemGBPerJob 2 `
-        -LogFile $llvmBuildLog -Install -InstallConfig 'Release'
+        -LogFile $llvmBuildLog -Install -InstallConfig 'Release' | Out-Host
     $llvmConfig = Join-Path $llvmInstall 'bin\llvm-config.exe'
     if (-not (Test-Path $llvmConfig)) {
         throw ("TVM: llvm-config.exe missing after the minimal LLVM build+install ($llvmInstall). " +
@@ -593,6 +594,7 @@ function Initialize-TvmRocmSource {
 function Get-TvmRocmLlvmTargets {
     param([object]$Plan, [string]$LlvmConfig)
 
+    $tvmLlvmTargetsBuilt = $null
     if ($Plan.OnLane) {
         # Read back, never assumed: the AMDGPU gate and the marker describe the LLVM TVM really links.
         $tvmLlvmTargetsBuilt = ConvertTo-TvmLlvmTargetString -TargetsBuilt (Get-TvmLlvmTargetsBuilt -LlvmConfig $LlvmConfig)

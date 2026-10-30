@@ -51,6 +51,22 @@ riscv64_cross_pkg_config_libdir() {
   printf '%s' ":${s}/usr/lib/riscv64-linux-gnu/pkgconfig:${s}/usr/share/pkgconfig"
 }
 
+# riscv64_cross_strip_host_dirs <list>: the colon list without /opt/*/lib/<triplet> entries of another arch.
+riscv64_cross_strip_host_dirs() {
+  local entry
+  local -a parts kept=()
+  IFS=':' read -r -a parts <<< "$1"
+  for entry in "${parts[@]}"; do
+    case "${entry}" in
+      /opt/*/lib/riscv64-linux-gnu | /opt/*/lib/riscv64-linux-gnu/*) ;;
+      /opt/*/lib/*-linux-gnu | /opt/*/lib/*-linux-gnu/*) continue ;;
+    esac
+    kept+=("${entry}")
+  done
+  local IFS=':'
+  printf '%s' "${kept[*]}"
+}
+
 # riscv64_cross_env [bin-dir]: exports the compilers, Cargo, pkg-config, CMake and QEMU settings; fails when riscv64 ELF cannot run.
 riscv64_cross_env() {
   local sysroot="${RISCV64_SYSROOT:-/opt/riscv64-sysroot}" bin="${1:-${TMPDIR:-/tmp}/riscv64-cross-bin}" llvm
@@ -85,6 +101,11 @@ riscv64_cross_env() {
   export QEMU_CPU="${QEMU_CPU:-${RISCV64_CROSS_QEMU_CPU}}"
   # execve is not remapped, so a forked scanner would be the amd64 one.
   export GST_REGISTRY_FORK=no
+  # The sysroot has no host-triplet dir, so QEMU would open the amd64 one; lib/multiarch already reaches riscv64.
+  local var
+  for var in GST_PLUGIN_PATH GI_TYPELIB_PATH LD_LIBRARY_PATH; do
+    if [ -n "${!var:-}" ]; then export "${var}=$(riscv64_cross_strip_host_dirs "${!var}")"; fi
+  done
 
   if ! "${sysroot}/lib/ld-linux-riscv64-lp64d.so.1" --version >/dev/null 2>&1; then
     warn "riscv64-cross: riscv64 ELF does not execute: register QEMU binfmt with the F flag first (setup-riscv64-cross action)"

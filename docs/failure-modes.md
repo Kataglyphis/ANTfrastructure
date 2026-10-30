@@ -161,6 +161,7 @@ Two neighbours, so you land on the right page:
 - [`webrtcbin`'s action signals never reply; `ffi_prep_cif` returns `FFI_BAD_TYPEDEF`](#webrtcbins-action-signals-never-reply-ffi_prep_cif-returns-ffi_bad_typedef)
 - [`dtlsconnection ... unexpected eof while reading` at the first DTLS step](#dtlsconnection--unexpected-eof-while-reading-at-the-first-dtls-step)
 - [`static_assert failed: 'unexpected size'` from `std::find` under clang-cl](#static_assert-failed-unexpected-size-from-stdfind-under-clang-cl)
+- [A Windows test exits `0xC0000005` with no gtest line and no dump](#a-windows-test-exits-0xc0000005-with-no-gtest-line-and-no-dump)
 
 
 ---
@@ -1777,7 +1778,23 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Cause.** **CHECK `du -v` FOR `Shared: true` FIRST — that is almost always the answer.** `Shared` records are pinned by containerd IMAGE TAGS and NO prune flag can take them; prune only ever gets the `Private` slice, and `Reclaimable` describes the LEASE state, not what prune will hand back. **`reservedSpace` is a red herring for this symptom.** Otherwise: refs pinned by BUILD HISTORY (every record incl. failed attempts pins its refs indefinitely) and/or by named `bk-*` image generations
 
-**Fix.** In order: **(1)** `buildctl du -v` and look for `Shared: true` — those records are pinned by containerd image tags and no prune flag can take them, so the lever is an admin `nerdctl --namespace buildkit rmi` of dead stage tags. **(2)** Non-admin and safe mid-build: `buildctl prune --free-storage <MB>` — a minimum-free *target*, not an amount to delete. **(3)** `prune-histories` second, never first. **(4)** Look for a superseded lineage, the big hidden reclaim. The full decision procedure with every measurement: [`windows-build-lanes.md`](windows-build-lanes.md#store-gc).
+**Fix.** In order: **(1)** `buildctl du -v` and look for `Shared: true` — those records are pinned by containerd image tags and no prune flag can take them, so the lever is an admin `nerdctl --namespace buildkit rmi` of dead stage tags. **(2)** Non-admin: `buildctl prune --free-storage <MB>` — a minimum-free *target*, not an amount to delete; it takes the least recently used records first, which can be the chain's own base (next entry). **(3)** `prune-histories` second, never first. **(4)** Look for a superseded lineage, the big hidden reclaim. The full decision procedure with every measurement: [`windows-build-lanes.md`](windows-build-lanes.md#store-gc).
+
+### After a `buildctl prune`, the next chain rebuilds `Dockerfile.base` from step 2
+
+**Symptom.** A chain that was fully cached minutes earlier rebuilds `Dockerfile.base` from step 2/17 (about 65 min), every later stage misses, and free disk drops by 80+ GB until a stage gate refuses with `below the 40 GB floor`.
+
+**Cause.** On this host any `buildctl prune` drops the solver's cache keys, whichever records it removes; the records themselves survive. On 2026-10-29 a prune of eleven unrelated records by ID was followed by a base rebuild while base's records were all still present, and after a second prune by ID even the step 2-4 results of a run cancelled minutes earlier missed. Every superseded generation then stays on disk without a key that could reach it (three generations, 420 GB, before the cleanup). The rebuilt base reproduces its image digest (`dce07030…` twice), so the miss is not a changed input.
+
+**Fix.** Treat every `buildctl prune` as a full chain rebuild (about 65 min for base alone) and reclaim only when that cost is accepted, never between the stages of a warm chain. When reclaiming, take everything superseded in one go: `inUse` there is an in-memory reference that `Restart-Service buildkitd` clears between runs, after which the old generations' records prune leaves first with `buildctl prune --filter id==<id>`, repeating until a pass removes nothing. Keep the current generation, which the `bk-*` tags hold; local copies of pushed tags go by admin `nerdctl --namespace buildkit rmi`, Stevedore's nerdctl by full path (next entry). A cache hit does not refresh `lastUsedAt`, so `--free-storage` and `--keep-duration` pick base's records first on a warm chain.
+
+### `nerdctl --namespace buildkit images` lists nothing in an admin shell
+
+**Symptom.** `nerdctl namespace ls` shows `k8s.io` and `rancher-desktop-extensions`, the `buildkit` namespace has 0 images, and `rmi` of a `bk-*` tag fails `no such image`.
+
+**Cause.** Rancher Desktop's `nerdctl.exe` precedes Stevedore's on `PATH` and talks to Rancher's Linux VM, not the Windows containerd that holds the `bk-*` images.
+
+**Fix.** Call `& 'C:\Program Files\Stevedore\bin\nerdctl.exe' --namespace buildkit ...`; `Get-Command nerdctl -All` shows the order. Its image list prints `local/kataglyphis:bk-*` without the `docker.io/` prefix, so match tags on that form.
 
 ### `buildctl` local export dies `file already closed` on a Windows rootfs
 
@@ -2376,6 +2393,19 @@ hit the transient failure.
 `CMakeLists.txt` before each attempt. A retry that inherits the state that broke
 the previous attempt is not a retry.
 
+### `GitLab is currently unable to handle this request due to load` clones Eigen
+
+The Windows media-litert and media-core hailo branches failed on 2026-10-29 with
+`Failed to clone repository` after `Had to git clone more than once: 3 times`.
+Eigen lives only on GitLab, and GitLab shed load for minutes. CMake's
+`ExternalProject` retries three times within a second.
+
+`Build-LitertFromSource.ps1` now clones the commit tflite's `eigen.cmake` pins
+through `Invoke-GitClone -MaxAttempts 8` (about three minutes of backoff) and
+passes `FETCHCONTENT_SOURCE_DIR_EIGEN` to both configure passes. HailoRT's
+externals take the same budget. A longer outage still fails the build; resume
+the chain from the media stage.
+
 ### RVV changed what the optimizer can prove
 
 media-riscv64 failed on 2026-09-02, after the RVA23 switch, in vvdec:
@@ -2438,6 +2468,26 @@ yet in a VC Tools release the image ships.
 **Fix.** `find_if` with a predicate, which is a plain loop; or a hand-written `operator==`,
 which is not trivially comparable. Drop the workaround once the image's VC Tools carry the
 fix.
+
+### A Windows test exits `0xC0000005` with no gtest line and no dump
+
+**Symptom.** A GoogleTest executable on a Windows runner ends with exit code `-1073741819`
+(`0xC0000005`, access violation) and prints no `[  FAILED  ]` line; a rerun often passes.
+BeschleunigerBallett's arm64 lavapipe suites showed it from 2026-10-16 (#97), and a WER
+`LocalDumps` key set in the job left no dump.
+
+**Cause.** gtest catches an SEH exception on the main thread and reports it as a failure, so
+a raw exit code means another thread crashed: a worker of the engine or of the Vulkan
+driver. GitHub's runners queue WER reports (`ForceQueue=1`) and set AeDebug to `-`, so
+`LocalDumps` writes nothing there.
+
+**Fix.** Link the hub's handler with `kataglyphis_add_crash_dump(<exe>)`
+([`cmake/README.md`](../cmake/README.md#what-is-here)) and set `KATAGLYPHIS_CRASH_DUMP_DIR` for
+the test step. The crashing process then prints the exception, the faulting thread's frames
+as `module+0xRVA` and the path of its minidump on stderr, and still exits with the original
+code. Upload the dump with the executable's PDB; `llvm-symbolizer --obj=<exe> 0x<base+RVA>`
+names a frame in that executable. On arm64 lavapipe, suspect `LP_NATIVE_VECTOR_WIDTH=256` first: a
+frame with no module is llvmpipe's JIT code (`BACKLOG.md` CON44).
 
 ### A regex patch inserts the same header after every include
 

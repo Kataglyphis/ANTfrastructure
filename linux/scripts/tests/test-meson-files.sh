@@ -47,6 +47,30 @@ t_assert_contains "${out}" "strip = '/host/strip'"
 t_assert_eq /host/cc "$(_meson_native_tool /usr/bin gcc cc)"
 t_assert_eq /host/c++ "$(_meson_native_tool /usr/bin g++ c++)"
 
+t_case "with a compiler cache the compilers become ['launcher', 'cc'] lists, which Meson runs as one command"
+compiler_cache_launcher() { printf '/opt/scripts/core/sccache-launcher.sh'; }
+ensure_meson_cross_file "${WORK}/cross-cached.ini"
+out="$(cat "${MESON_CROSS_FILE}")"
+t_assert_contains "${out}" "c = ['/opt/scripts/core/sccache-launcher.sh', 'target-cc']" "GStreamer's C compiles bypassed sccache until 2026-10-28: Meson ignores CMAKE_*_COMPILER_LAUNCHER"
+t_assert_contains "${out}" "cpp = ['/opt/scripts/core/sccache-launcher.sh', 'target-cxx']"
+t_assert_contains "${out}" "rust_ld = 'target-cc'" "rustc links through the plain cc: Meson would otherwise pass the launcher as -C linker= and rustc's link step fails (2026-10-29)"
+t_assert_contains "${out}" "ar = 'target-ar'" "only the compilers are wrapped"
+ensure_meson_native_file "${WORK}/native-cached.ini"
+t_assert_contains "$(cat "${MESON_NATIVE_FILE}")" "c = ['/opt/scripts/core/sccache-launcher.sh', '${WORK}/native/native-cc']" "the host half too"
+unset -f compiler_cache_launcher
+unset MESON_CROSS_FILE MESON_NATIVE_FILE
+
+t_case "a NATIVE build gets a native file with the cached compilers, and none without a cache"
+cross_build_enabled() { return 1; }
+flags=(); append_meson_native_flags flags
+t_assert_eq "" "${flags[*]:-}" "no launcher, no file: Meson takes CC/CXX as before"
+compiler_cache_launcher() { printf '/opt/scripts/core/sccache-launcher.sh'; }
+flags=(); CC=cc CXX=c++ TMPDIR="${WORK}" append_meson_native_flags flags
+t_assert_eq "--native-file ${WORK}/meson-native-cache.ini" "${flags[*]:-}" "GStreamer and libcamera call this in native mode too"
+t_assert_contains "$(cat "${WORK}/meson-native-cache.ini")" "c = ['/opt/scripts/core/sccache-launcher.sh', '$(command -v cc)']" "the resolved compiler behind the launcher"
+unset -f compiler_cache_launcher
+cross_build_enabled() { return 0; }
+
 t_case "a resolver that succeeds with an empty result does not try its alternate"
 resolve_build_gcc_tool() { if [ "$1" = gcc ]; then return 0; fi; return 1; }
 t_assert_eq "" "$(_meson_native_tool /usr/bin gcc cc)"

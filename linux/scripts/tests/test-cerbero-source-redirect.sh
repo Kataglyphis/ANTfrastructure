@@ -38,5 +38,7 @@ t_assert_contains "${_out}" "pkg-config mirror override"
 
 t_case "the build redirects spandsp before cerbero fetches"
 t_assert_contains "$(cat "${SRC}")" "cerbero_redirect_source_host SPANDSP-MIRROR https://www.soft-switch.org/downloads/spandsp/ https://gstreamer.freedesktop.org/src/mirror/"
+t_assert_contains "$(cat "${SRC}")" "cerbero_redirect_source_host ZBAR-MIRROR https://linuxtv.org/downloads/zbar/ https://web.archive.org/web/2025id_/https://linuxtv.org/downloads/zbar/" \
+  "linuxtv.org sits behind a JavaScript bot challenge since 2026-10-29 (HTML for curl, wget and cerbero alike); the Wayback id_ view keeps the recipe's checksum 78ae427a"
 
 t_summary

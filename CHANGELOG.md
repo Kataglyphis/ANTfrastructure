@@ -68,6 +68,437 @@
   distribution. ORT wheel licence staging reads native members in bounded chunks and supports
   provider libraries above 256 MiB, with a 1 GiB per-library limit.
 
+## 2026-10-30 — language models in every repository (milestone 1)
+
+- `docs/language-ai.md` marks LAI-A1 to A3, O1 to O3, P1, P2 and F1 to F3 done: AccelerANTgine's
+  `kataglyphis.text_generation` with its C API, binding and CLI; OxidANT's `crates/text` with the CLI's
+  `chat` and `embed` and the Flutter bridge; OrchestrANT's engine, `orchestrant-chat` and
+  `orchestrant-serve`; ANThology's chat widgets; OmniAccelerANT's AI Playground. Each suite decodes the
+  tiny GenAI model, and each lane that carries GenAI requires it.
+- The contract states that the time to the first token includes the prefill; all three engines had
+  started their clock after GenAI took the prompt in. `seed`, `json_schema` and GenAI embeddings are
+  in no binding yet.
+
+## 2026-10-30 — `chain-genai` names OrchestrANT's GenAI server
+
+- `linux/llm-stack/backends.json` gains `chain-genai` at `http://127.0.0.1:18200`, the default
+  address of OrchestrANT's `orchestrant-serve`, an OpenAI-compatible server over the chain's ONNX
+  Runtime GenAI (LAI-P1). `orchestrant-bench --backend chain-genai` measures the family's own engine
+  next to `ollama` and the `geniex-*` lanes (LAI-P2).
+
+## 2026-10-30 — the tiny GenAI model holds 512 tokens
+
+- `tiny-genai-model.py` writes a context of 512 tokens instead of 64, so a binding test can decode
+  from the highest UTF-8 continuation byte to the end token (65 tokens); a suite case and the
+  `lib.tiny-genai-context` mutation pin it.
+
+## 2026-10-30 — the first language model is released (LAI-M4)
+
+- ModelANT published `smollm2_135m_instruct-v1`: the GenAI model for the CPU as a `.tar.xz` and a
+  `.deb`, with its contract. `language-ai.md` § Fetching a released model shows the `llm.lock`
+  line; the hub fetcher's `--extract` was run against the release itself.
+
+## 2026-10-30 — the image smoke decodes the tiny GenAI model (LAI-H5)
+
+- `check_genai_binding` hands `lib/tiny-genai-model.py` into the container as `GENAI_TINY_MODEL_PY`,
+  and the GenAI smoke's tier 4 decodes that model and requires `abc` to become `defg` token for
+  token, instead of reporting `generate()` as UNPROVEN. On the published amd64 image every tier is
+  now PROVEN; arm64 and riscv64 follow at the next chain. A checkout without the generator fails
+  the check. Five new suite cases and five `lib.genai-smoke-*` mutations prove the branch.
+
+## 2026-10-30 — ModelANT builds GenAI models (LAI-M2, LAI-M3)
+
+- ModelANT exports `smollm2_135m_instruct` with the image's chain GenAI builder, checks it against
+  `contracts/text-generation-v1.json` ("The capital of France is Paris.") and packs a reproducible
+  `.tar.xz` and `.deb`; the hub fetcher's `--extract` unpacks the archive. `language-ai.md` records
+  the status; the release itself waits for ModelANT's release workflow (LAI-M4).
+
+## 2026-10-30 — ModelANT accepts Llama and Gemma (LAI-M1)
+
+- ModelANT's `license_policy.py` accepts the Llama and Gemma community licences with their
+  recorded obligations; `repository-family.md` and `language-ai.md` say so.
+
+## 2026-10-30 — a tiny GenAI model for every binding test (LAI-H4)
+
+- `linux/scripts/lib/tiny-genai-model.py` writes a 270 KB GenAI model with the standard library:
+  each byte token predicts its successor, so greedy decoding of `abc` is `defg`, and
+  `fixture.json` is the oracle. `--check` decodes it through the installed wheel. Proven on the
+  published amd64 image through the Python wheel and the C API; `test-tiny-genai-model.sh` reads
+  the bytes back on any host, and four `lib.tiny-genai-*` mutations prove it can fail.
+
+## 2026-10-30 — GenAI's headers are part of the image contract (LAI-H1)
+
+- The media stage's `onnxruntime-genai` artifact check requires `libonnxruntime-genai.so`,
+  `ort_genai.h` and `ort_genai_c.h`; a wheel alone no longer passes. `60-build-genai.sh` copies
+  both headers through `genai_copy_headers`, which stops the build on a missing, empty or
+  uncopyable header instead of `|| true`. `test-genai-artifact-gate.sh` and five `lib.genai-*`
+  mutations prove both halves. The android stages of all three arches and the published amd64
+  image already carry the three files, so no lane changes behaviour.
+
+## 2026-10-30 — language AI: the plan and the contract
+
+- `docs/language-ai.md` records the owner's goal and decisions: chain GenAI is the one local
+  engine, ModelANT ships model packages, Llama and Gemma are allowed with their obligations, and
+  chat widgets live in ANThology. It defines the text contract every binding offers, the model
+  search order and the `LAI-*` roadmap; `BACKLOG.md` carries the hub's items.
+- `t_write_exec_stub` ends on `chmod` with an explicit failure return, so the trailing-conditional
+  gate is green again.
+- The `lib.vulkan-fixture-glslang-install-name` mutation finds the helper call that replaced
+  its `printf`, so mutation shard 3 proves it again instead of reporting it stale.
+
+## 2026-10-30 — one harness helper for executable test stubs
+
+- `t_write_exec_stub` in `test-harness.sh` writes an executable stub; the Vulkan
+  target-decomposition suite's four `printf`/`chmod` pairs use it. Same 167 assertions;
+  a helper without `chmod` fails six cases.
+
+## 2026-10-30 — develop green again; Eigen survives GitLab load shedding
+
+- The Linux preflight and every mutation shard were red after the cross-CUDA and S3-drain work:
+  - `copy-media-payloads.sh` declared `staged` in the same `local` as the `ver` it reads (SC2318),
+    and now resets the cross descriptor's arch and triplet before sourcing it, which owns both env knobs.
+  - `cross-meson.sh` resolved the compiler launcher without `compiler_cache_launcher_env`, so
+    Meson's sccache could address TCP 4226; both resolutions and both file writers now set the address.
+  - The SigV4 heredoc in `sccache-s3-level.sh` and its fixture pass the full Ruff ruleset; the
+    fixture's object key no longer looks like a secret to gitleaks.
+  - `Dockerfile.media`'s size budget is 955 (owner-approved): the onnxruntime-web RUN's cache mounts and drain.
+  - `vulkan.sh` is back under 800 lines: the CON172 arch check reuses `platform.sh`'s triple and
+    ELF-machine helpers, and a mutation recipe proves its test fails without it.
+  - `docs/uv.lock` follows the theme's dynamic version (DocumANTation `d4866a6`), locked with the pinned uv.
+- `IREE_ROCM_DEVICE_BC_SHA256` is gone from `versions.env`, the media-tvm ARG and the driver map:
+  IREE reads ocml/ockl from TheRock. The edit re-keys the Windows base and the Linux compiler image.
+- Windows: LiteRT prefetches Eigen at tflite's pinned commit with eight clone attempts and points
+  FetchContent at it; HailoRT's externals take the same budget
+  ([failure-modes.md](docs/failure-modes.md#gitlab-is-currently-unable-to-handle-this-request-due-to-load-clones-eigen)).
+
+## 2026-10-30 — three backlog items closed at the source: re-put layout, acceptance checkouts, Vulkan runtime links
+
+- **The drain's re-put reads sccache 0.18's real disk layout.** A re-put against the real bucket found that
+  compile objects sit at `k0/k1/<key>` on disk (S3 keys them `k0/k1/k2/<key>`) while the preprocessor cache
+  keeps its full `preprocessor/k0/k1/k2/<key>` path on both; the drain tries both forms. Proved on the host:
+  a genuine object re-put through the drain's code path, `re-uploaded 1 of 1`, fetched back from the bucket
+  (499 bytes). CON164 closed.
+- **A passed acceptance receipt prunes its consumer checkouts** (`prune_consumer_checkouts`): three runs left
+  28 GB each under `logs/image-acceptance/*/consumers`; the logs stay, a replay re-clones. A failed run keeps
+  the checkout for inspection. CON174 closed.
+- **The Vulkan step links only runtime libraries of the dir's own arch** (`_vulkan_lib_fits_dir`): the sdk stage
+  had linked the host's x86-64 `libstdc++.so` into `/usr/lib/aarch64-linux-gnu`, which lld refused on OpenCV's
+  CUDA link line. The repins in ffmpeg, GStreamer and OpenCV stay until the published sdk is rebuilt (CON172).
+
+## 2026-10-29 — the Android GStreamer build fetches zbar from the Wayback Machine
+
+- linuxtv.org now answers every non-browser client with a JavaScript bot challenge, so cerbero's
+  `fetch-package` got HTML for `zbar-0.23.93.tar.gz` three times over (`Checksum … is '1fc9…' instead of
+  '78ae…'`, a different hash each time) and the arm64 android stage of chain 11 failed. No mirror carries
+  the dist tarball (MacPorts, Debian and the GitHub tag archive all serve the repository snapshot, another
+  checksum), but the Wayback Machine's `id_` view serves the byte-identical file; `build-android-from-source.sh`
+  redirects the recipe's host there (`ZBAR-MIRROR`, like `SPANDSP-MIRROR`), the recipe's checksum still guards it.
+
+## 2026-10-29 — the drain re-puts a failed S3 write from the disk level
+
+- sccache does not retry a level-1 write: the arm64 GStreamer RUN lost 3 of 232 objects to
+  `write close failed Unexpected (temporary) at write => send http request`, each left on the disk
+  mount alone (CON164's cause, finally logged). `sccache-s3-level.sh drain` now reads the paths the
+  server log names, finds each on the disk level (`<k0>/<k1>/<key>` there, `<k0>/<k1>/<k2>/<key>` in
+  S3) and PUTs it with a standard-library SigV4 request (`_sccache_s3_put`; the images carry no S3
+  client): `sccache-drain| re-uploaded N of M failed write(s) from the disk level`. An evicted key is
+  named. `test-sccache-s3-level.sh` runs it against a fake S3 server (42 assertions).
+
+## 2026-10-29 — NVIDIA arm64, cross route phase E: the package stage assembles the target's toolkit
+
+- **`copy-media-payloads.sh` is target-aware.** When the artifact's `cross-target.env` names the image's
+  arch, `copy_cuda_payload` ships the cross debs' `targets/sbsa-linux` (headers, link stubs, static
+  archives) overlaid with the staged sbsa debs (`bin/nvcc`, `nvvm`, the shared math runtime, NCCL) and
+  nothing of the host toolkit (`bin`, `nvvm`, `targets/x86_64-linux`); cuDNN, NCCL and TensorRT come
+  from the TARGET multiarch dir only, where the old `*-linux-gnu` globs would have shipped the host's
+  x86-64 copies beside them. A gate reads every shipped ELF's machine and fails the copy on a foreign
+  one (`CUDA payload arch gate: N ELF files, 0 not the target's`). `Dockerfile.package` hands the RUN
+  `TARGET_ARCH`; `test-cuda-runtime-payload.sh` has the cross fixture (54 assertions).
+- **The runtime lane follows.** `cross_variant_refusal` no longer stops a `CROSS_NVIDIA_SBSA=1` chain
+  at android; `append_runtime_accelerator_build_args` takes the arch and hands a non-amd64 package
+  `ENABLE_DEEPSTREAM=false` as the media stage already did (its artifact has no `/opt/nvidia/deepstream`);
+  `CROSS_RUNTIME_SKIP_MANIFEST=1` pushes the per-arch children and leaves the published index alone, since
+  the completeness gate rightly refuses an arm64-only `:latest-nvidia` against the published amd64 one.
+  The merge of both arches into one index is the next step (the research plan's phase B).
+  Proved on the amd64 host the same morning (chain 8, exit 0, 2 h under QEMU): `cross CUDA payload: sbsa-linux
+  headers and stubs, the staged arm64 runtime, nvcc and NCCL`, `CUDA payload arch gate: 849 ELF files, 0 not the
+  target's`, the package and wrapper smokes `0 failure(s)` with `GPU-RUNTIME: the ORT TensorRT EP loads TensorRT 11`,
+  torch `2.14.1+cu130` and torchvision `0.29.1+cu130` matching the pins; `:latest-nvidia-arm64` is pushed.
+- **Two sccache holes closed in source.** The CUDA cross compiles ran uncached (`3856 requests, 3210 hits,
+  609 not cacheable` in the arm64 ORT GPU RUN, the RUN's two hours): sccache's nvcc parser reads
+  `-target-dir X` as a second input file; `cross-cuda.sh`, `verify-cuda-stack.sh` and OpenCV now pass
+  `--target-directory=X`, which parses and hits (reproduced in the gpu image, CON175; the first chain with the
+  flag wrote every kernel: `Cache misses (CUDA) 598`, `(CUBIN) 1188`, `(PTX) 1533`, `3928 written, 0 failed`; the
+  chain after it read them back: `Cache hits (CUDA) 609`, `0 misses`, the RUN in 15 min instead of 2 h, CON175 closed). And `onnxruntime-web`
+  was the one compile RUN with no cache at all: `40-build-wasm.sh` exports `EM_COMPILER_WRAPPER=ccache` (emcc
+  puts it in front of every clang call; emscripten's own documented wrapper) and the RUN mounts both caches
+  and the S3 secret and drains (CON173). sccache in that seat was tried first and failed every CMake
+  try_compile of the wasm configure (`18 unsupported compiler calls, 738 non-cacheable calls`, `Could NOT
+  find Iconv`), proved on a targeted amd64 build of the `onnxruntime` stage; the same build with ccache
+  compiled all four wasm flavors in 25 min and logged `ccache-stats| Cacheable calls: 47015 / 52217
+  (90.04%)`, `Hits: 12853`, `Misses: 34162` (the first fill). Why sccache cannot take that seat, found with a
+  real emsdk: its clang parser refuses `-Xclang -iwithsysroot/include/fakesdl`, which emcc always passes
+  (`CannotCache(Can't handle UnknownFlag arguments with -Xclang …)`), so nothing emcc compiles could ever
+  reach it. The wasm step therefore keeps its own ccache dir (`/var/cache/ccache/onnxruntime-web`) and
+  moves it through the shared S3 level as one archive per ORT version (`ccache/onnxruntime-web-<ver>.tar.gz`):
+  an empty dir is restored from it, a grown dir is stored back (`sccache_s3_fetch`/`sccache_s3_store`, the
+  SigV4 helper with GET). `ccache-s3| restored …` / `stored …` are the RUN's lines. Proved on the targeted
+  amd64 build: `ccache-s3| stored ccache/onnxruntime-web-v1.31.0.tar.gz (127M) in the S3 level`, fetched back
+  from the bucket on the host (3585 entries). In its own dir the wasm build's true figures are `Cacheable calls:
+  1511 / 5020 (30.10%)`; the next build restored the archive (`141M`) and hit 1411 of 3022 cacheable calls, and
+  ccache's verbose reasons say the "uncacheable" 70 % are emcc's own preprocessing calls (86 %) and multi-source
+  calls (13 %), not lost compiles. The step sets `CCACHE_NOHASHDIR=1` and mtime/ctime sloppiness so CMake's probe
+  dirs and a fresh clone's mtimes stop costing misses: the third targeted build hit 1023 of its 1511 cacheable
+  calls (67.7 %; ccache's counters are the dir's whole life, so the step zeroes them after the restore and prints
+  the RUN's own). CON173 closed. The `47015 / 52217` figure was the shared root dir's count.
+
+## 2026-10-29 — NVIDIA arm64, cross route phase D: the media consumers build against the SBSA target
+
+- **The gpu stage stages the target's whole CUDA runtime.** NVIDIA's `lib*-cross-sbsa` debs carry
+  cuBLAS, cuFFT, cuRAND, cuSOLVER, cuSPARSE and NPP as link stubs (`lib/stubs/lib*.so`) and static
+  archives only; the consumers link the stubs, but the arm64 image needs the shared libraries.
+  `cuda_cross_target_runtime_packages` lists the 19 sbsa-repo debs (cudart, nvrtc, nvtx, cupti, the
+  six math libs, nvjpeg, nvjitlink, nvfatbin, the nvcc set, NCCL) the stage downloads at the host's
+  versions into `/opt/cuda-target/arm64`; the ELF gate now judges 83 target files. `verify-cuda-stack.sh`
+  looks for the stubs and the staged `libcublas.so.*`, not for dev links that never existed (a wrong
+  check of mine failed the strict stage once).
+- **`cross-cuda.sh`** (opt-in: ORT, GenAI, OpenCV, TVM, ffmpeg source it) reads `cross-target.env` and
+  exports what the three CUDA detections need. CMake's CUDA language gets `CMAKE_CUDA_HOST_COMPILER`
+  and `-target-dir sbsa-linux`; CMake's classic `FindCUDA` (OpenCV, `ENABLE_CUDA_FIRST_CLASS_LANGUAGE`
+  off) refuses to derive the toolkit from `nvcc` when cross-compiling and takes `ENV CUDA_TOOLKIT_ROOT`,
+  `ENV CUDA_LIB_PATH` (the stubs) and `CUDA_TOOLKIT_TARGET_DIR` instead; TVM's `USE_CUDA`/`USE_CUDNN`
+  take the target roots. Results on the amd64 host: `onnxruntime_gpu-1.31.0-cp315-cp315t-linux_aarch64.whl`
+  (all artifact checks), `onnxruntime_genai_cuda-0.17.0-…-linux_aarch64.whl` (every ELF arm64; Cargo's
+  build scripts needed `LIBRARY_PATH` unset in both GenAI branches), OpenCV `NVIDIA CUDA: YES … cuDNN: YES`.
+- **Two cross-link traps the first real media build found.** The sdk stage's Vulkan step links GCC's
+  runtime from `LIBRARY_PATH` into the target multiarch dir, so `/usr/lib/aarch64-linux-gnu/libstdc++.so`
+  is the host's x86-64 library; the CUDA link line's explicit `-lstdc++` under lld takes it where bfd
+  would skip it. OpenCV now repins GCC's target libstdc++ as ffmpeg and GStreamer already did. And
+  Meson derives rustc's linker from the `c` entry, so the 2026-10-28 `['<launcher>', '<cc>']` form became
+  `-C linker=<launcher>`, whose response file sccache rejects (`gst-plugins-rs … cannot compile programs`,
+  reproduced in the image); both Meson files now set `rust_ld = '<cc>'`. Re-keys the Meson RUNs once more.
+- Still refused past `--to-stage android` for a cross arm64 target: phase E (package stage) follows.
+
+## 2026-10-28 — sccache reaches Meson's C compiles, and the S3 probe retries
+
+- **GStreamer's C and C++ compiles bypassed sccache.** The RUN had the mounts, the secret and the
+  drain, but Meson ignores `CMAKE_*_COMPILER_LAUNCHER` and its cross and native files named the bare
+  compilers: the amd64 media chain's GStreamer RUN showed 1869 Rust hits and 150 C/C++ requests for
+  thousands of C objects. `cross-meson.sh` now writes `c = ['<launcher>', '<cc>']` (Meson runs the list
+  as one command) in the cross file, the cross build's native file, and a new cache-only native file
+  that `append_meson_native_flags` emits for NATIVE builds, so GStreamer and libcamera get it on every
+  arch (`test-meson-files.sh`). Re-keys every Meson RUN once.
+- **The S3 endpoint probe retries.** `sccache_s3_endpoint_reachable` tries `SCCACHE_S3_PROBE_TRIES` (3)
+  times, a second apart; a single 2 s connect dropped the arm64 gpu stage's level during a WireGuard
+  re-handshake. Both probe sites (RUN and chain) name the tries in their warning.
+- Audit of every stage log of the day: all 23 S3-wired RUNs drained with 0 failed uploads; the only
+  compile RUN with no cache at all is `onnxruntime-web` (emcc, 3857 objects), an open item.
+
+## 2026-10-28 — NVIDIA arm64, cross route phase C: the gpu stage builds on the amd64 host
+
+- `CROSS_NVIDIA_SBSA=1` lifts the "cannot cross-build arm64" refusal for the nvidia gpu stage and
+  nothing after it (`stage-defs.sh` `cross_nvidia_sbsa_active`; both entry points pass the last
+  stage). `install-cuda-stack.sh` pins the cross cuDNN to `CUDNN_VERSION`, adds the `.so.9`/`.so`
+  and `cudnn*.h` links the -dev package would have provided, stages the target's own NCCL and nvcc
+  debs at the host's versions under `/opt/cuda-target/arm64`, and gates every target ELF as AArch64.
+  `install-tensorrt.sh` installs the twelve `-cross-sbsa` twins into `/usr/local/tensorrt-sbsa-linux`;
+  `verify-cuda-stack.sh` cross-compiles a kernel with `-ccbin aarch64-linux-gnu-g++ -target-dir sbsa-linux`.
+  Proved locally: `cross ELF gate: 51 target ELF files, all AArch64`, `TensorRT cross: 11.4.0.106-1+cuda13.4
+  installed (12 packages)`, `nvcc cross compile … AArch64 object`
+  (`docs/linux-accelerator-images.md` § Cross from the amd64 host). Phases D/E (media consumers,
+  package stage) follow; the research plan is the owner's 2026-10-28 decision for both routes.
+
+## 2026-10-28 — the first GPU chains after TensorRT 11: two gates that only a real build could trip
+
+- **DeepStream linked the image's TensorRT 11.** `deepstream.sh` put its TensorRT 10 build SDK on
+  `LIBRARY_PATH` and assumed that wins; GCC 16 searches `/usr/lib/x86_64-linux-gnu` before a bare
+  `LIBRARY_PATH` dir, so `libnvds_infer.so` and every component linking `-lnvinfer` took
+  `libnvinfer.so.11`, and the TRT-origin gate failed the nvidia media stage. Proved in the sdk image
+  with a decoy library on `LIBRARY_PATH` that lost to the system dir. The components' compiler word
+  now carries `-L<trt-sdk>/lib`, which precedes every search dir; `test-deepstream.sh` pins it. The
+  rerun's package stage and smoke print `DeepStream links TensorRT 10 from …/tensorrt-10.16.1.11 only`.
+- **The Flatpak install pulled the build host's GPU extension.** `flatpak install` adds related refs
+  by the host's hardware: the published `cross-sdk-amd64` carries `org.freedesktop.Platform.VAAPI.nvidia`,
+  and the rocm runtime built on an AMD host got `org.freedesktop.Platform.amd.amf`, whose
+  `libamfrt64.so` embeds its own ONNX Runtime and failed the ORT census (`UNREGISTERED`) in the
+  `:latest-rocm` smoke. `packaging-deps.sh` installs with `--no-related`; the seven declared refs are
+  the whole set on any host (`docs/consumer-image-contract.md`, `test-packaging-deps.sh`).
+- Both chains ran with sccache's shared S3 level; every compile RUN drained its uploads
+  (`L1 (s3): n written, 0 failed of n`).
+
+## 2026-10-29 — A release with one upload collects it
+
+- `download-artifact` extracts a lone upload straight into `artifacts/`, without its folder, so
+  DocumANTation's dry run (run 40902174002) collected nothing from `theme-dist` and failed its
+  `--expect`. `release-publish.yml` passes `--lone-upload <name>` when `artifacts` names one upload
+  literally, and `collect-release-assets.sh` now fails on files outside any upload instead of
+  dropping them. `test-collect-release-assets.sh` covers both layouts; three `release.*` recipes.
+
+## 2026-10-29 — riscv64 test processes load only riscv64 GStreamer plugins
+
+- The image's `GST_PLUGIN_PATH` starts with the host-triplet plugin dir, which the riscv64 sysroot
+  lacks, so QEMU opened the amd64 plugins and each test process warned about 300 times.
+  `riscv64_cross_env` drops `/opt/*/lib/<triplet>` entries of other arches from `GST_PLUGIN_PATH`,
+  `GI_TYPELIB_PATH` and `LD_LIBRARY_PATH` (`riscv64_cross_strip_host_dirs`); `lib/multiarch` stays.
+  `test-riscv64-cross.sh` and three `riscv64-cross.*` recipes prove it. No image re-keys.
+
+## 2026-10-29 — Two new Windows gates run within the Linux mutation shards
+
+- `SourceBuild.NinjaReturnLeak.Tests.ps1` scanned every function against every call and hit the
+  shard's 300 s timeout; it now starts at the ninja call sites with one caller index (213 s to 5.5 s).
+- The IREE device-bitcode test moves to `SourceBuild.IreeRocmBitcode.Tests.ps1`: the
+  `lib.iree-rocm-bitcode-*` recipes targeted `SourceBuild.IreeTvmRocm.Tests.ps1`, whose `cmd.exe`
+  and Windows-path cases fail on a Linux runner before any mutation.
+
+## 2026-10-29 — The ROCm torch build caches its HIP kernels
+
+- `Build-TorchRocmFromSource.ps1` set only the C and CXX launchers, so ATen's 262 HIP-language
+  objects compiled uncached on every rocm run. It now sets `CMAKE_HIP_COMPILER_LAUNCHER` too;
+  `lib.torch-rocm-hip-launcher` proves the test sees it (`docs/build-cache-tiers.md`).
+
+## 2026-10-29 — IREE's rocm target takes its device bitcode from TheRock
+
+- shark-infra/amdgpu-device-libs, where IREE v3.12.0 downloads ocml/ockl, returns 404. The rocm
+  lane now points `IREE_TARGET_BACKEND_ROCM_DEVICE_BC_PATH` at TheRock's pinned
+  `lib\llvm\amdgcn\bitcode` and fails if a file or the option is missing
+  (`lib.iree-rocm-bitcode-requires-both-libs`, `lib.iree-rocm-bitcode-option-still-exists`).
+  The unused `IREE_ROCM_DEVICE_BC_SHA256` waits for the next planned versions.env edit
+  (`docs/windows-rocm.md`).
+
+## 2026-10-29 — The ROCm TVM branch reads its llvm-config path again
+
+- `Install-TvmMinimalLlvm` left `Invoke-NinjaBuildWithRetry`'s output on the pipeline, so the ROCm lane,
+  the only one that builds this LLVM, got ninja's log as its `llvm-config` path and `cmd.exe` refused it.
+  The build now ends in `| Out-Host`. `SourceBuild.NinjaReturnLeak.Tests.ps1` fails any value-returning
+  function that leaves ninja output uncaptured while a caller keeps its result;
+  `lib.tvm-minimal-llvm-ninja-off-the-return-value` proves it (`docs/windows-build-invariants.md`). The
+  Modules.Orchestrators duplication budget drops from 12 to 11.
+
+## 2026-10-29 — The nvidia final stage copies its modules again
+
+- `Dockerfile.nvidia` bind-mounted `WindowsContainerImage.Bootstrap.psm1`, which base does not copy;
+  the mount point stayed as a directory and final's `COPY windows\scripts\modules` failed on it. Both
+  nvidia stages now `COPY` the module. `BuildKit.MountStub.Tests.ps1` fails a bind target under
+  `C:\temp\scripts` that its stage lacks; `lib.bind-target-base-lacks` and
+  `lib.nvidia-bootstrap-copied-not-mounted` prove both checks
+  (`docs/windows-build-invariants.md`). The Rocm.LlamaCpp duplication budget drops from 29 to 26.
+
+## 2026-10-29 — The ShellCheck baseline suite survives midnight
+
+- `test-shellcheck-warnings.sh` read the date at start, so a run crossing midnight expected the old day
+  in a freshly written baseline row (#104). It now takes the date around the write and accepts the next
+  day only; `shellcheck-warnings.stamp-date` proves a wrong date still fails.
+
+## 2026-10-29 — The resource sampler measures a host without a running WSL VM
+
+- With no `vmmem` process, `.Sum` over the empty measurement threw under StrictMode, so every row of
+  both 2026-10-28 chains was `sample-error`. `Get-ResourceSampleRow` reports `vmmemGB` 0 instead;
+  `BuildDriver.ResourceSampleRow.Tests.ps1` and `lib.resource-sampler-without-vmmem` prove it. The
+  summary suite builds its CSV paths with `Join-Path`, so it passes on Linux too.
+- `docs/failure-modes.md` corrects why a chain rebuilds base after a `buildctl prune`: any prune drops
+  the cache keys, even one by ID that leaves base's records in place, so every reclaim costs a full chain.
+
+## 2026-10-28 — The arm64 merge stages its Vulkan validation layer again
+
+- e8dbde78 moved the VVL build into `Invoke-WithProcessEnvironment -ScriptBlock`, whose child scope kept
+  `$vvlPrefix`, so the arm64 merge died after the layer had built. The path is now set before the call.
+  `Get-ScriptBlockScopeLeakViolation` flags a variable read after the child-scope scriptblock that alone
+  assigns it; `Invoke-Lint.ps1` runs it over every file (no other finding), and three
+  `lib.lint-scriptblock-scope-leak-*` recipes prove its checks bite. The Driver.ClosureScope duplication
+  budget drops from 17 to 13.
+- Reclaiming BuildKit records by ID must not keep only what the newest run reaches through `parents`:
+  those stop at each `FROM`, and that rule deleted base's records again (`docs/failure-modes.md`).
+
+## 2026-10-28 — The arm64 media-tvm stage builds its python plan again
+
+- `Invoke-CpythonPip` and `Install-CpythonPip` wrote pip's lines to the output stream. On the
+  arm64 cross lane `Get-TvmPythonBuildPlan` installs Cython through them, so it returned an array
+  and the stage died on `The property 'PythonModule' cannot be found`. Both now send pip to
+  `Out-Host`; `SourceBuild.Pip.Tests.ps1` asserts an empty output stream, and
+  `lib.cpython-pip-output-off-the-return-value` proves the assertion bites.
+
+## 2026-10-28 — The torch-app census recipes get a suite the Linux shards can run
+
+- The three `lib.smoke-torchapp-*` recipes from 78f63fc9 named `Smoke.TorchAppOrt.Tests.ps1`, one of whose
+  other cases fails on the Linux mutation shards, so shards 0, 1 and 7 reported a vacuous bite and
+  turned develop red. Their cases and the store case move to `Smoke.TorchAppOrtVerify.Tests.ps1`, and
+  `WindowsSmoke.TorchAppFixture.psm1` gives both suites the one lookup of section 21's venv branch. It returns
+  the branch list with `return ,`, since a one-element array unrolls to an AST node with no `Count`.
+
+## 2026-10-28 — A recursive clone of the hub ends
+
+- smile and awesome-beamer vendored this hub again below DocumANTation, so `git clone --recursive`
+  never ended. smile ae4926c and awesome-beamer 4c5fc05 drop that submodule and call the hub's
+  workflows with `hub-checkout: true`; DocumANTation 5851e9a pins both, and the hub pins that. AGENTS.md now forbids vendoring the hub
+  below itself instead of forbidding recursive clones. `verify_submodule_cycles.py`, run by a
+  recursive-checkout job in `linux-x64.yml`, fails a submodule at any depth that names this hub;
+  `test-submodule-cycles.sh` and four mutation recipes hold it, and it flags the pre-fix clone.
+
+## 2026-10-28 — A Windows crash on any thread leaves a minidump
+
+- `cmake/CrashDump.cmake` adds `kataglyphis_add_crash_dump(<exe>)`. With `KATAGLYPHIS_CRASH_DUMP_DIR` set,
+  an unhandled exception writes `<exe>.<pid>.dmp`, prints the exception and the faulting thread's
+  `module+0xRVA` frames, and keeps the exit code; a Release link also writes the PDB. GitHub's runners
+  write no WER `LocalDumps`, which left BeschleunigerBallett's arm64 lavapipe crash (#97) without a
+  frame. `test-cmake-crash-dump.sh` and six mutation recipes hold the CMake wiring;
+  `CrashDump.Native.Tests.ps1` crashes a real MSVC fixture on a worker thread and reads its dump.
+
+## 2026-10-28 — The amd64 smoke gate runs sections 10, 15 and 21 again
+
+- The 2026-10-24 refactor left three gaps that only a chain's smoke gate exercises. A missing
+  brace nested `Invoke-OpenCvLinkSmoke` inside `Assert-OpenCvCudaSmoke`, so section 10 called a
+  function that did not exist; `Assert-CmakeSmokeBuild -Directory` bound nothing, so section 15
+  ran no assertion; and the torch-app verify looked for `ort-venv-census.py` beside the mounted
+  `Build-TorchApp.ps1`, where only the image's `C:\temp\scripts` copy exists. The verify now
+  takes that copy and reports the verifier's last lines when it fails without census findings.
+  `Smoke.ScriptStructure.Tests.ps1` fails a nested function or an undeclared named argument in
+  `Test-Container.ps1`, through the new `Get-UndeclaredParameterViolation` lint detector.
+
+## 2026-10-28 — A free-storage prune can evict a warm chain's base
+
+- `buildctl prune --free-storage 102400` freed 72.6 GB and evicted base's exec records, which the
+  `bk-*` tag does not pin; the next chain rebuilt base from step 2 and left a superseded lineage
+  holding 83 GB. A later `--keep-duration 30m` evicted the re-cached base again, because a cache
+  hit does not refresh `lastUsedAt`. `failure-modes.md` records the symptom and the ID-based
+  reclaim, plus the admin-shell trap
+  where Rancher Desktop's `nerdctl` precedes Stevedore's; `Clear-DiskSpace.ps1` no longer calls
+  that prune safe for fresh records.
+
+## 2026-10-28 — The riscv64 cross environment reaches only the target wheel
+
+- `ci_packaging.sh` exported the riscv64 compilers, link line, SOABI suffix and pkg-config paths
+  before the packaging venvs synced, so their sdists built for riscv64 on the amd64 host:
+  line-profiler's C++ extension failed to link (OrchestrANT run 40613187784) and pyyaml installed a
+  riscv64 module. The cross environment is now set in a subshell around the wheel build; the arm
+  suite records each sync's environment, and two mutation recipes prove it.
+
+## 2026-10-28 — TVM and IREE return $null off their rocm and cross branches
+
+- The 2026-10-24 refactor turned top-level code into `Get-TvmRocmLlvmTargets` and
+  `Install-IreeHostTools`, whose `return` reads a variable only the rocm or cross branch sets; strict
+  mode stopped the amd64 chain's media-tvm stage with "The variable '$tvmLlvmTargetsBuilt' cannot be
+  retrieved because it has not been set", and IREE would have failed the same way next. Both start
+  at `$null` now, and the harness suite runs them on the default lane under strict mode. An AST scan
+  of every Windows build function for reads of variables set only in nested blocks found no other case.
+
+## 2026-10-27 — LiteRT's ty prewarm keeps uv's cache container-local
+
+- The LiteRT RUN pointed `UV_CACHE_DIR` into its Bazel cache mount, which an earlier RUN had filled,
+  and uv's tempfile rename there failed with `os error 3`, the cache-mount write loss known from
+  sccache; the amd64 chain stopped with `pinned ty 0.0.91 is unavailable`. The cache is under
+  `C:\lw` now, at the cost of one 13 MiB `ty` download per build, and a stage-parser test holds it there.
+## 2026-10-27 — what the backups leave out is written down
+
+- A walk over every reachable host found three things only the hosts knew. srv-1's
+  `nextcloud-ai-worker.service` is now tracked in `linux/nextcloud-aio/`, whose README also
+  says that srv-1 runs AIO's standard mastercontainer, not the compose variant. pi-1's Mosquitto,
+  which the Tasmota plugs report through, and each cat cam's `observant.toml` are in
+  `linux/homeassistant/README.md`.
+- srv-1's secrets bundle now holds `/root/sccache-s3-key.txt`, so a rebuilt Garage can import
+  the client key instead of every build host getting a new one. `linux/ansible/README.md` lists
+  each bundle's paths, since the host_vars are gitignored, and what is left out on purpose:
+  Garage's buckets, the Context Chat index and the cat cams' frames.
+
 ## 2026-10-27 — GenAI's yvals_core.h patch writes the text its check expects
 
 - The 2026-10-24 refactor moved `Install-GenaiClangStlPatch` into a function and indented its
@@ -110,6 +541,10 @@
 
 - Run the GenAI yvals patch suite harness-style, so its mutation runs on the Linux shards.
 - Refuse mutation recipes whose test is a Pester-style suite (`test-mutation-pester-targets.sh`), move the blank-line `Find-TextLineIndexes` cases to a harness-style suite, and drop two code-dupes allowlist rows whose pairs fell under the threshold.
+- File that guard's own recipe under the `gate-fixture` family: the `mutations` slug does not own the suite, so the gate-proof registry failed preflight.
+- Write that guard's Python heredoc to the full Ruff ruleset (one import per line, no unclosed `open`), which the preflight sweep fails on.
+- Move the LiteRT RUN's uv-cache check into its own harness-style suite, `Build.LitertUvCache.Tests.ps1`: the wheel suite's Windows-only cases failed its mutation baseline on the Linux shards.
+- Move the IREE and TVM strict-mode `$null` returns into `SourceBuild.IreeTvmNullReturn.Tests.ps1` for the same reason; the rocm suite failed both recipes' baselines on the Linux shards.
 - Prove the per-level sccache hit line in a harness-style suite: its mutation ran on the Linux shards, which carry no Pester, so the Pester-style baseline skipped and failed every run.
 - Find the riscv64 cross wheel's Python headers under the sysroot's `usr/local/include`, where the image's source-built Python 3.15 lives, and pass the sysroot path itself instead of a host path `--sysroot` never rerooted.
 - Resolve the shared CMake/uv wiring gate's relative `-ScriptPath` against the consumer's working directory, not the hub.
@@ -233,10 +668,15 @@
   2026-09-14; the newest archive's `backup.json` says `protected: false`, because encryption is
   chosen per location since 2025.2. Its other tip, network storage, does not exist on a Container
   install. Both are corrected.
-- **An unreachable Nextcloud host fails only its own source.** The first real run met srv-1 with
-  a changed SSH host key; the delegated task dropped pi-1 from the play, which skipped Home
-  Assistant and the secrets and left the share mounted. The block now ignores unreachable
-  delegates and pings the host first, so the failure names the cause and the run goes on.
+- **An unreachable Nextcloud host fails only its own source.** The first real run met another
+  host's SSH key on srv-1's address (a laptop had loaded srv-1's WireGuard config); the delegated
+  task dropped pi-1 from the play, which skipped Home Assistant and the secrets and left the
+  share mounted. The block now ignores unreachable delegates and pings the host first, so the
+  failure names the cause and the run goes on.
+- **The NAS share is mounted with `closetimeo=0`.** The first full copy failed its own check:
+  every file on the NAS carried its copy time. The kernel defers each SMB close, and the QNAP
+  sets the write time at that close, after rsync has set the source's. Measured on the share:
+  the time survives with `closetimeo=0` and is lost with the default and with `cache=none`.
 - Tests: `test-ansible-backup.sh` (the two helpers, seven mutations), a `BACKUP:` case in
   `test-ansible-run-status.sh`, and `linux/ansible/tests/test-backup-playbook.sh`, run by hand,
   which drives the playbook against a fake AIO host, a fake Home Assistant and a real `age` key.

@@ -121,13 +121,17 @@ jobs:
         env:
           COLLECT: ${{ inputs.collect }}
           VERSION_FILE: ${{ inputs.version-file }}
+          ARTIFACTS: ${{ inputs.artifacts }}
         run: |
           set -euo pipefail
           hub=antfrastructure-tools/linux/scripts
           printf '%s\n' "${COLLECT}" > "${RUNNER_TEMP}/collect.options"
           version="$(bash "${hub}/02-toolchain/rust/version_util.sh" --file-version "${VERSION_FILE}")"
+          # A literal name downloads one upload, which download-artifact extracts without its folder.
+          lone=()
+          if [ -n "${ARTIFACTS}" ] && [[ "${ARTIFACTS}" != *[*?[]* ]]; then lone=(--lone-upload "${ARTIFACTS}"); fi
           bash "${hub}/06-packaging/collect-release-assets.sh" --options "${RUNNER_TEMP}/collect.options" \
-            --version "${version}" artifacts release
+            "${lone[@]}" --version "${version}" artifacts release
 
       - name: Dry run, what the release would carry
         if: inputs.dry-run

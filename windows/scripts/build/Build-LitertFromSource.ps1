@@ -43,6 +43,22 @@ function Add-LitertArmAsmFeatures {
     Write-Host "XNNPACK asm: prepended full-union .arch directives to $xnnAsmPatched aarch64 .S kernel(s)"
 }
 
+<#
+.SYNOPSIS
+Clones the Eigen commit tflite's eigen.cmake pins and returns the FetchContent override that points CMake at it.
+#>
+function Get-LitertEigenSourceArg {
+    param([Parameter(Mandatory)][string]$EigenCmakePath, [Parameter(Mandatory)][string]$Destination, [int]$MaxAttempts = 8)
+    $text = [System.IO.File]::ReadAllText($EigenCmakePath)
+    if ($text -notmatch '(?s)OverridableFetchContent_Declare\(\s*eigen\s+GIT_REPOSITORY\s+(\S+).*?GIT_TAG\s+([0-9a-f]{40})\b') {
+        throw "LiteRT eigen: $EigenCmakePath no longer declares eigen by GIT_REPOSITORY and a 40-hex GIT_TAG -- re-derive the prefetch at this bump"
+    }
+    $repo, $commit = $Matches[1], $Matches[2]
+    # GitLab sheds load for minutes; CMake's own clone gives up after three tries within a second.
+    [void](Invoke-GitClone -RepoUrl $repo -Tag $commit -SourceDir $Destination -MaxAttempts $MaxAttempts)
+    return "-DFETCHCONTENT_SOURCE_DIR_EIGEN=$($Destination -replace '\\', '/')"
+}
+
 # Export-LitertLmBridge.ps1 carries the same default: a LiteRT bump updates both.
 $LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.3.0'
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'
@@ -142,6 +158,10 @@ $cmakeExtra += Get-CudaToolkitRootArg -GpuEnv $gpuEnv
 
 $cmakeExtra += Get-LlvmArchiverCmakeArg
 
+$eigenSourceArg = Get-LitertEigenSourceArg -EigenCmakePath (Join-Path $tfliteSrc 'tools\cmake\modules\eigen.cmake') `
+    -Destination (Join-Path $SourceDir 'eigen-prefetch')
+$cmakeExtra += $eigenSourceArg
+
 # Cross needs a host flatc in TFLITE_HOST_TOOLS_DIR, built natively from this tree so its version cannot drift.
 if (Test-WindowsCrossTarget) {
     $hostToolsBuild = Join-Path $SourceDir 'build-host-tools'
@@ -150,7 +170,7 @@ if (Test-WindowsCrossTarget) {
     # Composed first: `-ExtraArgs @(...) + (...)` would bind the `+` operand as a positional argument.
     $hostToolArgs = @(
         '-DTFLITE_ENABLE_INSTALL=OFF', '-DTFLITE_ENABLE_XNNPACK=OFF', '-DTFLITE_ENABLE_GPU=OFF',
-        '-DTFLITE_ENABLE_RUY=OFF', '-DTFLITE_ENABLE_BENCHMARK_MODEL=OFF'
+        '-DTFLITE_ENABLE_RUY=OFF', '-DTFLITE_ENABLE_BENCHMARK_MODEL=OFF', $eigenSourceArg
     ) + @(Get-LlvmArchiverCmakeArg)
     # The link environment around the host pass is logged: a target configure after it once lost kernel32.lib.
     $probeVars = @('LIB', 'LIBPATH', 'VCToolsInstallDir', 'VSCMD_ARG_TGT_ARCH', 'WindowsSdkDir', 'UniversalCRTSdkDir')

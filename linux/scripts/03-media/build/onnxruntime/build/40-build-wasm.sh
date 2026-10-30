@@ -9,6 +9,62 @@ source "${SCRIPT_DIR}/lib/common.sh"
 parse_common_args "$@"
 detect_jobs
 
+# The wasm ccache dir rides the shared S3 level as one archive per ORT version (sccache cannot parse emcc's -Xclang -iwithsysroot, CON173 2026-10-29).
+_ort_wasm_ccache_archive() {
+  printf 'ccache/onnxruntime-web-%s.tar.gz' "${ORT_VERSION:-unknown}"
+}
+
+# An empty ccache dir (a fresh host, a pruned mount) starts from the archive; a warm one is left alone.
+_ort_wasm_ccache_restore() {
+  command -v sccache_s3_fetch >/dev/null 2>&1 || return 0
+  if [ -n "$(ls -A "${CCACHE_DIR}" 2>/dev/null)" ]; then
+    info "ccache-s3| ${CCACHE_DIR} is warm; no restore from $(_ort_wasm_ccache_archive)"
+    return 0
+  fi
+  local tmp rc=0
+  tmp="$(mktemp)"
+  sccache_s3_fetch "$(_ort_wasm_ccache_archive)" "${tmp}" || rc=$?
+  case "${rc}" in
+    0) tar -xzf "${tmp}" -C "${CCACHE_DIR}" && info "ccache-s3| restored $(_ort_wasm_ccache_archive) ($(du -sh "${CCACHE_DIR}" | cut -f1)) into ${CCACHE_DIR}" ;;
+    1) info "ccache-s3| no S3 level in this RUN; ccache stays on the mount" ;;
+    *) info "ccache-s3| no $(_ort_wasm_ccache_archive) in the S3 level yet; this build fills it" ;;
+  esac
+  rm -f "${tmp}"
+  return 0
+}
+
+# New objects since the restore go up as the whole dir, one archive; nothing new, nothing sent.
+_ort_wasm_ccache_store() {
+  command -v sccache_s3_store >/dev/null 2>&1 || return 0
+  if [ -z "$(find "${CCACHE_DIR}" -type f -newer "${_ORT_WASM_CCACHE_MARK}" -print -quit 2>/dev/null)" ]; then
+    info "ccache-s3| nothing new in ${CCACHE_DIR}; $(_ort_wasm_ccache_archive) left as is"
+    return 0
+  fi
+  local tmp
+  tmp="$(mktemp)"
+  if tar -czf "${tmp}" -C "${CCACHE_DIR}" . && sccache_s3_store "$(_ort_wasm_ccache_archive)" "${tmp}"; then
+    info "ccache-s3| stored $(_ort_wasm_ccache_archive) ($(du -h "${tmp}" | cut -f1)) in the S3 level"
+  else
+    warn "ccache-s3| could not store $(_ort_wasm_ccache_archive); the objects stay on this host's mount"
+  fi
+  rm -f "${tmp}"
+  return 0
+}
+
+# Emscripten puts this in front of every clang call (emcc.py, config.COMPILER_WRAPPER); ccache, as its docs say: sccache cannot cache emcc at all (CON173).
+_ORT_WASM_CCACHE_MARK=""
+if command -v ccache >/dev/null 2>&1 && mkdir -p "${CCACHE_DIR:-/var/cache/ccache}/onnxruntime-web" 2>/dev/null; then
+  export CCACHE_DIR="${CCACHE_DIR:-/var/cache/ccache}/onnxruntime-web"
+  export EM_COMPILER_WRAPPER="ccache"
+  # A fresh clone gives every header a new mtime and CMake's probes a new temp dir; neither changes the object.
+  export CCACHE_NOHASHDIR=1 CCACHE_SLOPPINESS="time_macros,include_file_mtime,include_file_ctime"
+  info "EM_COMPILER_WRAPPER=ccache (emcc's clang calls go through ccache on ${CCACHE_DIR})"
+  _ort_wasm_ccache_restore
+  # The counters are the dir's whole life otherwise; zeroed, ccache-stats| is this RUN's.
+  ccache -z >/dev/null 2>&1 || true
+  _ORT_WASM_CCACHE_MARK="$(mktemp)"
+fi
+
 # wasm32 output ignores the target arch, so whichever arch finds the shared cache empty builds it for all.
 
 cd "${ORT_SRC_DIR}"
@@ -110,3 +166,11 @@ fi
 
 info "WASM artifacts in ${WASM_OUTPUT_DIR}"
 ls -alh "${WASM_OUTPUT_DIR}" || true
+# The RUN's measurement, as sccache-stats| is for the other RUNs; then the dir goes up.
+if [ -n "${EM_COMPILER_WRAPPER:-}" ]; then
+  ccache -s 2>/dev/null | grep -E "Hits|Misses|Cacheable|Uncacheable" | sed 's/^/ccache-stats| /' || true
+  # 70 % of emcc's calls were uncacheable on 2026-10-29; the verbose breakdown names why (CON173).
+  ccache -s -v 2>/dev/null | sed -n '/^Uncacheable/,/^[A-Z]/p' | grep -E "^\s+[A-Za-z]" | sed 's/^/ccache-stats|   why uncacheable: /' || true
+  _ort_wasm_ccache_store
+  rm -f "${_ORT_WASM_CCACHE_MARK}"
+fi

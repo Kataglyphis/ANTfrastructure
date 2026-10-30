@@ -81,17 +81,7 @@ else
   info "QNN EP off (no SDK zip staged — opt-in, see linux/qnn-sdk/README.md)"
 fi
 
-if cross_build_is_active; then
-  append_onnx_cross_cmake_build_args BUILD_ARGS
-  if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
-    info "Target Python dev files available; enabling ONNX Runtime wheel build in cross mode"
-    BUILD_ARGS+=(--build_wheel)
-  else
-    info "Skipping ONNX Runtime wheel build in cross mode; target Python headers/wheels are not safely buildable in the amd64 host container"
-  fi
-else
-  BUILD_ARGS+=(--build_wheel)
-fi
+append_onnx_wheel_mode_args BUILD_ARGS
 
 append_onnx_lld_build_args BUILD_ARGS
 append_onnx_ccache_build_args BUILD_ARGS

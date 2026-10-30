@@ -74,6 +74,26 @@ def is_qnn_available(): return False
 for _n in os.environ.get("STUB_GENAI_DROP", "").split(","):
     if _n:
         globals().pop(_n, None)
+if os.environ.get("STUB_TINY"):
+    import json as _json
+    _skew = int(os.environ.get("STUB_TINY_SKEW", "0"))
+    class Model:
+        def __init__(self, path): self.path = path
+    class Tokenizer:
+        def __init__(self, model): pass
+        def encode(self, text): return list(text.encode())
+        def decode(self, ids): return bytes(i for i in ids if i < 256).decode()
+        def apply_chat_template(self, messages, add_generation_prompt=False):
+            return "".join(m["content"] for m in _json.loads(messages))
+    class GeneratorParams:
+        def __init__(self, model): self.max_length = 0
+        def set_search_options(self, **options): self.max_length = options["max_length"]
+    class Generator:
+        def __init__(self, model, params): self.ids, self.max_length = [], params.max_length
+        def append_tokens(self, ids): self.ids += list(ids)
+        def is_done(self): return len(self.ids) >= self.max_length
+        def generate_next_token(self): self.ids.append(min(self.ids[-1] + 1 + _skew, 256))
+        def get_next_tokens(self): return [self.ids[-1]]
 PY
 # Minimal numpy, or tier 3 reports UNPROVEN on a host without numpy and proves nothing.
 cat > "${STUB}/numpy/__init__.py" <<'PY'
@@ -261,5 +281,28 @@ t_assert_eq 1 "${_RC}"
 t_assert_contains "${_OUT}" "og.Tensor round-tripped a float32 buffer"
 t_assert_contains "${_OUT}" "  DEFECT   generate() raised RuntimeError: stub: no weights"
 t_assert_contains "${_OUT}" "GENAI-BIND FAIL: 1 defect(s)"
+
+TINY_PY="${TESTS_DIR}/../lib/tiny-genai-model.py"
+t_case "tier 4: the tiny model decoding token for token is PROVEN, and generation is not skipped"
+_run_stub_binding STUB_TINY=1 GENAI_TINY_MODEL_PY="$(cat "${TINY_PY}")"
+t_assert_eq 0 "${_RC}"
+t_assert_contains "${_OUT}" "PROVEN   generate() decoded the tiny test model token for token: 'abc' -> 'defg'"
+t_assert_ok test -z "$(printf '%s' "${_OUT}" | grep -c 'GENAI-GEN SKIP' | grep -v '^0$')"
+
+t_case "tier 4: a binding that decodes the tiny model wrongly fails with the token mismatch"
+_run_stub_binding STUB_TINY=1 STUB_TINY_SKEW=1 GENAI_TINY_MODEL_PY="$(cat "${TINY_PY}")"
+t_assert_eq 1 "${_RC}"
+t_assert_contains "${_OUT}" "DEFECT   tiny model: greedy decoding gave [101, 103, 105, 107], expected [100, 101, 102, 103]"
+t_assert_contains "${_OUT}" "GENAI-BIND FAIL:"
+
+t_case "tier 4: a binding that cannot load the tiny model is a DEFECT, not a skip"
+_run_stub_binding GENAI_TINY_MODEL_PY="$(cat "${TINY_PY}")"
+t_assert_eq 1 "${_RC}"
+t_assert_contains "${_OUT}" "DEFECT   tiny-model generate() raised RuntimeError: stub: no weights"
+
+t_case "the runtime check hands the generator to tier 4"
+_CHECK_SRC="$(t_fn_src "${_SRI}" check_genai_binding)"
+t_assert_contains "${_CHECK_SRC}" '-e "GENAI_TINY_MODEL_PY=${tiny_src}"'
+t_assert_contains "${_CHECK_SRC}" '../lib/tiny-genai-model.py'
 
 t_summary

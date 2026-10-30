@@ -45,6 +45,7 @@ The two halves of one topic often split:
 | **Wiring a new project to this repo** | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) |
 | **The family's repositories** — what each is and who vendors it, how one is laid out, **the README rule**, contributing, licence and contact | [`repository-family.md`](repository-family.md) |
 | **Models and scenes outside the code** — ModelANT, AssetANT, the SHA-256 lock, the hub's fetcher `fetch-data-lock.py` and `kataglyphis_fetch_data`, what stays tracked | [`data-repositories.md`](data-repositories.md) |
+| **Language AI across the family** — the owner's 2026-10-30 decisions, the one engine (chain GenAI), the text contract every binding offers, ModelANT's model packages and their search order, Llama and Gemma obligations, and the roadmap IDs (`LAI-*`) the backlogs name | [`language-ai.md`](language-ai.md) |
 | What is published, what is in it, the feature matrix | [`overview.md`](overview.md) |
 | **Consumer acceptance and replay for an immutable image** — the candidate, receipt and promotion policy | [`image-acceptance.md`](image-acceptance.md) |
 | Prerequisites, tests, roadmap, contribution, contact | [`project-info.md`](project-info.md) |

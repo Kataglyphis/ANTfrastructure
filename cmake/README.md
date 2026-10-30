@@ -42,6 +42,7 @@ rather than an uninitialised checkout.
 | `CompilerWarnings.cmake` | `myproject_set_project_warnings` — the per-compiler warning set |
 | `CorrosionToolchain.cmake` | `kataglyphis_configure_corrosion_target(target ADDRESS_SANITIZER bool)` — the configured CC/CXX and matching native C++ bridge flags, Windows system libraries and CRT/iterator settings; clang-cl Debug ASan uses the release CRT. Consumers choose the target and sanitizer policy. |
 | `CPackCommon.cmake` | `kataglyphis_cpack_common` — the CPack *wiring*: generator selection per platform, the architecture-normalised package name, and the NSIS, WiX, DEB and AppImage blocks. A **macro**, because CPack reads `CPACK_*` out of the scope that runs `include(CPack)`. Every per-product value is an argument; `VENDOR` and `WIX_UPGRADE_GUID` are mandatory, the latter because the two consumers it was hoisted from were carrying the *same* MSI upgrade code. On Windows it also installs the DLL closure a build script staged in `KATAGLYPHIS_PACKAGE_DLL_DIR` beside the executables (`kataglyphis_install_package_dlls`), and an arm64 package gets the VC++ runtime without the ARM64EC `vcruntime<ver>_1.dll` (`kataglyphis_arm64_system_runtime_libs`) — [`windows-cross-builds.md`](../docs/windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml). On Linux, `kataglyphis_install_linux_closure` bundles what a clean machine lacks into `lib/<PRIVATE_DIR>` — [`linux-build-basics.md`](../docs/linux-build-basics.md#linux-packages-that-run-outside-the-image) |
+| `CrashDump.cmake` | `kataglyphis_add_crash_dump(<exe>)` — on Windows with cl or clang-cl, compiles a handler into the executable that, when `KATAGLYPHIS_CRASH_DUMP_DIR` is set at run time, writes `<exe>.<pid>.dmp` there for an unhandled exception on any thread, prints the exception and the faulting thread's `module+0xRVA` frames on stderr, and chains to the previous filter so the exit code stays. A Release link also writes a PDB (`/DEBUG /OPT:REF /OPT:ICF`). Not covered: a stack overflow, a crash under ASan (its own report wins) and a process that later replaces the filter — [`failure-modes.md`](../docs/failure-modes.md#a-windows-test-exits-0xc0000005-with-no-gtest-line-and-no-dump) |
 | `Doxygen.cmake` | `enable_doxygen` — configures `Doxyfile.in` from the caller's source dir |
 | `GTestDiscovery.cmake` | `kataglyphis_register_gtest_target` — the one way to register a GoogleTest binary with CTest: `gtest_discover_tests` normally, an `add_test` + explicit-`PATH` fallback where clang-cl discovery dies with `0xc0000135`, and opt-in `WORKING_DIRECTORY`. Includes `GoogleTest` itself |
 | `Hardening.cmake` | `myproject_enable_hardening`; under `MSVC` (which clang-cl sets) it leaves `/CETCOMPAT` off an ARM64 target, whose link refuses it |
@@ -152,6 +153,13 @@ Returns a verified appimagetool: -DKATAGLYPHIS_APPIMAGETOOL, else PATH (unless N
 ```text
 Registers a GoogleTest executable with CTest; KATAGLYPHIS_ENABLE_GTEST_DISCOVERY=OFF forces the add_test fallback.
   kataglyphis_register_gtest_target(<target> [WORKING_DIRECTORY <absolute dir>] [DISCOVERY_TIMEOUT <seconds, default 300>])
+```
+
+`cmake/CrashDump.cmake`:
+
+```text
+Adds the crash handler to a Windows executable; KATAGLYPHIS_CRASH_DUMP_DIR at run time enables it, Linux and macOS skip it.
+  kataglyphis_add_crash_dump(<executable target>)
 ```
 
 `cmake/CompilerBuildFlags.cmake`:

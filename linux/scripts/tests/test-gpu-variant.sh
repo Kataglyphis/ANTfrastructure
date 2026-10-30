@@ -80,7 +80,7 @@ t_assert_contains "$(SNIPPET='echo reached' _graph CROSS_VARIANT=cuda)" "unknown
 
 t_case "the refusals, run through the REAL entry points (read-only modes)"
 CHAIN="${TESTS_DIR}/../build-cross-chain.sh"; STAGE_SH="${TESTS_DIR}/../build-cross-stage.sh"
-_ENV_CLEAN=(env -u CROSS_VARIANT -u ENABLE_NVIDIA -u ENABLE_AMD -u ENABLE_DEEPSTREAM -u ENABLE_TENSORRT -u CROSS_NO_PUSH -u CROSS_BUILD_PLATFORM -u IMAGE_REPO)
+_ENV_CLEAN=(env -u CROSS_VARIANT -u CROSS_NVIDIA_SBSA -u ENABLE_NVIDIA -u ENABLE_AMD -u ENABLE_DEEPSTREAM -u ENABLE_TENSORRT -u CROSS_NO_PUSH -u CROSS_BUILD_PLATFORM -u IMAGE_REPO)
 # Leading VAR=value words are the environment; the rest runs time-boxed.
 _chain() {
   local -a _e=(); while [[ "${1:-}" == *=* ]]; do _e+=("$1"); shift; done
@@ -99,12 +99,39 @@ t_assert_contains "$(_chain CROSS_VARIANT=nvidia bash "${CHAIN}" --describe-chai
   "cannot cross-build arm64" "a foreign-arch CUDA build would ship build-platform GPU libraries under its tag"
 t_assert_contains "$(_chain CROSS_VARIANT=nvidia CROSS_BUILD_PLATFORM=linux/arm64 bash "${CHAIN}" --describe-chain --target-arches arm64)" \
   "can only PUSH from an amd64 build platform" "off amd64 the shared sdk is the amd64 lane's"
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1 bash "${CHAIN}" --describe-chain --target-arches arm64 --only gpu)" \
+  "stages=gpu..gpu" "CROSS_NVIDIA_SBSA=1: the arm64 gpu stage cross-builds on amd64 from NVIDIA's cross-linux-sbsa set"
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1 bash "${CHAIN}" --describe-chain --target-arches arm64)" \
+  "stages=gpu..runtime" "phase E (2026-10-29): the package stage assembles the target's toolkit, so the chain runs through the runtime lane"
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1 bash "${CHAIN}" --describe-chain --target-arches arm64 --to-stage android)" \
+  "stages=gpu..android" "gpu, media and android cross-build (phases C and D)"
+t_assert_contains "$(_chain CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1 bash "${CHAIN}" --describe-chain --target-arches amd64,arm64 --only gpu)" \
+  "stages=gpu..gpu" "beside the native amd64 gpu stage"
+t_assert_contains "$(_chain CROSS_VARIANT=rocm CROSS_NVIDIA_SBSA=1 bash "${CHAIN}" --describe-chain --target-arches arm64 --only gpu)" \
+  "the rocm variant is amd64-only" "the knob is nvidia's alone"
+t_assert_eq "" "$(_chain CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1 bash "${STAGE_SH}" --stage gpu --arch arm64 --dry-run)" \
+  "build-cross-stage.sh accepts the arm64 gpu stage under the knob: no refusal line"
 t_assert_contains "$(_chain CROSS_VARIANT=nvidia CROSS_NO_PUSH=1 CROSS_BUILD_PLATFORM=linux/arm64 bash "${CHAIN}" --describe-chain --only media --target-arches arm64)" \
   "stages=media..media" "the local Jetson lane (native, --no-push) stays allowed"
 t_assert_contains "$(_chain bash "${CHAIN}" --describe-chain --target-arches amd64)" "stages=base..runtime" \
   "the default chain is untouched"
 t_assert_contains "$(_chain CROSS_VARIANT=nvidia bash "${STAGE_SH}" --stage sdk --arch amd64 --dry-run)" \
   "cannot build sdk" "build-cross-stage.sh obeys the same refusals"
+
+t_case "CROSS_RUNTIME_SKIP_MANIFEST=1: the runtime lane pushes the children and leaves the published index alone"
+_CSB="${TESTS_DIR}/../01-core/cross-stage-build.sh"
+_helper_args() {
+  env -i PATH="${PATH}" "$@" bash -c "$(t_fn_src "${_CSB}" cross_stage_assemble_runtime_helper_args)"'
+cross_android_tag_prefix() { printf repo:cross-android-nvidia; }
+arch_list_to_words() { printf "%s" "$1"; }
+_bool_truthy() { [ "$1" = true ]; }
+FINAL_IMAGE=repo:latest-nvidia TARGET_ARCHES=arm64
+out=(); cross_stage_assemble_runtime_helper_args out; printf "%s\n" "${out[@]}"'
+}
+t_assert_contains "$(_helper_args)" "--push" "a pushing run"
+t_assert_eq "0" "$(_helper_args | grep -c -- --skip-manifest)" "builds the index by default"
+t_assert_eq "1" "$(_helper_args CROSS_RUNTIME_SKIP_MANIFEST=1 | grep -c -- --skip-manifest)" "the knob adds --skip-manifest beside --push (the completeness gate would refuse an arm64-only index against the published amd64 one)"
+t_assert_eq "1" "$(_helper_args CROSS_NO_PUSH=1 | grep -c -- --skip-manifest)" "--no-push skips it as before"
 
 t_case "an nvidia stage push names only the private package: tag, push, registry cache, parent pin (real entry points, dry runs)"
 # <stage>: that stage's pushing build command, one argument per line.
@@ -151,6 +178,12 @@ t_case "DeepStream is on in every amd64 nvidia build unless a run opts out (owne
 t_assert_contains "$(_args media CROSS_VARIANT=nvidia)" "ENABLE_DEEPSTREAM=true" "no ask needed"
 t_assert_contains "$(SNIPPET='a=(); append_runtime_accelerator_build_args a; printf "%s " "${a[@]}"' _graph CROSS_VARIANT=nvidia)" \
   "ENABLE_DEEPSTREAM=true" "the package stage gets the default too"
+t_assert_contains "$(SNIPPET='a=(); append_runtime_accelerator_build_args a amd64; printf "%s " "${a[@]}"' _graph CROSS_VARIANT=nvidia)" \
+  "ENABLE_DEEPSTREAM=true" "named amd64, still"
+t_assert_contains "$(SNIPPET='a=(); append_runtime_accelerator_build_args a arm64; printf "%s " "${a[@]}"' _graph CROSS_VARIANT=nvidia)" \
+  "ENABLE_DEEPSTREAM=false" "the arm64 package of a cross chain gets false, as its media stage did: its artifact has no /opt/nvidia/deepstream (phase E, 2026-10-29)"
+t_assert_contains "$(SNIPPET='a=(); append_runtime_accelerator_build_args a arm64; printf "%s " "${a[@]}"' _graph CROSS_VARIANT=nvidia)" \
+  "ENABLE_TENSORRT=true" "TensorRT still ships: the cross debs install the target's runtime"
 t_assert_contains "$(_args media CROSS_VARIANT=nvidia ENABLE_DEEPSTREAM=false)" "ENABLE_DEEPSTREAM=false" "an explicit false wins"
 t_assert_eq "" "$(_args media CROSS_VARIANT=nvidia CROSS_BUILD_PLATFORM=linux/arm64 | grep -o 'ENABLE_DEEPSTREAM=[a-z]*')" \
   "an arm64 (Jetson) nvidia build has no DeepStream route, so it gets no default"

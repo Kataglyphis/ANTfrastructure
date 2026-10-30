@@ -9,13 +9,16 @@ WINDOWS_TESTS="${TESTS_DIR}/../../../windows/scripts/tests"
 # _pester_targets <manifest> <tests-dir>: prints "id -> suite" for each recipe that names a Pester-style suite; exit 1 if any.
 _pester_targets() {
   python3 - "$1" "$2" <<'PY'
-import json, pathlib, re, sys
+import json
+import pathlib
+import re
+import sys
 
-manifest, tests = sys.argv[1], pathlib.Path(sys.argv[2])
+manifest, tests = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
 # Invoke-Tests.ps1's own detection: Pester-only keywords, never Describe, which the harness also exports.
 pester = re.compile(r"(?m)^\s*(BeforeAll|BeforeEach|AfterAll|AfterEach|Context)\s")
 found = []
-for entry in json.load(open(manifest, encoding="utf-8")):
+for entry in json.loads(manifest.read_text(encoding="utf-8")):
     for names in re.findall(r"-Only\s+(\S+)", entry.get("test", "")):
         for name in names.split(","):
             suite = tests / name

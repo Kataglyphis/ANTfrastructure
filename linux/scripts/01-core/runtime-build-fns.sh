@@ -353,7 +353,7 @@ runtime_build_package_image() {
 
   tag="$(runtime_package_tag "${arch}")"
   append_common_build_args build_args "${arch}"
-  append_runtime_accelerator_build_args build_args
+  append_runtime_accelerator_build_args build_args "${arch}"
 
   # Prefer the immutable android digest; without a threaded pin the mutable tag is used.
   local _android_pin
@@ -410,7 +410,7 @@ _runtime_run_package_smoke() {
 
   local -a build_args=()
   append_common_build_args build_args "${arch}"
-  append_runtime_accelerator_build_args build_args
+  append_runtime_accelerator_build_args build_args "${arch}"
 
   local _android_pin
   _android_pin="$(runtime_android_pin "${arch}")"
@@ -446,7 +446,7 @@ _runtime_build_wrapper() {
 
   _wrapper_tag_out="$(runtime_wrapper_tag "${arch}")"
   append_common_build_args _wrapper_build_args_out "${arch}"
-  append_runtime_accelerator_build_args _wrapper_build_args_out
+  append_runtime_accelerator_build_args _wrapper_build_args_out "${arch}"
 
   local parent_context_dir
   _runtime_resolve_parent_context package "${arch}" _wrapper_parent_image_out parent_context_dir _wrapper_build_args_out

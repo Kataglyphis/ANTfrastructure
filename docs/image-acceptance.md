@@ -55,7 +55,10 @@ python3 linux/scripts/image-acceptance.py check --image "$image" \
 ```
 
 The engine defaults to `NERDCTL_BIN` or `nerdctl`; `--engine` accepts another compatible
-executable. Logs contain the actual consumer output. A passed receipt is required for:
+executable. Logs contain the actual consumer output. A passed check removes the consumer
+checkouts under `--workspace` (28 GB a run on 2026-10-29) and keeps the logs beside the receipt;
+a failed check leaves them for inspection, and a replay re-clones them. A passed receipt is
+required for:
 
 ```bash
 python3 linux/scripts/image-acceptance.py promote \

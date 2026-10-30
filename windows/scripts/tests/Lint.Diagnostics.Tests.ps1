@@ -37,7 +37,7 @@ scope.ps1:5: $FLAG = 42
 
     It 'returns no findings for empty input and for spaced, colon and native parameter syntax' {
         $empty = ConvertTo-TestScriptAst -Text ''
-        foreach ($check in @('Get-BarewordCommaAttrViolation', 'Get-SwitchShadowViolation', 'Get-GluedParameterViolation')) {
+        foreach ($check in @('Get-BarewordCommaAttrViolation', 'Get-SwitchShadowViolation', 'Get-GluedParameterViolation', 'Get-ScriptBlockScopeLeakViolation')) {
             Assert-Equal 0 @(& $check -Ast $empty).Count
         }
         $valid = ConvertTo-TestScriptAst -Text @'
@@ -47,6 +47,23 @@ clang-cl -Fo$file
 unknown-tool -Path$x
 '@
         Assert-Equal 0 @(Get-GluedParameterViolation -Ast $valid).Count
+    }
+
+    It 'flags a variable read after the child-scope scriptblock that alone assigns it (mutation)' {
+        $ast = ConvertTo-TestScriptAst -Text @'
+Invoke-WithProcessEnvironment -Environment @{ CL = '/w' } -ScriptBlock { $prefix = 'C:\install'; $inner = 1 }
+Get-ChildItem -LiteralPath $prefix
+$early = 1
+& { $early = 2 }
+$early
+1..2 | ForEach-Object { $dotted = $_ }
+$dotted
+& { $later = 1 }
+It 'x' { foreach ($later in 1..2) { $later } }
+function F([hashtable]$later = @{}) { $later }
+'@
+        Assert-Equal 'leak.ps1:2: $prefix (assigned only inside the scriptblock passed to Invoke-WithProcessEnvironment)' `
+            (@(Get-ScriptBlockScopeLeakViolation -Ast $ast -Label leak.ps1) -join "`n")
     }
 
     It 'detects a visitor that drops command-element checks' {

@@ -396,18 +396,35 @@ owner carries the breakage that costs.
          `AnthologyTable` calls `context.go`, `SkillTable` and `single_page` read
          `UserSettings`/`AppSettings`, and `open_button` needs `AnthologyLocalizations`.
 
+## Open — language AI in the images
+
+Owner goal 2026-10-30: text, LLM and speech apps in the four code repositories on the chain's
+GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs/language-ai.md).
+
+- [ ] **LAI-H2 — GenAI builds with llguidance on Windows** [M, ★★]. `Build-OnnxGenaiFromSource.ps1`
+      passes `-DUSE_GUIDANCE=OFF`, so `json_schema` works on Linux only. Needs Rust in the
+      media-core builder and a Windows chain to prove; done when the smoke gate runs a
+      schema-constrained `generate()` on `:winamd64`.
+- [b] **LAI-H6 — GenAI for Android** [L, ★★]. Neither ORT nor GenAI is built for Android; blocked
+      on milestone 1 ([`docs/language-ai.md` § Roadmap](docs/language-ai.md#roadmap)).
+
 ## Open — Linux image (all arches)
 
+- [ ] **CON172 — the sdk stage points the target multiarch `libstdc++.so` at the host's; prove the fix on an sdk rebuild** [S, ★★].
+      Found 2026-10-29 on the first arm64 nvidia media build: `vulkan.sh`'s `_vulkan_setup_gcc_runtime` linked
+      `libstdc++.so` and `libgcc_s.so` from every `LIBRARY_PATH` dir (the HOST's `/opt/gcc-16.2.0/lib64`) into
+      `/usr/lib/<target triplet>`, so the cross media images carry an x86-64 `libstdc++.so` there; lld rejects it
+      on any link line with an explicit `-lstdc++` (OpenCV's CUDA line), bfd only skips it. In source since
+      2026-10-30: `_vulkan_lib_fits_dir` reads each candidate's ELF machine and refuses one that is not the dir's
+      arch (`test-vulkan-gcc-runtime-links.sh`); ffmpeg, GStreamer and OpenCV keep their repins until the published
+      sdk is rebuilt. Done when `file -L /usr/lib/aarch64-linux-gnu/libstdc++.so` in a fresh `cross-sdk-arm64`
+      says AArch64 and the three repins can go.
 - [ ] **CON163 — every Linux compile reaches sccache; prove it on a chain** [S, ★★★]. In source since 2026-10-26
       ([`build-cache-tiers.md`](docs/build-cache-tiers.md#a-subproject-that-forces-its-own-launcher)): the Vulkan
       SDK RUN mounts both caches and pins its launcher, and ONNX Runtime, LiteRT and the riscv64 torch wheel pin
       `CCACHE_BINARY` against pthreadpool's FORCE, gated by `cmake_assert_compiler_cache_pin`. Done when a second
       chain's `sdk-arm64`/`sdk-riscv64` dependency step and ONNX Runtime's `onnxruntime 2/9` step log
       `sccache-stats|` hits above 90 % of their compiles, and the Vulkan step drops below 10 min.
-- [ ] **CON164 — the S3 level drops uploads** [S, ★★, investigate first]. The 2026-10-26 chain's drains logged
-      `L1 (s3): 3 written, 9 failed of 12` and `6 failed of 9`. Since 2026-10-26 a drain with a failed write prints
-      `SCCACHE_ERROR_LOG`'s level and S3 lines. Work: read them on the next chain and fix the cause. Done when
-      every drain of a chain shows 0 failed.
 - [ ] **CON165 — ONNX Runtime builds with one job under `--parallel-archs`; prove the governor on a chain** [S, ★★★]. In source since 2026-10-27: the launcher's compile governor and `PAR_INTRA_STEP_BUDGET=2` ([docs](docs/build-parallelism-memory-tuning.md#the-compile-governor)). Done when a chain's resource trace keeps `compilers` at or under 32 with no OOM kill and ONNX Runtime and IREE log more than one job. Found 2026-10-26:
       `Using JOBS=1` in `media-arm64.log`, since `compute_jobs_with_mem_cap "" 2000` divides RAM by
       `BUILD_MEM_DIVISOR=18` (3 arches × `PAR_INTRA_STEP_BUDGET=6`). With the cache warm a serial build costs
@@ -888,7 +905,7 @@ owner carries the breakage that costs.
       provider consistently beside the core or test the split location across NVIDIA images
       and consumers before the next image publication. Verify source and wheel bytes match.
 
-- [ ] **CON172 — select the GPU ONNX Runtime reliably in consumer images** [M, ★★★].
+- [ ] **CON196 — select the GPU ONNX Runtime reliably in consumer images** [M, ★★★].
       On 2026-10-30 both cached GPU images exported `ORT_LIB_LOCATION` pointing at
       `/usr/local/lib/onnxruntime-cpu/lib`, even though the CUDA or MIGraphX runtime was at
       `/usr/local/lib/onnxruntime-gpu/lib`. That CPU default is intentional. In a local
@@ -1024,6 +1041,13 @@ owner carries the breakage that costs.
         `ci-container-steps.sh` (580e097) and BeschleunigerBallett's `run-cargo-tests.sh`
         export 128 on aarch64. Four of about twenty OxidANT arm64 runs since 2026-10-05 had
         died on it, one as a SIGSEGV in `forward_ambient` rather than an `LLVM ERROR`.
+      - **The Windows lane pins 256 too** (`Install-LavapipeHost.ps1`, `Dockerfile.media-merge-builder`,
+        `Test-Arm64Bundle.ps1`), and BeschleunigerBallett's arm64 GPU suites crash intermittently
+        with `0xC0000005` on a worker thread in the cloud passes (its #97, from 2026-10-16), the
+        prime suspect being the same JIT. Its suites now link `kataglyphis_add_crash_dump`, so the
+        next crash shows whether the frame is JIT code (no module) or `vulkan_lvp.dll`. The fix:
+        when mmozeiko/build-mesa publishes 26.3.x (26.2.5 is its newest on 2026-10-28; ebcfbe60 is
+        in `26.3.0-rc2`), move `LAVAPIPE_VERSION` and drop the 256 pin on arm64 on both lanes.
 
 - [ ] **CON137 — Playwright in `:latest`, so the Flutter web console capture runs in a lane** [S, ★★].
       Found 2026-10-21, sharing OmniAccelerANT's web side with jotrockenmitlocken.
@@ -1306,13 +1330,19 @@ owner carries the breakage that costs.
         it falls back with `No devices detected that match the filter criteria`).
       - Still unproven on a device: a camera pipeline and a GPU execution provider. No `windows-11-arm`
         runner has either; the Snapdragon X's DirectML is the one adapter in reach.
-- [b] **CON31 — GPU variant capabilities awaiting publication and device proof** [L, ★]. Blocked on the next nvidia
-      and rocm chains and the device runs. The owner chose on 2026-10-20: TensorRT 11 and the ORT TensorRT
-      EP in `:latest-nvidia`, and a `:latest-rocm` that finds its ROCm and opens an AMD GPU. The earlier arm64
-      NVIDIA exclusion is superseded by the published manifest entry and current GPU consumer request; see CON173.
-      Both are in the source since 2026-10-21, hub f6771ee4 (`docs/linux-accelerator-images.md` § TensorRT 11,
-      § Running it on an AMD GPU, § The GPU runtime gate). The older recorded image baselines did not prove them;
-      recheck the current published digests before repeating a chain.
+- [b] **CON31 — the native arm64 nvidia route (phases A/B); the variants themselves are published** [L, ★]. `:latest-nvidia`
+      (amd64 + arm64, one index) and `:latest-rocm` (amd64) are published with passed acceptance receipts: amd64 on
+      2026-10-28, arm64 on 2026-10-29 through the CROSS route from this amd64 host (phases C, D and E of
+      `logs/research/nvidia-arm64-native-and-cross.md`, local; `CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1`,
+      `docs/linux-accelerator-images.md` § Cross from the amd64 host). What is left of the owner's 2026-10-28 decision
+      ("natively AND cross") is the NATIVE route: phase A (an arm64 host builds gpu..runtime first-class, the tag and
+      refusal changes G1-G12 of the plan) and phase B (the merge of a native child into the published index). Blocked
+      on an arm64 build host (Orin or another arm64 box); the cross route is the default owner of the arm64 child.
+      Earlier decision for the record (2026-10-20): TensorRT 11 and the ORT TensorRT EP in `:latest-nvidia`, and a
+      `:latest-rocm` that finds its ROCm and opens an AMD GPU; both ship since 2026-10-28 (hub f6771ee4 and later,
+      `docs/linux-accelerator-images.md` § TensorRT 11, § Running it on an AMD GPU, § The GPU runtime gate).
+      Published manifests do not themselves prove GPU execution on the consumer's device; recheck the relevant
+      image digest and run the device-specific inference gate before claiming acceleration.
       - `:latest-nvidia`, TensorRT 11: `ENABLE_TENSORRT=true` on amd64; exactly `11.4.0.106-1+cuda13.4` from NVIDIA's
         `ubuntu2604` repo; only the runtime `.so` files ship, which the SLA names distributable (§ Redistribution).
         Proved in a throwaway container on the published `0e9dec34…` (no GPU): the hub's `install-tensorrt.sh`
@@ -1396,9 +1426,12 @@ owner carries the breakage that costs.
       - OmniAccelerANT's `nvinfer` path: later, by owner decision (2026-10-12).
       - `nvblender` upstream: a forum draft (both defects, with the RTX 2080's repro) waits for the owner's review in
         `~/upstream-drafts/2026-10-12/nvidia-deepstream/` on the build host; nothing is posted.
-      - **Phase 7 (arm64)**: the live NVIDIA manifest has an arm64 entry (CON173), but that alone does not prove
-        DeepStream there. The Jetson runtime `.deb` is pinned (`DEEPSTREAM_BINARIES_ARM64_SHA256`); nothing
-        in the recorded build installs it. Recheck the published child's contents before planning this phase.
+      - **Phase 7 (arm64)**: the arm64 CUDA route exists since 2026-10-29 (CON31, cross from amd64), but the
+        cross media stage sets `ENABLE_DEEPSTREAM=false` off amd64: NVIDIA's arm64 DeepStream is the Jetson (L4T)
+        package with its own TensorRT binding, not an SBSA one. The Jetson runtime `.deb` is pinned
+        (`DEEPSTREAM_BINARIES_ARM64_SHA256`); nothing installs it. Work: decide whether the SBSA image may carry the
+        Jetson deb at all (its libs link L4T's TensorRT), else leave arm64 without DeepStream by design.
+        The arm64 manifest entry alone does not prove DeepStream is present; recheck the published child.
       Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only); the pin stays on 9.1.0.
 
 ## Open — hub tooling and the dev host

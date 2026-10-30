@@ -7,6 +7,8 @@ on:
     paths:
       - 'windows/**'
       - 'shared/windows/**'
+      - 'cmake/CrashDump.cmake'
+      - 'cmake/crash_dump/**'
       - '.github/actions/**'
       - 'linux/scripts/01-core/versions.env'
       - '.github/workflows/windows-x64.yml'
@@ -15,6 +17,8 @@ on:
     paths:
       - 'windows/**'
       - 'shared/windows/**'
+      - 'cmake/CrashDump.cmake'
+      - 'cmake/crash_dump/**'
       - '.github/actions/**'
       - 'linux/scripts/01-core/versions.env'
       - '.github/workflows/windows-x64.yml'

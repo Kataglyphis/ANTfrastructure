@@ -16,6 +16,7 @@ usage: collect-release-assets.sh [options] <artifacts dir> <out dir>
   --unpack UPLOAD_GLOB                collect from the contents of the upload's tarballs
   --expect NAME                       the release must carry NAME
   --strict                            an upload neither skipped nor collected from fails
+  --lone-upload NAME                  the artifacts dir is the one upload NAME, unless it holds a NAME folder
   --options FILE                      more options, one per line, globs unquoted
 Globs are case patterns, so * crosses /. NAME takes {version}, {stem} (the file's name
 without its last extension), and {arch} and {machine} from the upload's name:
@@ -28,7 +29,7 @@ USAGE
 # shellcheck source=/dev/null
 . "$(dirname "${BASH_SOURCE[0]}")/../01-core/logging.sh"
 
-VERSION="" STRICT=0 GAVE=0 OUT="" SCRATCH=""
+VERSION="" STRICT=0 GAVE=0 OUT="" SCRATCH="" LONE=""
 # build-docs.yml uploads the site in the same run as the release.
 SKIP=('*-docs-site' 'docs-site-*')
 INCLUDE=() EXCLUDE=() ONLY_FROM=() RENAME=() ZIP=() UNPACK=() EXPECT=() POSITIONAL=()
@@ -52,6 +53,7 @@ parse_args() {
       --version) [ $# -ge 2 ] || die "--version needs a value"; VERSION="$2"; shift 2 ;;
       --options) [ $# -ge 2 ] || die "--options needs a file"; read_options "$2"; shift 2 ;;
       --strict) STRICT=1; shift ;;
+      --lone-upload) [ $# -ge 2 ] || die "--lone-upload needs a name"; LONE="$2"; shift 2 ;;
       --flatpak-arch-from-suffix) RENAME+=('*.flatpak={stem}-{machine}.flatpak'); shift ;;
       -h | --help) usage ;;
       -*) die "unknown option $1" ;;
@@ -207,8 +209,17 @@ check_expected() {
   done
 }
 
+# collect_one <dir> <upload>: one upload, unless it is skipped; --strict fails one that gives nothing.
+collect_one() {
+  local dir="$1" upload="$2"
+  if any_match "$upload" "${SKIP[@]}"; then return 0; fi
+  GAVE=0
+  collect_upload "$dir" "$upload"
+  [ "$GAVE" = 1 ] || [ "$STRICT" = 0 ] || die "upload ${upload} is neither collected nor skipped: decide in the release's collect options"
+}
+
 main() {
-  local dir upload artifacts
+  local dir artifacts
   parse_args "$@"
   [ "${#POSITIONAL[@]}" -eq 2 ] || usage
   check_rules
@@ -219,14 +230,17 @@ main() {
   OUT="$(cd "${POSITIONAL[1]}" && pwd)"
   SCRATCH="$(mktemp -d)"
   trap 'rm -rf "${SCRATCH}"' EXIT
-  for dir in "$artifacts"/*/; do
-    [ -d "$dir" ] || continue
-    upload="$(basename "$dir")"
-    if any_match "$upload" "${SKIP[@]}"; then continue; fi
-    GAVE=0
-    collect_upload "${dir%/}" "$upload"
-    [ "$GAVE" = 1 ] || [ "$STRICT" = 0 ] || die "upload ${upload} is neither collected nor skipped: decide in the release's collect options"
-  done
+  # download-artifact extracts a lone upload straight into its path, without the upload's folder.
+  if [ -n "$LONE" ] && [ ! -d "${artifacts}/${LONE}" ]; then
+    collect_one "$artifacts" "$LONE"
+  else
+    [ -z "$(find "$artifacts" -mindepth 1 -maxdepth 1 -type f -print -quit)" ] ||
+      die "files lie directly in ${artifacts}, outside any upload: name the lone upload with --lone-upload"
+    for dir in "$artifacts"/*/; do
+      [ -d "$dir" ] || continue
+      collect_one "${dir%/}" "$(basename "$dir")"
+    done
+  fi
   check_expected
   [ -n "$(ls -A "$OUT")" ] || die "no packages under ${artifacts}"
   ls -1 "$OUT"

@@ -19,11 +19,9 @@ done
 
 # _launcher <COMPILER_CACHE>: the CXX launcher a compiler-less project ends up with.
 _launcher() {
-  local proj
-  proj="$(_cmake_project "include(\"${HUB_CMAKE}/Cache.cmake\")
+  PATH="${_w}/bin:${PATH}" cmake_fixture_output "include(\"${HUB_CMAKE}/Cache.cmake\")
 myproject_enable_cache()
-message(STATUS \"LAUNCHER=[\${CMAKE_CXX_COMPILER_LAUNCHER}]\")" "${_w}/p.XXXXXX")"
-  PATH="${_w}/bin:${PATH}" cmake -S "${proj}" -B "${proj}/b" -DCOMPILER_CACHE="$1" 2>&1 | sed -n 's/^-- LAUNCHER=\[\(.*\)\]$/\1/p'
+message(STATUS \"LAUNCHER=[\${CMAKE_CXX_COMPILER_LAUNCHER}]\")" -DCOMPILER_CACHE="$1" | sed -n 's/^-- LAUNCHER=\[\(.*\)\]$/\1/p'
 }
 
 t_case "sccache goes through the hub's guarded launcher"

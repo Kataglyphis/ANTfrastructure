@@ -985,6 +985,11 @@ Measured with clang 21.1 for `gfx90a` and `gfx1100` (2026-10-17):
 - No AMD GPU here ran the code, which is why HIP has its own switch: `ENABLE_SCCACHE_HIP=0`
   takes it out without touching nvcc.
 
+On the Windows rocm lane llama.cpp compiles its HIP sources as CXX, so the CXX launcher covers
+them, but PyTorch builds ATen's kernels as CMake's HIP language: `Build-TorchRocmFromSource.ps1`
+sets `CMAKE_HIP_COMPILER_LAUNCHER` beside C and CXX. Without it, 262 of the 2695 objects compiled
+uncached on every run (2026-10-29).
+
 #### **cross-machine tier** (`SCCACHE_MULTILEVEL_CHAIN`, webdav L2)
 
 Out of scope for this document. Note only that the mechanism is real and version-gated: on an older sccache the chain variable is **ignored silently**, which is exactly the failure shape this repo keeps eliminating — so it would need a pinned sccache and a hit-rate assertion before it could be considered on the Linux lane.
@@ -1685,7 +1690,9 @@ layer:
 - `_cross_build_append_sccache_s3_secret` (`cross-stage-build.sh`) passes the host's
   `~/.config/kataglyphis/sccache-s3.env` as `--secret id=sccache_s3,src=…` when it is mode 600,
   names the bucket, the endpoint and both key halves, and the endpoint takes a TCP connection
-  within 2 s. Otherwise it warns, names why, and the stage builds on disk alone. Each stage's
+  within 2 s on one of `SCCACHE_S3_PROBE_TRIES` (3) tries, a second apart; one try lost a whole
+  stage's level to a WireGuard re-handshake on 2026-10-28. Otherwise it warns, names why, and
+  the stage builds on disk alone. Each stage's
   log says `sccache levels: disk -> s3 <endpoint>`. `KATAGLYPHIS_SCCACHE_S3=off` turns it off
   for a run, and `KATAGLYPHIS_SCCACHE_S3_FILE` names another file. The runtime lane's wrapper
   build (`_runtime_build_wrapper`, `runtime-build-fns.sh`) calls it too, since 2026-10-21: before,
@@ -1725,6 +1732,26 @@ writes, as `Wait-SccacheUploadDrain` does on Windows, and gives up after 600 s
 whose compiles never reached sccache shows a request count far below its compile lines. When a
 level-1 write failed, it prints the last level, S3 or write lines of `SCCACHE_ERROR_LOG`, or says
 the log names no reason; the 2026-10-26 chain logged `3 written, 9 failed of 12` and nothing else.
+
+**The wasm build's ccache rides the level as an archive** (2026-10-29). sccache cannot cache
+emscripten at all: its clang parser refuses `-Xclang -iwithsysroot/include/fakesdl`, which emcc
+passes on every compile. The onnxruntime-web RUN therefore uses ccache (`EM_COMPILER_WRAPPER`) in
+its own dir `/var/cache/ccache/onnxruntime-web`; `40-build-wasm.sh` restores that dir from
+`ccache/onnxruntime-web-<ORT_VERSION>.tar.gz` in the bucket when the mount is empty
+(`sccache_s3_fetch`) and stores it back when the build added objects (`sccache_s3_store`), both
+SigV4 requests from the standard library with the RUN's secret. One archive per ORT version, a few
+hundred MB; the log lines are `ccache-s3| restored …`, `ccache-s3| stored …`, `ccache-stats| …`.
+
+**A failed write is re-put from the disk level** (2026-10-29). sccache does not retry a level-1
+write: the 2026-10-29 arm64 GStreamer RUN lost 3 of 232 objects to `write close failed Unexpected
+(temporary) at write => send http request`, and each stayed on the disk mount alone, where the next
+`nerdctl system prune` drops it. The drain now reads the paths the server log names
+(`service=s3 name=sccache path=a/3/3/<key>`), finds each on the disk level (a compile object sits at
+`<k0>/<k1>/<key>` there, one directory less than in S3; the preprocessor cache keeps its full
+`preprocessor/<k0>/<k1>/<k2>/<key>` on both), and PUTs it with a SigV4 request from the standard library
+(`_sccache_s3_put`; the images carry no S3 client), printing
+`sccache-drain| re-uploaded <n> of <m> failed write(s) from the disk level`. A key the disk level
+has already evicted is named, not invented. Without the secret in the RUN there is nothing to re-put.
 
 **What happens when the level is missing:**
 

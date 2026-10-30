@@ -192,12 +192,15 @@ foreach ($file in $targets) {
     foreach ($v in @(Get-GluedParameterViolation -Ast $ast -Label $rel)) {
         [void]$astViolations.Add("parameter token glued to its argument (-Path`$x / -Path(...) parse but bind wrong): $v")
     }
+    foreach ($v in @(Get-ScriptBlockScopeLeakViolation -Ast $ast -Label $rel)) {
+        [void]$astViolations.Add("variable read after the child-scope scriptblock that alone assigns it (assign it before the call): $v")
+    }
 }
 
 Write-LintResult -Items @($parseErrors) -FailureHeader "PARSE: $($parseErrors.Count) error(s)" `
     -SuccessHeader "PARSE: all $($targets.Count) files parse clean" -Format { param($item) "  $($item.File):$($item.Line)  $($item.Message)" }
 Write-LintResult -Items @($astViolations) -FailureHeader "AST TRAPS: $($astViolations.Count) violation(s)" `
-    -SuccessHeader 'AST TRAPS: none (comma-attr quoting + switch shadowing + glued parameter tokens)' -Format { param($item) "  $item" }
+    -SuccessHeader 'AST TRAPS: none (comma-attr quoting + switch shadowing + glued parameter tokens + scriptblock scope leaks)' -Format { param($item) "  $item" }
     return [pscustomobject]@{ ParseErrors = @($parseErrors); AstViolations = @($astViolations) }
 }
 $parseReport = Get-LintParseReport -Targets $targets -WindowsDir $windowsDir

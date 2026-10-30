@@ -29,6 +29,8 @@ lives in [`failure-modes.md`](failure-modes.md).
 - [`Import-Module -Force` only at entry-script top level](#import-module--force-only-at-entry-script-top-level)
 - [Never splat a string array of `-Param`-shaped tokens](#never-splat-a-string-array-of--param-shaped-tokens)
 - [Four more pwsh traps: bareword comma-attributes, switch-name collisions, glued parameter tokens, null env restores](#four-more-pwsh-traps-bareword-comma-attributes-switch-name-collisions-glued-parameter-tokens-null-env-restores)
+- [A variable set inside a scriptblock argument is gone after the call](#a-variable-set-inside-a-scriptblock-argument-is-gone-after-the-call)
+- [A function's native output becomes part of its return value](#a-functions-native-output-becomes-part-of-its-return-value)
 - [Windows stage scripts must end with an explicit `exit 0`](#windows-stage-scripts-must-end-with-an-explicit-exit-0)
 - [Production scripts run under `Set-StrictMode -Version Latest`](#production-scripts-run-under-set-strictmode--version-latest)
 
@@ -88,6 +90,7 @@ lives in [`failure-modes.md`](failure-modes.md).
 - [graphene needs `-Dgraphene:sse2=false` plus the meson.build patch](#graphene-needs--dgraphenesse2false-plus-the-mesonbuild-patch)
 - [In `RUN --mount=...,from=<stage>` the SOURCE path is Unix-style](#in-run---mountfromstage-the-source-path-is-unix-style)
 - [A whole-directory `modules` mount puts EVERY module in the cache key](#a-whole-directory-modules-mount-puts-every-module-in-the-cache-key)
+- [A file bind mount the image lacks leaves a directory behind](#a-file-bind-mount-the-image-lacks-leaves-a-directory-behind)
 - [The "unreferenced" `windows/scripts` modules are external-consumer API](#the-unreferenced-windowsscripts-modules-are-external-consumer-api)
 - [Rust: rustup WITH a default toolchain is the sole provider](#rust-rustup-with-a-default-toolchain-is-the-sole-provider)
 - [`versions.env` is the single source of truth](#versionsenv-is-the-single-source-of-truth)
@@ -217,6 +220,25 @@ Double-quote the whole attribute string (`--output "type=image,name=$tag"`).
 to the switch-typed PARAMETER variable and throws `Cannot convert ... String
 to ... SwitchParameter` at runtime — the probe's docker lane had never
 executed. Never reuse a switch parameter's name for a local variable.
+
+### A variable set inside a scriptblock argument is gone after the call
+
+A scriptblock passed to a command (`Invoke-WithProcessEnvironment -ScriptBlock { … }`, `& { … }`) runs in a
+child scope; only `ForEach-Object` and `Where-Object` dot-source theirs. Wrapping a `try`/`finally` into such a
+call turned `$vvlPrefix` into a child-scope local, and the arm64 merge died after 40 minutes on `The variable
+'$vvlPrefix' cannot be retrieved because it has not been set` (2026-10-28; amd64 never reaches that branch).
+Assign what the code after the call reads before the call. `Get-ScriptBlockScopeLeakViolation` is an AST trap
+in `Invoke-Lint.ps1`; it does not follow names across files, dot-sourced helpers or loop variables.
+
+### A function's native output becomes part of its return value
+
+Everything a function writes to the output stream is returned with its `return` value. A native tool or a
+helper that passes one through (`Invoke-NinjaBuildWithRetry`, `pip`) inside a function whose result a caller
+keeps must end in `| Out-Host`, or the caller receives an array. The ROCm TVM branch returned ninja's whole
+LLVM log as its `llvm-config` path, and `cmd.exe` refused the command line built from it (2026-10-29); the
+nvidia and CPU lanes find `llvm-config` on PATH and never build that LLVM. `SourceBuild.NinjaReturnLeak.Tests.ps1`
+fails a value-returning function that leaves `Invoke-NinjaBuildWithRetry` uncaptured while a caller keeps its
+result; it does not cover other native calls.
 
 ### Windows stage scripts must end with an explicit `exit 0`
 
@@ -802,6 +824,19 @@ re-introduces the directory form. `Dockerfile.probe` is exempt BY DESIGN
 (`PROBE_NONCE` busts its layer regardless, and it dispatches arbitrary
 diagnostic scripts — its own header says so). Corollary: "a module edit is
 cheap" is a claim about the MOUNTS, not about the module.
+
+### A file bind mount the image lacks leaves a directory behind
+
+**Bind-mount a file into `C:\temp\scripts` only where the stage already has
+that file; otherwise `COPY` it.** On a Windows container the mount point for a
+missing target is created as a directory and stays in the layer. Every stage
+above inherits it, and `Dockerfile`'s `COPY windows\scripts\modules` then fails
+with `cannot replace to directory ...\WindowsContainerImage.Bootstrap.psm1 with
+file`. `Dockerfile.nvidia` mounted that module, which `Dockerfile.base` does
+not copy, so the CPU lane stayed green and the nvidia chain failed in final
+after five hours (2026-10-29). A `COPY` costs the same cache as the mount: the
+file's bytes key the layer either way. `BuildKit.MountStub.Tests.ps1` grades
+every mount under `C:\temp\scripts` against base's copies and the stage's own.
 
 ### The "unreferenced" `windows/scripts` modules are external-consumer API
 

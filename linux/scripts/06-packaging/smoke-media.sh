@@ -554,6 +554,14 @@ elif [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
 fi
 
 # Vulkan SDK: header, active link, glslangValidator
+_smoke_glslang_version() {
+  if "${_vk_glslang}" --version >/dev/null 2>&1; then
+    pass "glslangValidator functional: ${_vk_glslang}"
+  else
+    fail "glslangValidator found but --version failed: ${_vk_glslang}"
+  fi
+}
+
 echo "--- Vulkan SDK ---"
 _vk_root="${VULKAN_SDK_ROOT:-/opt/vulkan}"
 if [ -d "${_vk_root}" ]; then
@@ -575,17 +583,13 @@ if [ -d "${_vk_root}" ]; then
   else
     fail "Vulkan active link not found at ${_vk_root}/active and no versioned archdir"
   fi
-  # 3. glslangValidator runs (host binary — works on all arches in the build sandbox)
+  # 3. glslangValidator runs; the archdir's binary is the TARGET's, so under cross only presence (no binfmt in the sandbox, 2026-10-29).
   _vk_glslang=""
   for _cand in "${_vk_root}/active/bin/glslangValidator" "${_vk_root}"/*/bin/glslangValidator "${_vk_root}"/*/*/bin/glslangValidator; do
     [ -x "${_cand}" ] && { _vk_glslang="${_cand}"; break; }
   done
   if [ -n "${_vk_glslang}" ]; then
-    if "${_vk_glslang}" --version >/dev/null 2>&1; then
-      pass "glslangValidator functional: ${_vk_glslang}"
-    else
-      fail "glslangValidator found but --version failed: ${_vk_glslang}"
-    fi
+    smoke_native_dispatch glslangValidator "${_vk_glslang}" _smoke_glslang_version
   else
     fail "glslangValidator not found under ${_vk_root}"
   fi

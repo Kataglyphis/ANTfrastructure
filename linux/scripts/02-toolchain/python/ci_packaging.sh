@@ -92,16 +92,16 @@ packaging_cross_env() {
   info "cross packaging for ${target}: ${CC}, include ${include_flag}, platform ${plat_tag}"
 }
 
-if [ -n "${CROSS_TARGET}" ]; then
-  packaging_cross_env "${CROSS_TARGET}"
-fi
-
 # Cross wheels go through pip: uv refuses the target platform tag, so only the build command may see _PYTHON_HOST_PLATFORM.
 package_build() {
   local venv="$1"
   if [ -n "${CROSS_TARGET}" ]; then
     uv build --sdist
-    _PYTHON_HOST_PLATFORM="${PYTHON_HOST_PLATFORM_TARGET}" "${venv}/bin/python" -m pip wheel . --no-deps -w dist
+    # A subshell: the venv syncs build their own sdists for the host, so the target toolchain reaches only this wheel.
+    (
+      packaging_cross_env "${CROSS_TARGET}" || exit 1
+      _PYTHON_HOST_PLATFORM="${PYTHON_HOST_PLATFORM_TARGET}" "${venv}/bin/python" -m pip wheel . --no-deps -w dist
+    )
   else
     # uv build ignores the venv; +gil, as a plain request may take the image's free-threaded python.
     uv build --python "$(uv_python_request "${PYTHON_VERSION}")"

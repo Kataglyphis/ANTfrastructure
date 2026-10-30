@@ -169,6 +169,8 @@ CROSS_DISK_GUARD_GB
 # accept the stale-parent risk that BuildKit's OCI worker resolves FROM against
 # the registry on local-only builds.
 CROSS_NO_PUSH_FORCE
+CROSS_NVIDIA_SBSA
+SCCACHE_S3_PROBE_TRIES
 # --no-push OCI-layout handoff switch (01-core/cross-stage-build.sh, backlog C).
 # Default 1: every stage built locally is exported and served to the child via
 # --build-context <parent-tag>=oci-layout://<dir>, so FROM never hits the
@@ -433,3 +435,5 @@ LINKER_SELECT_CACHE_DIR
 HOST_PAYLOAD_ARCHES
 # sccache-s3-level.sh drain: how long a RUN waits for its S3 uploads (default 600 s); an operator switch, never set in-repo.
 SCCACHE_S3_DRAIN_TIMEOUT
+# build-cross-chain.sh runtime stage: push the per-arch children, skip the index (a new arch's first run against a published :latest-<variant>); an operator switch.
+CROSS_RUNTIME_SKIP_MANIFEST

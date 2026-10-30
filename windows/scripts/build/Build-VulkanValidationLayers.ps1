@@ -96,6 +96,8 @@ if ($arch -eq 'amd64') {
 
     $plan = Get-VvlDependencyPlan -KnownGoodJson (Get-Content -LiteralPath (Join-Path $vvlSource 'scripts\known_good.json') -Raw) -WorkDir $WorkDir
     $common = @("-DCMAKE_PREFIX_PATH=$($depsPrefix.Replace('\', '/'))", "-DPython3_EXECUTABLE=$($py.Exe)") + (Get-LlvmArchiverCmakeArg)
+    $vvlBuild = Join-Path $WorkDir 'build\Vulkan-ValidationLayers'
+    $vvlPrefix = Join-Path $WorkDir 'install'
     # VVL's -Wall is clang-cl's -Weverything: 1.36 M warning lines, 97.9 % of a 768 MB merge log; CL, as _CL_ lands after `--` (hub #183).
     Invoke-WithProcessEnvironment -Environment @{ CL = '/w' } -ScriptBlock {
         foreach ($dep in $plan) {
@@ -108,8 +110,6 @@ if ($arch -eq 'amd64') {
         }
 
         Write-Host "=== Vulkan-ValidationLayers vulkan-sdk-$VulkanVersion ($arch) ==="
-        $vvlBuild = Join-Path $WorkDir 'build\Vulkan-ValidationLayers'
-        $vvlPrefix = Join-Path $WorkDir 'install'
         # No sccache here: on 1.4.363 the arm64 compile of vk_validation_error_messages.cpp hung in the server twice (2026-10-10).
         Invoke-CmakeConfigure -SourceDir $vvlSource -BuildDir $vvlBuild -InstallPrefix $vvlPrefix -TargetArch $arch `
             -ExtraArgs ($common + @('-DUPDATE_DEPS=OFF', '-DBUILD_WERROR=OFF', '-DBUILD_TESTS=OFF',

@@ -60,6 +60,10 @@ would delete it.
   cleanly; a 10s stop leaves an "unfinished session" warning behind.
 - The 455 MB `core` dump from 2025-03-19 was deleted during the move; the
   `.gitignore` `core` pattern keeps any future dump out of git.
+- **The MQTT broker is the host's Mosquitto** (`apt install mosquitto`), not a container. The
+  stock Tasmota plugs report through it, and HA's MQTT integration points at `himbeere2:1883`.
+  `/etc/mosquitto/mosquitto.conf` adds two lines to Debian's default: `listener 1883 0.0.0.0`
+  and `allow_anonymous true`.
 
 ## Recorder and energy dashboard
 
@@ -142,6 +146,16 @@ own: the office's (on this host), the feeding trough's (`tabblscatcam`) and the 
 | `config/automations.yaml` | `catcam_arrival_notification` counts an arrival at 0.45 or more and sends it to the phone with its frame, then adds the clip and the stay to that notification; a midnight reset, a 21:00 summary and an offline alert |
 | `config/configuration.yaml` | each cam's `/healthz` as `rest` sensors (last seen, last stay, clip, detections, problem), the visit counters and `input_text` helpers, and the `Katzenbesuche` statistic |
 | `config/dashboards/katze.yaml` | the **Katze** page, registered under `lovelace: dashboards: katze-cam` |
+
+Each cam's own settings are in `/etc/omni-accelerant/observant.toml` on its host:
+
+| Host | `name` | `rotate` | `notify_url` |
+| --- | --- | --- | --- |
+| pi-1 (`.98`) | `Cat Cam Büro` | `180` | `http://127.0.0.1:8123/api/webhook/<catcam_webhook_id>` |
+| tabblscatcam (`.151`) | `Cat Cam Futtertrog` | `270`, the Pi lies on its side | `http://192.168.188.98:8123/api/webhook/<catcam_futtertrog_webhook_id>` |
+| mintberrycrunch (`.145`) | the default | the default | `http://192.168.188.98:8123/api/webhook/<catcam_mintberry_webhook_id>` |
+
+`peers` lists the other hosts as `http://192.168.188.<n>:8080`, `.108` and `.50` included.
 
 ## The Ansible page
 

@@ -58,6 +58,10 @@ out="$(SCCACHE_S3_SECRET_FILE="${WORK}/secret" _env_of 1)"
 t_assert_contains "${out}" "takes no TCP connection within 2 s"
 t_assert_eq "" "$(printf '%s\n' "${out}" | grep '=' || true)" "an unreachable level still produced variables"
 
+t_case "the TCP probe retries before a stage loses its S3 level"
+t_assert_contains "$(t_fn_src "${LIB}" sccache_s3_endpoint_reachable)" 'for try in $(seq 1 "${SCCACHE_S3_PROBE_TRIES:-3}")' \
+  "one 2 s connect lost a stage's level during a WireGuard re-handshake (2026-10-28)"
+
 t_case "the TCP probe tells a listening port from a closed one"
 port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')"
 python3 -c 'import socket,sys,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1",int(sys.argv[1]))); s.listen(4); time.sleep(20)' "${port}" &
@@ -123,6 +127,57 @@ t_assert_contains "$(SCCACHE_ERROR_LOG="${WORK}/none.log" _drain "{\"stats\":{\"
 nothing about levels or S3"
 t_assert_eq 0 "$(SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 2 0),$(level 'L1 (s3)' 2 0)]}}" | grep -c 'failed writes')" \
   "a clean drain reads no log"
+t_case "a failed S3 write is re-put from the disk level (sccache does not retry; 3 of 232 GStreamer objects stayed local on 2026-10-29)"
+_key="a33$(printf '%061d' 8)"
+mkdir -p "${WORK}/disk/a/3" "${WORK}/disk/preprocessor/b/4/b" "${WORK}/s3"
+printf 'object bytes' > "${WORK}/disk/a/3/${_key}"
+printf 'preprocessor entry' > "${WORK}/disk/preprocessor/b/4/b/b4${_key:2}"
+python3 - "${WORK}/s3" > "${WORK}/s3/port" 2>/dev/null <<'PY' &
+import http.server
+import sys
+
+root = sys.argv[1]
+class H(http.server.BaseHTTPRequestHandler):
+    def do_PUT(self):
+        body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        with open(root + "/put", "w") as f:
+            f.write(f"{self.path} {self.headers.get('Authorization', '')} {body.decode()}\n")
+        self.send_response(200); self.end_headers()
+    def do_GET(self):
+        if not self.path.endswith("/have.tgz"):
+            self.send_response(404); self.end_headers(); return
+        self.send_response(200); self.send_header("Content-Length", "9"); self.end_headers(); self.wfile.write(b"archive-9")
+    def log_message(self, *a): pass
+srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+print(srv.server_address[1], flush=True)
+srv.serve_forever()
+PY
+_s3pid=$!
+until [ -s "${WORK}/s3/port" ]; do sleep 0.1; done
+_port="$(cat "${WORK}/s3/port")"
+printf 'SCCACHE_BUCKET=sccache\nSCCACHE_ENDPOINT=http://127.0.0.1:%s\nSCCACHE_REGION=garage\nAWS_ACCESS_KEY_ID=GKtest\nAWS_SECRET_ACCESS_KEY=secret\n' "${_port}" > "${WORK}/secret-s3"
+printf '[ERROR opendal::services] service=s3 name=sccache path=a/3/3/%s written=12: write close failed Unexpected (temporary) at write => send http request\n' "${_key}" > "${WORK}/sccache.log"
+_out="$(SCCACHE_S3_SECRET_FILE="${WORK}/secret-s3" SCCACHE_DIR="${WORK}/disk" SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 2 0),$(level 'L1 (s3)' 1 1)]}}")"
+t_assert_contains "${_out}" "re-uploaded 1 of 1 failed write(s) from the disk level" "the drain re-puts it: ${_out}"
+t_assert_contains "$(cat "${WORK}/s3/put" 2>/dev/null)" "/sccache/a/3/3/${_key} AWS4-HMAC-SHA256 Credential=GKtest/" "a SigV4 PUT of the S3 path, under the bucket"
+t_assert_contains "$(cat "${WORK}/s3/put" 2>/dev/null)" "/garage/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=" "signed for the secret's region"
+t_assert_contains "$(cat "${WORK}/s3/put" 2>/dev/null)" " object bytes" "with the disk level's bytes"
+printf '[ERROR opendal::services] service=s3 name=sccache path=preprocessor/b/4/b/%s written=1: write close failed\n' "b4${_key:2}" >> "${WORK}/sccache.log"
+printf '[ERROR opendal::services] service=s3 name=sccache path=f/f/f/%s written=1: write close failed\n' "ffff${_key:4}" >> "${WORK}/sccache.log"
+_out="$(SCCACHE_S3_SECRET_FILE="${WORK}/secret-s3" SCCACHE_DIR="${WORK}/disk" SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 4 0),$(level 'L1 (s3)' 1 3)]}}")"
+t_assert_contains "${_out}" "re-upload: ffff${_key:4:8} is not on the disk level" "a key the disk level evicted is named, not invented"
+t_assert_contains "${_out}" "re-uploaded 2 of 3 failed write(s)" "a compile object (k0/k1/key on disk, k0/k1/k2/key in S3) and a preprocessor entry (its full path on both) are both found"
+t_assert_contains "$(cat "${WORK}/s3/put" 2>/dev/null)" "/sccache/preprocessor/b/4/b/b4${_key:2} " "the preprocessor entry went up under its S3 path"
+t_case "sccache_s3_fetch and sccache_s3_store move one object of the shared level with the RUN's secret"
+_fetch() { SCCACHE_S3_SECRET_FILE="${WORK}/secret-s3" bash -c 'source "$1"; sccache_s3_fetch "$2" "$3"' _ "${LIB}" "$@" 2>&1; echo "rc=$?"; }
+t_assert_contains "$(_fetch ccache/have.tgz "${WORK}/got.tgz")" "rc=0" "a present object is fetched"
+t_assert_eq "archive-9" "$(cat "${WORK}/got.tgz" 2>/dev/null)" "byte for byte"
+t_assert_contains "$(_fetch ccache/missing.tgz "${WORK}/none.tgz")" "rc=2" "an absent one says 2 (HTTP 404), the caller's cue to fill it"
+t_assert_contains "$(SCCACHE_S3_SECRET_FILE="${WORK}/none" bash -c 'source "$1"; sccache_s3_store x "$2"' _ "${LIB}" "${WORK}/got.tgz" 2>&1; echo "rc=$?")" "rc=1" "no secret, no level: 1, nothing sent"
+kill "${_s3pid}" 2>/dev/null || true
+_out="$(SCCACHE_S3_SECRET_FILE="${WORK}/none" SCCACHE_DIR="${WORK}/disk" SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 2 0),$(level 'L1 (s3)' 1 1)]}}")"
+t_assert_contains "${_out}" "no S3 level in this RUN, so nothing to re-upload" "without the secret the drain only reports"
+
 rm -f "${WORK}/s.sock"
 t_assert_eq "" "$(PATH="${WORK}/bin:${PATH}" SCCACHE_SERVER_UDS="${WORK}/s.sock" bash "${LIB}" drain 2>&1)" "no socket, no server to ask"
 

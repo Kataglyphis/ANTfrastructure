@@ -31,6 +31,24 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Get-ResourceSampleRow {
+    param([string]$Phase, [string]$Drive)
+    $cpu = [int](Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+    $os = Get-CimInstance Win32_OperatingSystem
+    $freeGB = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
+    $totalGB = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
+    $usedGB = [math]::Round($totalGB - $freeGB, 1)
+    $committedGB = [math]::Round(($os.TotalVirtualMemorySize - $os.FreeVirtualMemory) / 1MB, 1)
+    # Measure-Object over no input has no Sum under StrictMode, and a host without a running WSL VM has no vmmem.
+    $vmmemProcs = @(Get-Process -Name 'vmmem*' -ErrorAction SilentlyContinue)
+    $vmmemGB = if ($vmmemProcs) { [math]::Round(($vmmemProcs | Measure-Object -Property WorkingSet64 -Sum).Sum / 1GB, 1) } else { 0 }
+    $disk = Get-PSDrive -Name $Drive -ErrorAction SilentlyContinue
+    $diskFreeGB = if ($disk -and $null -ne $disk.Free) { [math]::Round($disk.Free / 1GB, 1) } else { '' }
+    # Phase labels come from the driver, but a comma still must not split the CSV row.
+    $Phase = $Phase -replace ',', ';'
+    return "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),$Phase,$cpu,$freeGB,$usedGB,$committedGB,$vmmemGB,$diskFreeGB"
+}
+
 function Start-ResourceSampling {
     param([string]$CsvPath, [string]$PhaseFile, [int]$IntervalSeconds, [string]$Drive)
 
@@ -44,19 +62,7 @@ function Start-ResourceSampling {
         try {
             $phase = if ($PhaseFile -and (Test-Path $PhaseFile)) { (Get-Content $PhaseFile -First 1 -ErrorAction SilentlyContinue) } else { '' }
             if ([string]::IsNullOrWhiteSpace($phase)) { $phase = '-' }
-            $cpu = [int](Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
-            $os = Get-CimInstance Win32_OperatingSystem
-            $freeGB = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
-            $totalGB = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
-            $usedGB = [math]::Round($totalGB - $freeGB, 1)
-            $committedGB = [math]::Round(($os.TotalVirtualMemorySize - $os.FreeVirtualMemory) / 1MB, 1)
-            $vmmem = (Get-Process -Name 'vmmem*' -ErrorAction SilentlyContinue | Measure-Object -Property WorkingSet64 -Sum).Sum
-            $vmmemGB = if ($vmmem) { [math]::Round($vmmem / 1GB, 1) } else { 0 }
-            $disk = Get-PSDrive -Name $Drive -ErrorAction SilentlyContinue
-            $diskFreeGB = if ($disk -and $null -ne $disk.Free) { [math]::Round($disk.Free / 1GB, 1) } else { '' }
-            # Phase labels come from the driver, but a comma still must not split the CSV row.
-            $phase = $phase -replace ',', ';'
-            "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),$phase,$cpu,$freeGB,$usedGB,$committedGB,$vmmemGB,$diskFreeGB" | Add-Content -Path $CsvPath
+            Get-ResourceSampleRow -Phase $phase -Drive $Drive | Add-Content -Path $CsvPath
         } catch {
             # A transient CIM hiccup must not kill the series, but the row carries its reason.
             $why = ($_.Exception.Message -replace '[,\r\n]', ';')

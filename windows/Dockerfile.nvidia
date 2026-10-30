@@ -16,11 +16,12 @@ ENV TENSORRT_VERSION="${TENSORRT_VERSION}"
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
 COPY scripts\host\Install-Tensorrt.ps1 C:\temp\scripts\
+# Copied, not mounted: a bind target base lacks leaves a directory that final's module COPY cannot replace.
+COPY scripts\modules\WindowsContainerImage.Bootstrap.psm1 C:\temp\scripts\modules\
 COPY downloads C:\temp\downloads
 
 # No zip is a supported graceful skip: the empty root still exists and ORT drops the TensorRT EP.
-RUN --mount=type=bind,source=scripts/modules/WindowsContainerImage.Bootstrap.psm1,target=C:\temp\scripts\modules\WindowsContainerImage.Bootstrap.psm1 `
-    --mount=type=bind,source=scripts/build/Set-TensorrtTree.ps1,target=C:\Set-TensorrtTree.ps1 `
+RUN --mount=type=bind,source=scripts/build/Set-TensorrtTree.ps1,target=C:\Set-TensorrtTree.ps1 `
     & 'C:\temp\scripts\Install-Tensorrt.ps1' -TensorRtRoot 'C:\tensorrt' -ModuleRoot 'C:\temp\scripts'; `
     if (-not (Test-Path 'C:\tensorrt')) { New-Item -Path 'C:\tensorrt' -ItemType Directory -Force | Out-Null }; `
     & 'C:\Set-TensorrtTree.ps1' -TensorRtRoot 'C:\tensorrt' -ExpectedVersion $env:TENSORRT_VERSION
@@ -66,11 +67,11 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 
 # Narrow COPY: a wildcard would bust the CUDA layer on every unrelated script edit.
 COPY scripts\host\Install-Cuda.ps1 C:\temp\scripts\
+COPY scripts\modules\WindowsContainerImage.Bootstrap.psm1 C:\temp\scripts\modules\
 
 ENV CUDNN_ROOT="C:\Program Files\NVIDIA\CUDNN\v${CUDNN_VERSION}"
 
-RUN --mount=type=bind,source=scripts/modules/WindowsContainerImage.Bootstrap.psm1,target=C:\temp\scripts\modules\WindowsContainerImage.Bootstrap.psm1 `
-    & 'C:\temp\scripts\Install-Cuda.ps1' -TempDir $env:TEMP_DIR -ModuleRoot 'C:\temp\scripts'
+RUN & 'C:\temp\scripts\Install-Cuda.ps1' -TempDir $env:TEMP_DIR -ModuleRoot 'C:\temp\scripts'
 
 # Empty when no zip was staged; Resolve-TensorRtRoot treats an empty root as not installed.
 COPY --from=trt-extract C:\tensorrt-runtime C:\tensorrt

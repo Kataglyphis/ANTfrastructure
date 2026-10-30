@@ -952,6 +952,7 @@ int main() { std::printf("%s\n", cv::getBuildInformation().c_str()); return 0; }
         # The cv::dnn CUDA backend + cudaarithm contrib module ship as their own DLLs.
         Assert-ArtifactPresent -Root $opencvSearchRoot -Filter 'opencv_cudaarithm*.dll' -Description 'OpenCV CUDA arithm module DLL (opencv_cudaarithm*.dll)'
         Assert-ArtifactPresent -Root $opencvSearchRoot -Filter 'opencv_dnn*.dll' -Description 'OpenCV DNN module DLL (opencv_dnn*.dll)'
+    }
 }
 
 function Invoke-OpenCvLinkSmoke {
@@ -977,7 +978,6 @@ int main() {
 '@ -IncludeDirs @($cvIncDir) -LibDir $cvCoreLib.DirectoryName -LibName $cvCoreLib.Name -DllDir $cvCoreDll.DirectoryName -ExpectMatch 'opencv' -FailMessage 'OpenCV core API did not compile/link/run (header+core lib+DLL mismatch or missing dependent DLL)'
 
     Assert-OpenCvCudaSmoke -OpencvSearchRoot $opencvSearchRoot -CvIncDir $cvIncDir -CvCoreLib $cvCoreLib -CvCoreDll $cvCoreDll
-}
 }
 }
 
@@ -1294,7 +1294,7 @@ int main() { std::cout << "cmake+clangcl ok" << std::endl; return 0; }
 
 Set-SmokeSourceFiles -Directory $tmpDir2 -Files @{ 'CMakeLists.txt' = $cmakeLists; 'smoke_cmake.cpp' = $cppSource2 }
 
-Assert-CmakeSmokeBuild -Directory $tmpDir2
+Assert-CmakeSmokeBuild -tmpDir2 $tmpDir2
 }
 
 Invoke-SmokeCompilerWorkspace -Header '15. CMake + Ninja + clang-cl integration' -DirectoryName 'kataglyphis-smoke-cmake' -Body ${function:Invoke-CmakeSmokeBody}
@@ -1728,13 +1728,16 @@ if ($torchAppDir -and (Test-Path $torchAppDir) -and -not $torchAppScript) {
 }
 if ($torchAppDir -and (Test-Path $torchAppDir) -and $torchAppScript) {
     Assert-DirectoryExists -Path (Join-Path $torchAppDir '.venv') -Description 'torch-app venv'
-    # The verify re-runs Build-TorchApp's ORT census (every ORT dist a chain wheel); its FAIL lines are the message.
-    $torchAppVerify = & pwsh -NoProfile -ExecutionPolicy Bypass -File $torchAppScript -AppDir $torchAppDir -Mode verify 2>&1 | Out-String
+    # The verify re-runs the ORT census from the image's copy, since the gate mounts windows/scripts alone.
+    $torchAppCensus = Resolve-SmokeCompanion -ScriptRoot $PSScriptRoot -Name 'ort-venv-census.py'
+    $torchAppVerify = & pwsh -NoProfile -ExecutionPolicy Bypass -File $torchAppScript -AppDir $torchAppDir -OrtCensusPath "$torchAppCensus" -Mode verify 2>&1 | Out-String
     $torchAppVerifyOk = ($LASTEXITCODE -eq 0) -and ($torchAppVerify -match 'torch-app-env OK') -and ($torchAppVerify -match '(?m)^ORT-CENSUS PASS')
     $torchAppCensusFails = @([regex]::Matches($torchAppVerify, '(?m)^ORT-CENSUS FAIL (.+?)\r?$') | ForEach-Object { $_.Groups[1].Value })
+    # Without census findings the verifier's own last lines are the only evidence of why it failed.
+    $torchAppEvidence = if ($torchAppCensusFails) { $torchAppCensusFails } else { @($torchAppVerify -split '\r?\n' | Where-Object { $_.Trim() } | Select-Object -Last 3) }
     Assert-Test -Name "torch-app venv verifies (numpy/cv2/torch/ort+CUDA-EP/genai/tvm/av/iree, chain-only ORT)" `
         -Condition { $torchAppVerifyOk }.GetNewClosure() `
-        -FailMessage "Build-TorchApp.ps1 -Mode verify failed (baked venv broken, local wheels lost, or an ORT that is not the chain's)$(if ($torchAppCensusFails) { ': ' + ($torchAppCensusFails -join '; ') })"
+        -FailMessage "Build-TorchApp.ps1 -Mode verify failed (baked venv broken, local wheels lost, or an ORT that is not the chain's)$(if ($torchAppEvidence) { ': ' + ($torchAppEvidence -join '; ') })"
     # PyPI's onnxruntime lacks the DML EP but shares the version, so only the bytes prove the chain wheel.
     $ortWheel = Resolve-ChainOrtWheel -WheelDir $(if ($env:PYTHON_WHEELS) { $env:PYTHON_WHEELS } else { 'C:\runtime\wheels' })
     $ortReport = $null

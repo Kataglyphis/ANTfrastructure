@@ -7,7 +7,7 @@ PAY="${TESTS_DIR}/../06-packaging/copy-media-payloads.sh"
 PKG="${TESTS_DIR}/../../Dockerfile.package"
 
 _FNS='warn() { printf "[WARN] %s\n" "$*" >&2; }'$'\n'
-for _fn in _dest copy_path copy_glob copy_cuda_payload copy_tensorrt_payload; do
+for _fn in _dest copy_path copy_glob copy_cuda_payload copy_tensorrt_payload _cuda_payload_multiarch cuda_payload_cross copy_cuda_cross_toolkit cuda_payload_arch_gate _cuda_payload_elf_machine; do
   _FNS+="$(t_fn_src "${PAY}" "${_fn}")"$'\n' || exit 1
 done
 
@@ -48,6 +48,59 @@ t_assert_eq "" "$(compgen -G "${_DST}/usr/lib/aarch64-linux-gnu/*static*")" "sta
 t_assert_eq h "$(cat "${_DST}/usr/include/aarch64-linux-gnu/cudnn_v9.h" 2>/dev/null)" "cuDNN headers are copied"
 t_assert_eq yes "$([ -d "${_DST}/usr/include/nccl_device" ] && echo yes)" "NCCL's header dir is copied"
 
+t_case "a cross-built artifact (phase E, 2026-10-29): the target's toolkit from targets/<dir> plus the staged sbsa debs, never the host's binaries"
+# <file> <e_machine low byte, octal>: a 20-byte ELF header stub.
+_elf() { printf '\177ELF\002\001\001\0\0\0\0\0\0\0\0\0\002\0%b\0' "$2" > "$1"; }
+_mk_cross_artifact() {
+  local a="$1" t s
+  t="${a}/usr/local/cuda-13.4"; s="${a}/opt/cuda-target/arm64"
+  mkdir -p "${t}/bin" "${t}/nvvm/bin" "${t}/targets/sbsa-linux/lib/stubs" "${t}/targets/sbsa-linux/include" "${t}/targets/x86_64-linux/lib" \
+    "${s}/usr/local/cuda-13.4/bin" "${s}/usr/local/cuda-13.4/targets/sbsa-linux/lib" "${s}/usr/lib/aarch64-linux-gnu" "${s}/usr/include/nccl_device" \
+    "${a}/usr/lib/x86_64-linux-gnu" "${a}/usr/lib/aarch64-linux-gnu" "${a}/usr/include/x86_64-linux-gnu" "${a}/usr/include/aarch64-linux-gnu"
+  printf 'CUDA_CROSS_TARGET_DIR=sbsa-linux\nCUDA_CROSS_TARGET_ARCH=arm64\nCUDA_CROSS_TARGET_TRIPLET=aarch64-linux-gnu\nCUDA_CROSS_TARGET_STAGING=/opt/cuda-target/arm64\n' > "${t}/cross-target.env"
+  _elf "${t}/bin/nvcc" '\076'; chmod +x "${t}/bin/nvcc"
+  _elf "${t}/nvvm/bin/cicc" '\076'; chmod +x "${t}/nvvm/bin/cicc"
+  _elf "${t}/targets/x86_64-linux/lib/libcudart.so.13" '\076'
+  _elf "${t}/targets/sbsa-linux/lib/stubs/libcublas.so" '\267'
+  echo h > "${t}/targets/sbsa-linux/include/cuda.h"
+  _elf "${s}/usr/local/cuda-13.4/bin/nvcc" '\267'; chmod +x "${s}/usr/local/cuda-13.4/bin/nvcc"
+  _elf "${s}/usr/local/cuda-13.4/targets/sbsa-linux/lib/libcublas.so.13" '\267'
+  ln -s targets/sbsa-linux/lib "${s}/usr/local/cuda-13.4/lib64"
+  _elf "${s}/usr/lib/aarch64-linux-gnu/libnccl.so.2.32.3" '\267'; ln -s libnccl.so.2.32.3 "${s}/usr/lib/aarch64-linux-gnu/libnccl.so.2"
+  echo h > "${s}/usr/include/nccl.h"; echo h > "${s}/usr/include/nccl_device/core.h"
+  _elf "${a}/usr/lib/x86_64-linux-gnu/libcudnn.so.9" '\076'; _elf "${a}/usr/lib/aarch64-linux-gnu/libcudnn.so.9" '\267'
+  echo h > "${a}/usr/include/x86_64-linux-gnu/cudnn.h"; echo h > "${a}/usr/include/aarch64-linux-gnu/cudnn.h"
+}
+_XSRC="$(mktemp -d)"; _XDST="$(mktemp -d)"
+_mk_cross_artifact "${_XSRC}"
+_out="$(_call copy_cuda_payload ENABLE_NVIDIA=true TARGET_ARCH=arm64 SRCPREFIX="${_XSRC}" COPY_TARGET_DIR="${_XDST}")"; _rc=$?
+t_assert_eq 0 "${_rc}" "the cross artifact copies cleanly: ${_out}"
+t_assert_contains "${_out}" "cross CUDA payload: sbsa-linux headers and stubs, the staged arm64 runtime, nvcc and NCCL" "and says so"
+t_assert_eq b7 "$(od -An -tx1 -j18 -N1 "${_XDST}/usr/local/cuda-13.4/bin/nvcc" | tr -d ' ')" "nvcc is the STAGED arm64 binary, not the host's"
+t_assert_eq "" "$(ls "${_XDST}/usr/local/cuda-13.4/nvvm" 2>/dev/null)" "the host's nvvm stays behind"
+t_assert_eq "" "$(ls -d "${_XDST}/usr/local/cuda-13.4/targets/x86_64-linux" 2>/dev/null)" "and so does the host target dir"
+t_assert_eq yes "$([ -f "${_XDST}/usr/local/cuda-13.4/targets/sbsa-linux/lib/stubs/libcublas.so" ] && echo yes)" "the cross debs' link stubs ship"
+t_assert_eq yes "$([ -f "${_XDST}/usr/local/cuda-13.4/targets/sbsa-linux/lib/libcublas.so.13" ] && echo yes)" "under the staged shared runtime (the cross debs have none)"
+t_assert_eq h "$(cat "${_XDST}/usr/local/cuda-13.4/targets/sbsa-linux/include/cuda.h" 2>/dev/null)" "headers come from the cross debs"
+t_assert_eq "targets/sbsa-linux/lib" "$(readlink "${_XDST}/usr/local/cuda-13.4/lib64")" "lib64 is the staged debs' link"
+t_assert_eq yes "$([ -f "${_XDST}/usr/lib/aarch64-linux-gnu/libnccl.so.2" ] && echo yes)" "NCCL lands in the target multiarch dir, out of the staging root"
+t_assert_eq h "$(cat "${_XDST}/usr/include/nccl_device/core.h" 2>/dev/null)" "with its headers"
+t_assert_eq yes "$([ -f "${_XDST}/usr/lib/aarch64-linux-gnu/libcudnn.so.9" ] && echo yes)" "the target's cuDNN ships"
+t_assert_eq "" "$(ls -d "${_XDST}/usr/lib/x86_64-linux-gnu" "${_XDST}/usr/include/x86_64-linux-gnu" 2>/dev/null)" "the host's cuDNN and headers do not (the multiarch glob is the target's)"
+t_assert_eq cuda-13.4 "$(readlink "${_XDST}/usr/local/cuda")" "/usr/local/cuda is relinked"
+t_assert_contains "${_out}" "CUDA payload arch gate: 5 ELF files, 0 not the target's" "every shipped ELF is AArch64 (nvcc, the stub, the staged cuBLAS, NCCL, cuDNN)"
+_elf "${_XSRC}/opt/cuda-target/arm64/usr/local/cuda-13.4/bin/ptxas" '\076'; chmod +x "${_XSRC}/opt/cuda-target/arm64/usr/local/cuda-13.4/bin/ptxas"
+_XDST2="$(mktemp -d)"
+_out="$(_call copy_cuda_payload ENABLE_NVIDIA=true TARGET_ARCH=arm64 SRCPREFIX="${_XSRC}" COPY_TARGET_DIR="${_XDST2}")"; _rc=$?
+t_assert_eq 1 "${_rc}" "an x86-64 binary inside the staged runtime fails the copy"
+t_assert_contains "${_out}" "ptxas has ELF machine 0x3e, the image needs 0xb7" "and is named"
+_XDST3="$(mktemp -d)"
+_out="$(_call copy_cuda_payload ENABLE_NVIDIA=true TARGET_ARCH=amd64 SRCPREFIX="${_XSRC}" COPY_TARGET_DIR="${_XDST3}")"; _rc=$?
+t_assert_eq 0 "${_rc}" "the same artifact packaged for amd64 (cross-target.env names another arch) takes the native path"
+t_assert_eq yes "$([ -f "${_XDST3}/usr/local/cuda-13.4/nvvm/bin/cicc" ] && echo yes)" "the whole toolkit, host nvvm included"
+t_assert_eq yes "$([ -f "${_XDST3}/usr/lib/x86_64-linux-gnu/libcudnn.so.9" ] && [ -f "${_XDST3}/usr/lib/aarch64-linux-gnu/libcudnn.so.9" ] && echo yes)" "and every multiarch dir, as before"
+rm -rf "${_XSRC}" "${_XDST}" "${_XDST2}" "${_XDST3}"
+
 t_case "a CPU image copies nothing, and a GPU image without a toolkit is fatal"
 _DST2="$(mktemp -d)"
 _run false "${_SRC}" "${_DST2}" >/dev/null; t_assert_eq 0 $? "ENABLE_NVIDIA=false is a no-op"
@@ -58,8 +111,8 @@ t_assert_eq 1 "${_rc}" "a GPU build that lost its toolkit must not ship silently
 t_assert_contains "${_out}" "no /usr/local/cuda-X.Y" "and says what is missing"
 
 t_case "Dockerfile.package hands the switch and the environment to the image"
-t_assert_contains "$(cat "${PKG}")" $'ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" ENABLE_AMD="${ENABLE_AMD:-false}" \\\n      ENABLE_ROCM_ASAN="${ENABLE_ROCM_ASAN:-false}" ENABLE_DEEPSTREAM="${ENABLE_DEEPSTREAM:-false}" \\\n      ENABLE_TENSORRT="${ENABLE_TENSORRT:-false}" SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh' \
-  "the payload RUN receives ENABLE_NVIDIA (an undeclared ARG reaches no RUN)"
+t_assert_contains "$(cat "${PKG}")" $'ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" ENABLE_AMD="${ENABLE_AMD:-false}" \\\n      ENABLE_ROCM_ASAN="${ENABLE_ROCM_ASAN:-false}" ENABLE_DEEPSTREAM="${ENABLE_DEEPSTREAM:-false}" \\\n      ENABLE_TENSORRT="${ENABLE_TENSORRT:-false}" TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh' \
+  "the payload RUN receives ENABLE_NVIDIA and the image's arch (an undeclared ARG reaches no RUN)"
 t_assert_contains "$(cat "${PKG}")" ':/usr/local/cuda/bin:' "nvcc is on the shipped PATH"
 t_assert_contains "$(cat "${PKG}")" 'NVCC_PREPEND_FLAGS=-allow-unsupported-compiler' \
   "nvcc accepts the image's GCC"

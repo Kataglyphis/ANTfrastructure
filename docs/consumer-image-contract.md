@@ -578,6 +578,13 @@ Flathub builds these for x86_64 and aarch64 only. On any other arch the install 
 a guaranteed 404 rather than a flake, so the function returns early and the row is
 exempt on riscv64.
 
+The install passes `--no-related` (2026-10-28). Without it flatpak adds the extensions
+that match the **build host's** GPU, so the image's content depended on who built it:
+the published `cross-sdk-amd64` carries `org.freedesktop.Platform.VAAPI.nvidia`, and a
+build on an AMD host pulled `org.freedesktop.Platform.amd.amf`, whose `libamfrt64.so`
+embeds its own ONNX Runtime and failed the ORT census (`UNREGISTERED`) in the
+`:latest-rocm` runtime smoke. The seven refs above are the whole set now.
+
 ### The AppImage runtime ships with the tool
 
 `appimagetool` embeds a type-2 runtime into every AppImage it builds, and fetches
@@ -1043,6 +1050,19 @@ beside a plugin. A bundle fails as STALE with an older chain DLL, FOREIGN with a
 NuGet, PyPI or pyke ORT (statically linked ones included), and UNRESOLVED when an
 importer has no app-local chain copy or a Linux `.so` has no `$ORIGIN` RUNPATH to
 one.
+
+## GenAI's library and headers
+
+The text bindings of [`language-ai.md`](language-ai.md) compile against the chain GenAI, never a
+download. On Linux it is `/usr/local/lib/onnxruntime-genai`: `lib/libonnxruntime-genai.so`,
+`lib/libllguidance.so`, `include/ort_genai.h` (C++) and `include/ort_genai_c.h` (C, the Rust
+binding's input). On Windows it is `ONNX_GENAI_ROOT`.
+
+**How it is proven.** Since 2026-10-30 the media stage's `onnxruntime-genai` artifact check fails
+without the library or either header, and the producer stops when a header is missing
+(`test-genai-artifact-gate.sh`). Before, a wheel alone passed and the C header was copied with
+`|| true`. Not covered: the stages after media copy the tree without re-checking it, and the
+Windows smoke gate only looks for `ort_genai*.h`.
 
 ## GTK 4 for gtk4-rs
 

@@ -959,7 +959,7 @@ function Install-CpythonPip {
     Write-Host 'Bootstrapping pip via get-pip.py...'
     $pipScript = Join-Path $env:TEMP 'get-pip.py'
     Invoke-DownloadWithRetry -Url 'https://bootstrap.pypa.io/get-pip.py' -DestinationPath $pipScript
-    cmd.exe /c """$($Python.Exe)"" ""$pipScript"" --quiet 2>&1"
+    cmd.exe /c """$($Python.Exe)"" ""$pipScript"" --quiet 2>&1" | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'get-pip.py failed' }
     Remove-Item $pipScript -Force -ErrorAction SilentlyContinue
 }
@@ -996,7 +996,8 @@ function Invoke-CpythonPip {
     )
     if (-not (Test-Path $Python.Exe)) { throw "Source-built Python not found at $($Python.Exe)" }
     $argLine = $Arguments -join ' '
-    cmd.exe /c """$($Python.Exe)"" -m pip $argLine 2>&1"
+    # pip's lines on the output stream would turn a caller's return value into an array.
+    cmd.exe /c """$($Python.Exe)"" -m pip $argLine 2>&1" | Out-Host
     $exit = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
     if ($exit -ne 0) {
         $msg = "pip $argLine failed (exit $exit)"

@@ -337,11 +337,11 @@ check_genai_binding() {
   local image_tag="$1"
   local target_arch="$2"
     echo "--- Functional: onnxruntime-genai native binding (GEN1) ---"
-    local expect_version out rc
+    local expect_version out rc tiny_py="${_SCRIPT_DIR}/../lib/tiny-genai-model.py" tiny_src=""
     expect_version="$(_rt_versions_env_pin ONNXRUNTIME_GENAI_VERSION)"
-    out="$(_rt_run_python_probe SMOKE_GENAI_PY GENAI-BIND "$(smoke_genai_py)" \
-      -e "GENAI_EXPECT_VERSION=${expect_version}" -e "GENAI_EXPECT_ARCH=${target_arch}" 2>&1)" \
-      && rc=0 || rc=$?
+    if [ -s "${tiny_py}" ]; then tiny_src="$(cat "${tiny_py}")"; else fail "no tiny GenAI model generator at ${tiny_py}"; fi
+    out="$(_rt_run_python_probe SMOKE_GENAI_PY GENAI-BIND "$(smoke_genai_py)" -e "GENAI_TINY_MODEL_PY=${tiny_src}" \
+      -e "GENAI_EXPECT_VERSION=${expect_version}" -e "GENAI_EXPECT_ARCH=${target_arch}" 2>&1)" && rc=0 || rc=$?
     _rt_native_python_verdict genai "${out}" "${rc}" "${target_arch}"
     echo ""
 }

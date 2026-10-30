@@ -369,7 +369,8 @@ the `onnxruntime` import check this file's ONNX section replaced in wave 5.
 | --- | --- |
 | `GENAI_EXPECT_VERSION` | `ONNXRUNTIME_GENAI_VERSION` from `versions.env`; empty → version tier reports NOT ASSERTED |
 | `GENAI_EXPECT_ARCH` | `amd64` / `arm64` / `riscv64`; empty → ELF tier reports NOT ASSERTED |
-| `GENAI_MODEL_DIR` | optional real model directory — **arms tier 4** |
+| `GENAI_MODEL_DIR` | optional real model directory — **arms tier 4** with it |
+| `GENAI_TINY_MODEL_PY` | the source of `lib/tiny-genai-model.py`, which `check_genai_binding` passes; without `GENAI_MODEL_DIR`, tier 4 decodes that model |
 | `GENAI_MAX_LENGTH` | tier-4 `max_length`, default 16 |
 
 ### The four tiers
@@ -379,7 +380,7 @@ the `onnxruntime` import check this file's ONNX section replaced in wave 5.
 | 1 — version | `og.__version__`, falling back to `importlib.metadata` | the installed genai equals the `versions.env` build pin |
 | 2 — ELF | reads 20 bytes of the **loaded** extension's header (`og.onnxruntime_genai.__file__`) and compares `e_machine` | the bytes actually executing are TARGET-arch — read from the file header, not inferred from the wheel tag |
 | 3 — native code runs | pybind API objects exist; capability predicates (`is_cuda_available`/`is_webgpu_available`/`is_qnn_available`) execute; `og.Tensor(numpy)` round-trips a float32 buffer through `OgaTensor`; `og.Config()` on a non-model path is rejected **by the library** | native C++ code runs, dtype/shape mapping and the copy-back through the C API work, and the binding's ABI matches |
-| 4 — `generate()` | encodes a prompt, generates, asserts on **token content** | that the model emits more than zero tokens and not one token repeated — the #594 nonsense signature |
+| 4 — `generate()` | encodes a prompt, generates, asserts on **token content** | that the model emits more than zero tokens and not one token repeated — the #594 nonsense signature; on the tiny test model, the exact tokens `defg` after `abc` |
 
 `e_machine` values used: amd64 62 (X86-64), arm64 183 (AArch64), riscv64 243
 (RISC-V), 386 3. Read from the header rather than shelling out to
@@ -404,13 +405,17 @@ with their traceback; they never count as proof that native code ran.
 The program prints `PROVEN` / `UNPROVEN` / `DEFECT` lines itself, so a log
 reader never has to take the accounting on trust.
 
-### Tier 4 is UNARMED by default
+### Tier 4 decodes the tiny test model by default
 
-No model ships in these images — the smallest usable decoder is hundreds of MB,
-and the riscv64 lane is cross-built on an amd64 host, so it could not run one at
-build time anyway. Without `GENAI_MODEL_DIR` the tier is **skipped and says so**
-(`GENAI-GEN SKIP:`). Arm it by mounting a small model and setting
-`GENAI_MODEL_DIR`.
+No real model ships in these images: the smallest usable decoder is tens of MB,
+and the riscv64 lane is cross-built on an amd64 host. `check_genai_binding`
+therefore hands in the source of `lib/tiny-genai-model.py` as
+`GENAI_TINY_MODEL_PY`. Tier 4 writes that 270 KB model inside the container and
+requires `abc` to decode to `defg` token for token
+([`language-ai.md` § The test model](language-ai.md#the-test-model)). It has no
+attention operator and fixed logits, so neither trap of § Why not a tiny random
+model below applies. `GENAI_MODEL_DIR` arms a real model instead; with neither,
+the tier is **skipped and says so** (`GENAI-GEN SKIP:`).
 
 ### The app-wheel floor
 

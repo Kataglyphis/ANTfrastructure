@@ -58,14 +58,17 @@ Describe 'WindowsContainerImage.Bootstrap' {
         }
     }
 
-    It 'nvidia installers mount the resolver per file and pass the container module root' {
+    It 'nvidia installers copy the resolver per file and pass the container module root' {
         $dockerfile = Join-Path (Get-RepoRoot) 'windows\Dockerfile.nvidia'
-        $runs = @(Get-TestDockerLogicalLine -LiteralPath $dockerfile | Where-Object { $_ -match '^RUN\s' -and $_ -match 'Install-(Cuda|Tensorrt)\.ps1' })
+        $lines = @(Get-TestDockerLogicalLine -LiteralPath $dockerfile)
+        $runs = @($lines | Where-Object { $_ -match '^RUN\s' -and $_ -match 'Install-(Cuda|Tensorrt)\.ps1' })
         Assert-Equal 2 $runs.Count 'both nvidia installer RUNs are covered'
+        $copies = @($lines | Where-Object { $_.Trim() -eq 'COPY scripts\modules\WindowsContainerImage.Bootstrap.psm1 C:\temp\scripts\modules\' })
+        Assert-Equal 2 $copies.Count 'each nvidia stage copies the bootstrap module on its own'
         foreach ($entry in @(
                 @{ Script = 'Install-Tensorrt.ps1'; Run = $runs | Where-Object { $_ -match 'Install-Tensorrt\.ps1' } },
                 @{ Script = 'Install-Cuda.ps1'; Run = $runs | Where-Object { $_ -match 'Install-Cuda\.ps1' } })) {
-            Assert-Match '--mount=type=bind,source=scripts/modules/WindowsContainerImage\.Bootstrap\.psm1,target=C:\\temp\\scripts\\modules\\WindowsContainerImage\.Bootstrap\.psm1' $entry.Run "$($entry.Script) mounts the bootstrap module narrowly"
+            Assert-False ($entry.Run -match 'WindowsContainerImage\.Bootstrap') "$($entry.Script) does not bind-mount the bootstrap module"
             Assert-Match ("{0}.*-ModuleRoot 'C:\\temp\\scripts'" -f [regex]::Escape($entry.Script)) $entry.Run "$($entry.Script) passes its module root"
         }
     }

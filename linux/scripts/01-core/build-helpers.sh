@@ -85,11 +85,16 @@ append_runtime_base_parent_build_arg() {
   append_optional_build_arg "$1" BASE_IMAGE "${BASE_PARENT_IMAGE}"
 }
 
+# <array> [arch]: DeepStream has an amd64 route only (as the media stage rules), so another arch's package gets false, never the chain's default.
 append_runtime_accelerator_build_args() {
   append_optional_build_arg "$1" ENABLE_NVIDIA "${ENABLE_NVIDIA:-}"
   append_optional_build_arg "$1" ENABLE_AMD "${ENABLE_AMD:-}"
   append_optional_build_arg "$1" ENABLE_ROCM_ASAN "${ENABLE_ROCM_ASAN:-}"
-  append_optional_build_arg "$1" ENABLE_DEEPSTREAM "${ENABLE_DEEPSTREAM:-}"
+  if [ -n "${ENABLE_DEEPSTREAM:-}" ] && [ -n "${2:-}" ] && [ "${2}" != "amd64" ]; then
+    append_optional_build_arg "$1" ENABLE_DEEPSTREAM false
+  else
+    append_optional_build_arg "$1" ENABLE_DEEPSTREAM "${ENABLE_DEEPSTREAM:-}"
+  fi
   append_optional_build_arg "$1" ENABLE_TENSORRT "${ENABLE_TENSORRT:-}"
 }
 

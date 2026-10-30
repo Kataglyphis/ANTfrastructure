@@ -89,8 +89,61 @@ function Get-GluedParameterViolation {
     }
 }
 
+function Get-UndeclaredParameterViolation {
+    # Calls into the same file only: an imported command's parameters are not visible to the parser.
+    param([Parameter(Mandatory)][System.Management.Automation.Language.Ast]$Ast, [string]$Label = '<text>')
+    $script:DeclaredParameters = @{}
+    foreach ($fn in $Ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) {
+        $block = if ($fn.Body.ParamBlock) { $fn.Body.ParamBlock.Parameters } else { $fn.Parameters }
+        $script:DeclaredParameters[$fn.Name] = @($block | Where-Object { $_ } | ForEach-Object { $_.Name.VariablePath.UserPath })
+    }
+    Invoke-LintCommandElementRule -Ast $Ast -Label $Label -Rule {
+        param($element, $next, $sourceLabel)
+        $owner = if ($element -is [System.Management.Automation.Language.CommandParameterAst]) { $element.Parent.GetCommandName() }
+        if ($owner -and $script:DeclaredParameters.ContainsKey($owner) -and
+            -not @($script:DeclaredParameters[$owner] | Where-Object { $_ -like "$($element.ParameterName)*" })) {
+            Format-LintViolation -Node $element -Label $sourceLabel -Suffix " (no such parameter on $owner)"
+        }
+    }
+}
+
+$script:AutomaticVariables = @('null', 'true', 'false', '_', 'PSItem', 'args', 'Matches', 'LASTEXITCODE', 'input', 'this', 'Error')
+
+function Get-LintEnclosingScope {
+    param([System.Management.Automation.Language.Ast]$Node)
+    $scope = $Node.Parent
+    while ($scope -and $scope -isnot [System.Management.Automation.Language.ScriptBlockAst]) { $scope = $scope.Parent }
+    return $scope
+}
+
+function Get-ScriptBlockScopeLeakViolation {
+    # A scriptblock argument runs in a child scope unless the command dot-sources it, as ForEach-Object and Where-Object do.
+    param([Parameter(Mandatory)][System.Management.Automation.Language.Ast]$Ast, [string]$Label = '<text>')
+    $lang = 'System.Management.Automation.Language'
+    $dotSourcing = @('ForEach-Object', '%', 'foreach', 'Where-Object', '?', 'where')
+    foreach ($command in $Ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true)) {
+        if ($dotSourcing -contains $command.GetCommandName() -or $command.InvocationOperator -eq 'Dot') { continue }
+        $blocks = @($command.CommandElements | Where-Object { $_ -is "$lang.ScriptBlockExpressionAst" })
+        if (-not $blocks) { continue }
+        $scope = Get-LintEnclosingScope $command
+        $assignedInScope = @($scope.FindAll({ param($node) $node -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true) |
+                Where-Object { $_.Extent.StartOffset -lt $command.Extent.StartOffset -or $_.Extent.StartOffset -gt $command.Extent.EndOffset } |
+                ForEach-Object { $_.Left } | Where-Object { $_ -is "$lang.VariableExpressionAst" } | ForEach-Object { $_.VariablePath.UserPath })
+        $leaked = @($blocks | ForEach-Object { $_.FindAll({ param($node) $node -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true) } |
+                ForEach-Object { $_.Left } | Where-Object { $_ -is "$lang.VariableExpressionAst" -and $_.VariablePath.IsUnscopedVariable } |
+                ForEach-Object { $_.VariablePath.UserPath } | Where-Object { $assignedInScope -notcontains $_ -and $script:AutomaticVariables -notcontains $_ } | Sort-Object -Unique)
+        if (-not $leaked) { continue }
+        $scope.FindAll({ param($node) $node -is [System.Management.Automation.Language.VariableExpressionAst] }, $true) |
+            Where-Object { $_.Extent.StartOffset -gt $command.Extent.EndOffset -and $leaked -contains $_.VariablePath.UserPath -and
+                $_.Parent -isnot "$lang.ParameterAst" -and (Get-LintEnclosingScope $_) -eq $scope } |
+            ForEach-Object { Format-LintViolation -Node $_ -Label $Label -Suffix " (assigned only inside the scriptblock passed to $($command.GetCommandName()))" }
+    }
+}
+
 Export-ModuleMember -Function @(
     'Get-BarewordCommaAttrViolation',
     'Get-SwitchShadowViolation',
-    'Get-GluedParameterViolation'
+    'Get-GluedParameterViolation',
+    'Get-UndeclaredParameterViolation',
+    'Get-ScriptBlockScopeLeakViolation'
 )

@@ -44,8 +44,6 @@ function New-WbtFakeMediaVersionTable {
         LITERT_LM_WEBGPU_SAMPLER_SHA256     = 'lmsmp-16'
         LITERT_LM_WEBGPU_DAWN_SHA256        = 'lmdawn-17'
         LITERT_LM_DXC_ZIP_SHA256            = 'lmdxc-18'
-        # The rocm lane's IREE device-bitcode pin (media-tvm only, never the merge).
-        IREE_ROCM_DEVICE_BC_SHA256          = 'ireebc-19'
         # The one Cython both branches install into the host CPython (CON80).
         PY_CYTHON_VERSION                   = 'cy-26'
     }
@@ -94,7 +92,6 @@ Describe 'Get-MediaBranchVersionArg' {
                     IREE_VERSION = 'iree-10'
                     # Mounts windows/qnn-sdk, so it needs the same integrity pin as the others.
                     QNN_SDK_ZIP_SHA256 = 'qnnsha-13'
-                    IREE_ROCM_DEVICE_BC_SHA256 = 'ireebc-19'
                     # The same pin as media-core: the fan-in refuses two Cython versions.
                     PY_CYTHON_VERSION = 'cy-26'
                 }

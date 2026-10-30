@@ -5,7 +5,6 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GATE="${TESTS_DIR}/../verify_shellcheck_warnings.py"
 LINT="${TESTS_DIR}/../lint-shell.sh"
 PY="$(command -v "${PREFLIGHT_PYTHON:-python3}")"
-TODAY="$(date +%F)"
 PIN="$(sed -n 's/^SHELLCHECK_VERSION=//p' "${TESTS_DIR}/../01-core/tool-pins.env")"
 source "${TESTS_DIR}/test-harness.sh"
 source "${TESTS_DIR}/gate-tree.sh"
@@ -172,9 +171,12 @@ rm -rf "${fix}"
 # --write-baseline: how a freeze and a recorded decrease are produced
 t_case "--write-baseline freezes the current counts with a dated, unreviewed reason"
 fix="$(_fixture a:unused2 m:masked)"
+_day="$(date +%F)"
 t_assert_eq "0" "$(_write "${fix}")"
-t_assert_eq "linux/scripts/a.sh | SC2034 | 2 | baseline ${TODAY}, not yet reviewed
-linux/scripts/m.sh | SC2155 | 1 | baseline ${TODAY}, not yet reviewed" "$(_rows "${fix}")" "exact rows, sorted"
+# A write that straddles midnight stamps the next day.
+grep -q -e "baseline ${_day}," "${fix}/linux/scripts/shellcheck-warnings.allow" || _day="$(date +%F)"
+t_assert_eq "linux/scripts/a.sh | SC2034 | 2 | baseline ${_day}, not yet reviewed
+linux/scripts/m.sh | SC2155 | 1 | baseline ${_day}, not yet reviewed" "$(_rows "${fix}")" "exact rows, sorted"
 t_assert_contains "$(_head "${fix}" 2)" "# Format: <file> | SC<code> | <count> | <reason>" "the header is written"
 t_assert_eq "0" "$(_rc "${fix}")" "the tree it just wrote passes"
 rm -rf "${fix}"

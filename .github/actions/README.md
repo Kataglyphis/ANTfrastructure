@@ -83,8 +83,8 @@ data-root is on D:. Measured per mode:
 a short-path clone the checkout takes none and the clone brings the tree in, so
 the clone honors the same three modes: `true` initializes direct submodules,
 `recursive` also descends into nested submodules, and `false` skips them. Choose
-`recursive` only when the lane needs nested sources; the hub's DocumANTation
-submodule eventually points back to the hub. Omitting the input preserves the
+`recursive` only when the lane needs nested sources; for the hub that adds
+DocumANTation's LaTeX submodules. Omitting the input preserves the
 previous path-specific behavior: the short-path clone recurses, while a plain
 `actions/checkout` initializes direct submodules. A lane that mounts
 `GITHUB_WORKSPACE` instead of a short path sets `short-path-target: ''` and

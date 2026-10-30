@@ -98,15 +98,12 @@ FROM common AS media-tvm-env
 ARG TVM_REF=v0.27.0
 ARG TVM_COMMIT=4d0ac168c78c1e20bf05a6ec5926760bb1c52b05
 ARG IREE_VERSION=v3.12.0
-# rocm lane: IREE's rocm target fetches ocml/ockl bitcode; Build-IreeFromSource.ps1 asserts upstream pins this hash.
-ARG IREE_ROCM_DEVICE_BC_SHA256=336362416c68fdd8bb80328f65ca7ebaa0c119ea19c95df6df30c832a4df39b9
 # media-core-built-ffmpeg declares the same pin: the fan-in refuses a Python distribution at two versions.
 ARG PY_CYTHON_VERSION=3.3.0
 
 ENV TVM_REF="${TVM_REF}" `
     TVM_COMMIT="${TVM_COMMIT}" `
     IREE_VERSION="${IREE_VERSION}" `
-    IREE_ROCM_DEVICE_BC_SHA256="${IREE_ROCM_DEVICE_BC_SHA256}" `
     PY_CYTHON_VERSION="${PY_CYTHON_VERSION}"
 
 # Each compile stage declares only its own version keys; ENV so CUDA_ARCHITECTURES/PYTHON_VERSION reach the downstream stages.
@@ -332,7 +329,7 @@ ENV LITERT_WINDOWS_SOURCE_COMMIT="${LITERT_WINDOWS_SOURCE_COMMIT}" `
     LITERT_WINDOWS_ACCELERATOR_WHEEL_URL="${LITERT_WINDOWS_ACCELERATOR_WHEEL_URL}" `
     LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256="${LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256}" `
     LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256="${LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256}"
-# WindowsBazel.Common is mounted per file, never into buildmods, so no other media RUN re-keys on it; the endpoint feeds Bazel's remote cache.
+# WindowsBazel.Common is mounted per file so no other media RUN re-keys on it; uv's cache stays container-local, as its renames into a filled cache mount fail (os error 3).
 RUN --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,sharing=locked `
     --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT `
     --mount=type=bind,source=windows/scripts/build/Build-LitertWheelBazel.ps1,target=C:\bkmnt\Build-LitertWheelBazel.ps1 `
@@ -341,7 +338,7 @@ RUN --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,shari
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/modules/WindowsBazel.Common.psm1,target=C:\bkmnt\bazelmods\WindowsBazel.Common.psm1 `
     --mount=type=bind,source=windows/scripts/patches/litert,target=C:\bkmnt\patches\litert `
-    $env:UV_CACHE_DIR = 'C:\bzl-repo-cache\ty-uv-cache'; $env:UV_TOOL_DIR = 'C:\lw\ty-uv-tools'; `
+    $env:UV_CACHE_DIR = 'C:\lw\ty-uv-cache'; $env:UV_TOOL_DIR = 'C:\lw\ty-uv-tools'; `
     $env:UV_PYTHON_DOWNLOADS = 'never'; & 'C:\bkmnt\Build-LitertWheelBazel.ps1' -ScriptDir 'C:\bkmnt' -ToolCache 'C:\bzl-repo-cache\toolcache'
 
 # tvm: direct solve, same mount pattern.

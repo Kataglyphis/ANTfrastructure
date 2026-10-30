@@ -15,3 +15,13 @@ _cmake_project() {
   printf 'cmake_minimum_required(VERSION 3.20)\nproject(p NONE)\n%s\n' "$1" > "${dir}/CMakeLists.txt"
   printf '%s' "${dir}"
 }
+
+# cmake_fixture_output <cmake body> [cmake args...]: configures the body in a throwaway project and prints everything cmake said.
+cmake_fixture_output() {
+  local proj rc=0
+  proj="$(_cmake_project "$1")" || return
+  shift
+  cmake -S "${proj}" -B "${proj}/b" "$@" 2>&1 || rc=$?
+  rm -rf "${proj}"
+  return "${rc}"
+}

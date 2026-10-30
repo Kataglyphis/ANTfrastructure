@@ -277,6 +277,9 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/onnxruntime-web-shared,id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-wgpu2,sharing=locked \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=secret,id=sccache_s3,required=false \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     _ortweb=/usr/local/lib/onnxruntime-web; _shared=/var/cache/onnxruntime-web-shared; \
@@ -300,7 +303,8 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=
         else \
             echo "WARNING: onnxruntime-web WASM build failed on target=${TARGET_ARCH}; shipping without onnx-web (optional, non-fatal)"; \
         fi; \
-    fi
+    fi; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 LABEL kataglyphis.step=onnxruntime-pkgconfig
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
