@@ -2393,6 +2393,19 @@ hit the transient failure.
 `CMakeLists.txt` before each attempt. A retry that inherits the state that broke
 the previous attempt is not a retry.
 
+### `GitLab is currently unable to handle this request due to load` clones Eigen
+
+The Windows media-litert and media-core hailo branches failed on 2026-10-29 with
+`Failed to clone repository` after `Had to git clone more than once: 3 times`.
+Eigen lives only on GitLab, and GitLab shed load for minutes. CMake's
+`ExternalProject` retries three times within a second.
+
+`Build-LitertFromSource.ps1` now clones the commit tflite's `eigen.cmake` pins
+through `Invoke-GitClone -MaxAttempts 8` (about three minutes of backoff) and
+passes `FETCHCONTENT_SOURCE_DIR_EIGEN` to both configure passes. HailoRT's
+externals take the same budget. A longer outage still fails the build; resume
+the chain from the media stage.
+
 ### RVV changed what the optimizer can prove
 
 media-riscv64 failed on 2026-09-02, after the RVA23 switch, in vvdec:

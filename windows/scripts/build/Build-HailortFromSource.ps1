@@ -48,7 +48,7 @@ $hailoExternals = @(
     @{ Name = 'cli11'; Url = 'https://github.com/hailo-ai/CLI11.git'; Commit = '242adfdb23957d30e3e56831e474020d0ac6c86c' },
     @{ Name = 'cpp-httplib'; Url = 'https://github.com/yhirose/cpp-httplib.git'; Commit = '51dee793fec2fa70239f5cf190e165b54803880f' },
     @{ Name = 'dotwriter'; Url = 'https://github.com/hailo-ai/DotWriter'; Commit = 'e5fa8f281adca10dd342b1d32e981499b8681daf' },
-    @{ Name = 'eigen'; Url = 'https://gitlab.com/libeigen/eigen'; Commit = '3147391d946bb4b6c68edd901f2add6ac1f31f8c' },
+    @{ Name = 'eigen'; Url = 'https://gitlab.com/libeigen/eigen'; Commit = '3147391d946bb4b6c68edd901f2add6ac1f31f8c'; MaxAttempts = 8 },
     @{ Name = 'json'; Url = 'https://github.com/nlohmann/json.git'; Commit = '9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03' },
     @{ Name = 'minja'; Url = 'https://github.com/google/minja'; Commit = '58568621432715b0ed38efd16238b0e7ff36c3ba' },
     @{ Name = 'readerwriterqueue'; Url = 'https://github.com/cameron314/readerwriterqueue'; Commit = '435e36540e306cac40fcfeab8cc0a22d48464509' },
@@ -92,8 +92,8 @@ function Install-HailortExternals {
         $dir = Join-Path $SourceRoot "hailort\external\$($ext.Name)-src"
         if ((Test-Path $dir) -and (Get-ChildItem $dir -ErrorAction SilentlyContinue | Select-Object -First 1)) { continue }
         Write-Host "Staging external $($ext.Name) @ $($ext.Commit.Substring(0, 10))"
-        # Invoke-GitClone fetches a 40-hex -Tag as a commit; git clone --branch <hash> would fail.
-        Invoke-GitClone -RepoUrl $ext.Url -Tag $ext.Commit -SourceDir $dir | Out-Null
+        # Invoke-GitClone fetches a 40-hex -Tag as a commit; GitLab sheds load for minutes, so its entries carry a longer budget.
+        Invoke-GitClone -RepoUrl $ext.Url -Tag $ext.Commit -SourceDir $dir -MaxAttempts ($ext['MaxAttempts'] ?? 3) | Out-Null
         $head = (& git -C $dir rev-parse HEAD).Trim()
         if ($head -ne $ext.Commit) { throw "external $($ext.Name) is $head, expected $($ext.Commit)" }
         & git -C $dir submodule update --init --recursive --quiet

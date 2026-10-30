@@ -13,6 +13,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-30 — develop green again; Eigen survives GitLab load shedding
+
+- The Linux preflight and every mutation shard were red after the cross-CUDA and S3-drain work:
+  - `copy-media-payloads.sh` declared `staged` in the same `local` as the `ver` it reads (SC2318),
+    and now resets the cross descriptor's arch and triplet before sourcing it, which owns both env knobs.
+  - `cross-meson.sh` resolved the compiler launcher without `compiler_cache_launcher_env`, so
+    Meson's sccache could address TCP 4226; both resolutions and both file writers now set the address.
+  - The SigV4 heredoc in `sccache-s3-level.sh` and its fixture pass the full Ruff ruleset; the
+    fixture's object key no longer looks like a secret to gitleaks.
+  - `Dockerfile.media`'s size budget is 955 (owner-approved): the onnxruntime-web RUN's cache mounts and drain.
+- Windows: LiteRT prefetches Eigen at tflite's pinned commit with eight clone attempts and points
+  FetchContent at it; HailoRT's externals take the same budget
+  ([failure-modes.md](docs/failure-modes.md#gitlab-is-currently-unable-to-handle-this-request-due-to-load-clones-eigen)).
+
 ## 2026-10-30 — three backlog items closed at the source: re-put layout, acceptance checkouts, Vulkan runtime links
 
 - **The drain's re-put reads sccache 0.18's real disk layout.** A re-put against the real bucket found that
