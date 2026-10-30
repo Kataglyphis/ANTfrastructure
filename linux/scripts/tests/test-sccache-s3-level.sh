@@ -128,18 +128,20 @@ nothing about levels or S3"
 t_assert_eq 0 "$(SCCACHE_ERROR_LOG="${WORK}/sccache.log" _drain "{\"stats\":{\"multi_level\":[$(level 'L0 (disk)' 2 0),$(level 'L1 (s3)' 2 0)]}}" | grep -c 'failed writes')" \
   "a clean drain reads no log"
 t_case "a failed S3 write is re-put from the disk level (sccache does not retry; 3 of 232 GStreamer objects stayed local on 2026-10-29)"
-_key=a338e2ed182c58687268cd88c3630ca7b4f22b8771afd27e85872cd3bb624e7f
+_key="a33$(printf '%061d' 8)"
 mkdir -p "${WORK}/disk/a/3" "${WORK}/disk/preprocessor/b/4/b" "${WORK}/s3"
 printf 'object bytes' > "${WORK}/disk/a/3/${_key}"
 printf 'preprocessor entry' > "${WORK}/disk/preprocessor/b/4/b/b4${_key:2}"
 python3 - "${WORK}/s3" > "${WORK}/s3/port" 2>/dev/null <<'PY' &
-import http.server, sys, threading
+import http.server
+import sys
+
 root = sys.argv[1]
 class H(http.server.BaseHTTPRequestHandler):
     def do_PUT(self):
         body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
         with open(root + "/put", "w") as f:
-            f.write("%s %s %s\n" % (self.path, self.headers.get("Authorization", ""), body.decode()))
+            f.write(f"{self.path} {self.headers.get('Authorization', '')} {body.decode()}\n")
         self.send_response(200); self.end_headers()
     def do_GET(self):
         if not self.path.endswith("/have.tgz"):

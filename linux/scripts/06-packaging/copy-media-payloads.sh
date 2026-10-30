@@ -84,16 +84,19 @@ _cuda_payload_multiarch() {
 cuda_payload_cross() {
   local f="${SRCPREFIX}/usr/local/cuda-$1/cross-target.env"
   [ -f "${f}" ] || return 1
+  # A descriptor without these keys must not inherit a previous one's.
+  CUDA_CROSS_TARGET_ARCH='' CUDA_CROSS_TARGET_TRIPLET=''
   # shellcheck disable=SC1090 # the gpu stage wrote it
   source "${f}"
-  [ "${CUDA_CROSS_TARGET_ARCH:-}" = "${TARGET_ARCH:-}" ] && return 0
+  [ "${CUDA_CROSS_TARGET_ARCH}" = "${TARGET_ARCH:-}" ] && return 0
   unset CUDA_CROSS_TARGET_TRIPLET
   return 1
 }
 
 # <ver>: a cross target's toolkit = the cross debs' targets/<dir> (headers, stubs, static) under the sbsa repo's own debs (bin, nvvm, the shared runtime, NCCL).
 copy_cuda_cross_toolkit() {
-  local ver="$1" staged="${CUDA_CROSS_TARGET_STAGING}/usr/local/cuda-${ver}" item
+  local ver="$1" item
+  local staged="${CUDA_CROSS_TARGET_STAGING}/usr/local/cuda-${ver}"
   copy_path "/usr/local/cuda-${ver}/targets/${CUDA_CROSS_TARGET_DIR}"
   if [ ! -d "${SRCPREFIX}${staged}" ]; then
     printf '[ERROR] cross CUDA target %s but the artifact has no staged runtime under %s\n' "${CUDA_CROSS_TARGET_DIR}" "${staged}" >&2

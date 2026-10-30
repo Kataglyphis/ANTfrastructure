@@ -16710,8 +16710,8 @@
  {
   "id": "cuda-stack.tensorrt-copy-runtime-only",
   "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
-  "find": "\"/usr/lib/*-linux-gnu/libnvinfer*.so.${m}\" \"/usr/lib/*-linux-gnu/libnvinfer*.so.${m}.*\"",
-  "replace": "\"/usr/lib/*-linux-gnu/libnvinfer*\"",
+  "find": "\"/usr/lib/${ma}/libnvinfer*.so.${m}\" \"/usr/lib/${ma}/libnvinfer*.so.${m}.*\"",
+  "replace": "\"/usr/lib/${ma}/libnvinfer*\"",
   "test": "bash linux/scripts/tests/test-cuda-runtime-payload.sh",
   "why": "the dev links and the shim must stay behind: the SLA names only the runtime .so files"
  },
@@ -29531,8 +29531,8 @@
  {
   "id": "lib.sccache-drain-names-failed-writes",
   "target": "linux/scripts/01-core/sccache-s3-level.sh",
-  "find": "[ \"${failed:-0}\" -eq 0 ] || _sccache_s3_failure_reason",
-  "replace": ":",
+  "find": "        _sccache_s3_failure_reason\n        _sccache_s3_reupload_failed",
+  "replace": "        :\n        _sccache_s3_reupload_failed",
   "test": "bash linux/scripts/tests/test-sccache-s3-level.sh",
   "why": "a drain that only counts failed S3 writes left 9 of 12 failures unexplained"
  },
@@ -31295,5 +31295,37 @@
   "replace": "foreach ($lang in 'C', 'CXX')",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Torch.RocmSourceBuild.Tests.ps1 -ResultFile logs/code-quality/torch-rocm-hip-launcher.json",
   "why": "without the HIP launcher the 262 ATen HIP kernels of the ROCm torch build compiled uncached on every run"
+ },
+ {
+  "id": "lib.litert-eigen-prefetch-retries",
+  "target": "windows/scripts/build/Build-LitertFromSource.ps1",
+  "find": "[void](Invoke-GitClone -RepoUrl $repo -Tag $commit -SourceDir $Destination -MaxAttempts $MaxAttempts)",
+  "replace": "[void](Invoke-GitClone -RepoUrl $repo -Tag $commit -SourceDir $Destination)",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/litert-eigen-retries.json",
+  "why": "GitLab shed load for minutes on 2026-10-29 and CMake's own three quick clone tries failed the LiteRT build"
+ },
+ {
+  "id": "lib.litert-eigen-host-pass-override",
+  "target": "windows/scripts/build/Build-LitertFromSource.ps1",
+  "find": "'-DTFLITE_ENABLE_BENCHMARK_MODEL=OFF', $eigenSourceArg",
+  "replace": "'-DTFLITE_ENABLE_BENCHMARK_MODEL=OFF'",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/litert-eigen-host-pass.json",
+  "why": "the arm64 lane's host flatc pass configures the same tflite tree and would clone Eigen from GitLab on its own"
+ },
+ {
+  "id": "lib.hailort-externals-retry-budget",
+  "target": "windows/scripts/build/Build-HailortFromSource.ps1",
+  "find": "-SourceDir $dir -MaxAttempts ($ext['MaxAttempts'] ?? 3) | Out-Null",
+  "replace": "-SourceDir $dir | Out-Null",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/hailort-externals-retries.json",
+  "why": "HailoRT's Eigen external clones from the same GitLab, and three tries within 30 s failed the media-core hailo branch on 2026-10-29"
+ },
+ {
+  "id": "lib.hailort-gitlab-external-budget",
+  "target": "windows/scripts/build/Build-HailortFromSource.ps1",
+  "find": "Commit = '3147391d946bb4b6c68edd901f2add6ac1f31f8c'; MaxAttempts = 8 }",
+  "replace": "Commit = '3147391d946bb4b6c68edd901f2add6ac1f31f8c' }",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.LitertEigen.Tests.ps1 -ResultFile logs/code-quality/hailort-gitlab-budget.json",
+  "why": "only the GitLab-hosted Eigen external needs minutes of retries; without its row's budget it falls back to three tries"
  }
 ]

@@ -82,13 +82,18 @@ append_cmake_cross_args() {
   )
 }
 
+# Sets _MESON_CACHE_LAUNCHER in this shell; the address export must happen here, not in a $( ) that discards it.
+_meson_resolve_cache_launcher() {
+  _MESON_CACHE_LAUNCHER=""
+  command -v compiler_cache_launcher >/dev/null 2>&1 || return 0
+  compiler_cache_launcher_env 2>/dev/null || true
+  _MESON_CACHE_LAUNCHER="$(compiler_cache_launcher 2>/dev/null || true)"
+}
+
 # <compiler>: the Meson binaries entry; with a compiler cache the list form ['launcher', 'cc'], which Meson runs as one command (2026-10-28: GStreamer's C compiles bypassed sccache).
 _meson_compiler_entry() {
-  local launcher=""
-  if command -v compiler_cache_launcher >/dev/null 2>&1; then
-    launcher="$(compiler_cache_launcher 2>/dev/null || true)"
-  fi
-  if [ -n "${launcher}" ]; then printf "['%s', '%s']" "${launcher}" "$1"; else printf "'%s'" "$1"; fi
+  _meson_resolve_cache_launcher
+  if [ -n "${_MESON_CACHE_LAUNCHER}" ]; then printf "['%s', '%s']" "${_MESON_CACHE_LAUNCHER}" "$1"; else printf "'%s'" "$1"; fi
 }
 
 # <cc> <cxx> <ar> <strip>: the head of a [binaries] section, shared by the cross and the native file.
@@ -103,6 +108,8 @@ _write_meson_cross_file() {
   local path="$1" triplet="$2" pkg_config_libdir="$3" rust_binary_line="$4" exe_wrapper_line="$5"
   # CMake subprojects get their toolchain from [cmake] below, not from the exported CMAKE_* env.
   local target_libdir="/usr/lib/${triplet}"
+  # The entries resolve the launcher in a subshell; the address has to land in this shell, where Meson runs.
+  _meson_resolve_cache_launcher
 
   cat > "${path}" <<EOF
 $(_meson_binaries_head "${CC}" "${CXX}" "${AR}" "${STRIP}")
@@ -229,6 +236,7 @@ ensure_meson_native_file() {
     native_cxx_wrapper="$(make_host_compiler_wrapper "${native_wrapper_dir}/native-cxx" "${native_cxx}" "${host_path}")"
     native_cxx="${native_cxx_wrapper}"
   fi
+  _meson_resolve_cache_launcher
 
   cat > "${path}" <<EOF
 $(_meson_binaries_head "${native_cc}" "${native_cxx}" "${native_ar}" "${native_strip}")
@@ -253,9 +261,9 @@ append_meson_cross_flags() {
 
 # [path]: a native build's file with only the cached compilers; Meson ignores CMAKE_*_COMPILER_LAUNCHER, so this is how the cache reaches it (2026-10-28).
 _ensure_meson_cache_native_file() {
-  local launcher="" cc cxx path="${1:-${TMPDIR:-/tmp}/meson-native-cache.ini}"
-  if command -v compiler_cache_launcher >/dev/null 2>&1; then launcher="$(compiler_cache_launcher 2>/dev/null || true)"; fi
-  [ -n "${launcher}" ] || return 1
+  local cc cxx path="${1:-${TMPDIR:-/tmp}/meson-native-cache.ini}"
+  _meson_resolve_cache_launcher
+  [ -n "${_MESON_CACHE_LAUNCHER}" ] || return 1
   cc="$(command -v "${CC:-cc}" 2>/dev/null || true)"
   cxx="$(command -v "${CXX:-c++}" 2>/dev/null || true)"
   [ -n "${cc}" ] && [ -n "${cxx}" ] || return 1
