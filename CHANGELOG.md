@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-30 — ModelANT builds GenAI models (LAI-M2, LAI-M3)
+
+- ModelANT exports `smollm2_135m_instruct` with the image's chain GenAI builder, checks it against
+  `contracts/text-generation-v1.json` ("The capital of France is Paris.") and packs a reproducible
+  `.tar.xz` and `.deb`; the hub fetcher's `--extract` unpacks the archive. `language-ai.md` records
+  the status; the release itself waits for ModelANT's release workflow (LAI-M4).
+
 ## 2026-10-30 — ModelANT accepts Llama and Gemma (LAI-M1)
 
 - ModelANT's `license_policy.py` accepts the Llama and Gemma community licences with their
