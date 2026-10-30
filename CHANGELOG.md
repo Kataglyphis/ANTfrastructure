@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-30 — `chain-genai` names OrchestrANT's GenAI server
+
+- `linux/llm-stack/backends.json` gains `chain-genai` at `http://127.0.0.1:18200`, the default
+  address of OrchestrANT's `orchestrant-serve`, an OpenAI-compatible server over the chain's ONNX
+  Runtime GenAI (LAI-P1). `orchestrant-bench --backend chain-genai` measures the family's own engine
+  next to `ollama` and the `geniex-*` lanes (LAI-P2).
+
 ## 2026-10-30 — the tiny GenAI model holds 512 tokens
 
 - `tiny-genai-model.py` writes a context of 512 tokens instead of 64, so a binding test can decode
