@@ -65,6 +65,7 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/renovate_planner.py' 'linux/scripts/renovate_uv_exports.py' \
   'linux/scripts/verify_*.py' \
   'linux/scripts/tests/*.py' 'linux/scripts/gate_scope.py' 'linux/scripts/quality_allow.py' \
+  'linux/scripts/lang_units.py' \
   'linux/scripts/extract_embedded_python.py' 'linux/webserver/scripts/*.py' 'shared/python/*.py')
 mapfile -d '' -t windows_quality_files < <(git ls-files -z -- 'windows/scripts/certificates/*.py')
 mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \

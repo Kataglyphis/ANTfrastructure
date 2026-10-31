@@ -212,6 +212,8 @@ def main() -> int:
                          "script for the hub, <root>/code-complexity.allow otherwise)")
     ap.add_argument("--report-only", action="store_true",
                     help="list measurements over the limits without enforcing a freeze file")
+    ap.add_argument("--json", metavar="PATH",
+                    help="also write per-file and total counts as JSON to PATH")
     args = ap.parse_args()
 
     try:
@@ -232,13 +234,23 @@ def main() -> int:
     for rel, name, cc, nest in measure(scanner(root)):
         was = worst.get((rel, name), (0, 0))
         worst[(rel, name)] = (max(cc, was[0]), max(nest, was[1]))
-    if args.report_only:
-        offenders = [((rel, name), (cc, nest)) for (rel, name), (cc, nest)
-                     in sorted(worst.items()) if cc > CC_LIMIT or nest > NEST_LIMIT]
-        for (rel, name), (cc, nest) in offenders:
-            print(f"REPORT: {rel}:{name} cc={cc} nesting={nest}")
-        print(f"REPORT: {len(offenders)} functions over a complexity limit")
-        return 0
+    rc = _report(worst) if args.report_only else _gate(worst, allow, allow_name)
+    if args.json:
+        gate_scope.write_json(args.json, "code-complexity", root, *_complexity_counts(worst),
+                              limits={"cc": CC_LIMIT, "nesting": NEST_LIMIT})
+    return rc
+
+
+def _report(worst: dict[tuple[str, str], tuple[int, int]]) -> int:
+    offenders = [((rel, name), (cc, nest)) for (rel, name), (cc, nest)
+                 in sorted(worst.items()) if cc > CC_LIMIT or nest > NEST_LIMIT]
+    for (rel, name), (cc, nest) in offenders:
+        print(f"REPORT: {rel}:{name} cc={cc} nesting={nest}")
+    print(f"REPORT: {len(offenders)} functions over a complexity limit")
+    return 0
+
+
+def _gate(worst: dict[tuple[str, str], tuple[int, int]], allow: str, allow_name: str) -> int:
     frozen = load_counts(allow, 3, ALLOW_FMT)
     rc = check_rows(frozen, allow_name)
     for metric, limit, unit, i in (("cc", CC_LIMIT, "paths", 0),
@@ -251,6 +263,24 @@ def main() -> int:
     if rc == 0:
         print("OK: no new or grown complexity offenders")
     return rc
+
+
+def _complexity_counts(
+    worst: dict[tuple[str, str], tuple[int, int]],
+) -> tuple[dict[str, int], dict[str, dict[str, int]]]:
+    """(totals, per-file counts) for --json over files holding a function; the freeze file is ignored."""
+    per_file: dict[str, dict[str, int]] = {}
+    for (rel, _name), (cc, nest) in worst.items():
+        row = per_file.setdefault(rel, {"functions": 0, "over_limit": 0, "over_cc": 0,
+                                        "over_nesting": 0})
+        row["functions"] += 1
+        row["over_limit"] += cc > CC_LIMIT or nest > NEST_LIMIT
+        row["over_cc"] += cc > CC_LIMIT
+        row["over_nesting"] += nest > NEST_LIMIT
+    totals = {key: sum(row[key] for row in per_file.values())
+              for key in ("functions", "over_limit", "over_cc", "over_nesting")}
+    totals["files"] = len(per_file)
+    return totals, per_file
 
 
 if __name__ == "__main__":

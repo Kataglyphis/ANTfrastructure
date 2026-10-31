@@ -944,7 +944,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4068 entries** over **497 distinct test commands**; both digits are
+manifest holds **4085 entries** over **502 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2007,6 +2007,66 @@ The Windows test runner writes a JSON summary for each parent run to
 An explicit child `-ResultFile` creates its parent and fails on a write error, so a
 fresh mutation mirror can run the actual PowerShell baseline before testing a mutant.
 
+## Measurements as JSON
+
+`verify_code_size.py`, `verify_code_complexity.py`, `verify_code_dupes.py` and
+`verify_hub_reuse.py` accept `--json PATH`. Without it, their output and exit status are
+unchanged. With it, they also write one record through `gate_scope.write_json`. A missing
+parent directory is created. A write error exits 2.
+
+| key | content |
+| --- | --- |
+| `schema_version` | `1`; a renamed or removed key raises it |
+| `scanner` | `code-size`, `code-complexity`, `code-dupes` or `hub-reuse` |
+| `root` | the absolute tree that was graded |
+| `limits` | the thresholds the counts use |
+| `totals` | counts for the whole scan |
+| `files` | the same counts per repo-relative path |
+| `report_only` | present only with `--extra-languages`, in the same shape |
+
+| scanner | `totals` | per file |
+| --- | --- | --- |
+| code-size | `files`, `functions`, `oversized_functions`, `oversized_files` | `functions`, `oversized_functions`, `lines`, `oversized_file` |
+| code-complexity | `files`, `functions`, `over_limit`, `over_cc`, `over_nesting` | the same, without `files` |
+| code-dupes | `files`, `units`, `pairs`, `findings`, `allowed`, `allow_rows`, `suppressed` | `units`, `pairs` |
+| hub-reuse | `pairs`, `consumer_units`, `consumer_scripts`, `hub_scripts`, `synced`, `suppressed` | `units`, `pairs` per consumer script |
+
+The counts are measurements, not verdicts: `oversized_*`, `over_*` and `pairs` ignore the
+freeze files. They equal the `--report-only` lines, and `functions:`/`files:`/`cc:`/`nesting:`
+in gate mode. A code-dupes file pair counts once for each of its two files, so per-file
+`pairs` do not sum to the total. Complexity lists only files that hold a function.
+`--explain` and `--baseline` refuse `--json`. `test-scanner-json.sh` checks each total
+against the text verdict on a fixture tree.
+
+### Extra-language readers (report-only)
+
+`--extra-languages` adds units that never change the exit status:
+
+- `verify_code_size.py` prints `REPORT-ONLY:` for each Rust (`.rs`), Dart (`.dart`) and C/C++
+  (`.c .cc .cpp .h .hpp .ixx`) function over `FUNCTION_SIZE_LIMIT`, and a total line.
+- `verify_code_dupes.py` indexes Python files apart from the gated kinds and prints file pairs
+  over the threshold. Units are outermost functions, with decorators, and blank-line chunks.
+  Comments are dropped and strings reduced before shingling. A shell or PowerShell count
+  cannot move.
+
+No complexity reader exists for these languages. Complexity stays Python and shell, with
+PowerShell in `Invoke-CodeComplexity.ps1`.
+
+`linux/scripts/lang_units.py` holds the readers. It is standard-library Python and is
+imported only with the flag. It blanks comments and literals, newlines kept: nested
+`/* */` in Rust and Dart, raw strings in Rust (`r#"…"#`) and C++ (`R"d(…)d"`), Dart `${…}`
+interpolation, char literals, Rust lifetimes and C++ digit separators. It then walks braces.
+A function body is counted, not descended. A namespace, class, `impl` or `mod` body is
+descended. Blind spots:
+
+- macros and preprocessor-split headers (`#if` around a signature);
+- K&R C parameter lists;
+- Dart `=>` bodies, which have no braces;
+- C++ brace member initialisers other than `Foo() : a{1} {`;
+- Python files the running interpreter cannot parse.
+
+`test-lang-units.sh` pins hand-counted fixtures for each language.
+
 ## Windows Pester coverage
 
 The shared PE-icon fixture also links actual x64 and ARM64 executables and reads
@@ -2240,7 +2300,7 @@ and that case is what caught the gate tripping its own limit: `_code_char` reach
 cc 20 while gaining the arithmetic handling and had to be split into
 `_open_group` / `_close_group` / `_code_char`.
 
-48 mutation entries (`code-complexity.*`) carry it: the four contract directions (in `quality_allow.py`),
+49 mutation entries (`code-complexity.*`) carry it: the four contract directions (in `quality_allow.py`),
 the tokenizer guarantees (heredocs, here-strings, quotes, cross-line quote state,
 comments, case arms, the Python walk, elif depth, the metric split,
 the surviving verdict), and one for each fix above — including **both** directions
@@ -3020,7 +3080,7 @@ and the gate is the authority for it, not this page.
 `linux/scripts/tests/test-env-knobs.sh` each copy their gate into
 a throwaway tree — the gates derive their root from their own path — and parse
 the measured overlap rather than hardcoding it, so the fixtures cannot rot.
-22 entries (`code-dupes.*`) and 30 (`env-knobs.*`) in
+23 entries (`code-dupes.*`) and 30 (`env-knobs.*`) in
 `docs/scripts/mutations.json` neuter one guarantee each and are proven to make
 those suites fail: the shrink and stale detections and their
 exit codes, the pre-threshold count, the stale wording, the duplicate-row exit,

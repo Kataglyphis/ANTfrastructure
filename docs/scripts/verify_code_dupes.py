@@ -12,6 +12,7 @@ import re
 import sys
 import time
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from pathlib import Path
 from typing import TextIO, TypeAlias
 
@@ -125,17 +126,7 @@ def longest_common_run(a: list[str], b: list[str]) -> int:
 
 def normalise(text: str) -> list[str]:
     """Fold away the things a copy-paste typically renames."""
-    out = []
-    for raw in text.split("\n"):
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        line = STRING.sub('"S"', line)
-        line = VARIABLE.sub("$V", line)
-        line = NUMBER.sub("N", line)
-        line = canonicalise(line)
-        out.extend(TOKEN.findall(line))
-    return out
+    return [tok for line in normalise_lines(text) for tok in line.split()]
 
 
 def _brace_units(lines: list[str], header: re.Pattern,
@@ -314,7 +305,7 @@ def file_kind(name: str) -> str | None:
     return None
 
 
-def collect() -> list[tuple[Path, str]]:
+def collect(kind_of: Callable[[str], str | None] = file_kind) -> list[tuple[Path, str]]:
     """(path, kind) for everything in scope."""
     doc_gate_scope = {REPO_ROOT / "README.md", REPO_ROOT / "AGENTS.md"}
     doc_gate_scope |= set((REPO_ROOT / "docs").glob("*.md"))
@@ -325,7 +316,7 @@ def collect() -> list[tuple[Path, str]]:
         for name in names:
             if any(m.lower() in name.lower() for m in SKIP_NAME_MARKERS):
                 continue
-            kind = file_kind(name)
+            kind = kind_of(name)
             if kind is None:
                 continue
             path = Path(base) / name
@@ -376,7 +367,8 @@ def _selected_shingles(tokens: list[str], allowed: set[Shingle] | None,
 
 def index_units(files: list[tuple[Path, str]], *, root: Path | None = None,
                 functions_only: bool = False,
-                only_shingles: set[Shingle] | None = None) -> tuple[
+                only_shingles: set[Shingle] | None = None,
+                readers: dict[str, Callable[[Path], list[tuple[int, str]]]] | None = None) -> tuple[
     Owners, set[Shingle], Texts, UnitLines, dict[str, str],
 ]:
     """Index script units; optional root and shingle filters serve cross-repo callers."""
@@ -390,7 +382,7 @@ def index_units(files: list[tuple[Path, str]], *, root: Path | None = None,
         rel = path.relative_to(scan_root).as_posix()
         kind_of[rel] = kind
         fold = KIND_FOLD.get(kind)
-        for line_no, body in UNIT_READERS[kind](path):
+        for line_no, body in (readers or UNIT_READERS)[kind](path):
             if functions_only and not _function_unit(kind, body):
                 continue
             folded = fold(body) if fold else body
@@ -650,6 +642,10 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="say WHAT one pair shares: the overlapping units, their"
                          " line numbers and how much the idiom cutoff hides."
                          " One path for a self-pair, two for a cross-file pair")
+    ap.add_argument("--json", metavar="PATH",
+                    help="also write per-file and total counts as JSON to PATH")
+    ap.add_argument("--extra-languages", action="store_true",
+                    help="also report duplicate Python blocks; never fatal")
     return ap
 
 
@@ -657,6 +653,10 @@ def _parse_args() -> argparse.Namespace:
     args = _build_parser().parse_args()
     if args.report_only and (args.baseline or args.explain):
         print("ERROR: --report-only cannot be combined with --baseline or --explain",
+              file=sys.stderr)
+        raise SystemExit(2)
+    if (args.json or args.extra_languages) and (args.baseline or args.explain):
+        print("ERROR: --json and --extra-languages cannot be combined with --baseline or --explain",
               file=sys.stderr)
         raise SystemExit(2)
     return args
@@ -732,6 +732,19 @@ def _finding_verdict(
     return None
 
 
+def _extras(
+    args: argparse.Namespace, verdict: int, files: list[tuple[Path, str]], texts: Texts,
+    per_file: PerFile, findings: list[Finding], allowed: list[AllowedPair], allow: Allow,
+    suppressed: int,
+) -> int:
+    """The opt-in report-only Python pass and --json record, after a verdict they never change."""
+    if verdict != 2 and (args.json or args.extra_languages):
+        import code_dupes_extra  # Imported here: the default scan must not depend on the extras.
+
+        code_dupes_extra.finish(args, files, texts, per_file, findings, allowed, allow, suppressed)
+    return verdict
+
+
 def main() -> int:
     args = _parse_args()
     _apply_root(args.root)
@@ -739,7 +752,7 @@ def main() -> int:
     kinds = set(args.kind) if args.kind else set(UNIT_READERS)
     files = [(p, k) for p, k in collect() if k in kinds]
     if not files:
-        return _empty_scope_verdict(args)
+        return _extras(args, _empty_scope_verdict(args), files, {}, {}, [], [], {}, 0)
 
     owners, heads, texts, unit_lines, kind_of = index_units(files)
 
@@ -768,15 +781,16 @@ def main() -> int:
     bookkeeping = _print_bookkeeping(shrunk, stale, measured, args.threshold)
 
     verdict = _finding_verdict(args, findings, bookkeeping, runs, texts, ranked)
-    if verdict is not None:
-        return verdict
-
-    _print_families(ranked, sys.stdout)
-    print(f"code duplication gate OK: {len(texts)} units in {len(files)} files, "
-          f"no block over {args.threshold} shared {SHINGLE}-token shingles "
-          f"({len(allow)} allowlisted pair(s); {suppressed} shingle(s) suppressed "
-          f"as idiom at >{MAX_OWNERS} owners).")
-    return 0
+    if verdict is None:
+        _print_families(ranked, sys.stdout)
+        print(f"code duplication gate OK: {len(texts)} units in {len(files)} files, "
+              f"no block over {args.threshold} shared {SHINGLE}-token shingles "
+              f"({len(allow)} allowlisted pair(s); {suppressed} shingle(s) suppressed "
+              f"as idiom at >{MAX_OWNERS} owners).")
+        verdict = 0
+    return _extras(args, verdict, files, texts, per_file, findings, allowed, allow, suppressed)
 
 if __name__ == "__main__":
+    # code_dupes_extra imports this module by name and must see the root this run re-pointed.
+    sys.modules.setdefault("verify_code_dupes", sys.modules[__name__])
     raise SystemExit(main())

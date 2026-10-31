@@ -19,6 +19,7 @@ gate_scope = dupes.gate_scope
 
 SCRIPT_PATHS = (":(glob)**/*.sh", ":(glob)**/*.ps1", ":(glob)**/*.psm1")
 SYNC_PREFIX = "  OK      "
+Overlap = tuple[int, int, dupes.Unit, dupes.Unit]
 
 
 class HubReuseError(Exception):
@@ -118,7 +119,27 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--hub", required=True, help="ANTfrastructure Git checkout root")
     parser.add_argument("--report-only", action="store_true",
                         help="write findings but keep the verdict advisory; broken inputs still fail")
+    parser.add_argument("--json", metavar="PATH",
+                        help="also write per-file and total counts as JSON to PATH")
     return parser.parse_args()
+
+
+def _write_json(path: str | None, root: Path, consumer_files: list[tuple[Path, str]],
+                consumer_lines: dupes.UnitLines, findings: list[Overlap], hub_scripts: int,
+                synced: int, suppressed: int) -> None:
+    """The --json record: overlapping pairs per consumer script, and totals matching the text verdict."""
+    if path is None:
+        return
+    import code_dupes_extra  # Imported here: the default scan must not depend on the extras.
+
+    rels = [p.relative_to(root).as_posix() for p, _kind in consumer_files]
+    pairs = [[c[0].removeprefix("consumer/")] for _count, _run, c, _hub in findings]
+    totals = {"pairs": len(findings), "consumer_units": len(consumer_lines),
+              "consumer_scripts": len(consumer_files), "hub_scripts": hub_scripts,
+              "synced": synced, "suppressed": suppressed}
+    gate_scope.write_json(path, "hub-reuse", root, totals,
+                          code_dupes_extra.unit_pair_counts(rels, consumer_lines, pairs),
+                          limits={"threshold": dupes.DEFAULT_THRESHOLD})
 
 
 def main() -> int:
@@ -128,6 +149,7 @@ def main() -> int:
         hub = Path(gate_scope.resolve_root(args.hub, args.hub)).resolve()
         if root == hub:
             print("hub reuse: self comparison skipped (root and hub are the same checkout)")
+            _write_json(args.json, root, [], {}, [], 0, 0, 0)
             return 0
         synced = _shared_check(root, hub)
         consumer_files = _scripts(root, synced)
@@ -140,6 +162,8 @@ def main() -> int:
                   f"{len(consumer_files)} consumer and {len(hub_files)} hub script(s); "
                   "hub token scan skipped; "
                   f"{len(synced)} declared synced copy/copies skipped")
+            _write_json(args.json, root, consumer_files, consumer_lines, [], len(hub_files),
+                        len(synced), 0)
             return 0
         findings, suppressed = _matches(consumer, consumer_lines, hub_files, hub)
     except (gate_scope.ScopeError, HubReuseError, OSError, UnicodeError) as exc:
@@ -153,6 +177,8 @@ def main() -> int:
         print(f"  {count} shared shingles, {run} consecutive line(s)")
         print(f"    {consumer_unit[0]}:{consumer_unit[1]}")
         print(f"    {hub_unit[0]}:{hub_unit[1]}")
+    _write_json(args.json, root, consumer_files, consumer_lines, findings, len(hub_files),
+                len(synced), suppressed)
     if findings and not args.report_only:
         return 1
     return 0

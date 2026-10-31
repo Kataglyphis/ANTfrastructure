@@ -1994,8 +1994,8 @@
  {
   "id": "code-dupes.bookkeeping-before-findings",
   "target": "docs/scripts/verify_code_dupes.py",
-  "find": "    bookkeeping = _print_bookkeeping(shrunk, stale, measured, args.threshold)\n\n    verdict = _finding_verdict(args, findings, bookkeeping, runs, texts, ranked)\n    if verdict is not None:\n        return verdict",
-  "replace": "    verdict = _finding_verdict(args, findings, 0, runs, texts, ranked)\n    if verdict is not None:\n        return verdict\n    bookkeeping = _print_bookkeeping(shrunk, stale, measured, args.threshold)\n    if bookkeeping:\n        return 0 if args.report_only else 1",
+  "find": "    bookkeeping = _print_bookkeeping(shrunk, stale, measured, args.threshold)\n\n    verdict = _finding_verdict(args, findings, bookkeeping, runs, texts, ranked)\n    if verdict is None:",
+  "replace": "    verdict = _finding_verdict(args, findings, 0, runs, texts, ranked)\n    if verdict is None:\n        bookkeeping = _print_bookkeeping(shrunk, stale, measured, args.threshold)\n        verdict = (0 if args.report_only else 1) if bookkeeping else None\n    if verdict is None:",
   "test": "bash linux/scripts/tests/test-code-dupes.sh",
   "why": "one run must show every bookkeeping error, not hide them behind the first new finding"
  },
@@ -32559,5 +32559,141 @@
   "replace": "    echo \"FAIL: ${failures} undocumented artifact COPY relocation(s).\"\n    true\n",
   "test": "bash linux/scripts/tests/test-artifact-copy-completeness.sh",
   "why": "an artifact copied to another path than it was built at ships where nothing looks for it"
+ },
+ {
+  "id": "code-size.json-drops-a-count",
+  "target": "linux/scripts/verify_code_size.py",
+  "find": "              \"oversized_functions\": sum(c > LIMIT for c in longest.values()),",
+  "replace": "              \"oversized_functions\": sum(c > LIMIT for c in longest.values()) - 1,",
+  "test": "bash linux/scripts/tests/test-scanner-json.sh -k SizeJson",
+  "why": "the JSON total must equal the oversized-function count the text verdict prints"
+ },
+ {
+  "id": "code-size.json-leaves-text-alone",
+  "target": "linux/scripts/verify_code_size.py",
+  "find": "    if args.json:\n        totals, per_file = _size_counts(longest, file_lengths)",
+  "replace": "    if args.json:\n        print(f\"json: {args.json}\")\n        totals, per_file = _size_counts(longest, file_lengths)",
+  "test": "bash linux/scripts/tests/test-scanner-json.sh -k SizeJson",
+  "why": "--json must leave stdout, stderr and the exit status byte-identical"
+ },
+ {
+  "id": "code-size.extra-never-fatal",
+  "target": "linux/scripts/verify_code_size.py",
+  "find": "                              **sections)\n    return rc\n",
+  "replace": "                              **sections)\n    return rc or int(extra is not None)\n",
+  "test": "bash linux/scripts/tests/test-scanner-json.sh -k SizeJson",
+  "why": "report-only Rust, Dart and C/C++ units must never change the exit status"
+ },
+ {
+  "id": "code-complexity.json-drops-a-count",
+  "target": "linux/scripts/verify_code_complexity.py",
+  "find": "        row[\"over_limit\"] += cc > CC_LIMIT or nest > NEST_LIMIT",
+  "replace": "        row[\"over_limit\"] += cc > CC_LIMIT",
+  "test": "bash linux/scripts/tests/test-scanner-json.sh -k ComplexityJson",
+  "why": "the JSON over_limit total must count nesting offenders as the text verdict does"
+ },
+ {
+  "id": "scanner-extras.dupes-json-drops-a-count",
+  "target": "docs/scripts/code_dupes_extra.py",
+  "find": "\"findings\": len(findings),",
+  "replace": "\"findings\": len(findings) - 1,",
+  "test": "bash linux/scripts/tests/test-scanner-json.sh -k DupesJson",
+  "why": "the JSON findings total must equal the copied-block count the text verdict prints"
+ },
+ {
+  "id": "code-dupes.extra-never-fatal",
+  "target": "docs/scripts/verify_code_dupes.py",
+  "find": "        code_dupes_extra.finish(args, files, texts, per_file, findings, allowed, allow, suppressed)\n    return verdict",
+  "replace": "        code_dupes_extra.finish(args, files, texts, per_file, findings, allowed, allow, suppressed)\n        return 1\n    return verdict",
+  "test": "bash linux/scripts/tests/test-scanner-json.sh -k DupesJson",
+  "why": "report-only Python duplicate pairs must never change the exit status"
+ },
+ {
+  "id": "hub-reuse.json-drops-a-count",
+  "target": "docs/scripts/verify_hub_reuse.py",
+  "find": "    totals = {\"pairs\": len(findings),",
+  "replace": "    totals = {\"pairs\": len(findings) - 1,",
+  "test": "bash linux/scripts/tests/test-scanner-json.sh -k HubReuseJson",
+  "why": "the JSON pair total must equal the overlapping-pair count the text verdict prints"
+ },
+ {
+  "id": "scanner-extras.rust-nested-comment",
+  "target": "linux/scripts/lang_units.py",
+  "find": "    \"nested\": lambda t, m: _block_end(t, m, True),",
+  "replace": "    \"nested\": lambda t, m: _block_end(t, m, False),",
+  "test": "bash linux/scripts/tests/test-lang-units.sh",
+  "why": "a brace inside a nested Rust or Dart block comment must stay blank"
+ },
+ {
+  "id": "scanner-extras.rust-lifetime",
+  "target": "linux/scripts/lang_units.py",
+  "find": "    return lit.end() if lit else m.end()",
+  "replace": "    return lit.end() if lit else _line_end(text, m)",
+  "test": "bash linux/scripts/tests/test-lang-units.sh",
+  "why": "a Rust lifetime is code, not the start of a char literal"
+ },
+ {
+  "id": "scanner-extras.dart-interpolation",
+  "target": "linux/scripts/lang_units.py",
+  "find": "        elif text.startswith(\"${\", k):\n            k = _interp_end(text, k + 2)",
+  "replace": "        elif False:\n            k = _interp_end(text, k + 2)",
+  "test": "bash linux/scripts/tests/test-lang-units.sh",
+  "why": "quotes nested in a Dart ${} interpolation must not end the outer string"
+ },
+ {
+  "id": "scanner-extras.dart-getter",
+  "target": "linux/scripts/lang_units.py",
+  "find": "    return (m.group(1), m.start(1)) if m else c_like_name(header)",
+  "replace": "    return c_like_name(header)",
+  "test": "bash linux/scripts/tests/test-lang-units.sh",
+  "why": "a Dart getter body has no parameter list but is still a function"
+ },
+ {
+  "id": "scanner-extras.cpp-member-init",
+  "target": "linux/scripts/lang_units.py",
+  "find": "\"c-cpp\": _c_member_init}",
+  "replace": "\"c-cpp\": lambda _h: False}",
+  "test": "bash linux/scripts/tests/test-lang-units.sh",
+  "why": "a brace member initialiser must not be taken for the constructor body"
+ },
+ {
+  "id": "scanner-extras.cpp-raw-string",
+  "target": "linux/scripts/lang_units.py",
+  "find": "    \"craw\": lambda t, m: _raw_end(t, m.end(), \")\" + m.group(\"delim\") + '\"'),",
+  "replace": "    \"craw\": lambda t, m: m.end(),",
+  "test": "bash linux/scripts/tests/test-lang-units.sh",
+  "why": "braces inside a C++ raw string must stay blank"
+ },
+ {
+  "id": "scanner-extras.cpp-char-literal",
+  "target": "linux/scripts/lang_units.py",
+  "find": "    \"cchr\": lambda t, m: _char_end(t, m, _C_CHAR),",
+  "replace": "    \"cchr\": lambda t, m: m.end(),",
+  "test": "bash linux/scripts/tests/test-lang-units.sh",
+  "why": "a brace char literal must stay blank"
+ },
+ {
+  "id": "scanner-extras.scopes-descended",
+  "target": "linux/scripts/lang_units.py",
+  "find": "if named else (\"scope\", \"\", i))",
+  "replace": "if named else (\"inner\", \"\", i))",
+  "test": "bash linux/scripts/tests/test-lang-units.sh",
+  "why": "functions inside a namespace, class or impl body must be found"
+ },
+ {
+  "id": "scanner-extras.python-masked",
+  "target": "linux/scripts/lang_units.py",
+  "find": "        lines = _python_masked(text)",
+  "replace": "        lines = text.split(\"\\n\")",
+  "test": "bash linux/scripts/tests/test-lang-units.sh",
+  "why": "Python comments and docstrings must not count as duplicated code"
+ },
+ {
+  "id": "scanner-extras.python-decorators",
+  "target": "linux/scripts/lang_units.py",
+  "find": "spans = {min([d.lineno for d in n.decorator_list] + [n.lineno]):",
+  "replace": "spans = {n.lineno:",
+  "test": "bash linux/scripts/tests/test-lang-units.sh",
+  "why": "a decorator belongs to its function's unit"
  }
 ]

@@ -13,6 +13,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-31 — Scanner measurements as JSON
+
+- `verify_code_size.py`, `verify_code_complexity.py`, `verify_code_dupes.py` and
+  `verify_hub_reuse.py` accept `--json PATH`: a `schema_version` 1 record with per-file and
+  total counts. Output and exit status without the flag are unchanged.
+- `--extra-languages` (size and duplication) adds report-only units: Rust, Dart and C/C++
+  functions over the size limit, and Python duplicate blocks. They never change the exit status.
+- `linux/scripts/lang_units.py` holds the standard-library readers; `test-scanner-json.sh` and
+  `test-lang-units.sh` prove the totals and the hand-counted units. See
+  [Measurements as JSON](docs/code-quality-tooling.md#measurements-as-json).
+
 ## 2026-10-31 — Consumer inventory sees namesake callers
 
 - A consumer file at the same path as the hub entry point it calls (a caller workflow,

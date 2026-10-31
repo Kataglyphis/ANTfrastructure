@@ -4,12 +4,14 @@
 """The scan-root contract for the ratchet gates. See docs/code-quality-tooling.md#the-scan-root-contract"""
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 EXCLUDE = ("third_party",)
+JSON_SCHEMA_VERSION = 1
 
 
 class ScopeError(Exception):
@@ -97,3 +99,21 @@ def die(exc: ScopeError) -> int:
     """Uniform exit for a ScopeError: named, on stderr, rc 2."""
     sys.stderr.write(f"ERROR: {exc}\n")
     return 2
+
+
+def write_json(
+    path: str | os.PathLike[str], scanner: str, root: str | os.PathLike[str],
+    totals: Mapping[str, int], files: Mapping[str, Mapping[str, int]], **sections: object,
+) -> None:
+    """Write a scanner's --json record; an unwritable path ends the run with rc 2. See docs/code-quality-tooling.md#measurements-as-json"""
+    doc = {"schema_version": JSON_SCHEMA_VERSION, "scanner": scanner, "root": os.fspath(root),
+           "totals": dict(totals), "files": {rel: dict(c) for rel, c in sorted(files.items())},
+           **sections}
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as out:
+            json.dump(doc, out, indent=2, sort_keys=True)
+            out.write("\n")
+    except OSError as exc:
+        sys.stderr.write(f"ERROR: cannot write --json {os.fspath(path)}: {exc}\n")
+        raise SystemExit(2) from None

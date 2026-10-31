@@ -282,7 +282,7 @@ def _py_functions(path: str, rel: str) -> Iterator[tuple[str, str, int]]:
     yield from stack
 
 
-def main() -> int:
+def _parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Keep function and file sizes honest.")
     ap.add_argument("--root", default=None,
                     help="the tree to grade (default: this repo)")
@@ -296,8 +296,91 @@ def main() -> int:
                     help="restrict to this top-level directory (repeatable)")
     ap.add_argument("--report-only", action="store_true",
                     help="list measurements over the limits without enforcing freeze files")
-    args = ap.parse_args()
+    ap.add_argument("--json", metavar="PATH",
+                    help="also write per-file and total counts as JSON to PATH")
+    ap.add_argument("--extra-languages", action="store_true",
+                    help="also report Rust, Dart and C/C++ functions over the limit; never fatal")
+    return ap.parse_args()
 
+
+def _measure(
+    root: str, tops: Sequence[str] | None
+) -> tuple[dict[tuple[str, str], int], list[tuple[tuple[str], int]]]:
+    """(longest body per function, length per file) over the scan set."""
+    # A redefined name keeps its longest body, so a short redefinition cannot hide the offender.
+    longest: dict[tuple[str, str], int] = {}
+    for f, n, c in functions(root, tops):
+        longest[(f, n)] = max(c, longest.get((f, n), 0))
+    return longest, [((f,), n) for f, n in files(root, tops)]
+
+
+def _report(longest: dict[tuple[str, str], int], file_lengths: list[tuple[tuple[str], int]]) -> int:
+    large_functions = [(f, n, count) for (f, n), count in sorted(longest.items())
+                       if count > LIMIT]
+    large_files = [(f, count) for (f,), count in file_lengths if count > FILE_LIMIT]
+    for f, n, count in large_functions:
+        print(f"REPORT: function {f}:{n} = {count} lines")
+    for f, count in large_files:
+        print(f"REPORT: file {f} = {count} lines")
+    print(f"REPORT: {len(large_functions)} oversized functions, "
+          f"{len(large_files)} oversized files")
+    return 0
+
+
+def _size_counts(
+    longest: dict[tuple[str, str], int], file_lengths: list[tuple[tuple[str], int]]
+) -> tuple[dict[str, int], dict[str, dict[str, int]]]:
+    """(totals, per-file counts) for --json; measurements over the limits, freeze files ignored."""
+    per_file: dict[str, dict[str, int]] = {}
+    for (f, _n), count in longest.items():
+        row = per_file.setdefault(f, {"functions": 0, "oversized_functions": 0})
+        row["functions"] += 1
+        row["oversized_functions"] += count > LIMIT
+    for (f,), count in file_lengths:
+        row = per_file.setdefault(f, {"functions": 0, "oversized_functions": 0})
+        row.update(lines=count, oversized_file=int(count > FILE_LIMIT))
+    totals = {"files": len(file_lengths), "functions": len(longest),
+              "oversized_functions": sum(c > LIMIT for c in longest.values()),
+              "oversized_files": sum(c > FILE_LIMIT for _f, c in file_lengths)}
+    return totals, per_file
+
+
+def _extra_languages(root: str, tops: Sequence[str] | None) -> dict[str, object]:
+    """Print Rust, Dart and C/C++ functions over the limit; the counts never reach the exit status."""
+    import lang_units  # Imported here: the default scan must not depend on the extra readers.
+
+    per_file: dict[str, dict[str, int | str]] = {}
+    over = 0
+    for path, rel in subjects(root, lambda fn: fn.endswith(tuple(lang_units.LANGUAGES)), tops):
+        lang = lang_units.LANGUAGES[os.path.splitext(rel)[1]]
+        with open(path, encoding="utf-8", errors="replace") as source:
+            found = lang_units.functions(source.read(), lang)
+        big = [(name, first, n) for name, first, n in found if n > LIMIT]
+        for name, first, n in big:
+            print(f"REPORT-ONLY: {lang} function {rel}:{first}:{name} = {n} lines")
+        per_file[rel] = {"language": lang, "functions": len(found), "oversized_functions": len(big)}
+        over += len(big)
+    functions_seen = sum(int(row["functions"]) for row in per_file.values())
+    print(f"REPORT-ONLY: {over} oversized Rust, Dart or C/C++ functions in "
+          f"{functions_seen} functions, {len(per_file)} files (never fatal)")
+    return {"limit": LIMIT, "files": per_file, "totals": {
+        "files": len(per_file), "functions": functions_seen, "oversized_functions": over}}
+
+
+def _gate(longest: dict[tuple[str, str], int], file_lengths: list[tuple[tuple[str], int]],
+          fn_allow: str, file_allow: str) -> int:
+    rc = check_counts("functions", sorted(longest.items()),
+                      load_counts(fn_allow, 2, FN_FMT), LIMIT, os.path.basename(fn_allow))
+    rc |= check_counts("files", file_lengths,
+                       load_counts(file_allow, 1, FILE_FMT), FILE_LIMIT,
+                       os.path.basename(file_allow))
+    if rc == 0:
+        print("OK: no new or grown oversized functions or files")
+    return rc
+
+
+def main() -> int:
+    args = _parse_args()
     try:
         # resolve_root, not abspath: a subdirectory root would silently shift every allowlist key.
         root = gate_scope.resolve_root(args.root, ROOT)
@@ -314,29 +397,16 @@ def main() -> int:
         print(f"  root:       {root}")
         print(f"  fn-allow:   {fn_allow}")
         print(f"  file-allow: {file_allow}")
-    # A redefined name keeps its longest body, so a short redefinition cannot hide the offender.
-    longest: dict[tuple[str, str], int] = {}
-    for f, n, c in functions(root, args.scan):
-        longest[(f, n)] = max(c, longest.get((f, n), 0))
-    file_lengths = [((f,), n) for f, n in files(root, args.scan)]
-    if args.report_only:
-        large_functions = [(f, n, count) for (f, n), count in sorted(longest.items())
-                           if count > LIMIT]
-        large_files = [(f, count) for (f,), count in file_lengths if count > FILE_LIMIT]
-        for f, n, count in large_functions:
-            print(f"REPORT: function {f}:{n} = {count} lines")
-        for f, count in large_files:
-            print(f"REPORT: file {f} = {count} lines")
-        print(f"REPORT: {len(large_functions)} oversized functions, "
-              f"{len(large_files)} oversized files")
-        return 0
-    rc = check_counts("functions", sorted(longest.items()),
-                      load_counts(fn_allow, 2, FN_FMT), LIMIT, os.path.basename(fn_allow))
-    rc |= check_counts("files", file_lengths,
-                       load_counts(file_allow, 1, FILE_FMT), FILE_LIMIT,
-                       os.path.basename(file_allow))
-    if rc == 0:
-        print("OK: no new or grown oversized functions or files")
+    longest, file_lengths = _measure(root, args.scan)
+    rc = (_report(longest, file_lengths) if args.report_only
+          else _gate(longest, file_lengths, fn_allow, file_allow))
+    extra = _extra_languages(root, args.scan) if args.extra_languages else None
+    if args.json:
+        totals, per_file = _size_counts(longest, file_lengths)
+        sections = {"report_only": extra} if extra is not None else {}
+        gate_scope.write_json(args.json, "code-size", root, totals, per_file,
+                              limits={"function_lines": LIMIT, "file_lines": FILE_LIMIT},
+                              **sections)
     return rc
 
 
