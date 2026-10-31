@@ -243,18 +243,21 @@ for bad in unknown duplicate; do
   t_assert_eq "${SELECT_SECOND}" "$(_module_at "${REPO}" second)"
 done
 
+_apply_selected_first() {
+  _run "$1" "${REPORT}" --apply --managers git-submodules --submodule-path first
+  t_assert_eq 0 "${RC}" "$2: ${OUT}"
+}
+
 t_case "an isolated fixture apply moves only the selected gitlink"
 SELECT_REPO="$(_default_sub_repo default-selected)"
 SELECT_OTHER="$(_module_at "${SELECT_REPO}" second)"
-_run "${SELECT_REPO}" "${REPORT}" --apply --managers git-submodules --submodule-path first
-t_assert_eq 0 "${RC}" "selected fixture apply succeeds: ${OUT}"
+_apply_selected_first "${SELECT_REPO}" 'selected fixture apply succeeds'
 t_assert_eq "$(git -C "${WORK}/up-default-selected-first" rev-parse trunk)" "$(git -C "${SELECT_REPO}/first" rev-parse HEAD)"
 t_assert_eq "${SELECT_OTHER}" "$(_module_at "${SELECT_REPO}" second)"
 
 t_case "an excluded absent gitlink stays absent during an isolated selected apply"
 SELECT_ABSENT="$(_absent_second_repo default-selected-absent)"
-_run "${SELECT_ABSENT}" "${REPORT}" --apply --managers git-submodules --submodule-path first
-t_assert_eq 0 "${RC}" "the selected initialized module can move alone: ${OUT}"
+_apply_selected_first "${SELECT_ABSENT}" 'the selected initialized module can move alone'
 t_assert_eq "$(git -C "${WORK}/up-default-selected-absent-first" rev-parse trunk)" "$(git -C "${SELECT_ABSENT}/first" rev-parse HEAD)"
 t_assert_fails test -e "${SELECT_ABSENT}/second"
 
@@ -263,8 +266,7 @@ SELECT_DIRTY="$(_default_sub_repo default-selected-dirty)"
 printf 'local work\n' >> "${SELECT_DIRTY}/second/revision.txt"
 SELECT_DIRTY_AT="$(_module_at "${SELECT_DIRTY}" second)"
 SELECT_DIRTY_BYTES="$(cat "${SELECT_DIRTY}/second/revision.txt")"
-_run "${SELECT_DIRTY}" "${REPORT}" --apply --managers git-submodules --submodule-path first
-t_assert_eq 0 "${RC}" "a dirty excluded checkout does not prevent the selected update: ${OUT}"
+_apply_selected_first "${SELECT_DIRTY}" 'a dirty excluded checkout does not prevent the selected update'
 t_assert_eq "${SELECT_DIRTY_AT}" "$(_module_at "${SELECT_DIRTY}" second)"
 t_assert_eq "${SELECT_DIRTY_BYTES}" "$(cat "${SELECT_DIRTY}/second/revision.txt")"
 

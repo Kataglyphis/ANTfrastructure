@@ -18054,7 +18054,7 @@
  {
   "id": "probe.renovate-cli-missing-value",
   "target": "linux/scripts/renovate-cli.sh",
-  "find": "[ \"$#\" -gt 0 ] || err \"${option} needs a value\"",
+  "find": "[ \"$#\" -gt 1 ] || err \"${option} needs a value\"",
   "replace": ":",
   "test": "bash linux/scripts/tests/test-renovate-cli.sh",
   "why": "missing values must fail with the option diagnostic"

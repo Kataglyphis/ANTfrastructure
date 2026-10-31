@@ -47,6 +47,19 @@ parse_renovate_submodule_path() {
   SELECTED_SUBMODULES+=("${value}")
 }
 
+parse_renovate_value() {
+  local variable="$1" option="$2"
+  shift 2
+  VALUE_SHIFTS=1
+  if [[ "$1" == *=* ]]; then
+    printf -v "${variable}" '%s' "${1#*=}"
+  else
+    [ "$#" -gt 1 ] || err "${option} needs a value"
+    printf -v "${variable}" '%s' "$2"
+    VALUE_SHIFTS=2
+  fi
+}
+
 parse_renovate_options() {
   local flavor="$1" usage_function="$2" positional_label="$3"
   local -n destination="$4"
@@ -69,13 +82,9 @@ parse_renovate_options() {
     variable=""
     if [ -n "${option}" ]; then variable="${values[${option}]:-}"; fi
     if [ -n "${variable}" ]; then
-      if [[ "$1" == *=* ]]; then
-        printf -v "${variable}" '%s' "${1#*=}"
-      else
-        shift
-        [ "$#" -gt 0 ] || err "${option} needs a value"
-        printf -v "${variable}" '%s' "$1"
-      fi
+      parse_renovate_value "${variable}" "${option}" "$@"
+      shift "${VALUE_SHIFTS}"
+      continue
     else
       case "$1" in
         --apply) assign_renovate_options MODE apply ;;

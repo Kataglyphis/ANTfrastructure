@@ -130,25 +130,36 @@ scan_default_submodule_one() {
   fi
 }
 
+submodule_scan_enabled() {
+  case ",${MANAGERS}," in
+    *,git-submodules,*) return 0 ;;
+    *) [ "${#SELECTED_SUBMODULES[@]}" -eq 0 ] || err "--submodule-path requires the git-submodules manager"; return 1 ;;
+  esac
+}
+
+submodule_manifest_present() {
+  local tracked="$1"
+  if [ ! -f "${TARGET}/.gitmodules" ]; then
+    case "${tracked}:${#SELECTED_SUBMODULES[@]}" in
+      0:0) return 1 ;;
+      0:*) err "unknown direct submodule path: ${SELECTED_SUBMODULES[0]}" ;;
+      *) err "${tracked} tracked gitlinks but no .gitmodules; refusing an incomplete submodule scan" ;;
+    esac
+  fi
+  git -C "${TARGET}" config -f .gitmodules --list >/dev/null \
+    || err "cannot parse ${TARGET}/.gitmodules"
+}
+
 scan_default_submodules() {
   SUBMODULE_PATHS=(); SUBMODULE_REFS=(); SUBMODULE_TIPS=()
   SUBMODULE_CHECKED=(); SUBMODULE_PINNED=(); SUBMODULE_URLS=()
   APPLY_PATHS=(); APPLY_REFS=(); APPLY_TIPS=(); APPLY_URLS=(); APPLY_INITIALIZED=()
-  case ",${MANAGERS}," in
-    *,git-submodules,*) ;;
-    *) [ "${#SELECTED_SUBMODULES[@]}" -eq 0 ] || err "--submodule-path requires the git-submodules manager"; return 0 ;;
-  esac
+  submodule_scan_enabled || return 0
   SUBMODULE_ROOT_REAL="$(cd "${TARGET}" && pwd -P)"
   local tracked
   tracked="$(git -C "${TARGET}" ls-files --stage | awk '$1 == "160000" { n++ } END { print n+0 }')" \
     || err "cannot count tracked submodule gitlinks"
-  if [ ! -f "${TARGET}/.gitmodules" ]; then
-    [ "${tracked}" -eq 0 ] || err "${tracked} tracked gitlinks but no .gitmodules; refusing an incomplete submodule scan"
-    [ "${#SELECTED_SUBMODULES[@]}" -eq 0 ] || err "unknown direct submodule path: ${SELECTED_SUBMODULES[0]}"
-    return 0
-  fi
-  git -C "${TARGET}" config -f .gitmodules --list >/dev/null \
-    || err "cannot parse ${TARGET}/.gitmodules"
+  submodule_manifest_present "${tracked}" || return 0
   for_each_renovate_submodule "${TARGET}" scan_default_submodule_one
   [ "${tracked}" -eq "${#SUBMODULE_PATHS[@]}" ] \
     || err "${tracked} tracked gitlinks but ${#SUBMODULE_PATHS[@]} valid .gitmodules entries; refusing an incomplete submodule scan"
