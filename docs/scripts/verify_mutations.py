@@ -2,6 +2,8 @@
 """Prove a gate's tests can fail: apply each mutations.json edit in a throwaway copy and require its test to fail.
 
 Each test command first runs once unmutated, since a bite recorded on a red suite proves nothing.
+A mutant must parse (mutation_parse.py): shell, Python and PowerShell only, so YAML, JSON, JavaScript,
+Dockerfiles, CMake and code embedded in another file are applied unparsed.
 See docs/code-quality-tooling.md#the-mutation-gate-mutations
 """
 import argparse
