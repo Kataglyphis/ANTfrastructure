@@ -1021,6 +1021,22 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the same warning and full-model MIGraphX compilation failure on `gfx1036` using that
       image; its CPU fallback passed, but GPU profiling stopped at the TAR and did not test
       the AppImage. The local log is `_implementation/accelerant-rocm-hardware-profile-20261031/gpu-profile.log`.
+      Repeating the same package and device with the documented process-only
+      `MIGRAPHX_BENCHMARKING_USE_SIMPLE=1` option exposed a specific kernel launch failure:
+      the image's MIGraphX reports it was not built for `gfx1036` and recommends adding that
+      target. Investigate whether the next image can include `gfx1036` in MIGraphX's
+      `GPU_TARGETS` while preserving its existing targets, then re-run full-model GPU
+      profiling and CPU/small-graph controls. This does not establish why the default
+      adaptive benchmark failed or whether the MIOpen warning is causal. The diagnostic
+      log is `_implementation/accelerant-rocm-profile-simple-benchmark-20261031/gpu-profile.log`.
+      With the process-only `MIGRAPHX_SKIP_BENCHMARKING=1`, compilation completed but ORT
+      then failed to save its compiled model under a literal `""/…` cache path. Setting
+      `ORT_MIGRAPHX_MODEL_CACHE_PATH=/tmp` in the disposable container allowed the same
+      TAR's model inference to finish with 21 MIGraphX and 19 CPU operators in its verified
+      trace. Its subsequent video check did not complete before the 300-second timeout, so
+      the whole profile failed and the AppImage was not tested. Investigate the cache-path
+      behavior and video timeout; do not infer default-setting behavior or numerical parity
+      from this diagnostic. Log and trace: `_implementation/accelerant-rocm-profile-skip-with-cache-20261031/`.
       The warning does not establish the compilation failure's cause. Determine whether
       this WSL integrated GPU configuration is supported, investigate the missing device
       library and full-model error, and verify the locked model with operator profiling on
