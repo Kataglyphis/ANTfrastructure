@@ -915,7 +915,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       offline-cache gap, not proof of a broken network-backed build. Check other image
       digests and architectures independently.
 
-- [ ] **CON199 — provide the pinned PowerShell analyzer in the Windows CPU image** [S, ★★].
+- [ ] **CON199 — provide the pinned PowerShell analyzer in Windows images** [S, ★★].
       On 2026-10-31 the cached `:winamd64` registry image digest
       `sha256:bec12ad0afe6a5f0a90ae7c58ac06e605ee64b2a06c555842019bb1f00062927`
       (local image ID `f8da1c947056`) reported PowerShell 7.6.7 but no module from
@@ -923,8 +923,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       parsed 49 OmniAccelerANT scripts, then refused to continue because the pinned
       PSScriptAnalyzer 1.25.0 was absent. Install the version selected by the shared tool
       pins in the next image, include its source and license provenance, and verify the
-      analyzer gate in a fresh container without a network install. Check the GPU and ARM
-      images independently; this observation concerns only the cached Windows x64 CPU image.
+      analyzer gate in a fresh container without a network install. The cached Windows x64
+      AMD GPU image `:winamd64-rocm` digest
+      `sha256:774af209a9282b8e8439653eb55756228a6ebdd219076ddc54a1e012e550c99c`
+      (local image ID `2b0ceccf317c`) also reported PowerShell 7.6.7 and no available
+      PSScriptAnalyzer module in a no-network container. Check the NVIDIA and ARM images
+      independently; these observations concern only the two cached x64 digests.
 
 - [ ] **CON198 — assess Linux GStreamer tensor inference dependencies** [M]. On 2026-10-31,
       `gst-inspect-1.0` in the cached x64 images `:latest` (digest
