@@ -3,58 +3,5 @@
 # Each group names the dispatch the scanner cannot see. Format: <file>\t<function>.
 # docs/code-quality-tooling.md#dead-shell-functions-dead-functions
 
-# Library API. linux/scripts/lib/*.sh are sourced by wrapper scripts in the
-# consumer repos (docs/shared-script-libraries.md); the callers are not in this
-# tree. run/init/complete_agentic_loop are called from
-# shared/agentic-loop/templates/Run-AgenticLoop.sh (outside the corpus);
-# get_matrix_entry_name is the documented backward-compatible entry
-# (docs/agentic-loop-build-matrix.md).
-linux/scripts/lib/agentic-loop.sh	complete_agentic_loop
-linux/scripts/lib/agentic-loop.sh	get_matrix_entry_name
-linux/scripts/lib/agentic-loop.sh	init_agentic_loop
-linux/scripts/lib/app-runner.sh	app_runner_main
-linux/scripts/lib/cmake-build.sh	cmake_build_main
-linux/scripts/lib/code-quality.sh	code_quality_cleanup_compile_db
-linux/scripts/lib/code-quality.sh	code_quality_prepare_compile_db
-linux/scripts/lib/coverage.sh	coverage_llvm_generate_profile
-linux/scripts/lib/coverage.sh	coverage_llvm_report
-linux/scripts/lib/ctest-run.sh	ctest_run_main
-linux/scripts/lib/docs-build.sh	docs_build_main
-linux/scripts/lib/rust-toolchain.sh	ensure_wasm32_target
-linux/scripts/lib/wasm-opt.sh	wasm_opt_optimize
-
-# Dynamic dispatch: verify-parity.sh runs "check_${check_name}" over CHECK_LIST.
-# check_python joined its five siblings on 2026-09-05: smoke-toolchain.sh defines a
-# check_python of its own, so the name table read this one as used until the
-# unlinked-definer arm proved the two files never meet (backlog GH6).
-linux/scripts/06-packaging/verify-parity.sh	check_files
-linux/scripts/06-packaging/verify-parity.sh	check_libs
-linux/scripts/06-packaging/verify-parity.sh	check_packages
-linux/scripts/06-packaging/verify-parity.sh	check_python
-
 # bash hook: bash itself calls it when a command is not found.
 linux/scripts/tests/test-harness.sh	command_not_found_handle
-
-# app-packaging.sh has NO caller in this repo by design: its header says a wrapper
-# in the consuming repo sets the APP_PACKAGING_* variables, sources it and calls the
-# step functions. These are that public API. flutter-pin.sh is the same shape.
-# app_packaging_package_linux_bundle_flatpak and
-# app_packaging_setup_dependencies_for_container left this list on 2026-09-17:
-# tests/test-app-packaging-flatpak.sh now names both (a t_fn_src extraction and
-# the CON2 case), which is a corpus link even though production still has none.
-# The deb and AppImage packagers left it on 2026-10-06: 06-packaging/package_archive.sh calls them.
-linux/scripts/lib/app-packaging.sh	app_packaging_package_android_apk_outputs_tar
-linux/scripts/lib/app-packaging.sh	app_packaging_package_linux_bundle_tar
-linux/scripts/lib/app-packaging.sh	app_packaging_run_command_with_runtime
-linux/scripts/05-frameworks/flutter/flutter-pin.sh	flutter_resolve_pin
-
-# Consumer-facing helpers landed 2026-09-15, each the upstream half of a copy
-# one or more consumers carry today; the consumer deletions are a separate pass,
-# so the callers are outside this corpus by construction. Dispatch sites:
-# flutter_lane_prepare_env / flutter_build_web from a Flutter lane's container
-# prologue (docs/shared-script-libraries.md#05-frameworksflutterlane-prologuesh);
-# webdav_download_tree from a site's content sync (#01-corewebdav-downloadsh).
-# wait_for_http's row went on 2026-10-21: flutter-nginx-integration-test.sh calls it. Each row goes STALE the day a caller lands here,
-# which is the signal that the hub grew one.
-linux/scripts/05-frameworks/flutter/lane-prologue.sh	flutter_build_web
-linux/scripts/05-frameworks/flutter/lane-prologue.sh	flutter_lane_prepare_env

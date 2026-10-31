@@ -1620,6 +1620,32 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 ## Open — hub tooling and the dev host
 
+- [ ] **CON208 — `coverage_llvm_generate_profile` ignores the suite's exit status** [S, ★★].
+      Found 2026-10-31 by `test-lib-coverage.sh`: a suite that fails but writes its profile
+      returns 0, so a consumer's coverage step passes over failing tests unless another step runs
+      them. Check the consumers that call it (`docs/shared-script-libraries.md`), then decide
+      whether the suite's status becomes the function's; that is a consumer API change.
+
+- [ ] **CON209 — `code_quality_prepare_compile_db` leaves `/workspace` inside command strings** [S, ★].
+      Found 2026-10-31 by `test-lib-compile-db.sh`: the remap rewrites only a path right after a
+      quote (`"file"`, `"directory"`), so `-I/workspace/…` and the source path inside `"command"`
+      stay container paths on the host, and dropping `-Wl,-rpath,…` leaves a double space.
+
+- [ ] **CON210 — `docs_build_main` reports success after a failed step without errexit** [S, ★].
+      Found 2026-10-31 by `test-lib-docs-build.sh`: a caller without `set -e` sees `make` fail
+      and still gets "Documentation build completed successfully" and status 0. Every known
+      consumer runs under `set -e`; decide whether each step's status should stop the pipeline.
+
+- [ ] **CON211 — consumer copies the Flutter helpers still wait to replace** [S, ★★].
+      `05-frameworks/flutter/flutter-pin.sh` and `lane-prologue.sh` are pinned by
+      `test-flutter-lane-api.sh`. jotrockenmitlocken's `scripts/build-in-container.sh:10` defaults
+      `FLUTTER_VERSION` to 3.44.0 while the hub pins 3.47.7, without the tarball SHA:
+      `flutter_resolve_pin` replaces it. Its hand-spelled `flutter build web --release …`
+      (`build-in-container.sh:32` and `:34`, `run-nginx-integration-test.sh:14`) is what
+      `flutter_build_web` names. OmniAccelerANT reads `FLUTTER_VERSION` from `versions.env` in
+      PowerShell three times (`windows-arm64.yml:78` and `:202`, `windows-x64.yml:243`), without
+      its SHA; that needs a Windows twin of `flutter_resolve_pin` first.
+
 - [ ] **CON175 — prove Linux package system-library dependencies on a clean host** [M, ★★].
       On 2026-10-30 an AccelerANTgine AMD CPack prototype passed the image's ELF walk but its
       archive failed on clean Ubuntu 26.04 because `libgobject-2.0.so.0` was absent. The shared

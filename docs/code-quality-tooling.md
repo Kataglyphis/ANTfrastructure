@@ -944,7 +944,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3982 entries** over **476 distinct test commands**; both digits are
+manifest holds **4017 entries** over **486 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2283,16 +2283,17 @@ a function nothing calls.
 
 **The allow file is two-way** ([the allowlist contract](#the-allowlist-contract)):
 a key not frozen is NEW and fails; a frozen key that gains a caller, or whose
-function is deleted, is STALE and also fails. Each group names the dispatch the
-scanner cannot see:
+function is deleted, is STALE and also fails. One row is left:
+`command_not_found_handle`, which bash calls and nothing else does.
 
-- `linux/scripts/lib/*.sh` — the library API consumer repos source; the callers
-  are not in this tree at all.
-- `verify-parity.sh check_*` — reached as `"check_${check_name}"` over `CHECK_LIST`.
-- `command_not_found_handle` — bash calls it, nothing else does.
-- public helpers outside `lib/` whose callers live in consumer repos —
-  `05-frameworks/flutter/flutter-pin.sh`, `01-core/http-readiness.sh`,
-  `01-core/webdav-download.sh`, `05-frameworks/flutter/lane-prologue.sh`.
+Consumer API whose callers live outside this tree is not frozen: a contract suite
+names it. `test-lib-*.sh`, `test-agentic-loop.sh`, `test-verify-parity-checks.sh`
+(the `"check_${check_name}"` dispatch), `test-app-packaging-api.sh` and
+`test-flutter-lane-api.sh` run each function against stub tools that log their
+argv (`lib-contract-fixture.sh`) and pin its argv, status and output, and a recipe
+inside each body proves its suite. A defect such a suite finds goes to
+`BACKLOG.md`, not into the function: consumers reach it through their submodule
+pins.
 
 The **DEAD** group the file carried until 2026-09-04 — three `cpython_ext_*` and
 `verify_shared_lib_optional`, frozen only because their files sat inside the
@@ -2371,7 +2372,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 1023 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1031 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -2384,7 +2385,7 @@ whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
 under "The limitation: same-name masking" — and it reports **403** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
-arm can decide: the arm reaches **1** of them today, and the arm, not the census, is
+arm can decide: the arm reaches **0** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.
 
 Reading it: a row in either list is a deletion candidate, the masked list more

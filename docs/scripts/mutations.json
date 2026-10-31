@@ -31871,5 +31871,285 @@
   "replace": "and True",
   "test": "python3 shared/python/tests/test_verify_ort_profile.py",
   "why": "provider events without an identified model operator cannot prove accelerated inference"
+ },
+ {
+  "id": "lib.coverage-profile-leak-check-off",
+  "target": "linux/scripts/lib/coverage.sh",
+  "find": "    run_env=(ASAN_OPTIONS=detect_leaks=0)\n",
+  "replace": "    run_env=(ASAN_OPTIONS=)\n",
+  "test": "bash linux/scripts/tests/test-lib-coverage.sh",
+  "why": "a coverage run with LeakSanitizer on fails at exit and writes no profile for a leaky but passing suite"
+ },
+ {
+  "id": "lib.coverage-profile-must-exist",
+  "target": "linux/scripts/lib/coverage.sh",
+  "find": "  if [[ ! -f \"${profraw}\" ]]; then\n    err \"Profile data still not found",
+  "replace": "  if false; then\n    err \"Profile data still not found",
+  "test": "bash linux/scripts/tests/test-lib-coverage.sh",
+  "why": "a suite that never wrote its profile would hand llvm-profdata a missing file and blame it"
+ },
+ {
+  "id": "lib.coverage-report-sparse-merge",
+  "target": "linux/scripts/lib/coverage.sh",
+  "find": "  llvm-profdata merge -sparse \"${profraw}\" -o \"${profdata}\"\n",
+  "replace": "  llvm-profdata merge \"${profraw}\" -o \"${profdata}\"\n",
+  "test": "bash linux/scripts/tests/test-lib-coverage.sh",
+  "why": "the merge flag is part of the consumer contract; a dense merge grows every profile a CI cache holds"
+ },
+ {
+  "id": "lib.coverage-report-skips-empty-ignore",
+  "target": "linux/scripts/lib/coverage.sh",
+  "find": "    [[ -n \"${pattern}\" ]] || continue\n",
+  "replace": "    true\n",
+  "test": "bash linux/scripts/tests/test-lib-coverage.sh",
+  "why": "an empty pattern becomes -ignore-filename-regex=, which matches every file and reports zero coverage"
+ },
+ {
+  "id": "lib.coverage-report-html",
+  "target": "linux/scripts/lib/coverage.sh",
+  "find": "  if [[ -n \"${COVERAGE_LLVM_HTML_DIR:-}\" ]]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-lib-coverage.sh",
+  "why": "COVERAGE_LLVM_HTML_DIR is how a consumer gets the browsable report; ignoring it uploads an empty artifact"
+ },
+ {
+  "id": "lib.wasm32-rustup-status",
+  "target": "linux/scripts/lib/rust-toolchain.sh",
+  "find": "    rustup target add wasm32-unknown-unknown\n    return $?\n",
+  "replace": "    rustup target add wasm32-unknown-unknown\n    return 0\n",
+  "test": "bash linux/scripts/tests/test-lib-wasm-tools.sh",
+  "why": "a failed rustup must reach the caller, or the wasm build fails later on a missing std"
+ },
+ {
+  "id": "lib.wasm32-std-probe",
+  "target": "linux/scripts/lib/rust-toolchain.sh",
+  "find": "     && [ -d \"${libdir}\" ]; then",
+  "replace": "     && true; then",
+  "test": "bash linux/scripts/tests/test-lib-wasm-tools.sh",
+  "why": "--print target-libdir names the directory even when it is absent; only its existence proves the std"
+ },
+ {
+  "id": "lib.wasm-opt-default-level",
+  "target": "linux/scripts/lib/wasm-opt.sh",
+  "find": "  local level=\"${3:--Oz}\"\n",
+  "replace": "  local level=\"${3:--O2}\"\n",
+  "test": "bash linux/scripts/tests/test-lib-wasm-tools.sh",
+  "why": "consumers rely on -Oz for the web bundle size they publish"
+ },
+ {
+  "id": "lib.wasm-opt-retry-failure-fatal",
+  "target": "linux/scripts/lib/wasm-opt.sh",
+  "find": "      || err \"wasm-opt failed for ${input}\"\n",
+  "replace": "      || true\n",
+  "test": "bash linux/scripts/tests/test-lib-wasm-tools.sh",
+  "why": "a wasm-opt that failed twice would leave the unoptimised or no output behind a green step"
+ },
+ {
+  "id": "lib.compile-db-missing-fails",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "  if [[ ! -f \"${compile_db_path}\" ]]; then\n    err \"Missing ${compile_db_path}.",
+  "replace": "  if false; then\n    err \"Missing ${compile_db_path}.",
+  "test": "bash linux/scripts/tests/test-lib-compile-db.sh",
+  "why": "clang-tidy without a compilation database lints nothing and passes"
+ },
+ {
+  "id": "lib.compile-db-remaps-workspace",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "  if grep -qF \"${workspace}\" \"${compile_db_path}\"; then\n",
+  "replace": "  if false; then\n",
+  "test": "bash linux/scripts/tests/test-lib-compile-db.sh",
+  "why": "a database written in the container names /workspace paths that do not exist on the host"
+ },
+ {
+  "id": "lib.compile-db-drops-absent-toolchain",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "    if [[ -n \"${toolchain_probe}\" && -n \"${toolchain_prefix}\" && ! -d \"${toolchain_probe}\" ]]; then\n",
+  "replace": "    if false; then\n",
+  "test": "bash linux/scripts/tests/test-lib-compile-db.sh",
+  "why": "a --gcc-toolchain pointing at a container-only path makes clang fail every file on the host"
+ },
+ {
+  "id": "lib.compile-db-cleanup-removes",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "    rm -rf \"${CODE_QUALITY_COMPILE_DB_TEMP_DIR}\"\n    CODE_QUALITY_COMPILE_DB_TEMP_DIR=\"\"\n",
+  "replace": "    true\n    CODE_QUALITY_COMPILE_DB_TEMP_DIR=\"\"\n",
+  "test": "bash linux/scripts/tests/test-lib-compile-db.sh",
+  "why": "each lint run would leave its remapped database copy in TMPDIR"
+ },
+ {
+  "id": "lib.ctest-main-prepares-env",
+  "target": "linux/scripts/lib/ctest-run.sh",
+  "find": "  ctest_run_prepare_env\n  ctest_run_execute\n",
+  "replace": "  ctest_run_execute\n",
+  "test": "bash linux/scripts/tests/test-lib-ctest-run.sh",
+  "why": "without the safe.directory step git refuses the bind-mounted tree and tests that call git fail"
+ },
+ {
+  "id": "lib.docs-main-stages-svg",
+  "target": "linux/scripts/lib/docs-build.sh",
+  "find": "  docs_build_copy_static_svg\n  docs_build_run_generator\n",
+  "replace": "  docs_build_run_generator\n",
+  "test": "bash linux/scripts/tests/test-lib-docs-build.sh",
+  "why": "diagrams built elsewhere never reach _static and the published pages show broken images"
+ },
+ {
+  "id": "lib.docs-main-runs-sphinx",
+  "target": "linux/scripts/lib/docs-build.sh",
+  "find": "  docs_build_sphinx\n  info \"Documentation build completed successfully\"\n",
+  "replace": "  info \"Documentation build completed successfully\"\n",
+  "test": "bash linux/scripts/tests/test-lib-docs-build.sh",
+  "why": "the pipeline would report a finished build without running Sphinx"
+ },
+ {
+  "id": "lib.app-runner-loader-path",
+  "target": "linux/scripts/lib/app-runner.sh",
+  "find": "  export LD_LIBRARY_PATH=\"${ABS_BUILD_DIR}:${ABS_BUILD_DIR}/bin:${LD_LIBRARY_PATH:-}\"\n",
+  "replace": "  export LD_LIBRARY_PATH=\"${LD_LIBRARY_PATH:-}\"\n",
+  "test": "bash linux/scripts/tests/test-lib-app-runner.sh",
+  "why": "the app would load an installed copy of the project's libraries, or none, instead of the build's"
+ },
+ {
+  "id": "lib.app-runner-work-dir",
+  "target": "linux/scripts/lib/app-runner.sh",
+  "find": "  cd \"${WORK_DIR}\" || err \"Cannot enter working directory: ${WORK_DIR}\"\n",
+  "replace": "  : || err \"Cannot enter working directory: ${WORK_DIR}\"\n",
+  "test": "bash linux/scripts/tests/test-lib-app-runner.sh",
+  "why": "apps resolve shaders and assets relative to the project root; started elsewhere they find none"
+ },
+ {
+  "id": "lib.cmake-main-env-failure-stops",
+  "target": "linux/scripts/lib/cmake-build.sh",
+  "find": "  cmake_build_prepare_env || return $?\n",
+  "replace": "  cmake_build_prepare_env\n",
+  "test": "bash linux/scripts/tests/test-lib-cmake-build.sh",
+  "why": "a rejected linker or cache setting must stop the build, not configure it with the image defaults"
+ },
+ {
+  "id": "lib.agentic-init-log-dir",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "    local log_dir=\"${repo_root}/logs/agentic-loop\"\n",
+  "replace": "    local log_dir=\"${repo_root}/logs\"\n",
+  "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+  "why": "consumers upload and ignore logs/agentic-loop; a log written elsewhere is lost or committed"
+ },
+ {
+  "id": "lib.agentic-complete-lists-fixes",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "    if [[ \"$exit_code\" -ne 0 ]]; then\n        log \"The loop exited with errors.",
+  "replace": "    if false; then\n        log \"The loop exited with errors.",
+  "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+  "why": "a failed loop would end without the checklist that names its usual causes"
+ },
+ {
+  "id": "lib.agentic-matrix-name-fallback",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": " // .buildConfigurations.${platform}[$index] // empty",
+  "replace": " // empty",
+  "test": "bash linux/scripts/tests/test-agentic-loop.sh",
+  "why": "older loop configs list buildConfigurations only; their entries would lose their names"
+ },
+ {
+  "id": "packaging.parity-files-normalised",
+  "target": "linux/scripts/06-packaging/verify-parity.sh",
+  "find": "  normalize_find_output \"${native_file}\" > \"${native_file}.clean\"\n",
+  "replace": "  cp \"${native_file}\" \"${native_file}.clean\"\n",
+  "test": "bash linux/scripts/tests/test-verify-parity-checks.sh",
+  "why": "build logs and caches differ between any two images; unfiltered, every tree comparison fails"
+ },
+ {
+  "id": "packaging.parity-libs-missing-warns",
+  "target": "linux/scripts/06-packaging/verify-parity.sh",
+  "find": "    warn \"Cannot list shared libs from cross image\"\n    return 0\n",
+  "replace": "    warn \"Cannot list shared libs from cross image\"\n    return 1\n",
+  "test": "bash linux/scripts/tests/test-verify-parity-checks.sh",
+  "why": "an image without the scanned prefixes is not a parity failure; the check is advisory there"
+ },
+ {
+  "id": "packaging.parity-libs-version-folded",
+  "target": "linux/scripts/06-packaging/verify-parity.sh",
+  "find": "  container_exec_strip \"${NATIVE_IMAGE}\" \"${libs_cmd}\" 2>/dev/null \\\n    | sed -E 's/\\.so\\.[0-9.]+$/.so.X/'",
+  "replace": "  container_exec_strip \"${NATIVE_IMAGE}\" \"${libs_cmd}\" 2>/dev/null \\\n    | sed -E 's/^$//'",
+  "test": "bash linux/scripts/tests/test-verify-parity-checks.sh",
+  "why": "a patch-level soname difference is not a missing library; unfolded, every pin bump fails parity"
+ },
+ {
+  "id": "packaging.parity-packages-normalised",
+  "target": "linux/scripts/06-packaging/verify-parity.sh",
+  "find": "  normalize_package_list \"${native_file}\" > \"${native_file}.norm\"\n",
+  "replace": "  cp \"${native_file}\" \"${native_file}.norm\"\n",
+  "test": "bash linux/scripts/tests/test-verify-parity-checks.sh",
+  "why": "the architecture column always differs between a native and a cross image"
+ },
+ {
+  "id": "packaging.parity-python-system-fallback",
+  "target": "linux/scripts/06-packaging/verify-parity.sh",
+  "find": "    container_exec_strip \"${CROSS_IMAGE}\" 'pip list --format=columns 2>/dev/null || pip3 list --format=columns' \\\n",
+  "replace": "    false \\\n",
+  "test": "bash linux/scripts/tests/test-verify-parity-checks.sh",
+  "why": "an image without the venv still has a system pip; skipping it hides its packages from the comparison"
+ },
+ {
+  "id": "packaging.bundle-tar-prepares-workspace",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "  app_packaging_prepare_workspace \"$matrix_arch\"\n  app_packaging_package_bundle_outputs_tar \"build/linux/${matrix_arch}/release/bundle\"",
+  "replace": "  app_packaging_package_bundle_outputs_tar \"build/linux/${matrix_arch}/release/bundle\"",
+  "test": "bash linux/scripts/tests/test-app-packaging-api.sh",
+  "why": "a stale obj tree and hosted pub cache from an earlier arch leak into the next package"
+ },
+ {
+  "id": "packaging.apk-tar-source",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "\"build/app/outputs/flutter-apk\"",
+  "replace": "\"build/app/outputs/apk\"",
+  "test": "bash linux/scripts/tests/test-app-packaging-api.sh",
+  "why": "flutter build apk writes build/app/outputs/flutter-apk; any other path packages nothing"
+ },
+ {
+  "id": "packaging.runtime-dbus-for-flatpak",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "    dbus-run-session -- \"$@\"\n",
+  "replace": "    \"$@\"\n",
+  "test": "bash linux/scripts/tests/test-app-packaging-api.sh",
+  "why": "flatpak-builder needs a session bus, which a CI container does not start"
+ },
+ {
+  "id": "flutter.pin-exports-sha",
+  "target": "linux/scripts/05-frameworks/flutter/flutter-pin.sh",
+  "find": "  export FLUTTER_SDK_SHA256=\"$pinned_sha\"\n",
+  "replace": "  export FLUTTER_SDK_SHA256=\"\"\n",
+  "test": "bash linux/scripts/tests/test-flutter-lane-api.sh",
+  "why": "the version and the tarball sha are one pin; a version alone downloads an unverified SDK"
+ },
+ {
+  "id": "flutter.pin-needs-both-halves",
+  "target": "linux/scripts/05-frameworks/flutter/flutter-pin.sh",
+  "find": "  if [ -z \"$pinned_version\" ] || [ -z \"$pinned_sha\" ]; then\n",
+  "replace": "  if [ -z \"$pinned_version\" ]; then\n",
+  "test": "bash linux/scripts/tests/test-flutter-lane-api.sh",
+  "why": "half a pin fails later as a bare checksum error that names neither file"
+ },
+ {
+  "id": "flutter.lane-sdk-first-on-path",
+  "target": "linux/scripts/05-frameworks/flutter/lane-prologue.sh",
+  "find": "    *) export PATH=\"${flutter_dir}/bin:${PATH}\" ;;\n",
+  "replace": "    *) export PATH=\"${PATH}:${flutter_dir}/bin\" ;;\n",
+  "test": "bash linux/scripts/tests/test-flutter-lane-api.sh",
+  "why": "another flutter earlier on PATH would build with a toolchain the image does not ship"
+ },
+ {
+  "id": "flutter.lane-pub-cache-in-repo",
+  "target": "linux/scripts/05-frameworks/flutter/lane-prologue.sh",
+  "find": "  export PUB_CACHE=\"${PUB_CACHE:-${repo_root}/.pub-cache}\"\n",
+  "replace": "  export PUB_CACHE=\"${PUB_CACHE:-${HOME}/.pub-cache}\"\n",
+  "test": "bash linux/scripts/tests/test-flutter-lane-api.sh",
+  "why": "a root-owned HOME refuses the cache, and phases of one run could not share packages"
+ },
+ {
+  "id": "flutter.web-build-release",
+  "target": "linux/scripts/05-frameworks/flutter/lane-prologue.sh",
+  "find": "  local -a args=(build web --release)\n",
+  "replace": "  local -a args=(build web)\n",
+  "test": "bash linux/scripts/tests/test-flutter-lane-api.sh",
+  "why": "a debug web build is several times larger and is what the sites would publish"
  }
 ]

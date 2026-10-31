@@ -307,6 +307,36 @@ _out="$(_planner 10 false false)"
 t_assert_contains "${_out}" "Refactor-focused planning cycle"
 t_assert_contains "${_out}" "ran=true"
 
+# ── consumer entry points: Run-AgenticLoop.sh calls these three from outside this tree ──
+t_case "init_agentic_loop names the loop, starts the clock and logs under <root>/logs/agentic-loop"
+_out="$(_lib 'init_agentic_loop demo "'"${_work}"'/repo"; printf "%s|%s|%s\n" "${LOOP_NAME}" "${AGENTIC_START_TIME}" "${LOG_FILE}"')"
+t_assert_contains "${_out}" "[INFO] Agentic Loop: demo"
+_line="$(printf '%s\n' "${_out}" | tail -1)"
+t_assert_eq "demo" "${_line%%|*}"
+t_assert_contains "${_line}" "|${_work}/repo/logs/agentic-loop/agentic-loop_"
+t_assert_ok test -d "${_work}/repo/logs/agentic-loop"
+_log="${_line##*|}"
+t_assert_contains "$(cat "${_log}")" "[INFO] Log file: ${_log}" "the log file holds what the console showed"
+t_assert_eq "1" "$(_lib 'init_agentic_loop demo "'"${_work}"'/repo" >/dev/null; [ "${AGENTIC_START_TIME}" -gt 1700000000 ] && echo 1')" "the clock is epoch seconds"
+
+t_case "complete_agentic_loop reports the exit code and elapsed minutes, and the fixes only on failure"
+_out="$(_lib 'AGENTIC_START_TIME=$(( $(date +%s) - 180 )); complete_agentic_loop 0')"
+t_assert_contains "${_out}" "[INFO] Agentic Loop Finished"
+t_assert_contains "${_out}" "[INFO] Exit code: 0"
+t_assert_contains "${_out}" "[INFO] Elapsed time: 3min"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c -e '\[WARN\]' || true)" "a clean exit lists no fixes"
+_out="$(_lib 'AGENTIC_START_TIME=$(date +%s); complete_agentic_loop 3')"
+t_assert_contains "${_out}" "[INFO] Exit code: 3"
+t_assert_contains "${_out}" "[WARN] The loop exited with errors. Check sections above marked [ERROR] or [FATAL]."
+t_assert_contains "${_out}" "[WARN]   5. Run with --max-iterations 1 to test a single iteration"
+
+t_case "get_matrix_entry_name reads buildMatrix names, falls back to buildConfigurations, and is empty past the end"
+printf '{"buildMatrix":{"linux":[{"name":"gcc-debug"}]},"buildConfigurations":{"windows":["msvc"]}}\n' > "${_work}/matrix.json"
+t_assert_eq "gcc-debug" "$(_lib 'get_matrix_entry_name "'"${_work}"'/matrix.json" 0')" "the platform defaults to linux"
+t_assert_eq "msvc" "$(_lib 'get_matrix_entry_name "'"${_work}"'/matrix.json" 0 windows')"
+t_assert_eq "" "$(_lib 'get_matrix_entry_name "'"${_work}"'/matrix.json" 5')"
+t_assert_eq "2" "$(_lib 'get_matrix_entry_name "'"${_work}"'/absent.json" 0 >/dev/null 2>&1; echo $?')" "an unreadable config fails with jq's status"
+
 t_case "run_agentic_loop delegates its planner phase to the seam"
 t_assert_contains "$(t_fn_src "${LIB}" run_agentic_loop)" \
   '_agentic_planner_phase "$repo_root" "$force_planner" planner_ran' \

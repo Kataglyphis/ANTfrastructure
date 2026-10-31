@@ -15,6 +15,11 @@
 
 ## 2026-10-31 — Mutants must parse, and the mutation gate times each test command
 
+- Contract suites pin the 23 consumer-API shell functions that had no caller in this tree
+  (`lib/` builders and runners, `verify-parity.sh`'s checks, the app-packaging tar packagers,
+  the Flutter pin and lane helpers) against stub tools, each with a recipe in its body;
+  `dead-functions.allow` keeps only `command_not_found_handle`. Four defects they found are
+  CON208 to CON211.
 - `verify_mutations.py` refuses a recipe whose target parses and whose mutant does not, and
   `--parse-check` runs that check alone ([Mutants must parse](docs/code-quality-tooling.md#mutants-must-parse)).
   Five recipes that bit only on a syntax error now keep their edit valid.
