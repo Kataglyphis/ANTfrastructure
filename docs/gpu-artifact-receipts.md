@@ -134,3 +134,18 @@ matching provider event fails. Omitting `--min-runs` retains the single-profile 
 The trace identifies a process, not an ORT session; callers must independently
 ensure repeated runs use the same session and compare their outputs. A provider
 event alone does not establish correct results or physical GPU execution.
+
+## Reusable workflow invocation scopes
+
+For each callable GPU workflow, pass the caller's optional scope through the environment
+as `GPU_INVOCATION_SCOPE` to `python3 -I shared/python/gpu_invocation_scope.py` before
+using it. The helper writes `suffix` to `GITHUB_OUTPUT`: the default scope produces an
+empty suffix, and another valid scope produces `-scope-<scope>`. Scopes must match
+`[a-z][a-z0-9-]{0,31}`; invalid values fail before the output file is opened. Callers
+of the same reusable workflow in one parent run must use distinct scopes, including
+when their selected GPU targets overlap. The caller remains responsible for uniqueness.
+
+Use the validated output consistently in attempt-scoped artifact names, receipts and
+scratch paths, and in job concurrency groups after the validation job succeeds. Do not
+use raw scope input in a cancellation-sensitive group before validation. A scope
+separates evidence; it does not authenticate an artifact or verify GPU execution.

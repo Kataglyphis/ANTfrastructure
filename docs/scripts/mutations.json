@@ -32041,6 +32041,22 @@
   "why": "pairwise comparison must not impose the CPU-only oracle on a GPU result"
  },
  {
+  "id": "packaging.gpu-invocation-scope-validation",
+  "target": "shared/python/gpu_invocation_scope.py",
+  "find": "[a-z][a-z0-9-]{0,31}",
+  "replace": ".*",
+  "test": "python3 shared/python/tests/test_gpu_invocation_scope.py",
+  "why": "unsafe invocation scopes must not reach artifact names or output files"
+ },
+ {
+  "id": "packaging.gpu-invocation-scope-isolation",
+  "target": "shared/python/gpu_invocation_scope.py",
+  "find": "return \"\" if scope == \"default\" else f\"-scope-{scope}\"",
+  "replace": "return \"\"",
+  "test": "python3 shared/python/tests/test_gpu_invocation_scope.py",
+  "why": "distinct nondefault workflow calls must produce distinct suffixes"
+ },
+ {
   "id": "packaging.detector-parity-iou",
   "target": "shared/python/compare_detector_parity.py",
   "find": "iou(item[\"box\"], other[\"box\"]) >= MIN_IOU",
