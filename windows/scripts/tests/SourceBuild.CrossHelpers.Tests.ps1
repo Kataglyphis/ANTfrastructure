@@ -50,12 +50,13 @@ Describe 'Add-NinjaPerTuFlags' {
             'build c/link.dll: CXX_SHARED_LIBRARY_LINKER a/kernel_avx512.cpp.obj',
             '  LINK_FLAGS = /DLL'
         ) | Set-Content -Path $script:ninja -Encoding ASCII
+        # Both runs must tag the same TUs, so they share one call.
+        $script:tagKernels = { Add-NinjaPerTuFlags -NinjaFile $script:ninja -Label 'fixture' -Floor 2 -AlreadyTaggedPattern 'mavx512' -Select { param($l) if ($l -match 'kernel_avx512') { '/clang:-mavx512f' } } }
     }
     AfterAll { Remove-TestDir -Path $script:tmp }
 
     It 'tags exactly the FLAGS lines of the selected build statements and returns the count' {
-        $n = Add-NinjaPerTuFlags -NinjaFile $script:ninja -Label 'fixture' -Floor 2 -AlreadyTaggedPattern 'mavx512' -Select { param($l) if ($l -match 'kernel_avx512') { '/clang:-mavx512f' } }
-        Assert-Equal 2 $n 'two kernel TUs selected'
+        Assert-Equal 2 (& $script:tagKernels) 'two kernel TUs selected'
         $lines = Get-Content $script:ninja
         Assert-True ($lines[1] -eq '  FLAGS = /O2 /MD /clang:-mavx512f') 'first kernel tagged'
         Assert-True ($lines[4] -eq '  FLAGS = /O2 /MD') 'plain TU untouched'
@@ -64,8 +65,7 @@ Describe 'Add-NinjaPerTuFlags' {
     }
 
     It 'is idempotent: a second run counts the already-tagged lines but does not re-append' {
-        $n = Add-NinjaPerTuFlags -NinjaFile $script:ninja -Label 'fixture' -Floor 2 -AlreadyTaggedPattern 'mavx512' -Select { param($l) if ($l -match 'kernel_avx512') { '/clang:-mavx512f' } }
-        Assert-Equal 2 $n 'still counts two'
+        Assert-Equal 2 (& $script:tagKernels) 'still counts two'
         Assert-True ((Get-Content $script:ninja)[1] -eq '  FLAGS = /O2 /MD /clang:-mavx512f') 'no double tag'
     }
 
@@ -79,27 +79,28 @@ Describe 'Add-NinjaPerTuFlags' {
 Describe 'Write-AbsentOnCrossMarker' {
     BeforeAll {
         $script:tmp = New-TestDir -Prefix 'wbt-absent-'
+        # The marker names the target arch, so both are written on the arm64 lane.
+        $script:marker = Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'arm64' } {
+            @{
+                Default = Write-AbsentOnCrossMarker -Root (Join-Path $script:tmp 'litert-lm') -Component 'LiteRT-LM' -Reason @('bazel has no windows-arm64 config') -EnsureDirs @('include', 'bin')
+                Named = Write-AbsentOnCrossMarker -Root (Join-Path $script:tmp 'tvm') -Component 'tvm_compiler.dll' -Reason @('needs target LLVM') -FileName 'COMPILER-ABSENT-ON-ARM64.txt'
+            }
+        }
     }
     AfterAll { Remove-TestDir -Path $script:tmp }
 
     It 'creates the root + ensured dirs and writes the arch-named marker with the reason lines' {
-        Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'arm64' } {
-            $m = Write-AbsentOnCrossMarker -Root (Join-Path $script:tmp 'litert-lm') -Component 'LiteRT-LM' -Reason @('bazel has no windows-arm64 config') -EnsureDirs @('include', 'bin')
-            Assert-True (Test-Path (Join-Path $script:tmp 'litert-lm\include')) 'include dir ensured'
-            Assert-True (Test-Path (Join-Path $script:tmp 'litert-lm\bin')) 'bin dir ensured'
-            Assert-Equal 'ABSENT-ON-ARM64.txt' (Split-Path $m -Leaf) 'default file name follows the target arch'
-            $body = Get-Content $m
-            Assert-True ($body[0] -match 'LiteRT-LM is intentionally ABSENT from the Windows arm64 bundle') 'first line names component + arch'
-            Assert-True ($body -contains 'bazel has no windows-arm64 config') 'reason line present'
-            Assert-True ($body[-1] -eq 'See docs/windows-cross-builds.md.') 'docs pointer last'
-        }
+        Assert-True (Test-Path (Join-Path $script:tmp 'litert-lm\include')) 'include dir ensured'
+        Assert-True (Test-Path (Join-Path $script:tmp 'litert-lm\bin')) 'bin dir ensured'
+        Assert-Equal 'ABSENT-ON-ARM64.txt' (Split-Path $script:marker.Default -Leaf) 'default file name follows the target arch'
+        $body = Get-Content $script:marker.Default
+        Assert-True ($body[0] -match 'LiteRT-LM is intentionally ABSENT from the Windows arm64 bundle') 'first line names component + arch'
+        Assert-True ($body -contains 'bazel has no windows-arm64 config') 'reason line present'
+        Assert-True ($body[-1] -eq 'See docs/windows-cross-builds.md.') 'docs pointer last'
     }
 
     It 'honours an explicit file name (the TVM/IREE COMPILER marker)' {
-        Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'arm64' } {
-            $m = Write-AbsentOnCrossMarker -Root (Join-Path $script:tmp 'tvm') -Component 'tvm_compiler.dll' -Reason @('needs target LLVM') -FileName 'COMPILER-ABSENT-ON-ARM64.txt'
-            Assert-Equal 'COMPILER-ABSENT-ON-ARM64.txt' (Split-Path $m -Leaf)
-        }
+        Assert-Equal 'COMPILER-ABSENT-ON-ARM64.txt' (Split-Path $script:marker.Named -Leaf)
     }
 }
 
