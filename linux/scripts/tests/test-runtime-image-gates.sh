@@ -6,7 +6,13 @@ source "${TESTS_DIR}/test-harness.sh"
 SMOKE="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
 
 source "${TESTS_DIR}/runtime-function-fixtures.sh"
-_extract() { t_runtime_function "${SMOKE}" "$1"; }
+_FN_CACHE="$(mktemp -d)"
+trap 'rm -rf "${_FN_CACHE}"' EXIT
+# Cases call this inside $(...), so the cache lives in files: one Python extraction per function per run, not per case.
+_extract() {
+  [ -s "${_FN_CACHE}/$1" ] || t_runtime_function "${SMOKE}" "$1" > "${_FN_CACHE}/$1" || { rm -f "${_FN_CACHE}/$1"; return 1; }
+  cat "${_FN_CACHE}/$1"
+}
 
 # What every stubbed in-container run starts with: the smoke's pass/fail vocabulary.
 _STUBS='set -u
