@@ -1041,6 +1041,35 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       profiling and CPU/small-graph controls. This does not establish why the default
       adaptive benchmark failed or whether the MIOpen warning is causal. The diagnostic
       log is `_implementation/accelerant-rocm-profile-simple-benchmark-20261031/gpu-profile.log`.
+      An image-ORT control with the same locked detector and deterministic random input
+      failed CPU/MIGraphX output parity with `MIGRAPHX_SKIP_BENCHMARKING=1`: at
+      `rtol=atol=0.001`, 1,785 of 1,800 elements differed. Optimal row matching found no
+      strict matches; 30 of 300 matched at exact class, IoU >= 0.9 and score delta <= 0.01.
+      Both outputs were finite. Neither produced detections above score 0.25 on this
+      synthetic input, so it is not a real-world accuracy benchmark. Investigate and
+      require output parity before treating the workaround as a verified GPU path. Saved
+      inputs, outputs, profiles and matching results: `_implementation/accelerant-rocm-parity-20261031/`.
+      A separate control used the MIT-licensed `two_cats.jpg` fixture and a Python
+      reimplementation of the application's stretch/nearest-neighbor RGB preprocessing,
+      checked against all four ModelANT preprocessing contract cases. The resulting input
+      SHA-256 was `d44fc999b2ddcb98ecd7cea18df7b39a74298b46937a04298e20fd5828f3dede`.
+      With image ORT 1.30.0, the same model, device and image digest above, a no-network
+      root container, `MIGRAPHX_SKIP_BENCHMARKING=1` and no cache-path override, 1,767
+      of 1,800 finite output elements differed at `rtol=atol=0.001`. Applying the app's
+      confidence threshold 0.25 and per-class NMS IoU 0.45 yielded four CPU and three
+      MIGraphX detections; none matched at equal class, IoU >= 0.9 and score delta <= 0.01.
+      This is a provider comparison, not a ground-truth accuracy measurement. See
+      `_implementation/accelerant-rocm-cats-parity-20261031/` for preprocessing provenance,
+      raw outputs, per-detection matching and profiles.
+      Repeated CPU inference was bit-identical. A separate three-call MIGraphX session on
+      the same input showed a maximum first-versus-second output difference of 552.2444;
+      each input hash stayed unchanged and outputs copied immediately after calls did not
+      share memory. The profile recorded 15 MIGraphX operator events across the three calls.
+      These observations do not establish the cause, default-setting behavior, native GPU
+      behavior or numerical correctness. Retain parity as a release gate while investigating
+      the image, runtime and device combination. Raw outputs, logs and checks are in
+      `_implementation/accelerant-rocm-cats-repeat-20261031/` and
+      `_implementation/accelerant-rocm-cats-alias-control-20261031/`.
       With the process-only `MIGRAPHX_SKIP_BENCHMARKING=1`, compilation completed but ORT
       then failed to save its compiled model under a literal `""/…` cache path. Setting
       `ORT_MIGRAPHX_MODEL_CACHE_PATH=/tmp` in the disposable container allowed the same
