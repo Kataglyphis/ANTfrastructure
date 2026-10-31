@@ -1100,6 +1100,15 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       default-setting, packaged, native-device or other-architecture behavior. The CLI
       logs, JSON detections and profiles are in
       `_implementation/oxidant-detector-parity-cpu-20261031/results/`.
+      A later non-packaged CLI test on the same WSL `gfx1036`, image, model and fixture
+      repeated inference twice per session with the same benchmarking workaround. The
+      two CPU outputs were identical with five detections; both GPU outputs had three
+      detections and failed CPU parity. The leading cat scores were 0.8907 on CPU,
+      0.6511 on the first GPU call and 0.3383 on the second. One profile recorded
+      MIGraphX operators in both GPU runs (10 MIGraphX and 38 CPU operator events total).
+      This demonstrates failure under the diagnostic override, not its cause or behavior
+      at default settings. Logs, outputs and profiles are in
+      `_implementation/oxidant-repeat-session-linux-20261031/results/`.
       A separate finished OxidANT AMD x64 TAR (SHA-256
       `dbec28967642de1692c5c5c619f6fa65b34b0c2a168773bf92f444d8e864d9a2`),
       using the same image digest and two-cats fixture hash above on WSL `gfx1036`,
@@ -1122,6 +1131,23 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the whole profile failed and the AppImage was not tested. Investigate the cache-path
       behavior and video timeout; do not infer default-setting behavior or numerical parity
       from this diagnostic. Log and trace: `_implementation/accelerant-rocm-profile-skip-with-cache-20261031/`.
+      A prospective current-source OrchestrANT AMD x64 TAR (SHA-256
+      `e7a3856d5e053c47fb1b5f009431b4b9b60d20d21aac2bbddd8385781637db98`)
+      repeated the real-image test using the same image, model, fixture and WSL GPU.
+      Two CPU calls in one session passed the shared detector comparator and profiled
+      1,574 CPU operator events. Default MIGraphX initialization failed with the same
+      adaptive TopK compilation error after the missing gfx1036 MIOpen library warning;
+      no GPU detections were written, and the shared profile verifier rejected its
+      initialization-only trace. The package uses a separate newer hub overlay because
+      the recorded consumer pin does not yet support this AMD packaging path, so it is
+      prospective evidence, not a successful current workflow or verified release.
+      Logs and results: `_implementation/orchestrant-detector-amd-prospective-20261031/`.
+      In a separate non-release experiment on that same TAR, explicitly enabling
+      `MIGRAPHX_SKIP_BENCHMARKING=1` allowed two calls in one GPU session. Both had
+      profiled MIGraphX operators (10 MIGraphX and 38 CPU events total), but neither
+      matched the CPU result: CPU returned six detections, the GPU calls returned three
+      and two, and their leading cat scores were 0.6573 and 0.3335 versus 0.9090 on CPU.
+      This override is diagnostic only and does not establish a supported workaround.
       The warning does not establish the compilation failure's cause. Determine whether
       this WSL integrated GPU configuration is supported, investigate the missing device
       library and full-model error, and verify the locked model with operator profiling on
@@ -1204,7 +1230,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       found `cargo expand` missing; `flutter_rust_bridge_codegen generate` attempted to
       install it from the network. The existing code-quality documentation also records this
       first-use install. Pin and install a cargo-expand release compatible with the image's
-      Rust toolchain and Flutter Rust Bridge generator, record its licence and source, and
+      Rust toolchain and Flutter Rust Bridge generator (the earlier offline prototype used
+      cargo-expand 1.0.116), record its licence and source, and
       verify an offline generation run in a fresh image. Check Linux ARM and the NVIDIA and
       AMD image variants separately; this observation does not establish their contents.
 
