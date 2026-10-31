@@ -254,9 +254,10 @@ t_assert_eq "1" "$(_defs "${PARITY_SH}" "${_CP}")" \
   "still reached as check_\${check_name} over CHECK_LIST"
 t_assert_eq "1" "$(_defs "${SMOKE_TC}" "${_CP}")" \
   "and the smoke script still owns the name that masked it"
-t_assert_eq "1" "$(grep -c -e "$(printf '%s\t%s' "${PARITY_SH##*/}" "${_CP}")" \
+t_assert_eq "0" "$(grep -c -e "$(printf '%s\t%s' "${PARITY_SH##*/}" "${_CP}")" \
   "${SCRIPTS_DIR}/dead-functions.allow")" \
-  "the unlinked arm is what makes this freeze hold instead of reading STALE"
+  "a contract suite names it now, so no freeze is left to hold"
+t_assert_grep "${TESTS_DIR}/test-verify-parity-checks.sh" "${_CP}"
 
 t_case "the REAL tree is clean today"
 t_assert_eq "0" "$( "${PY}" "${GATE}" >/dev/null 2>&1; echo $? )"
