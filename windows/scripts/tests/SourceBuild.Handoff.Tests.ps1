@@ -8,14 +8,23 @@ function Invoke-HandoffServerFixture {
         $server = Join-Path $dir 'srv'
         $null = [IO.Directory]::CreateDirectory((Join-Path $server 'bkhandoff'))
         $endpoint = 'file:///' + ($server -replace '\\', '/')
-        & $action $dir $server $endpoint
+        # Taken before the body writes anything, so every file it creates is inside the export window.
+        & $action $dir $server $endpoint (Get-Date).AddMinutes(-5)
     }.GetNewClosure()
+}
+
+function Assert-HandoffImport {
+    param([string]$Name, [string]$Endpoint, [string]$File, [string]$Content, [string[]]$Why)
+    Import-BuildHandoff -Name $Name -Endpoint $Endpoint
+    Assert-True (Test-Path $File) $Why[0]
+    Assert-Equal $Content (Get-Content $File -Raw).Trim() $Why[1]
+    Assert-Equal 0 $LASTEXITCODE 'import clears the ambient exit code'
 }
 
 Describe 'Export/Import-BuildHandoff round trip' {
 
     It 'exports the CreationTime delta and imports it back after deletion' {
-        Invoke-HandoffServerFixture { param($dir, $server, $endpoint)
+        Invoke-HandoffServerFixture { param($dir, $server, $endpoint, $since)
 
             $root = Join-Path $dir 'rootA'
             New-Item -ItemType Directory -Path (Join-Path $root 'sub') -Force | Out-Null
@@ -27,16 +36,13 @@ Describe 'Export/Import-BuildHandoff round trip' {
             $newFile = Join-Path $root 'sub\new.txt'
             Set-Content $newFile 'fresh'
 
-            Export-BuildHandoff -Since (Get-Date).AddMinutes(-5) -Name 'wbt' -Endpoint $endpoint -Roots @($root)
+            Export-BuildHandoff -Since $since -Name 'wbt' -Endpoint $endpoint -Roots @($root)
             Assert-True (Test-Path (Join-Path $server 'bkhandoff\wbt.tar')) 'tar landed on the server'
             Assert-Equal 0 $LASTEXITCODE 'export clears the ambient exit code'
 
             # Import must restore it at the original absolute path (tar entries are relative to C:\).
             Remove-Item $newFile -Force
-            Import-BuildHandoff -Name 'wbt' -Endpoint $endpoint
-            Assert-True (Test-Path $newFile) 'import restored the delta file'
-            Assert-Equal 'fresh' (Get-Content $newFile -Raw).Trim() 'content survived the round trip'
-            Assert-Equal 0 $LASTEXITCODE 'import clears the ambient exit code'
+            Assert-HandoffImport -Name 'wbt' -Endpoint $endpoint -File $newFile -Content 'fresh' -Why 'import restored the delta file', 'content survived the round trip'
 
             # The pre-Since file must not be in the tar, so it stays gone after a re-import.
             Remove-Item $oldFile -Force
@@ -46,7 +52,7 @@ Describe 'Export/Import-BuildHandoff round trip' {
     }
 
     It 'recreates the missing parent directory chain when the whole subtree is gone' {
-        Invoke-HandoffServerFixture { param($dir, $server, $endpoint)
+        Invoke-HandoffServerFixture { param($dir, $server, $endpoint, $since)
             # bsdtar's long-path mode does not create missing parents, so the import must pre-create every directory.
 
             $root = Join-Path $dir 'rootB'
@@ -56,17 +62,14 @@ Describe 'Export/Import-BuildHandoff round trip' {
             Set-Content $deepFile 'deep-payload'
             Set-Content $shallowFile 'shallow-payload'
 
-            Export-BuildHandoff -Since (Get-Date).AddMinutes(-5) -Name 'wbt-tree' -Endpoint $endpoint -Roots @($root)
+            Export-BuildHandoff -Since $since -Name 'wbt-tree' -Endpoint $endpoint -Roots @($root)
 
             # A fresh materialize container has no C:\runtime, so no parent of any tar entry exists.
             Remove-Item $root -Recurse -Force
             Assert-False (Test-Path $root) 'precondition: the entire root subtree is gone'
 
-            Import-BuildHandoff -Name 'wbt-tree' -Endpoint $endpoint
-            Assert-True (Test-Path $deepFile) 'import recreated the multi-level parent chain for the deep file'
-            Assert-Equal 'deep-payload' (Get-Content $deepFile -Raw).Trim() 'deep file content survived'
+            Assert-HandoffImport -Name 'wbt-tree' -Endpoint $endpoint -File $deepFile -Content 'deep-payload' -Why 'import recreated the multi-level parent chain for the deep file', 'deep file content survived'
             Assert-True (Test-Path $shallowFile) 'sibling at a shallower depth was restored too'
-            Assert-Equal 0 $LASTEXITCODE 'import clears the ambient exit code'
         }
     }
 

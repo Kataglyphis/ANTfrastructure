@@ -47,9 +47,7 @@ function New-WbtFakeMediaVersionTable {
         # The one Cython both branches install into the host CPython (CON80).
         PY_CYTHON_VERSION                   = 'cy-26'
     }
-    foreach ($k in $script:WbtCodecPins.Keys) { $table[$k] = $script:WbtCodecPins[$k] }
-    foreach ($k in $script:WbtBazelToolPins.Keys) { $table[$k] = $script:WbtBazelToolPins[$k] }
-    return $table
+    return $table + $script:WbtCodecPins + $script:WbtBazelToolPins
 }
 
 Describe 'Get-MediaBranchVersionArg' {
@@ -98,8 +96,8 @@ Describe 'Get-MediaBranchVersionArg' {
             }
         )
         # media-core also forwards FFmpeg's codec pins, from the one table the fixture merges too.
-        foreach ($k in $script:WbtCodecPins.Keys) { $cases[0].Expected[$k] = $script:WbtCodecPins[$k] }
-        foreach ($k in $script:WbtBazelToolPins.Keys) { $cases[1].Expected[$k] = $script:WbtBazelToolPins[$k] }
+        $cases[0].Expected += $script:WbtCodecPins
+        $cases[1].Expected += $script:WbtBazelToolPins
         foreach ($case in $cases) {
             $actual = Get-MediaBranchVersionArg -Branch $case.Branch -VersionTable $table
             $expectedKeys = @($case.Expected.Keys | Sort-Object) -join ','

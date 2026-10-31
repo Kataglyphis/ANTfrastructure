@@ -45,32 +45,40 @@ Describe 'WindowsMediaRuntime.Common' {
     New-Item -ItemType Directory -Path $logDir -Force | Out-Null
     $ctx = New-BuildContext -Workspace $root -LogDir $logDir
     $ctx.SuppressConsoleOutput = $true
+    # The NuGet-era version parameters stay accepted and ignored, so the GStreamer-only cases still pass them empty.
+    $listGStreamer = { param([string[]]$GStreamerRoot)
+        Get-MediaRuntimeDirectory -GStreamerRoot $GStreamerRoot -OnnxRoot '' -OnnxVersion '' -OnnxGenAiVersion '' -OnnxDirectMlVersion ''
+    }
+    $stageGStreamer = { param([string]$Target, [string[]]$GStreamerRoot)
+        Copy-MediaRuntimeBundle -Context $ctx -TargetDir $Target -GStreamerRoot $GStreamerRoot `
+            -OnnxRoot '' -OnnxVersion '' -OnnxGenAiVersion '' -OnnxDirectMlVersion ''
+    }
+    $assertSameBytes = { param([string]$From, [string]$To, [string]$Name)
+        Assert-Equal (Get-FileHash -LiteralPath (Join-Path $From $Name)).Hash (Get-FileHash -LiteralPath (Join-Path $To $Name)).Hash $Name
+    }
+    $chainOrder = @((Resolve-Path -LiteralPath $gstA).Path, $ortLib, $ortBin) -join '|'
 
     Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = $null; ONNX_ROOT = $null; ONNX_GENAI_ROOT = $null; GSTREAMER_BIN = $null } {
 
         It 'returns an EMPTY ARRAY, not $null, when nothing is installed' {
             # Under StrictMode an unrolled empty array is $null, and $null.Count kills the step after a good compile.
-            $r = @(Get-MediaRuntimeDirectory -GStreamerRoot @((Join-Path $root 'nope')) -OnnxRoot '' `
-                    -OnnxVersion '' -OnnxGenAiVersion '' -OnnxDirectMlVersion '')
+            $r = @(& $listGStreamer @((Join-Path $root 'nope')))
             Assert-Equal 0 $r.Count
         }
 
         It 'lists an extra GStreamer root that exists' {
-            $r = @(Get-MediaRuntimeDirectory -GStreamerRoot @($gstA) -OnnxRoot '' `
-                    -OnnxVersion '' -OnnxGenAiVersion '' -OnnxDirectMlVersion '')
+            $r = @(& $listGStreamer @($gstA))
             Assert-True ($r -contains (Resolve-Path -LiteralPath $gstA).Path)
         }
 
         It 'skips a named root that does not exist instead of failing' {
-            $r = @(Get-MediaRuntimeDirectory -GStreamerRoot @((Join-Path $root 'absent'), $gstA) -OnnxRoot '' `
-                    -OnnxVersion '' -OnnxGenAiVersion '' -OnnxDirectMlVersion '')
+            $r = @(& $listGStreamer @((Join-Path $root 'absent'), $gstA))
             Assert-Equal 1 $r.Count
         }
 
         It 'de-duplicates two spellings of one directory' {
             $twice = Join-Path (Join-Path $gstA '..') 'bin'
-            $r = @(Get-MediaRuntimeDirectory -GStreamerRoot @($gstA, $twice) -OnnxRoot '' `
-                    -OnnxVersion '' -OnnxGenAiVersion '' -OnnxDirectMlVersion '')
+            $r = @(& $listGStreamer @($gstA, $twice))
             Assert-Equal 1 $r.Count
         }
 
@@ -93,7 +101,7 @@ Describe 'WindowsMediaRuntime.Common' {
 
         It 'resolves the chain ORT: ONNX_ROOT\lib then \bin, after GStreamer (mutation)' {
             $r = @(Get-MediaRuntimeDirectory -GStreamerRoot @($gstA) -OnnxRoot $ortRoot)
-            Assert-Equal ((@((Resolve-Path -LiteralPath $gstA).Path, $ortLib, $ortBin)) -join '|') ($r -join '|')
+            Assert-Equal $chainOrder ($r -join '|')
         }
 
         It 'lists the chain GenAI before the chain ORT, so ORT wins a name collision (mutation)' {
@@ -146,11 +154,10 @@ Describe 'WindowsMediaRuntime.Common' {
 
         It 'accepts a chain directory passed as a GStreamer root and still lists it last' {
             $r = @(Get-MediaRuntimeDirectory -GStreamerRoot @($ortBin, $gstA) -OnnxRoot $ortRoot)
-            Assert-Equal ((@((Resolve-Path -LiteralPath $gstA).Path, $ortLib, $ortBin)) -join '|') ($r -join '|')
+            Assert-Equal $chainOrder ($r -join '|')
             $target = Join-Path $root 'stage-chain-as-gst\bin'
             [void](Copy-MediaRuntimeBundle -Context $ctx -TargetDir $target -GStreamerRoot @($ortBin, $gstA) -OnnxRoot $ortRoot)
-            Assert-Equal (Get-FileHash -LiteralPath (Join-Path $ortBin 'DirectML.dll')).Hash `
-                (Get-FileHash -LiteralPath (Join-Path $target 'DirectML.dll')).Hash
+            & $assertSameBytes $ortBin $target 'DirectML.dll'
         }
 
         It 'ignores the NuGet-era version parameters' {
@@ -162,8 +169,7 @@ Describe 'WindowsMediaRuntime.Common' {
 
         It 'stages every DLL and reports the distinct count' {
             $target = Join-Path $root 'stage1\bin'
-            $n = Copy-MediaRuntimeBundle -Context $ctx -TargetDir $target -GStreamerRoot @($gstA) `
-                -OnnxRoot '' -OnnxVersion '' -OnnxGenAiVersion '' -OnnxDirectMlVersion ''
+            $n = & $stageGStreamer $target @($gstA)
             Assert-Equal 2 $n
             Assert-True (Test-Path -LiteralPath (Join-Path $target 'gstreamer-1.0-0.dll'))
             Assert-True (Test-Path -LiteralPath (Join-Path $target 'glib-2.0-0.dll'))
@@ -171,23 +177,20 @@ Describe 'WindowsMediaRuntime.Common' {
 
         It 'copies DLLs only, never the rest of the directory' {
             $target = Join-Path $root 'stage2\bin'
-            [void](Copy-MediaRuntimeBundle -Context $ctx -TargetDir $target -GStreamerRoot @($gstA) `
-                    -OnnxRoot '' -OnnxVersion '' -OnnxGenAiVersion '' -OnnxDirectMlVersion '')
+            [void](& $stageGStreamer $target @($gstA))
             Assert-False (Test-Path -LiteralPath (Join-Path $target 'notes.txt'))
         }
 
         It 'creates the target directory when it does not exist' {
             $target = Join-Path $root 'stage3\deep\bin'
-            [void](Copy-MediaRuntimeBundle -Context $ctx -TargetDir $target -GStreamerRoot @($gstA) `
-                    -OnnxRoot '' -OnnxVersion '' -OnnxGenAiVersion '' -OnnxDirectMlVersion '')
+            [void](& $stageGStreamer $target @($gstA))
             Assert-True (Test-Path -LiteralPath $target)
         }
 
         It 'counts a name found in two directories once, and the LAST one wins' {
             # Resolver order is load order, so a later directory winning is the documented precedence.
             $target = Join-Path $root 'stage4\bin'
-            $n = Copy-MediaRuntimeBundle -Context $ctx -TargetDir $target -GStreamerRoot @($gstA, $gstB) `
-                -OnnxRoot '' -OnnxVersion '' -OnnxGenAiVersion '' -OnnxDirectMlVersion ''
+            $n = & $stageGStreamer $target @($gstA, $gstB)
             Assert-Equal 2 $n
             Assert-Equal 'b' (Get-Content -LiteralPath (Join-Path $target 'gstreamer-1.0-0.dll') -Raw).Trim()
         }
@@ -195,9 +198,7 @@ Describe 'WindowsMediaRuntime.Common' {
         It 'returns 0 and does not throw when there is no payload at all' {
             # Media features are opt-in, so a build without them is legitimate.
             $target = Join-Path $root 'stage5\bin'
-            $n = Copy-MediaRuntimeBundle -Context $ctx -TargetDir $target `
-                -GStreamerRoot @((Join-Path $root 'nowhere')) -OnnxRoot '' `
-                -OnnxVersion '' -OnnxGenAiVersion '' -OnnxDirectMlVersion ''
+            $n = & $stageGStreamer $target @((Join-Path $root 'nowhere'))
             Assert-Equal 0 $n
         }
 
@@ -206,11 +207,8 @@ Describe 'WindowsMediaRuntime.Common' {
             $n = Copy-MediaRuntimeBundle -Context $ctx -TargetDir $target -GStreamerRoot @($gstA) `
                 -OnnxRoot $ortRoot -OnnxGenAiRoot $genRoot
             Assert-Equal 7 $n 'gst 2 + genai 2 + ort lib 1 + ort bin 3, DirectML.dll counted once'
-            foreach ($name in 'onnxruntime.dll', 'onnxruntime_providers_shared.dll', 'DirectML.dll') {
-                Assert-Equal (Get-FileHash -LiteralPath (Join-Path $ortBin $name)).Hash (Get-FileHash -LiteralPath (Join-Path $target $name)).Hash $name
-            }
-            Assert-Equal (Get-FileHash -LiteralPath (Join-Path $genLib 'onnxruntime-genai.dll')).Hash `
-                (Get-FileHash -LiteralPath (Join-Path $target 'onnxruntime-genai.dll')).Hash 'onnxruntime-genai.dll'
+            foreach ($name in 'onnxruntime.dll', 'onnxruntime_providers_shared.dll', 'DirectML.dll') { & $assertSameBytes $ortBin $target $name }
+            & $assertSameBytes $genLib $target 'onnxruntime-genai.dll'
         }
 
         It 'refuses a TargetDir left holding ORT or GenAI that is not the chain''s bytes (mutation)' {

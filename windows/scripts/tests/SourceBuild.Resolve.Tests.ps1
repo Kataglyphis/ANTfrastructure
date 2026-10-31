@@ -125,9 +125,7 @@ Describe 'Resolve-TensorRtSdkRoot' {
     }
 
     It 'still finds a full tree at TENSORRT_ROOT outside the image build (a host install)' {
-        Invoke-InTestDir { param($dir)
-            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'TensorRT-11.4.0.106\include') | Out-Null
-            Set-Content -Path (Join-Path $dir 'TensorRT-11.4.0.106\include\NvInfer.h') -Value ''
+        Invoke-InTestDir -Files @{ 'TensorRT-11.4.0.106\include\NvInfer.h' = '' } { param($dir)
             Invoke-WithEnv @{ TENSORRT_SDK_ROOT = ''; TENSORRT_ROOT = $dir } {
                 Assert-Equal (Join-Path $dir 'TensorRT-11.4.0.106') (Resolve-TensorRtSdkRoot)
             }
@@ -154,43 +152,27 @@ Describe 'Get-CudnnLibrary' {
         Assert-Null (Get-CudnnLibrary -CudnnRoot 'X:\does\not\exist\cudnn')
     }
 
-    It 'returns $null when lib\x64 holds no cudnn*.lib' {
-        Invoke-InTestDir { param($dir)
-            Initialize-CudnnRoot -Root $dir -Libs @('somethingelse.lib')
-            Assert-Null (Get-CudnnLibrary -CudnnRoot $dir)
-        }
-    }
-
-    It 'prefers cudnn.lib over the 9.x split sub-libs' {
-        Invoke-InTestDir { param($dir)
-            Initialize-CudnnRoot -Root $dir -Libs @('cudnn_adv.lib', 'cudnn.lib', 'cudnn_graph.lib')
-            Assert-Equal 'cudnn.lib' (Split-Path (Get-CudnnLibrary -CudnnRoot $dir) -Leaf)
-        }
-    }
-
-    It 'falls back to a sub-lib when cudnn.lib is absent' {
-        Invoke-InTestDir { param($dir)
-            Initialize-CudnnRoot -Root $dir -Libs @('cudnn_graph.lib')
-            Assert-Equal 'cudnn_graph.lib' (Split-Path (Get-CudnnLibrary -CudnnRoot $dir) -Leaf)
+    # Leaf $null means no library may be found; the empty Arch is the parameter's own default.
+    foreach ($case in @(
+            @{ Name = 'returns $null when lib\x64 holds no cudnn*.lib'; Libs = @('somethingelse.lib'); Arch = ''; Leaf = $null }
+            @{ Name = 'prefers cudnn.lib over the 9.x split sub-libs'; Libs = @('cudnn_adv.lib', 'cudnn.lib', 'cudnn_graph.lib'); Arch = ''; Leaf = 'cudnn.lib' }
+            @{ Name = 'falls back to a sub-lib when cudnn.lib is absent'; Libs = @('cudnn_graph.lib'); Arch = ''; Leaf = 'cudnn_graph.lib' }
+            @{ Name = 'returns $null when only the OTHER arch dir exists -- no silent x64 fallback on cross'; Libs = @('cudnn.lib'); Arch = 'arm64'; Leaf = $null }
+        )) {
+        It $case.Name {
+            Invoke-InTestDir { param($dir)
+                Initialize-CudnnRoot -Root $dir -Libs $case.Libs
+                $found = Get-CudnnLibrary -CudnnRoot $dir -Arch $case.Arch
+                Assert-Equal $case.Leaf ($found ? (Split-Path $found -Leaf) : $null)
+            }
         }
     }
 
     It 'picks lib\x64 natively and lib\arm64 for the cross target (#176)' {
-        Invoke-InTestDir { param($dir)
-            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'lib\x64') | Out-Null
-            Set-Content -Path (Join-Path $dir 'lib\x64\cudnn.lib') -Value '' -NoNewline
-            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'lib\arm64') | Out-Null
-            Set-Content -Path (Join-Path $dir 'lib\arm64\cudnn.lib') -Value '' -NoNewline
+        Invoke-InTestDir -Files @{ 'lib\x64\cudnn.lib' = ''; 'lib\arm64\cudnn.lib' = '' } { param($dir)
             Assert-Equal (Join-Path $dir 'lib\x64') (Get-CudnnLibraryDir -CudnnRoot $dir -Arch 'amd64')
             Assert-Equal (Join-Path $dir 'lib\arm64') (Get-CudnnLibraryDir -CudnnRoot $dir -Arch 'arm64')
             Assert-Equal (Join-Path $dir 'lib\arm64\cudnn.lib') (Get-CudnnLibrary -CudnnRoot $dir -Arch 'arm64')
-        }
-    }
-
-    It 'returns $null when only the OTHER arch dir exists -- no silent x64 fallback on cross' {
-        Invoke-InTestDir { param($dir)
-            Initialize-CudnnRoot -Root $dir -Libs @('cudnn.lib')
-            Assert-Null (Get-CudnnLibrary -CudnnRoot $dir -Arch 'arm64')
         }
     }
 }
@@ -215,18 +197,13 @@ Describe 'Test-CudaWindowsArm64Payload' {
         Assert-False (Test-CudaWindowsArm64Payload -CudaRoot 'X:\no-such-cuda-root-xyzzy')
         Invoke-InTestDir { param($dir)
             Assert-False (Test-CudaWindowsArm64Payload -CudaRoot $dir)
-            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'lib\arm64') | Out-Null
-            Set-Content -Path (Join-Path $dir 'lib\arm64\cudart.lib') -Value '' -NoNewline
+            Write-TestFileTree -Root $dir -Files @{ 'lib\arm64\cudart.lib' = '' }
             Assert-False (Test-CudaWindowsArm64Payload -CudaRoot $dir)  # cudadevrt.lib still missing
         }
     }
 
     It 'is true when cudart.lib AND cudadevrt.lib are staged' {
-        Invoke-InTestDir { param($dir)
-            $arm = Join-Path $dir 'lib\arm64'
-            New-Item -ItemType Directory -Force -Path $arm | Out-Null
-            Set-Content -Path (Join-Path $arm 'cudart.lib') -Value '' -NoNewline
-            Set-Content -Path (Join-Path $arm 'cudadevrt.lib') -Value '' -NoNewline
+        Invoke-InTestDir -Files @{ 'lib\arm64\cudart.lib' = ''; 'lib\arm64\cudadevrt.lib' = '' } { param($dir)
             Assert-True (Test-CudaWindowsArm64Payload -CudaRoot $dir)
         }
     }

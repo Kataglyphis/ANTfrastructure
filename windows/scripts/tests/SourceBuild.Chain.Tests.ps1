@@ -55,53 +55,27 @@ Describe 'Invoke-SourceBuildChain' {
         }
     }
 
-    It '-StartAt skips the stages before the named one (resume path)' {
-        Invoke-InTestDir { param($dir)
-            $log = Join-Path $dir 'resume.log'
-            $stages = & $newStageTree $dir $log 3
-            Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -StartAt 'B'
-
-            Assert-SourceBuildStageLog -Log $log -Expected 'src-b', 'src-c'
-        }
-    }
-
-    It '-StartAt with an unknown stage name throws before running anything' {
-        Invoke-InTestDir { param($dir)
-            $log = Join-Path $dir 'none.log'
-            $stages = & $newStageTree $dir $log 1
-            Assert-Throws { Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -StartAt 'TYPO' } 'unknown -StartAt must throw (a typo must not rebuild from scratch)'
-            Assert-False (Test-Path $log) 'no stage ran'
-        }
-    }
-
-    It '-Until stops AFTER the named stage (inclusive) — the BK split-layer path' {
-        Invoke-InTestDir { param($dir)
-            $log = Join-Path $dir 'until.log'
-            $stages = & $newStageTree $dir $log 3
-            Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -Until 'B'
-
-            Assert-SourceBuildStageLog -Log $log -Expected 'src-a', 'src-b'
-        }
-    }
-
-    It '-Until layer 1 + -StartAt layer 2 partition the chain without overlap or gap' {
-        Invoke-InTestDir { param($dir)
-            $log = Join-Path $dir 'split.log'
-            $stages = & $newStageTree $dir $log 4
+    foreach ($case in @(
+            @{ Name = '-StartAt skips the stages before the named one (resume path)'; Log = 'resume.log'; Count = 3; Runs = @(@{ StartAt = 'B' }); Expected = 'src-b', 'src-c' }
+            @{ Name = '-StartAt with an unknown stage name throws before running anything'; Log = 'none.log'; Count = 1; Runs = @(@{ StartAt = 'TYPO' }); Why = 'unknown -StartAt must throw (a typo must not rebuild from scratch)' }
+            @{ Name = '-Until stops AFTER the named stage (inclusive) — the BK split-layer path'; Log = 'until.log'; Count = 3; Runs = @(@{ Until = 'B' }); Expected = 'src-a', 'src-b' }
             # exactly how Dockerfile.media-builder's two RUN layers call the wrapper
-            Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -Until 'B'
-            Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -StartAt 'C'
-
-            Assert-SourceBuildStageLog -Log $log -Expected 'src-a', 'src-b', 'src-c', 'src-d'
-        }
-    }
-
-    It '-Until with an unknown stage name throws before running anything' {
-        Invoke-InTestDir { param($dir)
-            $log = Join-Path $dir 'noneu.log'
-            $stages = & $newStageTree $dir $log 1
-            Assert-Throws { Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -Until 'TYPO' } 'unknown -Until must throw (a typo must not silently run the whole chain)'
-            Assert-False (Test-Path $log) 'no stage ran'
+            @{ Name = '-Until layer 1 + -StartAt layer 2 partition the chain without overlap or gap'; Log = 'split.log'; Count = 4; Runs = @(@{ Until = 'B' }, @{ StartAt = 'C' }); Expected = 'src-a', 'src-b', 'src-c', 'src-d' }
+            @{ Name = '-Until with an unknown stage name throws before running anything'; Log = 'noneu.log'; Count = 1; Runs = @(@{ Until = 'TYPO' }); Why = 'unknown -Until must throw (a typo must not silently run the whole chain)' }
+        )) {
+        It $case.Name {
+            Invoke-InTestDir { param($dir)
+                $log = Join-Path $dir $case.Log
+                $stages = & $newStageTree $dir $log $case.Count
+                $runAll = { foreach ($run in $case.Runs) { Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir @run } }
+                if ($case.Contains('Why')) {
+                    Assert-Throws $runAll $case.Why
+                    Assert-False (Test-Path $log) 'no stage ran'
+                } else {
+                    & $runAll
+                    Assert-SourceBuildStageLog -Log $log -Expected $case.Expected
+                }
+            }
         }
     }
 

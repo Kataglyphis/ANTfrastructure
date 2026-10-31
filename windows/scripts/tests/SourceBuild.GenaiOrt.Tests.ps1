@@ -137,19 +137,20 @@ $script:GenaiChainFiles = [ordered]@{
     'lib\onnxruntime_providers_cuda.dll' = 'chain cuda ep'; 'bin\onnxruntime.dll' = 'chain dll'
 }
 
+$script:GenaiChainAt = {
+    param([string]$Root, [string]$Without = '')
+    $kept = [ordered]@{}
+    $script:GenaiChainFiles.Keys | Where-Object { (Split-Path $_ -Leaf) -ne $Without } | ForEach-Object { $kept[$_] = $script:GenaiChainFiles[$_] }
+    Write-TestFileTree -Root $Root -Files $kept
+    $Root
+}
+
 Describe 'GenAI ORT: the ORT_HOME shim' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:GenaiOrtScript -FunctionName $script:GenaiOrtFns)
-    $chainAt = {
-        param([string]$Root, [string]$Without = '')
-        $kept = [ordered]@{}
-        $script:GenaiChainFiles.Keys | Where-Object { (Split-Path $_ -Leaf) -ne $Without } | ForEach-Object { $kept[$_] = $script:GenaiChainFiles[$_] }
-        Write-TestFileTree -Root $Root -Files $kept
-        $Root
-    }
 
     It 'lays out include\ and lib\ the way ortlib.cmake and global_variables.cmake read ORT_HOME, byte for byte' {
         Invoke-InTestDir { param($dir)
-            $chain = & $chainAt (Join-Path $dir 'chain')
+            $chain = & $script:GenaiChainAt (Join-Path $dir 'chain')
             $shim = New-GenaiOrtHome -OrtRoot $chain -ShimRoot (Join-Path $dir 'src\ort-home')
             Assert-Equal ((Join-Path $dir 'src\ort-home').Replace('\', '/')) $shim
             $sameAs = [ordered]@{ 'include/onnxruntime_c_api.h' = 'include\onnxruntime\onnxruntime_c_api.h'; 'lib/onnxruntime.dll' = 'bin\onnxruntime.dll'
@@ -165,7 +166,7 @@ Describe 'GenAI ORT: the ORT_HOME shim' {
         Invoke-InTestDir { param($dir)
             foreach ($gone in 'onnxruntime_c_api.h', 'dml_provider_factory.h', 'onnxruntime.lib', 'onnxruntime.dll') {
                 $shimDir = Join-Path $dir "shim-$gone"
-                $why = try { $null = New-GenaiOrtHome -OrtRoot (& $chainAt (Join-Path $dir "chain-$gone") $gone) -ShimRoot $shimDir; 'no error' } catch { "$_" }
+                $why = try { $null = New-GenaiOrtHome -OrtRoot (& $script:GenaiChainAt (Join-Path $dir "chain-$gone") $gone) -ShimRoot $shimDir; 'no error' } catch { "$_" }
                 Assert-Match "has no .*$([regex]::Escape($gone))" $why $gone
                 Assert-False (Test-Path -LiteralPath $shimDir) "$gone : nothing half-built"
             }
@@ -174,7 +175,7 @@ Describe 'GenAI ORT: the ORT_HOME shim' {
 
     It 'replaces a stale shim on a re-run and passes the tree gate against its own chain' {
         Invoke-InTestDir { param($dir)
-            $chain = & $chainAt (Join-Path $dir 'chain')
+            $chain = & $script:GenaiChainAt (Join-Path $dir 'chain')
             $shimDir = Join-Path $dir 'src\ort-home'
             $null = New-GenaiOrtHome -OrtRoot $chain -ShimRoot $shimDir
             Write-TestFileTree -Root $shimDir -Files @{ 'include\onnxruntime_c_api.h' = '// stale'; 'include\onnxruntime_training_c_api.h' = '// an older chain' }
@@ -266,7 +267,7 @@ Describe 'GenAI ORT: tree gate' {
     # The chain, and a GenAI tree after configure: shim copies, GenAI's own onnxruntime_* names, extensions, a wheel.
     $healthy = {
         param([string]$Dir)
-        Write-TestFileTree -Root (Join-Path $Dir 'chain') -Files $script:GenaiChainFiles
+        $null = & $script:GenaiChainAt (Join-Path $Dir 'chain')
         Write-TestFileTree -Root (Join-Path $Dir 'src') -Files ([ordered]@{
                 'ort-home\include\onnxruntime_c_api.h' = '// chain c api'; 'ort-home\lib\onnxruntime.dll' = 'chain dll'; 'ort-home\lib\onnxruntime.lib' = 'chain implib'
                 'src\models\onnxruntime_api.h' = 'genai'; 'src\models\onnxruntime_inline.h' = 'genai'; 'src\dll\resource.h' = 'rc'
@@ -329,8 +330,7 @@ Describe 'GenAI ORT: tree gate' {
     }
 
     It 'fails when the chain has nothing to compare against, or the tree is missing' {
-        Invoke-InTestDir { param($dir)
-            Write-TestFileTree -Root (Join-Path $dir 'chain') -Files @{ 'include\onnxruntime\onnxruntime_c_api.h' = 'c api'; 'lib\onnxruntime.lib' = 'implib' }
+        Invoke-InTestDir -Files @{ 'chain\include\onnxruntime\onnxruntime_c_api.h' = 'c api'; 'chain\lib\onnxruntime.lib' = 'implib' } { param($dir)
             Assert-GenaiTreeFinding -Dir $dir -Sub 'src' -Files @{ 'a.txt' = 'x' } -Pattern 'has no onnxruntime\.dll to compare against'
             Assert-Match 'no tree at' ((& $treeOf $dir 'absent') -join ' / ')
         }

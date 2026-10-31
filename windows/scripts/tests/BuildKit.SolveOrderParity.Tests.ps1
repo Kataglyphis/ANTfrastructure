@@ -47,6 +47,17 @@ function Get-MediaCoreDriverSolveGraph {
     return [pscustomobject]@{ Parents = $driverParents; Order = $driverOrder }
 }
 
+function Assert-NoParityFinding {
+    param([string[]]$Finding, [string]$Message, [string]$Separator)
+    Assert-True ($Finding.Count -eq 0) ($Message + ($Finding -join $Separator))
+}
+
+function Assert-NoParityDrift {
+    param([hashtable]$Expected, [hashtable]$Actual, [object[]]$Key, [scriptblock]$Describe, [string]$Message, [string]$Separator)
+    $drift = @(foreach ($k in $Key) { if ($Actual[$k] -ne $Expected[$k]) { & $Describe $k } })
+    Assert-NoParityFinding $drift $Message $Separator
+}
+
 function Get-MediaCoreSolveGraph {
     param([string]$DockerfilePath, [string]$DriverPath)
     $dockerfileText = [IO.File]::ReadAllText($DockerfilePath)
@@ -75,6 +86,7 @@ Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
     $argVarMap = $graph.DriverArguments
     $drvMap = $graph.DriverParents
     $drvOrder = $graph.DriverOrder
+    $mergeText = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.media-merge-builder')
 
     It 'discovers the chain in both files (scanner-rot guard)' {
         Assert-True ($dfMap.Count -ge 3) "Dockerfile FROM graph: expected >=3 MEDIA_CORE_*_IMAGE stages, found $($dfMap.Count)"
@@ -115,19 +127,15 @@ Invoke-BkStage -Target 'media-core-built-opencv' -BuildArgs ($branchBuildArgs + 
     }
 
     It 'driver hands every chained stage the SAME parent the Dockerfile declares' {
-        $bad = @()
-        foreach ($stage in $dfMap.Keys) {
-            if (-not $drvMap.ContainsKey($stage)) { $bad += "driver never passes a MEDIA_CORE_*_IMAGE arg to '$stage'"; continue }
-            if ($drvMap[$stage] -ne $dfMap[$stage]) {
-                $bad += "'$stage': Dockerfile parent $($dfMap[$stage]) vs driver arg $($drvMap[$stage])"
-            }
+        $describe = { param($stage)
+            if (-not $drvMap.ContainsKey($stage)) { "driver never passes a MEDIA_CORE_*_IMAGE arg to '$stage'" }
+            else { "'$stage': Dockerfile parent $($dfMap[$stage]) vs driver arg $($drvMap[$stage])" }
         }
-        Assert-True ($bad.Count -eq 0) ("solve-order drift (silent stale-ancestor builds):`n  " + ($bad -join "`n  "))
+        Assert-NoParityDrift $dfMap $drvMap @($dfMap.Keys) $describe "solve-order drift (silent stale-ancestor builds):`n  " "`n  "
     }
 
     It 'the two production sccache ENV blocks declare identical key sets and ARG defaults' {
         # media-builder `common` and media-merge-builder `built` share no FROM, so they are hand-mirrored twins.
-        $mergeText = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.media-merge-builder')
         $getKeys = { param($text)
             [regex]::Matches($text, '(?m)^\s*(SCCACHE_[A-Z_]+)=') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
         }
@@ -142,16 +150,12 @@ Invoke-BkStage -Target 'media-core-built-opencv' -BuildArgs ($branchBuildArgs + 
         }
         $argsA = & $getArgs $dfText
         $argsB = & $getArgs $mergeText
-        $drift = @()
-        foreach ($k in ($argsA.Keys | Where-Object { $argsB.ContainsKey($_) })) {
-            if ($argsA[$k] -ne $argsB[$k]) { $drift += "$k : $($argsA[$k]) vs $($argsB[$k])" }
-        }
-        Assert-True ($drift.Count -eq 0) ('sccache ARG defaults drifted on shared names: ' + ($drift -join '; '))
+        $shared = @($argsA.Keys | Where-Object { $argsB.ContainsKey($_) })
+        Assert-NoParityDrift $argsA $argsB $shared { param($k) "$k : $($argsA[$k]) vs $($argsB[$k])" } 'sccache ARG defaults drifted on shared names: ' '; '
     }
 
     It 'merge-builder buildmods is a superset of media-builder buildmods (B4)' {
         # No cross-Dockerfile stage sharing exists, so the 5-module core stays in step by hand.
-        $mergeText2 = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.media-merge-builder')
         $getMods = { param($text)
             $inStage = $false; $mods = @()
             foreach ($line in (ConvertTo-TestDockerLogicalLine -Text $text)) {
@@ -164,10 +168,10 @@ Invoke-BkStage -Target 'media-core-built-opencv' -BuildArgs ($branchBuildArgs + 
             $mods | Sort-Object -Unique
         }
         $a = & $getMods $dfText
-        $b = & $getMods $mergeText2
+        $b = & $getMods $mergeText
         Assert-True ($a.Count -ge 5) "media-builder buildmods parse found only $($a.Count) modules — stage layout changed?"
         $missing = @($a | Where-Object { $b -notcontains $_ })
-        Assert-True ($missing.Count -eq 0) ('modules in media-builder buildmods but MISSING from merge-builder: ' + ($missing -join ', '))
+        Assert-NoParityFinding $missing 'modules in media-builder buildmods but MISSING from merge-builder: ' ', '
     }
 
     It 'driver builds every parent BEFORE the stage that consumes it' {
@@ -180,6 +184,6 @@ Invoke-BkStage -Target 'media-core-built-opencv' -BuildArgs ($branchBuildArgs + 
             if ($pi -lt 0 -or $si -lt 0) { continue } # covered by the map assertion above
             if ($pi -gt $si) { $bad += "'$parentStage' (idx $pi) is built after its consumer '$stage' (idx $si)" }
         }
-        Assert-True ($bad.Count -eq 0) ("driver order violates the FROM graph:`n  " + ($bad -join "`n  "))
+        Assert-NoParityFinding $bad "driver order violates the FROM graph:`n  " "`n  "
     }
 }

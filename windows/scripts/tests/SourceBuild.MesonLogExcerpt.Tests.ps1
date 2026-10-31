@@ -27,12 +27,13 @@ Describe 'Select-MesonLogExcerpt' {
             'filler line B',                                                                 # 16
             'nice/meson.build:16:14: ERROR: Subproject "subprojects/libnice" required but not found.' # 17 diag
         )
+        $script:diagnosticNumbers = { param($r) $r.Diagnostics | ForEach-Object { [int]($_ -replace '^\s*(\d+):.*$', '$1') } }
     }
 
     It 'keeps every diagnostic line with its 1-based number and drops probe noise' {
         $r = Select-MesonLogExcerpt -Lines $script:fixture -TailLines 2 -BlockContext 2
         Assert-Equal 17 $r.Total 'total'
-        $numbers = @($r.Diagnostics | ForEach-Object { [int]($_ -replace '^\s*(\d+):.*$', '$1') })
+        $numbers = @(& $script:diagnosticNumbers $r)
         Assert-True ($numbers -contains 11) 'Exception line kept'
         Assert-True ($numbers -contains 12) 'buildable: NO line kept'
         Assert-True ($numbers -contains 13) 'required but not found kept'
@@ -46,7 +47,7 @@ Describe 'Select-MesonLogExcerpt' {
 
     It 'pulls the block after a Sanity check header along (BlockContext lines)' {
         $r = Select-MesonLogExcerpt -Lines $script:fixture -TailLines 1 -BlockContext 2
-        $numbers = @($r.Diagnostics | ForEach-Object { [int]($_ -replace '^\s*(\d+):.*$', '$1') })
+        $numbers = @(& $script:diagnosticNumbers $r)
         # header 5 -> 6,7 ; header 8 -> 9,10
         foreach ($n in 5, 6, 7, 8, 9, 10) { Assert-True ($numbers -contains $n) "block line $n kept" }
         Assert-False ($numbers -contains 4) 'line before the header not kept'

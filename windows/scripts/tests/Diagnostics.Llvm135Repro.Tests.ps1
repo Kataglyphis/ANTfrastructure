@@ -73,19 +73,19 @@ Describe 'llvm135 repro harness: tokenizing the real ninja command' {
 Describe 'llvm135 repro harness: what Get-CodegenFlags must STRIP' {
 
     It 'drops the compiler and the sccache wrapper' {
-        Assert-True (-not ($script:Flags -match '\.exe$')) 'an executable survived into the flag list'
+        Assert-False ($script:Flags -match '\.exe$') 'an executable survived into the flag list'
     }
 
     It 'drops everything the preprocessor already consumed' {
         foreach ($pattern in @('^[-/]I', '^[-/]D', '^-imsvc', '^[-/]FI')) {
-            Assert-True (-not ($script:Flags -cmatch $pattern)) "flag matching $pattern survived"
+            Assert-False ($script:Flags -cmatch $pattern) "flag matching $pattern survived"
         }
     }
 
     It 'drops the VALUE of a separated /D, not just the /D' {
         # `/D NAME` is two tokens; dropping only /D leaves NAME, which clang-cl reads as an input file.
-        Assert-True (-not ($script:Flags -contains '_CRT_SECURE_NO_DEPRECATE')) 'bare define leaked'
-        Assert-True (-not ($script:Flags -contains '_ARM64_DISTINCT_NEON_TYPES')) 'bare define leaked'
+        Assert-False ($script:Flags -contains '_CRT_SECURE_NO_DEPRECATE') 'bare define leaked'
+        Assert-False ($script:Flags -contains '_ARM64_DISTINCT_NEON_TYPES') 'bare define leaked'
     }
 
     It 'leaves no positional argument of any kind' {
@@ -94,34 +94,34 @@ Describe 'llvm135 repro harness: what Get-CodegenFlags must STRIP' {
     }
 
     It 'drops dependency generation, output naming, the compile verb and the source' {
-        Assert-True (-not ($script:Flags -match '^-clang:-M')) 'dep-gen survived'
-        Assert-True (-not ($script:Flags -cmatch '^[-/]F[od]')) 'output naming survived'
-        Assert-True (-not ($script:Flags -ccontains '-c')) 'compile verb survived'
-        Assert-True (-not ($script:Flags -match '\.(cpp|cc)$')) 'source path survived'
+        Assert-False ($script:Flags -match '^-clang:-M') 'dep-gen survived'
+        Assert-False ($script:Flags -cmatch '^[-/]F[od]') 'output naming survived'
+        Assert-False ($script:Flags -ccontains '-c') 'compile verb survived'
+        Assert-False ($script:Flags -match '\.(cpp|cc)$') 'source path survived'
     }
 
     It 'drops the optimisation and inlining levels, which the arms set' {
-        Assert-True (-not ($script:Flags -cmatch '^[-/]O[0-9]')) '/O level survived'
-        Assert-True (-not ($script:Flags -cmatch '^[-/]Ob[0-3]$')) '/Ob level survived'
+        Assert-False ($script:Flags -cmatch '^[-/]O[0-9]') '/O level survived'
+        Assert-False ($script:Flags -cmatch '^[-/]Ob[0-3]$') '/Ob level survived'
     }
 }
 
 Describe 'llvm135 repro harness: the workaround must not survive into the OFF arm' {
 
     It 'strips the -mllvm spelling of the jump-table workaround' {
-        Assert-True (-not ($script:Flags -match 'compress-jump-tables')) '-mllvm workaround survived'
+        Assert-False ($script:Flags -match 'compress-jump-tables') '-mllvm workaround survived'
     }
 
     It 'leaves no orphaned -mllvm whose value was consumed' {
-        Assert-True (-not ($script:Flags -ccontains '-mllvm')) 'dangling -mllvm survived'
+        Assert-False ($script:Flags -ccontains '-mllvm') 'dangling -mllvm survived'
     }
 
     It 'strips the target-feature spelling of the jump-table workaround' {
         $withFeature = $script:RealCommand + ' -Xclang -target-feature -Xclang +force-32bit-jump-tables'
         $flags = @(Get-CodegenFlags -Tokens (Split-CommandLine -Line $withFeature))
-        Assert-True (-not ($flags -match 'force-32bit-jump-tables')) 'target-feature workaround survived'
-        Assert-True (-not ($flags -ccontains '-target-feature')) 'orphaned -target-feature survived'
-        Assert-True (-not ($flags -ccontains '-Xclang')) 'orphaned -Xclang survived'
+        Assert-False ($flags -match 'force-32bit-jump-tables') 'target-feature workaround survived'
+        Assert-False ($flags -ccontains '-target-feature') 'orphaned -target-feature survived'
+        Assert-False ($flags -ccontains '-Xclang') 'orphaned -Xclang survived'
     }
 }
 

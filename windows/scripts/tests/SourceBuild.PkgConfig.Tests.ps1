@@ -1,6 +1,14 @@
 #requires -Version 7.0
 # Meson `auto` skips a plugin silently when its .pc is missing, so the plugin contract and the .pc emitter must agree.
 
+function Assert-GstPluginNameSet {
+    param([string[]]$Names, [string]$CountWhy, [string]$Lane = '')
+    Assert-Equal 13 $Names.Count $CountWhy
+    foreach ($name in 'libav', 'opencv', 'onnx', 'tflite', 'webrtc', 'nice', 'dtls', 'srtp', 'sctp', 'rtpmanager', 'openh264', 'rswebrtc', 'rsrtp') {
+        Assert-True ($Names -contains $name) "'$name' must be mandatory$Lane"
+    }
+}
+
 function Get-GstPluginByName {
     $byName = @{}
     foreach ($plugin in @(Get-RequiredGstPlugin)) { $byName[$plugin.Name] = $plugin }
@@ -21,14 +29,19 @@ function Assert-GstPluginEntryContract {
     }
 }
 
+# pkg-config exists only in the container image, so which failure fires depends on where the suite runs.
+function Assert-PkgConfigModuleRefusal {
+    param([string]$MessagePattern, [scriptblock]$Body)
+    # Without the binary the gate must refuse, never treat "cannot check" as "fine".
+    $pattern = if ($null -ne (Get-Command pkg-config -ErrorAction SilentlyContinue)) { $MessagePattern } else { 'pkg-config is not on PATH' }
+    Assert-Throws -MessagePattern $pattern -Body $Body
+}
+
 Describe 'Get-RequiredGstPlugin (the contract)' {
 
     It 'names the integrations the media stack is built around, WebRTC''s run-time set included' {
         $names = @(Get-RequiredGstPlugin | ForEach-Object { $_.Name })
-        Assert-Equal 13 $names.Count 'the six media integrations plus dtls, srtp, sctp, rtpmanager, openh264, rswebrtc, rsrtp'
-        foreach ($expected in 'libav', 'opencv', 'onnx', 'tflite', 'webrtc', 'nice', 'dtls', 'srtp', 'sctp', 'rtpmanager', 'openh264', 'rswebrtc', 'rsrtp') {
-            Assert-True ($names -contains $expected) "'$expected' must be mandatory"
-        }
+        Assert-GstPluginNameSet -Names $names -CountWhy 'the six media integrations plus dtls, srtp, sctp, rtpmanager, openh264, rswebrtc, rsrtp'
     }
 
     It 'returns fresh contract entries so a caller cannot change a later gate' {
@@ -96,10 +109,7 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
         $amd = @(Get-RequiredGstPlugin -Arch 'amd64' | ForEach-Object { $_.Name })
         $arm = @(Get-RequiredGstPlugin -Arch 'arm64' | ForEach-Object { $_.Name })
         Assert-Equal 13 $amd.Count 'amd64 keeps the full contract'
-        Assert-Equal 13 $arm.Count 'arm64 demands the full contract (tflite since #115, webrtc/nice since #128, the WebRTC run-time set since CON28)'
-        foreach ($n in 'libav', 'opencv', 'onnx', 'tflite', 'webrtc', 'nice', 'dtls', 'srtp', 'sctp', 'rtpmanager', 'openh264', 'rswebrtc', 'rsrtp') {
-            Assert-True ($arm -contains $n) "'$n' must be mandatory on arm64"
-        }
+        Assert-GstPluginNameSet -Names $arm -CountWhy 'arm64 demands the full contract (tflite since #115, webrtc/nice since #128, the WebRTC run-time set since CON28)' -Lane ' on arm64'
         # With WINDOWS_TARGET_ARCH unset the bare call must equal the amd64 view.
         if (-not $env:WINDOWS_TARGET_ARCH) {
             $bare = @(Get-RequiredGstPlugin | ForEach-Object { $_.Name })
@@ -194,20 +204,10 @@ Describe 'Get-LibraryLinkName' {
 
 Describe 'Assert-PkgConfigModule' {
 
-    # pkg-config exists only in the container image, so which failure fires depends on where the suite runs.
-    $havePkgConfig = $null -ne (Get-Command pkg-config -ErrorAction SilentlyContinue)
-
     It 'throws when a required module cannot be resolved' {
-        if ($havePkgConfig) {
-            # The message must name the module so a build log says which .pc to fix.
-            Assert-Throws -MessagePattern 'definitely-not-a-real-module' -Body {
-                Assert-PkgConfigModule -Module @('definitely-not-a-real-module-xyz') -Context 'test'
-            }
-        } else {
-            # Without the binary the gate must refuse, never treat "cannot check" as "fine".
-            Assert-Throws -MessagePattern 'pkg-config is not on PATH' -Body {
-                Assert-PkgConfigModule -Module @('definitely-not-a-real-module-xyz') -Context 'test'
-            }
+        # The message must name the module so a build log says which .pc to fix.
+        Assert-PkgConfigModuleRefusal -MessagePattern 'definitely-not-a-real-module' -Body {
+            Assert-PkgConfigModule -Module @('definitely-not-a-real-module-xyz') -Context 'test'
         }
     }
 
@@ -223,8 +223,6 @@ Describe 'Assert-PkgConfigModule version floors' {
 
     # Presence is not enough: a .pc with Version '..' passes --exists yet fails every consumer constraint.
 
-    $havePkgConfig = $null -ne (Get-Command pkg-config -ErrorAction SilentlyContinue)
-
     It 'accepts a MinimumVersion table without changing the no-modules contract' {
         # Empty module list stays a no-op regardless of the floors supplied.
         Assert-PkgConfigModule -Module @() -MinimumVersion @{ 'libavcodec' = '58.18.100' }
@@ -232,16 +230,9 @@ Describe 'Assert-PkgConfigModule version floors' {
 
     It 'names the module, the version found and the version required' {
         # The message has to carry all three or a build log cannot be acted on.
-        if ($havePkgConfig) {
-            Assert-Throws -MessagePattern 'definitely-not-real' -Body {
-                Assert-PkgConfigModule -Module @('definitely-not-real-xyz') `
-                    -MinimumVersion @{ 'definitely-not-real-xyz' = '1.0' } -Context 'test'
-            }
-        } else {
-            Assert-Throws -MessagePattern 'pkg-config is not on PATH' -Body {
-                Assert-PkgConfigModule -Module @('definitely-not-real-xyz') `
-                    -MinimumVersion @{ 'definitely-not-real-xyz' = '1.0' } -Context 'test'
-            }
+        Assert-PkgConfigModuleRefusal -MessagePattern 'definitely-not-real' -Body {
+            Assert-PkgConfigModule -Module @('definitely-not-real-xyz') `
+                -MinimumVersion @{ 'definitely-not-real-xyz' = '1.0' } -Context 'test'
         }
     }
 

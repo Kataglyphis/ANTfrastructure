@@ -10,6 +10,11 @@ Describe 'TVM assembled-wheel helpers' {
             'root/tvm_ffi/__init__.py' = '# pkg'; 'root/tvm_ffi/core.cp314-win_arm64.pyd' = 'not a real pyd'
             'root/tvm_ffi/lib/tvm_ffi.dll' = 'not a real dll'
         }
+        $script:assertDependencies = { param([string]$Text, [string]$Expected, [string[]]$Why)
+            Assert-Equal $Expected (@(Get-PyprojectDependencies -PyprojectText $Text) -join ',') $Why[0]
+            # The container checkout is CRLF, and .NET's multiline `$` matches only right before `\n`.
+            Assert-Equal $Expected (@(Get-PyprojectDependencies -PyprojectText ($Text -replace "`n", "`r`n")) -join ',') $Why[1]
+        }
     }
     AfterAll { Remove-TestDir -Path $script:tmp }
 
@@ -67,12 +72,8 @@ Describe 'TVM assembled-wheel helpers' {
             'dependencies = [', '  "apache-tvm-ffi>=0.1.13.post2",', '  "ml_dtypes",', '  "numpy",', '  "typing_extensions",', ']',
             '[project.optional-dependencies]', 'torch = ["torch"]'
         ) -join "`n"
-        $deps = @(Get-PyprojectDependencies -PyprojectText $py)
-        Assert-Equal 'apache-tvm-ffi>=0.1.13.post2,ml_dtypes,numpy,typing_extensions' ($deps -join ',') 'exact list, torch extra excluded'
+        & $script:assertDependencies $py 'apache-tvm-ffi>=0.1.13.post2,ml_dtypes,numpy,typing_extensions' 'exact list, torch extra excluded', 'CRLF file parses identically'
         Assert-Equal 0 (@(Get-PyprojectDependencies -PyprojectText "[project]`nname = ""x""")).Count 'no block -> empty'
-        # The container checkout is CRLF, and .NET's multiline `$` matches only right before `\n`.
-        Assert-Equal 'apache-tvm-ffi>=0.1.13.post2,ml_dtypes,numpy,typing_extensions' `
-            ((Get-PyprojectDependencies -PyprojectText ($py -replace "`n", "`r`n")) -join ',') 'CRLF file parses identically'
     }
 
     It 'stops at the one-line list and never runs into [project.urls] / optional-dependencies (tvm-ffi shape, run 33)' {
@@ -83,9 +84,7 @@ Describe 'TVM assembled-wheel helpers' {
             '', '[project.urls]', 'Homepage = "https://github.com/apache/tvm-ffi"',
             '', '[project.optional-dependencies]', 'torch = [', '  "ninja",', '  "torch; python_version < ''3.14''",', '  "setuptools",', ']'
         ) -join "`n"
-        $deps = @(Get-PyprojectDependencies -PyprojectText $py)
-        Assert-Equal 'typing-extensions>=4.5' ($deps -join ',') 'only the real dependency'
-        Assert-Equal 'typing-extensions>=4.5' ((Get-PyprojectDependencies -PyprojectText ($py -replace "`n", "`r`n")) -join ',') 'one-line list, CRLF'
+        & $script:assertDependencies $py 'typing-extensions>=4.5' 'only the real dependency', 'one-line list, CRLF'
         # An extras marker keeps its own brackets inside the list.
         $py2 = "[project]`nname = ""x""`ndependencies = [`n  ""torch[cuda]>=2"",`n  ""numpy"",`n]`n[project.urls]`nHome = ""https://x""`n"
         Assert-Equal 'torch[cuda]>=2,numpy' ((Get-PyprojectDependencies -PyprojectText $py2) -join ',') 'extras brackets survive'

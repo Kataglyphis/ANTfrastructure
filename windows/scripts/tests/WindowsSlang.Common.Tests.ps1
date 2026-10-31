@@ -5,9 +5,14 @@
 
 Describe 'WindowsSlang.Common' {
   BeforeAll {
+    function New-SlangFixtureDirectory {
+      param([string]$Workspace, [string]$Name)
+      return (New-Item -ItemType Directory -Force -Path (Join-Path $Workspace $Name)).FullName
+    }
+
     function New-SlangFixtureShader {
       param([string]$Workspace, [string]$Directory, [string]$File)
-      $root = (New-Item -ItemType Directory -Force -Path (Join-Path $Workspace $Directory)).FullName
+      $root = New-SlangFixtureDirectory -Workspace $Workspace -Name $Directory
       $shader = Join-Path $root $File
       Set-Content -LiteralPath $shader -Value 'void main() {}'
       return [pscustomobject]@{ Root = $root; Shader = $shader }
@@ -15,7 +20,7 @@ Describe 'WindowsSlang.Common' {
 
     function New-SlangFixtureRootPair {
       param([string]$Workspace, [string]$Prefix)
-      $primary = (New-Item -ItemType Directory -Force -Path (Join-Path $Workspace "$Prefix-primary")).FullName
+      $primary = New-SlangFixtureDirectory -Workspace $Workspace -Name "$Prefix-primary"
       $secondary = New-SlangFixtureShader -Workspace $Workspace -Directory "$Prefix-secondary" -File 'owned.slang'
       return [pscustomobject]@{ Primary = $primary; Secondary = $secondary.Root; Shader = $secondary.Shader }
     }
@@ -59,7 +64,7 @@ Describe 'WindowsSlang.Common' {
     }
 
     function New-SlangParityFixture {
-      param([string]$Prefix, [string[]]$Outputs,
+      param([string]$Prefix, [string[]]$Outputs = @('a.wgsl', 'b.wgsl'),
         [Collections.IDictionary]$Generated = @{}, [Collections.IDictionary]$Pinned = @{})
       $combined = Join-Path $script:root "$Prefix-combined"
       $destination = Join-Path $script:root "$Prefix-pinned"
@@ -73,6 +78,16 @@ Describe 'WindowsSlang.Common' {
         Set-SlangParityContent -Fixture $fixture -Name $name -Text ([string]$Pinned[$name])
       }
       return $fixture
+    }
+
+    function Invoke-SlangFixtureEntry {
+      param([object]$Entry, [string]$Source, [string]$Spirv, [string]$Wgsl, [datetime]$Stamp)
+      InModuleScope WindowsSlang.Common -Parameters @{
+        Entry = $Entry; Source = $Source; Spirv = $Spirv; Wgsl = $Wgsl; Stamp = $Stamp
+      } -ScriptBlock {
+        Invoke-SlangManifestEntry -Entry $Entry -SourceRoot $Source -SpirvOutputRoot $Spirv `
+          -WgslOutputRoot $Wgsl -NewestSource $Stamp -Slangc 'missing-slangc.exe' 3>$null
+      }
     }
 
     function Invoke-SlangFixtureParity {
@@ -144,7 +159,7 @@ Describe 'WindowsSlang.Common' {
   Context 'Pinned shader owners' {
     It 'resolves another root and adds its common modules to include paths' {
       $roots = New-SlangFixtureRootPair -Workspace $script:root -Prefix 'pinned'
-      $common = (New-Item -ItemType Directory -Force -Path (Join-Path $roots.Secondary 'common')).FullName
+      $common = New-SlangFixtureDirectory -Workspace $roots.Secondary -Name 'common'
       (Resolve-SlangSourcePath -Relative 'owned.slang' -SourceRoot $roots.Primary -AdditionalSourceRoots @($roots.Secondary)) | Should -Be $roots.Shader
       $include = Get-SlangIncludeArgument -SourceRoot $roots.Primary -SourceDirectory $roots.Primary -AdditionalSourceRoots @($roots.Secondary)
       $include | Should -Contain $common
@@ -163,7 +178,7 @@ Describe 'WindowsSlang.Common' {
   # Parity checks manifest rows, not a compiler that never ran or a missing row in that manifest.
   Context 'Assert-SlangWgslOutputsMatch' {
     It 'accepts newline-only differences across every manifest destination' {
-      $fixture = New-SlangParityFixture -Prefix 'parity-newlines' -Outputs @('a.wgsl', 'b.wgsl') `
+      $fixture = New-SlangParityFixture -Prefix 'parity-newlines' `
         -Generated @{ 'a.wgsl' = "fn a() {}`n"; 'b.wgsl' = "fn b() {}`n" } `
         -Pinned @{ 'a.wgsl' = "fn a() {}`r`n"; 'b.wgsl' = "fn b() {}`r`n" }
       $verified = @(Invoke-SlangFixtureParity -Fixture $fixture)
@@ -173,7 +188,7 @@ Describe 'WindowsSlang.Common' {
     }
 
     It 'fails on a changed non-newline byte and an omitted emitted file' {
-      $fixture = New-SlangParityFixture -Prefix 'parity-mutant' -Outputs @('a.wgsl', 'b.wgsl') `
+      $fixture = New-SlangParityFixture -Prefix 'parity-mutant' `
         -Generated @{ 'a.wgsl' = "fn a() {}`n" } -Pinned @{ 'a.wgsl' = "fn wrong() {}`n"; 'b.wgsl' = "fn b() {}`n" }
       { Invoke-SlangFixtureParity -Fixture $fixture } |
         Should -Throw -ExpectedMessage '*a.wgsl differs*missing generated b.wgsl*'
@@ -200,7 +215,7 @@ Describe 'WindowsSlang.Common' {
     }
 
     It 'compares the original snapshot when compilation overwrites a pinned destination' {
-      $fixture = New-SlangParityFixture -Prefix 'parity-overwrite' -Outputs @('a.wgsl', 'b.wgsl') `
+      $fixture = New-SlangParityFixture -Prefix 'parity-overwrite' `
         -Pinned @{ 'a.wgsl' = "fn pinned() {}`r`n"; 'b.wgsl' = "fn b() {}`n" }
       $snapshot = Join-Path $script:root 'parity-overwrite-snapshot'
       Copy-SlangPinnedWgslSnapshot -Mappings $fixture.Mappings -DestinationRoot $fixture.Destination -SnapshotRoot $snapshot
@@ -228,19 +243,14 @@ Describe 'WindowsSlang.Common' {
   }
 
   Context 'Test-SlangcVersionAtLeast' {
-    It 'rejects the slangc whose combined WGSL emit drops @location' {
-      Test-SlangcVersionAtLeast -Have '2026.1-52-gc8ddf20bb' -Want '2026.8' | Should -Be $false
-    }
-
-    It 'accepts the floor itself and anything newer' {
-      Test-SlangcVersionAtLeast -Have '2026.8' -Want '2026.8' | Should -Be $true
-      Test-SlangcVersionAtLeast -Have '2026.9' -Want '2026.8' | Should -Be $true
-      Test-SlangcVersionAtLeast -Have '2027.0' -Want '2026.8' | Should -Be $true
-    }
-
-    It 'treats an unparseable version as new enough (the emit guard is the backstop)' {
-      Test-SlangcVersionAtLeast -Have 'some-dev-build' -Want '2026.8' | Should -Be $true
-      Test-SlangcVersionAtLeast -Have '2026.8' -Want '' | Should -Be $true
+    It '<Name>' -ForEach @(
+      @{ Name = 'rejects the slangc whose combined WGSL emit drops @location'; Expected = $false; Versions = @(, @('2026.1-52-gc8ddf20bb', '2026.8')) }
+      @{ Name = 'accepts the floor itself and anything newer'; Expected = $true; Versions = @(@('2026.8', '2026.8'), @('2026.9', '2026.8'), @('2027.0', '2026.8')) }
+      @{ Name = 'treats an unparseable version as new enough (the emit guard is the backstop)'; Expected = $true; Versions = @(@('some-dev-build', '2026.8'), @('2026.8', '')) }
+    ) {
+      foreach ($version in $Versions) {
+        Test-SlangcVersionAtLeast -Have $version[0] -Want $version[1] | Should -Be $Expected
+      }
     }
   }
 
@@ -282,8 +292,8 @@ Describe 'WindowsSlang.Common' {
     It 'skips current artifacts for both targets without invoking slangc' {
       $cached = New-SlangFixtureShader -Workspace $script:root -Directory 'cached-source' -File 'cached.slang'
       $source = $cached.Root
-      $spirv = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'cached-spirv')).FullName
-      $wgsl = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'cached-wgsl')).FullName
+      $spirv = New-SlangFixtureDirectory -Workspace $script:root -Name 'cached-spirv'
+      $wgsl = New-SlangFixtureDirectory -Workspace $script:root -Name 'cached-wgsl'
       $shader = $cached.Shader
       $entry = New-SlangFixtureEntry -File 'cached.slang' -Targets @('spirv', 'wgsl')
       Set-Content -LiteralPath (Join-Path $spirv 'cached.main.spv') -Value 'cached'
@@ -294,32 +304,24 @@ Describe 'WindowsSlang.Common' {
       (Get-Item (Join-Path $spirv 'cached.main.spv')).LastWriteTimeUtc = $newStamp
       (Get-Item (Join-Path $wgsl 'cached.main.wgsl')).LastWriteTimeUtc = $newStamp
 
-      InModuleScope WindowsSlang.Common -Parameters @{
-        Source = $source; Spirv = $spirv; Wgsl = $wgsl; Entry = $entry; Stamp = $oldStamp
-      } -ScriptBlock {
-        $result = Invoke-SlangManifestEntry -Entry $Entry -SourceRoot $Source -SpirvOutputRoot $Spirv `
-          -WgslOutputRoot $Wgsl -NewestSource $Stamp -Slangc 'missing-slangc.exe'
-        $result.Compiled | Should -Be 0
-        $result.Failures.Count | Should -Be 0
-      }
+      $result = Invoke-SlangFixtureEntry -Entry $entry -Source $source -Spirv $spirv -Wgsl $wgsl -Stamp $oldStamp
+      $result.Compiled | Should -Be 0
+      $result.Failures.Count | Should -Be 0
     }
 
     It 'reports a missing manifest shader as a failed entry' {
-      $source = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'missing-source')).FullName
+      $source = New-SlangFixtureDirectory -Workspace $script:root -Name 'missing-source'
       $entry = New-SlangFixtureEntry -File 'gone.slang' -Targets @('spirv')
-      InModuleScope WindowsSlang.Common -Parameters @{ Source = $source; Entry = $entry } -ScriptBlock {
-        $result = Invoke-SlangManifestEntry -Entry $Entry -SourceRoot $Source -SpirvOutputRoot $Source `
-          -WgslOutputRoot $Source -NewestSource ([datetime]::UtcNow) -Slangc 'missing-slangc.exe' 3>$null
-        $result.Compiled | Should -Be 0
-        $result.Failures | Should -Contain (Join-Path $Source 'gone.slang')
-      }
+      $result = Invoke-SlangFixtureEntry -Entry $entry -Source $source -Spirv $source -Wgsl $source -Stamp ([datetime]::UtcNow)
+      $result.Compiled | Should -Be 0
+      $result.Failures | Should -Contain (Join-Path $source 'gone.slang')
     }
 
     It 'copies valid combined WGSL but preserves the destination for an invalid emit' {
-      $root = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'combined-source')).FullName
+      $root = New-SlangFixtureDirectory -Workspace $script:root -Name 'combined-source'
       Set-Content -LiteralPath (Join-Path $root 'owned.slang') -Value 'void main() {}'
-      $stage = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'combined-stage')).FullName
-      $destination = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'combined-dest')).FullName
+      $stage = New-SlangFixtureDirectory -Workspace $script:root -Name 'combined-stage'
+      $destination = New-SlangFixtureDirectory -Workspace $script:root -Name 'combined-dest'
       $manifest = [pscustomobject]@{
         wgslMap = @([pscustomobject]@{ src = 'owned.slang'; out = 'owned.wgsl'; dst = 'crate' })
         depthTexturePatches = [pscustomobject]@{}

@@ -11,8 +11,17 @@ $script:SmokeScript = 'windows\scripts\build\Test-Container.ps1'
 
 
 $script:VenvSite = 'C:\opt\OrchestrANT\.venv\Lib\site-packages'
-$script:ChainWheel = [pscustomobject]@{
-    Path = 'C:\runtime\wheels\onnxruntime-1.30.0-cp314-cp314-win_amd64.whl'; Name = 'onnxruntime'; Version = '1.30.0'; Problem = ''
+# Resolve-ChainOrtWheel's result shape.
+function New-ChainWheelRecord {
+    param([string]$Path = '', [string]$Name = '', [string]$Version = '', [string]$Problem = '')
+    return [pscustomobject]@{ Path = $Path; Name = $Name; Version = $Version; Problem = $Problem }
+}
+$script:ChainWheel = New-ChainWheelRecord -Path 'C:\runtime\wheels\onnxruntime-1.30.0-cp314-cp314-win_amd64.whl' -Name 'onnxruntime' -Version '1.30.0'
+
+# One venv binary as the probe reports it; a fixture sha256 is one hex digit 64 times, and '' means not installed.
+function New-VenvOrtBinary {
+    param([string]$Name, [string]$Wheel, [string]$Installed)
+    return [ordered]@{ name = "onnxruntime/capi/$Name"; wheel = $Wheel * 64; installed = $Installed * 64 }
 }
 
 # The probe's JSON for a healthy venv, round-tripped like Invoke-TorchAppOrtProbe does. -Set/-Remove edit it first.
@@ -29,14 +38,14 @@ function Get-TorchAppAspectMap {
 
 function New-VenvOrtReport {
     param([hashtable]$Set = @{}, [string[]]$Remove = @())
-    $bin = { param($name, $wheel, $installed) [ordered]@{ name = "onnxruntime/capi/$name"; wheel = $wheel; installed = $installed } }
+    $binaries = @(
+        (New-VenvOrtBinary 'DirectML.dll' 'a' 'a')
+        (New-VenvOrtBinary 'onnxruntime.dll' 'b' 'b')
+        (New-VenvOrtBinary 'onnxruntime_providers_shared.dll' 'c' 'c')
+        (New-VenvOrtBinary 'onnxruntime_pybind11_state.pyd' 'd' 'd'))
     $r = [ordered]@{
         dist      = '1.30.0'
-        binaries  = @(
-            (& $bin 'DirectML.dll' ('a' * 64) ('a' * 64))
-            (& $bin 'onnxruntime.dll' ('b' * 64) ('b' * 64))
-            (& $bin 'onnxruntime_providers_shared.dll' ('c' * 64) ('c' * 64))
-            (& $bin 'onnxruntime_pybind11_state.pyd' ('d' * 64) ('d' * 64)))
+        binaries  = $binaries
         owners    = @('onnxruntime')
         providers = @('DmlExecutionProvider', 'CPUExecutionProvider')
         package   = "$script:VenvSite\onnxruntime"
@@ -49,12 +58,11 @@ function New-VenvOrtReport {
 
 Describe 'Smoke §21: the chain wheel the venv is compared against' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:SmokeScript -FunctionName 'Resolve-ChainOrtWheel')
+    $writeWheels = { param([string]$Dir, [string[]]$Names) foreach ($n in $Names) { Set-Content -LiteralPath (Join-Path $Dir $n) 'x' -Encoding ASCII } }
 
     It 'resolves the one onnxruntime-*.whl and ignores the genai/tvm wheels beside it' {
         Invoke-InTestDir { param($dir)
-            foreach ($n in 'onnxruntime-1.30.0-cp314-cp314-win_amd64.whl', 'onnxruntime_genai-0.15.2-cp314-cp314-win_amd64.whl', 'tvm-0.25.0-cp314-cp314-win_amd64.whl') {
-                Set-Content -LiteralPath (Join-Path $dir $n) 'x' -Encoding ASCII
-            }
+            & $writeWheels $dir 'onnxruntime-1.30.0-cp314-cp314-win_amd64.whl', 'onnxruntime_genai-0.15.2-cp314-cp314-win_amd64.whl', 'tvm-0.25.0-cp314-cp314-win_amd64.whl'
             $w = Resolve-ChainOrtWheel -WheelDir $dir
             Assert-Equal '' $w.Problem 'no problem'
             Assert-Equal 'onnxruntime' $w.Name 'PEP 503 name'
@@ -66,9 +74,7 @@ Describe 'Smoke §21: the chain wheel the venv is compared against' {
     It 'reports none, two, or a missing store instead of picking one' {
         Invoke-InTestDir { param($dir)
             Assert-Match "^0 onnxruntime-\*\.whl in '.*', expected exactly 1$" (Resolve-ChainOrtWheel -WheelDir $dir).Problem 'empty store'
-            foreach ($n in 'onnxruntime-1.30.0-cp314-cp314-win_amd64.whl', 'onnxruntime-1.27.0-cp314-cp314-win_amd64.whl') {
-                Set-Content -LiteralPath (Join-Path $dir $n) 'x' -Encoding ASCII
-            }
+            & $writeWheels $dir 'onnxruntime-1.30.0-cp314-cp314-win_amd64.whl', 'onnxruntime-1.27.0-cp314-cp314-win_amd64.whl'
             $two = Resolve-ChainOrtWheel -WheelDir $dir
             Assert-Match '^2 onnxruntime-' $two.Problem 'two wheels are ambiguous'
             Assert-Equal '' $two.Path 'no path handed on when ambiguous'
@@ -129,6 +135,7 @@ Describe 'Smoke §21: venv chain-wheel provenance findings' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:SmokeScript -FunctionName 'Get-TorchAppOrtDmlFinding', 'Get-TorchAppOrtProvenanceFinding', 'Get-TorchAppOrtFinding')
     $prov = { param($Report, $Wheel = $script:ChainWheel, $Site = $script:VenvSite)
         @(Get-TorchAppOrtFinding -Report $Report -Aspect Provenance -Wheel $Wheel -VenvSitePackages $Site) }
+    $provOfSet = { param($case) & $prov (New-VenvOrtReport -Set $case.Set) }
 
     It 'passes the chain wheel imported from the venv, whatever spelling the site path has' {
         foreach ($site in $script:VenvSite, "$script:VenvSite\", $script:VenvSite.Replace('\', '/')) {
@@ -138,8 +145,8 @@ Describe 'Smoke §21: venv chain-wheel provenance findings' {
 
     It 'catches a same-version PyPI wheel by its bytes alone (measured: PyPI ships onnxruntime 1.30.0 too)' {
         $bins = @(
-            [ordered]@{ name = 'onnxruntime/capi/DirectML.dll'; wheel = 'a' * 64; installed = '' }
-            [ordered]@{ name = 'onnxruntime/capi/onnxruntime_pybind11_state.pyd'; wheel = 'd' * 64; installed = 'e' * 64 })
+            (New-VenvOrtBinary 'DirectML.dll' 'a' '')
+            (New-VenvOrtBinary 'onnxruntime_pybind11_state.pyd' 'd' 'e'))
         $f = @(& $prov (New-VenvOrtReport -Set @{ binaries = $bins }))
         Assert-Equal 2 $f.Count ($f -join ' / ')
         Assert-Equal 'onnxruntime/capi/DirectML.dll is missing from the venv' $f[0]
@@ -147,9 +154,7 @@ Describe 'Smoke §21: venv chain-wheel provenance findings' {
     }
 
     It 'names a PyPI variant co-installed into the onnxruntime package (measured: onnxruntime-webgpu)' {
-        $f = @(& $prov (New-VenvOrtReport -Set @{ owners = @('onnxruntime', 'onnxruntime-webgpu') }))
-        Assert-Equal 1 $f.Count ($f -join ' / ')
-        Assert-Match 'belongs to \[onnxruntime, onnxruntime-webgpu\], expected only onnxruntime' $f[0]
+        Assert-TestSingleFindingCases -Cases @(@{ P = 'belongs to \[onnxruntime, onnxruntime-webgpu\], expected only onnxruntime'; Set = @{ owners = @('onnxruntime', 'onnxruntime-webgpu') } }) -Exercise $provOfSet
         Assert-Match 'belongs to \[\]' @(& $prov (New-VenvOrtReport -Set @{ owners = @() }))[0] 'no owner at all'
         Assert-Match 'belongs to \[unreadable' @(& $prov (New-VenvOrtReport -Set @{ owners = @('unreadable (TypeError: x)') }))[0]
     }
@@ -159,17 +164,15 @@ Describe 'Smoke §21: venv chain-wheel provenance findings' {
     }
 
     It 'fails an onnxruntime imported from outside the venv' {
-        $f = @(& $prov (New-VenvOrtReport -Set @{ package = 'C:\temp\cpython\Lib\site-packages\onnxruntime' }))
-        Assert-Equal 1 $f.Count ($f -join ' / ')
-        Assert-Match "imports from 'C:\\temp\\cpython\\Lib\\site-packages\\onnxruntime', not from the venv's" $f[0]
+        Assert-TestSingleFindingCases -Cases @(@{ P = "imports from 'C:\\temp\\cpython\\Lib\\site-packages\\onnxruntime', not from the venv's"; Set = @{ package = 'C:\temp\cpython\Lib\site-packages\onnxruntime' } }) -Exercise $provOfSet
         Assert-Equal 1 @(& $prov (New-VenvOrtReport) $script:ChainWheel '').Count 'an empty site path never passes'
     }
 
     It 'fails when nothing was compared, the wheel is unusable, or the probe failed' {
         Assert-Match 'no onnxruntime/\*\.pyd was compared' ((& $prov (New-VenvOrtReport -Set @{ binaries = @() })) -join '|')
-        $dllOnly = @([ordered]@{ name = 'onnxruntime/capi/onnxruntime.dll'; wheel = 'b' * 64; installed = 'b' * 64 })
+        $dllOnly = @(New-VenvOrtBinary 'onnxruntime.dll' 'b' 'b')
         Assert-Match 'no onnxruntime/\*\.pyd was compared' ((& $prov (New-VenvOrtReport -Set @{ binaries = $dllOnly })) -join '|')
-        $bad = [pscustomobject]@{ Path = ''; Name = ''; Version = ''; Problem = "2 onnxruntime-*.whl in 'C:\runtime\wheels', expected exactly 1" }
+        $bad = New-ChainWheelRecord -Problem "2 onnxruntime-*.whl in 'C:\runtime\wheels', expected exactly 1"
         Assert-Equal "no chain wheel to compare against: 2 onnxruntime-*.whl in 'C:\runtime\wheels', expected exactly 1" ((& $prov (New-VenvOrtReport) $bad) -join '|')
         Assert-Match 'none resolved' ((& $prov (New-VenvOrtReport) $null) -join '|')
         Assert-Match '^cannot read the chain wheel .*BadZipFile' ((& $prov (New-VenvOrtReport -Set @{ wheelError = 'BadZipFile: x' })) -join '|')

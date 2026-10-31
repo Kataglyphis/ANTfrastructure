@@ -7,19 +7,14 @@ $script:AppRefPeeled = '3333333333333333333333333333333333333333'
 
 Describe 'Resolve-GitRefCommit' {
 
-    It 'resolves a branch to the commit at its head' {
-        $out = @("$($script:AppRefHead)`trefs/heads/develop")
-        Assert-Equal $script:AppRefHead (Resolve-GitRefCommit -LsRemoteOutput $out -Ref 'develop') 'the branch head'
-    }
-
-    It 'resolves an annotated tag to the commit it peels to, not the tag object' {
-        $out = @("$($script:AppRefTagObject)`trefs/tags/v1.0", "$($script:AppRefPeeled)`trefs/tags/v1.0^{}")
-        Assert-Equal $script:AppRefPeeled (Resolve-GitRefCommit -LsRemoteOutput $out -Ref 'v1.0') 'a tag object is not a commit git can fetch into a tree'
-    }
-
-    It 'lets a branch win over a same-named tag' {
-        $out = @("$($script:AppRefTagObject)`trefs/tags/both", "$($script:AppRefHead)`trefs/heads/both")
-        Assert-Equal $script:AppRefHead (Resolve-GitRefCommit -LsRemoteOutput $out -Ref 'both') 'tracking a branch is the point of the key'
+    foreach ($case in @(
+            @{ Name = 'resolves a branch to the commit at its head'; Out = @("$($script:AppRefHead)`trefs/heads/develop"); Ref = 'develop'; Want = $script:AppRefHead; Why = 'the branch head' }
+            @{ Name = 'resolves an annotated tag to the commit it peels to, not the tag object'; Out = @("$($script:AppRefTagObject)`trefs/tags/v1.0", "$($script:AppRefPeeled)`trefs/tags/v1.0^{}"); Ref = 'v1.0'; Want = $script:AppRefPeeled; Why = 'a tag object is not a commit git can fetch into a tree' }
+            @{ Name = 'lets a branch win over a same-named tag'; Out = @("$($script:AppRefTagObject)`trefs/tags/both", "$($script:AppRefHead)`trefs/heads/both"); Ref = 'both'; Want = $script:AppRefHead; Why = 'tracking a branch is the point of the key' }
+        )) {
+        It $case.Name {
+            Assert-Equal $case.Want (Resolve-GitRefCommit -LsRemoteOutput $case.Out -Ref $case.Ref) $case.Why
+        }
     }
 
     It 'returns empty, never throws, for no match or noise' {

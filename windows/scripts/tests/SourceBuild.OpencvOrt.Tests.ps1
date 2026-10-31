@@ -61,19 +61,23 @@ $script:OrtDefines = '-DCVAPI_EXPORTS -DHAVE_DIRECTML=1 -DHAVE_ONNX=1 -DHAVE_ONN
 $script:OrtLinkFlags = '/machine:x64 /NODEFAULTLIB:libc /DEBUG /DELAYLOAD:dxcore.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:DirectML.dll'
 $script:OrtNinjaOf = {
     param([string]$Defines = $script:OrtDefines, [string]$LinkFlags = $script:OrtLinkFlags)
+    $obj = 'modules\gapi\CMakeFiles\opencv_gapi.dir\src\backends\onnx'
+    $src = 'C$:\temp\opencv-src\opencv_contrib\modules\gapi\src\backends\onnx'
+    $compile = 'CXX_COMPILER__opencv_gapi_unscanned_Release'
+    $flags = '/FIcstring /O2 /Ob2 /DNDEBUG -std:c++17 -MD'
     @"
 # CMAKE generated file: DO NOT EDIT!
 
-build modules\gapi\CMakeFiles\opencv_gapi.dir\src\backends\onnx\gonnxbackend.cpp.obj: CXX_COMPILER__opencv_gapi_unscanned_Release C`$:\temp\opencv-src\opencv_contrib\modules\gapi\src\backends\onnx\gonnxbackend.cpp || cmake_object_order_depends_target_opencv_gapi
+build $obj\gonnxbackend.cpp.obj: $compile $src\gonnxbackend.cpp || cmake_object_order_depends_target_opencv_gapi
   DEFINES = -DCVAPI_EXPORTS -DHAVE_ONNX=1
-  FLAGS = /FIcstring /O2 /Ob2 /DNDEBUG -std:c++17 -MD
+  FLAGS = $flags
 
-build modules\gapi\CMakeFiles\opencv_gapi.dir\src\backends\onnx\dml_ep.cpp.obj: CXX_COMPILER__opencv_gapi_unscanned_Release C`$:\temp\opencv-src\opencv_contrib\modules\gapi\src\backends\onnx\dml_ep.cpp || cmake_object_order_depends_target_opencv_gapi
+build $obj\dml_ep.cpp.obj: $compile $src\dml_ep.cpp || cmake_object_order_depends_target_opencv_gapi
   DEFINES = $Defines
-  FLAGS = /FIcstring /O2 /Ob2 /DNDEBUG -std:c++17 -MD
+  FLAGS = $flags
   INCLUDES = -IC:\temp\opencv-src\ort-nested\include\onnxruntime\core\session
 
-build bin\opencv_gapi500.dll lib\opencv_gapi500.lib: CXX_SHARED_LIBRARY_LINKER__opencv_gapi_Release modules\gapi\CMakeFiles\opencv_gapi.dir\src\backends\onnx\dml_ep.cpp.obj | lib\opencv_core500.lib
+build bin\opencv_gapi500.dll lib\opencv_gapi500.lib: CXX_SHARED_LIBRARY_LINKER__opencv_gapi_Release $obj\dml_ep.cpp.obj | lib\opencv_core500.lib
   LINK_FLAGS = $LinkFlags
   LINK_LIBRARIES = lib\opencv_core500.lib  C:\runtime\lib\onnxruntime-source\lib\onnxruntime.lib  delayimp.lib  wsock32.lib
   TARGET_FILE = bin\opencv_gapi500.dll
@@ -124,10 +128,11 @@ Describe 'OpenCV ORT: nested header shim' {
         }
         Join-Path $Dir 'ort'
     }
+    $newShim = { param([string]$Dir) New-OpencvOrtNestedInclude -OrtRoot (& $newFlatOrt $Dir) -ShimRoot (Join-Path $Dir 'shim') }
 
     It 'builds the source-tree layout FindONNX and dml_ep.cpp expect, and returns it in forward slashes' {
         Invoke-InTestDir { param($dir)
-            $shim = New-OpencvOrtNestedInclude -OrtRoot (& $newFlatOrt $dir) -ShimRoot (Join-Path $dir 'shim')
+            $shim = & $newShim $dir
             Assert-Equal ((Join-Path $dir 'shim').Replace('\', '/')) $shim
             $session = Join-Path $dir 'shim\include\onnxruntime\core\session'
             Assert-Equal 'cpu_provider_factory.h,dml_provider_factory.h,onnxruntime_c_api.h,onnxruntime_cxx_api.h,onnxruntime_cxx_inline.h' `
@@ -138,7 +143,7 @@ Describe 'OpenCV ORT: nested header shim' {
 
     It 'makes FindONNX''s first suffix hit the session dir, resolves dml_ep.cpp''s relative include, and leaves CoreML out' {
         Invoke-InTestDir { param($dir)
-            $shim = New-OpencvOrtNestedInclude -OrtRoot (& $newFlatOrt $dir) -ShimRoot (Join-Path $dir 'shim')
+            $shim = & $newShim $dir
             # FindONNX.cmake:67-73 tries these suffixes in order; the first holding onnxruntime_cxx_api.h wins.
             $hit = @('include', 'include/onnxruntime', 'include/onnxruntime/core/session') |
                 Where-Object { Test-Path -LiteralPath "$shim/$_/onnxruntime_cxx_api.h" } | Select-Object -First 1
@@ -205,6 +210,12 @@ Describe 'OpenCV ORT: configure gate' {
             [string]$Chain = $script:OrtChain, [string]$Shim = $script:OrtShim)
         @(Get-OpencvOrtConfigureFinding -ConfigureLog $Log -CMakeCache $Cache -BuildNinja $Ninja -OrtRoot $Chain -ShimRoot $Shim -OrtVersion $script:OrtVer)
     }
+    $logCase = { param([string]$Pattern, [string]$From, [string]$To)
+        Assert-TestSingleFindingCases -Cases @(@{ P = $Pattern; From = $From; To = $To }) -Exercise { param($case) & $gateOf -Log ($script:OrtCfgLog -replace $case.From, $case.To) }
+    }
+    $ninjaCases = { param([object[]]$Cases)
+        Assert-TestSingleFindingCases -Cases $Cases -Exercise { param($case) $ninjaArgs = $case.Ninja; & $gateOf -Ninja (& $script:OrtNinjaOf @ninjaArgs) }
+    }
 
     It 'passes the healthy shape' {
         $found = @(& $gateOf)
@@ -228,17 +239,13 @@ Describe 'OpenCV ORT: configure gate' {
     }
 
     It 'names only the version when nothing else is wrong' {
-        $found = @(& $gateOf -Log ($script:OrtCfgLog -replace 'ver 1\.30\.0', 'ver 1.29.0'))
-        Assert-Equal 1 $found.Count ($found -join ' / ')
-        Assert-Match "reads 'ONNX Runtime: YES \(ver 1\.29\.0\)', not YES \(ver 1\.30\.0\)" $found[0]
+        & $logCase "reads 'ONNX Runtime: YES \(ver 1\.29\.0\)', not YES \(ver 1\.30\.0\)" 'ver 1\.30\.0' 'ver 1.29.0'
     }
 
     It 'fails a missing or NO summary without reading a neighbour''s Include path' {
         $noOrt = ($script:OrtCfgLog -split '\r?\n' | Where-Object { $_ -notmatch 'ONNX Runtime:|ort-nested/include|onnxruntime\.lib' }) -join "`n"
         Assert-Match "no 'ONNX Runtime:' line" ((& $gateOf -Log $noOrt) -join ';')
-        $off = @(& $gateOf -Log ($script:OrtCfgLog -replace 'YES \(ver 1\.30\.0\)', 'NO'))
-        Assert-Equal 1 $off.Count ($off -join ' / ')
-        Assert-Match "reads 'ONNX Runtime: NO'" $off[0]
+        & $logCase "reads 'ONNX Runtime: NO'" 'YES \(ver 1\.30\.0\)' 'NO'
     }
 
     It 'fails an include path that is the flat chain dir, and a copied import library' {
@@ -256,11 +263,7 @@ Describe 'OpenCV ORT: configure gate' {
     }
 
     It 'fails the stub compile, one finding per missing define' {
-        foreach ($def in 'HAVE_ONNX_DML', 'HAVE_DIRECTML', 'HAVE_ONNX') {
-            $found = @(& $gateOf -Ninja (& $script:OrtNinjaOf -Defines ($script:OrtDefines -replace " -D$def=1(?= |$)", '')))
-            Assert-Equal 1 $found.Count "$def : $($found -join ' / ')"
-            Assert-Match "without $def=1" $found[0]
-        }
+        & $ninjaCases @(foreach ($def in 'HAVE_ONNX_DML', 'HAVE_DIRECTML', 'HAVE_ONNX') { @{ P = "without $def=1"; Ninja = @{ Defines = $script:OrtDefines -replace " -D$def=1(?= |$)", '' } } })
     }
 
     It 'fails a TU that defines HAVE_ONNX_COREML' {
@@ -268,11 +271,7 @@ Describe 'OpenCV ORT: configure gate' {
     }
 
     It 'fails each DirectX DLL the link line does not delay-load' {
-        foreach ($dll in $script:OrtDelayLoads) {
-            $found = @(& $gateOf -Ninja (& $script:OrtNinjaOf -LinkFlags ($script:OrtLinkFlags -replace " /DELAYLOAD:$([regex]::Escape($dll))", '')))
-            Assert-Equal 1 $found.Count "$dll : $($found -join ' / ')"
-            Assert-Match "hard-imports $([regex]::Escape($dll))" $found[0]
-        }
+        & $ninjaCases @(foreach ($dll in $script:OrtDelayLoads) { @{ P = "hard-imports $([regex]::Escape($dll))"; Ninja = @{ LinkFlags = $script:OrtLinkFlags -replace " /DELAYLOAD:$([regex]::Escape($dll))", '' } } })
     }
 
     It 'fails a build.ninja without the dml_ep.cpp statement, the gapi link, or any content' {
@@ -317,6 +316,7 @@ Describe 'OpenCV ORT: wiring in Build-OpencvFromSource.ps1' {
     $wiring = New-MediaTestAstView -ScriptPath $script:OrtOcvScript
     $underIf = { param($node) $up = $node.Parent; while ($up -and $up -isnot [Management.Automation.Language.IfStatementAst]) { $up = $up.Parent }; $null -ne $up }
     $configure = @(Get-TestAstCommands -Ast $wiring.Ast -Name 'Invoke-CmakeConfigure')[0]
+    $appendOf = { param([string]$Value) Get-MediaTestAssignment -Ast $wiring.Ast -Variable '$cmakeExtra' -Operator PlusEquals -Value $Value -Single }
 
     It 'wires the shim, the args and the gate once each, under no lane condition' {
         foreach ($fn in 'New-OpencvOrtNestedInclude', 'Get-OpencvOrtCmakeArgs', 'Get-OpencvOrtConfigureFinding') {
@@ -327,12 +327,12 @@ Describe 'OpenCV ORT: wiring in Build-OpencvFromSource.ps1' {
     }
 
     It 'appends the ORT args without a lane guard' {
-        $append = Get-MediaTestAssignment -Ast $wiring.Ast -Variable '$cmakeExtra' -Operator PlusEquals -Value '$ocvOrtArgs' -Single
+        $append = & $appendOf '$ocvOrtArgs'
         Assert-Null (Get-TestAstAncestor -Node $append -Type ([Management.Automation.Language.IfStatementAst]) -First) 'the append is unconditional'
     }
 
     It 'passes the appended ORT args to one configure call' {
-        $append = Get-MediaTestAssignment -Ast $wiring.Ast -Variable '$cmakeExtra' -Operator PlusEquals -Value '$ocvOrtArgs' -Single
+        $append = & $appendOf '$ocvOrtArgs'
         $configureCall = @(Get-TestAstCommands -Ast $wiring.Ast -Name 'Invoke-OpencvConfigureAndGate')
         Assert-TestAstCommand -Command $configureCall -Text 'Invoke-OpencvConfigureAndGate -mainSrc $mainSrc -buildDir $buildDir -ocvInstallDir $ocvInstallDir -cmakeExtra $cmakeExtra -ortRoot $ortRoot -ortShimRoot $ortShimRoot -ortVersion $ortVersion -gpuEnv $gpuEnv' -Assignment '$cfgLog'
         $configureAssignment = Get-TestAstAncestor -Node $configureCall[0] -Type ([Management.Automation.Language.AssignmentStatementAst]) -First
