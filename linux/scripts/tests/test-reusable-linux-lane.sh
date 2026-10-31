@@ -112,14 +112,27 @@ _gpu_packaging_forwarded() {
 _gpu_plan() {
   env HOST_GPU_RUNTIME=true GPU_CONTAINER_IMAGE=image GITHUB_OUTPUT="${OUT}" "$@" bash --noprofile --norc -e "${STEP}"
 }
+# _step <job> <key> <value> [field...]: a field path of the job's first step whose <key> equals <value>.
+_step() {
+  local job="$1" key="$2" value="$3" expr f; shift 3
+  expr="next(s for s in V.value(${job},'steps') if V.value(s,'${key}') == '${value}')"
+  for f in "$@"; do expr="V.value(${expr},'${f}')"; done
+  _q "${expr}"
+}
+# _step_before <job> <first> <second>: True when the job runs the step named <first> before the one named <second>.
+_step_before() { _q "[V.value(s,'name') for s in V.value($1,'steps')].index('$2') < [V.value(s,'name') for s in V.value($1,'steps')].index('$3')"; }
+_cpu_plan() { env HOST_GPU_RUNTIME=false ARCHES=x64 GITHUB_OUTPUT="${OUT}" "$@" bash --noprofile --norc -e "${STEP}"; }
+# _run_in <dir> <script> [VAR=value...]: run a workflow step script from its checkout root.
+_run_in() { local dir="$1" script="$2"; shift 2; env "$@" bash -c 'cd "$1" && bash "$2"' _ "${dir}" "${script}"; }
+_amd_attempt() { _gpu_plan GPU_ARTIFACT_LABEL=amd GPU_ATTEMPT_ARTIFACTS=true ARCHES=x64 "$@"; }
 t_assert_ok _gpu_packaging_forwarded "${EXTRA}"
 sed 's/PYTHON_APP_HOST_GPU_RUNTIME/PYTHON_APP_MISSING_GPU_RUNTIME/' "${EXTRA}" > "${_work}/missing-gpu-extra"
 t_assert_fails _gpu_packaging_forwarded "${_work}/missing-gpu-extra"
 t_assert_ok _gpu_plan GPU_ARTIFACT_LABEL=amd ARCHES=x64
 t_assert_ok _gpu_plan GPU_ARTIFACT_LABEL=amd APP_PYTHON_RUNTIME=standalone ARCHES=x64
 t_assert_fails _gpu_plan GPU_ARTIFACT_LABEL=amd APP_PYTHON_RUNTIME=unsafe ARCHES=x64
-t_assert_fails env HOST_GPU_RUNTIME=false APP_PYTHON_RUNTIME=standalone ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
-t_assert_fails env HOST_GPU_RUNTIME=false GPU_ATTEMPT_ARTIFACTS=true ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_fails _cpu_plan APP_PYTHON_RUNTIME=standalone
+t_assert_fails _cpu_plan GPU_ATTEMPT_ARTIFACTS=true
 t_assert_ok _gpu_plan GPU_ATTEMPT_ARTIFACTS=true GPU_ARTIFACT_LABEL=nvidia ARCHES=x64
 t_assert_ok _gpu_plan GPU_ARTIFACT_LABEL=nvidia ARCHES='x64 arm64'
 t_assert_fails _gpu_plan GPU_ARTIFACT_LABEL=amd ARCHES=arm64
@@ -128,19 +141,19 @@ t_assert_fails _gpu_plan GPU_ARTIFACT_LABEL=amd GPU_CONTAINER_IMAGE='' ARCHES=x6
 t_assert_fails _gpu_plan GPU_ARTIFACT_LABEL='' ARCHES=x64
 t_assert_fails _gpu_plan GPU_ARTIFACT_LABEL='AMD/unsafe' ARCHES=x64
 t_assert_fails _gpu_plan GPU_ARTIFACT_LABEL=amd GPU_INVOCATION_SCOPE=team ARCHES=x64
-t_assert_ok _gpu_plan GPU_ARTIFACT_LABEL=amd GPU_ATTEMPT_ARTIFACTS=true GPU_INVOCATION_SCOPE=team ARCHES=x64
-t_assert_fails env HOST_GPU_RUNTIME=false GPU_INVOCATION_SCOPE=team ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
-t_assert_fails env HOST_GPU_RUNTIME=false GPU_ARTIFACT_LABEL=amd ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_ok _amd_attempt GPU_INVOCATION_SCOPE=team
+t_assert_fails _cpu_plan GPU_INVOCATION_SCOPE=team
+t_assert_fails _cpu_plan GPU_ARTIFACT_LABEL=amd
 t_assert_contains "$(grep -F 'Upload packages (source/binary only)|' "${STEPS}")" '!inputs.host-gpu-runtime || success()'
-_artifact_name="$(_q "V.value(V.value(next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Upload packages (source/binary only)'), 'with'), 'name')")"
+_artifact_name="$(_step build name 'Upload packages (source/binary only)' with name)"
 t_assert_contains "${_artifact_name}" 'unverified-gpu-{0}-packages-linux-{1}'
 t_assert_contains "${_artifact_name}" "inputs.gpu-attempt-artifacts && format('unverified-gpu-{0}-packages-linux-{1}-attempt-{2}{3}'" 'github.run_attempt' 'needs.plan.outputs.gpu-scope-suffix'
 t_assert_contains "${_artifact_name}" 'packages-linux-{0}-source-and-binary'
 t_case "the GPU path refuses an old or incomplete consumer hub pin"
-t_assert_eq 'inputs.host-gpu-runtime' "$(_q "V.value(next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Check pinned host GPU packaging contract'), 'if')")"
-t_assert_eq 'True' "$(_q "[V.value(s,'name') for s in V.value(build,'steps')].index('Check pinned host GPU packaging contract') < [V.value(s,'name') for s in V.value(build,'steps')].index('Prepare CI host')")"
-t_assert_contains "$(_q "V.value(V.value(next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Prepare CI host'),'with'),'checkout')")" "inputs.host-gpu-runtime && 'false' || 'true'"
-t_assert_contains "$(_q "V.value(V.value(next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Prepare CI host'),'with'),'pull-first')")" "inputs.host-gpu-runtime && 'false' || 'true'"
+t_assert_eq 'inputs.host-gpu-runtime' "$(_step build name 'Check pinned host GPU packaging contract' if)"
+t_assert_eq 'True' "$(_step_before build 'Check pinned host GPU packaging contract' 'Prepare CI host')"
+t_assert_contains "$(_step build name 'Prepare CI host' with checkout)" "inputs.host-gpu-runtime && 'false' || 'true'"
+t_assert_contains "$(_step build name 'Prepare CI host' with pull-first)" "inputs.host-gpu-runtime && 'false' || 'true'"
 _pin_dir="${_work}/pin/third_party/ANTfrastructure/linux/scripts/06-packaging"
 mkdir -p "${_pin_dir}"
 mkdir -p "${_work}/pin/third_party/ANTfrastructure/linux/scripts/02-toolchain/python"
@@ -184,38 +197,39 @@ mkdir -p "${_work}/formats/dist/packages"
 touch "${_work}/formats/dist/packages/app-gpu-amd-1-linux-x86_64.tar.gz" \
   "${_work}/formats/dist/packages/app-gpu-amd_1_amd64.deb" \
   "${_work}/formats/dist/packages/app-gpu-amd-1-x86_64.AppImage"
-t_assert_ok env GPU_LABEL=amd GPU_ARCH=x64 bash -c 'cd "$1" && bash "$2"' _ "${_work}/formats" "${GPU_FORMATS}"
-t_assert_fails env GPU_LABEL=nvidia GPU_ARCH=x64 bash -c 'cd "$1" && bash "$2"' _ "${_work}/formats" "${GPU_FORMATS}"
-t_assert_fails env GPU_LABEL=amd GPU_ARCH=arm64 bash -c 'cd "$1" && bash "$2"' _ "${_work}/formats" "${GPU_FORMATS}"
+t_assert_ok _run_in "${_work}/formats" "${GPU_FORMATS}" GPU_LABEL=amd GPU_ARCH=x64
+t_assert_fails _run_in "${_work}/formats" "${GPU_FORMATS}" GPU_LABEL=nvidia GPU_ARCH=x64
+t_assert_fails _run_in "${_work}/formats" "${GPU_FORMATS}" GPU_LABEL=amd GPU_ARCH=arm64
 t_assert_contains "$(grep -F 'Build Docs|' "${STEPS}")" '!inputs.host-gpu-runtime'
 t_assert_contains "$(_q "V.value(V.value(V.value(lane,'jobs'),'docs'),'if')")" '!inputs.host-gpu-runtime'
-_test_artifact_name="$(_q "V.value(V.value(next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Upload test results'), 'with'), 'name')")"
+_test_artifact_name="$(_step build name 'Upload test results' with name)"
 t_assert_contains "${_test_artifact_name}" 'unverified-gpu-{0}-test-reports-{1}'
 t_assert_contains "${_test_artifact_name}" "inputs.gpu-attempt-artifacts && format('unverified-gpu-{0}-test-reports-{1}-attempt-{2}{3}'" 'github.run_attempt' 'needs.plan.outputs.gpu-scope-suffix'
 
 t_case "scoped GPU uploads use the pinned validator before any build starts"
 scope_condition="\${{ steps.rows.outputs.scope-required == 'true' }}"
-t_assert_eq "${scope_condition}" "$(_q "V.value(next(s for s in V.value(plan,'steps') if V.value(s,'id') == 'scope'), 'if')")"
-t_assert_eq "${scope_condition}" "$(_q "V.value(next(s for s in V.value(plan,'steps') if V.value(s,'id') == 'scope-checkout'), 'if')")"
-t_assert_eq 'True' "$(_q "[V.value(s,'name') for s in V.value(plan,'steps')].index('Select the arch rows') < [V.value(s,'name') for s in V.value(plan,'steps')].index('Validate the GPU invocation scope')")"
+t_assert_eq "${scope_condition}" "$(_step plan id scope if)"
+t_assert_eq "${scope_condition}" "$(_step plan id scope-checkout if)"
+t_assert_eq 'True' "$(_step_before plan 'Select the arch rows' 'Validate the GPU invocation scope')"
 t_assert_eq '${{ steps.scope.outputs.suffix }}' "$(_q "V.value(V.value(plan,'outputs'),'gpu-scope-suffix')")"
 mkdir -p "${_work}/scope/third_party/ANTfrastructure/shared/python"
 cp "${ROOT}/shared/python/gpu_invocation_scope.py" "${_work}/scope/third_party/ANTfrastructure/shared/python/"
 scope_output="${_work}/scope-output"
-t_assert_ok _gpu_plan GPU_ATTEMPT_ARTIFACTS=true GPU_ARTIFACT_LABEL=amd GPU_INVOCATION_SCOPE=default ARCHES=x64
+_scope() { _run_in "${_work}/scope" "${GPU_SCOPE}" GITHUB_OUTPUT="${scope_output}" GPU_INVOCATION_SCOPE="$1"; }
+t_assert_ok _amd_attempt GPU_INVOCATION_SCOPE=default
 t_assert_contains "$(cat "${OUT}")" 'scope-required=false'
 : > "${OUT}"
-t_assert_ok _gpu_plan GPU_ATTEMPT_ARTIFACTS=true GPU_ARTIFACT_LABEL=amd GPU_INVOCATION_SCOPE=DEFAULT ARCHES=x64
+t_assert_ok _amd_attempt GPU_INVOCATION_SCOPE=DEFAULT
 t_assert_contains "$(cat "${OUT}")" 'scope-required=true'
-t_assert_fails env GPU_INVOCATION_SCOPE=DEFAULT GITHUB_OUTPUT="${scope_output}" bash -c 'cd "$1" && bash "$2"' _ "${_work}/scope" "${GPU_SCOPE}"
+t_assert_fails _scope DEFAULT
 t_assert_fails test -e "${scope_output}"
-t_assert_ok env GPU_INVOCATION_SCOPE=team GITHUB_OUTPUT="${scope_output}" bash -c 'cd "$1" && bash "$2"' _ "${_work}/scope" "${GPU_SCOPE}"
+t_assert_ok _scope team
 t_assert_contains "$(cat "${scope_output}")" 'suffix=-scope-team'
 rm "${scope_output}"
-t_assert_fails env GPU_INVOCATION_SCOPE='bad/scope' GITHUB_OUTPUT="${scope_output}" bash -c 'cd "$1" && bash "$2"' _ "${_work}/scope" "${GPU_SCOPE}"
+t_assert_fails _scope 'bad/scope'
 t_assert_fails test -e "${scope_output}"
 rm "${_work}/scope/third_party/ANTfrastructure/shared/python/gpu_invocation_scope.py"
-t_assert_fails env GPU_INVOCATION_SCOPE=team GITHUB_OUTPUT="${scope_output}" bash -c 'cd "$1" && bash "$2"' _ "${_work}/scope" "${GPU_SCOPE}"
+t_assert_fails _scope team
 
 t_case "the DEFAULT yields exactly the rows the static matrix held, in order"
 # A changed row silently renames the caller's jobs (matrix.arch) and artifacts (matrix.runs_on).
@@ -276,7 +290,7 @@ t_assert_eq "True" "$(_q "'timeout-minutes' in plan")"
 t_assert_eq "ubuntu-26.04" "$(_q "V.value(plan,'runs-on')")"
 
 t_case "the input reaches the step through env, never spliced into the script"
-t_assert_eq '${{ inputs.arches }}' "$(_q "V.value(V.value(next(s for s in V.value(plan,'steps') if V.value(s,'id') == 'rows'),'env'),'ARCHES')")"
+t_assert_eq '${{ inputs.arches }}' "$(_step plan id rows env ARCHES)"
 t_assert_eq "" "$(grep -F -e '${{' "${STEP}")" "an expression in the script body is a shell injection"
 
 t_case "package-emulated is an optional boolean, off by default"

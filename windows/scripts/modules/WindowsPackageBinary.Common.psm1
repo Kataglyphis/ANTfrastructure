@@ -27,11 +27,16 @@ function Get-ArchiveOrtProviderName {
     if ($parts.Count -eq 0 -or $parts[-1] -in @('.', '..') -or $parts[-1] -inotmatch '^onnxruntime_providers_') { return }
     if ($parts -contains '..') { throw "unsafe provider archive path: $raw" }
     $parent = if ($parts.Count -gt 1) { $parts[0..($parts.Count - 2)] -join '/' } else { '' }
-    $expected = (@($Directory, $parts[-1]) | Where-Object { $_ }) -join '/'
+    $expected = (Join-PackagePath -Directory $Directory -Leaf $parts[-1])
     if ($raw -ceq $expected -and (($Entry.ExternalAttributes -shr 16) -band 0xF000) -ne 0xA000) { return $parts[-1] }
     if ([StringComparer]::OrdinalIgnoreCase.Equals($parent, $Directory)) {
         throw "aliased or non-file provider archive member: $raw"
     }
+}
+
+function Join-PackagePath {
+    param([string]$Directory, [string]$Leaf)
+    return (@($Directory, $Leaf) | Where-Object { $_ }) -join '/'
 }
 
 function Get-ArchiveOrtProviderNames {
@@ -41,22 +46,29 @@ function Get-ArchiveOrtProviderNames {
     finally { $archive.Dispose() }
 }
 
+function New-OrtNameSet {
+    param([string[]]$Names, [string]$Select, [string]$Valid, [string]$Invalid, [string]$Duplicate)
+    $set = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $Names | Where-Object { $null -ne $_ -and $_ -imatch $Select } | ForEach-Object {
+        if ($_ -cnotmatch $Valid) { throw ($Invalid -f $_) }
+        if (-not $set.Add($_)) { throw ($Duplicate -f $_) }
+    }
+    return ,$set
+}
+
 function Get-ValidatedOrtProviderNames {
     param([string[]]$Names)
-    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    foreach ($name in $Names) {
-        if ($name -inotmatch '^onnxruntime_providers_') { continue }
-        if ($name -cnotmatch '^onnxruntime_providers_[a-z0-9_]+\.dll$') { throw "invalid ORT provider name: $name" }
-        if (-not $seen.Add($name)) { throw "duplicate ORT provider name: $name" }
-    }
+    $seen = New-OrtNameSet -Names $Names -Select '^onnxruntime_providers_' -Valid '^onnxruntime_providers_[a-z0-9_]+\.dll$' `
+        -Invalid 'invalid ORT provider name: {0}' -Duplicate 'duplicate ORT provider name: {0}'
     return @($seen | Sort-Object)
 }
 
-function Assert-PackageDirectory {
-    param([AllowEmptyString()][string]$Directory)
+function Resolve-SafePackagePath {
+    param([string]$Path, [AllowEmptyString()][string]$Directory)
     if ($Directory -match '(^/|//|(^|/)\.{1,2}(/|$)|[:*?\[\]<>"|\x00-\x1f\\]|[ .](/|$))' -or $Directory.EndsWith('/')) {
         throw "unsafe package directory: $Directory"
     }
+    return (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
 }
 
 function Get-PackageOrtProviderNames {
@@ -67,8 +79,7 @@ function Get-PackageOrtProviderNames {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path, [AllowEmptyString()][string]$Directory = '',
         [string]$RootDirectoryId = '', [string]$RootDirectoryName = '')
-    Assert-PackageDirectory -Directory $Directory
-    $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
+    $resolved = Resolve-SafePackagePath -Path $Path -Directory $Directory
     $extension = [IO.Path]::GetExtension($resolved)
     $names = if ($extension -ieq '.msi') {
         if (-not $RootDirectoryId) { throw 'MSI provider enumeration requires a root directory identifier' }
@@ -86,19 +97,17 @@ function Test-PackageOrtFamilyName {
 
 function New-PackageOrtFamilySet {
     param([string[]]$Name)
-    $allowed = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::OrdinalIgnoreCase)
-    foreach ($item in $Name) {
-        if (-not (Test-PackageOrtFamilyName $item) -or $item -match '[\\/:*?\[\]<>"|\x00-\x1f]' -or
-            $item -match '[ .]$' -or $allowed.ContainsKey($item)) { throw "invalid or duplicate ORT family name: $item" }
-        $allowed.Add($item, $item)
-    }
+    $family = 'invalid or duplicate ORT family name: {0}'
+    $allowed = New-OrtNameSet -Names $Name -Select '' -Valid '(?i)^(onnxruntime[^\\/:*?\[\]<>"|\x00-\x1f]*\.dll|directml\.dll)$' `
+        -Invalid $family -Duplicate $family
     if ($allowed.Count -eq 0) { throw 'ORT family name list is empty' }
     return ,$allowed
 }
 
 function Add-PackageOrtFamilyName {
     param([string]$Name, $Allowed, $Seen, [string]$Context)
-    if (-not $Allowed.ContainsKey($Name) -or $Allowed[$Name] -cne $Name -or -not $Seen.Add($Name)) {
+    $declared = $null
+    if (-not $Allowed.TryGetValue($Name, [ref]$declared) -or $declared -cne $Name -or -not $Seen.Add($Name)) {
         throw "unexpected or duplicate $Context file: $Name"
     }
 }
@@ -108,7 +117,7 @@ function Assert-DirectoryOrtFamily {
     foreach ($file in @(Get-ChildItem -LiteralPath $Path -File -Recurse -Force -ErrorAction Stop)) {
         if (-not (Test-PackageOrtFamilyName $file.Name)) { continue }
         $relative = [IO.Path]::GetRelativePath($Path, $file.FullName).Replace('\', '/')
-        $expected = (@($Directory, $file.Name) | Where-Object { $_ }) -join '/'
+        $expected = (Join-PackagePath -Directory $Directory -Leaf $file.Name)
         if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint -or $relative -cne $expected) {
             throw "unexpected or nested ORT family file: $relative"
         }
@@ -128,8 +137,8 @@ function Assert-MsiOrtFamily {
         if (-not (Test-PackageOrtFamilyName $leaf)) { continue }
         Add-PackageOrtFamilyName -Name $leaf -Allowed $Allowed -Seen $Seen -Context 'MSI ORT family'
     }
-    foreach ($item in $Allowed.Keys) {
-        $relative = (@($Directory, $item) | Where-Object { $_ }) -join '/'
+    foreach ($item in $Allowed) {
+        $relative = (Join-PackagePath -Directory $Directory -Leaf $item)
         $null = Get-MsiInstalledFileId -Path $Path -RelativePath $relative -RootDirectoryId $RootDirectoryId -RootDirectoryName $RootDirectoryName
     }
 }
@@ -141,7 +150,7 @@ function Assert-ArchiveOrtFamily {
         foreach ($entry in $archive.Entries) {
             $leaf = @($entry.FullName -split '[/\\]')[-1]
             if (-not $leaf -or -not (Test-PackageOrtFamilyName $leaf)) { continue }
-            $expected = (@($Directory, $leaf) | Where-Object { $_ }) -join '/'
+            $expected = (Join-PackagePath -Directory $Directory -Leaf $leaf)
             if ($entry.FullName -cne $expected -or (($entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000) {
                 throw "unexpected, nested or linked ORT family archive file: $($entry.FullName)"
             }
@@ -158,9 +167,8 @@ function Assert-PackageOrtFamily {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path, [AllowEmptyString()][string]$Directory = '',
         [Parameter(Mandatory)][string[]]$Name, [string]$RootDirectoryId = '', [string]$RootDirectoryName = '')
-    Assert-PackageDirectory -Directory $Directory
+    $resolved = Resolve-SafePackagePath -Path $Path -Directory $Directory
     $allowed = New-PackageOrtFamilySet -Name $Name
-    $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
     $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     if (Test-Path -LiteralPath $resolved -PathType Container) {
         Assert-DirectoryOrtFamily -Path $resolved -Directory $Directory -Allowed $allowed -Seen $seen

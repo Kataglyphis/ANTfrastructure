@@ -18,7 +18,7 @@ function Get-DisplayPciAddress {
     $encoded = [long]$deviceProperty[0].Data
     $device = $encoded -shr 16
     $function = $encoded -band 0xffff
-    if ($bus -lt 0 -or $bus -gt 255 -or $device -lt 0 -or $device -gt 31 -or $function -gt 7) {
+    if ($bus -notin 0..255 -or $device -notin 0..31 -or $function -notin 0..7) {
         throw 'A PCI display has an invalid bus or address.'
     }
     [pscustomobject]@{ InstanceId = $Display.InstanceId; Address = ('{0:x2}:{1:x2}.{2:x1}' -f $bus, $device, $function) }
