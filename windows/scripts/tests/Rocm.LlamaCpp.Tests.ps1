@@ -180,11 +180,14 @@ Describe 'Install-LlamaCpp: the script body, with the module functions stood in 
         }
         return [pscustomobject]@{ Error = $outcome.Error; Downloads = $fixtureDownloads.ToArray(); Pins = $pins; EnvAsked = $fixtureEnvAsked.ToArray() }
     }
+    # One fixture run in a fresh dir; -Check asserts on its outcome while the dir still exists.
+    function Invoke-LlamaFixtureCase([hashtable]$Fixture, [scriptblock]$Check) {
+        Invoke-InTestDir { param($dir) & $Check (Invoke-LlamaInstallFixture -Root $dir @Fixture) }
+    }
 
     function Assert-LlamaInstalledPayload {
         foreach ($c in @(@{ B = 'hip'; Asset = 'llama-b11115-bin-win-cpu-x64.zip' }, @{ B = 'vulkan'; Asset = 'llama-b11115-bin-win-vulkan-x64.zip' })) {
-            Invoke-InTestDir { param($dir)
-                $r = Invoke-LlamaInstallFixture -Root $dir -Backend $c.B
+            Invoke-LlamaFixtureCase @{ Backend = $c.B } { param($r)
                 Assert-Null $r.Error "$($c.B) installs"
                 Assert-Equal 2 $r.Downloads.Count "$($c.B): two downloads"
                 Assert-Equal "https://github.com/ggml-org/llama.cpp/releases/download/b11115/$($c.Asset)" $r.Downloads[0].Url "$($c.B) zip url"
@@ -232,10 +235,12 @@ Describe 'Install-LlamaCpp: the script body, with the module functions stood in 
                 @{ B = 'hip'; Record = @{ build = '11115'; rocm_release = '10.0.0' }; P = "built against ROCm '10\.0\.0', but the image carries '10\.1\.0'" },
                 @{ B = 'vulkan'; Override = @{ Sha256 = '' }; P = "LLAMA_CPP_VULKAN_SHA256 must be a 64-hex SHA256.*got ''" },
                 @{ B = 'vulkan'; Override = @{ Build = 'b11115' }; P = 'LLAMA_CPP_HIP_BUILD must be a build number' })) {
-            Invoke-InTestDir { param($dir)
-                $fixture = @{ Root = $dir; Backend = $c.B; GpuType = $(if ($c['Gpu']) { $c['Gpu'] } else { 'rocm' }); Override = $(if ($c['Override']) { $c['Override'] } else { @{} }) }
-                if ($c['Record']) { $fixture.Record = $c['Record'] }
-                $r = Invoke-LlamaInstallFixture @fixture
+            # An absent key keeps the fixture's default: the rocm lane, no override, the matching record.
+            $fixture = @{ Backend = $c.B }
+            if ($c['Gpu']) { $fixture.GpuType = $c['Gpu'] }
+            if ($c['Override']) { $fixture.Override = $c['Override'] }
+            if ($c['Record']) { $fixture.Record = $c['Record'] }
+            Invoke-LlamaFixtureCase $fixture { param($r)
                 Assert-Match $c.P "$($r.Error)" "$($c.B) error for $($c.P)"
                 Assert-Equal 0 $r.Downloads.Count "$($c.B): no download for $($c.P)"
                 Assert-False (Test-Path -LiteralPath $r.Pins.InstallDir) "$($c.B): nothing installed for $($c.P)"
@@ -254,8 +259,7 @@ Describe 'Install-LlamaCpp: the script body, with the module functions stood in 
         }
         foreach ($c in @(@{ B = 'hip'; Extra = 'amdhip64_7.dll'; P = "shadow ROCm's own amdhip64_7\.dll" }, @{ B = 'hip'; Extra = 'ggml-hip.dll'; P = 'carries ggml-hip\.dll' },
                 @{ B = 'vulkan'; Extra = 'vulkan-1.dll'; P = 'carries vulkan-1\.dll' })) {
-            Invoke-InTestDir { param($dir)
-                $r = Invoke-LlamaInstallFixture -Root $dir -Backend $c.B -ZipEntry ($script:ZipMinimal[$c.B] + $c.Extra)
+            Invoke-LlamaFixtureCase @{ Backend = $c.B; ZipEntry = ($script:ZipMinimal[$c.B] + $c.Extra) } { param($r)
                 Assert-Match $c.P "$($r.Error)" "$($c.B) $($c.Extra)"
                 Assert-False (Test-Path -LiteralPath $r.Pins.InstallDir) 'nothing extracted'
             }
@@ -532,20 +536,21 @@ Describe 'LlamaCpp check: llama-server --version and llama-cli --list-devices' {
         Set-Content -LiteralPath $p -Value "@echo off`r`n$Body" -Encoding ASCII
         return $p
     }
+    # The version-run finding for a stub with -Body, written into -Dir.
+    function Get-VersionStubFinding([string]$Dir, [string]$Body, [string]$Build) {
+        Get-LlamaCppRunFinding -Run version -Exe (New-VersionStub -Dir $Dir -Body $Body) -Build $Build 6>$null
+    }
 
     It 'passes when the binary reports the pinned build and exits 0' {
         Invoke-InTestDir { param($dir)
-            $exe = New-VersionStub -Dir $dir -Body "echo version: 0.6.0-dev (build 11472, commit d0b490f25) 1>&2`r`nexit /b 0"
-            Assert-Null (Get-LlamaCppRunFinding -Run version -Exe $exe -Build '11472' 6>$null) 'pinned build'
+            Assert-Null (Get-VersionStubFinding $dir "echo version: 0.6.0-dev (build 11472, commit d0b490f25) 1>&2`r`nexit /b 0" '11472') 'pinned build'
         }
     }
 
     It 'reports another build, a non-zero exit, a hang and a missing binary' {
         Invoke-InTestDir { param($dir)
-            $exe = New-VersionStub -Dir $dir -Body "echo version: 0.6.0-dev (build 11472, commit d0b490f25)`r`nexit /b 0"
-            Assert-Match 'does not report build 11473' (Get-LlamaCppRunFinding -Run version -Exe $exe -Build '11473' 6>$null) 'other build'
-            $exe = New-VersionStub -Dir $dir -Body 'exit /b 3'
-            Assert-Match 'exited 3 \(0x00000003\)' (Get-LlamaCppRunFinding -Run version -Exe $exe -Build '11472' 6>$null) 'exit code'
+            Assert-Match 'does not report build 11473' (Get-VersionStubFinding $dir "echo version: 0.6.0-dev (build 11472, commit d0b490f25)`r`nexit /b 0" '11473') 'other build'
+            Assert-Match 'exited 3 \(0x00000003\)' (Get-VersionStubFinding $dir 'exit /b 3' '11472') 'exit code'
             $exe = New-VersionStub -Dir $dir -Body 'ping -n 30 127.0.0.1 > nul'
             Assert-Match 'did not exit within 1 s' (Get-LlamaCppRunFinding -Run version -Exe $exe -Build '11472' -TimeoutSeconds 1) 'hang'
             Assert-Match 'is missing' (Get-LlamaCppRunFinding -Run version -Exe (Join-Path $dir 'nope.exe') -Build '11472') 'missing'

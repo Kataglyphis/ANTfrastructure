@@ -5,30 +5,22 @@ Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.GitFixtures.psm1') -Disab
 
 Describe 'Invoke-InlineRegexPatch' {
 
-    It 'replaces a match, writes the file, and returns $true' {
-        Invoke-InTestDir -Files @{ 'c.cmake' = 'link ${DIR}/libfoo.a here' } -Body { param($dir)
-            $f = Join-Path $dir 'c.cmake'
-            $r = Invoke-InlineRegexPatch -Path $f -Pattern 'lib([a-z]+)\.a' -Replacement '$1.lib' -Description 'c'
-            Assert-True $r 'should report a modification'
-            Assert-Equal 'link ${DIR}/foo.lib here' (Get-Content $f -Raw)
-        }
-    }
-
-    It 'does nothing and returns $false when -Guard does not match' {
-        Invoke-InTestDir -Files @{ 'c.cmake' = 'libfoo.a' } -Body { param($dir)
-            $f = Join-Path $dir 'c.cmake'
-            $r = Invoke-InlineRegexPatch -Path $f -Pattern 'libfoo\.a' -Replacement 'foo.lib' -Guard 'THIS_IS_ABSENT' -Description 'c'
-            Assert-False $r 'guard miss must skip'
-            Assert-Equal 'libfoo.a' (Get-Content $f -Raw) 'file must be untouched'
-        }
-    }
-
-    It 'applies when -Guard matches' {
-        Invoke-InTestDir -Files @{ 'c.cmake' = 'MARKER libfoo.a' } -Body { param($dir)
-            $f = Join-Path $dir 'c.cmake'
-            $r = Invoke-InlineRegexPatch -Path $f -Pattern 'libfoo\.a' -Replacement 'foo.lib' -Guard 'MARKER' -Description 'c'
-            Assert-True $r
-            Assert-Equal 'MARKER foo.lib' (Get-Content $f -Raw)
+    foreach ($case in @(
+        @{ Name = 'replaces a match, writes the file, and returns $true'; Text = 'link ${DIR}/libfoo.a here'; Expected = 'link ${DIR}/foo.lib here'
+            Patch = @{ Pattern = 'lib([a-z]+)\.a'; Replacement = '$1.lib' }; Changed = $true; Verdict = 'should report a modification'; Content = '' }
+        @{ Name = 'does nothing and returns $false when -Guard does not match'; Text = 'libfoo.a'; Expected = 'libfoo.a'
+            Patch = @{ Pattern = 'libfoo\.a'; Replacement = 'foo.lib'; Guard = 'THIS_IS_ABSENT' }; Changed = $false; Verdict = 'guard miss must skip'; Content = 'file must be untouched' }
+        @{ Name = 'applies when -Guard matches'; Text = 'MARKER libfoo.a'; Expected = 'MARKER foo.lib'
+            Patch = @{ Pattern = 'libfoo\.a'; Replacement = 'foo.lib'; Guard = 'MARKER' }; Changed = $true; Verdict = ''; Content = '' }
+    )) {
+        It $case.Name {
+            Invoke-InTestDir -Files @{ 'c.cmake' = $case.Text } -Body { param($dir)
+                $f = Join-Path $dir 'c.cmake'
+                $patch = $case.Patch
+                $r = Invoke-InlineRegexPatch -Path $f @patch -Description 'c'
+                Assert-Equal $case.Changed $r $case.Verdict
+                Assert-Equal $case.Expected (Get-Content $f -Raw) $case.Content
+            }
         }
     }
 
@@ -66,9 +58,13 @@ Describe 'Invoke-InlineRegexPatch' {
 
 Describe 'Add-FileBlockOnce' {
 
+    function Invoke-InTestFile {
+        param([string]$Name, [string]$Text, [scriptblock]$Body)
+        Invoke-InTestDir -Files @{ $Name = $Text } -Body { param($dir) & $Body (Join-Path $dir $Name) }
+    }
+
     It 'appends the block and returns $true on first application' {
-        Invoke-InTestDir -Files @{ 'patcher.cmake' = 'original' } -Body { param($dir)
-            $f = Join-Path $dir 'patcher.cmake'
+        Invoke-InTestFile 'patcher.cmake' 'original' { param($f)
             $r = Add-FileBlockOnce -Path $f -Marker 'WINFIX-A' -Content "`n# WINFIX-A block" -Description 'p'
             Assert-True $r
             Assert-Match 'original' (Get-Content $f -Raw)
@@ -77,19 +73,18 @@ Describe 'Add-FileBlockOnce' {
     }
 
     It 'is idempotent: a second call with the marker present is a no-op' {
-        Invoke-InTestDir -Files @{ 'patcher.cmake' = 'original' } -Body { param($dir)
-            $f = Join-Path $dir 'patcher.cmake'
-            [void](Add-FileBlockOnce -Path $f -Marker 'WINFIX-A' -Content "`n# WINFIX-A block")
+        Invoke-InTestFile 'patcher.cmake' 'original' { param($f)
+            $apply = { Add-FileBlockOnce -Path $f -Marker 'WINFIX-A' -Content "`n# WINFIX-A block" }
+            [void](& $apply)
             $lenAfterFirst = (Get-Content $f -Raw).Length
-            $r2 = Add-FileBlockOnce -Path $f -Marker 'WINFIX-A' -Content "`n# WINFIX-A block"
+            $r2 = & $apply
             Assert-False $r2 'second application must be skipped'
             Assert-Equal $lenAfterFirst (Get-Content $f -Raw).Length 'content must not grow on re-run'
         }
     }
 
     It '-Prepend inserts the block before existing content' {
-        Invoke-InTestDir -Files @{ 'src.cc' = 'int main(){}' } -Body { param($dir)
-            $f = Join-Path $dir 'src.cc'
+        Invoke-InTestFile 'src.cc' 'int main(){}' { param($f)
             [void](Add-FileBlockOnce -Path $f -Marker 'PRAGMA-X' -Content "// PRAGMA-X`n" -Prepend)
             $raw = Get-Content $f -Raw
             Assert-True ($raw.IndexOf('PRAGMA-X') -lt $raw.IndexOf('int main')) 'prepended block must come first'
@@ -159,29 +154,30 @@ Describe 'Invoke-SourcePatchWithFallback' {
             $anchor = if ($Unmatched) { 'DOES NOT MATCH' } else { 'old' }
             Write-TestFileTree -Root $dir -Files @{ 't.txt' = "old`n"; 'p.patch' = "--- a/t.txt`n+++ b/t.txt`n@@ -1 +1 @@`n-$anchor`n+new`n" }
             & $action $dir $patch
+            # git apply rewrites EOLs under core.autocrlf - compare content only.
+            [System.IO.File]::ReadAllText((Join-Path $dir 't.txt')).Trim()
         }.GetNewClosure()
     }
 
     It 'applies rung 1 and never invokes the fallback' {
-        Invoke-SourcePatchFallbackFixture { param($dir, $patch)
+        $text = Invoke-SourcePatchFallbackFixture { param($dir, $patch)
             $flag = Join-Path $dir 'fallback-ran.flag'
             $r = Invoke-SourcePatchWithFallback -PatchFile $patch -SourceDir $dir -Fallback { Set-Content -Path $flag -Value 'x'; $true }
             Assert-True $r 'rung 1 applied must report $true'
-            # git apply rewrites EOLs under core.autocrlf - compare content only.
-            Assert-Equal 'new' ([System.IO.File]::ReadAllText((Join-Path $dir 't.txt')).Trim()) 'the .patch content must have landed'
             Assert-False (Test-Path $flag) 'fallback must not run when the .patch applies'
         }
+        Assert-Equal 'new' $text 'the .patch content must have landed'
     }
 
     It 'falls back when the .patch does not apply and reports the fallback verdict' {
-        Invoke-SourcePatchFallbackFixture -Unmatched -Body { param($dir, $patch)
+        $text = Invoke-SourcePatchFallbackFixture -Unmatched -Body { param($dir, $patch)
             $target = Join-Path $dir 't.txt'
             $r = Invoke-SourcePatchWithFallback -PatchFile $patch -SourceDir $dir -Fallback {
                 Invoke-InlineRegexPatch -Path $target -Pattern 'old' -Replacement 'inline' -Description 't'
             }
             Assert-True $r 'a successful inline fallback must report $true'
-            Assert-Equal 'inline' ([System.IO.File]::ReadAllText($target).Trim())
         }
+        Assert-Equal 'inline' $text
     }
 
     It 'returns $false (no throw) when both rungs miss without -Fatal' {

@@ -14,23 +14,33 @@ function Assert-TestExecutableLayout {
     }.GetNewClosure()
 }
 
+function Get-TestEnvSeen {
+    param([hashtable]$Vars, [string]$Command, [hashtable]$Arguments)
+    # The After values are read before Invoke-WithEnv restores the caller's environment.
+    Invoke-WithEnv $Vars {
+        $seen = @{}
+        & $Command @Arguments -Script { $seen.Path = $env:PATH; $seen.Asan = $env:ASAN_OPTIONS }
+        [pscustomobject]@{ Path = $seen.Path; Asan = $seen.Asan; PathAfter = $env:PATH; AsanAfter = $env:ASAN_OPTIONS }
+    }
+}
+
 Describe 'Invoke-WithAsanOptions' {
+    # Each wrapped run happens once; the tests below only read what it saw.
+    $asan = @{
+        prepended = Get-TestEnvSeen @{ ASAN_OPTIONS = 'pre=1' } Invoke-WithAsanOptions @{ Options = 'x=2' }
+        unset = Get-TestEnvSeen @{ ASAN_OPTIONS = '' } Invoke-WithAsanOptions @{ Options = 'y=3' }
+        emptyKept = Get-TestEnvSeen @{ ASAN_OPTIONS = 'pre=1' } Invoke-WithAsanOptions @{ Options = '' }
+        emptyUnset = Get-TestEnvSeen @{ ASAN_OPTIONS = '' } Invoke-WithAsanOptions @{ Options = '' }
+    }
 
     It 'prepends to an existing ASAN_OPTIONS and restores it afterwards' {
-        Invoke-WithEnv @{ ASAN_OPTIONS = 'pre=1' } {
-            $seen = $null
-            Invoke-WithAsanOptions -Options 'x=2' -Script { $script:seen = $env:ASAN_OPTIONS }
-            Assert-Equal 'x=2:pre=1' $script:seen 'caller options must come first, existing ones must survive'
-            Assert-Equal 'pre=1' $env:ASAN_OPTIONS 'the previous value must be restored'
-        }
+        Assert-Equal 'x=2:pre=1' $asan.prepended.Asan 'caller options must come first, existing ones must survive'
+        Assert-Equal 'pre=1' $asan.prepended.AsanAfter 'the previous value must be restored'
     }
 
     It 'removes the variable again when it was unset before' {
-        Invoke-WithEnv @{ ASAN_OPTIONS = '' } {
-            Invoke-WithAsanOptions -Options 'y=3' -Script { $script:inner = $env:ASAN_OPTIONS }
-            Assert-Equal 'y=3' $script:inner 'the block must see exactly the caller options'
-            Assert-True ([string]::IsNullOrEmpty($env:ASAN_OPTIONS)) 'an initially unset variable must not be left set'
-        }
+        Assert-Equal 'y=3' $asan.unset.Asan 'the block must see exactly the caller options'
+        Assert-True ([string]::IsNullOrEmpty($asan.unset.AsanAfter)) 'an initially unset variable must not be left set'
     }
 
     It 'restores ASAN_OPTIONS even when the script block throws' {
@@ -42,45 +52,33 @@ Describe 'Invoke-WithAsanOptions' {
 
     It 'runs the block with ASAN_OPTIONS untouched for an empty -Options' {
         # Consumers pass -AsanOptions '' for full-application runs; a mandatory [string] would refuse it.
-        Invoke-WithEnv @{ ASAN_OPTIONS = 'pre=1' } {
-            Invoke-WithAsanOptions -Options '' -Script { $script:seenEmpty = $env:ASAN_OPTIONS }
-            Assert-Equal 'pre=1' $script:seenEmpty 'nothing may be prepended, not even a separator'
-            Assert-Equal 'pre=1' $env:ASAN_OPTIONS 'the caller value must survive'
-        }
-        Invoke-WithEnv @{ ASAN_OPTIONS = '' } {
-            Invoke-WithAsanOptions -Options '' -Script { $script:seenUnset = $env:ASAN_OPTIONS }
-            Assert-True ([string]::IsNullOrEmpty($script:seenUnset)) 'an unset variable stays unset inside the block'
-        }
+        Assert-Equal 'pre=1' $asan.emptyKept.Asan 'nothing may be prepended, not even a separator'
+        Assert-Equal 'pre=1' $asan.emptyKept.AsanAfter 'the caller value must survive'
+        Assert-True ([string]::IsNullOrEmpty($asan.emptyUnset.Asan)) 'an unset variable stays unset inside the block'
     }
 }
 
 Describe 'Invoke-WithRuntimePath' {
+    # Each wrapped run happens once; the tests below only read what it saw.
+    $runtime = @{
+        ordered = Get-TestEnvSeen @{ PATH = 'C:\base'; ASAN_OPTIONS = '' } Invoke-WithRuntimePath @{ RuntimeDirs = @('C:\rt1', 'C:\rt2') }
+        blank = Get-TestEnvSeen @{ PATH = 'C:\base'; ASAN_OPTIONS = '' } Invoke-WithRuntimePath @{ RuntimeDirs = @($null, '', '   ') }
+        optedOut = Get-TestEnvSeen @{ PATH = 'C:\base'; ASAN_OPTIONS = 'pre=1' } Invoke-WithRuntimePath @{ RuntimeDirs = @('C:\rt1'); AsanOptions = '' }
+    }
 
     It 'prepends runtime dirs to PATH and restores it afterwards' {
-        Invoke-WithEnv @{ PATH = 'C:\base'; ASAN_OPTIONS = '' } {
-            Invoke-WithRuntimePath -RuntimeDirs @('C:\rt1', 'C:\rt2') -Script { $script:seenPath = $env:PATH }
-            Assert-Equal 'C:\rt1;C:\rt2;C:\base' $script:seenPath 'runtime dirs must come first, in order'
-            Assert-Equal 'C:\base' $env:PATH 'PATH must be restored'
-        }
+        Assert-Equal 'C:\rt1;C:\rt2;C:\base' $runtime.ordered.Path 'runtime dirs must come first, in order'
+        Assert-Equal 'C:\base' $runtime.ordered.PathAfter 'PATH must be restored'
     }
 
     It 'tolerates $null, empty and whitespace entries without touching PATH' {
-        Invoke-WithEnv @{ PATH = 'C:\base'; ASAN_OPTIONS = '' } {
-            Invoke-WithRuntimePath -RuntimeDirs @($null, '', '   ') -Script { $script:seenPath2 = $env:PATH }
-            Assert-Equal 'C:\base' $script:seenPath2 'an all-empty list must leave PATH alone'
-        }
+        Assert-Equal 'C:\base' $runtime.blank.Path 'an all-empty list must leave PATH alone'
     }
 
     It "accepts -AsanOptions '' and still prepends the runtime dirs" {
-        Invoke-WithEnv @{ PATH = 'C:\base'; ASAN_OPTIONS = 'pre=1' } {
-            Invoke-WithRuntimePath -RuntimeDirs @('C:\rt1') -AsanOptions '' -Script {
-                $script:seenPath3 = $env:PATH
-                $script:seenAsan3 = $env:ASAN_OPTIONS
-            }
-            Assert-Equal 'C:\rt1;C:\base' $script:seenPath3 'the runtime dirs still come first'
-            Assert-Equal 'pre=1' $script:seenAsan3 'an opted-out run keeps the caller ASAN_OPTIONS as they were'
-            Assert-Equal 'C:\base' $env:PATH 'PATH must be restored'
-        }
+        Assert-Equal 'C:\rt1;C:\base' $runtime.optedOut.Path 'the runtime dirs still come first'
+        Assert-Equal 'pre=1' $runtime.optedOut.Asan 'an opted-out run keeps the caller ASAN_OPTIONS as they were'
+        Assert-Equal 'C:\base' $runtime.optedOut.PathAfter 'PATH must be restored'
     }
 }
 

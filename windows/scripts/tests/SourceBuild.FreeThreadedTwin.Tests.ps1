@@ -45,6 +45,26 @@ function script:New-PeTestWheel {
     return New-TestWheel -Path $Path -Member $pe
 }
 
+# A cp3XYt wheel whose one -Module .pyd imports the free-threaded runtime: the cross twin every gate expects.
+function script:New-TwinModuleWheel([string]$Path, [string]$Module, [uint16]$Machine = 0xAA64) {
+    return New-PeTestWheel -Path $Path -Member @{ $Module = @('python314t.dll') } -Machine $Machine
+}
+
+# A scratch dir holding a fake free-threaded install at $d\ft, under PYTHON_VERSION 3.14.8 for -Arch.
+function script:Invoke-FakeFreeThreadedCase {
+    param([Parameter(Mandatory)][string]$Arch, [Parameter(Mandatory)][scriptblock]$Body)
+    Invoke-InTestDir { param($d)
+        Invoke-WithEnv @{ PYTHON_FREETHREADED_BIN = (New-FakeFreeThreadedInstall "$d\ft"); PYTHON_VERSION = '3.14.8'; WINDOWS_TARGET_ARCH = $Arch } { & $Body $d }
+    }
+}
+
+# The DLL-directory shim as text, written into a scratch site-packages.
+function script:Get-DllShimText([string]$OpenCvArchDir, [string]$CrossExtTag = '') {
+    Invoke-InTestDir { param($d) [System.IO.File]::ReadAllText((Write-PythonDllDirectoryShim -SitePackages $d -OpenCvArchDir $OpenCvArchDir -CrossExtTag $CrossExtTag)) }
+}
+
+function script:Assert-LiteralMatch([string]$Literal, $Text, [string]$Message) { Assert-Match ([regex]::Escape($Literal)) $Text $Message }
+
 Describe 'Free-threaded twin store and ABI tag' {
 
     It 'stores apart from PYTHON_WHEELS: PYTHON_WHEELS_FREE_THREADED, else PYTHON_WHEELS_CP314T, else C:\runtime\wheels-free-threaded' {
@@ -76,12 +96,10 @@ Describe 'Free-threaded twin store and ABI tag' {
 Describe 'Get-FreeThreadedTwinPlan' {
 
     It 'builds a twin when the image has the free-threaded install, and says why' {
-        Invoke-InTestDir { param($d)
-            Invoke-WithEnv @{ PYTHON_FREETHREADED_BIN = (New-FakeFreeThreadedInstall "$d\ft"); PYTHON_VERSION = '3.14.8'; WINDOWS_TARGET_ARCH = 'amd64' } {
-                $plan = Get-FreeThreadedTwinPlan -Distribution 'av'
-                Assert-True $plan.Build
-                Assert-Match '^free-threaded: building the cp314t twin of av \(setup\.py: compiler directive' $plan.Reason
-            }
+        Invoke-FakeFreeThreadedCase -Arch 'amd64' {
+            $plan = Get-FreeThreadedTwinPlan -Distribution 'av'
+            Assert-True $plan.Build
+            Assert-Match '^free-threaded: building the cp314t twin of av \(setup\.py: compiler directive' $plan.Reason
         }
     }
 
@@ -99,8 +117,8 @@ Describe 'Get-FreeThreadedTwinPlan' {
     }
 
     It 'a cross lane builds the twin with the host interpreter and the target''s python3XYt.lib; no target CPython skips it (mutation)' {
-        Invoke-InTestDir { param($d)
-            Invoke-WithEnv @{ PYTHON_FREETHREADED_BIN = (New-FakeFreeThreadedInstall "$d\ft"); PYTHON_VERSION = '3.14.8'; WINDOWS_TARGET_ARCH = 'arm64'; TEMP_DIR = $d } {
+        Invoke-FakeFreeThreadedCase -Arch 'arm64' { param($d)
+            Invoke-WithEnv @{ TEMP_DIR = $d } {
                 $none = Get-FreeThreadedTwinPlan -Distribution 'onnxruntime' -TargetFreeThreadedRoot "$d\tgt"
                 Assert-False $none.Build 'no target CPython, no GIL wheel, no twin'
                 Assert-Match 'the arm64 cross build has no target CPython, so it builds no GIL wheel either' $none.Reason
@@ -121,12 +139,10 @@ Describe 'Get-FreeThreadedTwinPlan' {
 Describe 'Free-threaded build interpreters' {
 
     It 'Get-TargetBuildPython -FreeThreaded: the host install natively, the target tree''s python3XYt.lib on cross' {
-        Invoke-InTestDir { param($d)
-            Invoke-WithEnv @{ PYTHON_FREETHREADED_BIN = (New-FakeFreeThreadedInstall "$d\ft"); PYTHON_VERSION = '3.14.8'; WINDOWS_TARGET_ARCH = 'amd64' } {
-                $native = Get-TargetBuildPython -FreeThreaded
-                Assert-Equal "$d\ft\python3.14t.exe|$d\ft\libs\python314t.lib|True" "$($native.Exe)|$($native.Lib)|$($native.Available)"
-            }
-            Invoke-WithEnv @{ PYTHON_FREETHREADED_BIN = "$d\ft"; PYTHON_VERSION = '3.14.8'; WINDOWS_TARGET_ARCH = 'arm64' } {
+        Invoke-FakeFreeThreadedCase -Arch 'amd64' { param($d)
+            $native = Get-TargetBuildPython -FreeThreaded
+            Assert-Equal "$d\ft\python3.14t.exe|$d\ft\libs\python314t.lib|True" "$($native.Exe)|$($native.Lib)|$($native.Available)"
+            Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'arm64' } {
                 $missing = Get-TargetBuildPython -FreeThreaded -TargetFreeThreadedRoot "$d\tgt"
                 Assert-False $missing.Available 'no target tree staged'
                 New-StandInFile "$d\tgt\libs\python314t.lib"
@@ -218,8 +234,8 @@ Describe 'Free-threaded build interpreters' {
                 'build a.obj: CXX a.cc', '  INCLUDES = -IC:\ft\Scripts\python.exe-is-not-a-command -IC:/python-freethreaded/include')
             Assert-Equal 1 (Set-OrtNinjaCommandPython -NinjaFile $ninja -From 'C:\ft\Scripts\python.exe' -To 'C:\gil\python.exe')
             $text = Get-Content -Raw $ninja
-            Assert-Match ([regex]::Escape('&& C:\gil\python.exe C:/s/gen_def.py')) $text 'the custom command'
-            Assert-Match ([regex]::Escape('-IC:\ft\Scripts\python.exe-is-not-a-command')) $text 'compile lines untouched'
+            Assert-LiteralMatch '&& C:\gil\python.exe C:/s/gen_def.py' $text 'the custom command'
+            Assert-LiteralMatch '-IC:\ft\Scripts\python.exe-is-not-a-command' $text 'compile lines untouched'
         }
     }
 
@@ -227,11 +243,9 @@ Describe 'Free-threaded build interpreters' {
         $homes = @(Get-PythonDllHome -OpenCvArchDir 'x64')
         Assert-Equal 7 $homes.Count ($homes -join ', ')
         Assert-Equal 'C:\runtime\lib\opencv5\x64\vc18\bin' $homes[0] 'the OpenCV arch dir is substituted'
-        Invoke-InTestDir { param($d)
-            $shim = [System.IO.File]::ReadAllText((Write-PythonDllDirectoryShim -SitePackages $d -OpenCvArchDir 'x64'))
-            foreach ($h in $homes) { Assert-Match ([regex]::Escape("r'$h',")) $shim $h }
-            Assert-Match '_dirs \+= \[\s+r''C:\\runtime\\lib\\opencv5' $shim 'inside the list'
-        }
+        $shim = Get-DllShimText -OpenCvArchDir 'x64'
+        foreach ($h in $homes) { Assert-LiteralMatch "r'$h'," $shim $h }
+        Assert-Match '_dirs \+= \[\s+r''C:\\runtime\\lib\\opencv5' $shim 'inside the list'
     }
 }
 
@@ -255,13 +269,13 @@ Describe 'Free-threaded cross twins (arm64): static gates, the venv pin and the 
     It 'Save-FreeThreadedWheel stores a cross twin on tags, imports and PE machine, with no proof here; any one of them stops it (mutation)' {
         Invoke-InTestDir { param($d)
             Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'arm64'; PYTHON_VERSION = '3.14.8'; PYTHON_FREETHREADED_BIN = "$d\absent" } {
-                $ok = New-PeTestWheel -Path "$d\a\av-1.0-cp314-cp314t-win_arm64.whl" -Member @{ 'av\_core.cp314t-win_arm64.pyd' = @('python314t.dll') }
+                $ok = New-TwinModuleWheel -Path "$d\a\av-1.0-cp314-cp314t-win_arm64.whl" -Module 'av\_core.cp314t-win_arm64.pyd'
                 Assert-Equal "$d\store\av-1.0-cp314-cp314t-win_arm64.whl" (Save-FreeThreadedWheel -Wheel $ok -Distribution 'av' -Store "$d\store") 'stored without an interpreter'
-                $x64 = New-PeTestWheel -Path "$d\b\av-1.0-cp314-cp314t-win_arm64.whl" -Member @{ 'av\_core.cp314t-win_arm64.pyd' = @('python314t.dll') } -Machine 0x8664
+                $x64 = New-TwinModuleWheel -Path "$d\b\av-1.0-cp314-cp314t-win_arm64.whl" -Module 'av\_core.cp314t-win_arm64.pyd' -Machine 0x8664
                 Assert-Throws { Save-FreeThreadedWheel -Wheel $x64 -Distribution 'av' -Store "$d\store2" } -MessagePattern 'machine 0x8664, expected 0xAA64'
                 $gil = New-PeTestWheel -Path "$d\c\av-1.0-cp314-cp314t-win_arm64.whl" -Member @{ 'av\_core.pyd' = @('python314.dll') }
                 Assert-Throws { Save-FreeThreadedWheel -Wheel $gil -Distribution 'av' -Store "$d\store2" } -MessagePattern 'fails the cp3XYt import gate:\s+av[/\\]_core\.pyd imports python314\.dll'
-                $hostTagged = New-PeTestWheel -Path "$d\e\av-1.0-cp314-cp314t-win_amd64.whl" -Member @{ 'av\_core.cp314t-win_amd64.pyd' = @('python314t.dll') }
+                $hostTagged = New-TwinModuleWheel -Path "$d\e\av-1.0-cp314-cp314t-win_amd64.whl" -Module 'av\_core.cp314t-win_amd64.pyd'
                 Assert-Throws { Save-FreeThreadedWheel -Wheel $hostTagged -Distribution 'av' -Store "$d\store2" } -MessagePattern 'is a win_amd64 wheel, not win_arm64'
                 Assert-False (Test-Path "$d\store2") 'nothing refused reached a store'
             }
@@ -271,7 +285,7 @@ Describe 'Free-threaded cross twins (arm64): static gates, the venv pin and the 
     It 'Invoke-PythonWheelBuild -FreeThreaded names bdist_wheel''s platform on a cross lane (mutation)' {
         Invoke-InTestDir { param($d)
             # A build interpreter stand-in: records its arguments and leaves the one twin a build would.
-            $twin = New-PeTestWheel -Path "$d\made\m-1.0-cp314-cp314t-win_arm64.whl" -Member @{ 'm.cp314t-win_arm64.pyd' = @('python314t.dll') }
+            $twin = New-TwinModuleWheel -Path "$d\made\m-1.0-cp314-cp314t-win_arm64.whl" -Module 'm.cp314t-win_arm64.pyd'
             Set-Content -LiteralPath "$d\py.cmd" -Encoding ascii -Value @('@echo %*> "%~dp0args.txt"', "@copy /y ""$([IO.Path]::GetFullPath($twin))"" ""%~dp0dist\"" >nul")
             $null = New-Item -ItemType Directory -Force -Path "$d\dist"
             Set-Content -LiteralPath "$d\dist\stale.whl" -Value 'old GIL output'
@@ -311,12 +325,10 @@ Describe 'Free-threaded cross twins (arm64): static gates, the venv pin and the 
     }
 
     It 'the cross build venv''s shim names a free-threaded module .cp3XYt-<tag>.pyd and a GIL one .cp3XY-<tag>.pyd (mutation)' {
-        Invoke-InTestDir { param($d)
-            $shim = [System.IO.File]::ReadAllText((Write-PythonDllDirectoryShim -SitePackages $d -OpenCvArchDir 'arm64' -CrossExtTag 'win_arm64'))
-            Assert-Match ([regex]::Escape("_abi = 't' if sysconfig.get_config_var('Py_GIL_DISABLED') else ''")) $shim 'the free-threaded build keeps its t'
-            Assert-Match ([regex]::Escape("_ext = '.cp%d%d%s-%s.pyd' % (sys.version_info[0], sys.version_info[1], _abi, _target_tag)")) $shim 'one formula for both'
-            Assert-Match "_target_tag = 'win_arm64'" $shim 'the target tag'
-        }
+        $shim = Get-DllShimText -OpenCvArchDir 'arm64' -CrossExtTag 'win_arm64'
+        Assert-LiteralMatch "_abi = 't' if sysconfig.get_config_var('Py_GIL_DISABLED') else ''" $shim 'the free-threaded build keeps its t'
+        Assert-LiteralMatch "_ext = '.cp%d%d%s-%s.pyd' % (sys.version_info[0], sys.version_info[1], _abi, _target_tag)" $shim 'one formula for both'
+        Assert-Match "_target_tag = 'win_arm64'" $shim 'the target tag'
     }
 
     It 'Get-FreeThreadedStoreFinding: every twin-verdict GIL wheel has one tag-clean twin of its version, and nothing else is there (mutation)' {
@@ -445,8 +457,8 @@ Describe 'IREE v3.12.0 on clang-cl (found proving the runtime twin)' {
 
     It 'runs the VM ISA genrules with the configured Python, as no Windows image has python3 (mutation)' {
         $iree = Get-TwinWiringText 'windows\scripts\build\Build-IreeFromSource.ps1'
-        Assert-Match ([regex]::Escape("-Pattern '`"python3 \`$\(rootpath'")) $iree 'the bare python3 genrule command'
-        Assert-Match ([regex]::Escape("-Replacement '`"`$`${Python3_EXECUTABLE} `$`$(rootpath'")) $iree 'becomes the configured interpreter'
+        Assert-LiteralMatch "-Pattern '`"python3 \`$\(rootpath'" $iree 'the bare python3 genrule command'
+        Assert-LiteralMatch "-Replacement '`"`$`${Python3_EXECUTABLE} `$`$(rootpath'" $iree 'becomes the configured interpreter'
         Assert-Match 'Get-IreeCompilerRtCmakeArgs -Arch \(Get-WindowsHostArch\)' $iree 'host tools link the host builtins'
         Assert-Match 'Get-IreeCompilerRtCmakeArgs -Arch \(Get-WindowsTargetArch\)' $iree 'the target build links the target''s'
     }

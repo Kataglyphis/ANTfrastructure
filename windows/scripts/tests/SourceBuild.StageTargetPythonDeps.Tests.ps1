@@ -22,6 +22,14 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
             Get-WheelRequirements $path
         }
 
+        # Each fixture wheel is written and parsed once; the tests below only read its requirements.
+        $script:parsed = @{
+            test = @(& $script:WheelRequirements -Name 'test' -RequiresDist @('numpy>=1.21', 'packaging', 'typing_extensions>=4.5', 'my-extra==1.0'))
+            extras = @(& $script:WheelRequirements -Name 'extras' -RequiresDist @('numpy>=1.21', 'torch ; extra == "gpu"', 'pytest ; extra == "dev"',
+                    "backports-zstd; (python_version < '3.14') and extra == 'test-full'", 'pytest-perf; sys_platform != "cygwin" and extra == "test"'))
+            blank = @(& $script:WheelRequirements -Name 'blank' -RequiresDist @('numpy>=1.21'))
+            bare = @(& $script:WheelRequirements -Name 'bare' -RequiresDist @())
+        }
     }
 
     AfterAll {
@@ -63,7 +71,7 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
     # Get-WheelRequirements
 
     It 'Get-WheelRequirements reads Requires-Dist lines from a wheel METADATA' {
-        $reqs = @(& $script:WheelRequirements -Name 'test' -RequiresDist @('numpy>=1.21', 'packaging', 'typing_extensions>=4.5', 'my-extra==1.0'))
+        $reqs = $script:parsed.test
         Assert-Equal 4 $reqs.Count 'four requirements'
         Assert-True ($reqs -contains 'numpy>=1.21') 'numpy present'
         Assert-True ($reqs -contains 'packaging') 'packaging present'
@@ -78,8 +86,7 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
     }
 
     It 'Get-WheelRequirements drops extras (extra == markers) — optional deps are not first-touch' {
-        $reqs = @(& $script:WheelRequirements -Name 'extras' -RequiresDist @('numpy>=1.21', 'torch ; extra == "gpu"', 'pytest ; extra == "dev"',
-                "backports-zstd; (python_version < '3.14') and extra == 'test-full'", 'pytest-perf; sys_platform != "cygwin" and extra == "test"'))
+        $reqs = $script:parsed.extras
         Assert-Equal 1 $reqs.Count 'only the non-extra requirement, however the marker is compounded'
         Assert-Equal 'numpy>=1.21' $reqs[0] 'numpy is the first-touch dep'
     }
@@ -97,12 +104,12 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
     }
 
     It 'Get-WheelRequirements stops at the first blank line (description is not parsed)' {
-        $reqs = @(& $script:WheelRequirements -Name 'blank' -RequiresDist @('numpy>=1.21'))
+        $reqs = $script:parsed.blank
         Assert-Equal 1 $reqs.Count 'only the header requirement, not the description'
     }
 
     It 'Get-WheelRequirements returns an empty array for a wheel with no Requires-Dist' {
-        $reqs = @(& $script:WheelRequirements -Name 'bare' -RequiresDist @())
+        $reqs = $script:parsed.bare
         Assert-Equal 0 $reqs.Count 'no requirements'
     }
 
@@ -128,16 +135,21 @@ Describe 'stage-target-python-deps: requirement markers decide for the target' -
         function script:Get-ActiveJoined([string]$Version, [string]$Machine, [string[]]$Reqs) {
             @(Select-ActiveRequirement -PythonExe $script:py -PythonVersion $Version -PlatformMachine $Machine -Requirement $Reqs) -join '|'
         }
+        # Both marker cases share one verdict shape, so only their requirement lists differ.
+        $script:markerReqs = @{
+            pythonVersion = @('pluggy<2,>=1.5', 'exceptiongroup>=1; python_version < "3.11"', 'tomli>=1; python_version < "3.11"')
+            platform = @('colorama; sys_platform == "win32"', 'uvloop; sys_platform != "win32"', 'armonly; platform_machine == "ARM64"')
+        }
     }
 
     It 'drops a python_version < 3.11 requirement for a 3.14 target and keeps it for 3.10 (pytest 9.1.1, 2026-10-10)' {
-        $reqs = @('pluggy<2,>=1.5', 'exceptiongroup>=1; python_version < "3.11"', 'tomli>=1; python_version < "3.11"')
+        $reqs = $script:markerReqs.pythonVersion
         Assert-Equal 'pluggy<2,>=1.5' (Get-ActiveJoined '3.14' 'ARM64' $reqs) 'only the unmarked requirement is active on 3.14'
         Assert-Equal ($reqs -join '|') (Get-ActiveJoined '3.10' 'ARM64' $reqs) 'all three are active on 3.10'
     }
 
     It 'evaluates sys_platform and platform_machine for a Windows target' {
-        $reqs = @('colorama; sys_platform == "win32"', 'uvloop; sys_platform != "win32"', 'armonly; platform_machine == "ARM64"')
+        $reqs = $script:markerReqs.platform
         Assert-Equal "$($reqs[0])|$($reqs[2])" (Get-ActiveJoined '3.14' 'ARM64' $reqs) 'win32 and ARM64 hold on win_arm64'
         Assert-Equal $reqs[0] (Get-ActiveJoined '3.14' 'AMD64' $reqs) 'the ARM64-only requirement drops on win_amd64'
     }
@@ -156,6 +168,8 @@ Describe 'stage-target-python-deps: the cp3XYt twins'' dependencies (CON79)' {
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Copy-TargetPythonDeps.ps1' -FunctionName 'Get-WheelDistName', 'Get-RequirementName',
             'Get-WheelRequirements', 'Select-ActiveRequirement', 'Get-TargetRequirement', 'Get-UnresolvedTargetRequirement',
             'Get-ForeignAbiWheel', 'Get-BundleFirstTouchRequirement')
+        # The two unresolved-edge cases walk their store for the same arm64 target.
+        $script:unresolved = { param($wheels) Get-UnresolvedTargetRequirement -Wheel $wheels -TargetTag 'win_arm64' -PythonExe 'C:\no-such\python.exe' -PythonVersion '3.14' -Machine 'ARM64' }
         $script:depsScript = Get-Content -Raw -LiteralPath (Join-Path (Get-RepoRoot) 'windows\scripts\build\Copy-TargetPythonDeps.ps1')
         # A wheel of METADATA alone, which is all the requirement walk reads.
         function script:New-MetadataWheel([string]$Dir, [string]$FileName, [string[]]$RequiresDist) {
@@ -166,31 +180,33 @@ Describe 'stage-target-python-deps: the cp3XYt twins'' dependencies (CON79)' {
                 try { $writer.Write("Metadata-Version: 2.1`nName: x`nVersion: 1.0`n" + (@($RequiresDist | ForEach-Object { "Requires-Dist: $_`n" }) -join '') + "`n") } finally { $writer.Dispose() }
             } finally { $zip.Dispose() }
         }
+        # Wheels maps each file name to its Requires-Dist lines; the body gets the store's wheel list.
+        function script:Invoke-InMetadataStore([hashtable]$Wheels, [scriptblock]$Body) {
+            Invoke-InTestDir { param($d)
+                foreach ($name in $Wheels.Keys) { New-MetadataWheel $d $name $Wheels[$name] }
+                & $Body @(Get-ChildItem -LiteralPath $d -Filter '*.whl')
+            }
+        }
     }
 
     It 'names each requirement edge no wheel of the store resolves' {
-        Invoke-InTestDir { param($d)
-            New-MetadataWheel $d 'foo-1.0-py3-none-any.whl' @('bar', 'baz>=1')
-            New-MetadataWheel $d 'bar-1.0-py3-none-any.whl' @()
-            $edges = @(Get-UnresolvedTargetRequirement -Wheel @(Get-ChildItem -LiteralPath $d -Filter '*.whl') -TargetTag 'win_arm64' -PythonExe 'C:\no-such\python.exe' -PythonVersion '3.14' -Machine 'ARM64')
+        Invoke-InMetadataStore @{ 'foo-1.0-py3-none-any.whl' = @('bar', 'baz>=1'); 'bar-1.0-py3-none-any.whl' = @() } { param($wheels)
+            $edges = @(& $script:unresolved $wheels)
             Assert-Equal 'foo-1.0-py3-none-any.whl -> baz>=1' ($edges -join '|') 'bar is in the store, baz is not'
         }
     }
 
     It 'counts distinct first-touch requirements and keeps the cv2 numpy floor' {
-        Invoke-InTestDir { param($d)
-            New-MetadataWheel $d 'foo-1.0-py3-none-any.whl' @('bar>=1', 'bar>=1')
-            New-MetadataWheel $d 'baz-1.0-py3-none-any.whl' @('bar>=1')
-            $requirements = Get-BundleFirstTouchRequirement -Wheel @(Get-ChildItem -LiteralPath $d -Filter '*.whl')
+        Invoke-InMetadataStore @{ 'foo-1.0-py3-none-any.whl' = @('bar>=1', 'bar>=1'); 'baz-1.0-py3-none-any.whl' = @('bar>=1') } { param($wheels)
+            $requirements = Get-BundleFirstTouchRequirement -Wheel $wheels
             Assert-Equal 'bar>=1|numpy' ($requirements -join '|') 'a duplicate edge is counted once and cv2 still needs numpy'
             Assert-Equal 2 $requirements.Count 'the floor sees both requirements'
         }
     }
 
     It 'refuses a wheel that is neither pure nor tagged for the target' {
-        Invoke-InTestDir { param($d)
-            New-MetadataWheel $d 'qux-1.0-cp314-cp314-win_amd64.whl' @()
-            Assert-Throws { Get-UnresolvedTargetRequirement -Wheel @(Get-ChildItem -LiteralPath $d -Filter '*.whl') -TargetTag 'win_arm64' -PythonExe 'C:\no-such\python.exe' -PythonVersion '3.14' -Machine 'ARM64' } `
+        Invoke-InMetadataStore @{ 'qux-1.0-cp314-cp314-win_amd64.whl' = @() } { param($wheels)
+            Assert-Throws { & $script:unresolved $wheels } `
                 -MessagePattern 'qux-1\.0-cp314-cp314-win_amd64\.whl is neither a pure wheel'
         }
     }

@@ -270,6 +270,8 @@ FetchContent_Declare(
     )
 '@
     $map = Get-FetchContentUrlMap -CMakeText $cmake
+    # Each active declaration's own URL; the drift case below breaks one of them.
+    $seeds = @{ fmt = 'https://example.org/fmt-1.zip'; 'range-v3' = 'https://example.org/r.zip'; absl = 'git:https://github.com/abseil/abseil-cpp.git' }
     It 'parses URL and git declarations, lower-cased' {
         Assert-Equal 'fmt,range-v3,eigen,absl' (@($map.Keys) -join ',') 'names in order'
         Assert-Equal 'https://example.org/r.zip' $map['range-v3'] 'one-line declaration'
@@ -277,13 +279,16 @@ FetchContent_Declare(
     }
 
     It 'passes when every active declaration has a seed for the same URL' {
-        Assert-FetchContentSeeded -Declared $map -Seeded @{ fmt = 'https://example.org/fmt-1.zip'; 'range-v3' = 'https://example.org/r.zip'; absl = 'git:https://github.com/abseil/abseil-cpp.git' } -Inactive @('eigen')
+        Assert-FetchContentSeeded -Declared $map -Seeded $seeds -Inactive @('eigen')
         Assert-True $true 'no throw'
     }
 
     It 'fails on an unseeded declaration, a URL drift, and an empty scan' {
         Assert-Throws { Assert-FetchContentSeeded -Declared $map -Seeded @{ fmt = 'https://example.org/fmt-1.zip' } -Inactive @('eigen') } -MessagePattern 'range-v3 .* no hash-pinned seed'
-        Assert-Throws { Assert-FetchContentSeeded -Declared $map -Seeded @{ fmt = 'https://example.org/fmt-2.zip'; 'range-v3' = 'https://example.org/r.zip'; absl = 'x' } -Inactive @('eigen', 'absl') } -MessagePattern 'fmt is declared as'
+        $drift = $seeds.Clone()
+        $drift.fmt = 'https://example.org/fmt-2.zip'
+        $drift.absl = 'x'
+        Assert-Throws { Assert-FetchContentSeeded -Declared $map -Seeded $drift -Inactive @('eigen', 'absl') } -MessagePattern 'fmt is declared as'
         Assert-Throws { Assert-FetchContentSeeded -Declared ([ordered]@{}) -Seeded @{} } -MessagePattern 'would check nothing'
     }
 

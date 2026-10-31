@@ -104,9 +104,14 @@ Describe 'WindowsBuildSweep.Common' {
         Invoke-WithFakeEngine -Body $Body -AllCalls
     }
 
+    BeforeAll {
+      # The run cases below differ only in the options added to this one fake-engine call.
+      $script:runArgs = @{ RepoRoot = 'C:\repo'; Image = 'img'; Command = 'true'; DockerExe = 'FakeEngineRun' }
+    }
+
     It 'chowns each named volume with the image it runs, on its platform, never a stock image' {
       $calls = @(Get-FakeEngineCall {
-        Invoke-InLinuxContainerBuild -RepoRoot 'C:\repo' -Image 'img' -Command 'true' -DockerExe 'FakeEngineRun' -NamedVolumes 'cache:/cache' -Platform 'linux/arm64'
+        Invoke-InLinuxContainerBuild @script:runArgs -NamedVolumes 'cache:/cache' -Platform 'linux/arm64'
       })
       $calls.Count | Should -Be 3
       $calls[0] | Should -BeExactly 'volume create cache'
@@ -117,7 +122,7 @@ Describe 'WindowsBuildSweep.Common' {
 
     It 'passes -Privileged, -Device, -Env and -ExtraMount to the run' {
       $calls = @(Get-FakeEngineCall {
-        Invoke-InLinuxContainerBuild -RepoRoot 'C:\repo' -Image 'img' -Command 'true' -DockerExe 'FakeEngineRun' -Privileged -Device '/dev/kvm' `
+        Invoke-InLinuxContainerBuild @script:runArgs -Privileged -Device '/dev/kvm' `
           -Env 'CI=true', 'A=b c' -ExtraMount 'type=bind,source=C:\k,target=/run/secrets/k,readonly'
       })
       $calls[-1] | Should -BeLike 'run --rm --privileged --device /dev/kvm --platform linux/amd64 -e CI=true -e A=b c -v C:\repo:/workspace -w /workspace --mount type=bind,source=C:\k,target=/run/secrets/k,readonly img bash -c *'
