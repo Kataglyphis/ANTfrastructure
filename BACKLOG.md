@@ -898,6 +898,23 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       license provenance, and image checks for the elements; verify other Windows image variants
       independently. Until then that pipeline is unavailable in this image.
 
+- [ ] **CON198 — assess Linux GStreamer tensor inference dependencies** [M]. On 2026-10-31,
+      `gst-inspect-1.0` in the cached x64 images `:latest` (digest
+      `3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`),
+      `:latest-nvidia` (`0e9dec3401f012fe6a5e4e47798aacbd7c2447ba5d8f6308635a3238db79f5cc`), and
+      `:latest-rocm` (`a5d68fbe64e579de09473290489b6953b5bce9aeb7644c18b86d6969bf37ace8`)
+      reported no `tensor_transform`, `tensor_filter`, `tensor_decoder`, or `onnxruntime`
+      elements; `vp8enc` was present. AccelerANTgine constructs a pipeline using several
+      of these names. Determine a supported CPU and GPU inference integration with the
+      consumer, supply its required plugins and dependencies with source and license
+      provenance, and test the actual model pipeline on each supported architecture and
+      vendor. NNStreamer's ONNX Runtime integration is a `tensor_filter` backend rather
+      than an `onnxruntime` element and its [upstream source](https://github.com/nnstreamer/nnstreamer/blob/main/ext/nnstreamer/tensor_filter/tensor_filter_onnxruntime.cc)
+      describes that backend as CPU-only, so installing it alone does not establish this
+      pipeline or GPU support.
+      These observations apply to the cached x64 digests only; inspect current image tags
+      and ARM independently.
+
 - [ ] **CON181 — document and harmonize Windows GPU ORT provider paths** [S, ★★]. The
       published `:winamd64-nvidia` image digest `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777`
       was inspected locally on 2026-10-30: `onnxruntime.dll` and its shared provider bridge
