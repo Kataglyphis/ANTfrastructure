@@ -903,6 +903,18 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       license provenance, and image checks for the elements; verify other Windows image variants
       independently. Until then that pipeline is unavailable in this image.
 
+- [ ] **CON200 — decide whether to seed Windows AMD consumer Cargo dependencies** [S, ★★].
+      On 2026-10-31, the cached `:winamd64-rocm` registry image digest
+      `sha256:774af209a9282b8e8439653eb55756228a6ebdd219076ddc54a1e012e550c99c`
+      could not resolve `cxx` from AccelerANTgine's locked `Src/rusty_code` dependencies
+      using its default Cargo home with `cargo metadata --locked --offline --format-version 1`.
+      The same no-network metadata check succeeded with the retained project fast-build
+      Cargo cache, which contains the lockfile's `cxx` 1.0.205. Decide whether the next
+      image should seed locked consumer crates or document the network/cache prerequisite;
+      if seeding, verify the lockfile offline in a fresh container. This is an optional
+      offline-cache gap, not proof of a broken network-backed build. Check other image
+      digests and architectures independently.
+
 - [ ] **CON199 — provide the pinned PowerShell analyzer in the Windows CPU image** [S, ★★].
       On 2026-10-31 the cached `:winamd64` registry image digest
       `sha256:bec12ad0afe6a5f0a90ae7c58ac06e605ee64b2a06c555842019bb1f00062927`
