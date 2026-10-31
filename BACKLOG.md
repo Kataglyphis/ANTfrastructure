@@ -1028,11 +1028,19 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       NVIDIA's official CUDA 13.4.3 manifest identifies their matching cudart, cuBLAS and
       cuRAND versions. The small, hash-verified official cudart 13.4.92 x64 archive's
       extracted library exactly matched the image file, and its license text was retained.
-      That proves one component's archive-to-image byte match, not the other binaries,
-      the complete dynamic closure, or redistribution terms. NVIDIA's cuDNN 9.27.0
-      manifest identifies the CUDA 13 archive and license path, but its archive was not
-      downloaded or matched. Evidence and source links:
-      `_implementation/nvidia-linux-x64-provenance-20261031/VALIDATION.md`.
+      A later check downloaded the manifest-listed x64 cuBLAS, cuRAND, NVRTC and cuDNN
+      archives and verified their declared sizes and SHA-256 values. The image's cuBLAS,
+      cuBLASLt, cuRAND, NVRTC, NVRTC builtins and all ten versioned cuDNN runtime files
+      matched their respective archive bytes; the original CUDA and cuDNN license texts
+      were retained. In an isolated, unreleased bundle prototype, these files let the CUDA
+      provider resolve its four direct CUDA library dependencies from the bundle on a
+      CPU development image; the intentionally unbundled host `libcuda.so.1` remained
+      missing, and CPU detector parity passed. NVIDIA's cuDNN documentation also identifies
+      dynamically loaded cuBLASLt and NVRTC for some engines. These checks do not prove
+      complete runtime-resource closure, legal compliance, a clean-host installation or
+      physical GPU execution; retain each as a separate gate before any self-contained
+      release. See `_implementation/nvidia-x64-redistrib-verification-20261031/VALIDATION.md`
+      and the earlier `_implementation/nvidia-linux-x64-provenance-20261031/VALIDATION.md`.
       Check newer mutable image tags independently. This observation
       concerns provenance and notice handoff, not redistribution rights or a defect in the
       existing host-runtime artifact. Offline QEMU inventory and commands:
