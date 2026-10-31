@@ -91,10 +91,11 @@ Describe 'Smoke §21: venv DirectML findings' {
         Assert-Equal 0 @(Get-TorchAppOrtFinding -Report (New-VenvOrtReport) -Aspect Dml).Count 'healthy'
     }
 
-    It 'fails a PyPI onnxruntime (measured: plain 1.30.0 lists Azure+CPU, webgpu 1.27.0 WebGpu+CPU)' {
-        foreach ($p in @(@('AzureExecutionProvider', 'CPUExecutionProvider'), @('WebGpuExecutionProvider', 'CPUExecutionProvider'))) {
-            $f = @(Get-TorchAppOrtFinding -Report (New-VenvOrtReport -Set @{ providers = $p }) -Aspect Dml)
-            Assert-Equal 1 $f.Count "providers $($p -join ',')"
+    # Measured: plain 1.30.0 lists Azure+CPU, webgpu 1.27.0 WebGpu+CPU.
+    foreach ($pypi in @{ Name = 'plain'; Providers = @('AzureExecutionProvider', 'CPUExecutionProvider') }, @{ Name = 'webgpu'; Providers = @('WebGpuExecutionProvider', 'CPUExecutionProvider') }) {
+        It "fails a PyPI onnxruntime ($($pypi.Name))" {
+            $f = @(Get-TorchAppOrtFinding -Report (New-VenvOrtReport -Set @{ providers = $pypi.Providers }) -Aspect Dml)
+            Assert-Equal 1 $f.Count "providers $($pypi.Providers -join ',')"
             Assert-Match 'lacks DmlExecutionProvider \(providers: .*CPUExecutionProvider\)' $f[0]
         }
     }
