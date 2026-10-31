@@ -20,19 +20,18 @@ BeforeAll {
 
 # The module resolves Invoke-BuildExternal in its own scope, so only Mock -ModuleName can intercept it.
 Describe 'Invoke-ManualTestExecutable' {
+    BeforeEach { Mock -ModuleName 'WindowsTesting.Common' Write-BuildLogWarning { } }
 
     Context 'when the process cannot start (Windows loader/runtime mismatch)' {
         It 'returns exactly one $false instead of throwing' {
             # -1073741515 is STATUS_DLL_NOT_FOUND: an environment problem, not a test failure.
             Mock -ModuleName 'WindowsTesting.Common' Invoke-BuildExternal { throw 'Process exited with exit code -1073741515' }
-            Mock -ModuleName 'WindowsTesting.Common' Write-BuildLogWarning { }
 
             Assert-ManualTestOutcome -Expected $false
         }
 
         It 'also tolerates STATUS_ENTRYPOINT_NOT_FOUND' {
             Mock -ModuleName 'WindowsTesting.Common' Invoke-BuildExternal { throw 'Process exited with exit code -1073741511' }
-            Mock -ModuleName 'WindowsTesting.Common' Write-BuildLogWarning { }
 
             Assert-ManualTestOutcome -Expected $false
         }
@@ -41,7 +40,6 @@ Describe 'Invoke-ManualTestExecutable' {
     Context 'when the process runs' {
         It 'returns exactly one $true' {
             Mock -ModuleName 'WindowsTesting.Common' Invoke-BuildExternal { }
-            Mock -ModuleName 'WindowsTesting.Common' Write-BuildLogWarning { }
 
             Assert-ManualTestOutcome -Expected $true
         }
@@ -51,7 +49,6 @@ Describe 'Invoke-ManualTestExecutable' {
         It 'rethrows anything that is not the loader/runtime mismatch' {
             # A real test failure must reach the caller, or a red suite turns green.
             Mock -ModuleName 'WindowsTesting.Common' Invoke-BuildExternal { throw 'Process exited with exit code 1' }
-            Mock -ModuleName 'WindowsTesting.Common' Write-BuildLogWarning { }
 
             Invoke-InTestDir -Prefix 'wtc-' -Files @{ 'x.exe' = "x$([Environment]::NewLine)" } -Body { param($root)
                 Assert-Throws -MessagePattern 'exit code 1' -Body {
@@ -63,8 +60,6 @@ Describe 'Invoke-ManualTestExecutable' {
 
     Context 'when the executable does not exist' {
         It 'warns and returns $false rather than searching forever' {
-            Mock -ModuleName 'WindowsTesting.Common' Write-BuildLogWarning { }
-
             Assert-ManualTestOutcome -Expected $false -ExecutableName 'absent.exe'
         }
     }

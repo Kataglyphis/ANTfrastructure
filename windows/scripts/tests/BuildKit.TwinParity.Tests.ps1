@@ -28,6 +28,14 @@ BeforeAll {
     # Cross-component on purpose: every stage mounting windows/qnn-sdk extracts the zip and needs the pin.
     $script:sharedCoreKeys = @('QNN_SDK_ZIP_SHA256')
     $script:qnnMountingCoreStages = @('media-core-built-onnx', 'media-core-built')
+
+    function Assert-StageMirrorsKey {
+        param([string]$Stage, [string[]]$Key, [string]$ArgBecause, [string]$EnvBecause)
+        foreach ($k in $Key) {
+            $script:stages[$Stage].Args | Should -Contain $k -Because ($ArgBecause -f $Stage, $k)
+            $script:stages[$Stage].EnvMirrored | Should -Contain $k -Because $EnvBecause
+        }
+    }
 }
 
 Describe 'Dockerfile.media-builder version-env contract' {
@@ -96,12 +104,8 @@ Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
     It 'declares and ENV-mirrors exactly its component keys per BK stage' {
         foreach ($name in $script:coreComponentKeys.Keys) {
             $script:stages.Keys | Should -Contain $name
-            $keys = $script:coreComponentKeys[$name]
-            foreach ($k in $keys) {
-                $script:stages[$name].Args | Should -Contain $k -Because "$name consumes $k"
-                $script:stages[$name].EnvMirrored | Should -Contain $k `
-                    -Because "an unmirrored ARG silently falls back to the base image's baked env"
-            }
+            Assert-StageMirrorsKey -Stage $name -Key $script:coreComponentKeys[$name] -ArgBecause '{0} consumes {1}' `
+                -EnvBecause "an unmirrored ARG silently falls back to the base image's baked env"
             # A foreign key creeping back into an earlier stage re-couples the cache chain.
             $foreign = @($script:coreComponentKeys.Keys | Where-Object { $_ -ne $name } |
                     ForEach-Object { $script:coreComponentKeys[$_] }) | Where-Object { $_ -in $script:stages[$name].Args }
@@ -113,12 +117,8 @@ Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
     It 'declares the shared QAIRT pin in EVERY media-core stage that mounts the SDK (#154)' {
         # Without the pin Resolve-QnnSdk only warns and extracts unverified.
         foreach ($name in $script:qnnMountingCoreStages) {
-            foreach ($k in $script:sharedCoreKeys) {
-                $script:stages[$name].Args | Should -Contain $k `
-                    -Because "$name mounts windows/qnn-sdk, so an absent $k means an unverified extract"
-                $script:stages[$name].EnvMirrored | Should -Contain $k `
-                    -Because "an unmirrored ARG never reaches Resolve-QnnSdk's -ExpectedSha256"
-            }
+            Assert-StageMirrorsKey -Stage $name -Key $script:sharedCoreKeys -ArgBecause '{0} mounts windows/qnn-sdk, so an absent {1} means an unverified extract' `
+                -EnvBecause "an unmirrored ARG never reaches Resolve-QnnSdk's -ExpectedSha256"
         }
     }
 

@@ -3,10 +3,17 @@
 # SPDX-License-Identifier: MIT
 # NOT covered: a real uv or import cv2 (the image's cv2 exists only there; OrchestrANT's Windows CI imports it).
 
-Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsUv.Common.psm1') -Force -DisableNameChecking
-Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonApp.Common.psm1') -Force -DisableNameChecking
+foreach ($module in 'WindowsUv.Common', 'WindowsPythonApp.Common') {
+    Import-Module (Join-Path (Get-RepoRoot) "windows\scripts\modules\$module.psm1") -Force -DisableNameChecking
+}
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsUv.ChainFixtures.psm1') -Force -DisableNameChecking
+
+function script:New-ImportingTestPePair {
+    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Dependency)
+    New-OrtTestPe -Path (Join-Path $Dir $Name) -Import $Dependency
+    New-OrtTestPe -Path (Join-Path $Dir $Dependency)
+}
 
 # An image runtime whose OpenCV needs FFmpeg from its own PATH dir (the 2026-10-01 bundle gap), a venv, and the chain cv2.
 function script:New-ChainOpenCvFixture {
@@ -15,8 +22,7 @@ function script:New-ChainOpenCvFixture {
     $ocvBin = Join-Path $root 'lib\opencv5\x64\vc18\bin'
     $ffBin = Join-Path $root 'ffmpeg\bin'
     New-OrtTestPe -Path (Join-Path $ocvBin 'opencv_world500.dll') -Import 'avcodec-63.dll', 'KERNEL32.dll'
-    New-OrtTestPe -Path (Join-Path $ffBin 'avcodec-63.dll') -Import 'avutil-61.dll'
-    New-OrtTestPe -Path (Join-Path $ffBin 'avutil-61.dll')
+    New-ImportingTestPePair -Dir $ffBin -Name 'avcodec-63.dll' -Dependency 'avutil-61.dll'
     New-OrtTestPe -Path (Join-Path $root 'bin\unrelated.dll')
     $site = Join-Path $Dir 'venv\Lib\site-packages'
     New-Item -ItemType Directory -Force -Path $site | Out-Null
@@ -30,6 +36,11 @@ function script:New-ChainOpenCvFixture {
         Set-Content -LiteralPath (Join-Path $source 'config-3.14.py') "PYTHON_EXTENSIONS_PATHS = [`n    os.path.join('C:/temp/cpython/Lib/site-packages/cv2', 'python-3.14')`n] + PYTHON_EXTENSIONS_PATHS" -Encoding ASCII
     }
     return [pscustomobject]@{ Root = $root; OcvBin = $ocvBin; FfBin = $ffBin; Venv = (Join-Path $Dir 'venv'); Site = $site; Source = $source }
+}
+
+function script:Invoke-ChainOpenCvTest {
+    param([Parameter(Mandatory)][scriptblock]$Body, [string[]]$DistInfo = @(), [switch]$NoSource)
+    Invoke-InTestDir { param($d) & $Body (New-ChainOpenCvFixture -Dir $d -DistInfo $DistInfo -NoSource:$NoSource) }
 }
 
 function script:Invoke-ChainOpenCvCase {
@@ -46,8 +57,7 @@ function script:Invoke-ChainOpenCvCase {
 Describe 'Sync-UvChainOpenCv' {
 
     It 'replaces every PyPI OpenCV flavour with the image''s cv2, loading from the dirs its closure lives in' {
-        Invoke-InTestDir { param($d)
-            $f = New-ChainOpenCvFixture -Dir $d -DistInfo 'opencv_python-5.0.0.dist-info', 'opencv_contrib_python_headless-5.0.0.dist-info', 'numpy-2.3.0.dist-info'
+        Invoke-ChainOpenCvTest -DistInfo 'opencv_python-5.0.0.dist-info', 'opencv_contrib_python_headless-5.0.0.dist-info', 'numpy-2.3.0.dist-info' -Body { param($f)
             $state = Invoke-ChainOpenCvCase -Fixture $f
             Assert-UvChainTestReplacement -State $state -CommandCount 1
             Assert-UvChainTestCommand -State $state -Index 0 -Match @(
@@ -66,8 +76,7 @@ Describe 'Sync-UvChainOpenCv' {
     }
 
     It 'replaces a cv2 folder the uninstall left behind instead of nesting cv2\cv2' {
-        Invoke-InTestDir { param($d)
-            $f = New-ChainOpenCvFixture -Dir $d -DistInfo 'opencv_python-4.13.0.dist-info'
+        Invoke-ChainOpenCvTest -DistInfo 'opencv_python-4.13.0.dist-info' -Body { param($f)
             New-Item -ItemType Directory -Force -Path (Join-Path $f.Site 'cv2\__pycache__') | Out-Null
             $null = Invoke-ChainOpenCvCase -Fixture $f
             Assert-True (Test-Path -LiteralPath (Join-Path $f.Site 'cv2\__init__.py')) 'cv2\__init__.py'
@@ -78,8 +87,7 @@ Describe 'Sync-UvChainOpenCv' {
 
     It 'does nothing in a venv without OpenCV, or outside the image' {
         foreach ($case in @(@{ Name = 'no OpenCV'; Info = 'numpy-2.3.0.dist-info'; NoSource = $false }, @{ Name = 'outside'; Info = 'opencv_python-5.0.0.dist-info'; NoSource = $true })) {
-            Invoke-InTestDir { param($d)
-                $f = New-ChainOpenCvFixture -Dir $d -DistInfo $case.Info -NoSource:$case.NoSource
+            Invoke-ChainOpenCvTest -DistInfo $case.Info -NoSource:$case.NoSource -Body { param($f)
                 $state = Invoke-ChainOpenCvCase -Fixture $f
                 Assert-Equal '0|0|' "$($state.Uv.Count)|$($state.Log.Count)|$($state.NoSync)" "$($case.Name): no uv call, silent, no hold"
                 Assert-False (Test-Path -LiteralPath (Join-Path $f.Site 'cv2')) "$($case.Name): no cv2 added"
@@ -103,8 +111,7 @@ function script:Invoke-BundleCopy {
 Describe 'Copy-ChainOpenCvPackage for a bundle' {
 
     It 'copies the whole closure, FFmpeg included, into cv2\bin and loads from there' {
-        Invoke-InTestDir { param($d)
-            $f = New-ChainOpenCvFixture -Dir $d
+        Invoke-ChainOpenCvTest -Body { param($f)
             $r = Invoke-BundleCopy -Fixture $f
             Assert-Equal 'avcodec-63.dll,avutil-61.dll,opencv_world500.dll' $r.Names 'the closure, no unrelated DLL'
             Assert-Match "os\.path\.join\(LOADER_DIR, 'bin'\)" $r.Config 'relative, so the bundle relocates'
@@ -113,13 +120,11 @@ Describe 'Copy-ChainOpenCvPackage for a bundle' {
     }
 
     It 'loads ORT from the bundle''s own onnxruntime\capi instead of copying a second chain ORT into cv2\bin' {
-        Invoke-InTestDir { param($d)
-            $f = New-ChainOpenCvFixture -Dir $d
+        Invoke-ChainOpenCvTest -Body { param($f)
             New-OrtTestPe -Path (Join-Path $f.OcvBin 'opencv_world500.dll') -Import 'avcodec-63.dll', 'onnxruntime.dll'
             $capi = Join-Path $f.Site 'onnxruntime\capi'
             foreach ($ortHome in (Join-Path $f.Root 'bin'), $capi) {
-                New-OrtTestPe -Path (Join-Path $ortHome 'onnxruntime.dll') -Import 'DirectML.dll'
-                New-OrtTestPe -Path (Join-Path $ortHome 'DirectML.dll')
+                New-ImportingTestPePair -Dir $ortHome -Name 'onnxruntime.dll' -Dependency 'DirectML.dll'
             }
             $r = Invoke-BundleCopy -Fixture $f -SharedDirectory $capi
             Assert-Equal 'avcodec-63.dll,avutil-61.dll,opencv_world500.dll' $r.Names 'no ORT or DirectML copy'

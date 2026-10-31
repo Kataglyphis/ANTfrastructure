@@ -8,45 +8,39 @@ Describe 'smoke gate: the global floor is calibrated against the section floors'
 
     BeforeAll {
         $script:smokeText = (Get-TestScriptAst -ScriptPath 'windows/scripts/build/Test-Container.ps1').Extent.Text
-        $block = [regex]::Match($script:smokeText, '(?s)\$sectionFloors = @\{(.+?)\n\}').Groups[1].Value
+        $script:floorBlock = [regex]::Match($script:smokeText, '(?s)\$sectionFloors = @\{(.+?)\n\}').Groups[1].Value
         # '<sec>' = @{ Gpu = n; Cpu = n; Arm64 = n }: groups 2/3/4 keep the order the assertions rely on.
-        $script:floorTriples = [regex]::Matches($block, "'(\d+)'\s*=\s*@\{\s*Gpu\s*=\s*(\d+);\s*Cpu\s*=\s*(\d+);\s*Arm64\s*=\s*(\d+)\s*\}")
+        $script:floorTriples = [regex]::Matches($script:floorBlock, "'(\d+)'\s*=\s*@\{\s*Gpu\s*=\s*(\d+);\s*Cpu\s*=\s*(\d+);\s*Arm64\s*=\s*(\d+)\s*\}")
         $script:driver = (Get-TestScriptAst -ScriptPath 'windows/Build-Buildkit.ps1').Extent.Text
+
+        function Assert-LaneFloorCalibrated {
+            param([string]$Lane, [int]$Column, [string]$Pattern, [string]$GoneMessage)
+            $sum = ($script:floorTriples | ForEach-Object { [int]$_.Groups[$Column].Value } | Measure-Object -Sum).Sum
+            $floor = [int][regex]::Match($script:driver, $Pattern).Groups[1].Value
+            if ($GoneMessage) { Assert-True ($floor -gt 0) $GoneMessage }
+            # A run sitting exactly at every section floor is legitimate, so never above the section sum.
+            Assert-True ($floor -le $sum) "$Lane global floor $floor exceeds the sum of the $Lane section floors ($sum)"
+            # ...and must stay within reach of them, or it never fires.
+            Assert-True ($floor -ge [int]($sum * 0.9)) "$Lane global floor $floor is inert against a section sum of $sum"
+        }
     }
 
     It 'section floors parse and cover all three lanes' {
         Assert-True ($script:floorTriples.Count -ge 20) "expected the full three-column section floor table, parsed $($script:floorTriples.Count) entries"
         # A section entry without an Arm64 key means one section silently has no arm64 floor.
-        $block = [regex]::Match($script:smokeText, '(?s)\$sectionFloors = @\{(.+?)\n\}').Groups[1].Value
-        $entries = @([regex]::Matches($block, "'(\d+)'\s*=\s*@\{[^}]*\}"))
+        $entries = @([regex]::Matches($script:floorBlock, "'(\d+)'\s*=\s*@\{[^}]*\}"))
         $incomplete = @($entries | Where-Object { $_.Value -notmatch 'Gpu\s*=' -or $_.Value -notmatch 'Cpu\s*=' -or $_.Value -notmatch 'Arm64\s*=' })
         Assert-Equal 0 $incomplete.Count "every section must carry Gpu, Cpu and Arm64 floors (incomplete: $(($incomplete | ForEach-Object { $_.Value }) -join ' | '))"
         Assert-Equal $entries.Count $script:floorTriples.Count 'every entry parses in the canonical Gpu/Cpu/Arm64 order'
     }
 
     It 'the GPU and CPU floors the driver sends match their section sums' {
-        $gpuSum = ($script:floorTriples | ForEach-Object { [int]$_.Groups[2].Value } | Measure-Object -Sum).Sum
-        $cpuSum = ($script:floorTriples | ForEach-Object { [int]$_.Groups[3].Value } | Measure-Object -Sum).Sum
-
-        $gpuFloor = [int][regex]::Match($script:driver, '\$effectiveMinPassed\s*=\s*(\d+)').Groups[1].Value
-        $cpuFloor = [int][regex]::Match($script:driver, '\[int\]\$SmokeMinPassed\s*=\s*(\d+)').Groups[1].Value
-
-        Assert-True ($gpuFloor -gt 0) 'the GPU lane floor is gone from Build-Buildkit.ps1'
-        # A run sitting exactly at every section floor is legitimate, so never above the section sum.
-        Assert-True ($gpuFloor -le $gpuSum) "GPU global floor $gpuFloor exceeds the sum of the GPU section floors ($gpuSum)"
-        Assert-True ($cpuFloor -le $cpuSum) "CPU global floor $cpuFloor exceeds the sum of the CPU section floors ($cpuSum)"
-        # ...and must stay within reach of them, or it never fires.
-        Assert-True ($gpuFloor -ge [int]($gpuSum * 0.9)) "GPU global floor $gpuFloor is inert against a section sum of $gpuSum"
-        Assert-True ($cpuFloor -ge [int]($cpuSum * 0.9)) "CPU global floor $cpuFloor is inert against a section sum of $cpuSum"
+        Assert-LaneFloorCalibrated -Lane GPU -Column 2 -Pattern '\$effectiveMinPassed\s*=\s*(\d+)' -GoneMessage 'the GPU lane floor is gone from Build-Buildkit.ps1'
+        Assert-LaneFloorCalibrated -Lane CPU -Column 3 -Pattern '\[int\]\$SmokeMinPassed\s*=\s*(\d+)'
     }
 
     It 'the ARM64 floor the driver sends matches the arm64 section sum' {
-        $armSum = ($script:floorTriples | ForEach-Object { [int]$_.Groups[4].Value } | Measure-Object -Sum).Sum
-        $armFloor = [int][regex]::Match($script:driver, '\$armMinPassed\s*=\s*(\d+)').Groups[1].Value
-
-        Assert-True ($armFloor -gt 0) 'the arm64 lane floor ($armMinPassed) is gone from Build-Buildkit.ps1'
-        Assert-True ($armFloor -le $armSum) "arm64 global floor $armFloor exceeds the sum of the arm64 section floors ($armSum)"
-        Assert-True ($armFloor -ge [int]($armSum * 0.9)) "arm64 global floor $armFloor is inert against a section sum of $armSum"
+        Assert-LaneFloorCalibrated -Lane arm64 -Column 4 -Pattern '\$armMinPassed\s*=\s*(\d+)' -GoneMessage 'the arm64 lane floor ($armMinPassed) is gone from Build-Buildkit.ps1'
     }
 
     It 'payload sections floor at 0 on arm64 and stay 0 — never "fixed" by a skip' {

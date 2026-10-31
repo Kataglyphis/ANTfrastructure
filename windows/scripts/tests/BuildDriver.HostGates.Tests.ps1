@@ -1,8 +1,10 @@
 #requires -Version 7.0
 # The host preflight gates run only before a multi-hour build, so a regression in them surfaces only after it is paid for.
 
+# $Body gets ($fixture, $gate): $gate splats the fixture's shim and state file; -Recorded deploys the state first, and -Replacement then overwrites the shim.
 function Invoke-ShimFilesFixture {
-    param([Parameter(Mandatory)][scriptblock]$Body, [string]$Content = 'x', [string]$StockContent, [Collections.IDictionary]$AdditionalFiles = @{})
+    param([Parameter(Mandatory)][scriptblock]$Body, [string]$Content = 'x', [string]$StockContent, [Collections.IDictionary]$AdditionalFiles = @{},
+        [switch]$Recorded, [string]$Replacement)
     $files = @{ 'shim.exe' = $Content }
     if ($PSBoundParameters.ContainsKey('StockContent')) { $files['shim.exe.orig'] = $StockContent }
     foreach ($entry in $AdditionalFiles.GetEnumerator()) { $files[$entry.Key] = $entry.Value }
@@ -12,15 +14,25 @@ function Invoke-ShimFilesFixture {
             Shim = Join-Path $dir 'shim.exe'; StatePath = Join-Path $dir 'state.json'
             Stock = Join-Path $dir 'shim.exe.orig'; Directory = $dir
         }
-        & $action $fixture
+        $fixture | Add-Member -NotePropertyName Size -NotePropertyValue (Get-Item $fixture.Shim).Length
+        $gate = @{ ShimPath = $fixture.Shim; StatePath = $fixture.StatePath }
+        $stock = if ($files.Contains('shim.exe.orig')) { @{ StockBackupPath = $fixture.Stock } } else { @{} }
+        if ($Recorded) { Write-ShimPatchState @gate @stock | Out-Null }
+        if ($Replacement) { Set-Content -Path $fixture.Shim -Value $Replacement -NoNewline }
+        & $action $fixture $gate
     }.GetNewClosure()
+}
+
+function New-FakeGpuRow {
+    param([Parameter(Mandatory)][string]$FriendlyName, [string]$Status = 'OK')
+    return [pscustomobject]@{ FriendlyName = $FriendlyName; Status = $Status }
 }
 
 function Assert-Rdna4FixtureNamesRejected {
     param([string[]]$Name, [string]$Reason)
     foreach ($deviceName in $Name) {
         Assert-Throws -Body {
-            Assert-NoActiveRdna4Gpu -Devices @([pscustomobject]@{ FriendlyName = $deviceName; Status = 'OK' })
+            Assert-NoActiveRdna4Gpu -Devices @(New-FakeGpuRow $deviceName)
         } -Message ("$deviceName $Reason")
     }
 }
@@ -102,51 +114,45 @@ Describe 'Write-ShimPatchState / Get-ShimPatchStatePath' {
 Describe 'Assert-ShimPatch (hash gate)' {
 
     It 'passes when the live binary matches the recorded hash' {
-        Invoke-ShimFilesFixture -Content 'patched-shim-bytes' -Body { param($fixture)
-            Write-ShimPatchState -ShimPath $fixture.Shim -StatePath $fixture.StatePath -Variant 'local-constant' | Out-Null
+        Invoke-ShimFilesFixture -Content 'patched-shim-bytes' -Body { param($fixture, $gate)
+            Write-ShimPatchState @gate -Variant 'local-constant' | Out-Null
             # No -Force, no size in either table: the hash alone must satisfy it.
-            Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath
+            Assert-ShimPatch @gate
         }
     }
 
     It 'throws when the binary changed after deployment' {
-        Invoke-ShimFilesFixture -Content 'patched-shim-bytes' -Body { param($fixture)
-            Write-ShimPatchState -ShimPath $fixture.Shim -StatePath $fixture.StatePath | Out-Null
-            # Simulate a Stevedore update overwriting the patched shim.
-            Set-Content -Path $fixture.Shim -Value 'something-else-entirely' -NoNewline
+        # Simulate a Stevedore update overwriting the patched shim.
+        Invoke-ShimFilesFixture -Content 'patched-shim-bytes' -Recorded -Replacement 'something-else-entirely' -Body { param($fixture, $gate)
             Assert-Throws -MessagePattern 'CHANGED since the patch was deployed' -Body {
-                Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath
+                Assert-ShimPatch @gate
             }
         }
     }
 
     It 'names a revert to stock specifically when the stock hash is known' {
         # "Reverted to stock" tells the operator a Stevedore update did it; "changed" leaves them guessing.
-        Invoke-ShimFilesFixture -Content 'patched' -StockContent 'stock' -Body { param($fixture)
-            Write-ShimPatchState -ShimPath $fixture.Shim -StatePath $fixture.StatePath -StockBackupPath $fixture.Stock | Out-Null
+        Invoke-ShimFilesFixture -Content 'patched' -StockContent 'stock' -Recorded -Body { param($fixture, $gate)
             Copy-Item $fixture.Stock $fixture.Shim -Force
             Assert-Throws -MessagePattern 'REVERTED TO THE STOCK BINARY' -Body {
-                Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath
+                Assert-ShimPatch @gate
             }
         }
     }
 
     It '-Force downgrades a hash mismatch to a warning' {
-        Invoke-ShimFilesFixture -Content 'patched' -Body { param($fixture)
-            Write-ShimPatchState -ShimPath $fixture.Shim -StatePath $fixture.StatePath | Out-Null
-            Set-Content -Path $fixture.Shim -Value 'other' -NoNewline
-            Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath -Force -WarningAction SilentlyContinue
+        Invoke-ShimFilesFixture -Content 'patched' -Recorded -Replacement 'other' -Body { param($fixture, $gate)
+            Assert-ShimPatch @gate -Force -WarningAction SilentlyContinue
         }
     }
 
     It 'ignores a state file recorded for a DIFFERENT install path' {
         # Comparing hashes of two unrelated binaries is worse than no check, so the gate must fall back.
-        Invoke-ShimFilesFixture -Content patched -AdditionalFiles @{ 'elsewhere.exe' = 'unrelated' } -Body { param($fixture)
+        Invoke-ShimFilesFixture -Content patched -AdditionalFiles @{ 'elsewhere.exe' = 'unrelated' } -Body { param($fixture, $gate)
             $other = Join-Path $fixture.Directory 'elsewhere.exe'
             Write-ShimPatchState -ShimPath $other -StatePath $fixture.StatePath | Out-Null
             # Falls back to size: declare this file's size as patched -> passes.
-            Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath `
-                -PatchedSize @((Get-Item $fixture.Shim).Length) -WarningAction SilentlyContinue
+            Assert-ShimPatch @gate -PatchedSize $fixture.Size -WarningAction SilentlyContinue
         }
     }
 }
@@ -154,26 +160,23 @@ Describe 'Assert-ShimPatch (hash gate)' {
 Describe 'Assert-ShimPatch (size fallback, no recorded hash)' {
 
     It 'accepts a known patched size and asks to record the hash' {
-        Invoke-ShimFilesFixture -Body { param($fixture)
-            Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath `
-                -PatchedSize @((Get-Item $fixture.Shim).Length) -WarningAction SilentlyContinue
+        Invoke-ShimFilesFixture -Body { param($fixture, $gate)
+            Assert-ShimPatch @gate -PatchedSize $fixture.Size -WarningAction SilentlyContinue
         }
     }
 
     It 'still fails hard on a known stock size' {
-        Invoke-ShimFilesFixture -Body { param($fixture)
+        Invoke-ShimFilesFixture -Body { param($fixture, $gate)
             # The patched sentinel must not match the fixture's 1-byte size, or the stock check never runs.
             Assert-Throws -MessagePattern 'STOCK binary' -Body {
-                Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath `
-                    -PatchedSize @(999999) -StockSize @((Get-Item $fixture.Shim).Length)
+                Assert-ShimPatch @gate -PatchedSize @(999999) -StockSize $fixture.Size
             }
         }
     }
 
     It 'warns (never throws) on an unrecognised size' {
-        Invoke-ShimFilesFixture -Body { param($fixture)
-            Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath `
-                -PatchedSize @(999999) -StockSize @(999998) -WarningAction SilentlyContinue
+        Invoke-ShimFilesFixture -Body { param($fixture, $gate)
+            Assert-ShimPatch @gate -PatchedSize @(999999) -StockSize @(999998) -WarningAction SilentlyContinue
         }
     }
 
@@ -193,10 +196,9 @@ Describe 'Assert-ShimPatch (size fallback, no recorded hash)' {
     }
 
     It 'falls back to the size check when the state file is corrupt' {
-        Invoke-ShimFilesFixture -Content 'x' -Body { param($fixture)
+        Invoke-ShimFilesFixture -Content 'x' -Body { param($fixture, $gate)
             Set-Content -Path $fixture.StatePath -Value 'not json at all {{{' -NoNewline
-            Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath `
-                -PatchedSize @((Get-Item $fixture.Shim).Length) -WarningAction SilentlyContinue
+            Assert-ShimPatch @gate -PatchedSize $fixture.Size -WarningAction SilentlyContinue
         }
     }
 }
@@ -269,10 +271,10 @@ Describe 'Get-StageDiskFloorGb per SUB-stage (refined after a 1.5 GB false refus
 Describe 'Assert-NoActiveRdna4Gpu (RDNA4 layer-lock gate, 2026-08-10)' {
 
     # Fake PnP rows: the gate judges FriendlyName + Status alone, never this host's real GPUs.
-    $rdna4On   = [pscustomobject]@{ FriendlyName = 'AMD Radeon RX 9070 XT'; Status = 'OK' }
-    $rdna4Off  = [pscustomobject]@{ FriendlyName = 'AMD Radeon RX 9070 XT'; Status = 'Error' }
-    $igpu      = [pscustomobject]@{ FriendlyName = 'AMD Radeon(TM) Graphics'; Status = 'OK' }
-    $nvidia    = [pscustomobject]@{ FriendlyName = 'NVIDIA GeForce RTX 4090'; Status = 'OK' }
+    $rdna4On   = New-FakeGpuRow 'AMD Radeon RX 9070 XT'
+    $rdna4Off  = New-FakeGpuRow 'AMD Radeon RX 9070 XT' 'Error'
+    $igpu      = New-FakeGpuRow 'AMD Radeon(TM) Graphics'
+    $nvidia    = New-FakeGpuRow 'NVIDIA GeForce RTX 4090'
 
     It 'refuses to start when an RDNA4 dGPU is enabled' {
         Assert-Throws -MessagePattern 'ActivateLayer 0x20' -Body {
@@ -354,10 +356,10 @@ Describe 'Assert-BuildkitdStepLogEnv (step-log clip preflight, backlog 0a)' {
 
 Describe 'Get-Rdna4HazardDevice (single-source hazard set, backlog #1)' {
 
-    $rdna4On   = [pscustomobject]@{ FriendlyName = 'AMD Radeon RX 9070 XT'; Status = 'OK' }
-    $rdna4Off  = [pscustomobject]@{ FriendlyName = 'AMD Radeon RX 9060 XT'; Status = 'Error' }
-    $aipro     = [pscustomobject]@{ FriendlyName = 'AMD Radeon AI PRO R9700'; Status = 'OK' }
-    $igpu      = [pscustomobject]@{ FriendlyName = 'AMD Radeon(TM) Graphics'; Status = 'OK' }
+    $rdna4On   = New-FakeGpuRow 'AMD Radeon RX 9070 XT'
+    $rdna4Off  = New-FakeGpuRow 'AMD Radeon RX 9060 XT' 'Error'
+    $aipro     = New-FakeGpuRow 'AMD Radeon AI PRO R9700'
+    $igpu      = New-FakeGpuRow 'AMD Radeon(TM) Graphics'
 
     It 'returns every hazard SKU and nothing else' {
         $r = @(Get-Rdna4HazardDevice -Devices @($rdna4On, $rdna4Off, $aipro, $igpu))

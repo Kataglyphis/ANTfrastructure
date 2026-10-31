@@ -145,6 +145,11 @@ Sync-UvChainOnnxRuntime -VenvPath '$($f.Venv)' -PythonRunner `$py -LogInfo { } -
     }
 }
 
+function script:Assert-ChainOrtLogged {
+    param([Parameter(Mandatory)]$State, [Parameter(Mandatory)][string]$Pattern, [Parameter(Mandatory)][string]$Because)
+    Assert-True (@($State.Log) -match $Pattern) $Because
+}
+
 # $Body gets ($fixture, $dir) in a throwaway dir, with UV_NO_SYNC cleared for the case and restored after it.
 function script:Use-ChainOrtFixture {
     param([Parameter(Mandatory)][scriptblock]$Body, [switch]$NoOrtWheel)
@@ -165,7 +170,7 @@ Describe 'WindowsUv.Common: Sync-UvChainOnnxRuntime, and Sync-UvProjectDependenc
                 '[\\/]onnxruntime-1\.30\.0-cp314-cp314-win_amd64\.whl( |$)',
                 '[\\/]onnxruntime_genai-0\.15\.2-cp314-cp314-win_amd64\.whl( |$)'
             ) -NotMatch 'tvm-'
-            Assert-True (@($r.Log) -match 'ORT-CENSUS PASS') 'the census verdict is logged'
+            Assert-ChainOrtLogged $r 'ORT-CENSUS PASS' 'the census verdict is logged'
         }
     }
 
@@ -213,7 +218,7 @@ Describe 'WindowsUv.Common: Sync-UvChainOnnxRuntime, and Sync-UvProjectDependenc
             $r = Invoke-ChainOrtCase -Fixture $f -Store ''
             Assert-Equal '' $r.Error 'today''s behaviour: no failure'
             Assert-Equal 0 $r.Uv.Count 'no uv call'
-            Assert-True (@($r.Log) -match 'NOTICE: .* runs ONNX Runtime from outside the chain: onnxruntime onnxruntime-directml onnxruntime-genai') 'the loud notice names them'
+            Assert-ChainOrtLogged $r 'NOTICE: .* runs ONNX Runtime from outside the chain: onnxruntime onnxruntime-directml onnxruntime-genai' 'the loud notice names them'
             Assert-Equal '' $r.NoSync 'no hold'
         }
     }
@@ -283,7 +288,7 @@ Describe 'WindowsUv.Common: inside our images the sync leaves the lock''s ORT to
             Assert-Equal 2 $r.Uv.Count 'the sync and one install, no uninstall'
             Assert-Match '^pip install --python .*onnxruntime-1\.30\.0-cp314-cp314-win_amd64\.whl' $r.Uv[1] 'the chain wheels go in'
             Assert-Equal '1' $r.NoSync 'UV_NO_SYNC held'
-            Assert-True (@($r.Log) -match '^chain ORT: the sync leaves onnxruntime onnxruntime-directml onnxruntime-genai to the chain wheels$') 'the skip is logged'
+            Assert-ChainOrtLogged $r '^chain ORT: the sync leaves onnxruntime onnxruntime-directml onnxruntime-genai to the chain wheels$' 'the skip is logged'
         }
     }
 
@@ -318,7 +323,7 @@ Describe 'WindowsUv.Common: inside our images the sync leaves the lock''s ORT to
             $r = Invoke-ChainOrtCase -Fixture $f -Store $f.Store -Listed @('ORT-CENSUS PURGE onnxruntime') -Skipped 'onnxruntime', 'onnxruntime-genai'
             Assert-Equal '' $r.Error 'no failure'
             Assert-Equal "pip uninstall --python $($f.Venv)\Scripts\python.exe onnxruntime" $r.Uv[0] 'the installed one alone'
-            Assert-True (@($r.Log) -match '^chain ORT: replacing onnxruntime onnxruntime-genai in ') 'both are replaced'
+            Assert-ChainOrtLogged $r '^chain ORT: replacing onnxruntime onnxruntime-genai in ' 'both are replaced'
         }
         Use-ChainOrtFixture -NoOrtWheel { param($f)
             $r = Invoke-ChainOrtCase -Fixture $f -Store $f.Store -Listed @() -Skipped 'onnxruntime'

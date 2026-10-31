@@ -38,14 +38,12 @@ Describe 'Get-BuildJobCount' {
 
     It 'derives min(cores, mem/perJob) when that lands between the floor and the cap' {
         $cores = [Environment]::ProcessorCount
-        if ($cores -ge 4) {
-            Invoke-WithEnv @{ BUILD_JOBS = ''; MEMORY_LIMIT_GB = '12' } {
+        Invoke-WithEnv @{ BUILD_JOBS = ''; MEMORY_LIMIT_GB = '12' } {
+            if ($cores -ge 4) {
                 # 12 / 4 = 3, which is >=2 (floor) and <= cores(>=4): expect exactly 3.
                 Assert-Equal 3 (Get-BuildJobCount -MemGBPerJob 4)
-            }
-        } else {
-            # Low-core host: the cap dominates; assert it never exceeds cores.
-            Invoke-WithEnv @{ BUILD_JOBS = ''; MEMORY_LIMIT_GB = '12' } {
+            } else {
+                # Low-core host: the cap dominates; assert it never exceeds cores.
                 Assert-True ((Get-BuildJobCount -MemGBPerJob 4) -le $cores)
             }
         }

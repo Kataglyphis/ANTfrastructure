@@ -5,6 +5,26 @@
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonWheel.Common.psm1') -Force -DisableNameChecking
 
+function script:Get-RepoFullPath {
+    param([Parameter(Mandatory)][string]$Relative)
+    return [IO.Path]::GetFullPath((Join-Path (Get-RepoRoot) $Relative))
+}
+
+# Copies the module into a flat image mount beside a stand-in file, then returns what the expression prints in a fresh pwsh.
+function script:Invoke-FlatMountProbe {
+    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][string]$File, [Parameter(Mandatory)][string[]]$Value, [Parameter(Mandatory)][string]$Expression)
+    $null = New-Item -ItemType Directory -Force -Path "$Dir\bkmnt\modules"
+    Copy-Item (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonWheel.Common.psm1') "$Dir\bkmnt\modules\"
+    Set-Content -LiteralPath "$Dir\bkmnt\$File" -Value $Value
+    $probe = "Import-Module '$Dir\bkmnt\modules\WindowsPythonWheel.Common.psm1'; $Expression"
+    return "$(& pwsh -NoProfile -NonInteractive -Command $probe)".Trim()
+}
+
+function script:Get-WheelFindingText {
+    param([Parameter(Mandatory)][string]$Path)
+    return (Get-FreeThreadedWheelFinding -Path $Path -PlatformTag 'win_amd64') -join '|'
+}
+
 Describe 'Get-FreeThreadedTwinTable' {
 
     It 'names exactly the five twins the owner request lists, and every row a known verdict, pin and evidence' {
@@ -29,7 +49,7 @@ Describe 'Get-FreeThreadedTwinTable' {
     }
 
     It 'is the one table file the Linux lane reads, row for row, and the module carries no copy of it (mutation)' {
-        $file = [IO.Path]::GetFullPath((Join-Path (Get-RepoRoot) 'linux\scripts\03-media\free-threaded-twins.txt'))
+        $file = Get-RepoFullPath 'linux\scripts\03-media\free-threaded-twins.txt'
         Assert-Equal $file (& (Get-Module WindowsPythonWheel.Common) { $script:FreeThreadedTwinTable }) 'the checkout resolves the shared file'
         $raw = @(Get-Content -LiteralPath $file | Where-Object { $_ -notmatch '^\s*(#|$)' })
         $parsed = @(Get-FreeThreadedTwinTable | ForEach-Object { "$($_.Distribution)|$($_.Verdict)|$($_.Pin)|$($_.Evidence)" })
@@ -41,11 +61,9 @@ Describe 'Get-FreeThreadedTwinTable' {
 
     It 'reads the copy one level above modules\ in an image, and a missing table throws rather than classifying nothing (mutation)' {
         Invoke-InTestDir { param($d)
-            $null = New-Item -ItemType Directory -Force -Path "$d\bkmnt\modules"
-            Copy-Item (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonWheel.Common.psm1') "$d\bkmnt\modules\"
-            Set-Content -LiteralPath "$d\bkmnt\free-threaded-twins.txt" -Value @('# stand-in', 'pkg|twin|PKG_VERSION=1|stand-in evidence')
-            $probe = "Import-Module '$d\bkmnt\modules\WindowsPythonWheel.Common.psm1'; (Get-FreeThreadedTwinTable | ForEach-Object Distribution) -join ','"
-            Assert-Equal 'pkg' "$(& pwsh -NoProfile -NonInteractive -Command $probe)".Trim() 'a flat image mount'
+            $listed = Invoke-FlatMountProbe -Dir $d -File 'free-threaded-twins.txt' -Value '# stand-in', 'pkg|twin|PKG_VERSION=1|stand-in evidence' `
+                -Expression "(Get-FreeThreadedTwinTable | ForEach-Object Distribution) -join ','"
+            Assert-Equal 'pkg' $listed 'a flat image mount'
             Assert-Throws { Get-FreeThreadedTwinTable -Path "$d\absent.txt" } -MessagePattern 'the twin table .*absent\.txt is missing'
         }
     }
@@ -96,25 +114,26 @@ Describe 'Get-FreeThreadedWheelFinding' {
             $w = New-TestWheel -Path "$d\pkg-1.0-cp314-cp314t-win_amd64.whl" -Member @{
                 'pkg/_core.cp314t-win_amd64.pyd' = 'x'; 'pkg/capi/state.pyd' = 'x'; 'pkg/lib/dep.dll' = 'x'; 'pkg/__init__.py' = ''
             }
-            Assert-Equal '' ((Get-FreeThreadedWheelFinding -Path $w -PlatformTag 'win_amd64') -join '|')
+            Assert-Equal '' (Get-WheelFindingText $w)
         }
     }
 
     It 'names a GIL or abi3 name, another platform and every GIL or abi3 module inside (mutation)' {
         Invoke-InTestDir { param($d)
-            $gil = New-TestWheel -Path "$d\pkg-1.0-cp314-cp314-win_amd64.whl" -Member @{ 'pkg/a.pyd' = 'x' }
-            Assert-Match 'tagged cp314-cp314, not a cp3XY-cp3XYt pair' ((Get-FreeThreadedWheelFinding -Path $gil -PlatformTag 'win_amd64') -join '|')
-            $abi3 = New-TestWheel -Path "$d\pkg-1.0-cp312-abi3-win_amd64.whl" -Member @{ 'pkg/a.pyd' = 'x' }
-            Assert-Match 'tagged cp312-abi3' ((Get-FreeThreadedWheelFinding -Path $abi3 -PlatformTag 'win_amd64') -join '|')
-            $plat = New-TestWheel -Path "$d\pkg-1.0-cp314-cp314t-win32.whl" -Member @{ 'pkg/a.pyd' = 'x' }
-            Assert-Match 'a win32 wheel, not win_amd64' ((Get-FreeThreadedWheelFinding -Path $plat -PlatformTag 'win_amd64') -join '|')
+            foreach ($named in @(
+                    @{ Wheel = 'pkg-1.0-cp314-cp314-win_amd64.whl'; Want = 'tagged cp314-cp314, not a cp3XY-cp3XYt pair' }
+                    @{ Wheel = 'pkg-1.0-cp312-abi3-win_amd64.whl'; Want = 'tagged cp312-abi3' }
+                    @{ Wheel = 'pkg-1.0-cp314-cp314t-win32.whl'; Want = 'a win32 wheel, not win_amd64' }
+                )) {
+                Assert-Match $named.Want (Get-WheelFindingText (New-TestWheel -Path "$d\$($named.Wheel)" -Member @{ 'pkg/a.pyd' = 'x' }))
+            }
             $mixed = New-TestWheel -Path "$d\mix\pkg-1.0-cp314-cp314t-win_amd64.whl" -Member @{
                 'pkg/ok.cp314t-win_amd64.pyd' = 'x'; 'pkg/gil.cp314-win_amd64.pyd' = 'x'; 'pkg/stable.abi3.pyd' = 'x'; 'pkg/arm.cp314t-win_arm64.pyd' = 'x'
             }
             $f = @(Get-FreeThreadedWheelFinding -Path $mixed -PlatformTag 'win_amd64')
             Assert-Equal 3 $f.Count "three wrong modules: $($f -join ' | ')"
             foreach ($m in 'gil.cp314-win_amd64.pyd', 'stable.abi3.pyd', 'arm.cp314t-win_arm64.pyd') { Assert-Match ([regex]::Escape($m)) ($f -join '|') $m }
-            Assert-Match 'not a wheel file name' ((Get-FreeThreadedWheelFinding -Path "$d\pkg.tar.gz" -PlatformTag 'win_amd64') -join '|')
+            Assert-Match 'not a wheel file name' (Get-WheelFindingText "$d\pkg.tar.gz")
         }
     }
 }
@@ -123,15 +142,16 @@ Describe 'Get-WheelMemberDifference' {
 
     It 'is empty for one build''s two wheels, and names a changed, an extra and a missing DLL (mutation)' {
         Invoke-InTestDir { param($d)
-            $gil = New-TestWheel -Path "$d\gil\o-1-cp314-cp314-win_amd64.whl" -Member @{ 'o/capi/shared.dll' = 'same'; 'o/capi/state.pyd' = 'gil' }
-            $twin = New-TestWheel -Path "$d\ft\o-1-cp314-cp314t-win_amd64.whl" -Member @{ 'o/capi/shared.dll' = 'same'; 'o/capi/state.pyd' = 'ft' }
+            $wheel = { param($dir, $abi, $member) New-TestWheel -Path "$d\$dir\o-1-cp314-$abi-win_amd64.whl" -Member $member }
+            $gil = & $wheel gil cp314 @{ 'o/capi/shared.dll' = 'same'; 'o/capi/state.pyd' = 'gil' }
+            $twin = & $wheel ft cp314t @{ 'o/capi/shared.dll' = 'same'; 'o/capi/state.pyd' = 'ft' }
             Assert-Equal '' ((Get-WheelMemberDifference -Reference $gil -Candidate $twin) -join '|') 'only the .pyd differs'
-            $drift = New-TestWheel -Path "$d\drift\o-1-cp314-cp314t-win_amd64.whl" -Member @{ 'o/capi/shared.dll' = 'rebuilt'; 'o/capi/extra.dll' = 'x' }
+            $drift = & $wheel drift cp314t @{ 'o/capi/shared.dll' = 'rebuilt'; 'o/capi/extra.dll' = 'x' }
             $f = @(Get-WheelMemberDifference -Reference $gil -Candidate $drift)
             Assert-Equal 2 $f.Count ($f -join ' | ')
             Assert-Match 'o/capi/shared\.dll differs' ($f -join '|')
             Assert-Match 'o/capi/extra\.dll is not in' ($f -join '|')
-            $none = New-TestWheel -Path "$d\none\o-1-cp314-cp314t-win_amd64.whl" -Member @{ 'o/capi/state.pyd' = 'ft' }
+            $none = & $wheel none cp314t @{ 'o/capi/state.pyd' = 'ft' }
             Assert-Match 'has no member matching \*\.dll' ((Get-WheelMemberDifference -Reference $gil -Candidate $none) -join '|') 'nothing compared is no proof'
         }
     }
@@ -140,14 +160,11 @@ Describe 'Get-WheelMemberDifference' {
 Describe 'the free-threaded helper path' {
 
     It 'is the checkout''s copy in the repo, and the copy one level above modules\ in an image mount (mutation)' {
-        $repoCopy = [IO.Path]::GetFullPath((Join-Path (Get-RepoRoot) 'linux\scripts\02-toolchain\python\free-threaded-wheel.py'))
+        $repoCopy = Get-RepoFullPath 'linux\scripts\02-toolchain\python\free-threaded-wheel.py'
         Assert-Equal $repoCopy (& (Get-Module WindowsPythonWheel.Common) { $script:FreeThreadedHelper }) 'in the checkout'
         Invoke-InTestDir { param($d)
-            $null = New-Item -ItemType Directory -Force -Path "$d\bkmnt\modules"
-            Copy-Item (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonWheel.Common.psm1') "$d\bkmnt\modules\"
-            Set-Content -LiteralPath "$d\bkmnt\free-threaded-wheel.py" -Value '# stand-in'
-            $probe = "Import-Module '$d\bkmnt\modules\WindowsPythonWheel.Common.psm1'; & (Get-Module WindowsPythonWheel.Common) { `$script:FreeThreadedHelper }"
-            Assert-Equal "$d\bkmnt\free-threaded-wheel.py" "$(& pwsh -NoProfile -NonInteractive -Command $probe)".Trim() 'a flat image mount'
+            $helper = Invoke-FlatMountProbe -Dir $d -File 'free-threaded-wheel.py' -Value '# stand-in' -Expression '& (Get-Module WindowsPythonWheel.Common) { $script:FreeThreadedHelper }'
+            Assert-Equal "$d\bkmnt\free-threaded-wheel.py" $helper 'a flat image mount'
         }
     }
 }

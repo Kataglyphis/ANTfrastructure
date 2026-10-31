@@ -13,8 +13,10 @@ Describe 'WindowsRepoHygiene.Common' {
 
     # Identity is per-repo so the suite never depends on or touches the host's global git config.
     function script:New-TestRepo {
-      param([string]$Name)
-      New-TestGitRepository -Path (Join-Path $script:sandbox $Name) -UserName 'Repo Hygiene Test' -UserEmail 'test@example.invalid'
+      param([string]$Name, [object[]]$Commit)
+      $repo = New-TestGitRepository -Path (Join-Path $script:sandbox $Name) -UserName 'Repo Hygiene Test' -UserEmail 'test@example.invalid'
+      foreach ($c in $Commit) { script:Add-TestCommit -Path $repo -File $c[0] -Content $c[1] -Message $c[2] }
+      $repo
     }
 
     function script:Add-TestCommit {
@@ -22,16 +24,33 @@ Describe 'WindowsRepoHygiene.Common' {
       Add-TestGitCommit -Path $Path -Files @{ $File = "$Content$([Environment]::NewLine)" } -Message $Message
     }
 
+    function script:New-ChildClone {
+      param([string]$Name)
+      $clone = Join-Path $script:sandbox $Name
+      & git -c protocol.file.allow=always clone --quiet ($script:child -replace '\\', '/') $clone 2>$null
+      $clone
+    }
+
+    # Each fixture repo's (file, content, message) commits, committed in order.
+    $script:repo = @{}
+    foreach ($fixture in ([ordered]@{
+          'child'              = @('a.txt', 'one', 'first'), @('a.txt', 'two', 'second')
+          'parent'             = , @('root.txt', 'root', 'root')
+          # The ignore rule arrives afterwards, which .gitignore does not fix retroactively.
+          'stale-artifact'     = @('generated.log', 'output', 'commit artifact'), @('.gitignore', 'generated.log', 'ignore it')
+          'unignored-artifact' = @('root.txt', 'root', 'root'), @('Testing/TAG', 'tag', 'commit ctest output')
+          'pycache-artifact'   = @('pkg/__pycache__/m.pyc', 'x', 'bytecode'), @('build-x/out.o', 'x', 'object')
+        }).GetEnumerator()) {
+      $script:repo[$fixture.Key] = script:New-TestRepo -Name $fixture.Key -Commit $fixture.Value
+    }
+
     # Child: the repository used as a submodule
-    $script:child = script:New-TestRepo -Name 'child'
-    script:Add-TestCommit -Path $script:child -File 'a.txt' -Content 'one' -Message 'first'
-    $script:childFirst = (& git -C $script:child rev-parse HEAD).Trim()
-    script:Add-TestCommit -Path $script:child -File 'a.txt' -Content 'two' -Message 'second'
+    $script:child = $script:repo['child']
+    $script:childFirst = (& git -C $script:child rev-parse HEAD~1).Trim()
     $script:childSecond = (& git -C $script:child rev-parse HEAD).Trim()
 
     # Parent: superproject pinning child at its tip; local-path submodules need protocol.file.allow (CVE-2022-39253)
-    $script:parent = script:New-TestRepo -Name 'parent'
-    script:Add-TestCommit -Path $script:parent -File 'root.txt' -Content 'root' -Message 'root'
+    $script:parent = $script:repo['parent']
     & git -C $script:parent -c protocol.file.allow=always submodule add --quiet `
       ($script:child -replace '\\', '/') 'sub' 2>$null
     Add-TestGitCommit -Path $script:parent -Message 'add submodule'
@@ -80,12 +99,7 @@ Describe 'WindowsRepoHygiene.Common' {
     }
 
     It 'reports a file that was committed before the ignore rule existed' {
-      $repo = script:New-TestRepo -Name 'stale-artifact'
-      script:Add-TestCommit -Path $repo -File 'generated.log' -Content 'output' -Message 'commit artifact'
-      # The ignore rule arrives afterwards, which .gitignore does not fix retroactively.
-      script:Add-TestCommit -Path $repo -File '.gitignore' -Content 'generated.log' -Message 'ignore it'
-
-      $tracked = @(Get-TrackedIgnoredFile -RepoRoot $repo)
+      $tracked = @(Get-TrackedIgnoredFile -RepoRoot $script:repo['stale-artifact'])
       $tracked.Count | Should -Be 1
       $tracked[0] | Should -Be 'generated.log'
     }
@@ -94,13 +108,8 @@ Describe 'WindowsRepoHygiene.Common' {
   Context 'Get-TrackedGeneratedArtifact' {
     It 'reports a tracked generated file that no ignore rule covers' {
       # Tracked but not ignored: Get-TrackedIgnoredFile returns clean while the artifact sits in the index.
-      $repo = script:New-TestRepo -Name 'unignored-artifact'
-      script:Add-TestCommit -Path $repo -File 'root.txt' -Content 'root' -Message 'root'
-      New-Item -ItemType Directory -Path (Join-Path $repo 'Testing') -Force | Out-Null
-      script:Add-TestCommit -Path $repo -File 'Testing/TAG' -Content 'tag' -Message 'commit ctest output'
-
-      @(Get-TrackedIgnoredFile -RepoRoot $repo).Count | Should -Be 0
-      $found = @(Get-TrackedGeneratedArtifact -RepoRoot $repo -Pattern @('Testing/'))
+      @(Get-TrackedIgnoredFile -RepoRoot $script:repo['unignored-artifact']).Count | Should -Be 0
+      $found = @(Get-TrackedGeneratedArtifact -RepoRoot $script:repo['unignored-artifact'] -Pattern @('Testing/'))
       $found.Count | Should -Be 1
       $found[0] | Should -Be 'Testing/TAG'
     }
@@ -111,11 +120,7 @@ Describe 'WindowsRepoHygiene.Common' {
     }
 
     It 'refuses a wildcard pathspec ending in a slash, which git matches against no file' {
-      $repo = script:New-TestRepo -Name 'pycache-artifact'
-      New-Item -ItemType Directory -Path (Join-Path $repo 'pkg\__pycache__'), (Join-Path $repo 'build-x') -Force | Out-Null
-      script:Add-TestCommit -Path $repo -File 'pkg/__pycache__/m.pyc' -Content 'x' -Message 'bytecode'
-      script:Add-TestCommit -Path $repo -File 'build-x/out.o' -Content 'x' -Message 'object'
-
+      $repo = $script:repo['pycache-artifact']
       @(& git -C $repo ls-files -- '**/__pycache__/' 'build*/').Count | Should -Be 0
       foreach ($dead in '**/__pycache__/', 'build*/', ':(glob)**/__pycache__/', 'pkg/__pycache?/') {
         $pattern = 'matches no file: {0}\. Write ''{0}\*''\.' -f [regex]::Escape($dead)
@@ -130,8 +135,7 @@ Describe 'WindowsRepoHygiene.Common' {
 
   Context 'Test-SubmoduleCommitReachable' {
     It 'finds the pin via local remote-tracking refs in a full clone' {
-      $clone = Join-Path $script:sandbox 'child-clone'
-      & git -c protocol.file.allow=always clone --quiet ($script:child -replace '\\', '/') $clone 2>$null
+      $clone = script:New-ChildClone -Name 'child-clone'
 
       $result = Test-SubmoduleCommitReachable -SubmodulePath $clone
       $result.Head | Should -Be $script:childSecond
@@ -140,8 +144,7 @@ Describe 'WindowsRepoHygiene.Common' {
     }
 
     It 'reports unreachable for a commit that exists only locally' {
-      $clone = Join-Path $script:sandbox 'child-local-only'
-      & git -c protocol.file.allow=always clone --quiet ($script:child -replace '\\', '/') $clone 2>$null
+      $clone = script:New-ChildClone -Name 'child-local-only'
       Set-TestGitIdentity -Path $clone -UserName 'Repo Hygiene Test' -UserEmail 'test@example.invalid'
       # A commit the remote never saw: no branch can contain it, so all three escalation steps come up empty.
       Add-TestGitCommit -Path $clone -Files @{ 'local.txt' = "local$([Environment]::NewLine)" } -Message 'local only'

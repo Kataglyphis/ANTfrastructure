@@ -18,6 +18,11 @@ function Assert-ReuseCommandParameters {
     }
 }
 
+function Get-InvokeContainerBuildLine {
+    param([Parameter(Mandatory)][string]$Pattern)
+    return (Get-Command Invoke-ContainerBuild).Definition -split "`n" | Where-Object { $_ -match $Pattern } | Select-Object -First 1
+}
+
 function New-TarDockerFixture {
     param([int]$Code, [string]$Reply = '')
     return [pscustomobject]@{ Calls = [System.Collections.Generic.List[object]]::new(); Code = $Code; Reply = $Reply }
@@ -257,13 +262,11 @@ Describe 'WindowsContainerBuild.Reuse: Invoke-ContainerBuild contract' {
     It 'defaults the workspace to C:\ws (shared by both transports so CMake caches stay valid)' {
         $ws = (Get-Command Invoke-ContainerBuild).Parameters['WorkspacePath']
         Assert-Equal 'System.String' $ws.ParameterType.FullName
-        Assert-Match 'C:\\ws' ((Get-Command Invoke-ContainerBuild).Definition -split "`n" |
-            Where-Object { $_ -match '\$WorkspacePath\s*=' } | Select-Object -First 1)
+        Assert-Match 'C:\\ws' (Get-InvokeContainerBuildLine '\$WorkspacePath\s*=')
     }
 
     It 'streams the inbound item list through to the transfer' {
-        Assert-Match '-Items \$InboundItems' ((Get-Command Invoke-ContainerBuild).Definition -split "`n" |
-            Where-Object { $_ -match '-Items \$InboundItems' } | Select-Object -First 1)
+        Assert-Match '-Items \$InboundItems' (Get-InvokeContainerBuildLine '-Items \$InboundItems')
     }
 
     It 'requires the parameters that have no sensible default' {

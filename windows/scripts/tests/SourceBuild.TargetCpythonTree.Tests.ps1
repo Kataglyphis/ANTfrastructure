@@ -47,6 +47,13 @@ BeforeAll {
     }
     # Both sides sorted the same way, so the expectation never depends on how a culture orders '_' and case.
     function script:Join-Sorted { param([string[]]$Name) return (@($Name) | Sort-Object) -join ',' }
+    # Both flavours stage these from the same synthetic build, so a caller names only its own files.
+    function script:Assert-StagedTree {
+        param([string]$Root, [string[]]$Own, [string]$Because)
+        $shared = @('DLLs\libcrypto-3-arm64.dll', 'DLLs\vcruntime140.dll', 'include\cpython\object.h', 'include\Python.h', 'include\pyconfig.h',
+            'Lib\ensurepip\_bundled\pip-25.3-py3-none-any.whl', 'Lib\os.py', 'msvcp140.dll', 'vcruntime140.dll')
+        Assert-Equal (Join-Sorted ($shared + $Own)) (Get-TreeFiles $Root) $Because
+    }
     function script:Get-TreeFiles {
         param([string]$Root)
         return Join-Sorted @(Get-ChildItem -LiteralPath $Root -Recurse -File | ForEach-Object { $_.FullName.Substring($Root.Length + 1) })
@@ -61,11 +68,8 @@ Describe 'Install-CpythonTargetTree' {
             $root = Join-Path $d 'runtime\python'
             $r = Install-CpythonTargetTree -BuildDir $b.Build -SourceDir $b.Src -Destination $root -Arch arm64 -RedistDir $b.Redist `
                 -BundleBin (Join-Path $d 'runtime\bin') -ShimWrittenBy 'test (TARGET)'
-            $want = Join-Sorted @('DLLs\_ssl.pyd', 'DLLs\libcrypto-3-arm64.dll', 'DLLs\msvcp140.dll', 'DLLs\vcruntime140.dll', 'include\cpython\object.h',
-                'include\Python.h', 'include\pyconfig.h', 'Lib\ensurepip\_bundled\pip-25.3-py3-none-any.whl', 'Lib\os.py',
-                'Lib\site-packages\sitecustomize.py', 'libs\python314.lib', 'msvcp140.dll', 'python.exe', 'python3.dll', 'python314.dll', 'pythonw.exe',
-                'vcruntime140.dll')
-            Assert-Equal $want (Get-TreeFiles $root) 'the GIL layout, without vcruntime140_1.dll and the host package'
+            Assert-StagedTree -Root $root -Own 'DLLs\_ssl.pyd', 'DLLs\msvcp140.dll', 'Lib\site-packages\sitecustomize.py', 'libs\python314.lib',
+                'python.exe', 'python3.dll', 'python314.dll', 'pythonw.exe' -Because 'the GIL layout, without vcruntime140_1.dll and the host package'
             Assert-Equal 'msvcp140.dll,vcruntime140.dll' (Get-TreeFiles (Join-Path $d 'runtime\bin')) 'the CRT in the bundle bin'
             $redistHash = (Get-FileHash (Join-Path $b.Redist 'msvcp140.dll')).Hash
             foreach ($f in 'msvcp140.dll', 'DLLs\msvcp140.dll', '..\bin\msvcp140.dll') {
@@ -80,11 +84,9 @@ Describe 'Install-CpythonTargetTree' {
         Invoke-InTestDir { param($d)
             $t = Install-FreeThreadedTestTree -Dir $d
             $root, $r = $t.Root, $t.Result
-            $want = Join-Sorted @('DLLs\_ssl.cp314t-win_arm64.pyd', 'DLLs\libcrypto-3-arm64.dll', 'DLLs\vcruntime140.dll', 'include\cpython\object.h',
-                'include\Python.h', 'include\pyconfig.h', 'Lib\ensurepip\_bundled\pip-25.3-py3-none-any.whl', 'Lib\os.py',
-                'Lib\venv\scripts\nt\venvlaunchert.exe', 'Lib\venv\scripts\nt\venvwlaunchert.exe', 'libs\python314t.lib', 'libs\python3t.lib', 'msvcp140.dll',
-                'python3.14t.exe', 'python314t.dll', 'python3t.dll', 'pythonw3.14t.exe', 'vcruntime140.dll')
-            Assert-Equal $want (Get-TreeFiles $root) 'no python.exe, no GIL import lib, no shim; the launchers where uv venv looks'
+            Assert-StagedTree -Root $root -Own 'DLLs\_ssl.cp314t-win_arm64.pyd', 'Lib\venv\scripts\nt\venvlaunchert.exe', 'Lib\venv\scripts\nt\venvwlaunchert.exe',
+                'libs\python314t.lib', 'libs\python3t.lib', 'python3.14t.exe', 'python314t.dll', 'python3t.dll', 'pythonw3.14t.exe' `
+                -Because 'no python.exe, no GIL import lib, no shim; the launchers where uv venv looks'
             Assert-True (Test-Path (Join-Path $root 'Lib\site-packages') -PathType Container) 'site-packages exists, empty'
             Assert-False (Test-Path (Join-Path $d 'runtime\bin')) 'the GIL tree owns the bundle bin'
             Assert-Equal "$root\python3.14t.exe|$root\libs\python314t.lib" "$($r.Exe)|$($r.Lib)" 'the returned facts'
