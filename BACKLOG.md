@@ -903,6 +903,21 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       license provenance, and image checks for the elements; verify other Windows image variants
       independently. Until then that pipeline is unavailable in this image.
 
+- [ ] **CON201 — assess Media Foundation availability in the Windows AMD GPU image** [M, ★★].
+      On 2026-10-31, the cached `:winamd64-rocm` registry image digest
+      `sha256:774af209a9282b8e8439653eb55756228a6ebdd219076ddc54a1e012e550c99c`
+      contained `C:\runtime\lib\gstreamer-1.0\gstmediafoundation.dll`, but a fresh
+      no-network container could not load it and `gst-inspect-1.0 mfvideosrc` reported
+      no such element. The plugin imports `MFPlat.dll`, `MF.dll`, and `MFReadWrite.dll`,
+      none of which were present in the image's `System32` or `C:\runtime\bin`.
+      The same inspection found `autovideosrc`, `videoconvert`, `capsfilter`, and
+      `appsink`. Decide whether the next image should provide Media Foundation in a
+      supported Windows container configuration, document its prerequisites and
+      provenance, and verify the plugin and `mfvideosrc` in a fresh image. Check the
+      CPU, NVIDIA, ARM, and newer mutable tags independently. This observation concerns
+      container-side element availability; it does not establish physical host camera or
+      GPU behavior.
+
 - [ ] **CON200 — decide whether to seed Windows AMD consumer Cargo dependencies** [S, ★★].
       On 2026-10-31, the cached `:winamd64-rocm` registry image digest
       `sha256:774af209a9282b8e8439653eb55756228a6ebdd219076ddc54a1e012e550c99c`
