@@ -897,7 +897,13 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Cached `:winamd64-rocm` digest `774af209a9282b8e8439653eb55756228a6ebdd219076ddc54a1e012e550c99c` also has
       all seven DLLs and no corresponding texts under `C:\runtime\share`. Image pkg-config
       identifies libjpeg 3.1.4.1, libpng 1.6.58, libsrtp 2.8.0, OpenH264 2.6.0, and zlib 1.3.2;
-      the OpenSSL DLL file metadata reports 4.1.0. Preserve each actual binary's source, version, license
+      the OpenSSL DLL file metadata reports 4.1.0. A fresh inspection of that NVIDIA digest found that
+      both runtime OpenSSL DLLs match the Scoop OpenSSL 4.1.0 `current\bin` copies byte for byte:
+      `libcrypto-4-x64.dll` SHA-256 `40b607fc33bab7d3e8b0cec53d20bbb2d9a6928c807b7b2ab0778982eb914cfa`,
+      `libssl-4-x64.dll` SHA-256 `1c817fa1968bb3d38f5b2c936c9972464ee7b761b97fe3f3a9069990e137c54d`.
+      That Scoop install has `license.txt` (SHA-256 `ed72ce2b51ee58f117e5a021e2e04af158857f40269fbc03491f0b2a99dbcc96`).
+      The runtime `z-1.dll` does not match Scoop's `zlib.dll`; pkg-config versions alone do not
+      establish the source or license of the remaining five runtime DLLs. Preserve each actual binary's source, version, license
       texts and a verifiable association with the installed DLL (including transitive/static notices),
       and expose these to consumers. Check CPU and AMD/ARM images independently. Until then the
       AccelerANTgine install-time third-party notice gate correctly rejects this closure.
