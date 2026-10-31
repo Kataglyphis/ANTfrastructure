@@ -1129,6 +1129,13 @@ python3 docs/scripts/mutation_shards.py --from-log logs/code-quality/mutations-r
   --manifest docs/scripts/mutations.json --write docs/scripts/mutation-costs.json
 ```
 
+**Measured 2026-10-31.** On round-robin slices (run 41183472080, 3,968 entries) the
+eight jobs summed 11,287 s, 2.85 s per recipe, and the slowest took 1,562 s of its
+30 minutes. Over the first six green planned runs (41189788344 to 41204714575, about
+4,040 entries) they summed 7,340-8,227 s, a median of 1.92 s per recipe, and the slowest
+job took 1,060-1,155 s; every id bit exactly once and the shards held 491 or 492
+distinct commands between them, one baseline each.
+
 A stale table still proves every entry exactly once; it only balances worse.
 Without `--shard-costs` the gate keeps `entries[K::N]`, which is what consumers
 and `validate_consumer_mutations.py` use. `test-mutation-shards.sh` proves the
