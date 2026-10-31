@@ -13,6 +13,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-31 — Isolate Linux GPU uploads by run attempt
+
+- Add an opt-in to give GPU package and test uploads attempt-specific names and
+  refuse replacement, while retaining existing CPU and default GPU behavior.
+
 ## 2026-10-31 — GPU package receipt building block
 
 - Add a cross-platform, standard-library receipt tool that binds exact package

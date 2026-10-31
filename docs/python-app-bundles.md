@@ -175,6 +175,14 @@ requires a vendor-matched tar, DEB and AppImage. Its uploads are named
 hosted-runner storage; the lane and finished packages need a real run, complete notice
 checks and GPU execution before release.
 
+With `gpu-attempt-artifacts: true`, the package and test-result upload names append
+`-attempt-<run attempt>` and cannot overwrite an existing upload. Downstream jobs must
+select that same attempt and fail when it is missing; rerunning only a downstream job
+therefore needs a fresh build in that attempt. The option requires `host-gpu-runtime`.
+Without it the existing names and GPU overwrite behavior remain unchanged, as do CPU
+uploads. A matching name does not prove that earlier checks ran on those bytes: release
+promotion needs immutable artifact identity and [verification receipts](gpu-artifact-receipts.md).
+
 ```powershell
 # Windows, inside :winamd64
 & <hub>\windows\scripts\python\New-PythonAppBundle.ps1 -RepoRoot <repo> -WheelDir dist -OutDir dist\windows-x64\bundle

@@ -144,6 +144,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    ONNX Runtime staging checks every selected provider before writing; external loader paths and dropping the default system list stay explicit opt-ins.
    Linux uv chain exclusions must recognize ORT entries in both LF and CRLF lockfiles.
    The reusable Python Linux GPU lane checks the consumer pin before pulling, forwards the default-off host-runtime input only to packaging, and isolates unverified outputs.
+   Its optional attempt-scoped GPU artifacts use the current run attempt and never overwrite; CPU and default GPU names remain unchanged.
    Release collection always skips upload names containing `candidate`, `unverified` or `inventory-only`, regardless of case; user skip globs stay case-sensitive. A promoted GPU upload needs separate checks and expected asset names.
    GPU package receipts bind exact filenames and hashes to a caller-supplied check and CI identity; they do not authenticate or run that check. Preserve the trust and pre/post-test requirements in `docs/gpu-artifact-receipts.md`.
    Windows ORT provider staging validates requested DLL names and their presence before changing the destination; unrelated SDK DLLs remain opt-in.

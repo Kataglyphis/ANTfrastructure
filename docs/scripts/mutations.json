@@ -31953,6 +31953,30 @@
   "why": "an ET_DYN position-independent executable cannot be loaded as a shared library"
  },
  {
+  "id": "python-ci.gpu-attempt-package-name",
+  "target": ".github/workflows/python-ci-linux.yml",
+  "find": "unverified-gpu-{0}-packages-linux-{1}-attempt-{2}",
+  "replace": "unverified-gpu-{0}-packages-linux-{1}",
+  "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+  "why": "an attempt-scoped package must not reuse the previous attempt's name"
+ },
+ {
+  "id": "python-ci.gpu-attempt-immutable-upload",
+  "target": ".github/workflows/python-ci-linux.yml",
+  "find": "overwrite: ${{ inputs.host-gpu-runtime && !inputs.gpu-attempt-artifacts }}\n          path: logs/test-results/",
+  "replace": "overwrite: ${{ inputs.host-gpu-runtime }}\n          path: logs/test-results/",
+  "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+  "why": "an attempt-scoped upload must not replace the previous artifact"
+ },
+ {
+  "id": "python-ci.gpu-attempt-opt-in-guard",
+  "target": ".github/workflows/python-ci-linux.yml",
+  "find": "[ \"${GPU_ATTEMPT_ARTIFACTS:-false}\" = true ] && [ \"${HOST_GPU_RUNTIME:-false}\" != true ]",
+  "replace": "[ \"${GPU_ATTEMPT_ARTIFACTS:-false}\" = true ] && [ \"${HOST_GPU_RUNTIME:-false}\" = true ]",
+  "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+  "why": "attempt-scoped GPU uploads cannot silently be selected for a CPU build"
+ },
+ {
   "id": "packaging.gpu-receipt-file-hash",
   "target": "shared/python/gpu_artifact_receipt.py",
   "find": "if data[\"files\"] != hashes:",

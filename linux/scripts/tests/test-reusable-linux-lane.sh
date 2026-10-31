@@ -88,12 +88,13 @@ t_assert_contains "$(grep -F 'Run Python tests|' "${EXTRA}")" \
 t_case "host GPU runtime is an explicit packaging-only opt-in"
 t_assert_eq "boolean|false|false" "$(_input_meta host-gpu-runtime)"
 t_assert_eq "string|false|" "$(_input_meta gpu-artifact-label)"
+t_assert_eq "boolean|false|false" "$(_input_meta gpu-attempt-artifacts)"
 t_assert_eq "string|false|image" "$(_input_meta app-python-runtime)"
 t_assert_contains "$(grep -F 'Packaging application|' "${EXTRA}")" '-e PYTHON_APP_PYTHON_RUNTIME=${{ inputs.app-python-runtime }}'
 t_assert_fails grep -F 'PYTHON_APP_PYTHON_RUNTIME=' < <(grep -F 'Run Python tests|' "${EXTRA}")
 
 t_case "GPU reruns replace each vendor and architecture artifact without changing CPU behavior"
-_gpu_overwrite_query='all(V.value(V.value(s,"with"),"overwrite") == "${{ inputs.host-gpu-runtime }}" for s in V.value(build,"steps") if V.value(s,"name") in ("Upload test results", "Upload packages (source/binary only)"))'
+_gpu_overwrite_query='all(V.value(V.value(s,"with"),"overwrite") == "${{ inputs.host-gpu-runtime && !inputs.gpu-attempt-artifacts }}" for s in V.value(build,"steps") if V.value(s,"name") in ("Upload test results", "Upload packages (source/binary only)"))'
 t_assert_eq 'True' "$(_q "${_gpu_overwrite_query}")"
 _gpu_overwrite_count='len([s for s in V.value(build,"steps") if V.value(s,"name") in ("Upload test results", "Upload packages (source/binary only)")]) == 2'
 t_assert_eq 'True' "$(_q "${_gpu_overwrite_count}")"
@@ -114,6 +115,8 @@ t_assert_ok _gpu_plan GPU_ARTIFACT_LABEL=amd ARCHES=x64
 t_assert_ok _gpu_plan GPU_ARTIFACT_LABEL=amd APP_PYTHON_RUNTIME=standalone ARCHES=x64
 t_assert_fails _gpu_plan GPU_ARTIFACT_LABEL=amd APP_PYTHON_RUNTIME=unsafe ARCHES=x64
 t_assert_fails env HOST_GPU_RUNTIME=false APP_PYTHON_RUNTIME=standalone ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_fails env HOST_GPU_RUNTIME=false GPU_ATTEMPT_ARTIFACTS=true ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_ok _gpu_plan GPU_ATTEMPT_ARTIFACTS=true GPU_ARTIFACT_LABEL=nvidia ARCHES=x64
 t_assert_ok _gpu_plan GPU_ARTIFACT_LABEL=nvidia ARCHES='x64 arm64'
 t_assert_fails _gpu_plan GPU_ARTIFACT_LABEL=amd ARCHES=arm64
 t_assert_fails _gpu_plan GPU_ARTIFACT_LABEL=nvidia ARCHES=riscv64
@@ -124,6 +127,7 @@ t_assert_fails env HOST_GPU_RUNTIME=false GPU_ARTIFACT_LABEL=amd ARCHES=x64 GITH
 t_assert_contains "$(grep -F 'Upload packages (source/binary only)|' "${STEPS}")" '!inputs.host-gpu-runtime || success()'
 _artifact_name="$(_q "V.value(V.value(next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Upload packages (source/binary only)'), 'with'), 'name')")"
 t_assert_contains "${_artifact_name}" 'unverified-gpu-{0}-packages-linux-{1}'
+t_assert_contains "${_artifact_name}" "inputs.gpu-attempt-artifacts && format('unverified-gpu-{0}-packages-linux-{1}-attempt-{2}'" 'github.run_attempt'
 t_assert_contains "${_artifact_name}" 'packages-linux-{0}-source-and-binary'
 t_case "the GPU path refuses an old or incomplete consumer hub pin"
 t_assert_eq 'inputs.host-gpu-runtime' "$(_q "V.value(next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Check pinned host GPU packaging contract'), 'if')")"
@@ -180,6 +184,7 @@ t_assert_contains "$(grep -F 'Build Docs|' "${STEPS}")" '!inputs.host-gpu-runtim
 t_assert_contains "$(_q "V.value(V.value(V.value(lane,'jobs'),'docs'),'if')")" '!inputs.host-gpu-runtime'
 _test_artifact_name="$(_q "V.value(V.value(next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Upload test results'), 'with'), 'name')")"
 t_assert_contains "${_test_artifact_name}" 'unverified-gpu-{0}-test-reports-{1}'
+t_assert_contains "${_test_artifact_name}" "inputs.gpu-attempt-artifacts && format('unverified-gpu-{0}-test-reports-{1}-attempt-{2}'" 'github.run_attempt'
 
 t_case "the DEFAULT yields exactly the rows the static matrix held, in order"
 # A changed row silently renames the caller's jobs (matrix.arch) and artifacts (matrix.runs_on).
