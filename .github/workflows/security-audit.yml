@@ -1,0 +1,118 @@
+# Lockfile vulnerability audit for the hub and every caller; see docs/vulnerability-scanning.md#lockfile-audit-security-auditsh
+name: Security audit
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: >-
+          auto (default): push and pull_request gate on new HIGH or CRITICAL
+          findings, schedule and workflow_dispatch report every finding and
+          succeed. gate or report forces one.
+        type: string
+        default: 'auto'
+      runner:
+        description: Runner label; pinned to an OS version, never a moving alias.
+        type: string
+        default: 'ubuntu-26.04'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: auto, gate or report; auto reports on a dispatch.
+        type: string
+        default: 'auto'
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: "30 7 * * 1" # Mondays 07:30 UTC, between consumer-inventory and actions-selftest
+
+permissions:
+  contents: read
+
+# No workflow-level concurrency: callers own their groups.
+
+jobs:
+  audit:
+    runs-on: ${{ inputs.runner || 'ubuntu-26.04' }}
+    timeout-minutes: 45
+    steps:
+      # Full history: push mode reads the base commit's lockfiles.
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          submodules: false
+          persist-credentials: false
+
+      - name: Get ANTfrastructure tooling
+        if: ${{ github.repository != 'Kataglyphis/ANTfrastructure' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Kataglyphis/ANTfrastructure
+          ref: develop
+          path: antfrastructure-tools
+          persist-credentials: false
+
+      - name: Choose mode, base and runtime
+        id: plan
+        shell: bash
+        env:
+          MODE: ${{ inputs.mode || 'auto' }}
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          IS_HUB: ${{ github.repository == 'Kataglyphis/ANTfrastructure' }}
+        run: |
+          set -euo pipefail
+          mode="${MODE}"
+          if [ "${mode}" = auto ]; then
+            case "${EVENT}" in push|pull_request) mode=gate ;; *) mode=report ;; esac
+          fi
+          case "${mode}" in gate|report) ;; *) echo "::error::mode must be auto, gate or report, not '${MODE}'"; exit 1 ;; esac
+          base=""
+          if [ "${mode}" = gate ]; then
+            base="${PR_BASE:-${PUSH_BEFORE:-}}"
+            # A new branch has no before commit; its parent is the closest base.
+            if [ -z "${base}" ] || [ -z "${base//0/}" ]; then base="$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)"; fi
+            git cat-file -e "${base}^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "${base}"
+          fi
+          hub=antfrastructure-tools
+          if [ "${IS_HUB}" = true ]; then hub=.; fi
+          cargo=false
+          if git ls-files -- ':(glob)**/Cargo.lock' ':(exclude)third_party/**' | grep -q .; then cargo=true; fi
+          echo "mode ${mode}; base ${base:-none}; hub ${hub}; Cargo.lock: ${cargo}"
+          { echo "mode=${mode}"; echo "base=${base}"; echo "hub=${hub}"; echo "cargo=${cargo}"; } >> "${GITHUB_OUTPUT}"
+
+      - name: Audit on the runner
+        if: ${{ steps.plan.outputs.cargo != 'true' }}
+        shell: bash
+        env:
+          HUB: ${{ steps.plan.outputs.hub }}
+          MODE: ${{ steps.plan.outputs.mode }}
+          BASE: ${{ steps.plan.outputs.base }}
+        run: bash "${HUB}/linux/scripts/security-audit.sh" --root . --mode "${MODE}" ${BASE:+--base "${BASE}"} --output security-audit.json
+
+      # cargo_security_checks.sh needs cargo, cargo-audit and cargo-deny, which the family image carries.
+      - name: Pull the family image
+        if: ${{ steps.plan.outputs.cargo == 'true' }}
+        uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-linux-ci-host@develop
+        with:
+          checkout: 'false'
+
+      - name: Audit in the family image
+        if: ${{ steps.plan.outputs.cargo == 'true' }}
+        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
+        with:
+          extra-args: -e AUDIT_HUB=${{ steps.plan.outputs.hub }} -e AUDIT_MODE=${{ steps.plan.outputs.mode }} -e AUDIT_BASE=${{ steps.plan.outputs.base }}
+          script: bash -lc 'bash "${AUDIT_HUB}/linux/scripts/security-audit.sh" --root . --mode "${AUDIT_MODE}" ${AUDIT_BASE:+--base "${AUDIT_BASE}"} --output security-audit.json'
+
+      - name: Upload security-audit.json
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: security-audit
+          path: security-audit.json
+          retention-days: 90
+          if-no-files-found: error

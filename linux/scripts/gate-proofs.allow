@@ -203,3 +203,4 @@ mutation-family:ansible-backup
 # The Ansible run status Home Assistant shows (linux/ansible/scripts/ansible_run_status.py); proof: linux/scripts/tests/test-ansible-run-status.sh.
 mutation-family:ansible-run-status
 mutation-family:scanner-extras
+mutation-family:security-audit

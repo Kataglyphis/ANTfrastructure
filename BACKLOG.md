@@ -1895,6 +1895,14 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       and still gets "Documentation build completed successfully" and status 0. Every known
       consumer runs under `set -e`; decide whether each step's status should stop the pipeline.
 
+- [ ] **CON213 — WebDavClient's `bench/` collects no tests, so `bench-gate` stays off by default** [S, ★★].
+      Found 2026-10-31 running `pytest bench/` at WebDavClient `0980fb5` in `:latest`: pytest
+      collects 0 items and exits 5, because `pytest.ini`'s file pattern does not match
+      `bench/demo_*.py`. `ci_tests.sh` therefore runs `pytest bench/` only under
+      `PYTHON_BENCH_GATE=1` (`python-ci-linux.yml` `bench-gate: true`), which OrchestrANT sets.
+      Turn WebDavClient's demos into collected benchmarks, prove `pytest bench/` green there, then
+      make the gate the default and drop the switch.
+
 - [ ] **CON212 — a dry-run chain can prune images when the disk is low** [S, ★★].
       Found 2026-10-31 when `test-gpu-variant.sh` failed on a CI runner (run 41185928928):
       `build-cross-chain.sh --dry-run` still runs `_chain_stage_disk_guard`, which measures the

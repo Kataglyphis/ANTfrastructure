@@ -32727,5 +32727,85 @@
   "replace": "if is_action and name in (\"job-timeout\", \"permissions\", \"sha-pin\"):",
   "test": "bash linux/scripts/tests/test-workflow-sha-pin.sh",
   "why": "the hub's composite actions run inside every consumer job, so their uses: lines need the same pin"
+ },
+ {
+  "id": "security-audit.new-high-blocks",
+  "target": "linux/scripts/security_audit.py",
+  "find": "blocking = [f for f in findings if args.mode == \"gate\" and f.severity in BLOCKING and not f.in_base]",
+  "replace": "blocking = []",
+  "test": "bash linux/scripts/tests/test-security-audit.sh",
+  "why": "push mode exists so a commit cannot add a HIGH advisory such as hydra-core 1.3.7"
+ },
+ {
+  "id": "security-audit.known-finding-passes",
+  "target": "linux/scripts/security_audit.py",
+  "find": "and f.severity in BLOCKING and not f.in_base]",
+  "replace": "and f.severity in BLOCKING]",
+  "test": "bash linux/scripts/tests/test-security-audit.sh",
+  "why": "an advisory published after a pin landed is not the commit's doing; blocking it turns every push red"
+ },
+ {
+  "id": "security-audit.unknown-severity-high",
+  "target": "linux/scripts/security_audit.py",
+  "find": "    except ValueError:\n        return \"HIGH\"",
+  "replace": "    except ValueError:\n        return \"LOW\"",
+  "test": "bash linux/scripts/tests/test-security-audit.sh",
+  "why": "an advisory nobody scored may be critical, so it must block like a HIGH one"
+ },
+ {
+  "id": "security-audit.unread-lockfile",
+  "target": "linux/scripts/security_audit.py",
+  "find": "    if unread:\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-security-audit.sh",
+  "why": "a lockfile the scanner never reported was graded by nothing and must not read as clean"
+ },
+ {
+  "id": "security-audit.missing-scanner-fails",
+  "target": "linux/scripts/security-audit.sh",
+  "find": "[ -x \"${OSV_SCANNER}\" ] || err \"osv-scanner ${OSV_SCANNER} is not an executable file\"",
+  "replace": "[ -x \"${OSV_SCANNER}\" ] || { printf '{\"findings\": []}\\n' > \"${OUTPUT}\"; exit 0; }",
+  "test": "bash linux/scripts/tests/test-security-audit.sh",
+  "why": "a missing scanner reported as zero findings is the false green this audit must never print"
+ },
+ {
+  "id": "security-audit.every-lockfile-kind",
+  "target": "linux/scripts/security-audit.sh",
+  "find": "LOCKFILE_NAMES=(uv.lock Cargo.lock pubspec.lock package-lock.json)",
+  "replace": "LOCKFILE_NAMES=(uv.lock Cargo.lock package-lock.json)",
+  "test": "bash linux/scripts/tests/test-security-audit.sh",
+  "why": "a dropped lockfile kind leaves a whole ecosystem unscanned while the audit stays green"
+ },
+ {
+  "id": "python.ci-tests-bench-failure-fails-the-leg",
+  "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+  "find": "      TEST_EXIT=\"$bench_status\"\n",
+  "replace": "      :\n",
+  "test": "bash linux/scripts/tests/test-python-ci-bench.sh",
+  "why": "a benchmark suite that fails while the leg stays green is the hidden failure the gate replaces"
+ },
+ {
+  "id": "python.ci-tests-missing-bench-skips-visibly",
+  "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+  "find": "    info \"No bench/ directory; benchmark suite skipped\"\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-python-ci-bench.sh",
+  "why": "a skipped suite must say so, or a deleted bench/ reads like a passing one"
+ },
+ {
+  "id": "python.ci-tests-bench-runs-the-directory",
+  "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+  "find": "(cd \"$WORKSPACE_ROOT\" && uv_run pytest bench/) || bench_status=$?",
+  "replace": "(cd \"$WORKSPACE_ROOT\" && uv_run pytest bench/demo_pytest_benchmark.py) || bench_status=$?",
+  "test": "bash linux/scripts/tests/test-python-ci-bench.sh",
+  "why": "one named demo file leaves every other benchmark in bench/ unrun"
+ },
+ {
+  "id": "python.ci-tests-bench-gate-defaults-off",
+  "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+  "find": "PYTHON_BENCH_GATE=\"${PYTHON_BENCH_GATE:-0}\"",
+  "replace": "PYTHON_BENCH_GATE=\"${PYTHON_BENCH_GATE:-1}\"",
+  "test": "bash linux/scripts/tests/test-python-ci-bench.sh",
+  "why": "callers whose bench/ collects no tests keep the old best-effort run until they opt in"
  }
 ]

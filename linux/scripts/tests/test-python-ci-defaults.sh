@@ -9,10 +9,7 @@ SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 IMAGE_PY="$(sed -n 's/^PYTHON_VERSION=\([0-9][0-9]*\.[0-9][0-9]*\)\..*/\1/p' "${SCRIPTS}/01-core/versions.env")"
 
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
-python_ci_fixture "${_work}" "${SCRIPTS}" 01-core/versions.env \
-  02-toolchain/python/ci_tests.sh 02-toolchain/python/ci_build_docs.sh \
-  02-toolchain/python/free-threaded-wheel.py \
-  02-toolchain/python/verify-test-reports.py || exit 1
+python_ci_tests_fixture "${_work}" "${SCRIPTS}" 02-toolchain/python/ci_build_docs.sh || exit 1
 REC="${CALLS}"
 mkdir -p "${WS}/docs"
 printf '#!/usr/bin/env bash\nprintf "make %%s\\n" "$*" >> "${REC}"\n' > "${_work}/bin/make"; chmod +x "${_work}/bin/make"
@@ -46,9 +43,9 @@ uv_run() {
   ! { [ "$1" = pytest ] && [ -n "${FAIL_TEST_LEG:-}" ] && [ "${FAIL_TEST_LEG}" = "${_LEG:-}" ]; }
 }
 uv_sync_project() { echo "sync ${_LEG:-} extras=${UV_SYNC_EXTRAS:-}" >> "${REC}"; [ -z "${FAIL_SYNC_LEG:-}" ] || [ "${FAIL_SYNC_LEG}" != "${_LEG:-}" ]; }
-uv_venv_activate() { :; }; uv_venv_deactivate() { :; }; uv_venv_remove() { :; }
 uv_cache_seed_restore() { echo "seed restore" >> "${REC}"; }
 CI_COMMON
+python_ci_venv_noops
 
 # _driver <ci_tests|ci_build_docs> [positionals...]: a caller that sets no version knob, as the reusable lane.
 _driver() {

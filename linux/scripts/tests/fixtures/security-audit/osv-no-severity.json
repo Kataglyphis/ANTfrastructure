@@ -1,0 +1,54 @@
+{
+ "results": [
+  {
+   "source": {
+    "path": "@ROOT@/firmware/Cargo.lock",
+    "type": "lockfile"
+   },
+   "packages": [
+    {
+     "package": {
+      "name": "log",
+      "version": "0.4.34",
+      "ecosystem": "crates.io",
+      "purl": "pkg:cargo/log@0.4.34"
+     }
+    },
+    {
+     "package": {
+      "name": "paste",
+      "version": "1.0.15",
+      "ecosystem": "crates.io",
+      "purl": "pkg:cargo/paste@1.0.15"
+     },
+     "groups": [
+      {
+       "ids": [
+        "RUSTSEC-2024-0436"
+       ],
+       "aliases": [
+        "RUSTSEC-2024-0436"
+       ],
+       "max_severity": ""
+      }
+     ],
+     "vulnerabilities": [
+      {
+       "id": "RUSTSEC-2024-0436",
+       "summary": "paste - no longer maintained",
+       "database_specific": {},
+       "modified": "2026-01-27T22:03:15.694766Z",
+       "published": "2024-10-07T12:00:00Z"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "experimental_config": {
+  "licenses": {
+   "summary": false,
+   "allowlist": null
+  }
+ }
+}

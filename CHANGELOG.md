@@ -13,6 +13,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-31 — Lockfile security audit and the benchmark gate switch
+
+- `linux/scripts/security-audit.sh` and the reusable `security-audit.yml` scan every tracked
+  `uv.lock`, `Cargo.lock`, `pubspec.lock` and `package-lock.json` outside `third_party/` with
+  osv-scanner 2.7.0, pinned with its release checksums in `tool-pins.env`, run
+  `cargo_security_checks.sh` where a `Cargo.lock` exists, and write `security-audit.json`.
+  Push and PR fail on a HIGH or CRITICAL finding absent from the base lockfile; schedule and
+  dispatch report. Suite `test-security-audit.sh` replays recorded osv-scanner JSON.
+- `ci_tests.sh` runs `pytest bench/` under `PYTHON_BENCH_GATE=1` (`python-ci-linux.yml`
+  `bench-gate`): a missing `bench/` skips visibly, a failing one fails the leg. Off by default
+  while WebDavClient's `bench/` collects no tests (`BACKLOG.md` CON213).
+
 ## 2026-10-31 — Workflow convention sha-pin
 
 - `verify_workflow_conventions.py` gains a fifth check, `sha-pin`: every third-party `uses:`

@@ -130,6 +130,12 @@ into `linux-x64.yml` and `linux-arm64.yml` the same day; OrchestrANT followed.
 - leaves the docs build to `x64` and skips static analysis: both steps carry
   `if: matrix.arch != 'riscv64'`.
 
+Pass `bench-gate: true` to make the benchmarks a real gate: each leg then runs `pytest bench/`
+when `bench/` exists and fails on its failure, and a missing `bench/` prints that the suite was
+skipped. The default keeps the old best-effort `bench/demo_pytest_benchmark.py` run, whose
+failure only logs, because WebDavClient's `bench/` collects no tests under `pytest bench/`
+(`BACKLOG.md` CON213). OrchestrANT turns it on. Suite: `test-python-ci-bench.sh`.
+
 Pass `test-extras` (comma list) so every leg syncs only those extras: a riscv64 leg wants `test`,
 because the full set builds wheels from source under emulation. See
 [`riscv64-cross-test-lanes.md`](riscv64-cross-test-lanes.md).

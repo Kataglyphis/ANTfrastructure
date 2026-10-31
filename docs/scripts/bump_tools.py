@@ -295,6 +295,19 @@ def spec_actionlint(cur: str) -> SpecResult:
     return v, extras
 
 
+def spec_osv_scanner(cur: str) -> SpecResult:
+    tag = bv.gh_latest("google/osv-scanner")
+    v = tag.lstrip("v")
+    extras = {}
+    if v != cur and bv.WRITE_MODE:
+        for env_key, asset in [
+            ("OSV_SCANNER_LINUX_AMD64_SHA256", "osv-scanner_linux_amd64"),
+            ("OSV_SCANNER_LINUX_ARM64_SHA256", "osv-scanner_linux_arm64"),
+        ]:
+            extras[env_key] = bv.asset_sha256("google/osv-scanner", tag, asset, sums=("osv-scanner_SHA256SUMS",))
+    return v, extras
+
+
 def spec_rust(cur: str) -> SpecResult:
     return bv.gh_latest("rust-lang/rust").lstrip("v"), {}
 

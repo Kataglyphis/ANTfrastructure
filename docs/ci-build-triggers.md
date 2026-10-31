@@ -52,6 +52,7 @@ reacts to a commit-message token. Both name columns follow the family's naming c
 | `actions-selftest.yml` | Composite actions · self-test | push/PR that touches `.github/actions/**`, Mondays, and dispatch | the composite actions under `.github/actions/` exercised against themselves; dispatch adds the deep Windows lane |
 | `consumer-inventory.yml` | Consumers · inventory | Mondays, dispatch, and push/PR that touches its own inputs | clones every repo in `.github/consumers.json` and grades who still calls each hub entry point; files an issue when a reference dangles |
 | `ghcr-cleanup.yml` | GHCR · cleanup | Sundays, dispatch | `ghcr-prune-package.sh` deletes untagged versions no kept tag references; every tagged version stays, 14-day age guard |
+| `security-audit.yml` | Security audit | every push and PR to `main`/`develop`, Mondays, dispatch; also `workflow_call` | `security-audit.sh` over every tracked lockfile: push and PR fail on a new HIGH or CRITICAL finding, the rest report; uploads `security-audit.json` ([`vulnerability-scanning.md`](vulnerability-scanning.md#lockfile-audit-security-auditsh)) |
 | `sbom.yml` | SBOM | Mondays, dispatch | SBOM generation |
 | `stale-docs-check.yml` | Docs · stale check | Mondays, dispatch | stale doc references and broken script paths |
 | `develop-red.yml` | Develop red · watch | twice an hour, dispatch | one `develop-red` issue per family workflow whose `develop` run is red, closed once it is green ([`github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue)) |

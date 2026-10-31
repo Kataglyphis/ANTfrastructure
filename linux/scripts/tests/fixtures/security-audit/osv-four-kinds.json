@@ -1,0 +1,427 @@
+{
+ "results": [
+  {
+   "source": {
+    "path": "@ROOT@/uv.lock",
+    "type": "lockfile"
+   },
+   "packages": [
+    {
+     "package": {
+      "name": "hydra-core",
+      "version": "1.3.7",
+      "ecosystem": "PyPI",
+      "purl": "pkg:pypi/hydra-core@1.3.7"
+     },
+     "groups": [
+      {
+       "ids": [
+        "GHSA-wf6j-7hvr-gr93"
+       ],
+       "aliases": [
+        "GHSA-wf6j-7hvr-gr93"
+       ],
+       "max_severity": "7.8"
+      }
+     ],
+     "vulnerabilities": [
+      {
+       "id": "GHSA-wf6j-7hvr-gr93",
+       "summary": "Hydra legacy target blacklist permits unsafe PyYAML loading",
+       "database_specific": {
+        "severity": "HIGH",
+        "cwe_ids": [
+         "CWE-184"
+        ]
+       },
+       "severity": [
+        {
+         "score": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H",
+         "type": "CVSS_V3"
+        }
+       ],
+       "modified": "2026-10-27T17:15:04.232998356Z",
+       "published": "2026-10-27T17:08:41Z"
+      }
+     ]
+    },
+    {
+     "package": {
+      "name": "pyyaml",
+      "version": "6.0.3",
+      "ecosystem": "PyPI",
+      "purl": "pkg:pypi/pyyaml@6.0.3"
+     }
+    }
+   ]
+  },
+  {
+   "source": {
+    "path": "@ROOT@/web/package-lock.json",
+    "type": "lockfile"
+   },
+   "packages": [
+    {
+     "package": {
+      "name": "deepmerge",
+      "version": "4.3.1",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/deepmerge@4.3.1?source=PUBLIC_REGISTRY"
+     },
+     "groups": [
+      {
+       "ids": [
+        "GHSA-gcqx-w48m-w2h4"
+       ],
+       "aliases": [
+        "CVE-2026-93753",
+        "GHSA-gcqx-w48m-w2h4"
+       ],
+       "max_severity": "5.3"
+      }
+     ],
+     "vulnerabilities": [
+      {
+       "id": "GHSA-gcqx-w48m-w2h4",
+       "aliases": [
+        "CVE-2026-93753"
+       ],
+       "summary": "deepmerge mergeObject() allows prototype poisoning of returned objects",
+       "database_specific": {
+        "severity": "LOW",
+        "cwe_ids": [
+         "CWE-1321"
+        ]
+       },
+       "severity": [
+        {
+         "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N",
+         "type": "CVSS_V3"
+        },
+        {
+         "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N/E:U",
+         "type": "CVSS_V4"
+        }
+       ],
+       "modified": "2026-10-27T21:45:04.256048049Z",
+       "published": "2026-09-18T18:31:44Z"
+      }
+     ]
+    },
+    {
+     "package": {
+      "name": "glob",
+      "version": "10.5.0",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/glob@10.5.0?source=PUBLIC_REGISTRY"
+     },
+     "groups": [
+      {
+       "ids": [
+        "GHSA-3g3m-2fjr-6pw4"
+       ],
+       "aliases": [
+        "CVE-2026-118773",
+        "GHSA-3g3m-2fjr-6pw4"
+       ],
+       "max_severity": "6.3"
+      }
+     ],
+     "vulnerabilities": [
+      {
+       "id": "GHSA-3g3m-2fjr-6pw4",
+       "aliases": [
+        "CVE-2026-118773"
+       ],
+       "summary": "Glob: AbortSignal cancellation bypass allows post-timeout filesystem traversal",
+       "database_specific": {
+        "severity": "MODERATE",
+        "cwe_ids": [
+         "CWE-400"
+        ]
+       },
+       "severity": [
+        {
+         "score": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N",
+         "type": "CVSS_V4"
+        }
+       ],
+       "modified": "2026-10-30T23:15:04.503965732Z",
+       "published": "2026-10-30T23:09:11Z"
+      }
+     ]
+    },
+    {
+     "package": {
+      "name": "glob",
+      "version": "13.0.6",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/glob@13.0.6?source=PUBLIC_REGISTRY"
+     },
+     "groups": [
+      {
+       "ids": [
+        "GHSA-3g3m-2fjr-6pw4"
+       ],
+       "aliases": [
+        "CVE-2026-118773",
+        "GHSA-3g3m-2fjr-6pw4"
+       ],
+       "max_severity": "6.3"
+      }
+     ],
+     "vulnerabilities": [
+      {
+       "id": "GHSA-3g3m-2fjr-6pw4",
+       "aliases": [
+        "CVE-2026-118773"
+       ],
+       "summary": "Glob: AbortSignal cancellation bypass allows post-timeout filesystem traversal",
+       "database_specific": {
+        "severity": "MODERATE",
+        "cwe_ids": [
+         "CWE-400"
+        ]
+       },
+       "severity": [
+        {
+         "score": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N",
+         "type": "CVSS_V4"
+        }
+       ],
+       "modified": "2026-10-30T23:15:04.503965732Z",
+       "published": "2026-10-30T23:09:11Z"
+      }
+     ]
+    },
+    {
+     "package": {
+      "name": "glob",
+      "version": "6.0.4",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/glob@6.0.4?source=PUBLIC_REGISTRY"
+     }
+    },
+    {
+     "package": {
+      "name": "minimatch",
+      "version": "10.2.6",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/minimatch@10.2.6?source=PUBLIC_REGISTRY"
+     },
+     "groups": [
+      {
+       "ids": [
+        "GHSA-g3hv-75wg-m249"
+       ],
+       "aliases": [
+        "CVE-2026-118764",
+        "GHSA-g3hv-75wg-m249"
+       ],
+       "max_severity": "6.9"
+      }
+     ],
+     "vulnerabilities": [
+      {
+       "id": "GHSA-g3hv-75wg-m249",
+       "aliases": [
+        "CVE-2026-118764"
+       ],
+       "summary": "minimatch has potential denial of service via globparts amplification",
+       "database_specific": {
+        "severity": "MODERATE",
+        "cwe_ids": [
+         "CWE-405"
+        ]
+       },
+       "severity": [
+        {
+         "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N",
+         "type": "CVSS_V4"
+        }
+       ],
+       "modified": "2026-10-30T23:15:07.420159385Z",
+       "published": "2026-10-30T23:09:55Z"
+      }
+     ]
+    },
+    {
+     "package": {
+      "name": "minimatch",
+      "version": "3.1.5",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/minimatch@3.1.5?source=PUBLIC_REGISTRY"
+     },
+     "groups": [
+      {
+       "ids": [
+        "GHSA-g3hv-75wg-m249"
+       ],
+       "aliases": [
+        "CVE-2026-118764",
+        "GHSA-g3hv-75wg-m249"
+       ],
+       "max_severity": "6.9"
+      }
+     ],
+     "vulnerabilities": [
+      {
+       "id": "GHSA-g3hv-75wg-m249",
+       "aliases": [
+        "CVE-2026-118764"
+       ],
+       "summary": "minimatch has potential denial of service via globparts amplification",
+       "database_specific": {
+        "severity": "MODERATE",
+        "cwe_ids": [
+         "CWE-405"
+        ]
+       },
+       "severity": [
+        {
+         "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N",
+         "type": "CVSS_V4"
+        }
+       ],
+       "modified": "2026-10-30T23:15:07.420159385Z",
+       "published": "2026-10-30T23:09:55Z"
+      }
+     ]
+    },
+    {
+     "package": {
+      "name": "minimatch",
+      "version": "9.0.9",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/minimatch@9.0.9?source=PUBLIC_REGISTRY"
+     },
+     "groups": [
+      {
+       "ids": [
+        "GHSA-g3hv-75wg-m249"
+       ],
+       "aliases": [
+        "CVE-2026-118764",
+        "GHSA-g3hv-75wg-m249"
+       ],
+       "max_severity": "6.9"
+      }
+     ],
+     "vulnerabilities": [
+      {
+       "id": "GHSA-g3hv-75wg-m249",
+       "aliases": [
+        "CVE-2026-118764"
+       ],
+       "summary": "minimatch has potential denial of service via globparts amplification",
+       "database_specific": {
+        "severity": "MODERATE",
+        "cwe_ids": [
+         "CWE-405"
+        ]
+       },
+       "severity": [
+        {
+         "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N",
+         "type": "CVSS_V4"
+        }
+       ],
+       "modified": "2026-10-30T23:15:07.420159385Z",
+       "published": "2026-10-30T23:09:55Z"
+      }
+     ]
+    },
+    {
+     "package": {
+      "name": "semver",
+      "version": "6.3.1",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/semver@6.3.1?source=PUBLIC_REGISTRY"
+     }
+    },
+    {
+     "package": {
+      "name": "semver",
+      "version": "7.8.5",
+      "ecosystem": "npm",
+      "purl": "pkg:npm/semver@7.8.5?source=PUBLIC_REGISTRY"
+     }
+    }
+   ]
+  },
+  {
+   "source": {
+    "path": "@ROOT@/firmware/Cargo.lock",
+    "type": "lockfile"
+   },
+   "packages": [
+    {
+     "package": {
+      "name": "log",
+      "version": "0.4.34",
+      "ecosystem": "crates.io",
+      "purl": "pkg:cargo/log@0.4.34"
+     }
+    },
+    {
+     "package": {
+      "name": "paste",
+      "version": "1.0.15",
+      "ecosystem": "crates.io",
+      "purl": "pkg:cargo/paste@1.0.15"
+     },
+     "groups": [
+      {
+       "ids": [
+        "RUSTSEC-2024-0436"
+       ],
+       "aliases": [
+        "RUSTSEC-2024-0436"
+       ],
+       "max_severity": ""
+      }
+     ],
+     "vulnerabilities": [
+      {
+       "id": "RUSTSEC-2024-0436",
+       "summary": "paste - no longer maintained",
+       "database_specific": {},
+       "modified": "2026-01-27T22:03:15.694766Z",
+       "published": "2024-10-07T12:00:00Z"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "source": {
+    "path": "@ROOT@/app/pubspec.lock",
+    "type": "lockfile"
+   },
+   "packages": [
+    {
+     "package": {
+      "name": "async",
+      "version": "2.13.1",
+      "ecosystem": "Pub",
+      "purl": "pkg:pub/async@2.13.1"
+     }
+    },
+    {
+     "package": {
+      "name": "collection",
+      "version": "1.19.1",
+      "ecosystem": "Pub",
+      "purl": "pkg:pub/collection@1.19.1"
+     }
+    }
+   ]
+  }
+ ],
+ "experimental_config": {
+  "licenses": {
+   "summary": false,
+   "allowlist": null
+  }
+ }
+}

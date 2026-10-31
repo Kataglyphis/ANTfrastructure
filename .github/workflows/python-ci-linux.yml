@@ -65,6 +65,13 @@ on:
         required: false
         type: string
         default: ''
+      bench-gate:
+        description: >-
+          Run `pytest bench/` when bench/ exists and fail the test leg on its
+          failure (PYTHON_BENCH_GATE). False keeps the best-effort demo run.
+        required: false
+        type: boolean
+        default: false
       package-emulated:
         description: >-
           Run the packaging step on the emulated riscv64 row as well. Set true
@@ -350,6 +357,7 @@ jobs:
             --platform ${{ matrix.platform }}
             -e PYTEST_PATHS=${{ inputs.test-paths }}
             -e PYTHON_COVERAGE_MIN=${{ inputs.coverage-min }}
+            -e PYTHON_BENCH_GATE=${{ inputs.bench-gate && '1' || '0' }}
             -e FREE_THREADED_SYNC_EXTRAS=${{ inputs.free-threaded-extras }}
             -e SYNC_EXTRAS=${{ inputs.test-extras }}
             ${{ matrix.arch == 'riscv64' && inputs.package-emulated && '-e UV_CACHE_DIR=/workspace/.uv-cache' || '' }}
