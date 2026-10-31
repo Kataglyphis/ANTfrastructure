@@ -758,7 +758,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       bundled path, and when a program first loads host zlib before a plugin with a purely
       bundled RUNPATH. The latter proves a possible dynamic-load scope, not that a retained
       bundle exercises it. A third fixture shows a local library with the wrong ELF machine
-      is skipped by the loader while the scanner still treats it as bundled. An independent
+      is skipped by the loader; the scanner now checks the class, byte order and machine of
+      bundled dependency candidates against the importer and records the host package in
+      that case. This is not a complete architecture-specific loader compatibility check.
+      An independent
       global-interposition fixture shows both unversioned and versioned plugin references
       binding to a previously global different-SONAME host library while the named bundled
       dependency is mapped; even its unversioned export can satisfy the versioned reference.

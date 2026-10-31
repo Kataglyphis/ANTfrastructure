@@ -162,6 +162,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Python DEB dependency discovery must prove isolated launcher and sitecustomize startup before omitting preloaded site-package libraries; executable `.pth` lines invalidate that proof.
    GPU DEB library-path and Python preload assumptions require generated wrappers for detected runnable ELFs; CON188 records remaining limits to these assumptions.
    Python DEB ELF dynamic entries, strings and version-needs records must match the loader's file-backed segments, including split segments; reject ambiguous mappings and section-only mutations.
+   Python DEB discovery must not treat a bundled dependency as resolved when its ELF class, byte order or machine differs from its importer; host scope and ABI-version limits remain in CON188.
    Python DEBs without bundled glibc require libc6 >= 2.36 for DT_RELR or its GLIBC_ABI_DT_RELR marker; reject unrecognized GLIBC_ABI markers rather than understate the host requirement.
    Use `docs/scripts/merge_mutation_recipes.py` to preview or merge recurring mutation recipe updates; stale anchors and unintended replacements fail before writing.
    Core disk probes share validation without merging zero-disabled and nonnegative-free-space policies.

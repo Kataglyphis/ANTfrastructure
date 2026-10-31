@@ -385,6 +385,10 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
     table and version-needs records must also agree with bytes mapped by ELF load segments,
     including split-segment layouts;
     ambiguous mappings or a section-only mismatch fail the build.
+  - A bundled dependency only counts as resolved when its ELF class, byte order and machine
+    match its importer. An incompatible local file can be skipped by the loader in favor of
+    a host library, whose package must then be recorded or cause the scan to fail. These
+    identity checks do not prove all architecture-specific loader rules or process scopes.
   - The scanner counts Python site-package preloads as bundled only when the generated
     isolated app and interpreter launchers and `sitecustomize.py` are intact, isolated Python
     confirms the bundled prefix, site and loaded preload paths on both loader paths, and no

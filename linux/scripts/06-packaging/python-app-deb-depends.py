@@ -312,6 +312,21 @@ def real_bundled_file(path: Path, bundle: Path) -> bool:
     return bundled_file(path, bundle) and path.resolve(strict=True) == path
 
 
+def elf_identity(path: Path) -> tuple[int, int, bytes] | None:
+    with path.open("rb") as stream:
+        header = stream.read(20)
+    if len(header) != 20 or header[:4] != b"\x7fELF" or header[4] not in (1, 2) or header[5] not in (1, 2):
+        return None
+    return header[4], header[5], header[18:20]
+
+
+def compatible_bundled_elf(candidate: Path, bundle: Path, importer: Path) -> bool:
+    if not bundled_file(candidate, bundle):
+        return False
+    identity = elf_identity(importer)
+    return identity is not None and identity == elf_identity(candidate)
+
+
 def elf_needs_launcher(path: Path, bundle: Path) -> bool:
     with path.open("rb") as stream:
         if stream.read(4) != b"\x7fELF":
@@ -565,18 +580,18 @@ def bundled_import(bundle: Path, path: Path, name: str, search: list[str], gpu_h
     origin = str(path.parent)
     if "/" in name:
         expanded = name.replace("${ORIGIN}", origin).replace("$ORIGIN", origin)
-        return expanded.startswith("/") and bundled_file(Path(expanded), bundle)
+        return expanded.startswith("/") and compatible_bundled_elf(Path(expanded), bundle, path)
     for item in search:
         expanded = item.replace("${ORIGIN}", origin).replace("$ORIGIN", origin)
-        if expanded.startswith("/") and bundled_file(Path(expanded) / name, bundle):
+        if expanded.startswith("/") and compatible_bundled_elf(Path(expanded) / name, bundle, path):
             return True
     runtime_lib = bundle / "runtime/lib" / name
     runtime = bundle / "runtime"
     python_library = path.is_relative_to(runtime / "lib")
     python_binary = path.parent == runtime / "bin" and path.name.startswith("python") and path.name.endswith(".bin")
-    if gpu_host and (python_library or python_binary) and bundled_file(runtime_lib, bundle):
+    if gpu_host and (python_library or python_binary) and compatible_bundled_elf(runtime_lib, bundle, path):
         return True
-    return name in preloads and python_preloads_active(bundle, path) and bundled_file(runtime_lib, bundle)
+    return name in preloads and python_preloads_active(bundle, path) and compatible_bundled_elf(runtime_lib, bundle, path)
 
 
 def ldconfig_cache() -> dict[str, str]:

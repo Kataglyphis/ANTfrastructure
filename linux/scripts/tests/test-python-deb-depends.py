@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 SUBJECT = Path(__file__).resolve().parents[1] / "06-packaging/python-app-deb-depends.py"
 spec = importlib.util.spec_from_file_location("deb_depends", SUBJECT)
@@ -241,6 +242,73 @@ class DebianDependencies(unittest.TestCase):
         result = self.run_subject()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn(owner, result.stdout)
+
+    def test_incompatible_local_library_keeps_host_dependency(self) -> None:
+        source = module.ldconfig_cache()["libz.so.1"]
+        owner = module.package_owner(source)
+        self.assertTrue(owner)
+        directory = self.bundle / "private"
+        directory.mkdir()
+        local = directory / "libz.so.1"
+        shutil.copyfile(source, local)
+        original = local.read_bytes()
+        app_source = self.root / "maps.c"
+        app_source.write_text('#include <stdio.h>\n#include <string.h>\n#include <zlib.h>\n'
+                              'int main(void) { char line[4096]; FILE *f=fopen("/proc/self/maps", "r"); '
+                              'if (!f || !zlibVersion()) return 1; '
+                              'while (fgets(line, sizeof(line), f)) if (strstr(line, "libz.so")) fputs(line, stdout); '
+                              'return fclose(f); }\n')
+        subprocess.run(["cc", str(app_source), "-lz", "-Wl,-rpath,$ORIGIN/private", "-o", str(self.app)], check=True)
+        env = dict(os.environ)
+        env.pop("LD_LIBRARY_PATH", None)
+        env.pop("LD_PRELOAD", None)
+        output = subprocess.run([str(self.app)], env=env, check=True, capture_output=True, text=True).stdout
+        self.assertIn(str(local), output)
+        result = self.run_subject()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(owner, result.stdout)
+        data = bytearray(original)
+        data[18] ^= 1
+        local.write_bytes(data)
+        output = subprocess.run([str(self.app)], env=env, check=True, capture_output=True, text=True).stdout
+        self.assertIn(os.path.realpath(source), output)
+        self.assertNotIn(str(local), output)
+        result = self.run_subject()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(owner, result.stdout)
+        for index in (4, 5):
+            data = bytearray(original)
+            data[index] = 3 - data[index]
+            local.write_bytes(data)
+            self.assertFalse(module.compatible_bundled_elf(local, self.bundle, self.app))
+        local.write_bytes(b"not an ELF")
+        self.assertFalse(module.compatible_bundled_elf(local, self.bundle, self.app))
+
+    def test_incompatible_candidates_do_not_satisfy_wrapper_or_preload(self) -> None:
+        source = module.ldconfig_cache()["libz.so.1"]
+        runtime = self.bundle / "runtime"
+        directory = runtime / "lib"
+        directory.mkdir(parents=True)
+        importer = directory / "python3.14/site-packages/extension.so"
+        importer.parent.mkdir(parents=True)
+        shutil.copyfile(self.app, importer)
+        local = directory / "libz.so.1"
+        shutil.copyfile(source, local)
+        original = local.read_bytes()
+        with patch.object(module, "python_preloads_active", return_value=True):
+            for identity_matches in (True, False):
+                data = bytearray(original)
+                if not identity_matches:
+                    data[18] ^= 1
+                local.write_bytes(data)
+                for name, search, gpu, preloads in ((str(local), [], False, set()),
+                                                    ("libz.so.1", [str(directory)], False, set()),
+                                                    ("libz.so.1", [], True, set()),
+                                                    ("libz.so.1", [], False, {"libz.so.1"})):
+                    with self.subTest(identity_matches=identity_matches, name=name, gpu=gpu, preloads=preloads):
+                        self.assertEqual(module.bundled_import(self.bundle, importer, name, search, gpu, preloads),
+                                         identity_matches)
+
     def test_gpu_launcher_library_path_and_waived_provider(self) -> None:
         source = module.ldconfig_cache()["libz.so.1"]
         owner = module.package_owner(source)
