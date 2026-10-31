@@ -100,6 +100,7 @@ Describe 'MSI installed-path mapping' {
                 Assert-Equal 'ortlicense' (Get-MsiInstalledFileId -Path $msi -RelativePath 'onnxruntime/LICENSE' -RootDirectoryId licenses -RootDirectoryName licenses)
                 Assert-Equal 'LICENSE,onnxruntime_providers_shared.dll' (@(Get-MsiDirectoryFileNames -Path $msi -Directory 'onnxruntime' -RootDirectoryId licenses -RootDirectoryName licenses) -join ',')
                 Assert-Equal 'onnxruntime_providers_shared.dll' (@(Get-PackageOrtProviderNames -Path $msi -Directory 'onnxruntime' -RootDirectoryId licenses -RootDirectoryName licenses) -join ',')
+                Assert-PackageOrtFamily -Path $msi -Directory 'onnxruntime' -RootDirectoryId licenses -RootDirectoryName licenses -Name 'onnxruntime_providers_shared.dll'
                 Assert-Throws { Get-MsiInstalledFileId -Path $msi -RelativePath 'LICENSE' } -MessagePattern 'matched 2 rows'
                 & (Get-Module WindowsMsiLicense.Common) { param($path)
                     Invoke-WithMsiLicenseDatabase -Path $path -Mode 1 -Body {
@@ -110,6 +111,7 @@ Describe 'MSI installed-path mapping' {
                     }
                 } $msi
                 Assert-Throws { Get-PackageOrtProviderNames -Path $msi -Directory 'onnxruntime' -RootDirectoryId licenses -RootDirectoryName licenses } -MessagePattern 'duplicate ORT provider'
+                Assert-Throws { Assert-PackageOrtFamily -Path $msi -Directory 'onnxruntime' -RootDirectoryId licenses -RootDirectoryName licenses -Name 'onnxruntime_providers_shared.dll' } -MessagePattern 'duplicate MSI ORT family'
                 Rename-Item -LiteralPath $msi -NewName 'closed.msi' -ErrorAction Stop
             }
         }

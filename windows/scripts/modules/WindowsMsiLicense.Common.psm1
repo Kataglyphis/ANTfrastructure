@@ -60,6 +60,21 @@ function Get-MsiLicenseFileRows {
     }
 }
 
+function Get-MsiInstalledFileNames {
+    <#
+    .SYNOPSIS
+        Returns the raw installed file names from an MSI File table.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+    Invoke-WithMsiLicenseDatabase -Path $Path -Mode 0 -Body {
+        param($database)
+        Invoke-MsiLicenseQuery -Database $database -Sql 'SELECT `FileName` FROM `File`' -ReadRecord {
+            param($record) [string]$record.StringData(1)
+        }
+    }
+}
+
 function Assert-MsiLicenseFileId {
     param([Parameter(Mandatory)][string]$Id)
     if ($Id -notmatch '^[A-Za-z_][A-Za-z0-9_.]*$') { throw "invalid MSI file identifier: $Id" }
@@ -390,4 +405,4 @@ function Assert-MsiPackageLicenses {
     Invoke-PackageLicenseBatch -Path $Path -Pattern $FileName -LicensePath $LicensePath -PythonPath $PythonPath -VerifierPath $VerifierPath -MsiFileNames
 }
 
-Export-ModuleMember -Function Resolve-MsiLicenseFileId, Get-MsiLicenseFileId, Resolve-MsiInstalledFileId, Get-MsiInstalledFileId, Resolve-MsiDirectoryFileNames, Get-MsiDirectoryFileNames, Resolve-MsiCabinetPattern, Get-MsiCabinetPattern, Get-WixSourceFileId, Assert-PackageLicense, Assert-MsiPackageLicense, Assert-PackageLicenses, Assert-MsiPackageLicenses, Invoke-PackageVerifier
+Export-ModuleMember -Function Resolve-MsiLicenseFileId, Get-MsiLicenseFileId, Get-MsiInstalledFileNames, Resolve-MsiInstalledFileId, Get-MsiInstalledFileId, Resolve-MsiDirectoryFileNames, Get-MsiDirectoryFileNames, Resolve-MsiCabinetPattern, Get-MsiCabinetPattern, Get-WixSourceFileId, Assert-PackageLicense, Assert-MsiPackageLicense, Assert-PackageLicenses, Assert-MsiPackageLicenses, Invoke-PackageVerifier

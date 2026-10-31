@@ -57,4 +57,46 @@ Describe 'Finished-package binary verification' {
             Assert-Throws { Get-PackageOrtProviderNames -Path $zip -Directory $prefix } -MessagePattern 'non-file provider'
         }
     }
+    It 'requires the full ORT family in the declared directory and rejects extra copies' {
+        Invoke-InTestDir { param($dir)
+            $names = @('onnxruntime.dll', 'onnxruntime_providers_shared.dll', 'DirectML.dll')
+            $bundle = Join-Path $dir 'bundle'; $bin = Join-Path $bundle 'bin'
+            $null = New-Item -ItemType Directory -Path $bin -Force
+            foreach ($name in $names) { [IO.File]::WriteAllText((Join-Path $bin $name), $name) }
+            Assert-PackageOrtFamily -Path $bundle -Directory 'bin' -Name $names
+            $nested = Join-Path $bin 'models'; $null = New-Item -ItemType Directory -Path $nested
+            [IO.File]::WriteAllText((Join-Path $nested 'onnxruntime.dll'), 'extra')
+            Assert-Throws { Assert-PackageOrtFamily -Path $bundle -Directory 'bin' -Name $names } -MessagePattern 'nested'
+            Remove-Item -LiteralPath (Join-Path $nested 'onnxruntime.dll')
+            $zip = Join-Path $dir 'candidate.zip'
+            $members = @{}; foreach ($name in $names) { $members["root/bin/$name"] = $name }
+            New-TestZipFile -Path $zip -Member $members
+            Assert-PackageOrtFamily -Path $zip -Directory 'root/bin' -Name $names
+            Remove-Item -LiteralPath $zip
+            $members['root/bin/models/onnxruntime.dll'] = 'extra'
+            New-TestZipFile -Path $zip -Member $members
+            Assert-Throws { Assert-PackageOrtFamily -Path $zip -Directory 'root/bin' -Name $names } -MessagePattern 'nested'
+            Remove-Item -LiteralPath $zip; $members.Remove('root/bin/models/onnxruntime.dll')
+            New-TestZipFile -Path $zip -Member $members -DuplicateName @('root/bin/onnxruntime.dll')
+            Assert-Throws { Assert-PackageOrtFamily -Path $zip -Directory 'root/bin' -Name $names } -MessagePattern 'duplicate'
+            Remove-Item -LiteralPath $zip; $members.Remove('root/bin/onnxruntime.dll')
+            New-TestZipFile -Path $zip -Member $members
+            Assert-Throws { Assert-PackageOrtFamily -Path $zip -Directory 'root/bin' -Name $names } -MessagePattern 'missing'
+        }
+    }
+    It 'rejects extra family members, aliased archive paths and linked entries' {
+        Invoke-InTestDir { param($dir)
+            $zip = Join-Path $dir 'candidate.zip'
+            $names = @('onnxruntime.dll')
+            foreach ($extra in @('root/bin/onnxruntime_genai.dll', 'root/bin\onnxruntime.dll', 'root/bin/onnxruntime.dll.')) {
+                New-TestZipFile -Path $zip -Member @{ 'root/bin/onnxruntime.dll' = 'core'; $extra = 'unexpected' }
+                Assert-Throws { Assert-PackageOrtFamily -Path $zip -Directory 'root/bin' -Name $names } -MessagePattern 'ORT family archive'
+                Remove-Item -LiteralPath $zip
+            }
+            New-TestZipFile -Path $zip -Member @{ 'root/bin/onnxruntime.dll' = 'link' }
+            $archive = [IO.Compression.ZipFile]::Open($zip, [IO.Compression.ZipArchiveMode]::Update)
+            try { $archive.GetEntry('root/bin/onnxruntime.dll').ExternalAttributes = -1610612736 } finally { $archive.Dispose() }
+            Assert-Throws { Assert-PackageOrtFamily -Path $zip -Directory 'root/bin' -Name $names } -MessagePattern 'linked'
+        }
+    }
 }

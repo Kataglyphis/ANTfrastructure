@@ -60,6 +60,14 @@ name. On a rerun, require matching run attempt and recreate all dependent receip
 do not promote a stale receipt or a different matrix entry. GPU releases also need
 explicit expected asset names and their existing clean-host and license checks.
 
+For Windows GPU artifacts, `Assert-PackageOrtFamily` in
+`WindowsPackageBinary.Common` requires exactly the named ORT-family DLLs in a
+declared bundle or ZIP, MSI or MSIX directory. Unexpected, duplicate, nested or
+linked ORT-family files fail, including files outside that directory. MSI checks
+the installed file table and root-relative paths. This census does not verify
+the files' bytes: use `Assert-PackageBinary` against wheel-proven inputs and
+verify their notices separately.
+
 ## Stage checked bytes for a release
 
 `shared/python/stage_gpu_artifact.py` accepts the raw, flat ZIP of a single
