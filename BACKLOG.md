@@ -903,7 +903,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       license provenance, and image checks for the elements; verify other Windows image variants
       independently. Until then that pipeline is unavailable in this image.
 
-- [ ] **CON205 — decide whether Linux images should precache Flutter material fonts** [S, ★★].
+- [ ] **CON205 — decide whether Linux images should precache Flutter artifacts** [S, ★★].
       On 2026-10-31, the cached Linux amd64 CPU `:latest` registry image digest
       `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
       had no `/opt/flutter/bin/cache/artifacts/material_fonts` as its normal uid 1001.
@@ -911,6 +911,13 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       to download Flutter's `fonts.zip` and failed DNS resolution. Decide whether offline
       Flutter precaching belongs to the image contract; if so, seed the needed artifacts
       and verify precaching as the normal user without network access in a fresh image.
+      The cached Linux amd64 `:latest-nvidia` image digest
+      `sha256:70bc45db5e2032cad3042b88b2f9a1c06cf4c4ddbbfc91251fbc0c9a2cba233d`
+      likewise failed `flutter precache --linux` at the material-font download with
+      networking disabled, its default `kataglyphis` user, no mounts and no overrides.
+      After a synthetic material-font cache marker in a disposable copy of that image,
+      the same offline command next attempted to download the Gradle wrapper. That probe
+      did not install or verify the font files and does not prove the remaining cache is complete.
       Check other image digests and architectures independently. This is an offline cache
       gap; it does not establish that network-backed builds fail.
 
