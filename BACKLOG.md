@@ -1121,6 +1121,18 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the same warning and full-model MIGraphX compilation failure on `gfx1036` using that
       image; its CPU fallback passed, but GPU profiling stopped at the TAR and did not test
       the AppImage. The local log is `_implementation/accelerant-rocm-hardware-profile-20261031/gpu-profile.log`.
+      A fresh prospective OmniAccelerANT AMD x64 TAR (SHA-256
+      `585cf4a3373003fa4f900be42494f341a7f1ff4058ff93289b61e0f329940cc6`)
+      reproduced the same default-settings `adaptive_topk_benchmark: all candidates
+      failed to run` during locked-model compilation, along with the missing gfx1036
+      MIOpen-library warning. This was a no-network WSL run on the sole HIP-visible
+      integrated Radeon `gfx1036` at PCI `0000:18:00.0`; the CPU detector profile
+      passed first. The disabled RX 9070 XT was not used. No MIGraphX tuning
+      workaround was applied, and this observation does not establish either message's
+      cause or the discrete GPU's behavior. It stopped at the TAR, without a successful
+      GPU profile or parity result. Logs and source/image limitations are in
+      `_implementation/omni-amd-prospective-build-20261031/VALIDATION.md` and
+      `_implementation/omni-amd-prospective-build-20261031/gpu-integrated-profile.log`.
       Repeating the same package and device with the documented process-only
       `MIGRAPHX_BENCHMARKING_USE_SIMPLE=1` option exposed a specific kernel launch failure:
       the image's MIGraphX reports it was not built for `gfx1036` and recommends adding that
