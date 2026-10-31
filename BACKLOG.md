@@ -1234,6 +1234,13 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       cargo-expand 1.0.116), record its licence and source, and
       verify an offline generation run in a fresh image. Check Linux ARM and the NVIDIA and
       AMD image variants separately; this observation does not establish their contents.
+      FRB 2.13.0 also invokes full Cargo metadata, including dependencies for other target
+      platforms. In an offline Linux-only cache, missing locked `android-activity` caused
+      metadata to fail silently and the generated Dart loader stem to become `UNKNOWN`,
+      breaking normal application startup even though Linux compilation succeeded. A
+      complete set of lock-verified cross-platform crate archives restored offline metadata.
+      Include a full offline metadata check and assert that the generated loader stem
+      matches the Rust library name; reject generation if either check fails.
 
 - [ ] **CON196 — select the GPU ONNX Runtime reliably in consumer images** [M, ★★★].
       On 2026-10-30 both cached GPU images exported `ORT_LIB_LOCATION` pointing at
