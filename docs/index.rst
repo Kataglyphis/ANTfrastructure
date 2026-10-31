@@ -181,6 +181,7 @@ Common development targets:
 
    windows-builds
    windows-rocm
+   windows-nvidia-runtime-evidence-2026-10-30
    windows-build-lanes
    windows-build-invariants
    windows-build-resources

@@ -64,6 +64,7 @@ The two halves of one topic often split:
 |---|---|
 | The image itself: what is installed, entrypoint, known traps | [`windows-builds.md`](windows-builds.md) |
 | **ROCm on Windows** (`-Variant rocm`): the layer in the sdk slot, `-rocm` tags, what each media component enables, redistribution | [`windows-rocm.md`](windows-rocm.md) |
+| **NVIDIA runtime evidence** — cached Windows image DLLs, SDK provenance and remaining verification | [`windows-nvidia-runtime-evidence-2026-10-30.md`](windows-nvidia-runtime-evidence-2026-10-30.md) |
 | **Rules you must not regress** when editing the Windows chain (49, grouped) | [`windows-build-invariants.md`](windows-build-invariants.md) |
 | **Which lane to build on**: BuildKit, nerdctl, the removed classic docker lane; isolation policy, preflight gates, RDNA4 A/B history | [`windows-build-lanes.md`](windows-build-lanes.md) |
 | CPU/memory envelope, the sccache wiring, GPU in containers, the 125-layer budget | [`windows-build-resources.md`](windows-build-resources.md) |
