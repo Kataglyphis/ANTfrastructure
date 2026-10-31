@@ -13,13 +13,20 @@ function Assert-SmokeCounters {
     Assert-Equal $Aborted $Summary.Aborted 'abort state'
 }
 
-function Get-SmokeCounterScenario {
-    param([bool]$ExitOnFirstFailure, [scriptblock]$AfterFailure)
+# One pass and one failure always land; only an exit-on-failure run aborts at the failure.
+function Assert-SmokeCounterScenario {
+    param([bool]$ExitOnFirstFailure, [scriptblock]$AfterFailure, [int]$Skipped, [int]$Total)
     Initialize-SmokeTestRun -ExitOnFirstFailure:$ExitOnFirstFailure
     Assert-Test -Name 'true' -Condition { $true }
     Assert-Test -Name 'false' -Condition { $false } -FailMessage 'deliberate'
     & $AfterFailure
-    return Get-SmokeTestSummary
+    Assert-SmokeCounters -Summary (Get-SmokeTestSummary) -Passed 1 -Failed 1 -Skipped $Skipped -Total $Total -Aborted $ExitOnFirstFailure
+}
+
+function Assert-SmokeRunContinued([string]$AbortWhy, [string]$PassWhy) {
+    $s = Get-SmokeTestSummary
+    Assert-False $s.Aborted $AbortWhy
+    Assert-Equal 1 $s.Passed $PassWhy
 }
 
 function New-SmokeMsixFixture {
@@ -50,8 +57,7 @@ Describe 'Smoke harness counters' {
     }
 
     It 'counts a passing, a failing and a skipped assertion into the summary' {
-        $summary = Get-SmokeCounterScenario -ExitOnFirstFailure $false -AfterFailure { Skip-Test 'deliberate skip' }
-        Assert-SmokeCounters -Summary $summary -Passed 1 -Failed 1 -Skipped 1 -Total 3 -Aborted $false
+        Assert-SmokeCounterScenario -ExitOnFirstFailure $false -AfterFailure { Skip-Test 'deliberate skip' } -Skipped 1 -Total 3
     }
 
     It 'records the failure message in FailureDetails' {
@@ -75,20 +81,17 @@ Describe '-ExitOnFirstFailure across the module boundary' {
     # Inside a module the dynamic-scope lookup finds nothing, so the abort would silently never fire.
 
     It 'aborts at the first failure and short-circuits later assertions' {
-        $summary = Get-SmokeCounterScenario -ExitOnFirstFailure $true -AfterFailure {
+        Assert-SmokeCounterScenario -ExitOnFirstFailure $true -AfterFailure {
             Assert-Test -Name 'later' -Condition { $true }
             Skip-Test 'later skip'
-        }
-        Assert-SmokeCounters -Summary $summary -Passed 1 -Failed 1 -Skipped 0 -Total 2 -Aborted $true
+        } -Skipped 0 -Total 2
     }
 
     It 'keeps running after a failure when the switch is absent (default)' {
         Initialize-SmokeTestRun
         Assert-Test -Name 'boom'  -Condition { $false } -FailMessage 'first failure'
         Assert-Test -Name 'later' -Condition { $true }
-        $s = Get-SmokeTestSummary
-        Assert-False $s.Aborted  'no abort'
-        Assert-Equal 1 $s.Passed 'later assertion still ran'
+        Assert-SmokeRunContinued 'no abort' 'later assertion still ran'
     }
 
     It 'does not leak the switch into the next run' {
@@ -97,9 +100,7 @@ Describe '-ExitOnFirstFailure across the module boundary' {
         Initialize-SmokeTestRun          # no switch this time
         Assert-Test -Name 'boom2' -Condition { $false }
         Assert-Test -Name 'after' -Condition { $true }
-        $s = Get-SmokeTestSummary
-        Assert-False $s.Aborted  'module state reset with the run'
-        Assert-Equal 1 $s.Passed 'run continued'
+        Assert-SmokeRunContinued 'module state reset with the run' 'run continued'
     }
 }
 

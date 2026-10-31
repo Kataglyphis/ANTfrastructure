@@ -1,10 +1,9 @@
 #requires -Version 7.0
 
 $modDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules'
-Import-Module (Join-Path $modDir 'WindowsWasmOpt.Common.psm1') -Force -DisableNameChecking
-Import-Module (Join-Path $modDir 'WindowsContainerBuild.Reuse.psm1') -Force -DisableNameChecking
-Import-Module (Join-Path $modDir 'WindowsSlang.Common.psm1') -Force -DisableNameChecking
-Import-Module (Join-Path $modDir 'WindowsVulkanValidation.Common.psm1') -Force -DisableNameChecking
+foreach ($module in 'WindowsWasmOpt.Common', 'WindowsContainerBuild.Reuse', 'WindowsSlang.Common', 'WindowsVulkanValidation.Common') {
+    Import-Module (Join-Path $modDir "$module.psm1") -Force -DisableNameChecking
+}
 Import-Module (Join-Path $PSScriptRoot 'WindowsSourceBuild.RetryFixtures.psm1') -Force -DisableNameChecking
 
 Describe 'Invoke-WasmOpt (orchestrator)' {
@@ -46,12 +45,18 @@ Describe 'Invoke-WasmOpt (orchestrator)' {
 
 }
 
+function Write-DockerFixtureCall {
+    param([string]$LogPath, [object[]]$Arguments)
+    $joined = $Arguments -join ' '
+    Add-Content -LiteralPath $LogPath -Value ("DOCKER " + $joined)
+    return $joined
+}
+
 Describe 'Get-ReusableBuildContainer (orchestrator)' {
 
     # A function fake: a .bat routes '{{.State.Running}}|{{.Image}}' through cmd.exe, which eats the `|`.
     function Get-ReusableDockerFixtureReply {
-        $joined = $args -join ' '
-        Add-Content -LiteralPath $env:WBT_DOCKER_LOG -Value ("DOCKER " + $joined)
+        $joined = Write-DockerFixtureCall $env:WBT_DOCKER_LOG $args
         if ($joined -match '\{\{\.Id\}\}') {
             if ($env:WBT_D_IMGID) { $global:LASTEXITCODE = 0; return $env:WBT_D_IMGID }
             $global:LASTEXITCODE = 1; return
@@ -148,6 +153,14 @@ Describe 'Wait-ContainerExit (the client exit code is not evidence)' {
         }.GetNewClosure()
     }
 
+    # $Wait carries the polling bounds of the cases that must give up rather than hang.
+    $waitThrows = {
+        param([string]$Status, [string]$ExitCode, [string]$Message, [string]$Pattern, [hashtable]$Wait = @{})
+        & $withFake $Status $ExitCode {
+            Assert-Throws { Wait-ContainerExit -DockerExe 'WbtWaitDockerFake' -Name 'wbt-w' @Wait 3>$null 6>$null } $Message -MessagePattern $Pattern
+        }
+    }
+
     It 'keeps fake error replies on stderr with a nonzero native result, with a fault control' {
         Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/tests/Modules.Orchestrators.Tests.ps1' -FunctionName Write-WaitDockerFixtureReply `
             -Find '$global:LASTEXITCODE = 1' -Replace '$global:LASTEXITCODE = 0' -Expected 'fake errors must be nonzero' -IncludeControl -Body {
@@ -181,55 +194,33 @@ Describe 'Wait-ContainerExit (the client exit code is not evidence)' {
     }
 
     It 'throws NAMING the vanished container instead of reporting a bogus "exit "' {
-        & $withFake 'ERR:Error: No such object: wbt-w' '0' {
-            Assert-Throws { Wait-ContainerExit -DockerExe 'WbtWaitDockerFake' -Name 'wbt-w' } `
-                'a container that cannot be inspected is not a zero exit' -MessagePattern 'no longer exists'
-        }
+        & $waitThrows 'ERR:Error: No such object: wbt-w' '0' 'a container that cannot be inspected is not a zero exit' 'no longer exists'
     }
 
     It 'retries an unreachable daemon (the fault it exists for) and says so when it gives up' {
-        & $withFake 'ERR:error during connect: open //./pipe/docker_engine: The system cannot find the file specified.' '0' {
-            Assert-Throws {
-                Wait-ContainerExit -DockerExe 'WbtWaitDockerFake' -Name 'wbt-w' -PollSeconds 1 -TimeoutMinutes 0.02 3>$null
-            } 'an unreachable daemon says nothing about the container' -MessagePattern 'daemon was unreachable for \d+ consecutive'
-        }
+        & $waitThrows 'ERR:error during connect: open //./pipe/docker_engine: The system cannot find the file specified.' '0' `
+            'an unreachable daemon says nothing about the container' 'daemon was unreachable for \d+ consecutive' @{ PollSeconds = 1; TimeoutMinutes = 0.02 }
     }
 
     It 'throws immediately on an inspect failure that is neither of those' {
-        & $withFake 'ERR:Cannot read the state: access is denied' '0' {
-            Assert-Throws { Wait-ContainerExit -DockerExe 'WbtWaitDockerFake' -Name 'wbt-w' } `
-                'an unclassified inspect failure must not be waited out' `
-                -MessagePattern 'neither a missing container nor an unreachable daemon'
-        }
+        & $waitThrows 'ERR:Cannot read the state: access is denied' '0' 'an unclassified inspect failure must not be waited out' `
+            'neither a missing container nor an unreachable daemon'
     }
 
     It 'has a real timeout instead of looping forever' {
-        & $withFake 'running' '0' {
-            Assert-Throws {
-                Wait-ContainerExit -DockerExe 'WbtWaitDockerFake' -Name 'wbt-w' -PollSeconds 1 -TimeoutMinutes 0.02 6>$null
-            } 'a container that never stops must not hang the lane' -MessagePattern "gave up after .* still 'running'"
-        }
+        & $waitThrows 'running' '0' 'a container that never stops must not hang the lane' "gave up after .* still 'running'" @{ PollSeconds = 1; TimeoutMinutes = 0.02 }
     }
 
     It 'refuses to call a container that never started a success' {
-        & $withFake 'created' '0' {
-            Assert-Throws { Wait-ContainerExit -DockerExe 'WbtWaitDockerFake' -Name 'wbt-w' } `
-                "state 'created' has ExitCode 0 without having run anything" -MessagePattern 'never started'
-        }
+        & $waitThrows 'created' '0' "state 'created' has ExitCode 0 without having run anything" 'never started'
     }
 
     It 'refuses to guess when the exit code itself cannot be read' {
-        & $withFake 'exited' 'ERR:Error: No such object: wbt-w' {
-            Assert-Throws { Wait-ContainerExit -DockerExe 'WbtWaitDockerFake' -Name 'wbt-w' } `
-                'an unreadable exit code is not a zero one' -MessagePattern 'exit code could not be read'
-        }
+        & $waitThrows 'exited' 'ERR:Error: No such object: wbt-w' 'an unreadable exit code is not a zero one' 'exit code could not be read'
     }
 
     It 'throws on a non-numeric exit code rather than coercing it to 0' {
-        & $withFake 'exited' 'not-a-number' {
-            Assert-Throws { Wait-ContainerExit -DockerExe 'WbtWaitDockerFake' -Name 'wbt-w' } `
-                'a non-numeric code means the format changed under us' -MessagePattern 'non-numeric exit code'
-        }
+        & $waitThrows 'exited' 'not-a-number' 'a non-numeric code means the format changed under us' 'non-numeric exit code'
     }
 
     It 'a stderr notice on a ZERO-exit inspect is never the value (status nor exit code)' {
@@ -240,18 +231,11 @@ Describe 'Wait-ContainerExit (the client exit code is not evidence)' {
     }
 
     It 'fails CLOSED on a state it does not recognise instead of calling it finished' {
-        & $withFake 'weird-new-state' '0' {
-            Assert-Throws { Wait-ContainerExit -DockerExe 'WbtWaitDockerFake' -Name 'wbt-w' } `
-                'an unknown state must not read as a finished container' `
-                -MessagePattern 'does not understand'
-        }
+        & $waitThrows 'weird-new-state' '0' 'an unknown state must not read as a finished container' 'does not understand'
     }
 
     It 'fails CLOSED on an EMPTY state string too' {
-        & $withFake '' '0' {
-            Assert-Throws { Wait-ContainerExit -DockerExe 'WbtWaitDockerFake' -Name 'wbt-w' } `
-                'an empty state is unknown, not finished' -MessagePattern 'does not understand'
-        }
+        & $waitThrows '' '0' 'an empty state is unknown, not finished' 'does not understand'
     }
 }
 
@@ -259,8 +243,7 @@ Describe 'Invoke-ContainerBuild bind-mount transport (client vs container)' {
 
     # The container's verdict wins; the run avoids --rm (loses the exit code) and the reusable name (loses the tree).
     $dockerDefinition = {
-        $joined = $args -join ' '
-        Add-Content -LiteralPath $env:WBT_B_LOG -Value ("DOCKER " + $joined)
+        $joined = Write-DockerFixtureCall $env:WBT_B_LOG $args
         if ($joined -match 'State\.Status') {
             # 'MISSING' = docker run failed before a container existed.
             if ($env:WBT_B_STATUS -eq 'MISSING') {
@@ -304,6 +287,23 @@ Describe 'Invoke-ContainerBuild bind-mount transport (client vs container)' {
         BuildCommand = @('build.cmd'); UseBindMount = $true
     }
 
+    $cleanBuildLog = {
+        param([string]$Pattern)
+        & $build '0' 'exited' '0' { param($log, $dir)
+            $null = Invoke-ContainerBuild @common -RepoRoot $dir
+            @(Get-Content $log | Where-Object { $_ -match $Pattern })
+        }
+    }
+
+    # $Then receives the docker log path once the build has thrown the expected message.
+    $buildThrows = {
+        param([string]$ClientExit, [string]$Status, [string]$ContainerExit, [string]$Message, [string]$Pattern, [scriptblock]$Then = {})
+        & $build $ClientExit $Status $ContainerExit { param($log, $dir)
+            Assert-Throws { Invoke-ContainerBuild @common -RepoRoot $dir 3>$null } $Message -MessagePattern $Pattern
+            & $Then $log
+        }
+    }
+
     It 'a clean build is unchanged: it runs, reads exit 0, and returns the bindmount transport' {
         & $build '0' 'exited' '0' { param($log, $dir)
             $r = Invoke-ContainerBuild @common -RepoRoot $dir
@@ -334,46 +334,32 @@ Describe 'Invoke-ContainerBuild bind-mount transport (client vs container)' {
     }
 
     It 'the build run carries no --rm (with it the daemon deletes the exit code)' {
-        & $build '0' 'exited' '0' { param($log, $dir)
-            $null = Invoke-ContainerBuild @common -RepoRoot $dir
-            $runLine = @(Get-Content $log | Where-Object { $_ -match '^DOCKER run --name' })
-            Assert-Equal 1 $runLine.Count 'exactly one build run'
-            Assert-False ($runLine[0] -match '--rm') 'the build run must outlive its client'
-        }
+        $runLine = @(& $cleanBuildLog '^DOCKER run --name')
+        Assert-Equal 1 $runLine.Count 'exactly one build run'
+        Assert-False ($runLine[0] -match '--rm') 'the build run must outlive its client'
     }
 
     It 'never removes the REUSABLE container - only its own bindmount one' {
-        & $build '0' 'exited' '0' { param($log, $dir)
-            $null = Invoke-ContainerBuild @common -RepoRoot $dir
-            $removed = @(Get-Content $log | Where-Object { $_ -match '^DOCKER rm -f ' })
-            Assert-True ($removed.Count -ge 1) 'it removes what it created'
-            Assert-Equal 0 @($removed | Where-Object { $_ -notmatch 'wbt-reusable-bindmount$' }).Count `
-                'a bind-mount run that removed wbt-reusable would throw away the incremental build tree'
-        }
+        $removed = @(& $cleanBuildLog '^DOCKER rm -f ')
+        Assert-True ($removed.Count -ge 1) 'it removes what it created'
+        Assert-Equal 0 @($removed | Where-Object { $_ -notmatch 'wbt-reusable-bindmount$' }).Count `
+            'a bind-mount run that removed wbt-reusable would throw away the incremental build tree'
     }
 
     It 'trusts the container over a client that dropped its pipe (the whole point)' {
         # Client says 1, container exited 0: the failure that did not happen.
-        & $build '1' 'exited' '0' { param($log, $dir)
-            $r = Invoke-ContainerBuild @common -RepoRoot $dir 3>$null
-            Assert-Equal 'bindmount' $r.Transport 'a completed build must not be reported as failed'
-        }
+        $r = & $build '1' 'exited' '0' { param($log, $dir) Invoke-ContainerBuild @common -RepoRoot $dir 3>$null }
+        Assert-Equal 'bindmount' $r.Transport 'a completed build must not be reported as failed'
     }
 
     It 'still fails, with the message it always had, when the CONTAINER failed' {
-        & $build '1' 'exited' '1' { param($log, $dir)
-            Assert-Throws { Invoke-ContainerBuild @common -RepoRoot $dir 3>$null } `
-                'a real failure stays a failure' -MessagePattern 'Container build failed \(exit 1\)'
-        }
+        & $buildThrows '1' 'exited' '1' 'a real failure stays a failure' 'Container build failed \(exit 1\)'
     }
 
     It 'reports the CLIENT code when docker run never created a container' {
         # A failure before any container exists leaves nothing to wait on; the client's exit code is the whole story.
-        & $build '125' 'MISSING' '0' { param($log, $dir)
-            Assert-Throws { Invoke-ContainerBuild @common -RepoRoot $dir } `
-                'a run that never started must not be reported as a vanished container' `
-                -MessagePattern 'Container build failed \(exit 125\) - docker run never created a container'
-        }
+        & $buildThrows '125' 'MISSING' '0' 'a run that never started must not be reported as a vanished container' `
+            'Container build failed \(exit 125\) - docker run never created a container'
     }
 
     It 'falls back to a UNIQUE name when the pre-removal cannot free it (wcifs lock)' {
@@ -392,18 +378,14 @@ Describe 'Invoke-ContainerBuild bind-mount transport (client vs container)' {
 
     It 'refuses to touch a leftover that is still RUNNING under its name' {
         # Force-removing it would kill a concurrent build of this tree, or evidence a timed-out wait kept.
-        & $build '0' 'running' '0' { param($log, $dir)
-            Assert-Throws { Invoke-ContainerBuild @common -RepoRoot $dir } `
-                'a live container must not be force-removed' -MessagePattern 'already running'
+        & $buildThrows '0' 'running' '0' 'a live container must not be force-removed' 'already running' { param($log)
             Assert-Equal 0 @(Get-Content $log | Where-Object { $_ -match '^DOCKER (rm -f|run --name) ' }).Count `
                 'neither a removal nor a build run may happen while the name is live'
         }
     }
 
     It 'keeps the container on failure so the docker logs advice stays runnable' {
-        & $build '1' 'exited' '1' { param($log, $dir)
-            Assert-Throws { Invoke-ContainerBuild @common -RepoRoot $dir 3>$null } `
-                'a real failure stays a failure' -MessagePattern 'Container build failed \(exit 1\)'
+        & $buildThrows '1' 'exited' '1' 'a real failure stays a failure' 'Container build failed \(exit 1\)' { param($log)
             $lines = @(Get-Content $log)
             $runAt = @(0..($lines.Count - 1) | Where-Object { $lines[$_] -match '^DOCKER run --name' })[0]
             Assert-Equal 0 @($lines[($runAt + 1)..($lines.Count - 1)] | Where-Object { $_ -match '^DOCKER rm -f ' }).Count `

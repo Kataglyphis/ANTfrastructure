@@ -22,6 +22,22 @@ function script:Invoke-WithFakeUv {
     }
 }
 
+# The requirements pin wheel hashes in lowercase hex.
+function script:Get-TestSha256([string]$Path) {
+    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+# Every cross install here is the app's arm64 leg from a checkout at $Dir; $Leg carries what each case varies.
+function script:Install-TestArm64App([string]$Dir, [hashtable]$Leg) {
+    Install-PythonAppCrossPackage -RepoRoot $Dir -WorkDir $Dir -Extras 'app' -Platform 'aarch64-pc-windows-msvc' @Leg
+}
+
+# The value after a flag in a fake's argv, or nothing when the flag is absent.
+function script:Get-FakeOption([object[]]$Argv, [string]$Flag) {
+    $at = [array]::IndexOf($Argv, $Flag)
+    if ($at -ge 0) { return $Argv[$at + 1] }
+}
+
 Describe 'Install-PythonAppPackage' {
 
     It 'leaves the PyPI ORT out of the lock export, then installs the lock, the app and the chain ORT' {
@@ -43,8 +59,8 @@ Describe 'Install-PythonAppCrossPackage' {
             $site = Join-Path $d 'site'
             $null = New-Item -ItemType Directory -Force -Path (Join-Path $site 'bin')
             $calls = Invoke-WithFakeUv {
-                Install-PythonAppCrossPackage -HostPython 'C:\host\python.exe' -SitePackages $site -RepoRoot $d -AppWheel 'app.whl' -Extras 'app' `
-                    -OrtWheel 'ort.whl' -WorkDir $d -Platform 'aarch64-pc-windows-msvc' -PythonVersion '3.14' -Exclude 'onnxruntime', 'opencv-python'
+                Install-TestArm64App $d @{ HostPython = 'C:\host\python.exe'; SitePackages = $site; AppWheel = 'app.whl'; OrtWheel = 'ort.whl'
+                    PythonVersion = '3.14'; Exclude = 'onnxruntime', 'opencv-python' }
             }
             Assert-Equal 4 $calls.Count 'the export, then three installs'
             Assert-Match '^export .*--extra app --no-emit-package onnxruntime --no-emit-package opencv-python --output-file ' $calls[0] 'the replaced packages stay out of the export'
@@ -172,19 +188,18 @@ Describe 'Add-PurePythonWheel' {
         Set-Item function:global:uv {
             $global:FakeCalls.Add($args -join ' ')
             $global:LASTEXITCODE = 0
-            $outFile = [array]::IndexOf($args, '--output-file')
-            if ($outFile -ge 0) { Copy-Item -LiteralPath (Join-Path (Split-Path $args[$outFile + 1]) 'req.txt') -Destination $args[$outFile + 1]; return }
+            $outFile = Get-FakeOption $args '--output-file'
+            if ($outFile) { Copy-Item -LiteralPath (Join-Path (Split-Path $outFile) 'req.txt') -Destination $outFile; return }
             if ($args[0] -ne 'build') { return }
             $global:FakeBuildEnv = $env:PYYAML_FORCE_LIBYAML
             Add-Type -AssemblyName System.IO.Compression.FileSystem
-            $zip = [IO.Compression.ZipFile]::Open((Join-Path $args[[array]::IndexOf($args, '--out-dir') + 1] 'pyyaml-6.0.3-py3-none-any.whl'), 'Create')
+            $zip = [IO.Compression.ZipFile]::Open((Join-Path (Get-FakeOption $args '--out-dir') 'pyyaml-6.0.3-py3-none-any.whl'), 'Create')
             try { foreach ($e in $global:FakeEntries) { $null = $zip.CreateEntry($e) } } finally { $zip.Dispose() }
             $global:LASTEXITCODE = 0
         }
         try {
             if ($Whole) {
-                Install-PythonAppCrossPackage -HostPython 'py' -SitePackages (Join-Path $Dir 'site') -RepoRoot $Dir -AppWheel 'a.whl' -Extras 'app' `
-                    -OrtWheel 'o.whl' -WorkDir $Dir -Platform 'aarch64-pc-windows-msvc' -PythonVersion '3.15'
+                Install-TestArm64App $Dir @{ HostPython = 'py'; SitePackages = (Join-Path $Dir 'site'); AppWheel = 'a.whl'; OrtWheel = 'o.whl'; PythonVersion = '3.15' }
                 return [pscustomobject]@{ Calls = @($global:FakeCalls) }
             }
             $built = & (Get-Module WindowsPythonApp.Common) {
@@ -204,7 +219,7 @@ Describe 'Add-PurePythonWheel' {
             Assert-Equal 'pyyaml' ($run.Built -join ',') 'one pure wheel, by name'
             Assert-Equal '0' $run.Env 'the build saw PYYAML_FORCE_LIBYAML=0'
             Assert-True ($null -eq $env:PYYAML_FORCE_LIBYAML) 'and the variable is gone again'
-            $wheelHash = (Get-FileHash -LiteralPath (Join-Path $d 'pure\pyyaml-6.0.3-py3-none-any.whl') -Algorithm SHA256).Hash.ToLowerInvariant()
+            $wheelHash = Get-TestSha256 (Join-Path $d 'pure\pyyaml-6.0.3-py3-none-any.whl')
             Assert-Match "--hash=sha256:$wheelHash" ((Get-Content -LiteralPath (Join-Path $d 'req.txt')) -join "`n") 'the requirement accepts the wheel'
         }
     }
@@ -257,7 +272,7 @@ Describe 'Install-PythonCrossSite (CON113)' {
             Set-Content -LiteralPath (Join-Path $d 'req.txt') -Value @("psutil==7.2.2 ; sys_platform == 'win32' \", '    --hash=sha256:111', 'rich==14.0 \', '    --hash=sha256:222')
             $added = & (Get-Module WindowsPythonApp.Common) { Add-StoreWheelHash -Requirements $args[0] -Store $args[1] -Tag 'cp315t-win_arm64' } (Join-Path $d 'req.txt') @($store)
             Assert-Equal 'psutil' ($added -join ',') 'the pinned version, of the leg''s tag, alone'
-            $want = (Get-FileHash -LiteralPath (Join-Path $store 'psutil-7.2.2-cp315-cp315t-win_arm64.whl') -Algorithm SHA256).Hash.ToLowerInvariant()
+            $want = Get-TestSha256 (Join-Path $store 'psutil-7.2.2-cp315-cp315t-win_arm64.whl')
             $req = (Get-Content -LiteralPath (Join-Path $d 'req.txt')) -join "`n"
             Assert-Match "--hash=sha256:111 \\\n    --hash=sha256:$want\nrich" $req 'its hash joins psutil''s'
             Assert-False ($req -match 'sha256:222 \\') 'rich untouched'

@@ -10,6 +10,7 @@ Describe 'FindPython prefix: ORT and GenAI ask the helper for the names their CM
         $script:ort    = (Get-TestScriptAst -ScriptPath 'windows/scripts/build/Build-OnnxFromSource.ps1').Extent.Text
         $script:genai  = (Get-TestScriptAst -ScriptPath 'windows/scripts/build/Build-OnnxGenaiFromSource.ps1').Extent.Text
         $script:ffmpeg = (Get-TestScriptAst -ScriptPath 'windows/scripts/build/Build-FfmpegFromSource.ps1').Extent.Text
+        $script:hintScripts = @(@{ Name = 'ORT'; Text = $script:ort }, @{ Name = 'GenAI'; Text = $script:genai })
     }
 
     It 'ORT asks for the Python prefix with the NumPy include hint, from the target-build object' {
@@ -22,14 +23,14 @@ Describe 'FindPython prefix: ORT and GenAI ask the helper for the names their CM
     }
 
     It 'neither script spells a hint by hand any more, and the ignored Python3_ name never returns' {
-        foreach ($pair in @(@{ Name = 'ORT'; Text = $script:ort }, @{ Name = 'GenAI'; Text = $script:genai })) {
+        foreach ($pair in $script:hintScripts) {
             Assert-True ($pair.Text -cnotmatch '-DPython3_') "$($pair.Name): -DPython3_* is read by no finder"
             Assert-True ($pair.Text -cnotmatch '"-D(Python|PYTHON)_(EXECUTABLE|LIBRARY|INCLUDE_DIR)=') "$($pair.Name): the trio is composed by the helper, not by hand"
         }
     }
 
     It 'cross-lane wheels go through Invoke-PythonWheelBuild -CrossStage (built + staged, never imported here)' {
-        foreach ($pair in @(@{ Name = 'ORT'; Text = $script:ort }, @{ Name = 'GenAI'; Text = $script:genai }, @{ Name = 'PyAV'; Text = $script:ffmpeg })) {
+        foreach ($pair in $script:hintScripts + @(@{ Name = 'PyAV'; Text = $script:ffmpeg })) {
             Assert-True ($pair.Text -cmatch '-CrossStage') "$($pair.Name): the wheel call carries -CrossStage"
         }
         # build_ext needs the target platform (the x86_arm64 tools) and the target's libs\ first, or the host's x64 lib wins.

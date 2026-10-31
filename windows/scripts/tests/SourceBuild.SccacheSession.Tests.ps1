@@ -103,6 +103,14 @@ Describe 'Start-SccacheServerSession' {
 
 Describe 'Complete-SccacheServerSession' {
 
+    # The epilogue's console output for an error log named $LogName, seeded with $Lines when given.
+    $completeOutput = {
+        param([string]$LogName, [string[]]$Lines)
+        Invoke-InTestDir { param($dir)
+            (Invoke-SccacheLoggedSession -Directory $dir -ErrorLog (Join-Path $dir $LogName) -Session Complete -InitialLogLines $Lines).Output
+        }
+    }
+
     It 'stops the server and dumps error/warn lines failures-first' {
         Invoke-InTestDir { param($dir)
             $result = Invoke-SccacheLoggedSession -Directory $dir -ErrorLog (Join-Path $dir 'err.log') -Session Complete -InitialLogLines @(
@@ -118,16 +126,10 @@ Describe 'Complete-SccacheServerSession' {
     }
 
     It 'falls back to the tail when the log has no error/warn lines' {
-        Invoke-InTestDir { param($dir)
-            $out = (Invoke-SccacheLoggedSession -Directory $dir -ErrorLog (Join-Path $dir 'err.log') -Session Complete -InitialLogLines @('DEBUG a', 'DEBUG b')).Output
-            Assert-Match 'no error/warn lines; tail follows' $out 'quiet logs still show a context tail'
-        }
+        Assert-Match 'no error/warn lines; tail follows' (& $completeOutput 'err.log' @('DEBUG a', 'DEBUG b')) 'quiet logs still show a context tail'
     }
 
     It 'names an error log the server never opened' {
-        Invoke-InTestDir { param($dir)
-            $out = (Invoke-SccacheLoggedSession -Directory $dir -ErrorLog (Join-Path $dir 'never-written.log') -Session Complete).Output
-            Assert-Match 'never opened it' $out 'a missing log is reported, not silently skipped'
-        }
+        Assert-Match 'never opened it' (& $completeOutput 'never-written.log') 'a missing log is reported, not silently skipped'
     }
 }

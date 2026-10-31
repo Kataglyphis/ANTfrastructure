@@ -22,13 +22,11 @@ Describe 'WindowsAppRunner.Common' {
   }
 
   Context 'Resolve-AppExecutablePath' {
-    It 'finds the executable in a per-configuration bin subdirectory' {
-      $resolved = Resolve-AppExecutablePath -BuildRoot $script:buildRoot -ExecutableName $script:appName -Configurations @('Release')
-      $resolved | Should -Be (Join-Path $script:buildRoot ('bin\Release\' + $script:appName))
-    }
-
-    It 'falls back to a recursive search when no candidate path matches' {
-      $resolved = Resolve-AppExecutablePath -BuildRoot $script:buildRoot -ExecutableName $script:appName -Configurations @('Debug')
+    It '<Title>' -ForEach @(
+      @{ Title = 'finds the executable in a per-configuration bin subdirectory'; Configuration = 'Release' }
+      @{ Title = 'falls back to a recursive search when no candidate path matches'; Configuration = 'Debug' }
+    ) {
+      $resolved = Resolve-AppExecutablePath -BuildRoot $script:buildRoot -ExecutableName $script:appName -Configurations @($Configuration)
       $resolved | Should -Be (Join-Path $script:buildRoot ('bin\Release\' + $script:appName))
     }
 

@@ -17,6 +17,12 @@ Describe 'PE inspection primitives' {
         $script:notPeDir = New-TestDir -Prefix 'target-pe-inspection-'
         $script:notPe = Join-Path $script:notPeDir 'not-a-pe.dll'
         Set-Content -Path $script:notPe -Value 'this is not a portable executable, it is a haiku' -Encoding ASCII
+
+        # Import names keep the PE's own casing, so the membership check lowercases them.
+        function Assert-PeImportsInclude([string[]]$Imports, [string]$Dll, [string]$Who) {
+            Assert-True ($Imports.Count -gt 0) "$Who has an import table"
+            Assert-True (($Imports | ForEach-Object { $_.ToLowerInvariant() }) -contains $Dll) "$Who imports $Dll (got: $($Imports -join ', '))"
+        }
     }
 
     AfterAll { Remove-TestDir -Path $script:notPeDir }
@@ -31,15 +37,12 @@ Describe 'PE inspection primitives' {
 
     It 'Get-PeImportNames lists the imported DLL names of a real PE (kernel32 -> ntdll)' {
         $imports = @(Get-PeImportNames -Path $script:kernel32)
-        Assert-True ($imports.Count -gt 0) 'kernel32.dll has an import table'
-        Assert-True (($imports | ForEach-Object { $_.ToLowerInvariant() }) -contains 'ntdll.dll') "kernel32.dll imports ntdll.dll (got: $($imports -join ', '))"
+        Assert-PeImportsInclude $imports 'ntdll.dll' 'kernel32.dll'
         Assert-True (@($imports | Where-Object { $_ -match '^api-ms-win-' }).Count -gt 0) 'kernel32.dll imports at least one api-ms-win-* API set'
     }
 
     It 'Get-PeImportNames also reads the running pwsh.exe (PE32+ with a delay-load table or none)' {
-        $imports = @(Get-PeImportNames -Path $script:pwshExe -IncludeDelayLoad)
-        Assert-True ($imports.Count -gt 0) 'pwsh.exe imports something (kernel32 at least)'
-        Assert-True (($imports | ForEach-Object { $_.ToLowerInvariant() }) -contains 'kernel32.dll') 'pwsh.exe imports kernel32.dll'
+        Assert-PeImportsInclude @(Get-PeImportNames -Path $script:pwshExe -IncludeDelayLoad) 'kernel32.dll' 'pwsh.exe'
     }
 
     It 'Get-PeImportNames returns unique names and throws on a non-PE file' {

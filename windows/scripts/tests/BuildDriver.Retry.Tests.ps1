@@ -28,11 +28,17 @@ Describe 'Invoke-TransientCooldown' {
     }
 
     It '-AssumeTransient retries a tail the classifier would reject' {
-        $r = Invoke-TransientCooldown -Tail 'error C2039' -Attempt 1 -MaxAttempts 3 -CooldownSeconds 0 -AssumeTransient
+        $r, $r2 = foreach ($assume in $true, $false) {
+            Invoke-TransientCooldown -Tail 'error C2039' -Attempt 1 -MaxAttempts 3 -CooldownSeconds 0 -AssumeTransient:$assume
+        }
         Assert-True $r 'caller-side classification must win'
-        $r2 = Invoke-TransientCooldown -Tail 'error C2039' -Attempt 1 -MaxAttempts 3 -CooldownSeconds 0
         Assert-False $r2 'without -AssumeTransient the classifier decides'
     }
+}
+
+# One gate decision for $Tail after $PreviousTail, without the cooldown wait.
+function Get-GateVerdict([string]$Tail, [string]$PreviousTail, [int]$MaxAttempts = 3, [switch]$AssumeTransient) {
+    Invoke-TransientCooldown -Tail $Tail -PreviousTail $PreviousTail -Attempt 1 -MaxAttempts $MaxAttempts -CooldownSeconds 0 -Label 't' -AssumeTransient:$AssumeTransient
 }
 
 Describe 'Invoke-TransientCooldown determinism gate' {
@@ -41,7 +47,7 @@ Describe 'Invoke-TransientCooldown determinism gate' {
 
     It 'refuses to retry when the failure is byte-identical to the previous one' {
         $tail = 'failed to commit 3p059m2d68o to o47dumb0ovs4 during finalize: failed to reimport snapshot: hcsshim::ImportLayer failed'
-        $r = Invoke-TransientCooldown -Tail $tail -PreviousTail $tail -Attempt 1 -MaxAttempts 3 -CooldownSeconds 0 -Label 't'
+        $r = Get-GateVerdict $tail $tail
         Assert-False $r 'an identical failure is deterministic, not transient'
     }
 
@@ -49,14 +55,14 @@ Describe 'Invoke-TransientCooldown determinism gate' {
         # buildkit prefixes each line with "#<vertex> <elapsed> ", so raw lines would never compare equal.
         $a = "#9 627.3 failed to reimport snapshot: hcsshim::ImportLayer failed"
         $b = "#9 1841.7 failed to reimport snapshot: hcsshim::ImportLayer failed"
-        $r = Invoke-TransientCooldown -Tail $b -PreviousTail $a -Attempt 1 -MaxAttempts 3 -CooldownSeconds 0 -Label 't'
+        $r = Get-GateVerdict $b $a
         Assert-False $r 'same failure with different elapsed times must still count as identical'
     }
 
     It 'still retries when the failure CHANGED between attempts (a real flake)' {
         $a = 'ttrpc: closed'
         $b = 'failed to create shim task'
-        $r = Invoke-TransientCooldown -Tail $b -PreviousTail $a -Attempt 1 -MaxAttempts 3 -CooldownSeconds 0 -Label 't'
+        $r = Get-GateVerdict $b $a
         Assert-True $r 'a differing transient tail must still be retried'
     }
 
@@ -80,15 +86,13 @@ Describe 'Mount contention: classified transient AND exempt from the determinism
 
     It 'retries mount contention even when the tail repeats verbatim' {
         $tail = 'failed to mount {windows-layer C:\ProgramData\containerd\root\...\snapshots\2039 [ro parentLayerPaths=...]}'
-        $r = Invoke-TransientCooldown -Tail $tail -PreviousTail $tail -Attempt 1 -MaxAttempts 5 `
-            -CooldownSeconds 0 -Label 't' -AssumeTransient
+        $r = Get-GateVerdict $tail $tail -MaxAttempts 5 -AssumeTransient
         Assert-True $r 'the determinism gate must not veto snapshot-mount contention'
     }
 
     It 'still vetoes an identical FINALIZE failure (the poisoned-snapshot case)' {
         $tail = 'failed to commit abc to def during finalize: failed to reimport snapshot: hcsshim::ImportLayer failed'
-        $r = Invoke-TransientCooldown -Tail $tail -PreviousTail $tail -Attempt 1 -MaxAttempts 5 `
-            -CooldownSeconds 0 -Label 't' -AssumeTransient
+        $r = Get-GateVerdict $tail $tail -MaxAttempts 5 -AssumeTransient
         Assert-False $r 'an identical finalize failure is deterministic and must not be retried'
     }
 }

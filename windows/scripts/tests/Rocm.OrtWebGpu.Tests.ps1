@@ -31,6 +31,23 @@ function New-OrtWebGpuTestZip([string]$Path, [hashtable]$Entry) {
     } finally { $zip.Dispose(); $fs.Dispose() }
 }
 
+# One existence check per fixture path, so each keeps its own message.
+function Assert-OrtWebGpuTestPath([string]$Root, [string]$Path, [bool]$Exists, [string]$Message) {
+    Assert-Equal $Exists (Test-Path (Join-Path $Root $Path)) $Message
+}
+
+# A rewrite of $Initial must leave every wanted text in $Path and change nothing when it runs again.
+function Assert-OrtWebGpuIdempotentText([string]$Path, [string]$Initial, [scriptblock]$Run, [string[]]$Want, [string]$Label, [string]$Again) {
+    [void](New-Item -ItemType Directory -Force -Path (Split-Path $Path -Parent))
+    [System.IO.File]::WriteAllText($Path, $Initial)
+    & $Run
+    $text = [System.IO.File]::ReadAllText($Path)
+    foreach ($w in $Want) { Assert-True $text.Contains($w) "$Label$w" }
+    & $Run
+    Assert-Equal $text ([System.IO.File]::ReadAllText($Path)) $Again
+    return $text
+}
+
 Describe 'Build-OnnxFromSource WebGPU: plan and pins (cpu/nvidia never enter the spike)' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:OrtBuildScript -FunctionName $script:OrtWebGpuBuildFunction)
 
@@ -148,9 +165,9 @@ Describe 'Build-OnnxFromSource WebGPU: archives and the Dawn DXC patch' {
             New-OrtWebGpuTestZip $zip $members
             Expand-OrtWebGpuDxc -Zip $zip -Destination (Join-Path $dir 'out')
             Assert-Equal 'c' ([System.IO.File]::ReadAllText((Join-Path $dir 'out\dxcompiler.dll'))) 'the x64 dxcompiler, not arm64'
-            Assert-True (Test-Path (Join-Path $dir 'out\licenses\LICENSE-MS.txt')) 'licences'
-            Assert-False (Test-Path (Join-Path $dir 'out\dxcapi.h')) 'nothing unasked'
-            Assert-False (Test-Path (Join-Path $dir 'out\dxil.dll')) 'no dxil.dll: nothing loads it since ORT v1.31.0'
+            Assert-OrtWebGpuTestPath $dir 'out\licenses\LICENSE-MS.txt' $true 'licences'
+            Assert-OrtWebGpuTestPath $dir 'out\dxcapi.h' $false 'nothing unasked'
+            Assert-OrtWebGpuTestPath $dir 'out\dxil.dll' $false 'no dxil.dll: nothing loads it since ORT v1.31.0'
             $members.Remove('lib\x64\dxcompiler.lib')
             New-OrtWebGpuTestZip $zip $members
             Assert-Throws { Expand-OrtWebGpuDxc -Zip $zip -Destination (Join-Path $dir 'out2') } 'no import lib' -MessagePattern 'lacks lib/x64/dxcompiler\.lib'
@@ -162,33 +179,26 @@ Describe 'Build-OnnxFromSource WebGPU: archives and the Dawn DXC patch' {
             $zip = Join-Path $dir 'dawn.zip'
             New-OrtWebGpuTestZip $zip @{ 'dawn-x/CMakeLists.txt' = 'c'; 'dawn-x/src/a.cc' = 'a'; 'dawn-x/test/t.cc' = 't'; 'dawn-x/third_party/test/k' = 'k' }
             Expand-OrtDawnArchive -Zip $zip -Destination (Join-Path $dir 'd')
-            Assert-True (Test-Path (Join-Path $dir 'd\src\a.cc')) 'source'
-            Assert-False (Test-Path (Join-Path $dir 'd\test')) 'test/ dropped'
-            Assert-True (Test-Path (Join-Path $dir 'd\third_party\test\k')) 'only the top-level test/ is dropped'
+            Assert-OrtWebGpuTestPath $dir 'd\src\a.cc' $true 'source'
+            Assert-OrtWebGpuTestPath $dir 'd\test' $false 'test/ dropped'
+            Assert-OrtWebGpuTestPath $dir 'd\third_party\test\k' $true 'only the top-level test/ is dropped'
             New-OrtWebGpuTestZip $zip @{ 'dawn-x/src/a.cc' = 'a' }
             Assert-Throws { Expand-OrtDawnArchive -Zip $zip -Destination (Join-Path $dir 'e') } 'no CMakeLists' -MessagePattern 'no top-level CMakeLists'
             New-OrtWebGpuTestZip $zip @{ 'dawn-x/CMakeLists.txt' = 'c'; 'dawn-x/../../evil.txt' = 'e' }
             Assert-Throws { Expand-OrtDawnArchive -Zip $zip -Destination (Join-Path $dir 'f') } 'zip slip' -MessagePattern 'outside'
-            Assert-False (Test-Path (Join-Path $dir 'evil.txt')) 'nothing written outside'
+            Assert-OrtWebGpuTestPath $dir 'evil.txt' $false 'nothing written outside'
         }
     }
 
     It 'the DXC block becomes the prebuilt targets, $ literals intact, idempotently; a moved block refuses' {
         Invoke-InTestDir { param($dir)
             $cm = Join-Path $dir 'third_party\CMakeLists.txt'
-            [void](New-Item -ItemType Directory -Force -Path (Split-Path $cm -Parent))
-            [System.IO.File]::WriteAllText($cm, "function(AddSubdirectoryDXC)`nendfunction()`n`n$($script:DawnDxcBlock)")
-            Invoke-DawnPrebuiltDxcPatch -DawnSrc $dir 6>$null
-            $text = [System.IO.File]::ReadAllText($cm)
-            foreach ($want in 'if (DAWN_USE_BUILT_DXC AND DAWN_PREBUILT_DXC_DIR)', 'add_library(dxcompiler SHARED IMPORTED GLOBAL)',
+            $text = Assert-OrtWebGpuIdempotentText $cm "function(AddSubdirectoryDXC)`nendfunction()`n`n$($script:DawnDxcBlock)" { Invoke-DawnPrebuiltDxcPatch -DawnSrc $dir 6>$null } @(
+                'if (DAWN_USE_BUILT_DXC AND DAWN_PREBUILT_DXC_DIR)', 'add_library(dxcompiler SHARED IMPORTED GLOBAL)',
                 'IMPORTED_LOCATION "${DAWN_PREBUILT_DXC_DIR}/dxcompiler.dll"', 'IMPORTED_IMPLIB "${DAWN_PREBUILT_DXC_DIR}/dxcompiler.lib"',
                 'message(STATUS "Dawn: prebuilt DXC from ${DAWN_PREBUILT_DXC_DIR}")',
-                "elseif (DAWN_USE_BUILT_DXC)`n    AddSubdirectoryDXC()`nendif()", 'if (TINT_BUILD_MESA)') {
-                Assert-True $text.Contains($want) "missing: $want"
-            }
+                "elseif (DAWN_USE_BUILT_DXC)`n    AddSubdirectoryDXC()`nendif()", 'if (TINT_BUILD_MESA)') 'missing: ' 'second run changes nothing'
             Assert-False $text.Contains('dxil') 'no dxil.dll target: Dawn v20260916.214021 dropped copy_dxil_dll'
-            Invoke-DawnPrebuiltDxcPatch -DawnSrc $dir 6>$null
-            Assert-Equal $text ([System.IO.File]::ReadAllText($cm)) 'second run changes nothing'
             [System.IO.File]::WriteAllText($cm, "if(DAWN_USE_BUILT_DXC)`n  AddSubdirectoryDXC()`nendif()`n")
             Assert-Throws { Invoke-DawnPrebuiltDxcPatch -DawnSrc $dir 3>$null 6>$null } 'moved block' -MessagePattern 'moved'
         }
@@ -241,12 +251,12 @@ Describe 'Build-OnnxFromSource WebGPU: the whole input chain, offline (downloads
             $r = Invoke-OrtWebGpuFixtureInput $dir (New-OrtWebGpuFixture -Dir $dir)
             Assert-Equal "two`n" ([System.IO.File]::ReadAllText((Join-Path $r.DawnSrc 'src\a.txt'))) 'ORT''s Dawn patch applied with GNU patch'
             Assert-True ([System.IO.File]::ReadAllText((Join-Path $r.DawnSrc 'third_party\CMakeLists.txt')).Contains('ANTfrastructure prebuilt DXC')) 'DXC swapped'
-            Assert-False (Test-Path (Join-Path $r.DawnSrc 'test')) 'test/ dropped'
+            Assert-OrtWebGpuTestPath $r.DawnSrc 'test' $false 'test/ dropped'
             Assert-Equal 4 $script:OrtFakeFetched.Count "fetched: $($script:OrtFakeFetched -join ' ')"
             Assert-True ($script:OrtFakeFetched[0] -eq 'https://example.test/third_party/jinja2@0123456789abcdef0123456789abcdef01234567') "first fetch: $($script:OrtFakeFetched[0])"
             Assert-Equal 'c' ([System.IO.File]::ReadAllText((Join-Path $r.DxcDir 'dxcompiler.dll'))) 'DXC staged'
             Assert-Equal 'v20260818.211311' $r.Pin.DAWN_VERSION 'pins returned'
-            Assert-False (Test-Path (Join-Path $dir 'work\dawn.zip')) 'the archives are not left in the work dir'
+            Assert-OrtWebGpuTestPath $dir 'work\dawn.zip' $false 'the archives are not left in the work dir'
         }
     }
 
@@ -279,18 +289,15 @@ Describe 'Build-OnnxFromSource WebGPU: cmake args, configure/install/wheel gates
         $cache = "onnxruntime_USE_WEBGPU:BOOL=ON`r`nDAWN_FETCH_DEPENDENCIES:BOOL=OFF`r`nDAWN_USE_BUILT_DXC:BOOL=ON`r`nDAWN_ENABLE_D3D12:BOOL=ON`r`nDAWN_ENABLE_VULKAN:BOOL=OFF`r`n"
         $log = "-- Dawn: prebuilt DXC from C:/w/dxc`n"
         Assert-Equal 0 @(Get-OrtWebGpuConfigureFinding -CacheText $cache -LogText $log).Count 'healthy'
-        foreach ($c in @(
+        Assert-TestSingleFindingCases -Message 'configure gate' -Cases @(
                 @{ C = $cache.Replace('USE_WEBGPU:BOOL=ON', 'USE_WEBGPU:BOOL=OFF'); L = $log; P = 'onnxruntime_USE_WEBGPU=OFF' }
                 @{ C = $cache.Replace("DAWN_FETCH_DEPENDENCIES:BOOL=OFF`r`n", ''); L = $log; P = 'DAWN_FETCH_DEPENDENCIES=<unset>' }
                 @{ C = $cache.Replace('BUILT_DXC:BOOL=ON', 'BUILT_DXC:BOOL=OFF'); L = $log; P = 'DAWN_USE_BUILT_DXC=OFF' }
                 @{ C = $cache.Replace('D3D12:BOOL=ON', 'D3D12:BOOL=OFF'); L = $log; P = 'DAWN_ENABLE_D3D12=OFF' }
                 @{ C = $cache.Replace('VULKAN:BOOL=OFF', 'VULKAN:BOOL=ON'); L = $log; P = 'DAWN_ENABLE_VULKAN=ON' }
                 @{ C = $cache; L = ''; P = 'prebuilt-DXC branch' }
-                @{ C = $cache; L = $log + "-- Running fetch_dawn_dependencies:`n"; P = 'fetch_dawn_dependencies' })) {
-            $f = @(Get-OrtWebGpuConfigureFinding -CacheText $c.C -LogText $c.L)
-            Assert-Equal 1 $f.Count "case /$($c.P)/: $($f -join ' | ')"
-            Assert-Match $c.P $f[0] $c.P
-        }
+                @{ C = $cache; L = $log + "-- Running fetch_dawn_dependencies:`n"; P = 'fetch_dawn_dependencies' }
+        ) -Exercise { param($c) Get-OrtWebGpuConfigureFinding -CacheText $c.C -LogText $c.L }
     }
 
     # A DXC dir as Expand-OrtWebGpuDxc leaves it: dxcompiler.dll and the three licence texts, each holding its own name.
@@ -309,9 +316,9 @@ Describe 'Build-OnnxFromSource WebGPU: cmake args, configure/install/wheel gates
             $sha = Install-OrtWebGpuRuntime -DxcDir $dxc -OrtInstallDir (Join-Path $dir 'ort')
             Assert-Equal (Get-FileHash -LiteralPath (Join-Path $dxc 'dxcompiler.dll')).Hash.ToLowerInvariant() $sha['dxcompiler.dll'] 'hash returned'
             Assert-Equal 'dxcompiler.dll' (@($sha.Keys) -join ',') 'one DLL staged'
-            Assert-True (Test-Path (Join-Path $dir 'ort\bin\dxcompiler.dll')) 'dxcompiler staged'
-            Assert-False (Test-Path (Join-Path $dir 'ort\bin\dxil.dll')) 'no dxil.dll'
-            Assert-True (Test-Path (Join-Path $dir 'ort\licenses\directx-shader-compiler\LICENSE-MS.txt')) 'licence staged'
+            Assert-OrtWebGpuTestPath $dir 'ort\bin\dxcompiler.dll' $true 'dxcompiler staged'
+            Assert-OrtWebGpuTestPath $dir 'ort\bin\dxil.dll' $false 'no dxil.dll'
+            Assert-OrtWebGpuTestPath $dir 'ort\licenses\directx-shader-compiler\LICENSE-MS.txt' $true 'licence staged'
             function Get-PeImportNames { param($Path, [switch]$IncludeDelayLoad) @('KERNEL32.dll', 'DXCOMPILER.dll') }
             Assert-Throws { Install-OrtWebGpuRuntime -DxcDir $dxc -OrtInstallDir (Join-Path $dir 'ort') } 'static DXC' -MessagePattern 'imports DXCOMPILER\.dll'
             Remove-Item (Join-Path $dir 'ort\bin\onnxruntime.dll')
@@ -323,7 +330,7 @@ Describe 'Build-OnnxFromSource WebGPU: cmake args, configure/install/wheel gates
         $sha = @{ 'dxcompiler.dll' = 'a' * 64 }
         $ok = @{ providers = @('WebGpuExecutionProvider', 'DmlExecutionProvider', 'CPUExecutionProvider'); dlls = @{ 'dxcompiler.dll' = 'a' * 64 }; dxc_notice = $true }
         Assert-Equal 0 @(Get-OrtWebGpuWheelFinding -Report $ok -DllSha256 $sha).Count 'healthy'
-        foreach ($c in @(
+        Assert-TestSingleFindingCases -Message 'wheel gate' -Cases @(
                 @{ R = $null; P = 'printed no report' }
                 @{ R = @{ error = 'ImportError: x' }; P = 'does not import: ImportError' }
                 @{ R = @{ providers = @('DmlExecutionProvider', 'CPUExecutionProvider'); dlls = $ok.dlls; dxc_notice = $true }; P = 'no WebGpuExecutionProvider' }
@@ -331,23 +338,17 @@ Describe 'Build-OnnxFromSource WebGPU: cmake args, configure/install/wheel gates
                 @{ R = @{ providers = $ok.providers; dlls = @{}; dxc_notice = $true }; P = 'capi\\dxcompiler\.dll is ''''' }
                 @{ R = @{ providers = $ok.providers; dlls = @{ 'dxcompiler.dll' = 'a' * 64; 'dxil.dll' = 'b' * 64 }; dxc_notice = $true }; P = 'capi carries dxil\.dll, which nothing loads since ORT v1\.31\.0' }
                 @{ R = @{ providers = $ok.providers; dlls = $ok.dlls; dxc_notice = $false }; P = 'ThirdPartyNotices\.txt lacks ''DirectXShaderCompiler' }
-                @{ R = @{ providers = $ok.providers; dlls = $ok.dlls }; P = 'ThirdPartyNotices\.txt lacks' })) {
-            $f = @(Get-OrtWebGpuWheelFinding -Report $c.R -DllSha256 $sha)
-            Assert-Equal 1 $f.Count "case /$($c.P)/: $($f -join ' | ')"
-            Assert-Match $c.P $f[0] $c.P
-        }
+                @{ R = @{ providers = $ok.providers; dlls = $ok.dlls }; P = 'ThirdPartyNotices\.txt lacks' }
+        ) -Exercise { param($c) Get-OrtWebGpuWheelFinding -Report $c.R -DllSha256 $sha }
     }
 
     It 'the wheel gate refuses a staged-hash table that is empty, other-keyed or malformed (no vacuous byte check)' {
         $ok = @{ providers = @('WebGpuExecutionProvider'); dlls = @{ 'dxcompiler.dll' = 'a' * 64 }; dxc_notice = $true }
-        foreach ($c in @(
+        Assert-TestSingleFindingCases -Message 'staged-hash table' -Cases @(
                 @{ T = @{}; P = 'staged dxcompiler\.dll hash is '''', not a SHA256' }
                 @{ T = @{ 'dxil.dll' = 'a' * 64 }; P = 'staged dxcompiler\.dll hash is '''', not a SHA256' }
-                @{ T = @{ 'dxcompiler.dll' = 'A' * 64 }; P = 'staged dxcompiler\.dll hash is ''A{64}'', not a SHA256' })) {
-            $f = @(Get-OrtWebGpuWheelFinding -Report $ok -DllSha256 $c.T)
-            Assert-Equal 1 $f.Count "case /$($c.P)/: $($f -join ' | ')"
-            Assert-Match $c.P $f[0] $c.P
-        }
+                @{ T = @{ 'dxcompiler.dll' = 'A' * 64 }; P = 'staged dxcompiler\.dll hash is ''A{64}'', not a SHA256' }
+        ) -Exercise { param($c) Get-OrtWebGpuWheelFinding -Report $ok -DllSha256 $c.T }
     }
 
     It 'the wheel''s notices gain DXC''s texts once, and the real probe (Python, fake package) reads them and capi''s hashes back' {
@@ -356,16 +357,10 @@ Describe 'Build-OnnxFromSource WebGPU: cmake args, configure/install/wheel gates
             $build = Join-Path $dir 'build'; $pkg = Join-Path $build 'onnxruntime'
             $notices = Join-Path $pkg 'ThirdPartyNotices.txt'
             [void](New-Item -ItemType Directory -Force -Path (Join-Path $pkg 'capi'))
-            [System.IO.File]::WriteAllText($notices, "_____`n`ndawn`n`nBSD 3-Clause`n")
-            Add-OrtWebGpuWheelNotice -BuildDir $build -DxcDir $dxc -DxcVersion 'v1.9.2607'
-            $text = [System.IO.File]::ReadAllText($notices)
+            $text = Assert-OrtWebGpuIdempotentText $notices "_____`n`ndawn`n`nBSD 3-Clause`n" { Add-OrtWebGpuWheelNotice -BuildDir $build -DxcDir $dxc -DxcVersion 'v1.9.2607' } @(
+                "$(Get-OrtDxcNoticeTitle) v1.9.2607", 'https://github.com/microsoft/DirectXShaderCompiler',
+                'text of licenses\LICENSE-LLVM.txt', 'text of licenses\LICENSE-MS.txt', 'text of licenses\LICENCE-MIT.txt') 'notices carry: ' 'a second run appends nothing'
             Assert-True $text.StartsWith("_____`n`ndawn`n`nBSD 3-Clause`n") 'ORT''s own notices kept'
-            foreach ($w in "$(Get-OrtDxcNoticeTitle) v1.9.2607", 'https://github.com/microsoft/DirectXShaderCompiler',
-                'text of licenses\LICENSE-LLVM.txt', 'text of licenses\LICENSE-MS.txt', 'text of licenses\LICENCE-MIT.txt') {
-                Assert-True $text.Contains($w) "notices carry: $w"
-            }
-            Add-OrtWebGpuWheelNotice -BuildDir $build -DxcDir $dxc -DxcVersion 'v1.9.2607'
-            Assert-Equal $text ([System.IO.File]::ReadAllText($notices)) 'a second run appends nothing'
             [System.IO.File]::WriteAllText((Join-Path $pkg '__init__.py'), "def get_available_providers():`n    return ['WebGpuExecutionProvider', 'CPUExecutionProvider']`n")
             Copy-Item -Path (Join-Path $dxc '*.dll') -Destination (Join-Path $pkg 'capi')
             $sha = @{ 'dxcompiler.dll' = (Get-FileHash -LiteralPath (Join-Path $dxc 'dxcompiler.dll')).Hash.ToLowerInvariant() }

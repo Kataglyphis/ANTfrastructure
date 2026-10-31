@@ -25,6 +25,12 @@ Describe 'WindowsMsix.Common' {
     Import-Module $modulePath -Force
 
     $script:tmp = New-TestDir -Prefix 'msix-common-'
+
+    # Neither PATH nor any candidate directory has the tool; Test-Path too, or a host install answers.
+    function Set-MsixToolAbsentMock {
+      Mock -ModuleName WindowsMsix.Common -CommandName Get-Command { return $null }
+      Mock -ModuleName WindowsMsix.Common -CommandName Test-Path { return $false }
+    }
   }
 
   AfterAll {
@@ -45,9 +51,7 @@ Describe 'WindowsMsix.Common' {
 
   Context 'Resolve-WindowsSdkToolPath' {
     It 'returns $null when the tool is on neither PATH nor any SDK candidate directory' {
-      # Test-Path is mocked too, or the Windows Kits scan resolves a real SDK on the host.
-      Mock -ModuleName WindowsMsix.Common -CommandName Get-Command { return $null }
-      Mock -ModuleName WindowsMsix.Common -CommandName Test-Path { return $false }
+      Set-MsixToolAbsentMock
 
       Resolve-WindowsSdkToolPath -ToolName 'nonexistent.exe' -OverridePath $null | Should -BeNullOrEmpty
     }
@@ -72,15 +76,18 @@ Describe 'WindowsMsix.Common' {
   }
 
   Context 'Get-PackageVersion' {
-    It 'pads a short version to the four components an AppxManifest needs' {
-      Invoke-InTestDir -Files @{ 'version.txt' = "1.2$([Environment]::NewLine)" } -Body { param($ws)
-        Get-PackageVersion -WorkspacePath $ws | Should -Be '1.2.0.0'
+    BeforeAll {
+      function Write-TestCargoManifest([string]$Workspace, [string]$VersionLine) {
+        Write-TestFileTree -Root $Workspace -Files @{ 'Cargo.toml' = (ConvertTo-TestFileText -Line @('[package]', $VersionLine)) }
       }
     }
 
-    It 'takes the digits out of a decorated version, and drops extra components' {
-      Invoke-InTestDir -Files @{ 'VERSION.txt' = "v3.4.5.6.7-rc1`n$([Environment]::NewLine)" } -Body { param($ws)
-        Get-PackageVersion -WorkspacePath $ws | Should -Be '3.4.5.6'
+    It '<Title>' -ForEach @(
+      @{ Title = 'pads a short version to the four components an AppxManifest needs'; File = 'version.txt'; Text = "1.2$([Environment]::NewLine)"; Want = '1.2.0.0' }
+      @{ Title = 'takes the digits out of a decorated version, and drops extra components'; File = 'VERSION.txt'; Text = "v3.4.5.6.7-rc1`n$([Environment]::NewLine)"; Want = '3.4.5.6' }
+    ) {
+      Invoke-InTestDir -Files @{ $File = $Text } -Body { param($ws)
+        Get-PackageVersion -WorkspacePath $ws | Should -Be $Want
       }
     }
 
@@ -113,7 +120,7 @@ Describe 'WindowsMsix.Common' {
         Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' -Required | Should -Be '5.6.7.0'
         Get-PackageVersion -WorkspacePath $ws -VersionFile 'pubspec.yaml' -Components 3 -Required | Should -Be '2.0.0'
         Get-PackageVersion -WorkspacePath $ws -VersionFile (Join-Path $ws 'pyproject.toml') | Should -Be '0.10.1.0'
-        Write-TestFileTree -Root $ws -Files @{ 'Cargo.toml' = (ConvertTo-TestFileText -Line @('[package]', 'version = "2.3.4-rc1"')) }
+        Write-TestCargoManifest $ws 'version = "2.3.4-rc1"'
         Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' | Should -Be '2.3.4.0'
       }
     }
@@ -126,7 +133,7 @@ Describe 'WindowsMsix.Common' {
         Assert-Throws -MessagePattern 'no version in.*pubspec\.yaml' -Body {
           Get-PackageVersion -WorkspacePath $ws -VersionFile 'pubspec.yaml' -Required
         }
-        Write-TestFileTree -Root $ws -Files @{ 'Cargo.toml' = (ConvertTo-TestFileText -Line @('[package]', 'version.workspace = true')) }
+        Write-TestCargoManifest $ws 'version.workspace = true'
         Assert-Throws -MessagePattern 'no version in.*Cargo\.toml' -Body {
           Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' -Required
         }
@@ -148,6 +155,11 @@ Describe 'WindowsMsix.Common' {
       # The smallest template, for the cases that never read the manifest back.
       $script:bareTemplate = Join-Path $script:tmp 'bare.template.xml'
       Set-Content -LiteralPath $script:bareTemplate -Value '<Package/>' -Encoding utf8
+
+      # The cases share an empty token map and, unless they name one, the bare template.
+      function Invoke-BareMsixPackage([string]$StagingDir, [string]$OutputPath, [hashtable]$With, [string]$Template = $script:bareTemplate) {
+        Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir $StagingDir -ManifestTemplatePath $Template -OutputPath $OutputPath -TokenMap @{} @With
+      }
     }
 
     BeforeEach {
@@ -182,9 +194,7 @@ Describe 'WindowsMsix.Common' {
       $logoPath = Join-Path $ws 'logo.png'
       Copy-Item -LiteralPath (Join-Path (Get-RepoRoot) 'images/logo.png') -Destination $logoPath
       $staging = Join-Path $ws 'staging'
-      Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir $staging -LogoPath $logoPath `
-        -ManifestTemplatePath $script:bareTemplate -OutputPath (Join-Path $ws 'app.msix') `
-        -TokenMap @{} -InvokerScriptBlock $script:fakeMakeappx | Out-Null
+      Invoke-BareMsixPackage $staging (Join-Path $ws 'app.msix') @{ LogoPath = $logoPath; InvokerScriptBlock = $script:fakeMakeappx } | Out-Null
       $cases = @('StoreLogo.png 50 50', 'Square44x44Logo.png 44 44',
         'Square150x150Logo.png 150 150', 'Wide310x150Logo.png 310 150')
       foreach ($case in $cases) {
@@ -218,9 +228,7 @@ Describe 'WindowsMsix.Common' {
       $ws = Join-Path $script:tmp 'pkg2'
 
       Assert-Throws -MessagePattern 'produced no package' -Body {
-        Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir (Join-Path $ws 'staging') `
-          -ManifestTemplatePath $script:bareTemplate -OutputPath (Join-Path $ws 'out\nothing.msix') `
-          -TokenMap @{} -GenerateTransparentLogos -InvokerScriptBlock { }
+        Invoke-BareMsixPackage (Join-Path $ws 'staging') (Join-Path $ws 'out\nothing.msix') @{ GenerateTransparentLogos = $true; InvokerScriptBlock = { } }
       }
     }
 
@@ -230,10 +238,8 @@ Describe 'WindowsMsix.Common' {
       $staging = Join-Path $script:tmp 'unrooted\staging'
 
       Assert-Throws -MessagePattern '-SigningRoot' -Body {
-        Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir $staging `
-          -ManifestTemplatePath (Join-Path $script:tmp 'no-such-template.xml') `
-          -OutputPath (Join-Path $script:tmp 'unrooted\app.msix') `
-          -TokenMap @{} -Sign -InvokerScriptBlock $script:fakeMakeappx
+        Invoke-BareMsixPackage $staging (Join-Path $script:tmp 'unrooted\app.msix') @{ Sign = $true; InvokerScriptBlock = $script:fakeMakeappx } `
+          -Template (Join-Path $script:tmp 'no-such-template.xml')
       }
       Test-Path -LiteralPath $staging | Should -BeFalse -Because 'the check runs before any work'
     }
@@ -243,9 +249,8 @@ Describe 'WindowsMsix.Common' {
       $build = Join-Path $script:tmp 'rooted\build'
       $root = Join-Path $script:tmp 'rooted\repo'
 
-      Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir (Join-Path $build 'msix\staging') `
-        -ManifestTemplatePath $script:bareTemplate -OutputPath (Join-Path $build 'app.msix') `
-        -TokenMap @{} -GenerateTransparentLogos -Sign -SigningRoot $root -InvokerScriptBlock $script:fakeMakeappx | Out-Null
+      Invoke-BareMsixPackage (Join-Path $build 'msix\staging') (Join-Path $build 'app.msix') @{
+        GenerateTransparentLogos = $true; Sign = $true; SigningRoot = $root; InvokerScriptBlock = $script:fakeMakeappx } | Out-Null
 
       Should -Invoke -ModuleName WindowsMsix.Common -CommandName Invoke-MsixSign -Times 1 -Exactly `
         -ParameterFilter { $WorkspacePath -eq $root }
@@ -286,6 +291,15 @@ Describe 'WindowsMsix.Common' {
         ProductName = 'App & Co'; Manufacturer = 'Kataglyphis'; Version = '1.2.3'; Arch = 'arm64'
         WixPath = (Join-Path $script:msiIn 'wix.exe'); InvokerScriptBlock = $script:fakeWix
       }
+
+      # $With replaces or adds to the shared arguments; -BeforeWix also proves the tool never ran.
+      function Assert-MsiPackageThrows([string]$Pattern, [string]$OutName, [hashtable]$With, [switch]$BeforeWix) {
+        $arguments = $script:msiArgs.Clone()
+        foreach ($key in $With.Keys) { $arguments[$key] = $With[$key] }
+        $script:wixCall = $null
+        Assert-Throws -MessagePattern $Pattern -Body { Invoke-MsiPackage @arguments -OutFile (Join-Path $script:tmp "msi-out\$OutName") }
+        if ($BeforeWix) { $script:wixCall | Should -BeNullOrEmpty }
+      }
     }
 
     It 'hands every moving value to the .wxs as a preprocessor variable' {
@@ -310,11 +324,7 @@ Describe 'WindowsMsix.Common' {
 
     It 'rejects invalid and reserved WiX variables before invoking the tool' {
       foreach ($name in 'Version', 'ExeSource', 'PayloadFiles', 'bad-name', 'x y') {
-        $script:wixCall = $null
-        Assert-Throws -MessagePattern 'Invalid or reserved WiX variable name' -Body {
-          Invoke-MsiPackage @script:msiArgs -OutFile (Join-Path $script:tmp 'msi-out\invalid.msi') -WixVariables @{ $name = 'x' }
-        }
-        $script:wixCall | Should -BeNullOrEmpty
+        Assert-MsiPackageThrows 'Invalid or reserved WiX variable name' 'invalid.msi' @{ WixVariables = @{ $name = 'x' } } -BeforeWix
       }
     }
 
@@ -332,23 +342,15 @@ Describe 'WindowsMsix.Common' {
     }
 
     It 'throws when wix build reports success and writes nothing' {
-      Assert-Throws -MessagePattern 'wix reported success but produced no package' -Body {
-        Invoke-MsiPackage @script:msiArgs -OutFile (Join-Path $script:tmp 'msi-out\none.msi') -InvokerScriptBlock { }
-      }
+      Assert-MsiPackageThrows 'wix reported success but produced no package' 'none.msi' @{ InvokerScriptBlock = { } }
     }
 
     It 'names the missing input before it runs anything' {
-      $script:wixCall = $null
-      Assert-Throws -MessagePattern 'the license' -Body {
-        Invoke-MsiPackage @script:msiArgs -OutFile (Join-Path $script:tmp 'msi-out\x.msi') -LicenseFile 'C:\no\License.rtf'
-      }
-      $script:wixCall | Should -BeNullOrEmpty
+      Assert-MsiPackageThrows 'the license' 'x.msi' @{ LicenseFile = 'C:\no\License.rtf' } -BeforeWix
     }
 
     It 'refuses a payload list without a fragment path' {
-      Assert-Throws -MessagePattern '-FragmentPath' -Body {
-        Invoke-MsiPackage @script:msiArgs -OutFile (Join-Path $script:tmp 'msi-out\y.msi') -PayloadFiles @([pscustomobject]@{ Source = 'a'; Subdirectory = '' })
-      }
+      Assert-MsiPackageThrows '-FragmentPath' 'y.msi' @{ PayloadFiles = @([pscustomobject]@{ Source = 'a'; Subdirectory = '' }) }
     }
   }
 
@@ -367,8 +369,7 @@ Describe 'WindowsMsix.Common' {
     }
 
     It 'returns $null when neither WIX nor PATH has it' {
-      Mock -ModuleName WindowsMsix.Common -CommandName Get-Command { return $null }
-      Mock -ModuleName WindowsMsix.Common -CommandName Test-Path { return $false }
+      Set-MsixToolAbsentMock
       Invoke-WithEnv @{ WIX = '' } {
         Resolve-WixExe -OverridePath '' | Should -BeNullOrEmpty
       }

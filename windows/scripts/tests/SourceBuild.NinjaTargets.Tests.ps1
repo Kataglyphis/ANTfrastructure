@@ -13,11 +13,17 @@ $script:NewTargetNinja = New-TestBatchToolSetup -Name ninja.bat -Line @(
 
 Describe 'Invoke-NinjaBuildWithRetry -Targets' {
 
-    It 'passes the target list on the first invocation and on the incremental retry' {
-        $fixture = Invoke-RecordedRetryFixture -Tool ninja -ToolSetup $script:NewTargetNinja -Failures 1 -Body {
+    # $Retry carries what a case adds to the shared single-job ladder.
+    $runLadder = {
+        param([int]$Failures, [hashtable]$Retry = @{})
+        Invoke-RecordedRetryFixture -Tool ninja -ToolSetup $script:NewTargetNinja -Failures $Failures -Body {
             param($context)
-            Invoke-NinjaBuildWithRetry -BuildDir $context.Dir -RetryJobs 1 -MemGBPerJob 1 -Targets @('tvm_runtime', 'tvm_ffi_shared') -StallRetries 0
+            Invoke-NinjaBuildWithRetry -BuildDir $context.Dir -RetryJobs 1 -MemGBPerJob 1 -StallRetries 0 @Retry
         }
+    }
+
+    It 'passes the target list on the first invocation and on the incremental retry' {
+        $fixture = & $runLadder 1 @{ Targets = @('tvm_runtime', 'tvm_ffi_shared') }
         $calls = $fixture.Calls
         Assert-Equal 2 $calls.Count 'first attempt failed, incremental retry succeeded'
         # cmd's `echo %* >>` leaves a trailing space before the redirect -- tolerate it.
@@ -25,10 +31,7 @@ Describe 'Invoke-NinjaBuildWithRetry -Targets' {
     }
 
     It 'omits targets entirely when none are given (whole-graph build, unchanged behaviour)' {
-        $fixture = Invoke-RecordedRetryFixture -Tool ninja -ToolSetup $script:NewTargetNinja -Body {
-            param($context)
-            Invoke-NinjaBuildWithRetry -BuildDir $context.Dir -RetryJobs 1 -MemGBPerJob 1 -StallRetries 0
-        }
+        $fixture = & $runLadder 0
         $calls = $fixture.Calls
         Assert-Equal 1 $calls.Count
         Assert-True ($calls[0] -match "-C $([regex]::Escape($fixture.Dir))\s*$") "no trailing targets: $($calls[0])"

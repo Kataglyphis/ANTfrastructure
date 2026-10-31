@@ -488,6 +488,13 @@ Describe 'Build-IreeFromSource + Build-TvmFromSource: rocm-only steps sit behind
         }
     }
 
+    # One site under the expected innermost guard, outside any else body or condition.
+    function Assert-RocmGuardedSite([object[]]$Sites, [string]$What, [string]$Kind, [string]$Want) {
+        Assert-Equal 1 $Sites.Count "$What has one $Kind site"
+        Assert-Equal $Want "$($Sites[0].Guards | Select-Object -First 1)" "$What innermost guard (line $($Sites[0].Line))"
+        Assert-Equal 0 @($Sites[0].Guards -match '^(else|condition)$').Count "$What is not in an else body or a condition"
+    }
+
     function Assert-TvmRocmGuardedSites {
         # rocm.py ships in every lane's tvm wheel: an unguarded source patch would change cpu/nvidia bytes.
         foreach ($c in @(
@@ -499,9 +506,7 @@ Describe 'Build-IreeFromSource + Build-TvmFromSource: rocm-only steps sit behind
                 @{ Literal = 'ROCM-FEATURES.txt'; Want = '$tvmRocmPlan.OnLane' })) {
             $what = "$($c['Command'])$($c['Literal'])"
             $sites = @(Get-RocmStepSite -RelPath $script:TvmScript -Command $c['Command'] -Literal $c['Literal'] -Function $c['Function'])
-            Assert-Equal 1 $sites.Count "$what has one guarded site"
-            Assert-Equal $c.Want "$($sites[0].Guards | Select-Object -First 1)" "$what innermost guard (line $($sites[0].Line))"
-            Assert-Equal 0 @($sites[0].Guards -match '^(else|condition)$').Count "$what is not in an else body or a condition"
+            Assert-RocmGuardedSite $sites $what 'guarded' $c.Want
             # The gate and the marker take the list read back from the llvm-config TVM links.
             if ($c['Call']) { Assert-Equal $c['Call'] $sites[0].Text "$what arguments" }
         }
@@ -517,10 +522,7 @@ Describe 'Build-IreeFromSource + Build-TvmFromSource: rocm-only steps sit behind
 
     function Assert-IreeRocmGuardedSites {
         foreach ($name in 'Invoke-IreeHipDylibNamePatch', 'Get-IreeRocmDeviceBitcodeArg') {
-            $sites = @(Get-RocmStepSite -RelPath $script:IreeScript -Command $name)
-            Assert-Equal 1 $sites.Count "$name has one script-level site"
-            Assert-Equal '$ireeRocm' "$($sites[0].Guards | Select-Object -First 1)" "$name innermost guard (line $($sites[0].Line))"
-            Assert-Equal 0 @($sites[0].Guards -match '^(else|condition)$').Count "$name is not in an else body or a condition"
+            Assert-RocmGuardedSite @(Get-RocmStepSite -RelPath $script:IreeScript -Command $name) $name 'script-level' '$ireeRocm'
         }
     }
 
@@ -625,13 +627,18 @@ Describe 'rocm-checks\IREE.ps1' {
         Assert-Equal 1 @(Get-IreeHipSearchPathFinding -Output ($clean -replace 'amdhip64_7', 'AMDHIP64_7') -Dir $dir).Count 'case-sensitive'
     }
 
+    # The check's findings for one fake install under one fake tool runner.
+    function Get-FakeIreeFinding($Install, [scriptblock]$Invoke) {
+        return @(Get-IreeRocmFinding -IreeBin $Install.Bin -ScratchDir $Install.Scratch -Invoke $Invoke)
+    }
+
     function Assert-IreeInstallFindingCases {
         $vmfb = New-TestVmfb (New-TestElfHeader)
         Invoke-InTestDir {
             param($d)
             $i = New-FakeIreeInstall $d
             $good = New-FakeIreeInvoke -ListOutput $script:GoodList -Vmfb $vmfb -Report $script:GoodReport
-            Assert-Equal '' (@(Get-IreeRocmFinding -IreeBin $i.Bin -ScratchDir $i.Scratch -Invoke $good) -join ' / ') 'healthy image'
+            Assert-Equal '' ((Get-FakeIreeFinding $i $good) -join ' / ') 'healthy image'
             $cases = @(
                 @{ N = 'no hip driver'; Inv = (New-FakeIreeInvoke -ListOutput ($script:GoodList -replace '(?m)^\s+hip:.*$', '') -Vmfb $vmfb -Report $script:GoodReport); P = 'does not list the hip HAL driver' }
                 @{ N = 'search loop without reset'; Inv = (New-FakeIreeInvoke -ListOutput $script:GoodList -Vmfb $vmfb -Report $script:GoodReport -Search 'concat'); P = 'tried \[[^\]]*amdhip64_7\.dll[A-Za-z]:\\[^\]]*\].+explicit-path HIP lookup is broken' }
@@ -645,7 +652,7 @@ Describe 'rocm-checks\IREE.ps1' {
                 @{ N = 'python failed with a report'; Inv = (New-FakeIreeInvoke -ListOutput $script:GoodList -Vmfb $vmfb -Report $script:GoodReport -PythonExit 7); P = '^IREE: the python probe exited 7 without a report$' }
             )
             foreach ($c in $cases) {
-                $got = @(Get-IreeRocmFinding -IreeBin $i.Bin -ScratchDir $i.Scratch -Invoke $c.Inv)
+                $got = @(Get-FakeIreeFinding $i $c.Inv)
                 Assert-Equal $(if ($c.Contains('Findings')) { $c['Findings'] } else { 1 }) $got.Count "$($c.N): finding count ($($got -join ' / '))"
                 Assert-Match $c.P $got[0] $c.N
             }
@@ -663,7 +670,7 @@ Describe 'rocm-checks\IREE.ps1' {
         Invoke-InTestDir {
             param($d)
             $i = New-FakeIreeInstall $d -Patched $false -BitcodeNames @('ocml.bc')
-            $got = @(Get-IreeRocmFinding -IreeBin $i.Bin -ScratchDir $i.Scratch -Invoke $unpatched)
+            $got = @(Get-FakeIreeFinding $i $unpatched)
             Assert-Equal 3 $got.Count "three findings ($($got -join ' / '))"
             Assert-Match 'iree-run-module\.exe does not look for amdhip64_7\.dll' $got[0] 'dylib name'
             Assert-Match 'tried \[[^,\]]*\\amdhip64\.dll\], expected' $got[1] 'search path tries the legacy name only'
@@ -671,7 +678,7 @@ Describe 'rocm-checks\IREE.ps1' {
             $d2 = Join-Path $d 'second'
             $j = New-FakeIreeInstall $d2
             [System.IO.File]::Move((Join-Path $j.Bin 'iree-compile.exe'), (Join-Path $d2 'moved-away.exe'))
-            $got = @(Get-IreeRocmFinding -IreeBin $j.Bin -ScratchDir $j.Scratch -Invoke $good)
+            $got = @(Get-FakeIreeFinding $j $good)
             Assert-Equal 1 $got.Count 'missing tool stops the check'
             Assert-Match 'iree-compile\.exe missing' $got[0] 'missing tool'
         }
@@ -731,17 +738,12 @@ Describe 'rocm-checks\TVM.ps1' {
         Invoke-InTestDir {
             param($d)
             $lib = New-FakeTvmLib $d
-            $cases = @(
+            Assert-TestSingleFindingCases -Message 'sidecar' -Cases @(
                 @{ N = 'static OpenCL'; F = '1'; I = (New-FakeImports -OpenCl @('OpenCL.dll')); P = 'links OpenCL\.dll at load time' }
                 @{ N = 'no HIP import'; F = '1'; I = (New-FakeImports -Rocm @('tvm_runtime.dll')); P = 'does not import amdhip64_7\.dll' }
                 @{ N = 'HSA import'; F = '1'; I = (New-FakeImports -Rocm @('amdhip64_7.dll', 'hsa-runtime64.dll')); P = 'imports an HSA runtime' }
                 @{ N = 'stale rocm sidecar'; F = '0'; I = (New-FakeImports); P = 'exists although the marker says TVM_ROCM=0' }
-            )
-            foreach ($c in $cases) {
-                $got = @(Get-TvmRocmSidecarFinding -LibDir $lib -Features @{ TVM_ROCM = $c.F } -GetImports $c.I)
-                Assert-Equal 1 $got.Count "$($c.N): one finding ($($got -join ' / '))"
-                Assert-Match $c.P $got[0] $c.N
-            }
+            ) -Exercise { param($c) Get-TvmRocmSidecarFinding -LibDir $lib -Features @{ TVM_ROCM = $c.F } -GetImports $c.I }
             $empty = New-FakeTvmLib (Join-Path $d 'empty') @()
             $got = @(Get-TvmRocmSidecarFinding -LibDir $empty -Features @{ TVM_ROCM = '1' } -GetImports (New-FakeImports))
             Assert-Equal 2 $got.Count 'both sidecars missing'

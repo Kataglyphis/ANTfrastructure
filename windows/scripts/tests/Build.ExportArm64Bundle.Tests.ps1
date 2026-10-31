@@ -10,9 +10,8 @@ Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
     $real = Join-Path $script:work 'real'
     $empty = Join-Path $script:work 'empty'
     $script:out = Join-Path $script:work 'out'
-    [void](New-Item -ItemType Directory -Force -Path (Join-Path $real 'python'), $empty)
-    $null = New-Item -ItemType File -Force -Path (Join-Path $real 'BUNDLE-ENV.ps1')
-    Set-Content -LiteralPath (Join-Path $real 'python\python.exe') -Value 'fake'
+    Write-TestFileTree -Root $real -Files @{ 'BUNDLE-ENV.ps1' = ''; 'python/python.exe' = 'fake' }
+    [void](New-Item -ItemType Directory -Force -Path $empty)
     }
 
     It 'refuses a root without BUNDLE-ENV.ps1' {

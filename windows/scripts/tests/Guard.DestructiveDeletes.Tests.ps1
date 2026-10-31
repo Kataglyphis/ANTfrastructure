@@ -4,7 +4,8 @@
 
 # Untested guard regexes read as protection; this file is exempt from the guard, so it may spell the denied shapes verbatim.
 
-$guard = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) '.claude\hooks\guard-destructive-deletes.ps1'
+$repoRoot = Get-RepoRoot
+$guard = Join-Path $repoRoot '.claude\hooks\guard-destructive-deletes.ps1'
 
 function Get-GuardDecision {
     # Returns 'deny', 'ask' or 'allow' (silence = no opinion = allow).
@@ -19,6 +20,19 @@ function Get-GuardDecision {
     $out = & $guard -InputJson $json
     if (-not $out) { return 'allow' }
     return ($out | ConvertFrom-Json).hookSpecificOutput.permissionDecision
+}
+
+# Each case is 'Tool: command', the two fields of the hook input these checks vary.
+function Assert-GuardDecision([string]$Expected, [string[]]$Case) {
+    foreach ($c in $Case) {
+        $tool, $command = $c -split ': ', 2
+        Assert-Equal $Expected (Get-GuardDecision -Tool $tool -Command $command) $c
+    }
+}
+
+# The filler puts the head and tail further apart than the guard's proximity window.
+function Join-GuardApart([string]$Head, [string]$Filler, [int]$Repeat, [string]$Tail) {
+    return $Head + ($Filler * $Repeat) + $Tail
 }
 
 Describe 'guard-destructive-deletes: the protected roots' {
@@ -58,9 +72,8 @@ Describe 'guard-destructive-deletes: the protected roots' {
     }
 
     It 'denies uninstalling software, however it is spelled' {
-        Assert-Equal 'deny' (Get-GuardDecision -Tool 'Bash' -Command 'winget uninstall Microsoft.VisualStudioCode')
-        Assert-Equal 'deny' (Get-GuardDecision -Tool 'PowerShell' -Command 'scoop uninstall llvm')
-        Assert-Equal 'deny' (Get-GuardDecision -Tool 'PowerShell' -Command 'Get-AppxPackage *foo* | Remove-AppxPackage')
+        Assert-GuardDecision 'deny' 'Bash: winget uninstall Microsoft.VisualStudioCode', 'PowerShell: scoop uninstall llvm',
+            'PowerShell: Get-AppxPackage *foo* | Remove-AppxPackage'
     }
 
     It 'denies a ProgramData delete outside the container stores' {
@@ -90,9 +103,8 @@ Describe 'guard-destructive-deletes: the reclaimable set still works' {
     }
 
     It 'does not touch the daemon-level reclaim levers at all' {
-        Assert-Equal 'allow' (Get-GuardDecision -Tool 'PowerShell' -Command 'buildctl prune --free-storage 900000')
-        Assert-Equal 'allow' (Get-GuardDecision -Tool 'PowerShell' -Command 'docker image prune -f')
-        Assert-Equal 'allow' (Get-GuardDecision -Tool 'Bash' -Command 'bash linux/host-config/prune-safe.sh')
+        Assert-GuardDecision 'allow' 'PowerShell: buildctl prune --free-storage 900000', 'PowerShell: docker image prune -f',
+            'Bash: bash linux/host-config/prune-safe.sh'
     }
 
     It 'asks (does not deny) for a recursive delete inside the repo' {
@@ -171,8 +183,11 @@ function Invoke-ReclaimFixture {
 Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
 
     # Dot-sourcing gives the functions without running anything.
-    $reclaim = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\Clear-DiskSpace.ps1'
+    $reclaim = Join-Path $repoRoot 'windows\scripts\host\Clear-DiskSpace.ps1'
     . $reclaim
+
+    # Both fixtures offer their scratch-* entries through the same rule, rooted at their own sandbox.
+    $scratchRule = @{ Leaf = 'scratch-*'; Kind = 'Directory'; MinAgeDays = 7; What = 'fixture' }
 
     It 'refuses every protected root, and the drive roots' {
         foreach ($p in @('C:\', 'D:\', 'C:\Program Files', 'C:\Program Files (x86)', 'C:\Windows',
@@ -275,8 +290,7 @@ Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
             $stale = New-Item -ItemType Directory -Path (Join-Path $sandbox 'scratch-stale') -Force
             $stale.LastWriteTime = (Get-Date).AddDays(-30)
 
-            $rules = @(@{ Root = $sandbox; Leaf = 'scratch-*'; Kind = 'Directory'; MinAgeDays = 7; What = 'fixture' })
-            $plan = Get-ReclaimPlan -Rules $rules
+            $plan = Get-ReclaimPlan -Rules @($scratchRule + @{ Root = $sandbox })
             $paths = @($plan | ForEach-Object { $_.Path })
 
             Assert-True ($paths -contains $stale.FullName) 'a 30-day-old entry was not offered'
@@ -300,7 +314,7 @@ Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
 
             Assert-True (Test-HasReparsePoint $husk) 'the junction inside the candidate was not detected'
 
-            $plan = Get-ReclaimPlan -Rules @(@{ Root = $sandbox; Leaf = 'scratch-*'; Kind = 'Directory'; MinAgeDays = 7; What = 'fixture' })
+            $plan = Get-ReclaimPlan -Rules @($scratchRule + @{ Root = $sandbox })
             $entry = $plan | Where-Object { $_.Path -eq $husk } | Select-Object -First 1
             Assert-NotNull $entry 'the fixture candidate did not resolve'
             Assert-True $entry.Linked 'the candidate was NOT marked as linked - a delete would tunnel into the profile'
@@ -322,9 +336,8 @@ Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
     }
 
     It 'is report-only by default and never deletes without -Apply' {
-        $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\Clear-DiskSpace.ps1'
-        Assert-True (Test-Path $script) "reclaim script not found at $script"
-        $raw = Get-Content -Raw $script
+        Assert-True (Test-Path $reclaim) "reclaim script not found at $reclaim"
+        $raw = Get-Content -Raw $reclaim
         # The delete must stay below the -Apply gate, where the report path has already exited.
         $applyGate = $raw.IndexOf('if (-not $Apply)')
         $delete = $raw.IndexOf('Remove-Item -LiteralPath $t.Path')
@@ -333,23 +346,21 @@ Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
     }
 
     It 'honours the linked flag at delete time, not just in the report' {
-        $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\Clear-DiskSpace.ps1'
-        $raw = Get-Content -Raw $script
+        $raw = Get-Content -Raw $reclaim
         Assert-Match 'Test-HasReparsePoint' $raw 'the reparse-point check is gone from the reclaim script'
         Assert-Match '\$t\.Linked' $raw 'the delete loop no longer honours the reparse-point check'
         Assert-Match 'Test-Protected \$t\.Path' $raw 'the delete loop no longer re-checks the protected roots'
     }
 
     It 'runs on pwsh 7 like the rest of the repo' {
-        $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\Clear-DiskSpace.ps1'
-        Assert-Match '(?m)^#requires -Version 7\.0' (Get-Content -Raw $script) 'the reclaim script is not pinned to pwsh 7'
+        Assert-Match '(?m)^#requires -Version 7\.0' (Get-Content -Raw $reclaim) 'the reclaim script is not pinned to pwsh 7'
     }
 }
 
 Describe 'guard-destructive-deletes: the hook is actually registered' {
 
     It 'project settings wire the guard into PreToolUse' {
-        $settings = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) '.claude\settings.json'
+        $settings = Join-Path $repoRoot '.claude\settings.json'
         Assert-True (Test-Path $settings) 'project .claude\settings.json is missing'
         $raw = Get-Content -Raw $settings
         Assert-Match 'guard-destructive-deletes' $raw 'the guard is not registered as a hook'
@@ -358,9 +369,8 @@ Describe 'guard-destructive-deletes: the hook is actually registered' {
 
     It 'no settings file hands out a blanket delete permission' {
         # The allow rule that let the wipe run without a prompt.
-        $root = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
         foreach ($f in @('.claude\settings.json', '.claude\settings.local.json')) {
-            $p = Join-Path $root $f
+            $p = Join-Path $repoRoot $f
             if (-not (Test-Path $p)) { continue }
             $raw = Get-Content -Raw $p
             # Materialised: under StrictMode a member access on an empty MatchCollection throws.
@@ -392,9 +402,8 @@ Describe 'guard-destructive-deletes: the GPU-driver pattern is proximity-scoped'
 
     It 'allows prose naming a GPU vendor far from an unrelated delete-shaped flag' {
         # A container run example whose --rm matches \brm\b, with a vendor word far away.
-        $c = 'An ENABLED AMD RDNA4 dGPU makes every RUN-layer finalize fail.' +
-             ("`nfiller prose to push the two apart. " * 40) +
-             "`n    nerdctl run -it --rm ghcr.io/example/image:tag"
+        $c = Join-GuardApart 'An ENABLED AMD RDNA4 dGPU makes every RUN-layer finalize fail.' "`nfiller prose to push the two apart. " 40 `
+            "`n    nerdctl run -it --rm ghcr.io/example/image:tag"
         Assert-Equal 'allow' (Get-GuardDecision -Tool 'Write' -FilePath 'docs\notes.md' -Content $c)
     }
 
@@ -404,9 +413,7 @@ Describe 'guard-destructive-deletes: the GPU-driver pattern is proximity-scoped'
     }
 
     It 'keeps the path-shaped patterns unscoped (a profile delete needs no proximity)' {
-        $c = '$target = "C:\Users\jonas\AppData\Local\Programs"' +
-             ("`n# commentary " * 60) +
-             "`nRemove-Item -Recurse -Force `$target"
+        $c = Join-GuardApart '$target = "C:\Users\jonas\AppData\Local\Programs"' "`n# commentary " 60 "`nRemove-Item -Recurse -Force `$target"
         Assert-Equal 'deny' (Get-GuardDecision -Tool 'PowerShell' -Command $c)
     }
 }

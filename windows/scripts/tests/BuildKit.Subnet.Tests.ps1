@@ -1,6 +1,17 @@
 #requires -Version 7.0
 # A wrong mask in the CNI nat subnet-drift guard passes a drifted config into a silent no-network build.
 
+# The live-host checks run only where both deployed CNI files exist.
+function Invoke-WithLiveCniConf([scriptblock]$Body) {
+    $listPath = 'C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist'
+    $confPath = 'C:\Program Files\containerd\cni\conf\0-containerd-nat.conf'
+    if ((Test-Path $listPath) -and (Test-Path $confPath)) {
+        & $Body (Get-Content $listPath -Raw) (Get-Content $confPath -Raw)
+    } else {
+        Write-Host '    (skipped: CNI confs not present on this machine)'
+    }
+}
+
 Describe 'Test-IpInSubnet' {
     It 'lets diagnostics classify invalid notation and prefixes as false while strict callers still throw' {
         foreach ($cidr in @('10.0.0.0', '10.0.0.0/33', '10.0.0.0/oops', '10.0.0.0/-1', '10.0.0.0/999999999999999999')) {
@@ -25,33 +36,31 @@ Describe 'Test-IpInSubnet' {
     }
 
 
-    It 'accepts addresses inside the subnet across prefix widths' {
-        $cases = @(
-            @{ Ip = '172.31.32.1';   Cidr = '172.31.32.0/20' }   # gateway itself
-            @{ Ip = '172.31.47.254'; Cidr = '172.31.32.0/20' }   # last host of /20
-            @{ Ip = '172.20.0.1';    Cidr = '172.20.0.0/16' }
-            @{ Ip = '10.1.2.3';      Cidr = '10.0.0.0/8' }
-            @{ Ip = '192.168.1.125';   Cidr = '192.168.1.0/24' }
-            @{ Ip = '1.2.3.4';       Cidr = '0.0.0.0/0' }        # /0 matches everything
-            @{ Ip = '172.31.32.1';   Cidr = '172.31.32.1/32' }   # /32 exact match
-        )
-        foreach ($c in $cases) {
-            Assert-True (Test-IpInSubnet -Ip $c.Ip -Cidr $c.Cidr) "$($c.Ip) must be inside $($c.Cidr)"
+    # One table for both directions; In says which side of the mask each address must land on.
+    $subnetCases = @(
+        @{ In = $true; Ip = '172.31.32.1';   Cidr = '172.31.32.0/20' }   # gateway itself
+        @{ In = $true; Ip = '172.31.47.254'; Cidr = '172.31.32.0/20' }   # last host of /20
+        @{ In = $true; Ip = '172.20.0.1';    Cidr = '172.20.0.0/16' }
+        @{ In = $true; Ip = '10.1.2.3';      Cidr = '10.0.0.0/8' }
+        @{ In = $true; Ip = '192.168.1.125';   Cidr = '192.168.1.0/24' }
+        @{ In = $true; Ip = '1.2.3.4';       Cidr = '0.0.0.0/0' }        # /0 matches everything
+        @{ In = $true; Ip = '172.31.32.1';   Cidr = '172.31.32.1/32' }   # /32 exact match
+        @{ In = $false; Ip = '172.31.32.1';  Cidr = '172.20.0.0/16' }   # the real incident: adapter vs stale conf
+        @{ In = $false; Ip = '172.31.48.1';  Cidr = '172.31.32.0/20' }  # one past the /20 boundary
+        @{ In = $false; Ip = '172.30.32.1';  Cidr = '172.31.32.0/20' }
+        @{ In = $false; Ip = '11.0.0.1';     Cidr = '10.0.0.0/8' }
+        @{ In = $false; Ip = '172.31.32.2';  Cidr = '172.31.32.1/32' }
+    )
+    $assertSide = {
+        param([bool]$Inside, [string]$Where)
+        foreach ($c in $subnetCases.Where({ $_.In -eq $Inside })) {
+            Assert-Equal $Inside (Test-IpInSubnet -Ip $c.Ip -Cidr $c.Cidr) "$($c.Ip) must be $Where $($c.Cidr)"
         }
     }
 
-    It 'rejects addresses outside the subnet (the 2026-08-03 drift shape included)' {
-        $cases = @(
-            @{ Ip = '172.31.32.1';  Cidr = '172.20.0.0/16' }   # the real incident: adapter vs stale conf
-            @{ Ip = '172.31.48.1';  Cidr = '172.31.32.0/20' }  # one past the /20 boundary
-            @{ Ip = '172.30.32.1';  Cidr = '172.31.32.0/20' }
-            @{ Ip = '11.0.0.1';     Cidr = '10.0.0.0/8' }
-            @{ Ip = '172.31.32.2';  Cidr = '172.31.32.1/32' }
-        )
-        foreach ($c in $cases) {
-            Assert-False (Test-IpInSubnet -Ip $c.Ip -Cidr $c.Cidr) "$($c.Ip) must be OUTSIDE $($c.Cidr)"
-        }
-    }
+    It 'accepts addresses inside the subnet across prefix widths' { & $assertSide $true 'inside' }
+
+    It 'rejects addresses outside the subnet (the 2026-08-03 drift shape included)' { & $assertSide $false 'OUTSIDE' }
 
     It 'throws on malformed CIDR input instead of guessing' {
         Assert-Throws { Test-IpInSubnet -Ip '10.0.0.1' -Cidr '10.0.0.0' } 'missing prefix must throw'
@@ -61,6 +70,14 @@ Describe 'Test-IpInSubnet' {
 
 Describe 'Get-CniNatSubnetDrift' {
 
+    # A drifted conf against the live adapter must report and name its own subnet.
+    function Assert-CniDriftReport([string]$ConfText, [string]$Form) {
+        $r = Get-CniNatSubnetDrift -ConfText $ConfText -AdapterIp '172.31.32.1'
+        Assert-True ($null -ne $r) "a drifted $Form must report drift"
+        Assert-True ($r -like '*172.20.0.0/16*') "diagnosis names the $Form subnet"
+        return $r
+    }
+
     It 'returns $null when the adapter sits inside the conf subnet' {
         $conf = '{ "ipam": { "subnet": "172.31.32.0/20" } }'
         $r = Get-CniNatSubnetDrift -ConfText $conf -AdapterIp '172.31.32.1'
@@ -68,10 +85,7 @@ Describe 'Get-CniNatSubnetDrift' {
     }
 
     It 'returns a diagnosis naming both sides when drifted (the real incident shape)' {
-        $conf = '{ "ipam": { "subnet": "172.20.0.0/16" } }'
-        $r = Get-CniNatSubnetDrift -ConfText $conf -AdapterIp '172.31.32.1'
-        Assert-True ($null -ne $r) 'drifted config must report'
-        Assert-True ($r -like '*172.20.0.0/16*') 'diagnosis names the conf subnet'
+        $r = Assert-CniDriftReport '{ "ipam": { "subnet": "172.20.0.0/16" } }' 'conf'
         Assert-True ($r -like '*172.31.32.1*') 'diagnosis names the live adapter IP'
         Assert-True ($r -like '*Restart-Service buildkitd -Force*') 'diagnosis carries the fix'
     }
@@ -79,9 +93,7 @@ Describe 'Get-CniNatSubnetDrift' {
     It 'judges the .conflist form too (the host standardises on it for nerdctl)' {
         # The config is in conflist form (nerdctl panics on a bare .conf), so the guard must read plugins[].ipam.
         $conflist = '{ "cniVersion": "0.3.0", "name": "nat", "plugins": [ { "type": "nat", "ipam": { "subnet": "172.20.0.0/16" } } ] }'
-        $r = Get-CniNatSubnetDrift -ConfText $conflist -AdapterIp '172.31.32.1'
-        Assert-True ($null -ne $r) 'a drifted conflist must still report drift'
-        Assert-True ($r -like '*172.20.0.0/16*') 'diagnosis names the conflist subnet'
+        $null = Assert-CniDriftReport $conflist 'conflist'
 
         $healthy = '{ "cniVersion": "0.3.0", "name": "nat", "plugins": [ { "type": "nat", "ipam": { "subnet": "172.31.32.0/20" } } ] }'
         Assert-True ($null -eq (Get-CniNatSubnetDrift -ConfText $healthy -AdapterIp '172.31.32.1')) 'healthy conflist must not report drift'
@@ -162,15 +174,11 @@ Describe 'ConvertFrom-CniConfList (derive the .conf from the .conflist)' {
 
     It 'round-trips the live host conf when both files are present' {
         # Guards the real invariant: whatever is deployed must be derivable.
-        $listPath = 'C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist'
-        $confPath = 'C:\Program Files\containerd\cni\conf\0-containerd-nat.conf'
-        if ((Test-Path $listPath) -and (Test-Path $confPath)) {
-            $derived = ConvertFrom-CniConfList -ConfListText (Get-Content $listPath -Raw) | ConvertFrom-Json
-            $live = Get-Content $confPath -Raw | ConvertFrom-Json
+        Invoke-WithLiveCniConf { param($listText, $confText)
+            $derived = ConvertFrom-CniConfList -ConfListText $listText | ConvertFrom-Json
+            $live = $confText | ConvertFrom-Json
             Assert-Equal $live.ipam.subnet $derived.ipam.subnet 'live .conf subnet must match what the .conflist derives'
             Assert-Equal $live.name $derived.name
-        } else {
-            Write-Host '    (skipped: CNI confs not present on this machine)'
         }
     }
 }
@@ -178,44 +186,37 @@ Describe 'ConvertFrom-CniConfList (derive the .conf from the .conflist)' {
 Describe 'ConvertTo-CanonicalJson (order-independent comparison)' {
 
     # Canonical comparison: a guard that reports field order as "out of sync" gets ignored.
+    function ConvertTo-CanonicalPair([string]$A, [string]$B) {
+        foreach ($json in $A, $B) { ConvertTo-CanonicalJson -InputObject ($json | ConvertFrom-Json) }
+    }
 
     It 'treats documents differing only in key order as equal' {
-        $a = '{ "cniVersion": "0.3.0", "name": "nat", "type": "nat" }' | ConvertFrom-Json
-        $b = '{ "type": "nat", "name": "nat", "cniVersion": "0.3.0" }' | ConvertFrom-Json
-        Assert-Equal (ConvertTo-CanonicalJson -InputObject $a) (ConvertTo-CanonicalJson -InputObject $b) `
-            'field order is not a semantic difference'
+        $a, $b = ConvertTo-CanonicalPair '{ "cniVersion": "0.3.0", "name": "nat", "type": "nat" }' '{ "type": "nat", "name": "nat", "cniVersion": "0.3.0" }'
+        Assert-Equal $a $b 'field order is not a semantic difference'
     }
 
     It 'sorts nested objects too' {
-        $a = '{ "ipam": { "subnet": "1.2.3.0/24", "routes": [ { "GW": "1.2.3.1" } ] } }' | ConvertFrom-Json
-        $b = '{ "ipam": { "routes": [ { "GW": "1.2.3.1" } ], "subnet": "1.2.3.0/24" } }' | ConvertFrom-Json
-        Assert-Equal (ConvertTo-CanonicalJson -InputObject $a) (ConvertTo-CanonicalJson -InputObject $b)
+        $a, $b = ConvertTo-CanonicalPair '{ "ipam": { "subnet": "1.2.3.0/24", "routes": [ { "GW": "1.2.3.1" } ] } }' `
+            '{ "ipam": { "routes": [ { "GW": "1.2.3.1" } ], "subnet": "1.2.3.0/24" } }'
+        Assert-Equal $a $b
     }
 
     It 'still reports a REAL difference (the subnet actually changed)' {
-        $a = '{ "ipam": { "subnet": "172.31.32.0/20" } }' | ConvertFrom-Json
-        $b = '{ "ipam": { "subnet": "172.20.0.0/16" } }' | ConvertFrom-Json
-        Assert-True ((ConvertTo-CanonicalJson -InputObject $a) -ne (ConvertTo-CanonicalJson -InputObject $b)) `
-            'a changed value must NOT be normalised away'
+        $a, $b = ConvertTo-CanonicalPair '{ "ipam": { "subnet": "172.31.32.0/20" } }' '{ "ipam": { "subnet": "172.20.0.0/16" } }'
+        Assert-True ($a -ne $b) 'a changed value must NOT be normalised away'
     }
 
     It 'preserves array ORDER (it is meaningful in CNI routes)' {
-        $a = '{ "routes": [ { "GW": "1.1.1.1" }, { "GW": "2.2.2.2" } ] }' | ConvertFrom-Json
-        $b = '{ "routes": [ { "GW": "2.2.2.2" }, { "GW": "1.1.1.1" } ] }' | ConvertFrom-Json
-        Assert-True ((ConvertTo-CanonicalJson -InputObject $a) -ne (ConvertTo-CanonicalJson -InputObject $b)) `
-            'sorting arrays would hide a real ordering change'
+        $a, $b = ConvertTo-CanonicalPair '{ "routes": [ { "GW": "1.1.1.1" }, { "GW": "2.2.2.2" } ] }' '{ "routes": [ { "GW": "2.2.2.2" }, { "GW": "1.1.1.1" } ] }'
+        Assert-True ($a -ne $b) 'sorting arrays would hide a real ordering change'
     }
 
     It 'derives a .conf that matches the live one on this host' {
-        $listPath = 'C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist'
-        $confPath = 'C:\Program Files\containerd\cni\conf\0-containerd-nat.conf'
-        if ((Test-Path $listPath) -and (Test-Path $confPath)) {
-            $derived = ConvertFrom-CniConfList -ConfListText (Get-Content $listPath -Raw)
-            Assert-Equal (ConvertTo-CanonicalJson -InputObject (ConvertFrom-Json (Get-Content $confPath -Raw))) `
+        Invoke-WithLiveCniConf { param($listText, $confText)
+            $derived = ConvertFrom-CniConfList -ConfListText $listText
+            Assert-Equal (ConvertTo-CanonicalJson -InputObject (ConvertFrom-Json $confText)) `
                          (ConvertTo-CanonicalJson -InputObject (ConvertFrom-Json $derived)) `
                          'the deployed .conf must be derivable from the .conflist'
-        } else {
-            Write-Host '    (skipped: CNI confs not present on this machine)'
         }
     }
 }

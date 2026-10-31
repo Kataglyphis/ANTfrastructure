@@ -45,8 +45,6 @@ Describe 'Invoke-CiStaticAnalysis: bandit argv' {
     }
 
     It 'still names only the package when there are no extra paths' {
-        $sb = [scriptblock]::Create('param($PackageName, $ExtraPaths, $BanditExcludes)' + [Environment]::NewLine +
-            ('{0}{1}{2}' -f $targetsAssign.Extent.Text, [Environment]::NewLine, $banditCall.CommandElements[2].Extent.Text))
         $bare = @(& $sb 'orchestrant' @() 'tests,vendor')
         Assert-Equal 'bandit -r orchestrant -x tests,vendor' ($bare -join ' ')
         Assert-Equal 1 @($bare | Where-Object { $_ -ceq '-r' }).Count

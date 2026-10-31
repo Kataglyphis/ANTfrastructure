@@ -3,14 +3,16 @@
 
 Describe 'Get-SccacheStatsText' {
 
+    $noRemote = @{ SCCACHE_WEBDAV_ENDPOINT = ''; SCCACHE_BUCKET = ''; SCCACHE_REDIS_ENDPOINT = '' }
+
     It 'returns $null with -RequireRemote and no remote backend (never spawns a server)' {
-        Invoke-WithEnv @{ SCCACHE_WEBDAV_ENDPOINT = ''; SCCACHE_BUCKET = ''; SCCACHE_REDIS_ENDPOINT = '' } {
+        Invoke-WithEnv $noRemote {
             Assert-Null (Get-SccacheStatsText -RequireRemote) 'no remote backend must short-circuit'
         }
     }
 
     It 'returns $null with -RequireRemote -Advanced and no remote backend' {
-        Invoke-WithEnv @{ SCCACHE_WEBDAV_ENDPOINT = ''; SCCACHE_BUCKET = ''; SCCACHE_REDIS_ENDPOINT = '' } {
+        Invoke-WithEnv $noRemote {
             Assert-Null (Get-SccacheStatsText -RequireRemote -Advanced) 'the advanced query gates identically'
         }
     }
