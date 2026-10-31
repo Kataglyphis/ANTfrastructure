@@ -7,13 +7,14 @@ import argparse
 import json
 import math
 from pathlib import Path
+from typing import Any
 
 MIN_IOU = 0.90
 MAX_SCORE_DELTA = 0.05
 MIN_SCORE = 0.25
 
 
-def unique(pairs):
+def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result = {}
     for key, value in pairs:
         if key in result:
@@ -22,11 +23,11 @@ def unique(pairs):
     return result
 
 
-def number(value):
+def number(value: Any) -> bool:
     return type(value) in (int, float) and math.isfinite(value)
 
 
-def load(path):
+def load(path: str | Path) -> dict[str, Any]:
     data = json.loads(Path(path).read_text(encoding="utf-8"), object_pairs_hook=unique)
     if not isinstance(data, dict) or set(data) != {
         "schema_version",
@@ -74,7 +75,7 @@ def load(path):
     return data
 
 
-def iou(left, right):
+def iou(left: list[float], right: list[float]) -> float:
     x1, y1 = max(left[0], right[0]), max(left[1], right[1])
     x2, y2 = min(left[2], right[2]), min(left[3], right[3])
     intersection = max(0, x2 - x1) * max(0, y2 - y1)
@@ -83,7 +84,7 @@ def iou(left, right):
     return intersection / (area_l + area_r - intersection)
 
 
-def compare(cpu, gpu):
+def compare(cpu: dict[str, Any], gpu: dict[str, Any]) -> None:
     if (cpu["width"], cpu["height"]) != (gpu["width"], gpu["height"]):
         raise ValueError("image dimensions differ")
     expected, actual = cpu["detections"], gpu["detections"]
@@ -112,9 +113,9 @@ def compare(cpu, gpu):
         ]
         for item in expected
     ]
-    matched = {}
+    matched: dict[int, int] = {}
 
-    def assign(index, visited):
+    def assign(index: int, visited: set[int]) -> bool:
         for candidate in edges[index]:
             if candidate in visited:
                 continue
@@ -128,7 +129,7 @@ def compare(cpu, gpu):
         raise ValueError("CPU and GPU detections do not match within tolerance")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("cpu", type=Path)
     parser.add_argument("gpu", type=Path)
