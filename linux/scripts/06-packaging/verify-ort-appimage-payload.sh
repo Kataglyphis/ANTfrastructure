@@ -3,39 +3,24 @@
 set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${script_dir}/../01-core/platform.sh"
+source "${script_dir}/appimage-verification.sh"
 source "${script_dir}/ort-runtime-bundle.sh"
-if [ "$#" -ne 5 ]; then
-  printf 'Usage: %s APPIMAGE ARCH LIB_DIR NOTICE_DIR nvidia|amd\n' "$0" >&2
-  exit 2
-fi
-image="$(realpath -e -- "$1")"
-target="$(arch_normalize "$2")"
-host="$(arch_normalize "$(uname -m)")"
+declare image target work
+appimage_require_args "$#" 5 "$0" 'APPIMAGE ARCH LIB_DIR NOTICE_DIR nvidia|amd'
+appimage_init "$1" "$2"
 lib_dir="$3"
 notice_dir="$4"
 variant="$5"
 for path in "$lib_dir" "$notice_dir"; do
-  case "$path" in
-    ''|/*|*/|*//*|*\\*|*'*'*|*'?'*|*'['*|*']'*|*':'*|*[[:cntrl:]]*) printf 'Invalid package path: %s\n' "$path" >&2; exit 2 ;;
-  esac
-  IFS=/ read -r -a parts <<< "$path"
-  for part in "${parts[@]}"; do
-    case "$part" in .|..) printf 'Invalid package path: %s\n' "$path" >&2; exit 2 ;; esac
-  done
+  appimage_validate_path "$path" 'package path'
 done
-case "$target" in amd64|arm64) ;; *) printf 'Unsupported AppImage architecture: %s\n' "$2" >&2; exit 2 ;; esac
-if [ "$target" != "$host" ]; then
-  printf 'AppImage verification requires a native %s host, got %s\n' "$target" "$host" >&2
-  exit 1
-fi
+appimage_require_native "$2"
 case "$variant" in
   nvidia) provider=libonnxruntime_providers_cuda.so; kind=cuda ;;
   amd) [ "$target" = amd64 ] || { echo 'AMD GPU AppImages require Linux x64' >&2; exit 2; }; provider=libonnxruntime_providers_migraphx.so; kind=migraphx ;;
   *) printf 'Invalid GPU variant: %s\n' "$variant" >&2; exit 2 ;;
 esac
-[ -x "$image" ] || { printf 'AppImage is not executable: %s\n' "$image" >&2; exit 1; }
-work="$(mktemp -d)"
-trap 'rm -rf -- "$work"' EXIT
+appimage_create_work
 (
   cd "$work"
   "$image" --appimage-extract > /dev/null

@@ -2,6 +2,7 @@
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
 # Verifies exact finished-package bytes against an already-proven source file.
+
 # PACKAGE_ORT_PROVIDER_SET_API=1
 Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot 'WindowsMsiLicense.Common.psm1') -DisableNameChecking -ErrorAction Stop
@@ -15,37 +16,41 @@ function Assert-PackageBinary {
         [string]$PythonPath = 'python',
         [string]$VerifierPath = (Join-Path $PSScriptRoot '../../../linux/scripts/verify_package_binary.py')
     )
-    if (-not (Test-Path -LiteralPath $VerifierPath -PathType Leaf)) { throw "package binary verifier is missing: $VerifierPath" }
-    if ($Member.Count -eq 0 -or $Member.Count -ne $SourcePath.Count) { throw 'package binary members and sources must have equal, nonzero counts' }
-    $rules = @()
-    for ($i = 0; $i -lt $Member.Count; $i++) {
-        $mapped = if ([IO.Path]::GetExtension($Path) -ieq '.msi') { Get-MsiCabinetPattern -Path $Path -FileId $Member[$i] } else { $Member[$i] }
-        $rules += '--require', "$mapped=$($SourcePath[$i])"
+    $request = @{ Path = $Path; Member = $Member; Source = $SourcePath; PythonPath = $PythonPath; VerifierPath = $VerifierPath }
+    Invoke-PackageVerifier -Request $request -Binary
+}
+
+function Get-ArchiveOrtProviderName {
+    param([IO.Compression.ZipArchiveEntry]$Entry, [AllowEmptyString()][string]$Directory)
+    $raw = $Entry.FullName
+    $parts = @($raw.Replace('\', '/') -split '/' | Where-Object { $_ -and $_ -ne '.' })
+    if ($parts.Count -eq 0 -or $parts[-1] -in @('.', '..') -or $parts[-1] -inotmatch '^onnxruntime_providers_') { return }
+    if ($parts -contains '..') { throw "unsafe provider archive path: $raw" }
+    $parent = if ($parts.Count -gt 1) { $parts[0..($parts.Count - 2)] -join '/' } else { '' }
+    $expected = (@($Directory, $parts[-1]) | Where-Object { $_ }) -join '/'
+    if ($raw -ceq $expected -and (($Entry.ExternalAttributes -shr 16) -band 0xF000) -ne 0xA000) { return $parts[-1] }
+    if ([StringComparer]::OrdinalIgnoreCase.Equals($parent, $Directory)) {
+        throw "aliased or non-file provider archive member: $raw"
     }
-    & $PythonPath -I $VerifierPath $Path @rules
-    if ($LASTEXITCODE -ne 0) { throw "package binary verification failed for '$($Member -join ', ')' (exit $LASTEXITCODE)" }
 }
 
 function Get-ArchiveOrtProviderNames {
     param([string]$Path, [AllowEmptyString()][string]$Directory)
-    $names = @()
     $archive = [IO.Compression.ZipFile]::OpenRead($Path)
-    try {
-        foreach ($entry in $archive.Entries) {
-            $raw = $entry.FullName
-            $parts = @($raw.Replace('\', '/') -split '/' | Where-Object { $_ -and $_ -ne '.' })
-            if ($parts.Count -eq 0 -or $parts[-1] -in @('.', '..') -or $parts[-1] -inotmatch '^onnxruntime_providers_') { continue }
-            if ($parts -contains '..') { throw "unsafe provider archive path: $raw" }
-            $parent = if ($parts.Count -gt 1) { $parts[0..($parts.Count - 2)] -join '/' } else { '' }
-            if (-not [string]::Equals($parent, $Directory, [StringComparison]::OrdinalIgnoreCase)) { continue }
-            $expected = (@($Directory, $parts[-1]) | Where-Object { $_ }) -join '/'
-            if ($raw -cne $expected -or (($entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000) {
-                throw "aliased or non-file provider archive member: $raw"
-            }
-            $names += $parts[-1]
-        }
-    } finally { $archive.Dispose() }
-    return $names
+    try { foreach ($entry in $archive.Entries) { Get-ArchiveOrtProviderName -Entry $entry -Directory $Directory } }
+    finally { $archive.Dispose() }
+}
+
+function Get-ValidatedOrtProviderNames {
+    param([string[]]$Names)
+    $seen = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in $Names) {
+        if ($name -inotmatch '^onnxruntime_providers_') { continue }
+        if ($name -cnotmatch '^onnxruntime_providers_[a-z0-9_]+\.dll$') { throw "invalid ORT provider name: $name" }
+        if ($seen.ContainsKey($name)) { throw "duplicate ORT provider name: $name (first: $($seen[$name]))" }
+        $seen.Add($name, $name)
+    }
+    return @($seen.Keys | Sort-Object)
 }
 
 function Get-PackageOrtProviderNames {
@@ -67,13 +72,7 @@ function Get-PackageOrtProviderNames {
     } elseif ($extension -in @('.zip', '.msix')) {
         @(Get-ArchiveOrtProviderNames -Path $resolved -Directory $Directory)
     } else { throw 'provider enumeration requires ZIP, MSIX or MSI' }
-    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    foreach ($name in $names) {
-        if ($name -inotmatch '^onnxruntime_providers_') { continue }
-        if ($name -cnotmatch '^onnxruntime_providers_[a-z0-9_]+\.dll$') { throw "invalid ORT provider name: $name" }
-        if (-not $seen.Add($name)) { throw "duplicate ORT provider name: $name" }
-    }
-    return @($seen | Sort-Object)
+    return @(Get-ValidatedOrtProviderNames -Names $names)
 }
 
 Export-ModuleMember -Function Assert-PackageBinary, Get-PackageOrtProviderNames

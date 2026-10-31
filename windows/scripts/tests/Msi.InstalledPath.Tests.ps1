@@ -2,8 +2,9 @@
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
 # Duplicate filenames need the installed directory, not the first File-table row.
-Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsMsiLicense.Common.psm1') -Force -DisableNameChecking
-Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsPackageBinary.Common.psm1') -Force -DisableNameChecking
+foreach ($module in 'WindowsMsiLicense.Common', 'WindowsPackageBinary.Common') {
+    Import-Module (Join-Path (Get-RepoRoot) "windows/scripts/modules/$module.psm1") -Force -DisableNameChecking
+}
 
 Describe 'MSI installed-path mapping' {
     $files = @(

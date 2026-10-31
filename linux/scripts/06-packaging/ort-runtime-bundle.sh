@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # ORT_PYTHON_GPU_HOST_IMPORTS_API=1
+
 # Stage the selected chain ONNX Runtime and provider; the caller verifies provenance and licenses.
 
 stage_ort_runtime() {
@@ -37,12 +38,17 @@ _ort_host_imports_complete() {
   case "$1:$2:$3:$4" in cuda:1:*:*|migraphx:1:1:*|tensorrt:1:1:1) return 0 ;; *) return 1 ;; esac
 }
 
+_ort_packaging_dir() {
+  cd "$(dirname "${BASH_SOURCE[0]}")" || return
+  pwd
+}
+
 # List the exact vendor SONAMEs a provider leaves to the host; unknown direct imports fail closed.
 ort_host_runtime_needed() {
   local ort_provider="${1:?provider library required}" ort_kind="${2:?provider kind required}"
   local ort_dyn ort_soname ort_here ort_class ort_seen_a=0 ort_seen_b=0 ort_seen_c=0
   case "${ort_kind}" in cuda|migraphx|tensorrt) ;; *) printf 'unknown GPU provider: %s\n' "${ort_kind}" >&2; return 2 ;; esac
-  ort_here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || return 1
+  ort_here="$(_ort_packaging_dir)" || return 1
   # shellcheck source=linux/scripts/06-packaging/elf-needed.sh
   source "${ort_here}/elf-needed.sh" || return 1
   ort_dyn="$(elf_dynamic_needed "${ort_provider}")" || return 1
@@ -66,7 +72,7 @@ _ort_validate_python_provider_wheel() {
   local ort_here ort_selected ort_optional ort_nullglob=0
   local -a ort_cores=() ort_libraries=()
   case "${ort_kind}" in cuda|migraphx) ;; *) printf 'unknown Python GPU provider: %s\n' "${ort_kind}" >&2; return 2 ;; esac
-  ort_here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || return 1
+  ort_here="$(_ort_packaging_dir)" || return 1
   if shopt -q nullglob; then ort_nullglob=1; fi
   shopt -s nullglob
   ort_cores=("${ort_site}"/libonnxruntime.so.*)
@@ -84,24 +90,33 @@ _ort_validate_python_provider_wheel() {
     --destination "${ort_proof}" --strip strip --require-unstripped >&2
 }
 
+_ort_emit_python_host_lines() {
+  local ort_label="$1" ort_lines="$2" ort_exclude="${3-}" ort_soname
+  while IFS= read -r ort_soname; do
+    [ -n "${ort_soname}" ] || continue
+    if [ -n "${ort_exclude}" ] && printf '%s\n' "${ort_exclude}" | grep -qxF -- "${ort_soname}"; then continue; fi
+    printf '%s\t%s\n' "${ort_label}" "${ort_soname}"
+  done <<< "${ort_lines}"
+}
+
+_ort_emit_python_host_imports() {
+  local ort_kind="$1" ort_required="$2" ort_optional="$3" ort_optional_needed
+  _ort_emit_python_host_lines required "${ort_required}"
+  if [ "${ort_kind}" = cuda ] && [ -f "${ort_optional}" ]; then
+    ort_optional_needed="$(ort_host_runtime_needed "${ort_optional}" tensorrt)" || return 1
+    _ort_emit_python_host_lines optional "${ort_optional_needed}" "${ort_required}"
+  fi
+}
+
 # Prove the Python provider bytes against one wheel and emit required/optional host SONAMEs.
 ort_python_host_runtime_needed() {
   local ort_site="${1:?ORT capi directory required}" ort_kind="${2:?provider kind required}"
   local ort_wheels="${3:?wheel directory required}" ort_proof="${4:?proof directory required}"
   local ort_selected="${ort_site}/libonnxruntime_providers_${ort_kind}.so"
-  local ort_optional="${ort_site}/libonnxruntime_providers_tensorrt.so" ort_soname ort_required ort_optional_needed
+  local ort_optional="${ort_site}/libonnxruntime_providers_tensorrt.so" ort_required
   _ort_validate_python_provider_wheel "${ort_site}" "${ort_kind}" "${ort_wheels}" "${ort_proof}" || return 1
   ort_required="$(ort_host_runtime_needed "${ort_selected}" "${ort_kind}")" || return 1
-  while IFS= read -r ort_soname; do [ -z "${ort_soname}" ] || printf 'required\t%s\n' "${ort_soname}"; done <<< "${ort_required}"
-  if [ "${ort_kind}" = cuda ] && [ -f "${ort_optional}" ]; then
-    ort_optional_needed="$(ort_host_runtime_needed "${ort_optional}" tensorrt)" || return 1
-    while IFS= read -r ort_soname; do
-      [ -n "${ort_soname}" ] || continue
-      if ! printf '%s\n' "${ort_required}" | grep -qxF -- "${ort_soname}"; then
-        printf 'optional\t%s\n' "${ort_soname}"
-      fi
-    done <<< "${ort_optional_needed}"
-  fi
+  _ort_emit_python_host_imports "${ort_kind}" "${ort_required}" "${ort_optional}"
 }
 
 # A host-runtime bundle must not accidentally redistribute GPU SDK libraries.

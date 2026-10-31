@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # ELF_NEEDED_API=1
+
 # List direct NEEDED entries only after readelf has reported the complete dynamic section.
 
 elf_dynamic_needed() {

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # PYTHON_APP_PYTHON_RUNTIME_API=1
-# Builds the sdist and wheels (GIL, plus free-threaded when declared), auditwheel-repairing platform wheels, then any packaging/app.json app; PYTHON_VERSION (arg 1) defaults to the pinned X.Y.
 
 set -euo pipefail
 
@@ -9,7 +8,8 @@ source "$SCRIPT_DIR/ci-common.sh" || { echo "Error: failed to source ci-common.s
 
 detect_workspace
 
-APP_PYTHON_RUNTIME="${PYTHON_APP_PYTHON_RUNTIME:-image}"
+: "${PYTHON_APP_PYTHON_RUNTIME:=image}"
+APP_PYTHON_RUNTIME="${PYTHON_APP_PYTHON_RUNTIME}"
 case "${APP_PYTHON_RUNTIME}" in
   image|standalone) ;;
   *) err "PYTHON_APP_PYTHON_RUNTIME must be image or standalone" ;;

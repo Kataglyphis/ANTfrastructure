@@ -11,13 +11,13 @@ import sys
 import tarfile
 import tempfile
 from pathlib import Path, PurePosixPath
-from typing import BinaryIO
+from typing import IO
 
 PROVIDER = re.compile(r"libonnxruntime_providers_[A-Za-z0-9_]+\.so(?:\.[0-9]+)*\Z")
 KINDS = {"CUDAExecutionProvider": "cuda", "MIGraphXExecutionProvider": "migraphx"}
 
 
-def sha(stream: BinaryIO) -> tuple[str, int]:
+def sha(stream: IO[bytes]) -> tuple[str, int]:
     value = hashlib.sha256()
     size = 0
     while chunk := stream.read(1024 * 1024):
@@ -61,7 +61,7 @@ def source_inventory(bundle: Path) -> tuple[Path, dict[str, tuple[str, int]], se
     regular(manifest_path, root)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict):
-        raise ValueError("GPU bundle manifest must be an object")
+        raise TypeError("GPU bundle manifest must be an object")
     provider = manifest.get("required_provider")
     kind = KINDS.get(provider) if isinstance(provider, str) else None
     if kind is None:
@@ -123,7 +123,7 @@ def check_tar_member(archive: tarfile.TarFile, entry: tarfile.TarInfo, targets: 
         raise ValueError(f"package member differs from proven bundle: {name}")
 
 
-def check_tar(stream: BinaryIO, prefix: str, expected: dict[str, tuple[str, int]], providers: set[str], capi: str) -> None:
+def check_tar(stream: IO[bytes], prefix: str, expected: dict[str, tuple[str, int]], providers: set[str], capi: str) -> None:
     targets = {f"{prefix}/{name}": value for name, value in expected.items()}
     provider_dir = f"{prefix}/{capi}/"
     parents = {str(parent) for name in targets for parent in PurePosixPath(name).parents if str(parent) != "."}
@@ -200,7 +200,7 @@ def main() -> int:
         _, after, after_providers = source_inventory(args.bundle)
         if after != hashes or after_providers != providers:
             raise ValueError("GPU bundle changed during finished-package verification")
-    except (OSError, ValueError, tarfile.TarError, json.JSONDecodeError, subprocess.CalledProcessError) as exc:
+    except (OSError, TypeError, ValueError, tarfile.TarError, json.JSONDecodeError, subprocess.CalledProcessError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1
     print(f"PASS: {args.artifact}: wheel-proven ORT provider set and metadata match")

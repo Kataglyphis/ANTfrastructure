@@ -163,9 +163,7 @@ validate_ldd_direct_dependencies() {
   done <<< "${direct}"
 }
 
-# Some glibc ldd versions label the loader with the inspected object's path.
-# When that loader is itself DT_NEEDED, retain it under its real SONAME so it
-# is both validated and handled by the closure walker like any other library.
+# Some glibc versions label the loader with the inspected object's path, hiding its SONAME from the closure walker.
 normalize_ldd_loader_aliases() {
   local file="$1" direct="$2" rows="$3" name path loader
   while read -r name path; do
@@ -287,7 +285,10 @@ already_in_lib_dir() {
 }
 
 is_loader_self_alias() {
-  [[ "$2" == /* ]] && [[ "${3##*/}" == ld-linux*.so* ]] && [ "$(realpath -m "$2")" = "$(realpath -m "$1")" ]
+  if [[ "$2" == /* ]] && [[ "${3##*/}" == ld-linux*.so* ]] && [ "$(realpath -m "$2")" = "$(realpath -m "$1")" ]; then
+    return 0
+  fi
+  return 1
 }
 
 # An already resolved dependency needs no copy; a non-relocatable path is recorded here too.

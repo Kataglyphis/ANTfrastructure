@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # PYTHON_APP_HOST_GPU_RUNTIME_API=1
+
 # PYTHON_APP_OPTIONAL_TENSORRT_HOST_RUNTIME_API=1
+
 # Builds a consumer's Python app into a relocatable folder and proves it runs; see docs/python-app-bundles.md § What the builders do
 set -euo pipefail
 
@@ -46,7 +48,8 @@ esac
 [ -f "${CONFIG}" ] || err "no app config at ${CONFIG}"
 [ -n "${PYTHON_VERSION}" ] || err "no PYTHON_VERSION: pass --python-version, or keep versions.env beside the scripts"
 
-required_provider="${PYTHON_APP_REQUIRE_PROVIDER:-}"
+: "${PYTHON_APP_REQUIRE_PROVIDER:=}"
+required_provider="${PYTHON_APP_REQUIRE_PROVIDER}"
 case "${ENABLE_NVIDIA:-false}:${ENABLE_AMD:-false}" in
   true:false) image_provider=CUDAExecutionProvider ;;
   false:true) image_provider=MIGraphXExecutionProvider ;;
@@ -57,7 +60,8 @@ if [ -n "${image_provider}" ]; then
   [ -z "${required_provider}" ] || [ "${required_provider}" = "${image_provider}" ] || err "GPU image requires ${image_provider}, not ${required_provider}"
   required_provider="${image_provider}"
 fi
-host_gpu_runtime="${PYTHON_APP_HOST_GPU_RUNTIME:-false}"
+: "${PYTHON_APP_HOST_GPU_RUNTIME:=false}"
+host_gpu_runtime="${PYTHON_APP_HOST_GPU_RUNTIME}"
 case "${host_gpu_runtime}" in
   false) ;;
   true)

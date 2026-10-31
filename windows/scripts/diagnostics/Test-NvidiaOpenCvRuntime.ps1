@@ -44,9 +44,12 @@ function Assert-NvidiaRuntimeGroup {
 
 $bin = Join-Path $Bundle 'runtime\Lib\site-packages\cv2\bin'
 if (-not (Test-Path -LiteralPath $bin -PathType Container)) { throw "The bundled OpenCV DLL directory is missing: $bin" }
-$files = @(Get-ChildItem -LiteralPath $bin -Filter '*.dll' -File)
-$cuda = @($files | Where-Object { $_.Name -match '^(cublas|cufft|npp).*\.dll$' })
-$cudnn = @($files | Where-Object { $_.Name -match '^cudnn.*\.dll$' })
+$cuda = [Collections.Generic.List[IO.FileInfo]]::new()
+$cudnn = [Collections.Generic.List[IO.FileInfo]]::new()
+foreach ($file in Get-ChildItem -LiteralPath $bin -Filter '*.dll' -File) {
+    if ($file.Name -match '^(cublas|cufft|npp).*\.dll$') { $cuda.Add($file) }
+    if ($file.Name -match '^cudnn.*\.dll$') { $cudnn.Add($file) }
+}
 Assert-NvidiaRuntimeGroup -Label CUDA -Root $env:CUDA_PATH -Version $CudaVersion `
     -License (Join-Path $Bundle "licenses\nvidia-cuda-$CudaVersion-LICENSE.txt") -Files $cuda
 Assert-NvidiaRuntimeGroup -Label cuDNN -Root $env:CUDNN_ROOT -Version $CudnnVersion `

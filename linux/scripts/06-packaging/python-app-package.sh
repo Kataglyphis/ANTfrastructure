@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # PYTHON_APP_GPU_PACKAGE_API=1
+
 # PYTHON_APP_GPU_FINISHED_BINARY_API=1
+
 # Wraps a python-app-bundle.sh folder as tar.gz, deb and AppImage, and starts each as a user would; see docs/python-app-bundles.md § Packages
 set -euo pipefail
 

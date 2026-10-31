@@ -72,7 +72,7 @@ Describe 'WindowsOrtPayload.Common: staging' {
         }
     }
 
-    It 'stages the three runtime files over stale ones; -All stages the EP sidecars too' {
+    It 'stages default, all, and explicitly required providers; rejects invalid selections' {
         Invoke-PayloadCase -Unstaged { param($c)
             New-OrtTestPe -Path "$($c.Release)\onnxruntime-genai.dll" -Text @('stale')
             $copied = @(Copy-ChainOrtBeside -OnnxRoot $c.Chain -Destination $c.Release)
@@ -84,18 +84,6 @@ Describe 'WindowsOrtPayload.Common: staging' {
             $all = @(Copy-ChainOrtBeside -OnnxRoot $c.Chain -Destination $c.Release -All)
             Assert-Equal 'DirectML.dll,QnnHtp.dll,onnxruntime.dll,onnxruntime_providers_qnn.dll,onnxruntime_providers_shared.dll' (Get-SortedLeaf $all) 'every DLL of the chain'
             Assert-Equal '' (Get-PayloadRefusal $c) 'and that payload proves'
-        }
-    }
-
-    It 'refuses to stage from no chain install' {
-        Invoke-InTestDir { param($dir)
-            Assert-Throws { Copy-ChainOrtBeside -OnnxRoot '' -Destination "$dir\out" } -MessagePattern 'ONNX_ROOT is not set'
-            Assert-Throws { Copy-ChainOrtBeside -OnnxRoot "$dir\nowhere" -Destination "$dir\out" } -MessagePattern 'not the chain install'
-        }
-    }
-
-    It 'stages an explicitly required provider and refuses missing or unsafe names without modifying the destination' {
-        Invoke-PayloadCase -Unstaged { param($c)
             $name = 'onnxruntime_providers_cuda.dll'
             New-OrtTestPe -Path "$($c.Chain)\bin\$name" -Text @('cuda provider')
             $copied = @(Copy-ChainOrtBeside -OnnxRoot $c.Chain -Destination $c.Release -RequiredProvider $name)
@@ -105,6 +93,13 @@ Describe 'WindowsOrtPayload.Common: staging' {
             Assert-Throws { Copy-ChainOrtBeside -OnnxRoot $c.Chain -Destination $c.Release -RequiredProvider $name } -MessagePattern 'Required ONNX Runtime provider .* is missing'
             Assert-True (Test-Path -LiteralPath "$($c.Release)\$name") 'a failed selection leaves the existing destination intact'
             Assert-Throws { Copy-ChainOrtBeside -OnnxRoot $c.Chain -Destination $c.Release -RequiredProvider '..\other.dll' } -MessagePattern 'Invalid ONNX Runtime provider DLL name'
+        }
+    }
+
+    It 'refuses to stage from no chain install' {
+        Invoke-InTestDir { param($dir)
+            Assert-Throws { Copy-ChainOrtBeside -OnnxRoot '' -Destination "$dir\out" } -MessagePattern 'ONNX_ROOT is not set'
+            Assert-Throws { Copy-ChainOrtBeside -OnnxRoot "$dir\nowhere" -Destination "$dir\out" } -MessagePattern 'not the chain install'
         }
     }
 }

@@ -119,6 +119,7 @@ mkdir -p "${_DEP_BUNDLE}/lib" "${_DEP_TOOLS}"
 printf '{"glibc":true}\n' > "${_DEP_BUNDLE}/bundle.json"
 cp /bin/true "${_DEP_BUNDLE}/lib/module.so"
 SCRIPT_DIR="$(cd "$(dirname "${PY_PACKAGE}")" && pwd)"
+export SCRIPT_DIR
 REAL_READELF="$(command -v readelf)"
 export REAL_READELF
 cat > "${_DEP_TOOLS}/readelf" <<'TOOL'

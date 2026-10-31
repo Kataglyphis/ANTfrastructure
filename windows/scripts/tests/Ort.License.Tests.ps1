@@ -7,13 +7,11 @@ Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsOrtLicen
 function New-OrtLicenseZipFixture {
     param([string]$Path, [string]$Dll = 'native dll', [string]$License = 'original MIT text',
         [string]$Notice = 'original notices', [switch]$MissingNotice, [switch]$DuplicateLicense, [switch]$Archive,
-        [string]$ArchiveDirectory = 'licenses/onnxruntime', [string]$Provider = '', [string]$Extension = '', [string]$DirectMl = '')
+        [string]$ArchiveDirectory = 'licenses/onnxruntime', [hashtable]$Runtime = @{})
     $prefix = if ($Archive) { "app/$ArchiveDirectory" } else { 'onnxruntime' }
     $members = [ordered]@{ "$prefix/LICENSE" = $License }
     if (-not $Archive) { $members['onnxruntime/capi/onnxruntime.dll'] = $Dll }
-    if ($Provider) { $members['onnxruntime/capi/onnxruntime_providers_cuda.dll'] = $Provider }
-    if ($Extension) { $members['onnxruntime/capi/onnxruntime_pybind11_state.pyd'] = $Extension }
-    if ($DirectMl) { $members['onnxruntime/capi/DirectML.dll'] = $DirectMl }
+    foreach ($name in $Runtime.Keys) { $members["onnxruntime/capi/$name"] = $Runtime[$name] }
     if (-not $MissingNotice) { $members["$prefix/ThirdPartyNotices.txt"] = $Notice }
     $duplicate = if ($DuplicateLicense) { @("$prefix/LICENSE") } else { @() }
     New-TestZipFile -Path $Path -Member $members -DuplicateName $duplicate
@@ -32,6 +30,15 @@ function Invoke-OrtLicenseFixture {
 
 function Copy-OrtFixtureTexts([string]$Source, [string]$Destination) {
     Copy-Item -LiteralPath @((Join-Path $Source 'LICENSE'), (Join-Path $Source 'ThirdPartyNotices.txt')) -Destination $Destination -Force
+}
+
+function Initialize-PythonOrtFixture([string]$Bundle, [string]$Dll, [string]$Wheels) {
+    $ort = Join-Path $Bundle 'runtime/Lib/site-packages/onnxruntime'
+    $null = New-Item -ItemType Directory -Force -Path (Join-Path $ort 'capi')
+    Copy-Item -LiteralPath $Dll -Destination (Join-Path $ort 'capi/onnxruntime.dll')
+    $source = Copy-OrtWheelLicenses -OrtDll $Dll -WheelDir $Wheels -Destination $Bundle
+    Copy-OrtFixtureTexts -Source $source -Destination $ort
+    return @{ Ort = $ort; Source = $source }
 }
 
 Describe 'ONNX Runtime wheel license provenance' {
@@ -72,26 +79,38 @@ Describe 'ONNX Runtime wheel license provenance' {
         }
     }
 
-    It 'requires selected provider bytes in the same wheel as the core before copying texts' {
-        Invoke-OrtLicenseFixture -NoWheel { param($dir, $wheels, $bundle, $dll)
-            $provider = Join-Path $dir 'onnxruntime_providers_cuda.dll'
-            [IO.File]::WriteAllText($provider, 'cuda provider')
-            $wheel = Join-Path $wheels 'onnxruntime_gpu-1.2.3-cp315-cp315-win_amd64.whl'
-            New-OrtLicenseZipFixture -Path $wheel
-            Assert-Throws { Copy-OrtWheelLicenses -OrtDll $dll -WheelDir $wheels -Destination $bundle -ProviderDll $provider } -MessagePattern 'matched 0 entries'
-            Assert-False (Test-Path -LiteralPath (Join-Path $bundle 'licenses')) 'no texts copied for a missing provider'
-            Remove-Item -LiteralPath $wheel
-            New-OrtLicenseZipFixture -Path $wheel -Provider 'another provider'
-            Assert-Throws { Copy-OrtWheelLicenses -OrtDll $dll -WheelDir $wheels -Destination $bundle -ProviderDll $provider } -MessagePattern 'differs from the matching wheel'
-            Assert-False (Test-Path -LiteralPath (Join-Path $bundle 'licenses')) 'no texts copied for mismatched provider bytes'
-            Remove-Item -LiteralPath $wheel
-            New-OrtLicenseZipFixture -Path $wheel -Provider 'cuda provider'
-            Assert-Throws { Copy-OrtWheelLicenses -OrtDll $dll -WheelDir $wheels -Destination $bundle -ProviderDll @($provider, $provider) } -MessagePattern 'Duplicate ONNX Runtime provider'
-            [IO.File]::WriteAllText($provider, '')
-            Assert-Throws { Copy-OrtWheelLicenses -OrtDll $dll -WheelDir $wheels -Destination $bundle -ProviderDll $provider } -MessagePattern 'empty or not a file'
-            [IO.File]::WriteAllText($provider, 'cuda provider')
-            $out = Copy-OrtWheelLicenses -OrtDll $dll -WheelDir $wheels -Destination $bundle -ProviderDll $provider
-            Assert-Equal 'original notices' ([IO.File]::ReadAllText((Join-Path $out 'ThirdPartyNotices.txt')))
+    It 'requires provider and optional DirectML bytes from the core wheel before copying texts' {
+        foreach ($case in @(
+            @{ Name = 'onnxruntime_providers_cuda.dll'; Text = 'cuda provider'; Wheel = 'gpu'; Argument = 'ProviderDll'; Mismatch = 'differs from the matching wheel' }
+            @{ Name = 'DirectML.dll'; Text = 'directml runtime'; Wheel = 'directml'; Argument = 'DirectMlDll'; Mismatch = 'DirectML runtime differs' }
+        )) {
+            Invoke-OrtLicenseFixture -NoWheel { param($dir, $wheels, $bundle, $dll)
+                $file = Join-Path $dir $case.Name
+                [IO.File]::WriteAllText($file, $case.Text)
+                $wheel = Join-Path $wheels "onnxruntime_$($case.Wheel)-1.2.3-cp315-cp315-win_amd64.whl"
+                $copyOptions = @{ OrtDll = $dll; WheelDir = $wheels; Destination = $bundle; $case.Argument = $file }
+                New-OrtLicenseZipFixture -Path $wheel
+                Assert-Throws { Copy-OrtWheelLicenses @copyOptions } -MessagePattern 'matched 0 entries'
+                Assert-False (Test-Path -LiteralPath (Join-Path $bundle 'licenses')) 'no texts copied for a missing runtime'
+                Remove-Item -LiteralPath $wheel
+                $member = @{ Path = $wheel; Runtime = @{ $case.Name = 'another runtime' } }
+                New-OrtLicenseZipFixture @member
+                Assert-Throws { Copy-OrtWheelLicenses @copyOptions } -MessagePattern $case.Mismatch
+                Assert-False (Test-Path -LiteralPath (Join-Path $bundle 'licenses')) 'no texts copied for mismatched runtime bytes'
+                Remove-Item -LiteralPath $wheel
+                $member.Runtime[$case.Name] = $case.Text
+                New-OrtLicenseZipFixture @member
+                if ($case.Argument -eq 'ProviderDll') {
+                    $copyOptions.ProviderDll = @($file, $file)
+                    Assert-Throws { Copy-OrtWheelLicenses @copyOptions } -MessagePattern 'Duplicate ONNX Runtime provider'
+                    $copyOptions.ProviderDll = $file
+                    [IO.File]::WriteAllText($file, '')
+                    Assert-Throws { Copy-OrtWheelLicenses @copyOptions } -MessagePattern 'empty or not a file'
+                    [IO.File]::WriteAllText($file, $case.Text)
+                }
+                $out = Copy-OrtWheelLicenses @copyOptions
+                Assert-Equal 'original notices' ([IO.File]::ReadAllText((Join-Path $out 'ThirdPartyNotices.txt')))
+            }.GetNewClosure()
         }
     }
 
@@ -101,42 +120,16 @@ Describe 'ONNX Runtime wheel license provenance' {
             $stream = [IO.File]::Create($provider)
             try { $stream.SetLength(17MB) } finally { $stream.Dispose() }
             $wheel = Join-Path $wheels 'onnxruntime_gpu-1.2.3-cp315-cp315-win_amd64.whl'
-            $archive = [IO.Compression.ZipFile]::Open($wheel, [IO.Compression.ZipArchiveMode]::Create)
-            try {
-                foreach ($entry in @{
-                        'onnxruntime/capi/onnxruntime.dll' = $dll
-                        'onnxruntime/capi/onnxruntime_providers_cuda.dll' = $provider
-                    }.GetEnumerator()) {
-                    $inputStream = [IO.File]::OpenRead($entry.Value)
-                    $outputStream = $archive.CreateEntry($entry.Key).Open()
-                    try { $inputStream.CopyTo($outputStream) } finally { $outputStream.Dispose(); $inputStream.Dispose() }
-                }
-                foreach ($name in 'LICENSE', 'ThirdPartyNotices.txt') {
-                    $writer = [IO.StreamWriter]::new($archive.CreateEntry("onnxruntime/$name").Open())
-                    try { $writer.Write('original text') } finally { $writer.Dispose() }
-                }
-            } finally { $archive.Dispose() }
+            $text = Join-Path $dir 'original.txt'
+            [IO.File]::WriteAllText($text, 'original text')
+            New-TestZipFile -Path $wheel -FileValues -Member ([ordered]@{
+                'onnxruntime/capi/onnxruntime.dll' = $dll
+                'onnxruntime/capi/onnxruntime_providers_cuda.dll' = $provider
+                'onnxruntime/LICENSE' = $text
+                'onnxruntime/ThirdPartyNotices.txt' = $text
+            })
             $out = Copy-OrtWheelLicenses -OrtDll $dll -WheelDir $wheels -Destination $bundle -ProviderDll $provider
             Assert-Equal 'original text' ([IO.File]::ReadAllText((Join-Path $out 'LICENSE')))
-        }
-    }
-
-    It 'optionally requires DirectML bytes from the core wheel before copying texts' {
-        Invoke-OrtLicenseFixture -NoWheel { param($dir, $wheels, $bundle, $dll)
-            $directMl = Join-Path $dir 'DirectML.dll'
-            [IO.File]::WriteAllText($directMl, 'directml runtime')
-            $wheel = Join-Path $wheels 'onnxruntime_directml-1.2.3-cp315-cp315-win_amd64.whl'
-            New-OrtLicenseZipFixture -Path $wheel
-            Assert-Throws { Copy-OrtWheelLicenses -OrtDll $dll -WheelDir $wheels -Destination $bundle -DirectMlDll $directMl } -MessagePattern 'matched 0 entries'
-            Assert-False (Test-Path -LiteralPath (Join-Path $bundle 'licenses'))
-            Remove-Item -LiteralPath $wheel
-            New-OrtLicenseZipFixture -Path $wheel -DirectMl 'other runtime'
-            Assert-Throws { Copy-OrtWheelLicenses -OrtDll $dll -WheelDir $wheels -Destination $bundle -DirectMlDll $directMl } -MessagePattern 'DirectML runtime differs'
-            Assert-False (Test-Path -LiteralPath (Join-Path $bundle 'licenses'))
-            Remove-Item -LiteralPath $wheel
-            New-OrtLicenseZipFixture -Path $wheel -DirectMl 'directml runtime'
-            $out = Copy-OrtWheelLicenses -OrtDll $dll -WheelDir $wheels -Destination $bundle -DirectMlDll $directMl
-            Assert-Equal 'original notices' ([IO.File]::ReadAllText((Join-Path $out 'ThirdPartyNotices.txt')))
         }
     }
 
@@ -159,11 +152,8 @@ Describe 'ONNX Runtime wheel license provenance' {
     It 'makes Python ORT checks optional but rejects mismatched or missing installed texts' {
         Invoke-OrtLicenseFixture { param($dir, $wheels, $bundle, $dll)
             Assert-Equal '' (Resolve-PythonOrtLicenses -Bundle $bundle -WheelDir (Join-Path $dir 'absent-wheel-store'))
-            $ort = Join-Path $bundle 'runtime/Lib/site-packages/onnxruntime'
-            $null = New-Item -ItemType Directory -Force -Path (Join-Path $ort 'capi')
-            Copy-Item -LiteralPath $dll -Destination (Join-Path $ort 'capi/onnxruntime.dll')
-            $source = Copy-OrtWheelLicenses -OrtDll $dll -WheelDir $wheels -Destination $bundle
-            Copy-OrtFixtureTexts -Source $source -Destination $ort
+            $fixture = Initialize-PythonOrtFixture -Bundle $bundle -Dll $dll -Wheels $wheels
+            $ort = $fixture.Ort; $source = $fixture.Source
             Assert-Equal $ort (Resolve-PythonOrtLicenses -Bundle $bundle -WheelDir $wheels)
             Invoke-WithProcessEnvironment -Environment @{ ORT_CHAIN_WHEEL_DIR = $wheels } -ScriptBlock {
                 Assert-Equal $ort (Resolve-PythonOrtLicenses -Bundle $bundle)
@@ -181,13 +171,13 @@ Describe 'ONNX Runtime wheel license provenance' {
     It 'requires selected Python providers from the same wheel as the core' {
         Invoke-OrtLicenseFixture -NoWheel { param($dir, $wheels, $bundle, $dll)
             Assert-Throws { Resolve-PythonOrtLicenses -Bundle $bundle -WheelDir $wheels -RequiredProvider cuda } -MessagePattern 'required'
-            $ort = Join-Path $bundle 'runtime/Lib/site-packages/onnxruntime'
-            $null = New-Item -ItemType Directory -Force -Path (Join-Path $ort 'capi')
-            Copy-Item -LiteralPath $dll -Destination (Join-Path $ort 'capi/onnxruntime.dll')
             $wheel = Join-Path $wheels 'onnxruntime_gpu-1.2.3-cp315-cp315-win_amd64.whl'
-            New-OrtLicenseZipFixture -Path $wheel -Provider 'cuda provider' -Extension 'python extension' -DirectMl 'directml runtime'
-            $source = Copy-OrtWheelLicenses -OrtDll $dll -WheelDir $wheels -Destination $bundle
-            Copy-OrtFixtureTexts -Source $source -Destination $ort
+            New-OrtLicenseZipFixture -Path $wheel -Runtime @{
+                'onnxruntime_providers_cuda.dll' = 'cuda provider'
+                'onnxruntime_pybind11_state.pyd' = 'python extension'
+                'DirectML.dll' = 'directml runtime'
+            }
+            $ort = (Initialize-PythonOrtFixture -Bundle $bundle -Dll $dll -Wheels $wheels).Ort
             Assert-Throws { Resolve-PythonOrtLicenses -Bundle $bundle -WheelDir $wheels -RequiredProvider cuda }
             $provider = Join-Path $ort 'capi/onnxruntime_providers_cuda.dll'
             [IO.File]::WriteAllText($provider, 'wrong provider')

@@ -146,16 +146,20 @@ t_case "the AppImage generator's patchelf leaves glibc as built and passes every
 _keep="${CMAKE_MODULES}/../linux/scripts/06-packaging/patchelf-keep-glibc.sh"
 printf '#!/bin/sh\necho "patched $*"\n' > "${_work}/stub-patchelf"
 chmod +x "${_work}/stub-patchelf"
+_assert_patchelf() {
+  local expected="$1" label="$2"
+  shift 2
+  t_assert_eq "$expected" "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" "$@")" "$label"
+}
 t_assert_eq "" "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --set-rpath x /a/ld-linux-x86-64.so.2)" "loader kept"
 t_assert_eq "" "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --set-rpath x /a/libc.so.6)" "libc kept"
 t_assert_eq "patched --set-rpath x /a/libfoo.so" \
   "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --set-rpath x /a/libfoo.so)" "others patched"
 t_assert_eq "patched --set-rpath x /a/libonnxruntime.so.1" \
   "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --set-rpath x /a/libonnxruntime.so.1)" "CPU behavior unchanged"
-t_assert_eq "" "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --keep-ort --set-rpath x /a/libonnxruntime_providers_shared.so)" "GPU provider kept"
-t_assert_eq "" "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --keep-ort --set-rpath x /a/libonnxruntime.so.1)" "GPU core kept"
-t_assert_eq "patched --set-rpath x /a/libfoo.so" \
-  "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --keep-ort --set-rpath x /a/libfoo.so)" "other GPU bundle libraries patched"
+_assert_patchelf "" "GPU provider kept" bash "${_keep}" --keep-ort --set-rpath x /a/libonnxruntime_providers_shared.so
+_assert_patchelf "" "GPU core kept" bash "${_keep}" --keep-ort --set-rpath x /a/libonnxruntime.so.1
+_assert_patchelf "patched --set-rpath x /a/libfoo.so" "other GPU bundle libraries patched" bash "${_keep}" --keep-ort --set-rpath x /a/libfoo.so
 
 t_case "an unresolvable library fails the install instead of shipping"
 _project ''
@@ -208,8 +212,8 @@ _project 'LOADER EXTERNAL_LIBRARY_PATH PRESERVE_ORT_IN_APPIMAGE'
 t_assert_ok _install
 _appimage_wrapper="${_work}/build/tools/patchelf-keep-glibc-and-ort.sh"
 t_assert_ok test -x "${_appimage_wrapper}"
-t_assert_eq "" "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" "${_appimage_wrapper}" --set-rpath x /a/libonnxruntime_providers_migraphx.so)" "generated wrapper preserves provider"
-t_assert_eq "patched --set-rpath x /a/libfoo.so" "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" "${_appimage_wrapper}" --set-rpath x /a/libfoo.so)" "generated wrapper patches unrelated libraries"
+_assert_patchelf "" "generated wrapper preserves provider" "${_appimage_wrapper}" --set-rpath x /a/libonnxruntime_providers_migraphx.so
+_assert_patchelf "patched --set-rpath x /a/libfoo.so" "generated wrapper patches unrelated libraries" "${_appimage_wrapper}" --set-rpath x /a/libfoo.so
 
 t_case "--beside and --external-library-path work together and are idempotent"
 mkdir -p "${_work}/external-beside/lib"

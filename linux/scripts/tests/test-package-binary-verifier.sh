@@ -6,44 +6,7 @@ source "${TESTS_DIR}/test-harness.sh"
 SCRIPT="${TESTS_DIR}/../verify_package_binary.py"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-python3 - "$work" <<'PY'
-import pathlib
-import sys
-import warnings
-import zipfile
-
-root = pathlib.Path(sys.argv[1])
-data = (b'MZ\r\n\x00\xffabcdef' * (18 * 1024 * 1024 // 12 + 1))[:18 * 1024 * 1024]
-(root / 'provider.dll').write_bytes(data)
-(root / 'wrong.dll').write_bytes(data[:-1] + bytes([data[-1] ^ 1]))
-(root / 'empty.dll').write_bytes(b'')
-for name in ('app.zip', 'app.msix', 'app.whl'):
-    with zipfile.ZipFile(root / name, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr('app/onnxruntime_providers_cuda.dll', data)
-        archive.writestr('app/shared.dll', b'shared\r\n')
-(root / 'shared.dll').write_bytes(b'shared\r\n')
-with zipfile.ZipFile(root / 'duplicate.zip', 'w') as archive:
-    archive.writestr('app/onnxruntime_providers_cuda.dll', data)
-    archive.writestr('app/ONNXRUNTIME_PROVIDERS_CUDA.dll', data)
-with zipfile.ZipFile(root / 'alias.zip', 'w') as archive:
-    archive.writestr('app/onnxruntime_providers_cuda.dll', data)
-    archive.writestr('app/./onnxruntime_providers_cuda.dll', data)
-with zipfile.ZipFile(root / 'leading-dot.zip', 'w') as archive:
-    archive.writestr('./app/onnxruntime_providers_cuda.dll', data)
-with warnings.catch_warnings():
-    warnings.simplefilter('ignore', UserWarning)
-    with zipfile.ZipFile(root / 'duplicate-exact.zip', 'w') as archive:
-        archive.writestr('app/onnxruntime_providers_cuda.dll', data)
-        archive.writestr('app/onnxruntime_providers_cuda.dll', data)
-with zipfile.ZipFile(root / 'symlink.zip', 'w') as archive:
-    link = zipfile.ZipInfo('app/onnxruntime_providers_cuda.dll')
-    link.create_system = 3
-    link.external_attr = 0o120777 << 16
-    archive.writestr(link, data)
-with zipfile.ZipFile(root / 'unsafe.zip', 'w') as archive:
-    archive.writestr('../escape', b'x')
-    archive.writestr('app/onnxruntime_providers_cuda.dll', data)
-PY
+python3 "$TESTS_DIR/package_binary_archive_fixture.py" "$work"
 
 t_case 'ZIP, MSIX and wheel check exact bytes for large members without a license text size limit'
 for package in app.zip app.msix app.whl; do
@@ -67,34 +30,7 @@ t_assert_fails python3 -I "$SCRIPT" "$work/unsafe.zip" --require "app/onnxruntim
 
 t_case 'MSI media mapping selects one embedded cabinet and streams its exact member'
 mkdir -p "$work/tools"
-cat > "$work/tools/7z" <<'SH'
-#!/usr/bin/env bash
-set -u
-operation="$1"
-archive="${@: -2:1}"
-member="${@: -1}"
-if [ "$operation" = l ]; then
-  archive="${@: -1}"
-  printf '%s\n' '----------'
-  if [[ "$archive" == *.msi ]]; then
-    printf '%s\n' 'Path = cab1.cab' 'Path = cab2.cab'
-  elif [ "$(cat "$archive")" = CAB2 ]; then
-    printf '%s\n' 'Path = f9179'
-    [ "${FAKE_DUPLICATE:-0}" = 0 ] || printf '%s\n' 'Path = f9179'
-  fi
-elif [ "$operation" = e ]; then
-  if [[ "$archive" == *.msi ]]; then
-    [ "${FAKE_CAB_FAIL:-0}" = 0 ] || exit 9
-    case "$member" in cab1.cab) printf CAB1 ;; cab2.cab) printf CAB2 ;; *) exit 1 ;; esac
-  else
-    [ "$member" = f9179 ] || exit 1
-    [ "${FAKE_MEMBER_FAIL:-0}" = 0 ] || exit 8
-    cat "$FAKE_BINARY"
-  fi
-else
-  exit 1
-fi
-SH
+cp "$TESTS_DIR/package-msi-7z-fixture.sh" "$work/tools/7z"
 chmod +x "$work/tools/7z"
 touch "$work/multi.msi"
 export FAKE_BINARY="$work/provider.dll"

@@ -16,9 +16,10 @@ function Invoke-WithMsiLicenseDatabase {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][int]$Mode, [Parameter(Mandatory)][scriptblock]$Body,
         [object[]]$ArgumentList = @())
     $installer = $null; $database = $null
+    $resolved = if ($Mode -eq 0) { (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath } else { $Path }
     try {
         $installer = New-Object -ComObject WindowsInstaller.Installer -ErrorAction Stop
-        $database = $installer.OpenDatabase($Path, $Mode)
+        $database = $installer.OpenDatabase($resolved, $Mode)
         & $Body $database @ArgumentList
     } finally {
         try { Clear-MsiLicenseComReference $database }
@@ -188,12 +189,7 @@ function Get-MsiInstalledFileId {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$RelativePath,
         [string]$RootDirectoryId = '', [string]$RootDirectoryName = '')
-    $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
-    return Invoke-WithMsiLicenseDatabase -Path $resolved -Mode 0 -ArgumentList @($RelativePath, $RootDirectoryId, $RootDirectoryName) -Body {
-        param($database, $relative, $rootId, $rootName)
-        $tables = Get-MsiInstalledPathTables -Database $database
-        Resolve-MsiInstalledFileId -RelativePath $relative -Files $tables.Files -Components $tables.Components -Directories $tables.Directories -RootDirectoryId $rootId -RootDirectoryName $rootName
-    }
+    return Invoke-MsiInstalledPathQuery -Path $Path -Target $RelativePath -RootDirectoryId $RootDirectoryId -RootDirectoryName $RootDirectoryName
 }
 
 function Resolve-MsiDirectoryFileNames {
@@ -229,11 +225,19 @@ function Get-MsiDirectoryFileNames {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path, [AllowEmptyString()][string]$Directory = '',
         [Parameter(Mandatory)][string]$RootDirectoryId, [string]$RootDirectoryName = '')
-    $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
-    return Invoke-WithMsiLicenseDatabase -Path $resolved -Mode 0 -ArgumentList @($Directory, $RootDirectoryId, $RootDirectoryName) -Body {
-        param($database, $directory, $rootId, $rootName)
+    return Invoke-MsiInstalledPathQuery -Path $Path -Target $Directory -RootDirectoryId $RootDirectoryId -RootDirectoryName $RootDirectoryName -DirectoryQuery
+}
+
+function Invoke-MsiInstalledPathQuery {
+    param([string]$Path, [AllowEmptyString()][string]$Target, [string]$RootDirectoryId, [string]$RootDirectoryName, [switch]$DirectoryQuery)
+    return Invoke-WithMsiLicenseDatabase -Path $Path -Mode 0 -ArgumentList @($Target, $RootDirectoryId, $RootDirectoryName, [bool]$DirectoryQuery) -Body {
+        param($database, $target, $rootId, $rootName, $isDirectory)
         $tables = Get-MsiInstalledPathTables -Database $database
-        Resolve-MsiDirectoryFileNames -Directory $directory -RootDirectoryId $rootId -RootDirectoryName $rootName -Files $tables.Files -Components $tables.Components -Directories $tables.Directories
+        if ($isDirectory) {
+            Resolve-MsiDirectoryFileNames -Directory $target -RootDirectoryId $rootId -RootDirectoryName $rootName -Files $tables.Files -Components $tables.Components -Directories $tables.Directories
+        } else {
+            Resolve-MsiInstalledFileId -RelativePath $target -Files $tables.Files -Components $tables.Components -Directories $tables.Directories -RootDirectoryId $rootId -RootDirectoryName $rootName
+        }
     }
 }
 
@@ -271,8 +275,7 @@ function Get-MsiCabinetPattern {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$FileId)
     Assert-MsiLicenseFileId -Id $FileId
-    $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
-    return Invoke-WithMsiLicenseDatabase -Path $resolved -Mode 0 -ArgumentList @($FileId) -Body {
+    return Invoke-WithMsiLicenseDatabase -Path $Path -Mode 0 -ArgumentList @($FileId) -Body {
         param($database, $id)
         $tables = Get-MsiCabinetTables -Database $database -FileId $id
         Resolve-MsiCabinetPattern -FileId $id -Files $tables.Files -Media $tables.Media
@@ -325,8 +328,7 @@ function Assert-MsiPackageLicense {
 
 function Get-MsiLicenseBatchPatterns {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string[]]$Names, [switch]$FileNames)
-    $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
-    return Invoke-WithMsiLicenseDatabase -Path $resolved -Mode 0 -ArgumentList @($Names, [bool]$FileNames) -Body {
+    return Invoke-WithMsiLicenseDatabase -Path $Path -Mode 0 -ArgumentList @($Names, [bool]$FileNames) -Body {
         param($database, $items, $useNames)
         $tables = Get-MsiCabinetTables -Database $database -FileId ''
         foreach ($item in $items) {
@@ -336,19 +338,40 @@ function Get-MsiLicenseBatchPatterns {
     }
 }
 
-function Invoke-PackageLicenseBatch {
-    param([string]$Path, [string[]]$Pattern, [string[]]$LicensePath, [string]$PythonPath, [string]$VerifierPath, [switch]$MsiFileNames)
-    if ($Pattern.Count -eq 0 -or $Pattern.Count -ne $LicensePath.Count) {
-        throw 'Package license patterns and source paths must have equal, nonzero counts.'
-    }
-    if (-not (Test-Path -LiteralPath $VerifierPath -PathType Leaf)) { throw "package license verifier is missing: $VerifierPath" }
+function Get-PackageVerifierMembers {
+    param([string]$Path, [string[]]$Members, [switch]$Binary, [switch]$MsiFileNames)
     $isMsi = [IO.Path]::GetExtension($Path) -ieq '.msi'
     if ($MsiFileNames -and -not $isMsi) { throw 'MSI file-name mapping requires an MSI package.' }
-    $mapped = if ($isMsi) { @(Get-MsiLicenseBatchPatterns -Path $Path -Names $Pattern -FileNames:$MsiFileNames) } else { @($Pattern) }
-    $rules = @()
-    for ($i = 0; $i -lt $mapped.Count; $i++) { $rules += '--require', "$($mapped[$i])=$($LicensePath[$i])" }
-    & $PythonPath $VerifierPath $Path @rules
-    if ($LASTEXITCODE -ne 0) { throw "package license batch verification failed (exit $LASTEXITCODE)" }
+    if (-not $isMsi) { return $Members }
+    if ($Binary) { return @($Members | ForEach-Object { Get-MsiCabinetPattern -Path $Path -FileId $_ }) }
+    return Get-MsiLicenseBatchPatterns -Path $Path -Names $Members -FileNames:$MsiFileNames
+}
+
+function Invoke-PackageVerifier {
+    param([hashtable]$Request, [switch]$Binary, [switch]$MsiFileNames)
+    $path = $Request.Path; $members = $Request.Member; $sources = $Request.Source
+    $verifier = $Request.VerifierPath
+    $kind = if ($Binary) { 'binary' } else { 'license' }
+    if ($Binary -and -not (Test-Path -LiteralPath $verifier -PathType Leaf)) { throw "package $kind verifier is missing: $verifier" }
+    if ($members.Count -eq 0 -or $members.Count -ne $sources.Count) {
+        if ($Binary) { throw 'package binary members and sources must have equal, nonzero counts' }
+        throw 'Package license patterns and source paths must have equal, nonzero counts.'
+    }
+    if (-not (Test-Path -LiteralPath $verifier -PathType Leaf)) { throw "package $kind verifier is missing: $verifier" }
+    $mapped = @(Get-PackageVerifierMembers -Path $path -Members $members -Binary:$Binary -MsiFileNames:$MsiFileNames)
+    $rules = @(for ($i = 0; $i -lt $mapped.Count; $i++) { '--require'; "$($mapped[$i])=$($sources[$i])" })
+    $options = @(if ($Binary) { '-I' })
+    & $Request.PythonPath @options $verifier $path @rules
+    if ($LASTEXITCODE -ne 0) {
+        $failure = if ($Binary) { "package binary verification failed for '$($members -join ', ')'" } else { 'package license batch verification failed' }
+        throw "$failure (exit $LASTEXITCODE)"
+    }
+}
+
+function Invoke-PackageLicenseBatch {
+    param([string]$Path, [string[]]$Pattern, [string[]]$LicensePath, [string]$PythonPath, [string]$VerifierPath, [switch]$MsiFileNames)
+    $request = @{ Path = $Path; Member = $Pattern; Source = $LicensePath; PythonPath = $PythonPath; VerifierPath = $VerifierPath }
+    Invoke-PackageVerifier -Request $request -MsiFileNames:$MsiFileNames
 }
 
 function Assert-PackageLicenses {
@@ -367,4 +390,4 @@ function Assert-MsiPackageLicenses {
     Invoke-PackageLicenseBatch -Path $Path -Pattern $FileName -LicensePath $LicensePath -PythonPath $PythonPath -VerifierPath $VerifierPath -MsiFileNames
 }
 
-Export-ModuleMember -Function Resolve-MsiLicenseFileId, Get-MsiLicenseFileId, Resolve-MsiInstalledFileId, Get-MsiInstalledFileId, Resolve-MsiDirectoryFileNames, Get-MsiDirectoryFileNames, Resolve-MsiCabinetPattern, Get-MsiCabinetPattern, Get-WixSourceFileId, Assert-PackageLicense, Assert-MsiPackageLicense, Assert-PackageLicenses, Assert-MsiPackageLicenses
+Export-ModuleMember -Function Resolve-MsiLicenseFileId, Get-MsiLicenseFileId, Resolve-MsiInstalledFileId, Get-MsiInstalledFileId, Resolve-MsiDirectoryFileNames, Get-MsiDirectoryFileNames, Resolve-MsiCabinetPattern, Get-MsiCabinetPattern, Get-WixSourceFileId, Assert-PackageLicense, Assert-MsiPackageLicense, Assert-PackageLicenses, Assert-MsiPackageLicenses, Invoke-PackageVerifier

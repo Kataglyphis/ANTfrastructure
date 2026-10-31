@@ -10,8 +10,16 @@ trap 'rm -rf "$work"' EXIT
 python_app_license_fixture "$work/project" "$work/bundle"
 
 _bundle() {
-  bash "$SCRIPT" --repo-root "$work/project" --out-dir "$work/bundle" \
+  env "$@" bash "$SCRIPT" --repo-root "$work/project" --out-dir "$work/bundle" \
     --work-dir "$work/work" --ort-wheel-dir "$work/no-wheels" 2>&1
+}
+
+_bundle_fails_with() {
+  local expected="$1" out rc
+  shift
+  out="$(_bundle "$@")"; rc=$?
+  t_assert_eq 1 "$rc"
+  t_assert_contains "$out" "$expected"
 }
 
 t_case 'a project license is copied into the real bundle before runtime staging'
@@ -21,29 +29,15 @@ t_assert_contains "$out" 'no chain ONNX Runtime wheel' 'the fixture stops at the
 t_assert_eq 'Original project terms' "$(cat "$work/bundle/LICENSE")"
 
 t_case 'a GPU image cannot claim a different execution provider'
-out="$(ENABLE_NVIDIA=true ENABLE_AMD=false PYTHON_APP_REQUIRE_PROVIDER=MIGraphXExecutionProvider _bundle)"; rc=$?
-t_assert_eq 1 "$rc"
-t_assert_contains "$out" 'GPU image requires CUDAExecutionProvider'
-out="$(ENABLE_NVIDIA=true ENABLE_AMD=false PYTHON_APP_REQUIRE_PROVIDER=CUDAExecutionProvider _bundle)"; rc=$?
-t_assert_eq 1 "$rc"
-t_assert_contains "$out" 'no chain ONNX Runtime wheel'
-out="$(ENABLE_NVIDIA=true ENABLE_AMD=true _bundle)"; rc=$?
-t_assert_eq 1 "$rc"
-t_assert_contains "$out" 'at most one GPU image variant'
+_bundle_fails_with 'GPU image requires CUDAExecutionProvider' ENABLE_NVIDIA=true ENABLE_AMD=false PYTHON_APP_REQUIRE_PROVIDER=MIGraphXExecutionProvider
+_bundle_fails_with 'no chain ONNX Runtime wheel' ENABLE_NVIDIA=true ENABLE_AMD=false PYTHON_APP_REQUIRE_PROVIDER=CUDAExecutionProvider
+_bundle_fails_with 'at most one GPU image variant' ENABLE_NVIDIA=true ENABLE_AMD=true
 
 t_case 'host GPU runtime mode is explicit and requires a GPU provider'
-out="$(PYTHON_APP_HOST_GPU_RUNTIME=true _bundle)"; rc=$?
-t_assert_eq 1 "$rc"
-t_assert_contains "$out" 'host GPU runtime requires CUDA or MIGraphX'
-out="$(ENABLE_NVIDIA=false ENABLE_AMD=false PYTHON_APP_REQUIRE_PROVIDER=CUDAExecutionProvider PYTHON_APP_HOST_GPU_RUNTIME=true _bundle)"; rc=$?
-t_assert_eq 1 "$rc"
-t_assert_contains "$out" 'host GPU runtime requires a matching GPU image variant'
-out="$(PYTHON_APP_HOST_GPU_RUNTIME=invalid _bundle)"; rc=$?
-t_assert_eq 1 "$rc"
-t_assert_contains "$out" 'PYTHON_APP_HOST_GPU_RUNTIME must be true or false'
-out="$(ENABLE_AMD=true PYTHON_APP_HOST_GPU_RUNTIME=true _bundle)"; rc=$?
-t_assert_eq 1 "$rc"
-t_assert_contains "$out" 'no chain ONNX Runtime wheel'
+_bundle_fails_with 'host GPU runtime requires CUDA or MIGraphX' PYTHON_APP_HOST_GPU_RUNTIME=true
+_bundle_fails_with 'host GPU runtime requires a matching GPU image variant' ENABLE_NVIDIA=false ENABLE_AMD=false PYTHON_APP_REQUIRE_PROVIDER=CUDAExecutionProvider PYTHON_APP_HOST_GPU_RUNTIME=true
+_bundle_fails_with 'PYTHON_APP_HOST_GPU_RUNTIME must be true or false' PYTHON_APP_HOST_GPU_RUNTIME=invalid
+_bundle_fails_with 'no chain ONNX Runtime wheel' ENABLE_AMD=true PYTHON_APP_HOST_GPU_RUNTIME=true
 
 t_case 'missing or empty license fails before an existing bundle is reset'
 printf 'keep existing bundle\n' > "$work/bundle/sentinel"

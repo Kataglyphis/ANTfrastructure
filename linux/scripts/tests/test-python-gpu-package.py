@@ -17,7 +17,7 @@ LIBS = ("libonnxruntime.so.1.31.0", "libonnxruntime_providers_shared.so",
 
 
 class FinishedPackageProof(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory(prefix="gpu-package-proof-")
         self.root = Path(self.temp.name)
         self.bundle = self.root / "bundle"
@@ -35,10 +35,10 @@ class FinishedPackageProof(unittest.TestCase):
             wheel.writestr("onnxruntime/LICENSE", "test license")
             wheel.writestr("onnxruntime/ThirdPartyNotices.txt", "test notices")
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         self.temp.cleanup()
 
-    def package(self, kind, mutation):
+    def package(self, kind: str, mutation: str) -> tuple[Path, str]:
         payload = self.root / "payload"
         shutil.rmtree(payload, ignore_errors=True)
         shutil.copytree(self.bundle, payload)
@@ -84,26 +84,33 @@ class FinishedPackageProof(unittest.TestCase):
             artifact.chmod(0o755)
         return artifact, prefix
 
-    def verify(self, kind, mutation):
+    def verify(self, kind: str, mutation: str) -> subprocess.CompletedProcess[str]:
         artifact, prefix = self.package(kind, mutation)
         return subprocess.run(["python3", str(VERIFIER), "--bundle", str(self.bundle), "--wheel-dir", str(self.wheels),
-                               "--artifact", str(artifact), "--prefix", prefix], capture_output=True, text=True)
+                               "--artifact", str(artifact), "--prefix", prefix], check=False, capture_output=True, text=True)
 
-    def test_valid_and_mutated_finished_formats(self):
+    def test_valid_and_mutated_finished_formats(self) -> None:
         for kind in ("tar", "deb", "appimage"):
             for mutation in ("valid", "missing-cuda", "missing-tensorrt", "altered-cuda", "altered-tensorrt", "extra", "metadata", "linked"):
                 with self.subTest(kind=kind, mutation=mutation):
                     result = self.verify(kind, mutation)
                     self.assertEqual(result.returncode == 0, mutation == "valid", result.stdout + result.stderr)
 
-    def test_duplicate_archive_provider_rejected(self):
+    def test_duplicate_archive_provider_rejected(self) -> None:
         self.assertNotEqual(self.verify("tar", "duplicate").returncode, 0)
 
-    def test_source_provider_not_in_wheel_rejected(self):
+    def test_non_object_manifest_rejected_cleanly(self) -> None:
+        (self.bundle / "bundle.json").write_text("[]")
+        result = self.verify("tar", "valid")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("GPU bundle manifest must be an object", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_source_provider_not_in_wheel_rejected(self) -> None:
         (self.bundle / CAPI / "libonnxruntime_providers_rogue.so").write_bytes((self.bundle / CAPI / LIBS[0]).read_bytes())
         self.assertNotEqual(self.verify("tar", "valid").returncode, 0)
 
-    def test_source_provider_modified_after_wheel_build_rejected(self):
+    def test_source_provider_modified_after_wheel_build_rejected(self) -> None:
         (self.bundle / CAPI / LIBS[-1]).write_bytes((self.bundle / CAPI / LIBS[0]).read_bytes())
         self.assertNotEqual(self.verify("tar", "valid").returncode, 0)
 

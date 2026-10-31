@@ -100,8 +100,10 @@ patchelf --add-needed libcudart.so.13 --add-needed libcublas.so.13 "${site}/libo
 cp "${work}/tensorrt.so" "${site}/libonnxruntime_providers_tensorrt.so"
 write_wheel() {
   python3 - "${wheels}/onnxruntime_gpu-1.31.0-py3-none-any.whl" "${site}" <<'PY'
-import sys, zipfile
+import sys
+import zipfile
 from pathlib import Path
+
 with zipfile.ZipFile(sys.argv[1], 'w') as wheel:
     for library in sorted(Path(sys.argv[2]).glob('libonnxruntime*.so*')):
         wheel.write(library, f'onnxruntime/capi/{library.name}')

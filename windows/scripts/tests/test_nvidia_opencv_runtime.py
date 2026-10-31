@@ -72,6 +72,17 @@ class NvidiaOpenCvRuntimeTest(unittest.TestCase):
         result = self.run_check()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_classifies_all_supported_runtime_families(self) -> None:
+        for name in ("cuFFT64.dll", "nppc64.dll"):
+            original = self.cuda / "bin/x64" / name
+            original.write_bytes(b"CUDA runtime")
+            shutil.copy2(original, self.runtime / "bin" / name)
+            shutil.copy2(original, self.bin / name)
+        (self.bin / "unrelated.dll").write_bytes(b"not an NVIDIA runtime")
+        result = self.run_check()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("CUDA=3, cuDNN=1", result.stdout)
+
     def test_cpu_only_bundle_does_not_require_sdk_roots(self) -> None:
         for path in self.bin.iterdir():
             path.unlink()

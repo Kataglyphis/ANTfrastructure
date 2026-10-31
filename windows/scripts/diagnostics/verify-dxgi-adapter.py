@@ -39,8 +39,12 @@ class AdapterDescription(ctypes.Structure):
 def _method(
     obj: ctypes.c_void_p, index: int, restype: object, *types: object
 ) -> object:
+    if sys.platform != "win32":
+        raise RuntimeError("DXGI adapter verification requires Windows")
+    from ctypes import WINFUNCTYPE
+
     table = ctypes.cast(obj, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
-    return ctypes.WINFUNCTYPE(restype, ctypes.c_void_p, *types)(table[index])
+    return WINFUNCTYPE(restype, ctypes.c_void_p, *types)(table[index])
 
 
 def describe_adapter(index: int) -> AdapterDescription:

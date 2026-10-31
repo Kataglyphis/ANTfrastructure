@@ -13,12 +13,13 @@ from pathlib import Path
 
 SUBJECT = Path(__file__).resolve().parents[1] / "06-packaging/python-app-deb-depends.py"
 spec = importlib.util.spec_from_file_location("deb_depends", SUBJECT)
+assert spec is not None and spec.loader is not None
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
 class DebianDependencies(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory(prefix="deb-depends-")
         self.root = Path(self.temp.name)
         self.bundle = self.root / "bundle"
@@ -31,19 +32,19 @@ class DebianDependencies(unittest.TestCase):
         self.fake = self.root / "fake"
         self.fake.mkdir()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         self.temp.cleanup()
 
-    def run_subject(self):
+    def run_subject(self) -> subprocess.CompletedProcess[str]:
         env = dict(os.environ, PATH=str(self.fake) + os.pathsep + os.environ["PATH"])
         return subprocess.run(["python3", str(SUBJECT), str(self.bundle)], env=env, text=True, capture_output=True, check=False)
 
-    def fake_tool(self, name, script):
+    def fake_tool(self, name: str, script: str) -> None:
         path = self.fake / name
         path.write_text("#!/bin/sh\n" + script + "\n")
         path.chmod(0o755)
 
-    def make_gpu_wrapper(self, directory):
+    def make_gpu_wrapper(self, directory: Path) -> Path:
         runtime_app = self.bundle / "runtime/bin/python3"
         runtime_app.parent.mkdir(parents=True)
         self.app.rename(runtime_app)
@@ -52,7 +53,7 @@ class DebianDependencies(unittest.TestCase):
                         str(directory), "runtime/bin/python3"], check=True, stdout=subprocess.DEVNULL)
         return runtime_app
 
-    def test_real_dynamic_elf_and_bundled_glibc(self):
+    def test_real_dynamic_elf_and_bundled_glibc(self) -> None:
         output = subprocess.run(["readelf", "-VW", str(self.app)], text=True, capture_output=True, check=True).stdout
         expected = {(int(major), int(minor)) for major, minor in re.findall(r"Name: GLIBC_(\d+)\.(\d+)", output)}
         self.assertEqual(set(module.glibc_versions(self.app)), expected)
@@ -64,7 +65,7 @@ class DebianDependencies(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "libc6")
 
-    def test_relr_requires_glibc_236_and_unknown_abi_fails_closed(self):
+    def test_relr_requires_glibc_236_and_unknown_abi_fails_closed(self) -> None:
         source = self.root / "relr.c"
         source.write_text('#include <unistd.h>\nstatic const char s[]="ok\\n"; '
                           'static const char *p=s; void _start(void) { write(1,p,3); _exit(0); }\n')
@@ -124,21 +125,21 @@ class DebianDependencies(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("invalid ELF DT_RELR entries", result.stderr)
 
-    def test_readelf_failure_and_silent_truncation_rejected(self):
+    def test_readelf_failure_and_silent_truncation_rejected(self) -> None:
         real = shutil.which("readelf")
         for script in ("exit 1", "exit 0", f'"{real}" "$@" | head -n 5'):
             with self.subTest(script=script):
                 self.fake_tool("readelf", script)
                 self.assertNotEqual(self.run_subject().returncode, 0)
 
-    def test_ldconfig_empty_and_truncated_rejected(self):
+    def test_ldconfig_empty_and_truncated_rejected(self) -> None:
         real = shutil.which("ldconfig")
         for script in ("exit 1", "exit 0", f'"{real}" "$@" | head -n 3'):
             with self.subTest(script=script):
                 self.fake_tool("ldconfig", script)
                 self.assertNotEqual(self.run_subject().returncode, 0)
 
-    def test_missing_owner_and_dependency_are_rejected(self):
+    def test_missing_owner_and_dependency_are_rejected(self) -> None:
         self.fake_tool("dpkg", "exit 0")
         self.assertNotEqual(self.run_subject().returncode, 0)
         (self.fake / "dpkg").unlink()
@@ -147,7 +148,7 @@ class DebianDependencies(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("libmissing-example.so.1", result.stderr)
 
-    def test_dynamic_strings_must_match_the_load_segments(self):
+    def test_dynamic_strings_must_match_the_load_segments(self) -> None:
         elf = module.ElfSections(self.app)
         section = next(item for item in elf.sections if item[0] == module.SECTION_DYNAMIC)
         strings = elf.sections[section[3]]
@@ -179,7 +180,7 @@ class DebianDependencies(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("dynamic strings differ from loader mapping", result.stderr)
 
-    def test_dynamic_entries_must_match_the_load_segments(self):
+    def test_dynamic_entries_must_match_the_load_segments(self) -> None:
         elf = module.ElfSections(self.app)
         section = next(item for item in elf.sections if item[0] == module.SECTION_DYNAMIC)
         address = elf.section_address(elf.sections.index(section))
@@ -193,7 +194,7 @@ class DebianDependencies(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("dynamic entries differ from loader mapping", result.stderr)
 
-    def test_version_needs_must_match_the_load_segments(self):
+    def test_version_needs_must_match_the_load_segments(self) -> None:
         elf = module.ElfSections(self.app)
         section = next(item for item in elf.sections if item[0] == module.SECTION_NEED)
         data = elf.data(section)
@@ -225,7 +226,7 @@ class DebianDependencies(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("version needs differ from loader mapping", result.stderr)
 
-    def test_unreachable_and_origin_reachable_library(self):
+    def test_unreachable_and_origin_reachable_library(self) -> None:
         source = module.ldconfig_cache()["libz.so.1"]
         owner = module.package_owner(source)
         self.assertTrue(owner)
@@ -240,7 +241,7 @@ class DebianDependencies(unittest.TestCase):
         result = self.run_subject()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn(owner, result.stdout)
-    def test_gpu_launcher_library_path_and_waived_provider(self):
+    def test_gpu_launcher_library_path_and_waived_provider(self) -> None:
         source = module.ldconfig_cache()["libz.so.1"]
         owner = module.package_owner(source)
         self.assertTrue(owner)
@@ -273,7 +274,7 @@ class DebianDependencies(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn(owner, result.stdout)
 
-    def test_gpu_unwrapped_executable_keeps_host_library_dependency(self):
+    def test_gpu_unwrapped_executable_keeps_host_library_dependency(self) -> None:
         source = module.ldconfig_cache()["libz.so.1"]
         owner = module.package_owner(source)
         directory = self.bundle / "runtime/lib"
@@ -308,7 +309,7 @@ class DebianDependencies(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(owner, result.stdout)
 
-    def test_python_preload_requires_sitecustomize_and_bundle_library(self):
+    def test_python_preload_requires_sitecustomize_and_bundle_library(self) -> None:
         source = module.ldconfig_cache()["libz.so.1"]
         owner = module.package_owner(source)
         directory = self.bundle / "runtime/lib"
@@ -376,7 +377,8 @@ exec "$root/runtime/bin/python3" -I -B -c 'import sys; sys.argv[0] = "fixture"; 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn(owner, result.stdout)
 
-    def assert_probe_mutations(self, site, source, directory, owner, runtime, probe_source):
+    def assert_probe_mutations(self, site: Path, source: str, directory: Path, owner: str,
+                               runtime: Path, probe_source: Path) -> None:
         binary = runtime.with_name("python3.14.bin")
         original_binary = binary.read_bytes()
         wrong_proof = json.dumps([str(self.bundle / "runtime"), str(site / "sitecustomize.py"), 0, 0, 1, [str(site)],
@@ -402,7 +404,8 @@ exec "$root/runtime/bin/python3" -I -B -c 'import sys; sys.argv[0] = "fixture"; 
         self.assertIn(owner, result.stdout)
         preload.write_bytes(original_preload)
 
-    def assert_preload_pth_scope(self, site, module_file, source, directory, owner):
+    def assert_preload_pth_scope(self, site: Path, module_file: Path, source: str,
+                                 directory: Path, owner: str) -> None:
         other_site = directory / "python3.13/site-packages"
         other_site.mkdir(parents=True)
         (other_site / "sitecustomize.py").write_text(module.SITE_CUSTOMIZE)
@@ -446,7 +449,7 @@ exec "$root/runtime/bin/python3" -I -B -c 'import sys; sys.argv[0] = "fixture"; 
                         source, str(directory / "libz.so.1"), str(site / "sitecustomize.py")], check=True)
         (site / "early.pth").unlink()
 
-    def test_elf_version_table_mismatch_and_truncation_rejected(self):
+    def test_elf_version_table_mismatch_and_truncation_rejected(self) -> None:
         elf = module.ElfSections(self.app)
         section = next(item for item in elf.sections if item[0] == module.SECTION_NEED)
         elf.stream.close()
@@ -471,7 +474,7 @@ exec "$root/runtime/bin/python3" -I -B -c 'import sys; sys.argv[0] = "fixture"; 
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("version sections do not match", result.stderr)
 
-    def test_static_elf_is_valid(self):
+    def test_static_elf_is_valid(self) -> None:
         source = self.root / "static.c"
         source.write_text("void _start(void) { for (;;) {} }\n")
         subprocess.run(["cc", "-nostdlib", "-static", str(source), "-o", str(self.app)], check=True)

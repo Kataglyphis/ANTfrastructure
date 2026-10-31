@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 PATH = Path(__file__).resolve().parents[1] / "diagnostics/verify-dxgi-adapter.py"
 SPEC = importlib.util.spec_from_file_location("verify_dxgi_adapter", PATH)
+assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 

@@ -43,51 +43,7 @@ STEPS="${_work}/conditions"
 GPU_PIN="${_work}/gpu-pin-check.sh"
 GPU_FORMATS="${_work}/gpu-format-check.sh"
 # shellcheck disable=SC2086
-${_PY} - "${ROOT}/linux/scripts" "${LANE}" "${STEP}" "${EXTRA}" "${STEPS}" "${GPU_PIN}" "${GPU_FORMATS}" <<'PY'
-import importlib
-import pathlib
-import sys
-import textwrap
-
-sys.path.insert(0, sys.argv[1])
-V = importlib.import_module("verify_workflow_conventions")
-path = pathlib.Path(sys.argv[2])
-lane = V.load_yaml(path)
-lines = path.read_text(encoding='utf-8').splitlines()
-
-def cut(at):
-    # The block scalar whose key sits on line `at`, cut by indentation.
-    key_indent = len(lines[at]) - len(lines[at].lstrip())
-    body = []
-    for line in lines[at + 1:]:
-        if line.strip() and len(line) - len(line.lstrip()) <= key_indent:
-            break
-        body.append(line)
-    return body
-
-plan = next(s for s in V.value(V.value(V.value(lane, 'jobs'), 'plan'), 'steps') if V.value(s, 'id') == 'rows')
-pathlib.Path(sys.argv[3]).write_text(textwrap.dedent('\n'.join(cut(V.line_of(plan, 'run') - 1))).strip() + '\n', encoding='utf-8')
-
-build = V.value(V.value(lane, 'jobs'), 'build')
-pin_step = next(s for s in V.value(build, 'steps') if V.value(s, 'name') == 'Check pinned host GPU packaging contract')
-pathlib.Path(sys.argv[6]).write_text(textwrap.dedent('\n'.join(cut(V.line_of(pin_step, 'run') - 1))).strip() + '\n', encoding='utf-8')
-format_step = next(s for s in V.value(build, 'steps') if V.value(s, 'name') == 'Check GPU candidate formats')
-pathlib.Path(sys.argv[7]).write_text(textwrap.dedent('\n'.join(cut(V.line_of(format_step, 'run') - 1))).strip() + '\n', encoding='utf-8')
-with open(sys.argv[4], 'w', encoding='utf-8') as extra, open(sys.argv[5], 'w', encoding='utf-8') as conds:
-    for step in (V.value(build, 'steps') or []):
-        name = V.value(step, 'name')
-        conds.write(f"{name}|{V.value(step, 'if') or '-'}\n")
-        if name not in ('Run Python tests', 'Packaging application'):
-            continue
-        with_at = V.line_of(step, 'with') - 1
-        with_indent = len(lines[with_at]) - len(lines[with_at].lstrip())
-        j = with_at + 1
-        while j < len(lines) and (not lines[j].strip() or len(lines[j]) - len(lines[j].lstrip()) > with_indent):
-            if lines[j].strip().startswith('extra-args:'):
-                break
-            j += 1
-        extra.write(f"{name}|{' '.join(x.strip() for x in cut(j))}\n")
-PY
+${_PY} "${ROOT}/linux/scripts/tests/reusable_linux_lane_fixture.py" "${ROOT}/linux/scripts" "${LANE}" "${STEP}" "${EXTRA}" "${STEPS}" "${GPU_PIN}" "${GPU_FORMATS}"
 
 # _plan <arches>: run the step under `bash -e`, as the runner does, with a fresh GITHUB_OUTPUT.
 OUT="${_work}/github-output"
@@ -148,19 +104,22 @@ t_assert_fails grep -F 'PYTHON_APP_HOST_GPU_RUNTIME=' < <(grep -F 'Run Python te
 _gpu_packaging_forwarded() {
   grep -F 'Packaging application|' "$1" | grep -Fq -- "inputs.host-gpu-runtime && '-e PYTHON_APP_HOST_GPU_RUNTIME=true' || ''"
 }
+_gpu_plan() {
+  env HOST_GPU_RUNTIME=true GPU_CONTAINER_IMAGE=image GITHUB_OUTPUT="${OUT}" "$@" bash --noprofile --norc -e "${STEP}"
+}
 t_assert_ok _gpu_packaging_forwarded "${EXTRA}"
 sed 's/PYTHON_APP_HOST_GPU_RUNTIME/PYTHON_APP_MISSING_GPU_RUNTIME/' "${EXTRA}" > "${_work}/missing-gpu-extra"
 t_assert_fails _gpu_packaging_forwarded "${_work}/missing-gpu-extra"
-t_assert_ok env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL=amd GPU_CONTAINER_IMAGE=image ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
-t_assert_ok env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL=amd GPU_CONTAINER_IMAGE=image APP_PYTHON_RUNTIME=standalone ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
-t_assert_fails env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL=amd GPU_CONTAINER_IMAGE=image APP_PYTHON_RUNTIME=unsafe ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_ok _gpu_plan GPU_ARTIFACT_LABEL=amd ARCHES=x64
+t_assert_ok _gpu_plan GPU_ARTIFACT_LABEL=amd APP_PYTHON_RUNTIME=standalone ARCHES=x64
+t_assert_fails _gpu_plan GPU_ARTIFACT_LABEL=amd APP_PYTHON_RUNTIME=unsafe ARCHES=x64
 t_assert_fails env HOST_GPU_RUNTIME=false APP_PYTHON_RUNTIME=standalone ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
-t_assert_ok env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL=nvidia GPU_CONTAINER_IMAGE=image ARCHES='x64 arm64' GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
-t_assert_fails env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL=amd GPU_CONTAINER_IMAGE=image ARCHES=arm64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
-t_assert_fails env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL=nvidia GPU_CONTAINER_IMAGE=image ARCHES=riscv64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
-t_assert_fails env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL=amd GPU_CONTAINER_IMAGE='' ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
-t_assert_fails env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL='' ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
-t_assert_fails env HOST_GPU_RUNTIME=true GPU_ARTIFACT_LABEL='AMD/unsafe' ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
+t_assert_ok _gpu_plan GPU_ARTIFACT_LABEL=nvidia ARCHES='x64 arm64'
+t_assert_fails _gpu_plan GPU_ARTIFACT_LABEL=amd ARCHES=arm64
+t_assert_fails _gpu_plan GPU_ARTIFACT_LABEL=nvidia ARCHES=riscv64
+t_assert_fails _gpu_plan GPU_ARTIFACT_LABEL=amd GPU_CONTAINER_IMAGE='' ARCHES=x64
+t_assert_fails _gpu_plan GPU_ARTIFACT_LABEL='' ARCHES=x64
+t_assert_fails _gpu_plan GPU_ARTIFACT_LABEL='AMD/unsafe' ARCHES=x64
 t_assert_fails env HOST_GPU_RUNTIME=false GPU_ARTIFACT_LABEL=amd ARCHES=x64 GITHUB_OUTPUT="${OUT}" bash --noprofile --norc -e "${STEP}"
 t_assert_contains "$(grep -F 'Upload packages (source/binary only)|' "${STEPS}")" '!inputs.host-gpu-runtime || success()'
 _artifact_name="$(_q "V.value(V.value(next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Upload packages (source/binary only)'), 'with'), 'name')")"

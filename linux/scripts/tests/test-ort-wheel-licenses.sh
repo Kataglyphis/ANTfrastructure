@@ -114,57 +114,8 @@ mkdir -p "$work/bundles/provider-alias"
 t_assert_fails python3 "$SCRIPT" --wheel-dir "$work/valid" --destination "$work/bundles/provider-alias" \
   --strip strip --library "$work/native/libonnxruntime_providers_migraphx.so"
 t_assert_fails test -e "$work/bundles/provider-alias/licenses/onnxruntime"
-t_assert_ok python3 - "$SCRIPT" "$work" <<'PY'
-import importlib.util
-import pathlib
-import sys
-import zipfile
-
-script, root = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
-sys.path.insert(0, str(script.parent))
-spec = importlib.util.spec_from_file_location("stage_ort_exact", script)
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
-scratch = root / "unused-exact-scratch"
-with zipfile.ZipFile(root / "valid/onnxruntime-1-cp315-linux.whl") as archive:
-    assert module.wheel_has_library(archive, root / "build/libonnxruntime.so.1.2.3", "missing-strip", scratch, True)
-    assert not module.wheel_has_library(archive, root / "native/libonnxruntime.so.1.2.3", "missing-strip", scratch, True)
-assert not scratch.exists()
-PY
-t_case 'large library matching uses bounded reads and rejects a member over its limit'
-t_assert_ok python3 - "$SCRIPT" "$work" <<'PY'
-import importlib.util
-import pathlib
-import sys
-import zipfile
-
-script, root = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
-sys.path.insert(0, str(script.parent))
-spec = importlib.util.spec_from_file_location("stage_ort", script)
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
-assert module.MAX_LIBRARY_BYTES > 256 * 1024 * 1024
-module.CHUNK_BYTES = 32
-library = root / "build/libonnxruntime.so.1.2.3"
-with zipfile.ZipFile(root / "valid/onnxruntime-1-cp315-linux.whl") as archive:
-    original_open = archive.open
-    class LimitedRead:
-        def __init__(self, stream): self.stream = stream
-        def __enter__(self): return self
-        def __exit__(self, *args): self.stream.close()
-        def read(self, size=-1):
-            assert 0 < size <= module.CHUNK_BYTES
-            return self.stream.read(size)
-    archive.open = lambda *args, **kwargs: LimitedRead(original_open(*args, **kwargs))
-    assert module.wheel_has_library(archive, library, "strip", root / "build")
-    module.MAX_LIBRARY_BYTES = library.stat().st_size - 1
-    try:
-        module.wheel_has_library(archive, library, "strip", root / "build")
-    except ValueError as error:
-        assert "invalid wheel entry" in str(error)
-    else:
-        raise AssertionError("an over-limit archive member was accepted")
-PY
+t_case 'exact matching avoids scratch writes and large library matching uses bounded reads'
+t_assert_ok python3 "$TESTS_DIR/ort_wheel_library_reads_fixture.py" "$SCRIPT" "$work"
 t_case 'a copied soname still matches the uniquely named versioned wheel entry'
 cp "$work/native/libonnxruntime.so.1.2.3" "$work/native/libonnxruntime.so.1"
 mkdir -p "$work/bundles/soname"

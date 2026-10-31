@@ -2,6 +2,7 @@
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
 # Copies the matching ORT wheel's texts; it does not inventory other native components.
+
 # PYTHON_ORT_PROVIDER_WHEEL_API=1
 Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot 'WindowsOrtProvenance.Common.psm1') -DisableNameChecking -ErrorAction Stop
@@ -46,18 +47,16 @@ function Assert-OrtWheelProviders {
         if ($name -notmatch '^onnxruntime_providers_[a-z0-9_]+\.dll$') { throw "Invalid ONNX Runtime provider DLL: $path" }
         if ($providerNames.ContainsKey($name)) { throw "Duplicate ONNX Runtime provider DLL name: $name" }
         $providerNames[$name] = $true
-        $file = Get-Item -LiteralPath $path -ErrorAction Stop
-        if ($file.PSIsContainer -or $file.Length -le 0) { throw "ONNX Runtime provider DLL is empty or not a file: $path" }
-        $entry = Get-OrtWheelEntry -Archive $Archive -Name "onnxruntime/capi/$name"
-        $providerHash = (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash
-        if ((Get-WheelEntryHash -Entry $entry) -cne $providerHash) { throw "ORT provider '$path' differs from the matching wheel" }
+        Assert-OrtWheelNativeFile -Archive $Archive -Path $path -Name $name `
+            -InvalidMessage "ONNX Runtime provider DLL is empty or not a file: $path" `
+            -MismatchMessage "ORT provider '$path' differs from the matching wheel"
     }
 }
 
 function Assert-OrtWheelNativeFile {
-    param($Archive, [string]$Path, [string]$Name, [string]$InvalidMessage, [string]$MismatchMessage)
+    param($Archive, [string]$Path, [string]$Name, [string]$InvalidMessage, [string]$MismatchMessage, [switch]$ExactName)
     $file = Get-Item -LiteralPath $Path -ErrorAction Stop
-    if ($file.PSIsContainer -or $file.Length -le 0 -or $file.Name -cne $Name) { throw $InvalidMessage }
+    if ($file.PSIsContainer -or $file.Length -le 0 -or ($ExactName -and $file.Name -cne $Name)) { throw $InvalidMessage }
     $entry = Get-OrtWheelEntry -Archive $Archive -Name "onnxruntime/capi/$Name"
     $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256 -ErrorAction Stop).Hash
     if ((Get-WheelEntryHash -Entry $entry) -cne $hash) { throw $MismatchMessage }
@@ -72,12 +71,12 @@ function Get-OrtWheelLicenseTexts {
     try {
         Assert-OrtWheelProviders -Archive $archive -ProviderDll $ProviderDll
         if ($PythonExtension) {
-            Assert-OrtWheelNativeFile -Archive $archive -Path $PythonExtension -Name 'onnxruntime_pybind11_state.pyd' `
+            Assert-OrtWheelNativeFile -Archive $archive -Path $PythonExtension -Name 'onnxruntime_pybind11_state.pyd' -ExactName `
                 -InvalidMessage 'Python ONNX Runtime extension is missing, empty or has an unexpected name.' `
                 -MismatchMessage 'Python ONNX Runtime extension differs from the matching wheel.'
         }
         if ($DirectMl) {
-            Assert-OrtWheelNativeFile -Archive $archive -Path $DirectMl -Name 'DirectML.dll' `
+            Assert-OrtWheelNativeFile -Archive $archive -Path $DirectMl -Name 'DirectML.dll' -ExactName `
                 -InvalidMessage 'DirectML runtime is missing, empty or has an unexpected name.' `
                 -MismatchMessage 'DirectML runtime differs from the matching wheel.'
         }

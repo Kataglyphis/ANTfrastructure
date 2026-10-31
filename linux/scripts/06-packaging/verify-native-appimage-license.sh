@@ -3,30 +3,15 @@
 set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${script_dir}/../01-core/platform.sh"
-if [ "$#" -ne 4 ]; then
-  printf 'Usage: %s APPIMAGE ARCH ENTRY LICENSE\n' "$0" >&2
-  exit 2
-fi
-image="$(realpath -e -- "$1")"
-target="$(arch_normalize "$2")"
-host="$(arch_normalize "$(uname -m)")"
+source "${script_dir}/appimage-verification.sh"
+declare image work
+appimage_require_args "$#" 4 "$0" 'APPIMAGE ARCH ENTRY LICENSE'
+appimage_init "$1" "$2"
 entry="$3"
 license="$(realpath -e -- "$4")"
-case "$entry" in
-  ''|/*|*/|*//*|*\\*|*'*'*|*'?'*|*'['*|*']'*|*':'*|*[[:cntrl:]]*) printf 'Invalid AppImage entry: %s\n' "$entry" >&2; exit 2 ;;
-esac
-IFS=/ read -r -a entry_parts <<< "$entry"
-for part in "${entry_parts[@]}"; do
-  case "$part" in .|..) printf 'Invalid AppImage entry: %s\n' "$entry" >&2; exit 2 ;; esac
-done
-case "$target" in amd64|arm64) ;; *) printf 'Unsupported AppImage architecture: %s\n' "$2" >&2; exit 2 ;; esac
-if [ "$target" != "$host" ]; then
-  printf 'AppImage verification requires a native %s host, got %s\n' "$target" "$host" >&2
-  exit 1
-fi
-[ -x "$image" ] || { printf 'AppImage is not executable: %s\n' "$image" >&2; exit 1; }
-work="$(mktemp -d)"
-trap 'rm -rf -- "$work"' EXIT
+appimage_validate_path "$entry" 'AppImage entry'
+appimage_require_native "$2"
+appimage_create_work
 (
   cd "$work"
   "$image" --appimage-extract "$entry" > /dev/null

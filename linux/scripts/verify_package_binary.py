@@ -21,7 +21,7 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import BinaryIO
+from typing import IO
 
 _shared = runpy.run_path(str(Path(__file__).with_name("verify_package_license.py")))
 safe_name = _shared["safe_name"]
@@ -29,7 +29,7 @@ sevenzip_member_names = _shared["sevenzip_member_names"]
 msi_cabinet_checks = _shared["msi_cabinet_checks"]
 
 
-def digest(stream: BinaryIO) -> tuple[str, int]:
+def digest(stream: IO[bytes]) -> tuple[str, int]:
     """Hash a stream without retaining its contents in memory."""
     value = hashlib.sha256()
     size = 0

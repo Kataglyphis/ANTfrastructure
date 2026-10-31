@@ -30554,7 +30554,7 @@
  },
  {
   "id": "packaging.native-appimage-license-path",
-  "target": "linux/scripts/06-packaging/verify-native-appimage-license.sh",
+  "target": "linux/scripts/06-packaging/appimage-verification.sh",
   "find": "case \"$part\" in .|..)",
   "replace": "case \"$part\" in impossible_literal)",
   "test": "bash linux/scripts/tests/test-verify-native-appimage-license.sh",
@@ -30915,8 +30915,8 @@
  {
   "id": "package.python-gpu-loader-alias",
   "target": "linux/scripts/06-packaging/elf-closure.sh",
-  "find": "  [[ \"$2\" == /* ]] && [[ \"${3##*/}\" == ld-linux*.so* ]] && [ \"$(realpath -m \"$2\")\" = \"$(realpath -m \"$1\")\" ]",
-  "replace": "  return 1",
+  "find": "  if [[ \"$2\" == /* ]] && [[ \"${3##*/}\" == ld-linux*.so* ]] && [ \"$(realpath -m \"$2\")\" = \"$(realpath -m \"$1\")\" ]; then",
+  "replace": "  if false; then",
   "test": "bash linux/scripts/tests/test-elf-closure.sh",
   "why": "The ldd loader alias must not be mistaken for an external library."
  },
@@ -31273,7 +31273,7 @@
   "why": "an indented replacement no longer matches the patch's own check, which stopped the amd64 chain's GenAI build"
  },
  {
-  "id": "gpu-host.direct-only-closure",
+  "id": "package.gpu-host-direct-only-closure",
   "target": "linux/scripts/06-packaging/elf-closure.sh",
   "find": "DIRECT_ONLY+=(\"${2:?}\")",
   "replace": "PROTECT+=(\"${2:?}\")",
@@ -31281,7 +31281,7 @@
   "why": "host runtime transitive dependencies must not be copied by an ldd walk"
  },
  {
-  "id": "gpu-host.reject-sdk-root",
+  "id": "package.gpu-host-reject-sdk-root",
   "target": "linux/scripts/06-packaging/elf-closure.sh",
   "find": "case \"$(realpath \"${found}\")/\" in",
   "replace": "case \"/not-the-source/\" in",
@@ -31289,7 +31289,7 @@
   "why": "libraries from the host SDK tree must not silently enter a host-runtime bundle"
  },
  {
-  "id": "gpu-host.unknown-provider-import",
+  "id": "package.gpu-host-unknown-provider-import",
   "target": "linux/scripts/06-packaging/ort-runtime-bundle.sh",
   "find": "    ort_class=\"$(_ort_host_import_class \"${ort_kind}\" \"${ort_soname}\")\" || {\n      printf 'unexpected or invalid %s provider dependency: %s\\n' \"${ort_kind}\" \"${ort_soname}\" >&2; return 1;\n    }",
   "replace": "    ort_class=\"$(_ort_host_import_class \"${ort_kind}\" \"${ort_soname}\")\" || continue",
@@ -31297,7 +31297,7 @@
   "why": "a new unreviewed provider dependency cannot silently disappear from the host contract"
  },
  {
-  "id": "gpu-host.reject-bundled-runtime",
+  "id": "package.gpu-host-reject-bundled-runtime",
   "target": "linux/scripts/06-packaging/ort-runtime-bundle.sh",
   "find": "migraphx:libhsa-runtime*.so*",
   "replace": "migraphx:never-libhsa-runtime*.so*",
@@ -31305,7 +31305,7 @@
   "why": "the host-runtime option must reject an accidentally copied ROCm library"
  },
  {
-  "id": "gpu-host.provider-required",
+  "id": "package.gpu-host-provider-required",
   "target": "linux/scripts/06-packaging/python-app-bundle.sh",
   "find": "*) err 'host GPU runtime requires CUDA or MIGraphX' ;;",
   "replace": "*) : ;;",
@@ -31313,7 +31313,7 @@
   "why": "host GPU runtime mode cannot be enabled for a CPU bundle"
  },
  {
-  "id": "gpu-host.artifact-name",
+  "id": "package.gpu-host-artifact-name",
   "target": "linux/scripts/06-packaging/python-app-package.sh",
   "find": "ARTIFACT_ID=\"${APP_ID}-gpu-amd\"",
   "replace": "ARTIFACT_ID=\"${APP_ID}\"",

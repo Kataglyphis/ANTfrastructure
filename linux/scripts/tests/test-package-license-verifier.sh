@@ -11,31 +11,7 @@ printf 'Copyright Example\nPermission is granted.\n' > "$work/LICENSE"
 mkdir -p "$work/tree/share/doc/app" "$work/tree/DEBIAN"
 cp "$work/LICENSE" "$work/tree/share/doc/app/LICENSE"
 printf 'Package: app\nVersion: 1.0\nArchitecture: all\nMaintainer: Test <test@example.invalid>\nDescription: test\n' > "$work/tree/DEBIAN/control"
-python3 - "$work" <<'PY'
-import gzip
-import pathlib
-import sys
-import tarfile
-import zipfile
-
-root = pathlib.Path(sys.argv[1])
-license_text = (root / "LICENSE").read_bytes()
-with zipfile.ZipFile(root / "app.zip", "w") as archive:
-    archive.writestr("assets/NOTICES.Z", gzip.compress(b"app\n\n" + license_text))
-    archive.writestr("share/doc/app/LICENSE", license_text)
-with tarfile.open(root / "app.tar.gz", "w:gz") as archive:
-    archive.add(root / "tree/share/doc/app/LICENSE", arcname="app/LICENSE")
-with zipfile.ZipFile(root / "wrong.zip", "w") as archive:
-    archive.writestr("share/doc/app/LICENSE", b"unrelated text")
-    archive.writestr("assets/NOTICES.Z", b"bad compressed content")
-with zipfile.ZipFile(root / "bad-gzip.zip", "w") as archive:
-    archive.writestr("assets/NOTICES.Z", b"\x1f\x8b" + b"not-a-gzip-stream")
-with zipfile.ZipFile(root / "link.zip", "w") as archive:
-    entry = zipfile.ZipInfo("LICENSE")
-    entry.create_system = 3
-    entry.external_attr = 0o120777 << 16
-    archive.writestr(entry, license_text)
-PY
+python3 "$TESTS_DIR/package_license_archive_fixture.py" "$work"
 
 t_case 'the complete project license is present in directory, tar and zip payloads'
 t_assert_ok python3 "$SCRIPT" "$work/tree" --require "share/doc/app/LICENSE=$work/LICENSE"
@@ -116,47 +92,7 @@ fi
 
 t_case 'MSI media mappings select the right embedded cabinet and reject ambiguity'
 t_assert_ok python3 "$TESTS_DIR/test_package_license_msi_batch.py"
-cat > "$work/tools/7z" <<'SH'
-#!/usr/bin/env bash
-set -u
-operation="$1"
-archive="${@: -2:1}"
-member="${@: -1}"
-if [ "$operation" = l ]; then
-  archive="${@: -1}"
-  printf '%s\n' '----------'
-  if [[ "$archive" == *.msi ]]; then
-    if [[ " $* " != *' -tCompound '* ]]; then printf '%s\n' 'Path = f9179'; exit 0; fi
-    printf '%s\n\n' 'Path = cab1.cab'
-    [ "${FAKE_MSI_SINGLE:-0}" = 1 ] || printf '%s\n\n' 'Path = cab2.cab'
-  elif [ "$(cat "$archive")" = CAB2 ] || [ "${FAKE_MSI_SINGLE:-0}" = 1 ] || [ "${FAKE_BOTH_CONTAIN:-0}" = 1 ]; then
-    printf 'Path = f9179\nSize = 40\n\nPath = f9180\nSize = 40\n\n'
-    [ "${FAKE_DUPLICATE:-0}" = 0 ] || printf 'Path = f9179\nSize = 40\n\n'
-    [ "${FAKE_ALIASED:-0}" = 0 ] || printf 'Path = ./f9179\nSize = 40\n\n'
-  fi
-elif [ "$operation" = e ]; then
-  if [ "${FAKE_EXTRACT_FAIL:-0}" != 0 ] && [[ "$archive" == *.msi ]]; then printf CAB2; exit 9; fi
-  if [[ "$archive" == *.msi ]]; then
-    case "$member" in cab1.cab) printf CAB1 ;; cab2.cab) printf CAB2 ;; external.cab) [ "${FAKE_ACCEPT_EXTERNAL:-0}" = 1 ] && printf CAB2 ;; *) exit 1 ;; esac
-  else
-    [ "$member" = f9179 ] || exit 1
-    cat "$FAKE_LICENSE"
-  fi
-elif [ "$operation" = x ]; then
-  output=''
-  while [ "$#" -gt 0 ]; do
-    case "$1" in -o*) output="${1#-o}" ;; --) shift; break ;; esac
-    shift
-  done
-  shift
-  [ -z "${FAKE_COUNT_FILE:-}" ] || printf 'x\n' >> "$FAKE_COUNT_FILE"
-  for member in "$@"; do
-    case "$member" in f9179|f9180) cp "$FAKE_LICENSE" "$output/$member" ;; *) exit 1 ;; esac
-  done
-else
-  exit 1
-fi
-SH
+cp "$TESTS_DIR/package-msi-7z-fixture.sh" "$work/tools/7z"
 chmod +x "$work/tools/7z"
 touch "$work/multi.msi"
 export FAKE_LICENSE="$work/LICENSE"

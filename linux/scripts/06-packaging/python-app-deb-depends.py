@@ -34,7 +34,7 @@ if os.path.exists(_list):
 class ElfSections:
     """Read bounded ELF section data, including both ELF classes and byte orders."""
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path) -> None:
         self.path = path
         self.size = path.stat().st_size
         self.stream = path.open("rb")

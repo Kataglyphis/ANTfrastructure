@@ -21,7 +21,10 @@ done
 printf 'license\n' > "$work/fixture/usr/share/licenses/onnxruntime/LICENSE"
 printf 'notices\n' > "$work/fixture/usr/share/licenses/onnxruntime/ThirdPartyNotices.txt"
 python3 - "$work" <<'PY'
-import pathlib, sys, zipfile
+import pathlib
+import sys
+import zipfile
+
 root = pathlib.Path(sys.argv[1])
 bundle = root / 'fixture/usr'
 with zipfile.ZipFile(root / 'wheels/onnxruntime_fixture-1.whl', 'w') as wheel:
