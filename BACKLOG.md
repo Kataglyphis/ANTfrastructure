@@ -918,6 +918,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       After a synthetic material-font cache marker in a disposable copy of that image,
       the same offline command next attempted to download the Gradle wrapper. That probe
       did not install or verify the font files and does not prove the remaining cache is complete.
+      The cached Linux amd64 `:latest-rocm` image digest
+      `sha256:a5d68fbe64e579de09473290489b6953b5bce9aeb7644c18b86d6969bf37ace8`
+      also lacked the material-font cache and failed the same offline precache command
+      trying to download `fonts.zip`, as uid 1001 in a fresh container without mounts.
       Check other image digests and architectures independently. This is an offline cache
       gap; it does not establish that network-backed builds fail.
 
