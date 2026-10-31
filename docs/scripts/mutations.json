@@ -30771,8 +30771,8 @@
  {
   "id": "package.ort-wheel-all-libraries",
   "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
-  "find": "if all(wheel_has_library(archive, library, strip, scratch) for library in libraries):",
-  "replace": "if any(wheel_has_library(archive, library, strip, scratch) for library in libraries):",
+  "find": "if all(wheel_has_library(archive, library, strip, scratch, require_unstripped) for library in libraries):",
+  "replace": "if any(wheel_has_library(archive, library, strip, scratch, require_unstripped) for library in libraries):",
   "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
   "why": "Every selected packaged ORT library must match the same wheel."
  },
@@ -30915,8 +30915,8 @@
  {
   "id": "package.python-gpu-loader-alias",
   "target": "linux/scripts/06-packaging/elf-closure.sh",
-  "find": "  if [[ \"${soname}\" == /* ]] && [[ \"${3##*/}\" == ld-linux*.so* ]] && [ \"$(realpath -m \"${soname}\")\" = \"$(realpath -m \"${file}\")\" ]; then return 0; fi",
-  "replace": "  :",
+  "find": "  [[ \"$2\" == /* ]] && [[ \"${3##*/}\" == ld-linux*.so* ]] && [ \"$(realpath -m \"$2\")\" = \"$(realpath -m \"$1\")\" ]",
+  "replace": "  return 1",
   "test": "bash linux/scripts/tests/test-elf-closure.sh",
   "why": "The ldd loader alias must not be mistaken for an external library."
  },
@@ -30987,7 +30987,7 @@
  {
   "id": "package.msi-duplicate-member",
   "target": "linux/scripts/verify_package_license.py",
-  "find": "        if name in seen:\n            raise ValueError(f\"duplicate MSI cabinet member: {name}\")",
+  "find": "        if name.casefold() in seen:\n            raise ValueError(f\"duplicate MSI cabinet member: {name}\")",
   "replace": "        if False:\n            raise ValueError(f\"duplicate MSI cabinet member: {name}\")",
   "test": "bash linux/scripts/tests/test-package-license-verifier.sh",
   "why": "Preserve fail-closed File/Media cabinet selection and actual payload verification."
@@ -31027,8 +31027,8 @@
  {
   "id": "windows-lane.python-ort-optional",
   "target": "windows/scripts/modules/WindowsOrtLicense.Common.psm1",
-  "find": "    if (-not (Test-Path -LiteralPath $dir)) { return '' }",
-  "replace": "    return ''",
+  "find": "    if (-not (Test-Path -LiteralPath $dir)) {\n        if ($RequiredProvider.Count -or $RequirePythonExtension -or $RequireDirectMl) { throw 'Python ONNX Runtime is required when a provider or extension is selected.' }\n        return ''\n    }",
+  "replace": "    if (-not (Test-Path -LiteralPath $dir)) { throw 'Python ONNX Runtime is required.' }",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.License.Tests.ps1 -ResultFile logs/code-quality/python-ort-license-mutation.json",
   "why": "Check installed ONNX wheel texts and each completed Python package when ORT is present."
  },
@@ -31291,8 +31291,8 @@
  {
   "id": "gpu-host.unknown-provider-import",
   "target": "linux/scripts/06-packaging/ort-runtime-bundle.sh",
-  "find": "*) printf 'unexpected %s provider dependency: %s\\n' \"${ort_kind}\" \"${ort_soname}\" >&2; return 1 ;;",
-  "replace": "*) continue ;;",
+  "find": "    ort_class=\"$(_ort_host_import_class \"${ort_kind}\" \"${ort_soname}\")\" || {\n      printf 'unexpected or invalid %s provider dependency: %s\\n' \"${ort_kind}\" \"${ort_soname}\" >&2; return 1;\n    }",
+  "replace": "    ort_class=\"$(_ort_host_import_class \"${ort_kind}\" \"${ort_soname}\")\" || continue",
   "test": "bash linux/scripts/tests/test-ort-host-runtime.sh",
   "why": "a new unreviewed provider dependency cannot silently disappear from the host contract"
  },
