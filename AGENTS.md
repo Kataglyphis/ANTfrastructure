@@ -145,6 +145,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Linux uv chain exclusions must recognize ORT entries in both LF and CRLF lockfiles.
    The reusable Python Linux GPU lane checks the consumer pin before pulling, forwards the default-off host-runtime input only to packaging, and isolates unverified outputs.
    Release collection always skips upload names containing `candidate`, `unverified` or `inventory-only`, regardless of case; user skip globs stay case-sensitive. A promoted GPU upload needs separate checks and expected asset names.
+   GPU package receipts bind exact filenames and hashes to a caller-supplied check and CI identity; they do not authenticate or run that check. Preserve the trust and pre/post-test requirements in `docs/gpu-artifact-receipts.md`.
    Windows ORT provider staging validates requested DLL names and their presence before changing the destination; unrelated SDK DLLs remain opt-in.
    Flutter apps with an Android manifest validate its mipmap launcher reference and every standard-density PNG; the source check does not prove image identity or inspect an APK.
    The native ONNX finalizer stages the checked-out LICENSE and ThirdPartyNotices before deleting its source; consumers must carry those files with the corresponding native output.

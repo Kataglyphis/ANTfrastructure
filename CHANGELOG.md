@@ -13,6 +13,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-31 — GPU package receipt building block
+
+- Add a cross-platform, standard-library receipt tool that binds exact package
+  hashes to an explicit CI identity and check; document its trust limits.
+
 ## 2026-10-31 — Keep draft GPU uploads out of releases
 
 - Exclude candidate, unverified and inventory-only uploads from release collection regardless

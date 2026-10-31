@@ -31953,6 +31953,22 @@
   "why": "an ET_DYN position-independent executable cannot be loaded as a shared library"
  },
  {
+  "id": "packaging.gpu-receipt-file-hash",
+  "target": "shared/python/gpu_artifact_receipt.py",
+  "find": "if data[\"files\"] != hashes:",
+  "replace": "if False:",
+  "test": "python3 shared/python/tests/test_gpu_artifact_receipt.py",
+  "why": "a changed GPU package must not match the verified receipt"
+ },
+ {
+  "id": "packaging.gpu-receipt-ci-identity",
+  "target": "shared/python/gpu_artifact_receipt.py",
+  "find": "if data[\"identity\"] != identity:",
+  "replace": "if False:",
+  "test": "python3 shared/python/tests/test_gpu_artifact_receipt.py",
+  "why": "a receipt from another run, attempt, artifact or check must not promote"
+ },
+ {
   "id": "packaging.ort-profile-reject-transfer-only",
   "target": "shared/python/verify_ort_profile.py",
   "find": "and not event[\"args\"][\"op_name\"].strip().casefold().startswith(\"memcpy\")",

@@ -48,6 +48,7 @@ The two halves of one topic often split:
 | **Language AI across the family** — the owner's 2026-10-30 decisions, the one engine (chain GenAI), the text contract every binding offers, ModelANT's model packages and their search order, Llama and Gemma obligations, and the roadmap IDs (`LAI-*`) the backlogs name | [`language-ai.md`](language-ai.md) |
 | What is published, what is in it, the feature matrix | [`overview.md`](overview.md) |
 | **Consumer acceptance and replay for an immutable image** — the candidate, receipt and promotion policy | [`image-acceptance.md`](image-acceptance.md) |
+| **GPU package receipt bindings** — exact files, CI identity, trust and promotion limits | [`gpu-artifact-receipts.md`](gpu-artifact-receipts.md) |
 | Prerequisites, tests, roadmap, contribution, contact | [`project-info.md`](project-info.md) |
 | **Repository size, what is large, and the 2026-10 history rewrite** | [`project-info.md` § Repository size](project-info.md#repository-size-and-large-files) |
 | Licences of bundled software, what each one **obliges this project to do**, and the corresponding source for copyleft components | [`third-party-licenses.md`](third-party-licenses.md) |
