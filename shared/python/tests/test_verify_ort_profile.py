@@ -110,7 +110,7 @@ class ProfileTest(unittest.TestCase):
             for start in (10, 30)
         ]
 
-        def node(start, provider="CUDAExecutionProvider", name="Conv", pid=1):
+        def node(start: int, provider: str = "CUDAExecutionProvider", name: str = "Conv", pid: int = 1) -> dict[str, object]:
             return {
                 "cat": "Node",
                 "ph": "X",

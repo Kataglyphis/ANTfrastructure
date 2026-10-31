@@ -7,19 +7,20 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "compare_detector_parity.py"
 
 
 class DetectionParityTest(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.cpu = self.root / "cpu.json"
         self.gpu = self.root / "gpu.json"
-        self.reference = {
+        self.reference: dict[str, Any] = {
             "schema_version": 1,
             "width": 100,
             "height": 100,
@@ -31,7 +32,7 @@ class DetectionParityTest(unittest.TestCase):
         self.cpu.write_text(json.dumps(self.reference))
         self.gpu.write_text(json.dumps(self.reference))
 
-    def run_compare(self, script=SCRIPT):
+    def run_compare(self, script: Path = SCRIPT) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [sys.executable, "-I", str(script), str(self.cpu), str(self.gpu)],
             capture_output=True,
@@ -39,7 +40,7 @@ class DetectionParityTest(unittest.TestCase):
             check=False,
         )
 
-    def test_matching_reordered_detections_and_small_changes_pass(self):
+    def test_matching_reordered_detections_and_small_changes_pass(self) -> None:
         changed = json.loads(json.dumps(self.reference))
         changed["detections"][0]["score"] = 0.86
         changed["detections"][0]["box"][0] += 1
@@ -48,7 +49,7 @@ class DetectionParityTest(unittest.TestCase):
         result = self.run_compare()
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_mismatches_and_empty_results_fail(self):
+    def test_mismatches_and_empty_results_fail(self) -> None:
         for kind in (
             "empty",
             "class",
@@ -80,7 +81,7 @@ class DetectionParityTest(unittest.TestCase):
                 self.gpu.write_text(json.dumps(changed))
                 self.assertNotEqual(self.run_compare().returncode, 0)
 
-    def test_cpu_must_find_both_cats_and_reject_duplicate_json_keys(self):
+    def test_cpu_must_find_both_cats_and_reject_duplicate_json_keys(self) -> None:
         self.cpu.write_text(
             json.dumps(
                 {**self.reference, "detections": self.reference["detections"][:1]}
@@ -99,7 +100,7 @@ class DetectionParityTest(unittest.TestCase):
         )
         self.assertNotEqual(self.run_compare().returncode, 0)
 
-    def test_observed_cpu_and_migraphx_cat_mismatch_is_rejected(self):
+    def test_observed_cpu_and_migraphx_cat_mismatch_is_rejected(self) -> None:
         cpu = {
             "schema_version": 1,
             "width": 640,
@@ -124,7 +125,7 @@ class DetectionParityTest(unittest.TestCase):
         self.gpu.write_text(json.dumps(gpu))
         self.assertNotEqual(self.run_compare().returncode, 0)
 
-    def test_score_and_geometry_guard_mutants_are_detected(self):
+    def test_score_and_geometry_guard_mutants_are_detected(self) -> None:
         source = SCRIPT.read_text(encoding="utf-8")
         mutants = (
             ('abs(item["score"] - other["score"]) <= MAX_SCORE_DELTA', "True", "score"),
