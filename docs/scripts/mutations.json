@@ -16628,6 +16628,118 @@
   "why": "a write that failed after the server applied it would post the same comment or issue twice"
  },
  {
+  "id": "develop-red.deleted-workflow-closes",
+  "target": "linux/scripts/develop_red.py",
+  "find": "        if record.get(\"state\") != ACTIVE:\n            close_issue(",
+  "replace": "        if False:\n            close_issue(",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "an issue of a deleted or disabled workflow waits for a run that never comes; #110 stayed open seven weeks"
+ },
+ {
+  "id": "develop-red.inactive-workflow-opens-nothing",
+  "target": "linux/scripts/develop_red.py",
+  "find": "if new[\"red\"] and workflow_state(client, repo, runs[0][\"workflow_id\"]).get(\"state\") == ACTIVE:",
+  "replace": "if new[\"red\"]:",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "an issue opened for a workflow that no longer runs could never close"
+ },
+ {
+  "id": "develop-red.open-issue-off-the-page",
+  "target": "linux/scripts/develop_red.py",
+  "find": "    open_ids = {wid for (name, wid), issue in issues.items() if name == repo and issue[\"state\"] == \"open\"}\n",
+  "replace": "    open_ids = set()\n",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "an open issue whose workflow left the repo-wide page of 100 runs was never looked at again"
+ },
+ {
+  "id": "develop-red.stale-page-confirmed",
+  "target": "linux/scripts/develop_red.py",
+  "find": "    if state[\"open\"] or page is None or window(page, state, now):\n",
+  "replace": "    if state[\"open\"] or page is None:\n",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "the repo-wide page can lag a workflow's own newest run; #111 opened on a red run eleven days older than a green one"
+ },
+ {
+  "id": "develop-red.open-issue-reads-its-workflow",
+  "target": "linux/scripts/develop_red.py",
+  "find": "    if state[\"open\"] or page is None or window(page, state, now):\n",
+  "replace": "    if page is None or window(page, state, now):\n",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "an open issue whose page entry is stale sees no new run and stays open for good"
+ },
+ {
+  "id": "develop-red.absent-job-retired",
+  "target": "linux/scripts/develop_red.py",
+  "find": "        if len(proof) >= 2:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "a renamed or removed job never passes again, so its issue never closed by itself"
+ },
+ {
+  "id": "develop-red.retire-needs-two-greens",
+  "target": "linux/scripts/develop_red.py",
+  "find": "        if len(proof) >= 2:\n",
+  "replace": "        if len(proof) >= 1:\n",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "one green run without a job can be a partial round; retiring on it would close a real red"
+ },
+ {
+  "id": "develop-red.skipped-caller-keeps-nested-red",
+  "target": "linux/scripts/develop_red.py",
+  "find": "    return any(name.startswith(prefix) and c in RED | GREEN for name, c in jobs.items())\n",
+  "replace": "    return True\n",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "a skipped caller hides every nested job; retiring them would close a lane that simply did not run"
+ },
+ {
+  "id": "develop-red.skipped-is-not-absent",
+  "target": "linux/scripts/develop_red.py",
+  "find": "proof = [r[\"id\"] for r in greens if job not in jobs_of(r) and caller_ran(job, jobs_of(r))]",
+  "replace": "proof = [r[\"id\"] for r in greens if jobs_of(r).get(job) in (None, \"skipped\") and caller_ran(job, jobs_of(r))]",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "a job a green run skipped still exists; retiring it would close an issue whose job never passed"
+ },
+ {
+  "id": "develop-red.retirement-is-named",
+  "target": "linux/scripts/develop_red.py",
+  "find": "                    + _retired_note(gone), text, \"completed\")\n",
+  "replace": "                    , text, \"completed\")\n",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "a job closed by retirement rather than a pass must say so, or a closed issue reads as a fixed one"
+ },
+ {
+  "id": "develop-red.issues-paged",
+  "target": "linux/scripts/develop_red.py",
+  "find": "        if len(batch) < ISSUE_PAGE:\n            return found\n",
+  "replace": "        if True:\n            return found\n",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "with more than 100 develop-red issues the newest open one can sit on page two, and a red lane then opened a second issue"
+ },
+ {
+  "id": "develop-red.five-attempts",
+  "target": "linux/scripts/develop_red.py",
+  "find": "RETRY_DELAYS = (5, 10, 20, 40)\n",
+  "replace": "RETRY_DELAYS = (5, 15)\n",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "watch run 41101409097 died on a 5xx burst that three attempts did not outlast"
+ },
+ {
+  "id": "develop-red.repos-isolated",
+  "target": "linux/scripts/develop_red.py",
+  "find": "        except (urllib.error.URLError, TimeoutError) as error:\n",
+  "replace": "        except TimeoutError as error:\n",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "one repository the API cannot answer left every later repository of the family unwatched"
+ },
+ {
+  "id": "develop-red.unanswered-fails-the-run",
+  "target": "linux/scripts/develop_red.py",
+  "find": "    return 1 if failed else 0\n",
+  "replace": "    return 0\n",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "a watch that could not read a repository must go red, or that repository's reds go unreported in a green run"
+ },
+ {
   "id": "doc-links.link-roots-follow-root",
   "target": "docs/scripts/verify_doc_links.py",
   "find": "        LINK_ROOTS = REPO_ROOT / LINK_ROOTS.name\n",

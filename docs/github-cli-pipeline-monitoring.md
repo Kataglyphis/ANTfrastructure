@@ -128,10 +128,19 @@ gh issue list -R Kataglyphis/ANTfrastructure -l develop-red   # empty: every dev
   failure has none) lists `(the run itself)`.
 - The newest run of a job decides it, so a green run of another lane through `on-request.yml` or
   `release.yml` keeps the issue open, and a re-run of an older commit never closes it.
-- A job that was renamed or removed never passes again: close its issue by hand. A closed issue
-  marks the runs it covered, so the watch does not reopen it on them.
-- An API GET that answers 5xx is tried twice more (5 s, then 15 s), so one bad gateway does not
-  turn the watch itself red. A write is never repeated: it may have landed.
+- A red job absent, not skipped, from two green runs newer than its red one was renamed or
+  removed: the watch retires it and names it in the closing comment. A nested `A / B` is retired
+  only when its caller `A` ran in both, since a skipped caller hides every nested job. A closed
+  issue marks the runs it covered, so the watch does not reopen it on them.
+- An open issue always reads its workflow's own `develop` runs
+  (`/actions/workflows/{id}/runs`), and so does a red run before it opens an issue: the
+  repo-wide page holds 100 runs of all workflows and can miss or lag one. An open issue whose
+  workflow is deleted or disabled (`/actions/workflows/{id}`) closes with that reason, and such a
+  workflow opens no issue. The issue list is read page by page.
+- An API GET that answers 5xx is tried four more times (5, 10, 20, 40 s), so a burst of bad
+  gateways does not turn the watch itself red. A write is never repeated: it may have landed. A
+  repository whose answers never come is named on stderr, the other repositories still settle,
+  and the run exits 1.
 - `develop-red-selftest.yml` concludes as its `outcome` input says: dispatch it with `failure` and
   then the watch to see an issue open, with `success` to see it close.
 

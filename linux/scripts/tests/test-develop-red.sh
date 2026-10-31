@@ -12,79 +12,12 @@ trap 'rm -rf "${_work}"' EXIT
 
 # _replay <scenario>: writes the API answers for one scenario and prints the file's path.
 _replay() {
-  local out="${_work}/$1.json"
-  "${PY}" - "$1" "${out}" <<'PY'
-import json
-import sys
-
-scenario, out = sys.argv[1], sys.argv[2]
-O, R = "Kataglyphis", "/repos/Kataglyphis"
-answers = {}
-def run(i, conclusion, updated, event="push"):
-    return {"id": i, "workflow_id": 7, "name": "Lane", "path": ".github/workflows/lane.yml",
-            "event": event, "conclusion": conclusion, "updated_at": updated,
-            "html_url": f"https://github.com/{O}/Fam/actions/runs/{i}", "head_sha": f"{i:040d}"}
-def jobs(i, *pages):
-    total = sum(len(p) for p in pages)
-    for n, page in enumerate(pages, 1):
-        answers[f"{R}/Fam/actions/runs/{i}/jobs?filter=latest&per_page=100&page={n}"] = {
-            "total_count": total, "jobs": [{"name": k, "conclusion": v} for k, v in page]}
-def issue(number, state, seen, red):
-    mark = {"repo": "Fam", "workflow_id": 7, "seen": seen, "red": red}
-    return {"number": number, "state": state, "body": "text\n\n<!-- develop-red " + json.dumps(mark) + " -->"}
-def ref(i):
-    return {"run": i, "url": f"https://github.com/{O}/Fam/actions/runs/{i}", "sha": f"{0:08d}"}
-repos = [{"name": "Fam", "fork": False, "archived": False, "default_branch": "develop"},
-         {"name": "Forked", "fork": True, "archived": False, "default_branch": "develop"},
-         {"name": "Old", "fork": False, "archived": True, "default_branch": "develop"},
-         {"name": "Mainline", "fork": False, "archived": False, "default_branch": "main"}]
-runs, issues = [], []
-if scenario == "red-opens":
-    runs = [run(12, "failure", "2026-10-20T11:00:00Z"), run(11, "success", "2026-10-20T10:00:00Z")]
-    jobs(12, [("build", "failure")], [("lint", "success")])
-    jobs(11, [("build", "success"), ("lint", "success")])
-elif scenario == "green-quiet":
-    runs = [run(12, "success", "2026-10-20T11:00:00Z")]
-elif scenario == "ignored-events":
-    issues = [issue(5, "open", "2026-10-20T10:00:00Z", {"build": ref(11)})]
-    runs = [run(14, "cancelled", "2026-10-20T11:30:00Z"), run(13, "failure", "2026-10-20T11:20:00Z", "pull_request"),
-            run(12, "skipped", "2026-10-20T11:10:00Z"), run(11, "failure", "2026-10-20T10:00:00Z")]
-    jobs(14, [("build", "success"), ("deploy", "cancelled")])
-    jobs(12, [("build", "skipped")])
-elif scenario == "umbrella-masked":
-    runs = [run(12, "success", "2026-10-20T11:00:00Z"), run(11, "failure", "2026-10-20T10:00:00Z")]
-    jobs(12, [("windows / build", "success"), ("web / build", "skipped")])
-    jobs(11, [("windows / build", "skipped"), ("web / build", "failure")])
-elif scenario == "open-closes":
-    issues = [issue(5, "open", "2026-10-20T10:00:00Z", {"build": ref(11)})]
-    runs = [run(12, "success", "2026-10-20T11:00:00Z"), run(11, "failure", "2026-10-20T10:00:00Z")]
-    jobs(12, [("build", "success")])
-elif scenario == "other-lane-green":
-    issues = [issue(5, "open", "2026-10-20T10:00:00Z", {"web / build": ref(11)})]
-    runs = [run(12, "success", "2026-10-20T11:00:00Z"), run(11, "failure", "2026-10-20T10:00:00Z")]
-    jobs(12, [("windows / build", "success"), ("web / build", "skipped")])
-elif scenario == "older-rerun":
-    issues = [issue(5, "open", "2026-10-20T10:00:00Z", {"build": ref(12)})]
-    runs = [run(12, "failure", "2026-10-20T10:00:00Z"), run(11, "success", "2026-10-20T11:00:00Z")]
-    jobs(11, [("build", "success")])
-elif scenario == "startup-failure":
-    runs = [run(12, "startup_failure", "2026-10-20T11:00:00Z")]
-    jobs(12, [])
-elif scenario == "closed-floor":
-    issues = [issue(5, "closed", "2026-10-20T11:00:00Z", {})]
-    runs = [run(12, "failure", "2026-10-20T11:00:00Z")]
-elif scenario == "old-red-newest":
-    runs = [run(12, "failure", "2026-10-01T11:00:00Z")]
-    jobs(12, [("build", "failure")])
-answers[f"/users/{O}/repos?type=owner&per_page=100"] = repos
-answers[f"{R}/ANTfrastructure/issues?labels=develop-red&state=all&sort=created&direction=desc&per_page=100"] = issues
-answers[f"{R}/Fam/actions/runs?branch=develop&status=completed&per_page=100"] = {"workflow_runs": runs}
-with open(out, "w", encoding="utf-8") as handle:
-    json.dump(answers, handle)
-PY
-  printf '%s' "${out}"
+  "${PY}" "${TESTS_DIR}/develop_red_replays.py" "$1" "${_work}/$1.json" || return 1
+  printf '%s' "${_work}/$1.json"
 }
 
+# _never <output> <needle> <why>: the needle must not appear.
+_never() { case "$1" in *"$2"*) t_assert_eq "" "$2" "$3" ;; *) t_assert_ok true ;; esac; }
 _watch() { "${PY}" "${SCRIPT}" --replay "$(_replay "$1")" --now "${NOW}" 2>&1 | grep -v '^watched: '; }
 
 t_case "every run says what it read: only the family repository Fam"
@@ -95,7 +28,7 @@ t_case "a red newest run opens one issue naming only its red job"
 out="$(_watch red-opens)"
 t_assert_contains "${out}" "opened: develop is red: Fam · Lane"
 t_assert_contains "${out}" '`build`: last failed in [run 12]'
-case "${out}" in *'`lint`'*) t_assert_eq "" "lint" "a green job is not listed" ;; *) t_assert_ok true ;; esac
+_never "${out}" '`lint`' "a green job is not listed"
 t_assert_contains "${out}" '"labels": ["develop-red"]'
 
 t_case "a green develop writes nothing, and forks, archived and non-develop repos are never read"
@@ -107,7 +40,7 @@ t_assert_eq "" "$(_watch ignored-events)" "only decisive develop runs count"
 t_case "a later run of another lane does not hide an earlier red one"
 out="$(_watch umbrella-masked)"
 t_assert_contains "${out}" '`web / build`: last failed in [run 11]'
-case "${out}" in *'`windows / build`'*) t_assert_eq "" "windows" "a green lane is not listed" ;; *) t_assert_ok true ;; esac
+_never "${out}" '`windows / build`' "a green lane is not listed"
 
 t_case "an open issue closes once its red job passed"
 out="$(_watch open-closes)"
@@ -118,11 +51,11 @@ t_assert_contains "${out}" "closed: develop is red: Fam · Lane"
 t_case "a green run that skipped the red job keeps the issue open"
 out="$(_watch other-lane-green)"
 t_assert_contains "${out}" "updated: develop is red: Fam · Lane"
-case "${out}" in *closed*) t_assert_eq "" "closed" "the web job never ran again" ;; *) t_assert_ok true ;; esac
+_never "${out}" closed "the web job never ran again"
 
 t_case "a re-run of an older commit never overrides a newer red"
 out="$(_watch older-rerun)"
-case "${out}" in *closed*) t_assert_eq "" "closed" "run 12 is newer than run 11" ;; *) t_assert_ok true ;; esac
+_never "${out}" closed "run 12 is newer than run 11"
 t_assert_contains "${out}" "updated: develop is red: Fam · Lane"
 
 t_case "a startup failure has no jobs and still opens an issue"
@@ -134,6 +67,74 @@ t_assert_eq "" "$(_watch closed-floor)" "run 12 finished before the issue closed
 
 t_case "the newest run counts however old it is"
 t_assert_contains "$(_watch old-red-newest)" "opened: develop is red: Fam · Lane"
+
+t_case "an open issue of a deleted workflow closes with the reason, and opens nothing new"
+out="$(_watch workflow-deleted)"
+t_assert_contains "${out}" "closed: Fam workflow 7 is deleted"
+t_assert_contains "${out}" 'The workflow `.github/workflows/lane.yml` is deleted: it runs no more'
+t_assert_contains "${out}" '"state_reason": "not_planned"'
+_never "${out}" opened "a deleted workflow never gets a new issue"
+
+t_case "a red run of a disabled workflow opens nothing"
+t_assert_eq "" "$(_watch workflow-disabled)" "its jobs can never pass, so an issue could never close"
+
+t_case "an open issue missing from the repo-wide page is read through its workflow's own runs"
+t_assert_contains "$(_watch missing-from-page)" "closed: develop is red: Fam · Lane"
+
+t_case "a stale repo-wide page is confirmed against the workflow's own newest run, and opens nothing"
+t_assert_eq "" "$(_watch stale-page)" "run 12 is green and newer than the page's run 11"
+
+t_case "a red job absent from two newer green runs is retired and named"
+out="$(_watch job-retired)"
+t_assert_contains "${out}" "closed: develop is red: Fam · Lane"
+t_assert_contains "${out}" 'Retired `A / gate`: absent from the newer green runs 13 and 12.'
+
+t_case "one green run without the job is not yet proof"
+out="$(_watch one-green-only)"
+_never "${out}" closed "one run can be a partial round"
+t_assert_contains "${out}" '`A / gate`: last failed in [run 11]' "the job stays listed until a second green run lacks it"
+
+t_case "a red nested job stays open while newer runs skipped its caller"
+out="$(_watch caller-skipped)"
+_never "${out}" closed "a skipped caller hides every nested job"
+t_assert_contains "${out}" "updated: develop is red: Fam · Lane"
+
+t_case "a red job a newer green run skipped is not absent, and stays open"
+out="$(_watch job-skipped)"
+_never "${out}" closed "skipped is not gone"
+
+t_case "the recorded marks of hub issues #110 and #111 close under this watcher"
+_recorded="${TESTS_DIR}/fixtures/develop-red-recorded.json"
+_rec() { "${PY}" "${SCRIPT}" --replay "$1" --now 2026-10-30T15:18:00Z 2>&1; }
+out="$(_rec "${_recorded}")"
+t_assert_contains "${out}" "closed: BeschleunigerBallett workflow 164515706 is deleted" "#110: Linux_x86.yml was deleted"
+t_assert_contains "${out}" "closed: develop is red: BeschleunigerBallett · Windows arm64 · cross build + test" "#111"
+t_assert_contains "${out}" 'Retired `Cross build (arm64) / bundle device gate (windows-11-arm)`: absent from the newer green runs 39024767294 and 38562264186.'
+
+t_case "#111's stale page, where run 38156104572 hides the newer green 39024767294, opens nothing"
+"${PY}" -c 'import json, sys; a = json.load(open(sys.argv[1])); k = [p for p in a if "/issues?" in p][0]; a[k] = []; json.dump(a, open(sys.argv[2], "w"))' \
+  "${_recorded}" "${_work}/no-issues.json"
+out="$(_rec "${_work}/no-issues.json")"
+_never "${out}" opened "the workflow's own newest run is green"
+
+t_case "a job still red in the newest decisive run keeps its issue open"
+out="$(_watch still-red)"
+_never "${out}" closed "run 13 failed the job again"
+t_assert_contains "${out}" '`build`: last failed in [run 13]'
+
+t_case "an issue beyond the first 100 is still found"
+t_assert_contains "$(_watch issue-beyond-100)" "POST /repos/Kataglyphis/ANTfrastructure/issues/5/comments"
+
+t_case "a jobs page answering 5xx four times then 200 settles normally"
+t_assert_contains "$(_watch jobs-5xx-recovers)" "opened: develop is red: Fam · Lane"
+
+t_case "a jobs page that never recovers fails the run, naming it, after the other repositories settled"
+_never="$(_replay jobs-5xx-never)"
+out="$("${PY}" "${SCRIPT}" --replay "${_never}" --now "${NOW}" 2>&1)"
+t_assert_contains "${out}" "opened: develop is red: Second · Lane"
+t_assert_contains "${out}" "failed: Fam: HTTP Error 502"
+t_assert_contains "${out}" "FAILED: the API never answered for Fam"
+t_assert_rc 1 "${PY}" "${SCRIPT}" --replay "${_never}" --now "${NOW}"
 
 # _flaky <code> <method> <failures>: a Client call against an API that fails <failures> times; prints the outcome and the attempts.
 _flaky() {
@@ -167,8 +168,9 @@ PY
 t_case "a GET retries a 5xx and succeeds"
 t_assert_eq "ok 3" "$(_flaky 502 GET 2)"
 
-t_case "a GET gives up after its retries"
-t_assert_eq "raised 502 3" "$(_flaky 502 GET 5)"
+t_case "a GET outlasts four 5xx answers and gives up after the fifth"
+t_assert_eq "ok 5" "$(_flaky 502 GET 4)"
+t_assert_eq "raised 502 5" "$(_flaky 502 GET 9)"
 
 t_case "a 4xx and a failed write are never retried"
 t_assert_eq "raised 404 1" "$(_flaky 404 GET 1)"

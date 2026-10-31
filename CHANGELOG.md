@@ -20,6 +20,11 @@
   Five recipes that bit only on a syntax error now keep their edit valid.
 - The gate prints each test command's wall and baseline seconds to stderr when its last entry
   ends, as input for a cost-based shard plan.
+- `develop_red.py` retires a red job that two newer green runs no longer have (a nested job only
+  when its caller ran), closes the issue of a deleted or disabled workflow, reads an open issue's
+  workflow through its own runs, confirms a red run there before opening, reads every issue page
+  and retries a 5xx four times; a repository the API never answers fails the run after the others
+  settled ([A red develop opens an issue](docs/github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue)).
 
 ## 2026-10-30 — Linux GPU bundle checks reject CPU fallback
 
