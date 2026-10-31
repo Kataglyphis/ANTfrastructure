@@ -7886,8 +7886,8 @@
  {
   "id": "consumer-inventory.self-mention-is-not-a-caller",
   "target": "linux/scripts/verify_consumer_inventory.py",
-  "find": "        if rel == needle or rel.startswith(needle + \"/\"):\n            continue  # a file naming itself is not a caller",
-  "replace": "        if False:\n            continue  # a file naming itself is not a caller",
+  "find": "        if ctx[\"is_self\"] and (rel == needle or rel.startswith(needle + \"/\")):\n            continue  # only the hub's own file naming itself is not a caller; a consumer's namesake calls it",
+  "replace": "        if False:\n            continue  # only the hub's own file naming itself is not a caller; a consumer's namesake calls it",
   "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
   "why": "an entry point that names its own path (a usage line, a self-referential log message) would otherwise be its own caller, and nothing in the hub could ever be reported as unreferenced"
  },
@@ -8010,6 +8010,22 @@
   "replace": "    if offline:\n        return work / name",
   "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
   "why": "a consumer that cannot be obtained must fail AS ITSELF: degraded into some later 'not a git checkout' error the operator reads it as a broken fixture, not as the missing evidence that makes 'no caller found' a lie"
+ },
+ {
+  "id": "consumer-inventory.namesake-is-a-caller",
+  "target": "linux/scripts/verify_consumer_inventory.py",
+  "find": "        if ctx[\"is_self\"] and (rel == needle or rel.startswith(needle + \"/\")):",
+  "replace": "        if rel == needle or rel.startswith(needle + \"/\"):",
+  "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+  "why": "a consumer file named like its hub callee (a caller workflow, a wrapper) must count as a caller"
+ },
+ {
+  "id": "consumer-inventory.shared-python-class",
+  "target": ".github/consumers.json",
+  "find": "\"glob\": \"shared/python/*.py\"",
+  "replace": "\"glob\": \"shared/python/none/*.py\"",
+  "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+  "why": "the shared Python verifiers consumers run by path must remain graded by the inventory"
  },
  {
   "id": "python.static-analysis-verdict-is-raised",

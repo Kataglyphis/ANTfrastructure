@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-31 — Consumer inventory sees namesake callers
+
+- A consumer file at the same path as the hub entry point it calls (a caller workflow,
+  a wrapper) now counts as a caller; only the hub's own self-mention is skipped.
+- `.github/consumers.json` grades `shared/python/*.py`, the verifiers consumers run by path.
+- Retire the code-dupes rows for `test-reusable-linux-lane.sh` and the AMD PCI/icon pair,
+  and shrink the `WindowsPackageBinary.Common.psm1` row from 12 to 11, by sharing helpers.
+
 ## 2026-10-31 — Stage checked GPU artifacts
 
 - Add a shared validator for isolated GPU workflow invocation scopes.

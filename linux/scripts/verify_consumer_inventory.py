@@ -298,8 +298,8 @@ def scan_file(rel: str, text: str, entries: list[EntryPoint],
               ctx: ScanContext, hits: ScanHits) -> None:
     for entry in entries:
         needle = entry["needle"]
-        if rel == needle or rel.startswith(needle + "/"):
-            continue  # a file naming itself is not a caller
+        if ctx["is_self"] and (rel == needle or rel.startswith(needle + "/")):
+            continue  # only the hub's own file naming itself is not a caller; a consumer's namesake calls it
         for start, matched in entry_hits(text, entry):
             if not is_hub_reference(text, start, matched, entry, ctx):
                 continue

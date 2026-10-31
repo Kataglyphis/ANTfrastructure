@@ -240,6 +240,12 @@
       "why": "Templates a consumer copies or sources verbatim."
     },
     {
+      "kind": "shared-python",
+      "glob": "shared/python/*.py",
+      "needle": "path",
+      "why": "Python verifiers consumers run by hub path from their GPU and parity lanes."
+    },
+    {
       "kind": "shared-test",
       "glob": "shared/windows/tests/*.ps1",
       "needle": "path",

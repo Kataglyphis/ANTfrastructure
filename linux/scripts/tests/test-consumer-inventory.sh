@@ -151,6 +151,21 @@ t_assert_contains "$(_section 'Mentioned, never reached')" "linux/scripts/only-m
 t_assert_contains "$(_section 'Named by nobody')" "linux/scripts/nobody-names-it.sh" \
   "the only hit on it is its own file naming itself, which is not a caller"
 
+t_case "a consumer file named like the hub entry point it calls is a caller"
+_twin_c="$(_consumer plain)"
+printf '#!/usr/bin/env bash\ntrue\n' > "${_h}/linux/scripts/same-name.sh"
+mkdir -p "${_twin_c}/linux/scripts"
+printf '#!/usr/bin/env bash\nbash third_party/ANTfrastructure/linux/scripts/same-name.sh\n' > "${_twin_c}/linux/scripts/same-name.sh"
+t_git_commit "${_h}"
+t_git_commit "${_twin_c}"
+_run "${_h}" "${_twin_c}" "${_inv}"
+t_assert_contains "$(_section 'Reached by a consumer')" 'consumer-a (`linux/scripts/same-name.sh:2`)' \
+  "a consumer workflow or wrapper shares its hub callee's path; skipping it graded live callers as hub-internal"
+t_assert_contains "$(_section 'Named by nobody')" "linux/scripts/nobody-names-it.sh" \
+  "the hub's own file naming itself is still no caller"
+rm -rf "${_twin_c}"
+git -C "${_h}" rm -q linux/scripts/same-name.sh && t_git_commit "${_h}"
+
 t_case "a root file ignores suffixes and other projects' requirement paths"
 _root_c="$(_consumer plain)"
 printf '%s\n' \
@@ -200,7 +215,8 @@ classes = json.load(open(sys.argv[1], encoding="utf-8"))["entry_point_classes"]
 actual = {(c["kind"], c["glob"], c.get("alias")) for c in classes}
 expected = {("linux-shared-library", "linux/scripts/lib/*.sh", "filename"),
             ("linux-shared-requirements", "linux/scripts/lib/*.requirements.txt", "filename"),
-            ("linux-requirements", "linux/scripts/*.requirements.txt", "filename")}
+            ("linux-requirements", "linux/scripts/*.requirements.txt", "filename"),
+            ("shared-python", "shared/python/*.py", None)}
 sys.exit(not expected <= actual)' "${SCRIPTS}/../../.github/consumers.json"
 _LIB_CLASSES="$("${PY}" -c 'import json, sys
 classes = json.load(open(sys.argv[1], encoding="utf-8"))["entry_point_classes"]

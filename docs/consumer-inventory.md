@@ -123,6 +123,10 @@ that opens a comment. A hub script named in a consumer's changelog keeps nothing
 alive, and a report that counted it would hand back the same false confidence
 the grep did.
 
+Only the hub's own file naming itself is skipped as no caller. A consumer file
+at the same path as its hub callee, such as a `.github/workflows/submodule-pins.yml`
+that calls the reusable workflow of that name, is graded like any other file.
+
 ## Entry points are declared, not guessed
 
 `entry_point_classes` in the inventory expands globs into the concrete entry
@@ -137,6 +141,8 @@ by full path:
   twenty-two modules dead.
 - `cmake-module` — a consumer puts the hub's `cmake/` on `CMAKE_MODULE_PATH`
   and writes `include(Sanitizers)`.
+- `shared-python` grades the `shared/python/*.py` verifiers consumers run by hub
+  path, such as `verify_ort_profile.py` and `compare_detector_parity.py`.
 - `linux-shared-library`, `linux-shared-requirements` and `linux-requirements`
   also scan complete filenames, including dynamic sibling paths. An unqualified
   consumer basename is an ambiguous mention, even when a local file has the same
