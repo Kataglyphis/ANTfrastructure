@@ -182,6 +182,12 @@ therefore needs a fresh build in that attempt. The option requires `host-gpu-run
 Without it the existing names and GPU overwrite behavior remain unchanged, as do CPU
 uploads. A matching name does not prove that earlier checks ran on those bytes: release
 promotion needs immutable artifact identity and [verification receipts](gpu-artifact-receipts.md).
+When calling the lane multiple times in one parent run, set a distinct
+`gpu-invocation-scope` for each overlapping call. A nondefault scope requires
+`host-gpu-runtime` and `gpu-attempt-artifacts`; the plan validates it with the caller's
+pinned shared helper before starting any build and appends its suffix to both report and
+package uploads. Default CPU and GPU calls remain unchanged and do not add a checkout to
+the plan. Scope validation does not verify the artifact's bytes or GPU behavior.
 
 ```powershell
 # Windows, inside :winamd64

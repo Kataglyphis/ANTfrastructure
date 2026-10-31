@@ -39,6 +39,8 @@ def steps(job: YamlNode) -> list[YamlNode]:
 
 plan = next(s for s in steps(V.value(V.value(lane, 'jobs'), 'plan')) if V.value(s, 'id') == 'rows')
 write_step(plan, sys.argv[3])
+scope = next(s for s in steps(V.value(V.value(lane, 'jobs'), 'plan')) if V.value(s, 'id') == 'scope')
+write_step(scope, sys.argv[8])
 
 build = V.value(V.value(lane, 'jobs'), 'build')
 pin_step = next(s for s in steps(build) if V.value(s, 'name') == 'Check pinned host GPU packaging contract')

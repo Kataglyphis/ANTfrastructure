@@ -1,4 +1,5 @@
 # Empty version inputs fall through to the driver's default. See docs/python-ci.md § Positional arguments: empty means default
+# PYTHON_GPU_INVOCATION_SCOPE_API=1
 name: Python CI · Linux (reusable)
 
 # Least privilege: this lane never writes to the repository.
@@ -125,6 +126,11 @@ on:
         required: false
         type: boolean
         default: false
+      gpu-invocation-scope:
+        description: Unique lowercase scope for overlapping GPU calls in one parent run.
+        required: false
+        type: string
+        default: default
       deploy-docs:
         description: >-
           Whether to publish the built docs on a push to develop or main (build-docs.yml).
@@ -183,6 +189,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.rows.outputs.matrix }}
+      gpu-scope-suffix: ${{ steps.scope.outputs.suffix }}
     steps:
       - name: Select the arch rows
         id: rows
@@ -193,6 +200,7 @@ jobs:
           GPU_ATTEMPT_ARTIFACTS: ${{ inputs.gpu-attempt-artifacts }}
           GPU_CONTAINER_IMAGE: ${{ inputs.container-image }}
           APP_PYTHON_RUNTIME: ${{ inputs.app-python-runtime }}
+          GPU_INVOCATION_SCOPE: ${{ inputs.gpu-invocation-scope }}
         run: |
           set -euo pipefail
           case "${APP_PYTHON_RUNTIME:-image}" in image|standalone) ;; *) echo '::error::app-python-runtime must be image or standalone'; exit 1 ;; esac
@@ -201,6 +209,14 @@ jobs:
           fi
           if [ "${GPU_ATTEMPT_ARTIFACTS:-false}" = true ] && [ "${HOST_GPU_RUNTIME:-false}" != true ]; then
             echo '::error::gpu-attempt-artifacts requires host-gpu-runtime'; exit 1
+          fi
+          if [ "$GPU_INVOCATION_SCOPE" != default ] && { [ "${HOST_GPU_RUNTIME:-false}" != true ] || [ "${GPU_ATTEMPT_ARTIFACTS:-false}" != true ]; }; then
+            echo '::error::nondefault GPU invocation scope requires attempt-scoped GPU artifacts'; exit 1
+          fi
+          if [ "$GPU_INVOCATION_SCOPE" = default ]; then
+            echo 'scope-required=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'scope-required=true' >> "$GITHUB_OUTPUT"
           fi
           if [ "${HOST_GPU_RUNTIME:-false}" = true ]; then
             case "${GPU_ARTIFACT_LABEL:-}" in nvidia|amd) ;; *) echo '::error::host-gpu-runtime needs gpu-artifact-label nvidia or amd'; exit 1 ;; esac
@@ -234,6 +250,25 @@ jobs:
           fi
           printf 'matrix={"include":[%s]}\n' "${rows}" >> "${GITHUB_OUTPUT}"
           printf 'rows: %s\n' "${rows}"
+      - name: Check out the caller's GPU scope helper
+        if: ${{ steps.rows.outputs.scope-required == 'true' }}
+        id: scope-checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+      - name: Validate the GPU invocation scope
+        if: ${{ steps.rows.outputs.scope-required == 'true' }}
+        id: scope
+        env:
+          GPU_INVOCATION_SCOPE: ${{ inputs.gpu-invocation-scope }}
+        run: |
+          set -euo pipefail
+          helper=third_party/ANTfrastructure/shared/python/gpu_invocation_scope.py
+          if [ ! -f "$helper" ] || ! grep -Fxq '# GPU_INVOCATION_SCOPE_API=1' "$helper"; then
+            echo '::error::pinned hub lacks GPU invocation scope validation'
+            exit 1
+          fi
+          python3 -I "$helper"
 
   build:
     name: ${{ matrix.arch }}
@@ -327,7 +362,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ${{ inputs.host-gpu-runtime && (inputs.gpu-attempt-artifacts && format('unverified-gpu-{0}-test-reports-{1}-attempt-{2}', inputs.gpu-artifact-label, matrix.arch, github.run_attempt) || format('unverified-gpu-{0}-test-reports-{1}', inputs.gpu-artifact-label, matrix.arch)) || format('test-reports-{0}', matrix.arch) }}
+          name: ${{ inputs.host-gpu-runtime && (inputs.gpu-attempt-artifacts && format('unverified-gpu-{0}-test-reports-{1}-attempt-{2}{3}', inputs.gpu-artifact-label, matrix.arch, github.run_attempt, needs.plan.outputs.gpu-scope-suffix) || format('unverified-gpu-{0}-test-reports-{1}', inputs.gpu-artifact-label, matrix.arch)) || format('test-reports-{0}', matrix.arch) }}
           overwrite: ${{ inputs.host-gpu-runtime && !inputs.gpu-attempt-artifacts }}
           path: logs/test-results/
           if-no-files-found: error
@@ -436,7 +471,7 @@ jobs:
         if: ${{ always() && (matrix.arch != 'riscv64' || inputs.package-emulated) && (!inputs.host-gpu-runtime || success()) }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ${{ inputs.host-gpu-runtime && (inputs.gpu-attempt-artifacts && format('unverified-gpu-{0}-packages-linux-{1}-attempt-{2}', inputs.gpu-artifact-label, matrix.arch, github.run_attempt) || format('unverified-gpu-{0}-packages-linux-{1}', inputs.gpu-artifact-label, matrix.arch)) || format('packages-linux-{0}-source-and-binary', matrix.arch) }}
+          name: ${{ inputs.host-gpu-runtime && (inputs.gpu-attempt-artifacts && format('unverified-gpu-{0}-packages-linux-{1}-attempt-{2}{3}', inputs.gpu-artifact-label, matrix.arch, github.run_attempt, needs.plan.outputs.gpu-scope-suffix) || format('unverified-gpu-{0}-packages-linux-{1}', inputs.gpu-artifact-label, matrix.arch)) || format('packages-linux-{0}-source-and-binary', matrix.arch) }}
           overwrite: ${{ inputs.host-gpu-runtime && !inputs.gpu-attempt-artifacts }}
           path: ${{ github.workspace }}/dist/
           if-no-files-found: error
