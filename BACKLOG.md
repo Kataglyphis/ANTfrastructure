@@ -908,6 +908,16 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       provider consistently beside the core or test the split location across NVIDIA images
       and consumers before the next image publication. Verify source and wheel bytes match.
 
+- [ ] **CON197 — provide cargo-expand for Flutter Rust Bridge code generation in Linux images** [S, ★★].
+      On 2026-10-31, an isolated OmniAccelerANT/OxidANT code-generation check in the Linux
+      amd64 CPU registry image `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
+      found `cargo expand` missing; `flutter_rust_bridge_codegen generate` attempted to
+      install it from the network. The existing code-quality documentation also records this
+      first-use install. Pin and install a cargo-expand release compatible with the image's
+      Rust toolchain and Flutter Rust Bridge generator, record its licence and source, and
+      verify an offline generation run in a fresh image. Check Linux ARM and the NVIDIA and
+      AMD image variants separately; this observation does not establish their contents.
+
 - [ ] **CON196 — select the GPU ONNX Runtime reliably in consumer images** [M, ★★★].
       On 2026-10-30 both cached GPU images exported `ORT_LIB_LOCATION` pointing at
       `/usr/local/lib/onnxruntime-cpu/lib`, even though the CUDA or MIGraphX runtime was at
