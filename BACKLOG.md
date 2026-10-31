@@ -903,6 +903,25 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       license provenance, and image checks for the elements; verify other Windows image variants
       independently. Until then that pipeline is unavailable in this image.
 
+- [ ] **CON204 — preserve Linux NVIDIA runtime provenance and notice handoff** [M, ★★★].
+      On 2026-10-31, the cached Linux ARM NVIDIA image child
+      `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11`
+      contained CUDA 13.4 and cuDNN 9.27. Its chain CUDA ONNX Runtime provider directly
+      needs `libcudart.so.13`, `libcublas.so.13`, `libcublasLt.so.13`, `libcurand.so.10`
+      and host driver `libcuda.so.1`. `dpkg-query -S` found no installed package for
+      `/usr/local/cuda-13.4/targets/sbsa-linux/lib/libcublas.so.13.8.0.4` or
+      `/usr/lib/aarch64-linux-gnu/libcudnn.so.9.27.0`, while it did identify `/usr/bin/bash`.
+      A targeted license-name search to depth three in `/usr/local/cuda-13.4`,
+      `/usr/share/doc`, `/usr/share/licenses` and `/opt/nvidia` found no matching files;
+      this does not establish whether notices exist elsewhere. For a future self-contained
+      CUDA artifact, preserve each shipped library and dynamically loaded resource's exact
+      source, version, applicable license and notices in a verifiable image-to-consumer
+      handoff. Determine the runtime closure and driver boundary and test on supported GPU
+      hardware. Check Linux x64 and newer mutable image tags independently. This observation
+      concerns provenance and notice handoff, not redistribution rights or a defect in the
+      existing host-runtime artifact. Offline QEMU inventory and commands:
+      `_implementation/nvidia-linux-inventory-20261031/arm-inventory.log` and `probe.sh`.
+
 - [ ] **CON203 — preserve Linux ROCm runtime provenance and notice handoff** [M, ★★★].
       On 2026-10-31, the cached Linux x64 `:latest-rocm` image digest
       `sha256:a5d68fbe64e579de09473290489b6953b5bce9aeb7644c18b86d6969bf37ace8`
