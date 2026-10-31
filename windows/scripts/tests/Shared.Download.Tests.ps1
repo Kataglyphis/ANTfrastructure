@@ -44,14 +44,14 @@ Describe 'Invoke-DownloadWithRetry' {
             $fixture = $case.Fixture
             Invoke-FileDownloadFixture @fixture -Body { param($file)
                 $guard = & $case.Guard $file
-                if ($case.Cleanup) {
+                if ($case['Cleanup']) {
                     Assert-Throws { Invoke-DownloadWithRetry -Url $file.Url -DestinationPath $file.Destination -MaxAttempts 2 -InitialDelaySeconds 0 @guard } $case.Because
                     Assert-False (Test-Path $file.Destination) $case.Cleanup
                     return
                 }
                 Invoke-DownloadWithRetry -Url $file.Url -DestinationPath $file.Destination -InitialDelaySeconds 0 @guard
                 Assert-True (Test-Path $file.Destination) $case.Because
-                if ($case.Then) { & $case.Then $file }
+                if ($case['Then']) { & $case.Then $file }
             }
         }
     }
