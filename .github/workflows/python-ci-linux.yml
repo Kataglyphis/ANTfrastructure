@@ -1,4 +1,3 @@
-# Empty version inputs fall through to the driver's default. See docs/python-ci.md § Positional arguments: empty means default
 # PYTHON_GPU_INVOCATION_SCOPE_API=1
 name: Python CI · Linux (reusable)
 

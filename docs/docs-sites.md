@@ -47,6 +47,10 @@ Two jobs (2026-10-19):
 There is no `continue-on-error` anywhere: a red link gate or a failed upload is a red job,
 and the site keeps its last good deploy.
 
+Image-backed site builds use the full runner disk cleanup before pulling the family image.
+The pull is serialized after cleanup so its layers do not consume the space being reclaimed;
+the caller's selected submodule checkout, including a pinned theme, is unchanged.
+
 **Call it from a `docs.yml` of its own.** A caller workflow with a cancelling
 `concurrency:` (most `linux-x64.yml`s) cancels a publish half-way on the next push, and a
 docs site published from inside a build or test job goes stale when a test is red or a

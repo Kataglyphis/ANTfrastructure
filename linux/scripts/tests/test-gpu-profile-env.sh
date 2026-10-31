@@ -16,3 +16,8 @@ if gpu_without_migraphx_overrides bash -c 'exit 7'; then
   exit 1
 fi
 [[ $MIGRAPHX_SKIP_BENCHMARKING == 1 && $ORT_MIGRAPHX_MODEL_CACHE_PATH == '/tmp/cache with spaces' ]]
+work=$(mktemp -d)
+trap 'rm -rf -- "$work"' EXIT
+cp "$repo/linux/scripts/lib/gpu-profile-env.sh" "$repo/linux/scripts/lib/log-bootstrap.sh" "$work/"
+# shellcheck disable=SC2016
+(cd / && bash -eu -c 'source "$1/gpu-profile-env.sh"; declare -F info warn err >/dev/null; gpu_without_migraphx_overrides true' _ "$work")

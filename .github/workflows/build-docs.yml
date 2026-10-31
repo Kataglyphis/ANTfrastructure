@@ -133,6 +133,9 @@ jobs:
         with:
           fetch-depth: '1'
           submodules: ${{ inputs.submodules }}
+          # The family image can exhaust a hosted runner before fast cleanup finishes.
+          free-disk-space: 'true'
+          pull-first: 'false'
 
       # An artifact needs no image: only the allow file and the hub tooling are read from the checkout.
       - name: Check out

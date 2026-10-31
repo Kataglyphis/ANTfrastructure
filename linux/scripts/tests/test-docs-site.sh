@@ -147,4 +147,12 @@ t_case "build-docs.yml: the guides reach plan and the build container as an envi
 t_assert_contains "$(_job site)" 'DOCS_GUIDES: ${{ inputs.guides }}'
 t_assert_contains "$(_job site)" "extra-args: -e DOCS_COMMAND -e DOCS_BUILDER -e DOCS_GUIDES "
 
+t_case "build-docs.yml: clean hosted disks before pulling the family image"
+site="$(_job site)"
+prepare="$(printf '%s\n' "$site" | awk '/- name: Prepare CI host / { inside=1; next } inside && /^      - name:/ { exit } inside')"
+t_assert_contains "$prepare" "free-disk-space: 'true'"
+t_assert_contains "$prepare" "pull-first: 'false'"
+# shellcheck disable=SC2016
+t_assert_contains "$prepare" 'submodules: ${{ inputs.submodules }}'
+
 t_summary

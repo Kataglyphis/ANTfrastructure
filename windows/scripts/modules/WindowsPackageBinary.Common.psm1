@@ -43,14 +43,20 @@ function Get-ArchiveOrtProviderNames {
 
 function Get-ValidatedOrtProviderNames {
     param([string[]]$Names)
-    $seen = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($name in $Names) {
         if ($name -inotmatch '^onnxruntime_providers_') { continue }
         if ($name -cnotmatch '^onnxruntime_providers_[a-z0-9_]+\.dll$') { throw "invalid ORT provider name: $name" }
-        if ($seen.ContainsKey($name)) { throw "duplicate ORT provider name: $name (first: $($seen[$name]))" }
-        $seen.Add($name, $name)
+        if (-not $seen.Add($name)) { throw "duplicate ORT provider name: $name" }
     }
-    return @($seen.Keys | Sort-Object)
+    return @($seen | Sort-Object)
+}
+
+function Assert-PackageDirectory {
+    param([AllowEmptyString()][string]$Directory)
+    if ($Directory -match '(^/|//|(^|/)\.{1,2}(/|$)|[:*?\[\]<>"|\x00-\x1f\\]|[ .](/|$))' -or $Directory.EndsWith('/')) {
+        throw "unsafe package directory: $Directory"
+    }
 }
 
 function Get-PackageOrtProviderNames {
@@ -61,9 +67,7 @@ function Get-PackageOrtProviderNames {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path, [AllowEmptyString()][string]$Directory = '',
         [string]$RootDirectoryId = '', [string]$RootDirectoryName = '')
-    if ($Directory -match '(^/|//|(^|/)\.{1,2}(/|$)|[:*?\[\]<>"|\x00-\x1f\\]|[ .](/|$))' -or $Directory.EndsWith('/')) {
-        throw "unsafe package directory: $Directory"
-    }
+    Assert-PackageDirectory -Directory $Directory
     $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
     $extension = [IO.Path]::GetExtension($resolved)
     $names = if ($extension -ieq '.msi') {
@@ -154,9 +158,7 @@ function Assert-PackageOrtFamily {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path, [AllowEmptyString()][string]$Directory = '',
         [Parameter(Mandatory)][string[]]$Name, [string]$RootDirectoryId = '', [string]$RootDirectoryName = '')
-    if ($Directory -match '(^/|//|(^|/)\.{1,2}(/|$)|[:*?\[\]<>"|\x00-\x1f\\]|[ .](/|$))' -or $Directory.EndsWith('/')) {
-        throw "unsafe package directory: $Directory"
-    }
+    Assert-PackageDirectory -Directory $Directory
     $allowed = New-PackageOrtFamilySet -Name $Name
     $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
     $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
