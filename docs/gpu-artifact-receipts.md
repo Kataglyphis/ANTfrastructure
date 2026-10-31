@@ -109,6 +109,13 @@ exit status and the receipt alone cannot prove that it did. A caller must upload
 both receipts only after their corresponding checks succeed, and use the current
 run's immutable artifact ID and upload digest for the staging step.
 
+For default MIGraphX verification, source `linux/scripts/lib/gpu-profile-env.sh`
+and call `gpu_without_migraphx_overrides COMMAND [ARG...]`. It removes inherited
+`MIGRAPHX_*` and `ORT_MIGRAPHX_*` variables from that command's environment while
+preserving the caller's environment and GPU visibility. Apply any intentional
+diagnostic setting inside the command; a diagnostic run does not establish default
+runtime behavior. Callers still select and verify the physical GPU independently.
+
 ## Detector parity
 
 `shared/python/compare_detector_parity.py CPU.json GPU.json` compares detections
