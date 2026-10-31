@@ -119,6 +119,11 @@ fail. Callers must run the actual packaged detector twice, independently verify 
 CPU and GPU operator profiles, and pass results from those same runs. A match alone
 does not establish GPU execution or prove parity on other images.
 
+After validating a CPU baseline against every result, use `--pairwise` to compare
+repeated results to each other. It retains the schema, bounds and one-to-one tolerance
+checks without reapplying the CPU-only two-cats score oracle to a GPU reference.
+Pairwise checks must not replace the default CPU-baseline checks.
+
 ## Repeated ORT profile runs
 
 `python3 shared/python/verify_ort_profile.py PROFILE.json --device migraphx --min-runs 2`

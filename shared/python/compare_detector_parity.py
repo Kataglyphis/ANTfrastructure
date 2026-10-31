@@ -84,23 +84,26 @@ def iou(left: list[float], right: list[float]) -> float:
     return intersection / (area_l + area_r - intersection)
 
 
-def compare(cpu: dict[str, Any], gpu: dict[str, Any]) -> None:
+def compare(
+    cpu: dict[str, Any], gpu: dict[str, Any], *, pairwise: bool = False
+) -> None:
     if (cpu["width"], cpu["height"]) != (gpu["width"], gpu["height"]):
         raise ValueError("image dimensions differ")
     expected, actual = cpu["detections"], gpu["detections"]
-    cats = [item for item in expected if item["class"] == 15]
-    if not any(
-        item["score"] >= 0.8
-        and (item["box"][1] + item["box"][3]) / 2 > 0.55 * cpu["height"]
-        and any(
-            index != other_index and iou(item["box"], other["box"]) < 0.5
-            for other_index, other in enumerate(cats)
-        )
-        for index, item in enumerate(cats)
-    ):
-        raise ValueError("CPU baseline did not detect both expected cats")
-    if any(item["class"] in (0, 16) and item["score"] >= 0.5 for item in expected):
-        raise ValueError("CPU baseline misclassified a cat")
+    if not pairwise:
+        cats = [item for item in expected if item["class"] == 15]
+        if not any(
+            item["score"] >= 0.8
+            and (item["box"][1] + item["box"][3]) / 2 > 0.55 * cpu["height"]
+            and any(
+                index != other_index and iou(item["box"], other["box"]) < 0.5
+                for other_index, other in enumerate(cats)
+            )
+            for index, item in enumerate(cats)
+        ):
+            raise ValueError("CPU baseline did not detect both expected cats")
+        if any(item["class"] in (0, 16) and item["score"] >= 0.5 for item in expected):
+            raise ValueError("CPU baseline misclassified a cat")
     if len(expected) != len(actual):
         raise ValueError("detection counts differ")
     edges = [
@@ -133,9 +136,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("cpu", type=Path)
     parser.add_argument("gpu", type=Path)
+    parser.add_argument(
+        "--pairwise",
+        action="store_true",
+        help="compare two already CPU-validated results",
+    )
     args = parser.parse_args()
     try:
-        compare(load(args.cpu), load(args.gpu))
+        compare(load(args.cpu), load(args.gpu), pairwise=args.pairwise)
     except (OSError, TypeError, ValueError, OverflowError) as error:
         parser.exit(1, f"Detector parity failed: {error}\n")
     print(

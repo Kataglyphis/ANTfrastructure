@@ -15,6 +15,7 @@
 
 ## 2026-10-31 — Stage checked GPU artifacts
 
+- Compare repeated detector results pairwise without applying the CPU-only oracle to GPU output.
 - Add an opt-in ORT profile check requiring a provider model operator in each repeated run.
 - Add a reusable real-image detector parity comparator for CPU and GPU results.
 - Add opt-in atomic staging that matches an artifact ZIP and both clean-host and

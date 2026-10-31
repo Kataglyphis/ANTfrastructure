@@ -32025,6 +32025,22 @@
   "why": "a GPU detector must reject scores that disagree with the CPU baseline"
  },
  {
+  "id": "packaging.detector-pairwise-cpu-oracle",
+  "target": "shared/python/compare_detector_parity.py",
+  "find": "    if not pairwise:\n",
+  "replace": "    if False:\n",
+  "test": "python3 shared/python/tests/test_compare_detector_parity.py",
+  "why": "default comparison must still reject an invalid CPU baseline"
+ },
+ {
+  "id": "packaging.detector-pairwise-mode",
+  "target": "shared/python/compare_detector_parity.py",
+  "find": "    if not pairwise:\n",
+  "replace": "    if True:\n",
+  "test": "python3 shared/python/tests/test_compare_detector_parity.py",
+  "why": "pairwise comparison must not impose the CPU-only oracle on a GPU result"
+ },
+ {
   "id": "packaging.detector-parity-iou",
   "target": "shared/python/compare_detector_parity.py",
   "find": "iou(item[\"box\"], other[\"box\"]) >= MIN_IOU",

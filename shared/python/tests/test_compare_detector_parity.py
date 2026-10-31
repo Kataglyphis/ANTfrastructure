@@ -32,9 +32,14 @@ class DetectionParityTest(unittest.TestCase):
         self.cpu.write_text(json.dumps(self.reference))
         self.gpu.write_text(json.dumps(self.reference))
 
-    def run_compare(self, script: Path = SCRIPT) -> subprocess.CompletedProcess[str]:
+    def run_compare(
+        self, script: Path = SCRIPT, *, pairwise: bool = False
+    ) -> subprocess.CompletedProcess[str]:
+        arguments = [sys.executable, "-I", str(script), str(self.cpu), str(self.gpu)]
+        if pairwise:
+            arguments.append("--pairwise")
         return subprocess.run(
-            [sys.executable, "-I", str(script), str(self.cpu), str(self.gpu)],
+            arguments,
             capture_output=True,
             text=True,
             check=False,
@@ -80,6 +85,30 @@ class DetectionParityTest(unittest.TestCase):
                     changed["detections"][0]["box"][2] = 10
                 self.gpu.write_text(json.dumps(changed))
                 self.assertNotEqual(self.run_compare().returncode, 0)
+                self.assertNotEqual(self.run_compare(pairwise=True).returncode, 0)
+
+    def test_pairwise_comparison_does_not_reapply_cpu_only_oracle(self) -> None:
+        first = json.loads(json.dumps(self.reference))
+        first["detections"][0]["score"] = 0.78
+        second = json.loads(json.dumps(first))
+        second["detections"][0]["score"] = 0.76
+        self.cpu.write_text(json.dumps(first))
+        self.gpu.write_text(json.dumps(second))
+        self.assertNotEqual(self.run_compare().returncode, 0)
+        result = self.run_compare(pairwise=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        second["detections"][0]["score"] = 0.70
+        self.gpu.write_text(json.dumps(second))
+        self.assertNotEqual(self.run_compare(pairwise=True).returncode, 0)
+
+    def test_pairwise_still_requires_distinct_one_to_one_matches(self) -> None:
+        first = json.loads(json.dumps(self.reference))
+        first["detections"][0]["score"] = 0.78
+        second = json.loads(json.dumps(first))
+        second["detections"][1] = dict(second["detections"][0])
+        self.cpu.write_text(json.dumps(first))
+        self.gpu.write_text(json.dumps(second))
+        self.assertNotEqual(self.run_compare(pairwise=True).returncode, 0)
 
     def test_cpu_must_find_both_cats_and_reject_duplicate_json_keys(self) -> None:
         self.cpu.write_text(
