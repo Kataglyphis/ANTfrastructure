@@ -907,6 +907,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       texts and a verifiable association with the installed DLL (including transitive/static notices),
       and expose these to consumers. Check CPU and AMD/ARM images independently. Until then the
       AccelerANTgine install-time third-party notice gate correctly rejects this closure.
+      Implement an image-owned native-DLL provenance manifest before GStreamer's source cleanup:
+      record each selected installed DLL's SHA-256, exact source identity and hash, and the original
+      license/notice paths and hashes. Verify the manifest after image-stage merges and again when
+      staging the consumer's PE import closure; reject unknown DLLs, mismatched bytes, missing texts,
+      duplicate entries and unsafe paths. ORT's wheel-specific license handoff remains separate and
+      is not evidence for these native media dependencies.
 
 
 - [ ] **CON185 - provide Windows GStreamer tensor inference elements** [M].
