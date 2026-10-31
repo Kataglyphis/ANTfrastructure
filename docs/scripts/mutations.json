@@ -31969,6 +31969,14 @@
   "why": "a receipt from another run, attempt, artifact or check must not promote"
  },
  {
+  "id": "packaging.gpu-receipt-windows-device-names",
+  "target": "shared/python/gpu_artifact_receipt.py",
+  "find": "for digit in \"¹²³\"",
+  "replace": "for digit in \"\"",
+  "test": "python3 shared/python/tests/test_gpu_artifact_receipt.py",
+  "why": "Windows COM and LPT aliases with superscript digits must not be accepted as portable names"
+ },
+ {
   "id": "packaging.ort-profile-reject-transfer-only",
   "target": "shared/python/verify_ort_profile.py",
   "find": "and not event[\"args\"][\"op_name\"].strip().casefold().startswith(\"memcpy\")",
