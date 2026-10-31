@@ -1062,6 +1062,16 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       package transaction, all dynamic resources or complete applicable notices. Scoped
       signed index, archive hashes, file lists, comparisons and unresolved notice
       observations: `_implementation/rocm-official-package-audit-20261031/VALIDATION.md`.
+      The matched AMD clang executable reports LLVM source revision
+      `d6f6cb691863e9258034ab48c1dfce21689d5606`, the LLVM gitlink in AMD's
+      `therock-10.1` source tag. The matched MIOpen binary embeds version
+      `3.6.1.39d8d603`; that short revision agrees with the tag's ROCm-libraries
+      gitlink, and the image's MIOpen notice is byte-identical to that pinned source
+      licence. Exact-revision LLVM and Clang source licence files were retained and
+      verified against their source blob IDs. These associations do not establish the
+      image's complete build inputs, all third-party notices or redistribution rights.
+      Reproduce the scoped checks and private-test plan:
+      `_implementation/rocm-official-package-audit-20261031/SOURCE-NOTICES.md`.
       A read-only follow-up against the same image found that its ORT MIGraphX
       provider directly imports `libmigraphx_c.so.3` and `libamdhip64.so.7`;
       the two retained OxidANT and AccelerANTgine AMD DEBs examined declare no
