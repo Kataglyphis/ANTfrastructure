@@ -1137,6 +1137,11 @@ job took 1,060-1,155 s; every id bit exactly once and the shards held 491 or 492
 distinct commands between them, one baseline each.
 
 A stale table still proves every entry exactly once; it only balances worse.
+Refresh it when a suite got markedly faster or slower, from runs after that change
+only: the table takes each command's median, so older runs keep the old weight. On
+2026-10-31 a table built across a speedup of `test-runtime-image-gates.sh` (25.6 s to
+14.9 s per run) planned the shards 26.6% apart; rebuilt from the four runs after it,
+they came out even.
 Without `--shard-costs` the gate keeps `entries[K::N]`, which is what consumers
 and `validate_consumer_mutations.py` use. `test-mutation-shards.sh` proves the
 partition, the grouping, the split, the balance and the interleaving.
