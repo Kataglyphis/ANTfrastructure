@@ -1016,6 +1016,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ran with profiled MIGraphX operators through both runtimes. MIOpen also warned that
       `libMIOpenCKGroupedConv_gfx1036.so` could not be opened; inspection found other
       architecture variants under `/opt/rocm` but not this one in `/opt/rocm` or `/opt/venv`.
+      An independently built AccelerANTgine AMD x64 TAR (SHA-256
+      `c1accbf341de3de8e7bfbfbe2c0966648e067dccc749c8926a71434aff23fee1`) reproduced
+      the same warning and full-model MIGraphX compilation failure on `gfx1036` using that
+      image; its CPU fallback passed, but GPU profiling stopped at the TAR and did not test
+      the AppImage. The local log is `_implementation/accelerant-rocm-hardware-profile-20261031/gpu-profile.log`.
       The warning does not establish the compilation failure's cause. Determine whether
       this WSL integrated GPU configuration is supported, investigate the missing device
       library and full-model error, and verify the locked model with operator profiling on
