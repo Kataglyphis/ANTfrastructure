@@ -1044,6 +1044,21 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the LLVM license website. The COMGR license contains Apache and LLVM exception text,
       but its applicability and completeness for the separately copied LLVM binaries and
       other transitive or dynamically loaded components have not been established.
+      A read-only follow-up against the same image found that its ORT MIGraphX
+      provider directly imports `libmigraphx_c.so.3` and `libamdhip64.so.7`;
+      the two retained OxidANT and AccelerANTgine AMD DEBs examined declare no
+      package-manager dependency that installs either ROCm or MIGraphX. Their
+      documented host-runtime design therefore needs a separately provisioned,
+      compatible vendor runtime; this observation does not establish that the
+      packages or GPU inference were run. The image returned no installed
+      `amdrocm*` entries from `dpkg-query`, while the image build's source installs
+      AMD packages before copying the ROCm tree. Record the signed build-stage
+      package identities, versions, source hashes and component notices in the
+      future image so consumers can assess host provisioning or a self-contained
+      userspace sidecar without guessing. Direct ELF dependencies do not cover
+      dynamically loaded libraries, target kernels, or other runtime resources.
+      Scoped commands, candidate hashes and AMD documentation:
+      `_implementation/rocm-runtime-delivery-audit-20261031/VALIDATION.md`.
       For any future self-contained GPU runtime artifact, preserve a verifiable association
       of each shipped binary and resource to its exact source/version and original applicable
       license and notice texts; include and verify those texts in the image and consumer
