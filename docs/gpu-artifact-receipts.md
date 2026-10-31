@@ -118,3 +118,14 @@ and a one-to-one class, score and box match. Empty, malformed and non-finite res
 fail. Callers must run the actual packaged detector twice, independently verify the
 CPU and GPU operator profiles, and pass results from those same runs. A match alone
 does not establish GPU execution or prove parity on other images.
+
+## Repeated ORT profile runs
+
+`python3 shared/python/verify_ort_profile.py PROFILE.json --device migraphx --min-runs 2`
+requires at least two complete, non-overlapping `model_run` intervals in one
+process, and a non-copy model operator on the requested provider fully inside
+every complete run. Qualifying intervals need valid timing; a run without a
+matching provider event fails. Omitting `--min-runs` retains the single-profile check.
+The trace identifies a process, not an ORT session; callers must independently
+ensure repeated runs use the same session and compare their outputs. A provider
+event alone does not establish correct results or physical GPU execution.

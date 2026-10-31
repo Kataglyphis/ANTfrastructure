@@ -1085,6 +1085,20 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       default-setting, packaged, native-device or other-architecture behavior. The CLI
       logs, JSON detections and profiles are in
       `_implementation/oxidant-detector-parity-cpu-20261031/results/`.
+      A separate finished OxidANT AMD x64 TAR (SHA-256
+      `dbec28967642de1692c5c5c619f6fa65b34b0c2a168773bf92f444d8e864d9a2`),
+      using the same image digest and two-cats fixture hash above on WSL `gfx1036`,
+      stopped at MIGraphX model compilation with `adaptive_topk_benchmark: all candidates
+      failed to run`; it also warned that `libMIOpenCKGroupedConv_gfx1036.so` was absent.
+      The gate rejected the package and did not establish the cause of either message or
+      the behavior of another GPU. The package-specific log is
+      `_implementation/oxidant-amd-package-parity-20261031/hardware-gate.log`.
+      With the nondefault process-only `MIGRAPHX_SKIP_BENCHMARKING=1`, that TAR's
+      bundled runtime and model ran 787 CPU operators and 5 MIGraphX plus 19 CPU
+      operators in clean-environment profiles. Detector parity still failed: the CPU
+      produced five detections versus three on the GPU, with leading cat scores of
+      0.8907 versus 0.6511. See the same directory's `diagnostic-clean.log`, JSON and
+      profiles. This workaround is diagnostic and does not make the package verified.
       With the process-only `MIGRAPHX_SKIP_BENCHMARKING=1`, compilation completed but ORT
       then failed to save its compiled model under a literal `""/…` cache path. Setting
       `ORT_MIGRAPHX_MODEL_CACHE_PATH=/tmp` in the disposable container allowed the same

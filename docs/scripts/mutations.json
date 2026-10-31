@@ -32105,6 +32105,38 @@
   "why": "provider events without an identified model operator cannot prove accelerated inference"
  },
  {
+  "id": "packaging.ort-profile-repeat-count",
+  "target": "shared/python/verify_ort_profile.py",
+  "find": "if len(runs) < minimum:",
+  "replace": "if False:",
+  "test": "python3 shared/python/tests/test_verify_ort_profile.py",
+  "why": "one profiled inference cannot establish repeated GPU execution"
+ },
+ {
+  "id": "packaging.ort-profile-each-run",
+  "target": "shared/python/verify_ort_profile.py",
+  "find": "if not any(",
+  "replace": "if False and not any(",
+  "test": "python3 shared/python/tests/test_verify_ort_profile.py",
+  "why": "every repeated inference must contain a requested-provider model operator"
+ },
+ {
+  "id": "packaging.ort-profile-sequential-runs",
+  "target": "shared/python/verify_ort_profile.py",
+  "find": "if previous[0] != current[0] or previous[2] > current[1]:",
+  "replace": "if False:",
+  "test": "python3 shared/python/tests/test_verify_ort_profile.py",
+  "why": "repeated model runs must be non-overlapping and belong to one process"
+ },
+ {
+  "id": "packaging.ort-profile-repeat-enforced",
+  "target": "shared/python/verify_ort_profile.py",
+  "find": "if args.min_runs is not None:\n            require_profiled_runs(",
+  "replace": "if False:\n            require_profiled_runs(",
+  "test": "python3 shared/python/tests/test_verify_ort_profile.py",
+  "why": "the optional repeat contract must actually run when requested"
+ },
+ {
   "id": "lib.coverage-profile-leak-check-off",
   "target": "linux/scripts/lib/coverage.sh",
   "find": "    run_env=(ASAN_OPTIONS=detect_leaks=0)\n",

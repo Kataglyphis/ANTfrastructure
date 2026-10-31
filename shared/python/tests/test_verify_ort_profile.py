@@ -13,13 +13,13 @@ SCRIPT = Path(__file__).resolve().parents[1] / "verify_ort_profile.py"
 
 class ProfileTest(unittest.TestCase):
     def run_profile(
-        self, profile: object, device: str
+        self, profile: object, device: str, *extra: str
     ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as work:
             path = Path(work) / "profile.json"
             path.write_text(json.dumps(profile), encoding="utf-8")
             return subprocess.run(
-                [sys.executable, str(SCRIPT), str(path), "--device", device],
+                [sys.executable, str(SCRIPT), str(path), "--device", device, *extra],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -96,6 +96,81 @@ class ProfileTest(unittest.TestCase):
         self.assertNotEqual(
             self.run_profile([{"cat": "Node", "args": None}], "cuda").returncode, 0
         )
+
+    def test_each_repeated_run_requires_a_gpu_model_operator(self) -> None:
+        runs = [
+            {
+                "name": "model_run",
+                "cat": "Session",
+                "ph": "X",
+                "pid": 1,
+                "ts": start,
+                "dur": 10,
+            }
+            for start in (10, 30)
+        ]
+
+        def node(start, provider="CUDAExecutionProvider", name="Conv", pid=1):
+            return {
+                "cat": "Node",
+                "ph": "X",
+                "pid": pid,
+                "ts": start,
+                "dur": 2,
+                "args": {"provider": provider, "op_name": name},
+            }
+
+        self.assertEqual(
+            self.run_profile(
+                runs + [node(12), node(32)], "cuda", "--min-runs", "2"
+            ).returncode,
+            0,
+        )
+        for invalid in (
+            runs[:1] + [node(12)],
+            runs + [node(12), node(32, provider="CPUExecutionProvider")],
+            runs + [node(12), node(32, name="MemcpyFromHost")],
+            runs + [node(12), node(32, pid=2)],
+            runs + [node(12), {**node(32), "ph": "B"}],
+            runs + [node(12), node(40)],
+            runs + [node(12), {**node(32), "dur": 20}],
+            [{**runs[0], "dur": 25}, runs[1], node(12), node(32)],
+            [runs[0], {**runs[1], "ts": True}, node(12), node(32)],
+            [runs[0], {**runs[1], "ph": "B"}, node(12), node(32)],
+        ):
+            with self.subTest(invalid=invalid):
+                self.assertNotEqual(
+                    self.run_profile(invalid, "cuda", "--min-runs", "2").returncode, 0
+                )
+
+    def test_min_runs_argument_must_be_positive(self) -> None:
+        self.assertNotEqual(
+            self.run_profile([], "cuda", "--min-runs", "0").returncode, 0
+        )
+
+    def test_oversized_integer_timing_fails_cleanly(self) -> None:
+        run = {
+            "name": "model_run",
+            "cat": "Session",
+            "ph": "X",
+            "pid": 1,
+            "ts": 10**400,
+            "dur": 1,
+        }
+        node = {
+            "cat": "Node",
+            "ph": "X",
+            "pid": 1,
+            "ts": 0,
+            "dur": 1,
+            "args": {"provider": "CUDAExecutionProvider", "op_name": "Conv"},
+        }
+        for events in ([run, node], [{**run, "ts": 0}, {**node, "dur": 10**400}]):
+            with self.subTest(events=events):
+                result = self.run_profile(events, "cuda", "--min-runs", "1")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Invalid ORT profile:", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
 
 
 if __name__ == "__main__":
