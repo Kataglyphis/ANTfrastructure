@@ -13,6 +13,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-31 — Pester action ends with its own verdict
+
+- `run-pester-suite` exits 0 after its checks pass, so a native exit code a passing suite left behind no longer fails the step (AccelerANTgine's 39/39 Pester run exited 1).
+
 ## 2026-10-31 — Lockfile security audit and the benchmark gate switch
 
 - `linux/scripts/security-audit.sh` and the reusable `security-audit.yml` scan every tracked

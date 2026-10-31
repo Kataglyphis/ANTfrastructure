@@ -49,3 +49,5 @@ runs:
           Write-Host "::error::run-pester-suite: '${{ inputs.path }}' had no passing test; skipped or pending tests are not execution evidence."
           exit 1
         }
+        # GitHub's pwsh wrapper exits with $LASTEXITCODE, which a passing suite's own native calls can leave nonzero.
+        exit 0

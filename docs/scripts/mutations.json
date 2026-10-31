@@ -30041,6 +30041,14 @@
   "why": "a skipped or pending Pester suite cannot count as a passing test run"
  },
  {
+  "id": "windows-lane.pester-action-ends-with-its-verdict",
+  "target": ".github/actions/run-pester-suite/action.yml",
+  "find": "        # GitHub's pwsh wrapper exits with $LASTEXITCODE, which a passing suite's own native calls can leave nonzero.\n        exit 0",
+  "replace": "        # GitHub's pwsh wrapper exits with $LASTEXITCODE, which a passing suite's own native calls can leave nonzero.",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ci.PesterActionExit.Tests.ps1 -ResultFile logs/code-quality/pester-action-exit-mutation.json",
+  "why": "a passing suite whose own native calls left $LASTEXITCODE nonzero must not fail the step through GitHub's pwsh wrapper"
+ },
+ {
   "id": "lib.wsl-quality-windows-test-exit-is-fatal",
   "target": "linux/scripts/wsl-quality.sh",
   "find": "  run_logged windows-tests \"${WINDOWS_PWSH_BIN}\" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${windows_test_script}\" -Jobs \"$1\"",
