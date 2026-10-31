@@ -1051,6 +1051,17 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the LLVM license website. The COMGR license contains Apache and LLVM exception text,
       but its applicability and completeness for the separately copied LLVM binaries and
       other transitive or dynamically loaded components have not been established.
+      A later comparison verified current AMD repository `InRelease` signatures with
+      the image-build-pinned key and checked the signed package-index hashes. Selected
+      files from the signed `amdrocm10-migraphx 2.18.0-1`, `amdrocm-runtime10.1`,
+      `amdrocm-llvm10.1`, `amdrocm-blas-host10.1`, and `amdrocm-dnn-host10.1`
+      (all four ROCm packages `10.1.0-3`) match the image's corresponding MIGraphX,
+      HIP, HSA, COMGR, LLVM, Clang, rocBLAS, hipBLASLt and MIOpen shared objects;
+      the checked MIGraphX, HIP, COMGR, rocBLAS and hipBLASLt notice files also match.
+      This proves only those selected current-archive bytes, not the image's original
+      package transaction, all dynamic resources or complete applicable notices. Scoped
+      signed index, archive hashes, file lists, comparisons and unresolved notice
+      observations: `_implementation/rocm-official-package-audit-20261031/VALIDATION.md`.
       A read-only follow-up against the same image found that its ORT MIGraphX
       provider directly imports `libmigraphx_c.so.3` and `libamdhip64.so.7`;
       the two retained OxidANT and AccelerANTgine AMD DEBs examined declare no
