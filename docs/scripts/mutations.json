@@ -8358,10 +8358,18 @@
  {
   "id": "renovate.remote-default-tip-is-selected",
   "target": "linux/scripts/renovate-submodules.sh",
-  "find": "  if [ \"${checked}\" != \"${SUB_QUERY_SHA}\" ] || [ \"${pinned}\" != \"${SUB_QUERY_SHA}\" ]; then",
-  "replace": "  if [ \"${checked}\" != \"${pinned}\" ]; then",
+  "find": "    && { [ \"${checked}\" != \"${SUB_QUERY_SHA}\" ] || [ \"${pinned}\" != \"${SUB_QUERY_SHA}\" ]; }; then",
+  "replace": "    && { [ \"${checked}\" != \"${pinned}\" ]; }; then",
   "test": "bash linux/scripts/tests/test-renovate-submodule-default.sh",
   "why": "a local checkout matching its pinned gitlink can still be several commits behind the remote default branch; comparing only local state misses that update"
+ },
+ {
+  "id": "renovate.submodule-path-selection",
+  "target": "linux/scripts/renovate-submodules.sh",
+  "find": "  if { [ \"${#SELECTED_SUBMODULES[@]}\" -eq 0 ] || rl_has \"${path}\" \"${SELECTED_SUBMODULES[@]}\"; } \\\n",
+  "replace": "  if true \\\n",
+  "test": "bash linux/scripts/tests/test-renovate-submodule-default.sh",
+  "why": "an exact submodule selection must not move an excluded direct gitlink"
  },
  {
   "id": "renovate.sigpipe-is-trapped",
