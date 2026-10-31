@@ -618,8 +618,8 @@
  {
   "id": "mutations.survivor-must-fail",
   "target": "docs/scripts/verify_mutations.py",
-  "find": "        if not applied:\n            rc = 1",
-  "replace": "        if not applied:\n            rc = 0",
+  "find": "    if not applied:\n        report.err(\"FAIL: {} -- {} ({})\\n\".format(e[\"id\"], detail, e[\"target\"]))\n        return 1",
+  "replace": "    if not applied:\n        report.err(\"FAIL: {} -- {} ({})\\n\".format(e[\"id\"], detail, e[\"target\"]))\n        return 0",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "a stale mutation is silently testing nothing"
  },
@@ -650,8 +650,8 @@
  {
   "id": "mutations.vacuous-bite",
   "target": "docs/scripts/verify_mutations.py",
-  "find": "        if not base_ok:",
-  "replace": "        if False:",
+  "find": "    if not base_ok:",
+  "replace": "    if False:",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "a mutation recorded as biting while its suite was ALREADY red proves nothing; each distinct test must pass unmutated first"
  },
@@ -674,8 +674,8 @@
  {
   "id": "mutations.host-skipped-survivor-is-a-skip",
   "target": "docs/scripts/verify_mutations.py",
-  "find": "        elif HOST_MAY_SKIP and now_skips:",
-  "replace": "        elif False:",
+  "find": "    if HOST_MAY_SKIP and now_skips:",
+  "replace": "    if False:",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "a survivor in a suite that skipped or waived a case on this host proves nothing there (the case that would catch it never ran); calling it SURVIVED on Git Bash is a false alarm Linux would not raise"
  },
@@ -2587,7 +2587,7 @@
   "id": "python-lint.embedded-file-discovery",
   "target": "linux/scripts/lint-python.sh",
   "find": "find linux/scripts -name '*.sh' -type f;",
-  "replace": "$(find linux/scripts/01-core -name '*.sh' -type f;",
+  "replace": "find linux/scripts/01-core -name '*.sh' -type f;",
   "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
   "why": "the extractor is only as wide as the file list it is handed; narrowing the discovery scope silently un-lints whole directories of embedded Python and nothing said so"
  },
@@ -8767,7 +8767,7 @@
   "id": "packaging.desktop-file-from-project",
   "target": "linux/scripts/lib/app-packaging.sh",
   "find": "    app_packaging_adapt_desktop_file \"$APP_PACKAGING_DESKTOP_FILE\" \"$file_path\" \"$exec_name\" \"$icon_name\"\n    return\n",
-  "replace": "",
+  "replace": "    true\n",
   "test": "bash linux/scripts/tests/test-package-archive.sh",
   "why": "--desktop-file was checked and never read; the project's Name, Terminal and Categories must reach the package"
  },
@@ -12542,7 +12542,7 @@
  {
   "find": "      append_optional_build_arg _csba_out ENABLE_DEEPSTREAM \"${ENABLE_DEEPSTREAM:-}\"\n",
   "id": "stage-graph.deepstream-media-arg",
-  "replace": "",
+  "replace": "      true\n",
   "target": "linux/scripts/01-core/stage-defs.sh",
   "test": "bash linux/scripts/tests/test-gpu-variant.sh",
   "why": "without the build arg the media stage builds no DeepStream"
@@ -12550,7 +12550,7 @@
  {
   "find": "  append_optional_build_arg \"$1\" ENABLE_DEEPSTREAM \"${ENABLE_DEEPSTREAM:-}\"\n",
   "id": "deepstream.runtime-arg-forwarded",
-  "replace": "",
+  "replace": "  true\n",
   "target": "linux/scripts/01-core/build-helpers.sh",
   "test": "bash linux/scripts/tests/test-gpu-variant.sh",
   "why": "without the build arg the package asserts the tree absent and fails"
@@ -17406,8 +17406,8 @@
  {
   "id": "mutations.work-queue",
   "target": "docs/scripts/verify_mutations.py",
-  "find": "        return run_shard(args, _drain(todo), root, report, baselines, f\"[{n + 1}/{jobs}] \")",
-  "replace": "        return run_shard(args, entries[n::jobs], root, report, baselines, f\"[{n + 1}/{jobs}] \")",
+  "find": "        return run_shard(args, _drain(todo), root, report, baselines, f\"[{n + 1}/{jobs}] \", costs)",
+  "replace": "        return run_shard(args, entries[n::jobs], root, report, baselines, f\"[{n + 1}/{jobs}] \", costs)",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "dealt round-robin, two slow entries can land on one mirror while the others idle"
  },
@@ -17415,9 +17415,81 @@
   "id": "mutations.extra-mirrors-copied",
   "target": "docs/scripts/verify_mutations.py",
   "find": "        if n:\n            mirror_tree(src, root)\n",
-  "replace": "",
+  "replace": "        if n:\n",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "each extra shard copies its own mirror, now inside the pool rather than before it"
+ },
+ {
+  "id": "mutations.parse-unparsable-mutant-refused",
+  "target": "docs/scripts/mutation_parse.py",
+  "find": "            if err and (edit.target, edit.original) not in broken:\n",
+  "replace": "            if False:\n",
+  "test": "bash linux/scripts/tests/test-mutation-parse.sh",
+  "why": "a mutant that no longer parses would bite for its syntax error alone, and the removed guarantee would pass as proven"
+ },
+ {
+  "id": "mutations.parse-broken-target-not-refused",
+  "target": "docs/scripts/mutation_parse.py",
+  "find": "            if err and (edit.target, edit.original) not in broken:\n",
+  "replace": "            if err:\n",
+  "test": "bash linux/scripts/tests/test-mutation-parse.sh",
+  "why": "a target that already fails to parse makes every mutant fail too; refusing those blames the recipe for the file"
+ },
+ {
+  "id": "mutations.parse-crlf-stripped",
+  "target": "docs/scripts/mutation_parse.py",
+  "find": "input=text.replace(\"\\r\", \"\")",
+  "replace": "input=text",
+  "test": "bash linux/scripts/tests/test-mutation-parse.sh",
+  "why": "bash -n rejects every CRLF file, so a Windows checkout's target would count as unparsed and its broken mutant would pass"
+ },
+ {
+  "id": "mutations.parse-shebang-is-shell",
+  "target": "docs/scripts/mutation_parse.py",
+  "find": "if name.endswith(\".sh\") or _SHELL_SHEBANG.match(text.split(\"\\n\", 1)[0]):",
+  "replace": "if name.endswith(\".sh\"):",
+  "test": "bash linux/scripts/tests/test-mutation-parse.sh",
+  "why": "hooks and entry points without an extension are shell too; their broken mutants would go unchecked"
+ },
+ {
+  "id": "mutations.parse-python-compiled",
+  "target": "docs/scripts/mutation_parse.py",
+  "find": "            return f\"compile(): line {exc.lineno}: {exc.msg}\"\n",
+  "replace": "            return None\n",
+  "test": "bash linux/scripts/tests/test-mutation-parse.sh",
+  "why": "a Python mutant that no longer compiles would bite on the SyntaxError its import raises"
+ },
+ {
+  "id": "mutations.parse-pwsh-missing-fails",
+  "target": "docs/scripts/mutation_parse.py",
+  "find": "    if pwsh is None:\n        raise MissingParser(",
+  "replace": "    if pwsh is None:\n        return [None] * len(texts)\n        raise MissingParser(",
+  "test": "bash linux/scripts/tests/test-mutation-parse.sh",
+  "why": "a host without pwsh would wave every PowerShell mutant through as parsed"
+ },
+ {
+  "id": "mutations.parse-pwsh-once",
+  "target": "docs/scripts/mutation_parse.py",
+  "find": "        answers = _errors(kind, originals + [(e.target, e.mutated) for e in group])\n",
+  "replace": "        answers = _errors(kind, originals) + _errors(kind, [(e.target, e.mutated) for e in group])\n",
+  "test": "bash linux/scripts/tests/test-mutation-parse.sh",
+  "why": "pwsh takes about a second to start; a second process per call doubles that cost in every shard and pre-commit run"
+ },
+ {
+  "id": "mutations.gate-refuses-unparsable",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "    runnable, refused_rc = refuse_unparsable(entries, args.root, report)\n",
+  "replace": "    runnable, refused_rc = entries, 0\n",
+  "test": "bash linux/scripts/tests/test-mutation-parse.sh",
+  "why": "the proving run, not only --parse-check, must refuse a mutant that does not parse, or CI keeps counting syntax errors as bites"
+ },
+ {
+  "id": "mutations.cost-line-per-command",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "            if self._left[cmd]:\n                return\n",
+  "replace": "            if True:\n                return\n",
+  "test": "bash linux/scripts/tests/test-mutation-parse.sh",
+  "why": "the shard plan is built from these lines; without them no per-command time reaches a CI log"
  },
  {
   "id": "mutations.default-jobs-all-cpus",

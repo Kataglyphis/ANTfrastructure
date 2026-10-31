@@ -21,9 +21,12 @@ import tempfile
 import threading
 import time
 from _thread import LockType
+from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from types import FrameType
 from typing import Never, NotRequired, TextIO, TypedDict
+
+from mutation_parse import Edit, MissingParser, refusals
 
 
 class MutationEntry(TypedDict):
@@ -276,14 +279,39 @@ class Baselines:
         self._ok: dict[str, tuple[bool | None, str | None]] = {}
         self._guards: dict[str, LockType] = {}
         self._lock = threading.Lock()
+        self.seconds: dict[str, float] = {}
 
     def ok(self, cmd: str, root: str, timeout: float) -> tuple[bool | None, str | None]:
         with self._lock:
             guard = self._guards.setdefault(cmd, threading.Lock())
         with guard:
             if cmd not in self._ok:
+                start = time.monotonic()
                 self._ok[cmd] = passes(cmd, root, timeout)
+                self.seconds[cmd] = time.monotonic() - start
         return self._ok[cmd]
+
+
+class Costs:
+    """Seconds per test command, printed to stderr when its last selected entry ends: the input of the shard plan."""
+
+    def __init__(self, entries: Iterable[MutationEntry], report: "Report") -> None:
+        self._left = Counter(e["test"] for e in entries)
+        self._count = dict(self._left)
+        self._wall: dict[str, float] = {}
+        self._lock = threading.Lock()
+        self._report = report
+
+    def done(self, cmd: str, seconds: float, baselines: Baselines) -> None:
+        with self._lock:
+            self._wall[cmd] = self._wall.get(cmd, 0.0) + seconds
+            self._left[cmd] -= 1
+            if self._left[cmd]:
+                return
+            base = baselines.seconds.get(cmd, 0.0)
+            wall = self._wall[cmd] + base
+        self._report.note(f"  cost    wall={wall:.2f}s baseline={base:.2f}s "
+                          f"entries={self._count[cmd]} test={cmd}\n")
 
 
 class Report:
@@ -300,6 +328,14 @@ class Report:
 
     def entry(self, key: str) -> None:
         self._cur.key = key
+        self._cur.seconds = 0.0
+
+    def spent(self, seconds: float) -> None:
+        self._cur.seconds = seconds
+
+    def taken(self) -> float:
+        """Seconds the current entry's mutant ran; its baseline is counted once, by Costs."""
+        return getattr(self._cur, "seconds", 0.0)
 
     def out(self, text: str) -> None:
         self._write(sys.stdout, text)
@@ -310,6 +346,9 @@ class Report:
 
     def err(self, text: str) -> None:
         self.failed.add(self._cur.key)
+        self._write(sys.stderr, text)
+
+    def note(self, text: str) -> None:
         self._write(sys.stderr, text)
 
     def _write(self, stream: TextIO, text: str) -> None:
@@ -407,52 +446,61 @@ def baseline_ok(
     return cache.ok(entry["test"], root, entry.get("timeout", 300))
 
 
+def prove(args: argparse.Namespace, e: MutationEntry, report: Report, baselines: Baselines) -> int:
+    """One entry's verdict: baseline first, then the mutant; returns 1 when it fails the gate."""
+    base_ok, base_why = baseline_ok(e, args.root, baselines)
+    if base_ok is None:
+        report.skip(f"  skip    {e['id']:<34} {base_why}\n")
+        return 0
+    if not base_ok:
+        report.err(
+            "FAIL: {} -- baseline test already fails unmutated (vacuous bite)\n"
+            "      test:   {}\n"
+            "      why:    {}\n".format(e["id"], e["test"], base_why))
+        return 1
+    start = time.monotonic()
+    applied, failed, detail, now_skips = apply_and_run(e, args.root)
+    report.spent(time.monotonic() - start)
+    if not applied:
+        report.err("FAIL: {} -- {} ({})\n".format(e["id"], detail, e["target"]))
+        return 1
+    if failed:
+        report.out(f"  bites   {e['id']:<34} {e['why']}\n")
+        return 0
+    if HOST_MAY_SKIP and now_skips:
+        report.skip(
+            f"  skip    {e['id']:<34} survived where this host skips {now_skips} case(s) "
+            "of its suite; Linux grades it\n"
+        )
+        return 0
+    report.err(
+        "FAIL: {} SURVIVED -- the tests pass with this guarantee removed.\n"
+        "      target: {}\n      test:   {}\n      meaning: {}\n".format(e["id"], e["target"], e["test"], e["why"]))
+    return 1
+
+
 def run_entries(
     args: argparse.Namespace, entries: Iterable[MutationEntry], report: Report,
-    baselines: Baselines | None = None,
+    baselines: Baselines | None = None, costs: Costs | None = None,
 ) -> int:
     rc = 0
     baselines = Baselines() if baselines is None else baselines
     for e in entries:
         report.entry(e["id"])
-        base_ok, base_why = baseline_ok(e, args.root, baselines)
-        if base_ok is None:
-            report.skip(f"  skip    {e['id']:<34} {base_why}\n")
-            continue
-        if not base_ok:
-            rc = 1
-            report.err(
-                "FAIL: {} -- baseline test already fails unmutated (vacuous bite)\n"
-                "      test:   {}\n"
-                "      why:    {}\n".format(e["id"], e["test"], base_why))
-            continue
-        applied, failed, detail, now_skips = apply_and_run(e, args.root)
-        if not applied:
-            rc = 1
-            report.err("FAIL: {} -- {} ({})\n".format(e["id"], detail, e["target"]))
-        elif failed:
-            report.out(f"  bites   {e['id']:<34} {e['why']}\n")
-        elif HOST_MAY_SKIP and now_skips:
-            report.skip(
-                f"  skip    {e['id']:<34} survived where this host skips {now_skips} case(s) "
-                "of its suite; Linux grades it\n"
-            )
-        else:
-            rc = 1
-            report.err(
-                "FAIL: {} SURVIVED -- the tests pass with this guarantee removed.\n"
-                "      target: {}\n      test:   {}\n      meaning: {}\n".format(e["id"], e["target"], e["test"], e["why"]))
+        rc = max(rc, prove(args, e, report, baselines))
+        if costs is not None:
+            costs.done(e["test"], report.taken(), baselines)
     return rc
 
 
 def run_shard(
     args: argparse.Namespace, entries: Iterable[MutationEntry], root: str,
-    report: Report, baselines: Baselines, tag: str = "",
+    report: Report, baselines: Baselines, tag: str = "", costs: Costs | None = None,
 ) -> int:
     local = argparse.Namespace(**vars(args))
     local.root = root
     report.shard(tag)
-    return run_entries(local, entries, report, baselines)
+    return run_entries(local, entries, report, baselines, costs)
 
 
 def tree_bytes(root: str) -> int:
@@ -502,6 +550,7 @@ def _drain(todo: queue.Queue[MutationEntry]) -> Iterator[MutationEntry]:
 
 def run_shards(
     args: argparse.Namespace, entries: Sequence[MutationEntry], src: str, report: Report,
+    costs: Costs | None = None,
 ) -> int:
     """--jobs mirrors draining one queue; each extra mirror is copied by its own shard, from src, which no shard mutates."""
     size = tree_bytes(args.root)
@@ -523,7 +572,7 @@ def run_shards(
             mirror_tree(src, root)
             if not setup_mirror(root, args.setup_script):
                 return 1
-        return run_shard(args, _drain(todo), root, report, baselines, f"[{n + 1}/{jobs}] ")
+        return run_shard(args, _drain(todo), root, report, baselines, f"[{n + 1}/{jobs}] ", costs)
 
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
@@ -532,6 +581,34 @@ def run_shards(
     finally:
         for root in extra:
             shutil.rmtree(root, ignore_errors=True)
+
+
+def parse_refusals(entries: Iterable[MutationEntry], root: str) -> dict[str, str]:
+    """id -> why, for each applicable edit whose target parses and whose mutant does not."""
+    edits = []
+    for e in entries:
+        original, mutated, _why = applicable(e, root)
+        if original is not None and mutated is not None:
+            edits.append(Edit(e["id"], e["target"], original, mutated))
+    return refusals(edits)
+
+
+def refuse_unparsable(
+    entries: list[MutationEntry], root: str, report: Report,
+) -> tuple[list[MutationEntry], int]:
+    """The entries left to prove, and 1 when any was refused or a parser is missing."""
+    try:
+        refused = parse_refusals(entries, root)
+    except MissingParser as exc:
+        report.entry("")
+        report.err(f"FAIL: {exc} -- a mutant that is never parsed cannot be trusted to bite\n")
+        return [], 1
+    for e in entries:
+        if e["id"] in refused:
+            report.entry(e["id"])
+            report.err(f"FAIL: {e['id']} -- the mutant does not parse ({refused[e['id']]}); its bite would "
+                       f"prove only the syntax error, so keep the edit valid ({e['target']})\n")
+    return [e for e in entries if e["id"] not in refused], 1 if refused else 0
 
 
 def select_only(
@@ -580,6 +657,24 @@ def select(args: argparse.Namespace) -> list[MutationEntry]:
     return select_shard(entries, args.shard)
 
 
+def run_check_mode(args: argparse.Namespace, entries: list[MutationEntry], scope: str) -> int | None:
+    """--stale-check or --parse-check, which run no test; None when neither was asked for."""
+    if args.stale_check:
+        say(f"=== mutation staleness: does every recorded edit still apply?{scope} ===")
+        say(f"  {len(entries)} entr(ies), no test run")
+        rc = run_stale(entries, args.root)
+        if rc == 0:
+            say("OK: every recorded mutation still applies to its target")
+        return rc
+    if args.parse_check:
+        say(f"=== mutant parse check: does every selected mutant still parse?{scope} ===")
+        _runnable, rc = refuse_unparsable(entries, args.root, Report())
+        if rc == 0:
+            say(f"OK: every selected mutant of a parsed target parses ({len(entries)} entr(ies), no test run)")
+        return rc
+    return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -600,6 +695,8 @@ def main() -> int:
                     help="mutations to prove at once, one mirror each (default: %(default)s)")
     ap.add_argument("--stale-check", action="store_true",
                     help="only check that every selected edit still applies; run no test")
+    ap.add_argument("--parse-check", action="store_true",
+                    help="only check that every selected mutant still parses; run no test")
     ap.add_argument("--shard", metavar="K/N",
                     help="prove only entries[K::N] of the selection (K from 0): one of N CI jobs")
     args = ap.parse_args()
@@ -615,32 +712,31 @@ def main() -> int:
         sys.stderr.write("ERROR: --setup-script requires disposable mirrors; omit --in-place\n")
         return 2
     scope = f" (shard {args.shard}: {len(entries)} entr(ies))" if args.shard else ""
-    if args.stale_check:
-        say(f"=== mutation staleness: does every recorded edit still apply?{scope} ===")
-        say(f"  {len(entries)} entr(ies), no test run")
-        rc = run_stale(entries, args.root)
-        if rc == 0:
-            say("OK: every recorded mutation still applies to its target")
-        return rc
+    checked = run_check_mode(args, entries, scope)
+    if checked is not None:
+        return checked
 
     say(f"=== mutation gate: can these tests fail?{scope} ===")
     if not entries:
         say("  nothing selected")
         return 0
     report = Report()
+    runnable, refused_rc = refuse_unparsable(entries, args.root, report)
+    costs = Costs(runnable, report)
     if args.in_place:
-        rc = run_entries(args, entries, report)
+        rc = run_entries(args, runnable, report, costs=costs)
     else:
         src = os.path.abspath(args.root)
         workspace = tempfile.mkdtemp(prefix="mutation-gate-")
         try:
             mirror_tree(src, workspace)
             args.root = workspace
-            rc = run_shards(args, entries, src, report) if setup_mirror(
+            rc = run_shards(args, runnable, src, report, costs) if setup_mirror(
                 workspace, args.setup_script
             ) else 1
         finally:
             shutil.rmtree(workspace, ignore_errors=True)
+    rc = max(rc, refused_rc)
     report.summary(entries)
     if rc == 0 and report.skipped:
         say(

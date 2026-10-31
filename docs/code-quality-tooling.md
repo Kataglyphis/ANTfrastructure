@@ -944,7 +944,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3959 entries** over **475 distinct test commands**; both digits are
+manifest holds **3968 entries** over **476 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1052,6 +1052,27 @@ nothing (the common commit) copies nothing at all.
 | `--jobs <n>` | how many mutations to prove at once, one mirror each (default: the CPUs the process may use, capped at the entry count and at a quarter of the temp filesystem's free space). Every mutation is still applied, run and restored alone, inside its own shard's copy |
 | `--shard K/N` | prove only `entries[K::N]` of the selection (`K` from 0), after `--only`/`--changed`. N runs over the same manifest prove every entry exactly once between them; a `K` outside `0..N-1` exits 2. CI's mutations jobs are the one caller, through preflight's `PREFLIGHT_MUTATION_SHARD` |
 | `--in-place` | mutate `--root` itself, no copy. The pre-2026-09-03 behaviour, kept for the gate's OWN fixtures: their test commands name the subject by absolute path, so nothing would bite inside a copy. Never point it at the repo |
+
+### Mutants must parse
+
+A mutant that no longer parses bites for its syntax error, not for the guarantee
+it removed: any test that sources or imports the file fails. Five recipes bit
+only that way on 2026-10-31. The gate now refuses such a recipe before its test
+runs, with `FAIL: <id> -- the mutant does not parse (...)`, and
+`verify_mutations.py --parse-check` runs that check alone, without a test.
+
+The check (`docs/scripts/mutation_parse.py`) reads `*.sh` files and files with a
+`bash` or `sh` shebang through `bash -n` after stripping CR, `*.py` through
+`compile()`, and every `*.ps1`/`*.psm1` text through one `pwsh` process. It
+refuses a recipe only when the original target parses. A missing parser fails
+the run; it never skips. It does not read other languages (YAML, JSON,
+JavaScript, Dockerfiles, CMake), code embedded in another file (heredocs,
+workflow `run:` blocks), or names that parse but cannot resolve at run time.
+A rewritten recipe keeps the edit valid: replace a removed branch body with
+`true` or `pass` rather than deleting the only statement in it.
+
+`test-mutation-parse.sh` proves each arm, and the `mutations.parse-*` recipes
+prove that suite.
 
 ### The mutation gate in CI, sharded
 
@@ -1216,7 +1237,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 57 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 66 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of

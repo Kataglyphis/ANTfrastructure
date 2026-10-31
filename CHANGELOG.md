@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-31 — Mutants must parse, and the mutation gate times each test command
+
+- `verify_mutations.py` refuses a recipe whose target parses and whose mutant does not, and
+  `--parse-check` runs that check alone ([Mutants must parse](docs/code-quality-tooling.md#mutants-must-parse)).
+  Five recipes that bit only on a syntax error now keep their edit valid.
+- The gate prints each test command's wall and baseline seconds to stderr when its last entry
+  ends, as input for a cost-based shard plan.
+
 ## 2026-10-30 — Linux GPU bundle checks reject CPU fallback
 
 - Renovate can select exact direct gitlink paths while still validating every direct submodule.

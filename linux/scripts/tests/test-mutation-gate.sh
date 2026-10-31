@@ -11,6 +11,8 @@ GATE="${REPO}/docs/scripts/verify_mutations.py"
 
 _tmp="$(mktemp -d)"
 trap 'if [ -s "${_tmp}/hold-pid" ]; then kill -TERM "$(cat "${_tmp}/hold-pid")" 2>/dev/null || :; fi; rm -rf "${_work}" "${_tmp}"' EXIT
+# Gate mutants written to "${_tmp}" import their sibling module from there.
+cp "${REPO}/docs/scripts/mutation_parse.py" "${_tmp}/"
 
 # _fixture <find> <replace> <yes|witness|broken|no> [dir]: "${_work}" is outside any copy, "." inside it.
 _fixture() {
@@ -95,7 +97,7 @@ esac
 
 # The same gate believing it runs under Git Bash, so the host-skip arms are proven on Linux too.
 _gate_as_gitbash() {
-  TMPDIR="${_tmp}" "${PY}" -c 'import runpy, sys; sys.platform = "msys"; sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name="__main__")' \
+  TMPDIR="${_tmp}" "${PY}" -c 'import os, runpy, sys; sys.platform = "msys"; sys.argv = sys.argv[1:]; sys.path.insert(0, os.path.dirname(sys.argv[0])); runpy.run_path(sys.argv[0], run_name="__main__")' \
     "${GATE}" --manifest "${_work}/m.json" --root "${_work}" --in-place
 }
 

@@ -73,7 +73,7 @@ t_assert_rc 2 python3 "${VALIDATOR}" --root "${_repo}" --manifest quality/mutati
 t_case "an empty-manifest or untracked-manifest mutant breaks the validator contract"
 t_assert_ok _validator_contract "${VALIDATOR}"
 mkdir -p "${_work}/mutant"
-cp "${ROOT}/docs/scripts/verify_mutations.py" "${_work}/mutant/verify_mutations.py"
+cp "${ROOT}/docs/scripts/verify_mutations.py" "${ROOT}/docs/scripts/mutation_parse.py" "${_work}/mutant/"
 sed 's/if not selected:/if False:/' "${VALIDATOR}" > "${_work}/mutant/empty.py"
 t_assert_fails _validator_contract "${_work}/mutant/empty.py"
 sed 's/if proc.returncode != 0:/if False:/' "${VALIDATOR}" > "${_work}/mutant/untracked.py"

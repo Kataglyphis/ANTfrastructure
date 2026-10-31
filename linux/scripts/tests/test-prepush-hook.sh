@@ -106,7 +106,7 @@ _stub_gate
 # Only the real gate proves the hook stops a push over an entry that no longer applies.
 
 _real_rig() {  # <find string planted in the manifest>
-  cp "${REAL_GATE}" "${_root}/docs/scripts/verify_mutations.py"
+  cp "${REAL_GATE}" "${REAL_GATE%/*}/mutation_parse.py" "${_root}/docs/scripts/"
   printf 'GUARD=on\n' > "${_root}/subject.sh"
   printf '[{"id":"probe.one","target":"subject.sh","find":"%s","replace":"GUARD=off","test":"true","why":"probe"}]\n' \
     "$1" > "${_root}/docs/scripts/mutations.json"
@@ -126,7 +126,7 @@ t_assert_contains "${_out}" "probe.one" "and it must name the entry that rotted"
 
 t_case "the real staleness pass runs no test, so it costs a read per entry"
 # `"test": "false"` would fail every entry if the pass ran it, so a healthy verdict proves it did not.
-cp "${REAL_GATE}" "${_root}/docs/scripts/verify_mutations.py"
+cp "${REAL_GATE}" "${REAL_GATE%/*}/mutation_parse.py" "${_root}/docs/scripts/"
 printf 'GUARD=on\n' > "${_root}/subject.sh"
 printf '[{"id":"probe.one","target":"subject.sh","find":"GUARD=on","replace":"GUARD=off","test":"false","why":"probe"}]\n' \
   > "${_root}/docs/scripts/mutations.json"
