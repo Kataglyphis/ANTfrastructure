@@ -21,7 +21,8 @@ usage: collect-release-assets.sh [options] <artifacts dir> <out dir>
 Globs are case patterns, so * crosses /. NAME takes {version}, {stem} (the file's name
 without its last extension), and {arch} and {machine} from the upload's name:
 x64 x86_64, arm64 aarch64, riscv64 riscv64. A docs site's upload (*-docs-site, docs-site-*)
-is always skipped.
+and uploads named with candidate, unverified or inventory-only are always skipped
+regardless of letter case. User-supplied skip globs remain case-sensitive.
 USAGE
   exit 2
 }
@@ -30,8 +31,9 @@ USAGE
 . "$(dirname "${BASH_SOURCE[0]}")/../01-core/logging.sh"
 
 VERSION="" STRICT=0 GAVE=0 OUT="" SCRATCH="" LONE=""
-# build-docs.yml uploads the site in the same run as the release.
 SKIP=('*-docs-site' 'docs-site-*')
+# Draft GPU outputs must not be collected by broad release file globs.
+DRAFT_SKIP=('*candidate*' '*unverified*' '*inventory-only*')
 INCLUDE=() EXCLUDE=() ONLY_FROM=() RENAME=() ZIP=() UNPACK=() EXPECT=() POSITIONAL=()
 
 add_to() {
@@ -211,8 +213,9 @@ check_expected() {
 
 # collect_one <dir> <upload>: one upload, unless it is skipped; --strict fails one that gives nothing.
 collect_one() {
-  local dir="$1" upload="$2"
-  if any_match "$upload" "${SKIP[@]}"; then return 0; fi
+  local dir="$1" upload="$2" draft_name
+  draft_name="$(LC_ALL=C; printf '%s' "${upload,,}")"
+  if any_match "$upload" "${SKIP[@]}" || any_match "$draft_name" "${DRAFT_SKIP[@]}"; then return 0; fi
   GAVE=0
   collect_upload "$dir" "$upload"
   [ "$GAVE" = 1 ] || [ "$STRICT" = 0 ] || die "upload ${upload} is neither collected nor skipped: decide in the release's collect options"

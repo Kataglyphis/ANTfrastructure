@@ -151,6 +151,13 @@ release files. It fails when two files would get one name, when it collects noth
 any upload fail without it rather than drop out of the release. An upload named `*-docs-site` or `docs-site-*` is always skipped:
 `build-docs.yml` uploads the site in the same run.
 
+Uploads whose names contain `candidate`, `unverified` or `inventory-only` are also always skipped,
+regardless of letter case, even when a broad include, rename or zip rule matches them. User-supplied
+`--skip` globs remain case-sensitive. This reserves those names for draft
+outputs and keeps them out of release downloads; it does not establish that another upload has
+passed GPU verification. A future GPU release lane must promote the exact verified package bytes
+to a separately named upload after its required checks succeed, and the release must expect them.
+
 | Option | Does |
 | --- | --- |
 | `--skip UPLOAD_GLOB` | an upload that is no deliverable |

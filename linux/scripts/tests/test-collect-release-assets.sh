@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # collect-release-assets.sh over each consumer's uploads and options, and the guards of release-publish.yml. See docs/branch-and-release-strategy.md#collecting-the-release-files
+# NOT covered: whether a separately named GPU release upload passed physical-device verification.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -33,6 +34,41 @@ t_assert_contains "$(log usage-2)" "a rule needs GLOB=VALUE"
 t_assert_fails collect usage-3 --include "'*.deb'" "${work}/u" "${work}/u-out2"
 t_assert_contains "$(log usage-3)" "write '*.deb' unquoted"
 t_assert_fails collect usage-4 "${work}/no-such-dir" "${work}/u-out3"
+
+t_case "unverified GPU uploads cannot become release assets through broad collection rules"
+mkdir -p "${work}/gpu-guard/cpu-packages" "${work}/gpu-guard/oxidant-linux-x64-nvidia-host-runtime-candidate-42" \
+  "${work}/gpu-guard/accelerantgine-unverified-gpu-amd-x64-42" "${work}/gpu-guard/orchestrant-directml-amd-inventory-only" \
+  "${work}/gpu-guard/release-gpu-nvidia-x64" "${work}/gpu-guard/Mixed-CaNdIdAtE" \
+  "${work}/gpu-guard/UNVERIFIED" "${work}/gpu-guard/Inventory-Only"
+printf 'cpu' > "${work}/gpu-guard/cpu-packages/cpu.deb"
+printf 'candidate' > "${work}/gpu-guard/oxidant-linux-x64-nvidia-host-runtime-candidate-42/candidate.deb"
+printf 'unverified' > "${work}/gpu-guard/accelerantgine-unverified-gpu-amd-x64-42/unverified.deb"
+printf 'inventory' > "${work}/gpu-guard/orchestrant-directml-amd-inventory-only/inventory.deb"
+printf 'approved' > "${work}/gpu-guard/release-gpu-nvidia-x64/gpu.deb"
+printf 'candidate' > "${work}/gpu-guard/Mixed-CaNdIdAtE/mixed.deb"
+printf 'unverified' > "${work}/gpu-guard/UNVERIFIED/upper.deb"
+printf 'inventory' > "${work}/gpu-guard/Inventory-Only/title.deb"
+t_assert_ok collect gpu-guard-log --strict --include '*.deb' --rename '*candidate*.deb=leaked.deb' \
+  --expect cpu.deb --expect gpu.deb "${work}/gpu-guard" "${work}/gpu-guard-out"
+t_assert_eq 2 "$(count "${work}/gpu-guard-out" '*')"
+t_assert_ok test -f "${work}/gpu-guard-out/cpu.deb"
+t_assert_ok test -f "${work}/gpu-guard-out/gpu.deb"
+t_assert_fails test -e "${work}/gpu-guard-out/leaked.deb"
+t_assert_ok collect gpu-guard-zip --strict --include '*.deb' --zip '*candidate*=leaked.zip' \
+  "${work}/gpu-guard" "${work}/gpu-guard-zip-out"
+t_assert_fails test -e "${work}/gpu-guard-zip-out/leaked.zip"
+t_assert_fails collect gpu-guard-missing --strict --include '*.deb' --expect unverified.deb "${work}/gpu-guard" "${work}/gpu-guard-missing-out"
+t_assert_contains "$(log gpu-guard-missing)" 'the release would lack unverified.deb'
+t_assert_fails collect gpu-guard-lone --lone-upload unverified-gpu-amd --include '*.deb' \
+  "${work}/gpu-guard/accelerantgine-unverified-gpu-amd-x64-42" "${work}/gpu-guard-lone-out"
+t_assert_contains "$(log gpu-guard-lone)" 'no packages under'
+
+t_case "user skip globs remain case-sensitive"
+mkdir -p "${work}/skip-case/CPU-Packages"
+printf 'cpu' > "${work}/skip-case/CPU-Packages/cpu.deb"
+t_assert_ok collect skip-case-log --strict --skip 'cpu-packages' --include '*.deb' \
+  "${work}/skip-case" "${work}/skip-case-out"
+t_assert_ok test -f "${work}/skip-case-out/cpu.deb"
 
 t_case "names: {version} needs --version, {arch} an arch word in the upload's name"
 t_assert_fails collect names-1 --rename '*.deb=app-{version}.deb' "${work}/u" "${work}/n1"
