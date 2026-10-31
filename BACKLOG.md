@@ -903,6 +903,20 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       license provenance, and image checks for the elements; verify other Windows image variants
       independently. Until then that pipeline is unavailable in this image.
 
+- [ ] **CON206 — provide offline CMake formatting to Linux CPU consumers** [S, ★★].
+      On 2026-10-31, the cached Linux amd64 CPU `:latest` registry image digest
+      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
+      had no `cmake-format` on its default uid 1001's `PATH`; the image's Python
+      environments had neither `cmake-format` nor `cmakelang`, and the user's uv cache
+      was absent. In a network-disabled OmniAccelerANT CPU check, the hub's bootstrap
+      could not seed pip or install its locked `cmake-format==0.6.13` from PyPI.
+      Decide whether to include the formatter or seed the locked dependencies for offline
+      consumers, and verify the actual format check in a fresh image as the normal user
+      with networking disabled. Account for Python 3.15: the hub's bootstrap patches
+      cmakelang 0.6.13's lexer, but an executable already on `PATH` skips that bootstrap.
+      This is an offline image gap, not evidence that network-backed builds fail; check
+      other image variants independently. Proof: `_implementation/omni-full-cpu-proof-20261031/proof.log`.
+
 - [ ] **CON205 — decide whether Linux images should precache Flutter artifacts** [S, ★★].
       On 2026-10-31, the cached Linux amd64 CPU `:latest` registry image digest
       `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
