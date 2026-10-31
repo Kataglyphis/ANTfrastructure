@@ -32695,5 +32695,37 @@
   "replace": "spans = {n.lineno:",
   "test": "bash linux/scripts/tests/test-lang-units.sh",
   "why": "a decorator belongs to its function's unit"
+ },
+ {
+  "id": "workflow-lint.sha-pin-checker",
+  "target": "linux/scripts/verify_workflow_conventions.py",
+  "find": "    \"sha-pin\": check_sha_pin,\n",
+  "replace": "    \"sha-pin\": lambda rel, doc: [],\n",
+  "test": "bash linux/scripts/tests/test-workflow-sha-pin.sh",
+  "why": "an armed sha-pin that grades nothing lets actions/checkout@v7 through"
+ },
+ {
+  "id": "workflow-lint.sha-pin-census-exempt",
+  "target": "linux/scripts/verify_workflow_conventions.py",
+  "find": "if check not in live and check not in CENSUS_EXEMPT and check != PARSE",
+  "replace": "if check not in live and check != PARSE",
+  "test": "bash linux/scripts/tests/test-workflow-sha-pin.sh",
+  "why": "without the exemption every consumer that never armed sha-pin turns red for want of a census row"
+ },
+ {
+  "id": "workflow-lint.sha-pin-full-sha",
+  "target": "linux/scripts/verify_workflow_conventions.py",
+  "find": "SHA_REF = re.compile(r\"^[^@\\s]+@[0-9a-f]{40}$\")",
+  "replace": "SHA_REF = re.compile(r\"^[^@\\s]+@[0-9a-f]{7,40}$\")",
+  "test": "bash linux/scripts/tests/test-workflow-sha-pin.sh",
+  "why": "an abbreviated SHA can collide with a later commit, so only the full 40 hex digits pin"
+ },
+ {
+  "id": "workflow-lint.sha-pin-composite",
+  "target": "linux/scripts/verify_workflow_conventions.py",
+  "find": "if is_action and name in (\"job-timeout\", \"permissions\"):",
+  "replace": "if is_action and name in (\"job-timeout\", \"permissions\", \"sha-pin\"):",
+  "test": "bash linux/scripts/tests/test-workflow-sha-pin.sh",
+  "why": "the hub's composite actions run inside every consumer job, so their uses: lines need the same pin"
  }
 ]

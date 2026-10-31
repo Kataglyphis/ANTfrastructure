@@ -1275,6 +1275,10 @@ default. `--code-dupes` is a separate fatal gate once copied blocks are removed.
 Neither switch changes the eight `--ratchets` gates or authorizes a new freeze
 budget. `--allow-empty-shell` is an explicit option for repositories with no
 tracked shell files; the default still refuses an empty shell scope.
+The workflow's `workflow-conventions` input (default empty) sets
+`WORKFLOW_CONVENTIONS_GATE` for the run, so a consumer measured clean of a
+convention such as `sha-pin` arms it without changing any other caller's verdict
+([the conventions](code-quality-tooling.md#four-fleet-workflow-conventions-workflow-lint)).
 
 The step also runs **`docs/scripts/verify_doc_links.py --root`** (2026-09-15),
 which is the ninth gate and the odd one out: it has no freeze file, so there is

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-"""Four fleet workflow conventions (runner-ban, job-timeout, permissions, artifact-error), asserted.
+"""Five fleet workflow conventions (runner-ban, job-timeout, permissions, artifact-error, sha-pin), asserted.
 
 Usage: verify_workflow_conventions.py [<consumer root>]; see docs/code-quality-tooling.md#four-fleet-workflow-conventions-workflow-lint
+Not covered: what a pinned SHA contains, actions fetched inside run: blocks, and container image digests.
 """
 from __future__ import annotations
 
@@ -21,11 +22,13 @@ HUB_ROOT = HERE.parent.parent
 ALLOW = HERE / "workflow-conventions.allow"
 CONSUMERS = HUB_ROOT / ".github" / "consumers.json"
 
-CHECKS = ("runner-ban", "job-timeout", "permissions", "artifact-error")
+CHECKS = ("runner-ban", "job-timeout", "permissions", "artifact-error", "sha-pin")
 # Pseudo-check for an unreadable file: never ramped, counted or excused, since nothing graded it.
 PARSE = "parse"
 # Armed with no knob: measured clean fleet-wide, so it can only catch a NEW one.
 ALWAYS_ARMED = frozenset({"runner-ban"})
+# Advisory without a census row: armed only by the repositories measured clean of it.
+CENSUS_EXEMPT = frozenset({"sha-pin"})
 ARM_ENV = "WORKFLOW_CONVENTIONS_GATE"
 # Accepted spellings of "off", so disarming never tempts anyone to delete the call.
 DISARM = frozenset({"", "0", "off", "no", "none", "false"})
@@ -36,6 +39,10 @@ LATEST_LABEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*-latest$", re.IGNORECASE)
 # `runs-on` plus the input and matrix-column names this fleet feeds it through.
 RUNNER_KEYS = frozenset({"runs-on", "runs_on", "runner", "os"})
 EXPRESSION = "${{"
+SHA_REF = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
+# The fleet tracks the hub at develop by owner directive, so that one moving ref is the exemption.
+HUB_REF = re.compile(r"^Kataglyphis/ANTfrastructure(?:/[^@\s]*)?@develop$")
+DOCKER_REF = re.compile(r"^docker://[^@\s]+@sha256:[0-9a-f]{64}$")
 
 
 class ParseError(Exception):
@@ -314,7 +321,7 @@ def line_of(node: YamlNode, key: str, default: int = 0) -> int:
     return default
 
 
-# The four checks
+# The five checks
 
 
 def _label_values(val: YamlNode) -> list[str]:
@@ -419,11 +426,30 @@ def check_artifact_error(rel: str, doc: YamlDocument) -> list[Finding]:
     return out
 
 
+def _unpinned(uses: str) -> bool:
+    if uses.startswith("./") or HUB_REF.match(uses):
+        return False
+    if uses.startswith("docker://"):
+        return not DOCKER_REF.match(uses)
+    return not SHA_REF.match(uses)
+
+
+def check_sha_pin(rel: str, doc: YamlDocument) -> list[Finding]:
+    steps: list[YamlDocument] = []
+    _steps(doc, steps)
+    refs = [(value(step, "uses"), line_of(step, "uses")) for step in steps]
+    refs += [(value(job, "uses"), line_of(job, "uses", num)) for _jid, (job, num) in _jobs(doc)]
+    return [(rel, "sha-pin", uses, num,
+             f"`uses: {uses}` is not pinned to a 40-hex commit SHA; a moved tag runs code nobody reviewed")
+            for uses, num in refs if isinstance(uses, str) and _unpinned(uses)]
+
+
 CHECKERS: dict[str, Callable[[str, YamlDocument], list[Finding]]] = {
     "runner-ban": check_runner_ban,
     "job-timeout": check_job_timeout,
     "permissions": check_permissions,
     "artifact-error": check_artifact_error,
+    "sha-pin": check_sha_pin,
 }
 
 
@@ -553,7 +579,7 @@ def collect(root: Path, files: list[Path]) -> list[Finding]:
         except ParseError as exc:
             findings.append((rel, PARSE, "-", 0,
                              (f"cannot be read by this gate ({exc}), so NONE of the "
-                              "four conventions was graded over it")))
+                              "five conventions was graded over it")))
             continue
         # A composite action has no jobs or permissions, so only the step-shaped checks apply.
         is_action = rel.startswith(".github/actions/")
@@ -610,7 +636,8 @@ def grade_census(
     """Failed census rows: ramping counts may only go down, and armed checks count zero."""
     counts = {}
     for rel, check, detail, _num, _why in findings:
-        if check not in live and check != PARSE and (repo, rel, check, detail) not in excused:
+        if check not in live and check not in CENSUS_EXEMPT and check != PARSE \
+                and (repo, rel, check, detail) not in excused:
             counts[check] = counts.get(check, 0) + 1
     bad = 0
     for check in CHECKS:

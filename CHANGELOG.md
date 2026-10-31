@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-31 — Workflow convention sha-pin
+
+- `verify_workflow_conventions.py` gains a fifth check, `sha-pin`: every third-party `uses:`
+  in a workflow or composite action must name a 40-hex commit SHA; local actions and
+  `Kataglyphis/ANTfrastructure/...@develop` are exempt. It is advisory with no census row
+  unless armed; preflight arms it here.
+- `lint-gates.yml` takes a `workflow-conventions` input that sets `WORKFLOW_CONVENTIONS_GATE`.
+- New suite `test-workflow-sha-pin.sh` with four mutation recipes.
+
 ## 2026-10-31 — Scanner measurements as JSON
 
 - `verify_code_size.py`, `verify_code_complexity.py`, `verify_code_dupes.py` and

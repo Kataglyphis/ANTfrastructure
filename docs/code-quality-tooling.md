@@ -944,7 +944,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4085 entries** over **502 distinct test commands**; both digits are
+manifest holds **4089 entries** over **503 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -3494,7 +3494,7 @@ handed, its status folded into the one `WORKFLOW LINT` verdict. Baseline
 `linux/scripts/workflow-conventions.allow`, suite
 `linux/scripts/tests/test-workflow-lint.sh`.
 
-**Why it exists.** Four rules the fleet agreed on and wrote down, each enforced by
+**Why it exists.** Five rules the fleet agreed on and wrote down, each enforced by
 nobody:
 
 | convention | how it was transmitted | why the backlog is what it is |
@@ -3503,6 +3503,7 @@ nobody:
 | job-level `timeout-minutes` | nowhere but the jobs that happen to have one | worst in `BeschleunigerBallett/.github/workflows/reusable-linux.yml` (then `Linux.yml`), whose own comments price two lanes at ~25 minutes each and the whole run at 2h13m, then warn about "the 6-hour job cap" every one of its jobs is left sitting under |
 | a `permissions:` block | nowhere | included `jotrockenmitlocken`'s `web.yml` (then `dart.yml`), which consumes 14 distinct secrets and ran four FTP deploys on the repository default token until it declared `permissions: contents: read` on 2026-09-14 |
 | `if-no-files-found: error` | nowhere | includes the release-package uploads — the artifacts a tag actually ships, which is where an empty upload is worst |
+| `sha-pin`: every third-party `uses:` at a 40-hex commit SHA | the `# vX.Y.Z` comments beside the pins | a tag can be moved to code nobody reviewed; local `./` actions and `Kataglyphis/ANTfrastructure/...@develop` are exempt, and a `docker://` image needs an `@sha256:` digest |
 
 The counts are deliberately not written here. They live once, as the CENSUS rows
 of `linux/scripts/workflow-conventions.allow`, where they are the gate's own
@@ -3563,6 +3564,15 @@ excuse table and the ratchet both inert is the same silence. A duplicate row
 fails: two reasons for one deviation means one of them is unread. A missing or
 malformed `consumers.json` fails rather than returning an empty set, which used
 to switch the typo check off without saying so.
+
+**`sha-pin` has no census.** It reports and passes wherever it is not armed, with
+no CENSUS row needed, so a consumer that never pinned its actions keeps its verdict.
+The hub's preflight arms it, and the reusable `lint-gates.yml` arms it for a caller
+that passes `workflow-conventions: sha-pin`; ANTfrastructure, AccelerANTgine,
+OxidANT, OrchestrANT and OmniAccelerANT are measured clean and armed. It grades
+step and job-level `uses:` in workflows and in `.github/actions/*/action.yml`. It
+does not check what a pinned commit contains, nor actions or images a `run:` block
+fetches. Suite: `linux/scripts/tests/test-workflow-sha-pin.sh`.
 
 **What it cannot see, said plainly.** A row about repository A is neither used nor
 stale while repository B is being linted, so a deviation that repository A deleted

@@ -194,7 +194,7 @@ t_assert_contains "${_out}" "did not report the planted SC1010"
 # The name check must pass here, or the self-test goes unproven.
 t_assert_fails grep -q -F -e 'does not resolve on PATH' <<<"${_out}"
 
-# The four fleet conventions; see docs/code-quality-tooling.md#four-fleet-workflow-conventions-workflow-lint
+# The five fleet conventions; see docs/code-quality-tooling.md#four-fleet-workflow-conventions-workflow-lint
 
 # _conv_root <name> <body>: `origin` names a declared repository, which is what keys the allow rows.
 _conv_root() {
@@ -238,7 +238,7 @@ _workflow_upload_body() {
   local step_indent="$1" timeout="$2" strict="$3"
   _workflow_job_header
   printf '    runs-on: ubuntu-24.04\n    timeout-minutes: %s\n    steps:\n' "$timeout"
-  printf '%*s- uses: actions/upload-artifact@v7\n' "$step_indent" ''
+  printf '%*s- uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9\n' "$step_indent" ''
   printf '%*swith:\n' "$((step_indent + 2))" ''
   printf '%*sname: out\n%*spath: dist\n' "$((step_indent + 4))" '' "$((step_indent + 4))" ''
   if [ "$strict" = error ]; then printf '%*sif-no-files-found: error\n' "$((step_indent + 4))" ''; fi
@@ -254,7 +254,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: out
           path: dist'
@@ -414,7 +414,7 @@ t_assert_eq "1" "$(t_rc _conv "${d}")" \
   "unarmed is exactly when an unreadable workflow would otherwise pass as clean"
 _out="$(t_out _conv "${d}")"
 t_assert_contains "${_out}" "[parse]"
-t_assert_contains "${_out}" "NONE of the four conventions was graded over it"
+t_assert_contains "${_out}" "NONE of the five conventions was graded over it"
 
 t_case "a root with no .github refuses rather than reporting green over nothing"
 empty="$(mktemp -d "${_work}/empty.XXXXXX")"
@@ -492,7 +492,7 @@ t_case "WORKFLOW_CONVENTIONS_GATE=0 disarms the ramp instead of failing to parse
 # Failing on 0 would teach people to delete the call rather than turn the knob down.
 _off() { WORKFLOW_CONVENTIONS_GATE=0 _conv_at "${phub}" "$1"; }
 t_assert_eq "0" "$(t_rc _off "${ramped}")"
-t_assert_contains "$(t_out _off "${ramped}")" "advisory artifact-error,job-timeout,permissions"
+t_assert_contains "$(t_out _off "${ramped}")" "advisory artifact-error,job-timeout,permissions,sha-pin"
 
 t_case "a consumers.json that cannot be READ fails; the typo check may not switch itself off"
 # An empty set here would silently disable the allow file's repo-column check.
@@ -571,7 +571,7 @@ t_assert_contains "$(t_out _conv_at "${hubk}" "${clean_root}")" "consumers.json 
 t_case "preflight ARMS the ramp; a knob with no caller ramps nothing"
 # Without a caller, "advisory until armed" is a promise nobody keeps.
 t_assert_contains "$(cat "${SCRIPTS}/preflight.sh")" \
-  "env WORKFLOW_CONVENTIONS_GATE=permissions,job-timeout bash linux/scripts/lint-workflows.sh"
+  "env WORKFLOW_CONVENTIONS_GATE=permissions,job-timeout,sha-pin bash linux/scripts/lint-workflows.sh"
 
 t_case "the SHIPPED allow file parses and its census is EXACT for this repo"
 # A fresh repo with this origin, because the mutation gate runs this suite from a copy with no .git.

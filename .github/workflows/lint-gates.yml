@@ -51,6 +51,13 @@ on:
           reports the empty scope without invoking ShellCheck on the hub.
         type: boolean
         default: false
+      workflow-conventions:
+        description: >-
+          Comma-separated workflow conventions to enforce beyond runner-ban
+          (WORKFLOW_CONVENTIONS_GATE, e.g. sha-pin). Empty keeps the others
+          advisory.
+        type: string
+        default: ''
       runner:
         description: Runner label; pinned to an OS version, never a moving alias.
         type: string
@@ -71,6 +78,7 @@ jobs:
       LINT_CODE_DUPES: ${{ inputs.code-dupes }}
       LINT_CODE_DUPES_REPORT: ${{ inputs.code-dupes-report }}
       LINT_ALLOW_EMPTY_SHELL: ${{ inputs.allow-empty-shell }}
+      WORKFLOW_CONVENTIONS_GATE: ${{ inputs.workflow-conventions }}
     steps:
       # Every scope comes from `git ls-files`, not history.
       - name: Check out
