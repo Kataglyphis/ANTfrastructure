@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-31 — Stage checked GPU artifacts
+
+- Add opt-in atomic staging that matches an artifact ZIP and both clean-host and
+  GPU receipts to the same trusted CI identity and exact package bytes.
+- Add immutable-artifact pre/post receipt modes for Linux clean-host and trusted
+  GPU profile actions while preserving the existing name-based clean-host default.
+
 ## 2026-10-31 — Isolate Linux GPU uploads by run attempt
 
 - Add an opt-in to give GPU package and test uploads attempt-specific names and

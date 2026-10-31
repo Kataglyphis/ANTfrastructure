@@ -59,3 +59,52 @@ An overwritten Actions artifact is a new artifact: bind to its ID, not only its
 name. On a rerun, require matching run attempt and recreate all dependent receipts;
 do not promote a stale receipt or a different matrix entry. GPU releases also need
 explicit expected asset names and their existing clean-host and license checks.
+
+## Stage checked bytes for a release
+
+`shared/python/stage_gpu_artifact.py` accepts the raw, flat ZIP of a single
+Actions artifact, two receipts and independently supplied CI identity fields.
+Download the artifact by its immutable ID with `actions/download-artifact@v8`,
+`skip-decompress: true` and `digest-mismatch: error`; derive the expected ID and
+SHA-256 digest from the trusted upload step. Pass the current repository, commit,
+run and attempt from the trusted workflow context. The script hashes the raw ZIP
+and requires it to match that digest, then checks the two distinct receipts for
+`clean-host-inference` and `gpu-model-inference`, the same identity, exact filenames
+and the hashes of the ZIP's actual package bytes.
+
+Pass `--file` once per explicitly expected package, and set positive
+`--max-uncompressed-bytes` and `--max-compression-ratio` limits for the intended
+packages. Extra, duplicate, nested, linked and encrypted entries fail. The output
+must be a nonexistent path under an existing real directory. Files are written in
+a temporary sibling and published atomically without replacing an existing path;
+Linux requires `renameat2` with `RENAME_NOREPLACE` support from the output
+filesystem; Windows requires its no-replace rename. Some filesystems, including
+WSL DrvFs mounts such as `/mnt/c`, can reject this operation. Use a filesystem
+that supports it, such as a suitable native Linux filesystem; the script reports
+the error and fails closed instead of falling back to a replacing rename. A failed
+run must never be followed by upload, and callers must guard against other processes
+changing inputs or the output during and after the operation.
+
+This staging step does not fetch the artifact or authenticate either receipt.
+Only trusted jobs that verified and tested the exact artifact may produce those
+receipts, and the caller must obtain the expected identity independently. It does
+not run GPU inference, create a release, or establish that a physical GPU was used.
+Each caller must explicitly wire successful check jobs and upload only the staged output.
+
+## Linux check actions
+
+`clean-host-package-check` retains its existing name-based download by default.
+For a GPU receipt, a trusted caller supplies `artifact-id`, `artifact-digest`,
+the three exact `artifact-files`, vendor, architecture, output receipt path and
+expansion limits. It downloads the raw archive by ID, checks the trusted digest,
+extracts the packages, and records their hashes before running its usual clean-host
+commands. Only after those commands succeed and the same files still match does it
+write a `clean-host-inference` receipt. All three DEB, tarball and AppImage checks
+and their commands are required in this mode; partial inputs fail before download.
+
+`gpu-package-check` applies the same pre/post protocol around a trusted Linux GPU
+profiling command, with the extracted packages in `GPU_PACKAGE_DIR`. The command
+must actually profile each expected package on the requested physical GPU; its
+exit status and the receipt alone cannot prove that it did. A caller must upload
+both receipts only after their corresponding checks succeed, and use the current
+run's immutable artifact ID and upload digest for the staging step.

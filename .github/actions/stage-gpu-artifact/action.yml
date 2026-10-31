@@ -1,0 +1,74 @@
+name: Stage checked GPU artifact
+description: Verify a raw artifact archive and two trusted check receipts before staging its packages.
+
+inputs:
+  archive:
+    description: Raw ZIP downloaded by immutable artifact ID.
+    required: true
+  clean-receipt:
+    description: Receipt from the successful clean-host job.
+    required: true
+  gpu-receipt:
+    description: Receipt from the successful hardware GPU profile job.
+    required: true
+  output:
+    description: New output directory for checked packages.
+    required: true
+  artifact-id:
+    description: Immutable ID from the trusted upload step.
+    required: true
+  artifact-digest:
+    description: Digest from the same trusted upload step.
+    required: true
+  artifact-files:
+    description: Exact flat package names, one per line.
+    required: true
+  gpu-vendor:
+    description: nvidia or amd.
+    required: true
+  gpu-platform:
+    description: linux or windows.
+    required: true
+  gpu-arch:
+    description: x64 or arm64.
+    required: true
+  max-uncompressed-bytes:
+    description: Maximum total expanded package size in bytes.
+    required: true
+  max-compression-ratio:
+    description: Maximum archive expansion ratio for each file.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Stage only the checked archive bytes
+      shell: bash
+      env:
+        GPU_ARCHIVE: ${{ inputs.archive }}
+        GPU_CLEAN_RECEIPT: ${{ inputs.clean-receipt }}
+        GPU_PROFILE_RECEIPT: ${{ inputs.gpu-receipt }}
+        GPU_OUTPUT: ${{ inputs.output }}
+        GPU_ARTIFACT_ID: ${{ inputs.artifact-id }}
+        GPU_ARTIFACT_DIGEST: ${{ inputs.artifact-digest }}
+        GPU_ARTIFACT_FILES: ${{ inputs.artifact-files }}
+        GPU_VENDOR: ${{ inputs.gpu-vendor }}
+        GPU_PLATFORM: ${{ inputs.gpu-platform }}
+        GPU_ARCH: ${{ inputs.gpu-arch }}
+        GPU_MAX_BYTES: ${{ inputs.max-uncompressed-bytes }}
+        GPU_MAX_RATIO: ${{ inputs.max-compression-ratio }}
+        LD_PRELOAD: ''
+        LD_AUDIT: ''
+      run: |
+        set -euo pipefail
+        files=()
+        while IFS= read -r name || [[ -n "$name" ]]; do
+          [[ -z "$name" ]] || files+=(--file "$name")
+        done <<< "$GPU_ARTIFACT_FILES"
+        [[ ${#files[@]} -gt 0 ]] || { echo 'No expected package names' >&2; exit 1; }
+        python3 -I "$GITHUB_ACTION_PATH/../../../shared/python/stage_gpu_artifact.py" \
+          --archive "$GPU_ARCHIVE" --clean-receipt "$GPU_CLEAN_RECEIPT" --gpu-receipt "$GPU_PROFILE_RECEIPT" \
+          --output "$GPU_OUTPUT" --artifact-id "$GPU_ARTIFACT_ID" --artifact-digest "$GPU_ARTIFACT_DIGEST" \
+          --repository "$GITHUB_REPOSITORY" --revision "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" \
+          --run-attempt "$GITHUB_RUN_ATTEMPT" --platform "$GPU_PLATFORM" --arch "$GPU_ARCH" --vendor "$GPU_VENDOR" \
+          --max-uncompressed-bytes "$GPU_MAX_BYTES" --max-compression-ratio "$GPU_MAX_RATIO" "${files[@]}"

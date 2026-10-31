@@ -147,6 +147,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Its optional attempt-scoped GPU artifacts use the current run attempt and never overwrite; CPU and default GPU names remain unchanged.
    Release collection always skips upload names containing `candidate`, `unverified` or `inventory-only`, regardless of case; user skip globs stay case-sensitive. A promoted GPU upload needs separate checks and expected asset names.
    GPU package receipts bind exact filenames and hashes to a caller-supplied check and CI identity; they do not authenticate or run that check. Preserve the trust and pre/post-test requirements in `docs/gpu-artifact-receipts.md`.
+   GPU artifact staging checks the raw archive digest, both required check receipts and exact expanded files before atomic no-replace publication; trusted callers remain responsible for receipt provenance and hardware checks.
+   The opt-in Linux clean-host and GPU profile actions download by immutable ID, check the upload digest and compare the same packages before and after the actual check; keep the default CPU name-based path.
    Windows ORT provider staging validates requested DLL names and their presence before changing the destination; unrelated SDK DLLs remain opt-in.
    Flutter apps with an Android manifest validate its mipmap launcher reference and every standard-density PNG; the source check does not prove image identity or inspect an APK.
    The native ONNX finalizer stages the checked-out LICENSE and ThirdPartyNotices before deleting its source; consumers must carry those files with the corresponding native output.

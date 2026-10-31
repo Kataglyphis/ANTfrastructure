@@ -32001,6 +32001,78 @@
   "why": "Windows COM and LPT aliases with superscript digits must not be accepted as portable names"
  },
  {
+  "id": "packaging.gpu-stage-archive-hash",
+  "target": "shared/python/stage_gpu_artifact.py",
+  "find": "return digest.hexdigest()",
+  "replace": "return 'b' * 64",
+  "test": "python3 shared/python/tests/test_stage_gpu_artifact.py",
+  "why": "an asserted archive digest must match the actual downloaded bytes"
+ },
+ {
+  "id": "packaging.locked-files-digest",
+  "target": "shared/python/verify_locked_files.py",
+  "find": "not api[\"matches\"](path, expected[name])",
+  "replace": "False",
+  "test": "python3 shared/python/tests/test_verify_locked_files.py",
+  "why": "model files and notices must match their locked digests"
+ },
+ {
+  "id": "packaging.gpu-stage-file-hash",
+  "target": "shared/python/stage_gpu_artifact.py",
+  "find": "if hashes is not None and digest.hexdigest() != hashes[item.filename]:",
+  "replace": "if False:",
+  "test": "python3 shared/python/tests/test_stage_gpu_artifact.py",
+  "why": "both receipts must match each package actually extracted from the archive"
+ },
+ {
+  "id": "packaging.gpu-stage-two-receipts",
+  "target": "shared/python/stage_gpu_artifact.py",
+  "find": "if manifests[0] != manifests[1]:",
+  "replace": "if False:",
+  "test": "python3 shared/python/tests/test_stage_gpu_artifact.py",
+  "why": "the clean-host and GPU checks must describe the same package bytes"
+ },
+ {
+  "id": "packaging.gpu-stage-no-replace",
+  "target": "shared/python/stage_gpu_artifact.py",
+  "find": "rename(-100, os.fsencode(source), -100, os.fsencode(target), 1)",
+  "replace": "rename(-100, os.fsencode(source), -100, os.fsencode(target), 0)",
+  "test": "python3 shared/python/tests/test_stage_gpu_artifact.py",
+  "why": "an output created during verification must never be replaced"
+ },
+ {
+  "id": "packaging.gpu-stage-check-identity",
+  "target": "shared/python/stage_gpu_artifact.py",
+  "find": "if data[\"identity\"] != expected:",
+  "replace": "if False:",
+  "test": "python3 shared/python/tests/test_stage_gpu_artifact.py",
+  "why": "receipts from another attempt or artifact must never approve these bytes"
+ },
+ {
+  "id": "packaging.gpu-check-post-hash",
+  "target": ".github/actions/clean-host-package-check/clean-host-gpu-receipt.sh",
+  "find": "    python3 -I \"$python_root/gpu_artifact_receipt.py\" verify --directory \"$packages\" --receipt \"$before\" \\\n      --check before-check \"${identity[@]}\" \"${files[@]}\"",
+  "replace": "    true",
+  "test": "python3 shared/python/tests/test_clean_host_gpu_receipt.py",
+  "why": "a check cannot approve packages changed after its pre-check snapshot"
+ },
+ {
+  "id": "packaging.gpu-check-actual-profile",
+  "target": ".github/actions/gpu-package-check/action.yml",
+  "find": "bash -c \"$GPU_PROFILE_COMMAND\"",
+  "replace": "true",
+  "test": "python3 shared/python/tests/test_clean_host_gpu_receipt.py",
+  "why": "the GPU action must execute its trusted hardware profile command"
+ },
+ {
+  "id": "packaging.gpu-clean-check-finish",
+  "target": ".github/actions/clean-host-package-check/action.yml",
+  "find": "run: bash \"${GITHUB_ACTION_PATH}/clean-host-gpu-receipt.sh\" finish",
+  "replace": "run: bash \"${GITHUB_ACTION_PATH}/clean-host-gpu-receipt.sh\" validate",
+  "test": "python3 shared/python/tests/test_clean_host_gpu_receipt.py",
+  "why": "the clean-host action must verify its pre-check hashes before emitting a receipt"
+ },
+ {
   "id": "packaging.ort-profile-reject-transfer-only",
   "target": "shared/python/verify_ort_profile.py",
   "find": "and not event[\"args\"][\"op_name\"].strip().casefold().startswith(\"memcpy\")",
