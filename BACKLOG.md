@@ -34,14 +34,17 @@ image digests before implementing fixes and retain CPU-only support. The request
 targets are Linux NVIDIA x64/arm64, Linux AMD x64, and Windows NVIDIA/AMD x64; Linux ARM
 ROCm and Windows ARM GPU images are outside the requested matrix.
 
-- **Linux GPU SDKs and execution:** CON31, CON129, CON176, CON196, CON198 and CON202
-  cover runtime selection, GTK/Vulkan headers, inference plugins and AMD model parity.
+- **Linux GPU SDKs and execution:** CON31, CON78, CON129, CON176, CON196, CON198,
+  CON202 and CON207 cover runtime selection, GTK/Vulkan headers, inference plugins,
+  AMD model parity and the separate AMD GenAI investigation.
 - **Windows GPU runtimes:** CON180–185 and CON201 cover DirectML/CUDA provenance,
   provider paths, media plugins, native DLL notices and Media Foundation availability.
 - **Runtime provenance:** CON203–204 cover the Linux ROCm and NVIDIA library handoff.
 - **Build tools and offline inputs:** CON145, CON177–179, CON186–187, CON194–195,
   CON197, CON199–200 and CON205–206 cover tools, plugins, SDK/cache inputs and
   Flutter/FRB generation; entries distinguish required fixes from optional offline support.
+- **Image readiness and capacity:** CON90 and CON174 track the ROCm Python rollout and
+  measured disk requirements for GPU consumer builds.
 
 ## Open — getting fixes to consumers
 
