@@ -31655,5 +31655,21 @@
   "replace": "if False and environment_candidate and uncertain:",
   "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
   "why": "legacy RPATH must not be treated as lower priority than a launcher library path"
+ },
+ {
+  "id": "packaging.ort-profile-reject-transfer-only",
+  "target": "shared/python/verify_ort_profile.py",
+  "find": "and not event[\"args\"][\"op_name\"].strip().casefold().startswith(\"memcpy\")",
+  "replace": "and True",
+  "test": "python3 shared/python/tests/test_verify_ort_profile.py",
+  "why": "a GPU memory-transfer event must not prove model computation ran on the GPU"
+ },
+ {
+  "id": "packaging.ort-profile-require-operator",
+  "target": "shared/python/verify_ort_profile.py",
+  "find": "and isinstance(event[\"args\"].get(\"op_name\"), str)\n            and event[\"args\"][\"op_name\"].strip()\n            and not event[\"args\"][\"op_name\"].strip().casefold().startswith(\"memcpy\")",
+  "replace": "and True",
+  "test": "python3 shared/python/tests/test_verify_ort_profile.py",
+  "why": "provider events without an identified model operator cannot prove accelerated inference"
  }
 ]
