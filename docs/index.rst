@@ -212,6 +212,7 @@ Common development targets:
    python-ci
    python-app-bundles
    branch-and-release-strategy
+   gpu-artifact-receipts
    ci-build-triggers
    ftp-deploys
    docs-sites

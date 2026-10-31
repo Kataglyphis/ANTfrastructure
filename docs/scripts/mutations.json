@@ -15382,8 +15382,8 @@
  {
   "id": "release.collect-skip",
   "target": "linux/scripts/06-packaging/collect-release-assets.sh",
-  "find": "  if any_match \"$upload\" \"${SKIP[@]}\"; then return 0; fi",
-  "replace": "  if false; then return 0; fi",
+  "find": "  if any_match \"$upload\" \"${SKIP[@]}\" || any_match",
+  "replace": "  if false || any_match",
   "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
   "why": "test bundles and reports would ship as release files"
  },

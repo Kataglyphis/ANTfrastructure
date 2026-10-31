@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# collect-release-assets.sh over each consumer's uploads and options, and the guards of release-publish.yml. See docs/branch-and-release-strategy.md#collecting-the-release-files
-# NOT covered: whether a separately named GPU release upload passed physical-device verification.
+# collect-release-assets.sh over each consumer's uploads and options, and release-publish.yml's guards, not whether a GPU upload passed physical-device verification. See docs/branch-and-release-strategy.md#collecting-the-release-files
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
