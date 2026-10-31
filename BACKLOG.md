@@ -410,6 +410,17 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 ## Open — Linux image (all arches)
 
+- [ ] **CON207 — investigate Linux AMD GPU support for GenAI** [M, ★★]. The cached
+      `:latest-rocm` amd64 image contains the vision ONNX Runtime MIGraphX provider, but its
+      GenAI tree has only the generic library and llguidance; `60-build-genai.sh` builds GenAI
+      against the CPU ORT unless NVIDIA is enabled. The NVIDIA image separately carries the
+      GenAI CUDA library. Determine whether the pinned upstream GenAI and AMD stack support a
+      viable GPU build, then define the build and image smoke for a future image. Verify provider
+      initialization and actual model execution on supported AMD hardware, and resolve runtime
+      provenance and redistribution before claiming support. This is separate from the existing
+      vision MIGraphX provider and from applications choosing whether to bundle GenAI. No AMD
+      GenAI GPU execution or upstream compatibility is established by the file inspection.
+
 - [ ] **CON172 — the sdk stage points the target multiarch `libstdc++.so` at the host's; prove the fix on an sdk rebuild** [S, ★★].
       Found 2026-10-29 on the first arm64 nvidia media build: `vulkan.sh`'s `_vulkan_setup_gcc_runtime` linked
       `libstdc++.so` and `libgcc_s.so` from every `LIBRARY_PATH` dir (the HOST's `/opt/gcc-16.2.0/lib64`) into
