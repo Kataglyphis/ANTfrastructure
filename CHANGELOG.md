@@ -15,6 +15,9 @@
 
 ## 2026-10-31 — Mutants must parse, and the mutation gate times each test command
 
+- 66 of the 88 `code-dupes.allow` rows that paired two `windows/scripts/tests/` files are gone:
+  the suites fold their repeated calls into case loops, file-local helpers and shared setup, with
+  every case and assertion kept, and the normalised size of those suites fell.
 - Four lint suites that no recipe proved (`test-ifs-safety.sh`, `test-invocation-lints.sh`,
   `test-pipefail-safety.sh`, `test-runtime-smoke-gate.sh`) and the undocumented-relocation
   failure of `verify-artifact-copy-parity.sh` each have recipes; `test-version-forwarding.sh`
