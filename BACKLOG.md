@@ -948,7 +948,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       license provenance, and image checks for the elements; verify other Windows image variants
       independently. Until then that pipeline is unavailable in this image.
 
-- [ ] **CON206 — provide offline CMake formatting to Linux CPU consumers** [S, ★★].
+- [ ] **CON206 — provide offline CMake formatting to Linux consumers** [S, ★★].
       On 2026-10-31, the cached Linux amd64 CPU `:latest` registry image digest
       `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
       had no `cmake-format` on its default uid 1001's `PATH`; the image's Python
@@ -959,8 +959,13 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       consumers, and verify the actual format check in a fresh image as the normal user
       with networking disabled. Account for Python 3.15: the hub's bootstrap patches
       cmakelang 0.6.13's lexer, but an executable already on `PATH` skips that bootstrap.
+      An independent no-network inspection of the cached Linux amd64 NVIDIA image
+      `sha256:70bc45db5e2032cad3042b88b2f9a1c06cf4c4ddbbfc91251fbc0c9a2cba233d`
+      also found no `cmake-format` on its default user's `PATH`. Check its Python
+      environments and caches separately before deciding how to satisfy the offline contract;
+      see `_implementation/omni-nvidia-prospective-build-20261031/image-tools-inspection.log`.
       This is an offline image gap, not evidence that network-backed builds fail; check
-      other image variants independently. Proof: `_implementation/omni-full-cpu-proof-20261031/proof.log`.
+      other image variants independently. CPU proof: `_implementation/omni-full-cpu-proof-20261031/proof.log`.
 
 - [ ] **CON205 — decide whether Linux images should precache Flutter artifacts** [S, ★★].
       On 2026-10-31, the cached Linux amd64 CPU `:latest` registry image digest
