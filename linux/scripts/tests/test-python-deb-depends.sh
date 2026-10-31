@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prove package dependencies fail closed on incomplete ELF or ldconfig evidence.
+# Prove incomplete ELF evidence and direct search-order ambiguity fail closed, not inherited loader scopes.
 set -euo pipefail
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

@@ -754,8 +754,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       need proof. Experimental scanner and fixtures are in
       `_implementation/deb-depends-audit-20261030`.
       Further 2026-10-31 loader fixtures in `_implementation/loader-scope-con188` show the
-      current scanner omits host zlib when an earlier host RPATH or RUNPATH wins over a later
-      bundled path, and when a program first loads host zlib before a plugin with a purely
+      scanner omitted host zlib when an earlier host RPATH or RUNPATH won over a later
+      bundled path. Production discovery now rejects that direct-path ambiguity and distinguishes
+      legacy RPATH from RUNPATH when assessing launcher library paths. The scanner can still omit
+      host zlib when a program first loads it before a plugin with a purely
       bundled RUNPATH. The latter proves a possible dynamic-load scope, not that a retained
       bundle exercises it. A third fixture shows a local library with the wrong ELF machine
       is skipped by the loader; the scanner now checks the class, byte order and machine of

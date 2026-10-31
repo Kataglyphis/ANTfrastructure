@@ -285,7 +285,7 @@ def needed(path: Path) -> list[str]:
     return result.stdout.splitlines()
 
 
-def elf_search_paths(path: Path, expected: list[str]) -> list[str]:
+def elf_search_paths(path: Path, expected: list[str]) -> tuple[list[str], bool]:
     elf = ElfSections(path)
     try:
         entries, strings = dynamic_entries(elf)
@@ -296,7 +296,7 @@ def elf_search_paths(path: Path, expected: list[str]) -> list[str]:
         rpath = [version_name(elf, strings, value) for tag, value in entries if tag == 15]
         if len(runpath) > 1 or len(rpath) > 1:
             raise ValueError(f"duplicate ELF search paths: {path}")
-        return (runpath or rpath or [""])[0].split(":")
+        return ((runpath or rpath)[0].split(":") if runpath or rpath else [], bool(rpath and not runpath))
     finally:
         elf.stream.close()
 
@@ -576,22 +576,44 @@ def python_preloads_active(bundle: Path, path: Path) -> bool:
     return customize.read_text(encoding="utf-8") == SITE_CUSTOMIZE and preload_startup_ready(bundle)
 
 
-def bundled_import(bundle: Path, path: Path, name: str, search: list[str], gpu_host: bool, preloads: set[str]) -> bool:
+def ordered_bundled_search(bundle: Path, path: Path, name: str, search: list[str]) -> tuple[bool, bool]:
+    uncertain = False
+    for item in search:
+        expanded = item.replace("${ORIGIN}", str(path.parent)).replace("$ORIGIN", str(path.parent))
+        if not expanded.startswith("/") or "$" in expanded or not Path(expanded).resolve().is_relative_to(bundle):
+            uncertain = True
+        elif compatible_bundled_elf(Path(expanded) / name, bundle, path):
+            if uncertain:
+                raise ValueError(f"unproven earlier ELF search path for {name}: {path}")
+            return True, uncertain
+    return False, uncertain
+
+
+def uses_runtime_library_path(path: Path, runtime: Path) -> bool:
+    return (path.is_relative_to(runtime / "lib") or
+            path.parent == runtime / "bin" and path.name.startswith("python") and path.name.endswith(".bin"))
+
+
+def bundled_import(bundle: Path, path: Path, name: str, search: list[str], gpu_host: bool, preloads: set[str],
+                   rpath_before_environment: bool = False) -> bool:
     origin = str(path.parent)
     if "/" in name:
         expanded = name.replace("${ORIGIN}", origin).replace("$ORIGIN", origin)
         return expanded.startswith("/") and compatible_bundled_elf(Path(expanded), bundle, path)
-    for item in search:
-        expanded = item.replace("${ORIGIN}", origin).replace("$ORIGIN", origin)
-        if expanded.startswith("/") and compatible_bundled_elf(Path(expanded) / name, bundle, path):
-            return True
     runtime_lib = bundle / "runtime/lib" / name
     runtime = bundle / "runtime"
-    python_library = path.is_relative_to(runtime / "lib")
-    python_binary = path.parent == runtime / "bin" and path.name.startswith("python") and path.name.endswith(".bin")
-    if gpu_host and (python_library or python_binary) and compatible_bundled_elf(runtime_lib, bundle, path):
+    runtime_candidate = compatible_bundled_elf(runtime_lib, bundle, path)
+    if runtime_candidate and name in preloads and python_preloads_active(bundle, path):
         return True
-    return name in preloads and python_preloads_active(bundle, path) and compatible_bundled_elf(runtime_lib, bundle, path)
+    environment_candidate = gpu_host and uses_runtime_library_path(path, runtime) and runtime_candidate
+    if environment_candidate and not rpath_before_environment:
+        return True
+    found, uncertain = ordered_bundled_search(bundle, path, name, search)
+    if found:
+        return True
+    if environment_candidate and uncertain:
+        raise ValueError(f"unproven earlier ELF search path for {name}: {path}")
+    return environment_candidate
 
 
 def ldconfig_cache() -> dict[str, str]:
@@ -669,9 +691,9 @@ def dependencies(bundle: Path) -> str:
                 if stream.read(4) != b"\x7fELF":
                     continue
             direct = needed(path)
-            search = elf_search_paths(path, direct)
+            search, rpath_before_environment = elf_search_paths(path, direct)
             imports.update(value for value in direct if value not in waived and
-                           not bundled_import(bundle, path, value, search, gpu_host, preloads))
+                           not bundled_import(bundle, path, value, search, gpu_host, preloads, rpath_before_environment))
             versions = glibc_versions(path, require_host=not manifest.get("glibc"))
             if not manifest.get("glibc"):
                 glibc = max([glibc, *versions])

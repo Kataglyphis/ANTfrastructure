@@ -403,6 +403,10 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
     runnable ELF executables. An unwrapped standalone executable disables that assumption and
     the scanner retains host requirements or fails on unowned libraries. Wrapper coverage
     does not establish all process scopes or inherited legacy RPATH precedence; see CON188.
+  - An external or otherwise unproven search directory before a bundled candidate fails discovery
+    rather than assuming the candidate wins. A proven Python preload is already mapped; a proven
+    GPU launcher path precedes RUNPATH, but an ELF's legacy RPATH precedes that environment path.
+    This check does not resolve inherited RPATH or establish the owner of every external path.
   - `Maintainer` comes from `app.json`'s `maintainer`. Without one it is
     `<publisher> <noreply@invalid>`, which says plainly that no address was given.
 - **AppImage:** `AppRun` starts `gui_script`. Started through a symlink named after another

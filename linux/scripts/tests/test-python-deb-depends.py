@@ -266,6 +266,77 @@ esac''')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn(owner, result.stdout)
 
+    def test_untrusted_search_path_before_bundled_library_fails_closed(self) -> None:
+        source = module.ldconfig_cache()["libz.so.1"]
+        outside = self.root / "outside"
+        outside.mkdir()
+        inside = self.bundle / "private"
+        inside.mkdir()
+        for directory in (outside, inside):
+            shutil.copyfile(source, directory / "libz.so.1")
+        app_source = self.root / "search-order.c"
+        app_source.write_text('#include <stdio.h>\n#include <string.h>\n#include <zlib.h>\n'
+                              'int main(void) { char line[4096]; FILE *f=fopen("/proc/self/maps", "r"); '
+                              'if (!f || !zlibVersion()) return 1; '
+                              'while (fgets(line, sizeof(line), f)) if (strstr(line, "libz.so")) fputs(line, stdout); '
+                              'return fclose(f); }\n')
+        environment = dict(os.environ)
+        environment.pop("LD_LIBRARY_PATH", None)
+        environment.pop("LD_PRELOAD", None)
+        for legacy in (False, True):
+            for first_outside in (True, False):
+                with self.subTest(legacy=legacy, first_outside=first_outside):
+                    paths = ["$ORIGIN/../outside", "$ORIGIN/private"]
+                    if not first_outside:
+                        paths.reverse()
+                    options = ["-Wl,--disable-new-dtags"] if legacy else []
+                    subprocess.run(["cc", str(app_source), "-lz", *options,
+                                    "-Wl,-rpath," + ":".join(paths), "-o", str(self.app)], check=True)
+                    actual = subprocess.run([str(self.app)], env=environment, check=True, capture_output=True, text=True)
+                    selected = outside if first_outside else inside
+                    self.assertIn(str(selected / "libz.so.1"), actual.stdout)
+                    result = self.run_subject()
+                    if first_outside:
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn("unproven earlier ELF search path for libz.so.1", result.stderr)
+                    else:
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertNotIn(module.package_owner(source), result.stdout)
+
+    def test_gpu_path_precedes_runpath_but_not_legacy_rpath(self) -> None:
+        source = module.ldconfig_cache()["libz.so.1"]
+        outside = self.root / "outside"
+        outside.mkdir()
+        runtime = self.bundle / "runtime"
+        library = runtime / "lib"
+        library.mkdir(parents=True)
+        binary = runtime / "bin/python3.bin"
+        binary.parent.mkdir()
+        for directory in (outside, library):
+            shutil.copyfile(source, directory / "libz.so.1")
+        app_source = self.root / "environment-order.c"
+        app_source.write_text('#include <stdio.h>\n#include <string.h>\n#include <zlib.h>\n'
+                              'int main(void) { char line[4096]; FILE *f=fopen("/proc/self/maps", "r"); '
+                              'if (!f || !zlibVersion()) return 1; '
+                              'while (fgets(line, sizeof(line), f)) if (strstr(line, "libz.so")) fputs(line, stdout); '
+                              'return fclose(f); }\n')
+        environment = dict(os.environ, LD_LIBRARY_PATH=str(library))
+        environment.pop("LD_PRELOAD", None)
+        for legacy in (False, True):
+            with self.subTest(legacy=legacy):
+                options = ["-Wl,--disable-new-dtags"] if legacy else []
+                subprocess.run(["cc", str(app_source), "-lz", *options, "-Wl,-rpath," + str(outside),
+                                "-o", str(binary)], check=True)
+                actual = subprocess.run([str(binary)], env=environment, check=True, capture_output=True, text=True)
+                self.assertIn(str((outside if legacy else library) / "libz.so.1"), actual.stdout)
+                search, rpath_before_environment = module.elf_search_paths(binary, module.needed(binary))
+                self.assertEqual(rpath_before_environment, legacy)
+                if legacy:
+                    with self.assertRaisesRegex(ValueError, "unproven earlier ELF search path"):
+                        module.bundled_import(self.bundle, binary, "libz.so.1", search, True, set(), True)
+                else:
+                    self.assertTrue(module.bundled_import(self.bundle, binary, "libz.so.1", search, True, set()))
+
     def test_incompatible_local_library_keeps_host_dependency(self) -> None:
         source = module.ldconfig_cache()["libz.so.1"]
         owner = module.package_owner(source)

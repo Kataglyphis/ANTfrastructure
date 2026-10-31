@@ -31639,5 +31639,21 @@
   "replace": "  return 0",
   "test": "bash linux/scripts/tests/test-vulkan-gcc-runtime-links.sh",
   "why": "the sdk stage linked the host's x86-64 libstdc++ into /usr/lib/aarch64-linux-gnu until the ELF machine check refused it"
+ },
+ {
+  "id": "packaging.python-deb-search-order-direct",
+  "target": "linux/scripts/06-packaging/python-app-deb-depends.py",
+  "find": "if uncertain:\n                raise ValueError(f\"unproven earlier ELF search path for {name}: {path}\")",
+  "replace": "if False and uncertain:\n                raise ValueError(f\"unproven earlier ELF search path for {name}: {path}\")",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "an earlier host search path must not be hidden by a later bundled candidate"
+ },
+ {
+  "id": "packaging.python-deb-search-order-environment",
+  "target": "linux/scripts/06-packaging/python-app-deb-depends.py",
+  "find": "if environment_candidate and uncertain:",
+  "replace": "if False and environment_candidate and uncertain:",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "legacy RPATH must not be treated as lower priority than a launcher library path"
  }
 ]
