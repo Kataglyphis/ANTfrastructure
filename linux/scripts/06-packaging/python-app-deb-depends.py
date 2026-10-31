@@ -324,7 +324,18 @@ def compatible_bundled_elf(candidate: Path, bundle: Path, importer: Path) -> boo
     if not bundled_file(candidate, bundle):
         return False
     identity = elf_identity(importer)
-    return identity is not None and identity == elf_identity(candidate)
+    if identity is None or identity != elf_identity(candidate):
+        return False
+    elf = ElfSections(candidate)
+    try:
+        entries, _ = dynamic_entries(elf)
+        kind = elf.unpack("H", elf.read(16, 2))[0]
+        if kind != 3 or not elf.dynamic_segments or any(tag == 0x6FFFFFFB and value & 0x08000000
+                                                         for tag, value in entries):
+            raise ValueError(f"bundled dependency is not a loadable shared object: {candidate}")
+        return True
+    finally:
+        elf.stream.close()
 
 
 def elf_needs_launcher(path: Path, bundle: Path) -> bool:

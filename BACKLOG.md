@@ -763,6 +763,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       is skipped by the loader; the scanner now checks the class, byte order and machine of
       bundled dependency candidates against the importer and records the host package in
       that case. This is not a complete architecture-specific loader compatibility check.
+      A real loader fixture also rejects matching-architecture ET_EXEC and ET_DYN PIE files
+      masquerading as shared libraries; production discovery now rejects those candidates
+      rather than incorrectly considering them bundled. Other load failures remain unproved.
       An independent
       global-interposition fixture shows both unversioned and versioned plugin references
       binding to a previously global different-SONAME host library while the named bundled

@@ -378,6 +378,31 @@ esac''')
         local.write_bytes(b"not an ELF")
         self.assertFalse(module.compatible_bundled_elf(local, self.bundle, self.app))
 
+    def test_executables_cannot_satisfy_bundled_shared_libraries(self) -> None:
+        source = self.root / "zlib.c"
+        source.write_text('#include <zlib.h>\nint main(void) { return zlibVersion() == 0; }\n')
+        subprocess.run(["cc", str(source), "-Wl,-rpath,$ORIGIN", "-lz", "-o", str(self.app)], check=True)
+        candidate = self.bundle / "libz.so.1"
+        shutil.copyfile(module.ldconfig_cache()["libz.so.1"], candidate)
+        env = dict(os.environ)
+        env.pop("LD_LIBRARY_PATH", None)
+        env.pop("LD_PRELOAD", None)
+        self.assertEqual(subprocess.run([str(self.app)], env=env, check=False).returncode, 0)
+        result = self.run_subject()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for flags, message in ((["-no-pie"], "cannot dynamically load executable"),
+                               (["-fPIE", "-pie"], "cannot dynamically load position-independent executable")):
+            with self.subTest(flags=flags):
+                empty = self.root / "empty.c"
+                empty.write_text("int main(void) { return 0; }\n")
+                subprocess.run(["cc", *flags, str(empty), "-o", str(candidate)], check=True)
+                failure = subprocess.run([str(self.app)], env=env, text=True, capture_output=True, check=False)
+                self.assertNotEqual(failure.returncode, 0)
+                self.assertIn(message, failure.stderr)
+                result = self.run_subject()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("bundled dependency is not a loadable shared object", result.stderr)
+
     def test_incompatible_candidates_do_not_satisfy_wrapper_or_preload(self) -> None:
         source = module.ldconfig_cache()["libz.so.1"]
         runtime = self.bundle / "runtime"

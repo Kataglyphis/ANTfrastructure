@@ -391,6 +391,8 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
     match its importer. An incompatible local file can be skipped by the loader in favor of
     a host library, whose package must then be recorded or cause the scan to fail. These
     identity checks do not prove all architecture-specific loader rules or process scopes.
+    A matching-architecture executable or position-independent executable in place of a
+    shared library aborts the loader; the scanner fails rather than counting it as bundled.
   - The scanner counts Python site-package preloads as bundled only when the generated
     isolated app and interpreter launchers and `sitecustomize.py` are intact, isolated Python
     confirms the bundled prefix, site and loaded preload paths on both loader paths, and no

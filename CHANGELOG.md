@@ -19,6 +19,7 @@
 - Python DEB discovery rejects ambiguous package-owner results instead of choosing the first owner.
 - Python DEB discovery checks search-path order before assuming a bundled library wins; legacy RPATH precedes GPU launcher paths and RUNPATH follows them.
 - Python DEB discovery checks bundled dependencies' ELF class, byte order and machine against their importer before omitting a host package.
+- Python DEB discovery rejects executable and PIE files that masquerade as bundled shared libraries.
 - Native and Python app DEBs use gzip archives so older Debian package managers can read them.
 - Shared bundle DEBs use root ownership for every payload entry when built by an unprivileged user.
 - Python DEBs without bundled glibc require libc6 2.36 for packed relative relocations and reject unknown glibc ABI markers.

@@ -31657,6 +31657,22 @@
   "why": "legacy RPATH must not be treated as lower priority than a launcher library path"
  },
  {
+  "id": "packaging.python-deb-reject-executable-library",
+  "target": "linux/scripts/06-packaging/python-app-deb-depends.py",
+  "find": "kind != 3 or not elf.dynamic_segments",
+  "replace": "False or not elf.dynamic_segments",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "an executable named as a shared library aborts the loader rather than satisfying the dependency"
+ },
+ {
+  "id": "packaging.python-deb-reject-pie-library",
+  "target": "linux/scripts/06-packaging/python-app-deb-depends.py",
+  "find": "value & 0x08000000",
+  "replace": "value & 0",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "an ET_DYN position-independent executable cannot be loaded as a shared library"
+ },
+ {
   "id": "packaging.ort-profile-reject-transfer-only",
   "target": "shared/python/verify_ort_profile.py",
   "find": "and not event[\"args\"][\"op_name\"].strip().casefold().startswith(\"memcpy\")",
