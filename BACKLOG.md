@@ -34,7 +34,7 @@ image digests before implementing fixes and retain CPU-only support. The request
 targets are Linux NVIDIA x64/arm64, Linux AMD x64, and Windows NVIDIA/AMD x64; Linux ARM
 ROCm and Windows ARM GPU images are outside the requested matrix.
 
-- **Linux GPU SDKs and execution:** CON31, CON78, CON129, CON176, CON196, CON198,
+- **Linux GPU SDKs and execution:** CON31, CON78, CON129, CON172, CON176, CON196, CON198,
   CON202 and CON207 cover runtime selection, GTK/Vulkan headers, inference plugins,
   AMD model parity and the separate AMD GenAI investigation.
 - **Windows GPU runtimes:** CON180–185 and CON201 cover DirectML/CUDA provenance,
@@ -43,6 +43,9 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
 - **Build tools and offline inputs:** CON145, CON177–179, CON186–187, CON194–195,
   CON197, CON199–200 and CON205–206 cover tools, plugins, SDK/cache inputs and
   Flutter/FRB generation; entries distinguish required fixes from optional offline support.
+- **CPU image and package handoff findings:** CON188–193 cover DEB host-library versioning,
+  optional offline inputs, auditwheel and the optional DNNL provider. These also affect
+  the CPU baseline that GPU consumers must continue to support.
 - **Image readiness and capacity:** CON90 and CON174 track the ROCm Python rollout and
   measured disk requirements for GPU consumer builds.
 
@@ -1041,6 +1044,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       physical GPU execution; retain each as a separate gate before any self-contained
       release. See `_implementation/nvidia-x64-redistrib-verification-20261031/VALIDATION.md`
       and the earlier `_implementation/nvidia-linux-x64-provenance-20261031/VALIDATION.md`.
+      An installed prospective Omni NVIDIA DEB in an isolated Ubuntu 26.04 rootfs,
+      with no vendor runtime or GPU passed through, rejected explicit CUDA execution
+      because `libcublasLt.so.13` was absent. This tests the candidate's failure path,
+      not the image's CUDA installation or execution on a supported GPU. Carry this
+      clean-host case into the future image-to-consumer handoff and verify the resulting
+      runtime closure on a supported host. Evidence: `_implementation/omni-clean-rootfs-20261031/VALIDATION.md`.
       Check newer mutable image tags independently. This observation
       concerns provenance and notice handoff, not redistribution rights or a defect in the
       existing host-runtime artifact. Offline QEMU inventory and commands:
@@ -1086,7 +1095,14 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       package-manager dependency that installs either ROCm or MIGraphX. Their
       documented host-runtime design therefore needs a separately provisioned,
       compatible vendor runtime; this observation does not establish that the
-      packages or GPU inference were run. The image returned no installed
+      packages or GPU inference were run. A separately installed prospective Omni
+      AMD DEB in an isolated Ubuntu 26.04 rootfs, with no vendor runtime or GPU
+      passed through, rejected explicit MIGraphX execution because
+      `libmigraphx_c.so.3` was absent. Carry this clean-host failure case into the
+      image-to-consumer handoff and verify the resulting closure on supported AMD
+      hardware; it does not establish GPU execution. Evidence:
+      `_implementation/omni-clean-rootfs-20261031/VALIDATION.md`.
+      The image returned no installed
       `amdrocm*` entries from `dpkg-query`, while the image build's source installs
       AMD packages before copying the ROCm tree. Record the signed build-stage
       package identities, versions, source hashes and component notices in the
