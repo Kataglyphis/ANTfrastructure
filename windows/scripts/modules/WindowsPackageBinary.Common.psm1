@@ -26,6 +26,28 @@ function Assert-PackageBinary {
     if ($LASTEXITCODE -ne 0) { throw "package binary verification failed for '$($Member -join ', ')' (exit $LASTEXITCODE)" }
 }
 
+function Get-ArchiveOrtProviderNames {
+    param([string]$Path, [AllowEmptyString()][string]$Directory)
+    $names = @()
+    $archive = [IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        foreach ($entry in $archive.Entries) {
+            $raw = $entry.FullName
+            $parts = @($raw.Replace('\', '/') -split '/' | Where-Object { $_ -and $_ -ne '.' })
+            if ($parts.Count -eq 0 -or $parts[-1] -in @('.', '..') -or $parts[-1] -inotmatch '^onnxruntime_providers_') { continue }
+            if ($parts -contains '..') { throw "unsafe provider archive path: $raw" }
+            $parent = if ($parts.Count -gt 1) { $parts[0..($parts.Count - 2)] -join '/' } else { '' }
+            if (-not [string]::Equals($parent, $Directory, [StringComparison]::OrdinalIgnoreCase)) { continue }
+            $expected = (@($Directory, $parts[-1]) | Where-Object { $_ }) -join '/'
+            if ($raw -cne $expected -or (($entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000) {
+                throw "aliased or non-file provider archive member: $raw"
+            }
+            $names += $parts[-1]
+        }
+    } finally { $archive.Dispose() }
+    return $names
+}
+
 function Get-PackageOrtProviderNames {
     <#
     .SYNOPSIS
@@ -39,27 +61,11 @@ function Get-PackageOrtProviderNames {
     }
     $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
     $extension = [IO.Path]::GetExtension($resolved)
-    $names = @()
-    if ($extension -ieq '.msi') {
+    $names = if ($extension -ieq '.msi') {
         if (-not $RootDirectoryId) { throw 'MSI provider enumeration requires a root directory identifier' }
-        $names = @(Get-MsiDirectoryFileNames -Path $resolved -Directory $Directory -RootDirectoryId $RootDirectoryId -RootDirectoryName $RootDirectoryName)
+        @(Get-MsiDirectoryFileNames -Path $resolved -Directory $Directory -RootDirectoryId $RootDirectoryId -RootDirectoryName $RootDirectoryName)
     } elseif ($extension -in @('.zip', '.msix')) {
-        $archive = [IO.Compression.ZipFile]::OpenRead($resolved)
-        try {
-            foreach ($entry in $archive.Entries) {
-                $raw = $entry.FullName
-                $parts = @($raw.Replace('\', '/') -split '/' | Where-Object { $_ -and $_ -ne '.' })
-                if ($parts.Count -eq 0 -or $parts[-1] -in @('.', '..') -or $parts[-1] -inotmatch '^onnxruntime_providers_') { continue }
-                if ($parts -contains '..') { throw "unsafe provider archive path: $raw" }
-                $parent = if ($parts.Count -gt 1) { $parts[0..($parts.Count - 2)] -join '/' } else { '' }
-                if (-not [string]::Equals($parent, $Directory, [StringComparison]::OrdinalIgnoreCase)) { continue }
-                $expected = (@($Directory, $parts[-1]) | Where-Object { $_ }) -join '/'
-                if ($raw -cne $expected -or (($entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000) {
-                    throw "aliased or non-file provider archive member: $raw"
-                }
-                $names += $parts[-1]
-            }
-        } finally { $archive.Dispose() }
+        @(Get-ArchiveOrtProviderNames -Path $resolved -Directory $Directory)
     } else { throw 'provider enumeration requires ZIP, MSIX or MSI' }
     $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($name in $names) {

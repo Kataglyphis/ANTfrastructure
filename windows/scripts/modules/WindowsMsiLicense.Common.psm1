@@ -109,6 +109,45 @@ function Get-MsiTargetLongName {
     return $name
 }
 
+function Get-MsiRowsById {
+    param([object[]]$Rows, [string]$Kind, [switch]$DirectoryOnly)
+    $byId = @{}
+    foreach ($row in $Rows) {
+        if (-not $row.Id -or $byId.ContainsKey($row.Id)) { throw "duplicate or empty MSI $Kind identifier" }
+        $byId[$row.Id] = if ($DirectoryOnly) { [string]$row.Directory } else { $row }
+    }
+    return $byId
+}
+
+function Assert-MsiRootDirectory {
+    param([hashtable]$Directories, [string]$RootDirectoryId, [string]$RootDirectoryName)
+    Assert-MsiLicenseFileId -Id $RootDirectoryId
+    if (-not $Directories.ContainsKey($RootDirectoryId)) { throw "missing MSI root directory: $RootDirectoryId" }
+    $rootName = Get-MsiTargetLongName -Name $Directories[$RootDirectoryId].Name
+    if ($RootDirectoryName -and -not [string]::Equals($rootName, $RootDirectoryName, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "MSI root directory '$RootDirectoryId' names '$rootName', expected '$RootDirectoryName'"
+    }
+}
+
+function Get-MsiInstalledPath {
+    param([string]$Leaf, [string]$DirectoryId, [hashtable]$Directories, [string]$RootDirectoryId)
+    $path = @($Leaf); $visited = @{}; $dir = $DirectoryId; $underRoot = $false
+    while ($dir) {
+        if ($visited.ContainsKey($dir) -or -not $Directories.ContainsKey($dir)) { throw "cyclic or missing MSI directory: $dir" }
+        $visited[$dir] = $true
+        $node = $Directories[$dir]
+        if ($RootDirectoryId -and [string]::Equals($dir, $RootDirectoryId, [StringComparison]::OrdinalIgnoreCase)) {
+            $underRoot = $true
+            break
+        }
+        $name = Get-MsiTargetLongName -Name $node.Name
+        if ($name -ne '.') { $path = @($name) + $path }
+        $dir = [string]$node.Parent
+    }
+    if ($RootDirectoryId -and -not $underRoot) { return $null }
+    return $path -join '/'
+}
+
 function Resolve-MsiInstalledFileId {
     <#
     .SYNOPSIS
@@ -120,23 +159,11 @@ function Resolve-MsiInstalledFileId {
         [string]$RootDirectoryId = '', [string]$RootDirectoryName = '')
     $relative = $RelativePath.Replace('\', '/')
     if ($relative -match '(^/|//|(^|/)\.{1,2}(/|$)|[:*?\[\]<>"|\x00-\x1f]|[ .](/|$))' -or $relative.EndsWith('/')) { throw "unsafe MSI relative path: $RelativePath" }
-    $componentById = @{}; $directoryById = @{}
-    foreach ($component in $Components) {
-        if (-not $component.Id -or $componentById.ContainsKey($component.Id)) { throw 'duplicate or empty MSI component identifier' }
-        $componentById[$component.Id] = $component
-    }
-    foreach ($directory in $Directories) {
-        if (-not $directory.Id -or $directoryById.ContainsKey($directory.Id)) { throw 'duplicate or empty MSI directory identifier' }
-        $directoryById[$directory.Id] = $directory
-    }
+    $componentById = Get-MsiRowsById -Rows $Components -Kind 'component'
+    $directoryById = Get-MsiRowsById -Rows $Directories -Kind 'directory'
     if ($RootDirectoryName -and -not $RootDirectoryId) { throw 'MSI root directory name requires a root directory identifier' }
     if ($RootDirectoryId) {
-        Assert-MsiLicenseFileId -Id $RootDirectoryId
-        if (-not $directoryById.ContainsKey($RootDirectoryId)) { throw "missing MSI root directory: $RootDirectoryId" }
-        $rootName = Get-MsiTargetLongName -Name $directoryById[$RootDirectoryId].Name
-        if ($RootDirectoryName -and -not [string]::Equals($rootName, $RootDirectoryName, [StringComparison]::OrdinalIgnoreCase)) {
-            throw "MSI root directory '$RootDirectoryId' names '$rootName', expected '$RootDirectoryName'"
-        }
+        Assert-MsiRootDirectory -Directories $directoryById -RootDirectoryId $RootDirectoryId -RootDirectoryName $RootDirectoryName
     }
     $matchedIds = @()
     foreach ($file in $Files) {
@@ -144,21 +171,9 @@ function Resolve-MsiInstalledFileId {
         $leaf = Get-MsiTargetLongName -Name $file.Name
         if (-not [string]::Equals($leaf, ($relative -split '/')[-1], [StringComparison]::OrdinalIgnoreCase)) { continue }
         if (-not $componentById.ContainsKey($file.Component)) { throw "missing MSI component: $($file.Component)" }
-        $path = @($leaf); $visited = @{}; $dir = [string]$componentById[$file.Component].Directory; $underRoot = $false
-        while ($dir) {
-            if ($visited.ContainsKey($dir) -or -not $directoryById.ContainsKey($dir)) { throw "cyclic or missing MSI directory: $dir" }
-            $visited[$dir] = $true
-            $node = $directoryById[$dir]
-            if ($RootDirectoryId -and [string]::Equals($dir, $RootDirectoryId, [StringComparison]::OrdinalIgnoreCase)) {
-                $underRoot = $true
-                break
-            }
-            $name = Get-MsiTargetLongName -Name $node.Name
-            if ($name -ne '.') { $path = @($name) + $path }
-            $dir = [string]$node.Parent
-        }
-        if ($RootDirectoryId -and -not $underRoot) { continue }
-        $installed = $path -join '/'
+        $installed = Get-MsiInstalledPath -Leaf $leaf -DirectoryId ([string]$componentById[$file.Component].Directory) `
+            -Directories $directoryById -RootDirectoryId $RootDirectoryId
+        if ($null -eq $installed) { continue }
         if ([string]::Equals($installed, $relative, [StringComparison]::OrdinalIgnoreCase) -or (-not $RootDirectoryId -and
             $installed.EndsWith("/$relative", [StringComparison]::OrdinalIgnoreCase))) {
             Assert-MsiLicenseFileId -Id $file.Id
@@ -190,16 +205,8 @@ function Resolve-MsiDirectoryFileNames {
         throw "unsafe MSI relative directory: $Directory"
     }
     Assert-MsiLicenseFileId -Id $RootDirectoryId
-    $byId = @{}
-    foreach ($row in $Directories) {
-        if (-not $row.Id -or $byId.ContainsKey($row.Id)) { throw 'duplicate or empty MSI directory identifier' }
-        $byId[$row.Id] = $row
-    }
-    if (-not $byId.ContainsKey($RootDirectoryId)) { throw "missing MSI root directory: $RootDirectoryId" }
-    $rootName = Get-MsiTargetLongName -Name $byId[$RootDirectoryId].Name
-    if ($RootDirectoryName -and -not [string]::Equals($rootName, $RootDirectoryName, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "MSI root directory '$RootDirectoryId' names '$rootName', expected '$RootDirectoryName'"
-    }
+    $byId = Get-MsiRowsById -Rows $Directories -Kind 'directory'
+    Assert-MsiRootDirectory -Directories $byId -RootDirectoryId $RootDirectoryId -RootDirectoryName $RootDirectoryName
     $dir = $RootDirectoryId
     foreach ($segment in @($Directory -split '/' | Where-Object { $_ })) {
         $children = @($Directories | Where-Object {
@@ -209,11 +216,7 @@ function Resolve-MsiDirectoryFileNames {
         if ((Get-MsiTargetLongName -Name $children[0].Name) -cne $segment) { throw "MSI directory case differs: $segment" }
         $dir = [string]$children[0].Id
     }
-    $componentIds = @{}
-    foreach ($component in $Components) {
-        if (-not $component.Id -or $componentIds.ContainsKey($component.Id)) { throw 'duplicate or empty MSI component identifier' }
-        $componentIds[$component.Id] = [string]$component.Directory
-    }
+    $componentIds = Get-MsiRowsById -Rows $Components -Kind 'component' -DirectoryOnly
     foreach ($file in $Files) {
         if (-not $componentIds.ContainsKey($file.Component)) { throw "missing MSI component: $($file.Component)" }
         if ($componentIds[$file.Component] -ne $dir) { continue }
