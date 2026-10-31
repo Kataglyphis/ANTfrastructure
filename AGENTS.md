@@ -506,6 +506,7 @@ hand-rolling any of that in a consumer.
 When adding here:
 
 - **Reuse before adding (owner directive for every owned repo).** Search the current repository and its submodules for an existing implementation before creating functionality. Reuse or extend the canonical repo or submodule surface; when none exists, add it once to a shared repo and wire consumers to it. Keep consumer-specific values as parameters. If a hard technical boundary prevents reuse, record the reason and keep the copy tied to its canonical source.
+  Keep scripts used repeatedly for development, verification or host maintenance in the owning repository; parameterize machine-specific values and document their use instead of regenerating the scripts for each task. Keep one-off evidence and scratch probes separate.
   For Bash and PowerShell, review `verify_hub_reuse.py --root <consumer> --hub <hub> --report-only` as well; an advisory CI report does not authorize another local copy.
   The weekly consumer inventory also measures cross-repository Bash/PowerShell overlap among active owned nonfork repos. Review its ignored `logs/reports/consumer-reuse.md` before adding a shared helper; overlap remains advisory, while missing checkouts or inventory coverage fail.
   The reusable report job fails for an owned nonfork consumer whose pinned Hub lacks that scanner; keep the direct submodule current so reuse stays measured.
@@ -1345,6 +1346,10 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
     `docker image prune`, the store-GC sequence in
     [`windows-build-lanes.md` § Store GC](docs/windows-build-lanes.md). Filesystem reclaim is a
     last resort limited to dead `*.bak-<stamp>` husks.
+  - **Targeted Stevedore cleanup stays explicit and preview-first.** `-StevedoreOnly` accepts reviewed
+    tags with full expected IDs and an optional regular-cache prune; keep its daemon addresses explicit,
+    refuse active use, recheck each ID, and never fall through to the broader file or Docker cleanup.
+    The idle checks are point-in-time, not a lock; stop other users and builds before applying.
   - **Protected roots are OFF LIMITS to the agent, permanently**: `C:\Program Files`,
     `C:\Program Files (x86)`, `C:\Windows`, `C:\ProgramData` outside the container stores, any
     user profile under `C:\Users`, `AppData`, per-user tool directories (`.vscode`, `.ssh`,

@@ -22,11 +22,21 @@ param(
     [switch]$NoDaemonPrune,
 
     # Only renamed container stores; daemon GC is always disabled.
-    [switch]$StoreHusksOnly
+    [switch]$StoreHusksOnly,
+
+    # Restrict this run to explicitly selected Stevedore image tags and/or regular BuildKit cache.
+    [switch]$StevedoreOnly,
+    [string[]]$ImageTag = @(),
+    [string[]]$ExpectedImageId = @(),
+    [switch]$RegularCache,
+    [string]$StevedoreNamespace = 'buildkit',
+    [string]$BuildkitAddress = 'npipe:////./pipe/buildkitd',
+    [string]$ContainerdAddress = '\\.\pipe\containerd-containerd'
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$script:cleanupBoundParameters = @($PSBoundParameters.Keys)
 
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1')
@@ -204,7 +214,142 @@ function Invoke-ReclaimDaemonPrune {
 }
 
 # Main
+function Get-StevedoreTargets {
+    param([string[]]$Tags, [string[]]$Ids)
+    if ($Tags.Count -ne $Ids.Count) { throw 'Each image tag needs one expected image ID.' }
+    $seen = @{}
+    for ($i = 0; $i -lt $Tags.Count; $i++) {
+        # Explicit tagged references only: no globs, digest selectors, options or untagged names.
+        if ($Tags[$i] -cnotmatch '^[a-z0-9][a-z0-9._:/-]*:[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$') {
+            throw "Invalid explicit image tag: $($Tags[$i])"
+        }
+        if ($Ids[$i] -cnotmatch '^sha256:[0-9a-f]{64}$') { throw 'Expected image ID must be a full lowercase sha256 ID.' }
+        if ($seen.ContainsKey($Tags[$i])) { throw "Duplicate image tag: $($Tags[$i])" }
+        $seen[$Tags[$i]] = $true
+        [pscustomobject]@{ Tag = $Tags[$i]; Id = $Ids[$i] }
+    }
+}
+
+function Invoke-StevedoreRead {
+    param($Store, [string[]]$Arguments, [string]$FailureMessage)
+    $output = @(& $Store.Tool --address $Store.Address --namespace $Store.Namespace @Arguments)
+    if ($LASTEXITCODE -ne 0) { throw $FailureMessage }
+    return $output
+}
+
+function ConvertFrom-StevedoreJson {
+    param([string[]]$Raw, [string]$Context)
+    try { $Raw | ConvertFrom-Json -ErrorAction Stop } catch { throw "Invalid $Context response." }
+}
+
+function Assert-BuildkitIdle {
+    param([string]$Buildctl, [string]$Address)
+    $raw = @(& $Buildctl --addr $Address du --format '{{json .}}')
+    if ($LASTEXITCODE -ne 0 -or -not $raw.Count) { throw 'Cannot inspect BuildKit usage.' }
+    $records = @(ConvertFrom-StevedoreJson -Raw $raw -Context 'BuildKit usage')
+    foreach ($record in $records) {
+        if ($null -eq $record.PSObject.Properties['inUse'] -or $record.inUse -isnot [bool]) {
+            throw 'BuildKit usage response has no valid inUse value.'
+        }
+        if ($record.inUse) { throw 'BuildKit has in-use records; refusing cleanup.' }
+    }
+}
+
+function Assert-StevedoreIdle {
+    param([string]$Buildctl, [string]$Address, $Store)
+    if (@(Get-Process -Name docker,nerdctl,buildctl -ErrorAction SilentlyContinue).Count) {
+        throw 'A container client is running; refusing Stevedore cleanup.'
+    }
+    $running = @(Invoke-StevedoreRead -Store $Store -Arguments @('ps', '--quiet', '--no-trunc') `
+        -FailureMessage 'Cannot inspect Stevedore containers.')
+    if (@($running | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count) {
+        throw 'Stevedore containers are running; refusing cleanup.'
+    }
+    Assert-BuildkitIdle -Buildctl $Buildctl -Address $Address
+}
+
+function Get-StevedoreImageId {
+    param($Store, [string]$Tag)
+    $raw = @(Invoke-StevedoreRead -Store $Store -Arguments @('image', 'inspect', $Tag) -FailureMessage "Cannot inspect image: $Tag")
+    if (-not $raw.Count) { throw "Cannot inspect image: $Tag" }
+    $items = @(ConvertFrom-StevedoreJson -Raw $raw -Context "image inspection: $Tag")
+    if ($items.Count -ne 1 -or $null -eq $items[0].PSObject.Properties['Id']) { throw "Unexpected image inspection: $Tag" }
+    return $items[0].Id
+}
+
+function Assert-StevedoreTarget {
+    param($Store, $Target)
+    if ((Get-StevedoreImageId -Store $Store -Tag $Target.Tag) -cne $Target.Id) {
+        throw "Image changed since review: $($Target.Tag)"
+    }
+}
+
+function Invoke-StevedoreRemoval {
+    param($Store, [string]$Tag)
+    & $Store.Tool --address $Store.Address --namespace $Store.Namespace rmi $Tag | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "Image removal failed: $Tag" }
+}
+
+function Invoke-StevedoreRegularPrune {
+    param([string]$Buildctl, [string]$Address, [int]$TargetGB)
+    & $Buildctl --addr $Address prune --filter 'type==regular' --free-storage ($TargetGB * 1024) | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw 'Regular BuildKit cache prune failed.' }
+}
+
+function Assert-StevedoreAdmin {
+    $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Administrator rights are required.' }
+}
+
+function Invoke-StevedoreReclaim {
+    param([object[]]$Targets, [bool]$PruneRegular, [int]$TargetGB, [bool]$DoApply,
+        [string]$Nerdctl, [string]$Buildctl, [string]$Namespace, [string]$Address, [string]$ContainerdAddress)
+    if (-not $Targets.Count -and -not $PruneRegular) { throw 'Select image tags or -RegularCache.' }
+    if ($TargetGB -lt 1 -or $TargetGB -gt 2097151) { throw 'KeepGB is outside the supported range.' }
+    if ($Namespace -cnotmatch '^[a-zA-Z0-9][a-zA-Z0-9_.-]*$') { throw 'Invalid Stevedore namespace.' }
+    if ($Address -notmatch '^(npipe|unix|tcp)://\S+$') { throw 'Invalid BuildKit address.' }
+    if ($ContainerdAddress -notmatch '^(?:(npipe|unix|tcp)://\S+|\\\\\.\\pipe\\[^\s]+)$') { throw 'Invalid containerd address.' }
+    $store = [pscustomobject]@{ Tool = $Nerdctl; Namespace = $Namespace; Address = $ContainerdAddress }
+    foreach ($target in $Targets) {
+        Assert-StevedoreTarget -Store $store -Target $target
+        Write-HostMaintenanceMessage ("Stevedore tag: {0} ({1})" -f $target.Tag, $target.Id)
+    }
+    if ($PruneRegular) { Write-HostMaintenanceMessage ("Unused regular BuildKit cache: free-space target {0} GB; cache mounts excluded." -f $TargetGB) }
+    if (-not $DoApply) { Write-HostMaintenanceMessage 'REPORT ONLY. Re-run with -Apply after review.'; return }
+    Assert-StevedoreAdmin
+    Assert-StevedoreIdle -Buildctl $Buildctl -Address $Address -Store $store
+    foreach ($target in $Targets) {
+        Assert-StevedoreTarget -Store $store -Target $target
+        Invoke-StevedoreRemoval -Store $store -Tag $target.Tag
+    }
+    if ($PruneRegular) {
+        Assert-StevedoreIdle -Buildctl $Buildctl -Address $Address -Store $store
+        Invoke-StevedoreRegularPrune -Buildctl $Buildctl -Address $Address -TargetGB $TargetGB
+    }
+}
+
+function Assert-StevedoreSelectors {
+    param([bool]$Selected, [string[]]$BoundParameters)
+    if (-not $Selected) {
+        foreach ($name in @('ImageTag', 'ExpectedImageId', 'RegularCache', 'StevedoreNamespace', 'BuildkitAddress', 'ContainerdAddress')) {
+            if ($name -in $BoundParameters) { throw "$name requires -StevedoreOnly." }
+        }
+    }
+}
+
+function Invoke-StevedoreOnlyMode {
+    if ($AllowDuringBuild -or $NoDaemonPrune -or $StoreHusksOnly) { throw 'StevedoreOnly cannot be combined with other cleanup selectors.' }
+    $targets = @(Get-StevedoreTargets -Tags $ImageTag -Ids $ExpectedImageId)
+    $bin = Join-Path $env:ProgramFiles 'Stevedore\bin'
+    Invoke-StevedoreReclaim -Targets $targets -PruneRegular ([bool]$RegularCache) -TargetGB $KeepGB -DoApply ([bool]$Apply) `
+        -Nerdctl (Join-Path $bin 'nerdctl.exe') -Buildctl (Join-Path $bin 'buildctl.exe') `
+        -Namespace $StevedoreNamespace -Address $BuildkitAddress -ContainerdAddress $ContainerdAddress
+    return 0
+}
+
 function Invoke-FreeDiskSpace {
+    Assert-StevedoreSelectors -Selected ([bool]$StevedoreOnly) -BoundParameters $script:cleanupBoundParameters
+    if ($StevedoreOnly) { return (Invoke-StevedoreOnlyMode) }
     Write-HostMaintenanceMessage '== resolving the allowlist ==' 'Cyan'
     $daemonPrune = -not ($NoDaemonPrune -or $StoreHusksOnly)
     $plan = @(Get-ReclaimPlan -Rules (Get-ReclaimRules -TempAgeDays $TempOlderThanDays -StoreHusksOnly:$StoreHusksOnly))

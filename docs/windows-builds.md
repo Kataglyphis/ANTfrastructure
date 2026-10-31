@@ -2077,6 +2077,26 @@ profile, and the host had to be rebuilt by hand).
 - `-StoreHusksOnly` selects only `C:\ProgramData\{containerd,buildkitd,Docker}.bak-*`
   directories and disables every daemon report/prune call, even with `-Apply`. It excludes TEMP,
   logs and checkout scratch. Report with this selector first; apply only after checking the list.
+- `-StevedoreOnly` selects a separate daemon-only path: provide matching `-ImageTag` and
+  `-ExpectedImageId` arrays for explicit local tags and their full `sha256:` image IDs, and/or
+  select `-RegularCache` to prune unused regular BuildKit cache. Run without `-Apply` to preview;
+  after review, repeat with `-Apply` from an elevated shell. For example:
+
+  ```pwsh
+  .\windows\scripts\host\Clear-DiskSpace.ps1 -StevedoreOnly -ImageTag 'local/example:old' -ExpectedImageId $reviewedImageId
+  .\windows\scripts\host\Clear-DiskSpace.ps1 -StevedoreOnly -RegularCache -KeepGB 100
+  ```
+
+  The first command requires `$reviewedImageId` to be the full ID inspected for that tag.
+  The second previews a global unused **regular** cache prune; it excludes cache mounts and
+  does not remove images. `-KeepGB` is a free-space target, not a deletion limit. The namespace
+  and daemon addresses can be selected with `-StevedoreNamespace`, `-ContainerdAddress` and
+  `-BuildkitAddress`. The targeted path does not invoke the legacy file or Docker prune.
+  It refuses running local clients, running containers in the selected namespace, and BuildKit
+  records marked in use. Stop other users and builds before running it: these checks are
+  point-in-time observations, not an exclusive lock. Tag IDs are rechecked before removal.
+  Operations are not transactional; after a failure, inspect the store and prepare a new plan.
+  Removed local tags and cached layers can make subsequent builds require a download or rebuild.
 - Fails the WHOLE run if any resolved candidate lands on a protected root (Program Files, Windows,
   ProgramData outside the container stores, user profiles, AppData, drive roots): that means the
   resolution logic is wrong, not that one target should be skipped.
@@ -2088,7 +2108,8 @@ profile, and the host had to be rebuilt by hand).
   use `-StoreHusksOnly` to disable it for husk cleanup. Refuses the destructive half while a build
   looks live unless `-AllowDuringBuild`.
 - Parameters: `-Apply`, `-KeepGB` (buildkit free-space target, default 100), `-TempOlderThanDays`,
-  `-AllowDuringBuild`, `-NoDaemonPrune`, `-StoreHusksOnly`.
+  `-AllowDuringBuild`, `-NoDaemonPrune`, `-StoreHusksOnly`, `-StevedoreOnly`, `-ImageTag`,
+  `-ExpectedImageId`, `-RegularCache`, `-StevedoreNamespace`, `-ContainerdAddress`, `-BuildkitAddress`.
 - Enforced from outside the script too, by the `PreToolUse` guard in
   `.claude/hooks/guard-destructive-deletes.ps1`; behaviour pinned by
   `windows/scripts/tests/Guard.DestructiveDeletes.Tests.ps1`.

@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-31 — Reusable Stevedore host maintenance
+
+- Add a read-only Stevedore inventory for disk space, BuildKit cache, images and
+  containers, with configurable daemon addresses and tool paths.
+- Add a preview-first, daemon-only cleanup mode for explicitly reviewed Stevedore
+  image tags and optional unused regular BuildKit cache.
+- Keep recurring operational and verification scripts in their owning repository,
+  parameterized for reuse rather than regenerated as task-specific scratch files.
+
 ## 2026-10-31 — Mutants must parse, and the mutation gate times each test command
 
 - 66 of the 88 `code-dupes.allow` rows that paired two `windows/scripts/tests/` files are gone:

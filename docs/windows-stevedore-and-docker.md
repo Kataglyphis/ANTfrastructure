@@ -12,6 +12,27 @@ than of this repo's chain.
 For an ordered bring-up of a brand-new host start at
 [`windows-host-setup.md`](windows-host-setup.md) — this page is the reference it
 points into.
+
+## Stevedore disk inventory
+
+From an elevated PowerShell 7 session, run the read-only inventory before deciding
+what can be reclaimed:
+
+```pwsh
+.\windows\scripts\host\Get-StevedoreInventory.ps1
+```
+
+It reports filesystem free space, BuildKit disk usage, and the images and
+containers in the BuildKit containerd namespace. `nerdctl` needs elevation on
+the reference host. Use `-StevedoreNamespace`, `-BuildkitAddress`,
+`-ContainerdAddress`, `-NerdctlPath` and `-BuildctlPath` for a different host;
+the defaults point to the Stevedore installation and named pipes. A failed probe
+returns a nonzero exit code, so a partial inventory is not a complete report.
+Shared layers can remain pinned by image tags, while pruning build cache can
+make later builds slower. Review the [store GC guidance](windows-build-lanes.md)
+and the [sanctioned cleanup tool](windows-builds.md#clear-diskspaceps1) before
+removing anything.
+
 ## Stevedore Setup Fixes
 
 After installing Stevedore, apply these post-install fixes. They are the canonical source. Fixes 1 and 2 are for their symptom only (which symptom: [`windows-host-setup.md`](windows-host-setup.md) § A4); Fix 3 is for every host.
