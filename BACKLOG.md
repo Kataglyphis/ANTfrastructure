@@ -964,7 +964,20 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       CUDA artifact, preserve each shipped library and dynamically loaded resource's exact
       source, version, applicable license and notices in a verifiable image-to-consumer
       handoff. Determine the runtime closure and driver boundary and test on supported GPU
-      hardware. Check Linux x64 and newer mutable image tags independently. This observation
+      hardware. On 2026-10-31, a separate read-only, network-free inspection of the cached
+      Linux x64 NVIDIA image (repository digest `sha256:70bc45db5e2032cad3042b88b2f9a1c06cf4c4ddbbfc91251fbc0c9a2cba233d`,
+      image ID `sha256:613b7fdc50efe39df3f71b2d2ef4ec4d77516afa9bae6e2efc27e3c3c7ddee54`)
+      found CUDA 13.4.3 and the same provider SONAMEs; `dpkg-query -S` did not identify
+      owners for the five inspected canonical cudart, cuBLAS, cuBLASLt, cuRAND and cuDNN files.
+      NVIDIA's official CUDA 13.4.3 manifest identifies their matching cudart, cuBLAS and
+      cuRAND versions. The small, hash-verified official cudart 13.4.92 x64 archive's
+      extracted library exactly matched the image file, and its license text was retained.
+      That proves one component's archive-to-image byte match, not the other binaries,
+      the complete dynamic closure, or redistribution terms. NVIDIA's cuDNN 9.27.0
+      manifest identifies the CUDA 13 archive and license path, but its archive was not
+      downloaded or matched. Evidence and source links:
+      `_implementation/nvidia-linux-x64-provenance-20261031/VALIDATION.md`.
+      Check newer mutable image tags independently. This observation
       concerns provenance and notice handoff, not redistribution rights or a defect in the
       existing host-runtime artifact. Offline QEMU inventory and commands:
       `_implementation/nvidia-linux-inventory-20261031/arm-inventory.log` and `probe.sh`.
