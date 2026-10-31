@@ -1070,6 +1070,21 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the image, runtime and device combination. Raw outputs, logs and checks are in
       `_implementation/accelerant-rocm-cats-repeat-20261031/` and
       `_implementation/accelerant-rocm-cats-alias-control-20261031/`.
+      A later no-network control used the same image digest and integrated WSL GPU, a
+      rebuilt AccelerANTgine TAR (SHA-256
+      `583039f26baf779c404064f481d6b188b43ef2fe58a4f1db98808f6ad8e0d873`), the same
+      locked detector and two-cats fixture, and two detector calls per session. With
+      `MIGRAPHX_SKIP_BENCHMARKING=1` plus either `MIGRAPHX_SET_GEMM_PROVIDER=rocblas`
+      or `MIGRAPHX_DISABLE_MLIR=1`, each CPU call returned four detections, each GPU call
+      returned three, and the two GPU outputs differed. Both GPU traces had a verified
+      non-copy MIGraphX model operator in each run. Neither setting passed detector parity.
+      A test adding `MIGRAPHX_GPU_DISABLE_NONTEMPORAL_LOADS=1` also failed parity, but the
+      installed image files did not establish that the switch was supported; its effect is
+      unknown. `ORT_MIGRAPHX_EXHAUSTIVE_TUNE=1` without skip-benchmarking was still searching
+      MIOpen kernels at the 240-second timeout and produced no GPU inference result. These
+      are bounded diagnostics, not verified fixes or proof of the failure's cause. Inputs,
+      exact output hashes, per-run profiles and logs are under
+      `_implementation/accelerant-rocm-tuning-20261031/`.
       A separate non-packaged OxidANT CLI test used the same image, WSL device, locked
       model and two-cats JPEG (SHA-256
       `6d375ac20fadfd400b3033084f8b0581dcc145f7c14e3b24b97975e379c52999`), with root,
