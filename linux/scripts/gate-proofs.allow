@@ -60,6 +60,7 @@ mutation-family:package
 mutation-family:packaging
 mutation-family:probe
 mutation-family:python
+mutation-family:python-ci
 mutation-family:qairt
 mutation-family:rust
 mutation-family:sccache
