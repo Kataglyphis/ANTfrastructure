@@ -64,4 +64,13 @@ def finish(
     dupes.gate_scope.write_json(args.json, "code-dupes", dupes.REPO_ROOT, totals,
                                 unit_pair_counts(_rels(files), texts, per_file),
                                 limits={"threshold": args.threshold, "shingle": dupes.SHINGLE},
-                                **sections)
+                                items=pair_items(per_file.values()), **sections)
+
+
+def pair_items(pairs: Iterable[tuple[int, dupes.Unit, dupes.Unit]],
+               prefixes: tuple[str, str] = ("", "")) -> list[dict[str, object]]:
+    """One located record per over-threshold pair, most shared shingles first."""
+    ranked = sorted(pairs, key=lambda pair: (-pair[0], pair[1][0], pair[1][1]))
+    return [{"path": a[0].removeprefix(prefixes[0]), "line": a[1],
+             "other": f"{b[0].removeprefix(prefixes[1])}:{b[1]}", "shingles": n}
+            for n, a, b in ranked]

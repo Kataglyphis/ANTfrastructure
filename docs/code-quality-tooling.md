@@ -944,7 +944,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4100 entries** over **506 distinct test commands**; both digits are
+manifest holds **4109 entries** over **510 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2023,6 +2023,7 @@ parent directory is created. A write error exits 2.
 | `totals` | counts for the whole scan |
 | `files` | the same counts per repo-relative path |
 | `report_only` | present only with `--extra-languages`, in the same shape |
+| `items` | code-dupes and hub-reuse only: one `path`, `line`, `other`, `shingles` record per pair, most shingles first |
 
 | scanner | `totals` | per file |
 | --- | --- | --- |
@@ -2066,6 +2067,86 @@ descended. Blind spots:
 - Python files the running interpreter cannot parse.
 
 `test-lang-units.sh` pins hand-counted fixtures for each language.
+
+## quality-report
+
+`bash linux/scripts/quality-report.sh --root . [--compare FILE|previous-develop] [--offline]`
+measures one checkout and writes three ignored files under `logs/code-quality/`:
+`measurements.json`, `queue.md` and `summary.md`. A consumer runs it through its one-line
+`scripts/linux/quality-report.sh`. It runs no tests and no builds: test, coverage and
+mutation numbers come from files the lanes already wrote.
+
+`measurements.json` holds `schema_version` (1), `repo`, `sha`, `hub_sha`, `tools` (Python,
+git, Ruff, ty, pwsh versions), the `declared` docs and outputs, the `baseline` it compared
+with, and per metric its `value`, `unit`, `better` (`lower` or `higher`), `class` (`code` is
+graded, `report` is not), `source` command, `status` and, for a set, sorted `members`.
+
+**Tree metrics**, from the checkout wherever it runs:
+
+| metric | source |
+| --- | --- |
+| `ruff_findings`, `ty_diagnostics` (`ty_unresolved_imports`, report) | `python-static.sh --report-only`, with ty given an empty `VIRTUAL_ENV` so host packages cannot resolve imports |
+| `duplicated_blocks` (`python_duplicate_blocks`, report) | `verify_code_dupes.py --json`, `totals.pairs` |
+| `hub_reuse_pairs` | `verify_hub_reuse.py --json` against the hub holding the script; not collected in the hub itself |
+| `functions_over_80_lines` (`…_extra_languages`, report) | `verify_code_size.py --extra-languages --json` |
+| `functions_over_complexity_15` | `verify_code_complexity.py --json`, `totals.over_cc` |
+| `powershell_complexity_findings` | `Invoke-CodeComplexity.ps1 -JsonPath` over every tracked `.ps1`/`.psm1` |
+| `allow_rows.<file>`, `allow_budget_total` | rows per tracked `*.allow`; budgets summed from `quality_allow.iter_rows` where every row has a count |
+| `suppressions.<marker>` | one set per marker in `quality_report_text.MARKERS`, over tracked files outside prose and `third_party/` |
+| `agents_md_lines`, `readme_lines` (report) | line counts |
+| `agents_drift_findings` | `verify_agents_drift.py --root . --json PATH` (`totals.findings`); not collected until the pinned hub carries that script |
+
+A set member is `path|marker|whitespace-normalised line|n`, where `n` counts earlier identical
+lines in the file. A moved line keeps its key; a new member regresses even when the count holds.
+
+**`quality-report.toml`** (tracked, optional in the hub) holds every repo specific:
+
+- `[docs] build_list` and `source`: the docs build list file; a declared file that is missing
+  makes the run incomplete.
+- `[[output]]` rows (`kind` benchmark, golden or latency, `path`, optional `artifact`): recorded
+  in `declared` for other readers.
+- `[[artifact]]` rows: `name`, `kind`, `path` glob, optional `artifact` name glob and
+  `workflow` file. Kinds: `junit` (`tests_passed.<name>`, `tests_skipped.<name>`),
+  `coverage` with `format` `cobertura`, `lcov` or `json` (coverage.py, llvm-cov or gcovr
+  summary; `line_coverage.<name>`, `branch_coverage.<name>`), `mutation`
+  (`mutations_selected.<name>`, `mutations_caught.<name>` from `verify_mutations.py` report
+  lines), `clang-tidy` (`clang_tidy.<name>`, a `file|check` set) and `count` (`<name>`, lines
+  matching `pattern`, located through `location`).
+- `[[metric]]` rows: `kind = "pattern"` (a regex over tracked files under `paths`, filtered by
+  `include` and `exclude` globs, set-valued) or `kind = "ruff"` (the locked Ruff over `paths`
+  with `config` overrides).
+
+An artifact source is read from the checkout first. Otherwise, unless `--offline`, the GitHub CLI
+downloads the newest matching artifact of a run at the same SHA. No file, no run or no login
+gives `not-collected`, never 0 and never held.
+
+**Output and exit status.** Exactly one
+`quality-report: verdict=<ok|regressed|incomplete> regressed=<n> improved=<n> metrics=<n>` line,
+a `compare:` line, one `REGRESSED <metric> <before> -> <now>` line per regression and one
+`not-collected: <metric> (<reason>)` line per metric without a value. Exit 0 is ok, 1 regressed
+and 2 incomplete. Incomplete means a collector's tool is missing or failed, or a present input
+(the toml, a compare file, a found artifact, a scanner record) is malformed. Only collected
+`code` metrics that the baseline also collected are graded.
+
+`--compare previous-develop` takes `measurements.json` from the newest unexpired
+`code-quality-measurements` artifact of a successful develop run other than the current one.
+Having none yet is not a problem; a failed GitHub lookup or download is.
+
+`queue.md` lists, for every nonzero lower-is-better `code` metric, up to ten `path:line` items,
+worst first: most shared shingles, longest or most complex function, largest budget, or the
+file with most findings.
+
+**CI.** `code-quality-report.yml` takes `quality-report: true` (default false). It installs
+uv, runs the script with `--compare previous-develop`, appends `summary.md` to the step summary
+and uploads `measurements.json` and `queue.md` as `code-quality-measurements` for 90 days. The
+job fails on exit 2, or on exit 0 or 1 without the matching verdict line; a regression is
+reported, not enforced. Lane artifacts of the same push are often still running, so their
+metrics are commonly not collected there.
+
+Blind spots: suppressions are literal marker text, so another spelling is not counted;
+`summary.md` is not graded; a metric absent from the baseline is not graded; nothing attributes
+a change to a commit. `test-quality-report.sh` covers a rise, a fall, a direction, a set swap, a
+moved set member, a missing collector, an absent artifact, a malformed compare file and the queue.
 
 ## Windows Pester coverage
 

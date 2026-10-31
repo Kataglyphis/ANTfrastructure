@@ -139,7 +139,10 @@ def _write_json(path: str | None, root: Path, consumer_files: list[tuple[Path, s
               "synced": synced, "suppressed": suppressed}
     gate_scope.write_json(path, "hub-reuse", root, totals,
                           code_dupes_extra.unit_pair_counts(rels, consumer_lines, pairs),
-                          limits={"threshold": dupes.DEFAULT_THRESHOLD})
+                          limits={"threshold": dupes.DEFAULT_THRESHOLD},
+                          items=code_dupes_extra.pair_items(
+                              ((count, c, h) for count, _run, c, h in findings),
+                              ("consumer/", "hub/")))
 
 
 def main() -> int:

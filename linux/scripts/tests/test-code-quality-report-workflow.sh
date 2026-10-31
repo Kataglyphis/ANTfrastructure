@@ -13,7 +13,7 @@ _report_contract() {
     'V.value(V.value(lane,"permissions"),"contents") == "read"' \
     'all(V.value(V.value(s,"with"),"persist-credentials") == "false" for s in steps if "actions/checkout@" in (V.value(s,"uses") or ""))' \
     'all(name in run_blocks("report") for name in ("verify_code_dupes.py", "verify_code_size.py", "verify_code_complexity.py", "verify_hub_reuse.py"))' \
-    'run_blocks("report").count("--root") == 4 and run_blocks("report").count("${GITHUB_WORKSPACE}") == 4' \
+    'run_blocks("report").count("--root") == 5 and run_blocks("report").count("${GITHUB_WORKSPACE}") == 5' \
     'run_blocks("report").count("--report-only") == 4' \
     'run_blocks("report").count("python3 \"${hub}/docs/scripts/verify_hub_reuse.py\"") == 1' \
     '"--hub \"${hub}\"" in run_blocks("report")' \
@@ -24,7 +24,28 @@ _report_contract() {
     'any(V.value(s,"name") == "Upload measurements" and V.value(s,"if") == "always()" and V.value(V.value(s,"with"),"path") == "logs/code-quality/measurements/" and V.value(V.value(s,"with"),"if-no-files-found") == "error" for s in steps)'
 }
 
+_quality_contract() {
+  workflow_require_queries \
+    'V.value(V.value(inputs,"quality-report"),"type") == "boolean" and str(V.value(V.value(inputs,"quality-report"),"default")).lower() == "false"' \
+    'all(V.value(s,"if") == "${{ inputs.quality-report }}" for s in steps if V.value(s,"name") in ("Install uv for quality-report", "Grade the checkout with quality-report"))' \
+    '"--compare previous-develop" in run_blocks("report") and "linux/scripts/quality-report.sh" in run_blocks("report")' \
+    'V.value(V.value(next(s for s in steps if V.value(s,"name") == "Grade the checkout with quality-report"),"env"),"GH_TOKEN") == "${{ github.token }}"' \
+    'any(V.value(s,"if") == "${{ always() && inputs.quality-report }}" and V.value(V.value(s,"with"),"name") == "code-quality-measurements" and V.value(V.value(s,"with"),"retention-days") == "90" and V.value(V.value(s,"with"),"if-no-files-found") == "error" for s in steps)' \
+    're.search(r"name: code-quality-measurements\n +path: \|\n +logs/code-quality/measurements.json\n +logs/code-quality/queue.md\n", raw) is not None'
+}
+
 _changed_contract() { LANE="$1" _report_contract; }
+
+_step_script() {
+  awk -v step="      - name: $1" '
+    $0 == step { selected = 1; next }
+    selected && /^        run: \|$/ { running = 1; next }
+    running && /^      - name: / { exit }
+    running { sub(/^          /, ""); print; commands++ }
+    END { if (!commands) exit 1 }
+  ' "${LANE}"
+}
+_changed_quality() { LANE="$1" _quality_contract; }
 
 t_case "all four rooted scanners produce ignored, uploaded measurements"
 t_assert_ok _report_contract
@@ -32,6 +53,14 @@ t_assert_ok _report_contract
 mkdir -p "${ROOT}/logs/code-quality" || exit 1
 work="$(mktemp -d "${ROOT}/logs/code-quality/report-workflow-test.XXXXXX")" || exit 1
 trap 'rm -rf -- "${work}"' EXIT
+
+t_case "quality-report is opt-in, compares with develop and keeps its artifact for 90 days"
+t_assert_ok _quality_contract
+
+t_case "quality-report switched on by default is rejected"
+awk '/^      quality-report:$/ { q = 1 } q && /default: false/ { sub(/false/, "true"); q = 0 } { print }' \
+  "${LANE}" > "${work}/default-on.yml"
+t_assert_fails _changed_quality "${work}/default-on.yml"
 
 t_case "a scanner that silently returns a verdict instead of a report is rejected"
 sed '0,/--report-only/s/--report-only/--check/' "${LANE}" > "${work}/no-report.yml"
@@ -47,13 +76,7 @@ sed 's/if: always()/if: success()/' "${LANE}" > "${work}/success-only.yml"
 t_assert_fails _changed_contract "${work}/success-only.yml"
 
 t_case "an owned caller fails when its pinned hub lacks the reuse scanner"
-awk '
-  /^      - name: Measure tracked code$/ { selected = 1; next }
-  selected && /^        run: \|$/ { running = 1; next }
-  running && /^      - name: / { exit }
-  running { sub(/^          /, ""); print; commands++ }
-  END { if (!commands) exit 1 }
-' "${LANE}" > "${work}/measure.sh" || exit 1
+_step_script "Measure tracked code" > "${work}/measure.sh" || exit 1
 hub="${work}/third_party/ANTfrastructure"
 mkdir -p "${hub}/docs/scripts" "${hub}/linux/scripts" || exit 1
 for scanner in "${hub}/docs/scripts/verify_code_dupes.py" \
@@ -76,5 +99,19 @@ t_assert_contains "$(cat "${work}/logs/code-quality/measurements/hub-reuse.txt")
   'needs a newer ANTfrastructure gitlink'
 t_assert_ok _run_report AnotherOrg/Consumer
 t_assert_ok _run_report Kataglyphis/Fork true
+
+t_case "only an incomplete or crashed quality-report fails the job"
+_step_script "Grade the checkout with quality-report" > "${work}/grade.sh" || exit 1
+mkdir -p "${hub}/linux/scripts" || exit 1
+_grade() {
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s"\nexit %s\n' "$1" "$2" \
+    > "${hub}/linux/scripts/quality-report.sh"
+  (cd "${work}" && GITHUB_REPOSITORY=Kataglyphis/Consumer REPORT_HUB_CHECKOUT=false \
+    GITHUB_WORKSPACE="${work}" GITHUB_STEP_SUMMARY="${work}/summary.md" bash "${work}/grade.sh")
+}
+t_assert_ok _grade 'quality-report: verdict=ok regressed=0 improved=0 metrics=3' 0
+t_assert_ok _grade 'quality-report: verdict=regressed regressed=1 improved=0 metrics=3' 1
+t_assert_fails _grade 'Traceback (most recent call last):' 1
+t_assert_fails _grade 'quality-report: verdict=incomplete regressed=0 improved=0 metrics=3' 2
 
 t_summary

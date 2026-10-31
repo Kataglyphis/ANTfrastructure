@@ -11,6 +11,10 @@ on:
         description: Pinned Linux runner label
         type: string
         default: ubuntu-26.04
+      quality-report:
+        description: Also grade the checkout with quality-report.sh against the newest successful develop record
+        type: boolean
+        default: false
   workflow_dispatch:
 
 permissions:
@@ -79,6 +83,46 @@ jobs:
               tail -n 12 "${report}" >> "${GITHUB_STEP_SUMMARY}"
             fi
           done
+
+      - name: Install uv for quality-report
+        if: ${{ inputs.quality-report }}
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.0
+
+      - name: Grade the checkout with quality-report
+        if: ${{ inputs.quality-report }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_HUB_CHECKOUT: ${{ inputs.hub-checkout }}
+        run: |
+          set -uo pipefail
+          hub='third_party/ANTfrastructure'
+          if [ "${GITHUB_REPOSITORY}" = 'Kataglyphis/ANTfrastructure' ]; then hub='.'; fi
+          if [ "${REPORT_HUB_CHECKOUT}" = 'true' ]; then hub='antfrastructure-tools'; fi
+          status=0
+          bash "${hub}/linux/scripts/quality-report.sh" --root "${GITHUB_WORKSPACE}" \
+            --compare previous-develop > logs/code-quality/quality-report.txt 2>&1 || status=$?
+          cat logs/code-quality/quality-report.txt
+          if [ -f logs/code-quality/summary.md ]; then
+            cat logs/code-quality/summary.md >> "${GITHUB_STEP_SUMMARY}"
+          fi
+          # A regression is reported, not enforced; a crash that exits 1 must still fail.
+          case "${status}" in
+            0) grep -q '^quality-report: verdict=ok ' logs/code-quality/quality-report.txt ;;
+            1) grep -q '^quality-report: verdict=regressed ' logs/code-quality/quality-report.txt ;;
+            *) exit "${status}" ;;
+          esac
+
+      - name: Upload quality-report measurements
+        if: ${{ always() && inputs.quality-report }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: code-quality-measurements
+          path: |
+            logs/code-quality/measurements.json
+            logs/code-quality/queue.md
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Upload measurements
         if: always()

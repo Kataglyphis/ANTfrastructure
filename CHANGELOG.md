@@ -13,6 +13,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-31 — quality-report
+
+- `linux/scripts/quality-report.sh --root . [--compare FILE|previous-develop]` writes
+  `logs/code-quality/measurements.json`, `queue.md` and `summary.md` from the scanners' JSON,
+  Ruff and ty through `python-static.sh`, PowerShell complexity, allow rows, suppression sets and
+  the lane outputs a consumer's `quality-report.toml` declares. It prints one verdict line and
+  exits 0 ok, 1 regressed or 2 incomplete; drift findings stay not collected until
+  `verify_agents_drift.py` exists.
+- `verify_code_dupes.py --json` and `verify_hub_reuse.py --json` add an `items` list that
+  locates each pair; text output and exit status are unchanged.
+- `code-quality-report.yml` gains `quality-report` (default false): it grades every push and PR
+  against the newest successful develop record and uploads `code-quality-measurements` for 90
+  days, failing only on an incomplete or crashed run.
+- `lint-python-types.sh` adds the new modules and `code_dupes_extra.py` to the strict scopes.
+- New suite `test-quality-report.sh`; nine `quality-report.*` mutation recipes.
+
 ## 2026-10-31 — Pester action ends with its own verdict
 
 - `run-pester-suite` exits 0 after its checks pass, so a native exit code a passing suite left behind no longer fails the step (AccelerANTgine's 39/39 Pester run exited 1).

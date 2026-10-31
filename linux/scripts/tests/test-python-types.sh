@@ -37,9 +37,9 @@ _set_answer() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (126 files)"
+  t_assert_contains "$1" "ty quality gate: clean (134 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
-  t_assert_contains "$1" "Linux Python report: clean (126 files)"
+  t_assert_contains "$1" "Linux Python report: clean (134 files)"
   t_assert_contains "$1" "Windows Python report: clean (2 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -118,6 +118,14 @@ _set_answer "${ROOT}/linux/scripts/tests/test-corrosion-toolchain.py" 42
 _set_answer "${ROOT}/linux/scripts/tests/sudo_policy_closure_tests.py" 42
 _set_answer "${ROOT}/linux/scripts/tests/wheel_archive_transport_tests.py" 42
 _set_answer "${ROOT}/linux/scripts/tests/webdav_download_tests.py" 42
+_set_answer "${ROOT}/linux/scripts/quality_report.py" 42
+_set_answer "${ROOT}/linux/scripts/quality_report_artifacts.py" 42
+_set_answer "${ROOT}/linux/scripts/quality_report_compare.py" 42
+_set_answer "${ROOT}/linux/scripts/quality_report_github.py" 42
+_set_answer "${ROOT}/linux/scripts/quality_report_model.py" 42
+_set_answer "${ROOT}/linux/scripts/quality_report_text.py" 42
+_set_answer "${ROOT}/linux/scripts/quality_report_tree.py" 42
+_set_answer "${ROOT}/docs/scripts/code_dupes_extra.py" 42
 _set_answer "${ROOT}/linux/scripts/tests/meson_bound_provider_tests.py" 42
 _set_answer "${ROOT}/linux/scripts/05-frameworks/flutter/flutter-trace-summary.py" 42
 _set_answer "${ROOT}/linux/scripts/tests/wheelhouse_manifest_tests.py" 42
@@ -186,9 +194,9 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-  t_assert_contains "${out}" "Ruff signature annotation gate: clean (133 files)"
-  t_assert_contains "${out}" "Ruff private return gate: clean (133 files)"
-  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (123 files)"
+  t_assert_contains "${out}" "Ruff signature annotation gate: clean (141 files)"
+  t_assert_contains "${out}" "Ruff private return gate: clean (141 files)"
+  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (131 files)"
 
 t_case "ambient checker versions cannot replace the repository pins"
 out="$(TY_VERSION=bogus RUFF_VERSION=bogus _run)"

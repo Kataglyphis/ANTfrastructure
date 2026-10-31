@@ -32815,5 +32815,77 @@
   "replace": "PYTHON_BENCH_GATE=\"${PYTHON_BENCH_GATE:-1}\"",
   "test": "bash linux/scripts/tests/test-python-ci-bench.sh",
   "why": "callers whose bench/ collects no tests keep the old best-effort run until they opt in"
+ },
+ {
+  "id": "quality-report.comparison-removed",
+  "target": "linux/scripts/quality_report_compare.py",
+  "find": "        before = (baseline or {}).get(metric.name)\n",
+  "replace": "        before = None\n",
+  "test": "bash linux/scripts/tests/test-quality-report.sh -k Grading",
+  "why": "a record must be graded against its baseline"
+ },
+ {
+  "id": "quality-report.direction-inverted",
+  "target": "linux/scripts/quality_report_compare.py",
+  "find": "    worse = now > old if metric.better == LOWER else now < old",
+  "replace": "    worse = now < old if metric.better == LOWER else now > old",
+  "test": "bash linux/scripts/tests/test-quality-report.sh -k Grading",
+  "why": "a lower-is-better metric that rises must regress"
+ },
+ {
+  "id": "quality-report.incomplete-as-ok",
+  "target": "linux/scripts/quality_report_compare.py",
+  "find": "            return \"incomplete\"",
+  "replace": "            return \"ok\"",
+  "test": "bash linux/scripts/tests/test-quality-report.sh -k Grading",
+  "why": "a failed collector must make the verdict incomplete, never ok"
+ },
+ {
+  "id": "quality-report.set-as-count",
+  "target": "linux/scripts/quality_report_compare.py",
+  "find": "    if metric.members is not None and isinstance(members, list):",
+  "replace": "    if metric.members is None and isinstance(members, list):",
+  "test": "bash linux/scripts/tests/test-quality-report.sh -k Grading",
+  "why": "a new set member must regress even when the count holds"
+ },
+ {
+  "id": "quality-report.queue-left-empty",
+  "target": "linux/scripts/quality_report_compare.py",
+  "find": "        items = sorted(metric.items, key=lambda i: (-i.weight, i.path, i.line))[:QUEUE_DEPTH]",
+  "replace": "        items = []",
+  "test": "bash linux/scripts/tests/test-quality-report.sh -k Grading",
+  "why": "a nonzero lower-is-better metric must queue its located items"
+ },
+ {
+  "id": "quality-report.missing-junit-as-zero",
+  "target": "linux/scripts/quality_report_artifacts.py",
+  "find": "        raise github.Unavailable(f\"no file matches {', '.join(source.paths)}\")",
+  "replace": "        return [], \"checkout\"",
+  "test": "bash linux/scripts/tests/test-quality-report.sh -k test_absent_artifact",
+  "why": "an absent JUnit file is not collected, never zero skips"
+ },
+ {
+  "id": "quality-report.member-keyed-by-line",
+  "target": "linux/scripts/quality_report_text.py",
+  "find": "        members = keyed([(f\"{rel}|{slug}\", text) for rel, _n, text in rows])",
+  "replace": "        members = keyed([(f\"{rel}|{slug}|{_n}\", text) for rel, _n, text in rows])",
+  "test": "bash linux/scripts/tests/test-quality-report.sh -k test_moved_set_member_holds",
+  "why": "a suppression whose line moved must hold, so its key carries no line number"
+ },
+ {
+  "id": "quality-report.dupes-items-dropped",
+  "target": "docs/scripts/code_dupes_extra.py",
+  "find": "items=pair_items(per_file.values()), **sections)",
+  "replace": "items=[], **sections)",
+  "test": "bash linux/scripts/tests/test-quality-report.sh -k test_added_duplicate_regresses_and_queues",
+  "why": "the duplication record must locate each pair so the queue can name it"
+ },
+ {
+  "id": "quality-report.workflow-crash-passes",
+  "target": ".github/workflows/code-quality-report.yml",
+  "find": "            1) grep -q '^quality-report: verdict=regressed ' logs/code-quality/quality-report.txt ;;",
+  "replace": "            1) true ;;",
+  "test": "bash linux/scripts/tests/test-code-quality-report-workflow.sh",
+  "why": "a quality-report crash that exits 1 must fail the job, not pass as a regression"
  }
 ]

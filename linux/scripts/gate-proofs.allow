@@ -204,3 +204,4 @@ mutation-family:ansible-backup
 mutation-family:ansible-run-status
 mutation-family:scanner-extras
 mutation-family:security-audit
+mutation-family:quality-report
