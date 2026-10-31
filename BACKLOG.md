@@ -27,6 +27,22 @@ The agentic loop's format (`docs/windows-agentic-loop.md`):
 
 Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
+## Next image build — GPU consumer findings
+
+The application-build investigation is tracked in the items below. Recheck the cited
+image digests before implementing fixes and retain CPU-only support. The requested GPU
+targets are Linux NVIDIA x64/arm64, Linux AMD x64, and Windows NVIDIA/AMD x64; Linux ARM
+ROCm and Windows ARM GPU images are outside the requested matrix.
+
+- **Linux GPU SDKs and execution:** CON31, CON129, CON176, CON196, CON198 and CON202
+  cover runtime selection, GTK/Vulkan headers, inference plugins and AMD model parity.
+- **Windows GPU runtimes:** CON180–185 and CON201 cover DirectML/CUDA provenance,
+  provider paths, media plugins, native DLL notices and Media Foundation availability.
+- **Runtime provenance:** CON203–204 cover the Linux ROCm and NVIDIA library handoff.
+- **Build tools and offline inputs:** CON145, CON177–179, CON186–187, CON194–195,
+  CON197, CON199–200 and CON205–206 cover tools, plugins, SDK/cache inputs and
+  Flutter/FRB generation; entries distinguish required fixes from optional offline support.
+
 ## Open — getting fixes to consumers
 
 - [ ] **CON126 — every hub pipeline runs at the host's parallelism, never one step at a time** [L, ★★★].
@@ -913,6 +929,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       staging the consumer's PE import closure; reject unknown DLLs, mismatched bytes, missing texts,
       duplicate entries and unsafe paths. ORT's wheel-specific license handoff remains separate and
       is not evidence for these native media dependencies.
+      A prospective AccelerANTgine install from the NVIDIA image reached this notice gate and
+      rejected all seven DLLs, so it produced no installer; see
+      `_implementation/accelerant-win-prospective3-20261031-build.log`.
 
 
 - [ ] **CON185 - provide Windows GStreamer tensor inference elements** [M].
@@ -961,6 +980,16 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       trying to download `fonts.zip`, as uid 1001 in a fresh container without mounts.
       Check other image digests and architectures independently. This is an offline cache
       gap; it does not establish that network-backed builds fail.
+      Separately, an offline OmniAccelerANT CPU build using that cached `:latest` image
+      failed when the `sqlite3.dart` 3.7.1 native-asset hook tried to download its Linux x64
+      SQLite library from GitHub. The retained local-cache workaround used asset SHA-256
+      `1ff25026f7bcd7e740f98d5b852ae6e79d2400c076f046096295f91a5b60aeb8`;
+      see `_implementation/omni-full-cpu-proof-20261031/proof-offline.log` and its
+      `VALIDATION.md`. Decide whether the offline image contract includes these locked
+      Flutter native assets; if so, seed the supported platform assets with source, licence
+      and hash, and prove the actual hook and consumer build as uid 1001 without network.
+      Check GPU images and other platforms independently. This does not establish that a
+      system SQLite library is missing or that a network-backed build fails.
 
 - [ ] **CON204 — preserve Linux NVIDIA runtime provenance and notice handoff** [M, ★★★].
       On 2026-10-31, the cached Linux ARM NVIDIA image child
@@ -1154,6 +1183,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       a supported native Linux AMD GPU in the next image. Retain CPU and small-graph
       controls; do not infer native-device, non-root, or other-architecture behavior from
       this observation. Reproduction and controls: `_implementation/orchestrant-rocm-wsl-hardware-20261031/VALIDATION.md`.
+      Separately, when the disabled Radeon RX 9070 XT is available to WSL, identify its
+      exposed GPU and explicitly select it for a default-settings test of the published
+      ROCm image; keep the integrated `gfx1036` results separate. Require the locked
+      detector's CPU baseline, repeated same-session output parity and a MIGraphX model
+      operator in every GPU run. Record the device, driver and image digest, and do not
+      treat benchmark-skip or other diagnostic overrides as a passing image gate.
 
 - [ ] **CON201 — assess Media Foundation availability in the Windows AMD GPU image** [M, ★★].
       On 2026-10-31, the cached `:winamd64-rocm` registry image digest
