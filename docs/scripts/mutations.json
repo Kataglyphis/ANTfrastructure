@@ -11564,6 +11564,22 @@
   "why": "without the pass-through every CI mutations job proves the WHOLE manifest, eight times over, into the timeout the split exists to avoid"
  },
  {
+  "id": "mutations.ci-costs-passed-through",
+  "target": "linux/scripts/preflight.sh",
+  "find": " \\\n  ${PREFLIGHT_MUTATION_COSTS:+--shard-costs \"${PREFLIGHT_MUTATION_COSTS}\"}",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "without the pass-through the CI jobs plan nothing and prove the round-robin slices, paying every baseline once per shard"
+ },
+ {
+  "id": "mutations.ci-plans-from-the-table",
+  "target": ".github/workflows/linux-x64.yml",
+  "find": " PREFLIGHT_MUTATION_COSTS=docs/scripts/mutation-costs.json bash linux/scripts/preflight.sh",
+  "replace": " bash linux/scripts/preflight.sh",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "the mutations jobs must name the checked-in cost table, or the hub falls back to the round-robin split"
+ },
+ {
   "id": "mutations.ci-shards-cover-the-manifest",
   "target": ".github/workflows/linux-x64.yml",
   "find": "        shard: [0, 1, 2, 3, 4, 5, 6, 7]",
@@ -17602,6 +17618,86 @@
   "replace": "            if True:\n                return\n",
   "test": "bash linux/scripts/tests/test-mutation-parse.sh",
   "why": "the shard plan is built from these lines; without them no per-command time reaches a CI log"
+ },
+ {
+  "id": "mutations.plan-partitions",
+  "target": "docs/scripts/mutation_shards.py",
+  "find": "    return [[entries[i] for i in _interleave(pieces)] for pieces in shards]\n",
+  "replace": "    return [[entries[i] for i in _interleave(pieces)[1:]] for pieces in shards]\n",
+  "test": "bash linux/scripts/tests/test-mutation-shards.sh",
+  "why": "a plan that drops an entry leaves it proven by no job, and a hub round stays green over it"
+ },
+ {
+  "id": "mutations.plan-groups-commands",
+  "target": "docs/scripts/mutation_shards.py",
+  "find": "        k = min(len(idx), max(1, math.ceil(total / cap))) if total > cap else 1\n",
+  "replace": "        k = min(len(idx), max(1, math.ceil(total / cap))) if total > cap else len(idx)\n",
+  "test": "bash linux/scripts/tests/test-mutation-shards.sh",
+  "why": "a command spread over shards pays its baseline once per shard, the round-robin cost the plan exists to remove"
+ },
+ {
+  "id": "mutations.plan-splits-heavy",
+  "target": "docs/scripts/mutation_shards.py",
+  "find": "        k = min(len(idx), max(1, math.ceil(total / cap))) if total > cap else 1\n",
+  "replace": "        k = 1\n",
+  "test": "bash linux/scripts/tests/test-mutation-shards.sh",
+  "why": "a command heavier than a whole shard kept on one job carries that job alone into its timeout"
+ },
+ {
+  "id": "mutations.plan-lightest-shard",
+  "target": "docs/scripts/mutation_shards.py",
+  "find": "        k = loads.index(min(loads))\n",
+  "replace": "        k = 0\n",
+  "test": "bash linux/scripts/tests/test-mutation-shards.sh",
+  "why": "pieces stacked onto one shard leave the other jobs idle and that one past the timeout"
+ },
+ {
+  "id": "mutations.plan-interleaves",
+  "target": "docs/scripts/mutation_shards.py",
+  "find": "    while queues:\n        order.extend(q.pop(0) for q in queues)\n        queues = [q for q in queues if q]\n    return order\n",
+  "replace": "    return [i for q in queues for i in q]\n",
+  "test": "bash linux/scripts/tests/test-mutation-shards.sh",
+  "why": "a queue that lists one command's entries together makes the free mirrors wait on that command's baseline lock"
+ },
+ {
+  "id": "mutations.plan-default-is-median",
+  "target": "docs/scripts/mutation_shards.py",
+  "find": "    return Cost(statistics.median(c.baseline for c in costs.values()),\n",
+  "replace": "    return Cost(max(c.baseline for c in costs.values()),\n",
+  "test": "bash linux/scripts/tests/test-mutation-shards.sh",
+  "why": "an unknown suite weighted as the slowest one skews the balance; weighted as free, it lands anywhere"
+ },
+ {
+  "id": "mutations.plan-counts-unknown",
+  "target": "docs/scripts/mutation_shards.py",
+  "find": "    unknown = {str(e[\"test\"]) for e in entries} - set(costs)\n",
+  "replace": "    unknown = set()\n",
+  "test": "bash linux/scripts/tests/test-mutation-shards.sh",
+  "why": "a stale table hides behind the median; the plan line must say how many commands it guessed"
+ },
+ {
+  "id": "mutations.cost-table-net-of-baseline",
+  "target": "docs/scripts/mutation_shards.py",
+  "find": "            seen.setdefault(m[\"test\"], []).append(Cost(base, max(wall - base, 0.0) / max(n, 1)))\n",
+  "replace": "            seen.setdefault(m[\"test\"], []).append(Cost(base, wall / max(n, 1)))\n",
+  "test": "bash linux/scripts/tests/test-mutation-shards.sh",
+  "why": "the wall a cost line reports includes the baseline; counting it per entry overweights small commands"
+ },
+ {
+  "id": "mutations.cost-table-keeps-manifest-commands",
+  "target": "docs/scripts/mutation_shards.py",
+  "find": "            for cmd in sorted(set(commands)) if cmd in seen}\n",
+  "replace": "            for cmd in sorted(seen)}\n",
+  "test": "bash linux/scripts/tests/test-mutation-shards.sh",
+  "why": "a table that keeps retired commands grows without bound and still describes suites nobody runs"
+ },
+ {
+  "id": "mutations.shard-costs-select-the-plan",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "    if costs is None:\n        return entries[k::n]\n",
+  "replace": "    if True:\n        return entries[k::n]\n",
+  "test": "bash linux/scripts/tests/test-mutation-shards.sh",
+  "why": "with the table ignored every job falls back to the round-robin slice and pays a baseline per command per shard"
  },
  {
   "id": "mutations.default-jobs-all-cpus",

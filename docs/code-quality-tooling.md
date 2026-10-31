@@ -944,7 +944,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4017 entries** over **486 distinct test commands**; both digits are
+manifest holds **4029 entries** over **487 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1051,6 +1051,8 @@ nothing (the common commit) copies nothing at all.
 | `--root <dir>` | which tree to copy and check. It is copied too — pointing the gate at a mirror is a second belt, not the isolation mechanism |
 | `--jobs <n>` | how many mutations to prove at once, one mirror each (default: the CPUs the process may use, capped at the entry count and at a quarter of the temp filesystem's free space). Every mutation is still applied, run and restored alone, inside its own shard's copy |
 | `--shard K/N` | prove only `entries[K::N]` of the selection (`K` from 0), after `--only`/`--changed`. N runs over the same manifest prove every entry exactly once between them; a `K` outside `0..N-1` exits 2. CI's mutations jobs are the one caller, through preflight's `PREFLIGHT_MUTATION_SHARD` |
+| `--shard-costs <table>` | with `--shard`: prove shard K of the plan built from the cost table instead of `entries[K::N]` ([the shard plan](#the-shard-plan)). The hub's CI passes it through preflight's `PREFLIGHT_MUTATION_COSTS`; consumers keep the round-robin slice |
+| `--parse-check` | refuse every selected recipe whose mutant does not parse, and run no test ([mutants must parse](#mutants-must-parse)) |
 | `--in-place` | mutate `--root` itself, no copy. The pre-2026-09-03 behaviour, kept for the gate's OWN fixtures: their test commands name the subject by absolute path, so nothing would bite inside a copy. Never point it at the repo |
 
 ### Mutants must parse
@@ -1095,16 +1097,42 @@ the timeout was not raised and CI does not sample.
 | job | runs | timeout |
 | --- | --- | --- |
 | `preflight` | `PREFLIGHT_SKIP=mutations bash linux/scripts/preflight.sh` — every other slug | 45 min |
-| `mutations` × 8 (`shard: [0, 1, 2, 3, 4, 5, 6, 7]`, `fail-fast: false`) | `PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD=K/8 bash linux/scripts/preflight.sh`, which passes `--shard K/8` to `verify_mutations.py` | 30 min each |
+| `mutations` × 8 (`shard: [0, 1, 2, 3, 4, 5, 6, 7]`, `fail-fast: false`) | `PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD=K/8 PREFLIGHT_MUTATION_COSTS=docs/scripts/mutation-costs.json bash linux/scripts/preflight.sh`, which passes `--shard K/8 --shard-costs …` to `verify_mutations.py` | 30 min each |
 
-`--shard K/N` proves `entries[K::N]`, so the eight jobs prove every entry exactly
-once; a suite pins that the slices partition the manifest and that the matrix
-lists `0..N-1` for the `N` its jobs pass. Every `mutations` job repeats the
+The eight jobs prove shard K of one deterministic plan, so they prove every entry
+exactly once; suites pin that the plan partitions the manifest and that the
+matrix lists `0..N-1` for the `N` its jobs pass. Every `mutations` job repeats the
 preflight job's setup (uv, pytest, PyYAML): without them the baselines fail
 unmutated, as on 2026-09-07. Each job still shards its slice over `--jobs`
-mirrors, and each job runs the baseline of every distinct command it holds, so a
-command whose entries span all four slices pays its baseline four times — the
-price of the round-robin split, bounded by one run of each suite per job.
+mirrors, and each job runs the baseline of every distinct command it holds.
+
+### The shard plan
+
+Until 2026-10-31 the jobs proved `entries[K::N]`, so a command whose entries
+spread over all eight slices paid its baseline eight times: 2,269 baseline runs
+for 469 commands, a third of the gate's work. `docs/scripts/mutation_shards.py`
+now groups each test command's entries onto one shard, so its baseline runs once
+per round. It packs the commands longest first onto the lightest shard, by the
+cost table `docs/scripts/mutation-costs.json`, and splits only a command that
+costs more than a whole shard. Inside a shard it interleaves the commands, so a
+free mirror starts another baseline instead of waiting on one command's baseline
+lock. Each job prints its plan line: how many commands it holds and how many had
+no recorded cost (they get the median).
+
+The table holds each command's baseline seconds and seconds per entry. The gate
+prints them on stderr, one `cost` line per command when its last entry ends;
+refresh the table from a green run's log:
+
+```bash
+gh run view <run-id> -R Kataglyphis/ANTfrastructure --log > logs/code-quality/mutations-run.log
+python3 docs/scripts/mutation_shards.py --from-log logs/code-quality/mutations-run.log \
+  --manifest docs/scripts/mutations.json --write docs/scripts/mutation-costs.json
+```
+
+A stale table still proves every entry exactly once; it only balances worse.
+Without `--shard-costs` the gate keeps `entries[K::N]`, which is what consumers
+and `validate_consumer_mutations.py` use. `test-mutation-shards.sh` proves the
+partition, the grouping, the split, the balance and the interleaving.
 
 The 30-minute budget includes job setup and cleanup. On 2026-10-22,
 [shard 0](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/39793092934/job/119873728596)
@@ -1136,8 +1164,7 @@ run of each distinct test command × (entries + 1) — fell from **11469 s** on
 **18m39s** at `--jobs 16` on 32 cores; 1164 entries bite, and the 8 under
 `test-compiler-cache.sh` are vacuous there only because the image ships a real sccache.
 
-**A CI slice should take about 10-16 of its 30 minutes, the slice holding
-`mutations.timeout-kills-tree` (today `0/4`) up to 4 more.** A lab
+**Measured before the plan (2026-09-24, four slices).** A lab
 run pinned to 4 CPUs was not a runner: under `taskset`, `os.cpu_count()` still reports
 the host's 32, so `verify_mutations.py` picked `--jobs 8` where the runner's 4 vCPUs
 gave it 4. Since 2026-10-21 it reads `os.process_cpu_count()`, which honours `taskset`. An early lab slice timed that way (6m16s) is no CI figure. Run as the
@@ -1146,9 +1173,8 @@ runner runs it — `taskset -c 0-3` plus `PYTHON_CPU_COUNT=4` — slice `1/4` to
 CI time on `2943b70d` (843 entries: 1333 s on a fast runner, 1693 s on a slow one)
 over that tree's serial cost in the same session. Three sessions put a slice at
 10.0-12.4 min on a fast runner and 12.7-15.7 min on a slow one; the spread comes from
-the session, not the slice. The scaling spreads over all four slices the one entry
-that sits out the gate's 300-s per-entry timeout (`mutations.timeout-kills-tree`),
-which that slice pays alone. The same scaling puts `fd3a8e1f`'s whole gate, in one job,
+the session, not the slice. The one entry that sits out the gate's 300-s per-entry
+timeout (`mutations.timeout-kills-tree`) is paid by whichever shard holds it. The same scaling puts `fd3a8e1f`'s whole gate, in one job,
 at 66-84 min; CI killed it at 45. The first CI run is the proof.
 
 ### The pre-commit hook's cost budget
@@ -1237,7 +1263,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 66 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 78 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of

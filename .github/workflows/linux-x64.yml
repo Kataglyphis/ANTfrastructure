@@ -78,7 +78,7 @@ jobs:
       - name: Install PyYAML (renovate_audit.py's real YAML parser)
         run: pip install --quiet pyyaml
       - name: Mutation gate, shard ${{ matrix.shard }} of 8
-        run: PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD="${{ matrix.shard }}/8" bash linux/scripts/preflight.sh
+        run: PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD="${{ matrix.shard }}/8" PREFLIGHT_MUTATION_COSTS=docs/scripts/mutation-costs.json bash linux/scripts/preflight.sh
 
   # Recursive on purpose: the gate reads every level's .gitmodules, and a submodule that vendors this hub again shows here first.
   submodule-cycles:

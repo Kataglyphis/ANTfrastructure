@@ -25,6 +25,10 @@
   Five recipes that bit only on a syntax error now keep their edit valid.
 - The gate prints each test command's wall and baseline seconds to stderr when its last entry
   ends, as input for a cost-based shard plan.
+- The hub's eight mutation shards follow a cost plan (`mutation_shards.py`,
+  `docs/scripts/mutation-costs.json`) that keeps each test command on one shard, so its baseline
+  runs once per round instead of once per shard ([the shard plan](docs/code-quality-tooling.md#the-shard-plan)).
+  Without `--shard-costs`, consumers keep `entries[K::N]`.
 - `develop_red.py` retires a red job that two newer green runs no longer have (a nested job only
   when its caller ran), closes the issue of a deleted or disabled workflow, reads an open issue's
   workflow through its own runs, confirms a red run there before opening, reads every issue page

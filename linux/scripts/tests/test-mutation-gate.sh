@@ -11,8 +11,8 @@ GATE="${REPO}/docs/scripts/verify_mutations.py"
 
 _tmp="$(mktemp -d)"
 trap 'if [ -s "${_tmp}/hold-pid" ]; then kill -TERM "$(cat "${_tmp}/hold-pid")" 2>/dev/null || :; fi; rm -rf "${_work}" "${_tmp}"' EXIT
-# Gate mutants written to "${_tmp}" import their sibling module from there.
-cp "${REPO}/docs/scripts/mutation_parse.py" "${_tmp}/"
+# Gate mutants written to "${_tmp}" import their sibling modules from there.
+cp "${REPO}/docs/scripts/mutation_parse.py" "${REPO}/docs/scripts/mutation_shards.py" "${_tmp}/"
 
 # _fixture <find> <replace> <yes|witness|broken|no> [dir]: "${_work}" is outside any copy, "." inside it.
 _fixture() {
@@ -320,7 +320,10 @@ _wf="${REPO}/.github/workflows/linux-x64.yml"
 t_assert_contains "$(cat "${REPO}/linux/scripts/preflight.sh")" '${PREFLIGHT_MUTATION_SHARD:+--shard "${PREFLIGHT_MUTATION_SHARD}"}' \
   "the slug must hand its shard to the gate, or every CI job proves the whole manifest"
 t_assert_contains "$(cat "${_wf}")" "PREFLIGHT_SKIP=mutations bash linux/scripts/preflight.sh"
-_n="$(sed -n 's|.*PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD="${{ matrix.shard }}/\([0-9]*\)" bash linux/scripts/preflight.sh.*|\1|p' "${_wf}")"
+_n="$(sed -n 's|.*PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD="${{ matrix.shard }}/\([0-9]*\)" PREFLIGHT_MUTATION_COSTS=docs/scripts/mutation-costs.json bash linux/scripts/preflight.sh.*|\1|p' "${_wf}")"
+t_assert_contains "$(cat "${REPO}/linux/scripts/preflight.sh")" '${PREFLIGHT_MUTATION_COSTS:+--shard-costs "${PREFLIGHT_MUTATION_COSTS}"}' \
+  "the slug must hand the cost table to the gate, or every job falls back to the round-robin slice"
+t_assert_ok test -s "${REPO}/docs/scripts/mutation-costs.json"
 t_assert_eq "$(seq -s ', ' 0 $(( ${_n:-0} - 1 )))" "$(_matrix_shards "${_wf}")" \
   "the matrix must list K = 0..N-1 for the N its jobs pass, or a slice is never proven"
 printf '  shard: [0, 1]\n' > "${_tmp}/matrix-newlines"

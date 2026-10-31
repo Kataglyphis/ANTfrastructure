@@ -239,8 +239,10 @@ run_check readme-length "README length" ${PREFLIGHT_PYTHON} linux/scripts/verify
 run_check shellcheck-warnings "shellcheck warning ratchet" ${PREFLIGHT_PYTHON} linux/scripts/verify_shellcheck_warnings.py
 # See docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded
 : "${PREFLIGHT_MUTATION_SHARD:=}"
+: "${PREFLIGHT_MUTATION_COSTS:=}"
 run_check mutations "mutation gate (can the tests fail?)" ${PREFLIGHT_PYTHON} docs/scripts/verify_mutations.py \
-  ${PREFLIGHT_MUTATION_SHARD:+--shard "${PREFLIGHT_MUTATION_SHARD}"}
+  ${PREFLIGHT_MUTATION_SHARD:+--shard "${PREFLIGHT_MUTATION_SHARD}"} \
+  ${PREFLIGHT_MUTATION_COSTS:+--shard-costs "${PREFLIGHT_MUTATION_COSTS}"}
 run_check gate-registry "gate proof registry" ${PREFLIGHT_PYTHON} linux/scripts/verify_gate_registry.py
 
 # The bash twin: no hub Linux image ships pwsh. See shared/config/README.md

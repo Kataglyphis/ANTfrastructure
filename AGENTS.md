@@ -1243,7 +1243,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 20 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, the derived doc numbers when a page that quotes them is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured 2026-09-04) |
   | every `git push` | `linux/host-config/git-hooks/pre-push` — the mutation gate's `--stale-check` over the whole manifest, then `--changed` for real ([`code-quality-tooling.md` § The pre-push hook](docs/code-quality-tooling.md#the-pre-push-hook)) | the staleness pass: 0.06 s over 378 entries (measured 2026-09-05); `--changed` depends on the push |
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
-  | every push | `.github/workflows/linux-x64.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, a pinned WebDAV source type gate, plus the `mutations` slug as eight `PREFLIGHT_MUTATION_SHARD=K/8` jobs that together prove every entry | CI |
+  | every push | `.github/workflows/linux-x64.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, a pinned WebDAV source type gate, plus the `mutations` slug as eight `PREFLIGHT_MUTATION_SHARD=K/8` jobs that together prove every entry, planned from `docs/scripts/mutation-costs.json` | CI |
 
   The Hub's Linux x64 workflow must finish the active `develop` preflight and mutation
   shards before the latest pending push runs; keep ref-scoped concurrency and allow
@@ -1260,10 +1260,20 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   [`code-quality-tooling.md` § The pre-commit hook's cost budget](docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget).
 
   CI never samples: its eight `mutations` jobs split the manifest with `--shard` and together prove
-  every entry. When the gate gets slow, fix the suite that got slow; never raise a timeout or
+  every entry. The hub's jobs take shard K of a cost plan (`--shard-costs`) that keeps each test
+  command on one shard, so its baseline runs once per round; refresh the table from a green run's
+  cost lines ([the shard plan](docs/code-quality-tooling.md#the-shard-plan)). A recipe whose
+  mutant no longer parses is refused before its test runs (`--parse-check` alone): its bite would
+  prove a syntax error ([mutants must parse](docs/code-quality-tooling.md#mutants-must-parse)). When the gate gets slow, fix the suite that got slow; never raise a timeout or
   sample in CI. Mutation test children get closed stdin so caller input cannot stall a proof. The
   2026-09-23 timeout and the layout:
   [`code-quality-tooling.md` § The mutation gate in CI, sharded](docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded).
+
+- **The develop-red watch closes what can no longer pass, never by hand.** `develop_red.py`
+  retires a red job that two newer green runs no longer have (a nested job only when its caller
+  ran) and closes the issue of a deleted or disabled workflow; do not close, reopen or edit a
+  develop-red issue to make a push go through. Prove a change to it with
+  `develop-red-selftest.yml` ([A red develop opens an issue](docs/github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue)).
 
 - **Never retype a number a gate can measure.** Manifest sizes, per-prefix mutation counts and the
   hook's own slug list are pinned by `tests/test-doc-numbers.sh`, which reads them out of

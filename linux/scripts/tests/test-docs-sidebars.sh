@@ -85,16 +85,21 @@ _tree() {
   printf '%s\n' "${d}"
 }
 
+# _check <out-var> <rc-var> <site> [pages...]: one browser run, graded for its report and its status together.
+_check() { t_capture_command "$1" "$2" node "${CHECK}" "${@:3}"; }
+declare out rc
+
 t_case "a toggle that opens and closes its sidebar passes"
-out="$(t_out node "${CHECK}" "$(_sphinx works works)")"
+_check out rc "$(_sphinx works works)"
 t_assert_contains "${out}" "ok   1000x700 primary: open -> closed -> open"
 t_assert_contains "${out}" "ok   1000x700 secondary: no such sidebar on this page"
-t_assert_rc 0 node "${CHECK}" "${_tmp}/works"
+t_assert_eq 0 "${rc}"
 
 t_case "a toggle that does nothing fails"
-t_assert_rc 1 node "${CHECK}" "$(_sphinx dead dead)"
-t_assert_contains "$(t_out node "${CHECK}" "${_tmp}/dead")" "FAIL 1000x700 primary: clicking the toggle at "
-t_assert_contains "$(t_out node "${CHECK}" "${_tmp}/dead")" " leaves it open"
+_check out rc "$(_sphinx dead dead)"
+t_assert_eq 1 "${rc}"
+t_assert_contains "${out}" "FAIL 1000x700 primary: clicking the toggle at "
+t_assert_contains "${out}" " leaves it open"
 
 t_case "a hidden twin first in the DOM takes the theme JS, so the visible toggle is dead (pydata 0.20's header)"
 t_assert_contains "$(t_out node "${CHECK}" "$(_sphinx twin hidden-twin)")" "leaves it open"
@@ -117,38 +122,39 @@ t_assert_contains "$(t_out node "${CHECK}" "$(_dartdoc drawer closes)")" "ok   1
 t_assert_contains "$(t_out node "${CHECK}" "$(_dartdoc stuck stays)")" "FAIL 1000x700 left: closed -> open, and it does not go back"
 
 t_case "a rustdoc site checks its crate page and the guides beside it, not the redirect at its root"
-out="$(t_out node "${CHECK}" "$(_rustdoc rust)")"
+_check out rc "$(_rustdoc rust)"
 t_assert_contains "${out}" "check-docs-sidebars: rustdoc site"
 t_assert_contains "${out}" "  c/index.html"
 t_assert_contains "${out}" "  c/guide-x.html"
 t_assert_contains "${out}" "ok   1000x700 left: closed -> open -> closed"
 t_assert_eq 0 "$(printf '%s\n' "${out}" | grep -cx '  index.html')" "the redirect has no sidebar to click"
-t_assert_rc 0 node "${CHECK}" "${_tmp}/rust"
+t_assert_eq 0 "${rc}"
 rm "${_tmp}/rust/c/guide-x.html"
 t_assert_contains "$(t_out node "${CHECK}" "${_tmp}/rust")" "  c/index.html" "without guides, the first crate of crates.js"
 
 t_case "an uncaught exception or rejection fails the page, even where every toggle works"
-out="$(t_out node "${CHECK}" "$(_sphinx throws throws)")"
+_check out rc "$(_sphinx throws throws)"
 t_assert_contains "${out}" "ok   1000x700 primary: open -> closed -> open"
 t_assert_contains "${out}" "FAIL 1000x700: uncaught TypeError: boom (http://127.0.0.1:"
-t_assert_rc 1 node "${CHECK}" "${_tmp}/throws"
+t_assert_eq 1 "${rc}"
 t_assert_contains "$(t_out node "${CHECK}" "$(_sphinx rejects rejects)")" "FAIL 1000x700: uncaught (in promise) Error: nope"
 
 t_case "a tree view that folds and unfolds passes, on a page found without being named"
-out="$(t_out node "${CHECK}" "$(_tree folds folds)")"
+_check out rc "$(_tree folds folds)"
 t_assert_contains "${out}" "  api/library_root.html"
 t_assert_contains "${out}" "ok   1000x700 tree: closed -> open -> closed (item at "
-t_assert_rc 0 node "${CHECK}" "${_tmp}/folds"
+t_assert_eq 0 "${rc}"
 
 t_case "Exhale's jQuery applier with no jQuery (Sphinx 6 and later): uncaught ReferenceError, and nothing folds"
-out="$(t_out node "${CHECK}" "$(_tree jq jquery)")"
+_check out rc "$(_tree jq jquery)"
 t_assert_contains "${out}" "FAIL 1000x700: uncaught ReferenceError: \$ is not defined"
 t_assert_contains "${out}" "FAIL 1000x700 tree: no item folds; the tree view's script did not run"
-t_assert_rc 1 node "${CHECK}" "${_tmp}/jq"
+t_assert_eq 1 "${rc}"
 
 t_case "a tree item that does not fold, or does not unfold again, fails"
-t_assert_contains "$(t_out node "${CHECK}" "$(_tree stuck stuck)")" "FAIL 1000x700 tree: clicking the item at "
-t_assert_contains "$(t_out node "${CHECK}" "${_tmp}/stuck")" " leaves it closed"
+_check out rc "$(_tree stuck stuck)"
+t_assert_contains "${out}" "FAIL 1000x700 tree: clicking the item at "
+t_assert_contains "${out}" " leaves it closed"
 t_assert_contains "$(t_out node "${CHECK}" "$(_tree oneway-tree one-way)")" "FAIL 1000x700 tree: closed -> open, and it does not go back"
 
 t_case "a published site checks the pages named after its URL; a page outside the site or not built is a usage error"
@@ -162,8 +168,9 @@ t_assert_rc 2 node "${CHECK}" "${_tmp}/folds" ../folds/index.html
 
 t_case "a site of neither theme has nothing to toggle; a missing site or argument is a usage error"
 mkdir -p "${_tmp}/plain" && printf '<!DOCTYPE html><html><body>hi</body></html>\n' > "${_tmp}/plain/index.html"
-t_assert_contains "$(t_out node "${CHECK}" "${_tmp}/plain")" "nothing to toggle"
-t_assert_rc 0 node "${CHECK}" "${_tmp}/plain"
+_check out rc "${_tmp}/plain"
+t_assert_contains "${out}" "nothing to toggle"
+t_assert_eq 0 "${rc}"
 t_assert_rc 2 node "${CHECK}" "${_tmp}/no-such-site"
 t_assert_rc 2 node "${CHECK}"
 

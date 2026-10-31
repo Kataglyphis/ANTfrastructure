@@ -27,6 +27,7 @@ from types import FrameType
 from typing import Never, NotRequired, TextIO, TypedDict
 
 from mutation_parse import Edit, MissingParser, refusals
+from mutation_shards import describe, load_costs, plan
 
 
 class MutationEntry(TypedDict):
@@ -632,8 +633,10 @@ def select_only(
     return [e for e in entries if e["id"] in set(only)]
 
 
-def select_shard(entries: list[MutationEntry], spec: str | None) -> list[MutationEntry]:
-    """--shard K/N: entries[K::N] (K from 0), a partition across N CI jobs; a bad spec exits 2."""
+def select_shard(
+    entries: list[MutationEntry], spec: str | None, costs: str | None = None,
+) -> list[MutationEntry]:
+    """--shard K/N: entries[K::N] (K from 0), or shard K of the cost plan; a partition across N CI jobs; a bad spec exits 2."""
     if not spec:
         return entries
     try:
@@ -643,7 +646,11 @@ def select_shard(entries: list[MutationEntry], spec: str | None) -> list[Mutatio
     if not 0 <= k < n:
         sys.stderr.write(f"ERROR: --shard takes K/N with 0 <= K < N, got {spec!r}\n")
         raise SystemExit(2)
-    return entries[k::n]
+    if costs is None:
+        return entries[k::n]
+    table = load_costs(costs)
+    say(describe(entries, table, k, n, costs))
+    return plan(entries, table, n)[k]
 
 
 def select(args: argparse.Namespace) -> list[MutationEntry]:
@@ -654,7 +661,7 @@ def select(args: argparse.Namespace) -> list[MutationEntry]:
         # By target or by test: a commit that only weakens a test touches no target.
         entries = [e for e in entries
                    if e["target"] in touched or any(t in e["test"] for t in touched)]
-    return select_shard(entries, args.shard)
+    return select_shard(entries, args.shard, args.shard_costs)
 
 
 def run_check_mode(args: argparse.Namespace, entries: list[MutationEntry], scope: str) -> int | None:
@@ -699,6 +706,8 @@ def main() -> int:
                     help="only check that every selected mutant still parses; run no test")
     ap.add_argument("--shard", metavar="K/N",
                     help="prove only entries[K::N] of the selection (K from 0): one of N CI jobs")
+    ap.add_argument("--shard-costs", metavar="TABLE",
+                    help="with --shard: take shard K of the plan built from this cost table instead")
     args = ap.parse_args()
 
     try:
