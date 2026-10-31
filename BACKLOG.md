@@ -903,6 +903,26 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       license provenance, and image checks for the elements; verify other Windows image variants
       independently. Until then that pipeline is unavailable in this image.
 
+- [ ] **CON202 — investigate locked detector failure on WSL gfx1036 with MIGraphX** [L, ★★★].
+      On 2026-10-31 the cached Linux x64 `:latest-rocm` image digest
+      `sha256:a5d68fbe64e579de09473290489b6953b5bce9aeb7644c18b86d6969bf37ace8`
+      exposed the WSL integrated Radeon `gfx1036` through `/dev/dxg` and a render node.
+      Running as root with the WSL driver libraries, both the image's ONNX Runtime 1.30.0
+      and a retained OrchestrANT AMD candidate's matching-version runtime failed while
+      compiling the locked DEIM detector model
+      (SHA-256 `225f612fc879d604b79a569648f274672090070a07dcbdef469796df956f8392`)
+      with `adaptive_topk_benchmark: all candidates failed to run`.
+      The retained package's CPU model self-test passed; small Relu and four TopK graphs
+      ran with profiled MIGraphX operators through both runtimes. MIOpen also warned that
+      `libMIOpenCKGroupedConv_gfx1036.so` could not be opened; inspection found other
+      architecture variants under `/opt/rocm` but not this one in `/opt/rocm` or `/opt/venv`.
+      The warning does not establish the compilation failure's cause. Determine whether
+      this WSL integrated GPU configuration is supported, investigate the missing device
+      library and full-model error, and verify the locked model with operator profiling on
+      a supported native Linux AMD GPU in the next image. Retain CPU and small-graph
+      controls; do not infer native-device, non-root, or other-architecture behavior from
+      this observation. Reproduction and controls: `_implementation/orchestrant-rocm-wsl-hardware-20261031/VALIDATION.md`.
+
 - [ ] **CON201 — assess Media Foundation availability in the Windows AMD GPU image** [M, ★★].
       On 2026-10-31, the cached `:winamd64-rocm` registry image digest
       `sha256:774af209a9282b8e8439653eb55756228a6ebdd219076ddc54a1e012e550c99c`
