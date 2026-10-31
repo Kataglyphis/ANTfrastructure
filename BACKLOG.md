@@ -822,7 +822,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Integration still needs a validated dynamic-symbol count and section/segment mappings,
       architecture-aware loader search and actual process scopes, recursive ordered preload
       closure, bundled-glibc resolution, Debian metadata alternatives and copied-script
-      wiring. The current scanner rejects unowned host libraries but does not yet prove
+      wiring. The current scanner rejects unowned or multiply owned host libraries but does not yet prove
       non-glibc version bounds.
 
 - [ ] **CON180 — record DirectML redistributable provenance and license in Windows images** [M, ★★★].

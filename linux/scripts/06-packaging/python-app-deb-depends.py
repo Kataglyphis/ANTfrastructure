@@ -620,11 +620,17 @@ def package_owner(path: str) -> str:
         found = subprocess.run(["dpkg", "-S", candidate], capture_output=True, check=False, text=True)
         if found.returncode != 0:
             continue
+        owners_found = set()
         for line in found.stdout.splitlines():
             owners, separator, named_path = line.partition(": ")
-            owner = owners.split(",", 1)[0].split(":", 1)[0]
-            if separator and named_path == candidate and re.fullmatch(r"[a-z0-9][a-z0-9+.-]+", owner):
-                return owner
+            if separator and named_path == candidate:
+                owners_found.update(owners.split(", "))
+        if len(owners_found) > 1:
+            raise ValueError(f"ambiguous package owners for {candidate}: {', '.join(sorted(owners_found))}")
+        if owners_found:
+            owner = owners_found.pop()
+            if re.fullmatch(r"[a-z0-9][a-z0-9+.-]+(?::[a-z0-9][a-z0-9-]*)?", owner):
+                return owner.split(":", 1)[0]
     return ""
 
 

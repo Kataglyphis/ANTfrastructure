@@ -66,6 +66,29 @@ class DebianDependencies(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "libc6")
 
+    def test_ambiguous_dpkg_owners_fail_closed(self) -> None:
+        source = self.root / "zlib.c"
+        source.write_text('#include <zlib.h>\nint main(void) { return zlibVersion() == 0; }\n')
+        subprocess.run(["cc", str(source), "-lz", "-o", str(self.app)], check=True)
+        self.fake_tool("dpkg", '''case "$2" in
+  *libz.so*) printf 'libz-first:amd64, libz-second:amd64: %s\\n' "$2" ;;
+  *) printf 'libc6:amd64: %s\\n' "$2" ;;
+esac''')
+        result = self.run_subject()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("ambiguous package owners", result.stderr)
+        self.assertIn("libz-first:amd64", result.stderr)
+        self.assertIn("libz-second:amd64", result.stderr)
+
+        path = "/lib/fixture.so"
+        for line in (f"first:amd64, second:amd64: {path}\n",
+                     f"first:amd64: {path}\nsecond:amd64: {path}\n",
+                     f"first:amd64, first:arm64: {path}\n"):
+            with self.subTest(line=line), patch.object(module.subprocess, "run") as run:
+                run.return_value = subprocess.CompletedProcess([], 0, stdout=line, stderr="")
+                with self.assertRaisesRegex(ValueError, "ambiguous package owners"):
+                    module.package_owner(path)
+
     def test_relr_requires_glibc_236_and_unknown_abi_fails_closed(self) -> None:
         source = self.root / "relr.c"
         source.write_text('#include <unistd.h>\nstatic const char s[]="ok\\n"; '

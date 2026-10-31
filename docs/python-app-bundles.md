@@ -380,8 +380,10 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
     waived sonames (`unresolved_allowed` in `bundle.json`) are skipped.
     Without bundled glibc, a `GLIBC_ABI_DT_RELR` requirement or DT_RELR entries require
     `libc6 (>= 2.36)`; an unknown `GLIBC_ABI_` marker fails the build rather than guessing.
-  - `readelf` and `ldconfig` must succeed before the dependency list is accepted; only a nonzero
-    `dpkg -S` result means that a soname has no package owner. Dynamic entries, their string
+  - `readelf` and `ldconfig` must succeed before the dependency list is accepted; a soname
+    whose file has multiple `dpkg -S` owners fails instead of selecting one arbitrarily.
+    This check does not establish the target architecture or the loader's selected provider.
+    Dynamic entries, their string
     table and version-needs records must also agree with bytes mapped by ELF load segments,
     including split-segment layouts;
     ambiguous mappings or a section-only mismatch fail the build.

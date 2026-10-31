@@ -15,6 +15,7 @@
 
 ## 2026-10-30 — Linux GPU bundle checks reject CPU fallback
 
+- Python DEB discovery rejects ambiguous package-owner results instead of choosing the first owner.
 - Python DEB discovery checks bundled dependencies' ELF class, byte order and machine against their importer before omitting a host package.
 - Native and Python app DEBs use gzip archives so older Debian package managers can read them.
 - Shared bundle DEBs use root ownership for every payload entry when built by an unprivileged user.
