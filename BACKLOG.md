@@ -986,6 +986,13 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `sha256:a5d68fbe64e579de09473290489b6953b5bce9aeb7644c18b86d6969bf37ace8`
       also lacked the material-font cache and failed the same offline precache command
       trying to download `fonts.zip`, as uid 1001 in a fresh container without mounts.
+      Its Flutter 3.47.6 engine `692136cb6582dbfc5af3fb33c2515a069f2f66d0` differs
+      from the retained NVIDIA Flutter 3.47.7 cache. When that cache served a no-network
+      AMD precache probe, the probe progressed past fonts and Gradle but could not find
+      this engine's `sky_engine.zip`. Version-matched official assets were then fetched
+      with server MD5 checks and recorded SHA-256 values; a local-cache precache probe
+      passed with networking disabled. See `_implementation/omni-amd-prospective-build-20261031/flutter-cache-probe-exec.log`,
+      `fetch-flutter-cache-retry.log` and `flutter-cache-probe-verified.log`.
       Check other image digests and architectures independently. This is an offline cache
       gap; it does not establish that network-backed builds fail.
       Separately, an offline OmniAccelerANT CPU build using that cached `:latest` image
