@@ -82,7 +82,7 @@ _run_checkout_failure() {
   STUB_PATH="${ROLL_STUBS}:${uv_stubs:+${uv_stubs}:}${BARE_PATH}" RL_MODE=checkout RL_REAL_GIT="$(command -v git)" \
     RL_FIRST_PATH="${repo}/first" RL_FAIL_SECOND="${repo}/second" \
     RL_FAIL_ONCE="${once}" RL_OBSERVED_FIRST="${observed}" RL_UV_OBSERVED_DIR="${uv_observed}" \
-    _run "${repo}" "${report}" --apply --managers "${managers}"
+    _run "${repo}" "${report}" --apply --managers "${managers}" "${@:8}"
 }
 
 _assert_restored_tree() {
@@ -217,6 +217,69 @@ t_assert_eq "${SECOND_AT}" "$(_module_at "${REPO}" second)" "the second commit a
 t_assert_eq '  http: 1.1.0' "$(_pub "${REPO}" 3)" "the manifest is untouched"
 t_assert_ok git -C "${REPO}" diff --quiet HEAD
 
+t_case "a path selection plans only its exact direct gitlink while reporting both"
+SELECT_FIRST="$(_module_at "${REPO}" first)"
+SELECT_SECOND="$(_module_at "${REPO}" second)"
+_run "${REPO}" "${REPORT}" --apply --dry-run --managers git-submodules --submodule-path first
+t_assert_eq 0 "${RC}" "the selected plan succeeds: ${OUT}"
+t_assert_contains "${OUT}" 'update, excluded' "the other pending gitlink is explicitly excluded"
+SELECT_PLAN="${OUT##*gitlink(s), moved to their remote default branch HEAD:}"
+t_assert_contains "${SELECT_PLAN}" "first -> trunk" "the selected gitlink is planned"
+t_assert_fails grep -q 'second -> trunk' <<<"${SELECT_PLAN}"
+t_assert_eq "${SELECT_FIRST}" "$(_module_at "${REPO}" first)"
+t_assert_eq "${SELECT_SECOND}" "$(_module_at "${REPO}" second)"
+
+t_case "unknown and duplicate selections refuse before any write"
+for bad in unknown duplicate; do
+  if [ "${bad}" = unknown ]; then
+    _run "${REPO}" "${REPORT}" --apply --dry-run --managers git-submodules --submodule-path missing
+    t_assert_contains "${OUT}" 'unknown direct submodule path: missing'
+  else
+    _run "${REPO}" "${REPORT}" --apply --dry-run --managers git-submodules --submodule-path first --submodule-path first
+    t_assert_contains "${OUT}" 'duplicate --submodule-path: first'
+  fi
+  t_assert_eq 1 "${RC}" "${bad} selection is rejected"
+  t_assert_eq "${SELECT_FIRST}" "$(_module_at "${REPO}" first)"
+  t_assert_eq "${SELECT_SECOND}" "$(_module_at "${REPO}" second)"
+done
+
+t_case "an isolated fixture apply moves only the selected gitlink"
+SELECT_REPO="$(_default_sub_repo default-selected)"
+SELECT_OTHER="$(_module_at "${SELECT_REPO}" second)"
+_run "${SELECT_REPO}" "${REPORT}" --apply --managers git-submodules --submodule-path first
+t_assert_eq 0 "${RC}" "selected fixture apply succeeds: ${OUT}"
+t_assert_eq "$(git -C "${WORK}/up-default-selected-first" rev-parse trunk)" "$(git -C "${SELECT_REPO}/first" rev-parse HEAD)"
+t_assert_eq "${SELECT_OTHER}" "$(_module_at "${SELECT_REPO}" second)"
+
+t_case "an excluded absent gitlink stays absent during an isolated selected apply"
+SELECT_ABSENT="$(_absent_second_repo default-selected-absent)"
+_run "${SELECT_ABSENT}" "${REPORT}" --apply --managers git-submodules --submodule-path first
+t_assert_eq 0 "${RC}" "the selected initialized module can move alone: ${OUT}"
+t_assert_eq "$(git -C "${WORK}/up-default-selected-absent-first" rev-parse trunk)" "$(git -C "${SELECT_ABSENT}/first" rev-parse HEAD)"
+t_assert_fails test -e "${SELECT_ABSENT}/second"
+
+t_case "a dirty excluded submodule is preserved during an isolated selected apply"
+SELECT_DIRTY="$(_default_sub_repo default-selected-dirty)"
+printf 'local work\n' >> "${SELECT_DIRTY}/second/revision.txt"
+SELECT_DIRTY_AT="$(_module_at "${SELECT_DIRTY}" second)"
+SELECT_DIRTY_BYTES="$(cat "${SELECT_DIRTY}/second/revision.txt")"
+_run "${SELECT_DIRTY}" "${REPORT}" --apply --managers git-submodules --submodule-path first
+t_assert_eq 0 "${RC}" "a dirty excluded checkout does not prevent the selected update: ${OUT}"
+t_assert_eq "${SELECT_DIRTY_AT}" "$(_module_at "${SELECT_DIRTY}" second)"
+t_assert_eq "${SELECT_DIRTY_BYTES}" "$(cat "${SELECT_DIRTY}/second/revision.txt")"
+
+t_case "repeating different paths selects both"
+_run "${REPO}" "${REPORT}" --apply --dry-run --managers git-submodules --submodule-path first --submodule-path=second
+t_assert_eq 0 "${RC}"
+SELECT_PLAN="${OUT##*gitlink(s), moved to their remote default branch HEAD:}"
+t_assert_contains "${SELECT_PLAN}" 'first -> trunk'
+t_assert_contains "${SELECT_PLAN}" 'second -> trunk'
+
+t_case "a selector without the git-submodules manager is refused"
+_run "${REPO}" "${MIXED_REPORT}" --apply --dry-run --managers pub --submodule-path first
+t_assert_eq 1 "${RC}"
+t_assert_contains "${OUT}" '--submodule-path requires the git-submodules manager'
+
 t_case "apply reaches each remote default HEAD in one run, not one commit or the declared release branch"
 _run "${REPO}" "${REPORT}" --apply --managers git-submodules
 t_assert_eq 0 "${RC}" "the complete submodule update succeeds"
@@ -331,6 +394,13 @@ exec "${RL_REAL_GIT}" "$@"
 STUB
 chmod +x "${ROLL_STUBS}/git"
 _run_checkout_failure "${ROLLBACK_REPO}" "${ROLLBACK_ONCE}" "${ROLLBACK_OBSERVED}"
+_assert_checkout_failure_undone "${ROLLBACK_REPO}" "${ROLLBACK_FIRST_AT}" "${ROLLBACK_SECOND_AT}" \
+  "${ROLLBACK_OBSERVED}" "${ROLLBACK_UP}" "${ROLLBACK_STATUS}"
+
+t_case "selected checkouts still roll back when the later selected checkout fails"
+_prepare_rollback_repo default-selected-rollback initialized
+_run_checkout_failure "${ROLLBACK_REPO}" "${ROLLBACK_ONCE}" "${ROLLBACK_OBSERVED}" \
+  "${MIXED_REPORT}" '' '' pub,git-submodules --submodule-path first --submodule-path second
 _assert_checkout_failure_undone "${ROLLBACK_REPO}" "${ROLLBACK_FIRST_AT}" "${ROLLBACK_SECOND_AT}" \
   "${ROLLBACK_OBSERVED}" "${ROLLBACK_UP}" "${ROLLBACK_STATUS}"
 

@@ -122,7 +122,8 @@ scan_default_submodule_one() {
   SUBMODULE_PATHS+=("${path}"); SUBMODULE_REFS+=("${SUB_QUERY_REF}")
   SUBMODULE_TIPS+=("${SUB_QUERY_SHA}"); SUBMODULE_CHECKED+=("${checked}")
   SUBMODULE_PINNED+=("${pinned}"); SUBMODULE_URLS+=("${url}")
-  if [ "${checked}" != "${SUB_QUERY_SHA}" ] || [ "${pinned}" != "${SUB_QUERY_SHA}" ]; then
+  if { [ "${#SELECTED_SUBMODULES[@]}" -eq 0 ] || rl_has "${path}" "${SELECTED_SUBMODULES[@]}"; } \
+    && { [ "${checked}" != "${SUB_QUERY_SHA}" ] || [ "${pinned}" != "${SUB_QUERY_SHA}" ]; }; then
     APPLY_PATHS+=("${path}"); APPLY_REFS+=("${SUB_QUERY_REF}")
     APPLY_TIPS+=("${SUB_QUERY_SHA}"); APPLY_URLS+=("${url}")
     APPLY_INITIALIZED+=("${initialized}")
@@ -133,13 +134,17 @@ scan_default_submodules() {
   SUBMODULE_PATHS=(); SUBMODULE_REFS=(); SUBMODULE_TIPS=()
   SUBMODULE_CHECKED=(); SUBMODULE_PINNED=(); SUBMODULE_URLS=()
   APPLY_PATHS=(); APPLY_REFS=(); APPLY_TIPS=(); APPLY_URLS=(); APPLY_INITIALIZED=()
-  case ",${MANAGERS}," in *,git-submodules,*) ;; *) return 0 ;; esac
+  case ",${MANAGERS}," in
+    *,git-submodules,*) ;;
+    *) [ "${#SELECTED_SUBMODULES[@]}" -eq 0 ] || err "--submodule-path requires the git-submodules manager"; return 0 ;;
+  esac
   SUBMODULE_ROOT_REAL="$(cd "${TARGET}" && pwd -P)"
   local tracked
   tracked="$(git -C "${TARGET}" ls-files --stage | awk '$1 == "160000" { n++ } END { print n+0 }')" \
     || err "cannot count tracked submodule gitlinks"
   if [ ! -f "${TARGET}/.gitmodules" ]; then
     [ "${tracked}" -eq 0 ] || err "${tracked} tracked gitlinks but no .gitmodules; refusing an incomplete submodule scan"
+    [ "${#SELECTED_SUBMODULES[@]}" -eq 0 ] || err "unknown direct submodule path: ${SELECTED_SUBMODULES[0]}"
     return 0
   fi
   git -C "${TARGET}" config -f .gitmodules --list >/dev/null \
@@ -147,6 +152,10 @@ scan_default_submodules() {
   for_each_renovate_submodule "${TARGET}" scan_default_submodule_one
   [ "${tracked}" -eq "${#SUBMODULE_PATHS[@]}" ] \
     || err "${tracked} tracked gitlinks but ${#SUBMODULE_PATHS[@]} valid .gitmodules entries; refusing an incomplete submodule scan"
+  local selected
+  for selected in ${SELECTED_SUBMODULES[@]+"${SELECTED_SUBMODULES[@]}"}; do
+    rl_has "${selected}" "${SUBMODULE_PATHS[@]}" || err "unknown direct submodule path: ${selected}"
+  done
 }
 
 submodule_target_is_planned() {
@@ -188,6 +197,9 @@ report_default_submodules() {
     status=current
     if [ "${SUBMODULE_CHECKED[i]}" != "${SUBMODULE_TIPS[i]}" ] \
       || [ "${SUBMODULE_PINNED[i]}" != "${SUBMODULE_TIPS[i]}" ]; then status=update; fi
+    if [ "${#SELECTED_SUBMODULES[@]}" -gt 0 ] && ! rl_has "${SUBMODULE_PATHS[i]}" "${SELECTED_SUBMODULES[@]}"; then
+      status="${status}, excluded"
+    fi
     printf '%-34s %-12s %-12s %-18s %s  (%s)\n' \
       "${SUBMODULE_PATHS[i]}" "${SUBMODULE_CHECKED[i]:0:12}" \
       "${SUBMODULE_PINNED[i]:0:12}" "${SUBMODULE_REFS[i]#refs/heads/}" \

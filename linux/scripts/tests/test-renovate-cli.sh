@@ -11,6 +11,8 @@ parse_fixture() (
   shift
   MODE=report DRY_RUN=0 REFRESH=0 HERE=0 VENDORED_MODE=0
   MANAGERS="" ONLY="" SKIP="" ROOT="" BUDGET=600
+  # shellcheck disable=SC2034 # Used by the sourced option parser.
+  SELECTED_SUBMODULES=()
   fixture_usage() { printf 'usage\n'; }
   parse_renovate_options "${flavor}" fixture_usage root ROOT "$@"
   printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
@@ -45,6 +47,9 @@ done
 for flag in --refresh --print-bin; do
   t_assert_fails parse_fixture fleet "${flag}"
 done
+t_assert_fails parse_fixture fleet --submodule-path=first
+t_assert_fails parse_fixture local --submodule-path=
+t_assert_fails parse_fixture local --submodule-path first --submodule-path first
 t_assert_fails parse_fixture local first second
 t_assert_contains "$(parse_fixture local first second 2>&1)" 'more than one root given'
 t_assert_eq usage "$(parse_fixture local --help)"

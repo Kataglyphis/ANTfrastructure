@@ -30,6 +30,23 @@ renovate_driver_option() {
   esac
 }
 
+parse_renovate_submodule_path() {
+  local value existing
+  SELECTOR_SHIFTS=1
+  if [[ "$1" == *=* ]]; then
+    value="${1#*=}"
+  else
+    [ "$#" -gt 1 ] || err "--submodule-path needs a value"
+    value="$2"
+    SELECTOR_SHIFTS=2
+  fi
+  [ -n "${value}" ] || err "--submodule-path needs a nonempty value"
+  for existing in ${SELECTED_SUBMODULES[@]+"${SELECTED_SUBMODULES[@]}"}; do
+    [ "${existing}" != "${value}" ] || err "duplicate --submodule-path: ${value}"
+  done
+  SELECTED_SUBMODULES+=("${value}")
+}
+
 parse_renovate_options() {
   local flavor="$1" usage_function="$2" positional_label="$3"
   local -n destination="$4"
@@ -44,6 +61,11 @@ parse_renovate_options() {
   fi
   while [ "$#" -gt 0 ]; do
     option="${1%%=*}"
+    if [ "${flavor}" = local ] && [ "${option}" = --submodule-path ]; then
+      parse_renovate_submodule_path "$@"
+      shift "${SELECTOR_SHIFTS}"
+      continue
+    fi
     variable=""
     if [ -n "${option}" ]; then variable="${values[${option}]:-}"; fi
     if [ -n "${variable}" ]; then

@@ -13,6 +13,7 @@ _renovate_usage() {
 #   renovate-local.sh --apply [--dry-run] <root>  update gitlinks, manifests and locks
 #   --apply initializes direct submodules and checks out each remote default tip.
 #   renovate-local.sh --managers <csv> <root>     default: whatever the tree HAS
+#   --submodule-path <path>                       select one exact direct gitlink; repeatable
 #   renovate-local.sh --print-bin                 the resolved renovate.js
 #   renovate-fleet.sh beside this one runs it over EVERY repo the family has
 #   Every live run installs npm's latest Renovate CLI before the dependency scan.
@@ -59,6 +60,8 @@ MODE=report
 MANAGERS=""            # empty means: detect from the tree (see detect_managers)
 MGR_DEFAULT_OFF=""
 TARGET=""
+# shellcheck disable=SC2034 # Used by the sourced option and submodule modules.
+SELECTED_SUBMODULES=()
 DRY_RUN=0
 REFRESH=0
 

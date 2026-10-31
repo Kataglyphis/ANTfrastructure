@@ -1169,6 +1169,23 @@ hand produced.
 
 ## How the submodule half follows default branches
 
+To plan only specific direct gitlinks, pass `--submodule-path` once per exact
+`.gitmodules` path. The scan still validates and queries every direct submodule;
+excluded paths are marked in the report and are not applied. Unknown, empty or
+repeated paths fail. This option filters only gitlinks, so select the
+`git-submodules` manager alone to avoid planning other dependency updates:
+
+```bash
+linux/scripts/renovate-local.sh --apply --dry-run --managers git-submodules \
+  --submodule-path third_party/ANTfrastructure /path/to/consumer
+```
+
+This command invokes the driver from the current hub checkout directly. A
+consumer wrapper uses its pinned hub; it cannot recognize this option until its
+pin includes the selector. `--submodule-path` is a local-driver option, not a
+fleet-wide repository filter. A real apply still requires the owner's explicit
+request in that turn, and applies the freshly queried remote default tip.
+
 The owner directive of 2026-10-26 makes each direct `.gitmodules` entry part of
 the default Renovate command's submodule scan, including a checkout that has not
 been initialized. The scan does not depend on a Renovate report row, a

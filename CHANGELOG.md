@@ -15,6 +15,7 @@
 
 ## 2026-10-30 — Linux GPU bundle checks reject CPU fallback
 
+- Renovate can select exact direct gitlink paths while still validating every direct submodule.
 - Python DEB discovery rejects ambiguous package-owner results instead of choosing the first owner.
 - Python DEB discovery checks bundled dependencies' ELF class, byte order and machine against their importer before omitting a host package.
 - Native and Python app DEBs use gzip archives so older Debian package managers can read them.
