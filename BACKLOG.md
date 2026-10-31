@@ -41,7 +41,7 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
   provider paths, media plugins, native DLL notices and Media Foundation availability.
 - **Runtime provenance:** CON203–204 cover the Linux ROCm and NVIDIA library handoff.
 - **Build tools and offline inputs:** CON145, CON177–179, CON186–187, CON194–195,
-  CON197, CON199–200 and CON205–206 cover tools, plugins, SDK/cache inputs and
+  CON197, CON199–200, CON205–206 and CON214 cover tools, plugins, SDK/cache inputs and
   Flutter/FRB generation; entries distinguish required fixes from optional offline support.
 - **CPU image and package handoff findings:** CON188–193 cover DEB host-library versioning,
   optional offline inputs, auditwheel and the optional DNNL provider. These also affect
@@ -1910,6 +1910,17 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Found 2026-10-31 by `test-lib-docs-build.sh`: a caller without `set -e` sees `make` fail
       and still gets "Documentation build completed successfully" and status 0. Every known
       consumer runs under `set -e`; decide whether each step's status should stop the pipeline.
+
+- [ ] **CON214 — evaluate SquashFS tools for non-executing AppImage inspection** [S, ★★].
+      The cached Linux amd64 CPU image at registry digest
+      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
+      inspected on 2026-11-01 provides `readelf` and `objdump`
+      but neither `unsquashfs` nor `mksquashfs`. Existing AppImage verification executes
+      the candidate's `--appimage-extract`; investigate adding pinned `squashfs-tools`
+      to the build images so consumers can inspect the filesystem without executing an
+      untrusted candidate. Check the image and supported architectures before changing
+      the recipe, and test extraction with path, symlink and resource-limit safeguards.
+      This optional tooling alone does not establish package provenance or GPU readiness.
 
 - [ ] **CON213 — WebDavClient's `bench/` collects no tests, so `bench-gate` stays off by default** [S, ★★].
       Found 2026-10-31 running `pytest bench/` at WebDavClient `0980fb5` in `:latest`: pytest
