@@ -108,3 +108,13 @@ must actually profile each expected package on the requested physical GPU; its
 exit status and the receipt alone cannot prove that it did. A caller must upload
 both receipts only after their corresponding checks succeed, and use the current
 run's immutable artifact ID and upload digest for the staging step.
+
+## Detector parity
+
+`shared/python/compare_detector_parity.py CPU.json GPU.json` compares detections
+from the two-cats fixture. Both inputs use schema version 1 with image dimensions
+and detection classes, scores and pixel boxes. It requires a credible CPU baseline
+and a one-to-one class, score and box match. Empty, malformed and non-finite results
+fail. Callers must run the actual packaged detector twice, independently verify the
+CPU and GPU operator profiles, and pass results from those same runs. A match alone
+does not establish GPU execution or prove parity on other images.

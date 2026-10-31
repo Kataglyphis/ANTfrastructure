@@ -32017,6 +32017,22 @@
   "why": "model files and notices must match their locked digests"
  },
  {
+  "id": "packaging.detector-parity-score",
+  "target": "shared/python/compare_detector_parity.py",
+  "find": "abs(item[\"score\"] - other[\"score\"]) <= MAX_SCORE_DELTA",
+  "replace": "True",
+  "test": "python3 shared/python/tests/test_compare_detector_parity.py",
+  "why": "a GPU detector must reject scores that disagree with the CPU baseline"
+ },
+ {
+  "id": "packaging.detector-parity-iou",
+  "target": "shared/python/compare_detector_parity.py",
+  "find": "iou(item[\"box\"], other[\"box\"]) >= MIN_IOU",
+  "replace": "True",
+  "test": "python3 shared/python/tests/test_compare_detector_parity.py",
+  "why": "a GPU detector must reject boxes that disagree with the CPU baseline"
+ },
+ {
   "id": "packaging.gpu-stage-file-hash",
   "target": "shared/python/stage_gpu_artifact.py",
   "find": "if hashes is not None and digest.hexdigest() != hashes[item.filename]:",

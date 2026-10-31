@@ -1071,7 +1071,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `_implementation/accelerant-rocm-cats-repeat-20261031/` and
       `_implementation/accelerant-rocm-cats-alias-control-20261031/`.
       A separate non-packaged OxidANT CLI test used the same image, WSL device, locked
-      model and two-cats JPEG, with root, no network, the WSL driver libraries, four ORT
+      model and two-cats JPEG (SHA-256
+      `6d375ac20fadfd400b3033084f8b0581dcc145f7c14e3b24b97975e379c52999`), with root,
+      no network, the WSL driver libraries, four ORT
       threads and process-only `MIGRAPHX_SKIP_BENCHMARKING=1`. The legacy Rust provider
       registration first failed at the literal `""/…` cache path. A local generic-API
       registration with explicit device and memory options created the session without

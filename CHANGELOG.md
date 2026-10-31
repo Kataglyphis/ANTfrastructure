@@ -15,6 +15,7 @@
 
 ## 2026-10-31 — Stage checked GPU artifacts
 
+- Add a reusable real-image detector parity comparator for CPU and GPU results.
 - Add opt-in atomic staging that matches an artifact ZIP and both clean-host and
   GPU receipts to the same trusted CI identity and exact package bytes.
 - Add immutable-artifact pre/post receipt modes for Linux clean-host and trusted
