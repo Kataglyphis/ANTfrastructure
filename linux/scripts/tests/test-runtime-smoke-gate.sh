@@ -20,7 +20,7 @@ source "${CORE_DIR}/runtime-build-fns.sh"
 
 # is_dry_run is a function from build-helpers.sh; stub it per-test.
 DRY_RUN=0
-is_dry_run() { [ "${DRY_RUN:-0}" = "1" ]; }
+is_dry_run() { if [ "${DRY_RUN:-0}" = "1" ]; then return 0; fi; return 1; }
 
 # Build-arg helpers — no-op (array name passed, must exist).
 append_common_build_args()        { :; }

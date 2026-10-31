@@ -131,13 +131,6 @@ mutation-family:renovate
 # no slug owns either. Proof: linux/scripts/tests/test-renovate-cmake.sh.
 mutation-family:renovate-cmake
 
-# shared-config owns sync-shared-config.sh, which READS this manifest but never
-# names it on the preflight command line - the hub uses --ignore, not a manifest,
-# so the data file is exercised only by the test suite. The mutation is real and
-# bites there; what is missing is an ownership edge the registry can see.
-# Anchoring it on the script instead was tried and rejected: --check never reaches
-# the mode validation, so that proof would have been vacuous.
-mutation-id:shared-config.exact-mode-is-declared-in-the-manifest
 mutation-family:native-gcc-san
 mutation-family:native-gcc-ma
 mutation-family:wheels-source

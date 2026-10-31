@@ -48,8 +48,8 @@ t_assert_eq "" "$(_disk_guard_pick_victim "${workdir}/does-not-exist" "")"
 # ---- _disk_guard_protected_slugs with a stubbed stage graph ----
 CROSS_STAGE_ORDER=(base compiler sdk media)
 TARGET_ARCHES="amd64,arm64"
-stage_enabled() { [ "$1" != "media" ]; }             # media disabled this run
-cross_stage_is_per_arch() { [ "$1" = "sdk" ] || [ "$1" = "media" ]; }
+stage_enabled() { if [ "$1" != "media" ]; then return 0; fi; return 1; }             # media disabled this run
+cross_stage_is_per_arch() { if [ "$1" = "sdk" ] || [ "$1" = "media" ]; then return 0; fi; return 1; }
 cross_stage_tag() {
   if [ "$#" -ge 2 ]; then printf 'repo/img:cross-%s-%s' "$1" "$2"
   else printf 'repo/img:%s' "$1"; fi

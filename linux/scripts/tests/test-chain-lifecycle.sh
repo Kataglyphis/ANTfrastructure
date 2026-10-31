@@ -192,7 +192,7 @@ t_assert_eq "" "$(cross_stage_log_redirect media-arm64)"
 # Bounded archive retention: the archiver only adds, on every start, so retention must prune only what it owns
 log()  { :; }    # re-stub: sourcing cross-stage-build.sh may pull in the real ones
 warn() { :; }
-is_dry_run() { [ "${DRY_RUN:-0}" = "1" ]; }   # stands in for build-helpers.sh's
+is_dry_run() { if [ "${DRY_RUN:-0}" = "1" ]; then return 0; fi; return 1; }   # stands in for build-helpers.sh's
 t_assert_contains "$(cat "${CHAIN_SH}")" 'source "${REPO_ROOT}/linux/scripts/01-core/chain-storage.sh"'
 t_case "the retention function was extracted from the shipped script"
 t_assert_eq "function" "$(type -t _chain_prune_archived_logs || true)"
@@ -730,11 +730,11 @@ t_assert_fails _chain_runtime_lane_is_next runtime # nothing follows it
 t_assert_fails _chain_runtime_lane_is_next ""      # no completed stage
 
 t_case "a disabled intermediate stage does not hide the runtime lane"
-stage_enabled() { [ "$1" != "android" ]; }
+stage_enabled() { if [ "$1" != "android" ]; then return 0; fi; return 1; }
 t_assert_ok _chain_runtime_lane_is_next media
 
 t_case "a disabled runtime lane never raises the bar"
-stage_enabled() { [ "$1" != "runtime" ]; }
+stage_enabled() { if [ "$1" != "runtime" ]; then return 0; fi; return 1; }
 t_assert_fails _chain_runtime_lane_is_next android
 
 t_case "the guard actually consults the predicate (call site, not just the helper)"

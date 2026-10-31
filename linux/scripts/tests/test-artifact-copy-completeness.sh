@@ -48,6 +48,17 @@ t_assert_eq "1" "${_rc}"
 t_case "and it names the undeclared path"
 t_assert_contains "$(cat "${_work}/stray/out")" "/opt/surprise is COPY'd from artifact-source but NOT in runtime-artifacts.manifest"
 
+t_case "a COPY to another path fails unless ALLOWED_RELOCATIONS documents it"
+_relocated="$(_dockerfile /opt/flutter)
+COPY --link --from=artifact-source /opt/vulkan /opt/elsewhere"
+_rc="$(_stage relocated "${_MANIFEST}" "${_relocated}")"
+t_assert_eq "1" "${_rc}"
+t_assert_contains "$(cat "${_work}/relocated/out")" "MISMATCH: /opt/vulkan -> /opt/elsewhere"
+t_assert_contains "$(cat "${_work}/relocated/out")" "FAIL: 1 undocumented artifact COPY relocation(s)."
+_rc="$(_stage documented '/opt/llvm-target | llvm' "$(printf 'FROM base AS artifact-source\nFROM base AS package-image\nCOPY --link --from=artifact-source /opt/llvm-target /usr/local/llvm-target\n')")"
+t_assert_eq "0" "${_rc}"
+t_assert_contains "$(cat "${_work}/documented/out")" "OK (documented relocation): /opt/llvm-target -> /usr/local/llvm-target"
+
 t_case "the REAL manifest and Dockerfile.package agree today"
 _rc="$( ( bash "${GATE}" ) >/dev/null 2>&1; printf '%d' "$?" )"
 t_assert_eq "0" "${_rc}"

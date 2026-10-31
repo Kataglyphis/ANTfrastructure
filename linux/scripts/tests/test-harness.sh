@@ -107,11 +107,11 @@ open(sys.argv[1], "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + ch
 
 # t_posix_symlinks: true when ln -s makes a link; Git Bash copies the file instead.
 t_posix_symlinks() { _t_probe_file _t_links; }
-_t_links() { ln -s a "$2/b" 2>/dev/null && [ -L "$2/b" ]; }
+_t_links() { if ln -s a "$2/b" 2>/dev/null && [ -L "$2/b" ]; then return 0; fi; return 1; }
 
 # t_posix_modes: true when chmod sets the bits it is given; Git Bash derives them from the file's name and content.
 t_posix_modes() { _t_probe_file _t_modes; }
-_t_modes() { chmod 711 "$1" && [ "$(stat -c %a "$1" 2>/dev/null)" = 711 ]; }
+_t_modes() { if chmod 711 "$1" && [ "$(stat -c %a "$1" 2>/dev/null)" = 711 ]; then return 0; fi; return 1; }
 
 # t_posix_python: true when python3 is a POSIX one; Windows' python sees drive-letter paths, not the shell's /tmp or /dev/fd.
 t_posix_python() { python3 -c 'import os, sys; sys.exit(os.sep != "/")'; }
@@ -133,7 +133,7 @@ SH
 }
 
 # t_is_elf <file>: true when the file starts with the ELF magic; Git Bash's own binaries are PE.
-t_is_elf() { [ "$(head -c 4 "$1" 2>/dev/null | tail -c 3)" = ELF ]; }
+t_is_elf() { if [ "$(head -c 4 "$1" 2>/dev/null | tail -c 3)" = ELF ]; then return 0; fi; return 1; }
 
 # t_zip <archive> <member>...: a zip of empty members, the wheel fixture the wheel gates read by name and member list.
 t_zip() {

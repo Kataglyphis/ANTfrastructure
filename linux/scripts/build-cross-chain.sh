@@ -58,7 +58,10 @@ stage_index() {
 stage_enabled() {
   local name="$1" idx
   idx="$(stage_index "${name}")" || exit 1
-  [ "${idx}" -ge "${FROM_STAGE_IDX}" ] && [ "${idx}" -le "${TO_STAGE_IDX}" ]
+  if [ "${idx}" -ge "${FROM_STAGE_IDX}" ] && [ "${idx}" -le "${TO_STAGE_IDX}" ]; then
+    return 0
+  fi
+  return 1
 }
 
 # Usage

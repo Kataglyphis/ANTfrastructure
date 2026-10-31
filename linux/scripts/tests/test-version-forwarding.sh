@@ -63,8 +63,10 @@ done
 # The other half: no android build script may carry a silent version literal.
 for _lib in onnxruntime litert iree; do
   _f="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}/linux/scripts/03-media/build/${_lib}/android/build-android.sh"
-  t_case "${_lib} android build has no silent version fallback"
-  if [ -f "${_f}" ] && grep -qE ':-[[:space:]]*v?[0-9]+\.[0-9]+(\.[0-9]+)?[[:space:]]*\}' "${_f}"; then
+  t_case "${_lib} android build exists and has no silent version fallback"
+  # A missing file must fail: grep on nothing finds no literal, which read as clean.
+  t_assert_ok test -f "${_f}"
+  if grep -qE ':-[[:space:]]*v?[0-9]+\.[0-9]+(\.[0-9]+)?[[:space:]]*\}' "${_f}" 2>/dev/null; then
     t_assert_eq "no literal fallback" "literal fallback present" "${_lib}: a :-<version> literal masks a broken forward"
   else
     t_assert_eq "ok" "ok"

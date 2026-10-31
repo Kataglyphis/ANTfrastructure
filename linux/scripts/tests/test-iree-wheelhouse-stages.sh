@@ -107,18 +107,17 @@ export PATH
 cp "${TMP}/bin/git" "${TMP}/bin/ninja" "${TMP}/nocmake/" 2>/dev/null || true
 
 # ── stubbed shell collaborators ──────────────────────────────────────────────
-STUB_CROSS=0
+# shellcheck source=linux/scripts/tests/cross-stub-fixture.sh
+source "${TESTS_DIR}/cross-stub-fixture.sh"
 STUB_WHEEL_PLATFORM="linux_riscv64"
 STUB_LAUNCHER="ccache"
 STUB_QNN=""
 STUB_RETAG_LOG=""
 log()  { printf 'INFO:%s\n' "$*" >&2; }
 warn() { printf 'WARN:%s\n' "$*" >&2; }
-wheel_platform_tag() { printf '%s' "${STUB_WHEEL_PLATFORM}"; [ -n "${STUB_WHEEL_PLATFORM}" ]; }
-cross_build_is_active() { [ "${STUB_CROSS}" -eq 1 ]; }
+wheel_platform_tag() { printf '%s' "${STUB_WHEEL_PLATFORM}"; if [ -n "${STUB_WHEEL_PLATFORM}" ]; then return 0; fi; return 1; }
 cross_target_triplet() { printf '%s' "riscv64-linux-gnu"; }
-compiler_cache_launcher() { printf '%s' "${STUB_LAUNCHER}"; }
-resolve_qnn_sdk() { printf '%s' "${STUB_QNN}"; [ -n "${STUB_QNN}" ]; }
+resolve_qnn_sdk() { printf '%s' "${STUB_QNN}"; if [ -n "${STUB_QNN}" ]; then return 0; fi; return 1; }
 write_cross_cmake_toolchain_file() { printf '%s' "${TMP}/toolchain.cmake"; }
 append_common_cross_cmake_args() { local -n _ref="$1"; _ref+=("-DSTUB_COMMON_CROSS=1"); return 0; }
 resolve_target_python_sysconfig_export() {

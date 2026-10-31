@@ -7298,8 +7298,8 @@
  {
   "id": "gate-fixture.elf-probe-reads-the-magic",
   "target": "linux/scripts/tests/test-harness.sh",
-  "find": "| tail -c 3)\" = ELF ]; }",
-  "replace": "| tail -c 3)\" != x ]; }",
+  "find": "| tail -c 3)\" = ELF ]; then return 0",
+  "replace": "| tail -c 3)\" != x ]; then return 0",
   "test": "bash linux/scripts/tests/test-host-skips.sh",
   "why": "a PE bash handed to readelf yields an empty machine; the probe must reject anything without the ELF magic"
  },
@@ -7852,7 +7852,7 @@
   "why": "an id ANTfrastructure does not own is a broken manifest (exit 2) named with the known ids, not a mystery failure later when the row's canonical path is read"
  },
  {
-  "id": "shared-config.exact-mode-is-declared-in-the-manifest",
+  "id": "shared-assets.exact-mode-is-declared-in-the-manifest",
   "target": "shared/config/shared-assets.manifest",
   "find": "clang-format         | shared/config/.clang-format                      | .clang-format                           | exact |",
   "replace": "clang-format         | shared/config/.clang-format                      | .clang-format                           | body  |",
@@ -32247,5 +32247,69 @@
   "replace": "  local -a args=(build web)\n",
   "test": "bash linux/scripts/tests/test-flutter-lane-api.sh",
   "why": "a debug web build is several times larger and is what the sites would publish"
+ },
+ {
+  "id": "lint-gates.ifs-comma-split",
+  "target": "linux/scripts/renovate-fleet.sh",
+  "find": "    IFS=',' read -r -a want <<<\"${SKIP}\"\n",
+  "replace": "    for want in ${SKIP//,/ }; do :; done\n",
+  "test": "bash linux/scripts/tests/test-ifs-safety.sh",
+  "why": "under the scripts' IFS=$'\\n\\t' a ${list//,/ } loop runs once with the whole list as one item"
+ },
+ {
+  "id": "lint-gates.pipefail-nm-grep-q",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "      _lite_c_syms=\"$(nm -D --defined-only \"${lite_c_lib}\" 2>/dev/null || true)\"\n",
+  "replace": "      _lite_c_syms=\"$(nm -D --defined-only \"${lite_c_lib}\" | grep -q TfLiteModelCreate && echo TfLiteModelCreate)\"\n",
+  "test": "bash linux/scripts/tests/test-pipefail-safety.sh",
+  "why": "under pipefail nm loses the pipe when grep -q matches early, and a present symbol reads as missing"
+ },
+ {
+  "id": "lint-gates.uv-venv-python",
+  "target": "linux/scripts/build-docs.sh",
+  "find": "  uv venv --offline --quiet --python \"${python}\" \"${VENV_DIR}\"\n",
+  "replace": "  uv venv --offline --quiet \"${VENV_DIR}\"\n",
+  "test": "bash linux/scripts/tests/test-invocation-lints.sh",
+  "why": "a venv without --python seeds from whatever interpreter uv finds first"
+ },
+ {
+  "id": "lint-gates.force-reinstall-no-deps",
+  "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+  "find": "  uv pip install --no-deps --force-reinstall \"${_ow[@]}\"\n",
+  "replace": "  uv pip install --force-reinstall \"${_ow[@]}\"\n",
+  "test": "bash linux/scripts/tests/test-invocation-lints.sh",
+  "why": "a force-reinstall that resolves dependencies floats them off the lock"
+ },
+ {
+  "id": "runtime-smoke.gate-builds-wrapper-smoke",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "    --target wrapper-smoke \\\n",
+  "replace": "    --target package-image \\\n",
+  "test": "bash linux/scripts/tests/test-runtime-smoke-gate.sh",
+  "why": "the gate must build the smoke target; the package target proves nothing about the shipped wrapper"
+ },
+ {
+  "id": "runtime-smoke.gate-failure-propagates",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "    . || return 1\n\n  log \"[smoke] wrapper-smoke gate PASSED",
+  "replace": "    . || true\n\n  log \"[smoke] wrapper-smoke gate PASSED",
+  "test": "bash linux/scripts/tests/test-runtime-smoke-gate.sh",
+  "why": "a failed smoke must stop the arch before anything is pushed"
+ },
+ {
+  "id": "runtime-smoke.gate-skip-only-when-asked",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "  if [ \"${WRAPPER_SMOKE_GATE:-1}\" = \"0\" ]; then\n    log \"[smoke] wrapper-smoke gate skipped",
+  "replace": "  if true; then\n    log \"[smoke] wrapper-smoke gate skipped",
+  "test": "bash linux/scripts/tests/test-runtime-smoke-gate.sh",
+  "why": "the gate is on unless WRAPPER_SMOKE_GATE=0 says otherwise"
+ },
+ {
+  "id": "artifact-parity.relocation-fails",
+  "target": "linux/scripts/verify-artifact-copy-parity.sh",
+  "find": "    echo \"FAIL: ${failures} undocumented artifact COPY relocation(s).\"\n    exit 1\n",
+  "replace": "    echo \"FAIL: ${failures} undocumented artifact COPY relocation(s).\"\n    true\n",
+  "test": "bash linux/scripts/tests/test-artifact-copy-completeness.sh",
+  "why": "an artifact copied to another path than it was built at ships where nothing looks for it"
  }
 ]

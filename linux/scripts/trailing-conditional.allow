@@ -12,27 +12,9 @@ linux/scripts/01-core/context-management.sh	runtime_pushes_intermediate_images
 linux/scripts/01-core/context-management.sh	runtime_use_local_stage_context_outputs
 linux/scripts/01-core/cross-apt.sh	is_cross_riscv64
 linux/scripts/03-media/build/onnxruntime/build/lib/common.sh	is_amd64_arch
-linux/scripts/build-cross-chain.sh	stage_enabled
-linux/scripts/tests/test-harness.sh	_t_links
-linux/scripts/tests/test-harness.sh	_t_modes
-linux/scripts/tests/test-harness.sh	t_is_elf
 
 # Verdict functions: the trailing test IS the verdict, and a caller that wants the
 # "nothing happened" arm spells it out. smoke_test_ffmpeg fails the build when a
 # codec probe failed; patch_csound_sys_char_signedness answers "did I patch
 # anything", and both its callers say so (`|| true` at :511, `&& retry` at :522).
 
-# One-line stub predicates planted by a suite to stand in for the real function
-# (`stage_enabled`, `cross_build_is_active`, `is_dry_run`). The stub reproduces the
-# contract of the thing it replaces, status included, and the suite reads it as an
-# answer. Visible since the gate started reading one-line definitions.
-linux/scripts/tests/test-chain-lifecycle.sh	is_dry_run
-linux/scripts/tests/test-chain-lifecycle.sh	stage_enabled
-linux/scripts/tests/test-disk-guard.sh	cross_stage_is_per_arch
-linux/scripts/tests/test-disk-guard.sh	stage_enabled
-linux/scripts/tests/test-iree-wheelhouse-stages.sh	cross_build_is_active
-linux/scripts/tests/test-iree-wheelhouse-stages.sh	resolve_qnn_sdk
-linux/scripts/tests/test-iree-wheelhouse-stages.sh	wheel_platform_tag
-linux/scripts/tests/test-parallel-loop.sh	worker_fail
-linux/scripts/tests/test-runtime-smoke-gate.sh	is_dry_run
-linux/scripts/tests/test-tvm-cmake-args.sh	cross_build_is_active

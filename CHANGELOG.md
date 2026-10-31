@@ -15,6 +15,13 @@
 
 ## 2026-10-31 — Mutants must parse, and the mutation gate times each test command
 
+- Four lint suites that no recipe proved (`test-ifs-safety.sh`, `test-invocation-lints.sh`,
+  `test-pipefail-safety.sh`, `test-runtime-smoke-gate.sh`) and the undocumented-relocation
+  failure of `verify-artifact-copy-parity.sh` each have recipes; `test-version-forwarding.sh`
+  fails when an android build script it checks is missing.
+- The 14 `trailing-conditional.allow` rows outside `01-core/` and `03-media/` are gone, their
+  predicates ending on explicit `return 0` / `return 1`; `gate-proofs.allow` has no `mutation-id:`
+  row left (the id moved to the declared `shared-assets` family).
 - Contract suites pin the 23 consumer-API shell functions that had no caller in this tree
   (`lib/` builders and runners, `verify-parity.sh`'s checks, the app-packaging tar packagers,
   the Flutter pin and lane helpers) against stub tools, each with a recipe in its body;

@@ -6,17 +6,14 @@ source "${TESTS_DIR}/test-harness.sh"
 # shellcheck source=../05-frameworks/tvm-config.sh
 source "${TESTS_DIR}/../05-frameworks/tvm-config.sh"
 
-# Stubbed collaborators
-STUB_CROSS=0
-STUB_LAUNCHER=""
+# shellcheck source=linux/scripts/tests/cross-stub-fixture.sh
+source "${TESTS_DIR}/cross-stub-fixture.sh"
 STUB_QNN=""
-cross_build_is_active() { [ "${STUB_CROSS}" -eq 1 ]; }
 cross_target_triplet()  { printf '%s' "aarch64-linux-gnu"; }
 append_cmake_cross_args() {
   local -n _stub_ref="$1"
   _stub_ref+=( -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 )
 }
-compiler_cache_launcher() { printf '%s' "${STUB_LAUNCHER}"; }
 resolve_qnn_sdk() { printf '%s' "${STUB_QNN}"; }
 info() { printf 'INFO:%s\n' "$*" >&2; }
 # The real die (logging.sh) EXITS; the arg-validation tests below rely on that.

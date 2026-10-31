@@ -944,7 +944,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4029 entries** over **487 distinct test commands**; both digits are
+manifest holds **4037 entries** over **491 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1836,11 +1836,11 @@ could not then express: four `mutations.*` ids pinning that gate's CALL SITES in
 `preflight.sh` and the pre-commit hook, and `python-lint.heredoc-python-decision`
 pinning `extract_embedded_python.py`, the helper `lint-python.sh` shells out to.
 The registry now credits both shapes (`calls_the_gate()`, `shelled_out()`), so all
-five are credited and their freezes are gone. The one freeze today is
-`shared-config.exact-mode-is-declared-in-the-manifest`: it pins
-`shared/config/shared-assets.manifest`, a data file `sync-shared-config.sh` reads
-but the preflight command line never names, so no ownership edge reaches it (the
-reason sits beside the line in `gate-proofs.allow`).
+five are credited and their freezes are gone. The last one went on 2026-10-31:
+`shared-config.exact-mode-is-declared-in-the-manifest` pinned
+`shared/config/shared-assets.manifest`, a data file no ownership edge reaches, so
+it is now `shared-assets.exact-mode-is-declared-in-the-manifest`, in the declared
+`shared-assets` family, with the same edit and test. No `mutation-id:` row is left.
 
 The cheapest proof per slug, by shape — the recipes that emptied the list (every
 slug below is proven now; see
@@ -2398,7 +2398,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 1031 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1030 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -2409,7 +2409,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **403** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **402** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **0** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.
@@ -3099,9 +3099,8 @@ A trailing conditional is *idiomatic* wherever the function's status **is** the
 answer: `cross_mode_requested`, `best_effort_mode`, `smoke_is_elf`,
 `ancestry_run_ids_coherent` and sixteen more exist only to be read in a
 condition. The gate cannot see call sites, so it cannot tell those from a defect
-— and it does not try. Twenty predicates, ten one-line stub predicates planted
-by suites and two verdict functions
-(`smoke_test_ffmpeg`, `patch_csound_sys_char_signedness`) are frozen in
+— and it does not try. The predicates that remain frozen, all in image closures
+(`01-core/` and `03-media/`), sit in
 `trailing-conditional.allow` under the two-way rule of
 [the allowlist contract](#the-allowlist-contract): a key that is not frozen is
 NEW, a frozen function that stops ending on a conditional is STALE. The key is
@@ -3196,8 +3195,12 @@ case in part B that runs the function off-target under `set -e`.
 
 The delegate hop and the one-line rule also made three predicates in
 `01-core/cross-env.sh` visible for the first time (`cross_build_is_active` and
-its two aliases), plus `is_amd64_arch` and ten one-line stub predicates in
-suites. All fourteen are frozen with their reason; none is a defect.
+its two aliases), plus `is_amd64_arch` and one-line stub predicates in suites.
+Since 2026-10-31 a predicate outside the image closures ends on explicit
+`return 0` / `return 1` branches instead of a frozen row, so the gate tells intent
+from a defect; the stubs and `build-cross-chain.sh`'s `stage_enabled` were rewritten
+that way and their rows deleted. The rows left are in files an image build mounts,
+where an edit re-keys the build.
 
 ### Proof
 

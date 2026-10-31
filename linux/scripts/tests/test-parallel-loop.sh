@@ -65,7 +65,7 @@ t_assert_eq "${before}" "${after}" "run_parallel_arch_loop must not leak its fla
 
 # ---------------------------------------------------------------------------
 t_case "a failing arch is reported as a non-zero return (sequential path)"
-worker_fail() { [ "$1" = "amd64" ]; }   # arm64 fails
+worker_fail() { if [ "$1" = "amd64" ]; then return 0; fi; return 1; }   # arm64 fails
 PARALLEL_ARCHS=0
 t_assert_fails run_parallel_arch_loop worker_fail "${workdir}/f2" 4 amd64 arm64
 t_assert_ok    run_parallel_arch_loop worker_fail "${workdir}/f3" 4 amd64
