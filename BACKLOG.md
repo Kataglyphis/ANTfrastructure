@@ -1070,6 +1070,19 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the image, runtime and device combination. Raw outputs, logs and checks are in
       `_implementation/accelerant-rocm-cats-repeat-20261031/` and
       `_implementation/accelerant-rocm-cats-alias-control-20261031/`.
+      A separate non-packaged OxidANT CLI test used the same image, WSL device, locked
+      model and two-cats JPEG, with root, no network, the WSL driver libraries, four ORT
+      threads and process-only `MIGRAPHX_SKIP_BENCHMARKING=1`. The legacy Rust provider
+      registration first failed at the literal `""/…` cache path. A local generic-API
+      registration with explicit device and memory options created the session without
+      that path error. Its same-binary CPU and MIGraphX traces recorded 787 CPU operators
+      and 5 MIGraphX plus 19 CPU operators respectively; the detector reported five CPU
+      detections and three MIGraphX detections. The dominant cat scores were approximately
+      0.891 and 0.651. The strict detector comparator rejected the different counts.
+      Retain this mismatch as a release blocker; it does not identify the cause or prove
+      default-setting, packaged, native-device or other-architecture behavior. The CLI
+      logs, JSON detections and profiles are in
+      `_implementation/oxidant-detector-parity-cpu-20261031/results/`.
       With the process-only `MIGRAPHX_SKIP_BENCHMARKING=1`, compilation completed but ORT
       then failed to save its compiled model under a literal `""/…` cache path. Setting
       `ORT_MIGRAPHX_MODEL_CACHE_PATH=/tmp` in the disposable container allowed the same
