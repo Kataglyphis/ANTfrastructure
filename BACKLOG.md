@@ -903,6 +903,17 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       license provenance, and image checks for the elements; verify other Windows image variants
       independently. Until then that pipeline is unavailable in this image.
 
+- [ ] **CON205 — decide whether Linux images should precache Flutter material fonts** [S, ★★].
+      On 2026-10-31, the cached Linux amd64 CPU `:latest` registry image digest
+      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
+      had no `/opt/flutter/bin/cache/artifacts/material_fonts` as its normal uid 1001.
+      With networking disabled, `flutter --suppress-analytics precache --linux` attempted
+      to download Flutter's `fonts.zip` and failed DNS resolution. Decide whether offline
+      Flutter precaching belongs to the image contract; if so, seed the needed artifacts
+      and verify precaching as the normal user without network access in a fresh image.
+      Check other image digests and architectures independently. This is an offline cache
+      gap; it does not establish that network-backed builds fail.
+
 - [ ] **CON204 — preserve Linux NVIDIA runtime provenance and notice handoff** [M, ★★★].
       On 2026-10-31, the cached Linux ARM NVIDIA image child
       `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11`
