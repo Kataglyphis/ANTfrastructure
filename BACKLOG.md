@@ -903,6 +903,27 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       license provenance, and image checks for the elements; verify other Windows image variants
       independently. Until then that pipeline is unavailable in this image.
 
+- [ ] **CON203 — preserve Linux ROCm runtime provenance and notice handoff** [M, ★★★].
+      On 2026-10-31, the cached Linux x64 `:latest-rocm` image digest
+      `sha256:a5d68fbe64e579de09473290489b6953b5bce9aeb7644c18b86d6969bf37ace8`
+      identified ROCm 10.1.0 and MIGraphX 2.18.0. Its MIGraphX ONNX Runtime provider's
+      dynamic closure includes MIGraphX, HIP, HSA, COMGR and ROCm LLVM libraries. Component
+      license files for MIGraphX, HIP, ROCR, COMGR, MIOpen and rocBLAS exist under their
+      respective `share/doc` trees, but `dpkg-query -S` could not associate the six inspected
+      MIGraphX, HIP, HSA, COMGR, LLVM and Clang shared objects with installed packages.
+      Within `/opt/rocm/core-10.1/lib/llvm`, the only filename matching license, notice or
+      copyright was the 303-byte `include/llvm/Support/LICENSE.TXT`, which refers readers to
+      the LLVM license website. The COMGR license contains Apache and LLVM exception text,
+      but its applicability and completeness for the separately copied LLVM binaries and
+      other transitive or dynamically loaded components have not been established.
+      For any future self-contained GPU runtime artifact, preserve a verifiable association
+      of each shipped binary and resource to its exact source/version and original applicable
+      license and notice texts; include and verify those texts in the image and consumer
+      artifacts. Verify the complete runtime closure and driver boundary on supported hardware.
+      This is an image-to-consumer provenance handoff gap, not a conclusion about redistribution
+      rights or proof that the existing host-runtime artifact is broken. Evidence and scoped
+      commands: `_implementation/rocm-bundled-provenance-20261031/VALIDATION.md`.
+
 - [ ] **CON202 — investigate locked detector failure on WSL gfx1036 with MIGraphX** [L, ★★★].
       On 2026-10-31 the cached Linux x64 `:latest-rocm` image digest
       `sha256:a5d68fbe64e579de09473290489b6953b5bce9aeb7644c18b86d6969bf37ace8`
