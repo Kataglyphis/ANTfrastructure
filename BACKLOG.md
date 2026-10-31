@@ -900,6 +900,17 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       license provenance, and image checks for the elements; verify other Windows image variants
       independently. Until then that pipeline is unavailable in this image.
 
+- [ ] **CON199 — provide the pinned PowerShell analyzer in the Windows CPU image** [S, ★★].
+      On 2026-10-31 the cached `:winamd64` registry image digest
+      `sha256:bec12ad0afe6a5f0a90ae7c58ac06e605ee64b2a06c555842019bb1f00062927`
+      (local image ID `f8da1c947056`) reported PowerShell 7.6.7 but no module from
+      `Get-Module PSScriptAnalyzer -ListAvailable`. The pinned shared `Invoke-Lint.ps1`
+      parsed 49 OmniAccelerANT scripts, then refused to continue because the pinned
+      PSScriptAnalyzer 1.25.0 was absent. Install the version selected by the shared tool
+      pins in the next image, include its source and license provenance, and verify the
+      analyzer gate in a fresh container without a network install. Check the GPU and ARM
+      images independently; this observation concerns only the cached Windows x64 CPU image.
+
 - [ ] **CON198 — assess Linux GStreamer tensor inference dependencies** [M]. On 2026-10-31,
       `gst-inspect-1.0` in the cached x64 images `:latest` (digest
       `3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`),
