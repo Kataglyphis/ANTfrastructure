@@ -116,6 +116,29 @@ preserving the caller's environment and GPU visibility. Apply any intentional
 diagnostic setting inside the command; a diagnostic run does not establish default
 runtime behavior. Callers still select and verify the physical GPU independently.
 
+### Comparing a Windows AMD display with WSL HIP
+
+For a local WSL check, first enumerate Windows display devices with
+`Get-PnpDevice -Class Display`. Pass the exact AMD PCI device `InstanceId` to
+`windows/scripts/diagnostics/Get-AmdDisplayPciAddress.ps1`. The read-only helper
+requires that device to be healthy and its bus/device/function to be unique among
+Windows PCI display devices. It prints an address such as `18:00.0`.
+
+In the same Linux or container environment that will run the application, with the
+same runtime library and visibility settings, call
+`python3 -I shared/python/verify_hip_adapter.py --pci-address 18:00.0` using the
+Windows result. It loads `libamdhip64.so.7`, requires exactly one HIP-visible GPU
+and matches the HIP-reported PCI address in domain zero. The command never changes
+which devices are visible. A missing device, multiple visible GPUs, a nonzero domain,
+an inaccessible runtime or an address mismatch fails the check.
+
+This comparison does not prove PCI-address equivalence on every WSL configuration,
+that the application loaded the same HIP library, or that ORT ran on the device;
+retain separately verified provider profiles and output-parity checks. It also does
+not establish a stable GPU UUID: the WSL iGPU inspected on 2026-10-31 returned a HIP
+UUID with bytes `5858` followed by zeros. Recheck both sides after hardware or driver
+changes, and do not assign that value to another adapter.
+
 ## Detector parity
 
 `shared/python/compare_detector_parity.py CPU.json GPU.json` compares detections
