@@ -13,7 +13,7 @@ administrative extraction can execute custom actions, so use a trusted runner an
 trusted same-run packages. Extraction does not install the app or test installed
 behavior. `windows_gpu_process.py` terminates a timed-out Windows process tree.
 The Windows CI fixture checks a real MSI File table and synthetic MSIX archives;
-`pwsh -File windows/scripts/tests/Test-WindowsInstallerPayloadRoundtrip.ps1` also
+`pwsh -File windows/scripts/tests/Test-WindowsInstallerPayloadFixture.ps1 -IncludeRoundtrip` also
 builds and extracts a text-only MSI with WiX when that tool is available. Neither
 fixture installs an application or exercises a GPU.
 
