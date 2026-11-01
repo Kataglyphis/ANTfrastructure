@@ -96,6 +96,8 @@ jobs:
         run: |
           python -I shared/python/tests/test_windows_installer_payload.py
           if ($LASTEXITCODE -ne 0) { throw 'Installer payload tests failed.' }
+          python -I shared/python/tests/test_windows_clean_gpu_receipt.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows GPU clean-host receipt tests failed.' }
           python -I shared/python/tests/test_windows_installer_payload_mutations.py
           if ($LASTEXITCODE -ne 0) { throw 'Installer payload mutation tests failed.' }
           python -I shared/python/tests/test_windows_gpu_process.py

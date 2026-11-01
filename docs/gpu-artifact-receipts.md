@@ -17,6 +17,14 @@ The Windows CI fixture checks a real MSI File table and synthetic MSIX archives;
 builds and extracts a text-only MSI with WiX when that tool is available. Neither
 fixture installs an application or exercises a GPU.
 
+The `windows-clean-gpu-check` action accepts the Windows package identity from the
+trusted producer resolver, downloads the current-run archive by ID, and runs a
+caller-owned PowerShell CPU inference check on a fresh GitHub-hosted Windows x64
+runner. It first compares the downloaded files to the current-attempt producer
+receipt, then writes a clean-host receipt only if the check succeeds, package bytes
+remain unchanged, and scratch cleanup succeeds. The caller owns installation and removal, and must upload
+the resulting receipt and pair it with a separate hardware GPU profile receipt.
+
 `shared/python/gpu_artifact_receipt.py` binds a flat set of named package files to
 a caller-supplied CI identity and a named passed check. It uses only the Python
 standard library and runs on Windows and Linux. It is a building block; it is not
