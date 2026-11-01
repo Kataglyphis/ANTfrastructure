@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 def run_process(
-    command: list[str],
+    command: str | list[str],
     *,
     timeout: float,
     cwd: Path | None = None,

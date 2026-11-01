@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -63,16 +64,15 @@ class WindowsInstallerPayloadTests(unittest.TestCase):
     def test_msi_uses_size_guard_and_cleans_on_callback_failure(self) -> None:
         seen = []
 
-        def fake_extract(command: list[str], *, timeout: int) -> None:
+        parent = self.root / "directory with spaces"
+        parent.mkdir()
+
+        def fake_extract(command: str, *, timeout: int) -> None:
             self.assertEqual(timeout, 180)
-            self.assertIn("/a", command)
-            target = Path(
-                next(
-                    arg.split("=", 1)[1]
-                    for arg in command
-                    if arg.startswith("TARGETDIR=")
-                )
-            )
+            match = re.search(r' TARGETDIR="([^"]+)" /qn /norestart$', command)
+            self.assertIsNotNone(match, command)
+            target = Path(match.group(1))
+            self.assertEqual(target.parent.parent, parent)
             (target / "demo.exe").write_bytes(b"synthetic")
             seen.append(target)
 
@@ -84,7 +84,7 @@ class WindowsInstallerPayloadTests(unittest.TestCase):
             self.assertRaisesRegex(RuntimeError, "fixture failure"),
             payload.msi_payload(
                 self.root / "fixture.msi",
-                self.root,
+                parent,
                 self.root / "size.ps1",
                 floor=0,
                 cushion=0,

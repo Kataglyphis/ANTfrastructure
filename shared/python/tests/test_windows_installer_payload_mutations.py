@@ -19,6 +19,7 @@ MUTATIONS = (
     ("len({name.casefold() for name in names}) != len(names)", "False"),
     ("shutil.disk_usage(directory).free - size < floor + cushion", "False"),
     ("or size > limit:", ":"),
+    ('TARGETDIR="{root}"', '"TARGETDIR={root}"'),
 )
 
 

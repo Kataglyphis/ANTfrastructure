@@ -25,14 +25,20 @@ class RealMsiFixture(unittest.TestCase):
     def test_extracts_payload_and_cleans_up(self) -> None:
         package = Path(os.environ["GPU_TEST_MSI"]).resolve(strict=True)
         size = ROOT / "windows/scripts/diagnostics/Get-MsiPayloadSize.ps1"
-        with tempfile.TemporaryDirectory() as temp:
-            with payload.msi_payload(
-                package, Path(temp), size, floor=0, cushion=0
-            ) as extracted:
-                paths = list(extracted.rglob("gpu-fixture.txt"))
-                self.assertEqual(len(paths), 1)
-                self.assertEqual(paths[0].read_text(encoding="ascii"), "gpu-fixture")
-            self.assertFalse(extracted.exists())
+        for prefix in ("gpu-payload-", "gpu payload with spaces "):
+            with (
+                self.subTest(prefix=prefix),
+                tempfile.TemporaryDirectory(prefix=prefix) as temp,
+            ):
+                with payload.msi_payload(
+                    package, Path(temp), size, floor=0, cushion=0
+                ) as extracted:
+                    paths = list(extracted.rglob("gpu-fixture.txt"))
+                    self.assertEqual(len(paths), 1)
+                    self.assertEqual(
+                        paths[0].read_text(encoding="ascii"), "gpu-fixture"
+                    )
+                self.assertFalse(extracted.exists())
 
 
 if __name__ == "__main__":

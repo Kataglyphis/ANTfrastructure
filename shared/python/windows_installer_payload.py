@@ -96,15 +96,13 @@ def msi_payload(
         root = Path(temp) / "msi"
         root.mkdir()
         msiexec = Path(os.environ["SystemRoot"]) / "System32/msiexec.exe"
+        if '"' in str(root):
+            raise ValueError("invalid quote in MSI extraction path")
+        # Windows Installer requires quotes around the value, not the whole property.
+        command = subprocess.list2cmdline([str(msiexec), "/a", str(package)])
+        command += f' TARGETDIR="{root}" /qn /norestart'
         run_process(
-            [
-                str(msiexec),
-                "/a",
-                str(package),
-                f"TARGETDIR={root}",
-                "/qn",
-                "/norestart",
-            ],
+            command,
             timeout=180,
         )
         yield root
