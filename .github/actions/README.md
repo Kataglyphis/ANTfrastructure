@@ -45,11 +45,10 @@ days. In a private repository the calling job needs `actions: read`.
 [`code-quality-tooling.md` § Benchmark history](../../docs/code-quality-tooling.md#benchmark-history).
 
 ### `frontend-perf-report`
-Runs after a Flutter app's `flutter drive --profile` performance test and delegates to
-`bench-history` with format `flutter-frame` (input `key`, one per app and arch; artifact
-`bench-history-<key>`): it fails when an average or 90th-percentile build time doubles. The
-timing input defaults to `logs/perf/frontend.json`; an older default `out/perf/frontend.json`
-moves there when the new path is absent. In a private repository the calling job needs `actions: read`.
+After a Flutter app's `flutter drive --profile` performance test, this hands the timings to
+`bench-history` above as `flutter-frame`, keyed by `key` (one per app and arch), and only the
+average and 90th-percentile build times gate. `timings` defaults to `logs/perf/frontend.json`; a
+legacy `out/perf/frontend.json` is moved there first when only it exists.
 [`code-quality-tooling.md` § Frontend frame timings](../../docs/code-quality-tooling.md#frontend-frame-timings).
 
 ### `install-deps`
