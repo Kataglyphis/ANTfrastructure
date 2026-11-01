@@ -179,6 +179,10 @@ name) and `{machine}` (`x86_64`, `aarch64`, `riscv64`). An options file holds it
 quoted one fails, since it would match nothing. `tests/test-collect-release-assets.sh` runs the
 script over each consumer's uploads with that consumer's options, the `<repo>.options` blocks there.
 
+## Supplementing a release
+
+`shared/python/attach_release_assets.py` attaches a flat set of already-verified files to an existing published release. Pass `--repo`, `--tag`, the full expected `--revision` commit and `--assets` directory; authenticate `gh` with `contents: write`. The helper resolves annotated tags, requires the tag to name that exact commit, reads all existing asset pages and fails on a name collision. It never uses `--clobber`. `--check-only` checks the release and tag before expensive work; `--dry-run` lists files without contacting GitHub or proving that a release exists. The caller must bind and verify every asset before calling it. A failed upload can leave a subset attached, and a retry then stops on those existing names rather than replacing them.
+
 ## The reusable release workflow
 
 `.github/workflows/release-publish.yml` is the version check and the release job of every

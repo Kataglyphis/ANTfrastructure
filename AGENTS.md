@@ -1206,6 +1206,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
 
 ## Push And Publish Rules
 
+- Supplement an existing release only with `shared/python/attach_release_assets.py`: verify the tag's commit, reject name collisions and keep the original assets.
 - **A red `develop` is fixed before anything else lands on it** (2026-10-20). Before every push in
   any family repository, `gh issue list -R Kataglyphis/ANTfrastructure -l develop-red`: an open
   issue names the repository, workflow and jobs that are red, with their runs. `develop-red.yml`
