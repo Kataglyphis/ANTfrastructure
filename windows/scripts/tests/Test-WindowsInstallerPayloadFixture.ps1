@@ -50,12 +50,10 @@ function Invoke-FixtureRoundtrip([string]$Directory) {
     $msi = Join-Path $Directory 'payload.msi'
     & wix build -arch x64 -o $msi $wxs
     if ($LASTEXITCODE -ne 0) { throw 'Could not build the text-only MSI fixture.' }
-    $previous = [Environment]::GetEnvironmentVariable('GPU_TEST_MSI', 'Process')
-    try {
-        $env:GPU_TEST_MSI = $msi
+    Invoke-WithEnv -Vars @{ GPU_TEST_MSI = $msi } -Body {
         & python -I (Join-Path $repo 'shared/python/tests/test_windows_installer_payload_real.py')
         if ($LASTEXITCODE -ne 0) { throw 'The real MSI extraction fixture failed.' }
-    } finally { [Environment]::SetEnvironmentVariable('GPU_TEST_MSI', $previous, 'Process') }
+    }
 }
 
 Invoke-InTestDir -Prefix 'gpu-msi-fixture-' -Body {
