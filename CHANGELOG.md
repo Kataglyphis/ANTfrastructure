@@ -25,6 +25,12 @@
 - New cases in `test-python-static.sh` and `test-python-static-workflow.sh`; three
   `python.static-*` mutation recipes.
 
+## 2026-11-01 — MSI installed-path batches
+
+- `Get-MsiInstalledFileId` resolves several bundle-relative installed paths in order from
+  one MSI database read, retaining the existing anchored, unique-path validation. Callers
+  still verify each returned ID's actual text or binary bytes separately.
+
 ## 2026-11-01 — fleet-health
 
 - `linux/scripts/fleet-health.py --repos <list> (--local-root DIR | --clone) [--compare JSON|previous-run]`

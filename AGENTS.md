@@ -165,6 +165,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Standalone `WindowsIcon.Common.psm1` carries `WindowsMsix.Common.psm1` and `WindowsScripts.Shared.psm1`; its PNG decoder rejects corrupt or invisible inputs.
    Windows EXE icons use the shared CMake, Rust or Python resource helpers; test actual x64 and ARM64 PE resources and retain the Linux PE-tool setup in preflight and mutation jobs.
    MSI license checks map each unique File-table ID through its sequence to the embedded Media cabinet before verifying the real text; copied callers carry `WindowsMsiLicense.Common.psm1` and the Python verifier.
+   Batch installed-path mapping reads the MSI tables once and retains the exact anchored path checks for every requested file.
    Windows ORT license staging matches the shipped DLL's SHA256 against exactly one wheel before copying both original texts; copied `WindowsOrtLicense.Common.psm1` carries its provenance, MSI and Python-wheel companions.
    When selected Windows ORT providers are supplied, their bytes must match that same wheel before its texts are copied.
    Finished-package binary checks use streaming exact hashes, not text-license normalization; copied `WindowsPackageBinary.Common.psm1` carries the MSI module and both Python verifiers, and MSI members map through the File and Media tables.

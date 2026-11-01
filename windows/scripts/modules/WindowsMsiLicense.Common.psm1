@@ -200,9 +200,10 @@ function Resolve-MsiInstalledFileId {
     return $matchedIds[0]
 }
 
+# MSI_INSTALLED_PATH_BATCH_API=1
 function Get-MsiInstalledFileId {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$RelativePath,
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string[]]$RelativePath,
         [string]$RootDirectoryId = '', [string]$RootDirectoryName = '')
     return Invoke-MsiInstalledPathQuery -Path $Path -Target $RelativePath -RootDirectoryId $RootDirectoryId -RootDirectoryName $RootDirectoryName
 }
@@ -244,14 +245,16 @@ function Get-MsiDirectoryFileNames {
 }
 
 function Invoke-MsiInstalledPathQuery {
-    param([string]$Path, [AllowEmptyString()][string]$Target, [string]$RootDirectoryId, [string]$RootDirectoryName, [switch]$DirectoryQuery)
+    param([string]$Path, [AllowEmptyString()][string[]]$Target, [string]$RootDirectoryId, [string]$RootDirectoryName, [switch]$DirectoryQuery)
     return Invoke-WithMsiLicenseDatabase -Path $Path -Mode 0 -ArgumentList @($Target, $RootDirectoryId, $RootDirectoryName, [bool]$DirectoryQuery) -Body {
         param($database, $target, $rootId, $rootName, $isDirectory)
         $tables = Get-MsiInstalledPathTables -Database $database
         if ($isDirectory) {
-            Resolve-MsiDirectoryFileNames -Directory $target -RootDirectoryId $rootId -RootDirectoryName $rootName -Files $tables.Files -Components $tables.Components -Directories $tables.Directories
+            Resolve-MsiDirectoryFileNames -Directory $target[0] -RootDirectoryId $rootId -RootDirectoryName $rootName -Files $tables.Files -Components $tables.Components -Directories $tables.Directories
         } else {
-            Resolve-MsiInstalledFileId -RelativePath $target -Files $tables.Files -Components $tables.Components -Directories $tables.Directories -RootDirectoryId $rootId -RootDirectoryName $rootName
+            foreach ($item in $target) {
+                Resolve-MsiInstalledFileId -RelativePath $item -Files $tables.Files -Components $tables.Components -Directories $tables.Directories -RootDirectoryId $rootId -RootDirectoryName $rootName
+            }
         }
     }
 }

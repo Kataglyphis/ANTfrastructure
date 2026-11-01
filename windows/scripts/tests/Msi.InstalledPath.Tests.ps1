@@ -98,6 +98,13 @@ Describe 'MSI installed-path mapping' {
                 } $msi
                 Assert-Equal 'ortlicense' (Get-MsiInstalledFileId -Path $msi -RelativePath 'licenses/onnxruntime/LICENSE')
                 Assert-Equal 'ortlicense' (Get-MsiInstalledFileId -Path $msi -RelativePath 'onnxruntime/LICENSE' -RootDirectoryId licenses -RootDirectoryName licenses)
+                $mapped = @(Get-MsiInstalledFileId -Path $msi -RelativePath @('onnxruntime/LICENSE', 'onnxruntime/onnxruntime_providers_shared.dll') -RootDirectoryId licenses -RootDirectoryName licenses)
+                Assert-Equal 'ortlicense,ortprovider' ($mapped -join ',')
+                Assert-Equal 'LICENSE' (@(Get-MsiDirectoryFileNames -Path $msi -RootDirectoryId licenses) -join ',')
+                Assert-Throws { Get-MsiInstalledFileId -Path $msi -RelativePath @('onnxruntime/LICENSE', 'missing/LICENSE') -RootDirectoryId licenses } -MessagePattern 'matched 0 rows'
+                Assert-Throws { Get-MsiInstalledFileId -Path $msi -RelativePath @('onnxruntime/LICENSE', '../LICENSE') -RootDirectoryId licenses } -MessagePattern 'unsafe MSI relative path'
+                Assert-Throws { Get-MsiInstalledFileId -Path $msi -RelativePath @() -RootDirectoryId licenses }
+                Assert-Throws { Get-MsiInstalledFileId -Path $msi -RelativePath @('') -RootDirectoryId licenses }
                 Assert-Equal 'LICENSE,onnxruntime_providers_shared.dll' (@(Get-MsiDirectoryFileNames -Path $msi -Directory 'onnxruntime' -RootDirectoryId licenses -RootDirectoryName licenses) -join ',')
                 Assert-Equal 'onnxruntime_providers_shared.dll' (@(Get-PackageOrtProviderNames -Path $msi -Directory 'onnxruntime' -RootDirectoryId licenses -RootDirectoryName licenses) -join ',')
                 Assert-PackageOrtFamily -Path $msi -Directory 'onnxruntime' -RootDirectoryId licenses -RootDirectoryName licenses -Name 'onnxruntime_providers_shared.dll'

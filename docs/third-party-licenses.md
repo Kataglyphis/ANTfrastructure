@@ -151,6 +151,14 @@ and `LicensePath` arrays. Counts must match and each MSI filename must resolve
 uniquely; all rules are checked together.
 These checks do not inventory native or transitive dependencies.
 
+When the installed location matters, map each bundle-relative path with
+`Get-MsiInstalledFileId -Path <msi> -RelativePath <paths> -RootDirectoryId <id>`.
+It reads the MSI directory, component and file tables once, applies the same unique
+installed-path checks for each path, and returns IDs in input order for
+`Assert-PackageLicenses`. Missing, ambiguous or unsafe paths fail. Set
+`RootDirectoryName` as well when the expected install-folder name is known. This
+maps paths; the separate package licence verifier must still compare the text bytes.
+
 For a binary that has already been proven against its source, import
 `windows/scripts/modules/WindowsPackageBinary.Common.psm1` and call
 `Assert-PackageBinary -Path <package> -Member <member> -SourcePath <file>`.
