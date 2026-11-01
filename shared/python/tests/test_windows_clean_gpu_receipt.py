@@ -198,17 +198,30 @@ class CleanReceiptTest(unittest.TestCase):
                 return FailingCleanup(*args, **kwargs)
             return real_directory(*args, **kwargs)
 
-        with (
-            mock.patch.object(
-                driver.tempfile, "TemporaryDirectory", temporary_directory
-            ),
-            mock.patch.object(driver.process, "run_process") as run,
-            self.assertRaisesRegex(OSError, "injected cleanup failure"),
-        ):
-            driver.check(self.args)
-        run.assert_called_once()
-        self.assertFalse(self.output.exists())
-        self.no_scratch()
+        for check_name in ("clean-host-inference", "gpu-model-inference"):
+            with self.subTest(check_name=check_name):
+                if check_name == "gpu-model-inference":
+                    self.profile_args()
+
+                def run_callback(command, *, timeout, env):
+                    if "GPU_EVIDENCE_DIR" in env:
+                        (Path(env["GPU_EVIDENCE_DIR"]) / "profile.json").write_text(
+                            "{}", encoding="utf-8"
+                        )
+
+                with (
+                    mock.patch.object(
+                        driver.tempfile, "TemporaryDirectory", temporary_directory
+                    ),
+                    mock.patch.object(
+                        driver.process, "run_process", side_effect=run_callback
+                    ) as run,
+                    self.assertRaisesRegex(OSError, "injected cleanup failure"),
+                ):
+                    driver.check(self.args)
+                run.assert_called_once()
+                self.assertFalse(self.output.exists())
+                self.no_scratch()
 
     def test_invalid_input_cannot_run_check_or_produce_receipt(self) -> None:
         for field, value in (
@@ -247,6 +260,130 @@ class CleanReceiptTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             driver.check(self.args)
         self.assertEqual(self.output.read_text(encoding="ascii"), "original")
+        self.no_scratch()
+
+    def profile_args(self) -> Path:
+        evidence = self.root / "evidence"
+        evidence.mkdir()
+        self.args.check = "gpu-model-inference"
+        self.args.evidence_dir = str(evidence)
+        return evidence
+
+    def test_gpu_profile_receipt_binds_producer_bytes_and_evidence(self) -> None:
+        evidence = self.profile_args()
+
+        def run(command, *, timeout, env):
+            self.assertEqual(env["GPU_EVIDENCE_DIR"], str(evidence))
+            self.assertEqual(env["GPU_DEVICE_INDEX"], "2")
+            self.assertTrue((Path(env["GPU_PACKAGE_DIR"]) / "app.msi").is_file())
+            (evidence / "profile.json").write_text("{}", encoding="utf-8")
+
+        with (
+            mock.patch.dict(os.environ, {"GPU_DEVICE_INDEX": "2"}),
+            mock.patch.object(driver.process, "run_process", side_effect=run),
+        ):
+            driver.check(self.args)
+        data = json.loads(self.output.read_text(encoding="utf-8"))
+        self.assertEqual(data["identity"]["check"], "gpu-model-inference")
+        self.assertTrue((evidence / "profile.json").is_file())
+        self.no_scratch()
+
+    @unittest.skipUnless(
+        os.name == "nt" and shutil.which("pwsh"), "requires Windows PowerShell"
+    )
+    def test_gpu_profile_executes_a_real_synthetic_callback(self) -> None:
+        evidence = self.profile_args()
+        self.args.pwsh = shutil.which("pwsh")
+        self.args.timeout = 30
+        self.script.write_text(
+            "$ErrorActionPreference = 'Stop'\n"
+            "if ($env:GPU_VENDOR -ne 'amd') { exit 2 }\n"
+            "if (-not (Test-Path -LiteralPath (Join-Path $env:GPU_PACKAGE_DIR 'app.msi'))) { exit 3 }\n"
+            "Set-Content -LiteralPath (Join-Path $env:GPU_EVIDENCE_DIR 'profile.json') -Value '{}'\n",
+            encoding="utf-8",
+        )
+        driver.check(self.args)
+        self.assertTrue((evidence / "profile.json").is_file())
+        self.assertEqual(
+            json.loads(self.output.read_text(encoding="utf-8"))["identity"]["check"],
+            "gpu-model-inference",
+        )
+        self.no_scratch()
+
+    def test_gpu_profile_rejects_failure_mutation_and_missing_evidence(self) -> None:
+        evidence = self.profile_args()
+
+        def mutate(command, *, timeout, env):
+            (evidence / "profile.json").write_text("{}", encoding="utf-8")
+            (Path(env["GPU_PACKAGE_DIR"]) / "app.msi").write_bytes(b"changed")
+
+        for effect in (RuntimeError("callback failed"), mutate, None):
+            with self.subTest(effect=effect):
+                with (
+                    mock.patch.object(
+                        driver.process, "run_process", side_effect=effect
+                    ),
+                    self.assertRaises((RuntimeError, ValueError)),
+                ):
+                    driver.check(self.args)
+                self.assertFalse(self.output.exists())
+                self.no_scratch()
+                for path in evidence.iterdir():
+                    path.unlink()
+
+    def test_gpu_profile_requires_empty_safe_evidence(self) -> None:
+        evidence = self.profile_args()
+        stale = evidence / "stale.json"
+        stale.write_text("{}", encoding="utf-8")
+        with mock.patch.object(driver.process, "run_process") as run:
+            with self.assertRaises(ValueError):
+                driver.check(self.args)
+            run.assert_not_called()
+        stale.unlink()
+
+        def unsafe(command, *, timeout, env):
+            path = evidence / "profile.json"
+            path.write_text("{}", encoding="utf-8")
+
+        real_link = driver.receipt.is_link
+        with (
+            mock.patch.object(driver.process, "run_process", side_effect=unsafe),
+            mock.patch.object(
+                driver.receipt,
+                "is_link",
+                side_effect=lambda path: path.name == "profile.json" or real_link(path),
+            ),
+            self.assertRaises(ValueError),
+        ):
+            driver.check(self.args)
+        self.assertFalse(self.output.exists())
+        self.no_scratch()
+
+    def test_gpu_receipt_can_be_in_evidence_but_floor_is_enforced(self) -> None:
+        evidence = self.profile_args()
+        self.output = evidence / "receipt.json"
+        self.args.receipt = str(self.output)
+
+        def run(command, *, timeout, env):
+            (evidence / "profile.json").write_text("{}", encoding="utf-8")
+
+        self.args.floor = 1
+        with (
+            mock.patch.object(driver.process, "run_process", side_effect=run),
+            mock.patch.object(
+                driver.shutil,
+                "disk_usage",
+                side_effect=[mock.Mock(free=1024), mock.Mock(free=0)],
+            ),
+            self.assertRaisesRegex(ValueError, "disk floor"),
+        ):
+            driver.check(self.args)
+        self.assertFalse(self.output.exists())
+        self.no_scratch()
+        (evidence / "profile.json").unlink()
+        with mock.patch.object(driver.process, "run_process", side_effect=run):
+            driver.check(self.args)
+        self.assertTrue(self.output.is_file())
         self.no_scratch()
 
     def test_extraction_checks_measured_bytes_plus_hosted_reserve(self) -> None:
