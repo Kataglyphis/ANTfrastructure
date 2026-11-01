@@ -67,6 +67,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Linux acceptance restores disposable rootful checkout ownership on every exit;
    failed container cleanup or ownership restoration cannot produce a passed receipt.
    Windows vendor-specific DirectML defaults use the shared DXGI selector only when no explicit adapter is set; enumeration does not prove inference.
+   Windows GPU MSI/MSIX payload checks share the installer extraction and process cleanup helpers; extraction does not prove installation.
 5. **Our build always wins over the distro copy** (owner directive 2026-09-01). Where a `/opt`
    tree and a distro package export the same soname, ours wins the `ld.so` lookup: write
    `000-<name>.conf` into `/etc/ld.so.conf.d` (read in SORT order) and never rely on a purge,

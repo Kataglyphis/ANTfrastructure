@@ -8,6 +8,9 @@ on:
       - 'windows/**'
       - 'shared/windows/**'
       - 'shared/native/windows/**'
+      - 'shared/python/windows_*'
+      - 'shared/python/tests/test_windows_installer_payload*'
+      - 'shared/python/tests/test_windows_gpu_process.py'
       - 'cmake/CrashDump.cmake'
       - 'cmake/crash_dump/**'
       - '.github/actions/**'
@@ -19,6 +22,9 @@ on:
       - 'windows/**'
       - 'shared/windows/**'
       - 'shared/native/windows/**'
+      - 'shared/python/windows_*'
+      - 'shared/python/tests/test_windows_installer_payload*'
+      - 'shared/python/tests/test_windows_gpu_process.py'
       - 'cmake/CrashDump.cmake'
       - 'cmake/crash_dump/**'
       - '.github/actions/**'
@@ -84,6 +90,17 @@ jobs:
       - name: Test native DXGI selection in C and C++
         shell: pwsh
         run: ./shared/native/windows/tests/Test-DxgiAdapter.ps1 -OutputDirectory "$env:RUNNER_TEMP/dxgi-adapter-tests"
+
+      - name: Test Windows installer payload helpers
+        shell: pwsh
+        run: |
+          python -I shared/python/tests/test_windows_installer_payload.py
+          if ($LASTEXITCODE -ne 0) { throw 'Installer payload tests failed.' }
+          python -I shared/python/tests/test_windows_installer_payload_mutations.py
+          if ($LASTEXITCODE -ne 0) { throw 'Installer payload mutation tests failed.' }
+          python -I shared/python/tests/test_windows_gpu_process.py
+          if ($LASTEXITCODE -ne 0) { throw 'GPU process cleanup tests failed.' }
+          ./windows/scripts/tests/Test-WindowsInstallerPayloadFixture.ps1
 
       - name: Save test and coverage reports
         if: always()

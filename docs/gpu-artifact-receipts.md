@@ -5,6 +5,18 @@ SPDX-License-Identifier: MIT
 
 # GPU package receipts
 
+Windows GPU checks can use `shared/python/windows_installer_payload.py` to inspect a
+trusted MSIX or administratively extract a trusted MSI into a temporary directory.
+The caller profiles the extracted executable and owns artifact identity checks. The
+helper estimates disk use before extraction; it is not an enforced quota. MSI
+administrative extraction can execute custom actions, so use a trusted runner and
+trusted same-run packages. Extraction does not install the app or test installed
+behavior. `windows_gpu_process.py` terminates a timed-out Windows process tree.
+The Windows CI fixture checks a real MSI File table and synthetic MSIX archives;
+`pwsh -File windows/scripts/tests/Test-WindowsInstallerPayloadRoundtrip.ps1` also
+builds and extracts a text-only MSI with WiX when that tool is available. Neither
+fixture installs an application or exercises a GPU.
+
 `shared/python/gpu_artifact_receipt.py` binds a flat set of named package files to
 a caller-supplied CI identity and a named passed check. It uses only the Python
 standard library and runs on Windows and Linux. It is a building block; it is not

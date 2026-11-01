@@ -31,6 +31,10 @@
   one MSI database read, retaining the existing anchored, unique-path validation. Callers
   still verify each returned ID's actual text or binary bytes separately.
 
+## 2026-11-01 — Windows installer payload checks
+
+- Share trusted MSI/MSIX payload extraction and GPU process cleanup across consumers; extraction is not installation.
+
 ## 2026-11-01 — fleet-health
 
 - `linux/scripts/fleet-health.py --repos <list> (--local-root DIR | --clone) [--compare JSON|previous-run]`
