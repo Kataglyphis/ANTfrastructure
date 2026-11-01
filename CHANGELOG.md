@@ -13,6 +13,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-01 — Security audit reclaims the full runner disk
+
+- `security-audit.yml` runs `prepare-linux-ci-host` with `free-disk-space: 'true'`: the fast reclaim let the family-image pull run out of disk in Cargo repos.
+
 ## 2026-11-01 — verify_ort_profile names the CPU accelerator providers
 
 - `shared/python/verify_ort_profile.py --device` accepts `xnnpack` (`XnnpackExecutionProvider`)
