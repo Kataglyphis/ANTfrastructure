@@ -32193,6 +32193,14 @@
   "why": "provider events without an identified model operator cannot prove accelerated inference"
  },
  {
+  "id": "packaging.ort-profile-cpu-accelerator-name",
+  "target": "shared/python/verify_ort_profile.py",
+  "find": "\"xnnpack\": \"XnnpackExecutionProvider\",",
+  "replace": "\"xnnpack\": \"CPUExecutionProvider\",",
+  "test": "python3 shared/python/tests/test_verify_ort_profile.py",
+  "why": "a session that fell back to the CPU provider must not prove XNNPACK ran"
+ },
+ {
   "id": "packaging.ort-profile-repeat-count",
   "target": "shared/python/verify_ort_profile.py",
   "find": "if len(runs) < minimum:",

@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-01 — verify_ort_profile names the CPU accelerator providers
+
+- `shared/python/verify_ort_profile.py --device` accepts `xnnpack` (`XnnpackExecutionProvider`)
+  and `dnnl` (`DnnlExecutionProvider`), so OxidANT and AccelerANTgine prove those sessions did
+  not fall back to `CPUExecutionProvider`. New case in `test_verify_ort_profile.py` and the
+  `packaging.ort-profile-cpu-accelerator-name` mutation recipe.
+
 ## 2026-11-01 — quality-report fetches the docs theme
 
 - `code-quality-report.yml`'s quality-report step fetches the hub's `third_party/DocumANTation`

@@ -173,6 +173,9 @@ The trace identifies a process, not an ORT session; callers must independently
 ensure repeated runs use the same session and compare their outputs. A provider
 event alone does not establish correct results or physical GPU execution.
 
+`--device xnnpack` and `--device dnnl` apply the same operator rule to ORT's CPU
+accelerator providers, so a session that fell back to `CPUExecutionProvider` fails.
+
 ## Reusable workflow invocation scopes
 
 For each callable GPU workflow, pass the caller's optional scope through the environment
