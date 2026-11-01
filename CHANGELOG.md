@@ -13,6 +13,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-01 — Windows formatting test fixture
+
+- The fake clang-format checks the source basename, so a temporary parent path containing
+  `bad` no longer marks every source as deviating. The test keeps that parent case explicit.
+
 ## 2026-11-01 — python-static resolves test and docs-theme imports
 
 - `linux/scripts/python-static.sh` gives ty the locked quality environment's site-packages

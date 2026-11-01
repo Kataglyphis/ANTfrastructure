@@ -7,11 +7,12 @@ Describe 'Invoke-ClangFormatCheck' {
   BeforeAll {
     Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsFormatting.Common.psm1') -Force
 
-    $script:root = New-TestDir -Prefix 'fmt-check-'
-    # --dry-run -Werror <file>: the third argument is the file, and a name with "bad" in it deviates.
+    # The parent deliberately contains "bad": only the source basename may decide the fake verdict.
+    $script:root = New-TestDir -Prefix 'fmt-check-bad-parent-'
+    # --dry-run -Werror <file>: the third argument's basename decides whether it deviates.
     $script:fake = New-TestBatchTool -Directory $script:root -Name 'clang-format.cmd' -Line @(
       'if "%~1"=="--version" (echo clang-format version 23.1.1 & exit /b 0)',
-      'echo %~3| findstr /i "bad" >nul && exit /b 1')
+      'echo %~nx3| findstr /i "bad" >nul && exit /b 1')
     $script:good = Join-Path $script:root 'good.cpp'
     $script:bad = Join-Path $script:root 'bad.cpp'
 
