@@ -99,6 +99,8 @@ jobs:
           hub='third_party/ANTfrastructure'
           if [ "${GITHUB_REPOSITORY}" = 'Kataglyphis/ANTfrastructure' ]; then hub='.'; fi
           if [ "${REPORT_HUB_CHECKOUT}" = 'true' ]; then hub='antfrastructure-tools'; fi
+          # python-static.sh resolves docs/conf.py's theme import from the hub's pinned DocumANTation.
+          git -C "${hub}" submodule update --init --depth 1 -- third_party/DocumANTation || exit 1
           status=0
           bash "${hub}/linux/scripts/quality-report.sh" --root "${GITHUB_WORKSPACE}" \
             --compare previous-develop > logs/code-quality/quality-report.txt 2>&1 || status=$?

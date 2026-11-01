@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-01 — quality-report fetches the docs theme
+
+- `code-quality-report.yml`'s quality-report step fetches the hub's `third_party/DocumANTation`
+  before grading, so its ty count resolves `docs/conf.py`'s theme as `python-static.yml` does.
+  AccelerANTgine's `ty_diagnostics` measured 1 (`sphinx_kataglyphis`) without it.
+- `test-code-quality-report-workflow.sh` requires the fetch and fails the step when it fails;
+  recipe `python.static-quality-report-fetches-docs-theme`.
+
 ## 2026-11-01 — python-static resolves test and docs-theme imports
 
 - `linux/scripts/python-static.sh` gives ty the locked quality environment's site-packages

@@ -33159,5 +33159,13 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-python-static-workflow.sh",
   "why": "the caller checkout does not recurse into the hub, so its theme is absent unless the lane fetches it"
+ },
+ {
+  "id": "python.static-quality-report-fetches-docs-theme",
+  "target": ".github/workflows/code-quality-report.yml",
+  "find": "          git -C \"${hub}\" submodule update --init --depth 1 -- third_party/DocumANTation || exit 1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-code-quality-report-workflow.sh",
+  "why": "quality-report.sh counts ty diagnostics through python-static.sh, which resolves docs/conf.py's theme only from the fetched DocumANTation"
  }
 ]

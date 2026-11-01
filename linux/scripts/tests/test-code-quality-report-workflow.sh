@@ -29,6 +29,7 @@ _quality_contract() {
     'V.value(V.value(inputs,"quality-report"),"type") == "boolean" and str(V.value(V.value(inputs,"quality-report"),"default")).lower() == "false"' \
     'all(V.value(s,"if") == "${{ inputs.quality-report }}" for s in steps if V.value(s,"name") in ("Install uv for quality-report", "Grade the checkout with quality-report"))' \
     '"--compare previous-develop" in run_blocks("report") and "linux/scripts/quality-report.sh" in run_blocks("report")' \
+    '"git -C \"${hub}\" submodule update --init --depth 1 -- third_party/DocumANTation || exit 1" in run_blocks("report") and run_blocks("report").index("submodule update") < run_blocks("report").index("quality-report.sh")' \
     'V.value(V.value(next(s for s in steps if V.value(s,"name") == "Grade the checkout with quality-report"),"env"),"GH_TOKEN") == "${{ github.token }}"' \
     'any(V.value(s,"if") == "${{ always() && inputs.quality-report }}" and V.value(V.value(s,"with"),"name") == "code-quality-measurements" and V.value(V.value(s,"with"),"retention-days") == "90" and V.value(V.value(s,"with"),"if-no-files-found") == "error" for s in steps)' \
     're.search(r"name: code-quality-measurements\n +path: \|\n +logs/code-quality/measurements.json\n +logs/code-quality/queue.md\n", raw) is not None'
@@ -61,6 +62,10 @@ t_case "quality-report switched on by default is rejected"
 awk '/^      quality-report:$/ { q = 1 } q && /default: false/ { sub(/false/, "true"); q = 0 } { print }' \
   "${LANE}" > "${work}/default-on.yml"
 t_assert_fails _changed_quality "${work}/default-on.yml"
+
+t_case "quality-report without the pinned docs theme is rejected"
+sed '/submodule update --init --depth 1 -- third_party\/DocumANTation/d' "${LANE}" > "${work}/no-theme.yml"
+t_assert_fails _changed_quality "${work}/no-theme.yml"
 
 t_case "a scanner that silently returns a verdict instead of a report is rejected"
 sed '0,/--report-only/s/--report-only/--check/' "${LANE}" > "${work}/no-report.yml"
@@ -102,16 +107,19 @@ t_assert_ok _run_report Kataglyphis/Fork true
 
 t_case "only an incomplete or crashed quality-report fails the job"
 _step_script "Grade the checkout with quality-report" > "${work}/grade.sh" || exit 1
-mkdir -p "${hub}/linux/scripts" || exit 1
+mkdir -p "${hub}/linux/scripts" "${work}/bin" || exit 1
+printf '#!/usr/bin/env bash\n[ "$*" = "-C third_party/ANTfrastructure submodule update --init --depth 1 -- third_party/DocumANTation" ] && [ "${GIT_STUB_FAIL:-0}" = 0 ]\n' \
+  > "${work}/bin/git" && chmod +x "${work}/bin/git" || exit 1
 _grade() {
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s"\nexit %s\n' "$1" "$2" \
     > "${hub}/linux/scripts/quality-report.sh"
-  (cd "${work}" && GITHUB_REPOSITORY=Kataglyphis/Consumer REPORT_HUB_CHECKOUT=false \
+  (cd "${work}" && PATH="${work}/bin:${PATH}" GITHUB_REPOSITORY=Kataglyphis/Consumer REPORT_HUB_CHECKOUT=false \
     GITHUB_WORKSPACE="${work}" GITHUB_STEP_SUMMARY="${work}/summary.md" bash "${work}/grade.sh")
 }
 t_assert_ok _grade 'quality-report: verdict=ok regressed=0 improved=0 metrics=3' 0
 t_assert_ok _grade 'quality-report: verdict=regressed regressed=1 improved=0 metrics=3' 1
 t_assert_fails _grade 'Traceback (most recent call last):' 1
 t_assert_fails _grade 'quality-report: verdict=incomplete regressed=0 improved=0 metrics=3' 2
+GIT_STUB_FAIL=1 t_assert_fails _grade 'quality-report: verdict=ok regressed=0 improved=0 metrics=3' 0
 
 t_summary
