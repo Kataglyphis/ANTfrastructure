@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import os
+import re
 import sys
 from pathlib import Path
 from typing import TypedDict
@@ -60,7 +61,7 @@ def resolve(
         for value in hashes.values()
     ):
         raise ValueError("invalid producer package hash")
-    validate_layout(platform, package_layout, names)
+    validate_layout(platform, package_layout, names, vendor)
     return {
         "artifact_id": identity["artifact_id"],
         "artifact_digest": identity["artifact_digest"],
@@ -68,7 +69,7 @@ def resolve(
     }
 
 
-def validate_layout(platform: str, layout: str, names: list[str]) -> None:
+def validate_layout(platform: str, layout: str, names: list[str], vendor: str) -> None:
     """Enforce explicit Windows package shapes while retaining the Linux contract."""
     if platform == "linux":
         if layout not in {"", "linux"}:
@@ -82,6 +83,9 @@ def validate_layout(platform: str, layout: str, names: list[str]) -> None:
     if layout == "zip":
         if len(names) != 1 or not names[0].endswith(".zip") or len(names[0]) == 4:
             raise ValueError("expected one Windows ZIP")
+        return
+    if layout == "accelerantgine":
+        validate_accelerantgine_layout(names, vendor)
         return
     if layout not in {"installers", "zip-installers"}:
         raise ValueError("Windows packages require an explicit supported layout")
@@ -99,6 +103,28 @@ def validate_layout(platform: str, layout: str, names: list[str]) -> None:
         raise ValueError("expected the matching Windows test certificate")
     if not expected <= set(names):
         raise ValueError("Windows package names do not share the MSI stem")
+
+
+def validate_accelerantgine_layout(names: list[str], vendor: str) -> None:
+    """Match CPack ZIP/MSI to the differently named four-component MSIX."""
+    pattern = rf"AccelerANTgine-(\d+(?:\.\d+){{0,3}})-Release-x86_64-gpu-{vendor}\.zip"
+    matches = [re.fullmatch(pattern, name) for name in names]
+    matches = [match for match in matches if match is not None]
+    if len(matches) != 1:
+        raise ValueError("expected one matching AccelerANTgine GPU ZIP")
+    version = matches[0].group(1).split(".")
+    version.extend(["0"] * (4 - len(version)))
+    cpack_stem = matches[0].group(0)[:-4]
+    msix_stem = f"AccelerANTgine_{'.'.join(version)}_x64-gpu-{vendor}"
+    expected = {cpack_stem + ".zip", cpack_stem + ".msi", msix_stem + ".msix"}
+    optional = {
+        stem + suffix
+        for stem in (cpack_stem, msix_stem)
+        for suffix in (".cer", "-testcert.cer", "-test-signing.cer")
+    }
+    extra = set(names) - expected
+    if not expected <= set(names) or len(extra) > 1 or not extra <= optional:
+        raise ValueError("AccelerANTgine GPU package names or certificate do not match")
 
 
 def main() -> int:

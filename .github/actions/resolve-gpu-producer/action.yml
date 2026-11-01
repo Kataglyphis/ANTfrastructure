@@ -12,7 +12,7 @@ inputs:
     description: linux or windows; this action requires a Linux runner.
     required: true
   package-layout:
-    description: Required for Windows (zip, installers, or zip-installers); leave empty for Linux.
+    description: Required for Windows (zip, installers, zip-installers, or accelerantgine); leave empty for Linux.
     default: ''
   gpu-vendor:
     description: nvidia or amd.

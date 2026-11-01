@@ -76,6 +76,18 @@ MUTANTS = (
         "or False:",
         "python",
     ),
+    (
+        PY_SOURCE,
+        'version.extend(["0"] * (4 - len(version)))',
+        'version.extend(["1"] * (4 - len(version)))',
+        "python",
+    ),
+    (
+        PY_SOURCE,
+        "or not extra <= optional:",
+        "or False:",
+        "python",
+    ),
 )
 
 

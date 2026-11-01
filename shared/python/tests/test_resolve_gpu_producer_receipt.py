@@ -217,6 +217,66 @@ class ProducerReceiptTest(unittest.TestCase):
                         self.path, "windows", "amd", "x64", "37", "b" * 64, layout
                     )
 
+    def test_accelerantgine_real_windows_gpu_package_names(self) -> None:
+        windows = copy.deepcopy(GOOD)
+        windows["identity"]["platform"] = "windows"
+        for vendor in ("nvidia", "amd"):
+            windows["identity"]["vendor"] = vendor
+            stem = f"AccelerANTgine-0.0.3-Release-x86_64-gpu-{vendor}"
+            msix = f"AccelerANTgine_0.0.3.0_x64-gpu-{vendor}.msix"
+            for extra in ((), (f"{stem}-testcert.cer",)):
+                names = (f"{stem}.zip", f"{stem}.msi", msix, *extra)
+                with self.subTest(vendor=vendor, extra=extra):
+                    windows["files"] = {name: "c" * 64 for name in names}
+                    self.path.write_text(json.dumps(windows), encoding="utf-8")
+                    try:
+                        result = resolver.resolve(
+                            self.path,
+                            "windows",
+                            vendor,
+                            "x64",
+                            "37",
+                            "b" * 64,
+                            "accelerantgine",
+                        )
+                    except ValueError as exc:
+                        self.fail(f"real producer names were rejected: {exc}")
+                    self.assertEqual(result["files"], sorted(names))
+
+    def test_accelerantgine_rejects_mixed_versions_vendors_and_missing_files(
+        self,
+    ) -> None:
+        windows = copy.deepcopy(GOOD)
+        windows["identity"]["platform"] = "windows"
+        stem = "AccelerANTgine-0.0.3-Release-x86_64-gpu-amd"
+        expected = {
+            f"{stem}.zip",
+            f"{stem}.msi",
+            "AccelerANTgine_0.0.3.0_x64-gpu-amd.msix",
+        }
+        for names in (
+            expected - {f"{stem}.msi"},
+            (expected - {"AccelerANTgine_0.0.3.0_x64-gpu-amd.msix"})
+            | {"AccelerANTgine_0.0.4.0_x64-gpu-amd.msix"},
+            (expected - {"AccelerANTgine_0.0.3.0_x64-gpu-amd.msix"})
+            | {"AccelerANTgine_0.0.3.0_x64-gpu-nvidia.msix"},
+            expected | {"unrelated.cer"},
+            expected | {f"{stem}.cer", f"{stem}-testcert.cer"},
+        ):
+            with self.subTest(names=names):
+                windows["files"] = {name: "c" * 64 for name in names}
+                self.path.write_text(json.dumps(windows), encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    resolver.resolve(
+                        self.path,
+                        "windows",
+                        "amd",
+                        "x64",
+                        "37",
+                        "b" * 64,
+                        "accelerantgine",
+                    )
+
     def test_linux_cannot_use_windows_layout(self) -> None:
         self.path.write_text(json.dumps(GOOD), encoding="utf-8")
         with self.assertRaises(ValueError):

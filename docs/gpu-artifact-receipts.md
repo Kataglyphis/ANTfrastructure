@@ -73,7 +73,10 @@ Linux artifacts retain the existing DEB, tarball and AppImage contract. Windows 
 callers must set `package-layout` explicitly to `zip` (one ZIP), `installers` (MSI,
 MSIX and test certificate) or `zip-installers` (all four); the installer files and
 certificate must share a stem. Both `-testcert.cer` and `-test-signing.cer` match the
-existing installer producers. Windows ARM GPU tuples are rejected. This check does
+existing installer producers. For AccelerANTgine, `accelerantgine` expects the actual
+CPack ZIP/MSI stem and its four-component, underscore-named MSIX; it permits one
+matching `.cer`, `-testcert.cer` or `-test-signing.cer`, but the current producer does
+not guarantee a certificate. Windows ARM GPU tuples are rejected. This check does
 not run Windows installers or verify GPU inference: separate trusted clean-host and
 hardware receipts are still required before staging.
 
