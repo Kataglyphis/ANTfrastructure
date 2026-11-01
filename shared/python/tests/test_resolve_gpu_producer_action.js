@@ -41,6 +41,8 @@ async function check(artifacts, shouldPass, runnerOS = 'Linux', platform = 'linu
   await check([{...artifact, digest: null}], false);
   await check([{...artifact, name: 'other'}], false);
   await check([artifact], false, 'Windows', 'linux');
-  await check([artifact], false, 'Linux', 'windows');
+  await check([artifact], true, 'Linux', 'windows');
+  await check([artifact], false, 'Windows', 'windows');
+  await check([artifact], false, 'Linux', 'macos');
   process.stdout.write('GPU artifact API lookup fixtures passed\n');
 })().catch(error => { process.stderr.write(`${error.stack}\n`); process.exitCode = 1; });

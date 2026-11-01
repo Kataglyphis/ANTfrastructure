@@ -48,7 +48,7 @@ MUTANTS = (
     ),
     (
         ACTION,
-        "process.env.RUNNER_OS !== 'Linux' || process.env.GPU_PLATFORM !== 'linux'",
+        "process.env.RUNNER_OS !== 'Linux' || !['linux', 'windows'].includes(process.env.GPU_PLATFORM)",
         "false",
         "node",
     ),
@@ -57,6 +57,24 @@ MUTANTS = (
         "item.expired === false",
         "true",
         "node",
+    ),
+    (
+        PY_SOURCE,
+        'if layout not in {"installers", "zip-installers"}:',
+        'if False and layout not in {"installers", "zip-installers"}:',
+        "python",
+    ),
+    (
+        PY_SOURCE,
+        "if not expected <= set(names):",
+        "if False and not expected <= set(names):",
+        "python",
+    ),
+    (
+        PY_SOURCE,
+        "or not (set(names) - expected) <= certificates:",
+        "or False:",
+        "python",
     ),
 )
 

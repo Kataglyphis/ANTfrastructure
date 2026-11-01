@@ -48,6 +48,7 @@
 
 ## 2026-11-01 — GPU producer identity
 
+- The Linux-runner producer resolver accepts Windows x64 GPU receipts only with an explicit ZIP, MSI/MSIX/certificate, or combined layout. It does not prove Windows installation or GPU execution.
 - A reusable action compares trusted producer receipts with current-run GitHub artifact metadata before passing IDs, digests and package names to check jobs. It does not itself verify GPU execution.
 
 ## 2026-11-01 — bench-history

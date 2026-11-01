@@ -1,5 +1,5 @@
-name: Resolve Linux GPU producer identity
-description: Compare a Linux producer receipt with the current run's independently retrieved artifact metadata.
+name: Resolve GPU producer identity
+description: Compare a producer receipt with the current run's independently retrieved artifact metadata.
 
 inputs:
   artifact-name:
@@ -9,8 +9,11 @@ inputs:
     description: Path to the trusted producer receipt for that same tuple.
     required: true
   gpu-platform:
-    description: linux; this action requires a Linux runner.
+    description: linux or windows; this action requires a Linux runner.
     required: true
+  package-layout:
+    description: Required for Windows (zip, installers, or zip-installers); leave empty for Linux.
+    default: ''
   gpu-vendor:
     description: nvidia or amd.
     required: true
@@ -40,8 +43,8 @@ runs:
         GPU_PLATFORM: ${{ inputs.gpu-platform }}
       with:
         script: |
-          if (process.env.RUNNER_OS !== 'Linux' || process.env.GPU_PLATFORM !== 'linux') {
-            throw new Error('GPU producer resolution requires a Linux runner and linux platform');
+          if (process.env.RUNNER_OS !== 'Linux' || !['linux', 'windows'].includes(process.env.GPU_PLATFORM)) {
+            throw new Error('GPU producer resolution requires a Linux runner and supported platform');
           }
           const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
             ...context.repo, run_id: context.runId, per_page: 100
@@ -62,7 +65,8 @@ runs:
         GPU_ARCH: ${{ inputs.gpu-arch }}
         GPU_ARTIFACT_ID: ${{ steps.artifact.outputs.id }}
         GPU_ARTIFACT_DIGEST: ${{ steps.artifact.outputs.digest }}
+        GPU_PACKAGE_LAYOUT: ${{ inputs.package-layout }}
       run: |
         python3 -I "$GITHUB_ACTION_PATH/../../../shared/python/resolve_gpu_producer_receipt.py" "$GPU_RECEIPT" \
           --platform "$GPU_PLATFORM" --vendor "$GPU_VENDOR" --arch "$GPU_ARCH" \
-          --artifact-id "$GPU_ARTIFACT_ID" --artifact-digest "$GPU_ARTIFACT_DIGEST"
+          --artifact-id "$GPU_ARTIFACT_ID" --artifact-digest "$GPU_ARTIFACT_DIGEST" --package-layout "$GPU_PACKAGE_LAYOUT"

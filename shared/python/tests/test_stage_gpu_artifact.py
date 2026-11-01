@@ -61,6 +61,32 @@ class StageTest(unittest.TestCase):
             self.archive.read_bytes()
         ).hexdigest()
 
+    def test_windows_installer_archive_uses_both_exact_receipts(self) -> None:
+        """Synthetic files exercise receipt binding, not Windows installation or GPU use."""
+        for path in self.files.iterdir():
+            path.unlink()
+        self.data = {
+            "app.msi": b"msi payload",
+            "app.msix": b"msix payload",
+            "app-testcert.cer": b"certificate payload",
+        }
+        for name, data in self.data.items():
+            (self.files / name).write_bytes(data)
+        self.identity.update(platform="windows", arch="x64", vendor="amd")
+        self.make_archive()
+        self.make_receipts()
+        gpu_data = json.loads(self.gpu.read_text(encoding="utf-8"))
+        gpu_data["files"]["app.msi"] = "f" * 64
+        self.gpu.write_text(json.dumps(gpu_data), encoding="utf-8")
+        self.assertNotEqual(self.run_stage().returncode, 0)
+        self.assertFalse(self.output.exists())
+        self.make_receipts()
+        result = self.run_stage()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            {p.name: p.read_bytes() for p in self.output.iterdir()}, self.data
+        )
+
     def make_receipts(self) -> None:
         for path, check in (
             (self.clean, "clean-host-inference"),

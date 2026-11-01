@@ -152,8 +152,114 @@ class ProducerReceiptTest(unittest.TestCase):
             resolver.resolve(self.path, "linux", "amd", "x64", "38", "b" * 64)
         with self.assertRaises(ValueError):
             resolver.resolve(self.path, "linux", "amd", "x64", "37", "c" * 64)
-        with self.assertRaisesRegex(ValueError, "Linux packages only"):
+        with self.assertRaises(ValueError):
             resolver.resolve(self.path, "windows", "amd", "x64", "37", "b" * 64)
+
+    def test_windows_layouts_and_architecture_are_explicit(self) -> None:
+        windows = copy.deepcopy(GOOD)
+        windows["identity"]["platform"] = "windows"
+        for vendor in ("amd", "nvidia"):
+            windows["identity"]["vendor"] = vendor
+            for layout, names in (
+                ("zip", ("app.zip",)),
+                ("installers", ("app.msi", "app.msix", "app-testcert.cer")),
+                (
+                    "zip-installers",
+                    ("app.zip", "app.msi", "app.msix", "app-test-signing.cer"),
+                ),
+            ):
+                with self.subTest(vendor=vendor, layout=layout):
+                    windows["files"] = {name: "c" * 64 for name in names}
+                    self.path.write_text(json.dumps(windows), encoding="utf-8")
+                    result = resolver.resolve(
+                        self.path, "windows", vendor, "x64", "37", "b" * 64, layout
+                    )
+                    self.assertEqual(result["files"], sorted(names))
+                    with self.assertRaises(ValueError):
+                        resolver.resolve(
+                            self.path,
+                            "windows",
+                            vendor,
+                            "arm64",
+                            "37",
+                            "b" * 64,
+                            layout,
+                        )
+                    with self.assertRaises(ValueError):
+                        resolver.resolve(
+                            self.path, "windows", vendor, "x64", "37", "b" * 64
+                        )
+
+    def test_windows_rejects_missing_extra_or_mismatched_installers(self) -> None:
+        windows = copy.deepcopy(GOOD)
+        windows["identity"]["platform"] = "windows"
+        for layout, names in (
+            ("zip", ("app.zip", "extra.zip")),
+            ("zip", (".zip",)),
+            ("installers", ("app.msi", "app.msix")),
+            ("installers", ("app.msi", "app-testcert.cer")),
+            ("installers", ("app.msi", "other.msix", "app-testcert.cer")),
+            ("installers", ("app.msi", "app.msix", "other-testcert.cer")),
+            ("installers", ("app.msi", "app.msix", "app-testcert.cer", "extra.zip")),
+            ("zip-installers", ("app.msi", "app.msix", "app-testcert.cer")),
+            (
+                "zip-installers",
+                ("other.zip", "app.msi", "app.msix", "app-testcert.cer"),
+            ),
+            ("invalid", ("app.zip",)),
+            ("invalid", ("app.msi", "app.msix", "app-testcert.cer")),
+        ):
+            with self.subTest(layout=layout, names=names):
+                windows["files"] = {name: "c" * 64 for name in names}
+                self.path.write_text(json.dumps(windows), encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    resolver.resolve(
+                        self.path, "windows", "amd", "x64", "37", "b" * 64, layout
+                    )
+
+    def test_linux_cannot_use_windows_layout(self) -> None:
+        self.path.write_text(json.dumps(GOOD), encoding="utf-8")
+        with self.assertRaises(ValueError):
+            resolver.resolve(self.path, "linux", "amd", "x64", "37", "b" * 64, "zip")
+
+    def test_windows_cli_emits_the_exact_installer_names(self) -> None:
+        windows = copy.deepcopy(GOOD)
+        windows["identity"]["platform"] = "windows"
+        names = (
+            "omni-accelerant-1.2.3-windows-x64-amd.msi",
+            "omni-accelerant-1.2.3-windows-x64-amd.msix",
+            "omni-accelerant-1.2.3-windows-x64-amd-testcert.cer",
+        )
+        windows["files"] = {name: "c" * 64 for name in names}
+        self.path.write_text(json.dumps(windows), encoding="utf-8")
+        output = Path(self.temp.name) / "windows-outputs"
+        command = [
+            sys.executable,
+            "-I",
+            str(Path(resolver.__file__)),
+            str(self.path),
+            "--platform",
+            "windows",
+            "--vendor",
+            "amd",
+            "--arch",
+            "x64",
+            "--artifact-id",
+            "37",
+            "--artifact-digest",
+            "b" * 64,
+            "--package-layout",
+            "installers",
+        ]
+        result = subprocess.run(
+            command,
+            env=os.environ | {"GITHUB_OUTPUT": str(output)},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("\n".join(sorted(names)), output.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

@@ -31,10 +31,11 @@ def resolve(
     arch: str,
     artifact_id: str,
     artifact_digest: str,
+    package_layout: str = "",
 ) -> ProducerInputs:
     """Check the receipt against the caller and return its identity and package names."""
-    if platform != "linux":
-        raise ValueError("GPU producer resolution supports Linux packages only")
+    if platform not in {"linux", "windows"}:
+        raise ValueError("unsupported GPU package platform")
     data = receipt.read_receipt(path)
     identity = data["identity"]
     receipt.validate_identity(identity)
@@ -59,18 +60,45 @@ def resolve(
         for value in hashes.values()
     ):
         raise ValueError("invalid producer package hash")
-    extensions = (".deb", ".tar.gz", ".AppImage")
-    if len(names) != len(extensions) or any(
-        sum(name.endswith(ext) for name in names) != 1 for ext in extensions
-    ):
-        raise ValueError(
-            "producer receipt does not contain exactly the required package formats"
-        )
+    validate_layout(platform, package_layout, names)
     return {
         "artifact_id": identity["artifact_id"],
         "artifact_digest": identity["artifact_digest"],
         "files": names,
     }
+
+
+def validate_layout(platform: str, layout: str, names: list[str]) -> None:
+    """Enforce explicit Windows package shapes while retaining the Linux contract."""
+    if platform == "linux":
+        if layout not in {"", "linux"}:
+            raise ValueError("invalid Linux package layout")
+        extensions = (".deb", ".tar.gz", ".AppImage")
+        if len(names) != len(extensions) or any(
+            sum(name.endswith(ext) for name in names) != 1 for ext in extensions
+        ):
+            raise ValueError("expected one DEB, tarball and AppImage")
+        return
+    if layout == "zip":
+        if len(names) != 1 or not names[0].endswith(".zip") or len(names[0]) == 4:
+            raise ValueError("expected one Windows ZIP")
+        return
+    if layout not in {"installers", "zip-installers"}:
+        raise ValueError("Windows packages require an explicit supported layout")
+    msi = [name for name in names if name.endswith(".msi")]
+    if len(msi) != 1:
+        raise ValueError("expected one Windows MSI")
+    stem = msi[0][:-4]
+    if not stem:
+        raise ValueError("empty Windows package stem")
+    expected = {msi[0], stem + ".msix"}
+    if layout == "zip-installers":
+        expected.add(stem + ".zip")
+    certificates = {stem + "-testcert.cer", stem + "-test-signing.cer"}
+    if len(set(names) - expected) != 1 or not (set(names) - expected) <= certificates:
+        raise ValueError("expected the matching Windows test certificate")
+    if not expected <= set(names):
+        raise ValueError("Windows package names do not share the MSI stem")
 
 
 def main() -> int:
@@ -79,6 +107,7 @@ def main() -> int:
     parser.add_argument("receipt", type=Path)
     for name in ("platform", "vendor", "arch", "artifact-id", "artifact-digest"):
         parser.add_argument("--" + name, required=True)
+    parser.add_argument("--package-layout", default="")
     args = parser.parse_args()
     try:
         result = resolve(
@@ -88,6 +117,7 @@ def main() -> int:
             args.arch,
             args.artifact_id,
             args.artifact_digest,
+            args.package_layout,
         )
         output = Path(os.environ["GITHUB_OUTPUT"])
         with output.open("a", encoding="utf-8") as stream:
