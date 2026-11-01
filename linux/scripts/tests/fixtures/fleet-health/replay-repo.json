@@ -1,0 +1,35 @@
+{
+  "/repos/Kataglyphis/@REPO@/actions/workflows?per_page=100": {"total_count": 2, "workflows": [
+    {"id": 11, "name": "Linux x64", "path": ".github/workflows/linux-x64.yml", "state": "active"},
+    {"id": 12, "name": "Old lane", "path": ".github/workflows/old.yml", "state": "disabled_manually"}]},
+  "/repos/Kataglyphis/@REPO@/actions/workflows/11/runs?branch=develop&status=completed&per_page=100": {"total_count": 6, "workflow_runs": [
+    {"id": 906, "workflow_id": 11, "event": "push", "conclusion": "success", "created_at": "2026-10-31T10:00:00Z", "run_started_at": "2026-10-31T10:00:00Z", "updated_at": "2026-10-31T10:30:00Z"},
+    {"id": 905, "workflow_id": 11, "event": "pull_request", "conclusion": "failure", "created_at": "2026-10-31T09:00:00Z", "run_started_at": "2026-10-31T09:00:00Z", "updated_at": "2026-10-31T09:10:00Z"},
+    {"id": 904, "workflow_id": 11, "event": "push", "conclusion": "cancelled", "created_at": "2026-10-31T08:00:00Z", "run_started_at": "2026-10-31T08:00:00Z", "updated_at": "2026-10-31T08:05:00Z"},
+    {"id": 903, "workflow_id": 11, "event": "push", "conclusion": "failure", "created_at": "2026-10-30T10:00:00Z", "run_started_at": "2026-10-30T10:00:00Z", "updated_at": "2026-10-30T10:20:00Z"},
+    {"id": 902, "workflow_id": 11, "event": "schedule", "conclusion": "success", "created_at": "2026-10-29T10:00:00Z", "run_started_at": "2026-10-29T10:00:00Z", "updated_at": "2026-10-29T10:40:00Z"},
+    {"id": 901, "workflow_id": 11, "event": "workflow_dispatch", "conclusion": "success", "created_at": "2026-10-28T10:00:00Z", "run_started_at": "2026-10-28T10:00:00Z", "updated_at": "2026-10-28T10:28:00Z"}]},
+  "/repos/Kataglyphis/@REPO@/dependabot/alerts?state=open&per_page=100": [
+    {"number": 146, "state": "open", "security_advisory": {"ghsa_id": "GHSA-wf6j-7hvr-gr93", "severity": "high"}, "dependency": {"manifest_path": "uv.lock"}},
+    {"number": 150, "state": "open", "security_advisory": {"ghsa_id": "GHSA-aaaa-bbbb-cccc", "severity": "medium"}, "dependency": {"manifest_path": "uv.lock"}}],
+  "/repos/Kataglyphis/@REPO@/code-scanning/alerts?state=open&per_page=100&page=1": [
+    {"number": 7, "state": "open", "rule": {"id": "py/clear-text", "severity": "error", "security_severity_level": "high"}, "most_recent_instance": {"location": {"path": "src/gone.py"}}},
+    {"number": 8, "state": "open", "rule": {"id": "actions/unpinned", "severity": "warning", "security_severity_level": null}, "most_recent_instance": {"location": {"path": "README.md"}}}],
+  "/repos/Kataglyphis/@REPO@/code-scanning/analyses?per_page=1": [{"id": 1, "created_at": "2026-10-29T09:00:00Z"}],
+  "/repos/Kataglyphis/@REPO@/secret-scanning/alerts?state=open&per_page=100&page=1": [],
+  "/repos/Kataglyphis/ANTfrastructure/compare/@PIN@...develop": {"status": "behind", "ahead_by": 7, "behind_by": 0},
+  "/repos/Kataglyphis/@REPO@/actions/artifacts?name=security-audit&per_page=100": {"total_count": 2, "artifacts": [
+    {"id": 502, "name": "security-audit", "expired": false, "created_at": "2026-10-31T07:40:00Z", "workflow_run": {"id": 9002, "head_branch": "feature", "head_sha": "@SHA@"}},
+    {"id": 501, "name": "security-audit", "expired": false, "created_at": "2026-10-30T07:40:00Z", "workflow_run": {"id": 9001, "head_branch": "develop", "head_sha": "@SHA@"}}]},
+  "ARTIFACT Kataglyphis/@REPO@ 501": {"security-audit.json": {"schema": 1, "mode": "report", "verdict": "pass", "findings": [
+    {"id": "GHSA-wf6j-7hvr-gr93", "severity": "HIGH", "package": "hydra-core@1.3.7", "lockfile": "uv.lock"},
+    {"id": "GHSA-dddd-eeee-ffff", "severity": "MODERATE", "package": "tqdm@4.66.0", "lockfile": "uv.lock"}]}},
+  "/repos/Kataglyphis/@REPO@/actions/artifacts?name=bench-history-k&per_page=100": {"total_count": 1, "artifacts": [
+    {"id": 701, "name": "bench-history-k", "expired": false, "created_at": "2026-10-31T11:00:00Z", "workflow_run": {"id": 9201, "head_branch": "develop", "head_sha": "@SHA@"}}]},
+  "ARTIFACT Kataglyphis/@REPO@ 701": {"bench-history-k.json": {"schema_version": 1, "key": "k", "verdict": "ok", "metrics": {}}},
+  "/repos/Kataglyphis/@REPO@/actions/workflows/ai-regression.yml/runs?branch=develop&status=completed&per_page=1": {"total_count": 1, "workflow_runs": [{"id": 77, "conclusion": "success"}]},
+  "/repos/Kataglyphis/@REPO@/actions/artifacts?name=code-quality-measurements&per_page=100": {"total_count": 1, "artifacts": [
+    {"id": 601, "name": "code-quality-measurements", "expired": false, "created_at": "2026-10-31T12:00:00Z", "workflow_run": {"id": 9101, "head_branch": "develop", "head_sha": "@SHA@"}}]},
+  "ARTIFACT Kataglyphis/@REPO@ 601": {"measurements.json": {"schema_version": 1, "sha": "@SHA@", "metrics": {
+    "tests_passed.linux-x64": {"value": 120, "unit": "tests", "better": "higher", "class": "code", "source": "junit", "status": "collected"}}}}
+}

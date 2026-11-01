@@ -158,6 +158,7 @@ Wiring a new project: [Start here](#start-here).
 | **A Flutter app's gates**: the Dart coverage floor, the web artefacts gate (title, sqlite3.wasm, 8-bit icons), frame timings against earlier runs | [`code-quality-tooling.md`](code-quality-tooling.md#the-dart-coverage-floor) |
 | **The Flutter web shell** both apps copy into `web/`: loading screen, cookie notice, and the markup `index.html` must carry | [`../shared/web/README.md`](../shared/web/README.md) |
 | Which preflight gate has a test, a mutation, or neither — the derived table | [`code-quality-gates.md`](code-quality-gates.md) |
+| **Weekly fleet health** — `fleet-health.py` and `fleet-health.yml`: the AI repos' tree metrics and GitHub state graded against the previous run, exit codes, storage and the owner routine | [`fleet-health.md`](fleet-health.md) |
 | **A consumer page that restates a hub page** — `doc-dupes --against-hub` in `run-lint-gates.sh --ratchets`, off until the consumer seeds `doc-dupes-hub.allow` | [`code-quality-tooling.md`](code-quality-tooling.md#consumer-pages-against-the-hub-doc-dupes---against-hub) |
 | Which repos consume this hub, and which entry points they actually reach | [`consumer-inventory.md`](consumer-inventory.md) |
 | **Upgrading dependencies** — Renovate as a local CLI, direct submodules initialized on apply and moved to each remote default branch tip, and lock file maintenance (every lock to its newest in-range release) | [`dependency-updates.md`](dependency-updates.md) |

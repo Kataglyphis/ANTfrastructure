@@ -205,6 +205,7 @@ Common development targets:
    image-acceptance
    code-quality-tooling
    code-quality-gates
+   fleet-health
    consumer-inventory
    dependency-updates
    shared-script-libraries

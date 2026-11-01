@@ -13,6 +13,23 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-01 — fleet-health
+
+- `linux/scripts/fleet-health.py --repos <list> (--local-root DIR | --clone) [--compare JSON|previous-run]`
+  merges each AI repo's `quality-report.sh` tree metrics, its same-SHA
+  `code-quality-measurements` artifact metrics and GitHub state read through `develop_red.py`'s
+  client: develop run success rates and median minutes, open Dependabot, code-scanning and
+  secret-scanning alerts, analysis age, alerts on absent paths, develop-red issues, hub-pin lag
+  and the newest security-audit, bench-history and ai-regression verdicts. The DEIM and SmolLM2
+  rows of `models.lock` and `llm.lock` across OxidANT, AccelerANTgine and OrchestrANT are a code
+  metric. It writes `logs/reports/fleet-health/<date>.json` and `.md`, prints a
+  `fleet-health: verdict=...` line and exits 0 ok, 1 regressed, 2 incomplete.
+- `.github/workflows/fleet-health.yml` runs it on Mondays 09:00 UTC and on dispatch, uploads
+  `fleet-health-json` for 90 days, fails only on exit 2 and keeps one `fleet-health` issue open
+  while code metrics regress. Optional secret `FLEET_HEALTH_TOKEN` reads the alerts.
+- New page `docs/fleet-health.md`; new suite `test-fleet-health.sh`; 21 `fleet-health.*`
+  mutation recipes.
+
 ## 2026-11-01 — bench-history
 
 - `linux/scripts/bench-history.py` and the `bench-history` action compare a criterion,

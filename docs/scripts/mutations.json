@@ -32967,5 +32967,173 @@
   "replace": "        retention-days: 7",
   "test": "bash linux/scripts/tests/test-bench-history.sh",
   "why": "a weekly series must outlive the cache's 7-day eviction"
+ },
+ {
+  "id": "fleet-health.regression-is-graded",
+  "target": "linux/scripts/fleet-health.py",
+  "find": "    if isinstance(change, list) or change > 0:\n        return \"regressed\"",
+  "replace": "    if False:\n        return \"regressed\"",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a new suppression site or a higher count must print REGRESSED and exit 1, or the weekly run hides every slip"
+ },
+ {
+  "id": "fleet-health.improvement-is-graded",
+  "target": "linux/scripts/fleet-health.py",
+  "find": "return \"improved\" if change < 0 else \"held\"",
+  "replace": "return \"held\"",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "an improvement graded held leaves the owner no record of the debt paid down"
+ },
+ {
+  "id": "fleet-health.held-is-held",
+  "target": "linux/scripts/fleet-health.py",
+  "find": "return \"improved\" if change < 0 else \"held\"",
+  "replace": "return \"improved\" if change < 0 else \"new\"",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "an unchanged code metric must read held against its baseline, never as ungraded"
+ },
+ {
+  "id": "fleet-health.external-is-never-graded",
+  "target": "linux/scripts/fleet-health.py",
+  "find": "    if now.get(\"class\") in UNGRADED:\n        return \"moved\"",
+  "replace": "    if False:\n        return \"moved\"",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "GitHub state and CI timings move without a commit; grading them would turn upstream noise into regressions"
+ },
+ {
+  "id": "fleet-health.new-advisory-regresses",
+  "target": "linux/scripts/fleet-health.py",
+  "find": "UNGRADED = frozenset({gh.EXTERNAL, gh.REPORT})",
+  "replace": "UNGRADED = frozenset({gh.EXTERNAL, gh.REPORT, gh.ADVISORY})",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a new HIGH or CRITICAL advisory id is the one external change that must exit 1"
+ },
+ {
+  "id": "fleet-health.not-collected-is-never-held",
+  "target": "linux/scripts/fleet-health.py",
+  "find": "        return now.get(\"status\", gh.NOT_COLLECTED)",
+  "replace": "        return \"held\"",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a metric GitHub refused to show is unknown; grading it held would hide the gap"
+ },
+ {
+  "id": "fleet-health.failed-is-incomplete",
+  "target": "linux/scripts/fleet-health.py",
+  "find": "verdict = (\"incomplete\" if problems or rows.get(gh.FAILED) else",
+  "replace": "verdict = (\"incomplete\" if problems else",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a missing checkout or an exhausted 5xx means nothing was measured, which must exit 2 rather than read ok"
+ },
+ {
+  "id": "fleet-health.incomplete-wins-over-regressed",
+  "target": "linux/scripts/fleet-health.py",
+  "find": "verdict = (\"incomplete\" if problems or rows.get(gh.FAILED) else\n               \"regressed\" if rows.get(\"regressed\") else \"ok\")",
+  "replace": "verdict = (\"regressed\" if rows.get(\"regressed\") else\n               \"incomplete\" if problems or rows.get(gh.FAILED) else \"ok\")",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "exit 2 wins over 1, so a broken measurement fails the workflow even when a regression also printed"
+ },
+ {
+  "id": "fleet-health.malformed-compare-is-incomplete",
+  "target": "linux/scripts/fleet-health.py",
+  "find": "        problems.append(str(exc))\n        return {}, f\"none ({exc})\"",
+  "replace": "        return {}, f\"none ({exc})\"",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a baseline that cannot be read would turn every metric new and every regression invisible"
+ },
+ {
+  "id": "fleet-health.first-run-has-no-baseline",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "        return None, f\"none (no successful {WORKFLOW} run carries {RECORD} yet)\"",
+  "replace": "        raise Failed(\"no previous record\")",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "the first scheduled run has no earlier artifact and must still succeed"
+ },
+ {
+  "id": "fleet-health.missing-token-is-not-collected",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "    if not token:\n        raise NotCollected(\"no token: set FLEET_HEALTH_TOKEN or log in with gh\")",
+  "replace": "    if not token:\n        raise Failed(\"no token\")",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "the workflow runs without FLEET_HEALTH_TOKEN by design; that must leave alerts not collected, not fail the run"
+ },
+ {
+  "id": "fleet-health.refusal-is-not-collected",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "        if error.code in UNREADABLE:\n            raise NotCollected",
+  "replace": "        if False:\n            raise NotCollected",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a 403 from an alert endpoint means no permission, not a broken measurement"
+ },
+ {
+  "id": "fleet-health.exhausted-5xx-fails",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "        raise Failed(f\"HTTP {error.code} for {what} after the client's retries\") from None",
+  "replace": "        raise NotCollected(f\"HTTP {error.code} for {what}\") from None",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a 5xx that outlives the bounded retry is a failed measurement and must exit 2"
+ },
+ {
+  "id": "fleet-health.missing-checkout-refused",
+  "target": "linux/scripts/fleet_health_tree.py",
+  "find": "    if head.returncode != 0 or len(top) != 2 or not os.path.samefile(top[0], co.path):",
+  "replace": "    if len(top) == 2 and not os.path.samefile(top[0], co.path):",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a repo absent from --local-root must be refused, not measured as an empty tree"
+ },
+ {
+  "id": "fleet-health.dirty-checkout-refused",
+  "target": "linux/scripts/fleet_health_tree.py",
+  "find": "    if status.returncode != 0 or status.stdout.strip():",
+  "replace": "    if status.returncode != 0:",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "uncommitted edits would be graded as if a commit carried them"
+ },
+ {
+  "id": "fleet-health.stale-checkout-refused",
+  "target": "linux/scripts/fleet_health_tree.py",
+  "find": "    if behind != \"0\":",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a checkout behind origin/develop measures an old tree and reports it as today"
+ },
+ {
+  "id": "fleet-health.shared-facts-compare-rows",
+  "target": "linux/scripts/fleet_health_tree.py",
+  "find": "rec(len(variants) - 1, \"row sets\"",
+  "replace": "rec(0, \"row sets\"",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "the DEIM and SmolLM2 rows have one owner; a drifted copy must regress the shared-facts metric"
+ },
+ {
+  "id": "fleet-health.absent-lock-not-collected",
+  "target": "linux/scripts/fleet_health_tree.py",
+  "find": "        if absent:\n            present",
+  "replace": "        if False:\n            present",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "llm.lock does not exist everywhere yet; an absent file is not collected, never a drift and never agreement"
+ },
+ {
+  "id": "fleet-health.artifact-metrics-from-lane",
+  "target": "linux/scripts/fleet_health_tree.py",
+  "find": "            metrics[name] = {**row, \"source\": f\"{row.get('source', '')} ({where})\"}",
+  "replace": "            pass",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "artifact metrics come from the same-SHA lane record; without it they stay not collected"
+ },
+ {
+  "id": "fleet-health.issue-is-labelled-fleet-health",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "{\"title\": title, \"body\": text, \"labels\": [ISSUE_LABEL]}",
+  "replace": "{\"title\": title, \"body\": text, \"labels\": [develop_red.LABEL]}",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "a regression issue under develop-red would be closed by develop_red.py and block every push"
+ },
+ {
+  "id": "fleet-health.issue-closes-after-a-clean-run",
+  "target": "linux/scripts/fleet_health_github.py",
+  "find": "    for issue in found:\n        client.call(\"POST\"",
+  "replace": "    for issue in []:\n        client.call(\"POST\"",
+  "test": "bash linux/scripts/tests/test-fleet-health.sh",
+  "why": "the issue must close after the next run without a regression, or it outlives its cause"
  }
 ]

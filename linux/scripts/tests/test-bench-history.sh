@@ -222,7 +222,7 @@ t_assert_grep "${bench_action}" '^        retention-days: 90$'
 t_case "a failed comparison is stored too, so its verdict keeps it out of the median"
 t_assert_grep "${bench_action}" "^      if: always\(\) && steps\.report\.outcome != 'skipped'$"
 t_case "the frontend action keeps its inputs and delegates to bench-history"
-t_assert_eq "key timings keep" "$(python3 -c 'import sys, yaml; print(" ".join(yaml.safe_load(open(sys.argv[1]))["inputs"]))' "${frontend_action}")"
+t_assert_eq "key timings keep" "$(awk '/^inputs:/ {on = 1; next} /^runs:/ {on = 0} on && /^  [a-z-]+:$/ {sub(/:$/, ""); printf "%s%s", sep, $1; sep = " "}' "${frontend_action}")"
 t_assert_grep "${frontend_action}" '^      uses: Kataglyphis/ANTfrastructure/\.github/actions/bench-history@develop$'
 t_assert_grep "${frontend_action}" '^        format: flutter-frame$'
 

@@ -1,0 +1,6 @@
+{
+  "/repos/Kataglyphis/ANTfrastructure/issues?labels=develop-red&state=all&sort=created&direction=desc&per_page=100&page=1": [
+    {"number": 41, "state": "open", "body": "red\n<!-- develop-red {\"red\": {}, \"repo\": \"OrchestrANT\", \"seen\": \"2026-10-31T00:00:00Z\", \"workflow_id\": 11} -->"},
+    {"number": 40, "state": "closed", "body": "red\n<!-- develop-red {\"red\": {}, \"repo\": \"OrchestrANT\", \"seen\": \"2026-10-30T00:00:00Z\", \"workflow_id\": 12} -->"}],
+  "/repos/Kataglyphis/ANTfrastructure/actions/artifacts?name=fleet-health-json&per_page=100": {"total_count": 0, "artifacts": []}
+}
