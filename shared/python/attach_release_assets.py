@@ -90,6 +90,7 @@ def attach(
     directory: Path | None,
     dry_run: bool,
     check_only: bool = False,
+    expected_names: tuple[str, ...] = (),
 ) -> None:
     """Fail on the wrong tag or a name collision; never replace release assets."""
     if (
@@ -102,6 +103,12 @@ def attach(
         raise ValueError("check-only does not accept an asset directory")
     if not check_only and directory is None:
         raise ValueError("an asset directory is required")
+    if expected_names and not check_only:
+        raise ValueError("expected names are only accepted for check-only")
+    if any(not ASSET.fullmatch(name) for name in expected_names) or len(
+        {name.casefold() for name in expected_names}
+    ) != len(expected_names):
+        raise ValueError("invalid or duplicate expected asset names")
     files = [] if directory is None else assets(directory)
     if dry_run:
         for path in files:
@@ -114,7 +121,7 @@ def attach(
         )
     if tag_commit(repo, tag) != revision:
         raise ValueError("release tag does not point to the workflow commit")
-    if check_only:
+    if check_only and not expected_names:
         return
     release_id = release.get("id")
     if type(release_id) is not int or release_id <= 0:
@@ -125,8 +132,11 @@ def attach(
     ):
         raise ValueError("release asset list is invalid")
     occupied = {x["name"].casefold() for x in existing}
-    if occupied.intersection(p.name.casefold() for p in files):
+    wanted = expected_names if check_only else (p.name for p in files)
+    if occupied.intersection(name.casefold() for name in wanted):
         raise ValueError("release already has an asset with one of these names")
+    if check_only:
+        return
     subprocess.run(
         ["gh", "release", "upload", tag, "--repo", repo, *(str(p) for p in files)],
         check=True,
@@ -140,6 +150,7 @@ def main() -> int:
     parser.add_argument("--assets")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--check-only", action="store_true")
+    parser.add_argument("--expected-name", action="append", default=[])
     args = parser.parse_args()
     try:
         attach(
@@ -149,6 +160,7 @@ def main() -> int:
             Path(args.assets) if args.assets else None,
             args.dry_run,
             args.check_only,
+            tuple(args.expected_name),
         )
     except (
         OSError,

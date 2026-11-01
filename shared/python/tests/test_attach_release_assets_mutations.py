@@ -20,8 +20,8 @@ MUTANTS = (
         "if False and tag_commit(repo, tag) != revision:",
     ),
     (
-        "if occupied.intersection(p.name.casefold() for p in files):",
-        "if False and occupied.intersection(p.name.casefold() for p in files):",
+        "if occupied.intersection(name.casefold() for name in wanted):",
+        "if False and occupied.intersection(name.casefold() for name in wanted):",
     ),
     ('release.get("draft") is not False', 'release.get("draft") is None'),
 )

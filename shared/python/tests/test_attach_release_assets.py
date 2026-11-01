@@ -94,6 +94,21 @@ class AttachTest(unittest.TestCase):
         listing.assert_not_called()
         run.assert_not_called()
 
+    @patch.object(subject.subprocess, "run")
+    @patch.object(subject, "release_assets", return_value=[{"name": "GPU-A.DEB"}])
+    @patch.object(subject, "tag_commit", return_value=SHA)
+    @patch.object(
+        subject, "api", return_value={"id": 7, "tag_name": "v1.2.3", "draft": False}
+    )
+    def test_check_only_rejects_expected_name_collision(
+        self, _api, _tag, _assets, run
+    ) -> None:
+        with self.assertRaises(ValueError):
+            subject.attach(
+                "owner/repo", "v1.2.3", SHA, None, False, True, ("gpu-a.deb",)
+            )
+        run.assert_not_called()
+
     @patch.object(subject, "api")
     def test_annotated_tag_is_peeled(self, api) -> None:
         api.side_effect = [
