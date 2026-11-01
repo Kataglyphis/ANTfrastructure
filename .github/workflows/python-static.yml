@@ -69,6 +69,8 @@ jobs:
           if [ "${STATIC_HUB_CHECKOUT}" = 'true' ]; then hub='antfrastructure-tools'; fi
           mode=--report-only
           if [ "${STATIC_STRICT}" = 'true' ]; then mode=--strict; fi
+          # ty resolves docs/conf.py's theme import from the hub's pinned DocumANTation.
+          git -C "${hub}" submodule update --init --depth 1 -- third_party/DocumANTation
           bash "${hub}/linux/scripts/python-static.sh" --root "${GITHUB_WORKSPACE}" \
             --path "${STATIC_PATH}" "${mode}"
 

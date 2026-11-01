@@ -13,6 +13,7 @@ _contract() {
     'len([s for s in steps if re.fullmatch(r"actions/checkout@[0-9a-f]{40}",V.value(s,"uses") or "")]) == 2 and all(V.value(V.value(s,"with"),"persist-credentials") == "false" for s in steps if re.fullmatch(r"actions/checkout@[0-9a-f]{40}",V.value(s,"uses") or ""))' \
     'any(re.fullmatch(r"astral-sh/setup-uv@[0-9a-f]{40}",V.value(s,"uses") or "") for s in steps)' \
     '"--root \"${GITHUB_WORKSPACE}\"" in run_blocks("static") and "--path \"${STATIC_PATH}\" \"${mode}\"" in run_blocks("static") and "${hub}/linux/scripts/python-static.sh" in run_blocks("static")' \
+    '"git -C \"${hub}\" submodule update --init --depth 1 -- third_party/DocumANTation" in run_blocks("static") and run_blocks("static").index("submodule update") < run_blocks("static").index("python-static.sh")' \
     '"mode=--report-only" in run_blocks("static") and "${STATIC_STRICT}" in run_blocks("static") and "mode=--strict" in run_blocks("static")' \
     'any(V.value(s,"name") == "Upload Python static reports" and V.value(s,"if") == "always()" and re.fullmatch(r"actions/upload-artifact@[0-9a-f]{40}",V.value(s,"uses") or "") and V.value(V.value(s,"with"),"path") == "logs/code-quality/python-static/*.txt" and V.value(V.value(s,"with"),"if-no-files-found") == "error" for s in steps)'
 }
@@ -34,6 +35,11 @@ t_assert_fails _mutated_contract "${_bad}"
 t_case "the contract catches findings forced strict by default"
 _bad="${_work}/strict-default.yml"
 sed 's/mode=--report-only/mode=--strict/' "${LANE}" > "${_bad}"
+t_assert_fails _mutated_contract "${_bad}"
+
+t_case "the contract catches a scan without the pinned docs theme"
+_bad="${_work}/no-theme.yml"
+sed '/submodule update --init/d' "${LANE}" > "${_bad}"
 t_assert_fails _mutated_contract "${_bad}"
 
 t_case "the contract catches an artifact lost on failed scans"

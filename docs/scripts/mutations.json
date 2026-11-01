@@ -33135,5 +33135,29 @@
   "replace": "    for issue in []:\n        client.call(\"POST\"",
   "test": "bash linux/scripts/tests/test-fleet-health.sh",
   "why": "the issue must close after the next run without a regression, or it outlives its cause"
+ },
+ {
+  "id": "python.static-ty-uses-quality-environment",
+  "target": "linux/scripts/python-static.sh",
+  "find": "  ty_env_flags=(--extra-search-path \"$site\")",
+  "replace": "  ty_env_flags=()",
+  "test": "bash linux/scripts/tests/test-python-static.sh",
+  "why": "without the locked environment ty cannot resolve pytest in caller tests and reports each import"
+ },
+ {
+  "id": "python.static-ty-searches-docs-theme",
+  "target": "linux/scripts/python-static.sh",
+  "find": "    ty_env_flags+=(--extra-search-path \"$theme\")",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-python-static.sh",
+  "why": "a caller's docs/conf.py imports the pinned theme, which is in no installed environment"
+ },
+ {
+  "id": "python.static-lane-fetches-docs-theme",
+  "target": ".github/workflows/python-static.yml",
+  "find": "          git -C \"${hub}\" submodule update --init --depth 1 -- third_party/DocumANTation\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-static-workflow.sh",
+  "why": "the caller checkout does not recurse into the hub, so its theme is absent unless the lane fetches it"
  }
 ]

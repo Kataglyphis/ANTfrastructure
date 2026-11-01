@@ -86,13 +86,14 @@ resolve_tool_bins() {
   local bin
   if [[ -x "$UV_PROJECT_ENVIRONMENT/bin/ruff" && -x "$UV_PROJECT_ENVIRONMENT/bin/ty" ]]; then
     bin="$UV_PROJECT_ENVIRONMENT/bin"
-    RUFF_BIN="$bin/ruff"; TY_BIN="$bin/ty"
+    RUFF_BIN="$bin/ruff"; TY_BIN="$bin/ty"; PY_BIN="$bin/python"
   elif [[ -x "$UV_PROJECT_ENVIRONMENT/Scripts/ruff.exe" && -x "$UV_PROJECT_ENVIRONMENT/Scripts/ty.exe" ]]; then
     bin="$UV_PROJECT_ENVIRONMENT/Scripts"
-    RUFF_BIN="$bin/ruff.exe"; TY_BIN="$bin/ty.exe"
+    RUFF_BIN="$bin/ruff.exe"; TY_BIN="$bin/ty.exe"; PY_BIN="$bin/python.exe"
   else
     die "locked quality environment has no Ruff or ty executable"
   fi
+  [[ -x "$PY_BIN" ]] || die "locked quality environment has no Python interpreter"
 }
 
 check_tool_versions() {
@@ -141,21 +142,35 @@ finding_count() {
   printf 'unknown\n'
 }
 
+# Search paths add to ty's own environment discovery, so an import it resolved before still resolves.
+ty_environment_flags() {
+  local theme="$HUB_ROOT/third_party/DocumANTation/sphinx-kataglyphis-theme" site
+  site="$("$PY_BIN" -I -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" \
+    || die "cannot locate the quality environment's site-packages"
+  [[ -n "$site" && -d "$site" ]] || die "quality site-packages is missing: $site"
+  ty_env_flags=(--extra-search-path "$site")
+  if [[ -f "$theme/sphinx_kataglyphis/__init__.py" ]]; then
+    ty_env_flags+=(--extra-search-path "$theme")
+  fi
+  return 0
+}
+
 main() {
   local ruff_status=0 ty_status=0 ruff_findings ty_diagnostics
-  local -a ruff_flags=() ty_flags=()
+  local -a ruff_flags=() ty_flags=() ty_env_flags=()
   parse_args "$@"
   validate_root_scope
   REPORT_DIR="$ROOT/logs/code-quality/python-static"
   mkdir -p "$REPORT_DIR" || die "cannot create report directory"
   select_files
   setup_tools
+  ty_environment_flags
   [[ "$MODE" == strict ]] || { ruff_flags+=(--exit-zero); ty_flags+=(--exit-zero); }
   cd "$ROOT" || die "cannot enter target root"
   run_scanner ruff "$RUFF_BIN" check --no-fix --no-unsafe-fixes --output-format concise \
     "${ruff_flags[@]}" -- "${SELECTED[@]}" || ruff_status=$?
-  run_scanner ty "$TY_BIN" check --project "$ROOT" --output-format concise --no-progress \
-    "${ty_flags[@]}" -- "${SELECTED[@]}" || ty_status=$?
+  run_scanner ty "$TY_BIN" check --project "$ROOT" "${ty_env_flags[@]}" --output-format concise \
+    --no-progress "${ty_flags[@]}" -- "${SELECTED[@]}" || ty_status=$?
   ruff_findings="$(finding_count ruff)"
   ty_diagnostics="$(finding_count ty)"
   printf 'mode=%s path=%s files=%s\nruff-findings=%s ruff-exit=%s\nty-diagnostics=%s ty-exit=%s\n' \

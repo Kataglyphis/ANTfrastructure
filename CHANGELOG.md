@@ -13,6 +13,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-01 — python-static resolves test and docs-theme imports
+
+- `linux/scripts/python-static.sh` gives ty the locked quality environment's site-packages
+  and, when present, the hub's pinned `sphinx-kataglyphis-theme` as extra search paths. ty's
+  own environment discovery stays, so no import resolved before becomes unresolved.
+- `python-static.yml` fetches the hub's `third_party/DocumANTation` before the scan.
+- Measured on the consumers' develop tips with this host's Python: AccelerANTgine 6 → 2,
+  OrchestrANT 193 → 116 (unresolved imports 169 → 92, others 24 → 24), OxidANT and
+  OmniAccelerANT 0 → 0.
+- New cases in `test-python-static.sh` and `test-python-static-workflow.sh`; three
+  `python.static-*` mutation recipes.
+
 ## 2026-11-01 — fleet-health
 
 - `linux/scripts/fleet-health.py --repos <list> (--local-root DIR | --clone) [--compare JSON|previous-run]`
