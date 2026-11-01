@@ -53,7 +53,9 @@ class FleetHealthTests(unittest.TestCase):
         os.environ.update({"HOME": str(cls.base), "GIT_CONFIG_NOSYSTEM": "1",
                            "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
                            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid",
-                           "FAKE_MEASUREMENTS": str(cls.base / "meas")})
+                           "FAKE_MEASUREMENTS": str(cls.base / "meas"), "GH_TOKEN": "recorded"})
+        for key in ("FLEET_HEALTH_TOKEN", "GITHUB_TOKEN", "GITHUB_RUN_ID"):
+            os.environ.pop(key, None)
         (cls.base / "meas").mkdir()
         for repo in REPOS:
             cls.make_repo(repo)
