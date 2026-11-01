@@ -13,6 +13,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-01 — bench-history
+
+- `linux/scripts/bench-history.py` and the `bench-history` action compare a criterion,
+  google-benchmark, flutter-frame or orchestrant-bench result with the median of up to 20 earlier
+  default-branch results. Callers declare each metric's direction and optional gate; a gated
+  metric fails on a doubling once 3 earlier results exist, and a missing or empty result fails.
+  Each result is stored as artifact `bench-history-<key>` for 90 days and read back through the
+  Actions API; a private repository's calling job needs `actions: read`.
+- The `frontend-perf-report` action delegates to `bench-history` with unchanged inputs; its
+  history moves from `actions/cache` to artifacts and starts empty.
+- New suite `test-bench-history.sh`; ten `bench-history.*` mutation recipes.
+
 ## 2026-10-31 — quality-report
 
 - `linux/scripts/quality-report.sh --root . [--compare FILE|previous-develop]` writes

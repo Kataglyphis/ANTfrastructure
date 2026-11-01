@@ -273,12 +273,48 @@ doubles, it fails, but only once 3 earlier runs exist.
 `flutter-trace-summary.py <timeline.json>` lists a timeline's slowest frames and the slowest UI
 frame's self time per event, per widget with `debugProfileBuildsEnabled`. Both moved here from
 OmniAccelerANT on 2026-10-21. Test: `tests/test-perf-reports.sh`. In CI the
-`frontend-perf-report` action runs the report and keeps a passing default-branch run in
-`actions/cache` as the next run's history ([`.github/actions/README.md`](../.github/actions/README.md)).
-Its default timing input is `logs/perf/frontend.json` in the consumer workspace.
-Cached timing history lives in `logs/perf/baseline/`. The action moves an older
-default `out/perf/frontend.json` or restored `.perf-baseline/` into those paths
-when the new path is absent; an explicit `timings:` input keeps its own path.
+`frontend-perf-report` action delegates to the `bench-history` action (format `flutter-frame`,
+artifact `bench-history-<key>`), which gates the same two build times
+([§ Benchmark history](#benchmark-history)). Its default timing input is
+`logs/perf/frontend.json` in the consumer workspace; the action moves an older default
+`out/perf/frontend.json` there when the new path is absent, and an explicit `timings:` input keeps
+its own path.
+
+#### Benchmark history
+
+`linux/scripts/bench-history.py` compares one benchmark result with the median of up to 20
+earlier default-branch results. The `bench-history` action wraps it.
+
+- **Formats.** `criterion` (the output directory: each `<bench>/new/estimates.json` mean, in ns),
+  `google-benchmark` (`--benchmark_out` JSON: real time in ns, the median aggregate when
+  repetitions ran, each user counter as `<name>/<counter>`, errored rows dropped), `flutter-frame`
+  (`<scenario>/<summary key>`) and `orchestrant-bench` (`<label>/p50_ms`, `<label>/p95_ms`).
+- **Declared keys.** `--metrics` (action input `metrics`) is a JSON object of metric globs, each
+  with `direction` `lower` or `higher` and an optional `"gate": true`. An exact name wins over a
+  glob; an undeclared metric is shown and never judged.
+- **Verdict.** Worse than the median by more than `--warn` (25 %) warns. A gated metric fails at
+  a ratio of at least 2.0 (lower is better) or at most 0.5 (higher is better), but only from
+  `MIN_HISTORY_TO_FAIL` (3) earlier results; with fewer it warns. A missing or empty result, or
+  one with no metric, exits 2. Exit 1 is a gated doubling.
+- **Storage.** `report --write` stores the run as a record (`schema_version`, `key`, `format`,
+  `sha`, `run_id`, `verdict`, `metrics`). The action uploads it as artifact `bench-history-<key>`
+  with `retention-days: 90`, also when the comparison failed: a failed record never enters a
+  later median. `fetch` reads earlier records through the Actions API (`gh api`), only unexpired
+  artifacts of default-branch runs other than this one, newest first, so a weekly series survives
+  `actions/cache`'s 7-day eviction. A private repository's calling job needs `actions: read`; a
+  public one reads them with `contents: read` alone (probe runs 41259780836 and 41259826301). An
+  unreadable API fails the step instead of passing on an empty history.
+- **Not covered.** Noise below a doubling, a change of runner or CPU model (put the arch in the
+  key), and whether a stored run was otherwise green.
+
+```bash
+python3 linux/scripts/bench-history.py fetch --key criterion-x64 --dest earlier
+python3 linux/scripts/bench-history.py report --format criterion --result target/criterion \
+  --history earlier --metrics '{"detector": {"direction": "lower", "gate": true}, "*": {"direction": "lower"}}'
+```
+
+Test: `tests/test-bench-history.sh`, which replays the Actions API through a fake `gh` (two pages,
+a weekly series with expired weeks, another branch, this run). Recipes: `bench-history.*`.
 
 #### `dart format`: the tracked files, in the floor's style
 
@@ -944,7 +980,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4109 entries** over **510 distinct test commands**; both digits are
+manifest holds **4119 entries** over **511 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

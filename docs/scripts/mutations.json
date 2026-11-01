@@ -32887,5 +32887,85 @@
   "replace": "            1) true ;;",
   "test": "bash linux/scripts/tests/test-code-quality-report-workflow.sh",
   "why": "a quality-report crash that exits 1 must fail the job, not pass as a regression"
+ },
+ {
+  "id": "bench-history.doubling-passes",
+  "target": "linux/scripts/bench-history.py",
+  "find": "            return cell, f\"{name} {change}\"",
+  "replace": "            return cell, None",
+  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "why": "a gated metric that doubled against enough history must fail the run"
+ },
+ {
+  "id": "bench-history.short-history-fails",
+  "target": "linux/scripts/bench-history.py",
+  "find": "        if len(earlier) >= MIN_HISTORY_TO_FAIL:",
+  "replace": "        if earlier:",
+  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "why": "fewer than MIN_HISTORY_TO_FAIL earlier results only warn, so one odd runner is no yardstick"
+ },
+ {
+  "id": "bench-history.direction-inverted",
+  "target": "linux/scripts/bench-history.py",
+  "find": "    return ratio >= FAIL_RATIO if rule.direction == \"lower\" else ratio <= 1 / FAIL_RATIO",
+  "replace": "    return ratio >= FAIL_RATIO if rule.direction == \"higher\" else ratio <= 1 / FAIL_RATIO",
+  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "why": "a higher-is-better metric fails when it halves, a lower-is-better one when it doubles"
+ },
+ {
+  "id": "bench-history.missing-result-passes",
+  "target": "linux/scripts/bench-history.py",
+  "find": "            raise InputError(f\"{path}: missing or empty\")",
+  "replace": "            return {}",
+  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "why": "a missing or empty result file must fail, not print an empty table"
+ },
+ {
+  "id": "bench-history.failed-record-counted",
+  "target": "linux/scripts/bench-history.py",
+  "find": "        if doc.get(\"verdict\", \"ok\") != \"ok\":",
+  "replace": "        if doc.get(\"verdict\", \"ok\") == \"never\":",
+  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "why": "a stored failed run must not pull the median towards its own slowdown"
+ },
+ {
+  "id": "bench-history.expired-artifact-read",
+  "target": "linux/scripts/bench-history.py",
+  "find": "            if not isinstance(run, dict) or row.get(\"expired\") or row.get(\"name\") != f\"{ARTIFACT_PREFIX}{key}\":",
+  "replace": "            if not isinstance(run, dict) or row.get(\"name\") != f\"{ARTIFACT_PREFIX}{key}\":",
+  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "why": "an expired artifact cannot be downloaded and must not be chosen"
+ },
+ {
+  "id": "bench-history.other-branch-read",
+  "target": "linux/scripts/bench-history.py",
+  "find": "            if run.get(\"head_branch\") == branch and run_id not in (\"\", current) and newer:",
+  "replace": "            if run_id not in (\"\", current) and newer:",
+  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "why": "only default-branch results form the history, never a PR branch's"
+ },
+ {
+  "id": "bench-history.mean-not-median",
+  "target": "linux/scripts/bench-history.py",
+  "find": "    median = statistics.median(earlier)",
+  "replace": "    median = statistics.fmean(earlier)",
+  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "why": "the yardstick is the median, which one outlier run cannot move"
+ },
+ {
+  "id": "bench-history.keep-ignored",
+  "target": "linux/scripts/bench-history.py",
+  "find": "    chosen = _candidates(slug, args.key, branch, args.pages)[: args.keep]",
+  "replace": "    chosen = _candidates(slug, args.key, branch, args.pages)",
+  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "why": "--keep bounds the history to the newest results"
+ },
+ {
+  "id": "bench-history.short-retention",
+  "target": ".github/actions/bench-history/action.yml",
+  "find": "        retention-days: 90",
+  "replace": "        retention-days: 7",
+  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "why": "a weekly series must outlive the cache's 7-day eviction"
  }
 ]

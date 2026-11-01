@@ -34,14 +34,22 @@ which is what `prepare-windows-container-host` runs by default. Under its
 its container run. A job that runs host steps before its first container run, or has
 none, calls this action with `mode: wait` itself.
 
+### `bench-history`
+Compares one benchmark result (`criterion`, `google-benchmark`, `flutter-frame` or
+`orchestrant-bench`) with the median of up to `keep` (20) earlier default-branch results, read
+through the Actions API, and writes the table into the step summary. Inputs: `key` (one per
+benchmark set and arch), `format`, `result`, and `metrics`, a JSON object of metric globs with
+`direction` and optional `"gate": true`. A gated metric that doubles fails once 3 earlier results
+exist; a missing result fails. The result is stored as artifact `bench-history-<key>` for 90
+days. In a private repository the calling job needs `actions: read`.
+[`code-quality-tooling.md` § Benchmark history](../../docs/code-quality-tooling.md#benchmark-history).
+
 ### `frontend-perf-report`
-Runs after a Flutter app's `flutter drive --profile` performance test. It restores the
-default branch's last frame timings from `actions/cache` (input `key`, one per app and arch),
-writes `frontend-perf-report.py`'s table against their median into the step summary, and
-fails when an average or 90th-percentile build time doubles. A passing push to the default
-branch joins the history, which keeps the last `keep` (20) runs. The timing input defaults to
-`logs/perf/frontend.json`, and cached history lives in `logs/perf/baseline/`. Older default
-timing files and restored cache directories move there when the new path is absent.
+Runs after a Flutter app's `flutter drive --profile` performance test and delegates to
+`bench-history` with format `flutter-frame` (input `key`, one per app and arch; artifact
+`bench-history-<key>`): it fails when an average or 90th-percentile build time doubles. The
+timing input defaults to `logs/perf/frontend.json`; an older default `out/perf/frontend.json`
+moves there when the new path is absent. In a private repository the calling job needs `actions: read`.
 [`code-quality-tooling.md` § Frontend frame timings](../../docs/code-quality-tooling.md#frontend-frame-timings).
 
 ### `install-deps`
