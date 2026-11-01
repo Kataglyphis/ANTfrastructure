@@ -1911,6 +1911,17 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       and still gets "Documentation build completed successfully" and status 0. Every known
       consumer runs under `set -e`; decide whether each step's status should stop the pipeline.
 
+- [ ] **CON215 — evaluate offline gitleaks availability in consumer images** [S, ★★].
+      On 2026-11-01, the cached Linux amd64 CPU image at registry digest
+      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
+      had no `gitleaks` on PATH or in its selected bootstrap cache for its default user.
+      With networking disabled, the shared lint gate attempted its pinned 8.30.1 download
+      and failed before it could run its secret-scan self-test. Decide whether offline
+      consumer linting belongs to the image contract; if so, include the pinned tool in
+      the next image and verify the secret-scan gate without network access on each
+      supported image architecture. This observation does not establish that the online
+      bootstrap fails or describe the current mutable registry tag.
+
 - [ ] **CON214 — evaluate SquashFS tools for non-executing AppImage inspection** [S, ★★].
       The cached Linux amd64 CPU image at registry digest
       `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
