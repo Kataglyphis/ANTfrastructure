@@ -16116,6 +16116,30 @@
   "why": "the code after the help block is the copy under test; skipping past it compares nothing"
  },
  {
+  "id": "shared-assets.coco-classes-keep-80-ids",
+  "target": "shared/config/coco-classes.txt",
+  "find": "hair drier\ntoothbrush\n",
+  "replace": "hair drier\n",
+  "test": "bash linux/scripts/tests/test-coco-classes.sh",
+  "why": "every loader maps line N to class id N-1; a dropped line leaves a class id the model reports without a name"
+ },
+ {
+  "id": "shared-assets.coco-classes-names-are-exact",
+  "target": "shared/config/coco-classes.txt",
+  "find": "\ncat\n",
+  "replace": "\ncat \n",
+  "test": "bash linux/scripts/tests/test-coco-classes.sh",
+  "why": "loaders compare class names byte for byte, so a trailing blank makes 'cat' unknown"
+ },
+ {
+  "id": "shared-assets.coco-classes-is-an-exact-asset",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "| resources/coco-classes.txt              | exact |",
+  "replace": "| resources/coco-classes.txt              | body  |",
+  "test": "bash linux/scripts/tests/test-coco-classes.sh",
+  "why": "the class list has no per-consumer header; body mode would let a copy drift"
+ },
+ {
   "id": "shared-assets.agentic-loop-runners-registered",
   "target": "shared/config/shared-assets.manifest",
   "find": "agentic-loop-ps1     | shared/agentic-loop/templates/Invoke-AgenticLoop.ps1 | scripts/agentic-loop/Invoke-AgenticLoop.ps1 | body  |\n",

@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-01 — One canonical COCO class list
+
+- `shared/config/coco-classes.txt` holds the 80 COCO class names, line N for class id N-1, and the
+  `coco-classes` row of `shared-assets.manifest` offers it as an `exact` copy, so the consumers'
+  shared-config checks hold their copies byte-identical
+  ([`shared/config/README.md`](shared/config/README.md#the-coco-class-list)). New suite
+  `test-coco-classes.sh` and three `shared-assets.coco-classes-*` mutation recipes.
+
 ## 2026-11-01 — Security audit reclaims the full runner disk
 
 - `security-audit.yml` runs `prepare-linux-ci-host` with `free-disk-space: 'true'`: the fast reclaim let the family-image pull run out of disk in Cargo repos.

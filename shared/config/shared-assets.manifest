@@ -17,6 +17,7 @@ python-wheel-rewrite | shared/python/kataglyphis_wheel.py                | build
 clang-tidy           | shared/config/.clang-tidy                        | .clang-tidy                             | exact |
 cmake-format         | shared/config/.cmake-format.yaml                 | .cmake-format.yaml                      | exact |
 gcovr                | shared/config/gcovr.cfg                          | gcovr.cfg                               | exact |
+coco-classes         | shared/config/coco-classes.txt                   | resources/coco-classes.txt              | exact |
 pre-commit           | shared/config/.pre-commit-config.yaml            | .pre-commit-config.yaml                 | exact |
 antfrastructure-sh      | shared/linux/templates/antfrastructure.sh           | scripts/linux/lib/antfrastructure.sh       | body  | : "${KATAGLYPHIS_REPO_ROOT_RELATIVE:=
 renovate-git-mode-sh    | shared/linux/templates/renovate-git-mode.sh          | scripts/linux/lib/renovate-git-mode.sh      | exact |
