@@ -207,3 +207,4 @@ mutation-family:security-audit
 mutation-family:quality-report
 # The benchmark history against earlier default-branch results (bench-history.py and its action); proof: test-bench-history.sh.
 mutation-family:bench-history
+mutation-family:fleet-health

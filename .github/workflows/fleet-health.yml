@@ -1,0 +1,85 @@
+# Weekly health of the four AI repos against the previous run. See docs/fleet-health.md
+name: Fleet health · weekly
+
+on:
+  schedule:
+    - cron: '0 9 * * 1' # Mondays 09:00 UTC, after consumer-inventory's 07:00 run
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Queued, never cancelled: two runs at once could each open the same issue.
+concurrency:
+  group: fleet-health
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    name: Measure the AI repos and grade them against the previous run
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      # The X.Y versions.env pins, so a Python upgrade needs no edit here.
+      - name: Read the pinned Python
+        id: python
+        run: echo "version=$(sed -n 's/^PYTHON_VERSION=\([0-9]*\.[0-9]*\)\..*/\1/p' linux/scripts/01-core/versions.env)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.0.0
+        with:
+          python-version: ${{ steps.python.outputs.version }}
+
+      - name: Install uv for quality-report
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.0
+
+      - name: Measure the fleet
+        id: measure
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Empty leaves the alert metrics not collected; a read-only PAT measures them.
+          FLEET_HEALTH_TOKEN: ${{ secrets.FLEET_HEALTH_TOKEN }}
+        run: |
+          set -uo pipefail
+          mkdir -p logs/reports/fleet-health
+          status=0
+          python3 linux/scripts/fleet-health.py --clone --compare previous-run \
+            > logs/reports/fleet-health/run.txt 2>&1 || status=$?
+          cat logs/reports/fleet-health/run.txt
+          for page in logs/reports/fleet-health/*.md; do
+            if [ -f "${page}" ]; then cat "${page}" >> "${GITHUB_STEP_SUMMARY}"; fi
+          done
+          echo "status=${status}" >> "${GITHUB_OUTPUT}"
+          # A regression opens the issue; only a failed measurement, or a crash that exits 1, fails the run.
+          case "${status}" in
+            0) grep -q '^fleet-health: verdict=ok ' logs/reports/fleet-health/run.txt ;;
+            1) grep -q '^fleet-health: verdict=regressed ' logs/reports/fleet-health/run.txt ;;
+            *) exit "${status}" ;;
+          esac
+
+      - name: Upload the record
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fleet-health-json
+          path: logs/reports/fleet-health/*.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Open, update or close the fleet-health issue
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          records=(logs/reports/fleet-health/*.json)
+          python3 linux/scripts/fleet-health.py --sync-issue "${records[0]}"

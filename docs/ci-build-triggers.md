@@ -57,6 +57,7 @@ reacts to a commit-message token. Both name columns follow the family's naming c
 | `stale-docs-check.yml` | Docs · stale check | Mondays, dispatch | stale doc references and broken script paths |
 | `develop-red.yml` | Develop red · watch | twice an hour, dispatch | one `develop-red` issue per family workflow whose `develop` run is red, closed once it is green ([`github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue)) |
 | `develop-red-selftest.yml` | Develop red · self-test | dispatch | fails or passes as its `outcome` input says, to prove the watch |
+| `fleet-health.yml` | Fleet health · weekly | Mondays 09:00 UTC, dispatch | `fleet-health.py --clone --compare previous-run` over the four AI repos; uploads `fleet-health-json`, fails only on exit 2 and keeps one `fleet-health` issue while a code metric regresses ([`fleet-health.md`](fleet-health.md#the-workflow)) |
 
 The Hub's `linux-x64.yml` uses one concurrency group per ref. On `develop`, a new
 push leaves the running preflight and eight mutation shards alive; GitHub keeps the

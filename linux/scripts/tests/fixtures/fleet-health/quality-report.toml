@@ -1,0 +1,12 @@
+schema_version = 1
+
+[[output]]
+kind = "benchmark"
+path = "bench-history-k.json"
+artifact = "bench-history-k"
+
+[[artifact]]
+name = "linux-x64"
+kind = "junit"
+path = "junit.xml"
+artifact = "test-reports"
