@@ -68,7 +68,7 @@ The two halves of one topic often split:
 | **NVIDIA runtime evidence** — cached Windows image DLLs, SDK provenance and remaining verification | [`windows-nvidia-runtime-evidence-2026-10-30.md`](windows-nvidia-runtime-evidence-2026-10-30.md) |
 | **Rules you must not regress** when editing the Windows chain (49, grouped) | [`windows-build-invariants.md`](windows-build-invariants.md) |
 | **Which lane to build on**: BuildKit, nerdctl, the removed classic docker lane; isolation policy, preflight gates, RDNA4 A/B history | [`windows-build-lanes.md`](windows-build-lanes.md) |
-| CPU/memory envelope, the sccache wiring, GPU in containers, the 125-layer budget | [`windows-build-resources.md`](windows-build-resources.md) |
+| CPU/memory envelope, the sccache wiring, GPU in containers, vendor-specific DXGI selection, the 125-layer budget | [`windows-build-resources.md`](windows-build-resources.md) |
 | **sccache across build hosts**: the host's WebDAV as level 0, a shared S3 bucket as level 1, the key as BuildKit secrets, the upload drain, the client scripts | [`windows-build-resources.md` § Two cache levels](windows-build-resources.md#two-cache-levels) |
 | **The same bucket for the Linux chain**: the disk cache mount as level 0, the key and endpoint as one BuildKit secret, the drain that ends every sccache RUN, `set-sccache-s3-level.sh` | [`build-cache-tiers.md` § The shared S3 level](build-cache-tiers.md#the-shared-s3-level) |
 | **Bazel's action cache** on the host's dufs (the LiteRT builds), and ORT's nvcc keeping sccache but for its PTX-only targets | [`windows-build-resources.md` § Bazel's cache](windows-build-resources.md#bazels-cache), [§ Persistent compile cache (sccache)](windows-build-resources.md#persistent-compile-cache-sccache) |

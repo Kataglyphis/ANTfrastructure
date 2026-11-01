@@ -16,6 +16,16 @@ performance (container reuse, transports, Dev Drive) is
 [`windows-container-build-performance.md`](windows-container-build-performance.md);
 Linux-side job counts are
 [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md).
+## Vendor-specific DirectML adapters
+
+Native Windows consumers can compile [`dxgi_adapter.c`](../shared/native/windows/README.md)
+and link `dxgi.lib` to choose a physical DXGI adapter for a PCI vendor. The selector
+prefers the largest dedicated video memory, keeps the first index on ties, and fails
+if enumeration is incomplete. Use it only for a vendor-specific default; preserve
+explicit user indices and vendor-neutral selection. Enumeration does not demonstrate
+DirectML inference, and device changes can invalidate an index after enumeration.
+The linked README gives the C ABI, test command and 32-adapter limit.
+
 ## GPU acceleration in containers (DirectML on the host GPU)
 
 On Windows, **GPU acceleration in containers is DirectX-only** — Direct3D 12 and

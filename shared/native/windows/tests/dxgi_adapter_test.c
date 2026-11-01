@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <stddef.h>
 
+/* Fake enumeration tests selection, not DirectML inference or real hardware. */
 struct fake {
   const struct kg_dxgi_adapter *rows;
   uint32_t count;
@@ -19,7 +20,7 @@ static int enumerate(void *context, uint32_t index, struct kg_dxgi_adapter *out)
 
 int main(void) {
   const struct kg_dxgi_adapter rows[] = {
-      {0x8086, 0, 100}, {0x1002, 0, 128}, {0x1002, 2, 999},
+      {0x8086, 0, 100}, {0x1002, 0, 128}, {0x1002, 2, 9999},
       {0x1002, 0, 4096}, {0x1002, 0, 4096}, {0x10de, 0, 8000}};
   struct fake fake = {rows, 6, -1};
   uint32_t index = 99;

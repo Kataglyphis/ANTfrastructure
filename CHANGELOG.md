@@ -25,6 +25,10 @@
   history moves from `actions/cache` to artifacts and starts empty.
 - New suite `test-bench-history.sh`; ten `bench-history.*` mutation recipes.
 
+## 2026-11-01 — Native vendor-specific DXGI selection
+
+- Added a shared C ABI selector for physical DXGI adapters, with synthetic C and C++ tests. Explicit device overrides remain the caller's responsibility; selection does not prove inference.
+
 ## 2026-10-31 — quality-report
 
 - `linux/scripts/quality-report.sh --root . [--compare FILE|previous-develop]` writes

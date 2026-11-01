@@ -7,6 +7,7 @@ on:
     paths:
       - 'windows/**'
       - 'shared/windows/**'
+      - 'shared/native/windows/**'
       - 'cmake/CrashDump.cmake'
       - 'cmake/crash_dump/**'
       - '.github/actions/**'
@@ -17,6 +18,7 @@ on:
     paths:
       - 'windows/**'
       - 'shared/windows/**'
+      - 'shared/native/windows/**'
       - 'cmake/CrashDump.cmake'
       - 'cmake/crash_dump/**'
       - '.github/actions/**'
@@ -78,6 +80,10 @@ jobs:
       - name: Run test suites
         shell: pwsh
         run: pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1
+
+      - name: Test native DXGI selection in C and C++
+        shell: pwsh
+        run: ./shared/native/windows/tests/Test-DxgiAdapter.ps1 -OutputDirectory "$env:RUNNER_TEMP/dxgi-adapter-tests"
 
       - name: Save test and coverage reports
         if: always()
