@@ -24,6 +24,11 @@ runner. It first compares the downloaded files to the current-attempt producer
 receipt, then writes a clean-host receipt only if the check succeeds, package bytes
 remain unchanged, and scratch cleanup succeeds. The caller owns installation and removal, and must upload
 the resulting receipt and pair it with a separate hardware GPU profile receipt.
+Before download it reserves 4 GiB after the reported compressed archive size; before
+extraction it reserves 2 GiB for the hosted runner and 2 GiB for installer work
+after the measured expanded package size. This estimate is not an extraction quota
+and does not guarantee an installer will fit. Local and self-hosted GPU checks retain
+their separate disk floor.
 
 `shared/python/gpu_artifact_receipt.py` binds a flat set of named package files to
 a caller-supplied CI identity and a named passed check. It uses only the Python

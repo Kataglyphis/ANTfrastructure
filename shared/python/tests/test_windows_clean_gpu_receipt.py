@@ -249,6 +249,77 @@ class CleanReceiptTest(unittest.TestCase):
         self.assertEqual(self.output.read_text(encoding="ascii"), "original")
         self.no_scratch()
 
+    def test_extraction_checks_measured_bytes_plus_hosted_reserve(self) -> None:
+        with zipfile.ZipFile(self.archive) as archive:
+            expanded = sum(item.file_size for item in archive.infolist())
+        self.args.floor = 2 * 1024**3
+        self.args.cushion = 2 * 1024**3
+        required = expanded + self.args.floor + self.args.cushion
+        for free, expected in ((required - 1, False), (required, True)):
+            with (
+                self.subTest(free=free),
+                mock.patch.object(
+                    driver.shutil, "disk_usage", return_value=mock.Mock(free=free)
+                ),
+                mock.patch.object(driver.process, "run_process") as run,
+            ):
+                if expected:
+                    driver.check(self.args)
+                    run.assert_called_once()
+                    self.assertTrue(self.output.is_file())
+                    self.output.unlink()
+                else:
+                    with self.assertRaisesRegex(ValueError, "insufficient disk space"):
+                        driver.check(self.args)
+                    run.assert_not_called()
+                    self.assertFalse(self.output.exists())
+                self.no_scratch()
+
+    @unittest.skipUnless(
+        os.name == "nt" and shutil.which("pwsh"), "requires Windows PowerShell"
+    )
+    def test_action_checks_archive_size_before_download(self) -> None:
+        available = shutil.disk_usage(self.root).free
+        reserve = 4 * 1024**3
+        margin = 64 * 1024**2
+        if available < reserve + 2 * margin:
+            self.skipTest("not enough free space to exercise the synthetic threshold")
+        action = ROOT.parents[1] / ".github/actions/windows-clean-gpu-check/action.yml"
+        source = action.read_text(encoding="utf-8")
+        self.assertIn("--floor 2147483648 --cushion 2147483648", source)
+        block = source.split("    - name: Allocate clean-host scratch\n", 1)[1]
+        block = block.split("      run: |\n", 1)[1].split("\n    - name:", 1)[0]
+        script = self.root / "allocate.ps1"
+        script.write_text(
+            "\n".join(line[8:] for line in block.splitlines()), encoding="utf-8"
+        )
+        for adjustment, expected in ((-margin, True), (margin, False)):
+            output = self.root / "outputs.txt"
+            output.unlink(missing_ok=True)
+            env = os.environ.copy()
+            env.update(
+                RUNNER_TEMP=str(self.root),
+                RUNNER_OS="Windows",
+                RUNNER_ARCH="X64",
+                RUNNER_ENVIRONMENT="github-hosted",
+                GPU_ARCHIVE_SIZE=str(available - reserve + adjustment),
+                GITHUB_OUTPUT=str(output),
+            )
+            result = subprocess.run(
+                [shutil.which("pwsh"), "-NoProfile", "-File", str(script)],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode == 0, expected, result.stderr)
+            if expected:
+                root = Path(output.read_text(encoding="utf-8").strip().split("=", 1)[1])
+                self.assertEqual(root.parent, self.root)
+                shutil.rmtree(root)
+            else:
+                self.assertFalse(output.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

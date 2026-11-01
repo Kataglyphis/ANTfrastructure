@@ -54,7 +54,7 @@ runs:
         $ErrorActionPreference = 'Stop'
         if ($env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'X64' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'A fresh GitHub-hosted Windows x64 runner is required' }
         $drive = [IO.DriveInfo]::new([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($env:RUNNER_TEMP)))
-        if (($drive.AvailableFreeSpace - [long]$env:GPU_ARCHIVE_SIZE) -lt (15.5GB + 1GB)) { throw 'Insufficient space for the GPU artifact' }
+        if (($drive.AvailableFreeSpace - [long]$env:GPU_ARCHIVE_SIZE) -lt 4GB) { throw 'Insufficient space for the GPU artifact' }
         $root = Join-Path $env:RUNNER_TEMP ('windows-gpu-clean-' + [guid]::NewGuid().ToString('N'))
         $null = New-Item -ItemType Directory -Path $root -ErrorAction Stop
         Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "root=$root"
@@ -87,7 +87,7 @@ runs:
         foreach ($file in ($env:GPU_ARTIFACT_FILES -split "`n")) { if ($file.TrimEnd("`r")) { $files += @('--file', $file.TrimEnd("`r")) } }
         $driver = Join-Path $env:GITHUB_ACTION_PATH '../../../shared/python/windows_clean_gpu_receipt.py'
         python -I $driver --archive $archives[0].FullName --work $work --receipt "$env:GPU_ROOT/pending.json" --producer-receipt $env:GPU_PRODUCER_RECEIPT --script $env:GPU_CHECK_SCRIPT --pwsh (Get-Command pwsh).Source `
-          --max-uncompressed-bytes $env:GPU_MAX_BYTES --max-compression-ratio $env:GPU_MAX_RATIO --floor 16642998272 --cushion 1073741824 --timeout 1800 `
+          --max-uncompressed-bytes $env:GPU_MAX_BYTES --max-compression-ratio $env:GPU_MAX_RATIO --floor 2147483648 --cushion 2147483648 --timeout 1800 `
           --repository $env:GITHUB_REPOSITORY --revision $env:GITHUB_SHA --run-id $env:GITHUB_RUN_ID --run-attempt $env:GITHUB_RUN_ATTEMPT `
           --artifact-id $env:GPU_ARTIFACT_ID --artifact-digest $env:GPU_ARTIFACT_DIGEST --platform windows --arch x64 --vendor $env:GPU_VENDOR @files
         if ($LASTEXITCODE -ne 0) { throw 'Windows clean-host package check failed' }
