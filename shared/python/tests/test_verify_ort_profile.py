@@ -65,6 +65,27 @@ class ProfileTest(unittest.TestCase):
                 profile[0]["args"]["op_name"] = " MemcpyFromHost "
                 self.assertNotEqual(self.run_profile(profile, device).returncode, 0)
 
+    def test_cpu_accelerators_need_their_own_operators(self) -> None:
+        cpu_only = [
+            {
+                "cat": "Node",
+                "args": {"provider": "CPUExecutionProvider", "op_name": "Conv"},
+            }
+        ]
+        for device, provider in (
+            ("xnnpack", "XnnpackExecutionProvider"),
+            ("dnnl", "DnnlExecutionProvider"),
+        ):
+            with self.subTest(device=device):
+                self.assertNotEqual(self.run_profile(cpu_only, device).returncode, 0)
+                profile = [
+                    *cpu_only,
+                    {"cat": "Node", "args": {"provider": provider, "op_name": "Conv"}},
+                ]
+                result = self.run_profile(profile, device)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(provider, result.stdout)
+
     def test_transfers_and_unidentified_nodes_are_not_gpu_computation(self) -> None:
         profile = [
             {
@@ -110,7 +131,12 @@ class ProfileTest(unittest.TestCase):
             for start in (10, 30)
         ]
 
-        def node(start: int, provider: str = "CUDAExecutionProvider", name: str = "Conv", pid: int = 1) -> dict[str, object]:
+        def node(
+            start: int,
+            provider: str = "CUDAExecutionProvider",
+            name: str = "Conv",
+            pid: int = 1,
+        ) -> dict[str, object]:
             return {
                 "cat": "Node",
                 "ph": "X",

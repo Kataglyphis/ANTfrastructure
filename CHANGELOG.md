@@ -18,6 +18,21 @@
 - The fake clang-format checks the source basename, so a temporary parent path containing
   `bad` no longer marks every source as deviating. The test keeps that parent case explicit.
 
+## 2026-11-01 — verify_ort_profile names the CPU accelerator providers
+
+- `shared/python/verify_ort_profile.py --device` accepts `xnnpack` (`XnnpackExecutionProvider`)
+  and `dnnl` (`DnnlExecutionProvider`), so OxidANT and AccelerANTgine prove those sessions did
+  not fall back to `CPUExecutionProvider`. New case in `test_verify_ort_profile.py` and the
+  `packaging.ort-profile-cpu-accelerator-name` mutation recipe.
+
+## 2026-11-01 — quality-report fetches the docs theme
+
+- `code-quality-report.yml`'s quality-report step fetches the hub's `third_party/DocumANTation`
+  before grading, so its ty count resolves `docs/conf.py`'s theme as `python-static.yml` does.
+  AccelerANTgine's `ty_diagnostics` measured 1 (`sphinx_kataglyphis`) without it.
+- `test-code-quality-report-workflow.sh` requires the fetch and fails the step when it fails;
+  recipe `python.static-quality-report-fetches-docs-theme`.
+
 ## 2026-11-01 — python-static resolves test and docs-theme imports
 
 - `linux/scripts/python-static.sh` gives ty the locked quality environment's site-packages

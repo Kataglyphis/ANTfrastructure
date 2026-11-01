@@ -32193,6 +32193,14 @@
   "why": "provider events without an identified model operator cannot prove accelerated inference"
  },
  {
+  "id": "packaging.ort-profile-cpu-accelerator-name",
+  "target": "shared/python/verify_ort_profile.py",
+  "find": "\"xnnpack\": \"XnnpackExecutionProvider\",",
+  "replace": "\"xnnpack\": \"CPUExecutionProvider\",",
+  "test": "python3 shared/python/tests/test_verify_ort_profile.py",
+  "why": "a session that fell back to the CPU provider must not prove XNNPACK ran"
+ },
+ {
   "id": "packaging.ort-profile-repeat-count",
   "target": "shared/python/verify_ort_profile.py",
   "find": "if len(runs) < minimum:",
@@ -33159,5 +33167,13 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-python-static-workflow.sh",
   "why": "the caller checkout does not recurse into the hub, so its theme is absent unless the lane fetches it"
+ },
+ {
+  "id": "python.static-quality-report-fetches-docs-theme",
+  "target": ".github/workflows/code-quality-report.yml",
+  "find": "          git -C \"${hub}\" submodule update --init --depth 1 -- third_party/DocumANTation || exit 1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-code-quality-report-workflow.sh",
+  "why": "quality-report.sh counts ty diagnostics through python-static.sh, which resolves docs/conf.py's theme only from the fetched DocumANTation"
  }
 ]
