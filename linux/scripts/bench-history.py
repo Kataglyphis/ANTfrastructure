@@ -10,17 +10,11 @@ import argparse
 import json
 import os
 import pathlib
-import shutil
 import statistics
 import sys
-import tempfile
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 from fnmatch import fnmatchcase
-from typing import Any
-
-import quality_report_github as github
+from typing import Any, NamedTuple
 
 SCHEMA_VERSION = 1
 FORMATS = ("criterion", "google-benchmark", "flutter-frame", "orchestrant-bench")
@@ -45,8 +39,7 @@ class InputError(Exception):
     """A result file is missing, empty or unreadable."""
 
 
-@dataclass(frozen=True)
-class Rule:
+class Rule(NamedTuple):
     """A caller's declaration for the metrics its pattern matches."""
 
     direction: str
@@ -264,6 +257,7 @@ def report(args: argparse.Namespace) -> int:
 
 def _candidates(slug: str, key: str, branch: str, pages: int) -> list[dict[str, Any]]:
     """Unexpired bench-history-<key> artifacts of earlier default-branch runs, newest first, one per run."""
+    import quality_report_github as github
     current = os.environ.get("GITHUB_RUN_ID", "")
     seen: dict[str, dict[str, Any]] = {}
     for page in range(1, pages + 1):
@@ -286,6 +280,10 @@ def _candidates(slug: str, key: str, branch: str, pages: int) -> list[dict[str, 
 
 def _download(slug: str, key: str, artifact: dict[str, Any], dest: pathlib.Path) -> pathlib.Path:
     """One earlier record into dest as <created>-<run>.json."""
+    import shutil
+    import tempfile
+
+    import quality_report_github as github
     run_id = int(str(artifact["workflow_run"]["id"]))
     with tempfile.TemporaryDirectory() as tmp:
         github.download(slug, run_id, f"{ARTIFACT_PREFIX}{key}", tmp)
@@ -299,6 +297,9 @@ def _download(slug: str, key: str, artifact: dict[str, Any], dest: pathlib.Path)
 
 def fetch(args: argparse.Namespace) -> int:
     """Download up to --keep earlier default-branch records through the Actions API."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    import quality_report_github as github
     slug = args.repo or github.repo_slug(".")
     if not slug:
         raise github.Unavailable("no repository: pass --repo or set GITHUB_REPOSITORY")
@@ -337,14 +338,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.command == "fetch":
+        # The Actions client and its thread pool load only here, keeping each report call quick.
+        import quality_report_github as github
+
+        try:
+            return fetch(args)
+        except (github.Unavailable, github.Broken) as exc:
+            print(f"::error title=Benchmark history unreadable::{exc}", file=sys.stderr)
+            return EXIT_INPUT
     try:
-        return report(args) if args.command == "report" else fetch(args)
+        return report(args)
     except InputError as exc:
         print(str(exc))
         print(f"::error title=Benchmark result missing::{exc}", file=sys.stderr)
-        return EXIT_INPUT
-    except (github.Unavailable, github.Broken) as exc:
-        print(f"::error title=Benchmark history unreadable::{exc}", file=sys.stderr)
         return EXIT_INPUT
 
 
