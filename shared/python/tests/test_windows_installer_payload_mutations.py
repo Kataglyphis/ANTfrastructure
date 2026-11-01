@@ -48,7 +48,20 @@ def main() -> None:
             candidate.write_text(mutant, encoding="utf-8")
             if run(test) == 0:
                 raise SystemExit(f"installer fixture missed mutation: {old}")
-    print(f"Installer payload fixture rejected {len(MUTATIONS)} code mutations")
+        marker = "tempfile.TemporaryDirectory("
+        if original.count(marker) != 2:
+            raise SystemExit("installer temporary-directory mutation marker changed")
+        mutant = original.replace(marker, "_leaky_temporary_directory(")
+        mutant += (
+            "\ndef _leaky_temporary_directory(*args, **kwargs):\n"
+            "    import contextlib\n"
+            "    return contextlib.nullcontext(tempfile.mkdtemp(*args, **kwargs))\n"
+        )
+        compile(mutant, str(candidate), "exec")
+        candidate.write_text(mutant, encoding="utf-8")
+        if run(test) == 0:
+            raise SystemExit("installer fixture missed retained-payload mutation")
+    print(f"Installer payload fixture rejected {len(MUTATIONS) + 1} code mutations")
 
 
 if __name__ == "__main__":
