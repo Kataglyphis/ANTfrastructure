@@ -25,3 +25,5 @@ gcc -std=c11 -Wall -Wextra -Werror shared/native/windows/dxgi_adapter.c \
 
 `tests/dxgi_adapter_probe.c` provides an optional read-only AMD hardware
 enumeration check; it does not execute inference.
+On the Windows registry image, `tests/Test-DxgiAdapter.ps1 -OutputDirectory
+<directory>` runs both C and C++ tests after setting the Visual Studio environment.
