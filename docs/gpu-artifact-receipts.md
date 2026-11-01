@@ -60,6 +60,15 @@ name. On a rerun, require matching run attempt and recreate all dependent receip
 do not promote a stale receipt or a different matrix entry. GPU releases also need
 explicit expected asset names and their existing clean-host and license checks.
 
+The Linux-only `resolve-gpu-producer` action accepts a trusted `producer-verified` receipt and
+an exact attempt-scoped artifact name. It independently queries the current workflow
+run's artifact metadata, requires one non-expired matching artifact, and compares
+its ID and digest with the receipt before returning them and the package filenames.
+The calling job needs `actions: read`. The caller must form the name from the current
+run, attempt and validated GPU tuple, and must verify that its upload contains the
+producer-hashed package bytes before publishing the receipt. This resolver does not
+run a GPU check or authenticate a receipt from an untrusted producer.
+
 For Windows GPU artifacts, `Assert-PackageOrtFamily` in
 `WindowsPackageBinary.Common` requires exactly the named ORT-family DLLs in a
 declared bundle or ZIP, MSI or MSIX directory. Unexpected, duplicate, nested or

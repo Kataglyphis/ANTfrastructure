@@ -30,6 +30,10 @@
 - New page `docs/fleet-health.md`; new suite `test-fleet-health.sh`; 21 `fleet-health.*`
   mutation recipes.
 
+## 2026-11-01 — GPU producer identity
+
+- A reusable action compares trusted producer receipts with current-run GitHub artifact metadata before passing IDs, digests and package names to check jobs. It does not itself verify GPU execution.
+
 ## 2026-11-01 — bench-history
 
 - `linux/scripts/bench-history.py` and the `bench-history` action compare a criterion,

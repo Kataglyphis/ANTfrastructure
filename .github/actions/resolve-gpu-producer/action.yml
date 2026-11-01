@@ -1,0 +1,68 @@
+name: Resolve Linux GPU producer identity
+description: Compare a Linux producer receipt with the current run's independently retrieved artifact metadata.
+
+inputs:
+  artifact-name:
+    description: Exact current-run, current-attempt artifact name for this GPU tuple.
+    required: true
+  receipt:
+    description: Path to the trusted producer receipt for that same tuple.
+    required: true
+  gpu-platform:
+    description: linux; this action requires a Linux runner.
+    required: true
+  gpu-vendor:
+    description: nvidia or amd.
+    required: true
+  gpu-arch:
+    description: x64 or arm64.
+    required: true
+
+outputs:
+  artifact-id:
+    description: Independently checked immutable artifact ID.
+    value: ${{ steps.receipt.outputs.artifact_id }}
+  artifact-digest:
+    description: Independently checked SHA-256 artifact digest.
+    value: ${{ steps.receipt.outputs.artifact_digest }}
+  artifact-files:
+    description: Exact package filenames, one per line.
+    value: ${{ steps.receipt.outputs.files }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read current-run artifact identity
+      id: artifact
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        GPU_ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        GPU_PLATFORM: ${{ inputs.gpu-platform }}
+      with:
+        script: |
+          if (process.env.RUNNER_OS !== 'Linux' || process.env.GPU_PLATFORM !== 'linux') {
+            throw new Error('GPU producer resolution requires a Linux runner and linux platform');
+          }
+          const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+            ...context.repo, run_id: context.runId, per_page: 100
+          });
+          const matched = artifacts.filter(item => item.name === process.env.GPU_ARTIFACT_NAME && item.expired === false);
+          if (matched.length !== 1 || !matched[0].digest) {
+            throw new Error('Expected one current-run artifact with a digest');
+          }
+          core.setOutput('id', String(matched[0].id));
+          core.setOutput('digest', matched[0].digest);
+    - name: Validate the producer receipt against the artifact
+      id: receipt
+      shell: bash
+      env:
+        GPU_RECEIPT: ${{ inputs.receipt }}
+        GPU_PLATFORM: ${{ inputs.gpu-platform }}
+        GPU_VENDOR: ${{ inputs.gpu-vendor }}
+        GPU_ARCH: ${{ inputs.gpu-arch }}
+        GPU_ARTIFACT_ID: ${{ steps.artifact.outputs.id }}
+        GPU_ARTIFACT_DIGEST: ${{ steps.artifact.outputs.digest }}
+      run: |
+        python3 -I "$GITHUB_ACTION_PATH/../../../shared/python/resolve_gpu_producer_receipt.py" "$GPU_RECEIPT" \
+          --platform "$GPU_PLATFORM" --vendor "$GPU_VENDOR" --arch "$GPU_ARCH" \
+          --artifact-id "$GPU_ARTIFACT_ID" --artifact-digest "$GPU_ARTIFACT_DIGEST"
