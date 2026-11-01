@@ -30,8 +30,9 @@ printf 'uv %s\n' "$*" >> "$STUB_CALLS"
 if [[ "${STUB_SETUP_FAIL:-}" == 1 ]]; then echo 'sync failed' >&2; exit 7; fi
 [[ "$1" == sync && "$2" == --project && "$4" == --locked && "$5" == --python && "$6" == 3.14 ]] || exit 8
 mkdir -p "$UV_PROJECT_ENVIRONMENT/bin" || exit 9
-cp "$STUB_SCRIPTS/ruff" "$STUB_SCRIPTS/ty" "$UV_PROJECT_ENVIRONMENT/bin/" || exit 10
-chmod +x "$UV_PROJECT_ENVIRONMENT/bin/ruff" "$UV_PROJECT_ENVIRONMENT/bin/ty"
+cp "$STUB_SCRIPTS/ruff" "$STUB_SCRIPTS/ty" "$STUB_SCRIPTS/python" "$UV_PROJECT_ENVIRONMENT/bin/" || exit 10
+chmod +x "$UV_PROJECT_ENVIRONMENT/bin/ruff" "$UV_PROJECT_ENVIRONMENT/bin/ty" "$UV_PROJECT_ENVIRONMENT/bin/python"
+mkdir -p "$UV_PROJECT_ENVIRONMENT/lib/site-packages" || exit 11
 UV
   cat > "$STUBS/ruff" <<'RUFF'
 #!/usr/bin/env bash
@@ -53,7 +54,12 @@ case "${STUB_TY_MODE:-clean}" in
   error) echo 'ty configuration failed' >&2; exit 2 ;;
 esac
 TY
-  chmod +x "$STUBS/uv" "$STUBS/ruff" "$STUBS/ty" || return 1
+  cat > "$STUBS/python" <<'INTERP'
+#!/usr/bin/env bash
+[[ "$1 $2" == '-I -c' && "$3" == *'sysconfig.get_path("purelib")'* ]] || exit 3
+printf '%s\n' "$(cd "$(dirname "$0")/.." && pwd)/lib/site-packages"
+INTERP
+  chmod +x "$STUBS/uv" "$STUBS/ruff" "$STUBS/ty" "$STUBS/python" || return 1
 }
 
 run_static() {
@@ -85,6 +91,18 @@ t_assert_contains "$(cat "$CALLS")" '--locked --python 3.14'
 t_assert_contains "$(cat "$CALLS")" '--exit-zero -- src/one.py src/two.py'
 t_assert_eq 0 "$(grep -c 'other/three.py' "$CALLS")"
 t_assert_ok git -C "$TARGET" check-ignore -q --no-index -- logs/code-quality/python-static/ruff.txt
+
+t_case "ty resolves imports through the quality environment and the pinned docs theme"
+run_static --path src
+t_assert_eq 0 "$STATUS"
+t_assert_contains "$(cat "$CALLS")" "--extra-search-path $TARGET/logs/code-quality/python-static/.venv/lib/site-packages --output-format"
+t_assert_eq 0 "$(grep -c '^ty .*--python' "$CALLS")"
+mkdir -p "$HUB/third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis" || exit 1
+: > "$HUB/third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/__init__.py"
+run_static --path src
+t_assert_eq 0 "$STATUS"
+t_assert_contains "$(cat "$CALLS")" "--extra-search-path $HUB/third_party/DocumANTation/sphinx-kataglyphis-theme --output-format"
+rm -rf -- "$HUB/third_party"
 
 t_case "strict mode fails on findings after recording both reports"
 STUB_RUFF_MODE=finding STUB_TY_MODE=finding run_static --path src/one.py --strict

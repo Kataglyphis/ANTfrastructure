@@ -633,6 +633,12 @@ the caller root.
 
 The reusable `python-static.yml` runs the hub's uv-locked Ruff 0.17.0 and ty 0.0.91
 against tracked Python in the caller checkout. It installs no caller dependencies.
+ty keeps its own environment discovery and gets two extra search paths: the locked
+quality environment's site-packages, so test-only imports such as `pytest` resolve,
+and the hub's pinned `sphinx-kataglyphis-theme`, so a caller's `docs/conf.py` resolves
+`sphinx_kataglyphis`. The lane fetches the hub's `third_party/DocumANTation` for that,
+since the caller checkout does not recurse into the hub. Search paths only add
+resolution; a caller dependency outside both stays an unresolved import.
 Use `bash linux/scripts/python-static.sh --root <checkout> --path <file-or-dir>
 --report-only` locally; `--strict` fails on diagnostics. The default reusable lane
 reports findings without failing and uploads `logs/code-quality/python-static/`.
@@ -980,7 +986,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4140 entries** over **512 distinct test commands**; both digits are
+manifest holds **4143 entries** over **514 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
