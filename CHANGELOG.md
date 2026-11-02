@@ -36,6 +36,7 @@
 - `BACKLOG.md` records the flaky `WindowsFormatting.ClangFormatCheck.Tests.ps1` and the web lane's
   `free-disk-space: fast` on 72 GB runners.
 - `BACKLOG.md` CON217 adds CUDA compute capability 7.5, so RTX 20xx cards can run the NVIDIA packages.
+- `docs/gpu-artifact-receipts.md` says how to prove a package on your own GPU, and why a provider profile alone does not.
 - `BACKLOG.md` CON218 records that GenAI's default thread count ignores the CPU affinity mask.
 - AGENTS.md Quick Reference names the measurement tools and their docs pages.
 - `verify_agents_drift.py` no longer reports a nested toctree page as unlisted on Windows.
