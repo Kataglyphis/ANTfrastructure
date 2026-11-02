@@ -48,8 +48,11 @@ Every binding (C++, C, Rust, Python, Dart) offers the same calls against two bac
 | result | `finish_reason` (`stop`, `length`, `cancelled`), prompt and completion token counts, time to first token with the prefill included, decode tokens per second. |
 | embed | Texts in, one L2-normalised float vector per text out. |
 
-No binding implements `seed` or `json_schema` yet, and only the endpoint backends embed; GenAI's
-embeddings arrive with LAI-O5.
+`seed`, `json_schema` and stop strings work in AccelerANTgine (C++, the C ABI, Python, its CLI), OxidANT
+(local and endpoint backends, its CLI, the Flutter bridge) and OrchestrANT (`GenerationOptions`,
+`orchestrant-chat`, `orchestrant-serve`), and the OmniAccelerANT playground sends them through OxidANT's
+bridge. `json_schema` answers the unsupported error on Windows, where GenAI builds without guidance. Only
+the endpoint backends embed; GenAI's embeddings arrive with LAI-O5.
 
 Each failure has its own error and is never an empty answer: model not found, invalid model
 directory, execution provider unavailable, `json_schema` unsupported on this lane, endpoint
