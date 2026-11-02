@@ -46,6 +46,12 @@ t_assert_fails ort_host_runtime_needed "${work}/provider.so" invalid
 cp "${work}/provider.so" "${work}/incomplete-tensorrt.so"
 patchelf --add-needed libnvinfer.so.11 --add-needed libcudnn.so.9 "${work}/incomplete-tensorrt.so"
 t_assert_fails ort_host_runtime_needed "${work}/incomplete-tensorrt.so" tensorrt
+cp "${work}/tensorrt.so" "${work}/zlib-tensorrt.so"
+patchelf --add-needed libz.so.1 "${work}/zlib-tensorrt.so"
+t_assert_ok ort_host_runtime_needed "${work}/zlib-tensorrt.so" tensorrt
+cp "${work}/provider.so" "${work}/zlib-cuda.so"
+patchelf --add-needed libcuda.so.1 --add-needed libz.so.1 "${work}/zlib-cuda.so"
+t_assert_fails ort_host_runtime_needed "${work}/zlib-cuda.so" cuda
 cp "${work}/tensorrt.so" "${work}/unknown-tensorrt.so"
 patchelf --add-needed libunknown-sdk.so.1 "${work}/unknown-tensorrt.so"
 t_assert_fails ort_host_runtime_needed "${work}/unknown-tensorrt.so" tensorrt

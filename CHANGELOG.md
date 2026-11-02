@@ -13,6 +13,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-02 — TensorRT's zlib import
+
+- `ort_host_runtime_needed` accepts `libz.so.1` from the TensorRT provider only, which TensorRT 11 links; other providers and unknown libraries still fail.
+
 ## 2026-11-02 — One owner for finished-package ORT path and notice checks
 
 - `06-packaging/ort-package-proof.sh` holds the library collection and notice checks that

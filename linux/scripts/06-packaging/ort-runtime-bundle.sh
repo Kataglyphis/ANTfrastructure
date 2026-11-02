@@ -26,6 +26,8 @@ _ort_host_import_class() {
     libc.so.6|libm.so.6|libstdc++.so.6|libgcc_s.so.1|libpthread.so.0|libdl.so.2|librt.so.1|ld-linux*.so*) printf 'system\n'; return ;;
   esac
   case "${ort_kind}:${ort_soname}" in
+    # TensorRT 11's provider links zlib, which every supported distribution ships.
+    tensorrt:libz.so.1) printf 'system\n' ;;
     cuda:libcuda.so.*|cuda:libcudart.so.*|cuda:libcublas.so.*|cuda:libcublasLt.so.*|cuda:libcurand.so.*|cuda:libcudnn*.so.*|cuda:libcufft*.so.*|cuda:libcusparse.so.*|cuda:libnvrtc.so.*|cuda:libnvJitLink.so.*) printf 'a\n' ;;
     migraphx:libmigraphx_c.so.*|tensorrt:libnvinfer.so.*) printf 'a\n' ;;
     migraphx:libamdhip64.so.*|tensorrt:libnvonnxparser.so.*) printf 'b\n' ;;
