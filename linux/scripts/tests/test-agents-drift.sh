@@ -202,7 +202,22 @@ t_assert_contains "$(declare -f _lint_gates_main)" '_LINT_GATES_AGENTS_DRIFT' "a
 }
 
 # No argument runs every group; a recipe names its own so its proof stays short.
-if [ "$#" -eq 0 ]; then set -- basic section5 section1 headings duplicates docs backlog json hub lintgates; fi
-for group in "$@"; do "_group_${group}"; done
+_selected=" ${*:-all} "
+_want() {
+  case "${_selected}" in
+    *" all "* | *" $1 "*) return 0 ;;
+  esac
+  return 1
+}
+if _want basic; then _group_basic; fi
+if _want section5; then _group_section5; fi
+if _want section1; then _group_section1; fi
+if _want headings; then _group_headings; fi
+if _want duplicates; then _group_duplicates; fi
+if _want docs; then _group_docs; fi
+if _want backlog; then _group_backlog; fi
+if _want json; then _group_json; fi
+if _want hub; then _group_hub; fi
+if _want lintgates; then _group_lintgates; fi
 
 t_summary
