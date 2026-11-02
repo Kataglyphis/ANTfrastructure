@@ -82,6 +82,9 @@ for name in pkg-run other-bin alpha native-tool; do
   d="$(_copy)"; sed -i "s/^ci.yml alpha pkg-run other-bin native-tool$/$(printf 'ci.yml alpha pkg-run other-bin native-tool' | sed "s/\b${name}\b//")/" "${d}/AGENTS.md"
   _red "${d}" section5-script "section 5 does not name console script ${name}"
 done
+d="$(_copy)"; sed -i 's#^path = "src/o.rs"#path = "src/main.rs"#' "${d}/crates/alpha/Cargo.toml"
+sed -i 's/^ci.yml alpha pkg-run/ci.yml pkg-run/' "${d}/AGENTS.md"
+t_assert_eq 0 "$(t_rc _grade "${d}")" "a [[bin]] that claims src/main.rs leaves no binary named after the package"
 d="$(_copy)"; printf 'add_executable(never_installed c.c)\n' >> "${d}/CMakeLists.txt"; _add "${d}"
 t_assert_eq 0 "$(t_rc _grade "${d}")" "an executable that is not installed is no console script"
 }

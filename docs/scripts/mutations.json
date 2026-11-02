@@ -33759,5 +33759,13 @@
   "replace": "        return Metric(\"agents_drift_findings\", 0, \"findings\", LOWER, CODE,",
   "test": "bash linux/scripts/tests/test-quality-report.sh",
   "why": "the metric must carry the gate's own count"
+ },
+ {
+  "id": "agents-drift.cargo-claimed-main",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    claimed = any(row.get(\"path\") == \"src/main.rs\" for row in bins)\n",
+  "replace": "    claimed = False\n",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "a binary that does not exist cannot be owed a name"
  }
 ]

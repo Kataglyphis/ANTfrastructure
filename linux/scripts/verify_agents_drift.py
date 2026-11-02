@@ -101,11 +101,13 @@ def toml_doc(root: str, rel: str) -> dict:
 def _cargo_bins(root: str, rel: str) -> Iterator[str]:
     """Explicit [[bin]] names, and the implicit one a package's src/main.rs builds."""
     doc = toml_doc(root, rel)
-    for row in doc.get("bin", []):
+    bins = doc.get("bin", [])
+    for row in bins:
         if row.get("name"):
             yield row["name"]
     package = doc.get("package", {}).get("name")
-    if package and os.path.isfile(os.path.join(root, os.path.dirname(rel), "src", "main.rs")):
+    claimed = any(row.get("path") == "src/main.rs" for row in bins)
+    if package and not claimed and os.path.isfile(os.path.join(root, os.path.dirname(rel), "src", "main.rs")):
         yield package
 
 

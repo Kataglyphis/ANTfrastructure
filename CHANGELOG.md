@@ -28,7 +28,7 @@
 - `run-lint-gates.sh --agents-drift` and `lint-gates.yml`'s `agents-drift` input run it, off by
   default; the slug `agents-drift` runs only the duplicate-line check over the hub.
   `quality-report.sh` now collects `agents_drift_findings`. New suite `test-agents-drift.sh`,
-  40 recipes.
+  41 recipes.
 - `BACKLOG.md` records the flaky `WindowsFormatting.ClangFormatCheck.Tests.ps1` and the web lane's
   `free-disk-space: fast` on 72 GB runners.
 
