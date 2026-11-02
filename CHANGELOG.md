@@ -35,6 +35,7 @@
   41 recipes.
 - `BACKLOG.md` records the flaky `WindowsFormatting.ClangFormatCheck.Tests.ps1` and the web lane's
   `free-disk-space: fast` on 72 GB runners.
+- `BACKLOG.md` CON217 adds CUDA compute capability 7.5, so RTX 20xx cards can run the NVIDIA packages.
 
 ## 2026-11-02 — Python app bundles ship a model lock as one data row
 
