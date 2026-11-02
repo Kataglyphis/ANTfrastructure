@@ -33649,6 +33649,14 @@
   "why": "a declared build list that is gone is unusable, not clean"
  },
  {
+  "id": "agents-drift.docs-page-posix",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    below = posixpath.relpath(page, source)",
+  "replace": "    below = os.path.relpath(page, source)",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh docs",
+  "why": "os.path.relpath gives backslashes on Windows, so a nested toctree entry looks unlisted"
+ },
+ {
   "id": "agents-drift.backlog-lai",
   "target": "linux/scripts/verify_agents_drift.py",
   "find": "        if lai.startswith(f\"LAI-{letter}\") and not names(lai, backlog):",

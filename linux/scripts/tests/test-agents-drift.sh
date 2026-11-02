@@ -132,6 +132,8 @@ printf '.. toctree::\n\n   page\n   Sub page <sub/two>\n' > "${d}/index.rst"; mk
 t_assert_eq 0 "$(t_rc _grade "${d}")" "a bare toctree stem and a titled entry both list a page"
 sed -i 's/^   page$/   pages/' "${d}/index.rst"
 _red "${d}" docs-page "the docs build list leaves out guide/page.md"
+t_case "a nested toctree entry still lists its page where the path separator is a backslash"
+t_assert_eq True "$(PYTHONPATH="${SCRIPTS}" "${PY}" -c 'import ntpath, os, verify_agents_drift as v; os.path = ntpath; print(v._listed("guide/sub/two.rst", "guide", "   sub/two\n"))')" "tracked paths keep their forward slashes on Windows"
 t_case "a broken declaration is unusable, never a pass"
 d="$(_copy)"; rm "${d}/quality-report.toml"; _add "${d}"
 t_assert_eq 2 "$(t_rc _grade "${d}")" "no quality-report.toml"

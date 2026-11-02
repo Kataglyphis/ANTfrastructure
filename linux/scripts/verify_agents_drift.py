@@ -12,6 +12,7 @@ import fnmatch
 import functools
 import json
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -249,7 +250,7 @@ def docs_pages(root: str, source: str) -> list[str]:
 
 def _listed(page: str, source: str, build_list: str) -> bool:
     """The page's path anywhere, or its extension-free toctree entry on a line of its own."""
-    below = os.path.relpath(page, source)
+    below = posixpath.relpath(page, source)
     if names(page, build_list) or names(below, build_list):
         return True
     stem = os.path.splitext(below)[0]
