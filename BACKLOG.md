@@ -164,6 +164,10 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
       files byte-identical to `deim_dfine_n_coco-v1`; again with SHA-pinned actions (1f37627, run
       39394810441). Left: the next tag publishes from it, and
       the 3.15 `:latest`, where pip's additions resolve from cp315 or abi3 wheels (read 2026-10-20).
+      **2026-11-02, one export differed:** `deim_dfine_n_coco-v2` built twice to `.onnx` sha256 `0bf16e85…` (release
+      run 41498847541, rebuild 41511367119), but candidate run 41431013995 gave `0c7b4141…`: the same graph, with 136
+      of 342 initializers differing in their bytes. The cause is unknown. Lock the published file's hash;
+      the DirectML parity of 2026-11-02 also passed on the candidate.
 
 - [ ] **CON101 — the dartdoc guide renderer's parser comes from the image** [S, ★★]. Since
       2026-10-19 `dartdoc_build_prepare_python_env` (`linux/scripts/lib/dartdoc-build.sh`) uses
