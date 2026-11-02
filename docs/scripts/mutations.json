@@ -30665,6 +30665,70 @@
   "why": "Every Python app bundle must contain the original project license."
  },
  {
+  "id": "packaging.python-app-lock-ships-the-lock",
+  "target": "linux/scripts/06-packaging/python-app-data.py",
+  "find": "    for name in [lock.name, *lock_names(lock)]:\n",
+  "replace": "    for name in lock_names(lock):\n",
+  "test": "bash linux/scripts/tests/test-python-app-data.sh",
+  "why": "the app derives its model's file name from the shipped lock; a bundle without it cannot find the model"
+ },
+ {
+  "id": "packaging.python-app-lock-refuses-an-empty-lock",
+  "target": "linux/scripts/06-packaging/python-app-data.py",
+  "find": "    if not names:\n        sys.exit(f\"{lock} names no file\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-app-data.sh",
+  "why": "an empty lock would ship a bundle with no model and no error"
+ },
+ {
+  "id": "packaging.python-app-lock-refuses-a-path",
+  "target": "linux/scripts/06-packaging/python-app-data.py",
+  "find": "    if bad:\n        sys.exit(",
+  "replace": "    if False:\n        sys.exit(",
+  "test": "bash linux/scripts/tests/test-python-app-data.sh",
+  "why": "a lock row naming ../ would copy a file from outside the lock's directory into the bundle"
+ },
+ {
+  "id": "packaging.python-app-lock-row-dispatch",
+  "target": "linux/scripts/06-packaging/python-app-data.py",
+  "find": "        if \"lock\" in item:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-python-app-data.sh",
+  "why": "a lock row has no 'from'; treated as a plain row it copies nothing the lock names"
+ },
+ {
+  "id": "windows-lane.python-app-lock-ships-the-lock",
+  "target": "windows/scripts/python/New-PythonAppBundle.ps1",
+  "find": "    foreach ($name in @([IO.Path]::GetFileName($lock)) + $names) {",
+  "replace": "    foreach ($name in $names) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleLockData.Tests.ps1 -ResultFile logs/code-quality/python-app-lock-mutation.json",
+  "why": "the app derives its model's file name from the shipped lock; a bundle without it cannot find the model"
+ },
+ {
+  "id": "windows-lane.python-app-lock-refuses-an-empty-lock",
+  "target": "windows/scripts/python/New-PythonAppBundle.ps1",
+  "find": "    if ($names.Count -eq 0) { throw \"$($Item['lock']) names no file\" }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleLockData.Tests.ps1 -ResultFile logs/code-quality/python-app-lock-mutation.json",
+  "why": "an empty lock would ship a bundle with no model and no error"
+ },
+ {
+  "id": "windows-lane.python-app-lock-refuses-a-path",
+  "target": "windows/scripts/python/New-PythonAppBundle.ps1",
+  "find": "    if ($bad.Count -gt 0) { throw",
+  "replace": "    if ($false) { throw",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleLockData.Tests.ps1 -ResultFile logs/code-quality/python-app-lock-mutation.json",
+  "why": "a lock row naming ..\\ would copy a file from outside the lock's directory into the bundle"
+ },
+ {
+  "id": "windows-lane.python-app-lock-row-dispatch",
+  "target": "windows/scripts/python/New-PythonAppBundle.ps1",
+  "find": "        if ($item.ContainsKey('lock')) {",
+  "replace": "        if ($false) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleLockData.Tests.ps1 -ResultFile logs/code-quality/python-app-lock-mutation.json",
+  "why": "a lock row has no 'from'; treated as a plain row it copies nothing the lock names"
+ },
+ {
   "id": "rust.cargo-license-atomic-noreplace",
   "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
   "find": "if rename(-100, os.fsencode(staging), -100, os.fsencode(output), 1) != 0:",

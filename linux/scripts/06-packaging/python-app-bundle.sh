@@ -221,20 +221,7 @@ EOF
 done
 
 info "== data"
-python3 - "${CONFIG}" "${BUNDLE}" <<'PY'
-import json
-import shutil
-import sys
-from pathlib import Path
-
-with open(sys.argv[1], encoding="utf-8") as config_file:
-    data = json.load(config_file).get("data", [])
-for item in data:
-    dest = Path(sys.argv[2]) / item["to"]
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(item["from"], dest)
-    print(f"  {item['from']} -> {item['to']}")
-PY
+python3 "${SCRIPT_DIR}/python-app-data.py" "${CONFIG}" "${BUNDLE}"
 
 gst_search=()
 if [ "${#GST_PLUGINS[@]}" -gt 0 ]; then

@@ -35,7 +35,8 @@ proven by moving the bundle elsewhere and running it again.
   "scripts": ["yolo-monitor", "orchestrant-bench", "orchestrant-smoke"],
   "data_env": "ORCHESTRANT_DATA_DIR",
   "data_dir": "share/orchestrant",
-  "data": [{ "from": "resources/models/deim_dfine_n_coco.onnx", "to": "share/orchestrant/models/deim_dfine_n_coco.onnx" }],
+  "data": [{ "lock": "resources/models/models.lock", "to": "share/orchestrant/models" },
+           { "from": "packaging/THIRD-PARTY-NOTICES.txt", "to": "THIRD-PARTY-NOTICES.txt" }],
   "self_test": ["yolo-monitor", "--self-test"]
 }
 ```
@@ -52,6 +53,12 @@ When `icon` is set, the Windows builder compiles it once and links the resource
 into each launcher; an omitted icon retains the old behavior. `WindowsIcon.Common`
 imports `WindowsMsix.Common` and its `WindowsScripts.Shared` companion to decode
 the PNG and reject corrupt or fully transparent images.
+A `data` row copies one file `from` → `to`; a `lock` row copies a `sha256 file url` lock and
+every file it names from the lock's directory into the `to` directory, so the bundled model's
+file name has one owner and the app reads it from the shipped lock. An empty lock, a row naming
+a path or a named file the checkout lacks fails the build. Linux runs the rows through
+`06-packaging/python-app-data.py` (`test-python-app-data.sh`), Windows through
+`New-PythonAppBundle.ps1` (`PythonApp.BundleLockData.Tests.ps1`).
 An app that runs GStreamer adds a `gstreamer` block (Linux; [below](#gstreamer)).
 
 What the app itself must do:
