@@ -33089,6 +33089,14 @@
   "why": "container root maps to the host user; the image's own uid cannot write the rootless bind mount"
  },
  {
+  "id": "quality-report.perf-genai-threads-ignored",
+  "target": "linux/scripts/lib/genai-model-threads.py",
+  "find": "    session[\"intra_op_num_threads\"] = args.threads\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_copy_fixes",
+  "why": "an unpinned GenAI session oversubscribes the pinned CPUs and its latency spread refuses every baseline"
+ },
+ {
   "id": "bench-history.doubling-passes",
   "target": "linux/scripts/bench-history.py",
   "find": "            return cell, f\"{name} {change}\"",

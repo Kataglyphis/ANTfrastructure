@@ -53,7 +53,8 @@
   baseline's spread). `--update-baseline` refuses a spread above 5 %; both modes refuse a dirty tree, a
   1-minute load above 2 or a chain pidfile
   ([`docs/fleet-health.md` § perf-host](docs/fleet-health.md#perf-host)). New suite
-  `test-quality-report-perf.sh` and thirteen `quality-report.perf-*` mutation recipes.
+  `test-quality-report-perf.sh` and fourteen `quality-report.perf-*` mutation recipes. `lib/genai-model-threads.py`
+  copies a GenAI model with a fixed thread count for those runs.
 - `run-in-ci-image.sh` takes `--user`.
 
 ## 2026-11-01 — One canonical COCO class list

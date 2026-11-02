@@ -267,5 +267,23 @@ class Answers(PerfHost):
         self.assertIn("not a positive number", out)
 
 
+class GenaiThreads(unittest.TestCase):
+    def test_copy_fixes_the_decoder_thread_count(self) -> None:
+        base = Path(tempfile.mkdtemp(prefix="genai-threads-"))
+        self.addCleanup(shutil.rmtree, base, ignore_errors=True)
+        model = base.joinpath("model")
+        model.mkdir()
+        config = {"model": {"decoder": {"session_options": {"log_id": "x"}}}}
+        model.joinpath("genai_config.json").write_text(json.dumps(config), encoding="utf-8")
+        model.joinpath("model.onnx").write_text("weights", encoding="utf-8")
+        out = base.joinpath("out")
+        subprocess.run([sys.executable, str(SCRIPTS.joinpath("lib", "genai-model-threads.py")), "--model", str(model),
+                        "--out", str(out), "--threads", "7"], check=True)
+        options = json.loads(out.joinpath("genai_config.json").read_text(encoding="utf-8"))
+        self.assertEqual(options["model"]["decoder"]["session_options"], {"log_id": "x", "intra_op_num_threads": 7})
+        self.assertEqual(out.joinpath("model.onnx").read_text(encoding="utf-8"), "weights")
+        self.assertEqual(json.loads(model.joinpath("genai_config.json").read_text(encoding="utf-8")), config)
+
+
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0], *sys.argv[1:]])

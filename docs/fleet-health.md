@@ -155,6 +155,11 @@ last stdout line of a run is one JSON object holding every declared key as a pos
 provider the image cannot load. A nonzero exit, other output or a run over 600 s makes the run
 incomplete.
 
+ORT's default thread count ignores the affinity mask. For a GenAI model on 8 pinned CPUs it dropped
+SmolLM2-135M from 314 to 92 tokens/s (measured 2026-11-02) and made first-token times vary by more than
+10 %, so a repo's setup copies its model with `linux/scripts/lib/genai-model-threads.py --threads 7`,
+which leaves one CPU free. A detector session's tail shows the same effect when its threads fill the set.
+
 **Grading.** A metric is `perf.<command>.<key>`, and its figure is the median of the 20 runs. The
 spread is the median absolute deviation over the median. With the baseline's spread, a metric
 regresses when it is worse than the baseline's median by more than max(10 %, 3 x spread). Every
