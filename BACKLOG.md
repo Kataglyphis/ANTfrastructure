@@ -478,6 +478,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       no patched build was tested. Stack size and vector length are ruled out. Shipped riscv64 images are exposed
       for such models. OxidANT's lane forces scalar MLAS for that one test (`63828b5`). Done when a patched chain
       build passes the test on RVV and OxidANT drops the override; an image chain is an owner decision.
+- [ ] **CON221 — decide which tools OxidANT's lanes install with apt belong in the images** [S, ★★].
+      Found 2026-11-02: `scripts/linux/clippy-windows.sh` installs `gcc-mingw-w64-x86-64` when
+      `x86_64-w64-mingw32-gcc` is missing, which it is in `:latest` amd64, and the NVIDIA and AMD package lanes
+      (`linux-nvidia-gpu-build.yml`, `linux-x64-amd-gpu.yml`) install `libgtk-4-dev`. Those installs are
+      unpinned and need the network. Other variants and arches were not probed. Done when each tool is in
+      the image with a size figure, or the reason it stays out is recorded and the lane keeps its install.
 - [ ] **CON207 — investigate Linux AMD GPU support for GenAI** [M, ★★]. The cached
       `:latest-rocm` amd64 image contains the vision ONNX Runtime MIGraphX provider, but its
       GenAI tree has only the generic library and llguidance; `60-build-genai.sh` builds GenAI
@@ -710,6 +716,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       glibc loader paths. An explicit DNNL session in the same bundle reported the missing
       `libdnnl.so.3` and fell back to `CPUExecutionProvider`, despite listing DNNL as
       available; that proves neither DNNL acceleration nor its clean-host behavior.
+      On 2026-11-02 `--perf-host` reported the DNNL rows of AccelerANTgine and OxidANT as not collected
+      (`ProviderUnavailable`), and the AI-fleet goal's DNNL proof on amd64 stays open until this is resolved.
 
 - [ ] **CON192 — decide whether the Windows x64 CPU image should cache locked app dependencies** [S, ★★].
       On 2026-10-30 the cached `:winamd64` registry image digest
@@ -1407,7 +1415,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       install it from the network. The existing code-quality documentation also records this
       first-use install. Pin and install a cargo-expand release compatible with the image's
       Rust toolchain and Flutter Rust Bridge generator (the earlier offline prototype used
-      cargo-expand 1.0.116), record its licence and source, and
+      cargo-expand 1.0.116; OxidANT's `frb-codegen.sh` pins and verifies 1.0.127 since 2026-11-01 and can
+      drop that install once the image carries it), record its licence and source, and
       verify an offline generation run in a fresh image. Check Linux ARM and the NVIDIA and
       AMD image variants separately; this observation does not establish their contents.
       FRB 2.13.0 also invokes full Cargo metadata, including dependencies for other target
