@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-02 — One owner for finished-package ORT path and notice checks
+
+- `06-packaging/ort-package-proof.sh` holds the library collection and notice checks that
+  `verify-ort-appimage-payload.sh` and three consumers carried as copies. `--reject-invalid` and
+  `--reject-links` are off by default. The AppImage check's exit status is unchanged; its
+  diagnostics now use the shared wording.
+
 ## 2026-11-02 — Python app bundles ship a model lock as one data row
 
 - A `packaging/app.json` `data` row may name a `lock` instead of `from`: both bundle builders copy

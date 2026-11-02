@@ -33367,5 +33367,77 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-code-quality-report-workflow.sh",
   "why": "quality-report.sh counts ty diagnostics through python-static.sh, which resolves docs/conf.py's theme only from the fetched DocumANTation"
+ },
+ {
+  "id": "packaging.ort-package-proof-library-escape",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "case \"$resolved/\" in \"$1/\"*) return 0 ;; esac",
+  "replace": "return 0",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "a library or notice outside the package must not be proven through a symlink"
+ },
+ {
+  "id": "packaging.ort-package-proof-provider-link",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "[ ! -L \"$file\" ] || { printf 'ORT provider is a symlink",
+  "replace": "true || { printf 'ORT provider is a symlink",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "a provider alias can hide which provider the package loads"
+ },
+ {
+  "id": "packaging.ort-package-proof-core-alias",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "[[ \"${resolved##*/}\" =~ ^libonnxruntime\\.so(\\.[0-9]+)*$ ]] ||",
+  "replace": "true ||",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "the core name must not resolve to another component"
+ },
+ {
+  "id": "packaging.ort-package-proof-required",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "[ -f \"$lib/$name\" ] ||",
+  "replace": "true ||",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "a package without its selected provider must fail"
+ },
+ {
+  "id": "packaging.ort-package-proof-reject-invalid",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "[ \"$skip_invalid\" = 1 ] && continue",
+  "replace": "continue",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "the strict caller refuses a dangling ORT entry"
+ },
+ {
+  "id": "packaging.ort-package-proof-reject-links",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "[ \"$1\" = 1 ] || [ ! -L \"$2\" ] ||",
+  "replace": "true ||",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "the no-link caller refuses a linked ORT library"
+ },
+ {
+  "id": "packaging.ort-package-proof-notice-bytes",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "cmp \"$notice\" \"$proof_dir/$name\" || return 1",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "a changed notice must not pass"
+ },
+ {
+  "id": "packaging.ort-package-proof-notice-link",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "[ -f \"$notice\" ] && [ ! -L \"$notice\" ] ||",
+  "replace": "true ||",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "a linked or missing notice must not pass"
+ },
+ {
+  "id": "packaging.ort-appimage-uses-package-proof",
+  "target": "linux/scripts/06-packaging/verify-ort-appimage-payload.sh",
+  "find": "  ort_package_verify_notices \"$root\" \"${root}/${notice_dir}\" proven/licenses/onnxruntime\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-appimage-payload.sh",
+  "why": "the AppImage check must compare its notices with the matched wheel"
  }
 ]
