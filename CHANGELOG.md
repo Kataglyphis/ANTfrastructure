@@ -32,10 +32,12 @@
 - `run-lint-gates.sh --agents-drift` and `lint-gates.yml`'s `agents-drift` input run it, off by
   default; the slug `agents-drift` runs only the duplicate-line check over the hub.
   `quality-report.sh` now collects `agents_drift_findings`. New suite `test-agents-drift.sh`,
-  41 recipes.
+  43 recipes.
 - `BACKLOG.md` records the flaky `WindowsFormatting.ClangFormatCheck.Tests.ps1` and the web lane's
   `free-disk-space: fast` on 72 GB runners.
 - `BACKLOG.md` CON217 adds CUDA compute capability 7.5, so RTX 20xx cards can run the NVIDIA packages.
+- `BACKLOG.md` CON218 records that GenAI's default thread count ignores the CPU affinity mask.
+- AGENTS.md Quick Reference names the measurement tools and their docs pages.
 
 ## 2026-11-02 — Python app bundles ship a model lock as one data row
 

@@ -47,6 +47,7 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
   optional offline inputs, auditwheel and the optional DNNL provider. These also affect
   the CPU baseline that GPU consumers must continue to support.
 - **CUDA architectures:** CON217 adds Turing, so RTX 20xx cards can run the NVIDIA packages.
+- **GenAI threads:** CON218 covers the default thread count on pinned CPUs.
 - **Image readiness and capacity:** CON90 and CON174 track the ROCm Python rollout and
   measured disk requirements for GPU consumer builds.
 
@@ -446,6 +447,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `CUDAExecutionProvider`. Check Windows `:winamd64-nvidia` on such a card separately; the Linux
       run says nothing about it.
 
+- [ ] **CON218 — GenAI's default thread count ignores the CPU affinity mask** [S, ★★].
+      Found 2026-11-02 by `--perf-host` on an AMD Ryzen 9 5950X pinned to 8 CPUs: the shipped SmolLM2-135M
+      config gave about 92 tok/s and 143 ms to first token, with TTFT spread above 8 %. A copy fixed to 7
+      threads (`lib/genai-model-threads.py`) gave about 314 tok/s and 20 ms, and the perf baselines use that
+      copy, so their text figures are not the shipped default. Done when a shipped config respects the
+      mask, or the consumers set a bounded thread count, and a measurement quotes the unmodified model.
 - [ ] **CON207 — investigate Linux AMD GPU support for GenAI** [M, ★★]. The cached
       `:latest-rocm` amd64 image contains the vision ONNX Runtime MIGraphX provider, but its
       GenAI tree has only the generic library and llguidance; `60-build-genai.sh` builds GenAI

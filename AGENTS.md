@@ -380,6 +380,9 @@ Five of them are RULES and stay here:
   from this checkout; it stages only the initialized hub gitlink after checking both remotes.
   Commit and push the consumer separately, after the hub commit is published and green.
 
+- **Measure before and after.** `quality-report.sh` (with `--perf-host`), `fleet-health.py`, `security-audit.sh` and
+  `bench-history`: [`fleet-health.md`](docs/fleet-health.md) and [`vulnerability-scanning.md`](docs/vulnerability-scanning.md).
+
 - **Preview Python refactors before accepting them.** `bash linux/scripts/refactor-python.sh --check`
   reports formatter drift; `--apply -- <tracked.py>` makes pinned safe Ruff edits and saves a
   patch under ignored `logs/code-quality/`. The on-demand `python-refactor.yml` workflow uploads
