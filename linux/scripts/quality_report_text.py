@@ -144,6 +144,8 @@ def agents_drift(ctx: Context) -> Metric:
     if not os.path.isfile(os.path.join(ctx.tools, script)):
         return missing("agents_drift_findings", "findings", LOWER, CODE, source,
                        "the pinned hub has no verify_agents_drift.py yet")
+    if not os.path.isfile(os.path.join(ctx.root, "AGENTS.md")):
+        return missing("agents_drift_findings", "findings", LOWER, CODE, source, "no AGENTS.md")
     rc, reason = run([sys.executable, os.path.join(ctx.tools, script), "--root", ctx.root,
                       "--json", out], ctx.root, os.path.join(ctx.work, "agents-drift.log"))
     try:

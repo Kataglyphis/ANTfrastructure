@@ -1256,6 +1256,11 @@ The pin *preconditions* the copies carried ("does the pinned `lint-secrets.sh`
 understand a scan root yet?") are gone by construction: this script ships in the
 same commit as the gates it calls.
 
+**`--agents-drift`** (opt-in) adds
+[`verify_agents_drift.py`](code-quality-tooling.md#agents-drift-agents-drift) over the consumer:
+only a repo with the six-section `AGENTS.md` and a `quality-report.toml` passes it, so only the
+four AI consumers turn it on.
+
 **`--ratchets`** (opt-in, 2026-09-14) adds the eight measurement gates that take
 `--root` — `verify_code_size`, `verify_code_complexity`, `verify_dead_functions`,
 `verify_comment_size`, `verify_stdout_returns`, `verify_masked_assignments`,

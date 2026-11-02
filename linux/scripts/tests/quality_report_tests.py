@@ -186,6 +186,21 @@ class Checkouts(unittest.TestCase):
                           metrics["tests_skipped.unit"]["value"]), (1, 1))
         self.assertIn("- out/junit.xml:4 a.two", (root / "logs/code-quality/queue.md").read_text())
 
+    def test_agents_drift_is_measured_with_its_rows(self) -> None:
+        files = {"AGENTS.md": "# AGENTS.md\n", "l.txt": "", "d/p.md": "# page\n",
+                 "quality-report.toml": '[docs]\nbuild_list = "l.txt"\nsource = "d"\n'}
+        root = repo(self.tmp, "c", files)
+        rc, out = run(root, self.hub)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.measured(root)["agents_drift_findings"]["value"], 2)
+        self.assertIn("- l.txt:1 the docs build list leaves out d/p.md", (root / "logs/code-quality/queue.md").read_text())
+
+    def test_agents_drift_without_agents_md_is_not_collected(self) -> None:
+        root = repo(self.tmp, "c", {"tools/a.sh": "a() {\n  :\n}\n"})
+        rc, out = run(root, self.hub)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("not-collected: agents_drift_findings (no AGENTS.md)", out)
+
     def test_malformed_compare_is_incomplete(self) -> None:
         root = repo(self.tmp, "c", {"tools/a.sh": "a() {\n  :\n}\n"})
         (self.tmp / "bad.json").write_text("{not json")

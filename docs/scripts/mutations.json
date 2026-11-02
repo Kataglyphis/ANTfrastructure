@@ -33439,5 +33439,325 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-ort-appimage-payload.sh",
   "why": "the AppImage check must compare its notices with the matched wheel"
+ },
+ {
+  "id": "agents-drift.section5-workflow",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    for rel in tracked(root, [\".github/workflows/*.yml\"]):\n        name = os.path.basename(rel)\n        if not names(name, body):",
+  "replace": "    for rel in tracked(root, [\".github/workflows/*.yml\"]):\n        name = os.path.basename(rel)\n        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "a workflow section 5 omits must fail"
+ },
+ {
+  "id": "agents-drift.section5-script",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    for name in console_scripts(root):\n        if not names(name, body):",
+  "replace": "    for name in console_scripts(root):\n        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "a console script section 5 omits must fail"
+ },
+ {
+  "id": "agents-drift.section5-reads-section5",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    body = sections(agents).get(\"5\", \"\")",
+  "replace": "    body = agents",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "a name elsewhere in AGENTS.md is not section 5 naming it"
+ },
+ {
+  "id": "agents-drift.fence-is-no-heading",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        match = None if fenced else NUMBERED.match(line)",
+  "replace": "        match = NUMBERED.match(line)",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "a heading-shaped line in a code fence must not open a section"
+ },
+ {
+  "id": "agents-drift.whole-names-only",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    return re.search(rf\"(?<![\\w-]){re.escape(name)}(?![\\w-])\", text) is not None",
+  "replace": "    return name in text",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "xci2.yml must not name ci2.yml"
+ },
+ {
+  "id": "agents-drift.pyproject-scripts",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        found.update(toml_doc(root, rel).get(\"project\", {}).get(\"scripts\", {}))",
+  "replace": "        toml_doc(root, rel)",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "pyproject console scripts are console scripts"
+ },
+ {
+  "id": "agents-drift.cargo-bins",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        found.update(_cargo_bins(root, rel))",
+  "replace": "        toml_doc(root, rel)",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "Cargo binaries are console scripts"
+ },
+ {
+  "id": "agents-drift.cmake-installed",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    found.update(_cmake_installed(root))",
+  "replace": "    _cmake_installed(root)",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "installed CMake executables are console scripts"
+ },
+ {
+  "id": "agents-drift.cmake-only-installed",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "                for name in executables & installed}",
+  "replace": "                for name in executables}",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "an executable nothing installs is an internal tool"
+ },
+ {
+  "id": "agents-drift.cmake-variables",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    expanded = {CMAKE_REF.sub(lambda m: variables.get(m.group(1), m.group(0)), name)",
+  "replace": "    expanded = {CMAKE_REF.sub(lambda m: m.group(0), name)",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "a target built from ${PROJECT_NAME} must still count"
+ },
+ {
+  "id": "agents-drift.section1-unit",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if not any(names(name, body) for name in unit):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section1",
+  "why": "a unit section 1 omits must fail"
+ },
+ {
+  "id": "agents-drift.section1-reads-section1",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    body = sections(agents).get(\"1\", \"\")",
+  "replace": "    body = agents",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section1",
+  "why": "a unit named elsewhere is not named by section 1"
+ },
+ {
+  "id": "agents-drift.section1-python",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if rel.count(\"/\") == 1:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section1",
+  "why": "top-level Python packages count"
+ },
+ {
+  "id": "agents-drift.section1-crates",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "            yield (directory, package) if directory else (package,)",
+  "replace": "            continue",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section1",
+  "why": "crates count"
+ },
+ {
+  "id": "agents-drift.section1-dart",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if directory and directory.count(\"/\") <= 1:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section1",
+  "why": "Dart packages count"
+ },
+ {
+  "id": "agents-drift.section1-src",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if len(parts) > 2:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section1",
+  "why": "Src modules count"
+ },
+ {
+  "id": "agents-drift.headings",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    if [line for line in have if line in wanted] != wanted:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh headings",
+  "why": "missing or reordered headings must fail"
+ },
+ {
+  "id": "agents-drift.headings-order",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    if [line for line in have if line in wanted] != wanted:",
+  "replace": "    if not set(wanted) <= set(have):",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh headings",
+  "why": "a reordered set of headings must fail"
+ },
+ {
+  "id": "agents-drift.duplicate-line",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if line in first:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh duplicates",
+  "why": "a repeated long line must fail"
+ },
+ {
+  "id": "agents-drift.duplicate-limit-low",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "DUPLICATE_MIN = 41",
+  "replace": "DUPLICATE_MIN = 42",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh duplicates",
+  "why": "a 41-character repeat is longer than 40"
+ },
+ {
+  "id": "agents-drift.duplicate-limit-high",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "DUPLICATE_MIN = 41",
+  "replace": "DUPLICATE_MIN = 40",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh duplicates",
+  "why": "a 40-character repeat is not longer than 40"
+ },
+ {
+  "id": "agents-drift.docs-page",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if page != listing and not _listed(page, source, text):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh docs",
+  "why": "a page the build list omits must fail"
+ },
+ {
+  "id": "agents-drift.docs-stem-is-exact",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    entry = re.compile(rf\"^\\s*(?:.*<)?{re.escape(stem)}>?\\s*$\", re.MULTILINE)\n    return entry.search(build_list) is not None",
+  "replace": "    return stem in build_list",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh docs",
+  "why": "a page named new is not listed by a line naming newer"
+ },
+ {
+  "id": "agents-drift.docs-config-required",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        raise gate_scope.ScopeError(f\"no {CONFIG}: it declares the docs build list this gate reads\")",
+  "replace": "        return",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh docs",
+  "why": "no declared build list is unusable, not clean"
+ },
+ {
+  "id": "agents-drift.docs-list-required",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        raise gate_scope.ScopeError(f\"{CONFIG} names a docs build list that does not exist: {listing}\")",
+  "replace": "        return",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh docs",
+  "why": "a declared build list that is gone is unusable, not clean"
+ },
+ {
+  "id": "agents-drift.backlog-lai",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if lai.startswith(f\"LAI-{letter}\") and not names(lai, backlog):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh backlog",
+  "why": "an open ID of this repo must be in BACKLOG.md"
+ },
+ {
+  "id": "agents-drift.backlog-letter",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if lai.startswith(f\"LAI-{letter}\") and not names(lai, backlog):",
+  "replace": "        if lai not in backlog:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh backlog",
+  "why": "another repo's letter is not owed here"
+ },
+ {
+  "id": "agents-drift.lai-done-closed",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if \"Done \" in line:\n            continue",
+  "replace": "        if False:\n            continue",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh backlog",
+  "why": "a Done row is not open"
+ },
+ {
+  "id": "agents-drift.lai-id-cell-only",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "            if ID_CELL.match(cell):",
+  "replace": "            if LAI_ID.search(cell):",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh backlog",
+  "why": "an ID mentioned in another row's prose opens nothing"
+ },
+ {
+  "id": "agents-drift.json-totals",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "\"totals\": {\"findings\": len(findings), \"checks\": checks},",
+  "replace": "\"totals\": {\"findings\": 0, \"checks\": checks},",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh json",
+  "why": "quality-report reads totals.findings"
+ },
+ {
+  "id": "agents-drift.exit-code",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    return 1 if findings else 0",
+  "replace": "    return 0",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh basic docs",
+  "why": "findings must fail the gate"
+ },
+ {
+  "id": "agents-drift.hub-scope",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        findings = grade(root, HUB, gate_scope.is_hub(root, HUB))",
+  "replace": "        findings = grade(root, HUB, False)",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh hub",
+  "why": "the hub's rulebook has no numbered sections to hold"
+ },
+ {
+  "id": "agents-drift.hub-duplicates",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    findings = list(check_duplicates(agents))\n    if duplicates_only:",
+  "replace": "    findings = []\n    if duplicates_only:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh hub",
+  "why": "preflight's duplicate-line check must run over the hub"
+ },
+ {
+  "id": "agents-drift.lint-flag-grades",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  ${_LINT_GATES_PY} \"${_LINT_GATES_HUB_FILE}\" --root \"${_LINT_GATES_ROOT}\"\n}\n\n# Pure Python",
+  "replace": "  ${_LINT_GATES_PY} \"${_LINT_GATES_HUB_FILE}\"\n}\n\n# Pure Python",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh lintgates",
+  "why": "without --root it grades the hub and passes every consumer"
+ },
+ {
+  "id": "agents-drift.lint-flag-registered",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "    run_gate \"agents drift\" _lint_gates_agents_drift\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh lintgates",
+  "why": "the flag must reach the gate"
+ },
+ {
+  "id": "agents-drift.lint-flag-default-off",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "_LINT_GATES_AGENTS_DRIFT=0\n",
+  "replace": "_LINT_GATES_AGENTS_DRIFT=1\n",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh lintgates",
+  "why": "other consumers have no six-section AGENTS.md"
+ },
+ {
+  "id": "lint-gates.agents-drift-input-off",
+  "target": ".github/workflows/lint-gates.yml",
+  "find": "      agents-drift:\n        description: >-\n          Pass --agents-drift: hold AGENTS.md, the docs build list and BACKLOG.md\n          to the tree. Needs the six-section AGENTS.md and quality-report.toml.\n        type: boolean\n        default: false\n",
+  "replace": "      agents-drift:\n        description: >-\n          Pass --agents-drift: hold AGENTS.md, the docs build list and BACKLOG.md\n          to the tree. Needs the six-section AGENTS.md and quality-report.toml.\n        type: boolean\n        default: true\n",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "every other caller stays off until it opts in"
+ },
+ {
+  "id": "lint-gates.agents-drift-passes-flag",
+  "target": ".github/workflows/lint-gates.yml",
+  "find": "          if [ \"${LINT_AGENTS_DRIFT}\" = 'true' ]; then args+=(--agents-drift); fi\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "the input must reach the aggregator"
+ },
+ {
+  "id": "quality-report.agents-drift-no-agents-md",
+  "target": "linux/scripts/quality_report_text.py",
+  "find": "        return missing(\"agents_drift_findings\", \"findings\", LOWER, CODE, source, \"no AGENTS.md\")\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-quality-report.sh",
+  "why": "a tree without AGENTS.md has nothing to measure, so it is not-collected rather than a failed collector"
+ },
+ {
+  "id": "quality-report.agents-drift-counts-findings",
+  "target": "linux/scripts/quality_report_text.py",
+  "find": "        return Metric(\"agents_drift_findings\", total(doc, \"findings\"), \"findings\", LOWER, CODE,",
+  "replace": "        return Metric(\"agents_drift_findings\", 0, \"findings\", LOWER, CODE,",
+  "test": "bash linux/scripts/tests/test-quality-report.sh",
+  "why": "the metric must carry the gate's own count"
  }
 ]

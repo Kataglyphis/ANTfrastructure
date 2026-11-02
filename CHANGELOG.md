@@ -19,6 +19,18 @@
   `verify-ort-appimage-payload.sh` and three consumers carried as copies. `--reject-invalid` and
   `--reject-links` are off by default. The AppImage check's exit status is unchanged; its
   diagnostics now use the shared wording.
+## 2026-11-02 — A gate holds consumer AGENTS.md files to their tree
+
+- `linux/scripts/verify_agents_drift.py` fails on a workflow or console script section 5 does not
+  name, a package, crate or `Src` module section 1 does not name, missing template headings, a
+  repeated long line, a docs page outside the build list and an open `LAI-` ID missing from
+  `BACKLOG.md` ([`code-quality-tooling.md`](docs/code-quality-tooling.md#agents-drift-agents-drift)).
+- `run-lint-gates.sh --agents-drift` and `lint-gates.yml`'s `agents-drift` input run it, off by
+  default; the slug `agents-drift` runs only the duplicate-line check over the hub.
+  `quality-report.sh` now collects `agents_drift_findings`. New suite `test-agents-drift.sh`,
+  40 recipes.
+- `BACKLOG.md` records the flaky `WindowsFormatting.ClangFormatCheck.Tests.ps1` and the web lane's
+  `free-disk-space: fast` on 72 GB runners.
 
 ## 2026-11-02 — Python app bundles ship a model lock as one data row
 

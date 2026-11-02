@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run-lint-gates.sh - shellcheck, actionlint, gitleaks, ruff, shared config, pins, README length (+ratchets) over ONE consumer tree.
 
-#   run-lint-gates.sh <consumer-root> [--exclude <top-level-dir>]... [--ratchets] [--code-dupes|--code-dupes-report] [--allow-empty-shell]
+#   run-lint-gates.sh <consumer-root> [--exclude <top-level-dir>]... [--ratchets] [--code-dupes|--code-dupes-report] [--allow-empty-shell] [--agents-drift]
 
 # The root is mandatory: derived from BASH_SOURCE inside a submodule, it would grade ANTfrastructure instead.
 
@@ -23,6 +23,7 @@ _LINT_GATES_RATCHETS=0
 _LINT_GATES_CODE_DUPES=0
 _LINT_GATES_CODE_DUPES_REPORT=0
 _LINT_GATES_ALLOW_EMPTY_SHELL=0
+_LINT_GATES_AGENTS_DRIFT=0
 _LINT_GATES_PY=""
 
 _lint_gates_die() { printf 'run-lint-gates.sh: %s\n' "$*" >&2; exit 2; }
@@ -64,7 +65,11 @@ _lint_gates_parse_args() {
         _LINT_GATES_ALLOW_EMPTY_SHELL=1
         shift
         ;;
-      *) _lint_gates_die "unknown argument '$1' (expected --exclude <dir>, --ratchets, --code-dupes, --code-dupes-report or --allow-empty-shell)" ;;
+      --agents-drift)
+        _LINT_GATES_AGENTS_DRIFT=1
+        shift
+        ;;
+      *) _lint_gates_die "unknown argument '$1' (expected --exclude <dir>, --ratchets, --code-dupes, --code-dupes-report, --allow-empty-shell or --agents-drift)" ;;
     esac
   done
   [ "${#_LINT_GATES_EXCLUDE[@]}" -gt 0 ] || _LINT_GATES_EXCLUDE=(third_party)
@@ -212,6 +217,14 @@ _lint_gates_doc_dupes_hub() {
   printf '== verify_doc_dupes.py --against-hub --root %s ==\n' "${_LINT_GATES_ROOT}"
   # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
   ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --against-hub --root "${_LINT_GATES_ROOT}"
+}
+
+# Opt-in: it needs the six-section AGENTS.md and quality-report.toml only the AI consumers carry. See docs/code-quality-tooling.md#agents-drift-agents-drift
+_lint_gates_agents_drift() {
+  _lint_gates_hub linux/scripts/verify_agents_drift.py || return 1
+  _lint_gates_interpreter || return 1
+  # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
+  ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --root "${_LINT_GATES_ROOT}"
 }
 
 # Pure Python consumers have no units in this scanner yet; only that empty scope may pass.
@@ -397,6 +410,9 @@ _lint_gates_main() {
   run_gate "README length" _lint_gates_readme
   if [ "${_LINT_GATES_RATCHETS}" -eq 1 ]; then
     run_gate "ratchets" _lint_gates_ratchet
+  fi
+  if [ "${_LINT_GATES_AGENTS_DRIFT}" -eq 1 ]; then
+    run_gate "agents drift" _lint_gates_agents_drift
   fi
   if [ "${_LINT_GATES_CODE_DUPES}" -eq 1 ]; then
     run_gate "code duplication" _lint_gates_code_dupes strict

@@ -1895,6 +1895,16 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 ## Open — hub tooling and the dev host
 
+- [ ] **CON215 — `WindowsFormatting.ClangFormatCheck.Tests.ps1` flakes on its temp path** [S, ★].
+      Its fake `clang-format` matches "bad" anywhere in its argument, and the full temp path can
+      contain it: about 0.7 % of runs fail. Match the file's own name. Edit it only once the
+      ai-fleet goal, which freezes existing files under `windows/scripts/tests/`, has closed.
+
+- [ ] **CON216 — the web lane's `free-disk-space: fast` can leave too little disk for the image** [S, ★★].
+      On a 72 GB hosted runner the image pull can run out of disk after the fast reclaim. Measure
+      the free space after the pull on that runner size, then choose `true` there or a checked
+      floor before the pull.
+
 - [ ] **CON208 — `coverage_llvm_generate_profile` ignores the suite's exit status** [S, ★★].
       Found 2026-10-31 by `test-lib-coverage.sh`: a suite that fails but writes its profile
       returns 0, so a consumer's coverage step passes over failing tests unless another step runs
