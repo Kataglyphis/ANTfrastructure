@@ -1162,7 +1162,7 @@ bash third_party/ANTfrastructure/linux/scripts/run-in-ci-image.sh . -- bash scri
 ```
 
 `<repo-root> [--engine docker|nerdctl] [--platform ...] [--workdir ...]
-[--mount-hub-scripts] [--name N] [--keep] -- <command...>`.
+[--mount-hub-scripts] [--name N] [--user U[:G]] [--keep] -- <command...>`.
 
 Every consumer README, every "reproducing CI locally" section and half the agent
 prompts carried the same hand-typed `docker run`, and they had all drifted: a

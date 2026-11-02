@@ -16,7 +16,7 @@ earlier record and stores it. `.github/workflows/fleet-health.yml` runs it every
 | `quality-report.sh` | One checkout's tree metrics (Ruff, ty, duplication, size, complexity, allow rows, suppressions) and its lane artifacts | [`code-quality-tooling.md` § quality-report](code-quality-tooling.md#quality-report) |
 | `security-audit.sh` | Lockfile advisories with osv-scanner; artifact `security-audit` | [`vulnerability-scanning.md`](vulnerability-scanning.md#lockfile-audit-security-auditsh) |
 | `bench-history` | A benchmark result against earlier default-branch results; artifact `bench-history-<key>` | [`code-quality-tooling.md` § Benchmark history](code-quality-tooling.md#benchmark-history) |
-| `quality-report.sh --perf-host` | Planned, not built yet: runs the latency commands a repo declares in `quality-report.toml` on a quiet host | — |
+| `quality-report.sh --perf-host` | The latency commands a repo declares in `quality-report.toml`, run in the CI image on a quiet host, against a tracked per-CPU baseline | [§ perf-host](#perf-host) |
 | `fleet-health.py` | All of the above for the four repos, plus GitHub state | this page |
 
 ## Running it
@@ -121,6 +121,56 @@ and record are named in the goal's final report. Later runs compare with the pre
 successful run, so a regression is reported once, in the week it appeared; compare with an
 older record by passing its JSON with `--compare`.
 
+## perf-host
+
+```bash
+bash scripts/linux/quality-report.sh --perf-host                    # compare
+bash scripts/linux/quality-report.sh --perf-host --update-baseline  # rewrite the baseline
+```
+
+Run it as a named unit: `systemd-run --user --wait --collect --unit=perf-<repo> -p RuntimeMaxSec=7200
+--setenv=PATH="$PATH" --setenv=HOME="$HOME" bash scripts/linux/quality-report.sh --perf-host`.
+
+Both modes refuse a dirty checkout (tracked or untracked), a 1-minute load above 2, and an
+existing `${TMPDIR:-/tmp}/kata-cross-chain.pid`. A refusal starts no container and exits 2.
+
+**Declaration**, in `quality-report.toml`:
+
+```toml
+[perf]
+setup = "bash scripts/linux/perf-host.sh setup"  # once, untimed; a failure makes the run incomplete
+cpus = 8                                         # optional; the first N CPUs the container may use
+
+[[perf.command]]
+name = "detector_cpu"
+run = "bash scripts/linux/perf-host.sh detector cpu"
+metrics = [{ key = "p50_ms", unit = "ms", better = "lower" }]
+```
+
+The image comes from `ci-image-ref.sh`. It runs as container root, which rootless nerdctl maps to
+the host user, so setup's outputs stay editable; keep them in ignored paths or the next run is
+refused as dirty. Each command runs 20 times with `QUALITY_PERF_RUN` set to the run index. The
+last stdout line of a run is one JSON object holding every declared key as a positive number, or
+`{"not_collected": "<reason>"}`, which marks the command's metrics not collected, as for a
+provider the image cannot load. A nonzero exit, other output or a run over 600 s makes the run
+incomplete.
+
+**Grading.** A metric is `perf.<command>.<key>`, and its figure is the median of the 20 runs. The
+spread is the median absolute deviation over the median. With the baseline's spread, a metric
+regresses when it is worse than the baseline's median by more than max(10 %, 3 x spread). Every
+graded metric prints `ratio <metric> <now / baseline> <held|improved|regressed> (...)`. A metric
+the baseline lacks is not collected. Exit 0 is ok, 1 regressed and 2 incomplete: a refusal, a
+failed setup or command, or no readable baseline for this CPU.
+
+**Baseline.** `perf/baseline-<cpu-slug>.json`, named after lscpu's model name, stores the model,
+SHA, time, CPUs and the 20 raw samples per metric. `--update-baseline` writes it only when no
+collected metric's spread is above 5 %; commit it in a reviewed commit. Each run's samples, the
+plan and the container log are under ignored `logs/code-quality/perf/`.
+
+Blind spots: a low load average does not prove a quiet host, the image can move between a
+baseline and a run, and nothing checks that a command times the code it names. Its suite
+(`test-quality-report-perf.sh`) uses a fixture engine, never the image.
+
 ## Owner routine
 
 1. On Monday, read the run's step summary or the open `fleet-health` issue.
@@ -130,6 +180,8 @@ older record by passing its JSON with `--compare`.
    commit to appear.
 4. A red run is a measurement failure: read its `failed:` lines, fix the cause and dispatch
    again.
+5. Monthly, run [`--perf-host`](#perf-host) on a quiet host. Refresh a baseline only with
+   `--update-baseline` in a reviewed commit.
 
 ## What it does not do
 

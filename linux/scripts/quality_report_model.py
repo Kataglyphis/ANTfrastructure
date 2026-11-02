@@ -62,6 +62,12 @@ def failed(name: str, unit: str, better: str, klass: str, source: str, reason: s
     return Metric(name, None, unit, better, klass, source, status=FAILED, reason=reason)
 
 
+def git(root: str, *args: str) -> str:
+    """One git answer, empty on failure."""
+    out = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, check=False)
+    return out.stdout.strip() if out.returncode == 0 else ""
+
+
 def normalise(text: str) -> str:
     """Whitespace-normalised line text, the stable part of a set member key."""
     return " ".join(text.split())

@@ -32985,6 +32985,110 @@
   "why": "a quality-report crash that exits 1 must fail the job, not pass as a regression"
  },
  {
+  "id": "quality-report.perf-spread-ignored",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "    limit = max(MIN_LIMIT, SPREAD_FACTOR * old.spread())",
+  "replace": "    limit = MIN_LIMIT",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_limit_is_three_spreads",
+  "why": "a noisy baseline widens the limit to three times its spread"
+ },
+ {
+  "id": "quality-report.perf-direction-inverted",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "    worse = ratio > 1 + limit if metric.better == LOWER else ratio < 1 - limit",
+  "replace": "    worse = ratio < 1 - limit if metric.better == LOWER else ratio > 1 + limit",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_fewer_tokens_per_second_regresses",
+  "why": "a higher-is-better rate that drops must regress"
+ },
+ {
+  "id": "quality-report.perf-dirty-tree-measured",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "    if git(root, \"status\", \"--porcelain\"):",
+  "replace": "    if git(root, \"status\", \"--porcelain\") == \"dirty\":",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_dirty_tree_is_refused",
+  "why": "a measurement must belong to a commit"
+ },
+ {
+  "id": "quality-report.perf-busy-host-measured",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "    if (load := load_average()) > MAX_LOAD:",
+  "replace": "    if (load := load_average()) > MAX_LOAD * 10:",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_busy_host_is_refused",
+  "why": "a loaded host must not record or grade latencies"
+ },
+ {
+  "id": "quality-report.perf-running-chain-measured",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "    if os.path.exists(chain_pidfile()):",
+  "replace": "    if os.path.exists(chain_pidfile() + \".absent\"):",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_running_chain_is_refused",
+  "why": "an image chain on the host makes every figure meaningless"
+ },
+ {
+  "id": "quality-report.perf-noisy-baseline-written",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "m.status == COLLECTED and m.spread() > MAX_BASELINE_SPREAD]",
+  "replace": "m.status == COLLECTED and m.spread() > 1]",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_noisy_update_is_refused",
+  "why": "a baseline whose spread exceeds 5 % must not be written"
+ },
+ {
+  "id": "quality-report.perf-first-run-graded",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "        return statistics.median(self.samples)",
+  "replace": "        return self.samples[0]",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_one_outlier_run_holds",
+  "why": "the graded figure is the median of the runs, so one outlier run holds"
+ },
+ {
+  "id": "quality-report.perf-fewer-runs",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "RUNS = 20\n",
+  "replace": "RUNS = 5\n",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_update_writes_twenty_samples",
+  "why": "the baseline stores 20 raw samples per metric"
+ },
+ {
+  "id": "quality-report.perf-missing-baseline-ok",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "        return None, [f\"no baseline for {model!r}; record one with --update-baseline\"]",
+  "replace": "        return None, []",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_missing_baseline_is_incomplete",
+  "why": "a CPU without a baseline is incomplete, never ok"
+ },
+ {
+  "id": "quality-report.perf-unavailable-as-failure",
+  "target": "linux/scripts/quality_report_perf_run.py",
+  "find": "            return {\"status\": \"not-collected\", \"reason\": answer}",
+  "replace": "            return {\"status\": \"failed\", \"reason\": answer}",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_unavailable_provider_is_not_collected",
+  "why": "an unavailable provider is not collected, not a failed run"
+ },
+ {
+  "id": "quality-report.perf-zero-accepted",
+  "target": "linux/scripts/quality_report_perf_run.py",
+  "find": "                or not math.isfinite(value) or value <= 0:",
+  "replace": "                or not math.isfinite(value):",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_zero_value_is_incomplete",
+  "why": "a zero latency or rate is a broken command, not a figure"
+ },
+ {
+  "id": "quality-report.perf-cpus-unpinned",
+  "target": "linux/scripts/quality_report_perf_run.py",
+  "find": "    chosen = allowed[:max(1, count)]",
+  "replace": "    chosen = allowed",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_update_writes_twenty_samples",
+  "why": "the runs use at most the declared number of CPUs"
+ },
+ {
+  "id": "quality-report.perf-container-user",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "root, \"--user\", \"0:0\",",
+  "replace": "root,",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_image_runs_as",
+  "why": "container root maps to the host user; the image's own uid cannot write the rootless bind mount"
+ },
+ {
   "id": "bench-history.doubling-passes",
   "target": "linux/scripts/bench-history.py",
   "find": "            return cell, f\"{name} {change}\"",

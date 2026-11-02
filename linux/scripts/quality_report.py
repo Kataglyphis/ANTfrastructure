@@ -18,9 +18,10 @@ import tomllib
 import quality_report_artifacts as artifacts
 import quality_report_compare as compare
 import quality_report_github as github
+import quality_report_perf as perf
 import quality_report_text as text
 import quality_report_tree as tree
-from quality_report_model import COLLECTED, SCHEMA_VERSION, Metric
+from quality_report_model import COLLECTED, SCHEMA_VERSION, Metric, git
 
 HUB = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 EXIT = {"ok": 0, "regressed": 1, "incomplete": 2}
@@ -36,13 +37,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                     help="the hub checkout hub-reuse compares with (default: the hub holding this script)")
     ap.add_argument("--offline", action="store_true",
                     help="read only local files: lane artifacts and previous-develop are not fetched")
-    return ap.parse_args(argv)
-
-
-def git(root: str, *args: str) -> str:
-    """One git answer, empty on failure."""
-    out = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, check=False)
-    return out.stdout.strip() if out.returncode == 0 else ""
+    ap.add_argument("--perf-host", action="store_true",
+                    help="run the declared [[perf.command]] latencies in the CI image instead; "
+                         "compare with perf/baseline-<cpu>.json")
+    ap.add_argument("--update-baseline", action="store_true",
+                    help="with --perf-host: rewrite perf/baseline-<cpu>.json; refuses a spread above 5 %%")
+    args = ap.parse_args(argv)
+    if args.update_baseline and not args.perf_host:
+        ap.error("--update-baseline needs --perf-host")
+    return args
 
 
 def load_config(root: str) -> tuple[dict[str, object], list[str]]:
@@ -121,6 +124,10 @@ def main(argv: list[str] | None = None) -> int:
     shutil.rmtree(work, ignore_errors=True)
     os.makedirs(work)
     config, problems = load_config(root)
+    if args.perf_host:
+        if problems:
+            return perf.report([], perf.Graded(problems=problems), "none")
+        return perf.run(root, os.path.abspath(args.hub), config, args.update_baseline)
     ctx = tree.Context(root, os.path.abspath(args.hub), work, config)
     problems += text.docs_build_list(ctx)
     sha = git(root, "rev-parse", "HEAD")

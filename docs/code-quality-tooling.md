@@ -987,7 +987,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4156 entries** over **517 distinct test commands**; both digits are
+manifest holds **4169 entries** over **529 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2155,6 +2155,8 @@ lines in the file. A moved line keeps its key; a new member regresses even when 
   (`mutations_selected.<name>`, `mutations_caught.<name>` from `verify_mutations.py` report
   lines), `clang-tidy` (`clang_tidy.<name>`, a `file|check` set) and `count` (`<name>`, lines
   matching `pattern`, located through `location`).
+- `[perf]` and `[[perf.command]]`: the `--perf-host` latencies
+  ([declaration](fleet-health.md#perf-host)).
 - `[[metric]]` rows: `kind = "pattern"` (a regex over tracked files under `paths`, filtered by
   `include` and `exclude` globs, set-valued) or `kind = "ruff"` (the locked Ruff over `paths`
   with `config` overrides).
@@ -2188,7 +2190,9 @@ metrics are commonly not collected there.
 
 Blind spots: suppressions are literal marker text, so another spelling is not counted;
 `summary.md` is not graded; a metric absent from the baseline is not graded; nothing attributes
-a change to a commit. `test-quality-report.sh` covers a rise, a fall, a direction, a set swap, a
+a change to a commit. `--perf-host [--update-baseline]` instead runs the repo's declared
+latencies in the CI image against a per-CPU baseline:
+[`fleet-health.md` § perf-host](fleet-health.md#perf-host). `test-quality-report.sh` covers a rise, a fall, a direction, a set swap, a
 moved set member, a missing collector, an absent artifact, a malformed compare file and the queue.
 
 ## Windows Pester coverage

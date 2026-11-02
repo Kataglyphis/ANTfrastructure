@@ -26,6 +26,17 @@
 
 - `docs/language-ai.md` names the bindings that implement `seed`, `json_schema` and stop strings, and the Windows unsupported error.
 
+## 2026-11-02 — quality-report.sh --perf-host
+
+- `--perf-host` runs the latency commands a repo declares under `[[perf.command]]` in
+  `quality-report.toml`, 20 times each inside the CI image on at most 8 pinned CPUs, and grades each
+  median against the tracked `perf/baseline-<cpu-slug>.json`: a regression is beyond max(10 %, 3 x the
+  baseline's spread). `--update-baseline` refuses a spread above 5 %; both modes refuse a dirty tree, a
+  1-minute load above 2 or a chain pidfile
+  ([`docs/fleet-health.md` § perf-host](docs/fleet-health.md#perf-host)). New suite
+  `test-quality-report-perf.sh` and thirteen `quality-report.perf-*` mutation recipes.
+- `run-in-ci-image.sh` takes `--user`.
+
 ## 2026-11-01 — One canonical COCO class list
 
 - `shared/config/coco-classes.txt` holds the 80 COCO class names, line N for class id N-1, and the
