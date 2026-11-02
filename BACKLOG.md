@@ -48,6 +48,7 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
   the CPU baseline that GPU consumers must continue to support.
 - **CUDA architectures:** CON217 adds Turing, so RTX 20xx cards can run the NVIDIA packages.
 - **GenAI threads:** CON218 covers the default thread count on pinned CPUs.
+- **riscv64 ORT:** CON219 covers the 4-bit `MatMulNBits` crash on RVV.
 - **Image readiness and capacity:** CON90 and CON174 track the ROCm Python rollout and
   measured disk requirements for GPU consumer builds.
 
@@ -453,6 +454,14 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       threads (`lib/genai-model-threads.py`) gave about 314 tok/s and 20 ms, and the perf baselines use that
       copy, so their text figures are not the shipped default. Done when a shipped config respects the
       mask, or the consumers set a bounded thread count, and a measurement quotes the unmodified model.
+- [ ] **CON219 — ORT reads a null scale pointer in 4-bit `MatMulNBits` on riscv64 RVV** [M, ★★★].
+      Found 2026-11-02 with OxidANT's SmolLM2-135M contract test under QEMU, image index `7d4d4129`: a fault in
+      `libonnxruntime.so.1.31.0` at `0x150150c` on `flw fa5, 0x0(s10)`, `s10=0x1f80`. In ORT v1.31.0's
+      `matmul_nbits.cc`, `UseSharedPrePackedBuffers` sets `scales_are_packed_` with a 4-bit exception guarded by
+      `MLAS_TARGET_ARM64`, while `PrePack` uses `!MLAS_TARGET_AMD64_IX86`. That cause comes from reading the source;
+      no patched build was tested. Stack size and vector length are ruled out. Shipped riscv64 images are exposed
+      for such models. OxidANT's lane forces scalar MLAS for that one test (`63828b5`). Done when a patched chain
+      build passes the test on RVV and OxidANT drops the override; an image chain is an owner decision.
 - [ ] **CON207 — investigate Linux AMD GPU support for GenAI** [M, ★★]. The cached
       `:latest-rocm` amd64 image contains the vision ONNX Runtime MIGraphX provider, but its
       GenAI tree has only the generic library and llguidance; `60-build-genai.sh` builds GenAI

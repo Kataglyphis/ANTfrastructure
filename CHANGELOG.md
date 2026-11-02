@@ -39,6 +39,7 @@
 - `BACKLOG.md` CON218 records that GenAI's default thread count ignores the CPU affinity mask.
 - AGENTS.md Quick Reference names the measurement tools and their docs pages.
 - `verify_agents_drift.py` no longer reports a nested toctree page as unlisted on Windows.
+- `gen1-riscv64-genai.md` and `BACKLOG.md` CON219 record the 4-bit `MatMulNBits` crash on riscv64 RVV.
 
 ## 2026-11-02 — Python app bundles ship a model lock as one data row
 
