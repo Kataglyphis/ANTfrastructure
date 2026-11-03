@@ -952,6 +952,8 @@ The rules:
 2. **`~/.config/buildkit/buildkitd.toml` pins the GC budget** (`gckeepstorage`) so the multi-hour
    layers survive between runs. Do not delete it; restart buildkitd only BETWEEN runs
    (`systemctl --user restart buildkit`), never while a build solves.
+   The chain's disk guard does this itself once when a stopped run's records block its prune and
+   no `buildctl` runs ([`build-cache-tiers.md`](docs/build-cache-tiers.md#a-stopped-chain-leaves-records-in-use)).
 
 3. **One resolver decides which compiler cache runs**: `compiler_cache_launcher()` in
    `01-core/common.sh`, at RUNTIME, per call. Hence:
