@@ -228,7 +228,7 @@ on the GPU:
 | OxidANT | `$env:KATAGLYPHIS_ORT_DEVICE='directml'; oxidant-directml.cmd onnx-detect --image two_cats.jpg --output gpu.json --profile gpu-prof --repeat-output gpu-repeat.json` |
 | AccelerANTgine | `AccelerANTgine_demo.exe --device directml --device-id 0 --detector-image two_cats.jpg --detector-output gpu.json --detector-repeat-output gpu-repeat.json --profile gpu-prof` |
 | OmniAccelerANT | `$env:KATAGLYPHIS_ORT_DEVICE='directml'; omni_accelerant.exe --detect-check two_cats.jpg`, exit 0 with two cats |
-| OrchestrANT | `scripts/diagnostics/detector_parity.py` on the bundle's `runtime/python.exe`; its `--device` has no `directml` yet |
+| OrchestrANT | `scripts/diagnostics/detector_parity.py --device directml` on the bundle's `runtime/python.exe` |
 
 Compare with `compare_detector_parity.py cpu.json gpu.json`, then check the GPU run's profile with
 `verify_ort_profile.py PROFILE.json --device directml`. Take both. On 2026-11-02 an RX 9070 XT ran

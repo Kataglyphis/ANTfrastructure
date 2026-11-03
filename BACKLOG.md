@@ -43,11 +43,10 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
 - **Windows GPU runtimes:** CON180–185 and CON201 cover DirectML/CUDA provenance,
   provider paths, media plugins, native DLL notices and Media Foundation availability.
 - **Runtime provenance:** CON203–204 cover the Linux ROCm and NVIDIA library handoff.
-- **Build tools and offline inputs:** CON145, CON177–179, CON186–187, CON194–195,
-  CON197, CON199–200, CON205–206 and CON214 cover tools, plugins, SDK/cache inputs and
-  Flutter/FRB generation; entries distinguish required fixes from optional offline support.
-- **CPU image and package handoff findings:** CON188–193 cover DEB host-library versioning,
-  optional offline inputs, auditwheel and the optional DNNL provider. These also affect
+- **Build tools:** CON145, CON177–179, CON187, CON194, CON197, CON199, CON206 and CON214
+  cover tools, plugins, SDK inputs and Flutter/FRB generation.
+- **CPU image and package handoff findings:** CON188, CON190 and CON191 cover DEB host-library
+  versioning, auditwheel and the DNNL provider's oneDNN runtime. These also affect
   the CPU baseline that GPU consumers must continue to support.
 - **CUDA architectures:** CON217 adds Turing, so RTX 20xx cards can run the NVIDIA packages.
 - **Results on a GPU:** CON220 covers wrong DirectML output that the provider checks do not see.
@@ -477,12 +476,14 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       no patched build was tested. Stack size and vector length are ruled out. Shipped riscv64 images are exposed
       for such models. OxidANT's lane forces scalar MLAS for that one test (`63828b5`). Done when a patched chain
       build passes the test on RVV and OxidANT drops the override; an image chain is an owner decision.
-- [ ] **CON221 — decide which tools OxidANT's lanes install with apt belong in the images** [S, ★★].
-      Found 2026-11-02: `scripts/linux/clippy-windows.sh` installs `gcc-mingw-w64-x86-64` when
-      `x86_64-w64-mingw32-gcc` is missing, which it is in `:latest` amd64, and the NVIDIA and AMD package lanes
-      (`linux-nvidia-gpu-build.yml`, `linux-x64-amd-gpu.yml`) install `libgtk-4-dev`. Those installs are
-      unpinned and need the network. Other variants and arches were not probed. Done when each tool is in
-      the image with a size figure, or the reason it stays out is recorded and the lane keeps its install.
+- [ ] **CON221 — add `libgtk-4-dev` to the NVIDIA and AMD images** [S, ★★]. Owner decision 2026-11-03. Chain work:
+      add it to both variants, record the size, and drop the installs in OxidANT's
+      `linux-nvidia-gpu-build.yml` and `linux-x64-amd-gpu.yml`. `gtk4_dev_packages` leaves it off amd64 on purpose: it
+      pulls back the distro GTK and GStreamer runtime that `drop_redundant_distro_gtk4` removes. So change that choice
+      per variant, keep the prefix winning the `ld.so` lookup, leave `:latest` as it is and update
+      [the contract's GTK 4 section](docs/consumer-image-contract.md#gtk-4-for-gtk4-rs). Done when both variants pass
+      `verify_gtk4_dev_surface` as uid 1001 and OxidANT's lanes build the GUI without installing it.
+      `gcc-mingw-w64-x86-64` stays out ([why](docs/image-decisions.md#deliberate--not-gaps)).
 - [ ] **CON207 — investigate Linux AMD GPU support for GenAI** [M, ★★]. The cached
       `:latest-rocm` amd64 image contains the vision ONNX Runtime MIGraphX provider, but its
       GenAI tree has only the generic library and llguidance; `60-build-genai.sh` builds GenAI
@@ -599,7 +600,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       **2026-11-02:** OxidANT's GPU workflows still install the package
       (`linux-x64-amd-gpu.yml`, `linux-nvidia-gpu-build.yml`). Runs 41517659698 (`:latest-rocm`
       `05518138…`) and 41517653860 (`:latest-nvidia` `70bc45db…`, x64) did so, which does not show
-      whether these digests still need it. Remove both installs with this fix.
+      whether these digests still need it. Remove both installs with this fix; CON221 records
+      the owner's 2026-11-03 decision to put `libgtk-4-dev` into the GPU images.
 
 - [ ] **CON176 — verify the Vulkan development surface in GPU consumer images** [S, ★★].
       On 2026-10-30 the cached amd64 `:latest-nvidia` (`0e9dec34…`) and `:latest-rocm`
@@ -662,30 +664,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       also reported that optional plugin missing during a fresh OrchestrANT bundle build;
       this does not establish the status of any other GStreamer plugin or camera path.
 
-- [ ] **CON186 — decide whether the NVIDIA ARM image must seed locked application dependencies** [S, ★★].
-      On 2026-10-30 the cached NVIDIA arm64 child
-      `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11`
-      reported that its uv cache seed is intentionally limited to riscv64. As uid 1001,
-      an isolated PRoot/QEMU test exported OrchestrANT's locked `app` requirements with
-      the shared ORT-provider exclusions, then ran `uv pip install --dry-run --offline`
-      against a fresh Python 3.15 venv and the image's chain ORT wheel. Resolution stopped
-      at `antlr4-python3-runtime==4.9.3`, which was unavailable to the selected offline
-      cache. Decide whether offline ARM consumer builds are part of the image contract;
-      if so, seed and verify the locked wheels on native ARM in the next image. This probe
-      does not show that a network-backed build fails or that the image's existing Python
-      environment lacks the package.
-
-- [ ] **CON189 — decide whether the Linux x64 CPU image should seed pip for offline uv venvs** [S, ★].
-      On 2026-10-30 the cached x64 CPU `:latest` registry digest
-      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
-      contained pip 26.2.2 in `/opt/venv`, but a fresh OrchestrANT Python 3.15 packaging
-      venv with `UV_OFFLINE=1` and networking disabled failed to seed pip because uv's
-      selected cache did not contain it. The normal network-backed retry seeded pip and
-      proceeded to install the locked app dependencies and the image's chain ORT wheels.
-      Decide whether offline consumer packaging is part of this image's contract; if so,
-      seed the required wheel and verify fresh venv creation as the image's normal user.
-      This finding does not show that pip is absent or that the networked path fails.
-
 - [ ] **CON190 — provide auditwheel for the Linux CPU image's Python wheels** [S, ★★].
       On 2026-10-30 the cached x64 CPU `:latest` registry digest
       `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
@@ -698,42 +676,14 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       with a real consumer build. This observation does not establish that the app bundle
       fails, nor that unrepaired wheels work on every target distribution.
 
-- [ ] **CON191 — resolve or document the Linux CPU image's optional DNNL provider** [S, ★★].
-      On 2026-10-30 the cached x64 CPU `:latest` registry digest
-      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
-      carried ONNX Runtime's `libonnxruntime_providers_dnnl.so`, but `ldd` reported its
-      `libdnnl.so.3` as not found; neither `ldconfig -p` nor scans of `/opt`, `/usr/local`
-      and `/usr/lib` found that SONAME. The pinned OrchestrANT bundle builder explicitly
-      allows this optional provider dependency to remain unresolved. Decide whether the
-      image should supply the matching oneDNN runtime and its redistributable license, or
-      whether the provider is intentionally unavailable; verify the resulting provider
-      on a clean host. The ordinary model self-test subsequently passed with the CPU
-      execution provider and output shape `[1, 300, 6]` on both the host and bundled
-      glibc loader paths. An explicit DNNL session in the same bundle reported the missing
-      `libdnnl.so.3` and fell back to `CPUExecutionProvider`, despite listing DNNL as
-      available; that proves neither DNNL acceleration nor its clean-host behavior.
-      On 2026-11-02 `--perf-host` reported the DNNL rows of AccelerANTgine and OxidANT as not collected
-      (`ProviderUnavailable`), and the AI-fleet goal's DNNL proof on amd64 stays open until this is resolved.
-
-- [ ] **CON192 — decide whether the Windows x64 CPU image should cache locked app dependencies** [S, ★★].
-      On 2026-10-30 the cached `:winamd64` registry image digest
-      `sha256:bec12ad0afe6a5f0a90ae7c58ac06e605ee64b2a06c555842019bb1f00062927`
-      built OrchestrANT 0.0.32's CPython 3.15 wheel, but its isolated app bundle build
-      with `UV_OFFLINE=1` and networking disabled could not resolve the locked
-      `antlr4-python3-runtime==4.9.3` in the selected cache. Decide whether offline
-      consumer packaging belongs to this image's contract; if so, seed and verify the
-      locked app dependencies in a fresh bundle. A normal network-backed retry resolved
-      the 25 app dependencies and built the locked antlr4 source package successfully.
-      This shows a missing offline cache entry, not that the image's existing Python
-      environment lacks the package.
-
-- [ ] **CON193 — decide whether Linux CPU images should include actionlint** [S, ★★].
-      On 2026-10-30, the cached Linux CPU image digest
-      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
-      had no `actionlint` on PATH. The shared checksum-verified bootstrap downloaded
-      pinned actionlint 1.7.12 and successfully checked the OrchestrANT and hub Linux GPU
-      workflows. Decide whether to include the pinned binary in the next image to support
-      offline workflow checks, and verify its version and ShellCheck integration if added.
+- [ ] **CON191 — ship the matching oneDNN runtime and its license in the Linux image** [S, ★★]. Owner decision
+      2026-11-03. Chain work. The chain ORT lists `DnnlExecutionProvider` on amd64, but `libonnxruntime_providers_dnnl.so`
+      needs `libdnnl.so.3`, and no path in `:latest` holds it (`3c558d88…`, read 2026-10-30). An explicit DNNL session
+      falls back to `CPUExecutionProvider`, and on 2026-11-02 `--perf-host` reported the DNNL rows of AccelerANTgine
+      and OxidANT as `ProviderUnavailable`. Ship the `libdnnl.so.3` that provider was built against, with its
+      redistributable license and a row in `docs/third-party-licenses.md`. Done when a bundle on a clean host runs an
+      explicit DNNL session with its operators on that provider, which is also the AI-fleet goal's open DNNL proof on
+      amd64. Listing the provider proves nothing; arm64 does not build it.
 
 - [ ] **CON194 — eliminate build-directory TCL RPATHs from Python runtimes used in GPU images** [M, ★★].
       On 2026-10-30, retained OrchestrANT GPU x64 bundles built with cached NVIDIA index
@@ -749,19 +699,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       both glibc modes and native architectures, and prove no external build-directory RPATH
       remains. Removing just these two paths in disposable GPU copies allowed their dependency
       scans to pass, but is not a fresh image or application build proof.
-
-- [ ] **CON195 — decide whether the NVIDIA ARM image should seed consumer Cargo dependencies** [S, ★★].
-      On 2026-10-30, the cached NVIDIA arm64 child
-      `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11`
-      provided Rust and Cargo 1.99.0 under uid 1001 and QEMU, but its default
-      `/usr/local/cargo/registry` was absent. With networking disabled, `cargo fetch
-      --locked --offline --target aarch64-unknown-linux-gnu` against OxidANT's current
-      lockfile failed because `chrono` was unavailable in the crates.io index. A separately
-      populated temporary cache allowed an offline emulated compilation to start. Decide
-      whether the next image should seed locked consumer crates or document that consumer
-      builds require network access; if seeding, verify the lockfile and target offline as
-      uid 1001 on the rebuilt native ARM image. This is an optional offline-cache gap, not
-      evidence of a missing compiler or a broken network-backed build.
 
 - [ ] **CON187 — make the Linux GPU image's sccache log writable and honor disabled caching** [S, ★★].
       On 2026-10-30, the cached `:latest-rocm` digest
@@ -1025,45 +962,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       see `_implementation/omni-nvidia-prospective-build-20261031/image-tools-inspection.log`.
       This is an offline image gap, not evidence that network-backed builds fail; check
       other image variants independently. CPU proof: `_implementation/omni-full-cpu-proof-20261031/proof.log`.
-
-- [ ] **CON205 — decide whether Linux images should precache Flutter artifacts** [S, ★★].
-      On 2026-10-31, the cached Linux amd64 CPU `:latest` registry image digest
-      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
-      had no `/opt/flutter/bin/cache/artifacts/material_fonts` as its normal uid 1001.
-      With networking disabled, `flutter --suppress-analytics precache --linux` attempted
-      to download Flutter's `fonts.zip` and failed DNS resolution. Decide whether offline
-      Flutter precaching belongs to the image contract; if so, seed the needed artifacts
-      and verify precaching as the normal user without network access in a fresh image.
-      The cached Linux amd64 `:latest-nvidia` image digest
-      `sha256:70bc45db5e2032cad3042b88b2f9a1c06cf4c4ddbbfc91251fbc0c9a2cba233d`
-      likewise failed `flutter precache --linux` at the material-font download with
-      networking disabled, its default `kataglyphis` user, no mounts and no overrides.
-      After a synthetic material-font cache marker in a disposable copy of that image,
-      the same offline command next attempted to download the Gradle wrapper. That probe
-      did not install or verify the font files and does not prove the remaining cache is complete.
-      The cached Linux amd64 `:latest-rocm` image digest
-      `sha256:a5d68fbe64e579de09473290489b6953b5bce9aeb7644c18b86d6969bf37ace8`
-      also lacked the material-font cache and failed the same offline precache command
-      trying to download `fonts.zip`, as uid 1001 in a fresh container without mounts.
-      Its Flutter 3.47.6 engine `692136cb6582dbfc5af3fb33c2515a069f2f66d0` differs
-      from the retained NVIDIA Flutter 3.47.7 cache. When that cache served a no-network
-      AMD precache probe, the probe progressed past fonts and Gradle but could not find
-      this engine's `sky_engine.zip`. Version-matched official assets were then fetched
-      with server MD5 checks and recorded SHA-256 values; a local-cache precache probe
-      passed with networking disabled. See `_implementation/omni-amd-prospective-build-20261031/flutter-cache-probe-exec.log`,
-      `fetch-flutter-cache-retry.log` and `flutter-cache-probe-verified.log`.
-      Check other image digests and architectures independently. This is an offline cache
-      gap; it does not establish that network-backed builds fail.
-      Separately, an offline OmniAccelerANT CPU build using that cached `:latest` image
-      failed when the `sqlite3.dart` 3.7.1 native-asset hook tried to download its Linux x64
-      SQLite library from GitHub. The retained local-cache workaround used asset SHA-256
-      `1ff25026f7bcd7e740f98d5b852ae6e79d2400c076f046096295f91a5b60aeb8`;
-      see `_implementation/omni-full-cpu-proof-20261031/proof-offline.log` and its
-      `VALIDATION.md`. Decide whether the offline image contract includes these locked
-      Flutter native assets; if so, seed the supported platform assets with source, licence
-      and hash, and prove the actual hook and consumer build as uid 1001 without network.
-      Check GPU images and other platforms independently. This does not establish that a
-      system SQLite library is missing or that a network-backed build fails.
 
 - [ ] **CON204 — preserve Linux NVIDIA runtime provenance and notice handoff** [M, ★★★].
       On 2026-10-31, the cached Linux ARM NVIDIA image child
@@ -1365,32 +1263,14 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Inside the image, `ORT_DYLIB_PATH` points at `/usr/local/lib/onnxruntime-cpu`, which a package then loads instead
       of its own (`MIGraphXExecutionProvider is absent`). Unset it for any package check in the image.
 
-- [ ] **CON201 — assess Media Foundation availability in the Windows AMD GPU image** [M, ★★].
-      On 2026-10-31, the cached `:winamd64-rocm` registry image digest
-      `sha256:774af209a9282b8e8439653eb55756228a6ebdd219076ddc54a1e012e550c99c`
-      contained `C:\runtime\lib\gstreamer-1.0\gstmediafoundation.dll`, but a fresh
-      no-network container could not load it and `gst-inspect-1.0 mfvideosrc` reported
-      no such element. The plugin imports `MFPlat.dll`, `MF.dll`, and `MFReadWrite.dll`,
-      none of which were present in the image's `System32` or `C:\runtime\bin`.
-      The same inspection found `autovideosrc`, `videoconvert`, `capsfilter`, and
-      `appsink`. Decide whether the next image should provide Media Foundation in a
-      supported Windows container configuration, document its prerequisites and
-      provenance, and verify the plugin and `mfvideosrc` in a fresh image. Check the
-      CPU, NVIDIA, ARM, and newer mutable tags independently. This observation concerns
-      container-side element availability; it does not establish physical host camera or
-      GPU behavior.
-
-- [ ] **CON200 — decide whether to seed Windows AMD consumer Cargo dependencies** [S, ★★].
-      On 2026-10-31, the cached `:winamd64-rocm` registry image digest
-      `sha256:774af209a9282b8e8439653eb55756228a6ebdd219076ddc54a1e012e550c99c`
-      could not resolve `cxx` from AccelerANTgine's locked `Src/rusty_code` dependencies
-      using its default Cargo home with `cargo metadata --locked --offline --format-version 1`.
-      The same no-network metadata check succeeded with the retained project fast-build
-      Cargo cache, which contains the lockfile's `cxx` 1.0.205. Decide whether the next
-      image should seed locked consumer crates or document the network/cache prerequisite;
-      if seeding, verify the lockfile offline in a fresh container. This is an optional
-      offline-cache gap, not proof of a broken network-backed build. Check other image
-      digests and architectures independently.
+- [ ] **CON201 — check Media Foundation in the next Windows image** [M, ★★]. Owner decision 2026-11-03.
+      `:winamd64-rocm` `774af209…` (2026-10-31) carries `C:\runtime\lib\gstreamer-1.0\gstmediafoundation.dll`, but a
+      fresh container could not load it and `gst-inspect-1.0 mfvideosrc` found no such element. The plugin imports
+      `MFPlat.dll`, `MF.dll` and `MFReadWrite.dll`, none of them in `System32` or `C:\runtime\bin`. In the next image,
+      provide Media Foundation in a supported Windows container configuration, record its prerequisites and
+      provenance, and verify the plugin and `mfvideosrc` in a fresh container on CPU, NVIDIA, ROCm and ARM. This may end with
+      "not possible in a container": record that in `docs/image-decisions.md` and remove the entry. It says nothing
+      about host cameras or GPUs.
 
 - [ ] **CON199 — provide the pinned PowerShell analyzer in Windows images** [S, ★★].
       On 2026-10-31 the cached `:winamd64` registry image digest
@@ -1582,8 +1462,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       - Retire the `ENV` once the image's Mesa has upstream ebcfbe60 (2026-08-22), which
         deletes that sort. **No Mesa release carries it yet** (checked 2026-10-12 against the
         tags: 26.2.4, the newest, lacks it), so it arrives with 26.3, and in the image only
-        when Ubuntu's `mesa-vulkan-drivers` moves to it. Sooner means a source-built lavapipe
-        with ebcfbe60 cherry-picked, an owner decision.
+        when Ubuntu's `mesa-vulkan-drivers` moves to it. Owner decision 2026-11-03: this stays
+        blocked until Ubuntu's Mesa reaches 26.3, with no source-built lavapipe before that.
       - **Its cost on arm64, seen 2026-10-05:** at 256 bits, llvmpipe's LLVM 21.1.8 on
         AArch64 sometimes fails instruction selection and aborts the process. The error is
         `LLVM ERROR: Cannot select: v4f32 = bitcast … extract_subvector … In function:
@@ -1700,8 +1580,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
         is open.
       - Community builds exist: meta-flutter's Yocto recipes (riscv64 engine, `gen_snapshot`,
         a newer LLVM than Flutter's stable one) and KDAB's industrialflutter port.
-      Either way is an owner decision: an engine built from source in the image (our own pin,
-      hours of chain time per Flutter bump) or a third-party engine binary. Until then
+      Owner decision 2026-11-03: this stays blocked on upstream flutter/flutter#99963, with
+      neither an engine built in the image nor a third-party binary. Until then
       OmniAccelerANT's riscv64 coverage is OxidANT's and AccelerANTgine's own lanes.
       Flet's Linux client for riscv64 (CON102) waits on the same engine; OrchestrANT's
       `frontend` extra leaves riscv64 out until then.

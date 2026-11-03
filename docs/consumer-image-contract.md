@@ -566,6 +566,14 @@ have their own, because they compare versions (and `free-threaded-python` also w
 interpreter came from). The cost of each is written down once, in
 `_consumer_contract_symptom`, which is also what the failure message prints.
 
+### Consumer builds need the network
+
+Offline consumer builds are not part of this contract (owner, 2026-11-03). A consumer's
+own locked packages, crates and Flutter artifacts come from the network, so a dependency
+that is missing only with networking disabled is not an image gap. Image-owned caches stay,
+such as [the riscv64 uv cache seed](#the-riscv64-uv-cache-seed): they save build time and the
+image proves them.
+
 ### The Flatpak runtimes ship with the image
 
 `install_flatpak_runtime` had existed for months behind

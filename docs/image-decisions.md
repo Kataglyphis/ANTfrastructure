@@ -98,6 +98,13 @@ the present value of `:latest` or the state of a later GPU image.
 ## Deliberate — not gaps
 
 These are recorded so nobody files them as gaps:
+- No offline consumer builds:
+  [the contract's rule](consumer-image-contract.md#consumer-builds-need-the-network).
+- No `actionlint` (owner, 2026-11-03). `lint-workflows.sh` fetches the pinned binary and checks
+  its SHA256, so an image copy would only serve offline checks.
+- No `gcc-mingw-w64-x86-64` (owner, 2026-11-03). Only OxidANT's `clippy-windows.sh` needs it, for
+  `ring`'s C on the Windows target, and installs it when missing. Its apt closure is about 600 MB on
+  Ubuntu 26.04, which every image would carry for one lint step.
 - No TensorRT SDK in any published image: only the runtime `.so`/`.dll` files its SLA names
   distributable. Headers, dev links, `trtexec`, Python bindings and SDK trees stay in build stages;
   `check_gpu_runtime`, `deepstream-verify.sh` and the Windows smoke fail an image that carries one
