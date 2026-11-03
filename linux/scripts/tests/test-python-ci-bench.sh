@@ -46,12 +46,9 @@ t_case "a failing bench/ fails the leg"
 FAIL_BENCH=1 t_assert_fails _driver
 t_assert_contains "$(cat "${_work}/out")" "pytest bench/ exited 1"
 
-t_case "the reusable Linux lane keeps pinned consumers' older ci_tests.sh armed"
-# shellcheck source=linux/scripts/tests/workflow-lane-fixture.sh
-source "${TESTS_DIR}/workflow-lane-fixture.sh"
-workflow_lane_fixture_init .github/workflows/python-ci-linux.yml build build python3 || exit 1
-workflow_assert_input_fields bench-gate type 'boolean' default 'true'
-t_assert_eq "1" "$(grep -c -F -e "-e PYTHON_BENCH_GATE=\${{ inputs.bench-gate && '1' || '0' }}" "${LANE}")" \
-  "the test step must hand the caller's switch to ci_tests.sh"
+t_case "no switch is left to turn the gate off"
+t_assert_no_grep "${TESTS_DIR}/../02-toolchain/python/ci_tests.sh" 'PYTHON_BENCH_GATE'
+t_assert_no_grep "${TESTS_DIR}/../../../.github/workflows/python-ci-linux.yml" 'bench-gate'
+t_assert_no_grep "${TESTS_DIR}/../../../.github/workflows/python-ci-linux.yml" 'PYTHON_BENCH_GATE'
 
 t_summary

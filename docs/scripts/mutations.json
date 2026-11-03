@@ -34887,5 +34887,13 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-run-tests.sh",
   "why": "most suites set their own EXIT trap, which replaces the harness's"
+ },
+ {
+  "id": "python.ci-tests-bench-no-switch",
+  "target": ".github/workflows/python-ci-linux.yml",
+  "find": "            -e FREE_THREADED_SYNC_EXTRAS=${{ inputs.free-threaded-extras }}\n",
+  "replace": "            -e PYTHON_BENCH_GATE=0\n            -e FREE_THREADED_SYNC_EXTRAS=${{ inputs.free-threaded-extras }}\n",
+  "test": "bash linux/scripts/tests/test-python-ci-bench.sh",
+  "why": "no caller may turn the benchmark gate off again; an older pinned ci_tests.sh would honour it"
  }
 ]

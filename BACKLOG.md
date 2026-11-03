@@ -509,22 +509,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Proved by `test-arch-pipeline.sh` (rendezvous, stub stage runner, the real driver's dry run). Done when a chain
       logs an arch's `stage=android start` while another arch's `stage=media` runs, no image removal lands under a
       running build, and the lanes' overlapping disk use fits; then make it the default or record why not.
-- [ ] **CON170 — the uv installer pin follows a moving URL** [S, ★★]. `python_uv.sh` (`uv_ensure_installed`, used by
-      `lib/dartdoc-build.sh` and consumer hosts) runs `https://astral.sh/uv/install.sh`, which installs the newest uv
-      (0.13.6 on 2026-10-27) and changes with every release, so `UV_INSTALL_SH_SHA256` (`283cbef4…`) matches neither it
-      nor the pinned `UV_VERSION=0.13.1`. Work: run `https://astral.sh/uv/${UV_VERSION}/install.sh` and pin
-      `7c482d409673a53f4d9bd34ae95c9166be3b8d89ca82f27dd7bca3cab457afff`, byte-identical on 2026-10-27 to the
-      GitHub release asset `uv-installer.sh` of 0.13.1, and let `bump_versions.py` move it with `UV_VERSION`.
-      `versions.env` re-keys `Dockerfile.base`, so this rides a planned rebuild. Done when `uv_ensure_installed`
-      installs exactly `UV_VERSION` through a hash that no uv release can rotate. The 2026-10-27 mirror fill refused it
-      (`FAILED 283cbef4bdac install.sh`), the only one of 33 assets.
-- [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★★]. Found 2026-10-27: after a
-      stopped run, the runtime lane's entry reclaim freed 0 of 165 GiB layer cache and refused at 376 GB free;
-      once `systemctl --user restart buildkit` ran with nothing building, `prune-safe.sh` freed 116 GB and kept
-      all 114 cache mounts. The disk preflight also adds the lane's ~415 GB to the stage cost under
-      `--from-stage runtime` (~535 GB) and only warns. Work: in the reclaim, with no build in flight, restart
-      buildkitd before the layer prune; count the lane once. Done when a chain resumed after a stop reclaims
-      without a hand restart.
 - [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★]. In source (CHANGELOG 2026-11-03,
       `_disk_guard_release_stale_records`), tested with stubs only. Done when the next chain resumed after a stop
       logs `left by a stopped chain: restarting buildkitd` and reclaims without a hand restart.
@@ -1749,11 +1733,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 ## Open — hub tooling and the dev host
 
-- [ ] **CON216 — the web lane's `free-disk-space: fast` can leave too little disk for the image** [S, ★★].
-      On a 72 GB hosted runner the image pull can run out of disk after the fast reclaim. Measure
-      the free space after the pull on that runner size, then choose `true` there or a checked
-      floor before the pull.
-
 - [ ] **CON222 — evaluate offline gitleaks availability in consumer images** [S, ★★].
       On 2026-11-01, the cached Linux amd64 CPU image at registry digest
       `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
@@ -1772,16 +1751,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       fix this size. Owner decision: a smaller image for these lanes, larger paid runners, or a loud early refusal and
       retry on the small size. Done when a lane's verdict no longer depends on which size it drew.
 
-- [ ] **CON214 — evaluate SquashFS tools for non-executing AppImage inspection** [S, ★★].
-      The cached Linux amd64 CPU image at registry digest
-      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
-      inspected on 2026-11-01 provides `readelf` and `objdump`
-      but neither `unsquashfs` nor `mksquashfs`. Existing AppImage verification executes
-      the candidate's `--appimage-extract`; investigate adding pinned `squashfs-tools`
-      to the build images so consumers can inspect the filesystem without executing an
-      untrusted candidate. Check the image and supported architectures before changing
-      the recipe, and test extraction with path, symlink and resource-limit safeguards.
-      This optional tooling alone does not establish package provenance or GPU readiness.
 - [ ] **CON214 — SquashFS tools for non-executing AppImage inspection** [S, ★★]. Evaluated in throwaway
       `:latest` containers on 2026-11-03: Ubuntu's `squashfs-tools` 1:4.7.5-1 installs on amd64 and riscv64 and is in
       the arm64 ports index, 599 kB. `unsquashfs -o <offset> -lln` lists a payload without executing the candidate and
@@ -1790,11 +1759,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       package stage; a shared helper that finds the offset, lists first, refuses absolute, `..` and escaping symlink
       entries, then extracts under `ulimit -f`, with a crafted-image test. This does not establish provenance or GPU
       readiness.
-
-- [ ] **CON213 — drop `python-ci-linux.yml`'s `bench-gate` input** [S, ★]. `pytest bench/` gates every Linux leg
-      (CHANGELOG 2026-11-03); WebDavClient df55409 collects its benchmark. The input, default true, still arms consumers
-      whose pinned hub reads `PYTHON_BENCH_GATE`. Done when OrchestrANT drops its `bench-gate: true`, it and WebDavClient
-      pin a hub whose `ci_tests.sh` always gates, and the input and its `-e` line go.
 
 - [ ] **CON175 — prove Linux package system-library dependencies on a clean host** [M, ★★].
       On 2026-10-30 an AccelerANTgine AMD CPack prototype passed the image's ELF walk but its

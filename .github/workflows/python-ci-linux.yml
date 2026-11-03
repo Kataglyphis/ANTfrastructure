@@ -65,13 +65,6 @@ on:
         required: false
         type: string
         default: ''
-      bench-gate:
-        description: >-
-          Arms a consumer whose pinned hub still reads PYTHON_BENCH_GATE; a current
-          ci_tests.sh always gates bench/. Goes once no consumer pin reads it.
-        required: false
-        type: boolean
-        default: true
       package-emulated:
         description: >-
           Run the packaging step on the emulated riscv64 row as well. Set true
@@ -357,7 +350,6 @@ jobs:
             --platform ${{ matrix.platform }}
             -e PYTEST_PATHS=${{ inputs.test-paths }}
             -e PYTHON_COVERAGE_MIN=${{ inputs.coverage-min }}
-            -e PYTHON_BENCH_GATE=${{ inputs.bench-gate && '1' || '0' }}
             -e FREE_THREADED_SYNC_EXTRAS=${{ inputs.free-threaded-extras }}
             -e SYNC_EXTRAS=${{ inputs.test-extras }}
             ${{ matrix.arch == 'riscv64' && inputs.package-emulated && '-e UV_CACHE_DIR=/workspace/.uv-cache' || '' }}
