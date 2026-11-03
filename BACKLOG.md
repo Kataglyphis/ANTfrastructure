@@ -301,12 +301,6 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
       System32 `amdhip64_7.dll` before TheRock's (llama.cpp#26929): prove it serves TheRock 10.1's hipBLAS, or
       re-bundle TheRock's three runtime DLLs and the byte-identity check that went with them.
 
-- [ ] **CON115 — DocumANTation's Python runs on a uv download and Ubuntu's `python3`, not the pin** [S, ★★].
-      Owner rule 2026-10-20: only the pinned CPython, once GIL and once free-threaded. `linux-x64.yml` runs one
-      leg on `ubuntu-26.04` through `setup-uv` with `python-version: "3.15"` (a uv download), no `3.15t` leg, and
-      downloads pandoc at run time. The `Dockerfile` builds its `md2pdf` venv on Ubuntu's `python3-full`. Fix:
-      the lane in the family image on the pinned X.Y and X.Yt, and the Dockerfile's venv on the pin.
-
 - [ ] **CON148 — jotrockenmitlocken's live-site check on its two dev domains** [S, ★★]. Found
       2026-10-21: `web.yml` runs `scripts/check-live-site.py` after main's upload only, because the
       dev domains are secret and no secret holds their URL (`DEV_USERNAME`, `DEV_WASM_USERNAME` are

@@ -47,6 +47,9 @@
   collects its benchmark and locks pytest-benchmark 5.3.1, which works with pytest 9.
 - CON124 and CON131: OrchestrANT's contract job runs in `:latest` on X.Y and X.Yt, and the
   PowerShell tests pass on both legs (run 41722061775: 2429 passed, 4 skipped each).
+- CON115: DocumANTation's `linux-x64.yml` runs in the family image on X.Y and X.Yt (run 41727156188)
+  through the new `ci-image-leg.sh`, and its Dockerfile's venv uses `ARG PYTHON_VERSION`, uv's build of
+  the pin, instead of `python3-full`. Pandoc still downloads at run time, now against its checksum.
 
 ## 2026-11-03 — A card without a CUDA kernel
 
