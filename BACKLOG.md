@@ -1796,11 +1796,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       whose pinned hub reads `PYTHON_BENCH_GATE`. Done when OrchestrANT drops its `bench-gate: true`, it and WebDavClient
       pin a hub whose `ci_tests.sh` always gates, and the input and its `-e` line go.
 
-- [ ] **CON211 — OmniAccelerANT's Flutter install through the hub's pin, the Windows proof** [S, ★].
-      jotrockenmitlocken takes `flutter_resolve_pin` and `flutter_build_web` (b17caea); the hub has
-      `Install-PinnedFlutter.ps1`, its suite green on Windows in run 41724945018. OmniAccelerANT's three steps call it
-      (ade543e). Done when that commit's `On request` run 41731757715 passes the `Flutter (the image's version)` steps.
-
 - [ ] **CON175 — prove Linux package system-library dependencies on a clean host** [M, ★★].
       On 2026-10-30 an AccelerANTgine AMD CPack prototype passed the image's ELF walk but its
       archive failed on clean Ubuntu 26.04 because `libgobject-2.0.so.0` was absent. The shared
