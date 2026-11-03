@@ -123,9 +123,10 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
          temp space; the hook takes it.
       7. Done, 14867ace: one `pwsh` per test file (317 → 65 s, 2097 tests) and child processes for
          PSScriptAnalyzer, which is not runspace-safe (50 → 32 s).
-      11. Sidebar check done, b8b4b376 (`CHECK_DOCS_SIDEBARS_JOBS`, 4 Chromes: 66 → 18 s). Open:
-          Sphinx `-j` (risky with `-W` and Exhale), the site link gate, the dartdoc nav rewrite,
-          gitleaks per entry in `run-lint-gates.sh`.
+      11. Sidebar check done, b8b4b376 (`CHECK_DOCS_SIDEBARS_JOBS`, 4 Chromes: 66 → 18 s). 2026-11-03: the
+          site link gate parses in a process pool (`SITE_LINK_JOBS`) and `run-lint-gates.sh` runs gitleaks per
+          entry side by side (`LINT_GATES_SECRET_JOBS`, 27 entries: 27 → 5 s). Open: Sphinx `-j` (risky with `-W`
+          and Exhale), the dartdoc nav rewrite.
       Open: 8 (Windows variant pushes off the next variant's path; `-ConcurrentAux` never ran),
       9 (parallel runtime builds: `BUILD_MEM_DIVISOR` plus a disk gate that sizes, worth it only
       where builds outlast uploads). 10 is in source, opt-in: CON169. A WSL push that

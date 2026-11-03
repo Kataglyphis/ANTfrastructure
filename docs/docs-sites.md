@@ -115,6 +115,9 @@ DocumANTation publishes to GitHub Pages and is not an FTP site.
 built HTML tree offline and fails when an internal link or anchor resolves to nothing.
 Stdlib only; it runs in the family image or on any Python 3.
 
+`SITE_LINK_JOBS` (default one per CPU) is how many processes parse the pages; `1` parses in the
+gate's own process. The check then reads them in one fixed order, so the findings do not change.
+
 What it checks, in every HTML document of the tree:
 
 - **every `href`, `src` and meta-refresh target** inside the site exists. A link to a

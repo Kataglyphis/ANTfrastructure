@@ -34657,14 +34657,6 @@
   "why": "a --from-stage runtime run warned of 535 GB for a 415 GB lane"
  },
  {
-  "id": "python.ci-tests-bench-gate-defaults-off",
-  "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
-  "find": "PYTHON_BENCH_GATE=\"${PYTHON_BENCH_GATE:-0}\"",
-  "replace": "PYTHON_BENCH_GATE=\"${PYTHON_BENCH_GATE:-1}\"",
-  "test": "bash linux/scripts/tests/test-python-ci-bench.sh",
-  "why": "callers whose bench/ collects no tests keep the old best-effort run until they opt in"
- },
- {
   "id": "lib.deb-symbols-malformed-line-accepted",
   "target": "linux/scripts/06-packaging/python_app_deb_symbols.py",
   "find": "        if match is None or not current:\n            raise ValueError(f\"malformed symbols line in {origin}: {line!r}\")\n",
@@ -34759,5 +34751,77 @@
   "replace": "        packages.add(owner)\n",
   "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
   "why": "an unversioned Depends is the CON188 failure: dpkg configures, then the loader fails"
+ },
+ {
+  "id": "lib.site-link-pool-never-runs",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "        if jobs > 1 and len(paths) > 1:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "the pool is the point of the knob"
+ },
+ {
+  "id": "lib.site-link-pool-always-runs",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "        if jobs > 1 and len(paths) > 1:\n",
+  "replace": "        if len(paths) > 1:\n",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "1 is the documented way back to one process"
+ },
+ {
+  "id": "lib.site-link-jobs-unvalidated",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "    if not value.isascii() or not value.isdigit() or int(value) < 1:\n        raise ValueError(f\"SITE_LINK_JOBS={value} is not a positive integer\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "a typo must not reach the pool as a traceback"
+ },
+ {
+  "id": "lib.secret-scan-side-by-side-in-turn",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "xargs -0 -r -n 2 -P \"${jobs}\" bash",
+  "replace": "xargs -0 -r -n 2 -P 1 bash",
+  "test": "bash linux/scripts/tests/test-lint-gates-secret-jobs.sh",
+  "why": "the scans must overlap, or the knob changes nothing"
+ },
+ {
+  "id": "lib.secret-scan-side-by-side-verdict-lost",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "    [ \"$(cat \"${work}/${index}.rc\" 2>/dev/null || echo missing)\" = 0 ] || rc=1\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-lint-gates-secret-jobs.sh",
+  "why": "a found secret must still fail the gate when its scan ran beside others"
+ },
+ {
+  "id": "lib.secret-scan-side-by-side-missing-status-passes",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "\"${work}/${index}.rc\" 2>/dev/null || echo missing)\" = 0 ]",
+  "replace": "\"${work}/${index}.rc\" 2>/dev/null || echo 0)\" = 0 ]",
+  "test": "bash linux/scripts/tests/test-lint-gates-secret-jobs.sh",
+  "why": "a scan that died before writing its status has graded nothing"
+ },
+ {
+  "id": "lib.secret-scan-side-by-side-report-dropped",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "    cat \"${work}/${index}.log\" 2>/dev/null || true\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-lint-gates-secret-jobs.sh",
+  "why": "the finding is in the scan's output"
+ },
+ {
+  "id": "lib.secret-scan-side-by-side-jobs-unvalidated",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "    ''|*[!0-9]*|0) printf 'LINT_GATES_SECRET_JOBS=%s is not a positive integer\\n' \"${jobs}\" >&2; return 2 ;;\n",
+  "replace": "    ''|*[!0-9]*|0) jobs=1 ;;\n",
+  "test": "bash linux/scripts/tests/test-lint-gates-secret-jobs.sh",
+  "why": "a typo is not a parallelism choice"
+ },
+ {
+  "id": "lib.secret-scan-side-by-side-cap-ignored",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "xargs -0 -r -n 2 -P \"${jobs}\" bash",
+  "replace": "xargs -0 -r -n 2 -P 0 bash",
+  "test": "bash linux/scripts/tests/test-lint-gates-secret-jobs.sh",
+  "why": "1 must run the scans in turn"
  }
 ]

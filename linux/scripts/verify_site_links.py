@@ -13,6 +13,8 @@ import posixpath
 import re
 import sys
 from collections.abc import Iterator, Sequence
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass
 from html.parser import HTMLParser
 from urllib.parse import unquote, urljoin, urlsplit
 
@@ -23,6 +25,15 @@ SITE = "http://site.invalid/site/"
 SKIP_SCHEMES = ("mailto:", "javascript:", "data:", "tel:", "about:")
 REFRESH_URL = re.compile(r"url\s*=\s*['\"]?([^'\";]+)", re.IGNORECASE)
 LINE_RANGE = re.compile(r"^(\d+)-(\d+)$")
+
+
+@dataclass(frozen=True)
+class PageFacts:
+    """What the link check reads from a parsed page, plain enough to cross a process boundary."""
+    ids: set[str]
+    links: list[str]
+    base: str | None
+    is_document: bool
 
 
 class Page(HTMLParser):
@@ -59,8 +70,8 @@ class Page(HTMLParser):
     handle_startendtag = handle_starttag
 
 
-def parse(path: str) -> Page | None:
-    """One parse per file: a Page, or None when the file cannot be read as text."""
+def parse(path: str) -> PageFacts | None:
+    """One parse per file: its facts, or None when the file cannot be read as text."""
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
             text = fh.read()
@@ -68,7 +79,15 @@ def parse(path: str) -> Page | None:
         return None
     page = Page()
     page.feed(text)
-    return page
+    return PageFacts(page.ids, page.links, page.base, page.is_document)
+
+
+def site_link_jobs() -> int:
+    """SITE_LINK_JOBS, default one per CPU; 1 parses in this process."""
+    value = os.environ.get("SITE_LINK_JOBS", "") or str(os.cpu_count() or 1)
+    if not value.isascii() or not value.isdigit() or int(value) < 1:
+        raise ValueError(f"SITE_LINK_JOBS={value} is not a positive integer")
+    return int(value)
 
 
 def site_target(base: str, link: str) -> tuple[str, str] | None:
@@ -109,13 +128,19 @@ class Site:
 
     def __init__(self, root: str) -> None:
         self.root = os.path.abspath(root)
-        self.pages: dict[str, Page | None] = {}
+        self.pages: dict[str, PageFacts | None] = {}
         self.findings: dict[str, set[str]] = {}
 
-    def page(self, path: str) -> Page | None:
+    def page(self, path: str) -> PageFacts | None:
         if path not in self.pages:
             self.pages[path] = parse(path)
         return self.pages[path]
+
+    def parse_all(self, paths: list[str], jobs: int) -> None:
+        """Parse every document up front: the check itself reads them in one fixed order, so findings do not change."""
+        if jobs > 1 and len(paths) > 1:
+            with ProcessPoolExecutor(jobs) as pool:
+                self.pages.update(zip(paths, pool.map(parse, paths, chunksize=16)))
 
     def documents(self) -> Iterator[str]:
         for dirpath, dirnames, filenames in os.walk(self.root):
@@ -144,7 +169,9 @@ class Site:
     def check(self) -> int:
         """Walk every document (a fragment dartdoc injects by script is not one) and check its links."""
         count = 0
-        for path in self.documents():
+        paths = list(self.documents())
+        self.parse_all(paths, site_link_jobs())
+        for path in paths:
             page = self.page(path)
             if page is None or not page.is_document:
                 continue
@@ -172,7 +199,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"ERROR: allow file {args.allow} does not exist", file=sys.stderr)
         return 2
     site = Site(args.site)
-    count = site.check()
+    try:
+        count = site.check()
+    except ValueError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 2
     if args.print_keys:
         for key in sorted(site.findings):
             print(key)

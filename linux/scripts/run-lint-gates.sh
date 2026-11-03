@@ -381,7 +381,7 @@ _lint_gates_secret_selftest() {
 }
 
 _lint_gates_secrets() {
-  local scope=() path config rc=0
+  local scope=() config
   _lint_gates_secret_selftest || return 1
   mapfile -t scope < <(_lint_gates_secret_scope)
   if [ "${#scope[@]}" -eq 0 ]; then
@@ -392,10 +392,28 @@ _lint_gates_secrets() {
   config="$(_lint_gates_secret_config)"
   printf 'secret-scan scope (%d path(s)):\n' "${#scope[@]}"
   printf '  %s\n' "${scope[@]}"
-  # One invocation per path: lint-secrets.sh grades its FIRST argument only.
-  for path in "${scope[@]}"; do
-    bash "${_LINT_GATES_DIR}/lint-secrets.sh" "${_LINT_GATES_ROOT}/${path}" ${config:+"${config}"} || rc=1
+  _lint_gates_secret_scan_all "${config}" "${scope[@]}"
+}
+
+# <config> <path>...: one invocation per path, since lint-secrets.sh grades its FIRST argument only; a scan that wrote no status fails.
+_lint_gates_secret_scan_all() {
+  local config="$1" jobs="${LINT_GATES_SECRET_JOBS:-}" work index=0 path rc=0
+  local scan='rc=0; bash "$1/lint-secrets.sh" "$2/$6" ${3:+"$3"} > "$4/$5.log" 2>&1 || rc=$?; printf "%s" "${rc}" > "$4/$5.rc"'
+  shift
+  [ -n "${jobs}" ] || jobs="$(nproc 2>/dev/null || echo 1)"
+  case "${jobs}" in
+    ''|*[!0-9]*|0) printf 'LINT_GATES_SECRET_JOBS=%s is not a positive integer\n' "${jobs}" >&2; return 2 ;;
+  esac
+  work="$(mktemp -d)" || return 1
+  for path in "$@"; do
+    printf '%s\0%s\0' "${index}" "${path}"
+    index=$((index + 1))
+  done | xargs -0 -r -n 2 -P "${jobs}" bash -c "${scan}" _ "${_LINT_GATES_DIR}" "${_LINT_GATES_ROOT}" "${config}" "${work}" || true
+  for (( index = 0; index < $#; index++ )); do
+    cat "${work}/${index}.log" 2>/dev/null || true
+    [ "$(cat "${work}/${index}.rc" 2>/dev/null || echo missing)" = 0 ] || rc=1
   done
+  rm -rf "${work}"
   return "${rc}"
 }
 

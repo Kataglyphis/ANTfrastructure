@@ -987,9 +987,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4330 entries** over **574 distinct test commands**; both digits are
-
-manifest holds **4322 entries** over **572 distinct test commands**; both digits are
+manifest holds **4351 entries** over **575 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -3797,6 +3795,10 @@ line (it once failed on main saying "leaks found: 2" and naming neither, which i
 what `--verbose` is for), the value is REDACTED so the CI log does not become the
 leak, and the scan is scoped to the path it was handed. No case scans the whole
 repo: that run is the preflight slug's own job and would cost this suite minutes.
+
+`run-lint-gates.sh` scans a consumer's top-level entries side by side (`LINT_GATES_SECRET_JOBS`,
+default one per CPU; `1` is in turn), reports them whole in scope order, and fails an entry that
+wrote no status. `tests/test-lint-gates-secret-jobs.sh` holds that with a stub scanner.
 
 ### Curated SBOM (`sbom`)
 

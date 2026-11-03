@@ -70,6 +70,13 @@
 - The resource monitor names the runtime lane's work after the arch loop: per-arch gates and
   `index/<step>` phases from `runtime_step_phase`. The next chain's summary is the remaining proof.
 
+## 2026-11-03 — The site link gate and the consumer secret scan run side by side
+
+- `verify_site_links.py` parses pages in a process pool (`SITE_LINK_JOBS`; `1` restores one process),
+  and `run-lint-gates.sh` runs gitleaks per top-level entry at once (`LINT_GATES_SECRET_JOBS`; `1`
+  in turn). Measured 2026-11-03 at 8 jobs on a loaded host: 27 entries of this tree, 27 s to 5 s; a
+  synthetic 4000-page site, 168 s to 75 s.
+
 ## 2026-11-03 — Python DEBs bound host packages by version node
 
 - The dependency scanner adds `(>= N)` to a host package from the version nodes its host-bound

@@ -116,4 +116,37 @@ t_case "a site directory or allow file that does not exist is a usage error"
 t_assert_eq 2 "$(t_rc _gate "${_WORK}/no-such-site")"
 t_assert_eq 2 "$(t_rc _gate "${SITE}" --allow "${_WORK}/no-such.allow")" "a typo'd allow path must not read as an empty freeze"
 
+t_case "several processes report what one reports"
+_site parity
+_page b.html '<a href="nope.html">x</a> <a href="a.html#gone">y</a>'
+_page sub/c.html '<a href="../missing/">z</a>'
+_one="$(SITE_LINK_JOBS=1 _gate "${SITE}" --print-keys)"
+_many="$(SITE_LINK_JOBS=4 _gate "${SITE}" --print-keys)"
+t_assert_contains "${_one}" "nope.html"
+t_assert_eq "${_one}" "${_many}" "the parse pool must not change a finding"
+
+t_case "the pool runs above one job and not at one"
+_probe="$(t_gate_probe "${SITE_GATE}" <<PY
+class Pool:
+    used = 0
+    def __init__(self, jobs): self.jobs = jobs; Pool.used = jobs
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def map(self, fn, paths, chunksize=1): return [fn(p) for p in paths]
+g.ProcessPoolExecutor = Pool
+site = g.Site("${SITE}")
+paths = list(site.documents())
+site.parse_all(paths, 1)
+print("one", Pool.used, len(site.pages))
+site.parse_all(paths, 3)
+print("three", Pool.used, len(site.pages) == len(paths))
+PY
+)"
+t_assert_contains "${_probe}" "one 0 0"
+t_assert_contains "${_probe}" "three 3 True"
+
+t_case "a bad job count stops the gate instead of choosing one"
+t_assert_eq "2" "$(SITE_LINK_JOBS=many t_rc _gate "${SITE}")" "a typo is not a parallelism choice"
+t_assert_eq "2" "$(SITE_LINK_JOBS=0 t_rc _gate "${SITE}")" "zero workers cannot parse"
+
 t_summary
