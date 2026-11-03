@@ -1322,6 +1322,15 @@ now live in `01-core/versions.env` (`SQLITE3_WASM_VERSION` /
 `SQLITE3_WASM_SHA256`). There is deliberately no version argument — the pin is
 the point.
 
+### `WindowsFlutterPin.Common.psm1`
+
+The Windows twin of `flutter_resolve_pin`. `windows/scripts/host/Install-PinnedFlutter.ps1
+-Destination <dir>` clones the `FLUTTER_VERSION` tag, refuses a checkout that is not
+`FLUTTER_COMMIT` (`tool-pins.env`), adds `bin/` to `GITHUB_PATH` and prints the version. A caller's
+`FLUTTER_VERSION` wins with a warning and no commit check. A git checkout serves x64 and arm64
+alike, which the x64-only Windows zip does not, so the commit is its pin. The check covers the
+framework commit only; the first `flutter` run still fetches its engine from upstream.
+
 ### `05-frameworks/flutter/lane-prologue.sh`
 
 `flutter_lane_prepare_env [flutter_dir]` is the Flutter twin of

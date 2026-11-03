@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# flutter-pin.sh and lane-prologue.sh are consumer API whose callers are consumer copies (BACKLOG CON211); these cases pin argv, status and output.
+# flutter-pin.sh and lane-prologue.sh are consumer API with no caller in this repo; these cases pin argv, status and output.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=linux/scripts/tests/lib-contract-fixture.sh

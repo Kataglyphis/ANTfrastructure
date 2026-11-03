@@ -396,6 +396,21 @@ t_assert_contains "${_out}" "'UV_INSTALL_SH_SHA256': '${_e64}'" "--write moves U
 t_assert_contains "${_out}" "('astral-sh/uv', '0.14.0', 'uv-installer.sh')" "the digest is that release's uv-installer.sh, which no later release rotates"
 t_assert_contains "${_out}" "same ('0.14.0', {}) []" "an up-to-date pin drags no SHA"
 
+t_case "spec_flutter: the release's commit moves with its version and tarball sha (offline)"
+_out="$(_bv_offline <<'PY'
+bv.http_json = lambda url: {"current_release": {"stable": "c" * 40}, "releases": [
+    {"hash": "c" * 40, "channel": "stable", "version": "9.0.0", "sha256": "e" * 64}]}
+bv.WRITE_MODE = False
+print("report", bv.spec_flutter("8.0.0"))
+bv.WRITE_MODE = True
+print("bump", bv.spec_flutter("8.0.0"))
+print("same", bv.spec_flutter("9.0.0"))
+PY
+)"
+t_assert_contains "${_out}" "report ('9.0.0', {})" "a report run moves nothing"
+t_assert_contains "${_out}" "'FLUTTER_COMMIT': '$(printf 'c%.0s' {1..40})'" "--write moves FLUTTER_COMMIT"
+t_assert_contains "${_out}" "same ('9.0.0', {})" "an up-to-date pin drags nothing"
+
 t_case "spec_vulkan: the Windows loader zip's SHA moves with VULKAN_VERSION, LunarG's digest first (offline)"
 _out="$(_bv_offline <<'PY'
 zip_name = "VulkanRT-X64-1.4.400.0-Components.zip"

@@ -21,6 +21,9 @@
   `UV_VERSION`. The `install-deps` action calls the same function instead of `curl | sh`.
 - CON84: closed. Yarn's `NOT CARRIED` and the `unknown` lock counts stay as documented in
   `dependency-updates.md`; no family repo tracks a lock those limits would hide.
+- CON211, hub half: `WindowsFlutterPin.Common.psm1` and `Install-PinnedFlutter.ps1` install
+  Flutter on a Windows runner at `FLUTTER_VERSION` and its new `FLUTTER_COMMIT` (`tool-pins.env`).
+  `spec_flutter` moves the commit with the version.
 
 ## 2026-11-03 — A card without a CUDA kernel
 

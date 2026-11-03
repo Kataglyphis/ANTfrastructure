@@ -327,6 +327,8 @@ def spec_flutter(cur: str) -> SpecResult:
     # The same release object carries the SDK tarball's sha256.
     if v != cur and bv.WRITE_MODE and rel.get("sha256"):
         extras["FLUTTER_SDK_SHA256"] = rel["sha256"]
+    if v != cur and bv.WRITE_MODE:
+        extras["FLUTTER_COMMIT"] = rel["hash"]
     return v, extras
 
 

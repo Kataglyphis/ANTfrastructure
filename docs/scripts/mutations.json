@@ -34159,5 +34159,37 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-bump-versions.sh",
   "why": "UV_VERSION moved without its installer digest makes every fresh uv install refuse"
+ },
+ {
+  "id": "lib.flutter-pin-windows-commit",
+  "target": "windows/scripts/modules/WindowsFlutterPin.Common.psm1",
+  "find": "if ($pin.Commit -and $head -ne $pin.Commit) {",
+  "replace": "if ($false) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only WindowsFlutterPin.Common.Tests.ps1",
+  "why": "a moved tag must not install as the pinned Flutter; does not prove the commit's content beyond git's own hash"
+ },
+ {
+  "id": "lib.flutter-pin-windows-clone-failure",
+  "target": "windows/scripts/modules/WindowsFlutterPin.Common.psm1",
+  "find": "if ($LASTEXITCODE) { throw \"cloning Flutter",
+  "replace": "if ($false) { throw \"cloning Flutter",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only WindowsFlutterPin.Common.Tests.ps1",
+  "why": "a missing tag must fail at the clone, under its own name"
+ },
+ {
+  "id": "lib.flutter-pin-windows-half-pin",
+  "target": "windows/scripts/modules/WindowsFlutterPin.Common.psm1",
+  "find": "(Join-Path $CoreDir 'tool-pins.env')",
+  "replace": "(Join-Path $CoreDir 'versions.env')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only WindowsFlutterPin.Common.Tests.ps1",
+  "why": "the commit lives in tool-pins.env, so a move of either key cannot re-key the compiler image; reading the wrong file must not resolve"
+ },
+ {
+  "id": "lib.bump-flutter-commit-pair",
+  "target": "docs/scripts/bump_tools.py",
+  "find": "        extras[\"FLUTTER_COMMIT\"] = rel[\"hash\"]\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "FLUTTER_VERSION moved without its commit makes every Windows Flutter install refuse"
  }
 ]
