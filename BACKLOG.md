@@ -522,11 +522,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ([`build-parallelism-memory-tuning.md`](docs/build-parallelism-memory-tuning.md)). Done when that step
       logs more than one job on an idle host and no arch is OOM-killed. IREE's wheelhouse build has the same
       cause: both its host and target LLVM builds ran `cmake --build … -- -j1` for over 3 h on arm64 and riscv64.
-- [ ] **CON168 — arm64 and riscv64 build the same IREE host LLVM at the same time** [M, ★★]. Found 2026-10-27:
-      both media lanes run `/tmp/app-wheelhouse/iree-build-host` with the build host's `/usr/bin/g++` at once, so
-      the second lane cannot hit the cache the first is still filling. Work: build the host stage once per chain
-      (a shared step or a cached artifact keyed on the IREE pin), or let the second lane wait for the first's
-      cache. Done when only one lane compiles the IREE host LLVM per chain.
+- [ ] **CON168 — prove on a chain that one lane compiles the IREE host LLVM** [S, ★★]. In source since 2026-11-03
+      ([`iree-two-stage-build.md` § One host stage per chain](docs/iree-two-stage-build.md#one-host-stage-per-chain)):
+      the first lane builds under a lock in the `id=iree-host` cache mount, the next restores (`IREE_HOST_CACHE=off`
+      reverts). `test-iree-host-once.sh` proves it with a stub `cmake`. Done when the next chain's arm64 and riscv64
+      media logs show one host compile and `IREE host stage: reusing` in the other lane.
 - [ ] **CON169 — an arch waits for every other arch before its next stage** [L, ★★★]. Measured 2026-10-27:
       `media-arm64` and `media-riscv64` were pushed at ~09:35 and their android stages waited ~2 h for amd64's
       ONNX Runtime and OpenCV. `build-cross-chain.sh` runs one `run_parallel_arch_loop` per stage and joins it,

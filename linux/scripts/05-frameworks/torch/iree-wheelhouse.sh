@@ -118,20 +118,22 @@ _iree_failure_log() {
     echo "----- end ${label} ${phase} log -----"
 }
 
-_iree_build_host_stage() {
-    local -a host_args=()
-    _iree_host_cmake_args host_args "${host_cc}" "${host_cxx}"
+_iree_host_required_tools() {
     # See docs/iree-two-stage-build.md § The host tools stage 2 needs from IREE_HOST_BIN_DIR
-    local -a host_required_tools=(iree-c-embed-data iree-flatcc-cli)
-    local -a host_compiler_modes=(OFF ON)
+    printf '%s\n' iree-c-embed-data iree-flatcc-cli
     # A COMPILER=OFF target imports iree-tblgen from the host, and only an ON host build installs it.
     case "${IREE_CROSS_BUILD_COMPILER}" in
       ON|on|1|true|TRUE|yes|YES) : ;;
-      *)
-        host_required_tools+=(iree-tblgen)
-        host_compiler_modes=(ON)
-        ;;
+      *) printf '%s\n' iree-tblgen ;;
     esac
+}
+
+_iree_build_host_stage() {
+    local -a host_args=()
+    _iree_host_cmake_args host_args "${host_cc}" "${host_cxx}"
+    local -a host_required_tools=() host_compiler_modes=(OFF ON)
+    mapfile -t host_required_tools < <(_iree_host_required_tools)
+    [ "${#host_required_tools[@]}" -eq 2 ] || host_compiler_modes=(ON)
     local host_stage_ok=0 host_compiler_mode="" host_tool="" host_tools_missing=""
     for host_compiler_mode in "${host_compiler_modes[@]}"; do
         rm -rf "${host_build}" "${host_install}"
@@ -174,6 +176,82 @@ _iree_build_host_stage() {
         warn "IREE host stage failed in both COMPILER=OFF and COMPILER=ON modes; cannot build the target IREE wheels"
         return 1
     fi
+}
+
+# Everything the host tools depend on: a key that misses a flag would hand a lane another build's tools.
+_iree_host_stage_key() {
+    {
+        printf '%s\n' "${IREE_VERSION:-}" "${IREE_CROSS_BUILD_COMPILER}" "$(uname -m)" "${host_cc}" "${host_cxx}"
+        "${host_cc}" --version
+        "${host_cxx}" --version
+        "${BUILD_PYTHON}" --version
+        git -C "${src_dir}" rev-parse HEAD 2>/dev/null || true
+        cat "${BASH_SOURCE[0]}"
+    } | sha256sum | cut -d' ' -f1
+}
+
+_iree_host_stage_restore() {
+    local entry="$1" tool
+    [ -d "${entry}/install" ] || return 1
+    rm -rf "${host_build}"
+    mkdir -p "${host_build}"
+    cp -a "${entry}/install" "${host_install}" || return 1
+    while IFS= read -r tool; do
+        [ -x "${host_install}/bin/${tool}" ] || { warn "IREE host cache entry ${entry} lacks ${tool}; rebuilding"; return 1; }
+    done < <(_iree_host_required_tools)
+    return 0
+}
+
+_iree_host_stage_publish() {
+    local entry="$1" staged
+    staged="$(mktemp -d "${entry}.XXXXXX")" || return 1
+    if cp -a "${host_install}" "${staged}/install" && rm -rf "${entry}" && mv -T "${staged}" "${entry}"; then
+        return 0
+    fi
+    rm -rf "${staged}"
+    return 1
+}
+
+# <cache> <key>: an entry another IREE pin left is dead weight in a cache mount nothing prunes.
+_iree_host_stage_evict() {
+    find "$1" -mindepth 1 -maxdepth 1 ! -name "$2*" -mmin +10080 -exec rm -rf {} + 2>/dev/null || true
+}
+
+# The first lane builds while the others wait: docs/iree-two-stage-build.md#one-host-stage-per-chain
+_iree_build_host_stage_once() {
+    local cache="${IREE_HOST_CACHE_DIR:-/var/cache/iree-host}" key entry lock rc=0
+    case "${IREE_HOST_CACHE:-on}" in
+      on) ;;
+      off) _iree_build_host_stage; return $? ;;
+      *) warn "IREE_HOST_CACHE must be on or off, not ${IREE_HOST_CACHE}"; return 2 ;;
+    esac
+    if ! mkdir -p "${cache}" 2>/dev/null || [ ! -w "${cache}" ] || ! command -v flock >/dev/null 2>&1; then
+        warn "IREE host cache ${cache} is not usable; this lane builds its own host stage"
+        _iree_build_host_stage
+        return $?
+    fi
+    key="$(_iree_host_stage_key)" || return 1
+    entry="${cache}/${key}"
+    exec {lock}>"${entry}.lock" || return 1
+    if ! flock -w "${IREE_HOST_LOCK_WAIT_SECS:-14400}" "${lock}"; then
+        warn "IREE host stage: another lane held ${entry}.lock too long; this lane builds its own"
+        exec {lock}>&-
+        _iree_build_host_stage
+        return $?
+    fi
+    if _iree_host_stage_restore "${entry}"; then
+        log "IREE host stage: reusing ${key} from another lane of this chain"
+        exec {lock}>&-
+        return 0
+    fi
+    # The build's children must not inherit the lock: an sccache server outlives the build and would hold it.
+    _iree_build_host_stage {lock}>&- || rc=$?
+    if [ "${rc}" -eq 0 ]; then
+        _iree_host_stage_publish "${entry}" || warn "IREE host stage: could not publish ${entry}; the next lane rebuilds"
+        _iree_host_stage_evict "${cache}" "${key}"
+    fi
+    exec {lock}>&-
+    return "${rc}"
 }
 
 # See docs/iree-two-stage-build.md § Stage 2 — cross the runtime and the Python bindings
@@ -355,7 +433,7 @@ build_iree_wheels() {
         local host_cc="" host_cxx=""
         host_cc="$(_iree_system_compiler c)"
         host_cxx="$(_iree_system_compiler cxx)"
-        _iree_build_host_stage || return 1
+        _iree_build_host_stage_once || return 1
         _iree_build_target_cross || return 1
     else
         # ===== amd64 NATIVE: single-stage build =====

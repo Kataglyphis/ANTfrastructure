@@ -88,6 +88,28 @@ tools missing   -> escalate (this is the case ON actually covers)
 
 Returns 1 when neither COMPILER mode produced usable host tools.
 
+## One host stage per chain
+
+The host tools run on the build platform, so arm64 and riscv64 need the same ones, and building them
+twice at once also defeats the compile cache: the second lane cannot hit what the first is still
+filling. `_iree_build_host_stage_once` builds them under a lock in the `id=iree-host` cache mount of
+the media stage's `app-wheelhouse` RUN and publishes `install/` under a key. The next lane waits on
+the lock and restores it.
+
+- **The key** hashes the IREE pin, `IREE_CROSS_BUILD_COMPILER`, the machine, both host compilers and
+  their `--version`, the build Python's version, the source commit and `iree-wheelhouse.sh` itself.
+  Anything else that changes the host build must join it.
+- **A restored entry must hold every required tool**; otherwise the lane rebuilds and replaces it.
+- **A failed build publishes nothing**: the failing lane keeps its failure and the next lane builds.
+- **The wait is bounded** by `IREE_HOST_LOCK_WAIT_SECS` (4 h); past it the lane builds its own.
+- **The lock's descriptor is closed for the build's children**: an sccache server outlives the
+  build and would otherwise hold the lock.
+- `IREE_HOST_CACHE=off` builds in the lane, as before. `IREE_HOST_CACHE_DIR` moves the entries.
+  Entries of another key leave after 7 days, at the next publish.
+
+`tests/test-iree-host-once.sh` proves this with a stub `cmake`. Not covered: BuildKit sharing the
+mount between two solves, and whether the restored tools run in stage 2.
+
 ## Stage 2 — cross the runtime and the Python bindings
 
 Stage 2 — cross the runtime (+ Python bindings) against the host tools.

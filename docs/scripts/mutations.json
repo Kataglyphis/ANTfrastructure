@@ -34191,5 +34191,125 @@
   "replace": "        pass\n",
   "test": "bash linux/scripts/tests/test-bump-versions.sh",
   "why": "FLUTTER_VERSION moved without its commit makes every Windows Flutter install refuse"
+ },
+ {
+  "id": "lib.iree-host-once-no-lock",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "    if ! flock -w \"${IREE_HOST_LOCK_WAIT_SECS:-14400}\" \"${lock}\"; then",
+  "replace": "    if ! true; then",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k shared",
+  "why": "without the lock both lanes compile at once, the waste this exists to end"
+ },
+ {
+  "id": "lib.iree-host-once-lock-leaks-to-children",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "    _iree_build_host_stage {lock}>&- || rc=$?",
+  "replace": "    _iree_build_host_stage || rc=$?",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k lock",
+  "why": "an sccache server the build starts would hold the lock for its whole life"
+ },
+ {
+  "id": "lib.iree-host-once-no-restore",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "    if _iree_host_stage_restore \"${entry}\"; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k shared",
+  "why": "without the restore every lane still compiles"
+ },
+ {
+  "id": "lib.iree-host-once-failed-build-publishes",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "    if [ \"${rc}\" -eq 0 ]; then\n        _iree_host_stage_publish",
+  "replace": "    if true; then\n        _iree_host_stage_publish",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k failure",
+  "why": "a failed build's tree must never reach the next lane"
+ },
+ {
+  "id": "lib.iree-host-once-failure-swallowed",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "    exec {lock}>&-\n    return \"${rc}\"",
+  "replace": "    exec {lock}>&-\n    return 0",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k failure",
+  "why": "a failed host stage must stop this lane too"
+ },
+ {
+  "id": "lib.iree-host-once-entry-tools-unchecked",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "        [ -x \"${host_install}/bin/${tool}\" ] || { warn \"IREE host cache entry ${entry} lacks ${tool}; rebuilding\"; return 1; }",
+  "replace": "        :",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k failure",
+  "why": "an entry that lost a tool fails hours later in stage 2"
+ },
+ {
+  "id": "lib.iree-host-once-key-ignores-pin",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "printf '%s\\n' \"${IREE_VERSION:-}\" \"${IREE_CROSS_BUILD_COMPILER}\" \"$(uname -m)\"",
+  "replace": "printf '%s\\n' \"${IREE_CROSS_BUILD_COMPILER}\" \"$(uname -m)\"",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k key",
+  "why": "a lane must not reuse another IREE pin's tools"
+ },
+ {
+  "id": "lib.iree-host-once-key-ignores-mode",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "\"${IREE_VERSION:-}\" \"${IREE_CROSS_BUILD_COMPILER}\" \"$(uname -m)\"",
+  "replace": "\"${IREE_VERSION:-}\" \"$(uname -m)\"",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k key",
+  "why": "the compiler mode decides which tools exist"
+ },
+ {
+  "id": "lib.iree-host-once-key-ignores-compiler",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "        \"${host_cc}\" --version\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k key",
+  "why": "another compiler is another build"
+ },
+ {
+  "id": "lib.iree-host-once-switch-ignored",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "      off) _iree_build_host_stage; return $? ;;",
+  "replace": "      off) ;;",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k switch",
+  "why": "off must restore the old per-lane build"
+ },
+ {
+  "id": "lib.iree-host-once-typo-accepted",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "      *) warn \"IREE_HOST_CACHE must be on or off, not ${IREE_HOST_CACHE}\"; return 2 ;;",
+  "replace": "      *) ;;",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k switch",
+  "why": "a typo would silently keep the shared path"
+ },
+ {
+  "id": "lib.iree-host-once-unusable-cache-fatal",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "        warn \"IREE host cache ${cache} is not usable; this lane builds its own host stage\"\n        _iree_build_host_stage\n        return $?",
+  "replace": "        return 1",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k switch",
+  "why": "an unusable mount costs speed, not the build"
+ },
+ {
+  "id": "lib.iree-host-once-lock-timeout-fatal",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "        warn \"IREE host stage: another lane held ${entry}.lock too long; this lane builds its own\"\n        exec {lock}>&-\n        _iree_build_host_stage\n        return $?",
+  "replace": "        exec {lock}>&-\n        return 1",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k lock",
+  "why": "a stuck lock costs speed, not the build"
+ },
+ {
+  "id": "lib.iree-host-once-cross-path-unwired",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "        _iree_build_host_stage_once || return 1",
+  "replace": "        _iree_build_host_stage || return 1",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k wiring",
+  "why": "the once path must be the one the cross build takes"
+ },
+ {
+  "id": "lib.iree-host-once-mount",
+  "target": "linux/Dockerfile.media",
+  "find": "--mount=type=cache,target=/var/cache/iree-host,id=iree-host ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k wiring",
+  "why": "without the mount each lane has its own cache and compiles anyway"
  }
 ]
