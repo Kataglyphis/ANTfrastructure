@@ -41,6 +41,28 @@ t_assert_eq "${_dirs#* }" "${_dirs% *}" "the caller reads the copy"
 t_assert_contains "${_dirs#* }" "${_work}/tmp/" "the copy is a mktemp directory"
 t_assert_contains "$(cat "${_work}/build/compile_commands.json")" '/workspace/src/a.cpp' "the original is untouched"
 
+t_case "paths inside a command string are remapped as whole tokens"
+_cmd='c++ -I/workspace/inc -isystem /workspace/sys -isystem/workspace/joined -DP=\"/workspace/def\" -Wl,-rpath,/workspace/lib:/workspace/lib2 /workspace /workspace /workspace/a.cpp'
+_db "[{\"command\": \"${_cmd}\"}]"
+lc_call out rc "${LIB}" "CODE_QUALITY_PROJECT_ROOT=/proj code_quality_prepare_compile_db build && ${SHOW}"
+t_assert_contains "${out}" "${_cmd//\/workspace//proj}" "flags, defines, rpath lists and adjacent bare paths"
+
+t_case "a path that only contains the workspace name stays as it was"
+_keep='c++ -Isrc/workspace/x -I/opt/workspace/y /workspace2/z ../workspace/w -c /workspace-old/a.cpp'
+_db "[{\"command\": \"${_keep} /workspace/real.cpp\"}, {\"file\": \"/workspace2/z.cpp\"}]"
+lc_call out rc "${LIB}" "CODE_QUALITY_PROJECT_ROOT=/proj code_quality_prepare_compile_db build && ${SHOW}"
+t_assert_contains "${out}" "${_keep} /proj/real.cpp" "relative, nested and longer names are not this workspace"
+t_assert_contains "${out}" '"file": "/workspace2/z.cpp"' "a quoted longer name stays too"
+
+t_case "the workspace and root are taken literally, and a root inside the workspace ends"
+_db '[{"file": "/work.space/a.cpp", "command": "c++ /workXspace/b.cpp"}]'
+lc_call out rc "${LIB}" "CODE_QUALITY_CONTAINER_WORKSPACE=/work.space CODE_QUALITY_PROJECT_ROOT='/p&q#r' code_quality_prepare_compile_db build && ${SHOW}"
+t_assert_contains "${out}" '[{"file": "/p&q#r/a.cpp", "command": "c++ /workXspace/b.cpp"}]'
+_db '[{"file": "/workspace/a.cpp"}]'
+lc_call out rc "${LIB}" "CODE_QUALITY_PROJECT_ROOT=/workspace/sub code_quality_prepare_compile_db build && ${SHOW}"
+t_assert_eq "0" "${rc}"
+t_assert_contains "${out}" '[{"file": "/workspace/sub/a.cpp"}]' "the rewrite never revisits its own output"
+
 t_case "an empty CODE_QUALITY_CONTAINER_WORKSPACE turns the remap off"
 lc_call out rc "${LIB}" "CODE_QUALITY_CONTAINER_WORKSPACE= code_quality_prepare_compile_db build && ${SHOW}"
 t_assert_eq "0" "${rc}"
@@ -50,7 +72,7 @@ t_case "container-only GCC toolchain flags go when the probed toolchain is absen
 _flags="--gcc-toolchain=${GCC} -Wl,-rpath,${GCC}/lib64 -L${GCC}/lib64"
 _db "[{\"command\": \"clang++ ${_flags} -c /workspace/a.cpp\"}]"
 lc_call out rc "${LIB}" "CODE_QUALITY_PROJECT_ROOT=/proj CODE_QUALITY_GCC_TOOLCHAIN_PROBE_DIR=/nonexistent/gcc code_quality_prepare_compile_db build && ${SHOW}"
-t_assert_contains "${out}" '[{"command": "clang++  -c /workspace/a.cpp"}]' "the flags go; a path inside a command string is not remapped (BACKLOG CON209)"
+t_assert_contains "${out}" '[{"command": "clang++ -c /proj/a.cpp"}]' "the flags go with their separator, and the source path is remapped"
 lc_call out rc "${LIB}" "CODE_QUALITY_PROJECT_ROOT=/proj CODE_QUALITY_GCC_TOOLCHAIN_PROBE_DIR=$(printf '%q' "${_work}") code_quality_prepare_compile_db build && ${SHOW}"
 t_assert_contains "${out}" "${_flags}" "a toolchain present here keeps its flags"
 

@@ -25,6 +25,9 @@
 - `coverage_llvm_generate_profile` returns the suite's status: a failing suite that wrote its
   profile no longer passes for a caller without errexit, and the profile stays on disk. The one
   caller, BeschleunigerBallett's `build-coverage-llvm.sh`, runs under `set -e` and already stopped.
+- `code_quality_prepare_compile_db` remaps `/workspace` inside command strings as well (`-I`,
+  defines, rpath lists, the source path), as whole path tokens: `/workspace2` and
+  `src/workspace` stay. Dropping `-Wl,-rpath,...` leaves no double space.
 
 ## 2026-11-03 — Mutation recipes name their narrowest proof
 

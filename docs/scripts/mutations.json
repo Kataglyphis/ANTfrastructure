@@ -32417,12 +32417,60 @@
   "why": "a database written in the container names /workspace paths that do not exist on the host"
  },
  {
+  "id": "lib.compile-db-remaps-joined-options",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "local options='I|L|F|B|",
+  "replace": "local options='L|F|B|",
+  "test": "bash linux/scripts/tests/test-lib-compile-db.sh",
+  "why": "an -I/workspace/... left in a command string names a directory the host does not have, so clang-tidy reports missing headers"
+ },
+ {
+  "id": "lib.compile-db-remap-token-end",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "trail=\"([\\\"'\\\\[:space:]/:,]|\\$)\"",
+  "replace": "trail=\"()\"",
+  "test": "bash linux/scripts/tests/test-lib-compile-db.sh",
+  "why": "a path that merely starts with the workspace, such as /workspace2, is a different tree and must not move"
+ },
+ {
+  "id": "lib.compile-db-remap-neighbours",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": " -e 'ta' ",
+  "replace": " ",
+  "test": "bash linux/scripts/tests/test-lib-compile-db.sh",
+  "why": "two paths sharing one separator would leave the second as a container path"
+ },
+ {
+  "id": "lib.compile-db-remap-literal-workspace",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "from=\"$(printf '%s' \"$1\" | sed -E 's/[][\\\\.^$*+?(){}|#]/\\\\&/g')\"",
+  "replace": "from=\"$1\"",
+  "test": "bash linux/scripts/tests/test-lib-compile-db.sh",
+  "why": "a configured workspace is a path, not a pattern; a dot in it would rewrite other trees"
+ },
+ {
+  "id": "lib.compile-db-remap-literal-root",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "to=\"$(printf '%s' \"$2\" | sed -E 's/[\\\\&#]/\\\\&/g')\"",
+  "replace": "to=\"$2\"",
+  "test": "bash linux/scripts/tests/test-lib-compile-db.sh",
+  "why": "an & or # in the project root would corrupt every remapped path or break the sed program"
+ },
+ {
   "id": "lib.compile-db-drops-absent-toolchain",
   "target": "linux/scripts/lib/code-quality.sh",
   "find": "    if [[ -n \"${toolchain_probe}\" && -n \"${toolchain_prefix}\" && ! -d \"${toolchain_probe}\" ]]; then\n",
   "replace": "    if false; then\n",
   "test": "bash linux/scripts/tests/test-lib-compile-db.sh",
   "why": "a --gcc-toolchain pointing at a container-only path makes clang fail every file on the host"
+ },
+ {
+  "id": "lib.compile-db-rpath-takes-its-separator",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "[[:space:]]?-Wl,-rpath,",
+  "replace": "-Wl,-rpath,",
+  "test": "bash linux/scripts/tests/test-lib-compile-db.sh",
+  "why": "dropping the rpath flag without its separator leaves a double space in the command"
  },
  {
   "id": "lib.compile-db-cleanup-removes",

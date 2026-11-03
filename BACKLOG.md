@@ -2010,11 +2010,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the free space after the pull on that runner size, then choose `true` there or a checked
       floor before the pull.
 
-- [ ] **CON209 — `code_quality_prepare_compile_db` leaves `/workspace` inside command strings** [S, ★].
-      Found 2026-10-31 by `test-lib-compile-db.sh`: the remap rewrites only a path right after a
-      quote (`"file"`, `"directory"`), so `-I/workspace/…` and the source path inside `"command"`
-      stay container paths on the host, and dropping `-Wl,-rpath,…` leaves a double space.
-
 - [ ] **CON210 — `docs_build_main` reports success after a failed step without errexit** [S, ★].
       Found 2026-10-31 by `test-lib-docs-build.sh`: a caller without `set -e` sees `make` fail
       and still gets "Documentation build completed successfully" and status 0. Every known
