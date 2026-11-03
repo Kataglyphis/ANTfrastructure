@@ -1351,8 +1351,18 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       image's ORT 1.30.0, compiled on `gfx1036` in under 2 seconds with its operator on MIGraphX, and on `gfx1201`
       stopped at the 150-second limit after `Model Compile: Begin`: one thread used a full core, the other 65 slept.
       The image holds 835 `gfx1201` files, including `libMIOpenCKGroupedConv_gfx1201.so`, so the target is not simply
-      missing. The cause is unknown, and this says nothing about native Linux or `05518138…`. The package's launcher
-      defaults to `migraphx`, so on this setup it hangs and does not reach the CPU. OxidANT's was the only package run.
+      missing. The package's launcher defaults to `migraphx`, so on this setup it hangs and does not reach the CPU.
+      OxidANT's was the only package run.
+      **Later on 2026-11-03, on `05518138…` with ORT 1.31.0:** the Relu behaves the same, and with
+      `MIGRAPHX_TRACE_COMPILE=1` it reaches `relu_kernel`'s code object before it stops. The first stop is below
+      MIGraphX: a plain HIP program with no ORT and no MIGraphX, built with `hipcc --offload-arch=gfx1036,gfx1201`,
+      returns 42 on `gfx1036`. On `gfx1201` `hipGetDeviceProperties` and `hipMalloc` pass and the first host-to-device
+      `hipMemcpy` does not return within 45 seconds, with 99% of its samples in
+      `rocr::core::BusyWaitSignal::WaitRelaxed` in `libhsa-runtime64`. `HSA_ENABLE_SDMA=0`, `HSA_ENABLE_INTERRUPT=0`,
+      both together, `HSA_ENABLE_PEER_SDMA=0`, `HIP_FORCE_DEV_KERNARG=0`, `DEBUG_HIP_DYNAMIC_QUEUES=0`,
+      `GPU_MAX_HW_QUEUES=1` and `HIP_HOST_COHERENT=1` change nothing. Windows driver `32.0.32015.7029`, reached over
+      Remote Desktop. The cause in the driver or `librocdxg` is unknown, and this says nothing about native Linux. So
+      this card cannot prove a Linux AMD package under WSL. The launcher's hang is a defect of its own, still open.
       Inside the image, `ORT_DYLIB_PATH` points at `/usr/local/lib/onnxruntime-cpu`, which a package then loads instead
       of its own (`MIGraphXExecutionProvider is absent`). Unset it for any package check in the image.
 
