@@ -39,6 +39,7 @@
 - `docs/gpu-artifact-receipts.md` says how to prove a package on your own GPU, and why a provider profile alone does not.
 - `BACKLOG.md` CON220 records wrong DirectML results that the image checks miss, and the current GPU digests and hosted-lane results.
 - `BACKLOG.md` CON112 records one `deim_dfine_n_coco-v2` export whose bytes differed from the release.
+- `BACKLOG.md` CON202 records that MIGraphX compilation does not finish on an RX 9070 XT under WSL, even for one Relu.
 - `BACKLOG.md` CON218 records that GenAI's default thread count ignores the CPU affinity mask.
 - AGENTS.md Quick Reference names the measurement tools and their docs pages.
 - `verify_agents_drift.py` no longer reports a nested toctree page as unlisted on Windows.

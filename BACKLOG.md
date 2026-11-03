@@ -1342,6 +1342,19 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       treat benchmark-skip or other diagnostic overrides as a passing image gate.
       **2026-11-02:** `deim_dfine_n_coco-v2` (`0bf16e85…`) rewrites a MatMul for DirectML and has not run on this
       device with MIGraphX. Use it for the next attempt.
+      **2026-11-03, the RX 9070 XT:** `rocminfo` in the WSL container lists it as `gfx1201`, next to `gfx1036`, and
+      `HIP_VISIBLE_DEVICES=1` or `ROCR_VISIBLE_DEVICES=1` selects it. On the cached `:latest-rocm` `a5d68fbe…`, not
+      the current `05518138…`, MIGraphX compilation does not finish there. OxidANT's Linux AMD TAR from run 41583483219
+      with `deim_dfine_n_coco-v2` passed on the CPU and stopped at the 1,800-second limit with default settings, and at
+      600 seconds with `MIGRAPHX_SKIP_BENCHMARKING=1` and `ORT_MIGRAPHX_MODEL_CACHE_PATH=/tmp`. No detection, no
+      profile. `_implementation/orchestrant-rocm-wsl-hardware-20261031/minimal-ort.py`'s one-node Relu, with the
+      image's ORT 1.30.0, compiled on `gfx1036` in under 2 seconds with its operator on MIGraphX, and on `gfx1201`
+      stopped at the 150-second limit after `Model Compile: Begin`: one thread used a full core, the other 65 slept.
+      The image holds 835 `gfx1201` files, including `libMIOpenCKGroupedConv_gfx1201.so`, so the target is not simply
+      missing. The cause is unknown, and this says nothing about native Linux or `05518138…`. The package's launcher
+      defaults to `migraphx`, so on this setup it hangs and does not reach the CPU. OxidANT's was the only package run.
+      Inside the image, `ORT_DYLIB_PATH` points at `/usr/local/lib/onnxruntime-cpu`, which a package then loads instead
+      of its own (`MIGraphXExecutionProvider is absent`). Unset it for any package check in the image.
 
 - [ ] **CON201 — assess Media Foundation availability in the Windows AMD GPU image** [M, ★★].
       On 2026-10-31, the cached `:winamd64-rocm` registry image digest
