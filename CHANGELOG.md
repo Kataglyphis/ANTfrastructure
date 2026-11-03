@@ -70,6 +70,14 @@
 - The resource monitor names the runtime lane's work after the arch loop: per-arch gates and
   `index/<step>` phases from `runtime_step_phase`. The next chain's summary is the remaining proof.
 
+## 2026-11-03 — Python DEBs bound host packages by version node
+
+- The dependency scanner adds `(>= N)` to a host package from the version nodes its host-bound
+  importers need, read from the installed symbols file: on this host a C++23 fixture gets
+  `libstdc++6 (>= 13.1)` and `libgcc-s1 (>= 4.3)`
+  ([the page](docs/python-app-bundles.md#versioned-host-dependencies)). Unversioned symbols, GLib's
+  among them, are not covered yet (CON188).
+
 ## 2026-11-03 — One pipeline per arch, opt-in
 
 - `CROSS_ARCH_PIPELINE=1` starts an arch's next stage when its previous one is pushed

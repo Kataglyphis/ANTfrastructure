@@ -11,6 +11,9 @@ import sys
 from functools import cache
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import python_app_deb_symbols as deb_symbols
+
 VERSION_NEED = 0x6FFFFFFE
 VERSION_NEED_NUM = 0x6FFFFFFF
 SECTION_NEED = 0x6FFFFFFE
@@ -213,23 +216,24 @@ def version_name(elf: ElfSections, strings: bytes, offset: int) -> str:
     return strings[offset:end].decode("utf-8")
 
 
-def needed_versions(elf: ElfSections, section: tuple[int, int, int, int, int]) -> list[str]:
+def needed_version_pairs(elf: ElfSections, section: tuple[int, int, int, int, int]) -> list[tuple[str, str]]:
+    """(needed file, version node) per version-needs record."""
     _, _, _, link, count = section
     if link >= len(elf.sections) or elf.sections[link][0] != SECTION_STRTAB:
         raise ValueError(f"invalid ELF version string table: {elf.path}")
     strings = elf.data(elf.sections[link])
     data = elf.data(section)
-    versions: list[str] = []
+    versions: list[tuple[str, str]] = []
     offset = 0
     for index in range(count):
         version, aux_count, file_name, aux, following = elf.unpack("HHIII", data, offset)
         if version != 1 or not aux_count or not aux:
             raise ValueError(f"invalid ELF version needs record: {elf.path}")
-        version_name(elf, strings, file_name)
+        needed_file = version_name(elf, strings, file_name)
         aux_offset = offset + aux
         for aux_index in range(aux_count):
             _, _, _, name, next_aux = elf.unpack("IHHII", data, aux_offset)
-            versions.append(version_name(elf, strings, name))
+            versions.append((needed_file, version_name(elf, strings, name)))
             if (aux_index + 1 < aux_count) != bool(next_aux) or (next_aux and next_aux < 16):
                 raise ValueError(f"incomplete ELF version auxiliary records: {elf.path}")
             aux_offset += next_aux
@@ -239,7 +243,8 @@ def needed_versions(elf: ElfSections, section: tuple[int, int, int, int, int]) -
     return versions
 
 
-def glibc_versions(path: Path, *, require_host: bool = True) -> list[tuple[int, int]]:
+def checked_version_needs(path: Path) -> tuple[list[tuple[str, str]], list[tuple[int, int]]]:
+    """Version-needs pairs that match the loader-mapped bytes, and the dynamic entries."""
     elf = ElfSections(path)
     try:
         sections = [item for item in elf.sections if item[0] == SECTION_NEED]
@@ -254,10 +259,22 @@ def glibc_versions(path: Path, *, require_host: bool = True) -> list[tuple[int, 
                 raise ValueError(f"ELF version needs differ from loader mapping: {path}")
             if sections[0][3] >= len(elf.sections) or elf.data(elf.sections[sections[0][3]]) != strings:
                 raise ValueError(f"ELF version needs use different strings: {path}")
-        versions = [name for item in sections for name in needed_versions(elf, item)]
-        return glibc_requirements(path, versions, entries, require_host=require_host)
+        return [pair for item in sections for pair in needed_version_pairs(elf, item)], entries
     finally:
         elf.stream.close()
+
+
+def glibc_versions(path: Path, *, require_host: bool = True) -> list[tuple[int, int]]:
+    pairs, entries = checked_version_needs(path)
+    return glibc_requirements(path, [name for _, name in pairs], entries, require_host=require_host)
+
+
+def version_needs(path: Path) -> dict[str, set[str]]:
+    """{needed soname: version nodes} of one ELF."""
+    needs: dict[str, set[str]] = {}
+    for soname, node in checked_version_needs(path)[0]:
+        needs.setdefault(soname, set()).add(node)
+    return needs
 
 
 def glibc_requirements(path: Path, versions: list[str], entries: list[tuple[int, int]], *, require_host: bool = True) -> list[tuple[int, int]]:
@@ -667,18 +684,24 @@ def package_owner(path: str) -> str:
     return ""
 
 
-def resolve_packages(imports: set[str]) -> set[str]:
+def resolve_packages(imports: set[str], nodes: dict[str, set[str]]) -> set[str]:
+    """Owning packages of the host sonames, each at the newest minimum its needed version nodes prove."""
     cache = ldconfig_cache()
-    packages, missing = set(), []
+    owners: dict[str, dict[str, set[str]]] = {}
+    missing = []
     for name in sorted(imports):
         owner = package_owner(cache[name]) if name in cache else ""
         if owner:
-            packages.add(owner)
+            owners.setdefault(owner, {})[name] = nodes.get(name, set())
         else:
             missing.append(name)
     if missing:
         raise ValueError("no installed package provides " + ", ".join(missing))
-    packages.discard("libc6")
+    owners.pop("libc6", None)
+    packages = set()
+    for owner, needs in owners.items():
+        bound = deb_symbols.package_bound(owner, needs)
+        packages.add(f"{owner} (>= {bound})" if bound else owner)
     return packages
 
 
@@ -690,6 +713,7 @@ def dependencies(bundle: Path) -> str:
     preload_file = bundle / "runtime/lib/preload.list"
     preloads = set(preload_file.read_text(encoding="utf-8").split()) if preload_file.is_file() else set()
     imports, glibc = set(), (2, 17)
+    nodes: dict[str, set[str]] = {}
     def walk_error(error: OSError) -> None:
         raise error
 
@@ -703,12 +727,16 @@ def dependencies(bundle: Path) -> str:
                     continue
             direct = needed(path)
             search, rpath_before_environment = elf_search_paths(path, direct)
-            imports.update(value for value in direct if value not in waived and
-                           not bundled_import(bundle, path, value, search, gpu_host, preloads, rpath_before_environment))
+            host = {value for value in direct if value not in waived and
+                    not bundled_import(bundle, path, value, search, gpu_host, preloads, rpath_before_environment)}
+            imports.update(host)
+            for soname, wanted in version_needs(path).items():
+                if soname in host:
+                    nodes.setdefault(soname, set()).update(wanted)
             versions = glibc_versions(path, require_host=not manifest.get("glibc"))
             if not manifest.get("glibc"):
                 glibc = max([glibc, *versions])
-    packages = resolve_packages(imports)
+    packages = resolve_packages(imports, nodes)
     libc = "libc6" if manifest.get("glibc") else f"libc6 (>= {glibc[0]}.{glibc[1]})"
     return ", ".join([libc] + sorted(packages))
 

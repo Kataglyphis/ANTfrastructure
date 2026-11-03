@@ -421,7 +421,7 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
     or directory symlink in the runtime also disables
     the proof because they could hide startup files from the scan. Otherwise it conservatively
     discovers the host library's package, or fails if it has no owner. Passive `.pth` paths
-    are accepted. This does not establish non-glibc minimum package versions; see CON188.
+    are accepted. For minimum package versions see below.
   - GPU library-path assumptions also require generated external-path wrappers for all detected
     runnable ELF executables. An unwrapped standalone executable disables that assumption and
     the scanner retains host requirements or fails on unowned libraries. Wrapper coverage
@@ -430,6 +430,14 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
     rather than assuming the candidate wins. A proven Python preload is already mapped; a proven
     GPU launcher path precedes RUNPATH, but an ELF's legacy RPATH precedes that environment path.
     This check does not resolve inherited RPATH or establish the owner of every external path.
+  - <a id="versioned-host-dependencies"></a>**Versioned host dependencies.** A host package gets
+    `(>= N)` from the ELF version nodes that importers bound to the host need, such as
+    `GLIBCXX_3.4.32` → `libstdc++6 (>= 13.1)`. `python_app_deb_symbols.py` reads N from the package's
+    installed `DEBIAN/symbols`: a node's first listed version, then the newest across nodes by dpkg's
+    order. A needed node the file lacks or a malformed line fails the scan. A package with no symbols
+    file or no plain `<package> #MINVER#` template stays unversioned and says so on stderr. It does
+    not cover symbols without a version node (GLib, ICE, SM) or per-symbol minimums inside a node,
+    and those remain CON188.
   - `Maintainer` comes from `app.json`'s `maintainer`. Without one it is
     `<publisher> <noreply@invalid>`, which says plainly that no address was given.
 - **AppImage:** `AppRun` starts `gui_script`. Started through a symlink named after another

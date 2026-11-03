@@ -717,22 +717,14 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       disabled modes as uid 1001. Check the other image digests and architectures separately.
 
 - [ ] **CON188 — derive versioned host-library dependencies for Python DEBs** [L, ★★★].
-      The Python app DEB dependency scanner currently names host packages without their
-      minimum ABI versions, except for unbundled glibc. On 2026-10-30, the retained
-      OrchestrANT AMD GPU candidate's bundled `libgstreamer-1.0.so.0` used the host's
-      `libgobject-2.0.so.0` and `libglib-2.0.so.0`; Debian's symbol metadata derived
-      `libglib2.0-0t64 (>= 2.81.1)`, while that candidate declared only unversioned
-      `libglib2.0-0t64`. A separate C++ ELF requiring `GLIBCXX_3.4.32` similarly needed
-      `libstdc++6 (>= 13.1)` according to `dpkg-shlibdeps`, but the scanner emitted
-      unversioned `libstdc++6`. A clean-host test on the image's own base does not prove
-      compatibility with an older package satisfying those unversioned dependencies.
-      On 2026-10-30, an installed fixture requiring `GLIBCXX_3.4.34` confirmed the
-      failure on offline `debian:13` image
-      `sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5`:
-      dpkg configured the scanner's unversioned DEB with `libstdc++6` 14.2.0-19,
-      but loading its library failed. The symbol-derived bound `libstdc++6 (>= 15)`
-      made dpkg refuse configuration on the same image. Reproduce with
-      `_implementation/deb-depends-audit-20261030/older-abi-proof.sh` in the workspace.
+      **Version nodes are done** (2026-11-03, [`python-app-bundles.md`](docs/python-app-bundles.md#versioned-host-dependencies)):
+      `GLIBCXX_3.4.32` gives `libstdc++6 (>= 13.1)` from the installed symbols file. **Left:** symbols with no
+      version node, and per-symbol minimums inside a node. On 2026-10-30 the retained OrchestrANT AMD candidate's
+      bundled `libgstreamer-1.0.so.0` used the host's `libgobject-2.0.so.0` and `libglib-2.0.so.0`, whose exports are
+      unversioned; Debian's symbol metadata derived `libglib2.0-0t64 (>= 2.81.1)` and the scanner still declares it
+      unversioned. This needs the ELF's undefined symbols, the loader-visible export check and the scope findings
+      below. On 2026-10-30 `debian:13` (`sha256:913f6706…`) showed why a bound matters: dpkg configured an
+      unversioned DEB whose fixture needs `GLIBCXX_3.4.34`, and loading it failed; `libstdc++6 (>= 15)` made dpkg refuse.
       Do not simply merge `dpkg-shlibdeps` output: a real CPU preload fixture loaded its
       bundled libz through both launcher paths, yet the tool reported host `zlib1g`, and
       a copied AMD MIGraphX provider caused it to report bundled C++ runtimes as host

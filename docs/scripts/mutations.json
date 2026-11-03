@@ -34655,5 +34655,109 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-storage-sdk-refactors.sh",
   "why": "a --from-stage runtime run warned of 535 GB for a 415 GB lane"
+ },
+ {
+  "id": "python.ci-tests-bench-gate-defaults-off",
+  "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+  "find": "PYTHON_BENCH_GATE=\"${PYTHON_BENCH_GATE:-0}\"",
+  "replace": "PYTHON_BENCH_GATE=\"${PYTHON_BENCH_GATE:-1}\"",
+  "test": "bash linux/scripts/tests/test-python-ci-bench.sh",
+  "why": "callers whose bench/ collects no tests keep the old best-effort run until they opt in"
+ },
+ {
+  "id": "lib.deb-symbols-malformed-line-accepted",
+  "target": "linux/scripts/06-packaging/python_app_deb_symbols.py",
+  "find": "        if match is None or not current:\n            raise ValueError(f\"malformed symbols line in {origin}: {line!r}\")\n",
+  "replace": "        if match is None or not current:\n            continue\n",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "a parse warning must not pass as a clean scan, the metadata-review finding"
+ },
+ {
+  "id": "lib.deb-symbols-malformed-header-accepted",
+  "target": "linux/scripts/06-packaging/python_app_deb_symbols.py",
+  "find": "            if len(parts) != 2:\n                raise ValueError(f\"malformed symbols header in {origin}: {line!r}\")\n",
+  "replace": "            if len(parts) != 2:\n                continue\n",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "a header with no template must not pass"
+ },
+ {
+  "id": "lib.deb-symbols-string-order",
+  "target": "linux/scripts/06-packaging/python_app_deb_symbols.py",
+  "find": "        if not best or version_newer(version, best):\n",
+  "replace": "        if not best or version > best:\n",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "string order puts 9 above 13.1 and ignores epochs"
+ },
+ {
+  "id": "lib.deb-symbols-oldest-order",
+  "target": "linux/scripts/06-packaging/python_app_deb_symbols.py",
+  "find": "        if not best or version_newer(best, version):\n",
+  "replace": "        if not best or version_newer(version, best):\n",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "a node exists from its first version, not its newest symbol"
+ },
+ {
+  "id": "lib.deb-symbols-compare-error-ignored",
+  "target": "linux/scripts/06-packaging/python_app_deb_symbols.py",
+  "find": "    if result.returncode not in (0, 1):\n        raise ValueError(f\"dpkg cannot compare {left} and {right}\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "a dpkg failure must not read as an order"
+ },
+ {
+  "id": "lib.deb-symbols-missing-node-unversioned",
+  "target": "linux/scripts/06-packaging/python_app_deb_symbols.py",
+  "find": "            raise ValueError(f\"{origin} lists no version node {node} for {soname}\")\n",
+  "replace": "            continue\n",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "metadata missing a needed node cannot vouch for a minimum"
+ },
+ {
+  "id": "lib.deb-symbols-template-ignored",
+  "target": "linux/scripts/06-packaging/python_app_deb_symbols.py",
+  "find": "    if entry is None or entry[0] != f\"{owner} #MINVER#\":\n",
+  "replace": "    if entry is None:\n",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "a custom template means this minimum is not the whole dependency"
+ },
+ {
+  "id": "lib.deb-symbols-silent-unversioned",
+  "target": "linux/scripts/06-packaging/python_app_deb_symbols.py",
+  "find": "        print(f\"deb-depends: {owner} installs no symbols file; its Depends stays unversioned\", file=sys.stderr)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "an unversioned result must say so in the build log"
+ },
+ {
+  "id": "lib.deb-symbols-version-zero-is-a-bound",
+  "target": "linux/scripts/06-packaging/python_app_deb_symbols.py",
+  "find": "    return minimums - {\"0\"}\n",
+  "replace": "    return minimums\n",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "version 0 is Debian's mark for no minimum"
+ },
+ {
+  "id": "lib.deb-symbols-base-node-counted",
+  "target": "linux/scripts/06-packaging/python_app_deb_symbols.py",
+  "find": "        if node and node != \"Base\":\n",
+  "replace": "        if node:\n",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "@Base is no version node"
+ },
+ {
+  "id": "lib.deb-symbols-host-scope-lost",
+  "target": "linux/scripts/06-packaging/python-app-deb-depends.py",
+  "find": "                if soname in host:\n                    nodes.setdefault(soname, set()).update(wanted)\n",
+  "replace": "                nodes.setdefault(soname, set()).update(wanted)\n",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "an ELF that gets the soname from the bundle must not raise the host package's minimum"
+ },
+ {
+  "id": "lib.deb-symbols-bound-not-emitted",
+  "target": "linux/scripts/06-packaging/python-app-deb-depends.py",
+  "find": "        packages.add(f\"{owner} (>= {bound})\" if bound else owner)\n",
+  "replace": "        packages.add(owner)\n",
+  "test": "bash linux/scripts/tests/test-python-deb-depends.sh",
+  "why": "an unversioned Depends is the CON188 failure: dpkg configures, then the loader fails"
  }
 ]

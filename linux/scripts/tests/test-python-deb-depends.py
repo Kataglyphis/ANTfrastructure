@@ -669,6 +669,116 @@ exec "$root/runtime/bin/python3" -I -B -c 'import sys; sys.argv[0] = "fixture"; 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "libc6 (>= 2.17)")
 
+    def cxx_app(self) -> dict[str, set[str]]:
+        source = self.root / "app.cc"
+        source.write_text('#include <iostream>\nint main() { std::cout << "ok"; return 0; }\n')
+        subprocess.run(["c++", str(source), "-o", str(self.app)], check=True)
+        return module.version_needs(self.app)
+
+    def symbols_bound(self, table: str) -> str:
+        """Depends with the host's symbols files replaced by `libstdc++6.symbols` holding `table`."""
+        info = self.root / "info"
+        info.mkdir(exist_ok=True)
+        (info / "libstdc++6.symbols").write_text(table)
+        with patch.object(module.deb_symbols, "INFO_DIR", info):
+            return module.dependencies(self.bundle)
+
+    def node_lines(self, version: str) -> str:
+        nodes = sorted(self.cxx_app()["libstdc++.so.6"])
+        return "libstdc++.so.6 libstdc++6 #MINVER#\n" + "".join(f" {node}@{node} {version}\n" for node in nodes)
+
+    def test_version_node_sets_the_package_minimum(self) -> None:
+        table = self.node_lines("3.4")
+        first = table.splitlines()[1].split()[0]
+        self.assertIn("libstdc++6 (>= 3.4)", self.symbols_bound(table))
+        self.assertIn("libstdc++6 (>= 15)", self.symbols_bound(table.replace(f"{first} 3.4", f"{first} 15")))
+
+    def test_comparison_is_dpkgs_not_the_strings(self) -> None:
+        table = self.node_lines("9")
+        first = table.splitlines()[1].split()[0]
+        self.assertIn("libstdc++6 (>= 13.1)", self.symbols_bound(table.replace(f"{first} 9", f"{first} 13.1")))
+        self.assertIn("libstdc++6 (>= 1:2)", self.symbols_bound(table.replace(f"{first} 9", f"{first} 1:2")))
+
+    def test_a_node_takes_its_first_version_from_real_symbols(self) -> None:
+        table = self.node_lines("1.0")
+        first = table.splitlines()[1].split()[0].partition("@")[0]
+        extra = f' (c++)"foo(int)@{first}" 2.0 1\n later@{first} 99\n'
+        self.assertIn("libstdc++6 (>= 2.0)", self.symbols_bound(table.replace(f" {first}@{first} 1.0\n", extra)))
+
+    def test_version_zero_sets_no_minimum(self) -> None:
+        depends = self.symbols_bound(self.node_lines("0"))
+        self.assertIn("libstdc++6", depends)
+        self.assertNotIn("libstdc++6 (", depends)
+
+    def test_metadata_gaps_fail_or_stay_unversioned_visibly(self) -> None:
+        table = self.node_lines("3.4")
+        node = table.splitlines()[1]
+        with self.assertRaisesRegex(ValueError, "lists no version node"):
+            self.symbols_bound(table.replace(node + "\n", ""))
+        with self.assertRaisesRegex(ValueError, "malformed symbols line"):
+            self.symbols_bound(table + " broken\n")
+        with self.assertRaisesRegex(ValueError, "malformed symbols header"):
+            self.symbols_bound(table + "header-alone\n")
+        for changed in (table.replace("#MINVER#", "(>= 1)"), table.replace("libstdc++.so.6 ", "libother.so.1 ")):
+            with self.subTest(changed=changed.splitlines()[0]), patch("sys.stderr") as stderr:
+                self.assertNotIn("libstdc++6 (", self.symbols_bound(changed))
+                self.assertIn("stays unversioned", "".join(str(c.args[0]) for c in stderr.write.call_args_list))
+
+    def test_no_symbols_file_stays_unversioned_visibly(self) -> None:
+        self.cxx_app()
+        with patch.object(module.deb_symbols, "INFO_DIR", self.root / "nothing"), patch("sys.stderr") as stderr:
+            self.assertNotIn("libstdc++6 (", module.dependencies(self.bundle))
+            self.assertIn("installs no symbols file", "".join(str(c.args[0]) for c in stderr.write.call_args_list))
+
+    def test_a_bundled_import_sets_no_host_minimum(self) -> None:
+        source = self.root / "app.cc"
+        source.write_text('#include <iostream>\nint main() { std::cout << "ok"; return 0; }\n')
+        library = subprocess.run(["c++", "-print-file-name=libstdc++.so.6"], capture_output=True, text=True, check=True).stdout.strip()
+        lib_dir = self.bundle / "lib"
+        lib_dir.mkdir()
+        shutil.copy(library, lib_dir / "libstdc++.so.6")
+        subprocess.run(["c++", str(source), "-Wl,--disable-new-dtags,-rpath,$ORIGIN/lib", "-o", str(self.app)], check=True)
+        needs = module.version_needs(self.app)
+        self.assertIn("libstdc++.so.6", needs)
+        self.assertNotIn("libstdc++6", module.dependencies(self.bundle))
+
+    def test_only_host_bound_importers_raise_the_minimum(self) -> None:
+        table = self.node_lines("1.0")
+        source = self.root / "newer.cc"
+        source.write_text('#include <print>\nint main() { std::println("ok"); return 0; }\n')
+        library = subprocess.run(["c++", "-print-file-name=libstdc++.so.6"], capture_output=True, text=True, check=True).stdout.strip()
+        lib_dir = self.bundle / "lib"
+        lib_dir.mkdir()
+        shutil.copy(library, lib_dir / "libstdc++.so.6")
+        built = subprocess.run(["c++", "-std=c++23", str(source), "-Wl,--disable-new-dtags,-rpath,$ORIGIN/lib",
+                                "-o", str(self.bundle / "newer")], check=False, capture_output=True, text=True)
+        if built.returncode:
+            self.skipTest("this compiler has no std::println: " + built.stderr[:200])
+        extra = module.version_needs(self.bundle / "newer")["libstdc++.so.6"] - module.version_needs(self.app)["libstdc++.so.6"]
+        self.assertTrue(extra, "the bundled importer must need a node the host-bound one does not")
+        self.assertIn("libstdc++6 (>= 1.0)", self.symbols_bound(table))
+
+    def test_a_failed_comparison_fails_the_scan(self) -> None:
+        with patch.object(module.deb_symbols.subprocess, "run") as run:
+            run.return_value = subprocess.CompletedProcess([], 2, stdout=b"", stderr=b"")
+            with self.assertRaisesRegex(ValueError, "cannot compare"):
+                module.deb_symbols.newest({"1", "2"})
+
+    def test_host_metadata_end_to_end(self) -> None:
+        self.cxx_app()
+        real = module.deb_symbols.symbols_file("libstdc++6")
+        if real is None:
+            self.skipTest("this host has no libstdc++6 symbols file")
+        result = self.run_subject()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertRegex(result.stdout, r"libstdc\+\+6 \(>= [0-9]")
+
+    def test_parse_accepts_debian_forms(self) -> None:
+        table = module.deb_symbols.parse_symbols(
+            'libx.so.1 libx1 #MINVER#\n| libx1-alt\n* Build-Depends-Package: libx-dev\n# note\n'
+            ' (c++)"f(int)@V1" 1.0\n (arch=amd64)g@V2 2.0 3\n h@Base 1\n', "fixture")
+        self.assertEqual({"V1": {"1.0"}, "V2": {"2.0"}}, table["libx.so.1"][1])
+
 
 if __name__ == "__main__":
     unittest.main()
