@@ -34191,5 +34191,309 @@
   "replace": "        pass\n",
   "test": "bash linux/scripts/tests/test-bump-versions.sh",
   "why": "FLUTTER_VERSION moved without its commit makes every Windows Flutter install refuse"
+ },
+ {
+  "id": "lib.iree-host-once-no-lock",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "    if ! flock -w \"${IREE_HOST_LOCK_WAIT_SECS:-14400}\" \"${lock}\"; then",
+  "replace": "    if ! true; then",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k shared",
+  "why": "without the lock both lanes compile at once, the waste this exists to end"
+ },
+ {
+  "id": "lib.iree-host-once-lock-leaks-to-children",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "    _iree_build_host_stage {lock}>&- || rc=$?",
+  "replace": "    _iree_build_host_stage || rc=$?",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k lock",
+  "why": "an sccache server the build starts would hold the lock for its whole life"
+ },
+ {
+  "id": "lib.iree-host-once-no-restore",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "    if _iree_host_stage_restore \"${entry}\"; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k shared",
+  "why": "without the restore every lane still compiles"
+ },
+ {
+  "id": "lib.iree-host-once-failed-build-publishes",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "    if [ \"${rc}\" -eq 0 ]; then\n        _iree_host_stage_publish",
+  "replace": "    if true; then\n        _iree_host_stage_publish",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k failure",
+  "why": "a failed build's tree must never reach the next lane"
+ },
+ {
+  "id": "lib.iree-host-once-failure-swallowed",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "    exec {lock}>&-\n    return \"${rc}\"",
+  "replace": "    exec {lock}>&-\n    return 0",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k failure",
+  "why": "a failed host stage must stop this lane too"
+ },
+ {
+  "id": "lib.iree-host-once-entry-tools-unchecked",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "        [ -x \"${host_install}/bin/${tool}\" ] || { warn \"IREE host cache entry ${entry} lacks ${tool}; rebuilding\"; return 1; }",
+  "replace": "        :",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k failure",
+  "why": "an entry that lost a tool fails hours later in stage 2"
+ },
+ {
+  "id": "lib.iree-host-once-key-ignores-pin",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "printf '%s\\n' \"${IREE_VERSION:-}\" \"${IREE_CROSS_BUILD_COMPILER}\" \"$(uname -m)\"",
+  "replace": "printf '%s\\n' \"${IREE_CROSS_BUILD_COMPILER}\" \"$(uname -m)\"",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k key",
+  "why": "a lane must not reuse another IREE pin's tools"
+ },
+ {
+  "id": "lib.iree-host-once-key-ignores-mode",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "\"${IREE_VERSION:-}\" \"${IREE_CROSS_BUILD_COMPILER}\" \"$(uname -m)\"",
+  "replace": "\"${IREE_VERSION:-}\" \"$(uname -m)\"",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k key",
+  "why": "the compiler mode decides which tools exist"
+ },
+ {
+  "id": "lib.iree-host-once-key-ignores-compiler",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "        \"${host_cc}\" --version\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k key",
+  "why": "another compiler is another build"
+ },
+ {
+  "id": "lib.iree-host-once-switch-ignored",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "      off) _iree_build_host_stage; return $? ;;",
+  "replace": "      off) ;;",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k switch",
+  "why": "off must restore the old per-lane build"
+ },
+ {
+  "id": "lib.iree-host-once-typo-accepted",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "      *) warn \"IREE_HOST_CACHE must be on or off, not ${IREE_HOST_CACHE}\"; return 2 ;;",
+  "replace": "      *) ;;",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k switch",
+  "why": "a typo would silently keep the shared path"
+ },
+ {
+  "id": "lib.iree-host-once-unusable-cache-fatal",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "        warn \"IREE host cache ${cache} is not usable; this lane builds its own host stage\"\n        _iree_build_host_stage\n        return $?",
+  "replace": "        return 1",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k switch",
+  "why": "an unusable mount costs speed, not the build"
+ },
+ {
+  "id": "lib.iree-host-once-lock-timeout-fatal",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "        warn \"IREE host stage: another lane held ${entry}.lock too long; this lane builds its own\"\n        exec {lock}>&-\n        _iree_build_host_stage\n        return $?",
+  "replace": "        exec {lock}>&-\n        return 1",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k lock",
+  "why": "a stuck lock costs speed, not the build"
+ },
+ {
+  "id": "lib.iree-host-once-cross-path-unwired",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "        _iree_build_host_stage_once || return 1",
+  "replace": "        _iree_build_host_stage || return 1",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k wiring",
+  "why": "the once path must be the one the cross build takes"
+ },
+ {
+  "id": "lib.iree-host-once-mount",
+  "target": "linux/Dockerfile.media",
+  "find": "--mount=type=cache,target=/var/cache/iree-host,id=iree-host ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-iree-host-once.sh -k wiring",
+  "why": "without the mount each lane has its own cache and compiles anyway"
+ },
+ {
+  "id": "chain-status.arch-pipeline-typo-passes",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "    *) warn \"CROSS_ARCH_PIPELINE must be 0 or 1, not ${CROSS_ARCH_PIPELINE}\"; return 2 ;;",
+  "replace": "    *) ;;",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k validate",
+  "why": "a typo must stop the chain at its start, not choose a path silently"
+ },
+ {
+  "id": "chain-status.arch-pipeline-parallel-stages-ignored",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "  if [ \"${PARALLEL_STAGES:-all}\" != \"all\" ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k validate",
+  "why": "PARALLEL_STAGES names a join this mode does not have"
+ },
+ {
+  "id": "chain-status.arch-pipeline-default-on",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "  if [ \"${CROSS_ARCH_PIPELINE:-0}\" = \"1\" ]; then return 0; fi",
+  "replace": "  if [ \"${CROSS_ARCH_PIPELINE:-1}\" = \"1\" ]; then return 0; fi",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k validate",
+  "why": "the mode is opt-in until a chain has proved it"
+ },
+ {
+  "id": "chain-status.arch-pipeline-lane-failure-swallowed",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "    cross_stage_run \"${stage}\" \"${arch}\" || { warn \"[arch-pipeline] arch=${arch} stage=${stage} failed\"; return 1; }",
+  "replace": "    cross_stage_run \"${stage}\" \"${arch}\" || warn \"[arch-pipeline] arch=${arch} stage=${stage} failed\"",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k order",
+  "why": "a lane must not build on a stage that failed"
+ },
+ {
+  "id": "chain-status.arch-pipeline-run-verdict-lost",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "\"${MAX_PARALLEL_ARCHS}\" \"${arches[@]}\" || rc=1",
+  "replace": "\"${MAX_PARALLEL_ARCHS}\" \"${arches[@]}\" || true",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k order",
+  "why": "a failed arch must fail the chain"
+ },
+ {
+  "id": "chain-status.arch-pipeline-status-ok-regardless",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "      [ -f \"${state}/done.${stage}.${arch}\" ] || status=failed",
+  "replace": "      :",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k order",
+  "why": "the status file must not claim a stage an arch did not finish"
+ },
+ {
+  "id": "chain-status.arch-pipeline-stage-order",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "  for stage in \"${stages[@]}\"; do\n    log \"[arch-pipeline] arch=${arch} stage=${stage} start\"",
+  "replace": "  for stage in \"${stages[0]}\"; do\n    log \"[arch-pipeline] arch=${arch} stage=${stage} start\"",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k order",
+  "why": "a lane runs every stage, in graph order"
+ },
+ {
+  "id": "chain-status.arch-pipeline-parallel-not-forced",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "  PARALLEL_ARCHS=1\n  run_parallel",
+  "replace": "  run_parallel",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k order",
+  "why": "without it the serial loop runs one arch to the end, then the next"
+ },
+ {
+  "id": "chain-status.arch-pipeline-parallel-not-restored",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "  PARALLEL_ARCHS=\"${saved}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k order",
+  "why": "the runtime stage reads the operator's own value"
+ },
+ {
+  "id": "chain-status.arch-pipeline-reclaim-unlocked",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "  flock \"${lock}\" || { exec {lock}>&-; return 0; }\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k disk",
+  "why": "two lanes evicting at once race on the same directory"
+ },
+ {
+  "id": "chain-status.arch-pipeline-dry-run-reclaims",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "  is_dry_run && return 0\n  _disk_guard_positive_integer \"${threshold}\" || return 0",
+  "replace": "  _disk_guard_positive_integer \"${threshold}\" || return 0",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k disk",
+  "why": "a dry run removes nothing"
+ },
+ {
+  "id": "chain-status.arch-pipeline-lever-ignores-running",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "    [ -f \"${state}/lane-done.${arch}\" ] || continue\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k disk",
+  "why": "a removal under a running build is the 2026-09-06 failure"
+ },
+ {
+  "id": "chain-status.arch-pipeline-lever-takes-last-stage",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "  unset 'stages[-1]'\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k disk",
+  "why": "the runtime lane reads the finished arch's last stage"
+ },
+ {
+  "id": "chain-status.arch-pipeline-lever-ignores-switch",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "  [ \"${CROSS_IMAGE_PRUNE:-1}\" != \"0\" ] || return 0\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k disk",
+  "why": "CROSS_IMAGE_PRUNE=0 is the operator's off switch"
+ },
+ {
+  "id": "chain-status.arch-pipeline-lever-runs-past-target",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "    [ -n \"${free_gb}\" ] && [ \"${free_gb}\" -lt \"${target}\" ] || return 0\n    if _disk_guard_nerdctl",
+  "replace": "    if _disk_guard_nerdctl",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k disk",
+  "why": "measure after each removal; shared layers make a nominal size meaningless"
+ },
+ {
+  "id": "chain-status.arch-pipeline-export-kept",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "  export CROSS_NO_LOCAL_CACHE_EXPORT=1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k disk",
+  "why": "a lane that cannot free space must stop adding cache exports"
+ },
+ {
+  "id": "chain-status.arch-pipeline-driver-unwired",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "    if chain_arch_pipeline_takes \"${stage}\"; then continue; fi\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k driver",
+  "why": "the switch must reach the stage loop"
+ },
+ {
+  "id": "chain-status.arch-pipeline-driver-unvalidated",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "  chain_arch_pipeline_validate || exit 2\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k driver",
+  "why": "an unknown value must stop the driver before it builds"
+ },
+ {
+  "id": "chain-status.arch-pipeline-reclaim-rereads",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "  _chain_lane_below \"${bc_dir}\" \"${threshold}\" || return 0\n  free_gb=\"$(_disk_guard_free_gb \"${bc_dir}\")\"\n  protected=",
+  "replace": "  free_gb=\"$(_disk_guard_free_gb \"${bc_dir}\")\"\n  protected=",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k disk",
+  "why": "the lane before it may have freed enough; a second reclaim would evict for nothing"
+ },
+ {
+  "id": "chain-status.arch-pipeline-runs-twice",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "  [ \"${_CHAIN_PIPELINE_RAN:-0}\" -eq 0 ] || return 0\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k order",
+  "why": "the first per-arch stage runs them all; the others must not repeat it"
+ },
+ {
+  "id": "chain-status.arch-pipeline-failure-continues",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "  chain_arch_pipeline_run || err \"the arch pipeline failed for one or more arches; every stage it reached is pushed, so re-run with --from-stage\"\n",
+  "replace": "  chain_arch_pipeline_run || true\n",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k order",
+  "why": "the runtime stage must not start on an arch that failed"
+ },
+ {
+  "id": "chain-status.arch-pipeline-takes-shared",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "  cross_stage_is_per_arch \"$1\" || return 1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k order",
+  "why": "base and compiler are the stage loop's"
+ },
+ {
+  "id": "chain-status.arch-pipeline-no-joined-guard",
+  "target": "linux/scripts/lib-chain-arch-pipeline.sh",
+  "find": "  _chain_stage_disk_guard \"$(_chain_arch_pipeline_stages | tail -1)\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k order",
+  "why": "the runtime lane's disk target is applied only by this guard"
  }
 ]

@@ -484,7 +484,7 @@ ARG FT_TORCH_TWIN=1
 
 # No cargo mount: build-app-wheelhouse.sh never runs cargo, and an inert mount reads as coverage.
 LABEL kataglyphis.step=app-wheelhouse
-RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scripts/frameworks/torch,readonly \
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=cache,target=/var/cache/iree-host,id=iree-host --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scripts/frameworks/torch,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \

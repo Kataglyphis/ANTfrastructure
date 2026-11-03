@@ -125,8 +125,8 @@ EOF
                             CROSS_NO_PUSH_FORCE=1 (accept the stale-parent risk).
   --parallel-archs          Build per-arch stages (sdk/media/android) in parallel
   --max-parallel-archs N    Max concurrent arch builds (default: nproc, 4 if unknown)
-                            Env PARALLEL_STAGES=all|csv (e.g. "sdk,android")
-                            limits WHICH stages parallelize (default: all)
+                            Env PARALLEL_STAGES=all|csv limits WHICH stages parallelize
+                            Env CROSS_ARCH_PIPELINE=1: one lane per arch, no join per stage
 EOF
   orchestrator_usage_mirror_options
   cat <<'EOF'
@@ -253,6 +253,7 @@ _chain_validate_stages() {
   hailo_validate_knobs || exit 2
   runtime_host_payload_arches >/dev/null || exit 2
   runtime_push_mode >/dev/null || exit 2
+  chain_arch_pipeline_validate || exit 2
 
   log "Cross chain: arches=${TARGET_ARCHES} stages=${FROM_STAGE}..${TO_STAGE} repo=${IMAGE_REPO}${CROSS_GPU_VARIANT:+ variant=${CROSS_GPU_VARIANT}} stage_repo=$(cross_stage_repo) final=${FINAL_IMAGE}"
 
@@ -352,6 +353,7 @@ _chain_run_build_loop() {
   local stage
   for stage in "${CROSS_STAGE_ORDER[@]}"; do
     stage_enabled "${stage}" || continue
+    if chain_arch_pipeline_takes "${stage}"; then continue; fi
     # Explicit || err per stage: set -e is off under run_parallel_arch_loop's `if !`.
     _chain_status_emit "${stage}" "running"
     case "${stage}" in
@@ -396,6 +398,7 @@ source "${REPO_ROOT}/linux/scripts/01-core/disk-guard.sh"
 source "${REPO_ROOT}/linux/scripts/01-core/chain-lifecycle.sh"
 
 source "${REPO_ROOT}/linux/scripts/01-core/chain-storage.sh"
+source "${REPO_ROOT}/linux/scripts/lib-chain-arch-pipeline.sh"
 
 # The runtime lane refuses below ~120G, which the 40G between-stage default reaches too late.
 _chain_runtime_lane_is_next() {

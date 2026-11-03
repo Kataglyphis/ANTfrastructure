@@ -538,6 +538,10 @@ the two gates that run between runs (`_chain_stage_disk_guard` after the arch
 loop has joined, and `_chain_runtime_lane_disk_gate` before any wrapper build
 starts) pass 0. `CROSS_IMAGE_PRUNE=0` disables the lever entirely.
 
+`CROSS_ARCH_PIPELINE=1` has no such join between stages, so its per-lane guard keeps away from
+this function and removes only named tags of arches that finished
+([one pipeline per arch](linux-cross-builds.md#one-pipeline-per-arch)).
+
 **Two steps, in risk order.** First `nerdctl image prune` with no `-a`: dangling
 images only, zero risk, and 20 GB on its own in the run that found this. Then
 this chain's own `cross-<stage>-<arch>` tags that the rest of the run does not

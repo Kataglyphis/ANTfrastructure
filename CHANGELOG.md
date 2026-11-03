@@ -48,6 +48,20 @@
 - `WindowsFormatting.ClangFormatCheck.Tests.ps1`'s fake `clang-format` grades the file's own name,
   so a temp path containing "bad" no longer fails the suite; a new case pins it.
 
+## 2026-11-03 — One pipeline per arch, opt-in
+
+- `CROSS_ARCH_PIPELINE=1` starts an arch's next stage when its previous one is pushed
+  ([the page](docs/linux-cross-builds.md#one-pipeline-per-arch)); the default stays the stage loop
+  until a chain has proved it. New `linux/scripts/lib-chain-arch-pipeline.sh` is outside every image
+  closure, and its disk guard removes only named tags of arches that finished.
+
+## 2026-11-03 — One lane compiles IREE's host stage
+
+- The media `app-wheelhouse` RUN gains an `id=iree-host` cache mount, and the first cross lane builds
+  the host tools under a lock while the next waits and restores them
+  ([the page](docs/iree-two-stage-build.md#one-host-stage-per-chain)). `IREE_HOST_CACHE=off` reverts.
+  This re-keys that RUN; the media stage rebuilds on the next chain anyway.
+
 ## 2026-11-03 — A knob's default runs before its readers
 
 - `verify_knob_order.py` (preflight slug and commit hook `knob-order`) follows call order and
