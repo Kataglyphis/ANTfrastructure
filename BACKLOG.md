@@ -1895,16 +1895,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ([`build-resource-monitoring.md`](docs/build-resource-monitoring.md)). Left: read the next chain's
       runtime summary. Done when it has no `stage=?`.
 
-- [ ] **CON143 — the hub's tests leave their `mktemp` trees in `/tmp`** [S, ★]. On 2026-10-21 the
-      build host's `/tmp` (a 31 GB tmpfs, so RAM) held 31,668 entries and 2.7 GB: 23,865 `tmp.*`,
-      3,218 `wlt-target.*`, 1,719 `wlt-work.*`, 2,463 `buildkit-*`, plus `ccl-empty*`,
-      `cc-test-bin*`, `cross-oci-test*` and `mutation-gate-*`. Fifteen suites call `mktemp` without a
-      cleanup trap (most: `test-setup-package-image.sh` 10, `test-cuda-runtime-payload.sh` 8,
-      `test-uv-conflict-extras.sh`, `test-runtime-image-gates.sh` and `test-gpu-variant.sh` 7 each),
-      and `06-packaging/web-lane-tools.sh` makes the `wlt-*` trees. Work: one `t_mktemp` in
-      `test-harness.sh` that registers each tree for removal at exit, the suites moved onto it, and a
-      `run-tests.sh` check that counts `/tmp` entries before and after the run and fails on growth.
-
 - [b] **CON62 — WSL containers (`wslc`) as the local Linux engine** [M, ★★]. Blocked
       upstream. Evaluated 2026-10-05 against WSL 3.0.1
       (`docs/rancher-desktop-linux-containers.md` § *WSL containers*): faster bind

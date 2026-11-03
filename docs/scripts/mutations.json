@@ -7322,8 +7322,8 @@
  {
   "id": "script-tests.reap-on-interrupt",
   "target": "linux/scripts/tests/run-tests.sh",
-  "find": "trap 'oj_reap' EXIT",
-  "replace": ":",
+  "find": "trap 'oj_reap; rm -rf \"${_RUN_TMP}\"' EXIT",
+  "replace": "trap 'rm -rf \"${_RUN_TMP}\"' EXIT",
   "test": "bash linux/scripts/tests/test-run-tests-reaping.sh",
   "why": "a preflight killed at its timeout must not leave the suite it was running behind"
  },
@@ -34831,5 +34831,61 @@
   "replace": "venv=\"$2\"",
   "test": "bash linux/scripts/tests/test-ci-image-leg.sh",
   "why": "a relative UV_PYTHON breaks as soon as the command changes directory"
+ },
+ {
+  "id": "script-tests.leftovers-fail",
+  "target": "linux/scripts/tests/run-tests.sh",
+  "find": "    if [ -n \"${_left}\" ]; then\n",
+  "replace": "    if false; then\n",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "a suite that leaves trees behind must fail by name, or a tmpfs /tmp fills with RAM again"
+ },
+ {
+  "id": "script-tests.private-tmpdir",
+  "target": "linux/scripts/tests/run-tests.sh",
+  "find": "  oj_add env \"TMPDIR=${_RUN_TMP}/${#SUITE_NAMES[@]}\" bash \"${suite}\"\n",
+  "replace": "  oj_add bash \"${suite}\"\n",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "without a TMPDIR of its own a suite's leak lands where nothing can attribute it"
+ },
+ {
+  "id": "script-tests.removes-its-root",
+  "target": "linux/scripts/tests/run-tests.sh",
+  "find": "trap 'oj_reap; rm -rf \"${_RUN_TMP}\"' EXIT\n",
+  "replace": "trap 'oj_reap' EXIT\n",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "the runner's own root must not become the leak it exists to catch"
+ },
+ {
+  "id": "lib.t-mktemp-registers",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "  printf '%s\\n' \"${path}\" >> \"${_T_TMP_REGISTRY}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "an unregistered tree is a plain mktemp leak"
+ },
+ {
+  "id": "lib.t-mktemp-own-shell-only",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "  [ \"${BASHPID}\" = \"$$\" ] || return 0\n  [ -f \"${_T_TMP_REGISTRY}\" ] || return 0\n",
+  "replace": "  [ -f \"${_T_TMP_REGISTRY}\" ] || return 0\n",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "a subshell's summary would delete the trees the suite is still using"
+ },
+ {
+  "id": "lib.t-mktemp-removed-at-exit",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "trap _t_tmp_cleanup EXIT\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "a suite that ends without a summary would leave its trees"
+ },
+ {
+  "id": "lib.t-mktemp-removed-at-summary",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "  _t_tmp_cleanup\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "most suites set their own EXIT trap, which replaces the harness's"
  }
 ]

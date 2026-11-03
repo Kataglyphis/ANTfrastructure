@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_private_tmpdir
 SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 SEED="${SCRIPTS}/06-packaging/uv-cache-seed.sh"
 CI_COMMON="${SCRIPTS}/02-toolchain/python/ci-common.sh"

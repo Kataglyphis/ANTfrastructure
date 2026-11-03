@@ -72,6 +72,10 @@
   each upstream fallback. Other failures, such as a 403 from a bad key, keep curl's reason.
 - The resource monitor names the runtime lane's work after the arch loop: per-arch gates and
   `index/<step>` phases from `runtime_step_phase`. The next chain's summary is the remaining proof.
+- `run-tests.sh` gives each suite its own `TMPDIR`, fails a suite that leaves an entry there and
+  removes it either way. `test-harness.sh` adds `t_mktemp` and `t_private_tmpdir`; 28 suites that
+  left trees, directly or through the code they test, use the latter. Hadolint and actionlint keep
+  their caches in the run's outer `TMPDIR`.
 
 ## 2026-11-03 — The site link gate and the consumer secret scan run side by side
 

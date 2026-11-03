@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_private_tmpdir
 SCRIPTS="${TESTS_DIR}/.."
 PATCHER="${SCRIPTS}/03-media/build/gstreamer/common/patch-gstreamer-sources.sh"
 PATCH="${SCRIPTS}/patches/gstreamer/007-validate-ssim-register-outside-validate.patch"

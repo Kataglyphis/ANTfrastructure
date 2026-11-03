@@ -3,6 +3,7 @@
 set -u
 # shellcheck source=linux/scripts/tests/script-stage-fixture.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/script-stage-fixture.sh"
+t_private_tmpdir
 declare work STEP
 script_stage_fixture_init work STEP 40-build-wasm.sh "${1:-}" lib bin 'source tree' || exit 1
 cp "${STEP}" "${work}/step.sh"

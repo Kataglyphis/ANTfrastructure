@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_private_tmpdir
 source "${TESTS_DIR}/gate-tree.sh"
 REPO_ROOT="$(cd "${TESTS_DIR}/../../.." && pwd)"
 GATE="${REPO_ROOT}/docs/scripts/verify_doc_links.py"

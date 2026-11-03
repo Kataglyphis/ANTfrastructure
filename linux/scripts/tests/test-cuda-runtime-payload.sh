@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_private_tmpdir
 PAY="${TESTS_DIR}/../06-packaging/copy-media-payloads.sh"
 PKG="${TESTS_DIR}/../../Dockerfile.package"
 

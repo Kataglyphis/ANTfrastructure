@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_private_tmpdir
 SUBJECT="${TESTS_DIR}/../06-packaging/setup-package-image.sh"
 
 # ensure_native_rust_toolchain; see docs/failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch

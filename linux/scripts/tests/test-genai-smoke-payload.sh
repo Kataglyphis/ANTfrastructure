@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_private_tmpdir
 SMOKE_COMMON="${1:-${TESTS_DIR}/../06-packaging/smoke-common.sh}"
 
 _WORK="$(mktemp -d)"

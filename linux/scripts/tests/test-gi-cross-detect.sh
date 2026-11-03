@@ -4,6 +4,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_private_tmpdir
 SUBJECT="${TESTS_DIR}/../03-media/build/gstreamer/common/pre-setup.sh"
 
 _src="$(t_fn_src "${SUBJECT}" _gi_cross_detect_host_tools)" || exit 1

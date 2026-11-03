@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_private_tmpdir
 t_skip_unless_chrome
 SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 CHECK="${SCRIPTS}/check-live-site.js"

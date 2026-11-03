@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_private_tmpdir
 SCRIPTS="${TESTS_DIR}/.."
 GATE="${SCRIPTS}/run-lint-gates.sh"
 

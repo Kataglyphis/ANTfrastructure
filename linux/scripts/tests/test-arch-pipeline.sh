@@ -2,6 +2,7 @@
 # lib-chain-arch-pipeline.sh with a stub stage runner and registry, plus the real driver's dry run; not covered: a BuildKit build, a real image removal, disk accounting of a chain.
 set -u
 source "${BASH_SOURCE[0]%/*}/test-harness.sh"
+t_private_tmpdir
 source "${BASH_SOURCE[0]%/*}/meet.sh"
 LIB="${_T_SCRIPTS}/lib-chain-arch-pipeline.sh"
 

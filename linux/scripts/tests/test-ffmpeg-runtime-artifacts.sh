@@ -4,6 +4,7 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 
+t_private_tmpdir
 _ff_runtime_worker() {
   local source="$1" root="$2" operation="$3" failure="$4" context="$5" fn status=0
   for fn in _ffmpeg_runtime_artifacts _ffmpeg_enqueue_unresolved bundle_sdk_runtime_libs emit_runtime_apt_manifest; do

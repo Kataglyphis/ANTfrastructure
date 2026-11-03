@@ -3,6 +3,8 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+# A mutant of the runner would otherwise leave its root in the real TMPDIR.
+t_private_tmpdir
 
 _WORK="$(mktemp -d)"
 trap 'rm -rf "${_WORK}"' EXIT
@@ -91,6 +93,33 @@ mv "${_WORK}/tests/test-c.sh" "${_WORK}/tests/test-c.off"
 printf '#!/usr/bin/env bash\nsource "$(dirname "$0")/test-harness.sh"\nt_case int\ntrap "t_assert_ok true; t_summary" INT\nkill -INT $$\nsleep 3\nt_assert_ok false\nt_summary\n' \
   > "${_WORK}/tests/test-b.sh"
 t_assert_contains "$(_runner RUN_TESTS_JOBS=2)" "RC=0"
+
+t_case "a suite that leaves a file in its TMPDIR fails by name, and its neighbour stays green"
+printf '#!/usr/bin/env bash\nsource "$(dirname "$0")/test-harness.sh"\nt_case leak\n: > "$(mktemp)"\nt_assert_ok true\nt_summary\n' > "${_WORK}/tests/test-leak.sh"
+printf '#!/usr/bin/env bash\nsource "$(dirname "$0")/test-harness.sh"\nt_case tidy\nd="$(t_mktemp -d)"; : > "${d}/f"\nt_private_tmpdir\n: > "$(mktemp)"\nt_assert_ok true\nt_summary\n' > "${_WORK}/tests/test-tidy.sh"
+_outer="${_WORK}/outer"; mkdir -p "${_outer}"
+leak="$(_runner TMPDIR="${_outer}" RUN_TESTS_JOBS=2)"
+t_assert_contains "${leak}" "RC=1"
+t_assert_contains "${leak}" "LEFTOVER: this suite left in TMPDIR: tmp."
+t_assert_contains "${leak}" "1 suite(s) failed: test-leak.sh"
+t_assert_eq "" "$(ls -A "${_outer}")" "the run removes every suite's TMPDIR and its own"
+rm -f "${_WORK}/tests/test-leak.sh" "${_WORK}/tests/test-tidy.sh"
+
+t_case "t_mktemp survives a subshell's exit and goes with the suite"
+_tracked="${_WORK}/tracked"
+printf '#!/usr/bin/env bash\nsource "$(dirname "$0")/test-harness.sh"\nt_case keep\nd="$(t_mktemp -d)"\n( t_summary ) >/dev/null\nt_assert_ok test -d "${d}"\nprintf "%%s" "${d}" > "$1"\nt_summary\n' > "${_WORK}/tests/fixture-tracked.sh"
+t_assert_ok bash "${_WORK}/tests/fixture-tracked.sh" "${_tracked}"
+t_assert_fails test -e "$(cat "${_tracked}")"
+
+t_case "a suite that exits without a summary still removes its t_mktemp trees"
+printf '#!/usr/bin/env bash\nsource "$(dirname "$0")/test-harness.sh"\nd="$(t_mktemp -d)"\nprintf "%%s" "${d}" > "$1"\nexit 0\n' > "${_WORK}/tests/fixture-early.sh"
+t_assert_ok bash "${_WORK}/tests/fixture-early.sh" "${_tracked}"
+t_assert_fails test -e "$(cat "${_tracked}")"
+
+t_case "a suite with its own EXIT trap still removes its t_mktemp trees at the summary"
+printf '#!/usr/bin/env bash\nsource "$(dirname "$0")/test-harness.sh"\ntrap : EXIT\nt_case own\nd="$(t_mktemp -d)"\nprintf "%%s" "${d}" > "$1"\nt_assert_ok true\nt_summary\n' > "${_WORK}/tests/fixture-own-trap.sh"
+t_assert_ok bash "${_WORK}/tests/fixture-own-trap.sh" "${_tracked}"
+t_assert_fails test -e "$(cat "${_tracked}")"
 
 t_case "a jobs value that is not a positive integer is a usage error"
 for _bad in 0 x -1; do

@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_private_tmpdir
 source "${TESTS_DIR}/../01-core/python_uv.sh"
 WORK="$(mktemp -d)"; trap 'rm -rf "${WORK}"' EXIT
 export UV_CACHE_DIR="${WORK}/cache" UV_PYTHON_DOWNLOADS=never

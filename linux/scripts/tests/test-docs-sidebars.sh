@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_private_tmpdir
 SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 CHECK="${SCRIPTS}/check-docs-sidebars.js"
 _tmp="$(mktemp -d)"

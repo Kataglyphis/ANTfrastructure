@@ -895,6 +895,8 @@ transcript. Each was a child that outlived whatever started it. So:
    Fixtures unrelated to ref resolution use a synthetic immutable app identity;
    moving-ref resolution belongs to `test-app-ref.sh`, not a graph dry-run.
    Graph/runtime fixtures also use disposable context directories and immutable parent pins.
+   `run-tests.sh` gives each suite its own `TMPDIR` and fails one that leaves an entry there: use
+   `t_mktemp`, or `t_private_tmpdir` when the code under test makes the trees.
 3. **Tests run as process groups that are killed whole.** `lib-ordered-jobs.sh` starts every job of
    `run-tests.sh` and `preflight.sh` as its own process group and kills it when the job ends, after
    `OJ_TIMEOUT` (`RUN_TESTS_SUITE_TIMEOUT`, 900 s per suite) and, through `oj_reap` in the runner's

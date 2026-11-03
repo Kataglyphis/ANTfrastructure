@@ -3,6 +3,7 @@
 set -u
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/renovate-fixtures.sh"
 
+t_private_tmpdir
 # _cs_tool <body>: a `dart` that runs <body> and exits 0; a failing tool is test-renovate-local.sh's (D).
 CS_PATH=""
 _cs_tool() {

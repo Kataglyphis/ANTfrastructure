@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_private_tmpdir
 UV_SH="${TESTS_DIR}/../01-core/python_uv.sh"
 
 _src="$(t_fn_src "${UV_SH}" _uv_conflict_groups)" || exit 1

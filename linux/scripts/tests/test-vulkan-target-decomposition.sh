@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_private_tmpdir
 VULKAN_SH="${TESTS_DIR}/../02-toolchain/vulkan.sh"
 
 # Only the functions under test: sourcing vulkan.sh sets -euo pipefail and pulls in 01-core.

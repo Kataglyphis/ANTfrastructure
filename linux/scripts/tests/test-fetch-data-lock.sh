@@ -132,7 +132,7 @@ t_case "a scene directory without a stamp is not this fetcher's to replace"
 mkdir -p "${w}/m2/scene"
 printf 'mine' > "${w}/m2/scene/keep.txt"
 t_assert_fails fetch --lock "${w}/assets.lock" --dest "${w}/m2" --extract --only scene
-t_assert_contains "$(log)" "exists but was not fetched"
+t_assert_contains "$(log | tr -s ' \n' ' ')" "exists but was not fetched"
 t_assert_eq mine "$(cat "${w}/m2/scene/keep.txt" 2>&1)"
 
 t_case "an archive with anything outside <name>/, or a file that is no archive, fails and writes nothing"
@@ -154,6 +154,6 @@ t_assert_ok cmake_fetch "${w}/assets.lock" "${w}/m4"
 t_assert_ok test -f "${w}/m4/scene/.assetant-sha256"
 line scene.tar.xz "file://${w}/nowhere/scene.tar.xz" > "${w}/gone.lock"
 t_assert_fails cmake_fetch "${w}/gone.lock" "${w}/m5"
-t_assert_contains "$(log)" "was not fetched"
+t_assert_contains "$(log | tr -s ' \n' ' ')" "was not fetched"
 
 t_summary

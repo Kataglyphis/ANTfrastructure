@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_private_tmpdir
 CORE="${TESTS_DIR}/../01-core"
 _VARIANT_WORK="$(mktemp -d)"
 trap 'rm -rf "${_VARIANT_WORK}"' EXIT

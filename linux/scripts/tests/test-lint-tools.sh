@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+t_private_tmpdir
 SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 ROOT="$(cd "${SCRIPTS}/../.." && pwd)"
 INSTALL="${SCRIPTS}/06-packaging/install-lint-tools.sh"

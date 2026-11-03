@@ -4,6 +4,7 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 
+t_private_tmpdir
 CHECK="${TESTS_DIR}/../../../.github/actions/clean-host-package-check/clean-host-package-check.sh"
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT

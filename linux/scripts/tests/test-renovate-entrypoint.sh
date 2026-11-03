@@ -4,6 +4,7 @@ set -uo pipefail
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 
+t_private_tmpdir
 CHECK="${TESTS_DIR}/../verify_renovate_entrypoint.py"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT

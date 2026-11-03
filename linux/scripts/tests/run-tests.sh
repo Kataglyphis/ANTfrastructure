@@ -18,19 +18,24 @@ case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) SKIP_OK=1 ;; *) SKIP_OK=0 ;; esa
 JOBS="$(oj_count RUN_TESTS_JOBS)" || exit 2
 # A hung suite is killed with its children after RUN_TESTS_SUITE_TIMEOUT; an interrupted run takes every running suite down.
 export OJ_TIMEOUT="${RUN_TESTS_SUITE_TIMEOUT:-900}"
-trap 'oj_reap' EXIT
+# One TMPDIR per suite names the leak and ignores other users of /tmp; not covered: a suite that writes /tmp by name or clears TMPDIR.
+_RUN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/run-tests.XXXXXX")" || exit 2
+trap 'oj_reap; rm -rf "${_RUN_TMP}"' EXIT
+# Deliberate tool caches outlive a suite, so they stay outside its TMPDIR.
+export HADOLINT_CACHE_DIR="${HADOLINT_CACHE_DIR:-${TMPDIR:-/tmp}}" ACTIONLINT_CACHE_DIR="${ACTIONLINT_CACHE_DIR:-${TMPDIR:-/tmp}}"
 
 SUITE_NAMES=()
 for suite in "${TESTS_DIR}"/test-*.sh; do
   [ -f "${suite}" ] || continue
   [ "$(basename "${suite}")" = "test-harness.sh" ] && continue   # the harness, not a suite
+  mkdir "${_RUN_TMP}/${#SUITE_NAMES[@]}" || exit 2
+  oj_add env "TMPDIR=${_RUN_TMP}/${#SUITE_NAMES[@]}" bash "${suite}"
   SUITE_NAMES+=("$(basename "${suite}")")
-  oj_add bash "${suite}"
 done
 
 # <i> <rc> <log>: one suite's block and verdict; ordered-jobs calls it in name order.
 _report() {
-  local name="${SUITE_NAMES[$1]}" _out _n
+  local name="${SUITE_NAMES[$1]}" _out _n _left
   _out="$(cat "$3")"
   printf '== %s ==\n' "${name}"
   SUITES=$((SUITES + 1))
@@ -44,7 +49,13 @@ _report() {
     # Summed from the harness's "N assertion(s) passed" lines.
     _n="$(printf '%s\n' "${_out}" | sed -n 's/^  \([0-9][0-9]*\) assertion(s) passed$/\1/p' | tail -1)"
     TOTAL_ASSERTS=$((TOTAL_ASSERTS + ${_n:-0}))
+    _left="$(find "${_RUN_TMP}/$1" -mindepth 1 -maxdepth 1 -printf '%f ' 2>/dev/null || true)"
+    if [ -n "${_left}" ]; then
+      printf '  LEFTOVER: this suite left in TMPDIR: %s(use t_mktemp or t_private_tmpdir)\n' "${_left}"
+      FAILED+=("${name}")
+    fi
   fi
+  rm -rf "${_RUN_TMP:?}/$1"
 }
 oj_run "${JOBS}" _report
 

@@ -26,6 +26,35 @@ command_not_found_handle() {
   return 127
 }
 
+# Trees t_mktemp made, in a file because callers run it inside $(...).
+_T_TMP_REGISTRY="${TMPDIR:-/tmp}/.t-harness-tmp.$$"
+
+# t_mktemp [mktemp args]: mktemp, with the result removed at the suite's exit.
+t_mktemp() {
+  local path
+  path="$(mktemp "$@")" || return $?
+  printf '%s\n' "${path}" >> "${_T_TMP_REGISTRY}"
+  printf '%s\n' "${path}"
+}
+
+# t_private_tmpdir: points TMPDIR at one t_mktemp tree, so the code under test and its children cannot leave anything behind.
+t_private_tmpdir() {
+  TMPDIR="$(t_mktemp -d)" || return $?
+  export TMPDIR
+}
+
+# Only the suite's own shell: a subshell's exit or t_summary must not remove trees the suite still uses.
+_t_tmp_cleanup() {
+  local path
+  [ "${BASHPID}" = "$$" ] || return 0
+  [ -f "${_T_TMP_REGISTRY}" ] || return 0
+  while IFS= read -r path; do
+    [ -z "${path}" ] || rm -rf -- "${path}"
+  done < "${_T_TMP_REGISTRY}"
+  rm -f -- "${_T_TMP_REGISTRY}"
+}
+trap _t_tmp_cleanup EXIT
+
 _t_fail() {
   if [ -n "${_T_WAIVED_CASE}" ]; then
     _T_RUN=$((_T_RUN - 1))
@@ -403,6 +432,8 @@ $(cat -- "${file}" 2>/dev/null)"
 
 t_summary() {
   local _unknown=0
+  # A suite's own EXIT trap replaces the harness's, so the summary cleans up too.
+  _t_tmp_cleanup
   if [ -s "${_T_UNKNOWN_MARK:-/nonexistent}" ]; then
     _unknown="$(wc -l < "${_T_UNKNOWN_MARK}" | tr -d ' ')"
     _T_FAILED=$((_T_FAILED + _unknown))
