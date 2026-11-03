@@ -1882,7 +1882,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the next image and verify the secret-scan gate without network access on each
       supported image architecture. This observation does not establish that the online
       bootstrap fails or describe the current mutable registry tag.
-
 - [ ] **CON214 — evaluate SquashFS tools for non-executing AppImage inspection** [S, ★★].
       The cached Linux amd64 CPU image at registry digest
       `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`

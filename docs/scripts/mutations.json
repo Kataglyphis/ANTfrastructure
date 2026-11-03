@@ -34591,5 +34591,29 @@
   "replace": "\"$@\" || true",
   "test": "bash linux/scripts/tests/test-ci-image-leg.sh",
   "why": "a failing check must fail the leg"
+ },
+ {
+  "id": "actions.disk-cleanup-floor",
+  "target": ".github/actions/prepare-linux-ci-host/select-disk-cleanup.sh",
+  "find": "if [ \"${free_gb}\" -lt \"${floor}\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-select-disk-cleanup.sh",
+  "why": "a small runner must get the full cleanup before the pull fills its disk; does not prove the floor still fits the image"
+ },
+ {
+  "id": "actions.disk-cleanup-unreadable",
+  "target": ".github/actions/prepare-linux-ci-host/select-disk-cleanup.sh",
+  "find": "[ -n \"${free_gb}\" ] || { printf '::error::cannot read the free space of %s\\n' \"${path}\" >&2; exit 1; }",
+  "replace": "[ -n \"${free_gb}\" ] || free_gb=999",
+  "test": "bash linux/scripts/tests/test-select-disk-cleanup.sh",
+  "why": "an unreadable disk must not pass as plenty"
+ },
+ {
+  "id": "actions.disk-cleanup-wired-full",
+  "target": ".github/actions/prepare-linux-ci-host/action.yml",
+  "find": "if: steps.disk-cleanup.outputs.mode == 'true'",
+  "replace": "if: inputs.free-disk-space == 'true'",
+  "test": "bash linux/scripts/tests/test-select-disk-cleanup.sh",
+  "why": "the selected mode must drive the full cleanup, or the floor changes nothing"
  }
 ]

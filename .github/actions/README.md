@@ -297,7 +297,7 @@ Inputs: `image` ([shared defaults](#the-two-images-and-the-one-place-they-are-na
 `registry`, `registry-username`,
 `registry-password` (login is skipped when empty, so fork PRs without secrets
 still pull public images), `fetch-depth`, `submodules`, `checkout`,
-`free-disk-space` (`true`, `fast` or `false`), `pull-first`, `pull-attempts`,
+`free-disk-space` (`true`, `fast` or `false`), `fast-floor-gb`, `pull-first`, `pull-attempts`,
 `pull-timeout-seconds`, `max-concurrent-downloads` (empty by default: docker keeps its 3
 parallel layer downloads; a number is merged into `daemon.json` and the daemon restarted before
 the pull, a measurement since 2026-10-17). Outputs: `pull-seconds`, `cleanup-seconds`.
@@ -307,6 +307,7 @@ before the cleanup and the checkout, and waits for it as the last step. The pull
 is mostly a serial unpack, so the cleanup no longer sits in front of it.
 `free-disk-space` defaults to `fast`, the quick part of the cleanup (.NET,
 Haskell, swap); `'true'` is the full set for a lane that needs the extra ~20 GB.
+A runner with less than `fast-floor-gb` (default 90) free before the pull gets the full set.
 Together they took the x64 prologue from 444 to 311 s and the arm64 one from 323
 to 229 s, measured beside the Windows prologue in the page
 `prepare-windows-container-host` links above.

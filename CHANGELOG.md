@@ -35,6 +35,8 @@
 - CON211, hub half: `WindowsFlutterPin.Common.psm1` and `Install-PinnedFlutter.ps1` install
   Flutter on a Windows runner at `FLUTTER_VERSION` and its new `FLUTTER_COMMIT` (`tool-pins.env`).
   `spec_flutter` moves the commit with the version.
+- CON216: `prepare-linux-ci-host`'s `fast` cleanup becomes the full one below `fast-floor-gb`
+  (default 90) free before the pull. Measured on 145 GB runners: fast leaves 53.8 GB on x64.
 
 ## 2026-11-03 — A card without a CUDA kernel
 

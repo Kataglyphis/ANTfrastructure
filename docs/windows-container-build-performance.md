@@ -465,7 +465,13 @@ background, runs the cleanup and the checkout beside it and waits for the pull l
 | `ubuntu-26.04` | 444 s (cleanup 122, pull 321) | 331 s | 311 s, 58.1 GB free after |
 | `ubuntu-26.04-arm` | 323 s (cleanup 64, pull 257) | 269 s | 229 s, 85.6 GB free after |
 
-The full cleanup left 78.4 (x64) and 90.6 GB (arm64) free after the pull. A lane
+The image has grown since. Run 41715667182 (2026-11-03, `:latest` `7d4d4129`) on the 145 GB
+`ubuntu-26.04` and `ubuntu-26.04-arm` runners: the fast cleanup left 53.8 and 93.3 GB free after the
+pull, the full one 74.5 and 99.1 GB. x64 takes about 72 GB for the image, so a runner that starts
+below `fast-floor-gb` (default 90) free takes the full cleanup; the floor is a checked estimate and
+says nothing about what a job's own build trees need.
+
+The full cleanup left 78.4 (x64) and 90.6 GB (arm64) free after the pull in the run above. A lane
 whose build trees need more than the fast tier leaves passes
 `free-disk-space: 'true'`, as the riscv64 lanes do while they pull the riscv64 child as
 a second image (`container-ci-riscv64.yml` with `sysroot-mode: export`, the riscv64 row

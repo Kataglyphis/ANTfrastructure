@@ -31,6 +31,7 @@
 # mutation-family: lines: declared descriptive prefixes for mutations over
 # ORDINARY implementation files, which no gate owns. Not debt -- a vocabulary. An
 # undeclared prefix fails, and a family no id carries any more is STALE.
+mutation-family:actions
 mutation-family:android-env
 mutation-family:boot
 mutation-family:chain-status

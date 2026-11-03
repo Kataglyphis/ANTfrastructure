@@ -68,12 +68,19 @@ inputs:
   free-disk-space:
     description: >-
       Reclaim runner disk. 'fast' (the default) runs the quick part of the jlumbroso
-      set (.NET, Haskell, swap), which leaves 58 GB free on x64 and 86 GB on arm64
-      once the image is in. 'true' runs the full set (tool cache, Android, large apt
-      packages too: 78 and 91 GB free, 2-3 min beside the pull on x64), for a lane
-      whose build trees outgrow that. 'false' runs none.
+      set (.NET, Haskell, swap), which leaves 54 GB free on x64 and 93 GB on arm64
+      once the image is in; below fast-floor-gb free it runs the full set instead.
+      'true' runs the full set (tool cache, Android, large apt packages too: 75 and
+      99 GB free, 2-3 min beside the pull on x64), for a lane whose build trees
+      outgrow that. 'false' runs none.
     required: false
     default: 'fast'
+  fast-floor-gb:
+    description: >-
+      Free GB under which 'fast' becomes the full cleanup: the amd64 image takes about
+      72 GB unpacked, and a job needs room for its checkout and build trees.
+    required: false
+    default: '90'
   pull-first:
     description: >-
       'true' (the default) logs in and starts the pull in the background before the
@@ -118,6 +125,14 @@ runs:
         case "${PULL_FIRST}" in true|false) ;; *) echo "::error::pull-first must be true or false, not '${PULL_FIRST}'"; exit 1 ;; esac
         echo "disk cleanup: ${FREE_DISK_SPACE}; pull first: ${PULL_FIRST}"
 
+    - name: Select the disk cleanup
+      id: disk-cleanup
+      shell: bash
+      env:
+        FREE_DISK_SPACE: ${{ inputs.free-disk-space }}
+        FAST_FLOOR_GB: ${{ inputs.fast-floor-gb }}
+      run: echo "mode=$(bash "${GITHUB_ACTION_PATH}/select-disk-cleanup.sh" "${FREE_DISK_SPACE}" "${FAST_FLOOR_GB}")" >> "${GITHUB_OUTPUT}"
+
     - name: Raise docker's parallel layer downloads
       if: inputs.max-concurrent-downloads != ''
       shell: bash
@@ -157,7 +172,7 @@ runs:
       run: date +%s > "${RUNNER_TEMP}/prologue-cleanup.start"
 
     - name: Free disk space on host
-      if: inputs.free-disk-space == 'true'
+      if: steps.disk-cleanup.outputs.mode == 'true'
       uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main 2026-08-08
       with:
         tool-cache: true
@@ -171,7 +186,7 @@ runs:
 
     # The three removals that take seconds; Android, the large apt packages and the tool cache take minutes.
     - name: Free disk space on host (fast)
-      if: inputs.free-disk-space == 'fast'
+      if: steps.disk-cleanup.outputs.mode == 'fast'
       uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main 2026-08-08
       with:
         tool-cache: false
