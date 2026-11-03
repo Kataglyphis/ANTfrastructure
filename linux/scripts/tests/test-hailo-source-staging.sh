@@ -4,6 +4,8 @@ set -uo pipefail
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 source "${TESTS_DIR}/../01-core/downloads.sh"
+# A host with a mirror config would otherwise fetch from it and drop the cached archive this suite reuses.
+export KATAGLYPHIS_ASSET_MIRROR=off
 source "${TESTS_DIR}/../03-media/build/hailo/hailo-build-lib.sh"
 w="$(mktemp -d)"
 trap 'rm -rf "${w}"' EXIT

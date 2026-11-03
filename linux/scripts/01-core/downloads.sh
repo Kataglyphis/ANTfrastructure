@@ -111,7 +111,7 @@ download_mirror_curl() {
 
 # <sha256> <url> <dest> [file|stream]: 0 when the mirror served <sha256>/<name> into <dest>; the caller still verifies it.
 download_mirror_fetch() {
-  local sha="$1" url="$2" dest="$3" mode="${4:-file}" file base name rc=0
+  local sha="$1" url="$2" dest="$3" mode="${4:-file}" file base name curl_output rc=0
   [[ "${sha}" =~ ^[0-9a-f]{64}$ ]] || return 1
   [ -z "${_DOWNLOAD_MIRROR_DOWN:-}" ] || return 1
   command -v curl >/dev/null 2>&1 || return 1
@@ -119,9 +119,14 @@ download_mirror_fetch() {
   base="$(download_mirror_value "${file}" ASSET_MIRROR_URL)"
   [ -n "${base}" ] || return 1
   name="$(download_mirror_object_name "${url}")"
-  download_mirror_curl "${file}" -o "${dest}" "${base%/}/${sha}/${name}" || rc=$?
+  curl_output="$(download_mirror_curl "${file}" -o "${dest}" "${base%/}/${sha}/${name}" 2>&1)" || rc=$?
   [ "${rc}" -eq 0 ] && return 0
   rm -f "${dest}"
+  # A 404 is the expected miss; any other failure, such as a 403 from a bad key, keeps curl's reason.
+  case "${rc}:${curl_output}" in
+    22:*"error: 404"*) ;;
+    *) [ -z "${curl_output}" ] || printf '%s\n' "${curl_output}" >&2 ;;
+  esac
   case "${rc}" in
     # A dead mirror would otherwise cost every later download its connect timeout.
     6|7|28)

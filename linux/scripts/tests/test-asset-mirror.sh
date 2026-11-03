@@ -67,6 +67,32 @@ t_assert_eq "0" "${out%%|*}"
 t_assert_contains "${out#*|}" "asset-mirror| miss ${SHA} ${URL} file"
 t_assert_eq "the real asset" "$(cat "${WORK}/a3")"
 
+# A mirror that answers as real curl does; the stub never writes curl's error line.
+mkdir -p "${WORK}/curl-says"
+printf '#!/usr/bin/env bash\ncase "$*" in *mirror.invalid*) printf "curl: (%%s) %%s\\n" "${FAKE_MIRROR_RC}" "${FAKE_MIRROR_ERROR}" >&2; exit "${FAKE_MIRROR_RC}" ;; esac\nexec %q "$@"\n' "${WORK}/bin/curl" > "${WORK}/curl-says/curl"
+chmod +x "${WORK}/curl-says/curl"
+_says() { _fetch "$1" PATH="${WORK}/curl-says:${WORK}/bin:/usr/bin:/bin" KATAGLYPHIS_ASSET_MIRROR_FILE="${CFG}" FAKE_MIRROR_RC="$2" FAKE_MIRROR_ERROR="$3"; }
+
+t_case "a 404 logs only the miss line, whatever else the fetch prints"
+mirror_reset
+out="$(_says "${WORK}/a3b" 22 'The requested URL returned error: 404')"
+t_assert_eq "0" "${out%%|*}"
+t_assert_contains "${out#*|}" "asset-mirror| miss ${SHA} ${URL} file"
+t_assert_eq "0" "$(printf '%s\n' "${out}" | grep -c -e 'error: 404')" "the miss line speaks for a 404"
+t_assert_eq "the real asset" "$(cat "${WORK}/a3b")"
+
+t_case "another HTTP error keeps curl's reason beside the miss line"
+mirror_reset
+out="$(_says "${WORK}/a3c" 22 'The requested URL returned error: 403')"
+t_assert_contains "${out#*|}" "curl: (22) The requested URL returned error: 403"
+t_assert_contains "${out#*|}" "asset-mirror| miss ${SHA} ${URL} file"
+
+t_case "a dead mirror keeps curl's reason beside the unreachable line"
+mirror_reset
+out="$(_says "${WORK}/a3d" 7 'Failed to connect')"
+t_assert_contains "${out#*|}" "curl: (7) Failed to connect"
+t_assert_contains "${out#*|}" "unreachable (curl 7)"
+
 t_case "a mirrored copy with the wrong bytes is refused and replaced by upstream's"
 mirror_reset; mirror_put "tampered"
 out="$(_fetch "${WORK}/a4" KATAGLYPHIS_ASSET_MIRROR_FILE="${CFG}")"

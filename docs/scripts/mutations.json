@@ -34495,5 +34495,21 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-arch-pipeline.sh -k order",
   "why": "the runtime lane's disk target is applied only by this guard"
+ },
+ {
+  "id": "lib.asset-mirror-miss-logs-only-its-line",
+  "target": "linux/scripts/01-core/downloads.sh",
+  "find": "    22:*\"error: 404\"*) ;;\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-asset-mirror.sh",
+  "why": "curl's error line before every miss makes a log search for error hit each pinned download that falls back upstream"
+ },
+ {
+  "id": "lib.asset-mirror-other-failures-keep-the-reason",
+  "target": "linux/scripts/01-core/downloads.sh",
+  "find": "    *) [ -z \"${curl_output}\" ] || printf '%s\\n' \"${curl_output}\" >&2 ;;\n",
+  "replace": "    *) ;;\n",
+  "test": "bash linux/scripts/tests/test-asset-mirror.sh",
+  "why": "a 403 from a bad key or a dead mirror would look like an ordinary miss"
  }
 ]

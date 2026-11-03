@@ -559,11 +559,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `--from-stage runtime` (~535 GB) and only warns. Work: in the reclaim, with no build in flight, restart
       buildkitd before the layer prune; count the lane once. Done when a chain resumed after a stop reclaims
       without a hand restart.
-- [ ] **CON166 — an asset-mirror miss logs `curl: (22) … error: 404`** [S, ★]. Found 2026-10-26: every
-      miss prints curl's error line before `asset-mirror| miss`, so a log search for `error` hits each pinned
-      download that falls back upstream. Work: keep the mirror GET silent on HTTP errors and let the miss line
-      speak (`01-core/downloads.sh`). It is mounted per file by `Dockerfile.base`, so it rides a planned
-      rebuild from base. Done when a miss logs only its `asset-mirror| miss` line.
 - [ ] **CON153 — the pinned release assets come from the Garage mirror** [S, ★★★]. Owner decision
       2026-10-26: Garage S3. In source ([`linux-cross-builds.md` § The asset mirror](docs/linux-cross-builds.md#the-asset-mirror),
       runbook in [`linux/sccache-s3/README.md`](linux/sccache-s3/README.md)): every `download_verified_file`

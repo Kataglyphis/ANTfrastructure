@@ -58,6 +58,8 @@
   against stubbed daemons and a disposable cache directory.
 - `WindowsFormatting.ClangFormatCheck.Tests.ps1`'s fake `clang-format` grades the file's own name,
   so a temp path containing "bad" no longer fails the suite; a new case pins it.
+- An asset-mirror 404 logs only `asset-mirror| miss`, so a log search for `error` no longer hits
+  each upstream fallback. Other failures, such as a 403 from a bad key, keep curl's reason.
 
 ## 2026-11-03 — One pipeline per arch, opt-in
 

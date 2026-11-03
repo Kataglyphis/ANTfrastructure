@@ -432,7 +432,7 @@ is fetched, so the mirror can add availability and nothing else.
   every Linux RUN that reads a hub script mounts it with `required=false`. A secret is not part
   of a cache key, and it lands in no layer, ENV or history: a host without the file builds the
   same layers. A file others can read, or one without `ASSET_MIRROR_URL`, is not passed.
-- **What the log says.** `asset-mirror| hit <name>` for a served asset; `asset-mirror| miss
+- **What the log says.** A 404 prints only its miss line; any other curl failure also keeps curl's reason. `asset-mirror| hit <name>` for a served asset; `asset-mirror| miss
   <sha256> <url> <file|stream>` for one fetched upstream, which is the line the fill script
   reads; `asset-mirror| <base> unreachable (curl N)` once per shell, after which that shell
   stops asking.
