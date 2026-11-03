@@ -30,6 +30,9 @@
   `src/workspace` stay. Dropping `-Wl,-rpath,...` leaves no double space.
 - `docs_build_main` and its steps return the first failed step's status with or without errexit,
   so a failed `make` no longer reports a finished build. Errexit callers stop as before.
+- A dry-run chain no longer reclaims between stages: `_chain_stage_disk_guard` returns first, which
+  also skips the cache size cap. `test-disk-guard.sh` proves it through the real entry point
+  against stubbed daemons and a disposable cache directory.
 
 ## 2026-11-03 — Mutation recipes name their narrowest proof
 

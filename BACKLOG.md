@@ -2029,14 +2029,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Turn WebDavClient's demos into collected benchmarks, prove `pytest bench/` green there, then
       make the gate the default and drop the switch.
 
-- [ ] **CON212 — a dry-run chain can prune images when the disk is low** [S, ★★].
-      Found 2026-10-31 when `test-gpu-variant.sh` failed on a CI runner (run 41185928928):
-      `build-cross-chain.sh --dry-run` still runs `_chain_stage_disk_guard`, which measures the
-      host's free space under `BUILDKIT_CACHE_DIR` and, below `CROSS_DISK_GUARD_GB` (40), reaches
-      `_disk_guard_image_store_fallback` and `nerdctl image prune -f`. A dry run must not reclaim;
-      the suite now pins the guard off, and `test-disk-guard.sh` owns the guard. Decide whether
-      the stage guard returns early under `is_dry_run`, and prove it with a recipe.
-
 - [ ] **CON211 — consumer copies the Flutter helpers still wait to replace** [S, ★★].
       `05-frameworks/flutter/flutter-pin.sh` and `lane-prologue.sh` are pinned by
       `test-flutter-lane-api.sh`. jotrockenmitlocken's `scripts/build-in-container.sh:10` defaults

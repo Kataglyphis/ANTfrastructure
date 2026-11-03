@@ -32481,6 +32481,14 @@
   "why": "each lint run would leave its remapped database copy in TMPDIR"
  },
  {
+  "id": "chain-status.dry-run-stage-guard-reclaims-nothing",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "  if is_dry_run; then return 0; fi\n  local completed_stage=\"${1:-}\"\n",
+  "replace": "  local completed_stage=\"${1:-}\"\n",
+  "test": "bash linux/scripts/tests/test-disk-guard.sh",
+  "why": "a low-disk dry run would evict cache exports and prune images on the host that only asked for a plan"
+ },
+ {
   "id": "lib.ctest-main-prepares-env",
   "target": "linux/scripts/lib/ctest-run.sh",
   "find": "  ctest_run_prepare_env\n  ctest_run_execute\n",

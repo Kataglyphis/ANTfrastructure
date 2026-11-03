@@ -442,6 +442,8 @@ _chain_num_below() { [ "$1" -lt "$2" ] && return 0; return 1; }
 _chain_num_above() { [ "$1" -gt "$2" ] && return 0; return 1; }
 
 _chain_stage_disk_guard() {
+  # A dry run builds nothing, so it has nothing to reclaim for and must not touch the host's stores.
+  if is_dry_run; then return 0; fi
   local completed_stage="${1:-}"
   local threshold="${CROSS_DISK_GUARD_GB:-40}"
   local _rt_need
