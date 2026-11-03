@@ -1900,6 +1900,14 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       untrusted candidate. Check the image and supported architectures before changing
       the recipe, and test extraction with path, symlink and resource-limit safeguards.
       This optional tooling alone does not establish package provenance or GPU readiness.
+- [ ] **CON214 — SquashFS tools for non-executing AppImage inspection** [S, ★★]. Evaluated in throwaway
+      `:latest` containers on 2026-11-03: Ubuntu's `squashfs-tools` 1:4.7.5-1 installs on amd64 and riscv64 and is in
+      the arm64 ports index, 599 kB. `unsquashfs -o <offset> -lln` lists a payload without executing the candidate and
+      shows symlink targets, `-d` extraction keeps absolute links as links, and `ulimit -f` stops a 300 MB payload at
+      its cap with status 153. It has no size cap of its own. Left, at a planned rebuild: add the package to the
+      package stage; a shared helper that finds the offset, lists first, refuses absolute, `..` and escaping symlink
+      entries, then extracts under `ulimit -f`, with a crafted-image test. This does not establish provenance or GPU
+      readiness.
 
 - [ ] **CON213 — WebDavClient's `bench/` collects no tests, so `bench-gate` stays off by default** [S, ★★].
       Found 2026-10-31 running `pytest bench/` at WebDavClient `0980fb5` in `:latest`: pytest
