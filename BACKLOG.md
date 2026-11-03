@@ -1362,10 +1362,14 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       both together, `HSA_ENABLE_PEER_SDMA=0`, `HIP_FORCE_DEV_KERNARG=0`, `DEBUG_HIP_DYNAMIC_QUEUES=0`,
       `GPU_MAX_HW_QUEUES=1` and `HIP_HOST_COHERENT=1` change nothing. Windows driver `32.0.32015.7029`, reached over
       Remote Desktop. The cause in the driver or `librocdxg` is unknown, and this says nothing about native Linux. So
-      this card cannot prove a Linux AMD package under WSL. OxidANT `921d8e8` turns the hang into `ProviderUnavailable`
-      after 30 seconds, with one copy in a child process. AccelerANTgine, OrchestrANT and OmniAccelerANT have no such
-      check of their own; Omni takes OxidANT's with its next pin. The full model on `gfx1036` fails at the load with
-      `Failed to call function`, with or without the check. The owner runs the packages under Ubuntu on this machine.
+      this card cannot prove a Linux AMD package under WSL. OxidANT `921d8e8`, AccelerANTgine `5e89bb7` and OrchestrANT
+      `fcb936f` turn the hang into an error after 30 seconds, with one copy in a child process; `auto` in OrchestrANT and
+      OxidANT moves on to the CPU. AccelerANTgine and OrchestrANT copy to the selected device index, OxidANT to device 0,
+      which is the only index it gives MIGraphX. All three were run on the card. Omni takes them with its next pin.
+      On `gfx1036` a Relu model runs with real MIGraphX inference through AccelerANTgine's engine. The full model still
+      fails at the load with `adaptive_topk_benchmark` (ORT says `Failed to call function`), with or without the check and
+      with `/opt/rocm/extras-10/lib/migraphx/lib` on the search path; without that directory even Relu cannot load
+      `libmigraphx_gpu.so`. The owner runs the packages under Ubuntu on this machine.
       Inside the image, `ORT_DYLIB_PATH` points at `/usr/local/lib/onnxruntime-cpu`, which a package then loads instead
       of its own (`MIGraphXExecutionProvider is absent`). Unset it for any package check in the image.
 
