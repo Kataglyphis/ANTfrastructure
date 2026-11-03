@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-03 — A card without a CUDA kernel
+
+- OxidANT, OrchestrANT and AccelerANTgine run one ONNX Runtime kernel on the card before a CUDA
+  session, so a card outside `CUDA_ARCHITECTURES` is named in the failure, or `auto` takes the CPU:
+  [`linux-accelerator-images.md` § A card without a CUDA kernel](docs/linux-accelerator-images.md#a-card-without-a-cuda-kernel).
+  AGENTS.md's claim that such a card fails at session creation was wrong: it fails on the first node.
+
 ## 2026-11-03 — Mutation recipes name their narrowest proof
 
 - `t_sections` in `tests/test-harness.sh` lets a bash suite run `-k <section>`: no argument runs

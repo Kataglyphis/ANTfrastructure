@@ -446,10 +446,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 - [ ] **CON217 — build CUDA compute capability 7.5, so RTX 20xx cards run the NVIDIA packages** [M, ★★].
       Owner decision 2026-11-02: add `75` (Turing: T4, RTX 20xx) to `CUDA_ARCHITECTURES`, today
       `86;87;89;120`. Found the same day on an RTX 2080 (driver 595.58.03) with OxidANT's Linux x64
-      NVIDIA package (run 41415056257): the package runs on the CPU and `CUDAExecutionProvider`
-      creates its session, then the first node stops with `cudaErrorNoKernelImageForDevice`, so there
-      is no detection and no CPU fallback. There is no PTX to fall back on, and no other entry reaches
-      major 7. Edit the five places in AGENTS.md's "To add or remove one" together. Each entry
+      NVIDIA package (run 41415056257): the package runs on the CPU, and CUDA stops with
+      `cudaErrorNoKernelImageForDevice`, so that card gets a named failure or, on `auto`, the CPU
+      ([§ A card without a CUDA kernel](docs/linux-accelerator-images.md#a-card-without-a-cuda-kernel)).
+      There is no PTX to fall back on, and no other entry reaches major 7. Edit the five places in AGENTS.md's "To add or remove one" together. Each entry
       compiles every ONNX Runtime and OpenCV CUDA kernel once more, so record the build time and
       image size of the rebuild. Done when a package from the new NVIDIA image, on that RTX 2080,
       passes `shared/python/compare_detector_parity.py` against the CPU with its operators on

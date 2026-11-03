@@ -672,8 +672,10 @@ come back while `CUDA_VERSION` is 13.x.
   `-real` = cubin only), so in the ORT artefact `120` covers 12.0 and NOT 12.1 (GB10), and `100`
   would cover B100/B200 but not B300 (10.3). Spell out the exact hardware you own.
 - **There is no PTX to fall back on.** ORT embeds none and OpenCV leaves `CUDA_ARCH_PTX` empty, so
-  a missing arch is a hard failure at session creation (`no kernel image is available`), not a
-  slow path. That is what retiring 80 costs an A100.
+  a missing arch is a hard failure on the session's first node (`no kernel image is available`),
+  not a slow path. That is what retiring 80 costs an A100. Consumers run one kernel first, so the
+  card is named or `auto` takes the CPU:
+  [`linux-accelerator-images.md` § A card without a CUDA kernel](docs/linux-accelerator-images.md#a-card-without-a-cuda-kernel).
 - **No letter suffixes** (`90a`, `100f`): ORT appends the `a` itself, and OpenCV's dotted-form
   conversion mangles a suffixed entry. Digits only, ascending for readability; since 2026-09-23
   nothing depends on the order (the trailing-`90`→`90a` rewrite is gone: it silently did nothing
