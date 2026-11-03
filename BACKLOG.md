@@ -2010,11 +2010,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the free space after the pull on that runner size, then choose `true` there or a checked
       floor before the pull.
 
-- [ ] **CON210 — `docs_build_main` reports success after a failed step without errexit** [S, ★].
-      Found 2026-10-31 by `test-lib-docs-build.sh`: a caller without `set -e` sees `make` fail
-      and still gets "Documentation build completed successfully" and status 0. Every known
-      consumer runs under `set -e`; decide whether each step's status should stop the pipeline.
-
 - [ ] **CON214 — evaluate SquashFS tools for non-executing AppImage inspection** [S, ★★].
       The cached Linux amd64 CPU image at registry digest
       `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`

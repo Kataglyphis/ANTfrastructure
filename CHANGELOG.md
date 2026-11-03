@@ -28,6 +28,8 @@
 - `code_quality_prepare_compile_db` remaps `/workspace` inside command strings as well (`-I`,
   defines, rpath lists, the source path), as whole path tokens: `/workspace2` and
   `src/workspace` stay. Dropping `-Wl,-rpath,...` leaves no double space.
+- `docs_build_main` and its steps return the first failed step's status with or without errexit,
+  so a failed `make` no longer reports a finished build. Errexit callers stop as before.
 
 ## 2026-11-03 — Mutation recipes name their narrowest proof
 

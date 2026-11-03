@@ -823,6 +823,9 @@ Both `UV_*` scripts run with the project root as cwd — the same contract as
 pair, which falls back to the hub's own bootstrap since 2026-09-15, both are
 required here: an unset one is fatal.
 
+`docs_build_main` stops at the first failed step and returns its status, whether or not the
+caller runs under `set -e`.
+
 **A missing SVG is fatal on purpose.** An empty diagram set means the generating
 build did not run, and shipping docs with holes in them is worse than failing
 here.

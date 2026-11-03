@@ -16526,7 +16526,7 @@
  {
   "id": "docs-site.docs-build-clicks-the-toggles",
   "target": "linux/scripts/lib/docs-build.sh",
-  "find": "    [[ \"${target}\" != html ]] || docs_build_check_sidebars\n",
+  "find": "    [[ \"${target}\" != html ]] || docs_build_check_sidebars || return $?\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
   "why": "BeschleunigerBallett and AccelerANTgine publish an artifact; this is the one place their toggles are clicked"
@@ -32491,18 +32491,66 @@
  {
   "id": "lib.docs-main-stages-svg",
   "target": "linux/scripts/lib/docs-build.sh",
-  "find": "  docs_build_copy_static_svg\n  docs_build_run_generator\n",
-  "replace": "  docs_build_run_generator\n",
+  "find": "  docs_build_copy_static_svg || return $?\n  docs_build_run_generator || return $?\n",
+  "replace": "  docs_build_run_generator || return $?\n",
   "test": "bash linux/scripts/tests/test-lib-docs-build.sh",
   "why": "diagrams built elsewhere never reach _static and the published pages show broken images"
  },
  {
   "id": "lib.docs-main-runs-sphinx",
   "target": "linux/scripts/lib/docs-build.sh",
-  "find": "  docs_build_sphinx\n  info \"Documentation build completed successfully\"\n",
+  "find": "  docs_build_sphinx || return $?\n  info \"Documentation build completed successfully\"\n",
   "replace": "  info \"Documentation build completed successfully\"\n",
   "test": "bash linux/scripts/tests/test-lib-docs-build.sh",
   "why": "the pipeline would report a finished build without running Sphinx"
+ },
+ {
+  "id": "lib.docs-main-stops-on-failed-sphinx",
+  "target": "linux/scripts/lib/docs-build.sh",
+  "find": "SPHINXOPTS=\"${sphinxopts}\" make \"${target}\") || return $?",
+  "replace": "SPHINXOPTS=\"${sphinxopts}\" make \"${target}\")",
+  "test": "bash linux/scripts/tests/test-lib-docs-build.sh",
+  "why": "a failed make under a caller without errexit would still report a finished documentation build"
+ },
+ {
+  "id": "lib.docs-main-stops-on-failed-sidebars",
+  "target": "linux/scripts/lib/docs-build.sh",
+  "find": "docs_build_check_sidebars || return $?",
+  "replace": "docs_build_check_sidebars",
+  "test": "bash linux/scripts/tests/test-lib-docs-build.sh",
+  "why": "a failed sidebar click would be overwritten by the next target's status"
+ },
+ {
+  "id": "lib.docs-main-stops-on-failed-venv-create",
+  "target": "linux/scripts/lib/docs-build.sh",
+  "find": "\"${create_script}\") || return $?",
+  "replace": "\"${create_script}\")",
+  "test": "bash linux/scripts/tests/test-lib-docs-build.sh",
+  "why": "Sphinx from a stale or missing venv is not the pinned docs toolchain"
+ },
+ {
+  "id": "lib.docs-main-stops-on-failed-install",
+  "target": "linux/scripts/lib/docs-build.sh",
+  "find": "\"${install_script}\") || return $?",
+  "replace": "\"${install_script}\")",
+  "test": "bash linux/scripts/tests/test-lib-docs-build.sh",
+  "why": "Sphinx over a failed requirements install is not the pinned docs toolchain"
+ },
+ {
+  "id": "lib.docs-main-stops-on-failed-staging",
+  "target": "linux/scripts/lib/docs-build.sh",
+  "find": "  docs_build_copy_static_svg || return $?\n",
+  "replace": "  docs_build_copy_static_svg\n",
+  "test": "bash linux/scripts/tests/test-lib-docs-build.sh",
+  "why": "an SVG set that failed to copy publishes pages with broken images"
+ },
+ {
+  "id": "lib.docs-main-stops-on-failed-generator",
+  "target": "linux/scripts/lib/docs-build.sh",
+  "find": "  docs_build_run_generator || return $?\n",
+  "replace": "  docs_build_run_generator\n",
+  "test": "bash linux/scripts/tests/test-lib-docs-build.sh",
+  "why": "a failed diagram generator publishes pages with stale or missing diagrams"
  },
  {
   "id": "lib.app-runner-loader-path",
