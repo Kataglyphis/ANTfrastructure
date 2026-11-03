@@ -103,8 +103,7 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
          `BUILD_MEM_DIVISOR` in the package/torch compile steps (hailo) and a disk gate that sizes
          the concurrency (120 GB each) instead of refusing.
       10. Cross stages join every arch between stages, so a fast arch idles until the slowest one
-          has pushed (PAR5: hours at media) → an arch-major pipeline; the between-stage disk guard
-          and the image-store lever assume no build in flight, so opt-in first.
+          has pushed (PAR5: hours at media) → CON169.
       11. Docs: Sphinx without `-j`, the sidebar check one page × viewport at a time, the site link
           gate and the dartdoc nav rewrite one page at a time; `run-lint-gates.sh` runs gitleaks per
           top-level entry in turn.
@@ -130,7 +129,7 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
           gitleaks per entry in `run-lint-gates.sh`.
       Open: 8 (Windows variant pushes off the next variant's path; `-ConcurrentAux` never ran),
       9 (parallel runtime builds: `BUILD_MEM_DIVISOR` plus a disk gate that sizes, worth it only
-      where builds outlast uploads), 10 (arch-major cross stages, opt-in). A WSL push that
+      where builds outlast uploads). 10 is in source, opt-in: CON169. A WSL push that
       touches `test-docs-sidebars.sh` fails there (no node 22, no Chrome); push from Git Bash,
       which skips it. **The next 3-arch runtime run must show**: `[runtime-push] arch=amd64
       start` before arm64's `step=base` and `RUN` lines, `[runtime-push] arch=amd64 done` after
@@ -536,6 +535,22 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       one pipeline per arch through the stages, with an image lever scoped to the tags of arches that are not
       building, and a disk gate per arch. Done when a chain starts an arch's next stage as soon as that arch's
       previous one is pushed, without an image removal under a running build.
+
+- [ ] **CON169 — prove one pipeline per arch on a chain, then decide its default** [M, ★★★]. In source since
+      2026-11-03, opt-in ([`linux-cross-builds.md` § One pipeline per arch](docs/linux-cross-builds.md#one-pipeline-per-arch)):
+      `CROSS_ARCH_PIPELINE=1` runs each arch through its stages, with a per-lane disk guard scoped to finished arches.
+      Proved by `test-arch-pipeline.sh` (rendezvous, stub stage runner, the real driver's dry run). Done when a chain
+      logs an arch's `stage=android start` while another arch's `stage=media` runs, no image removal lands under a
+      running build, and the lanes' overlapping disk use fits; then make it the default or record why not.
+- [ ] **CON170 — the uv installer pin follows a moving URL** [S, ★★]. `python_uv.sh` (`uv_ensure_installed`, used by
+      `lib/dartdoc-build.sh` and consumer hosts) runs `https://astral.sh/uv/install.sh`, which installs the newest uv
+      (0.13.6 on 2026-10-27) and changes with every release, so `UV_INSTALL_SH_SHA256` (`283cbef4…`) matches neither it
+      nor the pinned `UV_VERSION=0.13.1`. Work: run `https://astral.sh/uv/${UV_VERSION}/install.sh` and pin
+      `7c482d409673a53f4d9bd34ae95c9166be3b8d89ca82f27dd7bca3cab457afff`, byte-identical on 2026-10-27 to the
+      GitHub release asset `uv-installer.sh` of 0.13.1, and let `bump_versions.py` move it with `UV_VERSION`.
+      `versions.env` re-keys `Dockerfile.base`, so this rides a planned rebuild. Done when `uv_ensure_installed`
+      installs exactly `UV_VERSION` through a hash that no uv release can rotate. The 2026-10-27 mirror fill refused it
+      (`FAILED 283cbef4bdac install.sh`), the only one of 33 assets.
 - [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★★]. Found 2026-10-27: after a
       stopped run, the runtime lane's entry reclaim freed 0 of 165 GiB layer cache and refused at 376 GB free;
       once `systemctl --user restart buildkit` ran with nothing building, `prune-safe.sh` freed 116 GB and kept

@@ -1779,6 +1779,30 @@ marker cannot help, since PEP 508 has no "inside the image" marker. And a lock t
 did resolve there would record each chain wheel's SHA256, which the next chain
 rebuilds.
 
+## One pipeline per arch
+
+`CROSS_ARCH_PIPELINE=1` runs the per-arch stages (`sdk`, `gpu`, `media`, `android`) as one lane per
+arch, so an arch's next stage starts when its previous one is pushed. On the stage loop, the default,
+every arch waits for the slowest at each stage: on 2026-10-27 `media-arm64` and `media-riscv64` were
+pushed and their android stages then waited ~2 h for amd64's ONNX Runtime and OpenCV. `base`,
+`compiler` and `runtime` stay joined.
+
+- It implies `--parallel-archs`, and `--max-parallel-archs` now caps whole lanes. `PARALLEL_STAGES`
+  other than `all` is refused, since it names a join this mode lacks.
+- A failed arch stops its own lane. The others finish and push, the chain then fails, and
+  `chain-status.json` marks each stage not finished by every arch `failed`; re-run with
+  `--from-stage`. Per-arch progress is in `[arch-pipeline] arch=… stage=… start|done`.
+- Pins stay in the lane's subshell between its stages and reach the parent through the loop's harvest.
+- **Disk between a lane's stages.** One lane reclaims at a time, only below `CROSS_DISK_GUARD_GB`:
+  cache exports outside this chain's stages, the BuildKit prune, then the `rmi` of named tags of
+  arches whose lane has finished, except their last stage, which the runtime lane reads. It never
+  runs `nerdctl image prune` ([why](build-cache-tiers.md#322-the-image-store-lever-disk3)). The full
+  guard, image lever included, runs after every lane has joined.
+- `_chain_disk_preflight` still sizes the run as before; it does not model stages overlapping.
+
+`tests/test-arch-pipeline.sh` proves the overlap by a rendezvous, with a stub stage runner, and runs
+the real driver's dry run. A chain has not run it yet, so it stays opt-in (`BACKLOG.md` CON169).
+
 ## Orchestrator stage selection
 
 Resuming mid-chain, building one stage, and the parallel-arch knobs.

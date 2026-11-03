@@ -1022,6 +1022,10 @@ order. The dependency order and the one known wart:
 
 ## Cross Chain Stage Handoff (do not regress)
 
+- **`CROSS_ARCH_PIPELINE=1` is opt-in, and its per-lane disk guard removes only named tags of arches
+  that finished**; never a prune with a lane in flight
+  ([one pipeline per arch](docs/linux-cross-builds.md#one-pipeline-per-arch)).
+
 - **A stage's parent is pinned by DIGEST, never by tag.** A tag can move between the moment a
   child resolves it and the moment it builds; that is how a chain built on a stale parent and
   shipped it green.
