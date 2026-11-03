@@ -17,11 +17,14 @@
 
 - Offline consumer builds are not part of the image contract; image-owned caches such as the
   riscv64 uv cache seed stay ([rule](docs/consumer-image-contract.md#consumer-builds-need-the-network)).
-  CON186, CON189, CON192, CON195, CON200 and CON205 are removed; none held a finding beyond offline use.
-- CON193 removed: `actionlint` stays with the pinned bootstrap. `gcc-mingw-w64-x86-64` stays out of
-  the images ([reasons](docs/image-decisions.md#deliberate--not-gaps)).
-- Narrowed to chain work: CON221 (`libgtk-4-dev` in the GPU images), CON191 (oneDNN runtime and
-  license) and CON201 (Media Foundation in the next Windows image). CON44 and CON70 stay blocked by decision.
+  CON186, CON189, CON192, CON195, CON199, CON200, CON205 and CON206 are removed; none held a finding
+  beyond offline use. CON178 is removed too: no GPU lane needs Ruff on `PATH`, since they resolve it
+  through uv. CON101, CON102 and CON197 lose their offline parts.
+- CON193 and CON221 removed: `actionlint` stays with the pinned bootstrap, and `libgtk-4-dev` and
+  `gcc-mingw-w64-x86-64` stay with OxidANT's lane installs
+  ([reasons](docs/image-decisions.md#deliberate--not-gaps)).
+- Narrowed to chain work: CON191 (oneDNN runtime and license) and CON201 (Media Foundation in the
+  next Windows image). CON44 and CON70 stay blocked by decision.
 - `gpu-artifact-receipts.md`: OrchestrANT's `detector_parity.py` takes `--device directml`.
 
 ## 2026-11-03 — Hub maintenance backlog

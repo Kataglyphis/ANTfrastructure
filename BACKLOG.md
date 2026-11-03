@@ -43,7 +43,7 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
 - **Windows GPU runtimes:** CON180–185 and CON201 cover DirectML/CUDA provenance,
   provider paths, media plugins, native DLL notices and Media Foundation availability.
 - **Runtime provenance:** CON203–204 cover the Linux ROCm and NVIDIA library handoff.
-- **Build tools:** CON145, CON177–179, CON187, CON194, CON197, CON199, CON206 and CON214
+- **Build tools:** CON145, CON177, CON179, CON187, CON194, CON197 and CON214
   cover tools, plugins, SDK inputs and Flutter/FRB generation.
 - **CPU image and package handoff findings:** CON188, CON190 and CON191 cover DEB host-library
   versioning, auditwheel and the DNNL provider's oneDNN runtime. These also affect
@@ -181,7 +181,7 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
          their `docs/` guides; their `build-docs.yml` runs 39382562942 and 39382416312 (2026-10-20)
          took `/opt/venv`'s markdown-it-py 4.2.0 and uploaded `guide-*.html` (two and one).
 
-      Done when a docs build in `:latest` renders the guides without network, on the pinned parser.
+      Done when a docs build in `:latest` renders the guides on the pinned parser.
 
 - [ ] **CON97 — Linux packages that start on Debian 13 and Ubuntu 24.04** [L, ★★★]. Owner OK
       2026-10-16. Step 1 is in (`kataglyphis_install_linux_closure`, the
@@ -370,8 +370,7 @@ owner carries the breakage that costs.
       2. Linux amd64 and arm64 in `:latest`, Windows x64 in `:winamd64`, Windows arm64 natively
          on `windows-11-arm` (Flutter cannot cross-build it, flutter/flutter#62597; OmniAccelerANT's
          `windows-arm64.yml` does the same), and the web client once. riscv64 waits on CON70.
-      3. The client's pub cache in the image, proven under `--network none` as `flutter --version` is.
-      4. Never run yet: any Windows build (the dev host has no Visual Studio) and any arm64 build.
+      3. Never run yet: any Windows build (the dev host has no Visual Studio) and any arm64 build.
 - [ ] **CON103 — `FLET_VERSION` in `versions.env`, one pin for Python and client** [S, ★★]. The
       Python SDK and the client speak one release's protocol, so a bump moves together:
       OrchestrANT's `frontend` extra (`flet[desktop]==1.0.4`, `flet-web==1.0.4`), its
@@ -477,14 +476,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       no patched build was tested. Stack size and vector length are ruled out. Shipped riscv64 images are exposed
       for such models. OxidANT's lane forces scalar MLAS for that one test (`63828b5`). Done when a patched chain
       build passes the test on RVV and OxidANT drops the override; an image chain is an owner decision.
-- [ ] **CON221 — add `libgtk-4-dev` to the NVIDIA and AMD images** [S, ★★]. Owner decision 2026-11-03. Chain work:
-      add it to both variants, record the size, and drop the installs in OxidANT's
-      `linux-nvidia-gpu-build.yml` and `linux-x64-amd-gpu.yml`. `gtk4_dev_packages` leaves it off amd64 on purpose: it
-      pulls back the distro GTK and GStreamer runtime that `drop_redundant_distro_gtk4` removes. So change that choice
-      per variant, keep the prefix winning the `ld.so` lookup, leave `:latest` as it is and update
-      [the contract's GTK 4 section](docs/consumer-image-contract.md#gtk-4-for-gtk4-rs). Done when both variants pass
-      `verify_gtk4_dev_surface` as uid 1001 and OxidANT's lanes build the GUI without installing it.
-      `gcc-mingw-w64-x86-64` stays out ([why](docs/image-decisions.md#deliberate--not-gaps)).
 - [ ] **CON207 — investigate Linux AMD GPU support for GenAI** [M, ★★]. The cached
       `:latest-rocm` amd64 image contains the vision ONNX Runtime MIGraphX provider, but its
       GenAI tree has only the generic library and llguidance; `60-build-genai.sh` builds GenAI
@@ -595,7 +586,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       consumer contract: do not pull a second distro GTK/GStreamer stack into the image just
       to reproduce the workaround. Before the next GPU image publication, make both candidate
       variants pass `verify_gtk4_dev_surface` and the `gtk4-dev` runtime contract as uid 1001,
-      then build OxidANT's GUI without installing packages in the consumer lane. Record the
+      then build OxidANT's GUI. Record the
       image digests, architectures and results; verify the NVIDIA arm64 child separately.
       The NVIDIA arm64 child `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11`
       resolves `gtk4` 4.22.4 and `graphene-gobject-1.0` 1.10.8 through `pkg-config --exists`
@@ -604,8 +595,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       **2026-11-02:** OxidANT's GPU workflows still install the package
       (`linux-x64-amd-gpu.yml`, `linux-nvidia-gpu-build.yml`). Runs 41517659698 (`:latest-rocm`
       `05518138…`) and 41517653860 (`:latest-nvidia` `70bc45db…`, x64) did so, which does not show
-      whether these digests still need it. Remove both installs with this fix; CON221 records
-      the owner's 2026-11-03 decision to put `libgtk-4-dev` into the GPU images.
+      whether these digests still need it. Both lanes keep their install
+      ([why](docs/image-decisions.md#deliberate--not-gaps)).
 
 - [ ] **CON176 — verify the Vulkan development surface in GPU consumer images** [S, ★★].
       On 2026-10-30 the cached amd64 `:latest-nvidia` (`0e9dec34…`) and `:latest-rocm`
@@ -629,28 +620,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       tools in `Dockerfile.torch`; prove the runtime contract in the next ROCm image, then
       run the consumer's shell lint without an ad hoc install. Check the published image
       digest rather than assuming the cached image reflects the current registry tag.
-
-- [ ] **CON178 — verify offline Ruff availability in consumer images** [S, ★★]. The
-      cached amd64 `:latest-nvidia` (`0e9dec34…`) had no `ruff` on PATH on 2026-10-30;
-      `uvx --offline ruff@0.17.0` also failed because that pinned version was not cached.
-      Determine the intended offline contract, ensure
-      the pinned Ruff is available by that route in the next GPU images, and verify it on
-      the NVIDIA amd64/arm64 and ROCm amd64 children without an ad hoc download. Record
-      the image digests; the cached image is not evidence about today's mutable tag.
-      On 2026-10-30 the NVIDIA arm64 child
-      `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11` had
-      no `ruff` on PATH and a filename scan found no Ruff entry under `/opt/uv-cache-seed`,
-      `/opt/venv`, or the normal user's uv cache. OrchestrANT's lock pins Ruff 0.17.0, but
-      does not itself supply the wheel. A subsequent isolated PRoot/QEMU test, with child
-      execution enabled without host binfmt registration, ran `uvx --offline ruff@0.17.0
-      --version` as uid 1001 and reported that Ruff was not found in its selected cache.
-      This is emulated evidence for that image and user; verify the intended offline cache
-      and command on native ARM before the next image is published.
-      Separately, the cached x64 CPU `:latest` digest
-      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
-      had no `ruff` executable on PATH; as uid 1001 with networking disabled,
-      `uvx --offline ruff@0.17.0 --version` also reported Ruff absent from its selected
-      cache. This does not establish the contents of another cache or the online route.
 
 - [ ] **CON179 — check optional libcamera GStreamer plugin in consumer images** [S, ★★].
       The cached amd64 `:latest-nvidia` (`0e9dec34…`) did not expose the optional
@@ -939,25 +908,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       these elements. Add the compatible plugins and runtime dependencies, their source and
       license provenance, and image checks for the elements; verify other Windows image variants
       independently. Until then that pipeline is unavailable in this image.
-
-- [ ] **CON206 — provide offline CMake formatting to Linux consumers** [S, ★★].
-      On 2026-10-31, the cached Linux amd64 CPU `:latest` registry image digest
-      `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
-      had no `cmake-format` on its default uid 1001's `PATH`; the image's Python
-      environments had neither `cmake-format` nor `cmakelang`, and the user's uv cache
-      was absent. In a network-disabled OmniAccelerANT CPU check, the hub's bootstrap
-      could not seed pip or install its locked `cmake-format==0.6.13` from PyPI.
-      Decide whether to include the formatter or seed the locked dependencies for offline
-      consumers, and verify the actual format check in a fresh image as the normal user
-      with networking disabled. Account for Python 3.15: the hub's bootstrap patches
-      cmakelang 0.6.13's lexer, but an executable already on `PATH` skips that bootstrap.
-      An independent no-network inspection of the cached Linux amd64 NVIDIA image
-      `sha256:70bc45db5e2032cad3042b88b2f9a1c06cf4c4ddbbfc91251fbc0c9a2cba233d`
-      also found no `cmake-format` on its default user's `PATH`. Check its Python
-      environments and caches separately before deciding how to satisfy the offline contract;
-      see `_implementation/omni-nvidia-prospective-build-20261031/image-tools-inspection.log`.
-      This is an offline image gap, not evidence that network-backed builds fail; check
-      other image variants independently. CPU proof: `_implementation/omni-full-cpu-proof-20261031/proof.log`.
 
 - [ ] **CON204 — preserve Linux NVIDIA runtime provenance and notice handoff** [M, ★★★].
       On 2026-10-31, the cached Linux ARM NVIDIA image child
@@ -1268,21 +1218,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       "not possible in a container": record that in `docs/image-decisions.md` and remove the entry. It says nothing
       about host cameras or GPUs.
 
-- [ ] **CON199 — provide the pinned PowerShell analyzer in Windows images** [S, ★★].
-      On 2026-10-31 the cached `:winamd64` registry image digest
-      `sha256:bec12ad0afe6a5f0a90ae7c58ac06e605ee64b2a06c555842019bb1f00062927`
-      (local image ID `f8da1c947056`) reported PowerShell 7.6.7 but no module from
-      `Get-Module PSScriptAnalyzer -ListAvailable`. The pinned shared `Invoke-Lint.ps1`
-      parsed 49 OmniAccelerANT scripts, then refused to continue because the pinned
-      PSScriptAnalyzer 1.25.0 was absent. Install the version selected by the shared tool
-      pins in the next image, include its source and license provenance, and verify the
-      analyzer gate in a fresh container without a network install. The cached Windows x64
-      AMD GPU image `:winamd64-rocm` digest
-      `sha256:774af209a9282b8e8439653eb55756228a6ebdd219076ddc54a1e012e550c99c`
-      (local image ID `2b0ceccf317c`) also reported PowerShell 7.6.7 and no available
-      PSScriptAnalyzer module in a no-network container. Check the NVIDIA and ARM images
-      independently; these observations concern only the two cached x64 digests.
-
 - [ ] **CON198 — assess Linux GStreamer tensor inference dependencies** [M]. On 2026-10-31,
       `gst-inspect-1.0` in the cached x64 images `:latest` (digest
       `3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`),
@@ -1316,18 +1251,15 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       found `cargo expand` missing; `flutter_rust_bridge_codegen generate` attempted to
       install it from the network. The existing code-quality documentation also records this
       first-use install. Pin and install a cargo-expand release compatible with the image's
-      Rust toolchain and Flutter Rust Bridge generator (the earlier offline prototype used
-      cargo-expand 1.0.116; OxidANT's `frb-codegen.sh` pins and verifies 1.0.127 since 2026-11-01 and can
-      drop that install once the image carries it), record its licence and source, and
-      verify an offline generation run in a fresh image. Check Linux ARM and the NVIDIA and
+      Rust toolchain and Flutter Rust Bridge generator (OxidANT's `frb-codegen.sh` pins and verifies
+      1.0.127 since 2026-11-01 and can drop that install once the image carries it), record its
+      licence and source, and verify a generation run in a fresh image. Check Linux ARM and the NVIDIA and
       AMD image variants separately; this observation does not establish their contents.
       FRB 2.13.0 also invokes full Cargo metadata, including dependencies for other target
-      platforms. In an offline Linux-only cache, missing locked `android-activity` caused
-      metadata to fail silently and the generated Dart loader stem to become `UNKNOWN`,
-      breaking normal application startup even though Linux compilation succeeded. A
-      complete set of lock-verified cross-platform crate archives restored offline metadata.
-      Include a full offline metadata check and assert that the generated loader stem
-      matches the Rust library name; reject generation if either check fails.
+      platforms. When that failed, it failed silently and the generated Dart loader stem became
+      `UNKNOWN`, breaking normal application startup even though Linux compilation succeeded.
+      Assert that the generated loader stem matches the Rust library name, and reject generation
+      if it does not.
 
 - [ ] **CON196 — select the GPU ONNX Runtime reliably in consumer images** [M, ★★★].
       On 2026-10-30 both cached GPU images exported `ORT_LIB_LOCATION` pointing at

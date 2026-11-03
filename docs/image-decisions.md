@@ -102,6 +102,9 @@ These are recorded so nobody files them as gaps:
   [the contract's rule](consumer-image-contract.md#consumer-builds-need-the-network).
 - No `actionlint` (owner, 2026-11-03). `lint-workflows.sh` fetches the pinned binary and checks
   its SHA256, so an image copy would only serve offline checks.
+- No added `libgtk-4-dev` in the amd64 GPU images (owner, 2026-11-03). It pulls back the distro GTK
+  and GStreamer runtime that `drop_redundant_distro_gtk4` removes. OxidANT's NVIDIA and AMD lanes
+  install it themselves; the cost is an unpinned, networked lane install.
 - No `gcc-mingw-w64-x86-64` (owner, 2026-11-03). Only OxidANT's `clippy-windows.sh` needs it, for
   `ring`'s C on the Windows target, and installs it when missing. Its apt closure is about 600 MB on
   Ubuntu 26.04, which every image would carry for one lint step.
