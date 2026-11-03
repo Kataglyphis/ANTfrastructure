@@ -1909,13 +1909,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       entries, then extracts under `ulimit -f`, with a crafted-image test. This does not establish provenance or GPU
       readiness.
 
-- [ ] **CON213 — WebDavClient's `bench/` collects no tests, so `bench-gate` stays off by default** [S, ★★].
-      Found 2026-10-31 running `pytest bench/` at WebDavClient `0980fb5` in `:latest`: pytest
-      collects 0 items and exits 5, because `pytest.ini`'s file pattern does not match
-      `bench/demo_*.py`. `ci_tests.sh` therefore runs `pytest bench/` only under
-      `PYTHON_BENCH_GATE=1` (`python-ci-linux.yml` `bench-gate: true`), which OrchestrANT sets.
-      Turn WebDavClient's demos into collected benchmarks, prove `pytest bench/` green there, then
-      make the gate the default and drop the switch.
+- [ ] **CON213 — drop `python-ci-linux.yml`'s `bench-gate` input** [S, ★]. `pytest bench/` gates every Linux leg
+      (CHANGELOG 2026-11-03); WebDavClient df55409 collects its benchmark. The input, default true, still arms consumers
+      whose pinned hub reads `PYTHON_BENCH_GATE`. Done when OrchestrANT drops its `bench-gate: true`, it and WebDavClient
+      pin a hub whose `ci_tests.sh` always gates, and the input and its `-e` line go.
 
 - [ ] **CON211 — consumer copies the Flutter helpers still wait to replace** [S, ★★].
       `05-frameworks/flutter/flutter-pin.sh` and `lane-prologue.sh` are pinned by

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ci_tests.sh's benchmark leg under PYTHON_BENCH_GATE; not covered: what the benchmarks measure or how long they take.
+# ci_tests.sh's benchmark leg; not covered: what the benchmarks measure or how long they take.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -32,30 +32,25 @@ _driver() {
     bash "${TREE}/02-toolchain/python/ci_tests.sh" "$@" > "${_work}/out" 2>&1
 }
 
-t_case "armed, a missing bench/ skips the benchmark suite with a visible line"
-PYTHON_BENCH_GATE=1 t_assert_ok _driver
+t_case "a missing bench/ skips the benchmark suite with a visible line"
+t_assert_ok _driver
 t_assert_contains "$(cat "${_work}/out")" "No bench/ directory; benchmark suite skipped"
 t_assert_fails grep -q -F -e 'run pytest bench/' "${REC}"
 
-t_case "armed, a present bench/ runs as pytest bench/ from the workspace root"
+t_case "a present bench/ runs as pytest bench/ from the workspace root"
 mkdir -p "${WS}/bench"
-PYTHON_BENCH_GATE=1 t_assert_ok _driver
+t_assert_ok _driver
 t_assert_contains "$(cat "${REC}")" "run pytest bench/ in ${WS}"
 
-t_case "armed, a failing bench/ fails the leg"
-FAIL_BENCH=1 PYTHON_BENCH_GATE=1 t_assert_fails _driver
+t_case "a failing bench/ fails the leg"
+FAIL_BENCH=1 t_assert_fails _driver
 t_assert_contains "$(cat "${_work}/out")" "pytest bench/ exited 1"
 
-t_case "unarmed, the old best-effort demo runs and a failing bench/ cannot fail the leg"
-FAIL_BENCH=1 t_assert_ok _driver
-t_assert_contains "$(cat "${REC}")" "run pytest bench/demo_pytest_benchmark.py"
-t_assert_fails grep -q -F -e 'run pytest bench/ in' "${REC}"
-
-t_case "the reusable Linux lane forwards bench-gate, off by default"
+t_case "the reusable Linux lane keeps pinned consumers' older ci_tests.sh armed"
 # shellcheck source=linux/scripts/tests/workflow-lane-fixture.sh
 source "${TESTS_DIR}/workflow-lane-fixture.sh"
 workflow_lane_fixture_init .github/workflows/python-ci-linux.yml build build python3 || exit 1
-workflow_assert_input_fields bench-gate type 'boolean' default 'false'
+workflow_assert_input_fields bench-gate type 'boolean' default 'true'
 t_assert_eq "1" "$(grep -c -F -e "-e PYTHON_BENCH_GATE=\${{ inputs.bench-gate && '1' || '0' }}" "${LANE}")" \
   "the test step must hand the caller's switch to ci_tests.sh"
 

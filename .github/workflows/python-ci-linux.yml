@@ -67,11 +67,11 @@ on:
         default: ''
       bench-gate:
         description: >-
-          Run `pytest bench/` when bench/ exists and fail the test leg on its
-          failure (PYTHON_BENCH_GATE). False keeps the best-effort demo run.
+          Arms a consumer whose pinned hub still reads PYTHON_BENCH_GATE; a current
+          ci_tests.sh always gates bench/. Goes once no consumer pin reads it.
         required: false
         type: boolean
-        default: false
+        default: true
       package-emulated:
         description: >-
           Run the packaging step on the emulated riscv64 row as well. Set true

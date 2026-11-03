@@ -33065,14 +33065,6 @@
   "why": "one named demo file leaves every other benchmark in bench/ unrun"
  },
  {
-  "id": "python.ci-tests-bench-gate-defaults-off",
-  "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
-  "find": "PYTHON_BENCH_GATE=\"${PYTHON_BENCH_GATE:-0}\"",
-  "replace": "PYTHON_BENCH_GATE=\"${PYTHON_BENCH_GATE:-1}\"",
-  "test": "bash linux/scripts/tests/test-python-ci-bench.sh",
-  "why": "callers whose bench/ collects no tests keep the old best-effort run until they opt in"
- },
- {
   "id": "quality-report.comparison-removed",
   "target": "linux/scripts/quality_report_compare.py",
   "find": "        before = (baseline or {}).get(metric.name)\n",

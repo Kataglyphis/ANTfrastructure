@@ -19,7 +19,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   echo "  \$PYTHON_COVERAGE_MIN requires that percentage of covered package lines; zero still requires measured code"
   echo "  \$FREE_THREADED_SYNC_EXTRAS (comma list) makes a free-threaded leg sync only those extras and gate"
   echo "  \$SYNC_EXTRAS (comma list) makes every leg sync only those extras and gate"
-  echo "  \$PYTHON_BENCH_GATE=1 runs 'pytest bench/' when bench/ exists and fails the leg on its failure"
+  echo "  A bench/ directory runs as 'pytest bench/', and its failure fails the leg"
   exit 0
 fi
 
@@ -48,8 +48,6 @@ PYTHON_COVERAGE_MIN="${PYTHON_COVERAGE_MIN:-0}"
 FREE_THREADED_SYNC_EXTRAS="${FREE_THREADED_SYNC_EXTRAS:-}"
 # Set, every leg syncs only these extras (a riscv64 row cannot build the full extra set under QEMU).
 SYNC_EXTRAS="${SYNC_EXTRAS:-}"
-# Off keeps the best-effort demo, because one caller's bench/ collects no tests yet (BACKLOG.md CON213).
-PYTHON_BENCH_GATE="${PYTHON_BENCH_GATE:-0}"
 
 TEST_RESULTS_DIR="$WORKSPACE_ROOT/logs/test-results"
 LOG_FILE="${CI_TESTS_LOG_FILE:-$TEST_RESULTS_DIR/ci_tests-$(timestamp).log}"
@@ -160,9 +158,7 @@ for V in $PY_VERSIONS; do
   uv_run py-spy record --rate 200 --duration 10 -o "$TEST_RESULTS_DIR/profile.svg" -- python bench/demo_py_spy.py 2>/dev/null \
     || info "py-spy profiling skipped (may require a longer-running process or py-spy missing)"
 
-  if [ "$PYTHON_BENCH_GATE" != 1 ]; then
-    uv_run pytest bench/demo_pytest_benchmark.py 2>/dev/null || info "benchmark tests skipped or failed"
-  elif [ ! -d "$WORKSPACE_ROOT/bench" ]; then
+  if [ ! -d "$WORKSPACE_ROOT/bench" ]; then
     info "No bench/ directory; benchmark suite skipped"
   else
     bench_status=0

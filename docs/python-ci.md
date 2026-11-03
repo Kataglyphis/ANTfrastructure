@@ -135,11 +135,10 @@ A lane outside these reusable workflows reaches the image's interpreters through
 image, builds a fresh venv of X.Y or X.Yt, binds uv to it with downloads off and runs the command.
 Suite: `test-ci-image-leg.sh`. DocumANTation's `linux-x64.yml` runs its checks through it.
 
-Pass `bench-gate: true` to make the benchmarks a real gate: each leg then runs `pytest bench/`
-when `bench/` exists and fails on its failure, and a missing `bench/` prints that the suite was
-skipped. The default keeps the old best-effort `bench/demo_pytest_benchmark.py` run, whose
-failure only logs, because WebDavClient's `bench/` collects no tests under `pytest bench/`
-(`BACKLOG.md` CON213). OrchestrANT turns it on. Suite: `test-python-ci-bench.sh`.
+Benchmarks are a real gate: each leg runs `pytest bench/` when `bench/` exists and fails on its
+failure, and a missing `bench/` prints that the suite was skipped. Name the benchmark file in the
+consumer's pytest `python_files`, because `pytest bench/` collecting nothing exits 5 and fails the
+leg. The profiling demos around it stay best-effort. Suite: `test-python-ci-bench.sh`.
 
 Pass `test-extras` (comma list) so every leg syncs only those extras: a riscv64 leg wants `test`,
 because the full set builds wheels from source under emulation. See

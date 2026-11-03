@@ -40,6 +40,8 @@
 - CON171: the runtime lane's entry and the between-stage guard restart buildkitd once before the
   layer prune when records are in use and no `buildctl` runs, and `--from-stage runtime` counts
   the lane's disk once. Tested with stubs; the next resumed chain is the real proof.
+- CON213: `ci_tests.sh` always gates a `bench/` directory with `pytest bench/`. WebDavClient
+  collects its benchmark and locks pytest-benchmark 5.3.1, which works with pytest 9.
 
 ## 2026-11-03 — A card without a CUDA kernel
 
