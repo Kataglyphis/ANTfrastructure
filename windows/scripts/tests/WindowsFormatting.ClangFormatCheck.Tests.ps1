@@ -8,10 +8,10 @@ Describe 'Invoke-ClangFormatCheck' {
     Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsFormatting.Common.psm1') -Force
 
     $script:root = New-TestDir -Prefix 'fmt-check-'
-    # --dry-run -Werror <file>: the third argument is the file, and a name with "bad" in it deviates.
+    # --dry-run -Werror <file>: the third argument is the file; only its own name decides, since a temp path can hold "bad".
     $script:fake = New-TestBatchTool -Directory $script:root -Name 'clang-format.cmd' -Line @(
       'if "%~1"=="--version" (echo clang-format version 23.1.1 & exit /b 0)',
-      'echo %~3| findstr /i "bad" >nul && exit /b 1')
+      'echo %~nx3| findstr /i "bad" >nul && exit /b 1')
     $script:good = Join-Path $script:root 'good.cpp'
     $script:bad = Join-Path $script:root 'bad.cpp'
 
@@ -43,6 +43,16 @@ Describe 'Invoke-ClangFormatCheck' {
     Assert-Throws -MessagePattern '1 of 2 file\(s\) deviate' -Body { Invoke-Check -FailOnDeviation }
     Set-FormatStub -Files @($script:good)
     { Invoke-Check -FailOnDeviation } | Should -Not -Throw
+  }
+
+  It 'grades the file by its own name, not by the directory it lies in' {
+    $badRoot = New-TestDir -Prefix 'bad-fmt-check-'
+    try {
+      Set-FormatStub -Files @((Join-Path $badRoot 'good.cpp'))
+      { Invoke-Check -FailOnDeviation } | Should -Not -Throw
+    } finally {
+      Remove-TestDir -Path $badRoot
+    }
   }
 
   It 'refuses a clang-format of another release with -ExpectedVersion' {
