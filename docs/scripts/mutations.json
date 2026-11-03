@@ -34823,5 +34823,13 @@
   "replace": "xargs -0 -r -n 2 -P 0 bash",
   "test": "bash linux/scripts/tests/test-lint-gates-secret-jobs.sh",
   "why": "1 must run the scans in turn"
+ },
+ {
+  "id": "python-ci.image-leg-absolute-venv",
+  "target": "linux/scripts/ci-image-leg.sh",
+  "find": "venv=\"$(realpath -m \"$2\")\"",
+  "replace": "venv=\"$2\"",
+  "test": "bash linux/scripts/tests/test-ci-image-leg.sh",
+  "why": "a relative UV_PYTHON breaks as soon as the command changes directory"
  }
 ]

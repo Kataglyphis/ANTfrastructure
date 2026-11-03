@@ -12,7 +12,8 @@ case "${1:-}" in
   *) _leg_usage ;;
 esac
 [ "$#" -ge 3 ] && [ -n "$2" ] || _leg_usage
-venv="$2"
+# Absolute: the command may change directory, and uv would then read a relative UV_PYTHON from there.
+venv="$(realpath -m "$2")"
 shift 2
 # Anywhere but the image, uv would download an interpreter the family does not pin.
 if [ -z "${mm}" ] || ! command -v "python${leg}" >/dev/null 2>&1; then

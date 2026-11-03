@@ -46,6 +46,10 @@ _leg pinned "${_work}/gil" true
 t_assert_eq "0" "${rc}"
 t_assert_contains "$(tail -1 "${_work}/uv.log")" "--python=9.9+gil"
 
+t_case "a relative venv directory binds uv by its absolute path"
+(cd "${_work}" && _leg pinned rel bash -c 'printf "%s\n" "${UV_PYTHON}"'; printf '%s\n' "${out}" > rel.out)
+t_assert_contains "$(cat "${_work}/rel.out")" "${_work}/rel/bin/python"
+
 t_case "the command's status is the leg's"
 _leg pinned "${_work}/gil" bash -c 'exit 7'
 t_assert_eq "7" "${rc}"
