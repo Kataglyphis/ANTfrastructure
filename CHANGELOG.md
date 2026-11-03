@@ -45,6 +45,8 @@
   the lane's disk once. Tested with stubs; the next resumed chain is the real proof.
 - CON213: `ci_tests.sh` always gates a `bench/` directory with `pytest bench/`. WebDavClient
   collects its benchmark and locks pytest-benchmark 5.3.1, which works with pytest 9.
+- CON124 and CON131: OrchestrANT's contract job runs in `:latest` on X.Y and X.Yt, and the
+  PowerShell tests pass on both legs (run 41722061775: 2429 passed, 4 skipped each).
 
 ## 2026-11-03 — A card without a CUDA kernel
 
