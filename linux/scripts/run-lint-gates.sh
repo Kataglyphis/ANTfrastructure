@@ -210,21 +210,24 @@ sys.exit(0 if gate_scope.assert_non_empty(RELS, ROOT, ["*.sh"], "allow", "ratche
 RATCHETSCOPE
 }
 
+_lint_gates_hub_python() {
+  # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
+  ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" "$@"
+}
+
 # A consumer page restating a hub page; off until <root>/doc-dupes-hub.allow exists. See docs/code-quality-tooling.md#consumer-pages-against-the-hub-doc-dupes---against-hub
 _lint_gates_doc_dupes_hub() {
   _lint_gates_hub docs/scripts/verify_doc_dupes.py || return 1
   _lint_gates_interpreter || return 1
   printf '== verify_doc_dupes.py --against-hub --root %s ==\n' "${_LINT_GATES_ROOT}"
-  # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
-  ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --against-hub --root "${_LINT_GATES_ROOT}"
+  _lint_gates_hub_python --against-hub --root "${_LINT_GATES_ROOT}"
 }
 
 # Opt-in: it needs the six-section AGENTS.md and quality-report.toml only the AI consumers carry. See docs/code-quality-tooling.md#agents-drift-agents-drift
 _lint_gates_agents_drift() {
   _lint_gates_hub linux/scripts/verify_agents_drift.py || return 1
   _lint_gates_interpreter || return 1
-  # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
-  ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --root "${_LINT_GATES_ROOT}"
+  _lint_gates_hub_python --root "${_LINT_GATES_ROOT}"
 }
 
 # Pure Python consumers have no units in this scanner yet; only that empty scope may pass.

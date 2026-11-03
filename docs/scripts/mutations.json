@@ -33723,8 +33723,8 @@
  {
   "id": "agents-drift.lint-flag-grades",
   "target": "linux/scripts/run-lint-gates.sh",
-  "find": "  ${_LINT_GATES_PY} \"${_LINT_GATES_HUB_FILE}\" --root \"${_LINT_GATES_ROOT}\"\n}\n\n# Pure Python",
-  "replace": "  ${_LINT_GATES_PY} \"${_LINT_GATES_HUB_FILE}\"\n}\n\n# Pure Python",
+  "find": "  _lint_gates_hub_python --root \"${_LINT_GATES_ROOT}\"\n}\n\n# Pure Python",
+  "replace": "  _lint_gates_hub_python\n}\n\n# Pure Python",
   "test": "bash linux/scripts/tests/test-agents-drift.sh lintgates",
   "why": "without --root it grades the hub and passes every consumer"
  },
