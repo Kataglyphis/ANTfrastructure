@@ -21,7 +21,7 @@ sh() { record sh "$@"; return "$SH_STATUS"; }
 rm() { record rm "$@"; [ "$RM_STATUS" = 0 ] || return "$RM_STATUS"; command rm "$@"; }
 info() { echo "$@"; }
 die() { echo "$@" >&2; exit 1; }
-uv() { echo uv-fixture; }
+uv() { echo "uv ${UV_FIXTURE_INSTALLED}"; }
 command() { if [ "$*" = '-v uv' ]; then [ "${UV_PRESENT:-0}" = 1 ]; return; fi; builtin command "$@"; }
 trap 'declare -p rustup_init 2>/dev/null > "$STATE" || true' EXIT
 """
@@ -82,6 +82,8 @@ def receipt(
     digest: str,
     versions: str | None = None,
     installed: bool = False,
+    uv_version: str = "0.0.fixture",
+    installed_version: str = "",
 ) -> InstallerReceipt:
     with tempfile.TemporaryDirectory(prefix="ant-installer-receipt-") as directory:
         work = Path(directory)
@@ -94,6 +96,8 @@ def receipt(
             WORK=directory,
             _MODULE_DIR=str(work / "core"),
             UV_INSTALL_SH_SHA256=digest,
+            UV_VERSION=uv_version,
+            UV_FIXTURE_INSTALLED=installed_version or uv_version,
             UV_PRESENT="1" if installed else "0",
             RUSTUP_INIT_SHA256=digest,
             RUST_VERSION="1 fixture",
@@ -262,7 +266,45 @@ class VerifiedInstallers(unittest.TestCase):
         self.assertIn("operator pin  WORK/fixture path\n", overridden["trace"])
         self.assertNotIn("file pin", overridden["trace"])
         self.assertEqual("", installed["trace"])
-        self.assertEqual("uv version: uv-fixture\n", installed["out"])
+        self.assertEqual("uv version: uv 0.0.fixture\n", installed["out"])
+
+    def test_uv_installs_exactly_the_pin(self) -> None:
+        pinned = "https://astral.sh/uv/1.2.3/install.sh\n"
+        from_env = receipt(SCRIPTS, "uv", "success", "strict", "pin", uv_version="1.2.3")
+        self.assertIn(pinned, from_env["trace"])
+        self.assertNotIn("astral.sh/uv/install.sh", from_env["trace"])
+        from_file = receipt(
+            SCRIPTS,
+            "uv",
+            "success",
+            "strict",
+            "pin",
+            versions="UV_VERSION=1.2.3\n",
+            uv_version="",
+            installed_version="1.2.3",
+        )
+        self.assertIn(pinned, from_file["trace"])
+        self.assertEqual(0, from_file["rc"])
+        unpinned = receipt(SCRIPTS, "uv", "success", "strict", "pin", uv_version="")
+        self.assertEqual(1, unpinned["rc"])
+        self.assertIn("no UV_VERSION", unpinned["err"])
+        self.assertEqual("", unpinned["trace"])
+        drifted = receipt(
+            SCRIPTS,
+            "uv",
+            "success",
+            "strict",
+            "pin",
+            uv_version="1.2.3",
+            installed_version="9.9.9",
+        )
+        self.assertEqual(1, drifted["rc"])
+        self.assertIn("did not leave uv 1.2.3", drifted["err"])
+
+    def test_composite_action_uses_the_pinned_installer(self) -> None:
+        action = (ROOT / ".github/actions/install-deps/action.yml").read_text()
+        self.assertIn("uv_ensure_installed", action)
+        self.assertNotIn("astral.sh/uv", action)
 
     def test_cold_copied_imports(self) -> None:
         valid = (SCRIPTS / "01-core/verified-script-install.sh").read_text()

@@ -411,7 +411,6 @@ SHA_PAIR_EXEMPT = {
     "QNN_SDK_ZIP_SHA256", "QNN_SDK_LINUX_ZIP_SHA256",
     # Always-latest bootstrap installers: the hash is re-reviewed by hand on each deliberate update.
     "RUSTUP_INIT_SHA256",   # sh.rustup.rs
-    "UV_INSTALL_SH_SHA256",  # astral.sh/uv/install.sh
     "SCOOP_INSTALLER_SHA256",  # get.scoop.sh
     # Paired with the MANUAL ANDROID_SDK_VERSION; recipe and sha1 cross-check beside the key.
     "ANDROID_CMDLINE_TOOLS_SHA256",

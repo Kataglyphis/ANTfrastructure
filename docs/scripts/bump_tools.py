@@ -123,6 +123,7 @@ def spec_uv(cur: str) -> SpecResult:
             ("UV_RISCV64_SHA256", "uv-riscv64gc-unknown-linux-gnu.tar.gz"),
         ]:
             extras[env_key] = bv.asset_sha256("astral-sh/uv", tag, asset, sums=(f"{asset}.sha256",))
+        extras["UV_INSTALL_SH_SHA256"] = bv.asset_sha256("astral-sh/uv", tag, "uv-installer.sh")
     return v, extras
 
 

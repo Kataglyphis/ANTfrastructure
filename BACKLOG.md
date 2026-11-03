@@ -540,15 +540,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       one pipeline per arch through the stages, with an image lever scoped to the tags of arches that are not
       building, and a disk gate per arch. Done when a chain starts an arch's next stage as soon as that arch's
       previous one is pushed, without an image removal under a running build.
-- [ ] **CON170 — the uv installer pin follows a moving URL** [S, ★★]. `python_uv.sh` (`uv_ensure_installed`, used by
-      `lib/dartdoc-build.sh` and consumer hosts) runs `https://astral.sh/uv/install.sh`, which installs the newest uv
-      (0.13.6 on 2026-10-27) and changes with every release, so `UV_INSTALL_SH_SHA256` (`283cbef4…`) matches neither it
-      nor the pinned `UV_VERSION=0.13.1`. Work: run `https://astral.sh/uv/${UV_VERSION}/install.sh` and pin
-      `7c482d409673a53f4d9bd34ae95c9166be3b8d89ca82f27dd7bca3cab457afff`, byte-identical on 2026-10-27 to the
-      GitHub release asset `uv-installer.sh` of 0.13.1, and let `bump_versions.py` move it with `UV_VERSION`.
-      `versions.env` re-keys `Dockerfile.base`, so this rides a planned rebuild. Done when `uv_ensure_installed`
-      installs exactly `UV_VERSION` through a hash that no uv release can rotate. The 2026-10-27 mirror fill refused it
-      (`FAILED 283cbef4bdac install.sh`), the only one of 33 assets.
 - [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★★]. Found 2026-10-27: after a
       stopped run, the runtime lane's entry reclaim freed 0 of 165 GiB layer cache and refused at 376 GB free;
       once `systemctl --user restart buildkit` ran with nothing building, `prune-safe.sh` freed 116 GB and kept
@@ -567,7 +558,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       asks `<mirror>/<sha256>/<name>` first and falls back upstream, through the `asset_mirror` BuildKit
       secret. The bucket, both keys and this host's env files exist since 2026-10-26 (`--check` passes); a
       new chain host runs `set-asset-mirror.sh --from <ssh-target> --url <bucket-url>`. Filled on 2026-10-27 from that chain's
-      misses: 32 of 33 assets; the uv installer refused its pin (CON170). Done when the next chain logs
+      misses: 32 of 33 assets. Done when the next chain logs
       `asset-mirror| hit` for the pinned assets.
 
 - [ ] **CON129 — finish GTK 4 validation on foreign arches and GPU variants** [M, ★★★].

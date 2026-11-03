@@ -365,25 +365,36 @@ t_assert_contains "${_out}" "same ('101', {})" "an up-to-date build drags no ext
 t_assert_contains "${_out}" "raised none of the newest 30 ggml-org/llama.cpp builds publishes both a win-cpu-x64 and a win-vulkan-x64 zip" \
   "no matching pair of zips is a lookup failure, never a silent 'up to date'"
 
-t_case "spec_amf_headers: only vX.Y.Z tags count, and the header asset's SHA moves with the tag (offline)"
-# AMF's real tag shapes (1.4.14, 1.4.16.1, v.1.4.21, v1.4.7.0), faked NEWER than v1.5.3 in each shape.
-_out="$(_bv_tags_offline '["1.4.14", "v1.4.36", "v1.5.2", "v1.5.3", "1.6.0", "1.6.0.1", "v.1.6.1", "v1.5.3.1"]' <<'PY'
+# <tags-json> <spec> <older-pin> <newest-pin>: a report run, a --write run and an up-to-date run, each with its hashed assets.
+_bv_spec_runs() {
+  _bv_tags_offline "$1" <<PY
 hashed = []
 bv.asset_sha256 = lambda repo, tag, asset, sums=(): hashed.append((repo, tag, asset)) or "e" * 64
 bv.WRITE_MODE = False
-print("report", bv.spec_amf_headers("v1.5.2"), hashed)
+print("report", bv.$2("$3"), hashed)
 bv.WRITE_MODE = True
-print("bump", bv.spec_amf_headers("v1.5.2"), hashed)
+print("bump", bv.$2("$3"), hashed)
 hashed.clear()
-print("same", bv.spec_amf_headers("v1.5.3"), hashed)
+print("same", bv.$2("$4"), hashed)
 PY
-)"
+}
+
+t_case "spec_amf_headers: only vX.Y.Z tags count, and the header asset's SHA moves with the tag (offline)"
+# AMF's real tag shapes (1.4.14, 1.4.16.1, v.1.4.21, v1.4.7.0), faked NEWER than v1.5.3 in each shape.
+_out="$(_bv_spec_runs '["1.4.14", "v1.4.36", "v1.5.2", "v1.5.3", "1.6.0", "1.6.0.1", "v.1.6.1", "v1.5.3.1"]' spec_amf_headers v1.5.2 v1.5.3)"
 _e64="$(printf 'e%.0s' {1..64})"
 t_assert_contains "${_out}" "report ('v1.5.3', {}) []" "a report run names the newest vX.Y.Z tag and downloads nothing"
 t_assert_contains "${_out}" "bump ('v1.5.3', {'AMF_HEADERS_SHA256': '${_e64}'}) [('GPUOpen-LibrariesAndSDKs/AMF', 'v1.5.3', 'AMF-headers-v1.5.3.tar.gz')]" \
   "--write takes v1.5.3 (not 1.6.0, v.1.6.1 or v1.5.3.1) and re-hashes exactly its header asset"
 t_assert_contains "${_out}" "same ('v1.5.3', {}) []" "an up-to-date tag drags no SHA and hashes nothing"
 
+
+t_case "spec_uv: the installer's SHA moves with UV_VERSION, from that release's own asset (offline)"
+_out="$(_bv_spec_runs '["0.13.1", "0.14.0"]' spec_uv 0.13.1 0.14.0)"
+t_assert_contains "${_out}" "report ('0.14.0', {}) []" "a report run downloads nothing"
+t_assert_contains "${_out}" "'UV_INSTALL_SH_SHA256': '${_e64}'" "--write moves UV_INSTALL_SH_SHA256 with the version"
+t_assert_contains "${_out}" "('astral-sh/uv', '0.14.0', 'uv-installer.sh')" "the digest is that release's uv-installer.sh, which no later release rotates"
+t_assert_contains "${_out}" "same ('0.14.0', {}) []" "an up-to-date pin drags no SHA"
 
 t_case "spec_vulkan: the Windows loader zip's SHA moves with VULKAN_VERSION, LunarG's digest first (offline)"
 _out="$(_bv_offline <<'PY'

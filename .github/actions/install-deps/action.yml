@@ -64,7 +64,7 @@ runs:
         # Optionally install the Astral uv package manager
         if [ "$INSTALL_UV" = "true" ]; then
           echo "Installing Astral uv package manager..."
-          curl -LsSf https://astral.sh/uv/install.sh | sh
+          bash -c 'source "$1" && uv_ensure_installed' _ "${GITHUB_ACTION_PATH}/../../../linux/scripts/01-core/python_uv.sh"
           if [ -d "$HOME/.local/bin" ]; then
             echo "$HOME/.local/bin" >> "$GITHUB_PATH"
             export PATH="$HOME/.local/bin:$PATH"

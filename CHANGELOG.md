@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-03 — Hub maintenance backlog
+
+- CON170: `uv_ensure_installed` runs `astral.sh/uv/${UV_VERSION}/install.sh`, which no later uv
+  release rotates, checks the result is `UV_VERSION` and refuses to run with no version pin.
+  `UV_INSTALL_SH_SHA256` is that release's `uv-installer.sh`, and `spec_uv` moves it with
+  `UV_VERSION`. The `install-deps` action calls the same function instead of `curl | sh`.
+
 ## 2026-11-03 — A card without a CUDA kernel
 
 - OxidANT, OrchestrANT and AccelerANTgine run one ONNX Runtime kernel on the card before a CUDA

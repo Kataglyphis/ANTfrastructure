@@ -839,8 +839,8 @@ side) after the QEMU binfmt check and before any arch builds. It runs on every b
   `RUSTUP_INIT_SHA256`: the package stage reinstalls Rust natively on a foreign arch through it. A
   mismatch refuses the lane and names the pin; an empty pin is the documented skip and says so. The
   uv installer is not checked: the base ships uv's release binary, so no runtime stage runs
-  `astral.sh/uv/install.sh`. The check had been there, and on 2026-10-27 it refused a lane over that
-  unused installer's rotation.
+  uv's installer. The check had been there, and on 2026-10-27 it refused a lane when the unused
+  installer's moving URL rotated.
 - `RUNTIME_INPUT_PREFLIGHT=0` builds without it, as before; `--dry-run` only reports what it would
   check.
 

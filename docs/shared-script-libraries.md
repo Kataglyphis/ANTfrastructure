@@ -2073,6 +2073,8 @@ different diagnostics and cleanup order. Copy this functions-only companion
 beside `python_uv.sh`; Rust's Toolchain RUN binds the same fresh file. Cold import
 tests reject absent, incomplete and failing companions and verify UV retry after
 restoration. Lifecycle tests use fake download and shell commands.
+`uv_ensure_installed` runs the `UV_VERSION` release's installer, not the moving
+`astral.sh/uv/install.sh`, and fails when no pin resolves or another version results.
 
 The standalone nerdctl installer owns `binfmt_handler_enabled`, shared with the
 runtime manifest verifier. Its `--source-binfmt-probe` entry returns before shell

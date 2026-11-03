@@ -24979,8 +24979,8 @@
  {
   "id": "lib.verified-installer-uv-binding",
   "target": "linux/scripts/01-core/python_uv.sh",
-  "find": "https://astral.sh/uv/install.sh \"$uv_install_sha\" _uv_install_hash_failure",
-  "replace": "https://astral.sh/uv/install.sh \"\" _uv_install_hash_failure",
+  "find": "/install.sh\" \"$uv_install_sha\" _uv_install_hash_failure",
+  "replace": "/install.sh\" \"\" _uv_install_hash_failure",
   "test": "bash linux/scripts/tests/test-verified-installers.sh",
   "why": "UV passes its resolved preset or versions.env checksum into the shared installer"
  },
@@ -34119,5 +34119,45 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-clang-job-policy.sh",
   "why": "the default budget is one definition, read by the job mapper"
+ },
+ {
+  "id": "lib.verified-installer-uv-versioned-url",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "\"https://astral.sh/uv/${uv_install_version}/install.sh\"",
+  "replace": "\"https://astral.sh/uv/install.sh\"",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "the unversioned URL installs the newest uv and rotates with every release, so no hash can pin it"
+ },
+ {
+  "id": "lib.verified-installer-uv-version-required",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "[ -n \"$uv_install_version\" ] || die \"uv_ensure_installed: no UV_VERSION",
+  "replace": "[ -n \"$uv_install_version\" ] || info \"uv_ensure_installed: no UV_VERSION",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "without a pin the URL has no version in it; that must stop before any download"
+ },
+ {
+  "id": "lib.verified-installer-uv-version-result",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "|| die \"uv_ensure_installed: the installer did not leave uv",
+  "replace": "|| info \"uv_ensure_installed: the installer did not leave uv",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "a shadowing or wrong uv after the install is not the pin; the hash only covers the script"
+ },
+ {
+  "id": "lib.verified-installer-action-pinned",
+  "target": ".github/actions/install-deps/action.yml",
+  "find": "bash -c 'source \"$1\" && uv_ensure_installed' _ \"${GITHUB_ACTION_PATH}/../../../linux/scripts/01-core/python_uv.sh\"",
+  "replace": "curl -LsSf https://astral.sh/uv/install.sh | sh",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "the composite action must take the pinned installer, not pipe the moving URL into sh"
+ },
+ {
+  "id": "lib.bump-uv-installer-pair",
+  "target": "docs/scripts/bump_tools.py",
+  "find": "        extras[\"UV_INSTALL_SH_SHA256\"] = bv.asset_sha256(\"astral-sh/uv\", tag, \"uv-installer.sh\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "UV_VERSION moved without its installer digest makes every fresh uv install refuse"
  }
 ]

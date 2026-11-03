@@ -82,18 +82,23 @@ _uv_install_hash_failure() {
 }
 
 uv_ensure_installed() {
-  local uv_install_sh uv_install_sha
+  local uv_install_sh uv_install_sha uv_install_version
   if ! command -v uv >/dev/null 2>&1; then
     info "Installing uv..."
-    # Download to a file, never curl | sh (a truncated stream runs half a script); UV_INSTALL_SH_SHA256 pins it.
+    uv_install_version="${UV_VERSION:-}"
     uv_install_sha="${UV_INSTALL_SH_SHA256:-}"
-    if [ -z "$uv_install_sha" ] && [ -f "$_MODULE_DIR/versions.env" ]; then
-      uv_install_sha="$(sed -n 's/^UV_INSTALL_SH_SHA256=//p' "$_MODULE_DIR/versions.env")"
+    if [ -f "$_MODULE_DIR/versions.env" ]; then
+      [ -n "$uv_install_version" ] || uv_install_version="$(sed -n 's/^UV_VERSION=//p' "$_MODULE_DIR/versions.env")"
+      [ -n "$uv_install_sha" ] || uv_install_sha="$(sed -n 's/^UV_INSTALL_SH_SHA256=//p' "$_MODULE_DIR/versions.env")"
     fi
+    [ -n "$uv_install_version" ] || die "uv_ensure_installed: no UV_VERSION, and no versions.env beside python_uv.sh"
     uv_install_sh="$(mktemp "${TMPDIR:-/tmp}/uv-install-XXXXXX.sh")"
+    # Download to a file, never curl | sh (a truncated stream runs half a script); the versioned URL does not rotate with a release.
     verified_script_install "$uv_install_sh" \
-      https://astral.sh/uv/install.sh "$uv_install_sha" _uv_install_hash_failure
+      "https://astral.sh/uv/${uv_install_version}/install.sh" "$uv_install_sha" _uv_install_hash_failure
     export PATH="$HOME/.local/bin:$PATH"
+    [ "$(uv --version | awk '{print $2}')" = "$uv_install_version" ] \
+      || die "uv_ensure_installed: the installer did not leave uv ${uv_install_version}: $(uv --version)"
   fi
   info "uv version: $(uv --version)"
 }
