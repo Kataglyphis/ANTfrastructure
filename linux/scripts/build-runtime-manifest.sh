@@ -210,7 +210,7 @@ create_manifest() {
     # Same transient registry/network class runtime_push_tag guards against.
     retry "${PUSH_MAX_ATTEMPTS:-4}" "${PUSH_RETRY_BASE_SECS:-15}" "manifest push ${manifest_ref}" \
       run "${NERDCTL_BIN:-nerdctl}" manifest push --purge "${manifest_ref}"
-    _manifest_accept_and_promote "${manifest_ref}"
+    runtime_step_phase acceptance _manifest_accept_and_promote "${manifest_ref}"
   fi
 }
 
@@ -303,11 +303,15 @@ _manifest_pull_if_missing() {
 
 # <label> <script> <arch>: one gate run on that arch's wrapper.
 _manifest_gate_arch() {
-  local tag
+  local tag step rc=0
   tag="$(runtime_wrapper_tag "$3")"
+  step="$(basename "$2" .sh)"
   log "$1: ${tag} ($3)"
+  runtime_step_mark "$3" "${step}" on
   _manifest_pull_if_missing "${tag}"
-  run bash "$2" "${tag}" "$3"
+  run bash "$2" "${tag}" "$3" || rc=$?
+  runtime_step_mark "$3" "${step}" off
+  return "${rc}"
 }
 
 # RUNTIME_GATE_JOBS: arches gated at once, default all of them.
@@ -369,23 +373,23 @@ _manifest_gates_parallel() {
 # Build-only half of main(), skipped by --manifest-only/--repair.
 _manifest_build_and_smoke() {
   # Foreign wrappers build under QEMU, so emulators must exist before the build loop; reused children boot in the smoke.
-  ensure_foreign_binfmt "${RUNTIME_INDEX_ARCHES:-${TARGET_ARCHES}}"
+  runtime_step_phase binfmt ensure_foreign_binfmt "${RUNTIME_INDEX_ARCHES:-${TARGET_ARCHES}}"
   # After binfmt, which its foreign apt plans run under; before any arch spends hours.
-  runtime_input_preflight || return $?
+  runtime_step_phase input-preflight runtime_input_preflight || return $?
 
   runtime_push_queue_start || return $?
   run_parallel_arch_loop runtime_wheels_arch_chain "$(arch_loop_flag_prefix runtime-arch-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
-  runtime_reuse_pull || return 1
+  runtime_step_phase reuse-pull runtime_reuse_pull || return 1
 
   # Smoke before the index goes live so a broken image never ships as :latest; queued pushes stream meanwhile.
   if [ "${RUNTIME_IMAGE_SMOKE}" = "1" ]; then
-    [ "${_BINFMT_ENSURED:-0}" = "1" ] || ensure_foreign_binfmt "${RUNTIME_INDEX_ARCHES:-${TARGET_ARCHES}}"
+    [ "${_BINFMT_ENSURED:-0}" = "1" ] || runtime_step_phase binfmt ensure_foreign_binfmt "${RUNTIME_INDEX_ARCHES:-${TARGET_ARCHES}}"
     # Every arch's content gate before any boot smoke: a stale wrapper boots green too. docs/cross-build-verification.md#verify-the-shipped-bytes-never-the-push
     _manifest_each_arch "Wrapper content gate" "${REPO_ROOT}/linux/scripts/verify-shipped-wrapper.sh"
     _manifest_each_arch "Runtime-image smoke" "${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh"
   fi
   # The index lists every arch, so it waits for the last upload.
-  runtime_push_queue_finish
+  runtime_step_phase push-wait runtime_push_queue_finish
 }
 
 # The gates alone, on the images already pushed; _manifest_build_and_smoke runs the same two gates after a build.
@@ -504,7 +508,7 @@ main() {
     log "CROSS_NO_PUSH=1 — skipping multi-arch manifest creation (no pushed per-arch refs to index)"
     CREATE_MANIFEST=0
   fi
-  _manifest_plan_reuse
+  runtime_step_phase reuse-plan _manifest_plan_reuse
 
   # Everything after this publishes an index over wrappers that already exist.
   if [ "${BUILD_IMAGES}" -eq 1 ]; then
@@ -516,10 +520,10 @@ main() {
 
   # Publish the multi-arch manifest only after every per-arch image passed its smoke.
   if [ "${CREATE_MANIFEST}" -eq 1 ]; then
-    create_manifest
-    _manifest_check_freshness
+    runtime_step_phase manifest create_manifest
+    runtime_step_phase freshness _manifest_check_freshness
   fi
-  _manifest_drop_pushed_images
+  runtime_step_phase drop-pushed _manifest_drop_pushed_images
 }
 
 main "$@"

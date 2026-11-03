@@ -418,7 +418,7 @@
  {
   "id": "image-acceptance.manifest-bypass",
   "target": "linux/scripts/build-runtime-manifest.sh",
-  "find": "    _manifest_accept_and_promote \"${manifest_ref}\"",
+  "find": "    runtime_step_phase acceptance _manifest_accept_and_promote \"${manifest_ref}\"",
   "replace": "    : acceptance-bypassed",
   "test": "bash linux/scripts/tests/test-manifest-acceptance.sh",
   "why": "manifest publication must propagate acceptance failure"
@@ -17278,7 +17278,7 @@
  {
   "id": "runtime-push.manifest-drains",
   "target": "linux/scripts/build-runtime-manifest.sh",
-  "find": "  # The index lists every arch, so it waits for the last upload.\n  runtime_push_queue_finish\n",
+  "find": "  # The index lists every arch, so it waits for the last upload.\n  runtime_step_phase push-wait runtime_push_queue_finish\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
   "why": "the index would be created over wrappers still uploading, or never uploaded"
@@ -17414,8 +17414,8 @@
  {
   "id": "runtime-gates.preflight-before-build",
   "target": "linux/scripts/build-runtime-manifest.sh",
-  "find": "  runtime_input_preflight || return $?\n",
-  "replace": "  runtime_input_preflight || true\n",
+  "find": "  runtime_step_phase input-preflight runtime_input_preflight || return $?\n",
+  "replace": "  runtime_step_phase input-preflight runtime_input_preflight || true\n",
   "test": "bash linux/scripts/tests/test-runtime-input-preflight.sh",
   "why": "a refused preflight must stop the lane before any arch builds"
  },
@@ -29395,10 +29395,58 @@
  {
   "id": "runtime-push.drop-called-after-index",
   "target": "linux/scripts/build-runtime-manifest.sh",
-  "find": "    _manifest_check_freshness\n  fi\n  _manifest_drop_pushed_images\n}",
-  "replace": "    _manifest_check_freshness\n  fi\n}",
+  "find": "    runtime_step_phase freshness _manifest_check_freshness\n  fi\n  runtime_step_phase drop-pushed _manifest_drop_pushed_images\n}",
+  "replace": "    runtime_step_phase freshness _manifest_check_freshness\n  fi\n}",
   "test": "bash linux/scripts/tests/test-runtime-drop-pushed.sh",
   "why": "a helper with no call site frees nothing; pushed wrappers stayed local at ~50G each (CON141)"
+ },
+ {
+  "id": "chain-status.resource-monitor-phase-marks-the-step",
+  "target": "linux/scripts/lib-orchestrator.sh",
+  "find": "  runtime_step_mark index \"$1\" on\n  \"${@:2}\"\n",
+  "replace": "  \"${@:2}\"\n",
+  "test": "bash linux/scripts/tests/test-resource-monitor.sh",
+  "why": "a whole-lane phase without its marker is the stage=? sample this exists to end"
+ },
+ {
+  "id": "chain-status.resource-monitor-phase-drops-its-marker",
+  "target": "linux/scripts/lib-orchestrator.sh",
+  "find": "  set -- \"$?\" \"$1\"\n  runtime_step_mark index \"$2\" off\n",
+  "replace": "  set -- \"$?\" \"$1\"\n",
+  "test": "bash linux/scripts/tests/test-resource-monitor.sh",
+  "why": "a marker left behind names every later peak after a phase that has ended"
+ },
+ {
+  "id": "chain-status.resource-monitor-phase-returns-its-status",
+  "target": "linux/scripts/lib-orchestrator.sh",
+  "find": "  runtime_step_mark index \"$2\" off\n  return \"$1\"\n",
+  "replace": "  runtime_step_mark index \"$2\" off\n  return 0\n",
+  "test": "bash linux/scripts/tests/test-resource-monitor.sh",
+  "why": "a phase that swallows its status would let a refused gate continue to publication"
+ },
+ {
+  "id": "chain-status.resource-monitor-gate-names-its-arch",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  runtime_step_mark \"$3\" \"${step}\" on\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-resource-monitor.sh",
+  "why": "a gate's peak must name the arch and the gate, which run side by side"
+ },
+ {
+  "id": "chain-status.resource-monitor-gate-keeps-its-status",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  runtime_step_mark \"$3\" \"${step}\" off\n  return \"${rc}\"\n",
+  "replace": "  runtime_step_mark \"$3\" \"${step}\" off\n",
+  "test": "bash linux/scripts/tests/test-resource-monitor.sh",
+  "why": "a failed content gate that returns the marker's status would pass an index over a stale wrapper"
+ },
+ {
+  "id": "chain-status.resource-monitor-main-marks-the-index",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "    runtime_step_phase manifest create_manifest\n",
+  "replace": "    create_manifest\n",
+  "test": "bash linux/scripts/tests/test-resource-monitor.sh",
+  "why": "the index gates and the push ran after the arch loop with nothing naming them"
  },
  {
   "id": "runtime-push.drop-no-push-keeps",
@@ -29571,7 +29619,7 @@
  {
   "id": "handoff.reuse-pull-skipped",
   "target": "linux/scripts/build-runtime-manifest.sh",
-  "find": "  runtime_reuse_pull || return 1",
+  "find": "  runtime_step_phase reuse-pull runtime_reuse_pull || return 1",
   "replace": "  : runtime_reuse_pull",
   "test": "bash linux/scripts/tests/test-runtime-reuse.sh",
   "why": "the gates must read each reused child re-pulled by digest"

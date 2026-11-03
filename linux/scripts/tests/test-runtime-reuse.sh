@@ -184,6 +184,7 @@ _lane() {
     arch_list_to_words() { printf "%s\n" ${1//,/ }; }
     IMAGE_NAME=img:latest TARGET_ARCHES=riscv64 BUILD_IMAGES=1 CREATE_MANIFEST=1 PUSH_MANIFEST=0 FORCE_MANIFEST=0 RUNTIME_IMAGE_SMOKE=1 MAX_PARALLEL_ARCHS=1
     is_dry_run() { return 1; }
+    runtime_step_phase() { shift; "$@"; }
     err() { printf "ERR %s\n" "$*"; exit 1; }
     ensure_foreign_binfmt() { printf "BINFMT %s\n" "$1"; }
     runtime_input_preflight() { :; }

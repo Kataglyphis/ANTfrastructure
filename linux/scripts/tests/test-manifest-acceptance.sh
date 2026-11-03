@@ -18,6 +18,7 @@ scenario() (
   arch_list_to_words() { printf '%s' "${1//,/ }"; }
   runtime_wrapper_tag() { printf 'wrapper:%s' "$1"; }
   is_dry_run() { return 1; }
+  runtime_step_phase() { shift; "$@"; }
   _manifest_image_env_gate() { return 0; }
   _manifest_wrapper_gate() { return 0; }
   _manifest_completeness_gate() { return 0; }

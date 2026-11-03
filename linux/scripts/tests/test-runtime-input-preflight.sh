@@ -163,6 +163,7 @@ _fn="$(t_fn_src "${BRM}" _manifest_build_and_smoke)" || exit 1
 _build() (
   set +e
   eval "${_fn}"
+  runtime_step_phase() { shift; "$@"; }
   ensure_foreign_binfmt() { echo binfmt; }
   runtime_input_preflight() { echo preflight; return "${PREFLIGHT_RC:-0}"; }
   runtime_push_queue_start() { echo queue; }

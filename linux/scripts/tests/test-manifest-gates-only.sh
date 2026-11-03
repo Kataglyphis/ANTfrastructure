@@ -71,6 +71,7 @@ _entry() (
   create_manifest() { echo PUBLISH; }
   _manifest_check_freshness() { :; }
   _manifest_drop_pushed_images() { echo DROP; }
+  runtime_step_phase() { shift; "$@"; }
   log() { :; }
   err() { printf '%s\n' "$*" >&2; exit 1; }
   main "$@"

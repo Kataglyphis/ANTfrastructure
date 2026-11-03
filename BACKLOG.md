@@ -1953,11 +1953,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       fixes do not establish the cause of the HTTP stall
       ([`docs-sites.md`](docs/docs-sites.md#the-sidebar-toggle-check)).
 
-- [ ] **CON142 — the resource monitor names every runtime-lane phase** [S, ★].
-      `<arch>.<step>` markers under `RESOURCE_MONITOR_STEP_DIR` ([`build-resource-monitoring.md`](docs/build-resource-monitoring.md))
-      name each arch step on the 2026-10-27 chain (`stage=amd64/smoke+amd64/wrapper+amd64/wrapper-build`). Its
-      peaks of memory, disk and load fell after the arch loop, in the manifest gates and consumer acceptance,
-      and read `stage=?`. Work: mark those phases too. Done when a runtime summary has no `stage=?`.
+- [ ] **CON142 — the resource monitor names every runtime-lane phase** [S, ★]. In source: `runtime_step_phase`
+      and per-arch gate markers name every phase after the arch loop
+      ([`build-resource-monitoring.md`](docs/build-resource-monitoring.md)). Left: read the next chain's
+      runtime summary. Done when it has no `stage=?`.
 
 - [ ] **CON143 — the hub's tests leave their `mktemp` trees in `/tmp`** [S, ★]. On 2026-10-21 the
       build host's `/tmp` (a 31 GB tmpfs, so RAM) held 31,668 entries and 2.7 GB: 23,865 `tmp.*`,

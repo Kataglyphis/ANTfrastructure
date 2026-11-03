@@ -42,6 +42,13 @@ while a step runs: `base`, `package`, `smoke`, `wrapper`, `wrapper-build`, and
 any other step it times. The background pusher does the same with `<arch>.push`.
 The marker is removed when the step ends, whether it passed or failed.
 
+After the arch loop `build-runtime-manifest.sh` keeps naming its work. Each gate
+holds `<arch>.<script>` (`arm64/verify-shipped-wrapper`), and `runtime_step_phase`
+holds `index.<step>` for what no arch owns: `binfmt`, `input-preflight`, `reuse-plan`,
+`reuse-pull`, `push-wait`, `manifest`, `acceptance`, `freshness` and `drop-pushed`.
+It runs its command unguarded, so a body keeps the caller's errexit; a lane that
+errexit stops leaves its last marker behind, as a killed lane does.
+
 While any marker exists, the `stage` column lists every one of them as
 `arch/step`, joined by `+` because a comma would add CSV columns: for example
 `amd64/push+arm64/package`. The summary therefore names the arch and step of

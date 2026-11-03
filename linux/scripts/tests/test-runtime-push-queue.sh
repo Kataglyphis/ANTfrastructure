@@ -181,7 +181,7 @@ t_assert_eq "PUSHED x" "$(bash -c 'runtime_push_tag() { echo "PUSHED $1"; }'$'\n
 t_case "the manifest lane: queue before the loop, gates while it streams, drain before the index"
 _build="$(t_fn_src "${BRM}" _manifest_build_and_smoke)" || exit 1
 _order="$(printf '%s\n' "${_build}" | grep -E 'runtime_push_queue_start|run_parallel_arch_loop|_manifest_each_arch|runtime_push_queue_finish' \
-  | sed 's/^ *//; s/ .*//' | tr '\n' ' ')"
+  | sed 's/^ *//; s/^runtime_step_phase [a-z-]* //; s/ .*//' | tr '\n' ' ')"
 t_assert_eq "runtime_push_queue_start run_parallel_arch_loop _manifest_each_arch _manifest_each_arch runtime_push_queue_finish " "${_order}"
 _art="$(t_fn_src "${BRA}" main)" || exit 1
 t_assert_contains "${_art}" 'runtime_push_queue_start || exit $?'

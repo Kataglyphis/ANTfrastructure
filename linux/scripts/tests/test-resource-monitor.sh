@@ -116,4 +116,63 @@ t_case "standalone sampling defaults to logs and keeps --out-dir explicit"
 t_assert_eq logs "$(_probe_monitor_default '')"
 t_assert_eq /chosen "$(_probe_monitor_default '' --out-dir /chosen)"
 
+# Phases and gates against real markers; not covered: which phase a real lane's peak lands in, which needs a chain.
+BRM="${TESTS_DIR}/../build-runtime-manifest.sh"
+eval "$(t_fn_src "${TESTS_DIR}/../lib-orchestrator.sh" runtime_step_mark)"
+eval "$(t_fn_src "${TESTS_DIR}/../lib-orchestrator.sh" runtime_step_phase)"
+_steps="${WORK}/phase-steps"
+_marks() { ls "${_steps}" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'; }
+
+t_case "a lane phase holds index.<step> while it runs and returns its status"
+(
+  export RESOURCE_MONITOR_STEP_DIR="${_steps}"
+  _probe() { _marks > "${WORK}/seen"; return "$1"; }
+  rc=0; runtime_step_phase manifest _probe 0 || rc=$?
+  t_assert_eq "0" "${rc}"
+  t_assert_eq "index.manifest" "$(cat "${WORK}/seen")"
+  t_assert_eq "" "$(_marks)" "a finished phase drops its marker"
+  rc=0; runtime_step_phase acceptance _probe 7 || rc=$?
+  t_assert_eq "7" "${rc}" "the status reaches the caller"
+  t_assert_eq "" "$(_marks)" "a failed phase drops its marker too"
+  exit "${_T_FAILED}"
+)
+t_assert_eq "0" "$?" "the phase assertions above"
+
+t_case "a phase's body keeps the caller's errexit, as a wrapped runtime_step_run would not"
+_out="$(bash -c 'source <(sed -n "/^runtime_step_mark() {\$/,/^}\$/p;/^runtime_step_phase() {\$/,/^}\$/p" "$1")
+  set -e
+  body() { false; echo body-went-on; }
+  runtime_step_phase manifest body
+  echo lane-went-on' _ "${TESTS_DIR}/../lib-orchestrator.sh" 2>&1)"; _rc=$?
+t_assert_eq "1" "${_rc}" "${_out}"
+t_assert_eq "" "${_out}" "neither the body nor the lane continues past a failed command"
+
+t_case "a gate names its arch and script while it runs, and keeps its status"
+(
+  export RESOURCE_MONITOR_STEP_DIR="${_steps}"
+  eval "$(t_fn_src "${BRM}" _manifest_gate_arch)"
+  runtime_wrapper_tag() { printf 'img:%s' "$1"; }
+  _manifest_pull_if_missing() { _marks > "${WORK}/pull-seen"; }
+  log() { :; }
+  run() { _marks > "${WORK}/gate-seen"; return "${GATE_RC:-0}"; }
+  rc=0; GATE_RC=3 _manifest_gate_arch "Wrapper content gate" /x/verify-shipped-wrapper.sh arm64 || rc=$?
+  t_assert_eq "3" "${rc}" "a failed gate fails its caller"
+  t_assert_eq "arm64.verify-shipped-wrapper" "$(cat "${WORK}/gate-seen")"
+  t_assert_eq "arm64.verify-shipped-wrapper" "$(cat "${WORK}/pull-seen")" "the pull is part of the gate's cost"
+  t_assert_eq "" "$(_marks)"
+  exit "${_T_FAILED}"
+)
+t_assert_eq "0" "$?" "the gate assertions above"
+
+t_case "every phase after the arch loop is named"
+_main="$(t_fn_src "${BRM}" main)"
+_build="$(t_fn_src "${BRM}" _manifest_build_and_smoke)"
+for _phase in 'reuse-plan _manifest_plan_reuse' 'manifest create_manifest' 'freshness _manifest_check_freshness' 'drop-pushed _manifest_drop_pushed_images'; do
+  t_assert_contains "${_main}" "runtime_step_phase ${_phase}"
+done
+for _phase in 'binfmt ensure_foreign_binfmt' 'input-preflight runtime_input_preflight' 'reuse-pull runtime_reuse_pull' 'push-wait runtime_push_queue_finish'; do
+  t_assert_contains "${_build}" "runtime_step_phase ${_phase}"
+done
+t_assert_contains "$(t_fn_src "${BRM}" create_manifest)" "runtime_step_phase acceptance _manifest_accept_and_promote"
+
 t_summary

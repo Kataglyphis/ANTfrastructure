@@ -60,6 +60,8 @@
   so a temp path containing "bad" no longer fails the suite; a new case pins it.
 - An asset-mirror 404 logs only `asset-mirror| miss`, so a log search for `error` no longer hits
   each upstream fallback. Other failures, such as a 403 from a bad key, keep curl's reason.
+- The resource monitor names the runtime lane's work after the arch loop: per-arch gates and
+  `index/<step>` phases from `runtime_step_phase`. The next chain's summary is the remaining proof.
 
 ## 2026-11-03 — One pipeline per arch, opt-in
 

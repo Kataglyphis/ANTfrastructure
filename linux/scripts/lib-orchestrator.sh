@@ -163,6 +163,15 @@ runtime_step_mark() {
   return 0
 }
 
+# <step> <cmd...>: a whole-lane phase under index.<step>; cmd runs unguarded so its body keeps the caller's errexit.
+runtime_step_phase() {
+  runtime_step_mark index "$1" on
+  "${@:2}"
+  set -- "$?" "$1"
+  runtime_step_mark index "$2" off
+  return "$1"
+}
+
 # <arch> <step> <cmd...>: runs cmd under its marker; no locals, so the command sees its caller's bindings.
 runtime_step_run() {
   runtime_step_mark "$1" "$2" on
