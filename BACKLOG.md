@@ -259,10 +259,6 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
          onnxruntime-genai: `py::mod_gil_not_used()` alone is not safe (the binding leans on the GIL to serialise a C API
          documented as not thread safe); the issue lists what needs a lock, and the patch locks the log callback only.
 
-- [ ] **CON84 — lock maintenance and sqlite3, the loose ends** [S, ★]. (1) Yarn is NOT CARRIED (no family repo has a
-      yarn.lock today). (5) npm, poetry, pdm and pnpm locks report
-      `behind: unknown`: none has a dry run that diffs the lock (measured 2026-10-08).
-
 - [ ] **CON78 — prove the TheRock 10.1 images (`:latest-rocm`, `:winamd64-rocm`)** [M, ★★]. The bump
       (CHANGELOG 2026-10-07, CON73) was proved in throwaway `:latest` and `:winamd64` containers only.
       **Linux**, a rocm chain run (`CROSS_VARIANT=rocm`):

@@ -19,6 +19,8 @@
   release rotates, checks the result is `UV_VERSION` and refuses to run with no version pin.
   `UV_INSTALL_SH_SHA256` is that release's `uv-installer.sh`, and `spec_uv` moves it with
   `UV_VERSION`. The `install-deps` action calls the same function instead of `curl | sh`.
+- CON84: closed. Yarn's `NOT CARRIED` and the `unknown` lock counts stay as documented in
+  `dependency-updates.md`; no family repo tracks a lock those limits would hide.
 
 ## 2026-11-03 — A card without a CUDA kernel
 
