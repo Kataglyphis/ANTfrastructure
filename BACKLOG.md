@@ -1764,6 +1764,14 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the next image and verify the secret-scan gate without network access on each
       supported image architecture. This observation does not establish that the online
       bootstrap fails or describe the current mutable registry tag.
+- [ ] **CON216 — a 72 GB hosted runner cannot hold the image and a job** [S, ★★]. `ubuntu-26.04` is not one size:
+      most jobs get a 145 GB root (run 41715667182: 53.8 GB free after the pull with the fast cleanup, 74.5 GB with the
+      full one), some a 72 GB root. WebDavClient run 41731774668 got the small one: 19 GB free at the start, so
+      `fast-floor-gb` chose the full cleanup; the pull finished, then `uv` failed writing a venv with `No space left on
+      device`. OmniAccelerANT's docs run 41731757638 died the same way under `free-disk-space: true`. The cleanup cannot
+      fix this size. Owner decision: a smaller image for these lanes, larger paid runners, or a loud early refusal and
+      retry on the small size. Done when a lane's verdict no longer depends on which size it drew.
+
 - [ ] **CON214 — evaluate SquashFS tools for non-executing AppImage inspection** [S, ★★].
       The cached Linux amd64 CPU image at registry digest
       `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`

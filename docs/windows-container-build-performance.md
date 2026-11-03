@@ -471,6 +471,10 @@ pull, the full one 74.5 and 99.1 GB. x64 takes about 72 GB for the image, so a r
 below `fast-floor-gb` (default 90) free takes the full cleanup; the floor is a checked estimate and
 says nothing about what a job's own build trees need.
 
+`ubuntu-26.04` also hands out a 72 GB root. Run 41731774668 drew one with 19 GB free at the start:
+the full cleanup ran and the pull finished, but a job then ran out of disk writing its venv. No
+cleanup mode fixes that size (`BACKLOG.md` CON216).
+
 The full cleanup left 78.4 (x64) and 90.6 GB (arm64) free after the pull in the run above. A lane
 whose build trees need more than the fast tier leaves passes
 `free-disk-space: 'true'`, as the riscv64 lanes do while they pull the riscv64 child as

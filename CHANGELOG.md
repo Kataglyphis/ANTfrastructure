@@ -47,6 +47,7 @@
   jotrockenmitlocken and OmniAccelerANT replace their copies with these helpers.
 - CON216: `prepare-linux-ci-host`'s `fast` cleanup becomes the full one below `fast-floor-gb`
   (default 90) free before the pull. Measured on 145 GB runners: fast leaves 53.8 GB on x64.
+  A 72 GB runner still runs out of disk after the full cleanup, so CON216 stays open for that size.
 - CON171: the runtime lane's entry and the between-stage guard restart buildkitd once before the
   layer prune when records are in use and no `buildctl` runs, and `--from-stage runtime` counts
   the lane's disk once. Tested with stubs; the next resumed chain is the real proof.
