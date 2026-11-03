@@ -1788,15 +1788,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       whose pinned hub reads `PYTHON_BENCH_GATE`. Done when OrchestrANT drops its `bench-gate: true`, it and WebDavClient
       pin a hub whose `ci_tests.sh` always gates, and the input and its `-e` line go.
 
-- [ ] **CON211 — consumer copies the Flutter helpers still wait to replace** [S, ★★].
-      `05-frameworks/flutter/flutter-pin.sh` and `lane-prologue.sh` are pinned by
-      `test-flutter-lane-api.sh`. jotrockenmitlocken's `scripts/build-in-container.sh:10` defaults
-      `FLUTTER_VERSION` to 3.44.0 while the hub pins 3.47.7, without the tarball SHA:
-      `flutter_resolve_pin` replaces it. Its hand-spelled `flutter build web --release …`
-      (`build-in-container.sh:32` and `:34`, `run-nginx-integration-test.sh:14`) is what
-      `flutter_build_web` names. OmniAccelerANT reads `FLUTTER_VERSION` from `versions.env` in
-      PowerShell three times (`windows-arm64.yml:78` and `:202`, `windows-x64.yml:243`), without
-      its SHA; that needs a Windows twin of `flutter_resolve_pin` first.
+- [ ] **CON211 — OmniAccelerANT's Flutter install through the hub's pin, the Windows proof** [S, ★].
+      jotrockenmitlocken takes `flutter_resolve_pin` and `flutter_build_web` (b17caea); the hub has
+      `Install-PinnedFlutter.ps1`, its suite green on Windows in run 41724945018. OmniAccelerANT's three steps call it
+      (ade543e). Done when that commit's `On request` run 41731757715 passes the `Flutter (the image's version)` steps.
 
 - [ ] **CON175 — prove Linux package system-library dependencies on a clean host** [M, ★★].
       On 2026-10-30 an AccelerANTgine AMD CPack prototype passed the image's ELF walk but its

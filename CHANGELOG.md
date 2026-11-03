@@ -41,9 +41,10 @@
   `UV_VERSION`. The `install-deps` action calls the same function instead of `curl | sh`.
 - CON84: closed. Yarn's `NOT CARRIED` and the `unknown` lock counts stay as documented in
   `dependency-updates.md`; no family repo tracks a lock those limits would hide.
-- CON211, hub half: `WindowsFlutterPin.Common.psm1` and `Install-PinnedFlutter.ps1` install
+- CON211: `WindowsFlutterPin.Common.psm1` and `Install-PinnedFlutter.ps1` install
   Flutter on a Windows runner at `FLUTTER_VERSION` and its new `FLUTTER_COMMIT` (`tool-pins.env`).
   `spec_flutter` moves the commit with the version.
+  jotrockenmitlocken and OmniAccelerANT replace their copies with these helpers.
 - CON216: `prepare-linux-ci-host`'s `fast` cleanup becomes the full one below `fast-floor-gb`
   (default 90) free before the pull. Measured on 145 GB runners: fast leaves 53.8 GB on x64.
 - CON171: the runtime lane's entry and the between-stage guard restart buildkitd once before the
