@@ -1362,7 +1362,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       both together, `HSA_ENABLE_PEER_SDMA=0`, `HIP_FORCE_DEV_KERNARG=0`, `DEBUG_HIP_DYNAMIC_QUEUES=0`,
       `GPU_MAX_HW_QUEUES=1` and `HIP_HOST_COHERENT=1` change nothing. Windows driver `32.0.32015.7029`, reached over
       Remote Desktop. The cause in the driver or `librocdxg` is unknown, and this says nothing about native Linux. So
-      this card cannot prove a Linux AMD package under WSL. The launcher's hang is a defect of its own, still open.
+      this card cannot prove a Linux AMD package under WSL. OxidANT `921d8e8` turns the hang into `ProviderUnavailable`
+      after 30 seconds, with one copy in a child process. AccelerANTgine, OrchestrANT and OmniAccelerANT have no such
+      check of their own; Omni takes OxidANT's with its next pin. The full model on `gfx1036` fails at the load with
+      `Failed to call function`, with or without the check. The owner runs the packages under Ubuntu on this machine.
       Inside the image, `ORT_DYLIB_PATH` points at `/usr/local/lib/onnxruntime-cpu`, which a package then loads instead
       of its own (`MIGraphXExecutionProvider is absent`). Unset it for any package check in the image.
 
