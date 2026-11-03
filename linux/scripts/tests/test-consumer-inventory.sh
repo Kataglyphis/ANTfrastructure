@@ -172,7 +172,8 @@ _section_namesake() {
   t_assert_contains "$(_section 'Named by nobody')" "linux/scripts/nobody-names-it.sh" \
     "the hub's own file naming itself is still no caller"
   rm -rf "${_twin_c}"
-  git -C "${_h}" rm -q linux/scripts/same-name.sh && t_git_commit "${_h}"
+  git -C "${_h}" rm -q linux/scripts/same-name.sh || return 1
+  t_git_commit "${_h}"
 }
 
 _section_root() {
