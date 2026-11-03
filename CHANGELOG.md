@@ -13,6 +13,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-03 — A package with webrtcsink ships the scanner
+
+- [`linux-build-basics.md`](docs/linux-build-basics.md#gstreamer-loads-from-the-package-alone): the fork
+  stays off only where no `gst-plugin-scanner` travels, because an in-process scan can leave
+  `webrtcsink` with no codecs. AccelerANTgine's packages now carry it through `bundle-loader.sh`.
+
 ## 2026-11-03 — Owner's image decisions
 
 - Offline consumer builds are not part of the image contract; image-owned caches such as the

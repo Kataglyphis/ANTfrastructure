@@ -430,7 +430,7 @@ make GStreamer use the package and nothing else:
 | --- | --- | --- |
 | `GST_PLUGIN_PATH` | the package's `gstreamer-1.0/` | the bundled plugins |
 | `GST_PLUGIN_SYSTEM_PATH`, `GST_PLUGIN_SYSTEM_PATH_1_0` | empty | unset, GStreamer adds the host's plugin directories |
-| `GST_REGISTRY_FORK` | `no` | no `gst-plugin-scanner` travels; GStreamer scans in-process instead of warning `External plugin loader failed` |
+| `GST_REGISTRY_FORK` | `no`, only where no `gst-plugin-scanner` travels | GStreamer scans in-process instead of warning `External plugin loader failed` |
 | `GST_REGISTRY` | one file per installed copy, under `$XDG_CACHE_HOME` | a copy never reads a registry another GStreamer wrote |
 
 A launcher can write them (a Python app bundle's do:
@@ -439,6 +439,13 @@ GStreamer sets them from an ELF constructor, each only when unset, so a user's v
 (AccelerANTgine's `bundled_gstreamer.cpp`, OmniAccelerANT's `runtime_paths.cc`). The plugins'
 libraries come through the closure; the image reaches `/opt/gstreamer/lib`, `/opt/ffmpeg/lib` and
 `/opt/libcamera/lib` only through `ld.so.conf`, so the closure's search list must name them.
+
+**A package with `webrtcsink` ships the scanner and names it in `GST_PLUGIN_SCANNER`, without the
+fork setting.** An in-process scan of a fresh registry can register `webrtcsink` before its encoders,
+so a filesystem listing that plugin first ends the stream with `No codec available`. Pass the scanner
+to `bundle-loader.sh`, which leaves a launcher that picks the same glibc as the executables
+(AccelerANTgine's `CPackOptions.cmake`). A broken scanner falls back in process with only the warning
+above, so a check has to fail on that warning.
 
 `06-packaging/gstreamer-bundle.sh copy --dest DIR --plugin NAME...` copies the named plugins out of
 the image (a missing `--plugin` fails, a missing `--optional` is named). `gstreamer-bundle.sh check
