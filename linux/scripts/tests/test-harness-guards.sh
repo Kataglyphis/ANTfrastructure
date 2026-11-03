@@ -101,4 +101,19 @@ done
 t_assert_eq "1|${WS}" "$(FIXTURE_WS="${WS}" bash -c 'source "$1"; detect_workspace; printf "%s|%s" "$fixture_uv_loaded" "$WORKSPACE_ROOT"' _ "${TREE}/02-toolchain/python/ci-common.sh")"
 t_assert_fails t_python_ci_fixture "${_tmp}/missing source fixture" "${fixture_sources}" extra/missing.sh
 
+t_case "t_sections runs every section by default and only the pick under -k"
+_two='_section_a() { t_assert_ok true; }; _section_b() { t_assert_fails true; }; '
+t_assert_contains "$(_harness "${_two} t_sections _section_a _section_b --")" "expected failure"
+t_assert_contains "$(_harness "${_two} t_sections _section_a _section_b -- -k a")" "1 assertion(s) passed"
+t_assert_contains "$(_harness "${_two} t_sections _section_a _section_b -- -k b")" "expected failure"
+
+t_case "t_sections fails on a pick naming no section, even beside a valid one"
+t_assert_contains "$(_harness "${_two} t_sections _section_a _section_b -- -k a -k gone")" "no section named gone"
+t_assert_contains "$(_harness "${_two} t_sections _section_a _section_b -- -k a -k gone")" "assertion(s) FAILED"
+
+t_case "t_sections fails on an argument that is no pick"
+t_assert_contains "$(_harness "${_two} t_sections _section_a _section_b -- a")" "expected -k <section>"
+t_assert_contains "$(_harness "${_two} t_sections _section_a _section_b -- x a")" "expected -k <section>"
+t_assert_contains "$(_harness "${_two} t_sections _section_a _section_b -- -k")" "assertion(s) FAILED"
+
 t_summary

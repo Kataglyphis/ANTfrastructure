@@ -75,6 +75,7 @@ def receipt(
     mapper: bool = True,
     status: int = 0,
     argv: list[str] | None = None,
+    mb_per_job: str | None = "1234",
 ) -> Receipt:
     h, p, j = snippets(file)
     with tempfile.TemporaryDirectory(prefix="ant-clang-jobs-") as directory:
@@ -83,10 +84,12 @@ def receipt(
             os.environ,
             WORK=str(work),
             STUB_STATUS=str(status),
-            CLANG_BUILD_MB_PER_JOB="1234",
         )
         env.pop("NUM_JOBS", None)
         env.pop("CLANG_NUM_JOBS", None)
+        env.pop("CLANG_BUILD_MB_PER_JOB", None)
+        if mb_per_job is not None:
+            env["CLANG_BUILD_MB_PER_JOB"] = mb_per_job
         if value is not None:
             env["NUM_JOBS"] = value
         if secondary is not None:
@@ -206,8 +209,14 @@ class ClangJobPolicy(unittest.TestCase):
         absent = receipt(
             SUBJECT, "selection", None, "conditional", True, secondary=None
         )
-        self.assertEqual(1, absent["rc"])
-        self.assertIn("CLANG_NUM_JOBS: unbound variable", absent["err"])
+        self.assertEqual(0, absent["rc"])
+        self.assertNotIn("unbound variable", absent["err"])
+        self.assertEqual("mapper\n\n1234\n", absent["trace"])
+        unset_budget = receipt(
+            SUBJECT, "selection", None, "direct", True, secondary=None, mb_per_job=None
+        )
+        self.assertEqual(0, unset_budget["rc"])
+        self.assertEqual("mapper\n\n2000\n", unset_budget["trace"])
         mapper = receipt(
             SUBJECT, "selection", "", "direct", True, secondary="", status=41
         )

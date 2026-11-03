@@ -35,10 +35,25 @@ lc_fail no-profile 1
 lc_expect 1 "Profile data still not found at p.profraw after running the suite." "${LIB}" 'coverage_llvm_generate_profile ./suite p.profraw'
 lc_pass no-profile
 
-t_case "a failing suite that wrote its profile still returns 0 (BACKLOG CON208)"
+t_case "a failing suite that wrote its profile returns the suite's status and keeps the profile"
 lc_fail suite 3
+rm -f "${_work}/p.profraw"
 lc_call out rc "${LIB}" 'coverage_llvm_generate_profile ./suite p.profraw'
-t_assert_eq "0" "${rc}" "today the profile's presence is the verdict, not the suite's status"
+t_assert_eq "3" "${rc}" "without errexit the suite's status is still the verdict"
+t_assert_contains "${out}" "./suite failed with status 3; any profile it wrote stays at p.profraw."
+t_assert_ok test -f "${_work}/p.profraw"
+lc_call out rc "${LIB}" 'set -e; coverage_llvm_generate_profile ./suite p.profraw; echo unreachable'
+t_assert_eq "3" "${rc}" "an errexit caller stops with the suite's status"
+t_assert_eq "0" "$(printf '%s\n' "${out}" | grep -c -e unreachable)" "errexit still stops the caller"
+
+t_case "a failing suite that wrote no profile reports the failure, not the missing profile"
+rm -f "${_work}/p.profraw"
+lc_fail no-profile 1
+lc_call out rc "${LIB}" 'coverage_llvm_generate_profile ./suite p.profraw'
+t_assert_eq "3" "${rc}"
+t_assert_contains "${out}" "./suite failed with status 3"
+t_assert_eq "0" "$(printf '%s\n' "${out}" | grep -c -e 'Profile data still not found')" "the suite's failure is the reason"
+lc_pass no-profile
 lc_pass suite
 
 t_case "coverage_llvm_report merges, reports and skips empty ignore patterns"

@@ -1149,6 +1149,10 @@ purpose:
 | pdm 2.29.2 | none | `pdm update --dry-run` lists what it would install into the environment, not the lock change |
 | pnpm | none | not measured: no dry run is known for `pnpm update` |
 
+On 2026-11-03 GitHub code search found no tracked `yarn.lock`, `pnpm-lock.yaml`,
+`poetry.lock` or `pdm.lock` in the family, and one `package-lock.json`: the hub's
+`linux/scripts/renovate-npm/`, whose baseline moves with `tool-pins.env`.
+
 **A count the report cannot stand behind is `unknown`, never 0.** That covers a tool
 with no lock dry run (the last four rows), a tool missing from `PATH`, a dry run
 that exits non-zero, and output without the tool's summary line. None of them fails

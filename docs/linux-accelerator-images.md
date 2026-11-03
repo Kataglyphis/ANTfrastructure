@@ -286,6 +286,34 @@ published `:latest-nvidia` passed as an image without TensorRT, and failed the S
 `deepstream-verify.sh` on DeepStream's 13 headers and three dev links.
 `test-gpu-runtime-check.sh` keeps both probes.
 
+## A card without a CUDA kernel
+
+`CUDA_ARCHITECTURES` decides which cards run; no PTX falls back, so any other card fails. ONNX
+Runtime still creates its CUDA session on such a card, and the first node then stops with
+`cudaErrorNoKernelImageForDevice`, too late for a caller to choose the CPU. So every consumer
+that creates a CUDA session first runs one kernel on the selected card: a 59-byte model with one
+float `Relu`, ONNX Runtime's own CUDA code rather than a vendor library that carries its own kernels.
+
+| Consumer | Probe | On no kernel |
+| --- | --- | --- |
+| OxidANT | `crates/inference/src/person_detection/cuda_probe.rs` | `cuda` fails with `ProviderUnavailable`, `auto` moves on |
+| OrchestrANT | `orchestrant/yolo/cuda_probe.py` | `--device cuda` fails, `auto` moves on |
+| AccelerANTgine | `Src/cuda_probe.hpp` | `initialize` returns `ProviderUnavailable`; it has no `auto` |
+| OmniAccelerANT | through its OxidANT and AccelerANTgine pins | as those two |
+
+The failure names the card and its compute capability, read from the driver, and the way to the
+CPU. Only that error code stops anything: every other probe failure, such as no GPU or no CUDA
+library, is left to the real session to report. The behaviour needs no list of architectures, so
+it stays right when `CUDA_ARCHITECTURES` changes. Three languages keep three small copies, as they
+do for the MIGraphX probe, since no runtime code crosses them; the model bytes are:
+
+```text
+08083a330a0c0a0178120179220452656c751201705a0f0a0178120a0a08080112040a020801620f0a0179120a0a08080112040a0208014202100d
+```
+
+It does not cover a card that runs ONNX Runtime's kernels and lacks one in a vendor library, and
+it has not run on a card that has the kernel: the probe's success path waits for that hardware.
+
 ## NVIDIA on arm64 (SBSA): one image for servers and Jetson
 
 The arm64 GPU chain uses NVIDIA's **SBSA** CUDA repository (the Arm-server

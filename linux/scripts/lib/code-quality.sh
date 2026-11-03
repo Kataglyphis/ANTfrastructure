@@ -266,6 +266,17 @@ code_quality_check_clang_format() {
   return 0
 }
 
+# <workspace> <root> <in> <out>: rewrites whole path tokens only, including those inside command strings; a joined option off this list keeps its path.
+_code_quality_remap_compile_db() {
+  local from to mark=$'\001'
+  from="$(printf '%s' "$1" | sed -E 's/[][\\.^$*+?(){}|#]/\\&/g')"
+  to="$(printf '%s' "$2" | sed -E 's/[\\&#]/\\&/g')"
+  local options='I|L|F|B|o|T|MF|MT|MQ|isystem|iquote|idirafter|imacros|include|isysroot|iprefix|iwithprefix|iwithprefixbefore'
+  local lead="(^|[\"'[:space:]=:,])(-(${options}))?" trail="([\"'\\[:space:]/:,]|\$)"
+  # The marker lets the loop catch neighbours sharing a separator and cannot rematch a root that contains the workspace.
+  sed -E -e ':a' -e "s#${lead}${from}${trail}#\\1\\2${mark}\\4#g" -e 'ta' -e "s#${mark}#${to}#g" "$3" > "$4"
+}
+
 # Compile DB: sets CODE_QUALITY_COMPILE_DB_DIR (pair with code_quality_cleanup_compile_db); never regenerates one.
 code_quality_prepare_compile_db() {
   local build_dir="$1"
@@ -292,13 +303,13 @@ code_quality_prepare_compile_db() {
   if grep -qF "${workspace}" "${compile_db_path}"; then
     CODE_QUALITY_COMPILE_DB_TEMP_DIR="$(mktemp -d)"
     info "Remapping container paths in compile_commands.json..."
-    sed "s#\"${workspace}#\"${root}#g" "${compile_db_path}" > "${CODE_QUALITY_COMPILE_DB_TEMP_DIR}/compile_commands.json"
+    _code_quality_remap_compile_db "${workspace}" "${root}" "${compile_db_path}" "${CODE_QUALITY_COMPILE_DB_TEMP_DIR}/compile_commands.json"
 
     # Drop container-only GCC toolchain flags if that toolchain path is unavailable locally.
     if [[ -n "${toolchain_probe}" && -n "${toolchain_prefix}" && ! -d "${toolchain_probe}" ]]; then
       sed -E -i \
         -e "s#[[:space:]]--gcc-toolchain=${toolchain_prefix}[^[:space:]\"]+##g" \
-        -e "s#-Wl,-rpath,${toolchain_prefix}[^[:space:]\"]+/lib64##g" \
+        -e "s#[[:space:]]?-Wl,-rpath,${toolchain_prefix}[^[:space:]\"]+/lib64##g" \
         -e "s#[[:space:]]-L${toolchain_prefix}[^[:space:]\"]+/lib64##g" \
         "${CODE_QUALITY_COMPILE_DB_TEMP_DIR}/compile_commands.json"
     fi

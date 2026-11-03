@@ -29,7 +29,7 @@ its own docs; nothing here proposes work there.
 ---
 
 The host chain sources `01-core/chain-storage.sh` for preflight admission, pressure recovery
-and archive retention. Forced admission and dry runs return before trimming. The between-stage
+and archive retention. Forced admission and dry runs return before trimming; a dry run also skips every between-stage reclaim. The between-stage
 caller retains its protected-slug and next-runtime threshold logic. The lifecycle suite and
 `test-storage-sdk-refactors.sh` exercise refusals and fallback ordering without pruning a real
 build cache.

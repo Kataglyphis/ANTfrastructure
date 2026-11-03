@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Checks the lane's caller scope and report artifact; it does not run GitHub Actions.
+# Checks the lane's caller scope and report artifact; it does not run GitHub Actions. Arguments select sections (-k contract).
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/workflow-lane-fixture.sh"
@@ -20,31 +20,36 @@ _contract() {
 
 _mutated_contract() { LANE="$1" _contract; }
 
-t_case "the reusable lane binds caller scope, strict mode and the ignored report artifact"
-t_assert_ok _contract
-
 mkdir -p "${ROOT}/logs/code-quality" || exit 1
 _work="$(mktemp -d "${ROOT}/logs/code-quality/python-static-workflow-test.XXXXXX")" || exit 1
 trap 'rm -rf -- "${_work}"' EXIT
 
-t_case "the contract catches a scanner aimed at the tooling checkout"
-_bad="${_work}/tool-root.yml"
-sed 's/--root "${GITHUB_WORKSPACE}"/--root "."/' "${LANE}" > "${_bad}"
-t_assert_fails _mutated_contract "${_bad}"
+_section_contract() {
+  t_case "the reusable lane binds caller scope, strict mode and the ignored report artifact"
+  t_assert_ok _contract
+}
 
-t_case "the contract catches findings forced strict by default"
-_bad="${_work}/strict-default.yml"
-sed 's/mode=--report-only/mode=--strict/' "${LANE}" > "${_bad}"
-t_assert_fails _mutated_contract "${_bad}"
+_section_mutants() {
+  t_case "the contract catches a scanner aimed at the tooling checkout"
+  _bad="${_work}/tool-root.yml"
+  sed 's/--root "${GITHUB_WORKSPACE}"/--root "."/' "${LANE}" > "${_bad}"
+  t_assert_fails _mutated_contract "${_bad}"
 
-t_case "the contract catches a scan without the pinned docs theme"
-_bad="${_work}/no-theme.yml"
-sed '/submodule update --init/d' "${LANE}" > "${_bad}"
-t_assert_fails _mutated_contract "${_bad}"
+  t_case "the contract catches findings forced strict by default"
+  _bad="${_work}/strict-default.yml"
+  sed 's/mode=--report-only/mode=--strict/' "${LANE}" > "${_bad}"
+  t_assert_fails _mutated_contract "${_bad}"
 
-t_case "the contract catches an artifact lost on failed scans"
-_bad="${_work}/success-only.yml"
-sed 's/if: always()/if: success()/g' "${LANE}" > "${_bad}"
-t_assert_fails _mutated_contract "${_bad}"
+  t_case "the contract catches a scan without the pinned docs theme"
+  _bad="${_work}/no-theme.yml"
+  sed '/submodule update --init/d' "${LANE}" > "${_bad}"
+  t_assert_fails _mutated_contract "${_bad}"
 
+  t_case "the contract catches an artifact lost on failed scans"
+  _bad="${_work}/success-only.yml"
+  sed 's/if: always()/if: success()/g' "${LANE}" > "${_bad}"
+  t_assert_fails _mutated_contract "${_bad}"
+}
+
+t_sections _section_contract _section_mutants -- "$@"
 t_summary

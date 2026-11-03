@@ -35,8 +35,8 @@ docs_build_prepare_python_env() {
   fi
 
   info "Ensuring Python virtual environment and dependencies"
-  (cd "${root}" && "${create_script}")
-  (cd "${root}" && "${install_script}")
+  (cd "${root}" && "${create_script}") || return $?
+  (cd "${root}" && "${install_script}") || return $?
 
   info "Activating virtual environment"
   if [[ ! -f "${venv_dir}/bin/activate" ]]; then
@@ -54,7 +54,7 @@ docs_build_copy_static_svg() {
 
   static_dir="$(_docs_build_static_dir)"
   info "Copying SVG files to docs static directory"
-  mkdir -p "${static_dir}"
+  mkdir -p "${static_dir}" || return $?
   cp "${svg_dir}"/*.svg "${static_dir}"
 }
 
@@ -81,8 +81,8 @@ docs_build_sphinx() {
 
   for target in "${targets[@]}"; do
     info "Running 'make ${target}' in ${docs_dir} (SPHINXOPTS=${sphinxopts})"
-    (cd "${docs_dir}" && SPHINXOPTS="${sphinxopts}" make "${target}")
-    [[ "${target}" != html ]] || docs_build_check_sidebars
+    (cd "${docs_dir}" && SPHINXOPTS="${sphinxopts}" make "${target}") || return $?
+    [[ "${target}" != html ]] || docs_build_check_sidebars || return $?
   done
 }
 
@@ -94,11 +94,11 @@ docs_build_check_sidebars() {
   bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/docs-site.sh" check "${html}" --if-chrome
 }
 
-# Full pipeline: python env, asset staging, diagram generation, Sphinx.
+# Full pipeline: python env, asset staging, diagram generation, Sphinx; the first failed step's status is the verdict, with or without errexit.
 docs_build_main() {
-  docs_build_prepare_python_env
-  docs_build_copy_static_svg
-  docs_build_run_generator
-  docs_build_sphinx
+  docs_build_prepare_python_env || return $?
+  docs_build_copy_static_svg || return $?
+  docs_build_run_generator || return $?
+  docs_build_sphinx || return $?
   info "Documentation build completed successfully"
 }

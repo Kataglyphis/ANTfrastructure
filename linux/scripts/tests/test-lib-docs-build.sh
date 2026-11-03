@@ -22,6 +22,13 @@ lc_stub python3 'printf "gen-cwd %s\n" "${PWD##*/}" >> "${0%/bin/*}/argv.log"'
 # The sidebar click needs Chrome; without CHROME_EXECUTABLE docs-site.sh skips it, as the family image does where it has none.
 ENV="unset CHROME_EXECUTABLE; DOCS_BUILD_PROJECT_ROOT=$(printf '%q' "${_work}/proj") DOCS_BUILD_UV_VENV_CREATE_SCRIPT=$(printf '%q' "${_work}/create.sh") DOCS_BUILD_UV_INSTALL_REQUIREMENTS_SCRIPT=$(printf '%q' "${_work}/install.sh")"
 
+# <status> <snippet>: the snippet ends with that status and no success line.
+_assert_step_fails() {
+  lc_call out rc "${LIB}" "$2"
+  t_assert_eq "$1" "${rc}" "$2"
+  t_assert_eq "0" "$(printf '%s\n' "${out}" | grep -c -e 'completed successfully')" "no success line after a failed step"
+}
+
 t_case "docs_build_main needs both venv bootstrap scripts"
 lc_expect 1 "No venv bootstrap scripts configured (set DOCS_BUILD_UV_VENV_CREATE_SCRIPT and DOCS_BUILD_UV_INSTALL_REQUIREMENTS_SCRIPT)." "${LIB}" 'docs_build_main'
 
@@ -58,11 +65,27 @@ lc_pass no-index
 t_case "a bootstrap that made no venv fails before Sphinx"
 lc_expect 1 "No virtualenv to activate at ${_work}/none." "${LIB}" "${ENV} DOCS_BUILD_VENV_DIR=$(printf '%q' "${_work}/none") docs_build_main"
 
-t_case "a failed make stops an errexit caller; without errexit the pipeline still reports success (BACKLOG CON210)"
+t_case "a failed make stops the pipeline with its status, with or without errexit"
 lc_fail make 2
-lc_call out rc "${LIB}" "set -e; ${ENV} DOCS_BUILD_TARGETS=(linkcheck); docs_build_main"
-t_assert_eq "2" "${rc}"
-lc_expect 0 "Documentation build completed successfully" "${LIB}" "${ENV} DOCS_BUILD_TARGETS=(linkcheck); docs_build_main"
+lc_reset
+_assert_step_fails 2 "set -e; ${ENV} docs_build_main"
+t_assert_eq "make html" "$(lc_argv | grep -e '^make ')" "linkcheck never starts after a failed html"
+_assert_step_fails 2 "${ENV} docs_build_main"
+_assert_step_fails 2 "set -e; ${ENV} docs_build_main || exit \$?"
 lc_pass make
+
+t_case "every earlier step stops the pipeline without errexit"
+_assert_step_fails 1 "${ENV} DOCS_BUILD_UV_VENV_CREATE_SCRIPT=false docs_build_main"
+_assert_step_fails 1 "${ENV} DOCS_BUILD_UV_INSTALL_REQUIREMENTS_SCRIPT=false docs_build_main"
+mkdir -p "${_work}/badvenv/bin" "${_work}/nosvg"
+printf 'return 9\n' > "${_work}/badvenv/bin/activate"
+_assert_step_fails 9 "${ENV} DOCS_BUILD_VENV_DIR=$(printf '%q' "${_work}/badvenv") docs_build_main"
+_assert_step_fails 1 "${ENV} DOCS_BUILD_SVG_SOURCE_DIR=$(printf '%q' "${_work}/nosvg") docs_build_main"
+_assert_step_fails 1 "${ENV} DOCS_BUILD_GENERATOR_SCRIPT=gen.py DOCS_BUILD_PYTHON=false docs_build_main"
+
+t_case "a failed sidebar check stops the pipeline after make html"
+lc_reset
+_assert_step_fails 4 "docs_build_check_sidebars() { return 4; }; ${ENV} docs_build_main"
+t_assert_eq "make html" "$(lc_argv | grep -e '^make ')" "linkcheck never starts after a failed check"
 
 t_summary

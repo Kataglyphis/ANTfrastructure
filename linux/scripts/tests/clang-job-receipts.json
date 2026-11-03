@@ -728,60 +728,60 @@
     "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
   },
   "[\"fallback\", null, null, true, 0, \"direct\", false]": {
-    "rc": 127,
-    "out": "",
-    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
-    "trace": "",
-    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM::\nTARGETS:unset\nSTRIP:1\n"
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
   },
   "[\"fallback\", null, null, true, 0, \"direct\", true]": {
-    "rc": 1,
-    "out": "",
-    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
-    "trace": "",
-    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM::\nTARGETS:unset\nSTRIP:1\n"
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
   },
   "[\"fallback\", null, null, true, 0, \"conditional\", false]": {
-    "rc": 127,
-    "out": "",
-    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
-    "trace": "",
-    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM::\nTARGETS:unset\nSTRIP:1\n"
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
   },
   "[\"fallback\", null, null, true, 0, \"conditional\", true]": {
-    "rc": 1,
-    "out": "",
-    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
-    "trace": "",
-    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM::\nTARGETS:unset\nSTRIP:1\n"
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
   },
   "[\"fallback\", \"\", null, true, 0, \"direct\", false]": {
-    "rc": 127,
-    "out": "",
-    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
-    "trace": "",
-    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:\nTARGETS:unset\nSTRIP:1\n"
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
   },
   "[\"fallback\", \"\", null, true, 0, \"direct\", true]": {
-    "rc": 1,
-    "out": "",
-    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
-    "trace": "",
-    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:\nTARGETS:unset\nSTRIP:1\n"
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
   },
   "[\"fallback\", \"\", null, true, 0, \"conditional\", false]": {
-    "rc": 127,
-    "out": "",
-    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
-    "trace": "",
-    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:\nTARGETS:unset\nSTRIP:1\n"
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
   },
   "[\"fallback\", \"\", null, true, 0, \"conditional\", true]": {
-    "rc": 1,
-    "out": "",
-    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
-    "trace": "",
-    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:\nTARGETS:unset\nSTRIP:1\n"
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
   },
   "[\"fallback\", \"bad\", \"03\", true, 0, \"direct\", false]": {
     "rc": 0,

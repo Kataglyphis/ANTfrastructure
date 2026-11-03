@@ -423,6 +423,41 @@ t_summary() {
   exit 0
 }
 
+# _t_listed <word> <list...>: true when the word is one of the list's entries, under any IFS.
+_t_listed() {
+  local want="$1" have
+  shift
+  for have in "$@"; do
+    if [ "${have}" = "${want}" ]; then return 0; fi
+  done
+  return 1
+}
+
+# t_sections _section_<name>... -- "$@": calls them in order, or only those `-k <name>` picks; a pick naming no section fails, so a stale recipe cannot pass on nothing.
+t_sections() {
+  local -a names=() picks=()
+  local name
+  while [ "$#" -gt 0 ] && [ "$1" != -- ]; do names+=("$1"); shift; done
+  [ "$#" -eq 0 ] || shift
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" != -k ] || [ "$#" -lt 2 ]; then
+      _T_RUN=$((_T_RUN + 1)); _t_fail "t_sections: expected -k <section>, got: $*"
+      return 1
+    fi
+    picks+=("$2")
+    shift 2
+  done
+  for name in "${picks[@]}"; do
+    if ! _t_listed "_section_${name}" "${names[@]}"; then
+      _T_RUN=$((_T_RUN + 1)); _t_fail "t_sections: no section named ${name}"
+      return 1
+    fi
+  done
+  for name in "${names[@]}"; do
+    if [ "${#picks[@]}" -eq 0 ] || _t_listed "${name#_section_}" "${picks[@]}"; then "${name}"; fi
+  done
+}
+
 # t_gate_probe <module.py> <<'PY' … PY: stdout with the shipped gate bound to `g`; see docs/code-quality-tooling.md#code-to-docs-pointers-doc-links
 t_gate_probe() {
   local _mod="$1"

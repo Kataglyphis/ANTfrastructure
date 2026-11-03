@@ -42,6 +42,7 @@ KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage context-paths cr
              advert-keys \
              masked-decls \
              trailing-conditional \
+             knob-order \
              comment-size \
              code-size \
              code-complexity \
@@ -229,6 +230,8 @@ run_check advert-keys "advertised version keys" ${PREFLIGHT_PYTHON} linux/script
 run_check masked-decls "masked declarations" ${PREFLIGHT_PYTHON} linux/scripts/verify_masked_assignments.py
 # A trailing bare test or `&&` list returns its status and kills set -e callers.
 run_check trailing-conditional "trailing-conditional returns" ${PREFLIGHT_PYTHON} linux/scripts/verify_trailing_conditional.py
+# A knob defaulted inside one function and read before it runs stops a chain hours in under set -u.
+run_check knob-order "knob default order" ${PREFLIGHT_PYTHON} linux/scripts/verify_knob_order.py
 run_check comment-size "comment block size" ${PREFLIGHT_PYTHON} linux/scripts/verify_comment_size.py
 run_check code-size "code size (functions + files)" ${PREFLIGHT_PYTHON} linux/scripts/verify_code_size.py
 run_check code-complexity "cyclomatic complexity + nesting" ${PREFLIGHT_PYTHON} linux/scripts/verify_code_complexity.py

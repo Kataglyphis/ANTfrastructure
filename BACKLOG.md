@@ -259,10 +259,6 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
          onnxruntime-genai: `py::mod_gil_not_used()` alone is not safe (the binding leans on the GIL to serialise a C API
          documented as not thread safe); the issue lists what needs a lock, and the patch locks the log callback only.
 
-- [ ] **CON84 — lock maintenance and sqlite3, the loose ends** [S, ★]. (1) Yarn is NOT CARRIED (no family repo has a
-      yarn.lock today). (5) npm, poetry, pdm and pnpm locks report
-      `behind: unknown`: none has a dry run that diffs the lock (measured 2026-10-08).
-
 - [ ] **CON78 — prove the TheRock 10.1 images (`:latest-rocm`, `:winamd64-rocm`)** [M, ★★]. The bump
       (CHANGELOG 2026-10-07, CON73) was proved in throwaway `:latest` and `:winamd64` containers only.
       **Linux**, a rocm chain run (`CROSS_VARIANT=rocm`):
@@ -446,10 +442,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 - [ ] **CON217 — build CUDA compute capability 7.5, so RTX 20xx cards run the NVIDIA packages** [M, ★★].
       Owner decision 2026-11-02: add `75` (Turing: T4, RTX 20xx) to `CUDA_ARCHITECTURES`, today
       `86;87;89;120`. Found the same day on an RTX 2080 (driver 595.58.03) with OxidANT's Linux x64
-      NVIDIA package (run 41415056257): the package runs on the CPU and `CUDAExecutionProvider`
-      creates its session, then the first node stops with `cudaErrorNoKernelImageForDevice`, so there
-      is no detection and no CPU fallback. There is no PTX to fall back on, and no other entry reaches
-      major 7. Edit the five places in AGENTS.md's "To add or remove one" together. Each entry
+      NVIDIA package (run 41415056257): the package runs on the CPU, and CUDA stops with
+      `cudaErrorNoKernelImageForDevice`, so that card gets a named failure or, on `auto`, the CPU
+      ([§ A card without a CUDA kernel](docs/linux-accelerator-images.md#a-card-without-a-cuda-kernel)).
+      There is no PTX to fall back on, and no other entry reaches major 7. Edit the five places in AGENTS.md's "To add or remove one" together. Each entry
       compiles every ONNX Runtime and OpenCV CUDA kernel once more, so record the build time and
       image size of the rebuild. Done when a package from the new NVIDIA image, on that RTX 2080,
       passes `shared/python/compare_detector_parity.py` against the CPU with its operators on
@@ -526,16 +522,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ([`build-parallelism-memory-tuning.md`](docs/build-parallelism-memory-tuning.md)). Done when that step
       logs more than one job on an idle host and no arch is OOM-killed. IREE's wheelhouse build has the same
       cause: both its host and target LLVM builds ran `cmake --build … -- -j1` for over 3 h on arm64 and riscv64.
-- [ ] **CON167 — a knob defaulted inside one function and read before it runs** [S, ★★★]. The 2026-10-22
-      knob moves (`72d3aa76`, `96cbe525`) put `: "${X:=…}"` at the top of one function while another reader, or
-      the top level, could run first. Under `set -u` that stopped GStreamer twice on the 2026-10-27 chain
-      (`GSTREAMER_DEBUG_LOGS`, `GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR`; fixed). `build-clang.sh` reads
-      `CLANG_NUM_JOBS` and `CLANG_BUILD_MB_PER_JOB` at top level before `run_preflight_checks` sets them, and
-      `test-clang-job-policy.sh`, red since before, pins an `unbound variable` receipt for that path: decide
-      the intended behaviour there first. Work: a gate that flags a bare `${X}` read where no default of `X`
-      has run on every path; the pattern scan that found these also listed three safe callers (sccache-s3-level,
-      iree-wheelhouse, build-runtime-manifest), so it needs call order, not just scope. Done when the gate
-      catches both GStreamer cases as mutations and `build-clang.sh` has one defined default.
 - [ ] **CON168 — arm64 and riscv64 build the same IREE host LLVM at the same time** [M, ★★]. Found 2026-10-27:
       both media lanes run `/tmp/app-wheelhouse/iree-build-host` with the build host's `/usr/bin/g++` at once, so
       the second lane cannot hit the cache the first is still filling. Work: build the host stage once per chain
@@ -550,15 +536,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       one pipeline per arch through the stages, with an image lever scoped to the tags of arches that are not
       building, and a disk gate per arch. Done when a chain starts an arch's next stage as soon as that arch's
       previous one is pushed, without an image removal under a running build.
-- [ ] **CON170 — the uv installer pin follows a moving URL** [S, ★★]. `python_uv.sh` (`uv_ensure_installed`, used by
-      `lib/dartdoc-build.sh` and consumer hosts) runs `https://astral.sh/uv/install.sh`, which installs the newest uv
-      (0.13.6 on 2026-10-27) and changes with every release, so `UV_INSTALL_SH_SHA256` (`283cbef4…`) matches neither it
-      nor the pinned `UV_VERSION=0.13.1`. Work: run `https://astral.sh/uv/${UV_VERSION}/install.sh` and pin
-      `7c482d409673a53f4d9bd34ae95c9166be3b8d89ca82f27dd7bca3cab457afff`, byte-identical on 2026-10-27 to the
-      GitHub release asset `uv-installer.sh` of 0.13.1, and let `bump_versions.py` move it with `UV_VERSION`.
-      `versions.env` re-keys `Dockerfile.base`, so this rides a planned rebuild. Done when `uv_ensure_installed`
-      installs exactly `UV_VERSION` through a hash that no uv release can rotate. The 2026-10-27 mirror fill refused it
-      (`FAILED 283cbef4bdac install.sh`), the only one of 33 assets.
 - [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★★]. Found 2026-10-27: after a
       stopped run, the runtime lane's entry reclaim freed 0 of 165 GiB layer cache and refused at 376 GB free;
       once `systemctl --user restart buildkit` ran with nothing building, `prune-safe.sh` freed 116 GB and kept
@@ -577,7 +554,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       asks `<mirror>/<sha256>/<name>` first and falls back upstream, through the `asset_mirror` BuildKit
       secret. The bucket, both keys and this host's env files exist since 2026-10-26 (`--check` passes); a
       new chain host runs `set-asset-mirror.sh --from <ssh-target> --url <bucket-url>`. Filled on 2026-10-27 from that chain's
-      misses: 32 of 33 assets; the uv installer refused its pin (CON170). Done when the next chain logs
+      misses: 32 of 33 assets. Done when the next chain logs
       `asset-mirror| hit` for the pinned assets.
 
 - [ ] **CON129 — finish GTK 4 validation on foreign arches and GPU variants** [M, ★★★].
@@ -1342,6 +1319,36 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       treat benchmark-skip or other diagnostic overrides as a passing image gate.
       **2026-11-02:** `deim_dfine_n_coco-v2` (`0bf16e85…`) rewrites a MatMul for DirectML and has not run on this
       device with MIGraphX. Use it for the next attempt.
+      **2026-11-03, the RX 9070 XT:** `rocminfo` in the WSL container lists it as `gfx1201`, next to `gfx1036`, and
+      `HIP_VISIBLE_DEVICES=1` or `ROCR_VISIBLE_DEVICES=1` selects it. On the cached `:latest-rocm` `a5d68fbe…`, not
+      the current `05518138…`, MIGraphX compilation does not finish there. OxidANT's Linux AMD TAR from run 41583483219
+      with `deim_dfine_n_coco-v2` passed on the CPU and stopped at the 1,800-second limit with default settings, and at
+      600 seconds with `MIGRAPHX_SKIP_BENCHMARKING=1` and `ORT_MIGRAPHX_MODEL_CACHE_PATH=/tmp`. No detection, no
+      profile. `_implementation/orchestrant-rocm-wsl-hardware-20261031/minimal-ort.py`'s one-node Relu, with the
+      image's ORT 1.30.0, compiled on `gfx1036` in under 2 seconds with its operator on MIGraphX, and on `gfx1201`
+      stopped at the 150-second limit after `Model Compile: Begin`: one thread used a full core, the other 65 slept.
+      The image holds 835 `gfx1201` files, including `libMIOpenCKGroupedConv_gfx1201.so`, so the target is not simply
+      missing. The package's launcher defaults to `migraphx`, so on this setup it hangs and does not reach the CPU.
+      OxidANT's was the only package run.
+      **Later on 2026-11-03, on `05518138…` with ORT 1.31.0:** the Relu behaves the same, and with
+      `MIGRAPHX_TRACE_COMPILE=1` it reaches `relu_kernel`'s code object before it stops. The first stop is below
+      MIGraphX: a plain HIP program with no ORT and no MIGraphX, built with `hipcc --offload-arch=gfx1036,gfx1201`,
+      returns 42 on `gfx1036`. On `gfx1201` `hipGetDeviceProperties` and `hipMalloc` pass and the first host-to-device
+      `hipMemcpy` does not return within 45 seconds, with 99% of its samples in
+      `rocr::core::BusyWaitSignal::WaitRelaxed` in `libhsa-runtime64`. `HSA_ENABLE_SDMA=0`, `HSA_ENABLE_INTERRUPT=0`,
+      both together, `HSA_ENABLE_PEER_SDMA=0`, `HIP_FORCE_DEV_KERNARG=0`, `DEBUG_HIP_DYNAMIC_QUEUES=0`,
+      `GPU_MAX_HW_QUEUES=1` and `HIP_HOST_COHERENT=1` change nothing. Windows driver `32.0.32015.7029`, reached over
+      Remote Desktop. The cause in the driver or `librocdxg` is unknown, and this says nothing about native Linux. So
+      this card cannot prove a Linux AMD package under WSL. OxidANT `921d8e8`, AccelerANTgine `5e89bb7` and OrchestrANT
+      `fcb936f` turn the hang into an error after 30 seconds, with one copy in a child process; `auto` in OrchestrANT and
+      OxidANT moves on to the CPU. AccelerANTgine and OrchestrANT copy to the selected device index, OxidANT to device 0,
+      which is the only index it gives MIGraphX. All three were run on the card. Omni takes them with its next pin.
+      On `gfx1036` a Relu model runs with real MIGraphX inference through AccelerANTgine's engine. The full model still
+      fails at the load with `adaptive_topk_benchmark` (ORT says `Failed to call function`), with or without the check and
+      with `/opt/rocm/extras-10/lib/migraphx/lib` on the search path; without that directory even Relu cannot load
+      `libmigraphx_gpu.so`. The owner runs the packages under Ubuntu on this machine.
+      Inside the image, `ORT_DYLIB_PATH` points at `/usr/local/lib/onnxruntime-cpu`, which a package then loads instead
+      of its own (`MIGraphXExecutionProvider is absent`). Unset it for any package check in the image.
 
 - [ ] **CON201 — assess Media Foundation availability in the Windows AMD GPU image** [M, ★★].
       On 2026-10-31, the cached `:winamd64-rocm` registry image digest
@@ -1970,33 +1977,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 ## Open — hub tooling and the dev host
 
-- [ ] **CON215 — `WindowsFormatting.ClangFormatCheck.Tests.ps1` flakes on its temp path** [S, ★].
-      Its fake `clang-format` matches "bad" anywhere in its argument, and the full temp path can
-      contain it: about 0.7 % of runs fail. Match the file's own name. Edit it only once the
-      ai-fleet goal, which freezes existing files under `windows/scripts/tests/`, has closed.
-
 - [ ] **CON216 — the web lane's `free-disk-space: fast` can leave too little disk for the image** [S, ★★].
       On a 72 GB hosted runner the image pull can run out of disk after the fast reclaim. Measure
       the free space after the pull on that runner size, then choose `true` there or a checked
       floor before the pull.
 
-- [ ] **CON208 — `coverage_llvm_generate_profile` ignores the suite's exit status** [S, ★★].
-      Found 2026-10-31 by `test-lib-coverage.sh`: a suite that fails but writes its profile
-      returns 0, so a consumer's coverage step passes over failing tests unless another step runs
-      them. Check the consumers that call it (`docs/shared-script-libraries.md`), then decide
-      whether the suite's status becomes the function's; that is a consumer API change.
-
-- [ ] **CON209 — `code_quality_prepare_compile_db` leaves `/workspace` inside command strings** [S, ★].
-      Found 2026-10-31 by `test-lib-compile-db.sh`: the remap rewrites only a path right after a
-      quote (`"file"`, `"directory"`), so `-I/workspace/…` and the source path inside `"command"`
-      stay container paths on the host, and dropping `-Wl,-rpath,…` leaves a double space.
-
-- [ ] **CON210 — `docs_build_main` reports success after a failed step without errexit** [S, ★].
-      Found 2026-10-31 by `test-lib-docs-build.sh`: a caller without `set -e` sees `make` fail
-      and still gets "Documentation build completed successfully" and status 0. Every known
-      consumer runs under `set -e`; decide whether each step's status should stop the pipeline.
-
-- [ ] **CON215 — evaluate offline gitleaks availability in consumer images** [S, ★★].
+- [ ] **CON222 — evaluate offline gitleaks availability in consumer images** [S, ★★].
       On 2026-11-01, the cached Linux amd64 CPU image at registry digest
       `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
       had no `gitleaks` on PATH or in its selected bootstrap cache for its default user.
@@ -2025,14 +2011,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `PYTHON_BENCH_GATE=1` (`python-ci-linux.yml` `bench-gate: true`), which OrchestrANT sets.
       Turn WebDavClient's demos into collected benchmarks, prove `pytest bench/` green there, then
       make the gate the default and drop the switch.
-
-- [ ] **CON212 — a dry-run chain can prune images when the disk is low** [S, ★★].
-      Found 2026-10-31 when `test-gpu-variant.sh` failed on a CI runner (run 41185928928):
-      `build-cross-chain.sh --dry-run` still runs `_chain_stage_disk_guard`, which measures the
-      host's free space under `BUILDKIT_CACHE_DIR` and, below `CROSS_DISK_GUARD_GB` (40), reaches
-      `_disk_guard_image_store_fallback` and `nerdctl image prune -f`. A dry run must not reclaim;
-      the suite now pins the guard off, and `test-disk-guard.sh` owns the guard. Decide whether
-      the stage guard returns early under `is_dry_run`, and prove it with a recipe.
 
 - [ ] **CON211 — consumer copies the Flutter helpers still wait to replace** [S, ★★].
       `05-frameworks/flutter/flutter-pin.sh` and `lane-prologue.sh` are pinned by

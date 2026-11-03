@@ -37,9 +37,9 @@ _set_answer() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (134 files)"
+  t_assert_contains "$1" "ty quality gate: clean (135 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
-  t_assert_contains "$1" "Linux Python report: clean (134 files)"
+  t_assert_contains "$1" "Linux Python report: clean (135 files)"
   t_assert_contains "$1" "Windows Python report: clean (2 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -160,7 +160,7 @@ printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scr
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/tests/test-wheel-rewrite.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/verify_readme_length.py"
 printf 'def _plan() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_locator.py"
-for target in develop_red.py layer-audit.py verify_large_files.py verify_masked_assignments.py verify_code_complexity.py verify_code_size.py verify_trailing_conditional.py; do
+for target in develop_red.py layer-audit.py verify_large_files.py verify_masked_assignments.py verify_code_complexity.py verify_code_size.py verify_trailing_conditional.py verify_knob_order.py; do
   printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/${target}"
 done
 printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_package_names.py"
@@ -194,9 +194,9 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-  t_assert_contains "${out}" "Ruff signature annotation gate: clean (141 files)"
-  t_assert_contains "${out}" "Ruff private return gate: clean (141 files)"
-  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (131 files)"
+  t_assert_contains "${out}" "Ruff signature annotation gate: clean (142 files)"
+  t_assert_contains "${out}" "Ruff private return gate: clean (142 files)"
+  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (132 files)"
 
 t_case "ambient checker versions cannot replace the repository pins"
 out="$(TY_VERSION=bogus RUFF_VERSION=bogus _run)"
@@ -432,7 +432,7 @@ parameter_targets=(
   linux/scripts/02-toolchain/python/wheel-smoke.py linux/scripts/tests/test-wheel-rewrite.py \
   linux/scripts/verify_readme_length.py linux/scripts/verify_gate_registry.py \
   linux/scripts/verify_code_complexity.py linux/scripts/verify_code_size.py \
-  linux/scripts/verify_trailing_conditional.py \
+  linux/scripts/verify_trailing_conditional.py linux/scripts/verify_knob_order.py \
   linux/scripts/verify_image_env.py linux/scripts/verify_dead_functions.py \
   linux/scripts/verify_comment_size.py \
   linux/scripts/verify_shellcheck_warnings.py \

@@ -587,4 +587,29 @@ t_assert_ok bash -c 'set -euo pipefail
   exit 0'
 rm -rf "${_im}"
 
+# Every store here is stubbed or disposable, so even a mutant of the guard reclaims nothing real; not covered: a real daemon's prune.
+t_case "a low-disk dry-run chain reclaims nothing, through the real entry point"
+_dry="$(mktemp -d)"
+mkdir -p "${_dry}/bin" "${_dry}/bc/old-slug" "${_dry}/home"
+: > "${_dry}/bc/old-slug/export"
+for _tool in nerdctl buildctl; do
+  printf '#!/bin/sh\necho "%s $*" >> %q\n' "${_tool}" "${_dry}/calls" > "${_dry}/bin/${_tool}"
+  chmod +x "${_dry}/bin/${_tool}"
+done
+: > "${_dry}/calls"
+_dry_rc=0
+env -u CROSS_VARIANT -u ENABLE_NVIDIA -u ENABLE_AMD -u BUILDKIT_HOST -u CROSS_BUILD_PLATFORM \
+  HOME="${_dry}/home" PATH="${_dry}/bin:${PATH}" NERDCTL_BIN="${_dry}/bin/nerdctl" \
+  CROSS_DISK_GUARD_GB=999999 BUILDKIT_CACHE_DIR="${_dry}/bc" \
+  CROSS_CHAIN_PIDFILE="${_dry}/pid" CROSS_CHAIN_STATUS_FILE="${_dry}/status.json" CROSS_CONTEXT_ROOT="${_dry}/contexts" \
+  RESOURCE_MONITOR=0 APP_REF=0123456789abcdef0123456789abcdef01234567 \
+  timeout 120 bash "${TESTS_DIR}/../build-cross-chain.sh" --dry-run --target-arches amd64 --log-dir "${_dry}/logs" \
+  --no-verify-ancestry > "${_dry}/out" 2>&1 || _dry_rc=$?
+t_assert_eq "0" "${_dry_rc}" "the dry run itself must finish: $(tail -3 "${_dry}/out")"
+t_assert_grep "${_dry}/out" 'Cross chain complete'
+t_assert_no_grep "${_dry}/out" 'LRU-pruning|pruning slug'
+t_assert_ok test -f "${_dry}/bc/old-slug/export"
+t_assert_eq "" "$(grep -E -e 'prune|rmi' "${_dry}/calls" || true)" "no store reclaim reached either daemon"
+rm -rf "${_dry}"
+
 t_summary

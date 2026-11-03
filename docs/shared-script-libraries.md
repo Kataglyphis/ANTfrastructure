@@ -823,6 +823,9 @@ Both `UV_*` scripts run with the project root as cwd — the same contract as
 pair, which falls back to the hub's own bootstrap since 2026-09-15, both are
 required here: an unset one is fatal.
 
+`docs_build_main` stops at the first failed step and returns its status, whether or not the
+caller runs under `set -e`.
+
 **A missing SVG is fatal on purpose.** An empty diagram set means the generating
 build did not run, and shipping docs with holes in them is worse than failing
 here.
@@ -1318,6 +1321,15 @@ through `download_verified_file`. Two consumers had copied the same unverified
 now live in `01-core/versions.env` (`SQLITE3_WASM_VERSION` /
 `SQLITE3_WASM_SHA256`). There is deliberately no version argument — the pin is
 the point.
+
+### `WindowsFlutterPin.Common.psm1`
+
+The Windows twin of `flutter_resolve_pin`. `windows/scripts/host/Install-PinnedFlutter.ps1
+-Destination <dir>` clones the `FLUTTER_VERSION` tag, refuses a checkout that is not
+`FLUTTER_COMMIT` (`tool-pins.env`), adds `bin/` to `GITHUB_PATH` and prints the version. A caller's
+`FLUTTER_VERSION` wins with a warning and no commit check. A git checkout serves x64 and arm64
+alike, which the x64-only Windows zip does not, so the commit is its pin. The check covers the
+framework commit only; the first `flutter` run still fetches its engine from upstream.
 
 ### `05-frameworks/flutter/lane-prologue.sh`
 
@@ -2070,6 +2082,8 @@ different diagnostics and cleanup order. Copy this functions-only companion
 beside `python_uv.sh`; Rust's Toolchain RUN binds the same fresh file. Cold import
 tests reject absent, incomplete and failing companions and verify UV retry after
 restoration. Lifecycle tests use fake download and shell commands.
+`uv_ensure_installed` runs the `UV_VERSION` release's installer, not the moving
+`astral.sh/uv/install.sh`, and fails when no pin resolves or another version results.
 
 The standalone nerdctl installer owns `binfmt_handler_enabled`, shared with the
 runtime manifest verifier. Its `--source-binfmt-probe` entry returns before shell

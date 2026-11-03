@@ -49,6 +49,8 @@ USAGE
 }
 
 _clang_jobs_are_numeric() {
+  # A UTF-8 collation lets [0-9] match digits ninja rejects.
+  local LC_ALL=C
   [ -n "$1" ] && [[ "$1" =~ ^[0-9]+$ ]]
   return $?
 }
@@ -172,8 +174,6 @@ detect_system || echo "WARNING: detect_system failed; ARCH/HOST_ARCH/DISTRO may 
 
 # Preflight checks
 run_preflight_checks() {
-  : "${CLANG_NUM_JOBS:=}"
-  : "${CLANG_BUILD_MB_PER_JOB:=2000}"
     info "---- preflight: workdir safety ----"
     [ -n "${WD:-}" ] && [ "${WD}" != "/" ] || die "Unsafe WD: '${WD:-<empty>}' (should have been fixed)"
 
@@ -191,6 +191,8 @@ run_preflight_checks() {
 }
 
 # Job count
+: "${CLANG_NUM_JOBS:=}"
+: "${CLANG_BUILD_MB_PER_JOB:=2000}"
 if _clang_jobs_are_numeric "${NUM_JOBS:-}"; then
     : # Explicitly set by user, respect it.
 elif _clang_jobs_are_numeric "${CLANG_NUM_JOBS}"; then

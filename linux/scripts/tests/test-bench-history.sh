@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bench-history.py on synthetic results of all four formats and a replayed Actions API; no real GitHub call or runner timing.
+# bench-history.py on synthetic results of all four formats and a replayed Actions API; no real GitHub call or runner timing; arguments select sections (-k fetch).
 set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${here}/test-harness.sh"
@@ -21,56 +21,66 @@ criterion() {
 gated='{"detector":{"direction":"lower","gate":true},"*":{"direction":"lower"}}'
 # crit <fixture> <history> [args...]: a criterion report with the gated declaration.
 crit() { bh report --format criterion --metrics "${gated}" --result "${work}/$1" --history "${work}/$2" "${@:3}"; }
-mkdir -p "${work}/history" "${work}/two"
-printf '{"detector": 50000000, "frame/draw_box": 1000}\n' > "${work}/history/1.json"
-printf '{"detector": 54000000, "frame/draw_box": 1100}\n' > "${work}/history/2.json"
-printf '{"detector": 52000000, "frame/draw_box": 900}\n' > "${work}/history/3.json"
-cp "${work}/history/1.json" "${work}/history/2.json" "${work}/two/"
-criterion "${work}/slower" 70000000 1000
-criterion "${work}/double" 104000000 1000
-criterion "${work}/tiny" 52000000 5000
+# _refused <case> <format> <result> [args...]: a report on that result under ${work} must exit 2.
+_refused() {
+  bh report --format "$2" --result "${work}/$3" "${@:4}"
+  t_case "$1"
+  t_assert_grep "${work}/rc" '^2$'
+}
 
-crit slower history --key c --write "${work}/rec.json"
-t_case "criterion: the mean against the median of earlier results"
-t_assert_grep "${work}/out" '^\| `detector` \| 70\.00 ms \| \+34\.6 % \(median 52\.00 ms of 3\) \|$'
-t_case "a slowdown over the warning threshold warns and passes"
-t_assert_grep "${work}/err" '^::warning title=Benchmark slower::detector \+34\.6 % against the median of 3 runs$'
-t_assert_grep "${work}/rc" '^0$'
-t_case "the stored record names its verdict and metrics"
-t_assert_grep "${work}/rec.json" '"verdict": "ok"'
-t_assert_grep "${work}/rec.json" '"detector": 70000000'
+_section_criterion() {
+  mkdir -p "${work}/history" "${work}/two"
+  printf '{"detector": 50000000, "frame/draw_box": 1000}\n' > "${work}/history/1.json"
+  printf '{"detector": 54000000, "frame/draw_box": 1100}\n' > "${work}/history/2.json"
+  printf '{"detector": 52000000, "frame/draw_box": 900}\n' > "${work}/history/3.json"
+  cp "${work}/history/1.json" "${work}/history/2.json" "${work}/two/"
+  criterion "${work}/slower" 70000000 1000
+  criterion "${work}/double" 104000000 1000
+  criterion "${work}/tiny" 52000000 5000
 
-crit double history --write "${work}/failed.json"
-t_case "exactly a doubling of a gated lower-is-better metric fails"
-t_assert_grep "${work}/rc" '^1$'
-t_assert_grep "${work}/err" '^::error title=Benchmark far slower::detector \+100\.0 %'
-t_assert_grep "${work}/out" '^Far slower than before: detector \+100\.0 %\.$'
-t_case "a failed run is stored as failed, and an earlier failed record is no yardstick"
-t_assert_grep "${work}/failed.json" '"verdict": "failed"'
-cp "${work}/failed.json" "${work}/two/9.json"
-crit double two
-t_assert_grep "${work}/out" 'median 52\.00 ms of 2\)'
+  crit slower history --key c --write "${work}/rec.json"
+  t_case "criterion: the mean against the median of earlier results"
+  t_assert_grep "${work}/out" '^\| `detector` \| 70\.00 ms \| \+34\.6 % \(median 52\.00 ms of 3\) \|$'
+  t_case "a slowdown over the warning threshold warns and passes"
+  t_assert_grep "${work}/err" '^::warning title=Benchmark slower::detector \+34\.6 % against the median of 3 runs$'
+  t_assert_grep "${work}/rc" '^0$'
+  t_case "the stored record names its verdict and metrics"
+  t_assert_grep "${work}/rec.json" '"verdict": "ok"'
+  t_assert_grep "${work}/rec.json" '"detector": 70000000'
 
-t_case "below three earlier results a doubling only warns"
-t_assert_grep "${work}/rc" '^0$'
-t_assert_grep "${work}/err" '^::warning title=Benchmark history short::detector: 2 earlier result\(s\), a doubling fails from 3$'
+  crit double history --write "${work}/failed.json"
+  t_case "exactly a doubling of a gated lower-is-better metric fails"
+  t_assert_grep "${work}/rc" '^1$'
+  t_assert_grep "${work}/err" '^::error title=Benchmark far slower::detector \+100\.0 %'
+  t_assert_grep "${work}/out" '^Far slower than before: detector \+100\.0 %\.$'
+  t_case "a failed run is stored as failed, and an earlier failed record is no yardstick"
+  t_assert_grep "${work}/failed.json" '"verdict": "failed"'
+  cp "${work}/failed.json" "${work}/two/9.json"
+  crit double two
+  t_assert_grep "${work}/out" 'median 52\.00 ms of 2\)'
 
-crit tiny history
-t_case "an ungated metric five times slower warns and passes"
-t_assert_grep "${work}/rc" '^0$'
-t_assert_grep "${work}/err" '^::warning title=Benchmark slower::frame/draw_box \+400\.0 %'
+  t_case "below three earlier results a doubling only warns"
+  t_assert_grep "${work}/rc" '^0$'
+  t_assert_grep "${work}/err" '^::warning title=Benchmark history short::detector: 2 earlier result\(s\), a doubling fails from 3$'
 
-bh report --metrics '{"frame/*":{"direction":"lower"}}' --format criterion --history "${work}/history" --result "${work}/slower"
-t_case "an undeclared metric is shown and never judged"
-t_assert_no_grep "${work}/err" 'detector'
-t_assert_grep "${work}/out" '^\| `detector` \| 70\.00 ms \| \+34\.6 % \(median 52\.00 ms of 3\) \|$'
+  crit tiny history
+  t_case "an ungated metric five times slower warns and passes"
+  t_assert_grep "${work}/rc" '^0$'
+  t_assert_grep "${work}/err" '^::warning title=Benchmark slower::frame/draw_box \+400\.0 %'
 
-crit slower missing
-t_case "no history yet says so"
-t_assert_grep "${work}/out" '^\| `detector` \| 70\.00 ms \| no history yet \|$'
+  bh report --metrics '{"frame/*":{"direction":"lower"}}' --format criterion --history "${work}/history" --result "${work}/slower"
+  t_case "an undeclared metric is shown and never judged"
+  t_assert_no_grep "${work}/err" 'detector'
+  t_assert_grep "${work}/out" '^\| `detector` \| 70\.00 ms \| \+34\.6 % \(median 52\.00 ms of 3\) \|$'
 
-# The other three formats' fixtures, raw earlier results among them.
-python3 - "${work}" <<'PY'
+  crit slower missing
+  t_case "no history yet says so"
+  t_assert_grep "${work}/out" '^\| `detector` \| 70\.00 ms \| no history yet \|$'
+}
+
+_section_formats() {
+  # The other three formats' fixtures, raw earlier results among them.
+  python3 - "${work}" <<'PY'
 import json
 import pathlib
 import sys
@@ -93,63 +103,58 @@ put("agg.json", {"benchmarks": [gb("BM_PreprocessFrame/repeats:3", 9.0, "us"),
     {**gb("BM_PreprocessFrame", 5.0, "us"), "run_type": "aggregate", "aggregate_name": "median"}]})
 put("frames.json", {"start": {"frame_count": 3, "average_frame_build_time_millis": 25.0, "missed_frame_build_budget_count": 1}})
 put("orch.json", {"benchmark": "orchestrant-hot-paths", "reports": [{"label": "detector_decode", "p50_ms": 2.5, "p95_ms": 4.0, "min_ms": 1.0}]})
-put("weekly-now.json", {"benchmark": "b", "reports": [{"label": "x", "p50_ms": 1.0}]})
-put("none.json", {"benchmarks": []})
 PY
-bh report --format google-benchmark --result "${work}/gbench.json" --history "${work}/ghist" \
-  --metrics '{"BM_DetectFrame":{"direction":"lower","gate":true},"*/frames_per_second":{"direction":"higher","gate":true}}'
-t_case "google-benchmark: real time in its time unit, and raw earlier results as history"
-t_assert_grep "${work}/out" '^\| Benchmark \| Time \| Change against earlier runs \|$'
-t_assert_grep "${work}/out" '^\| `BM_TextGenerateTiny` \| 30\.00 µs \| no history yet \|$'
-t_case "a user counter is a metric of its own"
-t_assert_grep "${work}/out" '^\| `BM_TextGenerateTiny/items_per_second` \| 33000\.0 \|'
-t_case "a benchmark that errored is no result"
-t_assert_no_grep "${work}/out" 'BM_Broken'
-t_case "a gated time that doubled and a higher-is-better counter that halved both fail"
-t_assert_grep "${work}/rc" '^1$'
-t_assert_grep "${work}/out" '^Far slower than before: BM_DetectFrame \+100\.0 %\.$'
-t_assert_grep "${work}/out" '^Far lower than before: BM_DetectFrame/frames_per_second -54\.5 %\.$'
-t_assert_grep "${work}/err" '^::error title=Benchmark far worse::BM_DetectFrame/frames_per_second'
+  bh report --format google-benchmark --result "${work}/gbench.json" --history "${work}/ghist" \
+    --metrics '{"BM_DetectFrame":{"direction":"lower","gate":true},"*/frames_per_second":{"direction":"higher","gate":true}}'
+  t_case "google-benchmark: real time in its time unit, and raw earlier results as history"
+  t_assert_grep "${work}/out" '^\| Benchmark \| Time \| Change against earlier runs \|$'
+  t_assert_grep "${work}/out" '^\| `BM_TextGenerateTiny` \| 30\.00 µs \| no history yet \|$'
+  t_case "a user counter is a metric of its own"
+  t_assert_grep "${work}/out" '^\| `BM_TextGenerateTiny/items_per_second` \| 33000\.0 \|'
+  t_case "a benchmark that errored is no result"
+  t_assert_no_grep "${work}/out" 'BM_Broken'
+  t_case "a gated time that doubled and a higher-is-better counter that halved both fail"
+  t_assert_grep "${work}/rc" '^1$'
+  t_assert_grep "${work}/out" '^Far slower than before: BM_DetectFrame \+100\.0 %\.$'
+  t_assert_grep "${work}/out" '^Far lower than before: BM_DetectFrame/frames_per_second -54\.5 %\.$'
+  t_assert_grep "${work}/err" '^::error title=Benchmark far worse::BM_DetectFrame/frames_per_second'
 
-bh report --format google-benchmark --result "${work}/agg.json"
-t_case "repetitions are read through their median aggregate"
-t_assert_grep "${work}/out" '^\| `BM_PreprocessFrame` \| 5\.00 µs \| no history yet \|$'
+  bh report --format google-benchmark --result "${work}/agg.json"
+  t_case "repetitions are read through their median aggregate"
+  t_assert_grep "${work}/out" '^\| `BM_PreprocessFrame` \| 5\.00 µs \| no history yet \|$'
 
-bh report --format flutter-frame --result "${work}/frames.json" --history "${work}/fhist" \
-  --metrics '{"*/average_frame_build_time_millis":{"direction":"lower","gate":true},"*_millis":{"direction":"lower"}}'
-t_case "flutter-frame: <scenario>/<key> metrics, earlier raw timings as history"
-t_assert_grep "${work}/out" '^\| `start/average_frame_build_time_millis` \| 25\.0 \| \+150\.0 % \(median 10\.0 of 3\) \|$'
-t_assert_grep "${work}/rc" '^1$'
+  bh report --format flutter-frame --result "${work}/frames.json" --history "${work}/fhist" \
+    --metrics '{"*/average_frame_build_time_millis":{"direction":"lower","gate":true},"*_millis":{"direction":"lower"}}'
+  t_case "flutter-frame: <scenario>/<key> metrics, earlier raw timings as history"
+  t_assert_grep "${work}/out" '^\| `start/average_frame_build_time_millis` \| 25\.0 \| \+150\.0 % \(median 10\.0 of 3\) \|$'
+  t_assert_grep "${work}/rc" '^1$'
 
-bh report --format orchestrant-bench --result "${work}/orch.json"
-t_case "orchestrant-bench: p50 and p95 per label, nothing else"
-t_assert_grep "${work}/out" '^\| `detector_decode/p50_ms` \| 2\.50 ms \| no history yet \|$'
-t_assert_grep "${work}/out" '^\| `detector_decode/p95_ms` \| 4\.00 ms \|'
-t_assert_no_grep "${work}/out" 'min_ms'
+  bh report --format orchestrant-bench --result "${work}/orch.json"
+  t_case "orchestrant-bench: p50 and p95 per label, nothing else"
+  t_assert_grep "${work}/out" '^\| `detector_decode/p50_ms` \| 2\.50 ms \| no history yet \|$'
+  t_assert_grep "${work}/out" '^\| `detector_decode/p95_ms` \| 4\.00 ms \|'
+  t_assert_no_grep "${work}/out" 'min_ms'
+}
 
-bh report --format orchestrant-bench --result "${work}/absent.json"
-t_case "a missing result file fails"
-t_assert_grep "${work}/rc" '^2$'
-t_assert_grep "${work}/err" '^::error title=Benchmark result missing::'
-: > "${work}/empty.json"
-bh report --format google-benchmark --result "${work}/empty.json"
-t_case "an empty result file fails"
-t_assert_grep "${work}/rc" '^2$'
-bh report --format google-benchmark --result "${work}/none.json"
-t_case "a result without one metric fails"
-t_assert_grep "${work}/rc" '^2$'
-mkdir -p "${work}/nothing"
-bh report --format criterion --result "${work}/nothing"
-t_case "an empty Criterion directory fails"
-t_assert_grep "${work}/rc" '^2$'
-bh report --format criterion --result "${work}/slower" --metrics '{"detector":{"direction":"up"}}'
-t_case "a declaration without a direction fails"
-t_assert_grep "${work}/rc" '^2$'
+_section_inputs() {
+  criterion "${work}/slower" 70000000 1000
+  printf '{"benchmarks": []}\n' > "${work}/none.json"
+  : > "${work}/empty.json"
+  mkdir -p "${work}/nothing"
 
-# The Actions API replayed through a fake gh: weekly records, some expired, plus noise that must not count.
-fake="${work}/fake"
-mkdir -p "${fake}/bin" "${fake}/api" "${fake}/runs"
-cat > "${fake}/bin/gh" <<'EOF'
+  _refused "a missing result file fails" orchestrant-bench absent.json
+  t_assert_grep "${work}/err" '^::error title=Benchmark result missing::'
+  _refused "an empty result file fails" google-benchmark empty.json
+  _refused "a result without one metric fails" google-benchmark none.json
+  _refused "an empty Criterion directory fails" criterion nothing
+  _refused "a declaration without a direction fails" criterion slower --metrics '{"detector":{"direction":"up"}}'
+}
+
+_section_fetch() {
+  # The Actions API replayed through a fake gh: weekly records, some expired, plus noise that must not count.
+  fake="${work}/fake"
+  mkdir -p "${fake}/bin" "${fake}/api" "${fake}/runs"
+  cat > "${fake}/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${FAKE_GH}/calls"
 case "$1 $2" in
@@ -159,8 +164,8 @@ case "$1 $2" in
   *) exit 1 ;;
 esac
 EOF
-chmod +x "${fake}/bin/gh"
-python3 - "${fake}" <<'EOF'
+  chmod +x "${fake}/bin/gh"
+  python3 - "${fake}" <<'EOF'
 import datetime
 import json
 import pathlib
@@ -189,41 +194,46 @@ api = fake / "api"
 (api / "repos_o_r_actions_artifacts_name_bench-history-k_per_page_100_page_2.json").write_text(json.dumps({"artifacts": rows[10:]}))
 (api / "repos_o_r.json").write_text(json.dumps({"default_branch": "develop"}))
 EOF
-# fetched <args...>: bh's fetch against the fake API, as run 4242 of o/r.
-fetched() { PATH="${fake}/bin:${PATH}" FAKE_GH="${fake}" GH_TOKEN=t GITHUB_REPOSITORY=o/r GITHUB_RUN_ID=4242 bh fetch "$@"; }
+  # fetched <args...>: bh's fetch against the fake API, as run 4242 of o/r.
+  fetched() { PATH="${fake}/bin:${PATH}" FAKE_GH="${fake}" GH_TOKEN=t GITHUB_REPOSITORY=o/r GITHUB_RUN_ID=4242 bh fetch "$@"; }
 
-fetched --key k --dest "${work}/weekly"
-t_case "a weekly series is read across two API pages, back to the oldest unexpired week"
-t_assert_grep "${work}/rc" '^0$'
-t_assert_grep "${work}/out" '^bench-history: read 13 earlier result\(s\) of bench-history-k on develop$'
-t_assert_eq 13 "$(find "${work}/weekly" -name '*.json' | wc -l | tr -d ' ')"
-t_case "the default branch comes from the repository when none is passed"
-t_assert_grep "${fake}/calls" '^api -X GET repos/o/r$'
-t_case "this run, other branches and expired weeks stay out"
-t_assert_no_grep "${fake}/calls" 'download (4242|2000|100[0-6]) '
-bh report --format orchestrant-bench --result "${work}/weekly-now.json" --history "${work}/weekly" --metrics '{"*":{"direction":"lower","gate":true}}'
-t_case "the stored records span weeks 8 to 20 and their median is the yardstick"
-t_assert_grep "${work}/out" '^\| `x/p50_ms` \| 1\.00 ms \| -99\.4 % \(median 179\.00 ms of 13\) \|$'
+  fetched --key k --dest "${work}/weekly"
+  t_case "a weekly series is read across two API pages, back to the oldest unexpired week"
+  t_assert_grep "${work}/rc" '^0$'
+  t_assert_grep "${work}/out" '^bench-history: read 13 earlier result\(s\) of bench-history-k on develop$'
+  t_assert_eq 13 "$(find "${work}/weekly" -name '*.json' | wc -l | tr -d ' ')"
+  t_case "the default branch comes from the repository when none is passed"
+  t_assert_grep "${fake}/calls" '^api -X GET repos/o/r$'
+  t_case "this run, other branches and expired weeks stay out"
+  t_assert_no_grep "${fake}/calls" 'download (4242|2000|100[0-6]) '
+  printf '{"benchmark": "b", "reports": [{"label": "x", "p50_ms": 1.0}]}\n' > "${work}/weekly-now.json"
+  bh report --format orchestrant-bench --result "${work}/weekly-now.json" --history "${work}/weekly" --metrics '{"*":{"direction":"lower","gate":true}}'
+  t_case "the stored records span weeks 8 to 20 and their median is the yardstick"
+  t_assert_grep "${work}/out" '^\| `x/p50_ms` \| 1\.00 ms \| -99\.4 % \(median 179\.00 ms of 13\) \|$'
 
-fetched --key k --keep 4 --branch develop --dest "${work}/four"
-t_case "--keep takes the newest records"
-t_assert_eq "1016 1017 1018 1019" "$(find "${work}/four" -name '*.json' | sed 's/.*-//; s/\.json$//' | sort | tr '\n' ' ' | sed 's/ $//')"
+  fetched --key k --keep 4 --branch develop --dest "${work}/four"
+  t_case "--keep takes the newest records"
+  t_assert_eq "1016 1017 1018 1019" "$(find "${work}/four" -name '*.json' | sed 's/.*-//; s/\.json$//' | sort | tr '\n' ' ' | sed 's/ $//')"
 
-fetched --key gone --branch develop --dest "${work}/gone"
-t_case "an API refusal fails instead of reading as an empty history"
-t_assert_grep "${work}/rc" '^2$'
-t_assert_grep "${work}/err" '^::error title=Benchmark history unreadable::.*HTTP 403'
+  fetched --key gone --branch develop --dest "${work}/gone"
+  t_case "an API refusal fails instead of reading as an empty history"
+  t_assert_grep "${work}/rc" '^2$'
+  t_assert_grep "${work}/err" '^::error title=Benchmark history unreadable::.*HTTP 403'
+}
 
-bench_action="${actions}/bench-history/action.yml"
-frontend_action="${actions}/frontend-perf-report/action.yml"
-t_case "the action stores each result as bench-history-<key> for 90 days"
-t_assert_grep "${bench_action}" '^        name: bench-history-\$\{\{ inputs\.key \}\}$'
-t_assert_grep "${bench_action}" '^        retention-days: 90$'
-t_case "a failed comparison is stored too, so its verdict keeps it out of the median"
-t_assert_grep "${bench_action}" "^      if: always\(\) && steps\.report\.outcome != 'skipped'$"
-t_case "the frontend action keeps its inputs and delegates to bench-history"
-t_assert_eq "key timings keep" "$(awk '/^inputs:/ {on = 1; next} /^runs:/ {on = 0} on && /^  [a-z-]+:$/ {sub(/:$/, ""); printf "%s%s", sep, $1; sep = " "}' "${frontend_action}")"
-t_assert_grep "${frontend_action}" '^      uses: Kataglyphis/ANTfrastructure/\.github/actions/bench-history@develop$'
-t_assert_grep "${frontend_action}" '^        format: flutter-frame$'
+_section_action() {
+  bench_action="${actions}/bench-history/action.yml"
+  frontend_action="${actions}/frontend-perf-report/action.yml"
+  t_case "the action stores each result as bench-history-<key> for 90 days"
+  t_assert_grep "${bench_action}" '^        name: bench-history-\$\{\{ inputs\.key \}\}$'
+  t_assert_grep "${bench_action}" '^        retention-days: 90$'
+  t_case "a failed comparison is stored too, so its verdict keeps it out of the median"
+  t_assert_grep "${bench_action}" "^      if: always\(\) && steps\.report\.outcome != 'skipped'$"
+  t_case "the frontend action keeps its inputs and delegates to bench-history"
+  t_assert_eq "key timings keep" "$(awk '/^inputs:/ {on = 1; next} /^runs:/ {on = 0} on && /^  [a-z-]+:$/ {sub(/:$/, ""); printf "%s%s", sep, $1; sep = " "}' "${frontend_action}")"
+  t_assert_grep "${frontend_action}" '^      uses: Kataglyphis/ANTfrastructure/\.github/actions/bench-history@develop$'
+  t_assert_grep "${frontend_action}" '^        format: flutter-frame$'
+}
 
+t_sections _section_criterion _section_formats _section_inputs _section_fetch _section_action -- "$@"
 t_summary

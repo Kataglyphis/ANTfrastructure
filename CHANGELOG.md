@@ -13,6 +13,66 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-03 — Hub maintenance backlog
+
+- CON170: `uv_ensure_installed` runs `astral.sh/uv/${UV_VERSION}/install.sh`, which no later uv
+  release rotates, checks the result is `UV_VERSION` and refuses to run with no version pin.
+  `UV_INSTALL_SH_SHA256` is that release's `uv-installer.sh`, and `spec_uv` moves it with
+  `UV_VERSION`. The `install-deps` action calls the same function instead of `curl | sh`.
+- CON84: closed. Yarn's `NOT CARRIED` and the `unknown` lock counts stay as documented in
+  `dependency-updates.md`; no family repo tracks a lock those limits would hide.
+- CON211, hub half: `WindowsFlutterPin.Common.psm1` and `Install-PinnedFlutter.ps1` install
+  Flutter on a Windows runner at `FLUTTER_VERSION` and its new `FLUTTER_COMMIT` (`tool-pins.env`).
+  `spec_flutter` moves the commit with the version.
+
+## 2026-11-03 — A card without a CUDA kernel
+
+- OxidANT, OrchestrANT and AccelerANTgine run one ONNX Runtime kernel on the card before a CUDA
+  session, so a card outside `CUDA_ARCHITECTURES` is named in the failure, or `auto` takes the CPU:
+  [`linux-accelerator-images.md` § A card without a CUDA kernel](docs/linux-accelerator-images.md#a-card-without-a-cuda-kernel).
+  AGENTS.md's claim that such a card fails at session creation was wrong: it fails on the first node.
+
+## 2026-11-03 — Shell library verdicts
+
+- `coverage_llvm_generate_profile` returns the suite's status: a failing suite that wrote its
+  profile no longer passes for a caller without errexit, and the profile stays on disk. The one
+  caller, BeschleunigerBallett's `build-coverage-llvm.sh`, runs under `set -e` and already stopped.
+- `code_quality_prepare_compile_db` remaps `/workspace` inside command strings as well (`-I`,
+  defines, rpath lists, the source path), as whole path tokens: `/workspace2` and
+  `src/workspace` stay. Dropping `-Wl,-rpath,...` leaves no double space.
+- `docs_build_main` and its steps return the first failed step's status with or without errexit,
+  so a failed `make` no longer reports a finished build. Errexit callers stop as before.
+- A dry-run chain no longer reclaims between stages: `_chain_stage_disk_guard` returns first, which
+  also skips the cache size cap. `test-disk-guard.sh` proves it through the real entry point
+  against stubbed daemons and a disposable cache directory.
+- `WindowsFormatting.ClangFormatCheck.Tests.ps1`'s fake `clang-format` grades the file's own name,
+  so a temp path containing "bad" no longer fails the suite; a new case pins it.
+
+## 2026-11-03 — A knob's default runs before its readers
+
+- `verify_knob_order.py` (preflight slug and commit hook `knob-order`) follows call order and
+  fails on a bare read ahead of an in-file `${X:=...}` default. Recipes move both GStreamer defaults
+  back and the gate goes red ([the page](docs/code-quality-tooling.md#knob-default-order-knob-order)).
+- `build-clang.sh` defaults `CLANG_NUM_JOBS` and `CLANG_BUILD_MB_PER_JOB` above the job selection:
+  an unset override takes the memory mapper instead of stopping under `set -u`. Its numeric check
+  runs in the C locale, so a UTF-8 host no longer accepts non-ASCII digits and
+  `test-clang-job-policy.sh` is green outside `LC_ALL=C`. The file is mounted by the compiler
+  image's LLVM step, whose key had already moved with `versions.env`.
+
+## 2026-11-03 — Mutation recipes name their narrowest proof
+
+- `t_sections` in `tests/test-harness.sh` lets a bash suite run `-k <section>`: no argument runs
+  every section, and a pick naming no section fails. `test-bench-history.sh`,
+  `test-security-audit.sh`, `test-code-quality-report-workflow.sh`,
+  `test-python-static-workflow.sh` and `test-consumer-inventory.sh` use it.
+- `test-lint-gates-workflow.sh` takes the `lint-gates.yml` cases out of `test-lint-gates.sh`.
+- `windows/scripts/tests/Invoke-HarnessSuite.ps1` runs one harness suite under `TestHarness.psm1`
+  alone, for a recipe that needs none of the modules `Invoke-Tests.ps1` imports; suite
+  `test-harness-suite-driver.sh`.
+- 31 recipes move to these narrower commands with the same mutants, and 7 recipes hold the new
+  selector and driver. The unfiltered suites stay in preflight, and Windows CI still runs both
+  Windows suites through `Invoke-Tests.ps1`.
+
 ## 2026-11-02 — TensorRT's zlib import
 
 - `ort_host_runtime_needed` accepts `libz.so.1` from the TensorRT provider only, which TensorRT 11 links; other providers and unknown libraries still fail.
@@ -39,6 +99,8 @@
 - `docs/gpu-artifact-receipts.md` says how to prove a package on your own GPU, and why a provider profile alone does not.
 - `BACKLOG.md` CON220 records wrong DirectML results that the image checks miss, and the current GPU digests and hosted-lane results.
 - `BACKLOG.md` CON112 records one `deim_dfine_n_coco-v2` export whose bytes differed from the release.
+- `BACKLOG.md` CON202 records that MIGraphX compilation does not finish on an RX 9070 XT under WSL, even for one Relu.
+- `BACKLOG.md` CON202 records that a plain HIP copy to an RX 9070 XT under WSL does not return either.
 - `BACKLOG.md` CON218 records that GenAI's default thread count ignores the CPU affinity mask.
 - AGENTS.md Quick Reference names the measurement tools and their docs pages.
 - `verify_agents_drift.py` no longer reports a nested toctree page as unlisted on Windows.

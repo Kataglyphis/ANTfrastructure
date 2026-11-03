@@ -1,33 +1,33 @@
 {
   "uv:success:strict:pin": {
     "rc": 0,
-    "out": "Installing uv...\nuv version: uv-fixture\n",
+    "out": "Installing uv...\nuv version: uv 0.0.fixture\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": null
   },
   "uv:success:strict:": {
     "rc": 0,
-    "out": "Installing uv...\nuv version: uv-fixture\n",
+    "out": "Installing uv...\nuv version: uv 0.0.fixture\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": null
   },
   "uv:success:conditional:pin": {
     "rc": 0,
-    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "out": "Installing uv...\nuv version: uv 0.0.fixture\nSTATUS:0\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": null
   },
   "uv:success:conditional:": {
     "rc": 0,
-    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "out": "Installing uv...\nuv version: uv 0.0.fixture\nSTATUS:0\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": null
   },
@@ -49,17 +49,17 @@
   },
   "uv:temp:conditional:pin": {
     "rc": 0,
-    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "out": "Installing uv...\nuv version: uv 0.0.fixture\nSTATUS:0\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": null
   },
   "uv:temp:conditional:": {
     "rc": 0,
-    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "out": "Installing uv...\nuv version: uv 0.0.fixture\nSTATUS:0\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": null
   },
@@ -67,7 +67,7 @@
     "rc": 23,
     "out": "Installing uv...\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\n",
     "state": "",
     "remaining": "partial"
   },
@@ -75,23 +75,23 @@
     "rc": 23,
     "out": "Installing uv...\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\n",
     "state": "",
     "remaining": "partial"
   },
   "uv:curl:conditional:pin": {
     "rc": 0,
-    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "out": "Installing uv...\nuv version: uv 0.0.fixture\nSTATUS:0\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": null
   },
   "uv:curl:conditional:": {
     "rc": 0,
-    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "out": "Installing uv...\nuv version: uv 0.0.fixture\nSTATUS:0\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": null
   },
@@ -99,15 +99,15 @@
     "rc": 1,
     "out": "Installing uv...\n",
     "err": "uv install.sh does not match pinned UV_INSTALL_SH_SHA256 (upstream rotated it, or tampering)\n",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": null
   },
   "uv:hash:strict:": {
     "rc": 0,
-    "out": "Installing uv...\nuv version: uv-fixture\n",
+    "out": "Installing uv...\nuv version: uv 0.0.fixture\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": null
   },
@@ -115,15 +115,15 @@
     "rc": 1,
     "out": "Installing uv...\n",
     "err": "uv install.sh does not match pinned UV_INSTALL_SH_SHA256 (upstream rotated it, or tampering)\n",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": null
   },
   "uv:hash:conditional:": {
     "rc": 0,
-    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "out": "Installing uv...\nuv version: uv 0.0.fixture\nSTATUS:0\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": null
   },
@@ -131,7 +131,7 @@
     "rc": 23,
     "out": "Installing uv...\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\n",
     "state": "",
     "remaining": "partial"
   },
@@ -139,23 +139,23 @@
     "rc": 23,
     "out": "Installing uv...\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsh\nWORK/fixture path\n",
     "state": "",
     "remaining": "partial"
   },
   "uv:sh:conditional:pin": {
     "rc": 0,
-    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "out": "Installing uv...\nuv version: uv 0.0.fixture\nSTATUS:0\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": null
   },
   "uv:sh:conditional:": {
     "rc": 0,
-    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "out": "Installing uv...\nuv version: uv 0.0.fixture\nSTATUS:0\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": null
   },
@@ -163,7 +163,7 @@
     "rc": 23,
     "out": "Installing uv...\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": "partial"
   },
@@ -171,23 +171,23 @@
     "rc": 23,
     "out": "Installing uv...\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": "partial"
   },
   "uv:rm:conditional:pin": {
     "rc": 0,
-    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "out": "Installing uv...\nuv version: uv 0.0.fixture\nSTATUS:0\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": "partial"
   },
   "uv:rm:conditional:": {
     "rc": 0,
-    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "out": "Installing uv...\nuv version: uv 0.0.fixture\nSTATUS:0\n",
     "err": "",
-    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/0.0.fixture/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
     "state": "",
     "remaining": "partial"
   },

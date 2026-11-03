@@ -677,8 +677,10 @@ come back while `CUDA_VERSION` is 13.x.
   `-real` = cubin only), so in the ORT artefact `120` covers 12.0 and NOT 12.1 (GB10), and `100`
   would cover B100/B200 but not B300 (10.3). Spell out the exact hardware you own.
 - **There is no PTX to fall back on.** ORT embeds none and OpenCV leaves `CUDA_ARCH_PTX` empty, so
-  a missing arch is a hard failure at session creation (`no kernel image is available`), not a
-  slow path. That is what retiring 80 costs an A100.
+  a missing arch is a hard failure on the session's first node (`no kernel image is available`),
+  not a slow path. That is what retiring 80 costs an A100. Consumers run one kernel first, so the
+  card is named or `auto` takes the CPU:
+  [`linux-accelerator-images.md` § A card without a CUDA kernel](docs/linux-accelerator-images.md#a-card-without-a-cuda-kernel).
 - **No letter suffixes** (`90a`, `100f`): ORT appends the `a` itself, and OpenCV's dotted-form
   conversion mangles a suffixed entry. Digits only, ascending for readability; since 2026-09-23
   nothing depends on the order (the trailing-`90`→`90a` rewrite is gone: it silently did nothing
@@ -852,6 +854,8 @@ Each of these killed or falsified a real build before it was fixed. The full sto
    function's return value 1, and under `set -e` the HEALTHY path kills the caller. End with
    `|| true`, `; return 0`, or an `if`. Shell test predicates with an intentional false
    status use explicit `return 0` and `return 1` branches so the gate can distinguish intent.
+
+A knob's `${X:=...}` default goes at the top level above its first reader; `knob-order` follows call order and has no allow file.
 
 Parallel result collection must explicitly propagate a failed harvest, including when
 workers succeeded. Publish worker pins only after a successful, nonempty read;
@@ -1259,7 +1263,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
 
   | when | what runs | cost |
   | --- | --- | --- |
-  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 20 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, the derived doc numbers when a page that quotes them is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured 2026-09-04) |
+  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 21 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, the derived doc numbers when a page that quotes them is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured 2026-09-04) |
   | every `git push` | `linux/host-config/git-hooks/pre-push` — the mutation gate's `--stale-check` over the whole manifest, then `--changed` for real ([`code-quality-tooling.md` § The pre-push hook](docs/code-quality-tooling.md#the-pre-push-hook)) | the staleness pass: 0.06 s over 378 entries (measured 2026-09-05); `--changed` depends on the push |
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
   | every push | `.github/workflows/linux-x64.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, a pinned WebDAV source type gate, plus the `mutations` slug as eight `PREFLIGHT_MUTATION_SHARD=K/8` jobs that together prove every entry, planned from `docs/scripts/mutation-costs.json` | CI |
@@ -1277,6 +1281,10 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   minutes teaches everyone to type `--no-verify`. A sample never reports as full coverage; it
   prints how many of how many it ran. Why it is capped, and what it measured before:
   [`code-quality-tooling.md` § The pre-commit hook's cost budget](docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget).
+
+  A recipe names the narrowest command that still bites (`-k <section>` through `t_sections`,
+  `Invoke-HarnessSuite.ps1 -Only <suite>`); the unfiltered suite keeps the same cases in preflight
+  and a pick naming no section fails.
 
   CI never samples: its eight `mutations` jobs split the manifest with `--shard` and together prove
   every entry. The hub's jobs take shard K of a cost plan (`--shard-costs`) that keeps each test

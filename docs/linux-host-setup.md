@@ -1012,8 +1012,8 @@ missing tool but is easy to read as a broken gate rather than a missing
 prerequisite:
 
 ```bash
-# installs uv + uvx to ~/.local/bin; the installer is downloaded to a file and
-# checked against UV_INSTALL_SH_SHA256 (versions.env), never piped into sh
+# installs uv + uvx at UV_VERSION to ~/.local/bin; that release's installer is downloaded
+# to a file and checked against UV_INSTALL_SH_SHA256 (versions.env), never piped into sh
 bash -c 'source linux/scripts/01-core/python_uv.sh && uv_ensure_installed'
 ```
 

@@ -17,7 +17,7 @@ exit 91
 STUB
 chmod +x "${_VARIANT_WORK}/bin/nerdctl"
 export PATH="${_VARIANT_WORK}/bin:${PATH}"
-# The chain's disk guard measures this host's free space and reclaims below it, even in a dry run (BACKLOG CON212); test-disk-guard.sh owns it.
+# The dry-run disk gates still measure this host; test-disk-guard.sh owns them.
 export CROSS_DISK_GUARD_GB=0 BUILDKIT_CACHE_DIR="${_VARIANT_WORK}/buildcache"
 # Runtime tag assertions use an immutable parent, so dry runs never need the registry.
 export RUNTIME_ANDROID_PIN_amd64=ghcr.io/kataglyphis/kataglyphis_beschleuniger-stages@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
