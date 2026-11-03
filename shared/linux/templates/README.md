@@ -96,6 +96,7 @@ holds a copy of.
 ```text
 Sourced coverage core (no shell options): gcovr for GCC --coverage, llvm-cov for clang profiles.
 Optional: COVERAGE_GCOVR_{EXCLUDES,OUTPUT,EXTRA_ARGS}, COVERAGE_LLVM_{IGNORE_REGEX,RUN_ENV} (arrays but OUTPUT).
+coverage_llvm_generate_profile returns the suite's status; a failed suite's profile stays on disk for a caller that reports it anyway.
 ```
 
 `linux/scripts/lib/app-runner.sh`:

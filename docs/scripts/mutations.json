@@ -32337,6 +32337,14 @@
   "why": "a suite that never wrote its profile would hand llvm-profdata a missing file and blame it"
  },
  {
+  "id": "lib.coverage-profile-suite-status",
+  "target": "linux/scripts/lib/coverage.sh",
+  "find": "    return \"${suite_status}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-lib-coverage.sh",
+  "why": "a suite that failed but wrote its profile must not let a caller without errexit report coverage over failing tests"
+ },
+ {
   "id": "lib.coverage-report-sparse-merge",
   "target": "linux/scripts/lib/coverage.sh",
   "find": "  llvm-profdata merge -sparse \"${profraw}\" -o \"${profdata}\"\n",

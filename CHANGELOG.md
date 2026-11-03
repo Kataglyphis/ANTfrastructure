@@ -20,6 +20,12 @@
   [`linux-accelerator-images.md` § A card without a CUDA kernel](docs/linux-accelerator-images.md#a-card-without-a-cuda-kernel).
   AGENTS.md's claim that such a card fails at session creation was wrong: it fails on the first node.
 
+## 2026-11-03 — Shell library verdicts
+
+- `coverage_llvm_generate_profile` returns the suite's status: a failing suite that wrote its
+  profile no longer passes for a caller without errexit, and the profile stays on disk. The one
+  caller, BeschleunigerBallett's `build-coverage-llvm.sh`, runs under `set -e` and already stopped.
+
 ## 2026-11-03 — Mutation recipes name their narrowest proof
 
 - `t_sections` in `tests/test-harness.sh` lets a bash suite run `-k <section>`: no argument runs

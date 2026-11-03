@@ -2010,12 +2010,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the free space after the pull on that runner size, then choose `true` there or a checked
       floor before the pull.
 
-- [ ] **CON208 — `coverage_llvm_generate_profile` ignores the suite's exit status** [S, ★★].
-      Found 2026-10-31 by `test-lib-coverage.sh`: a suite that fails but writes its profile
-      returns 0, so a consumer's coverage step passes over failing tests unless another step runs
-      them. Check the consumers that call it (`docs/shared-script-libraries.md`), then decide
-      whether the suite's status becomes the function's; that is a consumer API change.
-
 - [ ] **CON209 — `code_quality_prepare_compile_db` leaves `/workspace` inside command strings** [S, ★].
       Found 2026-10-31 by `test-lib-compile-db.sh`: the remap rewrites only a path right after a
       quote (`"file"`, `"directory"`), so `-I/workspace/…` and the source path inside `"command"`

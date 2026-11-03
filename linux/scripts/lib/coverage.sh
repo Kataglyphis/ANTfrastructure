@@ -31,7 +31,7 @@ coverage_run_gcovr() {
   gcovr "${args[@]}"
 }
 
-# llvm-cov: <test-exe> <profraw-path> [args...]; only running a device-free suite produces the profraw.
+# llvm-cov: <test-exe> <profraw-path> [args...]; returns the suite's status, and only a device-free suite produces the profraw.
 coverage_llvm_generate_profile() {
   local test_suite="$1"
   local profraw="$2"
@@ -49,7 +49,13 @@ coverage_llvm_generate_profile() {
 
   mkdir -p "$(dirname "${profraw}")"
   info "Running ${test_suite} to generate coverage data"
-  env "LLVM_PROFILE_FILE=${profraw}" "${run_env[@]}" "${test_suite}" "$@"
+  local suite_status=0
+  env "LLVM_PROFILE_FILE=${profraw}" "${run_env[@]}" "${test_suite}" "$@" || suite_status=$?
+
+  if ((suite_status != 0)); then
+    warn "${test_suite} failed with status ${suite_status}; any profile it wrote stays at ${profraw}."
+    return "${suite_status}"
+  fi
 
   if [[ ! -f "${profraw}" ]]; then
     err "Profile data still not found at ${profraw} after running the suite."
