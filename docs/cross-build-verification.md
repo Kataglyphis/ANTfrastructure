@@ -304,7 +304,7 @@ script that runs twice must not carry a build-breaking assert; the pkg-config
 `verify_consumer_dev_surface` gate is the authority).
 
 `preflight.sh` keeps its check list in one place — the `KNOWN_SLUGS` array
-(`preflight.sh:38-56`, 40 slugs), which is also the vocabulary
+(`preflight.sh:38-57`, 41 slugs), which is also the vocabulary
 `PREFLIGHT_ONLY=` and `PREFLIGHT_SKIP=` accept. **That array is the authority for
 both membership and run order** — the table below groups them by kind and will
 drift if a slug is added without touching it.
@@ -346,6 +346,7 @@ drift if a slug is added without touching it.
 | `dead-functions` | `verify_dead_functions.py` | a NEW shell function defined under `linux/scripts` or `linux/host-config` and named nowhere else; dispatch the scanner cannot see is frozen in `dead-functions.allow` |
 | `large-files` | `verify_large_files.py` | a NEW tracked data file over 500 KiB (binary, or a document, media, model, scene or archive format), or a frozen one that changed size; what a repo must track is frozen in `large-files.allow` |
 | `readme-length` | `verify_readme_length.py` | a root `README.md` over 100 lines, badges included (the README rule); `run-lint-gates.sh` runs the same check over every consumer |
+| `agents-drift` | `verify_agents_drift.py` | a line over 40 characters repeated verbatim in the hub's `AGENTS.md`; the four AI consumers run all six checks through `run-lint-gates.sh --agents-drift` |
 | `shellcheck-warnings` | `verify_shellcheck_warnings.py` | a new or grown `shellcheck -S warning` finding per (file, code), over exactly `lint-shell.sh --list-files`, against `shellcheck-warnings.allow` |
 | `mutations` | `docs/scripts/verify_mutations.py` | a test that CANNOT fail: each recorded mutant neuters one guarantee and the named test must go red |
 | `shared-config` | inline (`bash shared/config/sync-shared-config.sh --repo-root . --check`, the bash twin, because no hub Linux image ships pwsh) | ANTfrastructure's own root `.cmake-format.yaml` — a consumer copy of the canonical file beside the sync script — drifting from it or deleted; the root `.antfrastructure-shared.manifest` declares it as the one taken file, and the other four canonical names have no root copy here, so they are simply not declared |

@@ -55,10 +55,30 @@ function New-PythonAppBundleLaunchers {
     return $wanted
 }
 
+function Copy-PythonAppBundleLock {
+    param($Item, [string]$RepoRoot, [string]$Bundle)
+    $lock = Resolve-PythonAppPath $RepoRoot $Item['lock']
+    $names = @(Get-Content -LiteralPath $lock | ForEach-Object { , ($_ -split '\s+' | Where-Object { $_ }) } |
+        Where-Object { $_.Count -ge 3 -and -not $_[0].StartsWith('#') } | ForEach-Object { $_[1] })
+    if ($names.Count -eq 0) { throw "$($Item['lock']) names no file" }
+    $bad = @($names | Where-Object { $_ -ne [IO.Path]::GetFileName($_) -or $_ -match '[\\/]' -or $_ -in '.', '..' })
+    if ($bad.Count -gt 0) { throw "$($Item['lock']) names a path, not a file: $($bad -join ', ')" }
+    $to = Join-Path $Bundle $Item['to']
+    $null = New-Item -ItemType Directory -Force -Path $to
+    foreach ($name in @([IO.Path]::GetFileName($lock)) + $names) {
+        Copy-Item -LiteralPath (Join-Path (Split-Path $lock -Parent) $name) -Destination (Join-Path $to $name) -Force
+        Write-Host "  $($Item['lock']): $name -> $($Item['to'])/$name"
+    }
+}
+
 function Copy-PythonAppBundleData {
     param($App, [string]$RepoRoot, [string]$Bundle)
     foreach ($item in @($App['data'])) {
         if (-not $item) { continue }
+        if ($item.ContainsKey('lock')) {
+            Copy-PythonAppBundleLock -Item $item -RepoRoot $RepoRoot -Bundle $Bundle
+            continue
+        }
         $to = Join-Path $Bundle $item['to']
         $null = New-Item -ItemType Directory -Force -Path (Split-Path $to -Parent)
         Copy-Item -LiteralPath (Resolve-PythonAppPath $RepoRoot $item['from']) -Destination $to -Force

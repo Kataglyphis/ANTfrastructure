@@ -373,11 +373,13 @@ workflow_lane_fixture_init .github/workflows/lint-gates.yml lint-gates lint-gate
 workflow_assert_input_fields code-dupes type 'boolean' default 'false'
 workflow_assert_input_fields code-dupes-report type 'boolean' default 'true'
 workflow_assert_input_fields allow-empty-shell type 'boolean' default 'false'
+workflow_assert_input_fields agents-drift type 'boolean' default 'false'
 workflow_assert_input_fields workflow-conventions type 'string' default ''
 t_assert_eq "\${{ inputs.workflow-conventions }}" "$(_q "V.value(V.value(job, 'env'), 'WORKFLOW_CONVENTIONS_GATE')")" \
   "a caller's armed conventions must reach the gate's environment"
 t_assert_contains "$(_q "run_blocks('lint-gates')")" 'args+=(--code-dupes)'
 t_assert_contains "$(_q "run_blocks('lint-gates')")" 'args+=(--code-dupes-report)'
+t_assert_contains "$(_q "run_blocks('lint-gates')")" 'args+=(--agents-drift)'
 t_assert_contains "$(_q "run_blocks('lint-gates')")" 'args+=(--allow-empty-shell)'
 
 t_case "the workflow uploads the caller duplication report even after findings"

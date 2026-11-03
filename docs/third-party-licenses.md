@@ -238,7 +238,9 @@ must still match exactly on repeated runs.
 native GPU AppImage's ONNX Runtime files and original texts, then requires an
 exact, unstripped match to one wheel. It checks the selected NVIDIA or AMD
 provider, rejects unsupported architectures and scans the whole payload for host
-GPU SDK libraries. Run it after AppImage generation:
+GPU SDK libraries. Its path and alias rules live in
+`linux/scripts/06-packaging/ort-package-proof.sh`, which consumers source to check
+their tarball and DEB trees without a second copy. Run it after AppImage generation:
 the generator can alter ELF files after an install-tree check has passed. It does
 not prove GPU execution or account for other dependencies.
 

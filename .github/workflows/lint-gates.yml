@@ -45,6 +45,12 @@ on:
           consumers see their remaining duplication without changing ratchets.
         type: boolean
         default: true
+      agents-drift:
+        description: >-
+          Pass --agents-drift: hold AGENTS.md, the docs build list and BACKLOG.md
+          to the tree. Needs the six-section AGENTS.md and quality-report.toml.
+        type: boolean
+        default: false
       allow-empty-shell:
         description: >-
           Permit a consumer with no tracked shell scripts. The shell gate then
@@ -78,6 +84,7 @@ jobs:
       LINT_CODE_DUPES: ${{ inputs.code-dupes }}
       LINT_CODE_DUPES_REPORT: ${{ inputs.code-dupes-report }}
       LINT_ALLOW_EMPTY_SHELL: ${{ inputs.allow-empty-shell }}
+      LINT_AGENTS_DRIFT: ${{ inputs.agents-drift }}
       WORKFLOW_CONVENTIONS_GATE: ${{ inputs.workflow-conventions }}
     steps:
       # Every scope comes from `git ls-files`, not history.
@@ -111,6 +118,7 @@ jobs:
           if [ "${LINT_CODE_DUPES}" = 'true' ]; then args+=(--code-dupes); fi
           if [ "${LINT_CODE_DUPES_REPORT}" = 'true' ]; then args+=(--code-dupes-report); fi
           if [ "${LINT_ALLOW_EMPTY_SHELL}" = 'true' ]; then args+=(--allow-empty-shell); fi
+          if [ "${LINT_AGENTS_DRIFT}" = 'true' ]; then args+=(--agents-drift); fi
           bash "${hub}/linux/scripts/run-lint-gates.sh" "${GITHUB_WORKSPACE}" "${args[@]}"
 
       - name: Save duplication report

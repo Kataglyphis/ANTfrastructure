@@ -16116,6 +16116,30 @@
   "why": "the code after the help block is the copy under test; skipping past it compares nothing"
  },
  {
+  "id": "shared-assets.coco-classes-keep-80-ids",
+  "target": "shared/config/coco-classes.txt",
+  "find": "hair drier\ntoothbrush\n",
+  "replace": "hair drier\n",
+  "test": "bash linux/scripts/tests/test-coco-classes.sh",
+  "why": "every loader maps line N to class id N-1; a dropped line leaves a class id the model reports without a name"
+ },
+ {
+  "id": "shared-assets.coco-classes-names-are-exact",
+  "target": "shared/config/coco-classes.txt",
+  "find": "\ncat\n",
+  "replace": "\ncat \n",
+  "test": "bash linux/scripts/tests/test-coco-classes.sh",
+  "why": "loaders compare class names byte for byte, so a trailing blank makes 'cat' unknown"
+ },
+ {
+  "id": "shared-assets.coco-classes-is-an-exact-asset",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "| resources/coco-classes.txt              | exact |",
+  "replace": "| resources/coco-classes.txt              | body  |",
+  "test": "bash linux/scripts/tests/test-coco-classes.sh",
+  "why": "the class list has no per-consumer header; body mode would let a copy drift"
+ },
+ {
   "id": "shared-assets.agentic-loop-runners-registered",
   "target": "shared/config/shared-assets.manifest",
   "find": "agentic-loop-ps1     | shared/agentic-loop/templates/Invoke-AgenticLoop.ps1 | scripts/agentic-loop/Invoke-AgenticLoop.ps1 | body  |\n",
@@ -30641,6 +30665,70 @@
   "why": "Every Python app bundle must contain the original project license."
  },
  {
+  "id": "packaging.python-app-lock-ships-the-lock",
+  "target": "linux/scripts/06-packaging/python-app-data.py",
+  "find": "    for name in [lock.name, *lock_names(lock)]:\n",
+  "replace": "    for name in lock_names(lock):\n",
+  "test": "bash linux/scripts/tests/test-python-app-data.sh",
+  "why": "the app derives its model's file name from the shipped lock; a bundle without it cannot find the model"
+ },
+ {
+  "id": "packaging.python-app-lock-refuses-an-empty-lock",
+  "target": "linux/scripts/06-packaging/python-app-data.py",
+  "find": "    if not names:\n        sys.exit(f\"{lock} names no file\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-app-data.sh",
+  "why": "an empty lock would ship a bundle with no model and no error"
+ },
+ {
+  "id": "packaging.python-app-lock-refuses-a-path",
+  "target": "linux/scripts/06-packaging/python-app-data.py",
+  "find": "    if bad:\n        sys.exit(",
+  "replace": "    if False:\n        sys.exit(",
+  "test": "bash linux/scripts/tests/test-python-app-data.sh",
+  "why": "a lock row naming ../ would copy a file from outside the lock's directory into the bundle"
+ },
+ {
+  "id": "packaging.python-app-lock-row-dispatch",
+  "target": "linux/scripts/06-packaging/python-app-data.py",
+  "find": "        if \"lock\" in item:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-python-app-data.sh",
+  "why": "a lock row has no 'from'; treated as a plain row it copies nothing the lock names"
+ },
+ {
+  "id": "windows-lane.python-app-lock-ships-the-lock",
+  "target": "windows/scripts/python/New-PythonAppBundle.ps1",
+  "find": "    foreach ($name in @([IO.Path]::GetFileName($lock)) + $names) {",
+  "replace": "    foreach ($name in $names) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleLockData.Tests.ps1 -ResultFile logs/code-quality/python-app-lock-mutation.json",
+  "why": "the app derives its model's file name from the shipped lock; a bundle without it cannot find the model"
+ },
+ {
+  "id": "windows-lane.python-app-lock-refuses-an-empty-lock",
+  "target": "windows/scripts/python/New-PythonAppBundle.ps1",
+  "find": "    if ($names.Count -eq 0) { throw \"$($Item['lock']) names no file\" }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleLockData.Tests.ps1 -ResultFile logs/code-quality/python-app-lock-mutation.json",
+  "why": "an empty lock would ship a bundle with no model and no error"
+ },
+ {
+  "id": "windows-lane.python-app-lock-refuses-a-path",
+  "target": "windows/scripts/python/New-PythonAppBundle.ps1",
+  "find": "    if ($bad.Count -gt 0) { throw",
+  "replace": "    if ($false) { throw",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleLockData.Tests.ps1 -ResultFile logs/code-quality/python-app-lock-mutation.json",
+  "why": "a lock row naming ..\\ would copy a file from outside the lock's directory into the bundle"
+ },
+ {
+  "id": "windows-lane.python-app-lock-row-dispatch",
+  "target": "windows/scripts/python/New-PythonAppBundle.ps1",
+  "find": "        if ($item.ContainsKey('lock')) {",
+  "replace": "        if ($false) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleLockData.Tests.ps1 -ResultFile logs/code-quality/python-app-lock-mutation.json",
+  "why": "a lock row has no 'from'; treated as a plain row it copies nothing the lock names"
+ },
+ {
   "id": "rust.cargo-license-atomic-noreplace",
   "target": "linux/scripts/06-packaging/stage-cargo-licenses.py",
   "find": "if rename(-100, os.fsencode(staging), -100, os.fsencode(output), 1) != 0:",
@@ -32897,6 +32985,118 @@
   "why": "a quality-report crash that exits 1 must fail the job, not pass as a regression"
  },
  {
+  "id": "quality-report.perf-spread-ignored",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "    limit = max(MIN_LIMIT, SPREAD_FACTOR * old.spread())",
+  "replace": "    limit = MIN_LIMIT",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_limit_is_three_spreads",
+  "why": "a noisy baseline widens the limit to three times its spread"
+ },
+ {
+  "id": "quality-report.perf-direction-inverted",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "    worse = ratio > 1 + limit if metric.better == LOWER else ratio < 1 - limit",
+  "replace": "    worse = ratio < 1 - limit if metric.better == LOWER else ratio > 1 + limit",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_fewer_tokens_per_second_regresses",
+  "why": "a higher-is-better rate that drops must regress"
+ },
+ {
+  "id": "quality-report.perf-dirty-tree-measured",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "    if git(root, \"status\", \"--porcelain\"):",
+  "replace": "    if git(root, \"status\", \"--porcelain\") == \"dirty\":",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_dirty_tree_is_refused",
+  "why": "a measurement must belong to a commit"
+ },
+ {
+  "id": "quality-report.perf-busy-host-measured",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "    if (load := load_average()) > MAX_LOAD:",
+  "replace": "    if (load := load_average()) > MAX_LOAD * 10:",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_busy_host_is_refused",
+  "why": "a loaded host must not record or grade latencies"
+ },
+ {
+  "id": "quality-report.perf-running-chain-measured",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "    if os.path.exists(chain_pidfile()):",
+  "replace": "    if os.path.exists(chain_pidfile() + \".absent\"):",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_running_chain_is_refused",
+  "why": "an image chain on the host makes every figure meaningless"
+ },
+ {
+  "id": "quality-report.perf-noisy-baseline-written",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "m.status == COLLECTED and m.spread() > MAX_BASELINE_SPREAD]",
+  "replace": "m.status == COLLECTED and m.spread() > 1]",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_noisy_update_is_refused",
+  "why": "a baseline whose spread exceeds 5 % must not be written"
+ },
+ {
+  "id": "quality-report.perf-first-run-graded",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "        return statistics.median(self.samples)",
+  "replace": "        return self.samples[0]",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_one_outlier_run_holds",
+  "why": "the graded figure is the median of the runs, so one outlier run holds"
+ },
+ {
+  "id": "quality-report.perf-fewer-runs",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "RUNS = 20\n",
+  "replace": "RUNS = 5\n",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_update_writes_twenty_samples",
+  "why": "the baseline stores 20 raw samples per metric"
+ },
+ {
+  "id": "quality-report.perf-missing-baseline-ok",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "        return None, [f\"no baseline for {model!r}; record one with --update-baseline\"]",
+  "replace": "        return None, []",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_missing_baseline_is_incomplete",
+  "why": "a CPU without a baseline is incomplete, never ok"
+ },
+ {
+  "id": "quality-report.perf-unavailable-as-failure",
+  "target": "linux/scripts/quality_report_perf_run.py",
+  "find": "            return {\"status\": \"not-collected\", \"reason\": answer}",
+  "replace": "            return {\"status\": \"failed\", \"reason\": answer}",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_unavailable_provider_is_not_collected",
+  "why": "an unavailable provider is not collected, not a failed run"
+ },
+ {
+  "id": "quality-report.perf-zero-accepted",
+  "target": "linux/scripts/quality_report_perf_run.py",
+  "find": "                or not math.isfinite(value) or value <= 0:",
+  "replace": "                or not math.isfinite(value):",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_zero_value_is_incomplete",
+  "why": "a zero latency or rate is a broken command, not a figure"
+ },
+ {
+  "id": "quality-report.perf-cpus-unpinned",
+  "target": "linux/scripts/quality_report_perf_run.py",
+  "find": "    chosen = allowed[:max(1, count)]",
+  "replace": "    chosen = allowed",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_update_writes_twenty_samples",
+  "why": "the runs use at most the declared number of CPUs"
+ },
+ {
+  "id": "quality-report.perf-container-user",
+  "target": "linux/scripts/quality_report_perf.py",
+  "find": "root, \"--user\", \"0:0\",",
+  "replace": "root,",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_image_runs_as",
+  "why": "container root maps to the host user; the image's own uid cannot write the rootless bind mount"
+ },
+ {
+  "id": "quality-report.perf-genai-threads-ignored",
+  "target": "linux/scripts/lib/genai-model-threads.py",
+  "find": "    session[\"intra_op_num_threads\"] = args.threads\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_copy_fixes",
+  "why": "an unpinned GenAI session oversubscribes the pinned CPUs and its latency spread refuses every baseline"
+ },
+ {
   "id": "bench-history.doubling-passes",
   "target": "linux/scripts/bench-history.py",
   "find": "            return cell, f\"{name} {change}\"",
@@ -33175,5 +33375,413 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-code-quality-report-workflow.sh",
   "why": "quality-report.sh counts ty diagnostics through python-static.sh, which resolves docs/conf.py's theme only from the fetched DocumANTation"
+ },
+ {
+  "id": "packaging.ort-package-proof-library-escape",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "case \"$resolved/\" in \"$1/\"*) return 0 ;; esac",
+  "replace": "return 0",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "a library or notice outside the package must not be proven through a symlink"
+ },
+ {
+  "id": "packaging.ort-package-proof-provider-link",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "[ ! -L \"$file\" ] || { printf 'ORT provider is a symlink",
+  "replace": "true || { printf 'ORT provider is a symlink",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "a provider alias can hide which provider the package loads"
+ },
+ {
+  "id": "packaging.ort-package-proof-core-alias",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "[[ \"${resolved##*/}\" =~ ^libonnxruntime\\.so(\\.[0-9]+)*$ ]] ||",
+  "replace": "true ||",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "the core name must not resolve to another component"
+ },
+ {
+  "id": "packaging.ort-package-proof-required",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "[ -f \"$lib/$name\" ] ||",
+  "replace": "true ||",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "a package without its selected provider must fail"
+ },
+ {
+  "id": "packaging.ort-package-proof-reject-invalid",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "[ \"$skip_invalid\" = 1 ] && continue",
+  "replace": "continue",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "the strict caller refuses a dangling ORT entry"
+ },
+ {
+  "id": "packaging.ort-package-proof-reject-links",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "[ \"$1\" = 1 ] || [ ! -L \"$2\" ] ||",
+  "replace": "true ||",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "the no-link caller refuses a linked ORT library"
+ },
+ {
+  "id": "packaging.ort-package-proof-notice-bytes",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "cmp \"$notice\" \"$proof_dir/$name\" || return 1",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "a changed notice must not pass"
+ },
+ {
+  "id": "packaging.ort-package-proof-notice-link",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "[ -f \"$notice\" ] && [ ! -L \"$notice\" ] ||",
+  "replace": "true ||",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "a linked or missing notice must not pass"
+ },
+ {
+  "id": "packaging.ort-appimage-uses-package-proof",
+  "target": "linux/scripts/06-packaging/verify-ort-appimage-payload.sh",
+  "find": "  ort_package_verify_notices \"$root\" \"${root}/${notice_dir}\" proven/licenses/onnxruntime\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-appimage-payload.sh",
+  "why": "the AppImage check must compare its notices with the matched wheel"
+ },
+ {
+  "id": "agents-drift.section5-workflow",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    for rel in tracked(root, [\".github/workflows/*.yml\"]):\n        name = os.path.basename(rel)\n        if not names(name, body):",
+  "replace": "    for rel in tracked(root, [\".github/workflows/*.yml\"]):\n        name = os.path.basename(rel)\n        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "a workflow section 5 omits must fail"
+ },
+ {
+  "id": "agents-drift.section5-script",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    for name in console_scripts(root):\n        if not names(name, body):",
+  "replace": "    for name in console_scripts(root):\n        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "a console script section 5 omits must fail"
+ },
+ {
+  "id": "agents-drift.section5-reads-section5",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    body = sections(agents).get(\"5\", \"\")",
+  "replace": "    body = agents",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "a name elsewhere in AGENTS.md is not section 5 naming it"
+ },
+ {
+  "id": "agents-drift.fence-is-no-heading",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        match = None if fenced else NUMBERED.match(line)",
+  "replace": "        match = NUMBERED.match(line)",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "a heading-shaped line in a code fence must not open a section"
+ },
+ {
+  "id": "agents-drift.whole-names-only",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    return re.search(rf\"(?<![\\w-]){re.escape(name)}(?![\\w-])\", text) is not None",
+  "replace": "    return name in text",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "xci2.yml must not name ci2.yml"
+ },
+ {
+  "id": "agents-drift.pyproject-scripts",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        found.update(toml_doc(root, rel).get(\"project\", {}).get(\"scripts\", {}))",
+  "replace": "        toml_doc(root, rel)",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "pyproject console scripts are console scripts"
+ },
+ {
+  "id": "agents-drift.cargo-bins",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        found.update(_cargo_bins(root, rel))",
+  "replace": "        toml_doc(root, rel)",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "Cargo binaries are console scripts"
+ },
+ {
+  "id": "agents-drift.cmake-installed",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    found.update(_cmake_installed(root))",
+  "replace": "    _cmake_installed(root)",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "installed CMake executables are console scripts"
+ },
+ {
+  "id": "agents-drift.cmake-only-installed",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "                for name in executables & installed}",
+  "replace": "                for name in executables}",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "an executable nothing installs is an internal tool"
+ },
+ {
+  "id": "agents-drift.cmake-variables",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    expanded = {CMAKE_REF.sub(lambda m: variables.get(m.group(1), m.group(0)), name)",
+  "replace": "    expanded = {CMAKE_REF.sub(lambda m: m.group(0), name)",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "a target built from ${PROJECT_NAME} must still count"
+ },
+ {
+  "id": "agents-drift.section1-unit",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if not any(names(name, body) for name in unit):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section1",
+  "why": "a unit section 1 omits must fail"
+ },
+ {
+  "id": "agents-drift.section1-reads-section1",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    body = sections(agents).get(\"1\", \"\")",
+  "replace": "    body = agents",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section1",
+  "why": "a unit named elsewhere is not named by section 1"
+ },
+ {
+  "id": "agents-drift.section1-python",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if rel.count(\"/\") == 1:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section1",
+  "why": "top-level Python packages count"
+ },
+ {
+  "id": "agents-drift.section1-crates",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "            yield (directory, package) if directory else (package,)",
+  "replace": "            continue",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section1",
+  "why": "crates count"
+ },
+ {
+  "id": "agents-drift.section1-dart",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if directory and directory.count(\"/\") <= 1:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section1",
+  "why": "Dart packages count"
+ },
+ {
+  "id": "agents-drift.section1-src",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if len(parts) > 2:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section1",
+  "why": "Src modules count"
+ },
+ {
+  "id": "agents-drift.headings",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    if [line for line in have if line in wanted] != wanted:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh headings",
+  "why": "missing or reordered headings must fail"
+ },
+ {
+  "id": "agents-drift.headings-order",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    if [line for line in have if line in wanted] != wanted:",
+  "replace": "    if not set(wanted) <= set(have):",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh headings",
+  "why": "a reordered set of headings must fail"
+ },
+ {
+  "id": "agents-drift.duplicate-line",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if line in first:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh duplicates",
+  "why": "a repeated long line must fail"
+ },
+ {
+  "id": "agents-drift.duplicate-limit-low",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "DUPLICATE_MIN = 41",
+  "replace": "DUPLICATE_MIN = 42",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh duplicates",
+  "why": "a 41-character repeat is longer than 40"
+ },
+ {
+  "id": "agents-drift.duplicate-limit-high",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "DUPLICATE_MIN = 41",
+  "replace": "DUPLICATE_MIN = 40",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh duplicates",
+  "why": "a 40-character repeat is not longer than 40"
+ },
+ {
+  "id": "agents-drift.docs-page",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if page != listing and not _listed(page, source, text):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh docs",
+  "why": "a page the build list omits must fail"
+ },
+ {
+  "id": "agents-drift.docs-stem-is-exact",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    entry = re.compile(rf\"^\\s*(?:.*<)?{re.escape(stem)}>?\\s*$\", re.MULTILINE)\n    return entry.search(build_list) is not None",
+  "replace": "    return stem in build_list",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh docs",
+  "why": "a page named new is not listed by a line naming newer"
+ },
+ {
+  "id": "agents-drift.docs-config-required",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        raise gate_scope.ScopeError(f\"no {CONFIG}: it declares the docs build list this gate reads\")",
+  "replace": "        return",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh docs",
+  "why": "no declared build list is unusable, not clean"
+ },
+ {
+  "id": "agents-drift.docs-list-required",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        raise gate_scope.ScopeError(f\"{CONFIG} names a docs build list that does not exist: {listing}\")",
+  "replace": "        return",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh docs",
+  "why": "a declared build list that is gone is unusable, not clean"
+ },
+ {
+  "id": "agents-drift.docs-page-posix",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    below = posixpath.relpath(page, source)",
+  "replace": "    below = os.path.relpath(page, source)",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh docs",
+  "why": "os.path.relpath gives backslashes on Windows, so a nested toctree entry looks unlisted"
+ },
+ {
+  "id": "agents-drift.backlog-lai",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if lai.startswith(f\"LAI-{letter}\") and not names(lai, backlog):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh backlog",
+  "why": "an open ID of this repo must be in BACKLOG.md"
+ },
+ {
+  "id": "agents-drift.backlog-letter",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if lai.startswith(f\"LAI-{letter}\") and not names(lai, backlog):",
+  "replace": "        if lai not in backlog:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh backlog",
+  "why": "another repo's letter is not owed here"
+ },
+ {
+  "id": "agents-drift.lai-done-closed",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        if \"Done \" in line:\n            continue",
+  "replace": "        if False:\n            continue",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh backlog",
+  "why": "a Done row is not open"
+ },
+ {
+  "id": "agents-drift.lai-id-cell-only",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "            if ID_CELL.match(cell):",
+  "replace": "            if LAI_ID.search(cell):",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh backlog",
+  "why": "an ID mentioned in another row's prose opens nothing"
+ },
+ {
+  "id": "agents-drift.json-totals",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "\"totals\": {\"findings\": len(findings), \"checks\": checks},",
+  "replace": "\"totals\": {\"findings\": 0, \"checks\": checks},",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh json",
+  "why": "quality-report reads totals.findings"
+ },
+ {
+  "id": "agents-drift.exit-code",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    return 1 if findings else 0",
+  "replace": "    return 0",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh basic docs",
+  "why": "findings must fail the gate"
+ },
+ {
+  "id": "agents-drift.hub-scope",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "        findings = grade(root, HUB, gate_scope.is_hub(root, HUB))",
+  "replace": "        findings = grade(root, HUB, False)",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh hub",
+  "why": "the hub's rulebook has no numbered sections to hold"
+ },
+ {
+  "id": "agents-drift.hub-duplicates",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    findings = list(check_duplicates(agents))\n    if duplicates_only:",
+  "replace": "    findings = []\n    if duplicates_only:",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh hub",
+  "why": "preflight's duplicate-line check must run over the hub"
+ },
+ {
+  "id": "agents-drift.lint-flag-grades",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  _lint_gates_hub_python --root \"${_LINT_GATES_ROOT}\"\n}\n\n# Pure Python",
+  "replace": "  _lint_gates_hub_python\n}\n\n# Pure Python",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh lintgates",
+  "why": "without --root it grades the hub and passes every consumer"
+ },
+ {
+  "id": "agents-drift.lint-flag-registered",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "    run_gate \"agents drift\" _lint_gates_agents_drift\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh lintgates",
+  "why": "the flag must reach the gate"
+ },
+ {
+  "id": "agents-drift.lint-flag-default-off",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "_LINT_GATES_AGENTS_DRIFT=0\n",
+  "replace": "_LINT_GATES_AGENTS_DRIFT=1\n",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh lintgates",
+  "why": "other consumers have no six-section AGENTS.md"
+ },
+ {
+  "id": "lint-gates.agents-drift-input-off",
+  "target": ".github/workflows/lint-gates.yml",
+  "find": "      agents-drift:\n        description: >-\n          Pass --agents-drift: hold AGENTS.md, the docs build list and BACKLOG.md\n          to the tree. Needs the six-section AGENTS.md and quality-report.toml.\n        type: boolean\n        default: false\n",
+  "replace": "      agents-drift:\n        description: >-\n          Pass --agents-drift: hold AGENTS.md, the docs build list and BACKLOG.md\n          to the tree. Needs the six-section AGENTS.md and quality-report.toml.\n        type: boolean\n        default: true\n",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "every other caller stays off until it opts in"
+ },
+ {
+  "id": "lint-gates.agents-drift-passes-flag",
+  "target": ".github/workflows/lint-gates.yml",
+  "find": "          if [ \"${LINT_AGENTS_DRIFT}\" = 'true' ]; then args+=(--agents-drift); fi\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "the input must reach the aggregator"
+ },
+ {
+  "id": "quality-report.agents-drift-no-agents-md",
+  "target": "linux/scripts/quality_report_text.py",
+  "find": "        return missing(\"agents_drift_findings\", \"findings\", LOWER, CODE, source, \"no AGENTS.md\")\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-quality-report.sh",
+  "why": "a tree without AGENTS.md has nothing to measure, so it is not-collected rather than a failed collector"
+ },
+ {
+  "id": "quality-report.agents-drift-counts-findings",
+  "target": "linux/scripts/quality_report_text.py",
+  "find": "        return Metric(\"agents_drift_findings\", total(doc, \"findings\"), \"findings\", LOWER, CODE,",
+  "replace": "        return Metric(\"agents_drift_findings\", 0, \"findings\", LOWER, CODE,",
+  "test": "bash linux/scripts/tests/test-quality-report.sh",
+  "why": "the metric must carry the gate's own count"
+ },
+ {
+  "id": "agents-drift.cargo-claimed-main",
+  "target": "linux/scripts/verify_agents_drift.py",
+  "find": "    claimed = any(row.get(\"path\") == \"src/main.rs\" for row in bins)\n",
+  "replace": "    claimed = False\n",
+  "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
+  "why": "a binary that does not exist cannot be owed a name"
  }
 ]

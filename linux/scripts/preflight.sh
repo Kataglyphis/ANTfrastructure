@@ -48,6 +48,7 @@ KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage context-paths cr
              dead-functions \
              large-files \
              readme-length \
+             agents-drift \
              shellcheck-warnings \
              mutations \
              gate-registry \
@@ -236,6 +237,8 @@ run_check dead-functions "dead shell functions" ${PREFLIGHT_PYTHON} linux/script
 run_check large-files "large data files" ${PREFLIGHT_PYTHON} linux/scripts/verify_large_files.py
 # A README is an overview; detail belongs in docs/. See docs/repository-family.md#the-readme-rule
 run_check readme-length "README length" ${PREFLIGHT_PYTHON} linux/scripts/verify_readme_length.py
+# Over the hub this is only the duplicate-line check. See docs/code-quality-tooling.md#agents-drift-agents-drift
+run_check agents-drift "AGENTS.md repeated lines" ${PREFLIGHT_PYTHON} linux/scripts/verify_agents_drift.py
 run_check shellcheck-warnings "shellcheck warning ratchet" ${PREFLIGHT_PYTHON} linux/scripts/verify_shellcheck_warnings.py
 # See docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded
 : "${PREFLIGHT_MUTATION_SHARD:=}"

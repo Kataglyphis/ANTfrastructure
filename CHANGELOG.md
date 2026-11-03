@@ -13,6 +13,75 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-02 — TensorRT's zlib import
+
+- `ort_host_runtime_needed` accepts `libz.so.1` from the TensorRT provider only, which TensorRT 11 links; other providers and unknown libraries still fail.
+
+## 2026-11-02 — One owner for finished-package ORT path and notice checks
+
+- `06-packaging/ort-package-proof.sh` holds the library collection and notice checks that
+  `verify-ort-appimage-payload.sh` and three consumers carried as copies. `--reject-invalid` and
+  `--reject-links` are off by default. The AppImage check's exit status is unchanged; its
+  diagnostics now use the shared wording.
+## 2026-11-02 — A gate holds consumer AGENTS.md files to their tree
+
+- `linux/scripts/verify_agents_drift.py` fails on a workflow or console script section 5 does not
+  name, a package, crate or `Src` module section 1 does not name, missing template headings, a
+  repeated long line, a docs page outside the build list and an open `LAI-` ID missing from
+  `BACKLOG.md` ([`code-quality-tooling.md`](docs/code-quality-tooling.md#agents-drift-agents-drift)).
+- `run-lint-gates.sh --agents-drift` and `lint-gates.yml`'s `agents-drift` input run it, off by
+  default; the slug `agents-drift` runs only the duplicate-line check over the hub.
+  `quality-report.sh` now collects `agents_drift_findings`. New suite `test-agents-drift.sh`,
+  43 recipes.
+- `BACKLOG.md` records the flaky `WindowsFormatting.ClangFormatCheck.Tests.ps1` and the web lane's
+  `free-disk-space: fast` on 72 GB runners.
+- `BACKLOG.md` CON217 adds CUDA compute capability 7.5, so RTX 20xx cards can run the NVIDIA packages.
+- `docs/gpu-artifact-receipts.md` says how to prove a package on your own GPU, and why a provider profile alone does not.
+- `BACKLOG.md` CON220 records wrong DirectML results that the image checks miss, and the current GPU digests and hosted-lane results.
+- `BACKLOG.md` CON112 records one `deim_dfine_n_coco-v2` export whose bytes differed from the release.
+- `BACKLOG.md` CON218 records that GenAI's default thread count ignores the CPU affinity mask.
+- AGENTS.md Quick Reference names the measurement tools and their docs pages.
+- `verify_agents_drift.py` no longer reports a nested toctree page as unlisted on Windows.
+- `gen1-riscv64-genai.md` and `BACKLOG.md` CON219 record the 4-bit `MatMulNBits` crash on riscv64 RVV.
+- `BACKLOG.md` CON221 asks which of OxidANT's apt installs belong in the images; CON191 and CON197 gain new evidence.
+
+## 2026-11-02 — Python app bundles ship a model lock as one data row
+
+- A `packaging/app.json` `data` row may name a `lock` instead of `from`: both bundle builders copy
+  the lock and every file it names into the row's `to` directory, so a consumer's model file name
+  lives only in its `models.lock`. Empty locks, path rows and missing files fail
+  ([`python-app-bundles.md`](docs/python-app-bundles.md#the-consumers-side-packagingappjson)).
+  The Linux data step moved from a heredoc into `06-packaging/python-app-data.py`. New suites
+  `test-python-app-data.sh` and `PythonApp.BundleLockData.Tests.ps1`, eight recipes.
+
+## 2026-11-02 — Language AI states its bindings
+
+- `docs/language-ai.md` names the bindings that implement `seed`, `json_schema` and stop strings, and the Windows unsupported error.
+
+## 2026-11-02 — quality-report.sh --perf-host
+
+- `--perf-host` runs the latency commands a repo declares under `[[perf.command]]` in
+  `quality-report.toml`, 20 times each inside the CI image on at most 8 pinned CPUs, and grades each
+  median against the tracked `perf/baseline-<cpu-slug>.json`: a regression is beyond max(10 %, 3 x the
+  baseline's spread). `--update-baseline` refuses a spread above 5 %; both modes refuse a dirty tree, a
+  1-minute load above 2 or a chain pidfile
+  ([`docs/fleet-health.md` § perf-host](docs/fleet-health.md#perf-host)). New suite
+  `test-quality-report-perf.sh` and fourteen `quality-report.perf-*` mutation recipes. `lib/genai-model-threads.py`
+  copies a GenAI model with a fixed thread count for those runs.
+- `run-in-ci-image.sh` takes `--user`.
+
+## 2026-11-01 — One canonical COCO class list
+
+- `shared/config/coco-classes.txt` holds the 80 COCO class names, line N for class id N-1, and the
+  `coco-classes` row of `shared-assets.manifest` offers it as an `exact` copy, so the consumers'
+  shared-config checks hold their copies byte-identical
+  ([`shared/config/README.md`](shared/config/README.md#the-coco-class-list)). New suite
+  `test-coco-classes.sh` and three `shared-assets.coco-classes-*` mutation recipes.
+
+## 2026-11-01 — Security audit reclaims the full runner disk
+
+- `security-audit.yml` runs `prepare-linux-ci-host` with `free-disk-space: 'true'`: the fast reclaim let the family-image pull run out of disk in Cargo repos.
+
 ## 2026-11-01 — Windows formatting test fixture
 
 - The fake clang-format checks the source basename, so a temporary parent path containing

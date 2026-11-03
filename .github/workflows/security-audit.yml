@@ -100,6 +100,8 @@ jobs:
         uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-linux-ci-host@develop
         with:
           checkout: 'false'
+          # The fast reclaim can leave the image pull short of disk; the audit builds nothing, so the full reclaim costs only time.
+          free-disk-space: 'true'
 
       - name: Audit in the family image
         if: ${{ steps.plan.outputs.cargo == 'true' }}

@@ -987,7 +987,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4145 entries** over **514 distinct test commands**; both digits are
+manifest holds **4221 entries** over **543 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1564,6 +1564,36 @@ is no allowlist. `tests/test-readme-length.sh` drives both halves; the `readme-l
 mutations prove the limit, the unterminated last line, the missing file, and that
 `run-lint-gates.sh` registers the gate and returns its verdict.
 
+## AGENTS drift (`agents-drift`)
+
+`linux/scripts/verify_agents_drift.py --root <consumer> [--json PATH]` fails when a consumer's
+`AGENTS.md`, docs build list or `BACKLOG.md` no longer names what its tree holds. Exit 0 is clean,
+1 has findings, 2 cannot grade (no `quality-report.toml`, a declared file missing, a malformed
+manifest). `--json` writes `totals.findings`, `totals.checks` and the `items` rows
+`quality-report.sh` reads as `agents_drift_findings`.
+
+| check | fails on |
+| --- | --- |
+| `section5-workflow` | a tracked `.github/workflows/*.yml` that section 5 (Build, run, test) does not name |
+| `section5-script` | a `[project.scripts]` key, a Cargo `[[bin]]` or `src/main.rs` package, or an executable a CMake file both adds and installs, that section 5 does not name |
+| `section1-unit` | a top-level Python package, a Cargo crate, a Dart package at most two directories deep, or a first-level `Src/` or `src/` directory that section 1 names by neither path nor name |
+| `headings` | the numbered headings of `shared/templates/AGENTS.md.template` missing or out of order |
+| `duplicate-line` | a line over 40 characters repeated verbatim |
+| `docs-page` | a `.md` or `.rst` page under `[docs] source`, outside `_`-prefixed directories, that `[docs] build_list` does not list by path or toctree entry |
+| `backlog-lai` | an open `LAI-` ID of the pinned hub's [`language-ai.md`](language-ai.md) missing from `BACKLOG.md`, for the repo its letter maps to (A AccelerANTgine, O OxidANT, P OrchestrANT, F OmniAccelerANT, from the `origin` remote's name) |
+
+- **Where it runs.** In the four AI consumers through `run-lint-gates.sh --agents-drift` and
+  `lint-gates.yml`'s `agents-drift: true`, off for every other caller. Here as the preflight slug
+  `agents-drift`, which only runs `duplicate-line` over the hub's `AGENTS.md`: the rulebook has no
+  numbered sections.
+- **Not covered.** Prose accuracy: a stale sentence that still names the right file passes. A
+  name counts wherever it stands in its section, and a CMake target built from a variable no
+  literal `set()` or `project()` defines is not counted.
+
+Fix a finding by naming the thing where the check looks, or by deleting what no longer exists;
+there is no allowlist. `tests/test-agents-drift.sh` takes group names so each `agents-drift.*`
+recipe proves its check in under a second.
+
 ## Consumer pages against the hub (`doc-dupes --against-hub`)
 
 `docs/scripts/verify_doc_dupes.py --against-hub --root <consumer>` grades a consumer's tracked
@@ -2137,7 +2167,7 @@ graded, `report` is not), `source` command, `status` and, for a set, sorted `mem
 | `allow_rows.<file>`, `allow_budget_total` | rows per tracked `*.allow`; budgets summed from `quality_allow.iter_rows` where every row has a count |
 | `suppressions.<marker>` | one set per marker in `quality_report_text.MARKERS`, over tracked files outside prose and `third_party/` |
 | `agents_md_lines`, `readme_lines` (report) | line counts |
-| `agents_drift_findings` | `verify_agents_drift.py --root . --json PATH` (`totals.findings`); not collected until the pinned hub carries that script |
+| `agents_drift_findings` | [`verify_agents_drift.py`](#agents-drift-agents-drift) `--root . --json PATH` (`totals.findings`); not collected until the pinned hub carries that script |
 
 A set member is `path|marker|whitespace-normalised line|n`, where `n` counts earlier identical
 lines in the file. A moved line keeps its key; a new member regresses even when the count holds.
@@ -2155,6 +2185,8 @@ lines in the file. A moved line keeps its key; a new member regresses even when 
   (`mutations_selected.<name>`, `mutations_caught.<name>` from `verify_mutations.py` report
   lines), `clang-tidy` (`clang_tidy.<name>`, a `file|check` set) and `count` (`<name>`, lines
   matching `pattern`, located through `location`).
+- `[perf]` and `[[perf.command]]`: the `--perf-host` latencies
+  ([declaration](fleet-health.md#perf-host)).
 - `[[metric]]` rows: `kind = "pattern"` (a regex over tracked files under `paths`, filtered by
   `include` and `exclude` globs, set-valued) or `kind = "ruff"` (the locked Ruff over `paths`
   with `config` overrides).
@@ -2188,7 +2220,9 @@ metrics are commonly not collected there.
 
 Blind spots: suppressions are literal marker text, so another spelling is not counted;
 `summary.md` is not graded; a metric absent from the baseline is not graded; nothing attributes
-a change to a commit. `test-quality-report.sh` covers a rise, a fall, a direction, a set swap, a
+a change to a commit. `--perf-host [--update-baseline]` instead runs the repo's declared
+latencies in the CI image against a per-CPU baseline:
+[`fleet-health.md` § perf-host](fleet-health.md#perf-host). `test-quality-report.sh` covers a rise, a fall, a direction, a set swap, a
 moved set member, a missing collector, an absent artifact, a malformed compare file and the queue.
 
 ## Windows Pester coverage
@@ -2594,7 +2628,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 1032 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1034 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

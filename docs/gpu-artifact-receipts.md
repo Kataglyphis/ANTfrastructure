@@ -207,6 +207,28 @@ repeated results to each other. It retains the schema, bounds and one-to-one tol
 checks without reapplying the CPU-only two-cats score oracle to a GPU reference.
 Pairwise checks must not replace the default CPU-baseline checks.
 
+## A package on your own GPU
+
+No hosted runner has a GPU, so a package has run on one only where someone ran it. On Windows, unpack
+the package and run its detector on ModelANT's `contracts/fixtures/two_cats.jpg`, on the CPU and then
+on the GPU:
+
+| Repository | Command |
+| --- | --- |
+| OxidANT | `$env:KATAGLYPHIS_ORT_DEVICE='directml'; oxidant-directml.cmd onnx-detect --image two_cats.jpg --output gpu.json --profile gpu-prof --repeat-output gpu-repeat.json` |
+| AccelerANTgine | `AccelerANTgine_demo.exe --device directml --device-id 0 --detector-image two_cats.jpg --detector-output gpu.json --detector-repeat-output gpu-repeat.json --profile gpu-prof` |
+| OmniAccelerANT | `$env:KATAGLYPHIS_ORT_DEVICE='directml'; omni_accelerant.exe --detect-check two_cats.jpg`, exit 0 with two cats |
+| OrchestrANT | `scripts/diagnostics/detector_parity.py` on the bundle's `runtime/python.exe`; its `--device` has no `directml` yet |
+
+Compare with `compare_detector_parity.py cpu.json gpu.json`, then check the GPU run's profile with
+`verify_ort_profile.py PROFILE.json --device directml`. Take both. On 2026-11-02 an RX 9070 XT ran
+`deim_dfine_n_coco-v1` with every profiled operator on `DmlExecutionProvider` and returned no
+detection, because DirectML computes MatMul by a 1-D vector wrongly; v2 returns the CPU's detections.
+
+To build a GPU package yourself, run the repository's Windows build inside `:winamd64-nvidia` or
+`:winamd64-rocm`: AccelerANTgine's `Invoke-ContainerBuild.ps1 -OrtVariant nvidia|amd -Image IMAGE`
+or OmniAccelerANT's `Build-Windows.ps1 -OrtProvider cuda|directml`.
+
 ## Repeated ORT profile runs
 
 `python3 shared/python/verify_ort_profile.py PROFILE.json --device migraphx --min-runs 2`

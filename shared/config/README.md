@@ -258,6 +258,16 @@ description, CSP, Open Graph and app-only scripts differ. `flutter-web-htaccess`
 for the Apache template in `linux/webserver/templates/`, which jotrockenmitlocken deploys as
 `web/.htaccess` under its own header.
 
+## The COCO class list
+
+`coco-classes` is an `exact` row for `coco-classes.txt`: the 80 COCO class names the family's
+detectors report, one per line, so line N is class id N-1. It has no header because every
+loader reads it whole. OxidANT, AccelerANTgine and OrchestrANT each hold a copy beside the code
+that embeds or loads it, under their own path in `.antfrastructure-shared.manifest`, and their
+shared-config check fails on a drifted copy. OmniAccelerANT keeps no copy: it asks OxidANT's
+`detector_labels()`. `linux/scripts/tests/test-coco-classes.sh` pins the count, the exact names
+and the row's mode.
+
 ## The bash twin
 
 `sync-shared-config.sh` is a full reimplementation, not a wrapper, and it is

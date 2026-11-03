@@ -11,6 +11,7 @@ ENGINE=""
 PLATFORM=""
 WORKDIR="/workspace"
 NAME=""
+USER_SPEC=""
 KEEP=0
 MOUNT_HUB=0
 CMD=()
@@ -25,6 +26,7 @@ while [ "$#" -gt 0 ]; do
     --platform) PLATFORM="${2:?--platform needs a value}"; shift 2 ;;
     --workdir)  WORKDIR="${2:?--workdir needs a value}"; shift 2 ;;
     --name)     NAME="${2:?--name needs a value}"; shift 2 ;;
+    --user)     USER_SPEC="${2:?--user needs a value}"; shift 2 ;;
     --keep|--keep-container) KEEP=1; shift ;;
     --mount-hub-scripts) MOUNT_HUB=1; shift ;;
     --) shift; CMD=("$@"); break ;;
@@ -45,6 +47,7 @@ ARGS=(run --rm)
 [ "${KEEP}" -eq 0 ] || ARGS=(run)
 [ -z "${NAME}" ] || ARGS+=(--name "${NAME}")
 [ -z "${PLATFORM}" ] || ARGS+=(--platform "${PLATFORM}")
+[ -z "${USER_SPEC}" ] || ARGS+=(--user "${USER_SPEC}")
 ARGS+=(-v "${REPO_ROOT}:/workspace" -w "${WORKDIR}")
 if [ "${MOUNT_HUB}" -eq 1 ]; then
   ARGS+=(-v "$(cd "${_SCRIPT_DIR}/../.." && pwd):/opt/kataglyphis-scripts:ro")

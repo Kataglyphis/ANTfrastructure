@@ -29,6 +29,10 @@ closed by measurement:
 * **`generate()` produces sane tokens** — proven 2026-09-03; see
   [Tier 4, measured](#tier-4-measured-2026-09-03).
 
+**Not covered: 4-bit quantized models on RVV.** Tier 4 used an fp32 model. OxidANT's SmolLM2-135M
+(`MatMulNBits`, `bits=4`, `accuracy_level=4`) dies with SIGSEGV in that kernel under QEMU, and passes
+with `ORT_MLAS_RISCV_FORCE_SCALAR=1` (CON219).
+
 The negative data point that motivated the doubt,
 [onnxruntime-genai#594](https://github.com/microsoft/onnxruntime-genai/issues/594),
 is a RISC-V build (Phi-3 int4 on a LicheePi4A / XuanTie C910) that **compiled,

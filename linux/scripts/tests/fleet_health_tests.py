@@ -150,7 +150,7 @@ class FleetHealthTests(unittest.TestCase):
     def test_a_new_suppression_site_regresses(self) -> None:
         def add(metrics: dict[str, Any]) -> None:
             metrics["suppressions.no_qa"].update(value=2, members=[
-                "src/a.py|import os  # noqa: F401|0", "src/b.py|x = 1  # noqa: E501|0"])
+                "src/a.py|import os|0", "src/b.py|x = 1|0"])
         self.reset_measurements(add)
         rc, out, record = self.run_main("--repos", "OrchestrANT", "--compare", self.baseline1)
         self.assertEqual(rc, 1, out)

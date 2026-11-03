@@ -5,6 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${script_dir}/../01-core/platform.sh"
 source "${script_dir}/appimage-verification.sh"
 source "${script_dir}/ort-runtime-bundle.sh"
+source "${script_dir}/ort-package-proof.sh"
 declare image target work
 appimage_require_args "$#" 5 "$0" 'APPIMAGE ARCH LIB_DIR NOTICE_DIR nvidia|amd'
 appimage_init "$1" "$2"
@@ -31,34 +32,12 @@ appimage_create_work
     case "$resolved/" in "$root/"*) ;; *) echo 'AppImage path escapes its extracted root' >&2; exit 1 ;; esac
   done
   lib="${root}/${lib_dir}"
-  for name in libonnxruntime.so.1 libonnxruntime_providers_shared.so "$provider"; do
-    [ -f "${lib}/${name}" ] || { printf 'AppImage is missing %s\n' "$name" >&2; exit 1; }
-  done
   libraries=()
-  shopt -s nullglob
-  for path in "$lib"/libonnxruntime*.so*; do
-    [ -f "$path" ] || continue
-    resolved="$(realpath -e "$path")"
-    case "$resolved" in "$root/"*) ;; *) echo 'AppImage library escapes its extracted root' >&2; exit 1 ;; esac
-    name="$(basename "$path")"
-    case "$name" in
-      libonnxruntime_providers_*)
-        [ ! -L "$path" ] || { printf 'AppImage provider is a symlink: %s\n' "$name" >&2; exit 1; } ;;
-      libonnxruntime.so*)
-        [[ "$(basename "$resolved")" =~ ^libonnxruntime\.so(\.[0-9]+)*$ ]] || {
-          printf 'AppImage core aliases a different component: %s\n' "$name" >&2; exit 1;
-        } ;;
-    esac
-    libraries+=(--library "$path")
-  done
+  ort_package_collect_libraries "$root" "$lib" libraries libonnxruntime.so.1 libonnxruntime_providers_shared.so "$provider"
   mkdir proven
   python3 "${script_dir}/stage-ort-wheel-licenses.py" --require-unstripped \
     --wheel-dir "${ORT_CHAIN_WHEEL_DIR:-/opt/onnxruntime-wheels}" --destination proven \
     --strip "${STRIP:-strip}" "${libraries[@]}"
-  for name in LICENSE ThirdPartyNotices.txt; do
-    notice="${root}/${notice_dir}/${name}"
-    [ -f "$notice" ] && [ ! -L "$notice" ] || { printf 'Missing or symlinked AppImage notice: %s\n' "$name" >&2; exit 1; }
-    cmp "$notice" "proven/licenses/onnxruntime/${name}"
-  done
+  ort_package_verify_notices "$root" "${root}/${notice_dir}" proven/licenses/onnxruntime
   printf 'PASS: finished AppImage ORT payload and notices match one GPU wheel\n'
 )

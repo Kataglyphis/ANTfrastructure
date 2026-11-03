@@ -16,6 +16,9 @@ it is not a fresh assertion about a mutable tag or either GPU variant.
 Earlier Windows and GPU measurements remain dated evidence in their individual entries.
 Decisions and checked closures live in [`docs/image-decisions.md`](docs/image-decisions.md).
 **Re-derive before acting; source completion, image publication and device execution are separate.**
+**Digests read 2026-11-02:** `:latest-nvidia` is `70bc45db…`, `:latest-rocm` `05518138…` (created 2026-10-28),
+`:winamd64-nvidia` `b472f91b…` and `:winamd64-rocm` `774af209…`. Entries that cite the older Linux `a5d68fbe…` or
+`0e9dec34…` were not read again on the current digests.
 
 ## Protocol
 
@@ -46,6 +49,10 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
 - **CPU image and package handoff findings:** CON188–193 cover DEB host-library versioning,
   optional offline inputs, auditwheel and the optional DNNL provider. These also affect
   the CPU baseline that GPU consumers must continue to support.
+- **CUDA architectures:** CON217 adds Turing, so RTX 20xx cards can run the NVIDIA packages.
+- **Results on a GPU:** CON220 covers wrong DirectML output that the provider checks do not see.
+- **GenAI threads:** CON218 covers the default thread count on pinned CPUs.
+- **riscv64 ORT:** CON219 covers the 4-bit `MatMulNBits` crash on RVV.
 - **Image readiness and capacity:** CON90 and CON174 track the ROCm Python rollout and
   measured disk requirements for GPU consumer builds.
 
@@ -157,6 +164,10 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
       files byte-identical to `deim_dfine_n_coco-v1`; again with SHA-pinned actions (1f37627, run
       39394810441). Left: the next tag publishes from it, and
       the 3.15 `:latest`, where pip's additions resolve from cp315 or abi3 wheels (read 2026-10-20).
+      **2026-11-02, one export differed:** `deim_dfine_n_coco-v2` built twice to `.onnx` sha256 `0bf16e85…` (release
+      run 41498847541, rebuild 41511367119), but candidate run 41431013995 gave `0c7b4141…`: the same graph, with 136
+      of 342 initializers differing in their bytes. The cause is unknown. Lock the published file's hash;
+      the DirectML parity of 2026-11-02 also passed on the candidate.
 
 - [ ] **CON101 — the dartdoc guide renderer's parser comes from the image** [S, ★★]. Since
       2026-10-19 `dartdoc_build_prepare_python_env` (`linux/scripts/lib/dartdoc-build.sh`) uses
@@ -432,6 +443,51 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 ## Open — Linux image (all arches)
 
+- [ ] **CON217 — build CUDA compute capability 7.5, so RTX 20xx cards run the NVIDIA packages** [M, ★★].
+      Owner decision 2026-11-02: add `75` (Turing: T4, RTX 20xx) to `CUDA_ARCHITECTURES`, today
+      `86;87;89;120`. Found the same day on an RTX 2080 (driver 595.58.03) with OxidANT's Linux x64
+      NVIDIA package (run 41415056257): the package runs on the CPU and `CUDAExecutionProvider`
+      creates its session, then the first node stops with `cudaErrorNoKernelImageForDevice`, so there
+      is no detection and no CPU fallback. There is no PTX to fall back on, and no other entry reaches
+      major 7. Edit the five places in AGENTS.md's "To add or remove one" together. Each entry
+      compiles every ONNX Runtime and OpenCV CUDA kernel once more, so record the build time and
+      image size of the rebuild. Done when a package from the new NVIDIA image, on that RTX 2080,
+      passes `shared/python/compare_detector_parity.py` against the CPU with its operators on
+      `CUDAExecutionProvider`. Check Windows `:winamd64-nvidia` on such a card separately; the Linux
+      run says nothing about it.
+
+- [ ] **CON220 — the Windows image checks do not see wrong DirectML results** [M, ★★★].
+      Found 2026-11-02 on an RX 9070 XT with DirectML 1.15.4, the DLL in AccelerANTgine's and
+      OmniAccelerANT's AMD packages: `deim_dfine_n_coco-v1` ran with every profiled operator on
+      `DmlExecutionProvider` and returned no detection, where the CPU finds two cats. MatMul of a
+      matrix by a 1-D vector computes wrongly. ModelANT's `deim_dfine_n_coco-v2` (8b08b7e) rewrites it
+      through Unsqueeze/MatMul/Squeeze, so that model runs; any other graph of this shape still fails
+      silently. `Assert-OrtDmlProviderSmoke` in `Test-Container.ps1` only asks whether the provider is
+      available. Not known: whether DirectML or ORT's provider is at fault, and whether NVIDIA cards
+      show it. Add a small MatMul graph compared against the CPU wherever a DirectML adapter exists,
+      try a newer DirectML, and report it upstream. Done when an image check fails on this shape on
+      that card, or a shipped DirectML passes it.
+
+- [ ] **CON218 — GenAI's default thread count ignores the CPU affinity mask** [S, ★★].
+      Found 2026-11-02 by `--perf-host` on an AMD Ryzen 9 5950X pinned to 8 CPUs: the shipped SmolLM2-135M
+      config gave about 92 tok/s and 143 ms to first token, with TTFT spread above 8 %. A copy fixed to 7
+      threads (`lib/genai-model-threads.py`) gave about 314 tok/s and 20 ms, and the perf baselines use that
+      copy, so their text figures are not the shipped default. Done when a shipped config respects the
+      mask, or the consumers set a bounded thread count, and a measurement quotes the unmodified model.
+- [ ] **CON219 — ORT reads a null scale pointer in 4-bit `MatMulNBits` on riscv64 RVV** [M, ★★★].
+      Found 2026-11-02 with OxidANT's SmolLM2-135M contract test under QEMU, image index `7d4d4129`: a fault in
+      `libonnxruntime.so.1.31.0` at `0x150150c` on `flw fa5, 0x0(s10)`, `s10=0x1f80`. In ORT v1.31.0's
+      `matmul_nbits.cc`, `UseSharedPrePackedBuffers` sets `scales_are_packed_` with a 4-bit exception guarded by
+      `MLAS_TARGET_ARM64`, while `PrePack` uses `!MLAS_TARGET_AMD64_IX86`. That cause comes from reading the source;
+      no patched build was tested. Stack size and vector length are ruled out. Shipped riscv64 images are exposed
+      for such models. OxidANT's lane forces scalar MLAS for that one test (`63828b5`). Done when a patched chain
+      build passes the test on RVV and OxidANT drops the override; an image chain is an owner decision.
+- [ ] **CON221 — decide which tools OxidANT's lanes install with apt belong in the images** [S, ★★].
+      Found 2026-11-02: `scripts/linux/clippy-windows.sh` installs `gcc-mingw-w64-x86-64` when
+      `x86_64-w64-mingw32-gcc` is missing, which it is in `:latest` amd64, and the NVIDIA and AMD package lanes
+      (`linux-nvidia-gpu-build.yml`, `linux-x64-amd-gpu.yml`) install `libgtk-4-dev`. Those installs are
+      unpinned and need the network. Other variants and arches were not probed. Done when each tool is in
+      the image with a size figure, or the reason it stays out is recorded and the lane keeps its install.
 - [ ] **CON207 — investigate Linux AMD GPU support for GenAI** [M, ★★]. The cached
       `:latest-rocm` amd64 image contains the vision ONNX Runtime MIGraphX provider, but its
       GenAI tree has only the generic library and llguidance; `60-build-genai.sh` builds GenAI
@@ -548,6 +604,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       resolves `gtk4` 4.22.4 and `graphene-gobject-1.0` 1.10.8 through `pkg-config --exists`
       as uid 1001 under user-mode emulation (2026-10-30). This is not a GUI build or the full
       development-surface contract; retain the native arm64 checks.
+      **2026-11-02:** OxidANT's GPU workflows still install the package
+      (`linux-x64-amd-gpu.yml`, `linux-nvidia-gpu-build.yml`). Runs 41517659698 (`:latest-rocm`
+      `05518138…`) and 41517653860 (`:latest-nvidia` `70bc45db…`, x64) did so, which does not show
+      whether these digests still need it. Remove both installs with this fix.
 
 - [ ] **CON176 — verify the Vulkan development surface in GPU consumer images** [S, ★★].
       On 2026-10-30 the cached amd64 `:latest-nvidia` (`0e9dec34…`) and `:latest-rocm`
@@ -562,6 +622,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       contains `/usr/include/vulkan/vulkan.h` and resolves `vulkan` 1.4.341 through
       `pkg-config --exists` as uid 1001 under user-mode emulation (2026-10-30). That does not
       prove a consumer build.
+      **2026-11-02:** OmniAccelerANT's `linux-gpu-candidates.yml` installs no Vulkan package, and its AMD and
+      arm64 jobs are green on the current digests (41517668512). Whether those builds use the headers is not read.
 
 - [ ] **CON177 — verify ShellCheck in the ROCm consumer image** [S, ★★]. The cached amd64
       `:latest-rocm` (`a5d68fbe…`) did not have `shellcheck` on PATH on 2026-10-30, while
@@ -658,6 +720,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       glibc loader paths. An explicit DNNL session in the same bundle reported the missing
       `libdnnl.so.3` and fell back to `CPUExecutionProvider`, despite listing DNNL as
       available; that proves neither DNNL acceleration nor its clean-host behavior.
+      On 2026-11-02 `--perf-host` reported the DNNL rows of AccelerANTgine and OxidANT as not collected
+      (`ProviderUnavailable`), and the AI-fleet goal's DNNL proof on amd64 stays open until this is resolved.
 
 - [ ] **CON192 — decide whether the Windows x64 CPU image should cache locked app dependencies** [S, ★★].
       On 2026-10-30 the cached `:winamd64` registry image digest
@@ -1276,6 +1340,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       detector's CPU baseline, repeated same-session output parity and a MIGraphX model
       operator in every GPU run. Record the device, driver and image digest, and do not
       treat benchmark-skip or other diagnostic overrides as a passing image gate.
+      **2026-11-02:** `deim_dfine_n_coco-v2` (`0bf16e85…`) rewrites a MatMul for DirectML and has not run on this
+      device with MIGraphX. Use it for the next attempt.
 
 - [ ] **CON201 — assess Media Foundation availability in the Windows AMD GPU image** [M, ★★].
       On 2026-10-31, the cached `:winamd64-rocm` registry image digest
@@ -1353,7 +1419,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       install it from the network. The existing code-quality documentation also records this
       first-use install. Pin and install a cargo-expand release compatible with the image's
       Rust toolchain and Flutter Rust Bridge generator (the earlier offline prototype used
-      cargo-expand 1.0.116), record its licence and source, and
+      cargo-expand 1.0.116; OxidANT's `frb-codegen.sh` pins and verifies 1.0.127 since 2026-11-01 and can
+      drop that install once the image carries it), record its licence and source, and
       verify an offline generation run in a fresh image. Check Linux ARM and the NVIDIA and
       AMD image variants separately; this observation does not establish their contents.
       FRB 2.13.0 also invokes full Cargo metadata, including dependencies for other target
@@ -1381,6 +1448,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       CUDA provider under user-mode QEMU. The image's Python ORT also ran its bundled sigmoid
       sample using CPU, while advertising CUDA; the image retains the CPU default. These checks
       do not prove requested consumer linking, chain runtime selection or GPU execution.
+      **2026-11-02:** the consumers choose it themselves until then: AccelerANTgine's
+      `scripts/linux/ci-gpu-candidate.sh` and the `ORT_LIB_LOCATION` in OmniAccelerANT's `linux-gpu-candidates.yml`.
 
 - [ ] **CON174 — measure GPU image disk needs for consumer workflows** [M, ★★]. On
       2026-10-30 the locally cached amd64 NVIDIA and ROCm images reported 53.24 GB and
@@ -1394,6 +1463,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11`
       reported 36.12 GB image size and 17.22 GB compressed blobs in nerdctl. This is not a
       measurement of build or runner peak disk use.
+      **2026-11-02:** the GPU lanes of all four consumers completed on hosted runners in their release
+      dry runs (AccelerANTgine 41443288812, OmniAccelerANT 41482481579, OrchestrANT 41491524238,
+      OxidANT 41502007839). AccelerANTgine's Linux x64 job in the first failed during the image pull,
+      apparently out of disk (the log message was cut off), and passed on rerun. OmniAccelerANT's AMD
+      job hit the 180-minute timeout once (41417020203); it did not recur and its cause is unknown.
+      The `:latest-rocm` pull took about 9 minutes (41517659698). Peak disk use is still not measured.
 
 - [ ] **CON131 — pwsh in the Linux image; then OrchestrANT's `benchmarks.yml` contract job moves into
       `:latest`** [S, ★★]. Found with CON124 (2026-10-20): in `:latest` the contract job's 41 PowerShell
@@ -1894,6 +1969,16 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only); the pin stays on 9.1.0.
 
 ## Open — hub tooling and the dev host
+
+- [ ] **CON215 — `WindowsFormatting.ClangFormatCheck.Tests.ps1` flakes on its temp path** [S, ★].
+      Its fake `clang-format` matches "bad" anywhere in its argument, and the full temp path can
+      contain it: about 0.7 % of runs fail. Match the file's own name. Edit it only once the
+      ai-fleet goal, which freezes existing files under `windows/scripts/tests/`, has closed.
+
+- [ ] **CON216 — the web lane's `free-disk-space: fast` can leave too little disk for the image** [S, ★★].
+      On a 72 GB hosted runner the image pull can run out of disk after the fast reclaim. Measure
+      the free space after the pull on that runner size, then choose `true` there or a checked
+      floor before the pull.
 
 - [ ] **CON208 — `coverage_llvm_generate_profile` ignores the suite's exit status** [S, ★★].
       Found 2026-10-31 by `test-lib-coverage.sh`: a suite that fails but writes its profile

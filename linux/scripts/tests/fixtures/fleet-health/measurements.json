@@ -1,6 +1,6 @@
 {"schema_version": 1, "repo": "Kataglyphis/@REPO@", "sha": "@SHA@", "verdict": "ok", "problems": [], "metrics": {
   "ruff_findings": {"value": 3, "unit": "findings", "better": "lower", "class": "code", "source": "ruff check", "status": "collected"},
-  "suppressions.no_qa": {"value": 1, "unit": "sites", "better": "lower", "class": "code", "source": "git grep", "status": "collected", "members": ["src/a.py|import os  # noqa: F401|0"]},
+  "suppressions.no_qa": {"value": 1, "unit": "sites", "better": "lower", "class": "code", "source": "git grep", "status": "collected", "members": ["src/a.py|import os|0"]},
   "agents_md_lines": {"value": 100, "unit": "lines", "better": "lower", "class": "report", "source": "wc -l AGENTS.md", "status": "collected"},
   "agents_drift_findings": {"value": null, "unit": "findings", "better": "lower", "class": "code", "source": "verify_agents_drift.py", "status": "not-collected", "reason": "the pinned hub has no verify_agents_drift.py yet"},
   "tests_passed.linux-x64": {"value": null, "unit": "tests", "better": "higher", "class": "code", "source": "junit", "status": "not-collected", "reason": "no local file and --offline skips the artifact"}}}

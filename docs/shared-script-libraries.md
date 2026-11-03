@@ -1162,7 +1162,7 @@ bash third_party/ANTfrastructure/linux/scripts/run-in-ci-image.sh . -- bash scri
 ```
 
 `<repo-root> [--engine docker|nerdctl] [--platform ...] [--workdir ...]
-[--mount-hub-scripts] [--name N] [--keep] -- <command...>`.
+[--mount-hub-scripts] [--name N] [--user U[:G]] [--keep] -- <command...>`.
 
 Every consumer README, every "reproducing CI locally" section and half the agent
 prompts carried the same hand-typed `docker run`, and they had all drifted: a
@@ -1255,6 +1255,11 @@ are the consumer's own, and dropping the whole prefix excluded them silently.
 The pin *preconditions* the copies carried ("does the pinned `lint-secrets.sh`
 understand a scan root yet?") are gone by construction: this script ships in the
 same commit as the gates it calls.
+
+**`--agents-drift`** (opt-in) adds
+[`verify_agents_drift.py`](code-quality-tooling.md#agents-drift-agents-drift) over the consumer:
+only a repo with the six-section `AGENTS.md` and a `quality-report.toml` passes it, so only the
+four AI consumers turn it on.
 
 **`--ratchets`** (opt-in, 2026-09-14) adds the eight measurement gates that take
 `--root` — `verify_code_size`, `verify_code_complexity`, `verify_dead_functions`,
