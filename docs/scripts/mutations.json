@@ -34559,5 +34559,37 @@
   "replace": "    *) ;;\n",
   "test": "bash linux/scripts/tests/test-asset-mirror.sh",
   "why": "a 403 from a bad key or a dead mirror would look like an ordinary miss"
+ },
+ {
+  "id": "python-ci.image-leg-refuses-outside-image",
+  "target": "linux/scripts/ci-image-leg.sh",
+  "find": "if [ -z \"${mm}\" ] || ! command -v \"python${leg}\" >/dev/null 2>&1; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-ci-image-leg.sh",
+  "why": "outside the image uv would download an unpinned interpreter; does not prove a real image ships both"
+ },
+ {
+  "id": "python-ci.image-leg-binds-uv",
+  "target": "linux/scripts/ci-image-leg.sh",
+  "find": "export UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=\"${venv}\" UV_PYTHON=\"${venv}/bin/python\"",
+  "replace": "export UV_PYTHON_DOWNLOADS=never",
+  "test": "bash linux/scripts/tests/test-ci-image-leg.sh",
+  "why": "unbound, uv run picks its own environment and interpreter instead of the leg's"
+ },
+ {
+  "id": "python-ci.image-leg-picks-its-interpreter",
+  "target": "linux/scripts/ci-image-leg.sh",
+  "find": "pinnedt) leg=\"${mm}t\" ;;",
+  "replace": "pinnedt) leg=\"${mm}\" ;;",
+  "test": "bash linux/scripts/tests/test-ci-image-leg.sh",
+  "why": "a free-threaded leg on the GIL build would prove nothing about X.Yt"
+ },
+ {
+  "id": "python-ci.image-leg-keeps-status",
+  "target": "linux/scripts/ci-image-leg.sh",
+  "find": "exec \"$@\"",
+  "replace": "\"$@\" || true",
+  "test": "bash linux/scripts/tests/test-ci-image-leg.sh",
+  "why": "a failing check must fail the leg"
  }
 ]

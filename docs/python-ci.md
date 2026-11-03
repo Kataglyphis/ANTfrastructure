@@ -130,6 +130,11 @@ into `linux-x64.yml` and `linux-arm64.yml` the same day; OrchestrANT followed.
 - leaves the docs build to `x64` and skips static analysis: both steps carry
   `if: matrix.arch != 'riscv64'`.
 
+A lane outside these reusable workflows reaches the image's interpreters through
+`linux/scripts/ci-image-leg.sh pinned|pinnedt <venv-dir> <command...>`: it refuses outside the
+image, builds a fresh venv of X.Y or X.Yt, binds uv to it with downloads off and runs the command.
+Suite: `test-ci-image-leg.sh`. DocumANTation's `linux-x64.yml` runs its checks through it.
+
 Pass `bench-gate: true` to make the benchmarks a real gate: each leg then runs `pytest bench/`
 when `bench/` exists and fails on its failure, and a missing `bench/` prints that the suite was
 skipped. The default keeps the old best-effort `bench/demo_pytest_benchmark.py` run, whose
