@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from subprocess import CompletedProcess
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 MODULE = Path(__file__).resolve().parents[1] / "attach_release_assets.py"
 spec = importlib.util.spec_from_file_location("attach_release_assets", MODULE)
@@ -33,7 +33,9 @@ class AttachTest(unittest.TestCase):
     @patch.object(
         subject, "api", return_value={"id": 7, "tag_name": "v1.2.3", "draft": False}
     )
-    def test_upload_exact_files_without_clobber(self, _api, _tag, _assets, run) -> None:
+    def test_upload_exact_files_without_clobber(
+        self, _api: MagicMock, _tag: MagicMock, _assets: MagicMock, run: MagicMock
+    ) -> None:
         self.call()
         command = run.call_args.args[0]
         self.assertEqual(command[:5], ["gh", "release", "upload", "v1.2.3", "--repo"])
@@ -48,7 +50,9 @@ class AttachTest(unittest.TestCase):
     @patch.object(
         subject, "api", return_value={"id": 7, "tag_name": "v1.2.3", "draft": False}
     )
-    def test_collision_refuses_all_uploads(self, _api, _tag, _assets, run) -> None:
+    def test_collision_refuses_all_uploads(
+        self, _api: MagicMock, _tag: MagicMock, _assets: MagicMock, run: MagicMock
+    ) -> None:
         with self.assertRaises(ValueError):
             self.call()
         run.assert_not_called()
@@ -59,7 +63,9 @@ class AttachTest(unittest.TestCase):
     @patch.object(
         subject, "api", return_value={"id": 7, "tag_name": "v1.2.3", "draft": False}
     )
-    def test_wrong_commit_refuses_upload(self, _api, _tag, _assets, run) -> None:
+    def test_wrong_commit_refuses_upload(
+        self, _api: MagicMock, _tag: MagicMock, _assets: MagicMock, run: MagicMock
+    ) -> None:
         with self.assertRaises(ValueError):
             self.call()
         run.assert_not_called()
@@ -70,13 +76,15 @@ class AttachTest(unittest.TestCase):
     @patch.object(
         subject, "api", return_value={"id": 7, "tag_name": "v1.2.3", "draft": True}
     )
-    def test_draft_refuses_upload(self, _api, _tag, _assets, run) -> None:
+    def test_draft_refuses_upload(
+        self, _api: MagicMock, _tag: MagicMock, _assets: MagicMock, run: MagicMock
+    ) -> None:
         with self.assertRaises(ValueError):
             self.call()
         run.assert_not_called()
 
     @patch.object(subject.subprocess, "run")
-    def test_dry_run_makes_no_github_call(self, run) -> None:
+    def test_dry_run_makes_no_github_call(self, run: MagicMock) -> None:
         self.call(True)
         run.assert_not_called()
 
@@ -87,7 +95,7 @@ class AttachTest(unittest.TestCase):
         subject, "api", return_value={"id": 7, "tag_name": "v1.2.3", "draft": False}
     )
     def test_check_only_verifies_tag_without_upload(
-        self, _api, tag, listing, run
+        self, _api: MagicMock, tag: MagicMock, listing: MagicMock, run: MagicMock
     ) -> None:
         subject.attach("owner/repo", "v1.2.3", SHA, None, False, True)
         tag.assert_called_once_with("owner/repo", "v1.2.3")
@@ -101,7 +109,7 @@ class AttachTest(unittest.TestCase):
         subject, "api", return_value={"id": 7, "tag_name": "v1.2.3", "draft": False}
     )
     def test_check_only_rejects_expected_name_collision(
-        self, _api, _tag, _assets, run
+        self, _api: MagicMock, _tag: MagicMock, _assets: MagicMock, run: MagicMock
     ) -> None:
         with self.assertRaises(ValueError):
             subject.attach(
@@ -110,7 +118,7 @@ class AttachTest(unittest.TestCase):
         run.assert_not_called()
 
     @patch.object(subject, "api")
-    def test_annotated_tag_is_peeled(self, api) -> None:
+    def test_annotated_tag_is_peeled(self, api: MagicMock) -> None:
         api.side_effect = [
             {"object": {"type": "tag", "sha": "b" * 40}},
             {"object": {"type": "commit", "sha": SHA}},
@@ -128,7 +136,7 @@ class AttachTest(unittest.TestCase):
             self.call(True)
 
     @patch.object(subject.subprocess, "run")
-    def test_asset_pagination_reads_every_page(self, run) -> None:
+    def test_asset_pagination_reads_every_page(self, run: MagicMock) -> None:
         run.return_value = CompletedProcess(
             [], 0, stdout='[[{"name":"one"}],[{"name":"two"}]]'
         )

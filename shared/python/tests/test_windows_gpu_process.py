@@ -18,7 +18,7 @@ process = importlib.import_module("windows_gpu_process")
 
 class GpuProcess(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt", "requires Windows taskkill")
-    def test_timeout_terminates_child_tree(self):
+    def test_timeout_terminates_child_tree(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             child = (

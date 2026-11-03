@@ -70,7 +70,8 @@ class WindowsInstallerPayloadTests(unittest.TestCase):
         def fake_extract(command: str, *, timeout: int) -> None:
             self.assertEqual(timeout, 180)
             match = re.search(r' TARGETDIR="([^"]+)" /qn /norestart$', command)
-            self.assertIsNotNone(match, command)
+            if match is None:
+                self.fail(command)
             target = Path(match.group(1))
             self.assertEqual(target.parent.parent, parent)
             (target / "demo.exe").write_bytes(b"synthetic")

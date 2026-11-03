@@ -13,11 +13,20 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from types import TracebackType
+from typing import NoReturn
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 driver = importlib.import_module("windows_clean_gpu_receipt")
+
+
+def require_pwsh() -> str:
+    path = shutil.which("pwsh")
+    if path is None:
+        raise unittest.SkipTest("pwsh is required")
+    return path
 
 
 class CleanReceiptTest(unittest.TestCase):
@@ -82,7 +91,7 @@ class CleanReceiptTest(unittest.TestCase):
         self.assertEqual(list(self.work.glob("windows-gpu-clean-*")), [])
 
     def test_success_receipt_binds_the_unmodified_packages(self) -> None:
-        def run(command, *, timeout, env):
+        def run(command: list[str], *, timeout: float, env: dict[str, str]) -> None:
             self.assertEqual(command[-1], str(self.script))
             self.assertEqual(timeout, 1)
             self.assertEqual(env["GPU_VENDOR"], "amd")
@@ -147,7 +156,7 @@ class CleanReceiptTest(unittest.TestCase):
                     GPU_RECEIPT=str(self.output),
                 )
                 result = subprocess.run(
-                    [shutil.which("pwsh"), "-NoProfile", "-File", str(check_script)],
+                    [require_pwsh(), "-NoProfile", "-File", str(check_script)],
                     env=env,
                     capture_output=True,
                     text=True,
@@ -166,7 +175,7 @@ class CleanReceiptTest(unittest.TestCase):
                     self.output.unlink()
 
     def test_failed_or_mutating_script_never_produces_receipt(self) -> None:
-        def mutate(command, *, timeout, env):
+        def mutate(command: list[str], *, timeout: float, env: dict[str, str]) -> None:
             (Path(env["GPU_PACKAGE_DIR"]) / "app.msi").write_bytes(b"modified")
 
         for effect in (RuntimeError("script failed"), mutate):
@@ -183,27 +192,36 @@ class CleanReceiptTest(unittest.TestCase):
         real_directory = tempfile.TemporaryDirectory
 
         class FailingCleanup:
-            def __init__(self, *args, **kwargs):
-                self.directory = real_directory(*args, **kwargs)
+            def __init__(self, *, prefix: str, dir: str | Path) -> None:
+                self.directory = real_directory(prefix=prefix, dir=dir)
 
-            def __enter__(self):
+            def __enter__(self) -> str:
                 return self.directory.__enter__()
 
-            def __exit__(self, *args):
-                self.directory.__exit__(*args)
+            def __exit__(
+                self,
+                exc_type: type[BaseException] | None,
+                exc: BaseException | None,
+                traceback: TracebackType | None,
+            ) -> NoReturn:
+                self.directory.__exit__(exc_type, exc, traceback)
                 raise OSError("injected cleanup failure")
 
-        def temporary_directory(*args, **kwargs):
-            if kwargs.get("prefix") == "windows-gpu-clean-":
-                return FailingCleanup(*args, **kwargs)
-            return real_directory(*args, **kwargs)
+        def temporary_directory(
+            *, prefix: str, dir: str | Path
+        ) -> FailingCleanup | tempfile.TemporaryDirectory[str]:
+            if prefix == "windows-gpu-clean-":
+                return FailingCleanup(prefix=prefix, dir=dir)
+            return real_directory(prefix=prefix, dir=dir)
 
         for check_name in ("clean-host-inference", "gpu-model-inference"):
             with self.subTest(check_name=check_name):
                 if check_name == "gpu-model-inference":
                     self.profile_args()
 
-                def run_callback(command, *, timeout, env):
+                def run_callback(
+                    command: list[str], *, timeout: float, env: dict[str, str]
+                ) -> None:
                     if "GPU_EVIDENCE_DIR" in env:
                         (Path(env["GPU_EVIDENCE_DIR"]) / "profile.json").write_text(
                             "{}", encoding="utf-8"
@@ -272,7 +290,7 @@ class CleanReceiptTest(unittest.TestCase):
     def test_gpu_profile_receipt_binds_producer_bytes_and_evidence(self) -> None:
         evidence = self.profile_args()
 
-        def run(command, *, timeout, env):
+        def run(command: list[str], *, timeout: float, env: dict[str, str]) -> None:
             self.assertEqual(env["GPU_EVIDENCE_DIR"], str(evidence))
             self.assertEqual(env["GPU_DEVICE_INDEX"], "2")
             self.assertTrue((Path(env["GPU_PACKAGE_DIR"]) / "app.msi").is_file())
@@ -313,7 +331,7 @@ class CleanReceiptTest(unittest.TestCase):
     def test_gpu_profile_rejects_failure_mutation_and_missing_evidence(self) -> None:
         evidence = self.profile_args()
 
-        def mutate(command, *, timeout, env):
+        def mutate(command: list[str], *, timeout: float, env: dict[str, str]) -> None:
             (evidence / "profile.json").write_text("{}", encoding="utf-8")
             (Path(env["GPU_PACKAGE_DIR"]) / "app.msi").write_bytes(b"changed")
 
@@ -341,7 +359,7 @@ class CleanReceiptTest(unittest.TestCase):
             run.assert_not_called()
         stale.unlink()
 
-        def unsafe(command, *, timeout, env):
+        def unsafe(command: list[str], *, timeout: float, env: dict[str, str]) -> None:
             path = evidence / "profile.json"
             path.write_text("{}", encoding="utf-8")
 
@@ -364,7 +382,7 @@ class CleanReceiptTest(unittest.TestCase):
         self.output = evidence / "receipt.json"
         self.args.receipt = str(self.output)
 
-        def run(command, *, timeout, env):
+        def run(command: list[str], *, timeout: float, env: dict[str, str]) -> None:
             (evidence / "profile.json").write_text("{}", encoding="utf-8")
 
         self.args.floor = 1
@@ -443,7 +461,7 @@ class CleanReceiptTest(unittest.TestCase):
                 GITHUB_OUTPUT=str(output),
             )
             result = subprocess.run(
-                [shutil.which("pwsh"), "-NoProfile", "-File", str(script)],
+                [require_pwsh(), "-NoProfile", "-File", str(script)],
                 env=env,
                 capture_output=True,
                 text=True,
