@@ -340,6 +340,17 @@ It never calls `nerdctl system prune` / `builder prune`; those wipe the
 still short, the watchdog falls back to a *filtered* buildkit prune instead of
 giving up — § 3.2.1.
 
+#### A stopped chain leaves records in use
+
+After a stopped run, buildkitd still counts layer records as in use, and `buildctl prune` frees
+nothing: the 2026-10-27 lane entry freed 0 of 165 GiB and refused, and a hand restart then let
+`prune-safe.sh` free 116 GB with all 114 cache mounts kept. So the lane entry and the between-stage
+guard call `_disk_guard_release_stale_records` before the layer prune: still short of the target,
+records in use and no `buildctl` process of this user, it restarts buildkitd once per run and
+reports the cache-mount count. A failed `pgrep` counts as a running build. It sees only this
+user's `buildctl` clients, not a build another tool drives through the socket. The in-stage watch
+never calls it.
+
 #### The lane-entry gate sums the arches
 
 `_chain_runtime_lane_disk_gate` runs immediately before `build-runtime-manifest.sh`,

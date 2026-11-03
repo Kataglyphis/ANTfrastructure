@@ -28,6 +28,7 @@ _disk_guard_stage_tags() { printf tags; }
 _disk_guard_watch_loop() { printf 'WATCH %s\n' "$*" > "$fixture/watch"; }
 _disk_guard_reclaim_begin() { printf 'BEGIN\n'; }
 _disk_guard_trim_cache_export() { printf 'TRIM %s\n' "$*"; }
+_disk_guard_release_stale_records() { printf 'RELEASE %s\n' "$*"; }
 _disk_guard_buildkit_fallback() { printf 'BUILDKIT %s\n' "$*"; }
 _disk_guard_image_store_fallback() { printf 'IMAGES %s\n' "$*"; }
 _disk_guard_reclaim_record() { printf 'RECORD %s\n' "$*"; }
@@ -55,6 +56,9 @@ for kind in salvage runtime watch; do
           case "$kind/$policy" in salvage/*) expected_status=1 ;; runtime/normal) expected_status=8 ;; esac
         fi
         t_assert_eq "$expected_status" "${out##*STATUS=}"
+        if [ "$kind/$threshold/$measured/$policy" = runtime/10/5/normal ]; then
+          t_assert_contains "${out}" $'RELEASE cache 10\nBUILDKIT cache 10'
+        fi
         expected_probes=''
         if [ "$threshold" = 10 ] && [ "$kind" != watch ]; then
           expected_probes=probe

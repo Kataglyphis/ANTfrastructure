@@ -37,6 +37,9 @@
   `spec_flutter` moves the commit with the version.
 - CON216: `prepare-linux-ci-host`'s `fast` cleanup becomes the full one below `fast-floor-gb`
   (default 90) free before the pull. Measured on 145 GB runners: fast leaves 53.8 GB on x64.
+- CON171: the runtime lane's entry and the between-stage guard restart buildkitd once before the
+  layer prune when records are in use and no `buildctl` runs, and `--from-stage runtime` counts
+  the lane's disk once. Tested with stubs; the next resumed chain is the real proof.
 
 ## 2026-11-03 — A card without a CUDA kernel
 

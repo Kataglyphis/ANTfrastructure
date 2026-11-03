@@ -306,6 +306,48 @@ _disk_guard_free_gb() {
   if [ -f "${BUILDCTL_PRUNED}" ]; then echo "${BK_FREE_AFTER:-227}"; else echo 4; fi
 }
 
+t_case "a stopped chain's in-use records get one buildkitd restart, and only with no build running"
+t_needs "jq" command -v jq
+_restart_log="${_bk}/restart.log"
+_disk_guard_buildkit_restart() { echo restart >> "${_restart_log}"; return "${RESTART_RC:-0}"; }
+_disk_guard_build_in_flight() { if [ "${IN_FLIGHT:-0}" = 1 ]; then return 0; fi; return 1; }
+_rs_run() { _DISK_GUARD_BUILDKIT_RESTARTS=0; : > "${_restart_log}"; _disk_guard_release_stale_records "${_bk}/bc" 40 > "${_bk}/o.txt" 2>&1; }
+_rs_count() { wc -l < "${_restart_log}" | tr -d ' '; }
+_bk_reset
+export BUILDCTL_DU_JSON='[{"inUse":true,"size":1}]'
+_rs_run
+t_assert_eq "1" "$(_rs_count)" "records in use with nothing building: restart"
+t_assert_contains "$(cat "${_bk}/o.txt")" "left by a stopped chain"
+t_assert_contains "$(cat "${_bk}/o.txt")" "all 97 cache-mount record(s) survived"
+_disk_guard_release_stale_records "${_bk}/bc" 40 >/dev/null 2>&1
+t_assert_eq "1" "$(_rs_count)" "one restart per run"
+IN_FLIGHT=1 _rs_run
+t_assert_eq "0" "$(_rs_count)" "a running build forbids the restart"
+t_assert_contains "$(cat "${_bk}/o.txt")" "a build is running"
+RESTART_RC=1 _rs_run
+t_assert_contains "$(cat "${_bk}/o.txt")" "could not restart"
+export BUILDCTL_DU_JSON='[{"inUse":false,"size":1}]'
+_rs_run
+t_assert_eq "0" "$(_rs_count)" "nothing in use: nothing to release"
+export BUILDCTL_DU_JSON='[{"inUse":true,"size":1}]'
+_disk_guard_free_gb() { echo 100; }
+_rs_run
+t_assert_eq "0" "$(_rs_count)" "an ample disk never restarts"
+_disk_guard_free_gb() {
+  if [ -f "${BUILDCTL_PRUNED}" ]; then echo "${BK_FREE_AFTER:-227}"; else echo 4; fi
+}
+unset BUILDCTL_DU_JSON
+
+t_case "an unreadable or busy process table reads as a build in flight"
+(
+  eval "$(t_fn_src "${TESTS_DIR}/../01-core/disk-guard.sh" _disk_guard_build_in_flight)"
+  pgrep() { return "${PGREP_RC}"; }
+  PGREP_RC=1; _disk_guard_build_in_flight; echo "none=$?"
+  PGREP_RC=0; _disk_guard_build_in_flight; echo "running=$?"
+  PGREP_RC=3; _disk_guard_build_in_flight; echo "broken=$?"
+) > "${_bk}/flight.txt" 2>&1
+t_assert_eq "none=1 running=0 broken=0" "$(tr '\n' ' ' < "${_bk}/flight.txt" | sed 's/ $//')"
+
 t_case "watch_once falls back to buildctl only after the trim comes up short"
 # The cache-export dir has nothing prunable (keep_n 3), so only the store can help.
 _bk_reset

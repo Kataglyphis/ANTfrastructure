@@ -34615,5 +34615,53 @@
   "replace": "if: inputs.free-disk-space == 'true'",
   "test": "bash linux/scripts/tests/test-select-disk-cleanup.sh",
   "why": "the selected mode must drive the full cleanup, or the floor changes nothing"
+ },
+ {
+  "id": "disk-guard.release-stale-refuses-under-a-build",
+  "target": "linux/scripts/01-core/disk-guard.sh",
+  "find": "  if _disk_guard_build_in_flight; then\n    _disk_guard_log \"[disk-buildkit] ${in_use} layer",
+  "replace": "  if false; then\n    _disk_guard_log \"[disk-buildkit] ${in_use} layer",
+  "test": "bash linux/scripts/tests/test-disk-guard.sh",
+  "why": "restarting buildkitd under a live solve kills the build; does not see a build driven by another user or tool"
+ },
+ {
+  "id": "disk-guard.release-stale-failed-probe-is-a-build",
+  "target": "linux/scripts/01-core/disk-guard.sh",
+  "find": "  if [ \"${rc}\" -eq 1 ]; then return 1; fi\n  return 0\n",
+  "replace": "  if [ \"${rc}\" -ne 0 ]; then return 1; fi\n  return 0\n",
+  "test": "bash linux/scripts/tests/test-disk-guard.sh",
+  "why": "a broken process probe must not read as nothing running"
+ },
+ {
+  "id": "disk-guard.release-stale-once-per-run",
+  "target": "linux/scripts/01-core/disk-guard.sh",
+  "find": "  _DISK_GUARD_BUILDKIT_RESTARTS=1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-disk-guard.sh",
+  "why": "a second restart frees nothing and costs the daemon's warm state"
+ },
+ {
+  "id": "disk-guard.release-stale-needs-records-in-use",
+  "target": "linux/scripts/01-core/disk-guard.sh",
+  "find": "  case \"${in_use}\" in ''|0|*[!0-9]*) return 0 ;; esac\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-disk-guard.sh",
+  "why": "with nothing in use a restart cannot help"
+ },
+ {
+  "id": "disk-guard.release-stale-at-lane-entry",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "  _disk_guard_release_stale_records \"${bc_dir}\" \"${need}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-disk-threshold-policies.sh",
+  "why": "the lane entry is where the stopped chain's records refused a resume"
+ },
+ {
+  "id": "disk-guard.runtime-start-counts-the-lane-once",
+  "target": "linux/scripts/01-core/chain-storage.sh",
+  "find": "    [ \"${FROM_STAGE}\" != runtime ] || combined=\"${rt_lane_gb}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-storage-sdk-refactors.sh",
+  "why": "a --from-stage runtime run warned of 535 GB for a 415 GB lane"
  }
 ]

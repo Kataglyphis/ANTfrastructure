@@ -4,6 +4,7 @@
 _chain_recover_disk_pressure() {
   local bc_dir="$1" threshold="$2" completed_stage="$3"
       if [ "${free_gb}" -lt "${threshold}" ]; then
+        _disk_guard_release_stale_records "${bc_dir}" "${threshold}"
         _disk_guard_buildkit_fallback "${bc_dir}" "${threshold}"
         free_gb="$(_disk_guard_free_gb "${bc_dir}")"
       fi
@@ -72,7 +73,9 @@ _chain_disk_preflight() {
   local rt_lane_gb combined
   if stage_enabled runtime; then
     rt_lane_gb="$(_chain_runtime_lane_need_gb)"
+    # A run starting at the runtime stage has no earlier stage to pay for.
     combined=$(( need_gb + rt_lane_gb ))
+    [ "${FROM_STAGE}" != runtime ] || combined="${rt_lane_gb}"
     if [ "${free_gb}" -lt "${combined}" ]; then
       warn "DISK PREFLIGHT: this run also enters the runtime lane, which needs ~${rt_lane_gb}G more on top of the ~${need_gb}G of stage cost (~${combined}G total) — only ${free_gb}G is free. The lane-entry gate refuses there instead of ENOSPC-ing hours in (CROSS_RUNTIME_LANE_GB)."
     fi

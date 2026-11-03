@@ -534,6 +534,7 @@ _chain_runtime_lane_disk_gate() {
   protected="$(_disk_guard_protected_slugs '')"
   _disk_guard_reclaim_begin
   _disk_guard_trim_cache_export "${bc_dir}" "${need}" "${protected}" "" "${CROSS_TRIM_KEEP_SLUGS:-3}"
+  _disk_guard_release_stale_records "${bc_dir}" "${need}"
   _disk_guard_buildkit_fallback "${bc_dir}" "${need}"
   # Before any wrapper build is the only point in the lane where the image store is reachable.
   _disk_guard_image_store_fallback "${bc_dir}" "${need}" "$(_disk_guard_stage_tags '' 1)" 0

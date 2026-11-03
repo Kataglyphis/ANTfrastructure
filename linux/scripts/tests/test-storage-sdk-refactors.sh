@@ -27,6 +27,18 @@ _preflight() {
   )
 }
 mkdir -p "${WORK}/cache"
+t_case "a run starting at the runtime stage counts the lane once"
+_rt_preflight() {
+  (
+    stage_enabled() { [ "$1" = runtime ]; }
+    export BUILDKIT_CACHE_DIR="${WORK}/cache" TARGET_ARCHES=amd64,arm64 FROM_STAGE="$1" FORCE_LOW_DISK=1 BEFORE=150
+    _chain_disk_preflight
+  )
+}
+_rt_preflight runtime > "${WORK}/rt.txt"
+t_assert_no_grep "${WORK}/rt.txt" 'also enters the runtime lane'
+t_assert_contains "$(_rt_preflight sdk)" '~240G total' "an earlier start still pays both"
+
 t_case "forced low disk returns before trimming"
 t_assert_contains "$(FORCE_LOW_DISK=1 _preflight)" 'continuing on the warm cache'
 t_assert_eq no "$(test -e "${WORK}/trimmed" && echo yes || echo no)"

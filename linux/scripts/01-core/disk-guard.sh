@@ -339,6 +339,43 @@ _disk_guard_buildkit_fallback() {
   return 0
 }
 
+# A failed pgrep reads as in flight: restarting under a live build is the one outcome to rule out.
+_disk_guard_build_in_flight() {
+  local rc=0
+  pgrep -u "$(id -u)" -x buildctl >/dev/null 2>&1 || rc=$?
+  if [ "${rc}" -eq 1 ]; then return 1; fi
+  return 0
+}
+
+_disk_guard_buildkit_restart() { systemctl --user restart buildkit; }
+
+# See docs/build-cache-tiers.md#a-stopped-chain-leaves-records-in-use; call only with no stage in flight. Always returns 0.
+_disk_guard_release_stale_records() {
+  local path="${1:-}" target_gb="${2:-}" in_use n_before n_after i
+  [ "${_DISK_GUARD_BUILDKIT_RESTARTS:-0}" -eq 0 ] || return 0
+  _disk_guard_lever_needed "${path}" "${target_gb}" >/dev/null || return 0
+  in_use="$(_disk_guard_du_json --filter type==regular | jq '[.[] | select(.inUse)] | length' 2>/dev/null || true)"
+  case "${in_use}" in ''|0|*[!0-9]*) return 0 ;; esac
+  if _disk_guard_build_in_flight; then
+    _disk_guard_log "[disk-buildkit] ${in_use} layer record(s) in use and a build is running: not restarting buildkitd"
+    return 0
+  fi
+  n_before="$(_disk_guard_cachemount_count)"
+  _DISK_GUARD_BUILDKIT_RESTARTS=1
+  _disk_guard_log "[disk-buildkit] ${in_use} layer record(s) in use with no build running, left by a stopped chain: restarting buildkitd"
+  if ! _disk_guard_buildkit_restart; then
+    _disk_guard_warn "[disk-buildkit] could not restart buildkitd; the prune cannot reach those records"
+    return 0
+  fi
+  for (( i = 0; i < 30; i++ )); do
+    if _disk_guard_buildctl du >/dev/null 2>&1; then break; fi
+    sleep 1
+  done
+  n_after="$(_disk_guard_cachemount_count)"
+  _disk_guard_cachemount_verdict "${n_before:-0}" "${n_after:-0}"
+  return 0
+}
+
 # Image-store lever: removing images is only safe with no stage in flight. docs/build-cache-tiers.md#322-the-image-store-lever-disk3
 _DISK_GUARD_IMAGE_FREED_GB=0
 _DISK_GUARD_IMAGE_REMOVED=0
