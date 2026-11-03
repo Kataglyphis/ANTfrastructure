@@ -25163,10 +25163,10 @@
  {
   "id": "lib.clang-jobs-override-nounset",
   "target": "linux/scripts/02-toolchain/build-clang.sh",
-  "find": "elif _clang_jobs_are_numeric \"${CLANG_NUM_JOBS}\"; then",
-  "replace": "elif _clang_jobs_are_numeric \"${CLANG_NUM_JOBS:-}\"; then",
+  "find": ": \"${CLANG_NUM_JOBS:=}\"\n",
+  "replace": "",
   "test": "bash linux/scripts/tests/test-clang-job-policy.sh",
-  "why": "the original unset CLANG_NUM_JOBS failure remains observable when explicit jobs are invalid or absent"
+  "why": "an unset CLANG_NUM_JOBS must take the mapper path, not stop the toolchain under set -u"
  },
  {
   "id": "lib.clang-jobs-override-value",
@@ -33951,5 +33951,173 @@
   "replace": "$ErrorActionPreference = 'Continue'",
   "test": "bash linux/scripts/tests/test-harness-suite-driver.sh -k error",
   "why": "an error outside any assertion means the suite did not finish, whatever passed before it"
+ },
+ {
+  "id": "gst.knob-order-debug-logs-in-function",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "save_logs() {\n  echo \"Collecting logs to ${LOG_DIR}...\"\n  cp -a /tmp/meson-compile.log \"${LOG_DIR}/\" 2>/dev/null || true\n  cp -a builddir/meson-logs/* \"${LOG_DIR}/\" 2>/dev/null || true\n  cp -a /tmp/meson-setup.log \"${LOG_DIR}/\" 2>/dev/null || true\n  cp -a /tmp/meson-setup-fallback.log \"${LOG_DIR}/\" 2>/dev/null || true\n  cp -a /tmp/gstreamer-debug-info.log \"${LOG_DIR}/\" 2>/dev/null || true\n  ls -la \"${LOG_DIR}\" || true\n  echo \"Logs preserved in ${LOG_DIR}\"\n}\n\n: \"${GSTREAMER_DEBUG_LOGS:=false}\"\n",
+  "replace": "save_logs() {\n  : \"${GSTREAMER_DEBUG_LOGS:=false}\"\n  echo \"Collecting logs to ${LOG_DIR}...\"\n  cp -a /tmp/meson-compile.log \"${LOG_DIR}/\" 2>/dev/null || true\n  cp -a builddir/meson-logs/* \"${LOG_DIR}/\" 2>/dev/null || true\n  cp -a /tmp/meson-setup.log \"${LOG_DIR}/\" 2>/dev/null || true\n  cp -a /tmp/meson-setup-fallback.log \"${LOG_DIR}/\" 2>/dev/null || true\n  cp -a /tmp/gstreamer-debug-info.log \"${LOG_DIR}/\" 2>/dev/null || true\n  ls -la \"${LOG_DIR}\" || true\n  echo \"Logs preserved in ${LOG_DIR}\"\n}\n\n",
+  "test": "python3 linux/scripts/verify_knob_order.py",
+  "why": "the 2026-10-27 GStreamer stop: the top-level read runs before the function holding the default"
+ },
+ {
+  "id": "gst.knob-order-cargo-dir-in-one-wrapper",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": ": \"${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:=/tmp/gstreamer-cargo-host-toolchain}\"\n\nif cross_build_is_active && \\\n   command -v cross_target_python_dev_ready >/dev/null 2>&1 && \\\n   ! cross_target_python_dev_ready; then\n  GSTREAMER_ENABLE_PYTHON_BINDINGS=false\n  echo \"Target Python development files are not staged for $(cross_target_triplet 2>/dev/null || echo target); disabling gst-python in cross mode\"\nfi\n\nexport GSTREAMER_ENABLE_PYTHON_BINDINGS\n\nappend_meson_arg() {\n  local arg=\"$1\"\n  # Space-padded on both sides, so this matches whole tokens only, never a prefix.\n  case \" ${EXTRA_MESON_ARGS} \" in\n    *\" ${arg} \"*)\n      ;;\n    *)\n      EXTRA_MESON_ARGS=\"${EXTRA_MESON_ARGS} ${arg}\"\n      ;;\n  esac\n}\n\n# Called again after the monorepo setup so these args survive an externally supplied MESON_ARGS.\nenforce_gst_rs_meson_args() {\n  append_meson_arg \"-Dpython-exe=${HOST_PYTHON}\"\n  if [ \"${GSTREAMER_ENABLE_PYTHON_BINDINGS}\" = \"true\" ]; then\n    append_meson_arg \"-Dgst-python:python-exe=${HOST_PYTHON}\"\n  fi\n  # auto skips a plugin whose system dep is missing; enabled aborts meson on the first one (webrtcbin2 needs unpackaged rice-proto).\n  if [ \"${GST_RS_BUILD_ALL:-true}\" = \"true\" ]; then\n    append_meson_arg \"-Dgst-plugins-rs:auto_plugin_features=auto\"\n  else\n    append_meson_arg \"-Dgst-plugins-rs:auto_plugin_features=enabled\"\n  fi\n  [ \"${GST_RS_BUILD_ALL:-true}\" = \"true\" ] || append_meson_arg \"-Dgst-plugins-rs:burn=disabled\"\n  # whisper stays enabled unless explicitly disabled via MESON_ARGS.\n  append_meson_arg \"-Dgst-plugins-rs:sodium-source=built-in\"\n}\n\nresolve_host_gcc_for_cargo() {\n  resolve_host_compiler_for_lang c\n}\n\nprepare_cargo_host_linker_wrapper() {\n",
+  "replace": "\nif cross_build_is_active && \\\n   command -v cross_target_python_dev_ready >/dev/null 2>&1 && \\\n   ! cross_target_python_dev_ready; then\n  GSTREAMER_ENABLE_PYTHON_BINDINGS=false\n  echo \"Target Python development files are not staged for $(cross_target_triplet 2>/dev/null || echo target); disabling gst-python in cross mode\"\nfi\n\nexport GSTREAMER_ENABLE_PYTHON_BINDINGS\n\nappend_meson_arg() {\n  local arg=\"$1\"\n  # Space-padded on both sides, so this matches whole tokens only, never a prefix.\n  case \" ${EXTRA_MESON_ARGS} \" in\n    *\" ${arg} \"*)\n      ;;\n    *)\n      EXTRA_MESON_ARGS=\"${EXTRA_MESON_ARGS} ${arg}\"\n      ;;\n  esac\n}\n\n# Called again after the monorepo setup so these args survive an externally supplied MESON_ARGS.\nenforce_gst_rs_meson_args() {\n  append_meson_arg \"-Dpython-exe=${HOST_PYTHON}\"\n  if [ \"${GSTREAMER_ENABLE_PYTHON_BINDINGS}\" = \"true\" ]; then\n    append_meson_arg \"-Dgst-python:python-exe=${HOST_PYTHON}\"\n  fi\n  # auto skips a plugin whose system dep is missing; enabled aborts meson on the first one (webrtcbin2 needs unpackaged rice-proto).\n  if [ \"${GST_RS_BUILD_ALL:-true}\" = \"true\" ]; then\n    append_meson_arg \"-Dgst-plugins-rs:auto_plugin_features=auto\"\n  else\n    append_meson_arg \"-Dgst-plugins-rs:auto_plugin_features=enabled\"\n  fi\n  [ \"${GST_RS_BUILD_ALL:-true}\" = \"true\" ] || append_meson_arg \"-Dgst-plugins-rs:burn=disabled\"\n  # whisper stays enabled unless explicitly disabled via MESON_ARGS.\n  append_meson_arg \"-Dgst-plugins-rs:sodium-source=built-in\"\n}\n\nresolve_host_gcc_for_cargo() {\n  resolve_host_compiler_for_lang c\n}\n\nprepare_cargo_host_linker_wrapper() {\n  : \"${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:=/tmp/gstreamer-cargo-host-toolchain}\"\n",
+  "test": "python3 linux/scripts/verify_knob_order.py",
+  "why": "the other 2026-10-27 stop: the C++ callback runs with the default only in the C wrapper"
+ },
+ {
+  "id": "knob-order.reads-unguarded",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "elif not m.group(\"op\").startswith(GUARDED):",
+  "replace": "elif False:",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "${X} is the abort this gate exists for"
+ },
+ {
+  "id": "knob-order.guarded-forms-are-reads",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "GUARDED = (\":-\", \":+\", \":=\", \":?\", \"-\", \"+\", \"=\", \"?\")",
+  "replace": "GUARDED = (\"\\0\",)",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "${X:-} cannot abort; flagging it buries real rows"
+ },
+ {
+  "id": "knob-order.arm-exit-counts",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "        if head in ABORTS and self.frames:\n            self.frames[-1].dead = True\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "an arm that leaves constrains nothing after the compound"
+ },
+ {
+  "id": "knob-order.if-without-else-holds",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "return set.intersection(*self.arms) | self.entry if self.complete and self.arms else set(self.entry)",
+  "replace": "return set.intersection(*self.arms) | self.entry if self.arms else set(self.entry)",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "a compound with no else may run no arm at all"
+ },
+ {
+  "id": "knob-order.early-return-ignored",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "return self.defined.intersection(*self.returned) if self.returned else self.defined",
+  "replace": "return self.defined",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "return 0 skips a later default on that path"
+ },
+ {
+  "id": "knob-order.subshell-leaks",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "        for m in SUBST_CALL.finditer(stmt.code):\n            self.walker.visit(m.group(1), self.defined)\n",
+  "replace": "        for m in SUBST_CALL.finditer(stmt.code):\n            self.defined = self.defined | self.walker.visit(m.group(1), self.defined)\n",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "an assignment in $(f) dies with the child shell"
+ },
+ {
+  "id": "knob-order.guard-operator-ignored",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "        if piece in (\"&&\", \"||\"):\n            return True\n",
+  "replace": "        if piece in (\"&&\", \"||\"):\n            return conditional\n",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "a default behind && does not run on the false path"
+ },
+ {
+  "id": "knob-order.substitution-operator-is-a-guard",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "pieces = SPLIT.split(mask_substitutions(stmt.code))",
+  "replace": "pieces = SPLIT.split(stmt.code)",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "separators inside $(...) belong to the child shell"
+ },
+ {
+  "id": "knob-order.callback-not-walked",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "        for word in WORD.findall(text):\n            if word != head:\n                self.walker.visit(word, self.defined)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "a function named as an argument runs at this call, as the GStreamer callbacks did"
+ },
+ {
+  "id": "knob-order.helpers-as-entries",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "for name in sorted(self.p.bodies, key=self.mentioned):",
+  "replace": "for name in self.p.bodies:",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "a helper walked ahead of its only caller reports a read its caller made safe"
+ },
+ {
+  "id": "knob-order.call-defines-nothing",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "self.defined = self.defined | added | self.own | binds",
+  "replace": "self.defined = self.defined | self.own | binds",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "a default in a called function holds after the call"
+ },
+ {
+  "id": "knob-order.default-defines-nothing",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "self.defined = self.defined | added | self.own | binds",
+  "replace": "self.defined = self.defined | added | binds",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "the default itself is the definition"
+ },
+ {
+  "id": "knob-order.export-defines",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "keep = m.group(1) not in (\"export\", \"readonly\")",
+  "replace": "keep = True",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "export X leaves X unset"
+ },
+ {
+  "id": "knob-order.emptiness-test-ignored",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "        self.tested.update(EMPTY_TEST.findall(stmt.live))\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "a read behind [ -n \"${X:-}\" ] is safe, the sccache-s3-level shape"
+ },
+ {
+  "id": "knob-order.tree-scope",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "SKIP_PART = \"/tests/\"",
+  "replace": "SKIP_PART = \"/\"",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "a scan that visits nothing cannot fail"
+ },
+ {
+  "id": "knob-order.root-ignored",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "tops = SCAN if gate_scope.is_hub(root, ROOT) else None",
+  "replace": "tops = SCAN",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "a consumer tree must be graded, not filtered to the hub layout"
+ },
+ {
+  "id": "knob-order.verdict",
+  "target": "linux/scripts/verify_knob_order.py",
+  "find": "    return 1 if found else 0\n",
+  "replace": "    return 0\n",
+  "test": "bash linux/scripts/tests/test-knob-order.sh",
+  "why": "rows without a failing status are a report, not a gate"
+ },
+ {
+  "id": "lib.clang-jobs-locale-digits",
+  "target": "linux/scripts/02-toolchain/build-clang.sh",
+  "find": "  local LC_ALL=C\n",
+  "replace": "",
+  "test": "env LC_ALL=en_US.UTF-8 bash linux/scripts/tests/test-clang-job-policy.sh",
+  "why": "under a UTF-8 collation [0-9] accepts digits ninja rejects"
+ },
+ {
+  "id": "lib.clang-jobs-defined-default",
+  "target": "linux/scripts/02-toolchain/build-clang.sh",
+  "find": ": \"${CLANG_BUILD_MB_PER_JOB:=2000}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-clang-job-policy.sh",
+  "why": "the default budget is one definition, read by the job mapper"
  }
 ]

@@ -94,6 +94,7 @@ mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
   'linux/scripts/verify_dead_functions.py' \
   'linux/scripts/verify_code_size.py' \
   'linux/scripts/verify_trailing_conditional.py' \
+  'linux/scripts/verify_knob_order.py' \
   'linux/scripts/03-media/build/gstreamer/common/gst-python-build-config.py' \
   'linux/scripts/03-media/runtime/ort-venv-census.py' \
   'linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py' \
@@ -190,7 +191,7 @@ windows_environment_checked_files=('windows/scripts/build/litert-wheel-smoke.py'
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#parameter_return_files[@]}" -eq 131 ] || { echo "Expected 131 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
+[ "${#parameter_return_files[@]}" -eq 132 ] || { echo "Expected 132 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
 jetson_dockerfile="${ROOT}/linux/Dockerfile.torch"
 [ -f "${jetson_dockerfile}" ] || { echo "Torch Dockerfile is missing for the Jetson type gate" >&2; exit 2; }
 grep -Fq 'source=linux/jetson-webcam/app.py,target=/tmp/venv-probe-ty/jetson-webcam-app.py,ro' "${jetson_dockerfile}" || {

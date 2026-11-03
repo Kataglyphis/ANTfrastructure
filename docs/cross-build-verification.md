@@ -307,7 +307,7 @@ script that runs twice must not carry a build-breaking assert; the pkg-config
 `verify_consumer_dev_surface` gate is the authority).
 
 `preflight.sh` keeps its check list in one place — the `KNOWN_SLUGS` array
-(`preflight.sh:38-57`, 41 slugs), which is also the vocabulary
+(`preflight.sh:38-58`, 42 slugs), which is also the vocabulary
 `PREFLIGHT_ONLY=` and `PREFLIGHT_SKIP=` accept. **That array is the authority for
 both membership and run order** — the table below groups them by kind and will
 drift if a slug is added without touching it.
@@ -343,6 +343,7 @@ drift if a slug is added without touching it.
 | `code-dupes` | `docs/scripts/verify_code_dupes.py` | token-normalised duplication across shell, Dockerfiles and non-`docs/` Markdown — it sees *renamed* clones |
 | `masked-decls` | inline | `local x=$(...)` / `export x=$(...)`, where the declaration masks the command's exit status |
 | `trailing-conditional` | `verify_trailing_conditional.py` | a function whose LAST statement is a bare test or an `&&` list, so it returns that test's status and a caller under `set -e` dies on the nothing-to-do path; deliberate predicates are frozen in `trailing-conditional.allow` |
+| `knob-order` | `verify_knob_order.py` | a bare read that can run before the knob's in-file `${X:=...}` default, following call order |
 | `comment-size` | inline | comment blocks over 10 lines, against a frozen baseline — prose belongs in `docs/` |
 | `code-size` | `verify_code_size.py` | shell/Python functions over 80 lines and shell/Python/Dockerfile files over 800, against `function-size.allow` / `file-size.allow` |
 | `code-complexity` | `verify_code_complexity.py` | cyclomatic complexity over 15 or nesting over 5 in the `code-size` scan set, against `code-complexity.allow` — the shell counter is heredoc-, comment- and quote-aware |
@@ -359,7 +360,7 @@ drift if a slug is added without touching it.
 Every check with a script is runnable standalone (same command); `crlf-guard`
 and `stage-graph` are inline in `preflight.sh` and have no separate entry point.
 The pre-commit hook (`linux/host-config/git-hooks/pre-commit`) runs the
-whole-tree gates that are cheap — `PREFLIGHT_ONLY=` the 20 fast slugs in
+whole-tree gates that are cheap — `PREFLIGHT_ONLY=` the 21 fast slugs in
 `_FAST_SLUGS` (`:88-91`), 6.4 s combined — and then three blocks scoped to the
 STAGED content, so nothing slow runs over the whole tree: `shellcheck -S error`
 plus the warning ratchet on staged `.sh` files (`:102-119`, the binary resolved

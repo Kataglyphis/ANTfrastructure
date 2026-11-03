@@ -987,7 +987,9 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4242 entries** over **558 distinct test commands**; both digits are
+manifest holds **4263 entries** over **561 distinct test commands**; both digits are
+
+manifest holds **4263 entries** over **561 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -3262,6 +3264,28 @@ the `${VAR=x}` guard, plus the heredoc rewrite above: the body-is-data rule, the
 quoted delimiter, the `<<-` tab-stripped terminator, the queue, the here-string
 bail, single-quoted text in command position, and both halves of the env-prefix
 chain.
+
+## Knob default order (`knob-order`)
+
+`linux/scripts/verify_knob_order.py` fails on a bare read of a knob where its in-file
+`${X:=...}` default has not run on every path. Under `set -u` that read stops the stage: two
+GStreamer stops had this shape, one read at top level before the function holding the default, one
+in a callback that ran before the sibling callback holding it.
+
+The gate walks each `.sh` file under `linux/scripts`, `tests/` excluded, in execution order:
+top level first, then each function nothing in the file names, then the rest. A name counts as
+defined after an unconditional default or assignment, after a call whose every returning path
+defines it, and after a compound whose every arm does. A default behind `&&` or `||`, in a loop, in
+`$(...)`, in a pipeline or in an `if` without `else` does not hold after it. A function named as an
+argument is walked where it is named. `return` with a nonzero status counts as an abort, like `exit`.
+
+**The fix is to put the default at the top level, above the first reader.** There is no allow file.
+
+Not covered: a read of a variable with no `:=` default in the same file; definitions from a sourced
+file, a Dockerfile `ENV` or a caller in another file; a same-line read ahead of the default; heredoc
+bodies. A read after a `-n`/`-z` test of `${X:-}` counts as handled for the rest of that function,
+whichever way the test went. `tests/test-knob-order.sh` plants each shape and moves both GStreamer
+defaults back in a copy of the real script.
 
 ## Trailing-conditional returns (`trailing-conditional`)
 

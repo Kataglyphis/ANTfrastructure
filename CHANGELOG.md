@@ -36,6 +36,17 @@
 - `WindowsFormatting.ClangFormatCheck.Tests.ps1`'s fake `clang-format` grades the file's own name,
   so a temp path containing "bad" no longer fails the suite; a new case pins it.
 
+## 2026-11-03 — A knob's default runs before its readers
+
+- `verify_knob_order.py` (preflight slug and commit hook `knob-order`) follows call order and
+  fails on a bare read ahead of an in-file `${X:=...}` default. Recipes move both GStreamer defaults
+  back and the gate goes red ([the page](docs/code-quality-tooling.md#knob-default-order-knob-order)).
+- `build-clang.sh` defaults `CLANG_NUM_JOBS` and `CLANG_BUILD_MB_PER_JOB` above the job selection:
+  an unset override takes the memory mapper instead of stopping under `set -u`. Its numeric check
+  runs in the C locale, so a UTF-8 host no longer accepts non-ASCII digits and
+  `test-clang-job-policy.sh` is green outside `LC_ALL=C`. The file is mounted by the compiler
+  image's LLVM step, whose key had already moved with `versions.env`.
+
 ## 2026-11-03 — Mutation recipes name their narrowest proof
 
 - `t_sections` in `tests/test-harness.sh` lets a bash suite run `-k <section>`: no argument runs

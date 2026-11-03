@@ -850,6 +850,8 @@ Each of these killed or falsified a real build before it was fixed. The full sto
    `|| true`, `; return 0`, or an `if`. Shell test predicates with an intentional false
    status use explicit `return 0` and `return 1` branches so the gate can distinguish intent.
 
+A knob's `${X:=...}` default goes at the top level above its first reader; `knob-order` follows call order and has no allow file.
+
 Parallel result collection must explicitly propagate a failed harvest, including when
 workers succeeded. Publish worker pins only after a successful, nonempty read;
 conditional callers disable `errexit` throughout the helper's body.
@@ -1255,7 +1257,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
 
   | when | what runs | cost |
   | --- | --- | --- |
-  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 20 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, the derived doc numbers when a page that quotes them is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured 2026-09-04) |
+  | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 21 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, the derived doc numbers when a page that quotes them is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured 2026-09-04) |
   | every `git push` | `linux/host-config/git-hooks/pre-push` — the mutation gate's `--stale-check` over the whole manifest, then `--changed` for real ([`code-quality-tooling.md` § The pre-push hook](docs/code-quality-tooling.md#the-pre-push-hook)) | the staleness pass: 0.06 s over 378 entries (measured 2026-09-05); `--changed` depends on the push |
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
   | every push | `.github/workflows/linux-x64.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, a pinned WebDAV source type gate, plus the `mutations` slug as eight `PREFLIGHT_MUTATION_SHARD=K/8` jobs that together prove every entry, planned from `docs/scripts/mutation-costs.json` | CI |

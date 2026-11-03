@@ -87,7 +87,7 @@ cd "${_root}"
 # with the tool's name -- that parses as a directive and errors out.)
 _FAST_SLUGS="crlf-guard,stdout-returns,copy-coverage,patch-integrity,code-dupes,\
 arg-consistency,masked-decls,comment-size,code-size,code-complexity,dead-functions,large-files,\
-artifact-parity,advert-keys,stage-graph,env-knobs,trailing-conditional,\
+artifact-parity,advert-keys,stage-graph,env-knobs,trailing-conditional,knob-order,\
 doc-links,gate-registry,readme-length"
 
 echo "pre-commit: fast preflight gates…"
