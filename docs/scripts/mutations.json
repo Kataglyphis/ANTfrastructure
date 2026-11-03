@@ -8016,7 +8016,7 @@
   "target": "linux/scripts/verify_consumer_inventory.py",
   "find": "        if ctx[\"is_self\"] and (rel == needle or rel.startswith(needle + \"/\")):",
   "replace": "        if rel == needle or rel.startswith(needle + \"/\"):",
-  "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+  "test": "bash linux/scripts/tests/test-consumer-inventory.sh -k namesake",
   "why": "a consumer file named like its hub callee (a caller workflow, a wrapper) must count as a caller"
  },
  {
@@ -8024,7 +8024,7 @@
   "target": ".github/consumers.json",
   "find": "\"glob\": \"shared/python/*.py\"",
   "replace": "\"glob\": \"shared/python/none/*.py\"",
-  "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+  "test": "bash linux/scripts/tests/test-consumer-inventory.sh -k declared",
   "why": "the shared Python verifiers consumers run by path must remain graded by the inventory"
  },
  {
@@ -30069,7 +30069,7 @@
   "target": ".github/actions/run-pester-suite/action.yml",
   "find": "        # GitHub's pwsh wrapper exits with $LASTEXITCODE, which a passing suite's own native calls can leave nonzero.\n        exit 0",
   "replace": "        # GitHub's pwsh wrapper exits with $LASTEXITCODE, which a passing suite's own native calls can leave nonzero.",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ci.PesterActionExit.Tests.ps1 -ResultFile logs/code-quality/pester-action-exit-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Ci.PesterActionExit.Tests.ps1",
   "why": "a passing suite whose own native calls left $LASTEXITCODE nonzero must not fail the step through GitHub's pwsh wrapper"
  },
  {
@@ -30701,7 +30701,7 @@
   "target": "windows/scripts/python/New-PythonAppBundle.ps1",
   "find": "    foreach ($name in @([IO.Path]::GetFileName($lock)) + $names) {",
   "replace": "    foreach ($name in $names) {",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleLockData.Tests.ps1 -ResultFile logs/code-quality/python-app-lock-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PythonApp.BundleLockData.Tests.ps1",
   "why": "the app derives its model's file name from the shipped lock; a bundle without it cannot find the model"
  },
  {
@@ -30709,7 +30709,7 @@
   "target": "windows/scripts/python/New-PythonAppBundle.ps1",
   "find": "    if ($names.Count -eq 0) { throw \"$($Item['lock']) names no file\" }\n",
   "replace": "",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleLockData.Tests.ps1 -ResultFile logs/code-quality/python-app-lock-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PythonApp.BundleLockData.Tests.ps1",
   "why": "an empty lock would ship a bundle with no model and no error"
  },
  {
@@ -30717,7 +30717,7 @@
   "target": "windows/scripts/python/New-PythonAppBundle.ps1",
   "find": "    if ($bad.Count -gt 0) { throw",
   "replace": "    if ($false) { throw",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleLockData.Tests.ps1 -ResultFile logs/code-quality/python-app-lock-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PythonApp.BundleLockData.Tests.ps1",
   "why": "a lock row naming ..\\ would copy a file from outside the lock's directory into the bundle"
  },
  {
@@ -30725,7 +30725,7 @@
   "target": "windows/scripts/python/New-PythonAppBundle.ps1",
   "find": "        if ($item.ContainsKey('lock')) {",
   "replace": "        if ($false) {",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only PythonApp.BundleLockData.Tests.ps1 -ResultFile logs/code-quality/python-app-lock-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only PythonApp.BundleLockData.Tests.ps1",
   "why": "a lock row has no 'from'; treated as a plain row it copies nothing the lock names"
  },
  {
@@ -32285,7 +32285,7 @@
   "target": "shared/python/verify_ort_profile.py",
   "find": "\"xnnpack\": \"XnnpackExecutionProvider\",",
   "replace": "\"xnnpack\": \"CPUExecutionProvider\",",
-  "test": "python3 shared/python/tests/test_verify_ort_profile.py",
+  "test": "python3 shared/python/tests/test_verify_ort_profile.py -k test_cpu_accelerators_need_their_own_operators",
   "why": "a session that fell back to the CPU provider must not prove XNNPACK ran"
  },
  {
@@ -32837,7 +32837,7 @@
   "target": "linux/scripts/security_audit.py",
   "find": "blocking = [f for f in findings if args.mode == \"gate\" and f.severity in BLOCKING and not f.in_base]",
   "replace": "blocking = []",
-  "test": "bash linux/scripts/tests/test-security-audit.sh",
+  "test": "bash linux/scripts/tests/test-security-audit.sh -k push",
   "why": "push mode exists so a commit cannot add a HIGH advisory such as hydra-core 1.3.7"
  },
  {
@@ -32845,7 +32845,7 @@
   "target": "linux/scripts/security_audit.py",
   "find": "and f.severity in BLOCKING and not f.in_base]",
   "replace": "and f.severity in BLOCKING]",
-  "test": "bash linux/scripts/tests/test-security-audit.sh",
+  "test": "bash linux/scripts/tests/test-security-audit.sh -k push",
   "why": "an advisory published after a pin landed is not the commit's doing; blocking it turns every push red"
  },
  {
@@ -32853,7 +32853,7 @@
   "target": "linux/scripts/security_audit.py",
   "find": "    except ValueError:\n        return \"HIGH\"",
   "replace": "    except ValueError:\n        return \"LOW\"",
-  "test": "bash linux/scripts/tests/test-security-audit.sh",
+  "test": "bash linux/scripts/tests/test-security-audit.sh -k severity",
   "why": "an advisory nobody scored may be critical, so it must block like a HIGH one"
  },
  {
@@ -32861,7 +32861,7 @@
   "target": "linux/scripts/security_audit.py",
   "find": "    if unread:\n",
   "replace": "    if False:\n",
-  "test": "bash linux/scripts/tests/test-security-audit.sh",
+  "test": "bash linux/scripts/tests/test-security-audit.sh -k kinds",
   "why": "a lockfile the scanner never reported was graded by nothing and must not read as clean"
  },
  {
@@ -32869,7 +32869,7 @@
   "target": "linux/scripts/security-audit.sh",
   "find": "[ -x \"${OSV_SCANNER}\" ] || err \"osv-scanner ${OSV_SCANNER} is not an executable file\"",
   "replace": "[ -x \"${OSV_SCANNER}\" ] || { printf '{\"findings\": []}\\n' > \"${OUTPUT}\"; exit 0; }",
-  "test": "bash linux/scripts/tests/test-security-audit.sh",
+  "test": "bash linux/scripts/tests/test-security-audit.sh -k scanner",
   "why": "a missing scanner reported as zero findings is the false green this audit must never print"
  },
  {
@@ -32877,7 +32877,7 @@
   "target": "linux/scripts/security-audit.sh",
   "find": "LOCKFILE_NAMES=(uv.lock Cargo.lock pubspec.lock package-lock.json)",
   "replace": "LOCKFILE_NAMES=(uv.lock Cargo.lock package-lock.json)",
-  "test": "bash linux/scripts/tests/test-security-audit.sh",
+  "test": "bash linux/scripts/tests/test-security-audit.sh -k kinds",
   "why": "a dropped lockfile kind leaves a whole ecosystem unscanned while the audit stays green"
  },
  {
@@ -32981,7 +32981,7 @@
   "target": ".github/workflows/code-quality-report.yml",
   "find": "            1) grep -q '^quality-report: verdict=regressed ' logs/code-quality/quality-report.txt ;;",
   "replace": "            1) true ;;",
-  "test": "bash linux/scripts/tests/test-code-quality-report-workflow.sh",
+  "test": "bash linux/scripts/tests/test-code-quality-report-workflow.sh -k grade",
   "why": "a quality-report crash that exits 1 must fail the job, not pass as a regression"
  },
  {
@@ -33101,7 +33101,7 @@
   "target": "linux/scripts/bench-history.py",
   "find": "            return cell, f\"{name} {change}\"",
   "replace": "            return cell, None",
-  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k criterion",
   "why": "a gated metric that doubled against enough history must fail the run"
  },
  {
@@ -33109,7 +33109,7 @@
   "target": "linux/scripts/bench-history.py",
   "find": "        if len(earlier) >= MIN_HISTORY_TO_FAIL:",
   "replace": "        if earlier:",
-  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k criterion",
   "why": "fewer than MIN_HISTORY_TO_FAIL earlier results only warn, so one odd runner is no yardstick"
  },
  {
@@ -33117,7 +33117,7 @@
   "target": "linux/scripts/bench-history.py",
   "find": "    return ratio >= FAIL_RATIO if rule.direction == \"lower\" else ratio <= 1 / FAIL_RATIO",
   "replace": "    return ratio >= FAIL_RATIO if rule.direction == \"higher\" else ratio <= 1 / FAIL_RATIO",
-  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k criterion",
   "why": "a higher-is-better metric fails when it halves, a lower-is-better one when it doubles"
  },
  {
@@ -33125,7 +33125,7 @@
   "target": "linux/scripts/bench-history.py",
   "find": "            raise InputError(f\"{path}: missing or empty\")",
   "replace": "            return {}",
-  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k inputs",
   "why": "a missing or empty result file must fail, not print an empty table"
  },
  {
@@ -33133,7 +33133,7 @@
   "target": "linux/scripts/bench-history.py",
   "find": "        if doc.get(\"verdict\", \"ok\") != \"ok\":",
   "replace": "        if doc.get(\"verdict\", \"ok\") == \"never\":",
-  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k criterion",
   "why": "a stored failed run must not pull the median towards its own slowdown"
  },
  {
@@ -33141,7 +33141,7 @@
   "target": "linux/scripts/bench-history.py",
   "find": "            if not isinstance(run, dict) or row.get(\"expired\") or row.get(\"name\") != f\"{ARTIFACT_PREFIX}{key}\":",
   "replace": "            if not isinstance(run, dict) or row.get(\"name\") != f\"{ARTIFACT_PREFIX}{key}\":",
-  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch",
   "why": "an expired artifact cannot be downloaded and must not be chosen"
  },
  {
@@ -33149,7 +33149,7 @@
   "target": "linux/scripts/bench-history.py",
   "find": "            if run.get(\"head_branch\") == branch and run_id not in (\"\", current) and newer:",
   "replace": "            if run_id not in (\"\", current) and newer:",
-  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch",
   "why": "only default-branch results form the history, never a PR branch's"
  },
  {
@@ -33157,7 +33157,7 @@
   "target": "linux/scripts/bench-history.py",
   "find": "    median = statistics.median(earlier)",
   "replace": "    median = statistics.fmean(earlier)",
-  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch",
   "why": "the yardstick is the median, which one outlier run cannot move"
  },
  {
@@ -33165,7 +33165,7 @@
   "target": "linux/scripts/bench-history.py",
   "find": "    chosen = _candidates(slug, args.key, branch, args.pages)[: args.keep]",
   "replace": "    chosen = _candidates(slug, args.key, branch, args.pages)",
-  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch",
   "why": "--keep bounds the history to the newest results"
  },
  {
@@ -33173,7 +33173,7 @@
   "target": ".github/actions/bench-history/action.yml",
   "find": "        retention-days: 90",
   "replace": "        retention-days: 7",
-  "test": "bash linux/scripts/tests/test-bench-history.sh",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k action",
   "why": "a weekly series must outlive the cache's 7-day eviction"
  },
  {
@@ -33365,7 +33365,7 @@
   "target": ".github/workflows/python-static.yml",
   "find": "          git -C \"${hub}\" submodule update --init --depth 1 -- third_party/DocumANTation\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-python-static-workflow.sh",
+  "test": "bash linux/scripts/tests/test-python-static-workflow.sh -k contract",
   "why": "the caller checkout does not recurse into the hub, so its theme is absent unless the lane fetches it"
  },
  {
@@ -33373,7 +33373,7 @@
   "target": ".github/workflows/code-quality-report.yml",
   "find": "          git -C \"${hub}\" submodule update --init --depth 1 -- third_party/DocumANTation || exit 1\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-code-quality-report-workflow.sh",
+  "test": "bash linux/scripts/tests/test-code-quality-report-workflow.sh -k grade",
   "why": "quality-report.sh counts ty diagnostics through python-static.sh, which resolves docs/conf.py's theme only from the fetched DocumANTation"
  },
  {
@@ -33749,7 +33749,7 @@
   "target": ".github/workflows/lint-gates.yml",
   "find": "      agents-drift:\n        description: >-\n          Pass --agents-drift: hold AGENTS.md, the docs build list and BACKLOG.md\n          to the tree. Needs the six-section AGENTS.md and quality-report.toml.\n        type: boolean\n        default: false\n",
   "replace": "      agents-drift:\n        description: >-\n          Pass --agents-drift: hold AGENTS.md, the docs build list and BACKLOG.md\n          to the tree. Needs the six-section AGENTS.md and quality-report.toml.\n        type: boolean\n        default: true\n",
-  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "test": "bash linux/scripts/tests/test-lint-gates-workflow.sh",
   "why": "every other caller stays off until it opts in"
  },
  {
@@ -33757,7 +33757,7 @@
   "target": ".github/workflows/lint-gates.yml",
   "find": "          if [ \"${LINT_AGENTS_DRIFT}\" = 'true' ]; then args+=(--agents-drift); fi\n",
   "replace": "",
-  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "test": "bash linux/scripts/tests/test-lint-gates-workflow.sh",
   "why": "the input must reach the aggregator"
  },
  {
@@ -33765,7 +33765,7 @@
   "target": "linux/scripts/quality_report_text.py",
   "find": "        return missing(\"agents_drift_findings\", \"findings\", LOWER, CODE, source, \"no AGENTS.md\")\n",
   "replace": "        pass\n",
-  "test": "bash linux/scripts/tests/test-quality-report.sh",
+  "test": "bash linux/scripts/tests/test-quality-report.sh -k test_agents_drift_without_agents_md_is_not_collected",
   "why": "a tree without AGENTS.md has nothing to measure, so it is not-collected rather than a failed collector"
  },
  {
@@ -33773,7 +33773,7 @@
   "target": "linux/scripts/quality_report_text.py",
   "find": "        return Metric(\"agents_drift_findings\", total(doc, \"findings\"), \"findings\", LOWER, CODE,",
   "replace": "        return Metric(\"agents_drift_findings\", 0, \"findings\", LOWER, CODE,",
-  "test": "bash linux/scripts/tests/test-quality-report.sh",
+  "test": "bash linux/scripts/tests/test-quality-report.sh -k test_agents_drift_is_measured_with_its_rows",
   "why": "the metric must carry the gate's own count"
  },
  {
@@ -33783,5 +33783,61 @@
   "replace": "    claimed = False\n",
   "test": "bash linux/scripts/tests/test-agents-drift.sh section5",
   "why": "a binary that does not exist cannot be owed a name"
+ },
+ {
+  "id": "gate-fixture.harness-section-unknown-pick",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "if ! _t_listed \"_section_${name}\" \"${names[@]}\"; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-harness-guards.sh",
+  "why": "a recipe picking a renamed section must fail, not prove only what the other picks ran"
+ },
+ {
+  "id": "gate-fixture.harness-section-stray-argument",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "if [ \"$1\" != -k ] || [ \"$#\" -lt 2 ]; then",
+  "replace": "if [ \"$#\" -lt 2 ]; then",
+  "test": "bash linux/scripts/tests/test-harness-guards.sh",
+  "why": "an argument that is no pick must not read as a section name"
+ },
+ {
+  "id": "gate-fixture.harness-section-pick-narrows",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "if [ \"${#picks[@]}\" -eq 0 ] || _t_listed \"${name#_section_}\" \"${picks[@]}\"; then \"${name}\"; fi",
+  "replace": "\"${name}\"",
+  "test": "bash linux/scripts/tests/test-harness-guards.sh",
+  "why": "a pick that runs everything makes every narrow recipe pay for the whole suite"
+ },
+ {
+  "id": "gate-fixture.harness-section-default-runs-all",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "if [ \"${#picks[@]}\" -eq 0 ] || _t_listed",
+  "replace": "if _t_listed",
+  "test": "bash linux/scripts/tests/test-harness-guards.sh",
+  "why": "preflight runs suites without arguments, so that run must keep every section"
+ },
+ {
+  "id": "windows-lane.harness-suite-failed-assertion",
+  "target": "windows/scripts/tests/Invoke-HarnessSuite.ps1",
+  "find": "if ($failed.Count -gt 0 -or $results.Count -eq 0) { exit 1 }",
+  "replace": "if ($results.Count -eq 0) { exit 1 }",
+  "test": "bash linux/scripts/tests/test-harness-suite-driver.sh -k failed",
+  "why": "every recipe on this driver needs a failed assertion to fail the run"
+ },
+ {
+  "id": "windows-lane.harness-suite-empty",
+  "target": "windows/scripts/tests/Invoke-HarnessSuite.ps1",
+  "find": "if ($failed.Count -gt 0 -or $results.Count -eq 0) { exit 1 }",
+  "replace": "if ($failed.Count -gt 0) { exit 1 }",
+  "test": "bash linux/scripts/tests/test-harness-suite-driver.sh -k empty",
+  "why": "a suite that ran no assertion proves nothing and must not pass"
+ },
+ {
+  "id": "windows-lane.harness-suite-top-level-error",
+  "target": "windows/scripts/tests/Invoke-HarnessSuite.ps1",
+  "find": "$ErrorActionPreference = 'Stop'",
+  "replace": "$ErrorActionPreference = 'Continue'",
+  "test": "bash linux/scripts/tests/test-harness-suite-driver.sh -k error",
+  "why": "an error outside any assertion means the suite did not finish, whatever passed before it"
  }
 ]

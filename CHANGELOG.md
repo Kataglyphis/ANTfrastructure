@@ -13,6 +13,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-03 — Mutation recipes name their narrowest proof
+
+- `t_sections` in `tests/test-harness.sh` lets a bash suite run `-k <section>`: no argument runs
+  every section, and a pick naming no section fails. `test-bench-history.sh`,
+  `test-security-audit.sh`, `test-code-quality-report-workflow.sh`,
+  `test-python-static-workflow.sh` and `test-consumer-inventory.sh` use it.
+- `test-lint-gates-workflow.sh` takes the `lint-gates.yml` cases out of `test-lint-gates.sh`.
+- `windows/scripts/tests/Invoke-HarnessSuite.ps1` runs one harness suite under `TestHarness.psm1`
+  alone, for a recipe that needs none of the modules `Invoke-Tests.ps1` imports; suite
+  `test-harness-suite-driver.sh`.
+- 31 recipes move to these narrower commands with the same mutants, and 7 recipes hold the new
+  selector and driver. The unfiltered suites stay in preflight, and Windows CI still runs both
+  Windows suites through `Invoke-Tests.ps1`.
+
 ## 2026-11-02 — TensorRT's zlib import
 
 - `ort_host_runtime_needed` accepts `libz.so.1` from the TensorRT provider only, which TensorRT 11 links; other providers and unknown libraries still fail.

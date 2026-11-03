@@ -114,7 +114,10 @@ to label the assertions that follow, `t_assert_eq <expected> <actual> [msg]`,
 `t_assert_fails <cmd…>`, `t_assert_rc <rc> <cmd…>` (that exit code exactly),
 `t_assert_grep <file> <ERE>` and `t_assert_no_grep <file> <ERE>`, and `t_summary`
 as the last line. `t_summary` exits non-zero when an assertion failed **and when the
-suite ran none at all** — a gutted suite must not read as a pass. A consumer's suite
+suite ran none at all** — a gutted suite must not read as a pass. A slow suite can put its
+cases in `_section_<name>` functions and end with `t_sections _section_<name>... -- "$@"`, then
+`t_summary`: no argument runs every section in order, `-k <name>` runs that one alone, and a
+pick naming no section fails. A consumer's suite
 sources the same harness through `lib/test-harness.sh`
 ([`shared-script-libraries.md`](shared-script-libraries.md#libtest-harnesssh)).
 

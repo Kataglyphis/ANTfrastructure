@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Offline fixtures grade static references; runtime-built paths still need consumer checks.
+# Offline fixtures grade static references; runtime-built paths still need consumer checks; arguments select sections (-k declared).
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -132,166 +132,187 @@ _c="$(_consumer plain)"
 _inv="${_work}/inventory.json"
 _inventory "${_inv}" "${_CLASSES}"
 
-t_case "a tree whose answer is known in advance grades every entry point right"
-_run "${_h}" "${_c}" "${_inv}"
-t_assert_eq "0" "${rc}" "the fixture has no dangling reference; output was: ${OUT}"
-
-t_assert_contains "$(_section 'Reached by a consumer')" "linux/scripts/called-by-consumer.sh" \
-  "a qualified call from an external repo is what 'load-bearing outside this repo' means"
-t_assert_contains "$(_section 'Reached by a consumer')" 'consumer-a (`scripts/build.sh:2`)' \
-  "the verdict must carry the evidence; a status with no witness cannot be checked"
-
-t_assert_contains "$(_section 'Hub-internal only')" "linux/scripts/hub-internal.sh" \
-  "reached only from the hub is NOT a consumer -- that distinction is the whole report"
-t_assert_eq "" "$(_section 'Reached by a consumer' | grep -F 'hub-internal.sh' || true)"
-
-t_assert_contains "$(_section 'Mentioned, never reached')" "linux/scripts/only-mentioned.sh" \
-  "a name in a README keeps nothing alive; prose must not read as a call"
-
-t_assert_contains "$(_section 'Named by nobody')" "linux/scripts/nobody-names-it.sh" \
-  "the only hit on it is its own file naming itself, which is not a caller"
-
-t_case "a consumer file named like the hub entry point it calls is a caller"
-_twin_c="$(_consumer plain)"
-printf '#!/usr/bin/env bash\ntrue\n' > "${_h}/linux/scripts/same-name.sh"
-mkdir -p "${_twin_c}/linux/scripts"
-printf '#!/usr/bin/env bash\nbash third_party/ANTfrastructure/linux/scripts/same-name.sh\n' > "${_twin_c}/linux/scripts/same-name.sh"
-t_git_commit "${_h}"
-t_git_commit "${_twin_c}"
-_run "${_h}" "${_twin_c}" "${_inv}"
-t_assert_contains "$(_section 'Reached by a consumer')" 'consumer-a (`linux/scripts/same-name.sh:2`)' \
-  "a consumer workflow or wrapper shares its hub callee's path; skipping it graded live callers as hub-internal"
-t_assert_contains "$(_section 'Named by nobody')" "linux/scripts/nobody-names-it.sh" \
-  "the hub's own file naming itself is still no caller"
-rm -rf "${_twin_c}"
-git -C "${_h}" rm -q linux/scripts/same-name.sh && t_git_commit "${_h}"
-
-t_case "a root file ignores suffixes and other projects' requirement paths"
-_root_c="$(_consumer plain)"
-printf '%s\n' \
-  'uv pip install -r linux/scripts/cmake-format.requirements.txt' \
-  'uv pip install -r /tmp/requirements.txt' \
-  'uv pip install -r scripts/requirements.txt' \
-  'uv pip install -r requirements.txt.bak' >> "${_root_c}/scripts/build.sh"
-printf '%s\n' 'local requirement' > "${_root_c}/scripts/requirements.txt"
-t_git_commit "${_root_c}"
-_inventory "${_work}/root-class.json" "${_ROOT_CLASS}"
-_run "${_h}" "${_root_c}" "${_work}/root-class.json"
-t_assert_eq 0 "${rc}" "a false requirement caller must not fail inventory"
-t_assert_contains "$(_section 'Named by nobody')" '`requirements.txt`' \
-  "another file ending in requirements.txt is not the hub root file"
-
-t_case "the hub's rooted reference is internal; a qualified consumer reference is external"
-printf '%s\n' 'uv pip install -r ${REPO_ROOT}/require'"ments.txt" >> "${_h}/Makefile"
-t_git_commit "${_h}"
-_run "${_h}" "${_root_c}" "${_work}/root-class.json"
-t_assert_contains "$(_section 'Hub-internal only')" '`requirements.txt`' \
-  "the hub's own root requirement is not an external call"
-printf '%s\n' 'uv pip install -r third_party/ANTfrastructure/require'"ments.txt" \
-  'uv pip install -r third_party\\ANTfrastructure\\require'"ments.txt" >> "${_root_c}/scripts/build.sh"
-t_git_commit "${_root_c}"
-_run "${_h}" "${_root_c}" "${_work}/root-class.json"
-t_assert_contains "$(_section 'Reached by a consumer')" '`requirements.txt`' \
-  "qualified slash and backslash references reach the hub root file"
-t_assert_contains "$(_section 'Reached by a consumer')" 'consumer-a (`scripts/build.sh:7`' \
-  "the report preserves the executable caller's location"
-rm -rf "${_root_c}"
-
-t_case "shared library and requirements paths and dynamic basenames stay visible"
-mkdir -p "${_h}/linux/scripts/lib" "${_c}/scripts/local"
-printf 'source "${HERE}/internal.requirements.txt"\n' > "${_h}/linux/scripts/lib/shared-library.sh"
-printf 'unused\n' > "${_h}/linux/scripts/lib/internal.requirements.txt"
-printf 'unused\n' > "${_h}/linux/scripts/lib/unreferenced.requirements.txt"
-printf 'unused\n' > "${_h}/linux/scripts/lib/dynamic.requirements.txt"
-printf 'local\n' > "${_c}/scripts/local/dynamic.requirements.txt"
-printf '%s\n' 'source third_party/ANTfrastructure/linux/scripts/lib/shared-library.sh' \
-  'cat "${SOME_DIR}/dynamic.requirements.txt"' \
-  'cat "${SOME_DIR}/unreferenced.requirements.txt.bak"' >> "${_c}/scripts/build.sh"
-t_git_commit "${_h}"
-t_git_commit "${_c}"
-t_case "the real inventory declares each shared file class with conservative filename matching"
-t_assert_ok "${PY}" -c 'import json, sys
+_REAL_INVENTORY="${SCRIPTS}/../../.github/consumers.json"
+_REAL_CLASSES='import json, sys
 classes = json.load(open(sys.argv[1], encoding="utf-8"))["entry_point_classes"]
+'
+
+_section_grading() {
+  t_case "a tree whose answer is known in advance grades every entry point right"
+  _run "${_h}" "${_c}" "${_inv}"
+  t_assert_eq "0" "${rc}" "the fixture has no dangling reference; output was: ${OUT}"
+
+  t_assert_contains "$(_section 'Reached by a consumer')" "linux/scripts/called-by-consumer.sh" \
+    "a qualified call from an external repo is what 'load-bearing outside this repo' means"
+  t_assert_contains "$(_section 'Reached by a consumer')" 'consumer-a (`scripts/build.sh:2`)' \
+    "the verdict must carry the evidence; a status with no witness cannot be checked"
+
+  t_assert_contains "$(_section 'Hub-internal only')" "linux/scripts/hub-internal.sh" \
+    "reached only from the hub is NOT a consumer -- that distinction is the whole report"
+  t_assert_eq "" "$(_section 'Reached by a consumer' | grep -F 'hub-internal.sh' || true)"
+
+  t_assert_contains "$(_section 'Mentioned, never reached')" "linux/scripts/only-mentioned.sh" \
+    "a name in a README keeps nothing alive; prose must not read as a call"
+
+  t_assert_contains "$(_section 'Named by nobody')" "linux/scripts/nobody-names-it.sh" \
+    "the only hit on it is its own file naming itself, which is not a caller"
+}
+
+_section_namesake() {
+  t_case "a consumer file named like the hub entry point it calls is a caller"
+  _twin_c="$(_consumer plain)"
+  printf '#!/usr/bin/env bash\ntrue\n' > "${_h}/linux/scripts/same-name.sh"
+  mkdir -p "${_twin_c}/linux/scripts"
+  printf '#!/usr/bin/env bash\nbash third_party/ANTfrastructure/linux/scripts/same-name.sh\n' > "${_twin_c}/linux/scripts/same-name.sh"
+  t_git_commit "${_h}"
+  t_git_commit "${_twin_c}"
+  _run "${_h}" "${_twin_c}" "${_inv}"
+  t_assert_contains "$(_section 'Reached by a consumer')" 'consumer-a (`linux/scripts/same-name.sh:2`)' \
+    "a consumer workflow or wrapper shares its hub callee's path; skipping it graded live callers as hub-internal"
+  t_assert_contains "$(_section 'Named by nobody')" "linux/scripts/nobody-names-it.sh" \
+    "the hub's own file naming itself is still no caller"
+  rm -rf "${_twin_c}"
+  git -C "${_h}" rm -q linux/scripts/same-name.sh && t_git_commit "${_h}"
+}
+
+_section_root() {
+  t_case "a root file ignores suffixes and other projects' requirement paths"
+  _root_c="$(_consumer plain)"
+  printf '%s\n' \
+    'uv pip install -r linux/scripts/cmake-format.requirements.txt' \
+    'uv pip install -r /tmp/requirements.txt' \
+    'uv pip install -r scripts/requirements.txt' \
+    'uv pip install -r requirements.txt.bak' >> "${_root_c}/scripts/build.sh"
+  printf '%s\n' 'local requirement' > "${_root_c}/scripts/requirements.txt"
+  t_git_commit "${_root_c}"
+  _inventory "${_work}/root-class.json" "${_ROOT_CLASS}"
+  _run "${_h}" "${_root_c}" "${_work}/root-class.json"
+  t_assert_eq 0 "${rc}" "a false requirement caller must not fail inventory"
+  t_assert_contains "$(_section 'Named by nobody')" '`requirements.txt`' \
+    "another file ending in requirements.txt is not the hub root file"
+
+  t_case "the hub's rooted reference is internal; a qualified consumer reference is external"
+  printf '%s\n' 'uv pip install -r ${REPO_ROOT}/require'"ments.txt" >> "${_h}/Makefile"
+  t_git_commit "${_h}"
+  _run "${_h}" "${_root_c}" "${_work}/root-class.json"
+  t_assert_contains "$(_section 'Hub-internal only')" '`requirements.txt`' \
+    "the hub's own root requirement is not an external call"
+  printf '%s\n' 'uv pip install -r third_party/ANTfrastructure/require'"ments.txt" \
+    'uv pip install -r third_party\\ANTfrastructure\\require'"ments.txt" >> "${_root_c}/scripts/build.sh"
+  t_git_commit "${_root_c}"
+  _run "${_h}" "${_root_c}" "${_work}/root-class.json"
+  t_assert_contains "$(_section 'Reached by a consumer')" '`requirements.txt`' \
+    "qualified slash and backslash references reach the hub root file"
+  t_assert_contains "$(_section 'Reached by a consumer')" 'consumer-a (`scripts/build.sh:7`' \
+    "the report preserves the executable caller's location"
+  rm -rf "${_root_c}"
+}
+
+_section_declared() {
+  t_case "the real inventory declares each shared file class with conservative filename matching"
+t_assert_ok "${PY}" -c "${_REAL_CLASSES}"'
 actual = {(c["kind"], c["glob"], c.get("alias")) for c in classes}
 expected = {("linux-shared-library", "linux/scripts/lib/*.sh", "filename"),
             ("linux-shared-requirements", "linux/scripts/lib/*.requirements.txt", "filename"),
             ("linux-requirements", "linux/scripts/*.requirements.txt", "filename"),
             ("shared-python", "shared/python/*.py", None)}
-sys.exit(not expected <= actual)' "${SCRIPTS}/../../.github/consumers.json"
-_LIB_CLASSES="$("${PY}" -c 'import json, sys
-classes = json.load(open(sys.argv[1], encoding="utf-8"))["entry_point_classes"]
+sys.exit(not expected <= actual)' "${_REAL_INVENTORY}"
+}
+
+_section_shared() {
+  t_case "shared library and requirements paths and dynamic basenames stay visible"
+  mkdir -p "${_h}/linux/scripts/lib" "${_c}/scripts/local"
+  printf 'source "${HERE}/internal.requirements.txt"\n' > "${_h}/linux/scripts/lib/shared-library.sh"
+  printf 'unused\n' > "${_h}/linux/scripts/lib/internal.requirements.txt"
+  printf 'unused\n' > "${_h}/linux/scripts/lib/unreferenced.requirements.txt"
+  printf 'unused\n' > "${_h}/linux/scripts/lib/dynamic.requirements.txt"
+  printf 'local\n' > "${_c}/scripts/local/dynamic.requirements.txt"
+  printf '%s\n' 'source third_party/ANTfrastructure/linux/scripts/lib/shared-library.sh' \
+    'cat "${SOME_DIR}/dynamic.requirements.txt"' \
+    'cat "${SOME_DIR}/unreferenced.requirements.txt.bak"' >> "${_c}/scripts/build.sh"
+  t_git_commit "${_h}"
+  t_git_commit "${_c}"
+  _LIB_CLASSES="$("${PY}" -c "${_REAL_CLASSES}"'
 print(json.dumps([c for c in classes if c["kind"] in ("linux-shared-library", "linux-shared-requirements")]))' \
-  "${SCRIPTS}/../../.github/consumers.json")"
-_inventory "${_work}/lib-classes.json" "${_LIB_CLASSES}"
-_run "${_h}" "${_c}" "${_work}/lib-classes.json"
-t_assert_eq 0 "${rc}" "the shared library fixture must scan successfully"
-t_assert_contains "$(_section 'Reached by a consumer')" 'linux/scripts/lib/shared-library.sh' "a qualified library path is reached"
-t_assert_contains "$(_section 'Mentioned, never reached')" 'linux/scripts/lib/dynamic.requirements.txt' "an ambiguous basename is retained even when the consumer owns another file of that name"
-t_assert_contains "$(_section 'Hub-internal only')" 'linux/scripts/lib/internal.requirements.txt' "a sibling basename is a hub-internal use"
-t_assert_contains "$(_section 'Named by nobody')" 'linux/scripts/lib/unreferenced.requirements.txt' "a longer suffix must not impersonate the basename"
+    "${_REAL_INVENTORY}")"
+  _inventory "${_work}/lib-classes.json" "${_LIB_CLASSES}"
+  _run "${_h}" "${_c}" "${_work}/lib-classes.json"
+  t_assert_eq 0 "${rc}" "the shared library fixture must scan successfully"
+  t_assert_contains "$(_section 'Reached by a consumer')" 'linux/scripts/lib/shared-library.sh' "a qualified library path is reached"
+  t_assert_contains "$(_section 'Mentioned, never reached')" 'linux/scripts/lib/dynamic.requirements.txt' "an ambiguous basename is retained even when the consumer owns another file of that name"
+  t_assert_contains "$(_section 'Hub-internal only')" 'linux/scripts/lib/internal.requirements.txt' "a sibling basename is a hub-internal use"
+  t_assert_contains "$(_section 'Named by nobody')" 'linux/scripts/lib/unreferenced.requirements.txt' "a longer suffix must not impersonate the basename"
+}
 
-t_case "a BACKSLASH-spelled hub path is a hub path"
-# Half the fleet writes hub paths with backslashes.
-_cb="$(_consumer backslash)"
-_run "${_h}" "${_cb}" "${_inv}"
-t_assert_eq "1" "${rc}" "a dangling backslash path must fail the run like any other"
-t_assert_contains "${OUT}" "gone.ps1" "the finding must name the path it could not resolve"
-rm -rf "${_cb}"
+_section_shapes() {
+  t_case "a BACKSLASH-spelled hub path is a hub path"
+  # Half the fleet writes hub paths with backslashes.
+  _cb="$(_consumer backslash)"
+  _run "${_h}" "${_cb}" "${_inv}"
+  t_assert_eq "1" "${rc}" "a dangling backslash path must fail the run like any other"
+  t_assert_contains "${OUT}" "gone.ps1" "the finding must name the path it could not resolve"
+  rm -rf "${_cb}"
 
-t_case "a printed hub path is a path, and the escape after it is not a segment"
-# A slash-spelled reference ends at the first backslash, so a printf escape is no path segment.
-_clean escape 'called-by-consumer.sh/n' \
-  "the printed path exists; only the C escape after it is new"
+  t_case "a printed hub path is a path, and the escape after it is not a segment"
+  # A slash-spelled reference ends at the first backslash, so a printf escape is no path segment.
+  _clean escape 'called-by-consumer.sh/n' \
+    "the printed path exists; only the C escape after it is new"
 
-t_case "a consumer's TEST tree is a fixture tree, whatever the layout calls it"
-# A test tree naming a path that must not exist is the fixture doing its job, whatever the layout.
-_clean fixture 'NoSuchModule' \
-  "a fixture path in a consumer's test tree must not fail the run"
+  t_case "a consumer's TEST tree is a fixture tree, whatever the layout calls it"
+  # A test tree naming a path that must not exist is the fixture doing its job, whatever the layout.
+  _clean fixture 'NoSuchModule' \
+    "a fixture path in a consumer's test tree must not fail the run"
 
-t_case "a module reached by NAME can dangle, in all three shapes"
-# A module is asked for by name, so only a name check catches it before "module not found" at runtime.
-_cm="$(_consumer module)"
-_run "${_h}" "${_cm}" "${_inv}"
-t_assert_eq "1" "${rc}" "three missing modules must fail the run"
-for _shape in WindowsGone.Common WindowsAlsoGone.Common WindowsThirdGone.Common; do
-  t_assert_contains "${OUT}" "${_shape}" "the ${_shape} reference shape is not graded"
-done
-t_assert_eq "" "$(printf '%s' "${OUT}" | grep -F 'WindowsBuild.Common' || true)" \
-  "a module the hub DOES ship must not be reported; that would make the check noise"
-# A Windows* name the consumer tracks is its own; a test tree's .psm1 is not.
-t_assert_eq "" "$(printf '%s' "${OUT}" | grep -F 'WindowsOwn.Common' || true)" \
-  "a module the consumer tracks itself resolves through the fallback and must not dangle"
-t_assert_contains "${OUT}" "WindowsFixtureOnly.Common" \
-  "a .psm1 that exists only in a test tree must not make its name the consumer's own"
-rm -rf "${_cm}"
+  t_case "a module reached by NAME can dangle, in all three shapes"
+  # A module is asked for by name, so only a name check catches it before "module not found" at runtime.
+  _cm="$(_consumer module)"
+  _run "${_h}" "${_cm}" "${_inv}"
+  t_assert_eq "1" "${rc}" "three missing modules must fail the run"
+  for _shape in WindowsGone.Common WindowsAlsoGone.Common WindowsThirdGone.Common; do
+    t_assert_contains "${OUT}" "${_shape}" "the ${_shape} reference shape is not graded"
+  done
+  t_assert_eq "" "$(printf '%s' "${OUT}" | grep -F 'WindowsBuild.Common' || true)" \
+    "a module the hub DOES ship must not be reported; that would make the check noise"
+  # A Windows* name the consumer tracks is its own; a test tree's .psm1 is not.
+  t_assert_eq "" "$(printf '%s' "${OUT}" | grep -F 'WindowsOwn.Common' || true)" \
+    "a module the consumer tracks itself resolves through the fallback and must not dangle"
+  t_assert_contains "${OUT}" "WindowsFixtureOnly.Common" \
+    "a .psm1 that exists only in a test tree must not make its name the consumer's own"
+  rm -rf "${_cm}"
+}
 
-t_case "an executable reference to a hub path that does not exist FAILS the run"
-_run "${_h}" "$(_consumer dangling)" "${_inv}"
-t_assert_eq "1" "${rc}" "a caller pointing at nothing is the other half of this question"
-t_assert_contains "${OUT}" "names a hub path that does not exist"
-t_assert_contains "${OUT}" "linux/scripts/gone.sh"
+_section_dangling() {
+  t_case "an executable reference to a hub path that does not exist FAILS the run"
+  _run "${_h}" "$(_consumer dangling)" "${_inv}"
+  t_assert_eq "1" "${rc}" "a caller pointing at nothing is the other half of this question"
+  t_assert_contains "${OUT}" "names a hub path that does not exist"
+  t_assert_contains "${OUT}" "linux/scripts/gone.sh"
 
-t_case "the same missing path in a COMMENT is prose, not a broken call"
-_run "${_h}" "$(_consumer commented)" "${_inv}"
-t_assert_eq "0" "${rc}" \
-  "a comment recording that a path was removed must not fail the run; output was: ${OUT}"
+  t_case "the same missing path in a COMMENT is prose, not a broken call"
+  _run "${_h}" "$(_consumer commented)" "${_inv}"
+  t_assert_eq "0" "${rc}" \
+    "a comment recording that a path was removed must not fail the run; output was: ${OUT}"
+}
 
-t_case "an entry point class that expands to NOTHING is refused"
-_inventory "${_work}/empty-class.json" "${_CLASSES_EMPTY}"
-_run "${_h}" "${_c}" "${_work}/empty-class.json"
-t_assert_eq "1" "${rc}" "a class matching nothing silently narrows the report to less than it claims"
-t_assert_contains "${OUT}" "matches nothing"
+_section_refusals() {
+  t_case "an entry point class that expands to NOTHING is refused"
+  _inventory "${_work}/empty-class.json" "${_CLASSES_EMPTY}"
+  _run "${_h}" "${_c}" "${_work}/empty-class.json"
+  t_assert_eq "1" "${rc}" "a class matching nothing silently narrows the report to less than it claims"
+  t_assert_contains "${OUT}" "matches nothing"
 
-t_case "an inventory with no self:true consumer is refused"
-_inventory "${_work}/no-self.json" "${_CLASSES}" false
-_run "${_h}" "${_c}" "${_work}/no-self.json"
-t_assert_eq "1" "${rc}" "without the hub marked self, hub-internal use reads as an external caller"
-t_assert_contains "${OUT}" "no consumer is marked self:true"
+  t_case "an inventory with no self:true consumer is refused"
+  _inventory "${_work}/no-self.json" "${_CLASSES}" false
+  _run "${_h}" "${_c}" "${_work}/no-self.json"
+  t_assert_eq "1" "${rc}" "without the hub marked self, hub-internal use reads as an external caller"
+  t_assert_contains "${OUT}" "no consumer is marked self:true"
 
-t_case "a consumer that cannot be obtained is a hard failure, never a skip"
-OUT="$("${PY}" "${GATE}" --inventory "${_inv}" --hub-root "${_h}" --offline \
-  --local "hub-self=${_h}" 2>&1)"; rc=$?
-t_assert_eq "1" "${rc}" "skipping it would turn 'no caller found' into a lie with the same shape as the truth"
-t_assert_contains "${OUT}" "Skipping it would make the inventory lie"
+  t_case "a consumer that cannot be obtained is a hard failure, never a skip"
+  OUT="$("${PY}" "${GATE}" --inventory "${_inv}" --hub-root "${_h}" --offline \
+    --local "hub-self=${_h}" 2>&1)"; rc=$?
+  t_assert_eq "1" "${rc}" "skipping it would turn 'no caller found' into a lie with the same shape as the truth"
+  t_assert_contains "${OUT}" "Skipping it would make the inventory lie"
+}
 
+t_sections _section_grading _section_namesake _section_root _section_declared _section_shared _section_shapes _section_dangling _section_refusals -- "$@"
 t_summary

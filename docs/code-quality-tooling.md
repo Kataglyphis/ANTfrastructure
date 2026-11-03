@@ -987,7 +987,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4221 entries** over **543 distinct test commands**; both digits are
+manifest holds **4228 entries** over **558 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1200,6 +1200,16 @@ The shards install no Pester, so a recipe whose test is a Pester-style suite
 every run as a vacuous bite. Put the cases a recipe needs in a harness-style
 suite; `test-mutation-pester-targets.sh` refuses a recipe that names a
 Pester-style one.
+
+A recipe's cost is one run of its command, so name the narrowest command that
+bites: `-k <section>` on a bash suite using `t_sections`
+([the harness](cross-build-verification.md#the-linuxscriptstests-suites)), `-k <test>`
+on a unittest file, or
+`pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only <suite>` for a
+harness-style suite that needs only `TestHarness.psm1`. That driver skips the modules,
+Pester detection and tally of `Invoke-Tests.ps1`; a suite that needs a module fails its
+baseline rather than losing a bite. The same cases must stay in the unfiltered suite, so
+preflight and Windows CI still run them.
 
 A failed baseline reports its first three and last three nonempty lines, capped
 at 500 characters per line. This retains the first diagnostic and final summary

@@ -1272,6 +1272,10 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   prints how many of how many it ran. Why it is capped, and what it measured before:
   [`code-quality-tooling.md` § The pre-commit hook's cost budget](docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget).
 
+  A recipe names the narrowest command that still bites (`-k <section>` through `t_sections`,
+  `Invoke-HarnessSuite.ps1 -Only <suite>`); the unfiltered suite keeps the same cases in preflight
+  and a pick naming no section fails.
+
   CI never samples: its eight `mutations` jobs split the manifest with `--shard` and together prove
   every entry. The hub's jobs take shard K of a cost plan (`--shard-costs`) that keeps each test
   command on one shard, so its baseline runs once per round; refresh the table from a green run's
