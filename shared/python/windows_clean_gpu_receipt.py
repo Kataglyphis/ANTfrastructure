@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: MIT
-"""Run a trusted clean-host check against a digest-bound Windows GPU artifact."""
+"""Run a trusted Windows check against a digest-bound GPU artifact."""
 
 from __future__ import annotations
 
@@ -21,6 +21,24 @@ stage = importlib.import_module("stage_gpu_artifact")
 process = importlib.import_module("windows_gpu_process")
 
 
+def validate_evidence(directory: Path, *, empty: bool) -> None:
+    """Require a real empty directory first, then nonempty regular evidence files."""
+    if receipt.is_link(directory) or not directory.is_dir():
+        raise ValueError("GPU evidence must be a real directory")
+    entries = list(directory.rglob("*"))
+    if empty:
+        if entries:
+            raise ValueError("GPU evidence directory must start empty")
+        return
+    if not entries or not any(item.is_file() for item in entries):
+        raise ValueError("GPU profile produced no evidence files")
+    if any(
+        receipt.is_link(item) or not (item.is_file() or item.is_dir())
+        for item in entries
+    ):
+        raise ValueError("GPU evidence must contain only real directories and files")
+
+
 def check(args: argparse.Namespace) -> None:
     """Check the same immutable package bytes before and after the caller's script."""
     identity = {key: getattr(args, key) for key in receipt.IDENTITY if key != "check"}
@@ -31,6 +49,12 @@ def check(args: argparse.Namespace) -> None:
     output = Path(args.receipt)
     script = Path(args.script)
     work = Path(args.work)
+    check_name = getattr(args, "check", "clean-host-inference")
+    evidence_value = getattr(args, "evidence_dir", None)
+    if check_name not in {"clean-host-inference", "gpu-model-inference"}:
+        raise ValueError("unsupported Windows GPU check")
+    if (check_name == "gpu-model-inference") != bool(evidence_value):
+        raise ValueError("GPU profiling requires its own evidence directory")
     if (
         not output.is_absolute()
         or os.path.lexists(output)
@@ -39,6 +63,13 @@ def check(args: argparse.Namespace) -> None:
         or output.resolve().is_relative_to(work.resolve())
     ):
         raise ValueError("receipt must be new and work directory must be real")
+    if evidence_value:
+        evidence = Path(evidence_value)
+        if not evidence.is_absolute() or evidence.resolve().is_relative_to(
+            work.resolve()
+        ):
+            raise ValueError("GPU evidence must be outside package scratch")
+        validate_evidence(evidence, empty=True)
     if (
         receipt.is_link(script)
         or not script.is_file()
@@ -88,20 +119,26 @@ def check(args: argparse.Namespace) -> None:
         )
         env = os.environ.copy()
         env.update(GPU_PACKAGE_DIR=str(packages), GPU_VENDOR=identity["vendor"])
+        if evidence_value:
+            env["GPU_EVIDENCE_DIR"] = str(evidence)
         process.run_process(
             [args.pwsh, "-NoProfile", "-NonInteractive", "-File", str(script)],
             timeout=args.timeout,
             env=env,
         )
+        if evidence_value:
+            validate_evidence(evidence, empty=False)
+            if shutil.disk_usage(work).free < args.floor:
+                raise ValueError("GPU profile crossed the required disk floor")
         passed = root / "passed.json"
-        for check_name, path, operation in (
+        for receipt_check, path, operation in (
             ("before-check", before, "verify"),
-            ("clean-host-inference", passed, "create"),
+            (check_name, passed, "create"),
         ):
             receipt.execute(
                 argparse.Namespace(
                     **identity,
-                    check=check_name,
+                    check=receipt_check,
                     file=names,
                     receipt=str(path),
                     directory=str(packages),
@@ -124,6 +161,12 @@ def main() -> int:
     for name in ("archive", "receipt", "producer-receipt", "script", "work", "pwsh"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--file", action="append", required=True)
+    parser.add_argument(
+        "--check",
+        choices=("clean-host-inference", "gpu-model-inference"),
+        default="clean-host-inference",
+    )
+    parser.add_argument("--evidence-dir")
     for name in (
         "max-uncompressed-bytes",
         "max-compression-ratio",

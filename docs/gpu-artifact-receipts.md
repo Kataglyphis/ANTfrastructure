@@ -30,6 +30,16 @@ after the measured expanded package size. This estimate is not an extraction quo
 and does not guarantee an installer will fit. Local and self-hosted GPU checks retain
 their separate disk floor.
 
+The same `windows_clean_gpu_receipt.py` driver supports a trusted self-hosted GPU
+check with `--check gpu-model-inference --evidence-dir <absolute-empty-directory>`.
+That directory must be outside `--work`; the PowerShell callback receives it as
+`GPU_EVIDENCE_DIR`, with `GPU_PACKAGE_DIR` and `GPU_VENDOR`. It must write at least
+one regular evidence file. The driver verifies the producer receipt before the
+callback, rechecks package bytes afterward, rejects linked evidence, and publishes
+the GPU receipt only after package scratch cleanup. The caller owns and removes
+the evidence directory, including on failure; upload it only after the driver
+succeeds. This records the caller's check, not independent proof of GPU execution.
+
 `shared/python/gpu_artifact_receipt.py` binds a flat set of named package files to
 a caller-supplied CI identity and a named passed check. It uses only the Python
 standard library and runs on Windows and Linux. It is a building block; it is not
