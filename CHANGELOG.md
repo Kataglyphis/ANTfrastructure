@@ -26,6 +26,16 @@
 - `language-ai.md`: multilingual-e5-small and bge-m3 are BERT and XLM-Roberta, which GenAI 0.17's model
   builder does not export, so today they reach an app through an endpoint only.
 
+## 2026-11-04 — The pre-push hook is usable under parallel pushes
+
+- [`code-quality-tooling.md`](docs/code-quality-tooling.md#the-pre-push-hook): the hook refuses an
+  unfetched remote tip before any proof, runs doc numbers and comment size over the rebased tree,
+  and grades `--push-range`: committed files and recipes the push changes, every pushed ref.
+- `--delegate-chrome` hands Chrome suites to CI with a printed count instead of stalling the host;
+  CI's shards and preflight refuse or never pass it. Every gate run ends in a `coverage:` line, and
+  only a run that proved every entry calls itself whole.
+- `git push --no-verify` needs a by-hand `--changed` proof named in the report (AGENTS.md).
+
 ## 2026-11-03 — A package with webrtcsink ships the scanner
 
 - [`linux-build-basics.md`](docs/linux-build-basics.md#gstreamer-loads-from-the-package-alone): the fork

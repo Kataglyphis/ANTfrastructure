@@ -1,56 +1,82 @@
 #!/usr/bin/env bash
-# pre-push — the mutation coverage a per-commit sample cannot pay for.
-#
-# pre-commit proves at most PRECOMMIT_MUTATION_CAP entries of the STAGED files and
-# CI proves all of them; between the two there was nothing. Staleness over the
-# whole manifest costs one read per target, and `--changed` is push scope by
-# definition. docs/code-quality-tooling.md#the-pre-push-hook
+# What a commit hook cannot see: the rebased tree's cheap gates, then the mutation proof of this push; see docs/code-quality-tooling.md#the-pre-push-hook
 set -euo pipefail
 
-# Git exports GIT_DIR (and friends) to hooks, so a fixture's `git -C <tmp> init` would
-# re-init THIS repository as bare. Same clear as pre-commit; docs/failure-modes.md.
+# See docs/failure-modes.md#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
 
-# One owner for "is there a working Python here?", shared with preflight.sh and
-# the lint aggregator: plain `python3` on a Windows Git Bash host is the
-# Microsoft Store stub, which prints an install hint and exits non-zero -- every
-# gate below would then fail for a reason that has nothing to do with the commit.
-# Resolved from THIS file's path, not from the working directory: the
-# --print-mutation-plan entry point runs before the cd to the toplevel.
-# docs/shared-script-libraries.md#python-interpreter-probe-01-corepython-probesh
 _hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../scripts/01-core/python-probe.sh
 . "${_hook_dir}/../../scripts/01-core/python-probe.sh"
 preflight_python_require pre-push || exit 1
-# Expanded UNQUOTED at every call site: the value may be a command line
-# ("uv run --no-project python"), which is the hint the probe's failure gives.
+# Expanded unquoted at every call site: the value may be a command line.
 _PY="${PREFLIGHT_PYTHON}"
 
 _root="$(git rev-parse --show-toplevel)"
 cd "${_root}"
 
-# The push scope is what the remote lacks; origin/main lags develop by hundreds of entries.
-_base="origin/main"
+# A new ref grades what it adds to develop; main lags by hundreds of entries.
+_new_ref_base() {
+  if git rev-parse -q --verify origin/develop >/dev/null 2>&1; then echo origin/develop; else echo origin/main; fi
+}
+
+_ranges=()
+_refs=0
 if [ ! -t 0 ]; then
   while read -r _lref _lsha _rref _rsha; do
-    case "${_rsha:-}" in
-      *[!0]*) if git cat-file -e "${_rsha}^{commit}" 2>/dev/null; then _base="${_rsha}"; break; fi ;;
+    _refs=$((_refs + 1))
+    case "${_lsha}" in *[!0]*) ;; *) continue ;; esac
+    case "${_rsha}" in
+      *[!0]*)
+        # Git offers this tip only when the ref moved since the last fetch, and rejects the push after the proofs.
+        if ! git cat-file -e "${_rsha}^{commit}" 2>/dev/null; then
+          echo "pre-push: ${_rref} moved to ${_rsha}, unknown here; refused before any proof -- git fetch && git rebase" >&2
+          exit 1
+        fi
+        _ranges+=("--push-range" "${_rsha}...${_lsha}") ;;
+      *) _ranges+=("--push-range" "$(_new_ref_base)...${_lsha}") ;;
     esac
   done
 fi
+[ "${_refs}" -gt 0 ] || _ranges=("--push-range" "$(_new_ref_base)...HEAD")
+
+_dirty="$(git status --porcelain | grep -c . || true)"
+if [ "${_dirty}" -gt 0 ]; then
+  echo "pre-push: ${_dirty} uncommitted path(s): selection follows the commits, but every check reads this working tree"
+fi
+
+echo "pre-push: derived doc numbers and comment size over the rebased tree…"
+_log="$(mktemp)"
+bash linux/scripts/tests/test-doc-numbers.sh >"${_log}" 2>&1 || {
+  tail -n 20 "${_log}" >&2
+  rm -f "${_log}"
+  echo "pre-push: derived doc numbers are STALE -- run: bash linux/scripts/tests/test-doc-numbers.sh --update" >&2
+  exit 1
+}
+rm -f "${_log}"
+# shellcheck disable=SC2086
+${_PY} linux/scripts/verify_comment_size.py || {
+  echo "pre-push: a comment block is over one line -- docs/code-quality-tooling.md#comment-size-comment-size" >&2
+  exit 1
+}
 
 echo "pre-push: mutation staleness over the whole manifest…"
 # shellcheck disable=SC2086
 ${_PY} docs/scripts/verify_mutations.py --stale-check || {
-  echo "pre-push: a recorded mutation no longer applies — re-point or delete it, or 'git push --no-verify'" >&2
+  echo "pre-push: a recorded mutation no longer applies — re-point or delete it" >&2
   exit 1
 }
 
-echo "pre-push: mutation gate over everything since ${_base}…"
+if [ "${#_ranges[@]}" -eq 0 ]; then
+  echo "pre-push: OK; deletes only, no mutation to prove"
+  exit 0
+fi
+
+echo "pre-push: mutation gate over this push (${_ranges[*]})…"
 # shellcheck disable=SC2086
-${_PY} docs/scripts/verify_mutations.py --changed --base "${_base}" ${PREPUSH_MUTATION_JOBS:+--jobs "${PREPUSH_MUTATION_JOBS}"} || {
-  echo "pre-push: a recorded mutation SURVIVED — a test here cannot fail" >&2
+${_PY} docs/scripts/verify_mutations.py "${_ranges[@]}" --delegate-chrome ${PREPUSH_MUTATION_JOBS:+--jobs "${PREPUSH_MUTATION_JOBS}"} || {
+  echo "pre-push: a recorded mutation SURVIVED or could not be proved — a test here cannot fail" >&2
   exit 1
 }
 
-echo "pre-push: OK"
+echo "pre-push: OK for this push's scope, per the coverage line above; CI proves every entry"

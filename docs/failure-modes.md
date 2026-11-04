@@ -1441,6 +1441,20 @@ mid-push, while the branches and the index stayed untouched.
 path in the checkout's `.git` file. The pre-push hook now clears the same four
 variables as pre-commit, mutation-tested as `mutations.push-clears-git-env`.
 
+### A push stalls on a Chrome suite, then fails with a vacuous bite
+
+`git push` sits for five minutes and more, then prints
+`baseline test already fails unmutated (vacuous bite)` for a `test-docs-sidebars.sh`,
+`test-check-live-site.sh` or `test-webgpu-canvas-readback.sh` recipe, with a node timer
+stack in the excerpt. CI is green on the same commit.
+
+**Cause.** Headless Chrome stalls on the build host, so the suite's cases time out. A
+single edit to a docs-site script selects such a recipe.
+
+**Fix.** The pre-push hook hands these recipes to CI with `--delegate-chrome` and prints
+the count. Run them here only through the image; see
+[the pre-push hook](code-quality-tooling.md#the-pre-push-hook).
+
 ### A cross-built Rust tool links the build host's libbz2
 
 **Symptom.** A `cargo install --target riscv64gc-unknown-linux-gnu` of wasm-pack dies

@@ -29,6 +29,14 @@ from types import FrameType
 from typing import Never, NotRequired, TextIO, TypedDict
 
 from mutation_parse import Edit, MissingParser, refusals
+from mutation_push import (
+    changed_files,
+    coverage_line,
+    delegated_lines,
+    select_push,
+    split_chrome,
+    touches,
+)
 from mutation_shards import describe, load_costs, plan
 
 
@@ -135,18 +143,6 @@ def load(path: str) -> list[MutationEntry]:
             raise SystemExit("duplicate mutation id: {}".format(m["id"]))
         seen.add(m["id"])
     return data
-
-
-def changed_files(base: str = "origin/main") -> set[str]:
-    """Union of files committed since base, staged, and edited in the tree."""
-    touched = set()
-    for cmd in (["git", "diff", "--name-only", base + "...HEAD"],
-                ["git", "diff", "--cached", "--name-only"],
-                ["git", "diff", "--name-only"]):
-        out = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=False)
-        if out.returncode == 0:
-            touched |= set(out.stdout.split())
-    return touched
 
 
 _LIVE_GROUPS: set[int] = set()
@@ -658,11 +654,11 @@ def select_shard(
 def select(args: argparse.Namespace) -> list[MutationEntry]:
     """The entries this invocation proves: --only, then --changed, then --shard."""
     entries = select_only(load(args.manifest), args.only, args.manifest)
-    if args.changed:
-        touched = changed_files(args.base)
-        # By target or by test: a commit that only weakens a test touches no target.
-        entries = [e for e in entries
-                   if e["target"] in touched or any(t in e["test"] for t in touched)]
+    if args.push_range:
+        entries = select_push(entries, args.push_range, ROOT, os.path.abspath(args.manifest))
+    elif args.changed:
+        touched = changed_files(ROOT, args.base)
+        entries = [e for e in entries if touches(e, touched)]
     return select_shard(entries, args.shard, args.shard_costs)
 
 
@@ -684,7 +680,54 @@ def run_check_mode(args: argparse.Namespace, entries: list[MutationEntry], scope
     return None
 
 
-def main() -> int:
+def prove_in_mirrors(args: argparse.Namespace, runnable: list[MutationEntry], report: Report) -> int:
+    """Prove the entries, each in a throwaway copy unless --in-place; an empty list runs and copies nothing."""
+    costs = Costs(runnable, report)
+    if not runnable:
+        rc = 0
+    elif args.in_place:
+        rc = run_entries(args, runnable, report, costs=costs)
+    else:
+        src = os.path.abspath(args.root)
+        workspace = tempfile.mkdtemp(prefix="mutation-gate-")
+        try:
+            mirror_tree(src, workspace)
+            args.root = workspace
+            rc = run_shards(args, runnable, src, report, costs) if setup_mirror(
+                workspace, args.setup_script
+            ) else 1
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
+    return rc
+
+
+def prove_selected(args: argparse.Namespace, entries: list[MutationEntry]) -> int:
+    """Refuse unparsable mutants, set Chrome suites aside on request, prove the rest and state the coverage."""
+    report = Report()
+    runnable, refused_rc = refuse_unparsable(entries, args.root, report)
+    delegated: list[MutationEntry] = []
+    if args.delegate_chrome:
+        runnable, delegated = split_chrome(runnable, args.root)
+        for line in delegated_lines(delegated):
+            say(line)
+    rc = max(prove_in_mirrors(args, runnable, report), refused_rc)
+    report.summary(entries)
+    total = len(load(args.manifest))
+    proved = len(runnable) - len(report.skipped) - len(report.failed.intersection(e["id"] for e in runnable))
+    say(coverage_line(proved, len(entries), len(delegated), len(report.skipped), total))
+    if rc == 0 and report.skipped:
+        say(
+            f"OK: every mutation this host can run is caught; {len(report.skipped)} "
+            "skipped here (listed above), Linux proves them"
+        )
+    elif rc == 0 and proved == total:
+        say("OK: every recorded mutation is caught by its tests")
+    elif rc == 0:
+        say(f"OK: all {proved} proved here are caught; that is not the whole manifest")
+    return rc
+
+
+def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--manifest", default=MANIFEST)
@@ -696,6 +739,12 @@ def main() -> int:
     ap.add_argument("--base", default="origin/main",
                     help="with --changed: the commits counted are those since this ref"
                          " (default: %(default)s; the pre-push hook passes the remote's tip)")
+    ap.add_argument("--push-range", action="append", metavar="REMOTE...LOCAL",
+                    help="only entries these committed ranges change, or recipes they add or edit (repeatable);"
+                         " staged and edited files are not pushed, and a failed diff exits 2")
+    ap.add_argument("--delegate-chrome", action="store_true",
+                    help="count entries whose suite needs a real Chrome as CI's to prove, instead of running them"
+                         " here; refused with --shard, which is CI")
     ap.add_argument("--in-place", action="store_true",
                     help="mutate --root itself instead of a throwaway copy (fixtures only)")
     ap.add_argument("--setup-script",
@@ -710,7 +759,11 @@ def main() -> int:
                     help="prove only entries[K::N] of the selection (K from 0): one of N CI jobs")
     ap.add_argument("--shard-costs", metavar="TABLE",
                     help="with --shard: take shard K of the plan built from this cost table instead")
-    args = ap.parse_args()
+    return ap
+
+
+def main() -> int:
+    args = parser().parse_args()
 
     try:
         entries = select(args)
@@ -722,6 +775,9 @@ def main() -> int:
     if args.in_place and args.setup_script:
         sys.stderr.write("ERROR: --setup-script requires disposable mirrors; omit --in-place\n")
         return 2
+    if args.delegate_chrome and args.shard:
+        sys.stderr.write("ERROR: --delegate-chrome with --shard: CI is what the entries are delegated to\n")
+        return 2
     scope = f" (shard {args.shard}: {len(entries)} entr(ies))" if args.shard else ""
     checked = run_check_mode(args, entries, scope)
     if checked is not None:
@@ -731,32 +787,7 @@ def main() -> int:
     if not entries:
         say("  nothing selected")
         return 0
-    report = Report()
-    runnable, refused_rc = refuse_unparsable(entries, args.root, report)
-    costs = Costs(runnable, report)
-    if args.in_place:
-        rc = run_entries(args, runnable, report, costs=costs)
-    else:
-        src = os.path.abspath(args.root)
-        workspace = tempfile.mkdtemp(prefix="mutation-gate-")
-        try:
-            mirror_tree(src, workspace)
-            args.root = workspace
-            rc = run_shards(args, runnable, src, report, costs) if setup_mirror(
-                workspace, args.setup_script
-            ) else 1
-        finally:
-            shutil.rmtree(workspace, ignore_errors=True)
-    rc = max(rc, refused_rc)
-    report.summary(entries)
-    if rc == 0 and report.skipped:
-        say(
-            f"OK: every mutation this host can run is caught; {len(report.skipped)} "
-            "skipped here (listed above), Linux proves them"
-        )
-    elif rc == 0:
-        say("OK: every recorded mutation is caught by its tests")
-    return rc
+    return prove_selected(args, entries)
 
 
 if __name__ == "__main__":

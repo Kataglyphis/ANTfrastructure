@@ -12,7 +12,7 @@ GATE="${REPO}/docs/scripts/verify_mutations.py"
 _tmp="$(mktemp -d)"
 trap 'if [ -s "${_tmp}/hold-pid" ]; then kill -TERM "$(cat "${_tmp}/hold-pid")" 2>/dev/null || :; fi; rm -rf "${_work}" "${_tmp}"' EXIT
 # Gate mutants written to "${_tmp}" import their sibling modules from there.
-cp "${REPO}/docs/scripts/mutation_parse.py" "${REPO}/docs/scripts/mutation_shards.py" "${_tmp}/"
+cp "${REPO}/docs/scripts/mutation_parse.py" "${REPO}/docs/scripts/mutation_shards.py" "${REPO}/docs/scripts/mutation_push.py" "${_tmp}/"
 
 # _fixture <find> <replace> <yes|witness|broken|no> [dir]: "${_work}" is outside any copy, "." inside it.
 _fixture() {
@@ -310,7 +310,7 @@ t_assert_eq "0" "$(_count "${_hook_calls}" -e '--in-place')" \
 _push_calls="$(_gate_calls "${REPO}/linux/host-config/git-hooks/pre-push")"
 t_assert_eq "1" "$(_count "${_push_calls}" -e '--stale-check')" \
   "the push hook must run the whole-manifest staleness pass -- nothing else does, between a sampled commit and CI"
-t_assert_eq "1" "$(_count "${_push_calls}" -e '--changed')" \
+t_assert_eq "1" "$(_count "${_push_calls}" -e '_ranges\[@\]')" \
   "and the real gate over what the push adds"
 t_assert_eq "0" "$(_count "${_push_calls}" -e '--in-place')" \
   "the push hook must not opt out of isolation either"

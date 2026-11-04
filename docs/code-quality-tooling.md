@@ -990,7 +990,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4371 entries** over **576 distinct test commands**; both digits are
+manifest holds **4395 entries** over **577 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1092,7 +1092,9 @@ nothing (the common commit) copies nothing at all.
 | flag | use |
 | --- | --- |
 | *(none)* | every entry — CI, or before a release |
-| `--changed` | only entries whose target — or a file their `test` command names — is committed since `--base` (default `origin/main`), staged, or edited. The pre-push hook's mode (CI runs every entry, sharded); the commit hook no longer uses it (see the cost budget below — those are push semantics, and a hook re-paid them once per commit). Until 2026-09-03 this took the FIRST non-empty of those three, so a staged file was never selected while unpushed commits existed: the hook let a stale mutation through and the next, unrelated commit tripped on it |
+| `--changed` | only entries whose target — or a file their `test` command names — is committed since `--base` (default `origin/main`), staged, or edited. The by-hand proof (the pre-push hook uses `--push-range`, CI runs every entry, sharded); the commit hook no longer uses it (see the cost budget below — those are push semantics, and a hook re-paid them once per commit). Until 2026-09-03 this took the FIRST non-empty of those three, so a staged file was never selected while unpushed commits existed: the hook let a stale mutation through and the next, unrelated commit tripped on it |
+| `--push-range <remote>...<local>` | only entries the committed range changes, plus recipes it adds or edits; repeatable. The pre-push hook's scope ([the pre-push hook](#the-pre-push-hook)) |
+| `--delegate-chrome` | count entries whose suite needs a real Chrome as CI's to prove, and print the count per suite. Refused with `--shard` |
 | `--only <id>` | one entry, while writing it |
 | `--root <dir>` | which tree to copy and check. It is copied too — pointing the gate at a mirror is a second belt, not the isolation mechanism |
 | `--jobs <n>` | how many mutations to prove at once, one mirror each (default: the CPUs the process may use, capped at the entry count and at a quarter of the temp filesystem's free space). Every mutation is still applied, run and restored alone, inside its own shard's copy |
@@ -1261,7 +1263,7 @@ every commit of a batch re-pays for all the commits before it, so the tenth
 commit of a session is the most expensive one even if it touched one file. The
 hook now selects on the STAGED files alone — the same scoping it already applies
 to `shellcheck` (`--files`) and to the doc gates. `--changed` keeps its meaning
-for the pre-push hook.
+for a by-hand proof; the pre-push hook uses `--push-range`.
 
 **Cost.** Even staged-only, the mass is lopsided: the totals above spread over a
 handful of suites, and on 2026-09-04 `test-code-complexity.sh` alone owned more
@@ -1331,7 +1333,476 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 78 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 102 entries (`mutations.*`)
+neuter its survivor-reporting, its file restore, its baseline pass, its use of the
+copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
+call sites, the exclude list, the single-match rule, `copy2`, both halves of
+the symlink contract, the streamed report and the CI shard split. The isolation proof is
+a witness file: the fixture's test command `cp`s the pointed-at subject somewhere
+else *while the mutation is applied*, and the suite asserts that snapshot still
+reads `GUARD=on` — an after-the-fact byte comparison cannot tell isolation from a
+successful restore.
+
+**Isolation is a DEFAULT, and a default is one flag from being off.** Nothing in
+the code stops `--in-place` being appended to preflight's `run_check mutations`
+line or to the hook's `verify_mutations.py "${_only[@]}"` line; every suite in the
+repo survives that edit, and the consequence is precisely the hazard above.
+`test-mutation-gate.sh` therefore reads the call sites out of
+`linux/scripts/preflight.sh`, `linux/host-config/git-hooks/pre-commit` and
+`pre-push` and asserts that each still invokes the gate — `run_check mutations`,
+the hook's single `verify_mutations.py "${_only[@]}" ||` staged-file run, and
+pre-push's `--stale-check` and `--changed` runs — and that no invocation line
+carries `--in-place`. Four entries
+(`mutations.preflight-callsite-isolated`, `mutations.hook-callsite-isolated`,
+`mutations.preflight-runs-the-gate`, `mutations.hook-runs-the-gate`) flip each call
+site and must bite. The test only READS those files; they belong to other gates.
+
+**Three properties of the copy are pinned rather than assumed.** `COPY_EXCLUDES` is
+membership, so emptying it is invisible to every functional test — the run just gets
+slower and clones `.git`. The suite plants a payload in each excluded tree, has the
+fixture's test command list what it can see from *inside* the copy, and asserts none
+of them arrived — against a whole-checkout clone per invocation, at the mirror
+cost measured above. `copy2`, not `copyfile`, carries the mode across, so a mutated `.sh`
+is still executable in the copy: the suite chmods its subject and has the test command
+require `-x`. Losing that would turn every shell test red for the wrong reason — a
+vacuous-bite storm, not a verdict. And a `find` string matching MORE than once is now
+an error (`ambiguous, name one edit`) instead of a silent first-occurrence edit that
+neuters one of several copies, leaves the guarantee half-standing, and reports a false
+`SURVIVED`; zero matches was already `stale`. Every entry matched exactly once when
+the rule landed (2026-09-03).
+
+### The pre-push hook
+
+Like pre-commit, it first clears the `GIT_DIR` family git exports to hooks; the
+gate's fixtures otherwise act on this repository ([failure-modes.md](failure-modes.md#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense)).
+
+The commit hook samples; CI runs every entry. Between the two there was nothing,
+so an entry that ROTTED — its target renamed, its `find` string reworded by a
+refactor that had nothing to do with it — stayed invisible for as long as nobody
+touched it. That is the failure this repo keeps hitting, and it is not the
+expensive half of a bite: whether an edit still APPLIES costs one read of the
+target, while whether the suite can fail costs a full suite run.
+
+`--stale-check` splits the two. It runs `applicable()` — the same precondition
+`apply_and_run()` uses, one owner, so the two can never disagree — over every
+selected entry and runs no test at all. Measured 2026-09-05 on this tree: **378
+entries in 0.06 s**, against minutes for the same entries proven for real. It
+reports a missing target, a symlink target, a `find` string that matches zero
+times or more than once, and a no-op `replace`.
+
+What it does NOT do is ask whether a test can fail, and the suite pins that: a
+manifest whose mutation the tests SURVIVE passes `--stale-check` and fails the
+gate. A caller that ran only the cheap pass and called it coverage would be the
+exact false green the gate exists to find.
+
+`linux/host-config/git-hooks/pre-push` runs four steps, cheapest first, and stops at
+the first red:
+
+1. **The remote's tip.** Git hands the hook the tip it saw at connect time. A tip this
+   clone has not fetched means another push landed since the last fetch; git rejects
+   that push after the hook, so the hook refuses at once and says to rebase.
+2. **`test-doc-numbers.sh` and `verify_comment_size.py`** over the whole tree, about
+   10 s. A rebase changes both with no commit hook firing: a doc-number mismatch and a
+   two-line comment each reached `develop` that way.
+3. **`--stale-check` over the WHOLE manifest**, the only thing in the repo, outside CI,
+   that reads every entry: under a second.
+4. **The mutation gate with `--push-range <remote>...<local> --delegate-chrome`**, one
+   range per pushed ref.
+
+A new ref counts from `origin/develop`, or `origin/main` where no develop exists.
+A deleted ref proves nothing. `PREPUSH_MUTATION_JOBS` caps the gate's own default, one
+job per CPU.
+
+**What a push proves.** `--push-range` selects entries whose target or test file the
+committed range changes, plus recipes the range adds or edits, since a new recipe on old
+code touches neither. Unlike `--changed` it ignores staged and edited files, which the
+push does not carry, and a failed `git diff` exits 2 instead of reading as an empty
+push. The gate's `coverage:` line states the result: proved, selected, delegated and
+skipped against the manifest total. Only a run that proved every entry says `the whole
+manifest`, and only that run closes on `every recorded mutation is caught`.
+
+**Chrome suites go to CI.** Headless Chrome stalls on the build host: a suite waits out
+each case's timeout, and its baseline then fails the push. `--delegate-chrome` keeps
+entries out of this run when a script their command names carries
+`t_skip_unless_chrome` or `findChrome(`, prints one count per suite, and still checks
+that those mutants apply and parse. CI's Linux x64 `mutations` jobs prove them; Chrome is
+on that runner, and Linux treats a suite's exit 77 as a failed baseline, so a missing
+Chrome goes red there. The gate refuses `--delegate-chrome --shard`, and
+`test-mutation-push.sh` fails if preflight or a CI workflow passes either push flag. To
+prove them before CI, run the gate in the image; it prints the line:
+`bash linux/scripts/run-in-ci-image.sh "$PWD" -- python3 docs/scripts/verify_mutations.py --only <id>`.
+
+**`git push --no-verify`** bypasses all of it. It is allowed only with a by-hand proof
+named in the report: `python3 docs/scripts/verify_mutations.py --changed --base origin/develop --delegate-chrome`
+plus `bash linux/scripts/tests/test-doc-numbers.sh` and
+`python3 linux/scripts/verify_comment_size.py`. `make hooks` installs both hooks.
+
+**What it does not cover.** The checks read the working tree, not the pushed commit, so
+the hook names any uncommitted paths. A change that reaches a suite only through a file
+its command does not name selects nothing; CI proves that. A suite that starts Chrome
+without either marker runs here and fails on its timeout. A push that lands during the
+proof still loses the race: git rejects, and the retry after a rebase pays again.
+
+Measured 2026-11-04 on 32 cores with load between 5 and 62 from parallel work. Each row
+replays one past commit as a push; *after* includes the 10 s of cheap checks.
+
+| commit | entries selected | before | after |
+| --- | --- | --- | --- |
+| `11c90771` | 10, 1 Chrome | 306 s, failed on the Chrome stall | 16 s |
+| `2a3d52e3` | 55 | 38 s | 51 s |
+| `3052e9ff` | 106 | 331 s | 339 s |
+| `cf88896d` | 481, 50 Chrome | 487 s, failed on the Chrome stall | 205 s |
+
+Half of the last 60 commits selected at most 2 entries. `test-runtime-push-queue.sh`
+owns most of the `3052e9ff` row, at about a minute per entry.
+
+`tests/test-prepush-hook.sh` drives the hook over a stub git for its flags and abort
+paths, and over the real gate for a rotted entry. `tests/test-mutation-push.sh` pushes
+for real into a local bare remote: scope, delegation, the coverage line and each refusal.
+
+## Doc numbers are derived`). A full uncapped run took 5m58s
+on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
+scales with the manifest, not a current figure.
+
+If a baseline times out, its failure reports whether the test leader was still
+running or had exited while a child kept a capture pipe open. It includes at
+most the first and last three nonblank output lines, clipped to 500 characters
+per line, so the CI log shows the last case reached without flooding the
+summary. Cleanup of a retained pipe has its own two-second limit.
+
+**On a Git Bash host a skip is a skip, not a vacuous bite** (2026-10-05). A suite that
+cannot run there exits 77 with its `SKIP` line (`t_skip_unless`,
+[`cross-build-verification.md` § *The `linux/scripts/tests` suites*](cross-build-verification.md#the-linuxscriptstests-suites)).
+The gate reports such an entry as `skip`, with that line, and does not fail it. A
+survivor is a `skip` too, never `SURVIVED`, when its suite skipped or waived any case on
+this host (a `SKIP` line from `t_needs` or an older `_posix_host`, or a waived count):
+the case that would catch it may never have run. The closing line
+then counts the skips instead of claiming every mutation was caught. On Linux, where CI
+grades, exit 77 stays a vacuous bite and nothing is ever waived.
+`test-mutation-gate.sh` proves both sides there, running the gate once as itself and
+once with `sys.platform` set to `msys`.
+
+**The gate never edits the tree it is given.** Until 2026-09-03 `apply_and_run()`
+wrote the mutated text straight into `--root` (default: this repo) and restored it
+in a `finally`. Preflight and the pre-commit hook both run it that way, and this
+repo builds *from its own working directory* — buildkit is handed `--local
+context=.`. Entries target scripts that are `COPY`'d into an
+image (`linux/scripts/01-core/*`, `03-media/*`, `06-packaging/*`), so a cross build
+running at the same time could snapshot a deliberately neutered script into a
+shipped layer; anything else reading the tree during that window saw a gate with
+its guarantee removed. Restoring afterwards does not help — the hazard is the
+window, not the end state.
+
+Every invocation now builds ONE throwaway copy of the root (`mirror_tree()`, an
+`os.walk` + `copy2` that skips every git-ignored path plus `COPY_EXCLUDES`: `.git`,
+`external`, `out`, `logs`, `archive`, `linux/webserver/dist` and
+`linux/llm-stack/ollama-binary.tar.zst`), points the whole run at it, and `rmtree`s it in a
+`finally`. Tests still run with `cwd` = that copy, so the relative commands every
+entry uses (`bash linux/scripts/tests/test-*.sh`) resolve unchanged. `--changed`
+still asks git about the REAL repo. Measured once, 2026-09-03: 0.58s for 6.4k
+files / 131MB, paid per invocation whether it runs one entry or all of them —
+under 1% of a full run that day.
+
+**One mirror per shard; the proof is still one mutation at a time.** Measured
+2026-09-04 after the integration wave, all **309** entries biting, each run alone
+on an otherwise idle 32-core host: a full serial run costs **12m14s**, one process
+per mutant. None of that can be batched — two mutations proven in one suite run
+prove neither — but they are independent, so `--jobs` shards drain one shared
+queue, each with its OWN `mirror_tree` copy, each applying, running and restoring
+inside it. Since 2026-10-21 a free shard takes the next entry, where round-robin
+dealing once queued two slow suites on one shard, and each extra shard copies its
+own mirror inside the pool instead of waiting for the others' copies. Baselines stay shared across shards (one unmutated run
+per distinct command, whichever shard reaches it first). Same 309 entries, same
+verdicts: **1m59s** at `--jobs 8`, then the default (6.2x), and **1m24s** at `--jobs 16` (8.7x).
+The test transport reaps its session when the test shell exits. A surviving child
+can hold captured stdout or stderr open after the shell is gone; waiting for pipe
+EOF first used to turn a completed test into a 300-second baseline timeout.
+Each test starts with stdin closed, so inherited terminal input cannot stall a
+fixture; `test-mutation-gate.sh` pipes a marker to the parent and proves the
+child cannot consume it. `test-mutation-pipe-reaping.sh` proves the transport
+closes captured pipes on both the baseline and its mutant; its own mutation
+removes the exit watcher. The Windows harness proof writes its JSON result under
+ignored `logs/code-quality/` inside its throwaway copy.
+Since 2026-09-24 every verdict is printed the moment its entry completes, flushed
+and tagged `[j/J]` with the shard that proved it, and a closing `FAILED: n of m
+entr(ies), in manifest order: …` line puts the failures back in manifest order. It
+used to be buffered and printed in manifest order at the end, which Python's block
+buffering of a piped stdout turned into NOTHING when CI killed the job — not even
+the header (§ [The mutation gate in CI, sharded](#the-mutation-gate-in-ci-sharded)).
+Measure one run at a time — two of these racing each other on the same host
+report numbers that mean nothing, which is how the first attempt at this
+paragraph was thrown away. The default is every CPU the process may use
+(`os.process_cpu_count()`, so `taskset` counts), capped at the number of entries, so a
+one-id run still makes one copy, and at the mirrors a quarter of the temp
+filesystem's free space holds: each shard is a full copy of the tree, which on tmpfs
+is RAM a build may need. The run says so when that cap bites. `--jobs 1` is the old serial
+behaviour; `--in-place` is always serial.
+
+Symlinks carry TWO properties here, not one. `mirror_tree` copies with
+`follow_symlinks=False`, so a link stays a link: dereferencing would pull whatever
+it points at — a host binary, a device node — into a copy made once per commit,
+and would turn a path the tests see as a link into a regular file. This repo has a
+live instance inside the copied scope: `docs/.venv/bin/python` →
+`/usr/bin/python3`, an absolute escape. Keeping such a link AS a link is not
+enough by itself — a test running inside the copy can still read and write
+through it to the host path — so since 2026-09-04 `mirror_tree` does not copy a
+link whose `realpath` falls outside the tree at all. Four symlinks exist in the
+copied scope, all under `docs/.venv`, and exactly one of them escapes. And
+precisely BECAUSE the copy holds links
+rather than contents, a write through one would land outside the copy, so
+`apply_and_run()` refuses a symlink target outright and fails with `target is a
+symlink -- a write through it escapes the copy`. The check sits before the
+existence test, because `os.path.exists` follows links and a dangling one would
+otherwise be reported as `target missing`. Restoring afterwards is not a defence:
+the outside file would hold the mutation *while the test runs*, which is exactly
+the transient-write hazard this whole rewrite was about. Selection happens first, so a `--changed` hook run that selects
+nothing (the common commit) copies nothing at all.
+
+| flag | use |
+| --- | --- |
+| *(none)* | every entry — CI, or before a release |
+| `--changed` | only entries whose target — or a file their `test` command names — is committed since `--base` (default `origin/main`), staged, or edited. The by-hand proof (the pre-push hook uses `--push-range`, CI runs every entry, sharded); the commit hook no longer uses it (see the cost budget below — those are push semantics, and a hook re-paid them once per commit). Until 2026-09-03 this took the FIRST non-empty of those three, so a staged file was never selected while unpushed commits existed: the hook let a stale mutation through and the next, unrelated commit tripped on it |
+| `--push-range <remote>...<local>` | only entries the committed range changes, plus recipes it adds or edits; repeatable. The pre-push hook's scope ([the pre-push hook](#the-pre-push-hook)) |
+| `--delegate-chrome` | count entries whose suite needs a real Chrome as CI's to prove, and print the count per suite. Refused with `--shard` |
+| `--only <id>` | one entry, while writing it |
+| `--root <dir>` | which tree to copy and check. It is copied too — pointing the gate at a mirror is a second belt, not the isolation mechanism |
+| `--jobs <n>` | how many mutations to prove at once, one mirror each (default: the CPUs the process may use, capped at the entry count and at a quarter of the temp filesystem's free space). Every mutation is still applied, run and restored alone, inside its own shard's copy |
+| `--shard K/N` | prove only `entries[K::N]` of the selection (`K` from 0), after `--only`/`--changed`. N runs over the same manifest prove every entry exactly once between them; a `K` outside `0..N-1` exits 2. CI's mutations jobs are the one caller, through preflight's `PREFLIGHT_MUTATION_SHARD` |
+| `--shard-costs <table>` | with `--shard`: prove shard K of the plan built from the cost table instead of `entries[K::N]` ([the shard plan](#the-shard-plan)). The hub's CI passes it through preflight's `PREFLIGHT_MUTATION_COSTS`; consumers keep the round-robin slice |
+| `--parse-check` | refuse every selected recipe whose mutant does not parse, and run no test ([mutants must parse](#mutants-must-parse)) |
+| `--in-place` | mutate `--root` itself, no copy. The pre-2026-09-03 behaviour, kept for the gate's OWN fixtures: their test commands name the subject by absolute path, so nothing would bite inside a copy. Never point it at the repo |
+
+### Mutants must parse
+
+A mutant that no longer parses bites for its syntax error, not for the guarantee
+it removed: any test that sources or imports the file fails. Five recipes bit
+only that way on 2026-10-31. The gate now refuses such a recipe before its test
+runs, with `FAIL: <id> -- the mutant does not parse (...)`, and
+`verify_mutations.py --parse-check` runs that check alone, without a test.
+
+The check (`docs/scripts/mutation_parse.py`) reads `*.sh` files and files with a
+`bash` or `sh` shebang through `bash -n` after stripping CR, `*.py` through
+`compile()`, and every `*.ps1`/`*.psm1` text through one `pwsh` process. It
+refuses a recipe only when the original target parses. A missing parser fails
+the run; it never skips. It does not read other languages (YAML, JSON,
+JavaScript, Dockerfiles, CMake), code embedded in another file (heredocs,
+workflow `run:` blocks), or names that parse but cannot resolve at run time.
+A rewritten recipe keeps the edit valid: replace a removed branch body with
+`true` or `pass` rather than deleting the only statement in it.
+
+`test-mutation-parse.sh` proves each arm, and the `mutations.parse-*` recipes
+prove that suite.
+
+### The mutation gate in CI, sharded
+
+**What happened (2026-09-23).** The `preflight` job of `linux-x64.yml` (then `ubuntu26.04.yml`) ran every
+slug in one job with a 45-minute timeout, and on `fd3a8e1f` it was killed inside
+the mutation gate. Nothing it had found was in the log: the report was buffered to
+the end, and Python block-buffers a piped stdout, so not even the gate's header
+arrived. Behind the timeout sat four deterministic reds, each a suite that failed
+unmutated and turned its entries into vacuous bites (CHANGELOG, 2026-09-23).
+
+**Why the gate got slow — a regression from `021d5bdd`.** fix11 ran one awk pass per
+rule, `test-critical-fixes.sh` ran the whole gate once or twice per knocked-out row,
+and 68 entries re-ran that suite: 4.4 s became 45-59 s on the runner, and that one
+suite became 43% of the gate's serial cost. It is fixed at the source
+([`onnxruntime-single-source.md` § How G4 runs](onnxruntime-single-source.md#how-g4-runs-one-judging-pass));
+the timeout was not raised and CI does not sample.
+
+**The layout since 2026-09-24.** `preflight.sh` stays the one source of the slug:
+
+| job | runs | timeout |
+| --- | --- | --- |
+| `preflight` | `PREFLIGHT_SKIP=mutations bash linux/scripts/preflight.sh` — every other slug | 45 min |
+| `mutations` × 8 (`shard: [0, 1, 2, 3, 4, 5, 6, 7]`, `fail-fast: false`) | `PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD=K/8 PREFLIGHT_MUTATION_COSTS=docs/scripts/mutation-costs.json bash linux/scripts/preflight.sh`, which passes `--shard K/8 --shard-costs …` to `verify_mutations.py` | 30 min each |
+
+The eight jobs prove shard K of one deterministic plan, so they prove every entry
+exactly once; suites pin that the plan partitions the manifest and that the
+matrix lists `0..N-1` for the `N` its jobs pass. Every `mutations` job repeats the
+preflight job's setup (uv, pytest, PyYAML): without them the baselines fail
+unmutated, as on 2026-09-07. Each job still shards its slice over `--jobs`
+mirrors, and each job runs the baseline of every distinct command it holds.
+
+### The shard plan
+
+Until 2026-10-31 the jobs proved `entries[K::N]`, so a command whose entries
+spread over all eight slices paid its baseline eight times: 2,269 baseline runs
+for 469 commands, a third of the gate's work. `docs/scripts/mutation_shards.py`
+now groups each test command's entries onto one shard, so its baseline runs once
+per round. It packs the commands longest first onto the lightest shard, by the
+cost table `docs/scripts/mutation-costs.json`, and splits only a command that
+costs more than a whole shard. Inside a shard it interleaves the commands, so a
+free mirror starts another baseline instead of waiting on one command's baseline
+lock. Each job prints its plan line: how many commands it holds and how many had
+no recorded cost (they get the median).
+
+The table holds each command's baseline seconds and seconds per entry. The gate
+prints them on stderr, one `cost` line per command when its last entry ends;
+refresh the table from a green run's log:
+
+```bash
+gh run view <run-id> -R Kataglyphis/ANTfrastructure --log > logs/code-quality/mutations-run.log
+python3 docs/scripts/mutation_shards.py --from-log logs/code-quality/mutations-run.log \
+  --manifest docs/scripts/mutations.json --write docs/scripts/mutation-costs.json
+```
+
+**Measured 2026-10-31.** On round-robin slices (run 41183472080, 3,968 entries) the
+eight jobs summed 11,287 s, 2.85 s per recipe, and the slowest took 1,562 s of its
+30 minutes. Over the first six green planned runs (41189788344 to 41204714575, about
+4,040 entries) they summed 7,340-8,227 s, a median of 1.92 s per recipe, and the slowest
+job took 1,060-1,155 s; every id bit exactly once and the shards held 491 or 492
+distinct commands between them, one baseline each.
+
+A stale table still proves every entry exactly once; it only balances worse.
+Refresh it when a suite got markedly faster or slower, from runs after that change
+only: the table takes each command's median, so older runs keep the old weight. On
+2026-10-31 a table built across a speedup of `test-runtime-image-gates.sh` (25.6 s to
+14.9 s per run) planned the shards 26.6% apart; rebuilt from the four runs after it,
+they came out even.
+Without `--shard-costs` the gate keeps `entries[K::N]`, which is what consumers
+and `validate_consumer_mutations.py` use. `test-mutation-shards.sh` proves the
+partition, the grouping, the split, the balance and the interleaving.
+
+The 30-minute budget includes job setup and cleanup. On 2026-10-22,
+[shard 0](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/39793092934/job/119873728596)
+proved all 532 selected entries, printed a passed preflight summary, and was then
+canceled at the job boundary. Eight shards halve that 532-entry slice without
+sampling or raising the timeout; baseline failures still fail.
+
+The shards install no Pester, so a recipe whose test is a Pester-style suite
+(`BeforeAll`, `Context` and the other Pester-only keywords) skips there and fails
+every run as a vacuous bite. Put the cases a recipe needs in a harness-style
+suite; `test-mutation-pester-targets.sh` refuses a recipe that names a
+Pester-style one.
+
+A recipe's cost is one run of its command, so name the narrowest command that
+bites: `-k <section>` on a bash suite using `t_sections`
+([the harness](cross-build-verification.md#the-linuxscriptstests-suites)), `-k <test>`
+on a unittest file, or
+`pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only <suite>` for a
+harness-style suite that needs only `TestHarness.psm1`. That driver skips the modules,
+Pester detection and tally of `Invoke-Tests.ps1`; a suite that needs a module fails its
+baseline rather than losing a bite. The same cases must stay in the unfiltered suite, so
+preflight and Windows CI still run them.
+
+A failed baseline reports its first three and last three nonempty lines, capped
+at 500 characters per line. This retains the first diagnostic and final summary
+when a multiline browser report would otherwise hide the failure. It changes
+the diagnostic only; a failed or timed-out baseline never counts as a bite.
+
+**Locally nothing changes**: `make preflight` and `bash linux/scripts/preflight.sh`
+without the variables run every entry. To reproduce one CI job, set the same two
+variables; to time one, give it the runner's 4 CPUs as well (below).
+
+**Measured 2026-09-24** in the CI-parity container (the image as uid 1001, gawk as
+`awk`, the image's venv python off `PATH`), one run at a time. The serial cost — one
+run of each distinct test command × (entries + 1) — fell from **11469 s** on
+`fd3a8e1f` to **6633 s**, and `test-critical-fixes.sh`'s share from **6044 s** to
+**901 s**. A second session measured the new tree at 5816 s: sessions differ by up to
+17%, so compare numbers from one session only. The whole 1172-entry manifest took
+**18m39s** at `--jobs 16` on 32 cores; 1164 entries bite, and the 8 under
+`test-compiler-cache.sh` are vacuous there only because the image ships a real sccache.
+
+**Measured before the plan (2026-09-24, four slices).** A lab
+run pinned to 4 CPUs was not a runner: under `taskset`, `os.cpu_count()` still reports
+the host's 32, so `verify_mutations.py` picked `--jobs 8` where the runner's 4 vCPUs
+gave it 4. Since 2026-10-21 it reads `os.process_cpu_count()`, which honours `taskset`. An early lab slice timed that way (6m16s) is no CI figure. Run as the
+runner runs it — `taskset -c 0-3` plus `PYTHON_CPU_COUNT=4` — slice `1/4` took
+**12m09s**. For the runner, each slice's serial cost is scaled by the gate's measured
+CI time on `2943b70d` (843 entries: 1333 s on a fast runner, 1693 s on a slow one)
+over that tree's serial cost in the same session. Three sessions put a slice at
+10.0-12.4 min on a fast runner and 12.7-15.7 min on a slow one; the spread comes from
+the session, not the slice. The one entry that sits out the gate's 300-s per-entry
+timeout (`mutations.timeout-kills-tree`) is paid by whichever shard holds it. The same scaling puts `fd3a8e1f`'s whole gate, in one job,
+at 66-84 min; CI killed it at 45. The first CI run is the proof.
+
+### The pre-commit hook's cost budget
+
+The hook advertised ~11 s. Measured on this tree 2026-09-04, the batch commit
+`06e1e24e` (43 files) took it **5m26s**, and the mutation step was all of it: a
+full uncapped run of the 132 entries those files own measures **322 s**. AGENTS.md
+was wrong by a factor of thirty, and a hook that slow is the hook its own header
+warns about — it teaches `--no-verify`, which is worse than no hook.
+
+Two things were wrong, and both are fixed in the hook, not in the gate:
+
+**Scope.** `--changed` unions three sets, one of which is *everything committed
+since `origin/main`*. Those are PUSH semantics. In a pre-commit hook they mean
+every commit of a batch re-pays for all the commits before it, so the tenth
+commit of a session is the most expensive one even if it touched one file. The
+hook now selects on the STAGED files alone — the same scoping it already applies
+to `shellcheck` (`--files`) and to the doc gates. `--changed` keeps its meaning
+for a by-hand proof; the pre-push hook uses `--push-range`.
+
+**Cost.** Even staged-only, the mass is lopsided: the totals above spread over a
+handful of suites, and on 2026-09-04 `test-code-complexity.sh` alone owned more
+than a fifth of the manifest. Each entry costs one full run of its suite — 0.5 s for a cheap one,
+3.2 s for `test-code-complexity.sh` (measured 2026-09-03) — so touching one gate script can be a minute on its
+own. No selection rule makes that both complete and fast. So the hook **samples**,
+and says so:
+
+- at most `PRECOMMIT_MUTATION_CAP` entries (default **16**; `0` = uncapped),
+- **newest first** — `mutations.json` is appended to, so the newest entries are
+  the ones written in the commit being made, which are exactly the ones most
+  likely never to have bitten,
+- and when it cut, it prints `SAMPLED <n> of <m> entries … NOT full coverage`.
+  A green hook must never imply coverage it did not pay for; that rule has cost
+  this repo enough already (`## Proving a gate can go red`). `make preflight`
+  and CI still run every entry.
+
+Measured 2026-09-04 against the merged 309-entry manifest, on a 32-core host: the
+whole hook run end to end against a real staged index, with the parts timed
+separately.
+
+| step | one-file commit (`linux/scripts/preflight.sh`) | this wave's own 77-file diff |
+| --- | --- | --- |
+| 18 fast whole-tree slugs | 6.4 s | 6.4 s |
+| `shellcheck -S error` + warning ratchet, staged only | 0.3 s (1 file) | 14.1 s (45 files) |
+| doc-duplication gate, only when `docs/*.md` moves | — | 0.2 s (8 files) |
+| mutation step | 8.7 s — all 9 matched entries, no sampling | 13.4 s — 16 of 264, sampled |
+| **hook, end to end** | **15.0 s** | **33.0 s** |
+
+Neither column is a worst case: the sample is newest-first, NOT cost-aware, so
+what it costs depends on which suite the newest matched entries belong to, not on
+how many files are staged. A one-file commit that happens to stage a *gate* script
+can cost more than a wide one. A commit that touches no mutation target at all
+skips the step entirely.
+
+**Derived doc numbers (since 2026-09-24).** When `docs/scripts/mutations.json`,
+the hook itself or a page that quotes their numbers is staged, the hook also runs
+`test-doc-numbers.sh`. It costs 8.1 s on the Windows dev host (measured 2026-09-24)
+and nothing on a commit that stages none of those files. It is here because
+adding a mutation changes the total the owning page quotes, and the hook said OK
+over a stale one: CI's preflight and all four mutation shards went red on it
+(run 36022089345).
+
+**The cap moved 6 → 16 on 2026-09-04**, when the gate learned to shard. Same rig,
+the same newest-first sample of the 77-file diff, measured both ways: 6 entries
+cost **9.3 s** sharded against **15.5 s** serial, 16 cost **13.4 s** against
+**44.9 s**. Sixteen sharded therefore costs 4 s more wall time than six used to
+while proving 2.7× as many entries — which is the whole trade: the hook's budget
+is seconds of WALL time, and sharding is the only thing that buys coverage
+without spending more of it. End to end the same commit is **33.0 s** at 16 and
+**29.0 s** at 6.
+
+`--print-mutation-plan <cap> <manifest> <file-of-staged-paths>` prints
+`plan <run> <matched>` and the ids, without running anything; it exists before the
+hook's `git rev-parse`, so `tests/test-precommit-hook.sh` can drive the selection
+off-target and inside the mutation gate's own throwaway copy. git never passes
+arguments to a `pre-commit` hook, so it cannot fire by accident.
+
+The suite also drives the hook END TO END — a stub `git` feeds it a staged-file
+list and a stub `verify_mutations.py` records the argv it is handed — so the
+`SAMPLED` notice, the agreement between the number it states and the ids actually
+run, and the abort on a surviving mutation are each pinned by a mutation
+(`pre-commit.notice-is-printed`, `pre-commit.notice-count-is-the-run`,
+`pre-commit.uncapped-claims-no-sample`, `pre-commit.mutation-failure-aborts`).
+Before that, deleting the notice call left every suite, the registry and preflight
+green.
+
+
+Adding a fix without a mutation entry is allowed; adding a *gate* without one is
+how the next inert check gets in. The gate guards itself: 102 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of

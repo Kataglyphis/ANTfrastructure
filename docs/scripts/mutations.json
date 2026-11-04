@@ -2082,8 +2082,8 @@
  {
   "id": "mutations.in-place-is-opt-in",
   "target": "docs/scripts/verify_mutations.py",
-  "find": "    if args.in_place:",
-  "replace": "    if False:",
+  "find": "    elif args.in_place:",
+  "replace": "    elif False:",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "--in-place is the documented opt-out the gate's own fixtures need; silently ignoring it turns every absolute-path fixture into a false SURVIVED"
  },
@@ -4402,8 +4402,8 @@
  {
   "id": "mutations.push-stale-check-aborts",
   "target": "linux/host-config/git-hooks/pre-push",
-  "find": "  exit 1\n}\n\necho \"pre-push: mutation gate over everything since ${_base}…\"",
-  "replace": "  exit 0\n}\n\necho \"pre-push: mutation gate over everything since ${_base}…\"",
+  "find": "  exit 1\n}\n\nif [ \"${#_ranges[@]}\" -eq 0 ]; then",
+  "replace": "  exit 0\n}\n\nif [ \"${#_ranges[@]}\" -eq 0 ]; then",
   "test": "bash linux/scripts/tests/test-prepush-hook.sh",
   "why": "a rotted manifest entry must STOP the push; printing and pushing anyway is the state this hook was written to end"
  },
@@ -4418,8 +4418,8 @@
  {
   "id": "mutations.push-runs-the-gate",
   "target": "linux/host-config/git-hooks/pre-push",
-  "find": "${_PY} docs/scripts/verify_mutations.py --changed --base",
-  "replace": "true --changed --base",
+  "find": "${_PY} docs/scripts/verify_mutations.py \"${_ranges[@]}\"",
+  "replace": "true \"${_ranges[@]}\"",
   "test": "bash linux/scripts/tests/test-prepush-hook.sh",
   "why": "staleness alone never asks whether a test can fail; without this call the push hook proves only that the edits still apply"
  },
@@ -7041,9 +7041,9 @@
  },
  {
   "id": "mutations.changed-by-test-path",
-  "target": "docs/scripts/verify_mutations.py",
-  "find": "                   if e[\"target\"] in touched or any(t in e[\"test\"] for t in touched)]",
-  "replace": "                   if e[\"target\"] in touched]",
+  "target": "docs/scripts/mutation_push.py",
+  "find": "path == entry[\"target\"] or path in str(entry[\"test\"])",
+  "replace": "path == entry[\"target\"]",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "a commit that only weakened a test selected no mutation"
  },
@@ -13470,30 +13470,30 @@
  {
   "id": "mutations.push-base-is-remote-tip",
   "target": "linux/host-config/git-hooks/pre-push",
-  "find": "      *[!0]*) if git cat-file -e \"${_rsha}^{commit}\" 2>/dev/null; then _base=\"${_rsha}\"; break; fi ;;",
-  "replace": "      *[!0]*) break ;;",
+  "find": "_ranges+=(\"--push-range\" \"${_rsha}...${_lsha}\") ;;",
+  "replace": "_ranges+=(\"--push-range\" \"origin/main...${_lsha}\") ;;",
   "test": "bash linux/scripts/tests/test-prepush-hook.sh",
   "why": "develop is what a push updates and main lags it by hundreds of entries; counting from origin/main made every hub push a 25-minute gate that ended in --no-verify"
  },
  {
-  "id": "mutations.push-unfetched-tip-falls-back",
+  "id": "mutations.push-unfetched-tip-refuses",
   "target": "linux/host-config/git-hooks/pre-push",
-  "find": "if git cat-file -e \"${_rsha}^{commit}\" 2>/dev/null; then",
-  "replace": "if true; then",
+  "find": "if ! git cat-file -e \"${_rsha}^{commit}\" 2>/dev/null; then",
+  "replace": "if false; then",
   "test": "bash linux/scripts/tests/test-prepush-hook.sh",
-  "why": "a remote tip this clone never fetched makes git diff fail, and changed_files then silently selects nothing"
+  "why": "git rejects a push over a tip it never fetched, so proving first spends the whole run on a rejected push"
  },
  {
   "id": "mutations.push-passes-base",
   "target": "linux/host-config/git-hooks/pre-push",
-  "find": "--changed --base \"${_base}\" ${PREPUSH_MUTATION_JOBS",
-  "replace": "--changed ${PREPUSH_MUTATION_JOBS",
+  "find": "\"${_ranges[@]}\" --delegate-chrome",
+  "replace": "--delegate-chrome",
   "test": "bash linux/scripts/tests/test-prepush-hook.sh",
-  "why": "the base is computed for the gate; dropping the flag falls back to origin/main without a word"
+  "why": "--push-range is the hook's scope; without it the gate selects nothing or the whole manifest"
  },
  {
   "id": "mutations.changed-uses-base",
-  "target": "docs/scripts/verify_mutations.py",
+  "target": "docs/scripts/mutation_push.py",
   "find": "[\"git\", \"diff\", \"--name-only\", base + \"...HEAD\"]",
   "replace": "[\"git\", \"diff\", \"--name-only\", \"origin/main...HEAD\"]",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
@@ -34983,5 +34983,197 @@
   "replace": "PROVE: ${{ inputs.prove }}",
   "test": "bash linux/scripts/tests/test-select-disk-cleanup.sh",
   "why": "a proof on develop opens a develop-red issue that blocks every hub push; this reads the file, not a real dispatch"
+ },
+ {
+  "id": "mutations.push-delegates-chrome",
+  "target": "linux/host-config/git-hooks/pre-push",
+  "find": "\"${_ranges[@]}\" --delegate-chrome ${PREPUSH",
+  "replace": "\"${_ranges[@]}\" ${PREPUSH",
+  "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+  "why": "Chrome suites stall on the build host until their 300 s timeout fails the push; CI proves them"
+ },
+ {
+  "id": "mutations.push-doc-numbers-run",
+  "target": "linux/host-config/git-hooks/pre-push",
+  "find": "bash linux/scripts/tests/test-doc-numbers.sh >\"${_log}\" 2>&1 || {",
+  "replace": "true >\"${_log}\" 2>&1 || {",
+  "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+  "why": "a rebase changes the derived numbers with no commit hook firing; this landed a red develop"
+ },
+ {
+  "id": "mutations.push-doc-numbers-abort",
+  "target": "linux/host-config/git-hooks/pre-push",
+  "find": "  echo \"pre-push: derived doc numbers are STALE -- run: bash linux/scripts/tests/test-doc-numbers.sh --update\" >&2\n  exit 1",
+  "replace": "  echo \"pre-push: derived doc numbers are STALE -- run: bash linux/scripts/tests/test-doc-numbers.sh --update\" >&2\n  exit 0",
+  "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+  "why": "printed and let through, a stale number reaches CI"
+ },
+ {
+  "id": "mutations.push-comment-size-runs",
+  "target": "linux/host-config/git-hooks/pre-push",
+  "find": "${_PY} linux/scripts/verify_comment_size.py || {",
+  "replace": "true || {",
+  "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+  "why": "a two-line comment landed past --no-verify; this is the cheap check that sees it"
+ },
+ {
+  "id": "mutations.push-comment-size-aborts",
+  "target": "linux/host-config/git-hooks/pre-push",
+  "find": "docs/code-quality-tooling.md#comment-size-comment-size\" >&2\n  exit 1",
+  "replace": "docs/code-quality-tooling.md#comment-size-comment-size\" >&2\n  exit 0",
+  "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+  "why": "printed and let through, the block reaches CI"
+ },
+ {
+  "id": "mutations.push-every-ref",
+  "target": "linux/host-config/git-hooks/pre-push",
+  "find": "_ranges+=(\"--push-range\" \"${_rsha}...${_lsha}\") ;;",
+  "replace": "_ranges=(\"--push-range\" \"${_rsha}...${_lsha}\") ;;",
+  "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+  "why": "a push of two refs must grade both"
+ },
+ {
+  "id": "mutations.push-delete-proves-nothing",
+  "target": "linux/host-config/git-hooks/pre-push",
+  "find": "case \"${_lsha}\" in *[!0]*) ;; *) continue ;; esac",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+  "why": "a deleted ref has no local commits, and its all-zero sha makes the range fail"
+ },
+ {
+  "id": "mutations.push-new-ref-counts-from-develop",
+  "target": "linux/host-config/git-hooks/pre-push",
+  "find": "then echo origin/develop; else echo origin/main; fi",
+  "replace": "then echo origin/main; else echo origin/main; fi",
+  "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+  "why": "a new ref graded from main re-proves hundreds of entries it did not add"
+ },
+ {
+  "id": "mutations.push-names-uncommitted",
+  "target": "linux/host-config/git-hooks/pre-push",
+  "find": "if [ \"${_dirty}\" -gt 0 ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+  "why": "the checks read the working tree, so a run over uncommitted bytes must say so"
+ },
+ {
+  "id": "mutations.gate-push-range-selects",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "    if args.push_range:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "a push scope ignored falls through to every entry, Chrome suites and backlog included"
+ },
+ {
+  "id": "mutations.gate-shard-cannot-delegate",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "    if args.delegate_chrome and args.shard:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "CI is the proof delegation points at; a delegating shard would shrink it silently"
+ },
+ {
+  "id": "mutations.gate-delegates-on-the-flag-only",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "    if args.delegate_chrome:",
+  "replace": "    if True:",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "delegating without the flag would drop Chrome entries from CI, the only proof left"
+ },
+ {
+  "id": "mutations.gate-reports-coverage",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "    say(coverage_line(proved,",
+  "replace": "    (coverage_line(proved,",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "a sample that does not print its coverage reads as a full proof"
+ },
+ {
+  "id": "mutations.gate-whole-claim-is-earned",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "    elif rc == 0 and proved == total:",
+  "replace": "    elif rc == 0:",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "a subset must not close on 'every recorded mutation is caught'"
+ },
+ {
+  "id": "mutations.preflight-never-delegates",
+  "target": "linux/scripts/preflight.sh",
+  "find": "docs/scripts/verify_mutations.py \\\n  ${PREFLIGHT_MUTATION_SHARD:+",
+  "replace": "docs/scripts/verify_mutations.py --delegate-chrome \\\n  ${PREFLIGHT_MUTATION_SHARD:+",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "preflight is how CI proves every entry; a delegating slug would point the delegation at nothing"
+ },
+ {
+  "id": "mutations.push-diff-failure-is-fatal",
+  "target": "docs/scripts/mutation_push.py",
+  "find": "    if out.returncode != 0:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "an unreadable range reads as an empty diff, and an empty diff reads as nothing to prove"
+ },
+ {
+  "id": "mutations.push-range-shape",
+  "target": "docs/scripts/mutation_push.py",
+  "find": "        if not _RANGE.fullmatch(spec):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "one ref alone is a tree diff against the working tree, not what the push adds"
+ },
+ {
+  "id": "mutations.push-selects-changed-recipes",
+  "target": "docs/scripts/mutation_push.py",
+  "find": "        if rel in files:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "a new recipe on old code touches no target and no test, so it would wait for CI to bite"
+ },
+ {
+  "id": "mutations.push-selects-edited-recipes",
+  "target": "docs/scripts/mutation_push.py",
+  "find": "if known.get(e[\"id\"]) != e}",
+  "replace": "if e[\"id\"] not in known}",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "an edited recipe proves a new mutant as much as an added one does"
+ },
+ {
+  "id": "mutations.push-chrome-marker-harness",
+  "target": "docs/scripts/mutation_push.py",
+  "find": "r\"\\bt_skip_unless_chrome\\b|\\bfindChrome\\(\"",
+  "replace": "r\"\\bfindChrome\\(\"",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "suites asking through the harness are the common shape; missed, they stall the host"
+ },
+ {
+  "id": "mutations.push-chrome-marker-node",
+  "target": "docs/scripts/mutation_push.py",
+  "find": "r\"\\bt_skip_unless_chrome\\b|\\bfindChrome\\(\"",
+  "replace": "r\"\\bt_skip_unless_chrome\\b\"",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "the WebGPU suite asks through node's findChrome and stalls just the same"
+ },
+ {
+  "id": "mutations.push-delegated-count",
+  "target": "docs/scripts/mutation_push.py",
+  "find": "    lines = [f\"  delegated {n} entr(ies) to CI, needs Chrome: {cmd}\" for cmd, n in sorted(counts.items())]",
+  "replace": "    lines = []",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "a delegation without its count is coverage silently lost"
+ },
+ {
+  "id": "mutations.push-delegated-by-hand",
+  "target": "docs/scripts/mutation_push.py",
+  "find": "    lines.append('  by hand:",
+  "replace": "    str('  by hand:",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "the delegated proof must be runnable before CI answers"
+ },
+ {
+  "id": "mutations.push-whole-needs-every-entry",
+  "target": "docs/scripts/mutation_push.py",
+  "find": "    if proved == total:",
+  "replace": "    if proved == selected:",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "a push proving all it selected is still a sample of the manifest"
  }
 ]
