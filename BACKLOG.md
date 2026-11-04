@@ -1144,7 +1144,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       this card cannot prove a Linux AMD package under WSL. OxidANT `921d8e8`, AccelerANTgine `5e89bb7` and OrchestrANT
       `fcb936f` turn the hang into an error after 30 seconds, with one copy in a child process; `auto` in OrchestrANT and
       OxidANT moves on to the CPU. AccelerANTgine and OrchestrANT copy to the selected device index, OxidANT to device 0,
-      which is the only index it gives MIGraphX. All three were run on the card. Omni takes them with its next pin.
+      which is the only index it gives MIGraphX. All three were run on the card. Omni `6e2738cb` pins both.
       On `gfx1036` a Relu model runs with real MIGraphX inference through AccelerANTgine's engine. The full model still
       fails at the load with `adaptive_topk_benchmark` (ORT says `Failed to call function`), with or without the check and
       with `/opt/rocm/extras-10/lib/migraphx/lib` on the search path; without that directory even Relu cannot load
