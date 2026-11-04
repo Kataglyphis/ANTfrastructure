@@ -1480,6 +1480,8 @@ dependencies without making report or dry-run modes mutate this baseline.
 at a vulnerable version (markdown-it 15.0.2 → 15.0.3, GHSA-gfr2-rv44-r23c and GHSA-vfgh-jcmw-g37q,
 2026-10-21). Drop an entry once a Renovate bump depends on the fixed version itself.
 The current tracked Renovate release pins fixed markdown-it directly, so its former override is gone.
+Renovate 44.212.0 still pins glob 13.0.6 and minimatch 10.2.6, so those two are overridden for its own dependency only
+(GHSA-3g3m-2fjr-6pw4, GHSA-g3hv-75wg-m249). deepmerge 4.3.1 has no patched release (GHSA-gcqx-w48m-w2h4) and stays.
 
 Dependabot grades the committed npm lock, not the live CLI cache. A newer CLI may resolve a
 patched transitive package while `renovate-npm/package-lock.json` still raises an alert; move

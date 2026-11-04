@@ -145,7 +145,7 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
       the same for arm64, builds riscv64 only, gates all three, and publishes a 3-child `:latest` that
       passes freshness.
 
-- [ ] **CON112 — ModelANT's release build runs on the pinned CPython and the chain ORT** [M, ★★].
+- [ ] **CON112 — why one ModelANT export differed: an investigation (owner, 2026-11-04)** [M, ★★].
       In ModelANT since 2026-10-20 (038ca50): `build.sh` runs only in the image and the hub's ORT census must pass first.
       Tag `deim_dfine_n_coco-v2` was released by run 41498847541 with `SHA256SUMS`; its log shows CPython 3.15.0 and
       `ORT-CENSUS PASS` on `onnxruntime_dnnl-1.31.0-cp315`. The `.onnx` hash `0bf16e85…` is in the `models.lock` of
@@ -1550,6 +1550,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
         it falls back with `No devices detected that match the filter criteria`).
       - Still unproven on a device: a camera pipeline and a GPU execution provider. No `windows-11-arm`
         runner has either; the Snapdragon X's DirectML is the one adapter in reach.
+- [ ] **CON226 — `:latest-nvidia` on the RTX 2080 host** [S, ★★]. Split from CON31 (owner, 2026-11-04), which waits on an
+      arm64 host; this needs none. The owner boots the machine into Linux for it. Done when a session over the smoke's Add
+      graph with `TensorrtExecutionProvider` builds an sm_75 engine and returns `[[11, 22, 33, 44]]`, and the DeepStream
+      gate pipeline still passes.
+
 - [b] **CON31 — the native arm64 nvidia route (phases A/B) and two device runs; the variants are published** [L, ★]. `:latest-nvidia`
       (amd64 + arm64, one index) and `:latest-rocm` (amd64) are published with passed acceptance receipts: amd64 on
       2026-10-28, arm64 on 2026-10-29 through the CROSS route from this amd64 host (phases C, D and E of
@@ -1561,8 +1566,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Published manifests do not themselves prove GPU execution on the consumer's device; recheck the relevant
       image digest and run the device-specific inference gate before claiming acceleration. Also left, each on its own
       hardware:
-      - `:latest-nvidia` on the RTX 2080 host: a session over the smoke's Add graph with `TensorrtExecutionProvider`
-        building an sm_75 engine and returning `[[11, 22, 33, 44]]`, and the DeepStream gate pipeline still passing.
+      - `:latest-nvidia` on the RTX 2080 host: CON226.
       - `:latest-rocm` on a native Linux host with an AMD GPU, as uid 1001 with the documented run line: `rocminfo` listing
         the GPU, a `hipcc`-built program running, the Add graph through MIGraphX, and torch `cuda.is_available()` with a
         tensor op; without `--group-add`, the entrypoint's warning.

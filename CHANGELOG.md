@@ -13,6 +13,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-04 — Renovate 44.212.0 closes two Dependabot alerts
+
+- Move the tracked Renovate baseline to 44.212.0, with scoped security overrides to glob 14.0.3 and minimatch 11.0.4,
+  which Renovate still pins at vulnerable versions. deepmerge has no patched release and stays. Proof: `npm ci` from the
+  lock and a full report over this tree. `--apply` itself has not run with these majors.
+
 ## 2026-11-04 — The Linux AMD packages ran on the RX 9070 XT
 
 - CON224 item 1: the four Linux AMD GPU packages ran natively on ROCm 10.1 / MIGraphX 2.18.0 and all fail
