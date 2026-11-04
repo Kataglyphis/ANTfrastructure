@@ -129,9 +129,7 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
           and Exhale), the dartdoc nav rewrite.
       Open: 8 (Windows variant pushes off the next variant's path; `-ConcurrentAux` never ran),
       9 (parallel runtime builds: `BUILD_MEM_DIVISOR` plus a disk gate that sizes, worth it only
-      where builds outlast uploads). 10 is in source, opt-in: CON169. A WSL push that
-      touches `test-docs-sidebars.sh` fails there (no node 22, no Chrome); push from Git Bash,
-      which skips it. **The next 3-arch runtime run must show**: `[runtime-push] arch=amd64
+      where builds outlast uploads). 10 is in source, opt-in: CON169. **The next 3-arch runtime run must show**: `[runtime-push] arch=amd64
       start` before arm64's `step=base` and `RUN` lines, `[runtime-push] arch=amd64 done` after
       them, `[runtime-push] queue drained: 3 push(es), waited N s` (the residual upload),
       `[runtime-gates] … 3 arch(es), 3 at a time`, `[smoke <arch>]` lines among the wrapper
@@ -142,31 +140,18 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
       In source since 2026-10-26 ([`linux-cross-builds.md` § A failed arch re-runs alone](docs/linux-cross-builds.md#a-failed-arch-re-runs-alone)):
       each wrapper carries `org.kataglyphis.build-key`, and a published child whose key matches joins the
       index by digest after every gate read it (`RUNTIME_REUSE_CHILDREN=0` restores the same-run index).
-      The first chain after it rebuilds every arch (no published wrapper has a key yet). Done when a
+      All three children of `:latest` `7d4d4129…` carry the key. Done when a
       follow-up `--target-arches riscv64 --from-stage runtime` logs `[runtime-reuse] amd64: reusing …` and
       the same for arm64, builds riscv64 only, gates all three, and publishes a 3-child `:latest` that
       passes freshness.
 
 - [ ] **CON112 — ModelANT's release build runs on the pinned CPython and the chain ORT** [M, ★★].
-      `.github/workflows/release.yml` builds on `ubuntu-latest` with `actions/setup-python`
-      3.14, and `scripts/build.sh` pip-installs `onnxruntime==1.31.0` from PyPI
-      (`scripts/requirements.txt`), which publishes no cp315 wheel (read 2026-10-20: cp311–cp314
-      only). Both break owner rules: only the pinned CPython, and every ONNX Runtime consumer
-      links the chain ORT. Fix: run `build.sh` in `:latest` on its interpreter, with the chain ORT
-      wheel from the image's store instead of the PyPI pin. Done when a `<name>-v<N>` tag builds
-      in the image and the release's SHA256SUMS still match the export check.
-      In ModelANT since 2026-10-20 (038ca50): `build.sh` runs only in the image, in a venv that
-      sees `/opt/venv` (torch, torchvision, the chain ORT) behind pip's additions held at the
-      image's versions, and the hub's ORT census must pass first; `release.yml` uses the hub's
-      container actions, and a dispatch builds without publishing. Dispatch run 39392921386 on
-      `:latest` (3.14.4, ORT 1.30.0 dnnl from `/opt/venv`, torch 2.14.1+cpu): census PASS, all five
-      files byte-identical to `deim_dfine_n_coco-v1`; again with SHA-pinned actions (1f37627, run
-      39394810441). Left: the next tag publishes from it, and
-      the 3.15 `:latest`, where pip's additions resolve from cp315 or abi3 wheels (read 2026-10-20).
-      **2026-11-02, one export differed:** `deim_dfine_n_coco-v2` built twice to `.onnx` sha256 `0bf16e85…` (release
-      run 41498847541, rebuild 41511367119), but candidate run 41431013995 gave `0c7b4141…`: the same graph, with 136
-      of 342 initializers differing in their bytes. The cause is unknown. Lock the published file's hash;
-      the DirectML parity of 2026-11-02 also passed on the candidate.
+      In ModelANT since 2026-10-20 (038ca50): `build.sh` runs only in the image and the hub's ORT census must pass first.
+      Tag `deim_dfine_n_coco-v2` was released by run 41498847541 with `SHA256SUMS`; its log shows CPython 3.15.0 and
+      `ORT-CENSUS PASS` on `onnxruntime_dnnl-1.31.0-cp315`. The `.onnx` hash `0bf16e85…` is in the `models.lock` of
+      OrchestrANT, OxidANT and AccelerANTgine. Left: why one export differed. Rebuild 41511367119 gave `0bf16e85…`, but
+      candidate run 41431013995 gave `0c7b4141…`: the same graph, with 136 of 342 initializers differing in their bytes.
+      The cause is unknown. The DirectML parity of 2026-11-02 passed on the candidate.
 
 - [ ] **CON101 — the dartdoc guide renderer's parser comes from the image** [S, ★★]. Since
       2026-10-19 `dartdoc_build_prepare_python_env` (`linux/scripts/lib/dartdoc-build.sh`) uses
@@ -198,21 +183,6 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
 
       Done when those wheels install and import on himbeere2's Debian 13 and in the clean-host job.
 
-- [ ] **CON74 — a free-threaded CPython for Windows arm64, so its 3.14t legs stop downloading**
-      [M, ★]. Half 1 is in the scripts since 2026-10-07 (CHANGELOG): media-core's
-      `Build-TargetCpython.ps1` stages the `--disable-gil` ARM64 build into
-      `C:\runtime\python-freethreaded` (`python3.14t.exe`, `libs\python314t.lib`, the venv
-      launchers, no `python.exe`), `BUNDLE-ENV` appends it last to `PATH`, and
-      `Test-Arm64Bundle.ps1` runs it on a device when the bundle carries it. Left:
-      1. Done: the `:winarm64` of 2026-10-10 (`ba6bfaae…`) carries the tree, and BeschleunigerBallett run
-         38100828628 passed `free-threaded interpreter: GIL off, stdlib extensions import` on `windows-11-arm`.
-      2. python-ci-windows.yml's arm64 job: in source as CON113 since 2026-10-20 (403b7a23), so the
-         owner decision is moot. A `windows-2025` job stages both legs from `:winarm64`'s
-         interpreters and the device installs nothing.
-      3. The device smoke half passes on 3.15: hub run 39200278761 (2026-10-19, `:winarm64`
-         `e78fa8c3…`) printed `sys._is_gil_enabled() False | Py_GIL_DISABLED 1`.
-
-      Done when CON113's `windows-arm64.yml` run passes its X.Yt leg without downloading.
 - [ ] **CON79 — the cp314t chain twins reach the published images, and phase 2** [L, ★★]. Linux native
       and Windows amd64 are in source since 2026-10-07 (CHANGELOG). Open:
       1. **Prove in full image builds**: Linux — FT-STORE is green on the published `:latest` amd64
@@ -347,12 +317,11 @@ owner carries the breakage that costs.
       3. Never run yet: any Windows build (the dev host has no Visual Studio) and any arm64 build.
 - [ ] **CON103 — `FLET_VERSION` in `versions.env`, one pin for Python and client** [S, ★★]. The
       Python SDK and the client speak one release's protocol, so a bump moves together:
-      OrchestrANT's `frontend` extra (`flet[desktop]==1.0.4`, `flet-web==1.0.4`), its
-      `benchmarks.yml` viewer job (`flet==1.0.4`, held to `uv.lock` by OrchestrANT's
+      OrchestrANT's `frontend` extra (`flet[desktop]==1.0.5`, `flet-web==1.0.5`), its
+      `benchmarks.yml` viewer job (`flet==1.0.5`, held to `uv.lock` by OrchestrANT's
       `test_viewer_job.py`) and CON102's client tag. Add the consumer-pins rows and one Renovate
-      group (pep621 and the `versions.env` regex). OrchestrANT also holds `fastapi<0.145`: flet-web
-      1.0.4 passes the `openapi_prefix` argument FastAPI 0.145 removed (flet-dev/flet#6984, open
-      2026-10-19). Lift it with the Flet release that fixes that.
+      group (pep621 and the `versions.env` regex). OrchestrANT's 550f0ff moved to 1.0.5 and dropped
+      `fastapi<0.145`; flet-dev/flet#6984 is closed.
 - [b] **CON104 — the app bundles ship the Flet client** [M, ★★]. Blocked on CON102.
       OrchestrANT's packages carry its `app` extra only, so `yolo-monitor --ui auto` falls back
       to OpenCV's window there (OrchestrANT `AGENTS.md` § 4). With CON102:
@@ -377,8 +346,9 @@ owner carries the breakage that costs.
       patched). Both are moot for CON102's core-only client.
 - [ ] **CON106 — the app venv's `frontend` extra in `:winamd64`** [S, ★]. Owner decision 2026-10-26.
       Linux proven on the 2026-10-27 index `7d4d4129…`: APP-PARITY passes with flet, flet-desktop, flet-web
-      and FastAPI on amd64 and arm64, absent by decision on riscv64. Done when `:winamd64`'s torch stage
-      prints `extras: ml-ai docs frontend`.
+      and FastAPI on amd64 and arm64, absent by decision on riscv64. The published `:winamd64` (`3189832e…`, revision
+      c9ef6ccc) descends from 37602770, whose `Build-TorchApp.ps1:203` prints the line, but nobody has read the printed
+      line. Done when `:winamd64`'s torch stage is seen printing `extras: ml-ai docs frontend`.
 - [b] **CON109 — ANThology widgets as a Flet extension** [M, ★]. Blocked on CON102, and on a
       UI that needs a widget Flet lacks (owner, 2026-10-19). OrchestrANT's Flet UIs take
       ANThology's look from Python alone (Material 3, `color_scheme_seed` green accent) and use
@@ -406,8 +376,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       passes `-DUSE_GUIDANCE=OFF`, so `json_schema` works on Linux only. Needs Rust in the
       media-core builder and a Windows chain to prove; done when the smoke gate runs a
       schema-constrained `generate()` on `:winamd64`.
-- [b] **LAI-H6 — GenAI for Android** [L, ★★]. Neither ORT nor GenAI is built for Android; blocked
-      on milestone 1 ([`docs/language-ai.md` § Roadmap](docs/language-ai.md#roadmap)).
+- [ ] **LAI-H6 — GenAI for Android** [L, ★★]. Milestone 1 is done, so nothing blocks it
+      ([`docs/language-ai.md` § Roadmap](docs/language-ai.md#roadmap)). ORT is built for Android
+      (`03-media/build/onnxruntime/android/build-android.sh`, `Dockerfile.android:125`); GenAI is not. Left: build
+      GenAI against that ORT in the android stage. Proving it needs a chain.
 
 ## Open — Linux image (all arches)
 
@@ -772,8 +744,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Integration still needs a validated dynamic-symbol count and section/segment mappings,
       architecture-aware loader search and actual process scopes, recursive ordered preload
       closure, bundled-glibc resolution, Debian metadata alternatives and copied-script
-      wiring. The current scanner rejects unowned or multiply owned host libraries but does not yet prove
-      non-glibc version bounds.
+      wiring. The current scanner rejects unowned or multiply owned host libraries and bounds version nodes;
+      unversioned symbols and per-symbol minimums have no bound yet.
 
 - [ ] **CON180 — record DirectML redistributable provenance and license in Windows images** [M, ★★★].
       AccelerANTgine's existing native inventory says the image does not carry the Microsoft
@@ -1212,8 +1184,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       FRB 2.13.0 also invokes full Cargo metadata, including dependencies for other target
       platforms. When that failed, it failed silently and the generated Dart loader stem became
       `UNKNOWN`, breaking normal application startup even though Linux compilation succeeded.
-      Assert that the generated loader stem matches the Rust library name, and reject generation
-      if it does not.
+      OxidANT's `scripts/linux/verify-frb-bindings.py` now rejects such a stem. Left: the cargo-expand pin in the image.
 
 - [ ] **CON196 — select the GPU ONNX Runtime reliably in consumer images** [M, ★★★].
       On 2026-10-30 both cached GPU images exported `ORT_LIB_LOCATION` pointing at
@@ -1241,8 +1212,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       targets and package output, so image size alone cannot establish whether a hosted runner
       has enough space. Measure pull, unpack, build and artifact peaks for both variants on
       their intended runners, including cleanup and cache behavior. Establish a supported
-      runner/storage configuration and an early actionable space check; retain measured image
-      digests and do not claim a hosted lane works until it has completed.
+      runner/storage configuration; retain measured image digests and do not claim a hosted lane
+      works until it has completed. The early space check exists: `prepare-linux-ci-host`'s `min-free-gb`.
       On 2026-10-30 the pinned NVIDIA arm64 child
       `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11`
       reported 36.12 GB image size and 17.22 GB compressed blobs in nerdctl. This is not a
@@ -1272,23 +1243,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       [`image-decisions.md`](docs/image-decisions.md); do not repeat the old 3.14 blocker.
       The 2026-10-22 arm64/riscv64 observations also proved that `/usr/local/bin/python3.15`
       runs and its sysconfig `AR` exists. Left:
-      1. Prove the 3.15 `:latest-rocm` rebuild, including its ABI-specific wheels and twins.
-         The nvidia 3.15 publish was already proved on 2026-10-19 (run `20261019-055155`).
-         The locally cached ROCm index `a5d68fbe…` still used distro Python 3.14.4 on
-         2026-10-30; an OrchestrANT image-CPython bundle refused it and needed the standalone
-         Python option. Prove the rebuilt GPU image's source-built interpreter can be relocated
-         by the normal consumer bundle path as well as proving the wheels.
-         In the 2026-10-30 local AMD overlay, the standalone fallback reached a working CPU
-         self-test, but OrchestrANT's notice generator initially rejected five unlisted native
-         files: Tcl 9.0, Tk 9.0, Itcl 4.3.5, Tcl Thread 3.0.4 and PCRE2. OrchestrANT now
-         inventories those observed versions and ships their original texts; its local AMD
-         overlay generated and checked a notice from the provisional archive. The tracked
-         multi-platform notice still needs regeneration from the release artifact set. Recheck
-         the inventory with the rebuilt image's own interpreter, since it can have a different
-         native closure; do not suppress the notice check.
-         The actual GPU workflow driver on this cached image also failed to relocate its
-         distro `/usr` Python 3.14.4. The explicit standalone-runtime GPU input is a temporary
-         path until the rebuilt image supplies and proves relocatable source-built CPython.
+      1. `:latest-rocm` `05518138…` is on 3.15.0: OrchestrANT run 41491524238's x64 job pulled that digest and installed
+         `onnxruntime_migraphx-1.31.0-cp315` with `ORT-CENSUS PASS`. Left: relocation. That job still takes the standalone
+         Python (OrchestrANT `linux-gpu-inventory.yml:115`); prove the image's interpreter relocates by the normal consumer
+         bundle path, and recheck OrchestrANT's notice inventory against its native closure. Do not suppress the notice
+         check. That job turns the free-threaded wheel off, so it does not read the twins.
       2. Retain explicit per-ABI wheel/store verdicts on foreign arches; the x64 consumer runs
          do not prove every arm64/riscv64 wheel or free-threaded leg.
       3. PGO on arm64 needs a native arm64 toolchain build; cross arches currently get LTO alone.
@@ -1382,55 +1341,29 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 ## Open — Linux arm64 and riscv64
 
-- [ ] **CON130 — riscv64 cross runs still inherit the amd64 GStreamer plugin path** [S, ★★].
-      The build-time half is in (c40797cc, 2026-10-25): `riscv64_cross_env` unsets `PKG_CONFIG_PATH`
-      and its riscv64 twin, and `riscv64-cross-smoke.sh` uses that environment, so a host `.pc`
-      fails before consumer tests ([`riscv64-cross-test-lanes.md`](docs/riscv64-cross-test-lanes.md)).
-      Left:
-      1. Prove it on the three riscv64 consumer lanes (OxidANT, AccelerANTgine, BeschleunigerBallett),
-         which load the library at `@develop`: gtk4-sys must resolve riscv64's 4.22.4 `gtk4.pc`.
-      2. **The run-time leak:** the riscv64 QEMU test processes inherit the amd64 `GST_PLUGIN_PATH`
-         (and registry) and try `/opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0/*.so`, about 300 load
-         warnings per process (OxidANT run 39487523314, 2026-10-20); harmless today. Point the run at the
-         sysroot's riscv64 plugin dir.
-
-- [b] **CON135 — the active braces advisory has no patched version** [S, ★].
-      Observed 2026-10-23 in `linux/scripts/renovate-npm/package-lock.json`: braces 3.0.3
-      ([GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm), high, via
-      micromatch) still has an active advisory and no first patched version. Blocked on a fix;
-      use the local Renovate workflow when one exists ([`dependency-updates.md`](docs/dependency-updates.md)).
-      The second repository alert, sprintf-js 1.1.3 via roarr, is still open, but its advisory
-      [GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) was withdrawn
-      on 2026-10-22 at 19:21:04 UTC. Withdrawal is not a package fix; neither alert was dismissed.
+- [ ] **CON130 — prove riscv64's pkg-config isolation on AccelerANTgine** [S, ★★].
+      `riscv64_cross_env` unsets `PKG_CONFIG_PATH` and its riscv64 twin (c40797cc), and it strips the host-triplet dirs
+      from `GST_PLUGIN_PATH` (0aef805d, `test-riscv64-cross.sh:163`), so QEMU no longer opens the amd64 plugins: OxidANT
+      run 40837860172 logged 1224 such lines, and 41268857583 logs none. That run also compiled gtk4-sys. BeschleunigerBallett
+      41156999263 passed, but its raster shard does not compile gtk4-sys. Left: AccelerANTgine's `linux-riscv64.yml` last
+      ran on 2026-10-15 (38756496664), before both fixes. A dispatched run there must resolve riscv64's `gtk4.pc`.
 
 - [ ] **CON145 — `cxxbridge` in the Linux and Windows images** [S, ★★]. Found 2026-10-21 with
-      BeschleunigerBallett 7f54642c: every BB configure runs `_myproject_find_or_install_cxxbridge`,
-      an unpinned `cargo install cxxbridge-cmd` at build time, because neither `:latest` nor
-      `:winamd64` carries it (everything-in-the-image rule). Pin `CXXBRIDGE_CMD_VERSION` in
-      `versions.env` to the `cxx` OxidANT's `kataglyphis_cxx_bridge` locks (the two must match),
-      install it in both images, and make BB's helper refuse a missing or mismatched binary in CI.
-      **Windows in source since 2026-10-27:** `CXXBRIDGE_CMD_VERSION=1.0.205` (OxidANT's lock), baked by
-      `Install-RustToolchain.ps1`, asserted by the smoke. Left: the next `:winamd64` passing that assert,
-      `:latest` (web-lane tools, three arches), and BB's helper.
-      The cached amd64 `:latest-rocm` (`a5d68fbe…`) also lacked `cxxbridge` on 2026-10-30, so an
-      AccelerANTgine GPU package verification had to compile it in the disposable container. The
-      cached NVIDIA image (`0e9dec34…`) also lacked it during an OmniAccelerANT CUDA build; its
-      automatic install failed with an incomplete offline Cargo cache. Verify the pinned binary and
-      its version in both NVIDIA and ROCm candidate images before publication; consumers should not
-      install it during their build.
+      BeschleunigerBallett 7f54642c: every BB configure runs an unpinned `cargo install cxxbridge-cmd` at build time
+      (`_myproject_find_or_install_cxxbridge`, `third_party/CMakeLists.txt:103`). `CXXBRIDGE_CMD_VERSION=1.0.205` matches
+      OxidANT's lock; the two must match. **Windows:** `:winamd64`, `:winarm64`, `:winamd64-nvidia` and `:winamd64-rocm`
+      of 2026-10-28/29 carry that ARG in their history, and `Test-Container.ps1:455` asserts the binary. Left:
+      - `:latest` (web-lane tools, three arches) and the NVIDIA and ROCm variants: no Linux script installs it. An
+        AccelerANTgine GPU package check had to compile it in its container, and an OmniAccelerANT CUDA build failed
+        installing it from an incomplete offline Cargo cache. Verify the pinned binary before publication.
+      - BB's helper refuses a missing or mismatched binary in CI.
 
-- [ ] **CON110 — OrchestrANT's riscv64 free-threaded leg needs a seeded cache** [M, ★]. Its
-      riscv64 lane (`linux-riscv64.yml`) runs `pinned` alone: run 38562273950 (2026-10-14) took
-      the riscv64 job 3 h 52 min for the GIL leg, 137 min of it source builds under QEMU (its lock
-      had moved past the seed's numpy, matplotlib and contourpy) and 74 min pytest. In source since
-      2026-10-20 (CHANGELOG): the seed's second pass on X.Yt, and the torch stage's fix for the X.Yt
-      sysconfig's `ar`, which the riscv64 and arm64 images lacked; proved in `:latest`'s riscv64
-      child, 15 wheels for 3.14.4 and 3.14.8t. From that seed, OrchestrANT de144d10's `3.14t` leg
-      under QEMU built no dependency and passed (2529 tests in 62 min; the 6 that read the hub
-      submodule's `backends.json` passed with it checked out). Left:
-      1. a `:latest` built from it;
-      2. OrchestrANT's `linux-riscv64.yml` asks for `pinned pinnedt`, and a dispatched run passes
-         both legs inside 360 min.
+- [ ] **CON110 — OrchestrANT's riscv64 free-threaded leg needs a seeded cache** [M, ★]. The seed's second pass on X.Yt
+      and the torch stage's `ar` fix are in source since 2026-10-20 (CHANGELOG); from that seed OrchestrANT de144d10's `3.14t`
+      leg under QEMU built no dependency and passed (2529 tests in 62 min). `:latest` `7d4d4129…` (hub 8119595e) is built
+      from that source; this assumes the seed carried, and nobody read its X.Yt wheels. Left: OrchestrANT's
+      `linux-riscv64.yml:24` still asks for `pinned`. It asks for `pinned pinnedt`, and a dispatched run passes both legs
+      inside 360 min.
 
       The seed covers the lock at `APP_REF`; a lock that moved since rebuilds what moved, once per leg.
 
@@ -1466,57 +1399,25 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
         still build third-party sdists with VS's `cl` (`Invoke-PythonTestLegs.ps1` went with CON113). OrchestrANT's own `setup.py` switches to clang-cl but links with
         `link.exe`, so moving those lanes onto the shim changes its linker too and needs its own proof.
 - [ ] **CON95 — finish ORT 1.31.0's ROCm rollout and consumer API update** [M, ★★].
-      The recorded default index `3c558d88`, Windows images and `:latest-nvidia` already carry
-      chain ORT 1.31.0. Left: prove it in the next `:latest-rocm`, then move OxidANT from its
-      current exact `ort` 2.0.0-rc.13 pin to rc.14 with its own tests.
-      The locally cached ROCm index `a5d68fbe…` still carried ORT 1.30.0 and MIGraphX on
-      2026-10-30; prove the next image's GPU core, provider and wheel together with a real
-      consumer session, not just the version of its CPU twin.
-      Compatibility evidence for the remaining rebuild (read from the two tags' sources):
-      - Dawn v20260818.211311 → v20260916.214021: `ORT_WEBGPU_WINDOWS_DAWN_SHA256` is
-        `507949fd45d7ca0cfc672617fd1e06ee02ce23c4f32856b342c48133e71d682e` (full download, 2026-10-13), its SHA1 equal
-        to deps.txt's `514e914f…`. ORT's six Dawn patches apply to it with GNU patch, five with fuzz.
-      - That Dawn creates the DXIL validator from `dxcompiler.dll`, and v1.31.0 ships no `dxil.dll`. The rocm spike
-        stages only `dxcompiler.dll`, and its build gate and smoke now fail on a leftover `dxil.dll`.
-      - GenAI v0.17.0 does not compile against v1.31.0's headers: the model-package entries it resolves left the
-        experimental header for the stable `OrtModelPackageApi` table (64 GCC errors). Both lanes apply
-        `onnxruntime-genai/002-ort-1.31-model-package-api.patch`. A syntax-only compile in `:latest` passes with GCC
-        and clang against both ORT versions. GenAI `main` and `rel-0.17.1` still carry the old code.
-      - KleidiAI v1.20.0 → v1.30.0, SHA1 equal to deps.txt's `36aebdd5…`: one `enable_language(ASM_MARMASM)` and no
-        rule of its own, so the arm64 rule patch still applies. Its new SVE2p1 `.S` files are new to armasm64.
-      - The D3D12 agility SDK, google_benchmark, coremltools and the 1DS SDK move too; the hub builds none of them
-        (no `DAWN_USE_AGILITY_SDK`, no benchmarks, telemetry off). The vendored onnx stays 1.22.0, pybind11 v3.0.2,
-        flatbuffers 23.5.26.
-      - `patches/onnxruntime/001-gcc16-epilogue-scalars-reference.patch` is gone: v1.31.0's
-        `moe_gemm_tma_ws_launcher.inl:535` carries upstream's own `std::remove_reference_t` fix.
-        `001-android-gradle-agp8-compat.patch` and the five Windows ORT patches apply to v1.31.0.
-      - Every build.py flag and CMake define the native, nvidia, amd, wasm, android, GenAI and Windows builds pass
-        still exists. The free-threaded twin row was re-read at v1.31.0.
-      - **Proven on Windows** by the chains of 2026-10-16/17, published 2026-10-17: the venvs install `onnxruntime`
-        1.31.0 and GenAI 0.17.0 as cp315 (`onnxruntime-genai-cuda` in the nvidia chain bk-20261017-103208); the rocm
-        chain bk-20261016-184041 passed `OrtWebGpu.ps1` on Dawn v20260916.214021 with DXC v1.9.2609 and loaded
-        `migraphx-ep.dll`; `windows-11-arm` imported ort 1.31.0 from `:winarm64` (hub run 39200278761). **Linux:**
-        `:latest-nvidia` of 2026-10-19 ships v1.31.0 with GenAI v0.17.0 (CUDA, with `002`'s `<cstdint>`).
-      - ORT configure still builds onnx from source: v1.31.0 fails on a found ONNX package
-        with a different protobuf. The default-image consumer proof does not substitute for
-        the ROCm EP and GenAI rebuild.
+      Every image carries chain ORT 1.31.0, `:latest-rocm` `05518138…` included (`ONNXRUNTIME_VERSION=v1.31.0` in its
+      history; OrchestrANT run 41491524238 installed its MIGraphX wheel, census PASS). Left:
+      1. A real consumer session on the right device: the GPU core and provider on an AMD GPU, not the CPU twin's version.
+      2. OxidANT moves off its exact `ort` 2.0.0-rc.13 pin (`Cargo.toml:53`) to rc.14 or newer, with its own tests.
+
+      ORT configure still builds onnx from source: v1.31.0 fails on a found ONNX package with a different protobuf.
 - [ ] **CON96 — the arm64 and riscv64 children without the x86_64 host payload** [S, ★★]. Owner request
-      2026-10-13 (CI prologue measures, item 5). **In source since 2026-10-13 (CHANGELOG); the next chain proves it.**
-      `prune-host-payload.sh` empties `/opt/android-sdk`, `/opt/android` and the builder's rustup in `artifact-source`
-      for every arch outside `HOST_PAYLOAD_ARCHES` (default `amd64`), and the package stage leaves the eight Android
-      variables empty there. Proved without a chain: the BuildKit ENV expansion, and the script over the real trees of
-      the amd64 `:latest`. Left for the chain:
-      - The package log lines in [`build-watch-list.md` § The host payload](docs/build-watch-list.md#the-host-payload-con96-new-2026-10-13)
-        on all three arches, and the arm64 package RUN's native Rust reinstall over the empty tree.
-      - The smoke green on arm64 and riscv64: `SKIP android-home`, the ABI gate's `SKIP`, ARCH-PARITY still finding
+      2026-10-13 (CI prologue measures, item 5). `prune-host-payload.sh` empties `/opt/android-sdk`, `/opt/android` and
+      the builder's rustup in `artifact-source` for every arch outside `HOST_PAYLOAD_ARCHES` (default `amd64`). Index
+      `7d4d4129…` shows it: arm64 6.72 GB compressed (was 10.11), riscv64 4.96 GB (was 8.51), and `ANDROID_HOME` empty on
+      both. Left:
+      - Read the package log lines in [`build-watch-list.md` § The host payload](docs/build-watch-list.md#the-host-payload-con96-new-2026-10-13)
+        and the smoke's lines on arm64 and riscv64: `SKIP android-home`, the ABI gate's `SKIP`, ARCH-PARITY still finding
         `android` and `android-sdk`.
-      - The published arm64 child about 3.4 GB smaller than `448591ff…` (10.11 GB), and riscv64 against `7689579f…`
-        (8.51 GB), with amd64 unchanged in content.
-      - One arm64 consumer pull timed against the 4.19 min median: about 1.1-1.3 min less is expected.
+      - Time one arm64 consumer pull against the 4.19 min median: about 1.1-1.3 min less is expected.
 
 - [b] **CON27 — MSVC STL 14.51 breaks `find`/`count`/`remove` on odd-sized structs
-      under clang-cl** [S, ★]. Blocked upstream (checked 2026-10-02): microsoft/STL#6294
-      is open, its fix #6298 awaits review, and neither 14.52 nor 14.53 Preview carries it.
+      under clang-cl** [S, ★]. Fixed upstream: microsoft/STL#6294 closed and its fix #6298 merged
+      on 2026-10-18. Nobody has checked whether a production toolset ships it.
       The toolset is VS 18's stable channel, not a pin that could move.
       BeschleunigerBallett's `find_if` stands (c2237c0f). Never set
       `_USE_STD_VECTOR_ALGORITHMS=0` image-wide: it turns every vectorized algorithm off.
@@ -1558,14 +1459,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
         directory of particular images, reproducible on every run, which argues against Defender.
       - Next, admin only: compare that directory's node in the top layers of the default and the nvidia
         `media-tvm` (`ctr -n buildkit`, then its reparse and attribute flags).
-- [ ] **CON89 — what rides the next full Windows chain** [M, ★]. Each item re-keys `Dockerfile.base` or the media
-      stages, so landing one alone would cost a rebuild of its own. They go in with the next planned full rebuild.
-      **Rode the chains of 2026-10-16/17** into the images of 2026-10-17: the `vswhere` splat fix (its base re-key, PowerShell
-      7.6.7, is in `:winamd64`'s history), the pinned pip installs, VVL's and x265's `/w` (arm64 merge log of
-      bk-20261016-211745: 138,210 lines, against 6.2 M for the VVL vertex alone), bazel, the JDK and git-lfs from the
-      pinned tool cache, and the patched LLVM built with the pinned clang-cl (rocm chain bk-20261016-184041). Left:
-      - IREE's VM ISA genrule on the GIL interpreter (`IREE_ISA_PYTHON`, CON79 item 1, optional).
-      - `UV_WINDOWS_ARM64_SHA256`: removed in source 2026-10-27 with its `bump_tools.py` row; rides the next chain.
+
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [ ] **CON173 — reconcile and prove the GPU image architecture matrix** [L, ★★★]. A live
@@ -1591,9 +1485,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `test_view.py`, `test_flet_viewer.py` and `test_streaming.py` skip on the device. flet,
       flet-desktop, oauthlib and repath are pure Python; msgpack 1.2.3 has a cp315 `win_arm64`
       wheel. Add them to the store and to OrchestrANT's staging list.
-      **Store in source since 2026-10-27:** the closure at OrchestrANT's lock (flet/flet-desktop 1.0.4, httpx,
-      httpcore, h11, anyio, rich, markdown-it-py, mdurl, oauthlib, repath, msgpack) as `PYTEST_WINDOWS_ARM64_*`.
-      Left: the next `:winarm64`, then OrchestrANT's staging list and a device run without those skips.
+      **Store:** the closure (flet/flet-desktop 1.0.4, httpx, httpcore, h11, anyio, rich, markdown-it-py, mdurl, oauthlib,
+      repath, msgpack) as `PYTEST_WINDOWS_ARM64_*`, in `:winarm64` `2f537246…` of 2026-10-28 (hub 30365bcf). Left:
+      OrchestrANT's lock is at flet 1.0.5 while `versions.env` pins 1.0.4, so the store must follow it; OrchestrANT's staging
+      list (`Stage-Arm64Tests.ps1:44`); a device run without those skips.
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
       - The aarch64 ASan runtime ships in the bundle since 2026-10-03: VS 2026's MSVC
@@ -1628,7 +1523,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
         it falls back with `No devices detected that match the filter criteria`).
       - Still unproven on a device: a camera pipeline and a GPU execution provider. No `windows-11-arm`
         runner has either; the Snapdragon X's DirectML is the one adapter in reach.
-- [b] **CON31 — the native arm64 nvidia route (phases A/B); the variants themselves are published** [L, ★]. `:latest-nvidia`
+- [b] **CON31 — the native arm64 nvidia route (phases A/B) and two device runs; the variants are published** [L, ★]. `:latest-nvidia`
       (amd64 + arm64, one index) and `:latest-rocm` (amd64) are published with passed acceptance receipts: amd64 on
       2026-10-28, arm64 on 2026-10-29 through the CROSS route from this amd64 host (phases C, D and E of
       `logs/research/nvidia-arm64-native-and-cross.md`, local; `CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1`,
@@ -1636,73 +1531,35 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ("natively AND cross") is the NATIVE route: phase A (an arm64 host builds gpu..runtime first-class, the tag and
       refusal changes G1-G12 of the plan) and phase B (the merge of a native child into the published index). Blocked
       on an arm64 build host (Orin or another arm64 box); the cross route is the default owner of the arm64 child.
-      Earlier decision for the record (2026-10-20): TensorRT 11 and the ORT TensorRT EP in `:latest-nvidia`, and a
-      `:latest-rocm` that finds its ROCm and opens an AMD GPU; both ship since 2026-10-28 (hub f6771ee4 and later,
-      `docs/linux-accelerator-images.md` § TensorRT 11, § Running it on an AMD GPU, § The GPU runtime gate).
       Published manifests do not themselves prove GPU execution on the consumer's device; recheck the relevant
-      image digest and run the device-specific inference gate before claiming acceleration.
-      - `:latest-nvidia`, TensorRT 11: `ENABLE_TENSORRT=true` on amd64; exactly `11.4.0.106-1+cuda13.4` from NVIDIA's
-        `ubuntu2604` repo; only the runtime `.so` files ship, which the SLA names distributable (§ Redistribution).
-        Proved in a throwaway container on the published `0e9dec34…` (no GPU): the hub's `install-tensorrt.sh`
-        installed the twelve packages (1.93 GB of debs), `getInferLibVersion()` 110400, and ORT v1.31.0 with the hub's
-        flags configured (`NV_TENSORRT_MAJOR is 11`) and built its TensorRT EP (§ TensorRT 11, Measured). The next
-        nvidia chain must show:
-        - gpu: `TensorRT: 11.4.0.106-1+cuda13.4 installed (12 packages)`;
-        - media: the GPU ORT's `NV_TENSORRT_MAJOR is 11`, GenAI built without `--use_trt_rtx`, and
-          `deepstream-verify.sh`'s `DeepStream links TensorRT 10 from … only`;
-        - wrapper: `assemble-torch-app.sh verify` passing its `TensorrtExecutionProvider` assert;
-        - runtime smoke: every `GPU-RUNTIME` row passing, the TensorRT ones included, and the image about 2.8 GB
-          larger than `0e9dec34…`;
-        - on the RTX 2080 host: a session over the smoke's Add graph with `TensorrtExecutionProvider` building an sm_75
-          engine and returning `[[11, 22, 33, 44]]`, and the DeepStream gate pipeline still passing.
-      - `:latest-rocm` (published `a5d68fbe…`): it had no `ROCM_PATH`, `HIP_PATH` or `/opt/rocm/bin` on `PATH`, so the
-        venv's rocm-sdk `hipcc` could not link a HIP program; and uid 1001 cannot open a `0660` render node without
-        `--group-add`. Fixed in `Dockerfile.package` (the roots), the entrypoint (a warning that names the
-        `--group-add`), the documented run line, and `check_gpu_runtime`, which fails the published image on six rows.
-        Proved on this host's WSL VM: `/dev/kfd` does not exist there, but over `/dev/dxg` a `hipcc`-built program ran
-        on the Ryzen iGPU (gfx1036) as uid 1001 with the roots set and did not link without them, and ORT's MIGraphX EP
-        served the Add graph. The RX 9070 XT is not enumerated over DXG. The next rocm chain must show every rocm
-        `GPU-RUNTIME` row passing, and on a native Linux host with an AMD GPU, as uid 1001 with the documented run line:
-        `rocminfo` listing the GPU, a `hipcc`-built program running, the Add graph through MIGraphX, and torch
-        `cuda.is_available()` with a tensor op; without `--group-add`, the entrypoint's warning.
-      - The 2026-10-20 arm64 exclusion is stale: on 2026-10-30 the live `:latest-nvidia`
-        manifest contained an arm64 entry. Its contents and device execution still need CON173.
-      - The stale `tensorrt.conf` naming `/usr/local/tensorrt/lib` is gone: checked in the published `0e9dec34…`
-        (2026-10-19) on 2026-10-21.
-      - `:winamd64-rocm`: published (first 2026-09-28 at 73a8dd74, again 2026-10-03 at
-        49fe27ef, with TheRock 10.1 on 2026-10-09 at c0969e22); the redistribution decision is recorded in `docs/windows-rocm.md`
-        § Redistribution.
+      image digest and run the device-specific inference gate before claiming acceleration. Also left, each on its own
+      hardware:
+      - `:latest-nvidia` on the RTX 2080 host: a session over the smoke's Add graph with `TensorrtExecutionProvider`
+        building an sm_75 engine and returning `[[11, 22, 33, 44]]`, and the DeepStream gate pipeline still passing.
+      - `:latest-rocm` on a native Linux host with an AMD GPU, as uid 1001 with the documented run line: `rocminfo` listing
+        the GPU, a `hipcc`-built program running, the Add graph through MIGraphX, and torch `cuda.is_available()` with a
+        tensor op; without `--group-add`, the entrypoint's warning.
+      - The arm64 child's contents and device execution: CON173.
 
       Sources: `docs/linux-accelerator-images.md` and `docs/windows-rocm.md`.
 - [b] **CON136 — the GPU images ship TensorRT's runtime files only** [M, ★★]. Owner decision
-      2026-10-21 ("Rausnehmen"), in the source since this row's commit; blocked on the next nvidia chains,
-      as CON31. Proved without a chain (`CHANGELOG.md` 2026-10-21, CON136): the published `:latest-nvidia`
-      `0e9dec34…` fails both new gates on DeepStream's 13 TensorRT 10 headers and three dev links and
-      passes them on the new layout, with every DeepStream gate and ORT's TensorRT EP resolving; the
-      Windows gate fails the old tree shape and passes the subset in `:winamd64`. The next chains must show:
-      - Linux media: `deepstream.sh`'s `runtime -> …/tensorrt-10.16.1.11, headers and dev links -> …/trt-sdk
-        (build only)`, the components built, and `deepstream-verify.sh`'s `holds only TensorRT's runtime .so
-        files and their docs`, at the end of the build and again in the package stage;
-      - Linux runtime smoke: the `GPU-RUNTIME` row `only TensorRT's runtime .so files ship` passing on
-        `-nvidia`, `-rocm` and `:latest`, and `/opt/nvidia/deepstream/tensorrt-10.16.1.11/lib` holding its 22
-        runtime files and links (2.5 GB), with no `include/` and no unversioned `.so`;
-      - Windows `-Gpu` with a zip staged in `windows/downloads/`: `Copy-TensorrtRuntime.ps1`'s `ships 11
-        runtime DLLs` line, `bk-windows-tensorrt-sdk-nvidia` tagged, the ORT RUN's `TensorRT detected at
-        C:\tensorrt-sdk\current`, and the smoke's `TensorRT ships only its runtime DLLs` and `ORT TensorRT EP
-        finds every TensorRT DLL it loads` passing with `cuda=1 trt=1`; zip-less, both pass on the empty root.
-      - **The stage images go private** (owner 2026-10-21, "Auf privat stellen"; in the source since the
-        `cross_stage_repo` commit): nvidia's `gpu`, `media` and `android` stages push to
-        `ghcr.io/kataglyphis/kataglyphis_beschleuniger-stages`; `:latest-nvidia`, the shared stages and rocm
-        stay. The Windows chain pushes no stage (`docs/linux-accelerator-images.md` § Stage images).
-      - **For the owner, after the first nvidia chain's push:** the package page
+      2026-10-21 ("Rausnehmen"). The Linux nvidia and rocm chains ran on 2026-10-28/29 with the gates in the revision
+      (`check-gpu-runtime.sh:135`, `deepstream-verify.sh:155`). Blocked on the owner's actions below. Left:
+      - Windows `-Gpu` with a zip staged in `windows/downloads/`, not yet read on `:winamd64-nvidia` `b472f91b…` (revision
+        0aef805d): `Copy-TensorrtRuntime.ps1`'s `ships 11 runtime DLLs` line, `bk-windows-tensorrt-sdk-nvidia` tagged, the
+        ORT RUN's `TensorRT detected at C:\tensorrt-sdk\current`, and the smoke's `TensorRT ships only its runtime DLLs`
+        and `ORT TensorRT EP finds every TensorRT DLL it loads` passing with `cuda=1 trt=1`; zip-less, both pass on the
+        empty root.
+      - **For the owner: check the private package.** nvidia's `gpu`, `media` and `android` stages push to
+        `ghcr.io/kataglyphis/kataglyphis_beschleuniger-stages`. The package page
         (`github.com/users/Kataglyphis/packages/container/package/kataglyphis_beschleuniger-stages`) says
         Private (never switch it: a public package cannot be made private again); `curl -s -o /dev/null -w
         '%{http_code}\n' 'https://ghcr.io/token?scope=repository:kataglyphis/kataglyphis_beschleuniger-stages:pull'`
-        prints `403` (the public package prints `200`); `DOCKER_CONFIG="$(mktemp -d)" nerdctl pull
-        ghcr.io/kataglyphis/kataglyphis_beschleuniger-stages:cross-media-nvidia-amd64` fails `denied`, while
+        prints `401` (read 2026-11-04; the public package prints `200`, a missing one `403`); `DOCKER_CONFIG="$(mktemp -d)"
+        nerdctl pull ghcr.io/kataglyphis/kataglyphis_beschleuniger-stages:cross-media-nvidia-amd64` fails `denied`, while
         a logged-in `nerdctl manifest inspect` of it succeeds.
-      - **For the owner: delete the old public stage tags** (read anonymously 2026-10-21; no other tag shares
-        these digests and no index lists them; a delete is restorable for 30 days):
+      - **For the owner: delete the old public stage tags.** All three still resolve (read 2026-11-04; a delete is
+        restorable for 30 days):
         `cross-toolchain-nvidia-amd64` `sha256:af3245773499e0287ccded76d35aefa3560d34c217635e9ae8fedc8d20c7dffd`,
         `cross-media-nvidia-amd64` `sha256:d2d11dbbb50bc5eb8cb070b7597761428c9123786cd7f42d15ebdfeb02935ce6`,
         `cross-android-nvidia-amd64` `sha256:e495e70dd62456f68f07f92ae2ef409e3ca1a869f609093295b8fa649c2b0e70`.
@@ -1744,14 +1601,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the next image and verify the secret-scan gate without network access on each
       supported image architecture. This observation does not establish that the online
       bootstrap fails or describe the current mutable registry tag.
-- [ ] **CON216 — read one real 72 GB draw retrying** [S, ★★]. `prepare-linux-ci-host` refuses a runner below
-      `min-free-gb` before the pull, and each repository's `retry-disk-refusal.yml` re-runs that job only
-      ([README](.github/actions/README.md#retry-disk-refusal)). Wired: the hub, WebDavClient, OmniAccelerANT, OrchestrANT,
-      OxidANT, AccelerANTgine. Real re-run proved on a forced refusal (run 41745244593). Real refusals without a wired retry:
-      AccelerANTgine run 41760439020 (19G, before its wiring, re-run by hand); OxidANT run 41766478046 (20G, created before
-      its wiring landed, ended after it, and no retry fired). Left: name a run the wiring itself retried.
-      The fix for the size itself: CON223.
-
 - [ ] **CON223 — a smaller Linux image for lanes that need no toolchain** [L, ★★]. Chain work. `:latest` takes about
       72 GB unpacked, so a 72 GB `ubuntu-26.04` runner cannot hold it and a job: WebDavClient run 41731774668 and
       OmniAccelerANT's docs run 41731757638 ran out of disk. Done when docs and pure-Python lanes pull an image that
