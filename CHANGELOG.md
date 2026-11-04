@@ -13,6 +13,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-04 — rustup-init rotated to 1.29.3
+
+- `RUSTUP_INIT_SHA256` follows the script sh.rustup.rs serves, byte-identical to rust-lang/rustup's tag 1.29.3;
+  the first rebuild after the sweep found the 1.29.2 pin stale in its compiler stage.
+
 ## 2026-11-04 — `develop` green after the pin round
 
 - Docs: `docs/uv.lock` follows DocumANTation 42329f9e's dynamic theme version; the setuptools error it produced is
