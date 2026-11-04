@@ -81,6 +81,13 @@ inputs:
       72 GB unpacked, and a job needs room for its checkout and build trees.
     required: false
     default: '90'
+  min-free-gb:
+    description: >-
+      Free GB under which the job stops before the pull: a 72 GB runner starts near 19 GB and
+      cannot fit the image after any cleanup. Its annotation lets retry-disk-refusal draw another
+      runner. '0' turns it off, for a small image.
+    required: false
+    default: '45'
   pull-first:
     description: >-
       'true' (the default) logs in and starts the pull in the background before the
@@ -131,7 +138,11 @@ runs:
       env:
         FREE_DISK_SPACE: ${{ inputs.free-disk-space }}
         FAST_FLOOR_GB: ${{ inputs.fast-floor-gb }}
-      run: echo "mode=$(bash "${GITHUB_ACTION_PATH}/select-disk-cleanup.sh" "${FREE_DISK_SPACE}" "${FAST_FLOOR_GB}")" >> "${GITHUB_OUTPUT}"
+        MIN_FREE_GB: ${{ inputs.min-free-gb }}
+      run: |
+        # Assigned first: inside echo's own substitution a refusal's status would be lost.
+        mode="$(bash "${GITHUB_ACTION_PATH}/select-disk-cleanup.sh" "${FREE_DISK_SPACE}" "${FAST_FLOOR_GB}" "${MIN_FREE_GB}")"
+        echo "mode=${mode}" >> "${GITHUB_OUTPUT}"
 
     - name: Raise docker's parallel layer downloads
       if: inputs.max-concurrent-downloads != ''

@@ -475,6 +475,10 @@ says nothing about what a job's own build trees need.
 the full cleanup ran and the pull finished, but a job then ran out of disk writing its venv. No
 cleanup mode fixes that size (`BACKLOG.md` CON216).
 
+So `min-free-gb` (default 45) stops such a job before the pull. A 145 GB runner has shown 88 GB and
+more at that point, and that size's cleanup cannot lift 19 GB to the image's 72 GB. GitHub offers no
+job-level retry: see [`retry-disk-refusal`](../.github/actions/README.md#retry-disk-refusal).
+
 The full cleanup left 78.4 (x64) and 90.6 GB (arm64) free after the pull in the run above. A lane
 whose build trees need more than the fast tier leaves passes
 `free-disk-space: 'true'`, as the riscv64 lanes do while they pull the riscv64 child as

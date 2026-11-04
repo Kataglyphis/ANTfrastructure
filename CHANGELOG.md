@@ -59,6 +59,9 @@
 - CON115: DocumANTation's `linux-x64.yml` runs in the family image on X.Y and X.Yt (run 41727156188)
   through the new `ci-image-leg.sh`, and its Dockerfile's venv uses `ARG PYTHON_VERSION`, uv's build of
   the pin, instead of `python3-full`. Pandoc still downloads at run time, now against its checksum.
+- CON216, owner decision: `prepare-linux-ci-host` refuses a runner below `min-free-gb` (default 45)
+  before the pull, naming the free space and the floor. `retry-disk-refusal` re-runs only that job, from
+  a per-repository `workflow_run`. CON223 is the smaller image.
 
 ## 2026-11-03 — A card without a CUDA kernel
 

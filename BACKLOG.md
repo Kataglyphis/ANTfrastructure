@@ -493,16 +493,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the first lane builds under a lock in the `id=iree-host` cache mount, the next restores (`IREE_HOST_CACHE=off`
       reverts). `test-iree-host-once.sh` proves it with a stub `cmake`. Done when the next chain's arm64 and riscv64
       media logs show one host compile and `IREE host stage: reusing` in the other lane.
-- [ ] **CON169 — an arch waits for every other arch before its next stage** [L, ★★★]. Measured 2026-10-27:
-      `media-arm64` and `media-riscv64` were pushed at ~09:35 and their android stages waited ~2 h for amd64's
-      ONNX Runtime and OpenCV. `build-cross-chain.sh` runs one `run_parallel_arch_loop` per stage and joins it,
-      although `android-<arch>` needs only `media-<arch>`. The join carries three things: the image-store lever
-      runs only with nothing in flight ([`build-cache-tiers.md` § 3.2.2](docs/build-cache-tiers.md#322-the-image-store-lever-disk3)),
-      pins and ancestry are harvested per stage, and the disk estimate assumes all lanes are in one stage. Work:
-      one pipeline per arch through the stages, with an image lever scoped to the tags of arches that are not
-      building, and a disk gate per arch. Done when a chain starts an arch's next stage as soon as that arch's
-      previous one is pushed, without an image removal under a running build.
-
 - [ ] **CON169 — prove one pipeline per arch on a chain, then decide its default** [M, ★★★]. In source since
       2026-11-03, opt-in ([`linux-cross-builds.md` § One pipeline per arch](docs/linux-cross-builds.md#one-pipeline-per-arch)):
       `CROSS_ARCH_PIPELINE=1` runs each arch through its stages, with a per-lane disk guard scoped to finished arches.
@@ -1743,13 +1733,16 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the next image and verify the secret-scan gate without network access on each
       supported image architecture. This observation does not establish that the online
       bootstrap fails or describe the current mutable registry tag.
-- [ ] **CON216 — a 72 GB hosted runner cannot hold the image and a job** [S, ★★]. `ubuntu-26.04` is not one size:
-      most jobs get a 145 GB root (run 41715667182: 53.8 GB free after the pull with the fast cleanup, 74.5 GB with the
-      full one), some a 72 GB root. WebDavClient run 41731774668 got the small one: 19 GB free at the start, so
-      `fast-floor-gb` chose the full cleanup; the pull finished, then `uv` failed writing a venv with `No space left on
-      device`. OmniAccelerANT's docs run 41731757638 died the same way under `free-disk-space: true`. The cleanup cannot
-      fix this size. Owner decision: a smaller image for these lanes, larger paid runners, or a loud early refusal and
-      retry on the small size. Done when a lane's verdict no longer depends on which size it drew.
+- [ ] **CON216 — wire the disk-refusal retry into the remaining lanes** [S, ★★]. `prepare-linux-ci-host` refuses a
+      runner below `min-free-gb` before the pull, and a repository's `retry-disk-refusal.yml` re-runs that job only
+      ([README](.github/actions/README.md#retry-disk-refusal)). Wired: the hub, WebDavClient, OmniAccelerANT. Left: copy
+      it into every other repository whose lanes use the action, with their lane names, and read one real 72 GB draw
+      retrying. Without the copy a refusal is loud and stays red. The fix for the size itself: CON223.
+
+- [ ] **CON223 — a smaller Linux image for lanes that need no toolchain** [L, ★★]. Chain work. `:latest` takes about
+      72 GB unpacked, so a 72 GB `ubuntu-26.04` runner cannot hold it and a job: WebDavClient run 41731774668 and
+      OmniAccelerANT's docs run 41731757638 ran out of disk. Done when docs and pure-Python lanes pull an image that
+      fits that runner with its job, gated like `:latest`.
 
 - [ ] **CON214 — SquashFS tools for non-executing AppImage inspection** [S, ★★]. Evaluated in throwaway
       `:latest` containers on 2026-11-03: Ubuntu's `squashfs-tools` 1:4.7.5-1 installs on amd64 and riscv64 and is in

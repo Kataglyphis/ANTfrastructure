@@ -1,0 +1,24 @@
+# Consumers copy this with their own lane names. See .github/actions/README.md#retry-disk-refusal
+name: CI · retry a runner disk refusal
+
+on:
+  workflow_run:
+    workflows:
+      - "CI · disk refusal self-test"
+      - "Composite actions · self-test"
+      - "Security audit"
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+jobs:
+  retry:
+    name: Re-run a job refused for disk
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: Kataglyphis/ANTfrastructure/.github/actions/retry-disk-refusal@develop

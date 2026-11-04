@@ -15,6 +15,23 @@ branch that lags it, and its `versions.env` still names the retired
 
 ## Available actions
 
+### `retry-disk-refusal`
+
+A job cannot re-roll its own runner, and GitHub has no job-level retry. So this is a true re-run,
+started from outside the run once it has ended. `prepare-linux-ci-host` stops below `min-free-gb`
+before the pull, with the annotation title `runner-disk-refusal`. A repository's own
+`retry-disk-refusal.yml`, triggered by `workflow_run`, reads the finished attempt's failed jobs and
+re-runs one that carries exactly that title, through the one-job endpoint; each following attempt's
+completion handles the next refused job, up to `max-attempts` (default 4). Any other failure stays
+failed and is never re-run. `workflow_run` needs a file per repository and its lane names, because a
+hub token has no write access elsewhere: copy
+[`retry-disk-refusal.yml`](../workflows/retry-disk-refusal.yml) and name your lanes. Its token needs
+`actions: write` and `checks: read`. Limits: a job that `needs` a refused job and ran anyway re-runs
+with it, and a step that prints that exact annotation itself would count as a refusal. A new runner
+may be small again; past `max-attempts` the run stays red with a warning.
+`disk-refusal-selftest.yml` proves it on a real run. Suites: `test-select-disk-cleanup.sh`,
+`test-retry-disk-refusal.sh`.
+
 ### `cleanup-disk-space`
 Aggressively frees space on **Windows** runners so large container images (e.g.
 the ~54 GB `:winamd64`) can be pulled/imported. Removes Visual Studio, the whole
@@ -297,7 +314,7 @@ Inputs: `image` ([shared defaults](#the-two-images-and-the-one-place-they-are-na
 `registry`, `registry-username`,
 `registry-password` (login is skipped when empty, so fork PRs without secrets
 still pull public images), `fetch-depth`, `submodules`, `checkout`,
-`free-disk-space` (`true`, `fast` or `false`), `fast-floor-gb`, `pull-first`, `pull-attempts`,
+`free-disk-space` (`true`, `fast` or `false`), `fast-floor-gb`, `min-free-gb`, `pull-first`, `pull-attempts`,
 `pull-timeout-seconds`, `max-concurrent-downloads` (empty by default: docker keeps its 3
 parallel layer downloads; a number is merged into `daemon.json` and the daemon restarted before
 the pull, a measurement since 2026-10-17). Outputs: `pull-seconds`, `cleanup-seconds`.

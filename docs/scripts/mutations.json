@@ -34895,5 +34895,61 @@
   "replace": "            -e PYTHON_BENCH_GATE=0\n            -e FREE_THREADED_SYNC_EXTRAS=${{ inputs.free-threaded-extras }}\n",
   "test": "bash linux/scripts/tests/test-python-ci-bench.sh",
   "why": "no caller may turn the benchmark gate off again; an older pinned ci_tests.sh would honour it"
+ },
+ {
+  "id": "actions.disk-refusal-stops-before-pull",
+  "target": ".github/actions/prepare-linux-ci-host/select-disk-cleanup.sh",
+  "find": "if [ \"${free_gb}\" -lt \"${min_free}\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-select-disk-cleanup.sh",
+  "why": "a runner that cannot fit the image must stop before the pull; does not prove 45 still fits the image"
+ },
+ {
+  "id": "actions.disk-refusal-names-free-and-floor",
+  "target": ".github/actions/prepare-linux-ci-host/select-disk-cleanup.sh",
+  "find": "::error title=runner-disk-refusal::%sG free on this runner, floor %sG (min-free-gb)",
+  "replace": "::error title=runner-disk-refusal::too little disk %s %s",
+  "test": "bash linux/scripts/tests/test-select-disk-cleanup.sh",
+  "why": "the message must name the free space and the floor"
+ },
+ {
+  "id": "actions.disk-refusal-keeps-status",
+  "target": ".github/actions/prepare-linux-ci-host/action.yml",
+  "find": "        mode=\"$(bash \"${GITHUB_ACTION_PATH}/select-disk-cleanup.sh\" \"${FREE_DISK_SPACE}\" \"${FAST_FLOOR_GB}\" \"${MIN_FREE_GB}\")\"\n        echo \"mode=${mode}\" >> \"${GITHUB_OUTPUT}\"\n",
+  "replace": "        echo \"mode=$(bash \"${GITHUB_ACTION_PATH}/select-disk-cleanup.sh\" \"${FREE_DISK_SPACE}\" \"${FAST_FLOOR_GB}\" \"${MIN_FREE_GB}\")\" >> \"${GITHUB_OUTPUT}\"\n",
+  "test": "bash linux/scripts/tests/test-select-disk-cleanup.sh",
+  "why": "inside echo's substitution a refusal's exit status is lost and the pull goes on"
+ },
+ {
+  "id": "actions.disk-refusal-marker-exact",
+  "target": ".github/actions/retry-disk-refusal/retry-disk-refusal.sh",
+  "find": "grep -qxF -e 'runner-disk-refusal'",
+  "replace": "grep -qF -e 'runner-disk-refusal'",
+  "test": "bash linux/scripts/tests/test-retry-disk-refusal.sh",
+  "why": "a failure whose title only mentions the marker must not re-run"
+ },
+ {
+  "id": "actions.disk-refusal-one-job-endpoint",
+  "target": ".github/actions/retry-disk-refusal/retry-disk-refusal.sh",
+  "find": "\"repos/${REPO}/actions/jobs/${refused%% *}/rerun\"",
+  "replace": "\"repos/${REPO}/actions/runs/${RUN_ID}/rerun-failed-jobs\"",
+  "test": "bash linux/scripts/tests/test-retry-disk-refusal.sh",
+  "why": "rerun-failed-jobs would also re-run a genuine test failure beside the refusal"
+ },
+ {
+  "id": "actions.disk-refusal-attempt-cap",
+  "target": ".github/actions/retry-disk-refusal/retry-disk-refusal.sh",
+  "find": "if [ \"${RUN_ATTEMPT}\" -ge \"${MAX_ATTEMPTS}\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-retry-disk-refusal.sh",
+  "why": "an unbounded retry could spin on a fleet of small runners"
+ },
+ {
+  "id": "actions.disk-refusal-api-failure-is-loud",
+  "target": ".github/actions/retry-disk-refusal/retry-disk-refusal.sh",
+  "find": "gh api -X POST \"repos/${REPO}/actions/jobs/${refused%% *}/rerun\" >/dev/null",
+  "replace": "gh api -X POST \"repos/${REPO}/actions/jobs/${refused%% *}/rerun\" >/dev/null || true",
+  "test": "bash linux/scripts/tests/test-retry-disk-refusal.sh",
+  "why": "a refused re-run must fail the retry job, not claim it started"
  }
 ]

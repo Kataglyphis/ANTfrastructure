@@ -1,0 +1,36 @@
+name: 'Retry a runner disk refusal'
+description: >-
+  Called from a workflow_run workflow: re-runs one job of the completed run that
+  prepare-linux-ci-host refused for too little disk, so the next runner is drawn.
+  Any other failure stays failed. See .github/actions/README.md#retry-disk-refusal.
+
+inputs:
+  run-id:
+    description: 'The completed run.'
+    required: false
+    default: ${{ github.event.workflow_run.id }}
+  run-attempt:
+    description: 'Its attempt.'
+    required: false
+    default: ${{ github.event.workflow_run.run_attempt }}
+  max-attempts:
+    description: 'The last attempt that may start; a run past it stays red.'
+    required: false
+    default: '4'
+  github-token:
+    description: 'Needs actions: write and checks: read on this repository.'
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Re-run a refused job
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        RUN_ID: ${{ inputs.run-id }}
+        RUN_ATTEMPT: ${{ inputs.run-attempt }}
+        MAX_ATTEMPTS: ${{ inputs.max-attempts }}
+      run: bash "${GITHUB_ACTION_PATH}/retry-disk-refusal.sh"
