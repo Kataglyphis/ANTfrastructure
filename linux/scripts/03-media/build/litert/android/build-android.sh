@@ -42,7 +42,8 @@ mkdir -p litert/build-android && cd litert/build-android
 
 # The default LiteCore URL (v2.2.0 and v2.3.0 alike) went 404 (upstream main dropped its 1.1.0/ path segment), and file(DOWNLOAD) checks neither status nor hash.
 litecore_url="https://soc-developer.semiconductor.samsung.com/api/v1/resource/download-file/ai-litecore-ubuntu2404-v1.1.0.tar.gz"
-litecore_sha256="7d79a04db47227b8585bdf9abb0a7b52f2ec497d8a64ecc3e66ef502e41a07b2"
+# Samsung re-packs this archive under the same name (2026-11-03: new bytes, same headers set); re-pin from the live file, never relax the check.
+litecore_sha256="97b00aea3bf2ccef9a67893253a3455ee63ba601f0141d0de9743f4d313d7c41"
 litecore_root="${PWD}/_litecore"
 mkdir -p "${litecore_root}"
 curl -fsSL --retry 3 -o "${litecore_root}/litecore.tar.gz" "${litecore_url}"

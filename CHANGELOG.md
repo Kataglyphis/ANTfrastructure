@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-04 — Samsung re-packed the LiteCore headers archive
+
+- The android stage's LiteRT build pins the LiteCore archive Samsung serves since 2026-11-03 (`97b00aea…3d7c41`,
+  21,091,813 bytes, same `exynos-ai-litecore-v1.1.0/include` set); the rebuild's android stage failed on amd64 and
+  arm64 against the 2026-10-08 hash. The archive is fetched outside the asset mirror, so the old bytes are gone:
+  CON227 moves it through `download_verified_file`.
+
 ## 2026-11-04 — rustup-init rotated to 1.29.3
 
 - `RUSTUP_INIT_SHA256` follows the script sh.rustup.rs serves, byte-identical to rust-lang/rustup's tag 1.29.3;
