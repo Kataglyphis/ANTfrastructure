@@ -387,12 +387,39 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       owner runs these, and no release to `main` until they pass. Blocked on that hardware. Hosted CI builds
       all nine GPU workflows but tests on the CPU only. Windows AMD passed on 2026-11-03/04 on an RX 9070 XT
       (unpacked ZIP and MSIX, not the MSI). Still open, for OxidANT, OrchestrANT, AccelerANTgine and OmniAccelerANT:
-      1. Linux AMD, in a native Ubuntu boot on the RX 9070 XT.
+      1. Linux AMD, in a native Ubuntu boot on the RX 9070 XT: **ran 2026-11-04, all four packages red**
+         (runs 41738311741, 41738330472, 41738320553, 41755043524; host ROCm 10.1 / MIGraphX 2.18.0 from TheRock).
+         Every package loads the provider and runs the detector on MIGraphX, then `compare_detector_parity.py`
+         fails with `detection counts differ`: one ORT bug, CON225. OrchestrANT's `profile-gpu-candidate.sh`
+         reported `ok` because it counts operators and compares no detections; give it the parity check.
+         Host setup the page did not say: `libmigraphx_c.so.3` comes only from AMD's `amdrocm10-migraphx`
+         (Ubuntu 26.04's own ROCm 7.1 has no MIGraphX), `/opt/rocm/core-10.1/lib` and `extras-10/lib` go on the
+         loader path, and OmniAccelerANT needs `xvfb-run`. Rerun after CON225 ships.
       2. Linux NVIDIA, on a machine with a supported card (not the RTX 2080 until CON217).
       3. Windows NVIDIA, on that machine. OrchestrANT's package uses DirectML there.
       Steps: [§ A package on your own GPU](docs/gpu-artifact-receipts.md#a-package-on-your-own-gpu). The Linux
       scripts have never run outside their tests. Done when each package passes `compare_detector_parity.py`
       against the CPU with its operators on the provider. Failures on gfx1036 belong to CON202.
+
+- [ ] **CON225 — ORT's MIGraphX provider corrupts a partition output with non-standard strides** [M, ★★★].
+      Found 2026-11-04 on the RX 9070 XT (gfx1201) with ORT v1.31.0 (`--use_migraphx`) and MIGraphX 2.18.0:
+      `deim_dfine_n_coco` returns three drifting detections where the CPU finds five, in every Linux AMD
+      package. Pure MIGraphX compiles the whole graph and matches the CPU (max diff 0.0025, three identical
+      runs). The EP leaves the six `GridSample` ops and the stem's ceil-mode `MaxPool` on the CPU, so the
+      graph splits into five partitions, and one of them is only the `Slice` + `Reshape` that cut the 40×40
+      level out of the shared value tensor. MIGraphX returns that output as a view with strides
+      `[32000, 2000, 40, 1]`, and the EP binds that shape straight onto ORT's dense `[8, 16, 40, 40]` buffer
+      (`migraphx_execution_provider.cc`, the `#output_N` binding in the compute function): ORT reads
+      strided data as dense (emulating that reproduces ORT's tensor to 6e-6 on the 80 % the write defines)
+      and the overrun corrupts neighbours, which is why run 1 differs from run 2 and
+      `enable_mem_pattern=False` makes it deterministic but still wrong. `HIP_LAUNCH_BLOCKING` and
+      `AMD_SERIALIZE_*` change nothing. Two fixes, both upstreamable: make the EP copy a non-standard
+      output through a contiguous scratch, and add `GridSample` to its op list (MIGraphX has it), which
+      makes this model one partition. Carry them as `linux/scripts/patches/onnxruntime/` entries applied by
+      `apply_ort_gpu_source_patches`, rebuild the rocm chain, and report upstream with the evidence in
+      `~/gpu/work` on the build host. Windows DirectML has its own wrong-result class (CON220); the Windows
+      ROCm image is not affected by this partition (its ORT is CUDA/DirectML only). Done when all four Linux
+      AMD packages pass `compare_detector_parity.py` on the RX 9070 XT (CON224 item 1).
 
 - [ ] **CON217 — build CUDA compute capability 7.5, so RTX 20xx cards run the NVIDIA packages** [M, ★★].
       Owner decision 2026-11-02: add `75` (Turing: T4, RTX 20xx) to `CUDA_ARCHITECTURES`, today

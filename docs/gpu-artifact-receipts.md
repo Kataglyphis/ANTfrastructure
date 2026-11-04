@@ -245,9 +245,12 @@ Run natively, not under WSL, where an RX 9070 XT hangs at its first HIP copy (BA
 scripts run the finished packages on the CPU and the GPU; only self-hosted jobs call them, and no such
 runner exists yet, so a first run may find faults in the scripts themselves.
 
-The machine needs the vendor's kernel driver, `gh`, `python3` and `dpkg-deb`, and your user in the
-`render` and `video` groups. With a second GPU, keep the card you mean to test selected: an enabled
-`gfx1036` iGPU has no MIGraphX kernels, so disable it in the firmware or set `HIP_VISIBLE_DEVICES`.
+The machine needs the vendor's driver and the user-space runtime the packages load from the host
+(on AMD: TheRock's HIP and MIGraphX at the image's pins, set up in
+[`linux-host-setup.md` § A4b](linux-host-setup.md#a4b-rocm-user-space-for-the-amd-gpu-packages-therock-the-images-pins)),
+`gh`, `python3`, `dpkg-deb` and `xvfb-run`, and your user in the `render` and `video` groups. With a
+second GPU, keep the card you mean to test selected: an enabled `gfx1036` iGPU has no MIGraphX
+kernels, so disable it in the firmware or set `HIP_VISIBLE_DEVICES`.
 
 Clone each repository with `git clone --branch develop`, then `git submodule update --init` without
 `--recursive`, which fails on the depth of the nested submodules. Take the newest green run:

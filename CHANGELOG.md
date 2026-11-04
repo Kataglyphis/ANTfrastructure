@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-04 — The Linux AMD packages ran on the RX 9070 XT
+
+- CON224 item 1: the four Linux AMD GPU packages ran natively on ROCm 10.1 / MIGraphX 2.18.0 and all fail
+  detector parity. Root cause CON225: ORT's MIGraphX provider binds a strided partition output onto a dense
+  buffer. Pure MIGraphX is correct. `docs/failure-modes.md` has the symptom; `docs/gpu-artifact-receipts.md`
+  now names the host runtime, loader path and `xvfb-run` the Linux scripts need.
+
 ## 2026-11-04 — The disk-refusal retry reaches the AI repositories
 
 - CON216: AccelerANTgine, OrchestrANT and OxidANT carry `retry-disk-refusal.yml`. Only reading a real run the wiring

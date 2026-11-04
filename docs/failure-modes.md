@@ -60,6 +60,7 @@ Two neighbours, so you land on the right page:
 - [nvcc rejects the image's GCC 16](#nvcc-rejects-the-images-gcc-16)
 - [A CUDA compile is `Killed` though average memory looked fine](#a-cuda-compile-is-killed-though-average-memory-looked-fine)
 - [An exception through std::call_once segfaults in libunwind](#an-exception-through-stdcall_once-segfaults-in-libunwind)
+- [A Linux AMD package returns fewer, drifting detections on MIGraphX](#a-linux-amd-package-returns-fewer-drifting-detections-on-migraphx)
 - [lavapipe segfaults building an acceleration structure on arm64](#lavapipe-segfaults-building-an-acceleration-structure-on-arm64)
 - [Headless Chrome prints nothing under qemu-user](#headless-chrome-prints-nothing-under-qemu-user)
 - [Chrome stops with `No usable sandbox!`](#chrome-stops-with-no-usable-sandbox)
@@ -1094,6 +1095,21 @@ cannot reopen the 2026-08-27 path, where the guess pulled a distro
 **Cause.** Heavy CUDA translation units are staggered, so the average RSS hides the peak.
 
 **Fix.** `CUDA_MB_PER_CICC` (default 3500) sizes the GPU job count against the peak. Raise it before adding swap.
+
+### A Linux AMD package returns fewer, drifting detections on MIGraphX
+
+**Symptom.** `compare_detector_parity.py` fails with `detection counts differ`; the MIGraphX run's top score is
+far below the CPU's, and a second run in the same session gives other numbers again. `migraphx-driver verify`
+and the MIGraphX Python binding give correct, repeatable results for the same model. Seen 2026-11-04 on an
+RX 9070 XT with ORT v1.31.0 and MIGraphX 2.18.0.
+
+**Cause.** ORT's MIGraphX provider binds a partition output whose MIGraphX shape is a strided view onto ORT's
+dense buffer (BACKLOG CON225). It needs a partition that ends in a `Slice`/`Reshape` view, which this model
+gets because the EP leaves `GridSample` on the CPU.
+
+**Fix.** The EP patches in CON225. Until then no Linux AMD package of this model is trustworthy on the GPU;
+the CPU path is unaffected. Before blaming the provider, put `/opt/rocm/core-10.1/lib` and `extras-10/lib`
+on the loader path: a missing `libmigraphx_c.so.3` fails at provider load, not with wrong numbers.
 
 ### An exception through std::call_once segfaults in libunwind
 

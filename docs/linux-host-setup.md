@@ -112,6 +112,45 @@ Verify:
 rocm-smi
 ```
 
+### A4b. ROCm user space for the AMD GPU packages (TheRock, the image's pins)
+
+The Linux AMD packages load `libamdhip64.so.7` and `libmigraphx_c.so.3` from the host, and
+Ubuntu's own ROCm (7.1 on 26.04) has HIP but no MIGraphX. Install AMD's TheRock repo at the
+release `versions.env` pins (`ROCM_VERSION`, `MIGRAPHX_VERSION`), as the image does in
+`setup-rocm-repo.sh`, but only the runtime and only for your card. Done 2026-11-04 on an RX 9070 XT
+(gfx1201, Ubuntu 26.04):
+
+```bash
+curl -fsSL https://stable.repo.amd.com/rocm/gpg/packages.gpg -o /tmp/rocm-packages.gpg
+# The SHA256 is ROCM_GPG_KEY_SHA256 in versions.env.
+sha256sum /tmp/rocm-packages.gpg
+sudo mkdir -p /etc/apt/keyrings
+gpg --dearmor < /tmp/rocm-packages.gpg | sudo tee /etc/apt/keyrings/rocm.gpg > /dev/null
+for repo in core migraphx; do printf 'Types: deb\nURIs: https://stable.repo.amd.com/rocm/%s/packages/ubuntu2604/\nSuites: stable\nComponents: main\nArchitectures: amd64\nSigned-By: /etc/apt/keyrings/rocm.gpg\n\n' "$repo"; done | sudo tee /etc/apt/sources.list.d/rocm.sources > /dev/null
+printf 'Package: amdrocm*\nPin: release o=AMD ROCm\nPin-Priority: 1001\n' | sudo tee /etc/apt/preferences.d/rocm-pin > /dev/null
+sudo apt update
+sudo apt install --no-install-recommends xvfb \
+  amdrocm-runtime10.1 amdrocm-blas10.1-gfx1201 amdrocm-dnn10.1-gfx1201 amdrocm10-migraphx=2.18.0-1
+```
+
+The per-GPU metapackages (`-gfx1201`) replace the 25-target install the image carries. Then put the
+two TheRock directories ahead of the distro copy, the `000-` rule of AGENTS.md:
+
+```bash
+{ echo /opt/rocm/core-10.1/lib; echo /opt/rocm/extras-10/lib; } | sudo tee /etc/ld.so.conf.d/000-rocm.conf
+sudo ldconfig
+ldconfig -p | grep -e libmigraphx_c.so.3 -e libamdhip64.so.7
+```
+
+`libamdhip64.so.7` must resolve to `/opt/rocm/core-10.1/lib`, not `/usr/lib/x86_64-linux-gnu`. If
+an older `rocm-core` left `/opt/rocm` as an alternatives link, TheRock installs below that target;
+the paths above still hold. With a second GPU (the gfx1036 iGPU of a Ryzen desktop) run the
+packages with `HIP_VISIBLE_DEVICES=0` after checking `rocminfo` lists the discrete card first.
+The kernel side stays the in-tree or DKMS `amdgpu`; TheRock's repo ships no driver.
+
+Then follow [`gpu-artifact-receipts.md` § On Linux](gpu-artifact-receipts.md#on-linux) for `gh`,
+the clones and the four package scripts.
+
 ---
 
 ## The prerequisites list AGENTS.md carried
