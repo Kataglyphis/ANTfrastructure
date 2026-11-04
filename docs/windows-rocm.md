@@ -397,7 +397,7 @@ back to FXC. The patch refuses to run if that block moves.
 **Dawn and Tint under clang-cl.** Both have upstream clang-cl branches, `DAWN_WERROR` is off
 by default, and no flags or patches are added. That was read from source, and the rocm
 chain proved it: the image it built by 2026-09-25 carries the spike and passed
-`OrtWebGpu.ps1`. That was Dawn v20260818.211311; ORT v1.31.0's v20260916.214021 waits for
+`OrtWebGpu.ps1`. That was Dawn v20260818.211311; ORT v1.31.1's v20260916.214021 waits for
 the next rocm chain.
 
 **What ships.**

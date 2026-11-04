@@ -245,5 +245,7 @@ site-packages through a `.pth`, and only the vendored theme goes into it, editab
 stops the build and is named. CI without the image refuses; a workstation without it runs
 `uv sync --locked` from `docs/pyproject.toml` and the committed `docs/uv.lock`, using
 `docs/.venv`. Update dependencies with `uv lock --project docs`; the next local build checks the lock.
+A DocumANTation pin that moves the theme between a static and a dynamic version needs that relock too
+([the symptom](failure-modes.md#the-docs-lock-check-asks-for-setuptools)).
 Built in `:latest` with `--network none` on 2026-10-19: the same
 98 pages and 49 warnings as the PyPI build, 15 s instead of 20.

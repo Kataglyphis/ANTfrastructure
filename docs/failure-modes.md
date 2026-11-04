@@ -2549,3 +2549,16 @@ when optional debugger detail read `$cdb`, initialized only by automatic discove
 Initialize that optional state before the branch. Manual mode now scans the supplied
 process/handle pair without requiring cdb; automatic discovery retains its debugger
 steps. The regression exercises the actual branches without attaching to a process.
+
+## The docs lock check asks for setuptools
+
+**Symptom.** `docs/uv.lock is missing or stale`, right after `Failed to build sphinx-kataglyphis-theme`,
+`No solution found when resolving: setuptools>=83.0.0` and `the network was disabled`.
+
+**Cause.** No setuptools bound is at fault, and the image's own setuptools already meets it. uv reads a
+dynamic-version theme's dependencies from `pyproject.toml` and builds nothing, provided the lock records no
+version. A lock that disagrees (`version = "0.1.0"` left from a static-version pin) makes uv build the theme to
+find out, and an isolated build offline has no setuptools to download. `check_docs_lock` names that disagreement.
+
+**Fix.** `uv lock --project docs` and commit the one-line change with the gitlink that caused it. Do not add
+`--no-build-isolation` or lower the theme's bound: the check would still read the lock as stale.

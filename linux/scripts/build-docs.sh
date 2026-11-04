@@ -59,8 +59,24 @@ if unmet:
 PY
 }
 
+# theme_lock_version_drift: names a theme version the lock records differently; offline, uv reports that as a missing build backend.
+theme_lock_version_drift() {
+  local dynamic=no locked=no recorded
+  local manifest="${THEME}/pyproject.toml" lock="${REPO_ROOT}/docs/uv.lock"
+  if [ ! -f "${manifest}" ] || [ ! -f "${lock}" ]; then return 0; fi
+  if grep -Eq '^dynamic = .*"version"' "${manifest}"; then dynamic=yes; fi
+  recorded="$(sed -n '/^name = "sphinx-kataglyphis-theme"$/{n;/^version = /p;}' "${lock}")"
+  if [ -n "${recorded}" ]; then locked=yes; fi
+  if [ "${dynamic}" = "${locked}" ]; then
+    echo "the theme's version is $([ "${dynamic}" = yes ] && echo dynamic || echo static), and docs/uv.lock disagrees: a setuptools error above means this"
+  fi
+  return 0
+}
+
 check_docs_lock() {
-  uv lock --project "${REPO_ROOT}/docs" --check --offline || err "docs/uv.lock is missing or stale; run uv lock --project docs"
+  uv lock --project "${REPO_ROOT}/docs" --check --offline && return 0
+  theme_lock_version_drift
+  err "docs/uv.lock is missing or stale; run uv lock --project docs"
 }
 
 # docs_venv: CI uses the image offline; a workstation syncs the docs project's lock.

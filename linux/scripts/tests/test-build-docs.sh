@@ -23,6 +23,7 @@ branch() {
         sync) printf 'sync:%s:%s\\n' \"\$UV_PROJECT_ENVIRONMENT\" \"\$*\"; [ \"\${STUB_UV_FAIL:-0}\" != 1 ] ;;
       esac
     }
+    $(t_fn_src "${SUBJECT}" theme_lock_version_drift)
     $(t_fn_src "${SUBJECT}" check_docs_lock)
     $(t_fn_src "${SUBJECT}" docs_venv)
     docs_venv" 2>&1
@@ -40,6 +41,32 @@ branch IMAGE_VENV="${w}/opt-venv" CI=true STUB_LOCK_FAIL=1 > "${w}/failed-lock";
 t_assert_eq 1 "$rc" "a stale docs lock must stop the image build"
 t_assert_contains "$(cat "${w}/failed-lock")" "docs/uv.lock is missing or stale"
 t_assert_fails grep -q -e '^image$' "${w}/failed-lock"
+
+# drift_in <theme dir> <root>: the diagnosis over those files.
+drift_in() {
+  env THEME="$1" REPO_ROOT="$2" bash -c "$(t_fn_src "${SUBJECT}" theme_lock_version_drift)
+theme_lock_version_drift" 2>&1
+}
+# drift <version line of the theme's pyproject> <version line of its lock entry>: the diagnosis for that pair.
+drift() {
+  local d="${w}/drift"; rm -rf "${d}"; mkdir -p "${d}/theme" "${d}/docs"
+  printf '[project]\nname = "sphinx-kataglyphis-theme"\n%s\n' "$1" > "${d}/theme/pyproject.toml"
+  printf '[[package]]\nname = "sphinx-kataglyphis-theme"\n%s\nsource = { editable = "x" }\n' "$2" > "${d}/docs/uv.lock"
+  drift_in "${d}/theme" "${d}"
+}
+t_case "the lock records a theme version exactly when the theme's is static; a disagreement is named, not left as a setuptools error"
+t_assert_eq "" "$(drift 'dynamic = ["version"]' '')" "dynamic, none recorded: uv reads the rest statically and builds nothing"
+t_assert_eq "" "$(drift 'version = "0.1.0"' 'version = "0.1.0"')"
+t_assert_contains "$(drift 'dynamic = ["version"]' 'version = "0.1.0"')" "the theme's version is dynamic, and docs/uv.lock disagrees"
+t_assert_contains "$(drift 'version = "0.1.0"' '')" "the theme's version is static, and docs/uv.lock disagrees"
+branch IMAGE_VENV="${w}/opt-venv" CI=true STUB_LOCK_FAIL=1 THEME="${w}/drift/theme" REPO_ROOT="${w}/drift" > "${w}/failed-drift"; rc=$?
+t_assert_eq 1 "$rc" "the diagnosis does not replace the verdict"
+t_assert_contains "$(cat "${w}/failed-drift")" "the theme's version is static"
+t_assert_contains "$(cat "${w}/failed-drift")" "docs/uv.lock is missing or stale"
+hub="$(cd "${TESTS_DIR}/../../.." && pwd)"
+if [ -f "${hub}/third_party/DocumANTation/sphinx-kataglyphis-theme/pyproject.toml" ]; then
+  t_assert_eq "" "$(drift_in "${hub}/third_party/DocumANTation/sphinx-kataglyphis-theme" "${hub}")" "this tree's gitlink and docs/uv.lock agree; CI's preflight has no submodule and the Docs job proves it"
+fi
 
 # A stand-in theme distribution; python is the host's with it on the path.
 site="${w}/site"

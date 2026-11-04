@@ -674,7 +674,6 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target
 # `--target media-smoke` skips the slow gstreamer/libcamera tail.
 FROM media-inputs AS media-smoke
 
-
 FROM media-inputs AS gstreamer
 
 ARG GSTREAMER_VERSION

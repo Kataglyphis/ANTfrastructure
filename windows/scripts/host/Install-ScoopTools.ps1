@@ -167,8 +167,8 @@ Install-PinnedGit -TempDir $TempDir -GitInstallerUrl $GitInstallerUrl
 #region 2. WiX toolset (dotnet tool, pinned)
 function Install-PinnedWix {
 # Shared with Test-Toolchain.ps1's assert; the defaults keep a standalone run working.
-$WixVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_VERSION' -DefaultValue '7.0.0'
-$WixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '7.0.0'
+$WixVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_VERSION' -DefaultValue '7.0.1'
+$WixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '7.0.1'
 # The owner accepted the wix7 OSMF EULA (2026-10-01); another major is a new licence decision, never accepted silently.
 if ($WixVersion -notmatch '^7\.') { throw "WiX $WixVersion needs the owner's decision on its EULA; only wix7's was accepted (docs/dependency-updates.md, the WiX guard)" }
 Invoke-ScoopStep -Description "dotnet tool install wix $WixVersion" -Command {

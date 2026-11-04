@@ -12484,12 +12484,12 @@
   "why": "DeepStream 9.1 does not build against TensorRT 11, so a non-10 pin must be refused"
  },
  {
-  "find": "    arm64) echo \"arm64 has no DeepStream route",
+  "find": "    arm64) ds_sbsa_problem ;;",
   "id": "deepstream.arch-arm64",
-  "replace": "    arm64) return 0; echo \"arm64 has no DeepStream route",
+  "replace": "    arm64) return 0 ;;",
   "target": "linux/scripts/05-frameworks/deepstream.sh",
   "test": "bash linux/scripts/tests/test-deepstream.sh",
-  "why": "arm64 has no DeepStream route yet and must be refused"
+  "why": "arm64 without the staged SBSA libraries has no route and must be refused"
  },
  {
   "find": "[ \"${ENABLE_NVIDIA:-false}\" = \"true\" ] || { echo \"ENABLE_DEEPSTREAM=true needs",
@@ -12572,7 +12572,7 @@
   "why": "a default or rocm chain must refuse ENABLE_DEEPSTREAM=true"
  },
  {
-  "find": "      append_optional_build_arg _csba_out ENABLE_DEEPSTREAM \"${ENABLE_DEEPSTREAM:-}\"\n",
+  "find": "      append_deepstream_build_arg _csba_out \"${arch}\" \"media ${arch}\"\n",
   "id": "stage-graph.deepstream-media-arg",
   "replace": "      true\n",
   "target": "linux/scripts/01-core/stage-defs.sh",
@@ -12596,9 +12596,9 @@
   "why": "a build dependency that pulls a distro GStreamer puts a second copy beside /opt/gstreamer"
  },
  {
-  "find": "    CXX:gcc|CXX:cc|CC:*) printf '%s%s -include %s' \"${DS_CACHE_LAUNCHER:+${DS_CACHE_LAUNCHER} }\" \"${base}\" \"$3\" ;;",
+  "find": "    CXX:gcc|CXX:cc|CC:*) ;;",
   "id": "deepstream.c-compiler-kept",
-  "replace": "    CXX:gcc|CXX:cc|CC:*) printf '%sg++ -include %s' \"${DS_CACHE_LAUNCHER:+${DS_CACHE_LAUNCHER} }\" \"$3\" ;;",
+  "replace": "    CXX:gcc|CXX:cc|CC:*) base=g++ ;;",
   "target": "linux/scripts/05-frameworks/deepstream.sh",
   "test": "bash linux/scripts/tests/test-deepstream.sh",
   "why": "each Makefile's own compiler must survive: CXX:=gcc compiles C, and CC:=g++ links C++"
@@ -12630,10 +12630,10 @@
  {
   "id": "deepstream.stage-runtime-links-v4l2",
   "target": "linux/scripts/05-frameworks/deepstream.sh",
-  "find": "  ds_link_trt_builder_resources\n  ds_link_v4l2_plugin\n",
-  "replace": "  ds_link_trt_builder_resources\n",
+  "find": "  if [ \"$(ds_arch)\" = amd64 ]; then ds_link_v4l2_plugin; else ds_log",
+  "replace": "  if false; then ds_link_v4l2_plugin; else ds_log",
   "test": "bash linux/scripts/tests/test-deepstream.sh",
-  "why": "the package stage is the only place the NVDEC plugin gets linked"
+  "why": "the package stage is the only place the amd64 NVDEC plugin gets linked"
  },
  {
   "id": "deepstream.verify-builder-resources",
@@ -12646,10 +12646,10 @@
  {
   "id": "deepstream.verify-v4l2-plugin-wired",
   "target": "linux/scripts/05-frameworks/deepstream-verify.sh",
-  "find": "  dsv_check_v4l2_plugin\n  dsv_check_trt_builder_resources\n",
-  "replace": "  dsv_check_trt_builder_resources\n",
+  "find": "    if [ \"$(dsv_arch)\" = amd64 ]; then dsv_check_v4l2_plugin; else dsv_ok",
+  "replace": "    if false; then dsv_check_v4l2_plugin; else dsv_ok",
   "test": "bash linux/scripts/tests/test-deepstream.sh",
-  "why": "the NVDEC plugin link is a gate of the package stage"
+  "why": "the amd64 NVDEC plugin link is a gate of the package stage"
  },
  {
   "id": "deepstream.new-nvstreammux-env",
@@ -14150,7 +14150,7 @@
  {
   "id": "wheels.ft-table-pin-recheck",
   "target": "linux/scripts/03-media/free-threaded-twins.txt",
-  "find": "av|twin|PYAV_VERSION=19.0.1|",
+  "find": "av|twin|PYAV_VERSION=19.0.2|",
   "replace": "av|twin|PYAV_VERSION=19.0.0|",
   "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
   "why": "a pin bump would keep a verdict read at another release, on both lanes, which read this one file"
@@ -16094,8 +16094,8 @@
  {
   "id": "docs-site.hub-docs-lock-checked-offline",
   "target": "linux/scripts/build-docs.sh",
-  "find": "  uv lock --project \"${REPO_ROOT}/docs\" --check --offline || err \"docs/uv.lock is missing or stale; run uv lock --project docs\"",
-  "replace": "  uv lock --project \"${REPO_ROOT}/docs\" --offline || err \"docs/uv.lock is missing or stale; run uv lock --project docs\"",
+  "find": "  uv lock --project \"${REPO_ROOT}/docs\" --check --offline && return 0",
+  "replace": "  uv lock --project \"${REPO_ROOT}/docs\" --offline && return 0",
   "test": "bash linux/scripts/tests/test-build-docs.sh",
   "why": "the image build must reject a stale docs lock without fetching from PyPI"
  },
@@ -16982,8 +16982,8 @@
  {
   "id": "deepstream.trt-headers-build-only",
   "target": "linux/scripts/05-frameworks/deepstream.sh",
-  "find": "  cp -a \"${tmp}/trt-dev/usr/include/x86_64-linux-gnu/.\" \"${sdk}/include/\"\n",
-  "replace": "  cp -a \"${tmp}/trt-dev/usr/include/x86_64-linux-gnu/.\" \"${sdk}/include/\"\n  mkdir -p \"${prefix}/include\"; cp -a \"${sdk}/include/.\" \"${prefix}/include/\"\n",
+  "find": "  cp -a \"${tmp}/trt-dev/usr/include/$(ds_multiarch)/.\" \"${sdk}/include/\"\n",
+  "replace": "  cp -a \"${tmp}/trt-dev/usr/include/$(ds_multiarch)/.\" \"${sdk}/include/\"\n  mkdir -p \"${prefix}/include\"; cp -a \"${sdk}/include/.\" \"${prefix}/include/\"\n",
   "test": "bash linux/scripts/tests/test-deepstream.sh",
   "why": "TensorRT 10's headers serve the component build only; the SLA names only the runtime .so files distributable (owner 2026-10-21)"
  },
@@ -17006,8 +17006,8 @@
  {
   "id": "deepstream.verify-runs-trt-runtime-only",
   "target": "linux/scripts/05-frameworks/deepstream-verify.sh",
-  "find": "  dsv_check_trt_origin\n  dsv_check_trt_runtime_only\n",
-  "replace": "  dsv_check_trt_origin\n",
+  "find": "  dsv_check_trt_builder_resources\n  dsv_check_trt_runtime_only\n",
+  "replace": "  dsv_check_trt_builder_resources\n",
   "test": "bash linux/scripts/tests/test-deepstream.sh",
   "why": "the runtime-only check gates the build, the package and the smoke only through dsv_main"
  },
@@ -35215,5 +35215,13 @@
   "replace": "arm64) return 0 ;;",
   "test": "bash linux/scripts/tests/test-deepstream.sh",
   "why": "an arm64 media stage without the staged libraries must get ENABLE_DEEPSTREAM=false, or the build dies hours in"
+ },
+ {
+  "id": "docs-site.hub-docs-lock-version-drift-named",
+  "target": "linux/scripts/build-docs.sh",
+  "find": "  if [ \"${dynamic}\" = \"${locked}\" ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-build-docs.sh",
+  "why": "a theme version the lock records differently reads as a missing setuptools, offline, and has been chased as one"
  }
 ]

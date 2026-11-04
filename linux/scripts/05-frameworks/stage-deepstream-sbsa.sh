@@ -40,10 +40,10 @@ sbsa_run() {
 }
 
 sbsa_stage() {
-  local f key files=""
+  local f files=""
   command -v "${NERDCTL}" >/dev/null || { echo "deepstream-sbsa: ${NERDCTL} is not on PATH" >&2; return 1; }
   mkdir -p "${DEST}"
-  while read -r f key; do files+=" ${DS_TREE}/lib/${f%.1.0.0}"; done < <(ds_sbsa_libs)
+  while read -r f _; do files+=" ${DS_TREE}/lib/${f%.1.0.0}"; done < <(ds_sbsa_libs)
   "${NERDCTL}" pull --platform linux/arm64 "${DEEPSTREAM_SBSA_IMAGE}" >/dev/null
   # The versioned names are what the tree links and the plugins need; the licence rides along as the container ships it.
   sbsa_run "set -e; for s in ${files}; do cp -L \"\$(readlink -f \"\$s\")\" /stage/; done; cp ${DS_TREE}/LicenseAgreement.pdf /stage/; \

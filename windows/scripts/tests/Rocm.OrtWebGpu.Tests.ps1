@@ -12,7 +12,7 @@ $script:OrtWebGpuBuildFunction = @('Get-OrtWebGpuPlan', 'Get-OrtWebGpuPin', 'Get
     'Expand-OrtWebGpuDxc', 'Expand-OrtDawnArchive', 'Invoke-DawnPrebuiltDxcPatch', 'Resolve-GnuPatchExe', 'Initialize-OrtWebGpuInput',
     'Get-OrtWebGpuCmakeArgs', 'Get-OrtWebGpuConfigureFinding', 'Install-OrtWebGpuRuntime', 'Get-OrtWebGpuWheelFinding',
     'Get-OrtDxcNoticeTitle', 'Add-OrtWebGpuWheelNotice', 'Get-OrtWebGpuWheelReport', 'Get-OrtWebGpuFeatureMarker')
-# ORT v1.31.0 cmake/deps.txt, verbatim: the row Get-OrtDawnDepsEntry grades.
+# ORT v1.31.1 cmake/deps.txt, verbatim: the row Get-OrtDawnDepsEntry grades.
 $script:OrtDawnRow = 'dawn;https://github.com/google/dawn/archive/refs/tags/v20260916.214021.zip;514e914f23a0787213c89eed879f74b5e275690d'
 # Dawn v20260916.214021 third_party/CMakeLists.txt, the block Invoke-DawnPrebuiltDxcPatch rewrites (verbatim).
 $script:DawnDxcBlock = "if (DAWN_USE_BUILT_DXC)`n    AddSubdirectoryDXC()`nendif()`n`nif (TINT_BUILD_MESA)`n"
@@ -72,12 +72,12 @@ Describe 'Build-OnnxFromSource WebGPU: plan and pins (cpu/nvidia never enter the
         }
     }
 
-    It 'the real pins parse, and the Dawn tag is the one ORT v1.31.0''s deps.txt fetches' {
+    It 'the real pins parse, and the Dawn tag is the one ORT v1.31.1''s deps.txt fetches' {
         $pin = Get-OrtWebGpuPin -Source (Get-OrtWebGpuTestPin)
         $entry = Get-OrtDawnDepsEntry -DepsLine @('#Name;Url;SHA1', $script:OrtDawnRow) -DawnVersion $pin.DAWN_VERSION
         Assert-Equal '514e914f23a0787213c89eed879f74b5e275690d' $entry.Sha1 'ORT''s SHA1'
         Assert-Equal 'dxc_2026_09_29.zip' $pin.DXC_ASSET 'DXC asset'
-        Assert-Equal 'v1.31.0' (Get-OrtWebGpuTestPin)['ONNXRUNTIME_VERSION'] 'the row above is v1.31.0''s: re-capture it with ORT'
+        Assert-Equal 'v1.31.1' (Get-OrtWebGpuTestPin)['ONNXRUNTIME_VERSION'] 'the row above is v1.31.1''s: re-capture it with ORT'
     }
 
     It 'every empty or malformed pin refuses by name (the ARGs are valueless off the driver)' {

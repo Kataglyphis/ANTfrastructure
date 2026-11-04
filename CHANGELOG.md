@@ -13,6 +13,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-04 — `develop` green after the pin round
+
+- Docs: `docs/uv.lock` follows DocumANTation 42329f9e's dynamic theme version; the setuptools error it produced is
+  now named ([the symptom](docs/failure-modes.md#the-docs-lock-check-asks-for-setuptools)).
+- Eight mutation recipes follow the arm64 DeepStream code and the PyAV pin to the same guarantees, except
+  `deepstream.arch-arm64`, whose guarantee is now "arm64 without the staged SBSA libraries is refused".
+  The suite now pins the amd64 guards of the NVDEC plugin's link and gate, not only the calls.
+- `Dockerfile.media` is back at its budget (a stray blank line), `stage-deepstream-sbsa.sh` loses an unused variable,
+  the Windows WiX defaults follow 7.0.1, and the Dawn row is re-captured at ORT v1.31.1: the same tag and SHA1.
+
 ## 2026-11-04 — DeepStream has an arm64 route (SBSA), staged by hand
 
 - CON42 phase 7: `deepstream.sh` builds for arm64 from Jetson's runtime `.deb` plus the three Tegra libraries
