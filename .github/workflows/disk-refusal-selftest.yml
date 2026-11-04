@@ -31,9 +31,11 @@ jobs:
 
   genuine-failure:
     name: A genuine failure, never re-run
-    if: ${{ inputs.prove }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      - name: Fail
-        run: exit 1
+      # Runs either way: the develop-red watch closes a red job only on that job's own pass.
+      - name: Fail only when proving
+        env:
+          PROVE: ${{ inputs.prove }}
+        run: test "${PROVE}" != true
