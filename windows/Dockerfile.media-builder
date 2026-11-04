@@ -74,8 +74,8 @@ ARG LITERT_LM_BAZEL_WINDOWS_VERSION=7.6.1
 ARG LITERT_LM_BAZEL_WINDOWS_AMD64_SHA256=1c7a1609700e085d6a707a444a97e03bad593a99475bb91ff4945868d295dc96
 ARG TEMURIN_JDK_WINDOWS_VERSION=21.0.5+11
 ARG TEMURIN_JDK_WINDOWS_X64_SHA256=6f09d4a3598542313cca1540106d537c7092a54e415d569f7b928160a90d3128
-ARG GIT_LFS_WINDOWS_VERSION=v3.8.0
-ARG GIT_LFS_WINDOWS_AMD64_SHA256=b62e7b8ceddee635f691233d77de8eaa4b213e9209e0173811d8cfa77f7882c1
+ARG GIT_LFS_WINDOWS_VERSION=v3.8.1
+ARG GIT_LFS_WINDOWS_AMD64_SHA256=5bb771c12b3dacc535e912d0270a010c209d4da2e63819c5918e3547c2defed9
 
 ENV LITERT_VERSION="${LITERT_VERSION}" `
     LITERT_LM_VERSION="${LITERT_LM_VERSION}" `
@@ -97,9 +97,9 @@ FROM common AS media-tvm-env
 
 ARG TVM_REF=v0.27.0
 ARG TVM_COMMIT=4d0ac168c78c1e20bf05a6ec5926760bb1c52b05
-ARG IREE_VERSION=v3.12.0
+ARG IREE_VERSION=v3.13.0
 # media-core-built-ffmpeg declares the same pin: the fan-in refuses a Python distribution at two versions.
-ARG PY_CYTHON_VERSION=3.3.0
+ARG PY_CYTHON_VERSION=3.3.1
 
 ENV TVM_REF="${TVM_REF}" `
     TVM_COMMIT="${TVM_COMMIT}" `
@@ -108,9 +108,9 @@ ENV TVM_REF="${TVM_REF}" `
 
 # Each compile stage declares only its own version keys; ENV so CUDA_ARCHITECTURES/PYTHON_VERSION reach the downstream stages.
 FROM common AS media-core-built-onnx
-ARG ONNXRUNTIME_VERSION=v1.31.0
+ARG ONNXRUNTIME_VERSION=v1.31.1
 ARG CUDA_ARCHITECTURES="86;87;89;120"
-ARG PYTHON_VERSION=3.15.0
+ARG PYTHON_VERSION=3.15.2
 # Declared in every stage that mounts windows/qnn-sdk, or that stage extracts the zip unverified; empty = no EP.
 ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
 ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
@@ -156,9 +156,9 @@ ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 # FFmpeg's keys live here, so a bump never re-runs the ONNX stage.
 ARG FFMPEG_VERSION=n9.0.2
-ARG PYAV_VERSION=19.0.1
+ARG PYAV_VERSION=19.0.2
 # media-tvm-env declares the same pin: the fan-in refuses a Python distribution at two versions.
-ARG PY_CYTHON_VERSION=3.3.0
+ARG PY_CYTHON_VERSION=3.3.1
 ARG NV_CODEC_HEADERS_REF=n13.1.15.0
 # AMF headers: every lane carries the pin, only the rocm lane fetches them (GPU_TYPE=rocm).
 ARG AMF_HEADERS_VERSION=v1.5.3
@@ -239,10 +239,10 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
 FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built-hailo
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
-ARG HAILORT_VERSION=5.4.0
+ARG HAILORT_VERSION=5.5.0
 ENV HAILORT_VERSION="${HAILORT_VERSION}"
 # Forwarded as ARGs: an older parent's baked versions.env would leave these empty, and the script throws on empty pins.
-ARG HAILORT_SOURCE_SHA256=7a0e43df03cad7086643029fd7dc3773a8231b1f6383705fe3036896a70472b0
+ARG HAILORT_SOURCE_SHA256=a77339e287bbf2ea889912e6e40ba8ed083a31369d9b455a51d3a34787eb3548
 ARG HAILO_PROTOBUF_VERSION=21.12
 ARG HAILO_PROTOBUF_SHA256=22fdaf641b31655d4b2297f9981fa5203b2866f8332d3c6333f6b0107bb320de
 # The disk-only diagnostic switch; the cache endpoints are the RUN's secret mounts, which no history records.
@@ -264,7 +264,7 @@ FROM ${MEDIA_CORE_HAILO_IMAGE} AS media-core-built
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 # The genai key lives here, so a GenAI bump re-runs this stage alone.
-ARG ONNXRUNTIME_GENAI_VERSION=v0.17.0
+ARG ONNXRUNTIME_GENAI_VERSION=v0.19.0
 ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
 # Every stage that mounts windows/qnn-sdk declares this, or Resolve-QnnSdk extracts unverified.
 ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
@@ -279,7 +279,6 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-OnnxGenaiFromSource.ps1,target=C:\bkmnt\Build-OnnxGenaiFromSource.ps1 `
-    --mount=type=bind,source=linux/scripts/patches/onnxruntime-genai/002-ort-1.31-model-package-api.patch,target=C:\bkmnt\patches\onnxruntime-genai\002-ort-1.31-model-package-api.patch `
     --mount=type=bind,source=windows/scripts/modules/WindowsOrtProvenance.Build.psm1,target=C:\bkmnt\ortmods\WindowsOrtProvenance.Build.psm1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `

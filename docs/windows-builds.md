@@ -240,7 +240,7 @@ distribution for Windows Containers) and is split into staged images:
   `tag`; the former no-op `Dockerfile.sdk` shim was removed), and downstream stages build CPU-only
   (CUDA auto-detection falls back to `CPU-only build`). `windows/Build-Buildkit.ps1` selects with
   `-Gpu` / `-Variant`.
-- The toolchain stage builds CPython `PYTHON_VERSION` (versions.env, 3.15.0) from source via
+- The toolchain stage builds CPython `PYTHON_VERSION` (versions.env, 3.15.2) from source via
   `windows/Dockerfile.toolchain-builder` + `Build-ToolchainAll.ps1`, twice from one checkout: the
   GIL build and its free-threaded twin (§ [The free-threaded CPython](#the-free-threaded-cpython)).
   Then it builds the patched clang/LLVM on top by default (`patched-llvm` target,

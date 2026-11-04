@@ -226,7 +226,7 @@ FROM android-sdk AS web-lane-tools
 
 ARG TARGET_ARCH
 # The pins are part of the key, so the package stage refuses a producer that built others.
-ARG WASM_PACK_VERSION=0.15.0
+ARG WASM_PACK_VERSION=0.15.1
 ARG FLUTTER_RUST_BRIDGE_VERSION=2.13.0
 ARG WEB_LANE_TOOLS_CROSS_ARCHES=riscv64
 

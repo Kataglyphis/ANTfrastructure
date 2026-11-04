@@ -234,6 +234,7 @@ mv "${ROOT}/linux/jetson-webcam/app.py.hidden" "${ROOT}/linux/jetson-webcam/app.
 t_case "the locked quality environment resolves test and parser imports"
 t_assert_ok test -d "${ROOT}/quality/.venv"
 t_assert_no_grep "${ROOT}/logs/code-quality/ty-quality-gate.txt" 'unresolved-import'
+t_assert_no_grep "${ROOT}/logs/code-quality/ty-quality-gate.txt" 'import-not-found'
 
 t_case "a wrong Playwright API return type fails the strict browser-smoke scope"
 printf 'from playwright.sync_api import Page\ndef title(page: Page) -> int:\n    return page.title()\n' > "${ROOT}/linux/webserver/scripts/flutter_capture_console_errors.py"

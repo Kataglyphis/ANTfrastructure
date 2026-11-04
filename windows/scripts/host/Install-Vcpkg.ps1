@@ -20,7 +20,7 @@ Import-Module $installerModulePath -Force
 
 # The fallback mirrors versions.env and must stay >= 2026.06: older vcpkg-tool cannot see VS 18's v145 toolset.
 if ([string]::IsNullOrWhiteSpace($VcpkgRef)) {
-    $VcpkgRef = if ($env:VCPKG_REF) { $env:VCPKG_REF } else { '2026.07.29' }
+    $VcpkgRef = if ($env:VCPKG_REF) { $env:VCPKG_REF } else { '2026.10.16' }
 }
 
 Write-Host "Setting up vcpkg ($VcpkgRef) at $VcpkgDir..."

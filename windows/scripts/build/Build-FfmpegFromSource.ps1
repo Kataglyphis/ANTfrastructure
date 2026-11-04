@@ -798,7 +798,7 @@ function Invoke-FfmpegPyavWheel {
         Write-Warning 'FFmpeg came from the prebuilt fallback (no headers/import libs) -- skipping the PyAV wheel build.'
         return
     }
-    $pyavVersion = Get-SourceBuildVersion -EnvironmentVariables @('PYAV_VERSION') -DefaultValue '19.0.1'
+    $pyavVersion = Get-SourceBuildVersion -EnvironmentVariables @('PYAV_VERSION') -DefaultValue '19.0.2'
     Write-Host "=== PyAV $pyavVersion wheel build (against $prefix) ==="
     $py = Get-SourceBuildPython
     Install-CpythonPip -Python $py

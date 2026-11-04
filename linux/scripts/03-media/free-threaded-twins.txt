@@ -1,17 +1,17 @@
 # The free-threaded twin verdicts both lanes read: ft_wheel_table (free-threaded-wheels.sh) and Get-FreeThreadedTwinTable (WindowsPythonWheel.Common.psm1).
 # dist|twin, twin:<KNOB> (a twin only while that versions.env knob is 1), gil or none|the versions.env pin the evidence was read at|the evidence; a moved pin fails both lanes' tests until it is re-read.
 # Mounted per file beside its readers, never under 01-core/ or runtime/, so an edit re-keys only the RUNs that build or store a twin.
-onnxruntime|twin|ONNXRUNTIME_VERSION=v1.31.0|onnxruntime/python/onnxruntime_pybind_module.cc: PYBIND11_MODULE(onnxruntime_pybind11_state, m, py::mod_gil_not_used()) under Py_GIL_DISABLED, on pybind11 v3.0.2
-av|twin|PYAV_VERSION=19.0.1|setup.py: compiler directive "freethreading_compatible": True
+onnxruntime|twin|ONNXRUNTIME_VERSION=v1.31.1|onnxruntime/python/onnxruntime_pybind_module.cc: PYBIND11_MODULE(onnxruntime_pybind11_state, m, py::mod_gil_not_used()) under Py_GIL_DISABLED, on pybind11 v3.0.2
+av|twin|PYAV_VERSION=19.0.2|setup.py: compiler directive "freethreading_compatible": True
 apache-tvm-ffi|twin|TVM_REF=v0.27.0|3rdparty/tvm-ffi daf594da, python/tvm_ffi/cython/core.pyx: # cython: freethreading_compatible = True (cython>=3.2.8)
-iree-base-runtime|twin|IREE_VERSION=v3.12.0|runtime/bindings/python/CMakeLists.txt: nanobind_add_module(... FREE_THREADED ...)
+iree-base-runtime|twin|IREE_VERSION=v3.13.0|runtime/bindings/python/CMakeLists.txt: nanobind_add_module(... FREE_THREADED ...)
 torch|twin:FT_TORCH_TWIN|PYTORCH_VERSION=v2.14.1|torch/csrc/Module.cpp: PyUnstable_Module_SetGIL(module, Py_MOD_GIL_NOT_USED) under Py_GIL_DISABLED; the chain builds torch on riscv64 only
 numpy|twin:FT_TORCH_TWIN|PY_NUMPY_VERSION=2.5.4|numpy/_core/src/multiarray/multiarraymodule.c: {Py_mod_gil, Py_MOD_GIL_NOT_USED}; no chain build ships a numpy wheel yet, so this row only classifies one
-iree-base-compiler|twin|IREE_VERSION=v3.12.0|third_party/llvm-project 6cce5bca, mlir/cmake/modules/AddMLIRPython.cmake: nanobind_add_module(... FREE_THREADED ...)
+iree-base-compiler|twin|IREE_VERSION=v3.13.0|third_party/llvm-project 6cce5bca, mlir/cmake/modules/AddMLIRPython.cmake: nanobind_add_module(... FREE_THREADED ...)
 apache-tvm|none|TVM_REF=v0.27.0|pyproject.toml: wheel.py-api = "py3", no CPython extension, so its one py3 wheel installs on X.Yt
 torchvision|none|TORCHVISION_VERSION=v0.29.1|no CPython extension module of its own
-onnxruntime-genai|gil|ONNXRUNTIME_GENAI_VERSION=v0.17.0|pybind11 2.13.6 and no py::mod_gil_not_used()
+onnxruntime-genai|gil|ONNXRUNTIME_GENAI_VERSION=v0.19.0|pybind11 2.13.6 and no py::mod_gil_not_used()
 ai-edge-litert|gil|LITERT_VERSION=v2.3.0|none of the wheel's 13 PYBIND11_MODULEs passes py::mod_gil_not_used(); only _pywrap_converter_api does, and the wheel does not ship it
-hailort|gil|HAILORT_VERSION=5.4.0|pyhailort's module declares no free-threading support
-libcamera|gil|LIBCAMERA_VERSION=v0.7.2|pycamera declares no free-threading support, and it ships in the tree, not as a wheel
+hailort|gil|HAILORT_VERSION=5.5.0|pyhailort's module declares no free-threading support
+libcamera|gil|LIBCAMERA_VERSION=v0.8.0|pycamera declares no free-threading support, and it ships in the tree, not as a wheel
 opencv|gil|OPENCV_VERSION=5.0.0|cv2 declares no free-threading support, and it ships in the tree, not as a wheel

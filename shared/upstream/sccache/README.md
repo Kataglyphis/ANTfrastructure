@@ -11,7 +11,7 @@ yet:
 
 `versions.env` pins the source: `SCCACHE_SOURCE_REV` (upstream `main` at #2876's merge) and
 `SCCACHE_BUILD_ID`, which names the asset and the release. `sccache --version` prints
-`0.18.0+1bd7432.pr2809`, so a log says which build ran.
+`0.19.0+965c019.pr2809`, so a log says which build ran.
 
 ## Building
 

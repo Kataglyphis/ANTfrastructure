@@ -245,12 +245,8 @@ cross_stage_build_args() {
       # ENABLE_TENSORRT=false keeps the CUDA EP without TensorRT (Jetson); TVM_USE_CUDA would otherwise inherit 0.
       append_optional_build_arg _csba_out ENABLE_TENSORRT "${ENABLE_TENSORRT:-}"
       append_optional_build_arg _csba_out TVM_USE_CUDA "${TVM_USE_CUDA:-}"
-      # DeepStream is an amd64 payload (no SBSA runtime from NVIDIA); a foreign target gets it switched off, never the host's build.
-      if [ -n "${ENABLE_DEEPSTREAM:-}" ] && [ "${arch}" != "amd64" ]; then
-        append_optional_build_arg _csba_out ENABLE_DEEPSTREAM false
-      else
-        append_optional_build_arg _csba_out ENABLE_DEEPSTREAM "${ENABLE_DEEPSTREAM:-}"
-      fi
+      # amd64 always; arm64 only with the staged SBSA libraries (docs/linux-accelerator-images.md#deepstream-on-arm64-sbsa); never the host's build.
+      append_deepstream_build_arg _csba_out "${arch}" "media ${arch}"
       # CUDA_MB_PER_CICC sizes the CUDA job count; merely exported, it never reaches the container.
       append_optional_build_arg _csba_out CUDA_MB_PER_CICC "${CUDA_MB_PER_CICC:-}"
       ;;

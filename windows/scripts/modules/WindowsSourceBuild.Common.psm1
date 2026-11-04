@@ -2056,6 +2056,7 @@ function Get-LlvmSourceSha256 {
         '22.1.8' = '922f1817a0df7b1489272d18134ee0087a8b068828f87ac63b9861b1a9965888'
         '23.1.0' = 'ab1f0e3ec52448c33e8782eaf0422504b87c7b016b22514653ee0d8fcee479ff'
         '23.1.3' = 'c44186a7762ed28954be72e5ff6df9808e0779d4f1bf014ecc4e7e211d31ee34'
+        '23.1.5' = 'fb50b1eac93ddeb3aa8dab4cfe324dff74f4a9c2bdee6160c9e36188f8d06a6e'
     }
     if ($env:LLVM_WINDOWS_SRC_SHA256) { $pins[$Version] = $env:LLVM_WINDOWS_SRC_SHA256 }
     if (-not $pins.ContainsKey($Version)) {

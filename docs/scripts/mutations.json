@@ -35175,5 +35175,45 @@
   "replace": "    if proved == selected:",
   "test": "bash linux/scripts/tests/test-mutation-push.sh",
   "why": "a push proving all it selected is still a sample of the manifest"
+ },
+ {
+  "id": "deepstream.sbsa-pinned-bytes",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "[ \"${have}\" = \"${!key:-}\" ] || echo \"${dir}/${f} is not the pinned ${key} (sha256 ${have})\"",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "a staged SBSA library with other bytes than the pin must be refused, never shipped"
+ },
+ {
+  "id": "deepstream.sbsa-missing-file",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "if [ ! -f \"${dir}/${f}\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "an unstaged SBSA library must name the staging script, not fall through to a sha256sum of nothing"
+ },
+ {
+  "id": "deepstream.trt-pin-arm64",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "[ \"$(ds_arch)\" != arm64 ] || key=\"DEEPSTREAM_TRT_$1_ARM64_SHA256\"",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "the arm64 route must verify the sbsa debs against their own pins, not amd64's"
+ },
+ {
+  "id": "deepstream.elements-by-arch",
+  "target": "linux/scripts/05-frameworks/deepstream-verify.sh",
+  "find": "[ \"${e}\" = nvv4l2decoder ] && [ \"$(dsv_arch)\" != amd64 ] && continue",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "the SBSA route has no nvv4l2decoder; demanding it would fail every arm64 package"
+ },
+ {
+  "id": "deepstream.chain-route-predicate",
+  "target": "linux/scripts/01-core/build-helpers.sh",
+  "find": "arm64) [ -f \"${dir}/libnvbufsurface.so.1.0.0\" ] && [ -f \"${dir}/libnvbufsurftransform.so.1.0.0\" ] && [ -f \"${dir}/libnvdsbufferpool.so\" ] ;;",
+  "replace": "arm64) return 0 ;;",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "an arm64 media stage without the staged libraries must get ENABLE_DEEPSTREAM=false, or the build dies hours in"
  }
 ]

@@ -373,32 +373,40 @@ def spec_deepstream(cur: str) -> SpecResult:
     raise RuntimeError("none of the newest 10 NVIDIA/DeepStream tags publishes deepstream-binaries-x86_<v>_amd64.deb")
 
 
-# deepstream.sh's ds_trt_debs: key -> apt package.
+# (key, package, repo path): amd64 from x86_64, the arm64 route from sbsa (deepstream.sh ds_trt_deb_url). Literal keys: the sha-pair audit greps them.
 _DEEPSTREAM_TRT_DEBS = (
-    ("DEEPSTREAM_TRT_LIBNVINFER10_SHA256", "libnvinfer10"),
-    ("DEEPSTREAM_TRT_LIBNVINFER_PLUGIN10_SHA256", "libnvinfer-plugin10"),
-    ("DEEPSTREAM_TRT_LIBNVONNXPARSERS10_SHA256", "libnvonnxparsers10"),
-    ("DEEPSTREAM_TRT_LIBNVINFER_HEADERS_DEV_SHA256", "libnvinfer-headers-dev"),
-    ("DEEPSTREAM_TRT_LIBNVINFER_HEADERS_PLUGIN_DEV_SHA256", "libnvinfer-headers-plugin-dev"),
-    ("DEEPSTREAM_TRT_LIBNVONNXPARSERS_DEV_SHA256", "libnvonnxparsers-dev"),
+    ("DEEPSTREAM_TRT_LIBNVINFER10_SHA256", "libnvinfer10", "x86_64"),
+    ("DEEPSTREAM_TRT_LIBNVINFER_PLUGIN10_SHA256", "libnvinfer-plugin10", "x86_64"),
+    ("DEEPSTREAM_TRT_LIBNVONNXPARSERS10_SHA256", "libnvonnxparsers10", "x86_64"),
+    ("DEEPSTREAM_TRT_LIBNVINFER_HEADERS_DEV_SHA256", "libnvinfer-headers-dev", "x86_64"),
+    ("DEEPSTREAM_TRT_LIBNVINFER_HEADERS_PLUGIN_DEV_SHA256", "libnvinfer-headers-plugin-dev", "x86_64"),
+    ("DEEPSTREAM_TRT_LIBNVONNXPARSERS_DEV_SHA256", "libnvonnxparsers-dev", "x86_64"),
+    ("DEEPSTREAM_TRT_LIBNVINFER10_ARM64_SHA256", "libnvinfer10", "sbsa"),
+    ("DEEPSTREAM_TRT_LIBNVINFER_PLUGIN10_ARM64_SHA256", "libnvinfer-plugin10", "sbsa"),
+    ("DEEPSTREAM_TRT_LIBNVONNXPARSERS10_ARM64_SHA256", "libnvonnxparsers10", "sbsa"),
+    ("DEEPSTREAM_TRT_LIBNVINFER_HEADERS_DEV_ARM64_SHA256", "libnvinfer-headers-dev", "sbsa"),
+    ("DEEPSTREAM_TRT_LIBNVINFER_HEADERS_PLUGIN_DEV_ARM64_SHA256", "libnvinfer-headers-plugin-dev", "sbsa"),
+    ("DEEPSTREAM_TRT_LIBNVONNXPARSERS_DEV_ARM64_SHA256", "libnvonnxparsers-dev", "sbsa"),
 )
 
 
-def nvidia_apt_packages(repo: str) -> list[dict[str, str]]:
-    """The stanzas of NVIDIA's CUDA apt repo Packages index for x86_64."""
+def nvidia_apt_packages(repo: str, path: str = "x86_64") -> list[dict[str, str]]:
+    """The stanzas of NVIDIA's CUDA apt repo Packages index for one path (x86_64 or sbsa)."""
     raw = gzip.decompress(bv.http_bytes(
-        f"https://developer.download.nvidia.com/compute/cuda/repos/{repo}/x86_64/Packages.gz")).decode("utf-8")
+        f"https://developer.download.nvidia.com/compute/cuda/repos/{repo}/{path}/Packages.gz")).decode("utf-8")
     return [dict(re.findall(r"^([A-Za-z0-9-]+): (.*)$", block, re.MULTILINE)) for block in raw.split("\n\n")]
 
 
-def deepstream_trt_pins(stanzas: list[dict[str, str]], trt_version: str, cuda: str) -> dict[str, str]:
-    """Each TensorRT 10 deb's sha256 at <trt_version>-1+cuda<cuda>, from parsed Packages stanzas."""
+def deepstream_trt_pins(stanzas: dict[str, list[dict[str, str]]] | list[dict[str, str]], trt_version: str, cuda: str) -> dict[str, str]:
+    """Each TensorRT 10 deb's sha256 at <trt_version>-1+cuda<cuda>, from the parsed Packages stanzas of each repo path."""
     want = f"{trt_version}-1+cuda{cuda}"
     pins = {}
-    for key, pkg in bv._DEEPSTREAM_TRT_DEBS:
-        hit = next((s for s in stanzas if s.get("Package") == pkg and s.get("Version") == want), None)
+    # One list serves both paths (the offline fixture); the live spec passes {"x86_64": [...], "sbsa": [...]}.
+    by_path = stanzas if isinstance(stanzas, dict) else {"x86_64": stanzas, "sbsa": stanzas}
+    for key, pkg, path in bv._DEEPSTREAM_TRT_DEBS:
+        hit = next((s for s in by_path[path] if s.get("Package") == pkg and s.get("Version") == want), None)
         if not hit or "SHA256" not in hit:
-            raise RuntimeError(f"Packages index has no {pkg} {want}")
+            raise RuntimeError(f"{path} Packages index has no {pkg} {want}")
         pins[key] = hit["SHA256"].lower()
     return pins
 
@@ -407,8 +415,8 @@ def spec_deepstream_trt(cur: str) -> SpecResult:
     """The newest TensorRT 10 (DeepStream links libnvinfer.so.10) the repo builds for DEEPSTREAM_TENSORRT_CUDA."""
     env = bv.read_env()
     cuda = env["DEEPSTREAM_TENSORRT_CUDA"]
-    stanzas = bv.nvidia_apt_packages(env["DEEPSTREAM_TENSORRT_REPO"])
-    found = [m.group(1) for s in stanzas if s.get("Package") == "libnvinfer10"
+    stanzas = {path: bv.nvidia_apt_packages(env["DEEPSTREAM_TENSORRT_REPO"], path) for path in ("x86_64", "sbsa")}
+    found = [m.group(1) for s in stanzas["x86_64"] if s.get("Package") == "libnvinfer10"
              if (m := re.fullmatch(rf"(10\.[\d.]+)-1\+cuda{re.escape(cuda)}", s.get("Version", "")))]
     if not found:
         raise RuntimeError(f"no libnvinfer10 10.x for cuda{cuda} in {env['DEEPSTREAM_TENSORRT_REPO']}")

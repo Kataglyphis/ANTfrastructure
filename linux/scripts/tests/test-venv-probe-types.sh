@@ -54,7 +54,7 @@ t_assert_contains "${out}" "rc=0"
 t_case "an unresolved venv-only import fails instead of passing on exit status alone"
 rm "${site}/runtime_only/__init__.py"
 out="$(_check)"
-t_assert_contains "${out}" "unresolved-import"
+t_assert_eq "1" "$(printf '%s' "${out}" | grep -cE 'unresolved-import|import-not-found' | head -1)" "ty names the missing import (unresolved-import before 0.0.97, import-not-found since)"
 t_assert_contains "${out}" "rc=1"
 printf 'VALUE: int = 42\n' > "${site}/runtime_only/__init__.py"
 

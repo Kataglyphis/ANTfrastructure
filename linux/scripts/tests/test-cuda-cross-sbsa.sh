@@ -120,7 +120,7 @@ t_assert_contains "${_tvm}" '-DUSE_CUDNN="${CUDA_CROSS_CUDNN_HOME}"' "and the cu
 _ff="$(t_fn_src "${_M}/03-media/build/ffmpeg/build-ffmpeg.sh" _ffmpeg_hwaccel_args)"
 t_assert_contains "${_ff}" '_ff_cuda_lib="${CUDA_CROSS_TARGET_ROOT}/lib"' "ffmpeg linked -L the host's lib64"
 _sd="$(cat "${CORE}/stage-defs.sh")"
-t_assert_contains "${_sd}" 'append_optional_build_arg _csba_out ENABLE_DEEPSTREAM false' "DeepStream has no SBSA runtime: a foreign target gets it off, whatever the chain set"
+t_assert_contains "${_sd}" 'append_deepstream_build_arg _csba_out "${arch}"' "DeepStream goes to a foreign target only where the arch has a route (arm64: the staged SBSA libraries), never the host's build"
 t_assert_contains "$(cat "${_M}/05-frameworks/deepstream.sh")" 'ds_arch_problem "${TARGET_ARCH:-$(dpkg --print-architecture)}"' "and the script judges the target, since dpkg says amd64 in a cross build"
 
 t_case "TensorRT follows: the same twelve packages as -cross-sbsa, pinned, in their own farm, AArch64-checked"

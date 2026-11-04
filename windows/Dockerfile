@@ -33,7 +33,7 @@ RUN --mount=type=bind,source=windows/scripts/modules/WindowsContainerImage.Commo
 ENV PATH=$PATH;C:\vulkan-loader;C:\runtime\lavapipe
 
 # Consumers' MSIs declare their firewall exceptions with it; base keeps the UI extension, this stage keeps a bump cheap.
-ARG WIX_FIREWALL_EXT_VERSION=7.0.0
+ARG WIX_FIREWALL_EXT_VERSION=7.0.1
 RUN & 'C:\WiX\wix.exe' extension add --global "WixToolset.Firewall.wixext/$env:WIX_FIREWALL_EXT_VERSION"; `
     if ($LASTEXITCODE -ne 0) { throw "wix extension add WixToolset.Firewall.wixext/$env:WIX_FIREWALL_EXT_VERSION failed ($LASTEXITCODE)" }
 

@@ -35,10 +35,43 @@ t_assert_eq "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404
   "$(_ds 'ds_trt_deb_url libnvinfer10')"
 t_assert_eq "6" "$(_ds 'ds_trt_debs | awk "NF==2 && length(\$2)==64" | wc -l')" "six debs, each with a sha256"
 
-t_case "only amd64 and only the nvidia variant"
+t_case "amd64 always, arm64 only with the staged SBSA libraries, and only the nvidia variant"
 t_assert_eq "" "$(_ds 'ds_arch_problem amd64')"
-t_assert_contains "$(_ds 'ds_arch_problem arm64')" "CON42 phase 7"
+t_assert_contains "$(_ds 'ds_arch_problem arm64' DS_SBSA_DIR="${_T}/no-sbsa")" "libnvbufsurface.so.1.0.0 is not staged: run linux/scripts/05-frameworks/stage-deepstream-sbsa.sh"
 t_assert_contains "$(_ds 'ds_arch_problem riscv64')" "no runtime for 'riscv64'"
+mkdir -p "${_T}/sbsa"
+for f in libnvbufsurface.so.1.0.0 libnvbufsurftransform.so.1.0.0 libnvdsbufferpool.so; do printf '%s' "${f}" > "${_T}/sbsa/${f}"; done
+_SBSA_PINS=(DEEPSTREAM_SBSA_LIBNVBUFSURFACE_SHA256="$(printf 'libnvbufsurface.so.1.0.0' | sha256sum | cut -d' ' -f1)"
+  DEEPSTREAM_SBSA_LIBNVBUFSURFTRANSFORM_SHA256="$(printf 'libnvbufsurftransform.so.1.0.0' | sha256sum | cut -d' ' -f1)"
+  DEEPSTREAM_SBSA_LIBNVDSBUFFERPOOL_SHA256="$(printf 'libnvdsbufferpool.so' | sha256sum | cut -d' ' -f1)")
+t_assert_eq "" "$(_ds 'ds_arch_problem arm64' DS_SBSA_DIR="${_T}/sbsa" "${_SBSA_PINS[@]}")" "the pinned bytes, all three staged: arm64 builds"
+printf 'tampered' > "${_T}/sbsa/libnvdsbufferpool.so"
+t_assert_contains "$(_ds 'ds_arch_problem arm64' DS_SBSA_DIR="${_T}/sbsa" "${_SBSA_PINS[@]}")" "libnvdsbufferpool.so is not the pinned DEEPSTREAM_SBSA_LIBNVDSBUFFERPOOL_SHA256" \
+  "other bytes under the pinned name are refused, not shipped"
+printf 'libnvdsbufferpool.so' > "${_T}/sbsa/libnvdsbufferpool.so"
+t_assert_contains "$(_ds ds_pin_problems DEEPSTREAM_SBSA_IMAGE=nvcr.io/nvidia/deepstream:9.1-triton-sbsa-dgx-spark)" "is not an image reference pinned by digest" \
+  "a tag can move; the container the libraries came from is named by digest"
+t_assert_contains "$(_ds ds_pin_problems DEEPSTREAM_TRT_LIBNVINFER10_ARM64_SHA256=zz)" "DEEPSTREAM_TRT_LIBNVINFER10_ARM64_SHA256='zz' is not a 64-hex sha256"
+
+t_case "the arm64 route: Jetson's runtime asset, the sbsa TensorRT debs, the aarch64 multiarch dir and TARGET_DEVICE"
+t_assert_eq "deepstream-binaries-x86_9.1.0_amd64.deb x86_64-linux-gnu x86_64" "$(_ds 'echo "$(ds_runtime_asset) $(ds_multiarch) $(ds_target_device)"' TARGET_ARCH=amd64)"
+t_assert_eq "deepstream-binaries-aarch64_9.1.0_arm64.deb aarch64-linux-gnu aarch64" "$(_ds 'echo "$(ds_runtime_asset) $(ds_multiarch) $(ds_target_device)"' TARGET_ARCH=arm64)"
+t_assert_eq "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/sbsa/libnvinfer10_10.16.1.11-1+cuda13.2_arm64.deb" \
+  "$(_ds 'ds_trt_deb_url libnvinfer10' TARGET_ARCH=arm64)"
+t_assert_eq "$(sed -n 's/^DEEPSTREAM_TRT_LIBNVINFER10_ARM64_SHA256=//p' "${ENVF}")" "$(_ds 'ds_trt_pin LIBNVINFER10' TARGET_ARCH=arm64)" "arm64 reads the _ARM64 pin"
+t_assert_eq "$(sed -n 's/^DEEPSTREAM_TRT_LIBNVINFER10_SHA256=//p' "${ENVF}")" "$(_ds 'ds_trt_pin LIBNVINFER10' TARGET_ARCH=amd64)" "amd64 keeps its own"
+t_assert_eq "6" "$(_ds 'ds_trt_debs | awk "NF==2 && length(\$2)==64" | wc -l' TARGET_ARCH=arm64)" "six arm64 debs, each with a sha256"
+t_assert_eq "$(sed -n 's/^DEEPSTREAM_BINARIES_ARM64_SHA256=//p' "${ENVF}")" "$(_ds ds_runtime_asset_sha TARGET_ARCH=arm64)"
+t_assert_contains "$(t_fn_src "${DS}" ds_stage_runtime_deb)" 'ds_stage_sbsa_libs' "the Jetson .deb is overlaid with the staged libraries"
+t_assert_contains "$(t_fn_src "${DS}" ds_build_component)" 'TARGET_DEVICE=${DS_TARGET_DEVICE}' "the Makefiles read gcc -dumpmachine, which names the build host"
+
+t_case "a cross build keeps each Makefile's compiler kind and swaps in the target toolchain"
+_mfx() { printf '%s\n' "$1" > "${_T}/Makefile"; DS_CROSS_CC=aarch64-linux-gnu-gcc DS_CROSS_CXX=aarch64-linux-gnu-g++ bash -c 'source "$1"; ds_component_compiler "$2" "$3" /c.h' _ "${DS}" "${_T}/Makefile" "$2"; }
+t_assert_eq "aarch64-linux-gnu-gcc -include /c.h" "$(_mfx 'CXX:= gcc' CXX)" "gstnvcustomhelper's C stays C: no C++-only flag for the cross gcc"
+t_assert_eq "aarch64-linux-gnu-g++ -std=c++14 -include /c.h -Wno-error=non-c-typedef-for-linkage" "$(_mfx 'CXX=g++ -std=c++14' CXX)"
+t_assert_eq "aarch64-linux-gnu-gcc -include /c.h" "$(_mfx 'SRCS:= a.cpp' CC)" "make's default cc becomes the cross gcc"
+t_assert_contains "$(t_fn_src "${DS}" ds_cross_setup)" 'cuda_cross_load' "the gpu stage's CUDA cross target is loaded before any nvcc runs"
+t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'ds_write_cuda_cross_view' "the Makefiles' /usr/local/cuda-\$(CUDA_VER) resolves to the target's headers and libs"
 t_assert_contains "$(_ds ds_gate_problem ENABLE_NVIDIA=false)" "needs ENABLE_NVIDIA=true"
 mkdir -p "${_T}/cuda/bin"; printf '#!/bin/sh\necho "Cuda compilation tools, release 13.4, V13.4.92"\n' > "${_T}/cuda/bin/nvcc"; chmod +x "${_T}/cuda/bin/nvcc"
 t_assert_eq "" "$(_ds ds_gate_problem ENABLE_NVIDIA=true CUDA_HOME="${_T}/cuda")"
@@ -169,7 +202,7 @@ t_assert_eq "" "$(_trtv "lib/libnvds_infer.so libnvinfer.so.10 ${_P}/lib/libnvin
 t_assert_contains "$(_trtv 'lib/libnvds_infer.so libnvinfer.so.11 /usr/lib/x86_64-linux-gnu/libnvinfer.so.11\n')" "FOREIGN-TRT lib/libnvds_infer.so -> libnvinfer.so.11"
 t_assert_contains "$(_trtv 'lib/libnvds_utils.so libnvinfer_plugin.so.10 /usr/lib/x86_64-linux-gnu/libnvinfer_plugin.so.10\n')" "TRT10-ELSEWHERE lib/libnvds_utils.so"
 t_assert_contains "$(_trtv 'lib/libnvds_utils.so libnvinfer.so.10 NOTFOUND\n')" "TRT10-ELSEWHERE" "an unresolved TensorRT 10 is a finding too"
-t_assert_contains "$(cat "${DSV}")" $'  dsv_check_trt_builder_resources\n  dsv_check_trt_origin' "dsv_main runs the check"
+t_assert_contains "$(cat "${DSV}")" $'    dsv_check_trt_origin\n    dsv_check_elements' "dsv_main runs the check"
 
 t_case "an engine build finds TensorRT 10's builder resources, which it dlopen()s by file name"
 t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
@@ -239,6 +272,34 @@ t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'export CPATH="${sdk
 t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'DS_TRT_LINK_FLAGS="-L${sdk}/lib"' "an explicit -L: GCC 16 searches the system multiarch dir (TensorRT 11) before a bare LIBRARY_PATH dir"
 t_assert_contains "$(t_fn_src "${DS}" ds_build_component)" 'CXX "${DS_COMPAT_H}")${DS_TRT_LINK_FLAGS:+ ${DS_TRT_LINK_FLAGS}}"' "the link dir rides on the compiler word, ahead of every Makefile -L"
 t_assert_contains "$(t_fn_src "${DS}" ds_build_component)" 'CC "${DS_COMPAT_H}")${DS_TRT_LINK_FLAGS:+ ${DS_TRT_LINK_FLAGS}}"' "for the components that link with CC too"
+
+t_case "the gates by arch: nvv4l2decoder and the libv4l2 plugin are amd64's; a cross build stage defers what needs the target's loader"
+t_assert_eq "9" "$(DSV_ARCH=amd64 bash -c 'source "$1"; dsv_elements | wc -l' _ "${DSV}")"
+t_assert_eq "8" "$(DSV_ARCH=arm64 bash -c 'source "$1"; dsv_elements | wc -l' _ "${DSV}")"
+t_assert_eq "0" "$(DSV_ARCH=arm64 bash -c 'source "$1"; dsv_elements | grep -c nvv4l2decoder' _ "${DSV}")" "no NVDEC v4l2 element on the SBSA route"
+t_assert_eq "1" "$(DSV_ARCH=amd64 bash -c 'source "$1"; dsv_elements | grep -c nvv4l2decoder' _ "${DSV}")"
+_MAIN="$(t_fn_src "${DSV}" dsv_main)"
+t_assert_contains "${_MAIN}" 'DSV_CROSS' "a cross build stage runs the file gates only"
+t_assert_contains "${_MAIN}" 'deferred to the package stage' "and says which gates wait"
+t_assert_contains "${_MAIN}" 'dsv_check_v4l2_plugin; else dsv_ok' "the libv4l2 plugin gate is amd64's"
+t_assert_contains "$(t_fn_src "${DS}" ds_stage_runtime)" 'ds_link_v4l2_plugin; else ds_log' "the package stage links the plugin on amd64 only"
+mkdir -p "${_T}/gpx"; printf 'x' > "${_T}/gpx/libthing.so"
+t_assert_contains "$(DSV_NM="${_T}/fake-nm" bash -c 'source "$1"; dsv_non_plugins "$2"' _ "${DSV}" "${_T}/gpx" 2>&1)" "libthing.so" "a foreign ELF is judged by the toolchain's nm (DSV_NM), not the host's"
+
+t_case "the chain's flag: amd64 always, arm64 with the staged libraries, else false and said why"
+_BH="${TESTS_DIR}/../01-core/build-helpers.sh"
+_sup() { DEEPSTREAM_SBSA_DIR="$1" bash -c 'source "$1" >/dev/null 2>&1; deepstream_arch_supported "$2"; echo $?' _ "${_BH}" "$2"; }
+t_assert_eq "0" "$(_sup "${_T}/no-sbsa" amd64)"
+t_assert_eq "1" "$(_sup "${_T}/no-sbsa" arm64)" "unstaged: no route"
+t_assert_eq "0" "$(_sup "${_T}/sbsa" arm64)" "staged: the route exists"
+t_assert_eq "1" "$(_sup "${_T}/sbsa" riscv64)"
+_args() { DEEPSTREAM_SBSA_DIR="$1" ENABLE_DEEPSTREAM=true bash -c 'source "$1" >/dev/null 2>&1; a=(); append_deepstream_build_arg a "$2" media; printf "%s\n" "${a[@]}"' _ "${_BH}" "$2" 2>&1; }
+t_assert_contains "$(_args "${_T}/no-sbsa" arm64)" "ENABLE_DEEPSTREAM=false"
+t_assert_contains "$(_args "${_T}/no-sbsa" arm64)" "no DeepStream route for arm64"
+t_assert_contains "$(_args "${_T}/sbsa" arm64)" "ENABLE_DEEPSTREAM=true"
+t_assert_contains "$(_args "${_T}/no-sbsa" amd64)" "ENABLE_DEEPSTREAM=true"
+t_assert_eq "1" "$(grep -c 'append_deepstream_build_arg _csba_out' "${TESTS_DIR}/../01-core/stage-defs.sh")" "the media stage asks the same predicate"
+t_assert_contains "$(grep -c 'linux/deepstream-sbsa,target=/opt/deepstream-sbsa' "${TESTS_DIR}/../../Dockerfile.media")" "1" "the media RUN mounts the staged libraries"
 
 t_case "nvv4l2decoder reaches NVDEC only through NVIDIA's plugin in the distro libv4l2's dir"
 t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks

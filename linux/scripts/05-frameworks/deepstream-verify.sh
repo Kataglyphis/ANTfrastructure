@@ -26,6 +26,17 @@ DSV_ALLOWED_MISSING=(
 
 DSV_ELEMENTS=(nvinfer nvstreammux nvvideoconvert nvtracker nvdsosd nvv4l2decoder nvmultistreamtiler nvstreamdemux nvurisrcbin)
 
+# The package stage runs natively; a cross build stage names the target (deepstream.sh).
+dsv_arch() { printf '%s' "${DSV_ARCH:-${TARGET_ARCH:-$(dpkg --print-architecture)}}"; }
+# nvv4l2decoder is NVDEC through libv4l2, an amd64 (and Jetson) element; the SBSA route has no decoder plugin.
+dsv_elements() {
+  local e
+  for e in "${DSV_ELEMENTS[@]}"; do
+    [ "${e}" = nvv4l2decoder ] && [ "$(dsv_arch)" != amd64 ] && continue
+    printf '%s\n' "${e}"
+  done
+}
+
 dsv_fail=0
 dsv_bad() { printf '  FAIL %s\n' "$*"; dsv_fail=1; }
 dsv_ok() { printf '  ok   %s\n' "$*"; }
@@ -119,7 +130,7 @@ dsv_check_no_v4l2_hijack() {
 }
 
 # The distro's default library dir: dlopen() searches it even for names ld.so.cache does not hold.
-dsv_syslib_dir() { printf '%s' "${DS_SYSLIB_DIR:-/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)}"; }
+dsv_syslib_dir() { printf '%s' "${DS_SYSLIB_DIR:-/usr/lib/${DSV_MULTIARCH:-$(dpkg-architecture -qDEB_HOST_MULTIARCH)}}"; }
 dsv_v4l2_plugin_dir() { printf '%s' "${DS_V4L2_PLUGIN_DIR:-$(dsv_syslib_dir)/libv4l/plugins}"; }
 
 # stdin: "<file> <soname> <path>"; prints every TensorRT soname not resolved from DeepStream's own TensorRT 10 prefix.
@@ -195,7 +206,7 @@ dsv_non_plugins() {
   for f in "$1"/*.so; do
     [ -e "${f}" ] || continue
     # No grep -q: its early exit SIGPIPEs nm, and under pipefail a real plugin then reads as a helper.
-    nm -D --defined-only "${f}" 2>/dev/null | grep -E ' (gst_plugin_[A-Za-z0-9_]+_get_desc|gst_plugin_desc)$' >/dev/null || printf '%s\n' "${f}"
+    "${DSV_NM:-nm}" -D --defined-only "${f}" 2>/dev/null | grep -E ' (gst_plugin_[A-Za-z0-9_]+_get_desc|gst_plugin_desc)$' >/dev/null || printf '%s\n' "${f}"
   done
 }
 
@@ -228,14 +239,14 @@ dsv_check_elements() {
   mapfile -t genv < <(dsv_gst_env "${tmp}/stubs")
   out="$(env "${genv[@]}" gst-inspect-1.0 -b 2>&1)"
   if printf '%s' "${out}" | grep -q 'segmentation fault'; then dsv_bad "the registry scan crashed: $(printf '%s' "${out}" | grep -A1 'segmentation fault' | tr '\n' ' ')"; fi
-  for e in "${DSV_ELEMENTS[@]}"; do
+  while IFS= read -r e; do
     file="$(env "${genv[@]}" gst-inspect-1.0 "${e}" 2>/dev/null | awk '/^  Filename/{print $2}')"
     file="$(readlink -f "${file:-/nonexistent}" 2>/dev/null || true)"
     case "${file}" in
       "${DS_ROOT}"/lib/gst-plugins/*) dsv_ok "${e} registers (${file##*/})" ;;
       *) dsv_bad "${e} does not register from ${DS_ROOT}/lib/gst-plugins (got '${file}')" ;;
     esac
-  done
+  done < <(dsv_elements)
   rm -rf "${tmp}"
 }
 
@@ -243,15 +254,20 @@ dsv_main() {
   [ -d "${DS_ROOT}/lib/gst-plugins" ] || { printf 'FAIL no DeepStream tree at %s\n' "${DS_ROOT}"; return 1; }
   echo "--- DeepStream gates (${DS_ROOT}) ---"
   dsv_check_plugin_dir
-  dsv_check_closure
-  dsv_check_one_gstreamer
-  dsv_check_gst_core
-  dsv_check_no_v4l2_hijack
-  dsv_check_v4l2_plugin
   dsv_check_trt_builder_resources
-  dsv_check_trt_origin
   dsv_check_trt_runtime_only
-  dsv_check_elements
+  # A cross build stage holds foreign ELF: ldd and gst-inspect run in the package stage, which repeats every gate natively.
+  if [ "${DSV_CROSS:-0}" = 1 ]; then
+    echo "  deferred to the package stage (foreign ELF): soname closure, one GStreamer, gst core, v4l2, TensorRT origin, registration"
+  else
+    dsv_check_closure
+    dsv_check_one_gstreamer
+    dsv_check_gst_core
+    dsv_check_no_v4l2_hijack
+    if [ "$(dsv_arch)" = amd64 ]; then dsv_check_v4l2_plugin; else dsv_ok "no NVDEC v4l2 plugin on $(dsv_arch) (the SBSA route decodes without nvv4l2decoder)"; fi
+    dsv_check_trt_origin
+    dsv_check_elements
+  fi
   [ "${dsv_fail}" = 0 ] || { echo "DeepStream gates FAILED"; return 1; }
   echo "DeepStream gates passed"
 }

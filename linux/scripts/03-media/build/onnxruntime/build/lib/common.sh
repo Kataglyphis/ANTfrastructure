@@ -61,7 +61,7 @@ EOF
 # ORT's CUDA source fixes; ROCm hipifies the same contrib_ops/cuda tree, so both GPU builds take them.
 apply_ort_gpu_source_patches() {
   local dir=/opt/scripts/patches/onnxruntime patch
-  local -a patches=(002-cuda-dynamic-sparse-attention-cstdint.patch)
+  local -a patches=(002-cuda-dynamic-sparse-attention-cstdint.patch 003-migraphx-gridsample.patch 004-migraphx-refuse-nonstandard-output.patch)
   for patch in "${patches[@]}"; do
     [ -f "${dir}/${patch}" ] || err "ORT patch ${dir}/${patch} not found -- is linux/scripts/patches/onnxruntime bind-mounted into the GPU RUN (Dockerfile.media)?"
     bash /opt/scripts/core/apply-patch.sh "${dir}/${patch}" "${ORT_SRC_DIR}" "ORT ${patch}" \
@@ -88,7 +88,7 @@ init_defaults() {
   BUILD_XNNPACK_EP="${BUILD_XNNPACK_EP:-true}"
 
   BUILD_GENAI="${BUILD_GENAI:-true}"
-  GENAI_VERSION="${GENAI_VERSION:-${ONNXRUNTIME_GENAI_VERSION:-v0.17.0}}"
+  GENAI_VERSION="${GENAI_VERSION:-${ONNXRUNTIME_GENAI_VERSION:-v0.19.0}}"
   GENAI_REPO="${GENAI_REPO:-https://github.com/microsoft/onnxruntime-genai.git}"
   GENAI_SRC_DIR="${GENAI_SRC_DIR:-${ORT_SRC_DIR}-genai}"
   GENAI_BUILD_DIR="${GENAI_BUILD_DIR:-${GENAI_SRC_DIR}/build}"

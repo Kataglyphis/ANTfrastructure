@@ -512,7 +512,7 @@ cmake -DOpenCV_DIR="${OPENCV_ANDROID_JNI_DIR}" ...
 ## Every LLVM tool is the pinned release
 
 Owner decision 2026-10-06 (BACKLOG CON71): every LLVM tool a lane can name is the pinned LLVM,
-`LLVM_RELEASE` on Linux and `LLVM_WINDOWS_VERSION` on Windows (23.1.3 today). That includes
+`LLVM_RELEASE` on Linux and `LLVM_WINDOWS_VERSION` on Windows (23.1.5 today). That includes
 `clang-format` and `llvm-config`, which stayed LLVM 21 on Linux until then (CON15).
 
 **Linux.** Ubuntu's packages put about a hundred unversioned LLVM names in `/usr/bin`, all LLVM 21.
@@ -533,7 +533,7 @@ build carries lldb (without Python, Lua, libedit or curses scripting) and the LL
 **Windows.** `C:\llvm-patched\bin` is first on `PATH` once the entrypoint has run, ahead of
 VsDevCmd's MSVC directory (its `llvm-symbolizer` is a 23.0.0git fork) and `C:\runtime\iree\bin`
 (IREE's own `clang`, `llvm-link` and `FileCheck`, 23.0.0git). The patched LLVM installs the utilities,
-so `FileCheck` is the pinned one too. `clangd` and `lldb` come from scoop's official 23.1.3 release.
+so `FileCheck` is the pinned one too. `clangd` and `lldb` come from scoop's official 23.1.5 release.
 `Test-Toolchain.ps1` checks the base stage's tools against `LLVM_WINDOWS_VERSION`, and
 `Test-Container.ps1` checks 21 tools in the finished image against clang-cl's release.
 

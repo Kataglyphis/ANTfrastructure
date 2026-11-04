@@ -16,7 +16,7 @@ for _sve in /opt/scripts/core/load-versions-env.sh \
 done
 unset _sve
 : "${GCC_VERSION:=16.2.0}"
-: "${LLVM_RELEASE:=23.1.3}"   # was 22.1.8 — a whole MAJOR stale, uncovered by any gate
+: "${LLVM_RELEASE:=23.1.5}"   # was 22.1.8 — a whole MAJOR stale, uncovered by any gate
 : "${PYTHON_VERSION:?versions.env carries PYTHON_VERSION; no fallback, so an upgrade is one line}"
 : "${PYTHON_MAJOR_MINOR:=${PYTHON_VERSION%.*}}"
 : "${GCC_PREFIX:=/opt/gcc-${GCC_VERSION}}"

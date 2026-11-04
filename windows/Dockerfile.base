@@ -5,12 +5,12 @@
 
 ARG WINDOWS_LTSC=2025
 # The :ltsc tag floats monthly; the digest makes OS revisions deliberate (the wcifs commit bug is version-skew-sensitive).
-ARG WINDOWS_BASE_DIGEST=sha256:1d3cd3d02eb8496f47d00636b62d41904b63d0dc52ab5cfa4aa61292d3b9a26e
+ARG WINDOWS_BASE_DIGEST=sha256:4e5730bddf049d5dd9f758a3b4e6875ecf19b5bfeee5068e07aeeb5df9c63c55
 # The tag is cosmetic: a WINDOWS_LTSC bump without a digest bump changes nothing.
 FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC}@${WINDOWS_BASE_DIGEST}
 # The hash rides as an ARG: this bootstrap runs before any module or versions.env bake exists.
-ARG PWSH_VERSION=7.6.7
-ARG PWSH_ZIP_SHA256=d2f952ebdbf24386cb8923553aa58e41a846db35a6155ea04c58142a4b16dbb7
+ARG PWSH_VERSION=7.6.9
+ARG PWSH_ZIP_SHA256=ce7484804c0f0ad4dda10c958e71acdaf7eebfb22505c1b480f89e0e9f1da94d
 
 # TEMP_DIR sits above the VS layer because the pwsh bootstrap RUN reads it.
 ENV TEMP_DIR="C:\temp"
@@ -41,20 +41,20 @@ RUN & 'C:\temp\scripts\Install-Vs.ps1' -TempDir $env:TEMP_DIR
 
 # Pins are ARGs declared right above their consumer: every RUN after an ARG keys its cache on it, and a Linux-only versions.env edit must not re-pay these layers.
 ARG VULKAN_VERSION=1.4.363.0
-ARG CMAKE_VERSION=4.4.4
-ARG LLVM_WINDOWS_VERSION=23.1.3
+ARG CMAKE_VERSION=4.4.5
+ARG LLVM_WINDOWS_VERSION=23.1.5
 ARG NINJA_WINDOWS_VERSION=1.13.2
 ARG NASM_WINDOWS_VERSION=3.02
 # Pinned for a feature gate (below v0.16.0 the multilevel chain is silently ignored); see docs/windows-build-resources.md § Persistent compile cache (sccache).
-ARG SCCACHE_WINDOWS_VERSION=0.18.0-1bd7432-pr2809
+ARG SCCACHE_WINDOWS_VERSION=0.19.0-965c019-pr2809
 # Defaults mirror versions.env; the drivers pass the live values.
 ARG GIT_VERSION=2.56.0
 ARG GIT_WINDOWS_INSTALLER_SHA256=bfe94e7b419b16eee9fecbd1253a98e3d4f49ba8f029630549052278ffe286a6
 ARG GIT_INSTALLER_URL=""
 ARG SCOOP_INSTALLER_SHA256=94f983b190438311e006b957db7c8422709e0ba62a6c2ac04e278164108f2512
-ARG WIX_VERSION=7.0.0
-ARG WIX_UI_EXT_VERSION=7.0.0
-ARG FLUTTER_VERSION=3.47.7
+ARG WIX_VERSION=7.0.1
+ARG WIX_UI_EXT_VERSION=7.0.1
+ARG FLUTTER_VERSION=3.47.9
 # Empty = warn-only, since the base is shared with amd64; see docs/windows-cross-builds.md § Vulkan needs an optional component.
 ARG WINDOWS_ARM64_STRICT=""
 COPY windows\scripts\host\Install-ScoopTools.ps1 C:\temp\scripts\
@@ -64,7 +64,7 @@ RUN --mount=type=secret,id=sccache_webdav_endpoint,env=VULKAN_PRESEED_ENDPOINT `
     -LlvmVersion $env:LLVM_WINDOWS_VERSION -NinjaVersion $env:NINJA_WINDOWS_VERSION -NasmVersion $env:NASM_WINDOWS_VERSION `
     -WindowsArm64Strict $env:WINDOWS_ARM64_STRICT
 
-ARG VCPKG_REF=2026.07.29
+ARG VCPKG_REF=2026.10.16
 COPY windows\scripts\host\Install-Vcpkg.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\Install-Vcpkg.ps1'
 
@@ -89,7 +89,7 @@ ENV SCOOP_HOME=C:\Users\ContainerAdministrator\scoop `
 ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$VULKAN_SDK\Bin;$GIT_CMD;$GIT_BIN;$GIT_USRBIN;$SCOOP_USER_SHIMS;$SCOOP_GLOBAL_SHIMS;$WIN_BASE_PATH
 
 # The expensive rust layer comes first in the tail, so edits to the cheap scripts below never re-pay it.
-ARG RUST_VERSION=1.99.0
+ARG RUST_VERSION=1.99.1
 ARG FLUTTER_RUST_BRIDGE_VERSION=2.13.0
 ARG CXXBRIDGE_CMD_VERSION=1.0.205
 ARG SCCACHE_WINDOWS_ZIP_SHA256=0c8529046b48b4f464d340fefe667839b17411d59a5bb90df83f35965631ec46

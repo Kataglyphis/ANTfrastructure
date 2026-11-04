@@ -1,0 +1,19 @@
+Let the MIGraphX execution provider take GridSample
+
+MIGraphX parses and runs ONNX GridSample (bilinear, zeros, align_corners), but the
+provider's op list omits it, so every GridSample stays on the CPU and splits the graph
+into partitions around it. On a DEIM/D-FINE detector that leaves a partition of one Slice
+and one Reshape whose output MIGraphX returns as a strided view (BACKLOG CON225). With
+GridSample on the list the model is one partition. Not in v1.31.0 or v1.31.1 (checked
+2026-11-04).
+
+--- a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
++++ b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
+@@ -916,6 +916,7 @@
+                                                     "GlobalMaxPool",
+                                                     "Greater",
+                                                     "GreaterOrEqual",
++                                                    "GridSample",
+                                                     "GroupNormalization",
+                                                     "GroupNorm",
+                                                     "GroupQueryAttention",

@@ -31,7 +31,7 @@ $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
 
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
-$HailortVersion = Get-SourceBuildVersion -Value $HailortVersion -EnvironmentVariables @('HAILORT_VERSION') -DefaultValue '5.4.0'
+$HailortVersion = Get-SourceBuildVersion -Value $HailortVersion -EnvironmentVariables @('HAILORT_VERSION') -DefaultValue '5.5.0'
 
 # Fail on missing pins: an empty -ExpectedSha256 means "no check", so a stale versions.env would download unverified.
 $hailortSourceSha = Get-SourceBuildVersion -EnvironmentVariables @('HAILORT_SOURCE_SHA256')

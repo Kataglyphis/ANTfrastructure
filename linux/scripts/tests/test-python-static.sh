@@ -11,6 +11,9 @@ trap 'rm -rf -- "$WORK" "$HUB"' EXIT
 TARGET="$WORK/caller"
 STUBS="$WORK/stubs"
 CALLS="$WORK/calls"
+# The stubs report the pinned versions, so a tool bump does not strand the fixture on a stale literal.
+PIN_RUFF="$(sed -n 's/^RUFF_VERSION=//p' "$SCRIPTS_DIR/01-core/tool-pins.env")"
+PIN_TY="$(sed -n 's/^TY_VERSION=//p' "$SCRIPTS_DIR/01-core/tool-pins.env")"
 
 new_fixture() {
   mkdir -p "$HUB/quality" "$TARGET/src" "$TARGET/other" "$STUBS" || return 1
@@ -46,7 +49,7 @@ esac
 RUFF
   cat > "$STUBS/ty" <<'TY'
 #!/usr/bin/env bash
-if [[ "$1" == --version ]]; then printf 'ty 0.0.91 (build)\n'; exit 0; fi
+if [[ "$1" == --version ]]; then printf 'ty %s (build)\n' "${STUB_TY_VERSION:-0.0.91}"; exit 0; fi
 printf 'ty %s\n' "$*" >> "$STUB_CALLS"
 case "${STUB_TY_MODE:-clean}" in
   clean) echo 'All checks passed!'; exit 0 ;;
@@ -66,7 +69,7 @@ run_static() {
   : > "$CALLS"
   t_capture_command OUT STATUS env PATH="$STUBS:$PATH" STUB_CALLS="$CALLS" STUB_SCRIPTS="$STUBS" \
     STUB_RUFF_MODE="${STUB_RUFF_MODE:-clean}" STUB_TY_MODE="${STUB_TY_MODE:-clean}" \
-    STUB_SETUP_FAIL="${STUB_SETUP_FAIL:-}" STUB_RUFF_VERSION="${STUB_RUFF_VERSION:-0.17.0}" \
+    STUB_SETUP_FAIL="${STUB_SETUP_FAIL:-}" STUB_RUFF_VERSION="${STUB_RUFF_VERSION:-$PIN_RUFF}" STUB_TY_VERSION="${STUB_TY_VERSION:-$PIN_TY}" \
     bash "$HUB/linux/scripts/python-static.sh" --root "$TARGET" "$@"
 }
 

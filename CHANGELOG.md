@@ -13,6 +13,33 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-04 — DeepStream has an arm64 route (SBSA), staged by hand
+
+- CON42 phase 7: `deepstream.sh` builds for arm64 from Jetson's runtime `.deb` plus the three Tegra libraries
+  `stage-deepstream-sbsa.sh` copies out of NVIDIA's SBSA container (digest and sha256 pinned), TensorRT 10 from
+  the CUDA repo's `sbsa` path, and a cross build of the components on the gpu stage's CUDA cross target. The
+  chain passes `ENABLE_DEEPSTREAM` to an arm64 media stage only with the files staged; the build-stage gates
+  defer loader and registration checks to the package stage; `nvv4l2decoder` stays amd64's. Unproved until the
+  first nvidia arm64 chain.
+
+## 2026-11-04 — Every pin moves before the rebuild; two MIGraphX patches ride along
+
+- Renovate (`--apply`) and `bump_versions.py --write`/`--write-all` moved 60-odd pins: Python 3.15.2,
+  CMake 4.4.5, uv 0.13.7, Node 26.13.0, Rust 1.99.1, Flutter 3.47.9, Chrome 157, pwsh 7.6.9, WiX 7.0.1,
+  the Ubuntu and servercore base digests, llama.cpp b12102, HailoRT/TAPPAS 5.5.0, sqlite-wasm 3.8.0,
+  the Actions SHAs, the quality tools (ruff 0.17.3, ty 0.0.97, pytest 9.2.0, dartdoc 9.0.11), Renovate
+  44.212.0 with its npm lock (upstream, with its patched glob and minimatch), syft 1.56.0, open-webui 0.13.0, and every uv lock. By hand, each checked
+  against the hub's patches first: ONNX Runtime v1.31.1, GenAI v0.19.0 (its ORT 1.31 port is upstream, so
+  patch 002 and its Windows mount are gone; register entry 23 retired), IREE v3.13.0, libcamera v0.8.0,
+  LLVM 23.1.5 on both lanes, PyAV 19.0.2, vcpkg 2026.10.16, git-lfs 3.8.1. `free-threaded-twins.txt`
+  re-read on every moved binding: no classification changed.
+- Held, each with its reason in the pin's row: torch 2.14.1 (2.15.0 ships no cp315 ROCm or CUDA wheel),
+  LiteRT 2.3.0 (2.3.2 has no PyPI wheel for the Windows pin), LiteRT-LM 0.18.0 and Vulkan SDK 1.4.363.0
+  (the newer assets 404), DeepStream 9.1.0 (owner decision, CON42), protobuf (slaved to LiteRT-LM).
+- sccache moves to v0.19.0 plus the PTX patch: `SCCACHE_SOURCE_REV` and the build id are set; the release
+  workflow publishes `sccache-v0.19.0-965c019-pr2809`, and the three SHA256 sums follow in a second commit.
+- CON225: `003-migraphx-gridsample.patch` and `004-migraphx-refuse-nonstandard-output.patch` are applied
+  to ORT in the amd and nvidia native builds (register entries 24 and 25); the next rocm chain proves them.
 ## 2026-11-04 — Renovate 44.212.0 closes two Dependabot alerts
 
 - Move the tracked Renovate baseline to 44.212.0, with scoped security overrides to glob 14.0.3 and minimatch 11.0.4,

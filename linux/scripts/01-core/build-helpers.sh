@@ -85,16 +85,33 @@ append_runtime_base_parent_build_arg() {
   append_optional_build_arg "$1" BASE_IMAGE "${BASE_PARENT_IMAGE}"
 }
 
-# <array> [arch]: DeepStream has an amd64 route only (as the media stage rules), so another arch's package gets false, never the chain's default.
-append_runtime_accelerator_build_args() {
-  append_optional_build_arg "$1" ENABLE_NVIDIA "${ENABLE_NVIDIA:-}"
-  append_optional_build_arg "$1" ENABLE_AMD "${ENABLE_AMD:-}"
-  append_optional_build_arg "$1" ENABLE_ROCM_ASAN "${ENABLE_ROCM_ASAN:-}"
-  if [ -n "${ENABLE_DEEPSTREAM:-}" ] && [ -n "${2:-}" ] && [ "${2}" != "amd64" ]; then
+# <arch>: 0 when the chain has a DeepStream route for it: amd64 always, arm64 once the SBSA libraries are staged (CON42 phase 7).
+deepstream_arch_supported() {
+  local dir
+  dir="${DEEPSTREAM_SBSA_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/linux/deepstream-sbsa}"
+  case "${1:-}" in
+    amd64) return 0 ;;
+    arm64) [ -f "${dir}/libnvbufsurface.so.1.0.0" ] && [ -f "${dir}/libnvbufsurftransform.so.1.0.0" ] && [ -f "${dir}/libnvdsbufferpool.so" ] ;;
+    *) return 1 ;;
+  esac
+}
+
+# <array> <arch> [label]: ENABLE_DEEPSTREAM as given where the arch has a route, else false, said once per build.
+append_deepstream_build_arg() {
+  if [ -n "${ENABLE_DEEPSTREAM:-}" ] && [ -n "${2:-}" ] && ! deepstream_arch_supported "${2}"; then
+    echo "[INFO] ${3:-${2}}: ENABLE_DEEPSTREAM=false (no DeepStream route for ${2}; arm64 needs linux/deepstream-sbsa staged)" >&2
     append_optional_build_arg "$1" ENABLE_DEEPSTREAM false
   else
     append_optional_build_arg "$1" ENABLE_DEEPSTREAM "${ENABLE_DEEPSTREAM:-}"
   fi
+}
+
+# <array> [arch]: a package for an arch without a DeepStream route gets false, never the chain's default.
+append_runtime_accelerator_build_args() {
+  append_optional_build_arg "$1" ENABLE_NVIDIA "${ENABLE_NVIDIA:-}"
+  append_optional_build_arg "$1" ENABLE_AMD "${ENABLE_AMD:-}"
+  append_optional_build_arg "$1" ENABLE_ROCM_ASAN "${ENABLE_ROCM_ASAN:-}"
+  append_deepstream_build_arg "$1" "${2:-}" "runtime ${2:-}"
   append_optional_build_arg "$1" ENABLE_TENSORRT "${ENABLE_TENSORRT:-}"
 }
 

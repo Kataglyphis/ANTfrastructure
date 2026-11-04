@@ -22,14 +22,6 @@ Import-Module (Resolve-SourceBuildLeafModule -AssetRoot $scriptAssetRoot -Name '
 function Install-GenaiSourcePatches {
     param([string]$SourceDir, [string]$AssetRoot)
 
-    # ORT v1.31.0 moved the model-package entries into a stable table; one patch serves both lanes (docs/upstreamable-patches.md entry 23).
-    $genaiOrtPatchName = '002-ort-1.31-model-package-api.patch'
-    $genaiOrtPatch = @((Join-Path $AssetRoot "patches\onnxruntime-genai\$genaiOrtPatchName"),
-        [IO.Path]::GetFullPath((Join-Path $AssetRoot "..\..\linux\scripts\patches\onnxruntime-genai\$genaiOrtPatchName"))) |
-        Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
-    if (-not $genaiOrtPatch) { throw "onnxruntime-genai: $genaiOrtPatchName is neither mounted under patches\onnxruntime-genai nor in the repo's linux\scripts\patches" }
-    Invoke-SourcePatch -PatchFile $genaiOrtPatch -SourceDir $SourceDir -IgnoreWhitespace -Description "onnxruntime-genai: model-package entries from ORT v1.31.0's stable table"
-
     # RESTORE_PACKAGES nuget-restores DXC only to regenerate shaders that ship as checked-in DXIL.
     $genaiCml = Join-Path $SourceDir 'CMakeLists.txt'
     Invoke-InlineRegexPatch -Path $genaiCml -Guard 'add_dependencies\(onnxruntime-genai RESTORE_PACKAGES\)' `
@@ -176,7 +168,7 @@ $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $
 $genaiTargetArch = Get-WindowsTargetArch
 $genaiCross      = Test-WindowsCrossTarget -Arch $genaiTargetArch
 
-$OnnxGenAiVersion = Get-SourceBuildVersion -Value $OnnxGenAiVersion -EnvironmentVariables @('ONNXRUNTIME_GENAI_VERSION', 'ONNX_GENAI_VERSION') -DefaultValue '0.17.0' -StripVPrefix
+$OnnxGenAiVersion = Get-SourceBuildVersion -Value $OnnxGenAiVersion -EnvironmentVariables @('ONNXRUNTIME_GENAI_VERSION', 'ONNX_GENAI_VERSION') -DefaultValue '0.19.0' -StripVPrefix
 
 Write-Host "=== ONNX Runtime GenAI source build (v$OnnxGenAiVersion, Ninja+clang-cl) ==="
 Write-Host "SourceDir: $SourceDir"

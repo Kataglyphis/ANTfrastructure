@@ -381,6 +381,8 @@ MANUAL = [
     "LITERT_WINDOWS_SOURCE_COMMIT", "LITERT_BAZEL_WINDOWS_VERSION", "LITERT_BAZEL_WINDOWS_AMD64_SHA256",
     # The CUDA line and apt repo NVIDIA builds TensorRT 10 for; spec_deepstream_trt reads them, nothing publishes a successor.
     "DEEPSTREAM_TENSORRT_CUDA", "DEEPSTREAM_TENSORRT_REPO",
+    # The SBSA container the arm64 route's three Tegra libraries come from, by digest; the staging script re-reads their hashes.
+    "DEEPSTREAM_SBSA_IMAGE",
 ]
 
 

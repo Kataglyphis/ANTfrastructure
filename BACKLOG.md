@@ -1612,12 +1612,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       - OmniAccelerANT's `nvinfer` path: later, by owner decision (2026-10-12).
       - `nvblender` upstream: a forum draft (both defects, with the RTX 2080's repro) waits for the owner's review in
         `~/upstream-drafts/2026-10-12/nvidia-deepstream/` on the build host; nothing is posted.
-      - **Phase 7 (arm64)**: the arm64 CUDA route exists since 2026-10-29 (CON31, cross from amd64), but the
-        cross media stage sets `ENABLE_DEEPSTREAM=false` off amd64: NVIDIA's arm64 DeepStream is the Jetson (L4T)
-        package with its own TensorRT binding, not an SBSA one. The Jetson runtime `.deb` is pinned
-        (`DEEPSTREAM_BINARIES_ARM64_SHA256`); nothing installs it. Work: decide whether the SBSA image may carry the
-        Jetson deb at all (its libs link L4T's TensorRT), else leave arm64 without DeepStream by design.
-        The arm64 manifest entry alone does not prove DeepStream is present; recheck the published child.
+      - **Phase 7 (arm64): in source since 2026-11-04, unproved.** The Jetson runtime `.deb` plus the three Tegra
+        libraries only NVIDIA's SBSA container ships (`/usr/lib/aarch64-linux-gnu/tegra`), staged by hand through
+        `stage-deepstream-sbsa.sh` and pinned by digest and sha256; TensorRT 10 from the repo's `sbsa` path; the
+        components cross-compiled with the gpu stage's CUDA cross target ([§ DeepStream on arm64 (SBSA)](docs/linux-accelerator-images.md#deepstream-on-arm64-sbsa)).
+        Done when an nvidia arm64 chain's package stage passes the DeepStream gates and the published arm64 child
+        carries the tree; the owner approved staging the libraries on 2026-11-04.
       Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only); the pin stays on 9.1.0.
 
 ## Open — hub tooling and the dev host

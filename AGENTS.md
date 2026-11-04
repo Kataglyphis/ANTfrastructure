@@ -1061,7 +1061,7 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
 - `build-cross-compiler.sh` builds one `linux/amd64` compiler image with cross toolchains for all
   arches, not a multi-arch compiler manifest.
 - Never remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images
-  must keep the source-built clang at `LLVM_RELEASE` (currently 23.1.3), not the Ubuntu distro
+  must keep the source-built clang at `LLVM_RELEASE` (currently 23.1.5), not the Ubuntu distro
   clang. Source-built GCC (`GCC_VERSION`, currently 16.2.0) at `/opt/gcc-${GCC_VERSION}` is the
   default `cc`/`c++` on all arches; on `arm64`/`riscv64` it is cross-compiled (Canadian cross) and
   swapped in at the Android stage via `Dockerfile.android`.

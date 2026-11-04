@@ -421,6 +421,8 @@ WEBDAV_VENV_DIR
 # for a CROSS build (sbsa-linux), empty on a native one. Not an operator switch:
 # the stage derives it from TARGET_ARCH. docs/linux-accelerator-images.md
 CUDA_CROSS_TARGET_DIR
+# cross-cuda.sh exports it from the gpu stage's cross-target.env; deepstream.sh's CUDA view reads it the same way (CON42 phase 7).
+CUDA_CROSS_TARGET_ROOT
 # lib/linker-select.sh (2026-10-05): KATAGLYPHIS_LINKER is the operator's opt-in
 # linker (default|lld|mold), never set in-repo so the default build stays the
 # image's; LINKER_SELECT_CACHE_DIR relocates the pinned mold download.

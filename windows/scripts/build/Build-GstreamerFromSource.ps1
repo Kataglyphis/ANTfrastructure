@@ -515,7 +515,7 @@ function Get-GstCompilerRtLinkPath {
             # SELF-HEAL: the source-built toolchain ships host builtins only, when the toolchain stage has not staged them.
             $rtHostLib = @(Find-InstalledCompilerRtLibrary -LlvmRoot $llvmRoot -LibraryName 'clang_rt.builtins-x86_64.lib')
             if ($rtHostLib.Count -gt 0) {
-                $rtVer = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.3'
+                $rtVer = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.5'
                 $rtUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$rtVer/clang%2Bllvm-$rtVer-aarch64-pc-windows-msvc.tar.xz"
                 try {
                     log "Fetching aarch64 compiler-rt (LLVM $rtVer) - the patched toolchain ships x86_64 builtins only"
@@ -1406,7 +1406,7 @@ function Add-GstOrtPkgConfig {
         $ortInclude = Join-Path $ortRoot 'include'
         if (-not (Test-Path (Join-Path $ortLib 'onnxruntime.lib'))) { throw "onnxruntime.lib not found in $ortLib — cannot describe ONNX Runtime to pkg-config." }
         # Same env-name order as Build-OnnxFromSource.ps1, or a standalone run writes a stale version into the .pc.
-        $ortVersion = Get-SourceBuildVersion -Value '' -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.31.0' -StripVPrefix
+        $ortVersion = Get-SourceBuildVersion -Value '' -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.31.1' -StripVPrefix
         # Some layouts put ORT's headers under include\onnxruntime\core\session too.
         $ortIncludes = @($ortInclude, (Join-Path $ortInclude 'onnxruntime'),
             (Join-Path $ortInclude 'onnxruntime\core\session')) | Where-Object { Test-Path $_ }

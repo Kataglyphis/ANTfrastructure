@@ -44,6 +44,8 @@ UNTRACKED_OUTPUT = (
     "linux/webserver/dist",
     "linux/llm-stack/.env",
     "linux/llm-stack/ollama-binary.tar.zst",
+    # The staged SBSA DeepStream libraries (CON42 phase 7), ignored but for the README.
+    "linux/deepstream-sbsa",
 )
 
 

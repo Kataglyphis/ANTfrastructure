@@ -1054,7 +1054,7 @@ nerdctl build --platform linux/amd64 \
   --build-arg TARGET_ARCH=amd64 \
   --build-arg BUILD_MODE=cross \
   --build-arg GCC_VERSION=16.2.0 \
-  --build-arg LLVM_RELEASE=23.1.3 \
+  --build-arg LLVM_RELEASE=23.1.5 \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   --build-arg FAST_UBUNTU_PORTS_MIRROR_URL=http://ports.ubuntu.com/ubuntu-ports/ \
@@ -1281,7 +1281,7 @@ untested while the dead knob had a suite of its own.
 
 ### IREE (Linux lane)
 
-IREE (`IREE_VERSION` in versions.env, currently v3.12.0) ships 3-arch in the
+IREE (`IREE_VERSION` in versions.env, currently v3.13.0) ships 3-arch in the
 media image since 2026-07-14, with a deliberately split strategy per arch.
 
 No arch installs an upstream wheel: PyPI ships `iree-base-{compiler,runtime}`

@@ -255,7 +255,8 @@ def python_static(ctx: Context) -> list[Metric]:
         summary = dict(re.findall(r"([\w-]+)=(\S+)", read_text(os.path.join(report, "summary.txt"))))
         ruff = [row for row in map(located, read_text(os.path.join(report, "ruff.txt")).splitlines()) if row]
         ty = [row for row in map(located, read_text(os.path.join(report, "ty.txt")).splitlines()) if row]
-        unresolved = [row for row in ty if "[unresolved-import]" in row[2]]
+        # ty 0.0.97 renamed the rule to import-not-found; both spellings count.
+        unresolved = [row for row in ty if "[unresolved-import]" in row[2] or "[import-not-found]" in row[2]]
         values = (int(summary["ruff-findings"]), int(summary["ty-diagnostics"]), len(unresolved))
     except (KeyError, TypeError, ValueError) as exc:
         return [failed(name, unit, LOWER, klass, source, str(exc)) for name, unit, klass in names]

@@ -518,7 +518,7 @@ print("tvm rocm-lane runtime gate OK:", sys.argv[2])
 function Install-TvmMinimalLlvm {
     param([object]$Plan)
 
-    $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.3'
+    $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.5'
     $llvmDevRoot = 'C:\temp\llvm-dev'
     # Before the fetch: this banner is the context an unpinned-version throw from Get-LlvmSourceTarball would lack.
     Write-Host "TVM: $($Plan.Why) - building a minimal LLVM $llvmDevVersion from source (backlog #47)"

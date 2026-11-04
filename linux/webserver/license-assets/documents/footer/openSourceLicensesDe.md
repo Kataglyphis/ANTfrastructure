@@ -17,9 +17,9 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
-| CMake | 4.4.4 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
-| Node.js | 26.11.1 | [nodejs.org](https://nodejs.org/) | MIT |
-| uv | 0.13.1 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| CMake | 4.4.5 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
+| Node.js | 26.13.0 | [nodejs.org](https://nodejs.org/) | MIT |
+| uv | 0.13.7 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Vulkan SDK | 1.4.363.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 
 ### Compiler Toolchain (`Dockerfile.toolchain`)
@@ -27,8 +27,8 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | GCC (host + cross) | 16.2.0 | [gcc.gnu.org](https://gcc.gnu.org/) | GPLv3+ with GCC Runtime Library Exception |
-| LLVM / Clang | 23.1.3 | [llvm.org](https://llvm.org/) | Apache 2.0 with LLVM Exceptions |
-| Python | 3.15.0 | [python.org](https://python.org/) | PSF License |
+| LLVM / Clang | 23.1.5 | [llvm.org](https://llvm.org/) | Apache 2.0 with LLVM Exceptions |
+| Python | 3.15.2 | [python.org](https://python.org/) | PSF License |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 
 ### SDK Layer (`Dockerfile.sdk`)
@@ -41,8 +41,8 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| ONNX Runtime | v1.31.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
-| ONNX Runtime GenAI | v0.17.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
+| ONNX Runtime | v1.31.1 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
+| ONNX Runtime GenAI | v0.19.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | LiteRT (TensorFlow Lite) | v2.3.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
@@ -53,13 +53,13 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | VVdeC (VVC/H.266 decoder) | v3.2.1 | [github.com/fraunhoferhhi/vvdec](https://github.com/fraunhoferhhi/vvdec) | BSD-3-Clause-Clear |
 | ArmNN (arm64) | v26.07 | [github.com/ARM-software/armnn](https://github.com/ARM-software/armnn) | MIT |
 | Arm Compute Library (arm64) | v53.3.1 | [github.com/ARM-software/ComputeLibrary](https://github.com/ARM-software/ComputeLibrary) | MIT |
-| libcamera | v0.7.2 | [libcamera.org](https://libcamera.org/) | LGPLv2.1+ |
+| libcamera | v0.8.0 | [libcamera.org](https://libcamera.org/) | LGPLv2.1+ |
 | Abseil | 20260817.0 | [github.com/abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) | Apache 2.0 |
 | FreeType | 2.15.0 | [freetype.org](https://freetype.org/) | GPLv2 / FTL |
 | nv-codec-headers | n13.1.15.0 | [git.videolan.org/git/ffmpeg/nv-codec-headers.git](https://git.videolan.org/git/ffmpeg/nv-codec-headers.git) | MIT |
 | GObject-Introspection | 1.86.0 | [gitlab.gnome.org/GNOME/gobject-introspection](https://gitlab.gnome.org/GNOME/gobject-introspection) | LGPLv2+ |
-| IREE | v3.12.0 | [iree.dev](https://iree.dev/) | Apache 2.0 with LLVM Exception |
-| PyAV | 19.0.1 | [github.com/PyAV-Org/PyAV](https://github.com/PyAV-Org/PyAV) | BSD 3-Clause |
+| IREE | v3.13.0 | [iree.dev](https://iree.dev/) | Apache 2.0 with LLVM Exception |
+| PyAV | 19.0.2 | [github.com/PyAV-Org/PyAV](https://github.com/PyAV-Org/PyAV) | BSD 3-Clause |
 
 ### Android Layer (`Dockerfile.android`)
 
@@ -101,10 +101,10 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| HailoRT (libhailort, hailortcli) | 5.4.0 | [github.com/hailo-ai/hailort](https://github.com/hailo-ai/hailort) | MIT |
-| HailoRT hailonet GStreamer element | 5.4.0 | [github.com/hailo-ai/hailort](https://github.com/hailo-ai/hailort) | LGPLv2.1+ |
+| HailoRT (libhailort, hailortcli) | 5.5.0 | [github.com/hailo-ai/hailort](https://github.com/hailo-ai/hailort) | MIT |
+| HailoRT hailonet GStreamer element | 5.5.0 | [github.com/hailo-ai/hailort](https://github.com/hailo-ai/hailort) | LGPLv2.1+ |
 | protobuf (HailoRT build external) | 21.12 | [github.com/protocolbuffers/protobuf](https://github.com/protocolbuffers/protobuf) | BSD-3-Clause |
-| TAPPAS | 5.4.0 | [github.com/hailo-ai/tappas](https://github.com/hailo-ai/tappas) | LGPL-2.1-or-later |
+| TAPPAS | 5.5.0 | [github.com/hailo-ai/tappas](https://github.com/hailo-ai/tappas) | LGPL-2.1-or-later |
 | libzmq (TAPPAS zmq elements) | 4.3.5 | [github.com/zeromq/libzmq](https://github.com/zeromq/libzmq) | MPL-2.0 |
 | TAPPAS build externals (header-only: xtensor, xtl, cxxopts, pybind11, rapidjson, Catch2) | commit-pinned in build-hailort.sh | [github.com/hailo-ai/tappas](https://github.com/hailo-ai/tappas) | BSD-3-Clause / MIT / BSL-1.0 (per project) |
 | cppzmq (TAPPAS zmq elements) | 4.11.0 | [github.com/zeromq/cppzmq](https://github.com/zeromq/cppzmq) | MIT |
@@ -115,14 +115,14 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | PyTorch | v2.14.1 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
 | TorchVision | v0.29.1 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
-| Flutter SDK | 3.47.7 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.47.9 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### Test runtimes (`Dockerfile.package`)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Chrome for Testing (amd64, arm64) | 155.0.8059.79 | [googlechromelabs.github.io/chrome-for-testing](https://googlechromelabs.github.io/chrome-for-testing/) | Google Chrome Terms of Service (the zip's ABOUT names chrome://terms); Chromium's notices at chrome://credits |
-| chromedriver (amd64, arm64) | 155.0.8059.79 | [googlechromelabs.github.io/chrome-for-testing](https://googlechromelabs.github.io/chrome-for-testing/) | BSD 3-Clause (LICENSE.chromedriver and THIRD_PARTY_NOTICES.chromedriver in the zip) |
+| Chrome for Testing (amd64, arm64) | 157.0.8103.38 | [googlechromelabs.github.io/chrome-for-testing](https://googlechromelabs.github.io/chrome-for-testing/) | Google Chrome Terms of Service (the zip's ABOUT names chrome://terms); Chromium's notices at chrome://credits |
+| chromedriver (amd64, arm64) | 157.0.8103.38 | [googlechromelabs.github.io/chrome-for-testing](https://googlechromelabs.github.io/chrome-for-testing/) | BSD 3-Clause (LICENSE.chromedriver and THIRD_PARTY_NOTICES.chromedriver in the zip) |
 | Android Emulator (amd64) | 37.2.12 | [developer.android.com/studio/run/emulator](https://developer.android.com/studio/run/emulator) | Android SDK License; Apache 2.0 (LICENSE), a QEMU derivative (GPLv2), per-component NOTICE.csv |
 | Android 15 (API 35) system image, Google APIs x86_64 (amd64) | 9 | [developer.android.com/studio/run/managing-avds](https://developer.android.com/studio/run/managing-avds) | Android SDK License; AOSP components under their own licences (NOTICE.txt in the image), the kernel GPLv2 |
 
@@ -136,13 +136,13 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Ollama | 0.40.4 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
+| Ollama | 0.40.14 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
 
 ### Build Tooling (build-time only, not in runtime images)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| dartdoc (on-demand API documentation tool) | 9.0.8 | [github.com/dart-lang/dartdoc](https://github.com/dart-lang/dartdoc) | BSD 3-Clause |
+| dartdoc (on-demand API documentation tool) | 9.0.11 | [github.com/dart-lang/dartdoc](https://github.com/dart-lang/dartdoc) | BSD 3-Clause |
 | Emscripten / emsdk (ONNX Runtime WASM build) | pinned by ONNX Runtime | [emscripten.org](https://emscripten.org/) | MIT / NCSA |
 | ccache | Ubuntu apt | [ccache.dev](https://ccache.dev/) | GPLv3+ |
 | sccache | Ubuntu apt | [github.com/mozilla/sccache](https://github.com/mozilla/sccache) | Apache 2.0 |
@@ -170,13 +170,13 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | Windows Server Core | 2025 | [www.microsoft.com](https://www.microsoft.com/) | Microsoft EULA |
 | Visual Studio Build Tools | 18 | [visualstudio.microsoft.com](https://visualstudio.microsoft.com/) | Microsoft EULA |
-| Python (source-built, ClangCL) | 3.15.0 | [python.org](https://python.org/) | PSF License |
+| Python (source-built, ClangCL) | 3.15.2 | [python.org](https://python.org/) | PSF License |
 | CPython bundled externals (OpenSSL, SQLite, libffi, xz, bzip2, zlib, tcl/tk, expat, mpdecimal) | bundled with Python | [github.com/python/cpython-source-deps](https://github.com/python/cpython-source-deps) | various (Apache 2.0, MIT, PD, …) |
-| CMake | 4.4.4 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
+| CMake | 4.4.5 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
 | Vulkan SDK | 1.4.363.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 | WiX Toolset | latest | [wixtoolset.org](https://wixtoolset.org/) | MS-RL |
-| Flutter SDK | 3.47.7 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.47.9 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### GPU Layer
 
@@ -187,7 +187,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | TensorRT | 11.4.0.106 | [developer.nvidia.com/tensorrt](https://developer.nvidia.com/tensorrt) | NVIDIA TensorRT EULA |
 | AMD ROCm for Windows (TheRock tarball, C:\TheRock\build; rocm variant only) | 10.1.0 | [github.com/ROCm/TheRock](https://github.com/ROCm/TheRock) | per component: MIT (rocBLAS, hipBLASLt, MIOpen, rocFFT, rocRAND, rocSPARSE, hipcc, ...), BSD (rocSOLVER, hipCUB), Apache-2.0 (rocThrust, LLVM WITH LLVM-exception); the notices in share\doc ship with the tree. The HIP and OpenCL runtime DLLs carry no licence file and link AMD's prebuilt PAL: redistribution in a PUBLIC image is an owner decision |
 | Khronos Vulkan loader (LunarG VulkanRT Components: vulkan-1.dll in System32 on the rocm variant; the pinned copy and its licence in C:\vulkan-loader, on PATH in the default and nvidia images; the arm64 bundle's copy and licence in C:\runtime\lavapipe) | 1.4.363.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 (Khronos Vulkan-Loader) with MIT components (cJSON, Dave Gamble; joseph werle); VulkanRT-License.txt ships in C:\vulkan-loader |
-| Mesa lavapipe (the CPU Vulkan ICD: lvp_icd.x86_64/aarch64.json + vulkan_lvp.dll in C:\runtime\lavapipe; mmozeiko/build-mesa, SHA256-pinned) | 26.2.4 | [github.com/mmozeiko/build-mesa](https://github.com/mmozeiko/build-mesa) | MIT (Mesa 3D; the 7z carries no licence text, so this release repository and mesa3d.org are the pointer) |
+| Mesa lavapipe (the CPU Vulkan ICD: lvp_icd.x86_64/aarch64.json + vulkan_lvp.dll in C:\runtime\lavapipe; mmozeiko/build-mesa, SHA256-pinned) | 26.2.6 | [github.com/mmozeiko/build-mesa](https://github.com/mmozeiko/build-mesa) | MIT (Mesa 3D; the 7z carries no licence text, so this release repository and mesa3d.org are the pointer) |
 | PyTorch + TorchVision for ROCm (built from upstream source against TheRock's ROCm 10.1.0 SDK, kernels for gfx1201 and gfx1200, on AMD's rocm[libraries] runtime; rocm variant only) | torch 2.14.1+rocm10.1.0 and torchvision 0.29.1+rocm10.1.0 from the v2.14.1 / v0.29.1 tags (commits pinned as TORCH_ROCM_WINDOWS_*_COMMIT), with AMD's rocm-sdk runtime and device wheels for gfx1201 and gfx1200 (URL + SHA256 pinned as TORCH_ROCM_WINDOWS_*) | [github.com/pytorch/pytorch](https://github.com/pytorch/pytorch) | BSD 3-Clause (PyTorch, TorchVision); the bundled ROCm runtime as above (MIT/BSD/Apache-2.0 plus the HIP runtime without a licence file) |
 | LiteRT Python (ai-edge-litert wheel: libLiteRt.dll, libLiteRtWebGpuAccelerator.dll and the _pywrap_* extensions, in the torch app venv on every amd64 variant: built from source for PYTHON_VERSION, CON91) | LITERT_VERSION from source for PYTHON_VERSION's cpXY (CON91); its libLiteRtWebGpuAccelerator.dll from the 2.3.0 PyPI wheel, pinned as LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256 | [github.com/google-ai-edge/LiteRT](https://github.com/google-ai-edge/LiteRT) | Apache 2.0 (the wheel's METADATA, and since 2.3.0 LiteRT's LICENSE in its dist-info; no NOTICE text). libLiteRtWebGpuAccelerator.dll is a closed Google binary: LiteRT's Apache-2.0 wrapper around ML Drift, which LiteRT's WORKSPACE declares with no public URL; it imports only system DLLs, so Dawn/Tint (BSD 3-Clause) are linked in statically |
 
@@ -199,8 +199,8 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | GStreamer meson subprojects (glib, orc, libnice, x264, openh264, …) | per wrap files | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ / GPL (x264) / BSD (openh264) |
 | GStreamer Rust plugins rswebrtc and rsrtp (gst-plugins-rs net/webrtc, net/rtp) | 1.29.2 | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MPL-2.0 |
 | Rust crates linked into gstrswebrtc.dll and gstrsrtp.dll (gstreamer-rs, gtk-rs-core, tokio, rustls, ring, …) | pinned by gst-plugins-rs's Cargo.lock at the GStreamer tag | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MIT / Apache 2.0 / ISC / BSD / Unicode-3.0 / CDLA-Permissive-2.0 (per crate, 337 crates on 2026-10-05) |
-| ONNX Runtime | v1.31.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
-| ONNX Runtime GenAI | v0.17.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
+| ONNX Runtime | v1.31.1 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
+| ONNX Runtime GenAI | v0.19.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | FFmpeg | n9.0.2 | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
 | LiteRT (TensorFlow Lite) | v2.3.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
@@ -228,8 +228,8 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| llama.cpp HIP (ggml-hip.dll built from the pinned tag's source against TheRock, linking the image's HIP runtime; llama-server.exe and the other tools from the same tag's official Windows CPU zip) | 11617 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so LICENSE is fetched at the pinned tag (sha256-pinned) and ships in C:\runtime\opt\llama.cpp-hip\licenses\llama.cpp |
-| llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools) | 11617 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so the same tag's LICENSE (sha256-pinned) ships in C:\runtime\opt\llama.cpp-vulkan\licenses\llama.cpp |
+| llama.cpp HIP (ggml-hip.dll built from the pinned tag's source against TheRock, linking the image's HIP runtime; llama-server.exe and the other tools from the same tag's official Windows CPU zip) | 12102 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so LICENSE is fetched at the pinned tag (sha256-pinned) and ships in C:\runtime\opt\llama.cpp-hip\licenses\llama.cpp |
+| llama.cpp (official prebuilt Windows Vulkan release of the same build: ggml-vulkan.dll, llama-server.exe and the other tools) | 12102 | [github.com/ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT; the zip carries no llama.cpp licence text, so the same tag's LICENSE (sha256-pinned) ships in C:\runtime\opt\llama.cpp-vulkan\licenses\llama.cpp |
 | LLVM OpenMP runtime (libomp.dll, bundled in both llama.cpp zips: CPU and Vulkan) | as bundled in the pinned llama.cpp zips (sha256-pinned; the two copies are byte-identical) | [github.com/llvm/llvm-project/tree/main/openmp](https://github.com/llvm/llvm-project/tree/main/openmp) | Apache 2.0 with LLVM Exceptions (older code also under the legacy NCSA/MIT terms); LICENSE-LLVM-OpenMP ships beside each copy, in C:\runtime\opt\llama.cpp-hip and C:\runtime\opt\llama.cpp-vulkan |
 
 ### MIGraphX + ORT plugin EP (rocm variant only)
@@ -257,7 +257,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | Scoop package manager | latest | [scoop.sh](https://scoop.sh/) | Unlicense / MIT |
 | Scoop-installed tools (7-Zip, Git, LLVM, ninja, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet) | latest (scoop) | [scoop.sh](https://scoop.sh/) | various (GPL, Apache 2.0, BSD, zlib) |
-| sccache (Windows lane) | 0.18.0-1bd7432-pr2809 | [github.com/mozilla/sccache](https://github.com/mozilla/sccache) | Apache 2.0 |
+| sccache (Windows lane) | 0.19.0-965c019-pr2809 | [github.com/mozilla/sccache](https://github.com/mozilla/sccache) | Apache 2.0 |
 | vcpkg | master | [github.com/microsoft/vcpkg](https://github.com/microsoft/vcpkg) | MIT |
 | vcpkg packages (zlib, protobuf — linked into builds) | vcpkg baseline | [github.com/microsoft/vcpkg](https://github.com/microsoft/vcpkg) | Zlib / BSD 3-Clause |
 
@@ -269,7 +269,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
-| Pandoc | 3.12.1 | [github.com/jgm/pandoc](https://github.com/jgm/pandoc) | GPLv2+ |
+| Pandoc | 3.13 | [github.com/jgm/pandoc](https://github.com/jgm/pandoc) | GPLv2+ |
 | TeX Live (texlive-full) | Ubuntu apt | [tug.org/texlive](https://tug.org/texlive/) | Collection; per package LPPL / GPL / X11 / modified BSD |
 | Latin Modern fonts (lmodern) | Ubuntu apt | [www.gust.org.pl/projects/e-foundry/latin-modern](http://www.gust.org.pl/projects/e-foundry/latin-modern) | GUST Font License (LPPL-style) |
 | Ghostscript | Ubuntu apt | [www.ghostscript.com](https://www.ghostscript.com/) | AGPLv3+ |
@@ -280,7 +280,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Python | Ubuntu apt (python3-full) | [python.org](https://python.org/) | PSF License |
-| uv | 0.13.1 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| uv | 0.13.7 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Pygments | pinned by uv.lock | [pygments.org](https://pygments.org/) | BSD 2-Clause |
 
 ### Base Utilities (`third_party/DocumANTation/Dockerfile`)
@@ -318,8 +318,8 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Ruff | 0.17.0 | [github.com/astral-sh/ruff](https://github.com/astral-sh/ruff) | MIT |
-| ty | 0.0.91 | [github.com/astral-sh/ty](https://github.com/astral-sh/ty) | MIT |
+| Ruff | 0.17.3 | [github.com/astral-sh/ruff](https://github.com/astral-sh/ruff) | MIT |
+| ty | 0.0.97 | [github.com/astral-sh/ty](https://github.com/astral-sh/ty) | MIT |
 | markdown-it-py (quality analysis) | locked in quality/uv.lock | [github.com/executablebooks/markdown-it-py](https://github.com/executablebooks/markdown-it-py) | MIT |
 | Playwright (Flutter browser smoke and quality analysis) | locked in quality/uv.lock | [github.com/microsoft/playwright-python](https://github.com/microsoft/playwright-python) | Apache 2.0 |
 | greenlet (Playwright dependency) | locked in quality/uv.lock | [github.com/python-greenlet/greenlet](https://github.com/python-greenlet/greenlet) | MIT and PSF 2.0 |
@@ -399,7 +399,7 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 - **Licence:** LGPL-2.1-or-later
 - **Source:** <https://git.libcamera.org/libcamera/libcamera.git>
-- **Revision:** v0.7.2
+- **Revision:** v0.8.0
 
 ### FreeType — Linux Images
 
@@ -424,13 +424,13 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 - **Licence:** LGPL-2.1-or-later
 - **Source:** <https://github.com/hailo-ai/hailort>
-- **Revision:** 5.4.0
+- **Revision:** 5.5.0
 
 ### TAPPAS — Linux Images
 
 - **Licence:** LGPL-2.1-or-later
 - **Source:** <https://github.com/hailo-ai/tappas>
-- **Revision:** 5.4.0
+- **Revision:** 5.5.0
 
 ### libzmq (TAPPAS zmq elements) — Linux Images
 
@@ -528,7 +528,7 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 - **Licence:** GPL-2.0-or-later
 - **Source:** <https://github.com/jgm/pandoc>
-- **Revision:** 3.12.1
+- **Revision:** 3.13
 
 ### TeX Live (texlive-full) — Documentation Image
 

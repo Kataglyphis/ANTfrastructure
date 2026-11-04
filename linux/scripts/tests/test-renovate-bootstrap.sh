@@ -12,6 +12,8 @@ mkdir -p "${w}/bin" "${w}/repo"
 git -C "${w}/repo" init -q
 want="$(sed -n 's/^RENOVATE_VERSION=//p' "${SCRIPTS}/01-core/tool-pins.env")"
 export STUB_RENOVATE_LATEST="${want}" STUB_NPM_LOG="${w}/npm.log"
+# The PATH node reports the pinned version, so a Node bump does not send the fixture to a stub download it cannot verify.
+STUB_NODE_VERSION="v$(sed -n 's/^RENOVATE_NODE_VERSION=//p' "${SCRIPTS}/01-core/tool-pins.env")"; export STUB_NODE_VERSION
 export STUB_BOOTSTRAP_PY="${SCRIPTS}/renovate_bootstrap.py"
 export STUB_CI_FAIL=0 STUB_INSTALL_FAIL=0 STUB_LOCK_BAD=0 STUB_VIEW_FAIL=0 STUB_VIEW_INVALID=0
 : > "${STUB_NPM_LOG}"
@@ -22,7 +24,7 @@ if [ "${1:-}" = --version ]; then
   if [ "$0" = "$(dirname "${STUB_NPM_LOG}")/bin/node" ] && [ -s "$(dirname "${STUB_NPM_LOG}")/old-node-version" ]; then
     cat "$(dirname "${STUB_NPM_LOG}")/old-node-version"
   else
-    printf 'v24.21.0\n'
+    printf '%s\n' "${STUB_NODE_VERSION}"
   fi
   exit 0
 fi
@@ -172,7 +174,7 @@ t_assert_fails print_bin RENOVATE_VERSION=0.0.1
 t_assert_contains "$(cat "${w}/err")" "installs renovate ${want}, tool-pins.env pins 0.0.1"
 t_assert_eq "${before}" "$(wc -l < "${STUB_NPM_LOG}" | tr -d ' ')"
 t_case "Node below the pinned minor release falls back to the verified cached toolchain"
-cached_node="${w}/cache/node-24.21.0"
+cached_node="${w}/cache/node-${STUB_NODE_VERSION#v}"
 mkdir -p "${cached_node}/bin"
 cp "${STUB_GOOD_NODE}" "${cached_node}/bin/node"
 cp "${STUB_GOOD_NPM}" "${cached_node}/bin/npm"

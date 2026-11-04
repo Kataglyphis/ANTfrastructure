@@ -10,8 +10,8 @@ same grading scale, at
 [`upstream-windows-patches.md`](upstream-windows-patches.md); its prepared
 submissions live under `windows/upstream/`. Three entries are shared between the
 lanes and are owned here — the OpenCV FFmpeg 8/9 port (entry 2), the gst-libav
-codec IDs FFmpeg 8 removed (entry 12) and the onnxruntime-genai port to ORT v1.31.0's
-model-package table (entry 23).
+codec IDs FFmpeg 8 removed (entry 12) and, until GenAI v0.19.0, the onnxruntime-genai port to
+ORT v1.31.0's model-package table (entry 23).
 
 The patches themselves live in `linux/scripts/patches/<component>/NNN-name.patch`
 and are applied by `linux/scripts/01-core/apply-patch.sh`, which is idempotent
@@ -40,7 +40,9 @@ the branch you intend to target before filing.
 | 1 | [libstdc++ `-nostdinc++` for `src/c++23`](#1-libstdc--nostdinc-for-srcc23) | GCC | **A** | ★★★ |
 | 2 | [OpenCV: port the FFmpeg 8 fixes to 5.x](#2-opencv-ffmpeg-8-removed-avcodecpix_fmts-and-supported_framerates) | OpenCV | **A** (port, not a new fix) | ★★★ |
 | 3 | [onnxruntime-genai: riscv64 target](#3-onnxruntime-genai-riscv64-is-not-a-known-target-platform) | onnxruntime-genai | **A** | ★★★ |
-| 23 | [onnxruntime-genai: ORT v1.31.0's model-package table](#23-onnxruntime-genai-ort-v1310-moved-the-model-package-entries-out-of-the-experimental-api) | onnxruntime-genai | **A** | ★★★ |
+| 24 | [onnxruntime: MIGraphX takes GridSample](#24-onnxruntime-the-migraphx-provider-leaves-gridsample-on-the-cpu) | onnxruntime | **A** | ★★★ |
+| 25 | [onnxruntime: MIGraphX refuses a strided output](#25-onnxruntime-the-migraphx-provider-binds-a-strided-output-onto-a-dense-buffer) | onnxruntime | **A** (issue + guard) | ★★★ |
+| 23 | [~~onnxruntime-genai: ORT v1.31.0's model-package table~~](#23-onnxruntime-genai-ort-v1310-moved-the-model-package-entries-out-of-the-experimental-api--already-fixed-upstream) | onnxruntime-genai | **✔** | ★★★ |
 | 4 | [libcamera: missing libtiff dependency](#4-libcamera-apps_lib-uses-libtiff-but-does-not-depend-on-it) | libcamera | **A** | ★★ |
 | 5 | [GStreamer: lame probe ignores the library](#5-gstreamer-the-lame-probe-checks-the-header-and-ignores-the-library) | gst-plugins-good | **A** | ★★ |
 | 17 | [cerbero: glib misses its libiconv dep](#17-cerbero-glib-does-not-declare-its-libiconv-dependency-on-android) | cerbero | **A** | ★★ |
@@ -175,7 +177,7 @@ and check the files for any *other* removed member the pair did not cover.
 
 `linux/scripts/patches/onnxruntime-genai/001-riscv64-target-platform.patch` ·
 applied by `03-media/build/onnxruntime/build/60-build-genai.sh` ·
-applies to **v0.17.0**.
+applies to **v0.19.0** (and v0.17.0).
 
 Two lines in `cmake/target_platform.cmake`: add a
 `CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64.*"` arm that sets
@@ -209,7 +211,7 @@ lane is the evidence (`docs/gen1-riscv64-genai.md`).
 
 `linux/scripts/patches/libcamera/001-apps-add-libtiff-dependency.patch` ·
 applied by `03-media/build/libcamera/build-libcamera.sh` ·
-applies to **v0.7.2**.
+applies to **v0.8.0** (and v0.7.2).
 
 One line in `src/apps/common/meson.build`: add `libtiff` to the `dependencies` of
 the `apps_lib` static library. Upstream compiles `dng_writer.cpp` into `apps_lib`
@@ -312,7 +314,7 @@ stub, expect that counter-proposal — the PR message above says so up front.
 
 `linux/scripts/patches/onnxruntime/001-android-gradle-agp8-compat.patch` ·
 applied by `03-media/build/onnxruntime/android/build-android.sh` ·
-applies to **v1.31.0**.
+applies to **v1.31.1** (and v1.31.0).
 
 Bumps `com.android.tools.build:gradle` from 7.4.2 to 8.3.1 in two build files and
 adds the `buildFeatures { buildConfig = true }` that AGP 8 requires now that
@@ -812,7 +814,9 @@ registry still loads and initializes it.
 
 ---
 
-## 23. onnxruntime-genai: ORT v1.31.0 moved the model-package entries out of the experimental API
+## 23. onnxruntime-genai: ORT v1.31.0 moved the model-package entries out of the experimental API — ALREADY FIXED UPSTREAM
+
+**Retired 2026-11-04 with the bump to v0.19.0**, whose `onnxruntime_inline.h` reads `OrtApi::GetModelPackageApi()` under `ORT_API_VERSION >= 31` itself; the patch no longer applies and was deleted. Kept for the record.
 
 `linux/scripts/patches/onnxruntime-genai/002-ort-1.31-model-package-api.patch` ·
 applied by `03-media/build/onnxruntime/build/60-build-genai.sh` on every arch and by
@@ -854,6 +858,51 @@ and fills ModelPackageApi from it; older ORT keeps the experimental lookup.
 
 **Before filing:** upstream may prefer dropping the experimental path once its minimum
 ORT reaches 1.31. Check `main` for its own port first.
+
+---
+
+## 24. onnxruntime: the MIGraphX provider leaves GridSample on the CPU
+
+`linux/scripts/patches/onnxruntime/003-migraphx-gridsample.patch` ·
+applied by `apply_ort_gpu_source_patches` (`03-media/build/onnxruntime/build/lib/common.sh`) in
+the amd and nvidia native builds · applies to **v1.31.0** and **v1.31.1** (checked 2026-11-04).
+
+MIGraphX 2.18 parses and runs ONNX `GridSample`; the provider's supported-op list does not
+name it, so every GridSample falls back to the CPU and the graph is cut around it. On
+`deim_dfine_n_coco` that makes five partitions, one of them a lone Slice + Reshape whose output
+is the strided view of entry 25. With the one-line addition the model is a single partition.
+Proved only by reading: the pure MIGraphX run of the whole graph matches the CPU
+(BACKLOG CON225); the first rocm chain with the patch proves the provider path.
+
+**PR message**
+
+```
+[MIGraphX EP] Add GridSample to the supported operators
+
+MIGraphX parses GridSample, but the EP's op list omits it, so the op falls
+back to the CPU and splits deformable-attention models into partitions.
+```
+
+---
+
+## 25. onnxruntime: the MIGraphX provider binds a strided output onto a dense buffer
+
+`linux/scripts/patches/onnxruntime/004-migraphx-refuse-nonstandard-output.patch` ·
+applied with entry 24 · applies to **v1.31.0** and **v1.31.1**.
+
+The compute function binds each `#output_N` program parameter to ORT's output tensor with
+MIGraphX's shape. When MIGraphX returns an output as a strided view (lens `[8, 16, 40, 40]`,
+strides `[32000, 2000, 40, 1]` for a Slice + Reshape partition), ORT reads the bytes as dense and
+the write overruns the buffer: wrong detections that drift between runs, deterministic with
+`enable_mem_pattern=False`, unchanged by `HIP_LAUNCH_BLOCKING`. Measured 2026-11-04 on an RX
+9070 XT with v1.31.0 and MIGraphX 2.18.0; emulating the strided write reproduces ORT's tensor to
+6e-6 (BACKLOG CON225). The patch refuses such an output with a clear message instead of
+corrupting memory. The C++ API exposes no way to append `contiguous` to a parsed program, so
+the real fix belongs upstream: copy a non-standard output through a contiguous buffer, or
+compile the subgraph with standard outputs.
+
+**File as an issue with the guard as the first PR.** The report carries the model, the
+partition's `.mxr` and the emulation.
 
 ---
 

@@ -486,8 +486,9 @@ The first local cross gpu stage took 35 min on 2026-10-28, +~5 GB of debs; with 
 
 > **On in every amd64 nvidia build, and never in `:latest` or `:latest-rocm`.** Since
 > 2026-10-07 an nvidia chain on an amd64 build platform sets `ENABLE_DEEPSTREAM=true` itself
-> (`stage-defs.sh`), and `ENABLE_DEEPSTREAM=false` opts one run out. An arm64 nvidia build gets
-> no default, because DeepStream has no route there yet. A default or rocm chain refuses the
+> (`stage-defs.sh`), and `ENABLE_DEEPSTREAM=false` opts one run out. The arm64 target takes the
+> same flag once its SBSA libraries are staged (§ [DeepStream on arm64 (SBSA)](#deepstream-on-arm64-sbsa));
+> unstaged, its media stage gets `false` and says so. A default or rocm chain refuses the
 > flag. The owner allowed publishing it on 2026-10-01 (§ [Licence](#licence-the-owner-decision))
 > and chose the full TensorRT 10 builder resources on 2026-10-07, so the image keeps every GPU
 > generation, the RTX 2080's sm_75 included. Tracked as CON42 in [`BACKLOG.md`](../BACKLOG.md).
@@ -503,6 +504,37 @@ Ubuntu 24.04 GStreamer 1.24 that NVIDIA targets.
 CROSS_VARIANT=nvidia bash linux/scripts/build-cross-chain.sh \
   --target-arches amd64 --parallel-archs --log-dir ./logs/build-logs/nvidia
 ```
+
+### DeepStream on arm64 (SBSA)
+
+In source since 2026-11-04 (CON42 phase 7), unproved until the first nvidia arm64 chain. NVIDIA
+publishes no SBSA DeepStream package: the arm64 release asset is Jetson's
+`deepstream-binaries-aarch64_<ver>_arm64.deb` (`DEEPSTREAM_BINARIES_ARM64_SHA256`), which leaves
+`libnvbufsurface`, `libnvbufsurftransform` and `libnvdsbufferpool` to L4T. Their SBSA builds, which
+need only `libEGL.so.1` and `libcuda.so.1`, exist in one place: `/usr/lib/aarch64-linux-gnu/tegra` of
+NVIDIA's SBSA container (`DEEPSTREAM_SBSA_IMAGE`, pinned by digest; read 2026-11-04). The route:
+
+1. `bash linux/scripts/05-frameworks/stage-deepstream-sbsa.sh` on the build host copies the three
+   files and `LicenseAgreement.pdf` out of that digest into `linux/deepstream-sbsa/` (ignored by
+   Git but for its README) and checks them against `DEEPSTREAM_SBSA_*_SHA256`. `--check` re-verifies.
+2. The media stage mounts the directory read-only. `ds_arch_problem arm64` refuses a missing file
+   or other bytes; with the three present the Jetson `.deb` is unpacked and overlaid with them.
+3. TensorRT 10 comes from the same CUDA repo's `sbsa` path (`DEEPSTREAM_TRT_*_ARM64_SHA256`), into
+   the same private prefix as on amd64.
+4. The components cross-compile: the target toolchain from `setup_linux_cross_env` replaces each
+   Makefile's `g++`/`gcc`/`cc` while keeping its kind, `TARGET_DEVICE=aarch64` overrides the
+   Makefiles' `gcc -dumpmachine`, nvcc gets `-ccbin` and `--target-directory=sbsa-linux` from the
+   gpu stage's `cross-target.env`, and `/usr/local/cuda-<ver>-sbsa-linux` is a view (host `bin`,
+   target `include` and `lib64`) so the Makefiles' hard-coded CUDA paths link the target's
+   libraries. The REST server's dependencies take `append_cmake_cross_args`.
+5. The build stage runs the file gates only and defers the loader and registration gates to the
+   package stage, which runs natively under QEMU and repeats every gate; `nvv4l2decoder` and the
+   libv4l2 plugin are amd64's, so the SBSA route registers eight elements and decodes in software
+   unless a host injects NVDEC.
+
+The chain gates the flag per arch (`deepstream_arch_supported`, `build-helpers.sh`): amd64 always,
+arm64 only with the three files staged. Licence: the three libraries ship under the DeepStream
+licence the container carries beside them; the owner approved staging them on 2026-11-04.
 
 ### What ships
 

@@ -2,8 +2,8 @@
 # Media libraries layer; cache-id keying: docs/build-cache-tiers.md#13-cache-mount-ids-and-source-checkouts
 
 # Safety-net defaults; the orchestrator passes versions.env values via append_version_build_args.
-ARG ONNXRUNTIME_VERSION="v1.31.0"
-ARG ONNXRUNTIME_GENAI_VERSION="v0.17.0"
+ARG ONNXRUNTIME_VERSION="v1.31.1"
+ARG ONNXRUNTIME_GENAI_VERSION="v0.19.0"
 ARG LITERT_VERSION="v2.3.0"
 ARG OPENCV_VERSION="5.0.0"
 ARG GSTREAMER_VERSION="1.29.2"
@@ -236,7 +236,7 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=
     fi; \
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
-# The patches mount carries the ORT v1.31.0 model-package port and the riscv64 target_platform patch (docs/gen1-riscv64-genai.md).
+# The patches mount carries the riscv64 target_platform patch (docs/gen1-riscv64-genai.md).
 LABEL kataglyphis.step=onnxruntime-genai
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/onnxruntime-genai,target=/opt/scripts/patches/onnxruntime-genai,readonly \
@@ -327,8 +327,8 @@ ARG TARGET_ARCH
 
 ARG LITERT_VERSION
 ARG LITERT_OUTPUT_DIR=/usr/local
-ARG LITERTJS_VERSION=2.5.3
-ARG MEDIAPIPE_GENAI_VERSION=0.10.29
+ARG LITERTJS_VERSION=2.6.0
+ARG MEDIAPIPE_GENAI_VERSION=0.10.30
 
 # Every install-deps RUN mounts exactly cross-env.sh's source closure, so build-script edits don't re-pay the apt layer.
 LABEL kataglyphis.step=litert-deps
@@ -478,7 +478,7 @@ ARG TARGET_ARCH
 # Without these ARGs the source build ignores versions.env and riscv64 cannot follow a pin bump.
 ARG PYTORCH_VERSION=v2.14.1
 ARG TORCHVISION_VERSION=v0.29.1
-ARG IREE_VERSION=v3.12.0
+ARG IREE_VERSION=v3.13.0
 # 1 builds the riscv64 torch twin here; the final RUN's store check reads the same knob.
 ARG FT_TORCH_TWIN=1
 
@@ -620,7 +620,7 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target
 FROM ffmpeg AS pyav
 # Stage-scoped so the ${TARGET_ARCH} mount ids below expand per lane.
 ARG TARGET_ARCH
-ARG PYAV_VERSION=19.0.1
+ARG PYAV_VERSION=19.0.2
 
 ENV PYAV_VERSION=${PYAV_VERSION}
 
@@ -836,6 +836,7 @@ LABEL kataglyphis.step=deepstream
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/05-frameworks/deepstream.sh,target=/opt/scripts/05-frameworks/deepstream.sh,readonly \
     --mount=type=bind,source=linux/scripts/05-frameworks/deepstream-verify.sh,target=/opt/scripts/05-frameworks/deepstream-verify.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/deepstream-sbsa,target=/opt/deepstream-sbsa,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/deepstream,sharing=locked,id=deepstream-downloads-${TARGET_ARCH} \
@@ -867,7 +868,7 @@ ARG GSTREAMER_PREFIX=/opt/gstreamer
 ARG FFMPEG_PREFIX=/opt/ffmpeg
 ARG LIBCAMERA_PREFIX=/opt/libcamera
 ARG GCC_VERSION=16.2.0
-ARG PYTHON_VERSION=3.15.0
+ARG PYTHON_VERSION=3.15.2
 # Derived: versions.env only defines PYTHON_VERSION.
 ARG PYTHON_MAJOR_MINOR=${PYTHON_VERSION%.*}
 

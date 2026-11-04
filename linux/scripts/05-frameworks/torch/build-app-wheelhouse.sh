@@ -57,7 +57,7 @@ unset _evf
 source "$(dirname "${BASH_SOURCE[0]}")/torch-source-pins.sh"
 resolve_torch_source_refs
 # The fallback only matters without versions.env.
-: "${IREE_REF:=${IREE_VERSION:-v3.12.0}}"
+: "${IREE_REF:=${IREE_VERSION:-v3.13.0}}"
 : "${PYTORCH_HOST_INDEX_URL:=https://download.pytorch.org/whl/cpu}"
 : "${DEFAULT_PYPI_INDEX_URL:=https://pypi.org/simple}"
 
