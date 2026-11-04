@@ -1737,7 +1737,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       runner below `min-free-gb` before the pull, and a repository's `retry-disk-refusal.yml` re-runs that job only
       ([README](.github/actions/README.md#retry-disk-refusal)). Wired: the hub, WebDavClient, OmniAccelerANT. Left: copy
       it into every other repository whose lanes use the action, with their lane names, and read one real 72 GB draw
-      retrying. Without the copy a refusal is loud and stays red. The fix for the size itself: CON223.
+      retrying. Real re-run proved on a forced refusal (run 41745244593). Without the copy a refusal is loud and stays red. The fix for the size itself: CON223.
 
 - [ ] **CON223 — a smaller Linux image for lanes that need no toolchain** [L, ★★]. Chain work. `:latest` takes about
       72 GB unpacked, so a 72 GB `ubuntu-26.04` runner cannot hold it and a job: WebDavClient run 41731774668 and
