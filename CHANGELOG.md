@@ -13,6 +13,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-04 — The disk-refusal retry reaches the AI repositories
+
+- CON216: AccelerANTgine, OrchestrANT and OxidANT carry `retry-disk-refusal.yml`. Only reading a real run the wiring
+  retried remains open.
+
 ## 2026-11-04 — The test model embeds
 
 - `tiny-genai-model.py --hidden-states` adds the `hidden_states` output GenAI's model builder writes for

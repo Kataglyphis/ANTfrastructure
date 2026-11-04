@@ -1733,11 +1733,13 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the next image and verify the secret-scan gate without network access on each
       supported image architecture. This observation does not establish that the online
       bootstrap fails or describe the current mutable registry tag.
-- [ ] **CON216 — wire the disk-refusal retry into the remaining lanes** [S, ★★]. `prepare-linux-ci-host` refuses a
-      runner below `min-free-gb` before the pull, and a repository's `retry-disk-refusal.yml` re-runs that job only
-      ([README](.github/actions/README.md#retry-disk-refusal)). Wired: the hub, WebDavClient, OmniAccelerANT. Left: copy
-      it into every other repository whose lanes use the action, with their lane names, and read one real 72 GB draw
-      retrying. Real re-run proved on a forced refusal (run 41745244593). Without the copy a refusal is loud and stays red. The fix for the size itself: CON223.
+- [ ] **CON216 — read one real 72 GB draw retrying** [S, ★★]. `prepare-linux-ci-host` refuses a runner below
+      `min-free-gb` before the pull, and each repository's `retry-disk-refusal.yml` re-runs that job only
+      ([README](.github/actions/README.md#retry-disk-refusal)). Wired: the hub, WebDavClient, OmniAccelerANT, OrchestrANT,
+      OxidANT, AccelerANTgine. Real re-run proved on a forced refusal (run 41745244593). Real refusals without a wired retry:
+      AccelerANTgine run 41760439020 (19G, before its wiring, re-run by hand); OxidANT run 41766478046 (20G, created before
+      its wiring landed, ended after it, and no retry fired). Left: name a run the wiring itself retried.
+      The fix for the size itself: CON223.
 
 - [ ] **CON223 — a smaller Linux image for lanes that need no toolchain** [L, ★★]. Chain work. `:latest` takes about
       72 GB unpacked, so a 72 GB `ubuntu-26.04` runner cannot hold it and a job: WebDavClient run 41731774668 and
