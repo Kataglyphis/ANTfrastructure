@@ -495,6 +495,7 @@ wheels = [
 
 [[package]]
 name = "sphinx-kataglyphis-theme"
+version = "0.1.0"
 source = { editable = "../third_party/DocumANTation/sphinx-kataglyphis-theme" }
 dependencies = [
     { name = "myst-parser" },
