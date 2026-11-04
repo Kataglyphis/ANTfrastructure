@@ -33883,8 +33883,8 @@
  {
   "id": "agents-drift.hub-scope",
   "target": "linux/scripts/verify_agents_drift.py",
-  "find": "        findings = grade(root, HUB, gate_scope.is_hub(root, HUB))",
-  "replace": "        findings = grade(root, HUB, False)",
+  "find": "        findings = grade(root, args.hub, gate_scope.is_hub(root, HUB))",
+  "replace": "        findings = grade(root, args.hub, False)",
   "test": "bash linux/scripts/tests/test-agents-drift.sh hub",
   "why": "the hub's rulebook has no numbered sections to hold"
  },

@@ -20,6 +20,8 @@
   through the wheel. The default model keeps its bytes. LAI-O5 is done in OxidANT
   ([contract](docs/language-ai.md#the-text-contract)).
 - LAI-O4 is done in OxidANT: ObservANT's `/ask` and `/summary` read the visit log's figures.
+- `verify_agents_drift.py --hub` names the hub to read. `test-agents-drift.sh` uses it with a fixed page, because
+  its cases read `language-ai.md`'s real rows and turned red when LAI-O4 and LAI-O5 closed.
 - `language-ai.md`: multilingual-e5-small and bge-m3 are BERT and XLM-Roberta, which GenAI 0.17's model
   builder does not export, so today they reach an app through an endpoint only.
 

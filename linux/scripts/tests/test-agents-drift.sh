@@ -10,6 +10,19 @@ PY="${PREFLIGHT_PYTHON:-python3}"
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 
+# The roadmap's real rows close as work ships, so the cases read a fixed page instead.
+_hub="${_work}/fixed-hub"
+mkdir -p "${_hub}/docs" "${_hub}/shared/templates"
+cp "${HUB_ROOT}/shared/templates/AGENTS.md.template" "${_hub}/shared/templates/"
+cat > "${_hub}/docs/language-ai.md" <<'MD'
+| ID | Work | Repo |
+| LAI-O1 | Done 2026-10-30. | OxidANT |
+| LAI-O4 | ObservANT work. | OxidANT |
+| 2 NLP | LAI-O5, LAI-P3 | work |
+| LAI-A4 | Another letter. | AccelerANTgine |
+MD
+_gate() { "${PY}" "${GATE}" --hub "${_hub}" "$@"; }
+
 _clean="${_work}/template/OxidANT"
 mkdir -p "${_clean}/.github/workflows" "${_clean}/guide" "${_clean}/pkg" "${_clean}/crates/alpha/src" "${_clean}/Src/mod" "${_clean}/packages/dartish"
 cat > "${_clean}/AGENTS.md" <<'MD'
@@ -49,7 +62,7 @@ git -C "${_clean}" -c core.autocrlf=false add -A
 long="$(printf 'r%.0s' {1..41})"
 # _copy: a fresh mutable copy of the clean consumer; the index comes with it, so a new file needs `git add`.
 _copy() { local d; d="$(mktemp -d "${_work}/copy.XXXXXX")"; cp -a "${_clean}/." "${d}/"; printf '%s' "${d}"; }
-_grade() { "${PY}" "${GATE}" --root "$1"; }
+_grade() { _gate --root "$1"; }
 _add() { git -C "$1" add -A; }
 # _red <dir> <check> <text>: the gate must exit 1 and print that check and text.
 _red() {
@@ -62,7 +75,7 @@ _red() {
 _group_basic() {
 t_case "a consumer that names everything is green, and its JSON says 0"
 t_assert_eq 0 "$(t_rc _grade "${_clean}")" "the clean fixture"
-"${PY}" "${GATE}" --root "${_clean}" --json "${_work}/ok.json" >/dev/null
+_gate --root "${_clean}" --json "${_work}/ok.json" >/dev/null
 t_assert_eq 0 "$("${PY}" -c 'import json,sys; print(json.load(open(sys.argv[1]))["totals"]["findings"])' "${_work}/ok.json")" "totals.findings on a clean tree"
 }
 
@@ -171,7 +184,7 @@ PYEOF
 _group_json() {
 t_case "the JSON counts findings per check, and carries the rows quality-report reads"
 d="$(_copy)"; printf 'name: new\n' > "${d}/.github/workflows/new.yml"; _add "${d}"; printf -- '- LAI-O4\n' > "${d}/BACKLOG.md"
-"${PY}" "${GATE}" --root "${d}" --json "${_work}/bad.json" >/dev/null
+_gate --root "${d}" --json "${_work}/bad.json" >/dev/null
 t_assert_eq "2 1 AGENTS.md" "$("${PY}" -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["totals"]["findings"], d["totals"]["checks"]["backlog-lai"], d["items"][0]["path"])' "${_work}/bad.json")" "totals and items"
 }
 

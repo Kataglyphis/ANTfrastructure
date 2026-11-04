@@ -341,10 +341,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Hold AGENTS.md, the docs build list and BACKLOG.md to the tree.")
     ap.add_argument("--root", default=None, help="the repository to grade (default: this repo)")
     ap.add_argument("--json", default=None, metavar="PATH", help="also write the findings as JSON")
+    ap.add_argument("--hub", default=HUB, help="the hub whose template and language-AI page apply (default: this one)")
     args = ap.parse_args()
     try:
         root = gate_scope.resolve_root(args.root, HUB)
-        findings = grade(root, HUB, gate_scope.is_hub(root, HUB))
+        findings = grade(root, args.hub, gate_scope.is_hub(root, HUB))
     except (gate_scope.ScopeError, OSError) as exc:
         sys.stderr.write(f"agents drift: {exc}\n")
         return 2
