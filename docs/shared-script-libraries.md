@@ -1006,7 +1006,7 @@ or scenes a data lock pins, checked by SHA-256, through a cache; CMake reaches i
 
 ### `lib/tiny-genai-model.py`
 
-`python3 -I tiny-genai-model.py --out DIR [--check]`: a GenAI model of a few hundred KB whose greedy
+`python3 -I tiny-genai-model.py --out DIR [--check] [--hidden-states]`: a GenAI model of a few hundred KB whose greedy
 output is known, so a binding test needs no model file. `fixture.json` beside it is the oracle the
 tests read; `--check` decodes it through the installed `onnxruntime_genai` and exits 2 where there is
 none. The model, and what the stdlib suite cannot prove:

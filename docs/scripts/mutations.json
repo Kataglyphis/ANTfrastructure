@@ -20516,6 +20516,30 @@
   "why": "a binding test decodes from the highest UTF-8 continuation byte to the end token, 65 tokens after a two-token prompt"
  },
  {
+  "id": "lib.tiny-genai-hidden-row",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "return [float((token >> shift & 3) + 1) for shift in range(2 * (HEAD_SIZE - 1), -2, -2)]",
+  "replace": "return [float(token + 1)] * HEAD_SIZE",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "rows that all point the same way normalise to one vector, so every text would embed alike and a binding's pooling could not fail"
+ },
+ {
+  "id": "lib.tiny-genai-hidden-output",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "_len(12, _value_info(\"hidden_states\", FLOAT, [\"batch\", \"sequence\", HEAD_SIZE])),",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "without the declared graph output GenAI answers that hidden_states was not found, and every embedding test of a consumer goes red"
+ },
+ {
+  "id": "lib.tiny-genai-hidden-check",
+  "target": "linux/scripts/lib/tiny-genai-model.py",
+  "find": "            problems.append(f\"hidden_states pooled to {embedding}, expected {oracle['embedding']}\")",
+  "replace": "            pass",
+  "test": "bash linux/scripts/tests/test-tiny-genai-model.sh",
+  "why": "the check mode must grade the pooled output against the oracle, not merely read it"
+ },
+ {
   "id": "lib.genai-smoke-tiny-mismatch",
   "target": "linux/scripts/06-packaging/smoke-common.sh",
   "find": "        fails.extend(f\"tiny model: {problem}\" for problem in tiny_problems)",

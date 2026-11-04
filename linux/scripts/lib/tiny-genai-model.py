@@ -7,8 +7,10 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import math
 import struct
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 FLOAT, INT64 = 1, 7
@@ -71,7 +73,29 @@ def successor(token: int) -> int:
     return min(token + 1, EOS_ID)
 
 
-def model_bytes() -> bytes:
+def hidden_row(token: int) -> list[float]:
+    """A token's hidden state: its base-4 digits plus one, so no two byte tokens point the same way by accident."""
+    return [float((token >> shift & 3) + 1) for shift in range(2 * (HEAD_SIZE - 1), -2, -2)]
+
+
+def unit_mean(rows: Sequence[Sequence[float]]) -> list[float]:
+    """The mean of `rows`, scaled to unit length: what an embedding is here."""
+    mean = [sum(column) / len(rows) for column in zip(*rows, strict=True)]
+    norm = math.sqrt(sum(value * value for value in mean))
+    return [value / norm for value in mean]
+
+
+def hidden_graph() -> bytes:
+    """The extra graph fields of an export with `include_hidden_states`: one more output, `[batch, sequence, hidden]`."""
+    table = struct.pack(f"<{VOCAB * HEAD_SIZE}f", *(v for token in range(VOCAB) for v in hidden_row(token)))
+    return b"".join((
+        _len(1, _node("Gather", ["hidden_table", "input_ids"], "hidden_states")),
+        _len(5, _tensor("hidden_table", [VOCAB, HEAD_SIZE], FLOAT, table)),
+        _len(12, _value_info("hidden_states", FLOAT, ["batch", "sequence", HEAD_SIZE])),
+    ))
+
+
+def model_bytes(hidden_states: bool = False) -> bytes:
     """The decoder: logits pick each token's successor; the KV cache grows by one embedding per token."""
     logits = bytearray()
     for row in range(VOCAB):
@@ -96,6 +120,7 @@ def model_bytes() -> bytes:
         _len(12, _value_info("logits", FLOAT, ["batch", "sequence", VOCAB])),
         _len(12, _value_info("present.0.key", FLOAT, present)),
         _len(12, _value_info("present.0.value", FLOAT, present)),
+        hidden_graph() if hidden_states else b"",
     ))
     opset = _len(1, "") + _int(2, OPSET)
     return _int(1, IR_VERSION) + _len(2, "tiny-genai-model") + _len(7, graph) + _len(8, opset)
@@ -109,7 +134,7 @@ def byte_symbols() -> list[str]:
     return [symbols.get(b) or next(extra) for b in range(BYTE_TOKENS)]
 
 
-def genai_config(context: int) -> dict[str, object]:
+def genai_config(context: int, hidden_states: bool = False) -> dict[str, object]:
     """GenAI's config for the decoder, greedy by default."""
     decoder = {
         "filename": "model.onnx",
@@ -119,7 +144,8 @@ def genai_config(context: int) -> dict[str, object]:
         "inputs": {"input_ids": "input_ids", "attention_mask": "attention_mask",
                    "past_key_names": "past_key_values.%d.key", "past_value_names": "past_key_values.%d.value"},
         "outputs": {"logits": "logits",
-                    "present_key_names": "present.%d.key", "present_value_names": "present.%d.value"},
+                    "present_key_names": "present.%d.key", "present_value_names": "present.%d.value",
+                    **({"hidden_states": "hidden_states"} if hidden_states else {})},
     }
     model = {"type": "llama", "bos_token_id": EOS_ID, "eos_token_id": EOS_ID, "pad_token_id": EOS_ID,
              "vocab_size": VOCAB, "context_length": context, "decoder": decoder}
@@ -149,7 +175,7 @@ def tokenizer() -> tuple[dict[str, object], dict[str, object]]:
     return tok, config
 
 
-def write(out: Path) -> dict[str, object]:
+def write(out: Path, hidden_states: bool = False) -> dict[str, object]:
     """Write the model directory and return the oracle every binding test reads."""
     out.mkdir(parents=True, exist_ok=True)
     prompt_ids = list(PROMPT.encode())
@@ -160,11 +186,13 @@ def write(out: Path) -> dict[str, object]:
     oracle = {"prompt": PROMPT, "prompt_ids": prompt_ids, "continuation": CONTINUATION,
               "continuation_ids": expected_ids, "max_length": len(prompt_ids) + len(expected_ids),
               "eos_token_id": EOS_ID}
-    files = {"genai_config.json": genai_config(CONTEXT), "tokenizer.json": tok,
+    if hidden_states:
+        oracle["embedding"] = unit_mean([hidden_row(byte) for byte in PROMPT.encode()])
+    files = {"genai_config.json": genai_config(CONTEXT, hidden_states), "tokenizer.json": tok,
              "tokenizer_config.json": tok_config, "fixture.json": oracle}
     for name, data in files.items():
         (out / name).write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-    (out / "model.onnx").write_bytes(model_bytes())
+    (out / "model.onnx").write_bytes(model_bytes(hidden_states))
     return oracle
 
 
@@ -195,6 +223,12 @@ def check(out: Path) -> list[str]:
     chat = tok.apply_chat_template(messages, add_generation_prompt=False)
     if chat != oracle["prompt"]:
         problems.append(f"the chat template gave {chat!r}, expected {oracle['prompt']!r}")
+    if "embedding" in oracle:
+        embedder = og.Generator(model, params)
+        embedder.append_tokens(prompt_ids)
+        embedding = unit_mean(embedder.get_output("hidden_states")[0])
+        if not all(math.isclose(a, b, abs_tol=1e-6) for a, b in zip(embedding, oracle["embedding"], strict=True)):
+            problems.append(f"hidden_states pooled to {embedding}, expected {oracle['embedding']}")
     return problems
 
 
@@ -203,8 +237,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True, type=Path, help="model directory to write")
     parser.add_argument("--check", action="store_true", help="then greedy-decode it with onnxruntime_genai")
+    parser.add_argument("--hidden-states", action="store_true", help="add the hidden_states output embeddings read")
     args = parser.parse_args()
-    oracle = write(args.out)
+    oracle = write(args.out, args.hidden_states)
     if not args.check:
         print(json.dumps(oracle))
         return 0

@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest import mock
 
 GENERATOR = pathlib.Path(sys.argv.pop(1)).resolve()
@@ -154,6 +154,98 @@ class TinyGenaiModel(unittest.TestCase):
         else:
             self.assertEqual(0, run.returncode, run.stderr)
             self.assertIn("TINY-GENAI OK: 'abc' -> 'defg'", run.stdout)
+
+
+class FakeGenerator:
+    """Just enough of GenAI's generator for the check mode: the successor rule and chosen hidden rows."""
+
+    def __init__(self, rows: list[list[float]]) -> None:
+        self.rows, self.last = rows, 0
+
+    def append_tokens(self, tokens: list[int]) -> None:
+        self.last = tokens[-1]
+
+    def is_done(self) -> bool:
+        return self.last >= ord("g")
+
+    def generate_next_token(self) -> None:
+        self.last += 1
+
+    def get_next_tokens(self) -> list[int]:
+        return [self.last]
+
+    def get_output(self, name: str) -> list[list[list[float]]]:
+        if name != "hidden_states":
+            raise AssertionError(name)
+        return [self.rows]
+
+
+def fake_genai(rows: list[list[float]]) -> SimpleNamespace:
+    """A stand-in `onnxruntime_genai` answering every decode correctly and pooling from `rows`."""
+    tokenizer = mock.Mock()
+    tokenizer.encode = lambda text: list(text.encode())
+    tokenizer.decode = lambda tokens: bytes(tokens).decode()
+    tokenizer.apply_chat_template = lambda messages, add_generation_prompt: json.loads(messages)[0]["content"]
+    return SimpleNamespace(
+        Model=lambda path: path,
+        Tokenizer=lambda model: tokenizer,
+        GeneratorParams=lambda model: mock.Mock(),
+        Generator=lambda model, params: FakeGenerator(rows),
+    )
+
+
+class HiddenStates(unittest.TestCase):
+    def setUp(self) -> None:
+        self.gen = load()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.out = pathlib.Path(self.tmp.name) / "model"
+        self.oracle = self.gen.write(self.out, hidden_states=True)
+        (self.graph,) = get((self.out / "model.onnx").read_bytes(), 7)
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_the_oracle_is_the_unit_mean_of_the_prompts_rows(self) -> None:
+        # 97, 98 and 99 in base 4 plus one; their mean is [2, 3, 1, 3], of length sqrt(23).
+        self.assertEqual([2.0, 3.0, 1.0, 2.0], self.gen.hidden_row(97))
+        for got, want in zip(self.oracle["embedding"], (2, 3, 1, 3), strict=True):
+            self.assertAlmostEqual(want / 23 ** 0.5, got)
+
+    def test_the_graph_outputs_a_table_row_per_token(self) -> None:
+        nodes = [(text(n, 4), [v.decode() for v in get(n, 1)], text(n, 2)) for n in get(self.graph, 1)]
+        self.assertIn(("Gather", ["hidden_table", "input_ids"], "hidden_states"), nodes)
+        self.assertIn("hidden_states", [text(v, 1) for v in get(self.graph, 12)])
+        table = {text(t, 8): t for t in get(self.graph, 5)}["hidden_table"]
+        vocab, size = self.gen.VOCAB, self.gen.HEAD_SIZE
+        self.assertEqual([vocab, size], get(table, 1))
+        (raw,) = get(table, 9)
+        rows = struct.unpack(f"<{vocab * size}f", raw)
+        self.assertEqual(self.gen.hidden_row(98), list(rows[98 * size:99 * size]))
+
+    def test_no_two_byte_tokens_share_a_row(self) -> None:
+        rows = {tuple(self.gen.hidden_row(byte)) for byte in range(self.gen.BYTE_TOKENS)}
+        self.assertEqual(self.gen.BYTE_TOKENS, len(rows))
+
+    def test_the_config_names_the_output(self) -> None:
+        config = json.loads((self.out / "genai_config.json").read_text(encoding="utf-8"))
+        self.assertEqual("hidden_states", config["model"]["decoder"]["outputs"]["hidden_states"])
+
+    def test_the_plain_model_has_neither_the_output_nor_the_oracle_field(self) -> None:
+        plain = pathlib.Path(self.tmp.name) / "plain"
+        oracle = self.gen.write(plain)
+        self.assertNotIn("embedding", oracle)
+        (graph,) = get((plain / "model.onnx").read_bytes(), 7)
+        self.assertNotIn("hidden_states", [text(v, 1) for v in get(graph, 12)])
+        config = json.loads((plain / "genai_config.json").read_text(encoding="utf-8"))
+        self.assertNotIn("hidden_states", config["model"]["decoder"]["outputs"])
+
+    def test_the_check_mode_grades_the_pooled_output(self) -> None:
+        good = [self.gen.hidden_row(byte) for byte in b"abc"]
+        with mock.patch.object(self.gen.importlib, "import_module", return_value=fake_genai(good)):
+            self.assertEqual([], self.gen.check(self.out))
+        with mock.patch.object(self.gen.importlib, "import_module", return_value=fake_genai([[1.0, 0.0, 0.0, 0.0]])):
+            (problem,) = self.gen.check(self.out)
+        self.assertIn("hidden_states pooled to", problem)
 
 
 if __name__ == "__main__":

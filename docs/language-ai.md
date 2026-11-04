@@ -51,8 +51,11 @@ Every binding (C++, C, Rust, Python, Dart) offers the same calls against two bac
 `seed`, `json_schema` and stop strings work in AccelerANTgine (C++, the C ABI, Python, its CLI), OxidANT
 (local and endpoint backends, its CLI, the Flutter bridge) and OrchestrANT (`GenerationOptions`,
 `orchestrant-chat`, `orchestrant-serve`), and the OmniAccelerANT playground sends them through OxidANT's
-bridge. `json_schema` answers the unsupported error on Windows, where GenAI builds without guidance. Only
-the endpoint backends embed; GenAI's embeddings arrive with LAI-O5.
+bridge. `json_schema` answers the unsupported error on Windows, where GenAI builds without guidance.
+
+GenAI has no embedding call. An `embed` in process reads the `hidden_states` output of a decoder exported
+with `include_hidden_states=true`, takes the mean over the text's tokens and scales it to unit length.
+OxidANT does this; a model directory without that output answers its own error, which names the option.
 
 Each failure has its own error and is never an empty answer: model not found, invalid model
 directory, execution provider unavailable, `json_schema` unsupported on this lane, endpoint
@@ -106,6 +109,8 @@ app that ships the model carry them out.
 
 German and English are required, which is why the chat and embedding models are multilingual.
 Each licence and each model's support in the pinned GenAI release is checked before its export.
+The two embedding models are BERT and XLM-Roberta, which the model builder of GenAI 0.17 does not
+export, so today they reach an app through an endpoint only.
 
 ## The test model
 
@@ -122,6 +127,11 @@ Each licence and each model's support in the pinned GenAI release is checked bef
 
 `--check` decodes the model through the installed `onnxruntime_genai`: exit 0 when tokens, decoded
 text and chat template match, 1 on a mismatch, 2 when the wheel is absent.
+
+`--hidden-states` adds a `hidden_states` output, `[batch, sequence, 4]`, as an export with
+`include_hidden_states=true` has it. Each byte token's row is its base-4 digits plus one, and
+`fixture.json` gains `embedding`, the unit-length mean of the prompt's rows. `--check` then pools
+that output too.
 
 **Proven 2026-10-30** on the published index `7d4d4129` (amd64): the Python wheel and a C17 program
 against `ort_genai_c.h` (GCC 16.2, `-Wall -Werror`) both decode `defg`. `test-tiny-genai-model.sh`
@@ -168,7 +178,8 @@ Every item is open until its row says otherwise. Each repository's backlog names
 
 | Milestone | IDs | Work |
 |---|---|---|
-| 2 NLP and search | LAI-O5, LAI-P3, LAI-P4 | Embeddings in OxidANT; the NAS document AI; classification, entities, summaries and translation between German and English with a JSON schema. |
+| 2 NLP and search | LAI-O5 | Embeddings in OxidANT. Done 2026-11-04: `GenaiGenerator::embed`, the CLI's `embed --model-dir` and the bridge's `text_embed`, proven on the test model's `hidden_states`; no released model has that output yet. |
+| 2 NLP and search | LAI-P3, LAI-P4 | The NAS document AI; classification, entities, summaries and translation between German and English with a JSON schema. |
 | 3 Speech | LAI-A4, LAI-F4 | A GStreamer audio appsink and Whisper captions as `textoverlay` and WebRTC data; microphone input in the app. |
 | 4 Language meets vision | LAI-O4, LAI-P5, LAI-F5 | ObservANT's `/ask` and a daily summary over `/visits`; `yolo-monitor --describe`; questions on the Stream page. |
 | 5 Extensions | LAI-H6 and spikes | GenAI for Android; HailoRT GenAI on Hailo-10H; QNN in process; a tool-calling agent over OrchestrANT's metrics; speech output. |
