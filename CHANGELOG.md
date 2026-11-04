@@ -19,6 +19,7 @@
   `include_hidden_states=true`, and `fixture.json` gains the oracle's `embedding`; `--check` pools the output
   through the wheel. The default model keeps its bytes. LAI-O5 is done in OxidANT
   ([contract](docs/language-ai.md#the-text-contract)).
+- LAI-O4 is done in OxidANT: ObservANT's `/ask` and `/summary` read the visit log's figures.
 - `language-ai.md`: multilingual-e5-small and bge-m3 are BERT and XLM-Roberta, which GenAI 0.17's model
   builder does not export, so today they reach an app through an endpoint only.
 
