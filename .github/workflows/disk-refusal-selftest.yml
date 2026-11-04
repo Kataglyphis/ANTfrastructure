@@ -1,11 +1,11 @@
-# With prove on, the first job is refused on attempt 1 and passes on 2, and the second fails and must keep attempt 1's runner; a run with it off leaves the develop-red watch green.
+# With prove on, off develop, the first job is refused on attempt 1 and passes on 2, and the second fails and must keep attempt 1's runner; develop stays green because the develop-red watch reads a dispatch there as red.
 name: CI · disk refusal self-test
 
 on:
   workflow_dispatch:
     inputs:
       prove:
-        description: Refuse once and fail once, so the retry can be read
+        description: Refuse once and fail once, so the retry can be read; ignored on develop
         type: boolean
         default: false
 
@@ -27,15 +27,14 @@ jobs:
           image: hello-world:latest
           checkout: 'false'
           free-disk-space: 'false'
-          min-free-gb: ${{ inputs.prove && github.run_attempt == 1 && '99999' || '0' }}
+          min-free-gb: ${{ inputs.prove && github.ref != 'refs/heads/develop' && github.run_attempt == 1 && '99999' || '0' }}
 
   genuine-failure:
     name: A genuine failure, never re-run
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      # Runs either way: the develop-red watch closes a red job only on that job's own pass.
       - name: Fail only when proving
         env:
-          PROVE: ${{ inputs.prove }}
+          PROVE: ${{ inputs.prove && github.ref != 'refs/heads/develop' }}
         run: test "${PROVE}" != true

@@ -47,6 +47,10 @@ ACTION="${TESTS_DIR}/../../../.github/actions/prepare-linux-ci-host/action.yml"
 t_assert_contains "$(cat "${ACTION}")" "if: steps.disk-cleanup.outputs.mode == 'true'"
 t_assert_contains "$(cat "${ACTION}")" "if: steps.disk-cleanup.outputs.mode == 'fast'"
 
+t_case "the self-test's failing proof never runs on develop, where the watch would read it as red"
+_selftest="${TESTS_DIR}/../../../.github/workflows/disk-refusal-selftest.yml"
+t_assert_eq "2" "$(grep -c -F -e "inputs.prove && github.ref != 'refs/heads/develop'" "${_selftest}")"
+
 t_case "the refusal stops the job before the pull and keeps its status"
 _order="$(grep -n -E -e 'name: (Select the disk cleanup|Start the image pull|Pull the container image|Log in to the container registry)' "${ACTION}" | head -1)"
 t_assert_contains "${_order}" "Select the disk cleanup"

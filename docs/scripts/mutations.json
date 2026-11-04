@@ -34975,5 +34975,13 @@
   "replace": "gh api -X POST \"repos/${REPO}/actions/jobs/${refused%% *}/rerun\" >/dev/null || true",
   "test": "bash linux/scripts/tests/test-retry-disk-refusal.sh",
   "why": "a refused re-run must fail the retry job, not claim it started"
+ },
+ {
+  "id": "actions.disk-refusal-proof-off-develop",
+  "target": ".github/workflows/disk-refusal-selftest.yml",
+  "find": "PROVE: ${{ inputs.prove && github.ref != 'refs/heads/develop' }}",
+  "replace": "PROVE: ${{ inputs.prove }}",
+  "test": "bash linux/scripts/tests/test-select-disk-cleanup.sh",
+  "why": "a proof on develop opens a develop-red issue that blocks every hub push; this reads the file, not a real dispatch"
  }
 ]

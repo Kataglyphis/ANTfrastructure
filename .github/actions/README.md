@@ -29,8 +29,8 @@ hub token has no write access elsewhere: copy
 `actions: write` and `checks: read`. Limits: a job that `needs` a refused job and ran anyway re-runs
 with it, and a step that prints that exact annotation itself would count as a refusal. A new runner
 may be small again; past `max-attempts` the run stays red with a warning.
-`disk-refusal-selftest.yml` with `prove` on shows it on a real run, and a run with `prove` off then
-clears the develop-red watch. Run 41745244593: attempt 2 drew a new runner for the refused job and
+`disk-refusal-selftest.yml` with `prove` on shows it on a real run. Dispatch it from a throwaway
+branch: on `develop` the input is ignored, since the develop-red watch reads a dispatch there as red. Run 41745244593: attempt 2 drew a new runner for the refused job and
 kept the genuine failure's attempt 1 runner and timestamps. Suites: `test-select-disk-cleanup.sh`,
 `test-retry-disk-refusal.sh`.
 
