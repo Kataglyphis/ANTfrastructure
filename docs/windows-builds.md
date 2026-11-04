@@ -273,7 +273,8 @@ distribution for Windows Containers) and is split into staged images:
     lower layer holds stores its name lowercased
     ([invariant](windows-build-invariants.md#a-layer-that-replaces-a-lower-layers-file-stores-its-name-lowercased)).
     A `cuda-runtime-stage` (`Copy-CudaRuntime.ps1`) FLATTENS the CUDA/cuDNN runtime DLLs into
-    `C:\runtime\cuda-runtime\bin` on PATH; without it the CUDA-linked libs (notably OpenCV, which
+    `C:\runtime\cuda-runtime\bin` on PATH, with `provenance.json` and the original licenses beside
+    `bin` ([contract](consumer-image-contract.md#native-dll-provenance)); without it the CUDA-linked libs (notably OpenCV, which
     hard-links `cudnn64_9.dll`) fail to load in this non-nvidia-based image. Then GStreamer (pin
     `GSTREAMER_VERSION`) builds via `Build-GstreamerFromSource.ps1` (Meson + clang-cl; auto-detects
     CUDA, OpenCV, ONNX and FFmpeg from the merged tree).
@@ -306,6 +307,7 @@ policy and the probe-log trap, the sccache, RDNA4 and step-log preflight gates, 
 BuildKit/containerd lane, the nerdctl lane, the classic lane's run+commit path (historical),
 mid-chain failure recovery, and the RDNA4 A/B history. Four things an agent gets wrong without it:
 
+- **Several variants in one run: `windows\Invoke-BkVariantChain.ps1`** (see [below](#several-variants-in-one-run)).
 - **There is ONE Windows driver, `Build-Buildkit.ps1`.** The classic lane was retired 2026-08-26
   and `build.ps1` DELETED 2026-08-31, for two independent structural defects, both verified;
   reviving it is a redesign, not a target-pin change. A `.\windows\build.ps1` recipe from an older
@@ -335,6 +337,25 @@ mid-chain failure recovery, and the RDNA4 A/B history. Four things an agent gets
   § Phase R).
 
 Fresh machine: § Prerequisites. Full build sequence: § Build Commands.
+
+
+## Several variants in one run
+
+`windows\Invoke-BkVariantChain.ps1 -Repository <repo> [-Variant default,nvidia,rocm] [-ConcurrentPush]` runs
+`Build-Buildkit.ps1` once per variant, in turn. Without the switch each build pushes its own tag, as a direct driver
+call does. With it, each build ends at its gates and a `-PushOnly` child uploads beside the next variant's build.
+
+- The child re-solves `final` with the build's `-BuildDate`, so the final stage, smoke gate and publish gate are cache
+  hits of the graded solve. A cache miss rebuilds and re-grades instead of pushing ungraded bytes.
+- A failed build or push fails the run, and no further variant starts. Pushes already under way may finish; an
+  interrupted run kills their process trees.
+- The child publishes no memory budget or preseed and writes no phase file: those belong to the building variant.
+  Its logs are `bk-<chain>-push-<variant>-*`, its console `bk-<chain>-push-<variant>-console.{out,err}.log`.
+- `-ConcurrentPush` takes one `-BuildArg` at most, because an array cannot cross `pwsh -File`. `-BuildOption` takes
+  only knobs that cannot change the final solve.
+
+Not covered by its suite: a real upload beside a real build. BuildKit's behaviour under that load, and whether the
+re-solve is the cache hit it should be, are read from the first chain's `final-push` log.
 
 ## The build notes AGENTS.md carried
 
@@ -1221,6 +1242,33 @@ build NNStreamer; it appeared in the old probe lists only because the lying heal
 Requiring it would fail every build forever. Wanting it means adding an NNStreamer source-build
 stage.
 
+**`vpx` joined the contract on 2026-11-04 (CON183), fourteen entries.** gst-plugins-good reaches libvpx only
+through `subprojects/vpx.wrap`'s `[provide]`. Wrap provisioning deletes each git wrap it extracts, so `auto`
+skipped the plugin silently. `Install-GstVpxWrap` replaces the wrap with a hash-pinned wrap-file
+(`LIBVPX_MESON_COMMIT`, `LIBVPX_MESON_SHA256` in `tool-pins.env`; bump them with `GSTREAMER_VERSION`), and
+`-Dvpx:default_library=static` answers the port's refusal of a shared build off ELF and Darwin.
+`002-libvpx-clangcl-simd-flags.patch` keeps the per-file SIMD flags under clang-cl; without it SSSE3 and SSE4.1 files fail with
+`always_inline function ... requires target feature`.
+
+**Media Foundation is enabled in the final image (CON201).** Server Core lists `ServerMediaFoundation` as disabled,
+not removed, and `gstmediafoundation.dll` imports `MFPlat.dll`, `MF.dll` and `MFReadWrite.dll`. `windows/Dockerfile`
+enables it on the amd64 payload, and the smoke gate requires `mfvideosrc` to register. That proves the plugin loads,
+not that a container can reach a camera.
+
+### DirectML's wrong MatMul
+
+`MatMul` of a matrix by a 1-D vector returns a wrong result with no error on upstream ONNX Runtime's DirectML
+provider: `A[4,3]` times `[1, 10, 100]` gives `[6, 15, 24, 33]`, where the CPU gives `[321, 654, 987, 1320]`.
+Seen on an RX 9070 XT and, on 2026-11-04, an RTX 2080, so it is not one vendor's driver.
+
+`MatMulShapeMapping` pads the vector to `[n, 1]`, while `CreateTensorDescFromInput` broadcasts from the unpadded
+`[n]`. The `n` axis then gets stride 0, so every row reads `B[0]`. `006-dml-matmul-1d-rhs.patch` gives that input
+its padded physical shape. This diagnosis comes from the source and the numbers; a patched build has not run yet.
+
+`WindowsOrtDmlCheck.Common.psm1` runs the shape on both providers. `Test-Container.ps1` and `Test-Arm64Bundle.ps1` fail
+on a mismatch and report a missing adapter, which proves nothing. A chain's smoke gate has no adapter, so to grade
+an image run its smoke with a GPU attached. The check covers this one shape on the adapter present, not every model.
+
 **PROVEN 2026-08-13:** all four mandatory plugins (`libav`, `opencv`, `onnx`, `tflite`) build AND
 load in the merge image; the post-install `gst-inspect` gate passes for all of them. `gst-libav`
 compiles and loads against the image's own FFmpeg `n9.0` (the wrap is disabled, so it links our
@@ -1616,10 +1664,13 @@ image builds FROM:
   lane does the same: [`linux-cross-builds.md`](linux-cross-builds.md#the-app-the-wrapper-builds).
 - **Sdists compile with clang-cl** (CON93). Under 3.15, line-profiler 5.0.2 and pyyaml 6.0.3 have no
   cp315 wheel, so uv builds them, and setuptools takes VS's `cl.exe` and `link.exe`. For both syncs,
-  `Enable-TorchAppClangClSdist` puts copies of `clang-cl`, `lld-link` and `llvm-lib` first on
-  `PATH`, named `cl`, `link` and `lib`, with `DISTUTILS_USE_SDK=1` and `MSSdk=1`. clang-cl and
-  lld-link find VS and the SDK themselves.
-  - After the sync, `Assert-TorchAppSdistCompiler` fails the stage if any distribution uv reports as
+  `Enable-ClangClSdistShim` (`WindowsSdistCompiler.Common.psm1`) puts copies of `clang-cl`, `lld-link`
+  and `llvm-lib` first on `PATH`, named `cl`, `link` and `lib`, with `DISTUTILS_USE_SDK=1` and `MSSdk=1`.
+  clang-cl and lld-link find VS and the SDK themselves. `CL` names the real resource directory, because
+  a copied clang-cl looks for its builtin headers beside the copy, and adds `-fcommon`, which psutil needs.
+  `LIB` comes from `VsDevCmd.bat`: lld-link finds VS and the SDK for default libraries only, so an sdist
+  naming `kernel32.lib` on its link line needs it.
+  - After the sync, `Assert-ClangClSdistBuild` fails the stage if any distribution uv reports as
     `Built` has a PE under site-packages with MSVC's Rich header. uv's own `Scripts\*.exe` launchers
     are outside site-packages.
   - Probe P13: line-profiler built this way has no Rich header and imports on 3.15. pyyaml compiles
@@ -1704,6 +1755,13 @@ spike it also builds the in-tree WebGPU EP
 CMake+clang-cl, bypassing `build.py`: loads VsDevCmd via `vswhere`, clones the git tag, runs
 `cmake`/`ninja` directly. The CUDA and DML DLLs, the `ORT_HOME` shim and the configure, tree and ORT
 build gates that fail the stage on any ORT not from the chain: § ONNX GenAI above.
+
+llguidance builds on both lanes through GenAI's pinned Corrosion and llguidance commits. Crates live in
+`cargo-home` under the source tree, so they leave with it. The cross lane adds its Rust target first. The
+stage fails unless `CMakeCache.txt` has guidance on and the lane's Rust target, and the DLL carries
+llguidance's C++ guard and a Rust source path. The amd64 smoke runs `genai-guidance-smoke.py`: over
+`tiny-genai-model.py`, whose rule never predicts the schema's one answer, only a live mask can pass. It does
+not cover a real model or a GPU, and arm64 has the byte check alone.
 
 #### `Build-OpencvFromSource.ps1`
 

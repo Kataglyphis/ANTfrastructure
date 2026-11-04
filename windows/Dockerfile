@@ -29,6 +29,8 @@ ARG VULKAN_RT_WINDOWS_ZIP_SHA256=a25a927aa8b9f0371048f1861cf88ac3b9bc9b1fb332c42
 COPY windows\scripts\host\Install-VulkanLoader.ps1 C:\temp\scripts\
 RUN --mount=type=bind,source=windows/scripts/modules/WindowsContainerImage.Common.psm1,target=C:\temp\scripts\modules\WindowsContainerImage.Common.psm1 `
     if ($env:WINDOWS_TARGET_ARCH -eq 'amd64' -and -not $env:VULKAN_LOADER_DIR) { & 'C:\temp\scripts\Install-VulkanLoader.ps1' -TempDir $env:TEMP_DIR -InstallDir 'C:\vulkan-loader' -SystemDir '' }
+# Server Core carries Media Foundation disabled, and gstmediafoundation.dll imports it; the arm64 bundle runs on its device, not here.
+RUN if ($env:WINDOWS_TARGET_ARCH -eq 'amd64') { $null = Enable-WindowsOptionalFeature -Online -FeatureName ServerMediaFoundation -NoRestart -ErrorAction Stop }
 # lavapipe's loader and vulkaninfo live beside its ICD; the ICD itself is registered in HKLM at install time.
 ENV PATH=$PATH;C:\vulkan-loader;C:\runtime\lavapipe
 
@@ -38,7 +40,7 @@ RUN & 'C:\WiX\wix.exe' extension add --global "WixToolset.Firewall.wixext/$env:W
     if ($LASTEXITCODE -ne 0) { throw "wix extension add WixToolset.Firewall.wixext/$env:WIX_FIREWALL_EXT_VERSION failed ($LASTEXITCODE)" }
 
 # One COPY (the chain runs near the 125-layer cap), in the last stage so script edits never invalidate earlier layers.
-COPY windows\scripts\build\Test-Health.ps1 windows\scripts\build\Test-Container.ps1 windows\scripts\entrypoint.cmd linux\scripts\03-media\runtime\ort-venv-census.py linux\scripts\02-toolchain\python\free-threaded-wheel.py linux\scripts\03-media\free-threaded-twins.txt C:\temp\scripts\
+COPY windows\scripts\build\Test-Health.ps1 windows\scripts\build\Test-Container.ps1 windows\scripts\build\genai-guidance-smoke.py linux\scripts\lib\tiny-genai-model.py windows\scripts\entrypoint.cmd linux\scripts\03-media\runtime\ort-venv-census.py linux\scripts\02-toolchain\python\free-threaded-wheel.py linux\scripts\03-media\free-threaded-twins.txt C:\temp\scripts\
 # Downstream Invoke-Ci* and rust build scripts import the modules from this path; WindowsPythonWheel.Common finds the helper and the twin table one level up.
 COPY windows\scripts\modules C:\temp\scripts\modules
 

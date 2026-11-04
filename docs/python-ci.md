@@ -612,6 +612,16 @@ location and native test status retain their existing policy. Shared Linux helpe
 lookup lives in `WindowsPythonWheel.Common`; UV's ORT census uses that resolver
 with the same repository-first and copied-image fallback paths.
 
+## The sdist compiler
+
+Inside the image, the build driver's test syncs and the packaging driver's native syncs and builds
+run under the torch stage's clang-cl shim (`Invoke-WithClangClSdist`,
+[`windows-builds.md`](windows-builds.md)). A sync then fails if a distribution uv reports as `Built`
+carries MSVC's Rich header. A wheel from uv's cache prints no `Built` line, so a reused cache is not
+graded, and `uv run` after the sync is outside the shim. The project's own `uv build` runs under the
+shim but is not graded. Outside the image, with no `C:\llvm-patched\bin`, setuptools keeps its own
+compiler and the log says so. The cross lane is unchanged, because the shim names no target.
+
 ## Windows arm64: the staged test job
 
 `python-ci-windows.yml` with `arm64-tests: true` adds two jobs (CON113, 2026-10-20). A hosted

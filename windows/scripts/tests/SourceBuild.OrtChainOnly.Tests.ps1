@@ -432,7 +432,8 @@ Describe 'ORT gate (G2): wiring' {
             $rel = "windows\scripts\build\$($script:GateConsumerScript[$consumer])"
             $text = & $read $rel
             $ast = ConvertTo-TestScriptAst -Text $text
-            $resolve = @(Get-TestAstCommands -Ast $ast -Name 'Resolve-SourceBuildLeafModule')
+            # GenAI also resolves its Rust toolchain leaf; only the gate's import is graded.
+            $resolve = @(Get-TestAstCommands -Ast $ast -Name 'Resolve-SourceBuildLeafModule' | Where-Object { (Get-TestCommandArguments -Command $_).Name -notmatch 'WindowsRustToolchain' })
             Assert-Equal 1 $resolve.Count "$consumer resolves the gate once"
             $resolveArguments = Get-TestCommandArguments -Command $resolve[0]
             Assert-Equal '$scriptAssetRoot' $resolveArguments.AssetRoot "$consumer uses its mounted asset root"

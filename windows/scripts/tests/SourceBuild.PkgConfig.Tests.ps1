@@ -3,8 +3,8 @@
 
 function Assert-GstPluginNameSet {
     param([string[]]$Names, [string]$CountWhy, [string]$Lane = '')
-    Assert-Equal 13 $Names.Count $CountWhy
-    foreach ($name in 'libav', 'opencv', 'onnx', 'tflite', 'webrtc', 'nice', 'dtls', 'srtp', 'sctp', 'rtpmanager', 'openh264', 'rswebrtc', 'rsrtp') {
+    Assert-Equal 14 $Names.Count $CountWhy
+    foreach ($name in 'libav', 'opencv', 'onnx', 'tflite', 'webrtc', 'nice', 'dtls', 'srtp', 'sctp', 'rtpmanager', 'openh264', 'rswebrtc', 'rsrtp', 'vpx') {
         Assert-True ($Names -contains $name) "'$name' must be mandatory$Lane"
     }
 }
@@ -41,7 +41,7 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
 
     It 'names the integrations the media stack is built around, WebRTC''s run-time set included' {
         $names = @(Get-RequiredGstPlugin | ForEach-Object { $_.Name })
-        Assert-GstPluginNameSet -Names $names -CountWhy 'the six media integrations plus dtls, srtp, sctp, rtpmanager, openh264, rswebrtc, rsrtp'
+        Assert-GstPluginNameSet -Names $names -CountWhy 'the six media integrations plus dtls, srtp, sctp, rtpmanager, openh264, rswebrtc, rsrtp and vpx'
     }
 
     It 'returns fresh contract entries so a caller cannot change a later gate' {
@@ -108,7 +108,7 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
         # UnavailableOn stays tested while its key set is empty, so a plugin re-dropped on arm64 fails here first.
         $amd = @(Get-RequiredGstPlugin -Arch 'amd64' | ForEach-Object { $_.Name })
         $arm = @(Get-RequiredGstPlugin -Arch 'arm64' | ForEach-Object { $_.Name })
-        Assert-Equal 13 $amd.Count 'amd64 keeps the full contract'
+        Assert-Equal 14 $amd.Count 'amd64 keeps the full contract'
         Assert-GstPluginNameSet -Names $arm -CountWhy 'arm64 demands the full contract (tflite since #115, webrtc/nice since #128, the WebRTC run-time set since CON28)' -Lane ' on arm64'
         # With WINDOWS_TARGET_ARCH unset the bare call must equal the amd64 view.
         if (-not $env:WINDOWS_TARGET_ARCH) {

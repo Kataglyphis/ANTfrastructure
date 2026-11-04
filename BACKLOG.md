@@ -127,7 +127,8 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
           site link gate parses in a process pool (`SITE_LINK_JOBS`) and `run-lint-gates.sh` runs gitleaks per
           entry side by side (`LINT_GATES_SECRET_JOBS`, 27 entries: 27 → 5 s). Open: Sphinx `-j` (risky with `-W`
           and Exhale), the dartdoc nav rewrite.
-      Open: 8 (Windows variant pushes off the next variant's path; `-ConcurrentAux` never ran),
+      Open: 8 (in source, opt-in: `Invoke-BkVariantChain.ps1 -ConcurrentPush`, proved with fake builds only; the next multi-variant chain must show `final` and its gates as
+      cache hits in the push child's log, and `-ConcurrentAux` still never ran),
       9 (parallel runtime builds: `BUILD_MEM_DIVISOR` plus a disk gate that sizes, worth it only
       where builds outlast uploads). 10 is in source, opt-in: CON169. **The next 3-arch runtime run must show**: `[runtime-push] arch=amd64
       start` before arm64's `step=base` and `RUN` lines, `[runtime-push] arch=amd64 done` after
@@ -184,6 +185,7 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
       Done when those wheels install and import on himbeere2's Debian 13 and in the clean-host job.
 
 - [ ] **CON79 — the cp314t chain twins reach the published images, and phase 2** [L, ★★]. Linux native
+      **Item 3 read 2026-11-04, unchanged:** the twin plan skips `twin:<KNOB>`, `FT_TORCH_TWIN` is not on Windows, and the twin must share the torch RUN, so its mount re-keys the compile.
       and Windows amd64 are in source since 2026-10-07 (CHANGELOG). Open:
       1. **Prove in full image builds**: Linux — FT-STORE is green on the published `:latest` amd64
          (2026-10-09, hub 36e996a7) with the cp314t twins of av 19.0.1, iree_base_compiler/runtime 3.12.0
@@ -345,6 +347,7 @@ owner carries the breakage that costs.
       `/opt/gstreamer/lib/x86_64-linux-gnu` has to be on `LIBRARY_PATH` (or the plugin's CMake
       patched). Both are moot for CON102's core-only client.
 - [ ] **CON106 — the app venv's `frontend` extra in `:winamd64`** [S, ★]. Owner decision 2026-10-26.
+      **Read 2026-11-04:** the line appears on rocm and nvidia (2026-10-29) only. It is a literal, so also check the installed distributions on a default-lane run.
       Linux proven on the 2026-10-27 index `7d4d4129…`: APP-PARITY passes with flet, flet-desktop, flet-web
       and FastAPI on amd64 and arm64, absent by decision on riscv64. The published `:winamd64` (`3189832e…`, revision
       c9ef6ccc) descends from 37602770, whose `Build-TorchApp.ps1:203` prints the line, but nobody has read the printed
@@ -373,6 +376,8 @@ Owner goal 2026-10-30: text, LLM and speech apps in the four code repositories o
 GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs/language-ai.md).
 
 - [ ] **LAI-H2 — GenAI builds with llguidance on Windows** [M, ★★]. `Build-OnnxGenaiFromSource.ps1`
+      **In source 2026-11-04.** A local build of GenAI 0.19.0 passed the stage gate and the smoke, and the arm64 parser crate builds with cargo. Left: a chain's
+      `:winamd64` smoke printing `genai-guidance-schema-ok 7`; arm64's full link and a device run.
       passes `-DUSE_GUIDANCE=OFF`, so `json_schema` works on Linux only. Needs Rust in the
       media-core builder and a Windows chain to prove; done when the smoke gate runs a
       schema-constrained `generate()` on `:winamd64`.
@@ -435,6 +440,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       run says nothing about it.
 
 - [ ] **CON220 — the Windows image checks do not see wrong DirectML results** [M, ★★★].
+      **Cause found and patched in source 2026-11-04, patched build unproved.** The same wrong result reproduces on an RTX 2080 (onnxruntime-directml
+      1.24.4: `[6, 15, 24, 33]` against the CPU's `[321, 654, 987, 1320]`), so it is not one vendor's. ORT's provider gives a 1-D right-hand input stride 0
+      ([§ DirectML's wrong MatMul](docs/windows-builds.md#directmls-wrong-matmul)); `006-dml-matmul-1d-rhs.patch` fixes that, and DirectML 1.15.4 is the newest
+      nuget. Both gates grade the shape, and the graded path returned `Wrong` on that card. Left: a patched image passing on a GPU, and reporting it upstream.
       Found 2026-11-02 on an RX 9070 XT with DirectML 1.15.4, the DLL in AccelerANTgine's and
       OmniAccelerANT's AMD packages: `deim_dfine_n_coco-v1` ran with every profiled operator on
       `DmlExecutionProvider` and returned no detection, where the CPU finds two cats. MatMul of a
@@ -761,6 +770,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       unversioned symbols and per-symbol minimums have no bound yet.
 
 - [ ] **CON180 — record DirectML redistributable provenance and license in Windows images** [M, ★★★].
+      **In source 2026-11-04, unproved in an image.** The ORT stage checks the nuget against `DIRECTML_NUPKG_SHA256`, compares `DirectML.dll`
+      with the package's bytes, and stages `LICENSE.txt`, `LICENSE-CODE.txt` and `ThirdPartyNotices.txt` under `licenses\directml`, with
+      `provenance\directml.json`. Left: a chain, then Windows candidate packaging against it.
       AccelerANTgine's existing native inventory says the image does not carry the Microsoft
       DirectML license text. This is a repository statement, not a fresh inspection of a
       cached or current GPU image: the NVIDIA digest `b472f91b…` was later pulled locally on
@@ -775,6 +787,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       from a DLL or infer today's mutable tag contents from older observations.
 
 - [ ] **CON182 — publish CUDA/cuDNN runtime license and origin metadata for Windows consumers** [M, ★★★].
+      **In source 2026-11-04, unproved in an image.** `Copy-CudaRuntime.ps1` ships only names on Attachment A of the CUDA EULA or in cuDNN's
+      terms, fails on a new name, and writes `C:\runtime\cuda-runtime\provenance.json` beside the original licenses. `nvfatbin_130_0.dll` is
+      on no list (the web EULA is v13.5; re-read the image's 13.4 LICENSE), so it left the image; the arch gate's import walk fails if anything
+      imports it. Left: an nvidia chain, and the runtime set real GPU inference needs, which only a GPU run can show.
       The cached `:winamd64-nvidia` image digest `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777`
       was inspected on 2026-10-30. Its chain OpenCV Python import closure includes 13
       CUDA and cuDNN DLLs from `C:\runtime\cuda-runtime\bin`; that runtime directory contains
@@ -791,6 +807,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       cached digest, not later images.
 
 - [ ] **CON183 — restore Windows GPU image VP8 GStreamer capability** [M, ★★★].
+      **In source 2026-11-04.** Cause: wrap provisioning deletes each git wrap it extracts, and gst-plugins-good finds vpx only through
+      `vpx.wrap`'s `[provide]`, so `auto` skipped the plugin. A hash-pinned wrap-file (`LIBVPX_MESON_*` in `tool-pins.env`) replaces it,
+      `002-libvpx-clangcl-simd-flags.patch` keeps the per-file SIMD flags under clang-cl, and `vpx` is the contract's fourteenth plugin on both
+      lanes. Proved in a throwaway `:winamd64` with simplified meson flags: `gstvpx.dll` builds, and `vp8enc` and `vp9enc` round trips exit 0.
+      On arm64 only the four `-march` forms were compiled, with a no-flag control failing. Left: a chain's smoke on both lanes, a full arm64
+      libvpx build, and AccelerANTgine's capability check on that image.
       On 2026-10-30 the cached `:winamd64-nvidia` digest
       `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777` had
       no `gstvpx.dll`, and its own `gst-inspect-1.0 vp8enc` reported no such element.
@@ -809,6 +831,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 
 - [ ] **CON184 - provide provenance and license texts for Windows GStreamer runtime dependencies** [M].
+      **In source 2026-11-04, unproved in an image.** `WindowsNativeProvenance.Common.psm1` writes
+      `C:\runtime\share\native-provenance\gstreamer.json` from meson's records before cleanup, and the merge and smoke gates fail on a
+      mismatch or an unlisted DLL in the plugins' import closure. A real `meson setup` of 1.29.2 mapped 275 DLLs to 34 sources, each with a
+      notice file (`sqlite3` has only the wrap's `LICENSE.build`). Left: a chain, then AccelerANTgine's notice gate reading this manifest.
+      It does not cover what a Rust plugin links statically.
       Cached `:winamd64-nvidia` digest `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777`
       ships GStreamer plugins whose PE closure includes `jpeg-8.3.2.dll`, `libcrypto-4-x64.dll`,
       `libssl-4-x64.dll`, `openh264-7.dll`, `png16-16.dll`, `srtp2-1.dll`, and `z-1.dll`;
@@ -838,6 +865,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 
 - [ ] **CON185 - provide Windows GStreamer tensor inference elements** [M].
+      **Consumer fix, not a missing plugin (checked 2026-11-04).** `tensor_transform` and `tensor_decoder` are NNStreamer's, and no
+      `onnxruntime` element registers in `:winamd64`. The image has `onnxinference`, `tfliteinference` and `tensordecodebin`, which the smoke
+      now requires. Left: AccelerANTgine's `Src/gstreamer_pipeline.cpp` moves to those elements, with its own test on a real model.
       Cached `:winamd64-nvidia` image digest
       `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777` reports no
       `tensor_transform`, `onnxruntime`, or `tensor_decoder` via `gst-inspect-1.0`.
@@ -1149,6 +1179,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       of its own (`MIGraphXExecutionProvider is absent`). Unset it for any package check in the image.
 
 - [ ] **CON201 — check Media Foundation in the next Windows image** [M, ★★]. Owner decision 2026-11-03.
+      **In source 2026-11-04.** `ServerMediaFoundation` is disabled, not removed, in Server Core. Enabling it in a throwaway `:winamd64` took 60 s
+      and `gst-inspect-1.0 mfvideosrc` then found the element. `windows/Dockerfile` enables it on the amd64 payload, and both the smoke and
+      `Test-Arm64Bundle.ps1` check it. Left: the step under BuildKit and its layer size, which the probe could not read. No camera was used.
       `:winamd64-rocm` `774af209…` (2026-10-31) carries `C:\runtime\lib\gstreamer-1.0\gstmediafoundation.dll`, but a
       fresh container could not load it and `gst-inspect-1.0 mfvideosrc` found no such element. The plugin imports
       `MFPlat.dll`, `MF.dll` and `MFReadWrite.dll`, none of them in `System32` or `C:\runtime\bin`. In the next image,
@@ -1175,6 +1208,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       and ARM independently.
 
 - [ ] **CON181 — document and harmonize Windows GPU ORT provider paths** [S, ★★]. The
+      **In source 2026-11-04, unproved in an image.** The ORT stage moves every provider DLL to `bin` beside the core, the smoke fails one left
+      in `lib`, and `docs/consumer-image-contract.md` states the layout. Left: an nvidia chain and a consumer session on it.
       published `:winamd64-nvidia` image digest `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777`
       was inspected locally on 2026-10-30: `onnxruntime.dll` and its shared provider bridge
       are in `ONNX_ROOT\bin`, while `onnxruntime_providers_cuda.dll` is in `ONNX_ROOT\lib`.
@@ -1397,6 +1432,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 ## Open — Windows `:winamd64`
 
 - [ ] **CON93 — the torch venv's sdists compile with VS's `cl` and cannot link against the in-tree CPython**
+      **In source 2026-11-04.** `WindowsSdistCompiler.Common.psm1` shares the shim, and a sync fails on a distribution uv built with MSVC's Rich header. Proved in a
+      throwaway `:winamd64` on 3.14 with import libs staged by hand: psutil and markupsafe, the gate red on a VS build, and OrchestrANT's wheel with 64 `.pyd` files and none
+      MSVC-linked. Left: a green `python-ci-windows.yml` on the next image, on 3.15, free-threaded included.
       [S, ★★]. Found 2026-10-12 by probe P13 on the 3.15 toolchain image. line-profiler 5.0.2 and pyyaml 6.0.3 have no
       cp315 wheel, so `uv sync` builds them with setuptools.
       - setuptools takes VS's `HostX86\x64\cl.exe` and `link.exe`, against the clang-cl rule.
@@ -1494,6 +1532,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       inference on suitable hardware; keep CPU images and tags independent.
 
 - [ ] **CON108 — the Windows arm64 device runs OrchestrANT's Flet tests** [S, ★].
+      **Pins moved 2026-11-04** to flet and flet-desktop 1.0.5 and msgpack 1.2.4, per OrchestrANT `fae0b2f`, hashes checked against its lock and PyPI. Left: a `:winarm64`
+      carrying them, `flet flet-desktop` on OrchestrANT's `Stage-Arm64Tests.ps1` install line, and a device run without the skips.
       `Stage-Arm64Tests.ps1` stages from `:winarm64`'s `PYTHON_WHEELS`, which has no Flet, so
       `test_view.py`, `test_flet_viewer.py` and `test_streaming.py` skip on the device. flet,
       flet-desktop, oauthlib and repath are pure Python; msgpack 1.2.3 has a cp315 `win_arm64`

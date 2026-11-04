@@ -13,6 +13,26 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-04 — Windows image fixes ahead of the next chain
+
+None of this has run in a chain yet; `BACKLOG.md` says what each item still has to show.
+
+- **DirectML's wrong MatMul (CON220):** reproduced on an RTX 2080 as well. `006-dml-matmul-1d-rhs.patch` fixes the stride ORT's provider
+  gives a 1-D right-hand input, and `Test-Container.ps1` and `Test-Arm64Bundle.ps1` compare the shape with the CPU wherever an adapter exists.
+- **VP8 and VP9 (CON183):** wrap provisioning deleted `vpx.wrap`, so `auto` skipped the plugin. A hash-pinned wrap-file keeps it, a one-line patch keeps libvpx's
+  per-file SIMD flags under clang-cl, and `vpx` joins the contract.
+- **Media Foundation (CON201):** `windows/Dockerfile` enables `ServerMediaFoundation` on the amd64 payload, and `mfvideosrc` must register.
+- **Native provenance (CON180, CON182, CON184):** one manifest format for GStreamer's DLLs, DirectML and the flattened CUDA runtime, with original license texts.
+  `Copy-CudaRuntime.ps1` refuses a DLL off its distributable list, and `nvfatbin_130_0.dll` leaves the image.
+- **ORT providers (CON181):** they now sit in `bin` beside `onnxruntime.dll`. A consumer that read `%ONNX_ROOT%\lib\onnxruntime_providers_*.dll` must move.
+- **Inference elements (CON185):** the smoke requires `onnxinference`, `tfliteinference` and `tensordecodebin`; AccelerANTgine's NNStreamer names are its own fix.
+- **GenAI with llguidance (LAI-H2):** `-DUSE_GUIDANCE=ON` on both lanes, linked statically, with a stage gate and a schema-constrained `generate()` on amd64.
+- **Sdists (CON93):** `Invoke-PythonCiBuild.ps1` and `Invoke-CiPackaging.ps1` share the torch stage's clang-cl shim through `WindowsSdistCompiler.Common.psm1`, and the shim
+  now sets `LIB`, the real resource directory and `-fcommon`, and restores unset variables as absent.
+- **Variant pushes (CON126):** `Invoke-BkVariantChain.ps1 -ConcurrentPush` uploads each variant through a `Build-Buildkit.ps1 -PushOnly` child beside the next build; a failed
+  build or push fails the run, and serial stays the default.
+- **arm64 wheels (CON108):** the store moves to flet and flet-desktop 1.0.5 and msgpack 1.2.4.
+
 ## 2026-11-04 — rustup-init rotated to 1.29.3
 
 - `RUSTUP_INIT_SHA256` follows the script sh.rustup.rs serves, byte-identical to rust-lang/rustup's tag 1.29.3;

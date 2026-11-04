@@ -254,7 +254,9 @@ function Invoke-BuildExternal {
         [object]$Parameters,
         [switch]$IgnoreExitCode,
         # Secret values logged as '<redacted>' when a parameter matches exactly; the process still gets them.
-        [string[]]$RedactParameterValues
+        [string[]]$RedactParameterValues,
+        # Receives the command's output lines, which the return value never carries.
+        [Collections.Generic.List[string]]$OutputBuffer
     )
 
     $parameterList = ConvertTo-ParameterList -Value $Parameters
@@ -285,6 +287,7 @@ function Invoke-BuildExternal {
         & $File @parameterList 2>&1 | Write-BuildCommandOutput -Context $Context -Capture $capturedOutput
 
         $exitCode = $LASTEXITCODE
+        if ($null -ne $OutputBuffer) { $OutputBuffer.AddRange($capturedOutput) }
 
         if ($exitCode -ne 0 -and -not $IgnoreExitCode) {
             $outputText = if ($capturedOutput) { ($capturedOutput -join "`n") } else { '<no output>' }
@@ -691,13 +694,14 @@ function New-UvBuildDelegates {
     # Defined here, not in WindowsUv.Common, so the closures resolve Invoke-BuildExternal and Write-BuildLog*.
     param(
         [Parameter(Mandatory)]
-        [pscustomobject]$Context
+        [pscustomobject]$Context,
+        [Collections.Generic.List[string]]$OutputBuffer
     )
 
     return @{
         CommandRunner = {
             param([string]$File, [string[]]$CommandArgs)
-            Invoke-BuildExternal -Context $Context -File $File -Parameters $CommandArgs | Out-Null
+            Invoke-BuildExternal -Context $Context -File $File -Parameters $CommandArgs -OutputBuffer $OutputBuffer | Out-Null
         }.GetNewClosure()
         LogInfo    = { param([string]$Message); Write-BuildLog -Context $Context -Message $Message }.GetNewClosure()
         LogWarning = { param([string]$Message); Write-BuildLogWarning -Context $Context -Message $Message }.GetNewClosure()

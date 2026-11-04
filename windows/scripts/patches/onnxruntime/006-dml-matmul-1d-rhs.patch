@@ -1,0 +1,19 @@
+diff --git a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlOperatorMatMul.cpp b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlOperatorMatMul.cpp
+index f8d72a0..8b845b8 100644
+--- a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlOperatorMatMul.cpp
++++ b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlOperatorMatMul.cpp
+@@ -28,6 +28,14 @@ public:
+         // Initialize the input descriptions with broadcasting
+         m_inputTensorDescs[0] = CreateTensorDescFromInput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape0);
+         m_inputTensorDescs[1] = CreateTensorDescFromInput(kernelInfo, 1, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, inputShape1);
++        // A 1-D B is padded to [n, 1]; broadcasting from its unpadded [n] gives the n axis stride 0, so every row reads B[0].
++        const std::vector<DimensionType> originalShape1 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(1);
++        if (originalShape1.size() == 1)
++        {
++            const std::vector<DimensionType> physicalShape1 = { originalShape1[0], 1u };
++            m_inputTensorDescs[1] = TensorDesc(kernelInfo.GetInputEdgeDescription(1).tensorDataType, inputShape1, physicalShape1,
++                TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, NchwDimensionCount, 0);
++        }
+ 
+         // Initialize the output description while overriding the shape
+         m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelInfo, 0, TensorAxis::DoNotCoerce, TensorAxis::W, TensorAxis::RightAligned, outputShape);

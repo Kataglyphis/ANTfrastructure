@@ -60,6 +60,50 @@ function Get-GenaiCudaArgs {
     return $cudaArgs
 }
 
+# Corrosion would derive the target from the CMake toolchain; spelled out so the cross lane cannot build llguidance for the host.
+function Get-GenaiGuidanceCmakeArgs {
+    param([Parameter(Mandatory)][string]$TargetArch)
+    '-DUSE_GUIDANCE=ON'
+    "-DRust_CARGO_TARGET=$(Get-RustTargetTriple -Arch $TargetArch)"
+}
+
+# Cross only: the image's rustup holds the host std, and the cached manifest names the target's; a missing target fails the stage.
+function Install-GenaiRustTarget {
+    param([Parameter(Mandatory)][string]$TargetArch, [Parameter(Mandatory)][string]$AssetRoot)
+    if (-not (Test-WindowsCrossTarget -Arch $TargetArch)) { return }
+    Import-Module (Resolve-SourceBuildLeafModule -AssetRoot $AssetRoot -Name 'WindowsRustToolchain.Common.psm1' -Directory modules, rustmods)
+    $triple = Get-RustTargetTriple -Arch $TargetArch
+    Write-Host (Install-RustTargetStdFromPinnedManifest -Triple $triple)
+    & rustup target add $triple | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "GenAI llguidance: rustup target add $triple failed ($LASTEXITCODE)" }
+    # The crate also builds a cdylib; rustc's default is VS's link.exe, which a cross lane's LIB does not suit.
+    $env:CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER = 'lld-link'
+}
+
+# A statically linked llguidance leaves both strings: the C++ guard that exists only under USE_GUIDANCE and a Rust source path.
+function Get-GenaiGuidanceFinding {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$CMakeCache, [Parameter(Mandatory)][string]$GenaiDll, [Parameter(Mandatory)][string]$TargetArch)
+    $cacheVars = @{}
+    foreach ($entry in (Get-CmakeCacheEntries -Text $CMakeCache)) { if ($entry.Name) { $cacheVars[$entry.Name] = $entry.Value } }
+    if ($cacheVars['USE_GUIDANCE'] -ne 'ON') { "CMakeCache.txt has USE_GUIDANCE=$($cacheVars['USE_GUIDANCE']), not ON" }
+    $triple = Get-RustTargetTriple -Arch $TargetArch
+    if ($cacheVars['Rust_CARGO_TARGET'] -ne $triple) { "CMakeCache.txt has Rust_CARGO_TARGET=$($cacheVars['Rust_CARGO_TARGET']), not $triple" }
+    if (-not (Test-Path -LiteralPath $GenaiDll -PathType Leaf)) { return "no GenAI DLL at $GenaiDll to check for llguidance" }
+    $text = [System.Text.Encoding]::Latin1.GetString([System.IO.File]::ReadAllBytes($GenaiDll))
+    foreach ($mark in 'Error creating llg_tokenizer', 'toktrie') {
+        if (-not $text.Contains($mark)) { "$GenaiDll has no '$mark', so llguidance is not linked" }
+    }
+    Get-ChildItem -LiteralPath (Split-Path -Parent $GenaiDll) -Filter 'llguidance*' -File | ForEach-Object { "$($_.Name) is in the install, though GenAI links llguidance statically" }
+}
+
+function Assert-GenaiGuidance {
+    param([Parameter(Mandatory)][string]$BuildDir, [Parameter(Mandatory)][string]$GenaiDll, [Parameter(Mandatory)][string]$TargetArch)
+    $cache = [System.IO.File]::ReadAllText((Join-Path $BuildDir 'CMakeCache.txt'))
+    $genaiGuidance = @(Get-GenaiGuidanceFinding -CMakeCache $cache -GenaiDll $GenaiDll -TargetArch $TargetArch)
+    if ($genaiGuidance.Count -gt 0) { throw "GenAI llguidance gate: $($genaiGuidance -join '; ')" }
+    Write-Host 'GenAI llguidance gate OK: configured on, and both the C++ guard and the Rust parser are in the DLL'
+}
+
 function Install-GenaiClangStlPatch {
     # Resolve MSVC tools path dynamically (avoid hardcoded version)
     $msvcVersionDir = Get-MsvcToolsRoot
@@ -102,6 +146,8 @@ function Install-GenaiBuiltArtifacts {
         # Unreachable in principle; a silent skip would ship an empty install dir as green.
         Write-Warning "genai build dir missing at $BuildDir -- NO artifacts staged to $InstallDir"
     }
+    # The top-level copy catches Corrosion's outputs too: 38 MB nothing imports, since GenAI links the static library.
+    Get-ChildItem -LiteralPath (Join-Path $InstallDir 'lib') -Filter 'llguidance*' -File | Remove-Item -Force
     # Optional layout variant: absence is normal, but a FAILED copy must not be silent.
     $altOutDir = Join-Path $SourceDir 'build\Windows-ClangCL\Windows\Release'
     if (Test-Path $altOutDir) {
@@ -221,7 +267,7 @@ $cmakeExtraGenAi = @(
     '-DCMAKE_POSITION_INDEPENDENT_CODE=ON'
     '-DUSE_TRT_RTX=OFF', $genaiDmlArg
     # $genaiPythonArgs is appended with + below: inline, the array would space-join into one token.
-    '-DENABLE_JAVA=OFF', '-DUSE_GUIDANCE=OFF'
+    '-DENABLE_JAVA=OFF'
     # Telemetry's bundled zlib feeds `-std=c11` to clang-cl under -Werror, and we ship no phone-home.
     '-DENABLE_TELEMETRY=OFF'
     '-DPUBLISH_JAVA_MAVEN_LOCAL=OFF'
@@ -229,7 +275,7 @@ $cmakeExtraGenAi = @(
     # ENABLE_TESTS, not BUILD_TESTING, gates test\, and a CPU build cannot link unit_tests (unexported internals).
     '-DENABLE_TESTS=OFF'
     "-DCMAKE_CXX_FLAGS:STRING=/GR /EHsc -D_SILENCE_CLANG_COROUTINE_MESSAGE $(Get-WarningNoiseSuppressionFlags)$genaiTargetFlag"
-) + $genaiPythonArgs + $genaiPyLinkArgs + $genaiCudaArgs
+) + $genaiPythonArgs + $genaiPyLinkArgs + $genaiCudaArgs + @(Get-GenaiGuidanceCmakeArgs -TargetArch $genaiTargetArch)
 # `Python_*` for genai's find_package(Python), `PYTHON_*` for its vendored pybind11's FindPythonLibsNew.
 $cmakeExtraGenAi += Get-PythonCMakeHintArgs -Python $tpy -Prefix @('Python', 'PYTHON')
 # GenAI inherits ORT's QNN EP; its runtime DLLs are staged beside the GenAI install.
@@ -361,6 +407,11 @@ function Get-GenaiOrtTreeFinding {
     }
 }
 
+Install-GenaiRustTarget -TargetArch $genaiTargetArch -AssetRoot $scriptAssetRoot
+# Inside the source tree, so the fetched crates leave with it and never reach a committed layer.
+$genaiCargoHomeBefore = $env:CARGO_HOME
+$env:CARGO_HOME = Join-Path $SourceDir 'cargo-home'
+
 $genaiOrtRoot = Join-Path $InstallDir 'lib\onnxruntime-source'
 $genaiOrtHome = New-GenaiOrtHome -OrtRoot $genaiOrtRoot -ShimRoot (Join-Path $SourceDir 'ort-home')
 $genaiOrtBlock = Join-Path $SourceDir 'ort-fetch-blocked'
@@ -398,6 +449,8 @@ Write-SccacheStatsToStderr -Advanced -RequireRemote
 
 Install-GenaiBuiltArtifacts -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallDir $genaiInstallDir
 
+Assert-GenaiGuidance -BuildDir $genaiBuildDir -GenaiDll (Join-Path $genaiInstallDir 'lib/onnxruntime-genai.dll') -TargetArch $genaiTargetArch
+
 # genai loads D3D12Core.dll from its own dir; an unpinned -Recurse finds arm64's first and breaks DML on x64.
 $d3d12ArchDir = (Get-WindowsRuntimeIdentifier) -replace '^win-', ''
 Copy-SidecarDll -SidecarName 'D3D12Core.dll' -SearchDir $genaiBuildDir `
@@ -413,6 +466,7 @@ $genaiOrtPost = @(Get-GenaiOrtTreeFinding -TreeRoot $SourceDir -OrtRoot $genaiOr
 Assert-ChainOrtOnly -Consumer 'genai' -OrtRoot $genaiOrtRoot -TreeRoot $SourceDir -Shim $genaiOrtHome -Log $genaiCfgLog -Finding $genaiOrtPost `
     -Record (Join-Path $genaiBuildDir 'CMakeCache.txt'), (Join-Path $genaiBuildDir 'build.ninja')
 
+$env:CARGO_HOME = $genaiCargoHomeBefore
 Remove-SourceBuildTree -Path $SourceDir
 
 Write-Host '=== ONNX Runtime GenAI source build completed ==='

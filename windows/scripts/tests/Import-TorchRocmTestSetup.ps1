@@ -80,7 +80,7 @@ $script:TorchAppStageGolden = @(@'
 ARG APP_REF=<versions.env>
 ARG PYTORCH_EXTRA=pytorch-cpu
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
-COPY windows\scripts\modules\WindowsNative.Common.psm1 windows\scripts\modules\WindowsTargetArch.Common.psm1 windows\scripts\modules\WindowsUvLock.Common.psm1 C:\temp\scripts\modules\
+COPY windows\scripts\modules\WindowsNative.Common.psm1 windows\scripts\modules\WindowsTargetArch.Common.psm1 windows\scripts\modules\WindowsSdistCompiler.Common.psm1 windows\scripts\modules\WindowsUvLock.Common.psm1 C:\temp\scripts\modules\
 COPY linux\scripts\03-media\runtime\ort-venv-census.py C:\temp\scripts\
 COPY windows\scripts\build\Build-TorchApp.ps1 C:\temp\scripts\
 RUN --mount=type=cache,target=C:\uvcache,id=uv-wheels-winamd64,sharing=locked $env:UV_CACHE_DIR = 'C:\uvcache'; $env:PIP_CACHE_DIR = 'C:\uvcache\pip'; & 'C:\temp\scripts\Build-TorchApp.ps1' -AppRef $env:APP_REF -PytorchExtra $env:PYTORCH_EXTRA -Mode all

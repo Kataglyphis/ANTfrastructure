@@ -278,6 +278,7 @@ not prove GPU execution or account for other dependencies.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | ONNX Runtime | v1.31.1 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
+| llguidance (static in GenAI) | ONNX Runtime GenAI deps.txt 94fa3912 | [github.com/microsoft/llguidance](https://github.com/microsoft/llguidance) | MIT |
 | ONNX Runtime GenAI | v0.19.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | LiteRT (TensorFlow Lite) | v2.3.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
@@ -432,10 +433,12 @@ not prove GPU execution or account for other dependencies.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
+| libvpx (GStreamer meson port) | 1.15.2 | [www.webmproject.org/code](https://www.webmproject.org/code/) | BSD-3-Clause |
 | GStreamer meson subprojects (glib, orc, libnice, x264, openh264, …) | per wrap files | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ / GPL (x264) / BSD (openh264) |
 | GStreamer Rust plugins rswebrtc and rsrtp (gst-plugins-rs net/webrtc, net/rtp) | 1.29.2 | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MPL-2.0 |
 | Rust crates linked into gstrswebrtc.dll and gstrsrtp.dll (gstreamer-rs, gtk-rs-core, tokio, rustls, ring, …) | pinned by gst-plugins-rs's Cargo.lock at the GStreamer tag | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MIT / Apache 2.0 / ISC / BSD / Unicode-3.0 / CDLA-Permissive-2.0 (per crate, 337 crates on 2026-10-05) |
 | ONNX Runtime | v1.31.1 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
+| llguidance (static in GenAI) | ONNX Runtime GenAI deps.txt 94fa3912 | [github.com/microsoft/llguidance](https://github.com/microsoft/llguidance) | MIT |
 | ONNX Runtime GenAI | v0.19.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | FFmpeg | n9.0.2 | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |

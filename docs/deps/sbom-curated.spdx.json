@@ -169,6 +169,19 @@
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
+      "SPDXID": "SPDXRef-Package-Linux-Images-llguidance-static-in-GenAI-180c1c37",
+      "name": "llguidance (static in GenAI)",
+      "versionInfo": "ONNX Runtime GenAI deps.txt 94fa3912",
+      "downloadLocation": "https://github.com/microsoft/llguidance",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
       "SPDXID": "SPDXRef-Package-Linux-Images-ONNX-Runtime-GenAI-e3739e26",
       "name": "ONNX Runtime GenAI",
       "versionInfo": "v0.19.0",
@@ -1183,6 +1196,19 @@
       "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://gitlab.freedesktop.org/gstreamer/gstreamer at 1.29.2 | Patched in this repository: windows/scripts/patches/gstreamer/001-ges-commit-rename.patch | MODIFIED before redistribution: The Windows build patches a GES symbol rename, and carries upstream GStreamer commit 17d22abe89 in gst-plugins-bad's ext/dtls/gstdtlsconnection.c (an empty BIO read signals retry, not EOF) until GSTREAMER_VERSION moves past 1.29.2."
     },
     {
+      "SPDXID": "SPDXRef-Package-Windows-Image-libvpx-GStreamer-meson-port-a83b1423",
+      "name": "libvpx (GStreamer meson port)",
+      "versionInfo": "1.15.2",
+      "downloadLocation": "https://gitlab.freedesktop.org/gstreamer/meson-ports/libvpx",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
       "SPDXID": "SPDXRef-Package-Windows-Image-GStreamer-meson-subprojects-glib-orc-libnice-x-217f040b",
       "name": "GStreamer meson subprojects (glib, orc, libnice, x264, openh264, …)",
       "versionInfo": "per wrap files",
@@ -1226,6 +1252,19 @@
       "name": "ONNX Runtime",
       "versionInfo": "v1.31.1",
       "downloadLocation": "https://github.com/microsoft/onnxruntime",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-llguidance-static-in-GenAI-3e9b4c4a",
+      "name": "llguidance (static in GenAI)",
+      "versionInfo": "ONNX Runtime GenAI deps.txt 94fa3912",
+      "downloadLocation": "https://github.com/microsoft/llguidance",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
       "licenseDeclared": "MIT",
@@ -2152,6 +2191,11 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-llguidance-static-in-GenAI-180c1c37"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Linux-Images-ONNX-Runtime-GenAI-e3739e26"
     },
     {
@@ -2542,6 +2586,11 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-libvpx-GStreamer-meson-port-a83b1423"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Windows-Image-GStreamer-meson-subprojects-glib-orc-libnice-x-217f040b"
     },
     {
@@ -2558,6 +2607,11 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Windows-Image-ONNX-Runtime-bf008cdb"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-llguidance-static-in-GenAI-3e9b4c4a"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

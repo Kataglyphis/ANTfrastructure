@@ -116,6 +116,13 @@
               "spdx": "MIT"
             },
             {
+              "name": "llguidance (static in GenAI)",
+              "version_fixed": "ONNX Runtime GenAI deps.txt 94fa3912",
+              "url": "https://github.com/microsoft/llguidance",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
               "name": "ONNX Runtime GenAI",
               "var": "ONNXRUNTIME_GENAI_VERSION",
               "url": "https://github.com/microsoft/onnxruntime-genai",
@@ -340,7 +347,7 @@
           ]
         },
         {
-          "title": "Optional GPU \u2014 NVIDIA",
+          "title": "Optional GPU — NVIDIA",
           "dockerfile": "Dockerfile.nvidia",
           "entries": [
             {
@@ -367,7 +374,7 @@
           ]
         },
         {
-          "title": "Optional \u2014 NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only)",
+          "title": "Optional — NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only)",
           "dockerfile": "Dockerfile.media",
           "entries": [
             {
@@ -415,7 +422,7 @@
           ]
         },
         {
-          "title": "Optional GPU \u2014 AMD",
+          "title": "Optional GPU — AMD",
           "dockerfile": "Dockerfile.amd",
           "entries": [
             {
@@ -435,7 +442,7 @@
           ]
         },
         {
-          "title": "Optional Accelerator \u2014 Hailo",
+          "title": "Optional Accelerator — Hailo",
           "dockerfile": "Dockerfile.torch",
           "entries": [
             {
@@ -757,7 +764,7 @@
               "var": null,
               "version_fixed": "bundled with Python",
               "url": "https://github.com/python/cpython-source-deps",
-              "license": "various (Apache 2.0, MIT, PD, \u2026)",
+              "license": "various (Apache 2.0, MIT, PD, …)",
               "spdx": "LicenseRef-Distro-Bundle",
               "source": {
                 "kind": "upstream-tag",
@@ -895,7 +902,19 @@
               }
             },
             {
-              "name": "GStreamer meson subprojects (glib, orc, libnice, x264, openh264, \u2026)",
+              "name": "libvpx (GStreamer meson port)",
+              "var": "LIBVPX_VERSION",
+              "url": "https://www.webmproject.org/code/",
+              "license": "BSD-3-Clause",
+              "spdx": "BSD-3-Clause",
+              "source": {
+                "kind": "upstream-tag",
+                "url": "https://gitlab.freedesktop.org/gstreamer/meson-ports/libvpx",
+                "ref_var": "LIBVPX_MESON_COMMIT"
+              }
+            },
+            {
+              "name": "GStreamer meson subprojects (glib, orc, libnice, x264, openh264, …)",
               "var": null,
               "version_fixed": "per wrap files",
               "url": "https://gstreamer.freedesktop.org/",
@@ -922,7 +941,7 @@
               }
             },
             {
-              "name": "Rust crates linked into gstrswebrtc.dll and gstrsrtp.dll (gstreamer-rs, gtk-rs-core, tokio, rustls, ring, \u2026)",
+              "name": "Rust crates linked into gstrswebrtc.dll and gstrsrtp.dll (gstreamer-rs, gtk-rs-core, tokio, rustls, ring, …)",
               "var": null,
               "version_fixed": "pinned by gst-plugins-rs's Cargo.lock at the GStreamer tag",
               "url": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs",
@@ -933,6 +952,13 @@
               "name": "ONNX Runtime",
               "var": "ONNXRUNTIME_VERSION",
               "url": "https://github.com/microsoft/onnxruntime",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "llguidance (static in GenAI)",
+              "version_fixed": "ONNX Runtime GenAI deps.txt 94fa3912",
+              "url": "https://github.com/microsoft/llguidance",
               "license": "MIT",
               "spdx": "MIT"
             },
@@ -1233,7 +1259,7 @@
               "spdx": "MIT"
             },
             {
-              "name": "vcpkg packages (zlib, protobuf \u2014 linked into builds)",
+              "name": "vcpkg packages (zlib, protobuf — linked into builds)",
               "var": null,
               "version_fixed": "vcpkg baseline",
               "url": "https://github.com/microsoft/vcpkg",
@@ -1479,7 +1505,7 @@
               "spdx": "Apache-2.0"
             },
             {
-              "name": "Stevedore (Windows builds \u2014 bundled docker.exe)",
+              "name": "Stevedore (Windows builds — bundled docker.exe)",
               "var": null,
               "version_fixed": "host install",
               "url": "https://github.com/slonopotamus/stevedore",

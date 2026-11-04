@@ -1,0 +1,13 @@
+diff --git a/meson.build b/meson.build
+index 9d25156..2c24de5 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1695,7 +1695,7 @@ codec_rtcds = {}
+ # is that Google's relying on regexp'd per-file architecture flags.
+ # Best we can do here is simulate them and make libraries that'll be
+ # link_whole'd into the final binary.
+-if tgt_cc == 'msvs'
++if tgt_cc == 'msvs' and c.get_id() != 'clang-cl'
+ 	arch_flags = {
+ 		'mmx': [],
+ 		'sse2': [],

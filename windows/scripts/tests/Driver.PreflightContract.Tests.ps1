@@ -21,7 +21,9 @@ Describe 'driver preflight contract (Build-Buildkit.ps1)' {
         # No nvidia mode=max cache, which carries the TensorRT SDK, in the public package (CON136).
         'Assert-BkCacheExportRef',
         # A ROCm subset cannot inherit a stale post-media parent.
-        'Assert-BkRocmStageClosure'
+        'Assert-BkRocmStageClosure',
+        # A -PushOnly child must not skip the gates or push another ref.
+        'Assert-BkPushOnlyRequest'
     )
 
     It 'wires every required preflight' {

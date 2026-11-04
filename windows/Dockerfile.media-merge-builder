@@ -25,7 +25,7 @@ FROM ${BASE_IMAGE} AS cuda-runtime-stage
 # Redeclared (ARGs do not cross FROM): the script picks bin\ or bin\arm64 by lane.
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
-COPY windows\scripts\build\Copy-CudaRuntime.ps1 C:\Copy-CudaRuntime.ps1
+COPY windows\scripts\build\Copy-CudaRuntime.ps1 windows\scripts\modules\WindowsNativeProvenance.Common.psm1 C:\
 RUN pwsh -NoProfile -ExecutionPolicy Bypass -File C:\Copy-CudaRuntime.ps1
 
 # The merge-only leaf modules live here; keeping them out of media buildmods prevents every media compile from re-running.
@@ -40,6 +40,7 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsContainerImage.Bootstrap.psm1 `
      windows\scripts\modules\WindowsInstaller.Common.psm1 `
      windows\scripts\modules\WindowsGstPlugins.Common.psm1 `
+     windows\scripts\modules\WindowsNativeProvenance.Common.psm1 `
      windows\scripts\modules\WindowsMeson.Common.psm1 `
      windows\scripts\modules\WindowsRustToolchain.Common.psm1 `
      windows\scripts\modules\WindowsPythonWheel.Common.psm1 `
@@ -111,7 +112,7 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 # Fan-in, largest branch tree first
 COPY --from=media-core C:\runtime C:\runtime
 # The CUDA-built libs link cudnn/cudart, which live outside C:\runtime; without this they fail to load with Win32 126.
-COPY --from=cuda-runtime-stage C:\cuda-rt C:\runtime\cuda-runtime\bin
+COPY --from=cuda-runtime-stage C:\cuda-rt C:\runtime\cuda-runtime
 COPY --from=media-litert C:\runtime\lib\litert C:\runtime\lib\litert
 COPY --from=media-litert C:\runtime\lib\litert-lm C:\runtime\lib\litert-lm
 COPY --from=media-tvm C:\runtime\lib\tvm C:\runtime\lib\tvm
@@ -146,6 +147,9 @@ ARG DEPS_MIN_BUNDLE_WHEELS=0
 ARG DEPS_MIN_FIRST_TOUCH_REQS=0
 ENV DEPS_MIN_BUNDLE_WHEELS=${DEPS_MIN_BUNDLE_WHEELS} `
     DEPS_MIN_FIRST_TOUCH_REQS=${DEPS_MIN_FIRST_TOUCH_REQS}
+# tool-pins.env, through the driver: an ARG only the merge reads re-keys nothing above it.
+ARG LIBVPX_MESON_COMMIT
+ARG LIBVPX_MESON_SHA256
 # Overridable for a one-stage debug re-run (-BuildArg SCCACHE_LOG=debug); the cache endpoints are the RUNs' secret mounts, which no history records.
 ARG SCCACHE_LOG="warn"
 # Kept identical to media-builder's sccache block.

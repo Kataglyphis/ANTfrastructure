@@ -29,7 +29,7 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
 # $RepoRoot and $repoRoot are one variable: this deliberately replaces the raw value with the resolved path.
-$repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common', 'WindowsTargetArch.Common', 'WindowsPythonWheel.Common') -EnterRepoRoot -RepoRoot $RepoRoot
+$repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common', 'WindowsTargetArch.Common', 'WindowsPythonWheel.Common', 'WindowsSdistCompiler.Common') -EnterRepoRoot -RepoRoot $RepoRoot
 if (-not $PythonVersion) { $PythonVersion = (Get-PinnedPythonVersion).MajorMinor }
 $arch = Get-WindowsTargetArch -Arch $TargetArch
 $cross = Test-WindowsCrossTarget -Arch $arch
@@ -54,8 +54,12 @@ function Invoke-PackagingEnvironmentBuild {
         Add-PythonLibPath -PythonDir ($homeLine[0] -replace '^home\s*=\s*', '').Trim()
     }
     try {
-        Sync-UvProjectDependencies
-        Invoke-BuildExternal -Context $script:BuildContext -File 'uv' -Parameters $buildArgs | Out-Null
+        $syncOut = [Collections.Generic.List[string]]::new()
+        $syncUv = New-UvBuildDelegates -Context $script:BuildContext -OutputBuffer $syncOut
+        Invoke-WithClangClSdist -BuiltOutput $syncOut -SitePackages (Join-Path $envPath 'Lib\site-packages') -LogInfo $script:UvLogInfo -Script {
+            Sync-UvProjectDependencies @syncUv
+            Invoke-BuildExternal -Context $script:BuildContext -File 'uv' -Parameters $buildArgs | Out-Null
+        }
     } finally {
         Remove-UvProjectEnvironment -EnvPath $envPath -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning
     }
@@ -104,7 +108,9 @@ try {
         Add-PythonLibPath -PythonDir (Split-Path -Parent $ftPython)
         $out = Join-Path $repoRoot 'build\free-threaded-dist'
         Remove-Item -LiteralPath $out -Recurse -Force -ErrorAction SilentlyContinue
-        Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters @('build', '--python', $ftPython, '--out-dir', $out) | Out-Null
+        Invoke-WithClangClSdist -LogInfo $script:UvLogInfo -Script {
+            Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters @('build', '--python', $ftPython, '--out-dir', $out) | Out-Null
+        }
         $wheel = Select-FreeThreadedWheel -Wheels @(Get-ChildItem -LiteralPath $out -Filter '*.whl' -File) -AbiTag $ft.AbiTag
         if (-not $wheel) {
             Write-CiLog "free-threaded wheel: the build is pure, and the py3-none-any wheel already serves $($ft.Version)"

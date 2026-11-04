@@ -73,6 +73,10 @@ param(
     [ValidatePattern('^(\d{8}-\d{6})?$')][string]$ParentRunId = '',
     # buildctl forwards the client's docker credential store, so a prior docker login suffices.
     [string]$PushRef = '',
+    # Set by Invoke-BkVariantChain.ps1: re-solves a built final from cache and pushes it, leaving the host's shared state alone.
+    [switch]$PushOnly,
+    # Shared with -PushOnly's re-solve: a fresh stamp would miss the graded final's cache.
+    [ValidatePattern('^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)?$')][string]$BuildDate = '',
     # Skips the disk and shim preflight gates; deliberate exceptions only.
     [switch]$SkipHostChecks,
     # Bypasses only the RDNA4 gate, leaving the disk and shim gates armed.
@@ -174,6 +178,27 @@ function Resolve-BkVariant {
     return @{ Variant = $Variant; Stages = $Stages }
 }
 
+function Assert-BkPushOnlyRequest {
+    # A push child with anything else to do would be a second chain on the host.
+    param([bool]$PushOnly, [string[]]$Stages, [AllowEmptyString()][string]$PushRef, [AllowEmptyString()][string]$ParentRunId, [AllowEmptyString()][string]$BuildDate, [bool]$SkipSmokeGate)
+    if (-not $PushOnly) { return }
+    if (($Stages -join ',') -ne 'final') { throw "-PushOnly re-solves the final stage alone; got -Stages $($Stages -join ',')" }
+    if (-not $PushRef) { throw '-PushOnly needs -PushRef' }
+    if (-not $ParentRunId) { throw '-PushOnly needs -ParentRunId: its logs join the chain that built the image' }
+    if (-not $BuildDate) { throw '-PushOnly needs -BuildDate: another stamp would rebuild the final stage instead of pushing the graded one' }
+    if ($SkipSmokeGate) { throw '-PushOnly cannot take -SkipSmokeGate: the re-solve must read the smoke gate that graded this image' }
+}
+
+function Set-BkPushOnlyRunId {
+    if (-not $PushOnly) { return }
+    $script:RunId = "$ParentRunId-push-$(if ($Variant) { $Variant } else { 'default' })"
+}
+
+function Get-BkBuildDate {
+    if ($BuildDate) { return $BuildDate }
+    return (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+}
+
 function Remove-BkUnsupportedStage {
     param([string[]]$StageList, [string]$Stage, [bool]$ExplicitStages, [string]$ErrorMessage)
     if ($StageList -notcontains $Stage) { return ,$StageList }
@@ -268,6 +293,7 @@ function Get-BkRocmStageArg {
 $variantPlan = Resolve-BkVariant -Variant $Variant -Gpu ([bool]$Gpu) -TargetArch $TargetArch -Stages $Stages `
     -StagesBound $PSBoundParameters.ContainsKey('Stages') -NoRocmSpikes ([bool]$NoRocmSpikes) -PushRef $PushRef
 $Variant = $variantPlan.Variant
+Assert-BkPushOnlyRequest -PushOnly ([bool]$PushOnly) -Stages $variantPlan.Stages -PushRef $PushRef -ParentRunId $ParentRunId -BuildDate $BuildDate -SkipSmokeGate ([bool]$SkipSmokeGate)
 $Stages = $variantPlan.Stages
 # Every nvidia code path below reads this, so -Gpu and -Variant nvidia are one lane.
 $isNvidia = $Variant -eq 'nvidia'
@@ -276,6 +302,7 @@ $script:LogDir = Join-Path $repoRoot 'logs\windows-build-logs'
 New-Item -Path $script:LogDir -ItemType Directory -Force | Out-Null
 # Per-run id in every stage-log name, so run N never truncates run N-1's evidence.
 $script:RunId = if ($ParentRunId) { "$ParentRunId-$($MediaBranches -join '+')" } else { (Get-Date).ToString('yyyyMMdd-HHmmss') }
+Set-BkPushOnlyRunId
 # Retry and disk-gate verdicts and where a run stopped, which the console alone would lose (hub #184).
 $script:DriverLog = Join-Path $script:LogDir ("bk-" + $script:RunId + "-driver.log")
 $script:RunSucceeded = $false
@@ -292,6 +319,8 @@ $script:SamplerProc = $null
 function Set-BuildPhase {
     param([Parameter(Mandatory)][string]$Name)
     $script:CurrentPhase = $Name
+    # The file tags the sampler rows of the variant building beside this push.
+    if ($PushOnly) { return }
     try { Set-Content -Path $script:PhaseFile -Value $Name -ErrorAction Stop } catch { Write-Verbose "phase write skipped: $_" }
 }
 function Write-RunManifest {
@@ -705,7 +734,8 @@ function Publish-BkHostPreseed {
 
 }
 
-if ($SccacheEndpoint) {
+# A push child's publish would overwrite the budget of the variant building beside it.
+if ($SccacheEndpoint -and -not $PushOnly) {
     Publish-BkHostPreseed
 
     # A scheduling knob published on the webdav, never an ARG/ENV, which would make it a cache key.
@@ -959,6 +989,18 @@ function Get-BkLitertTyVersion {
     return $tyVersion
 }
 
+# tool-pins.env keys as build args, so these pins re-key only the stage that reads them.
+function Get-BkToolPinArg {
+    param([Parameter(Mandatory)][string]$RepoRoot, [Parameter(Mandatory)][string[]]$Name)
+    $toolPins = ConvertFrom-VersionsEnv -Path (Join-Path $RepoRoot 'linux\scripts\01-core\tool-pins.env')
+    $picked = @{}
+    foreach ($key in $Name) {
+        if (-not $toolPins[$key]) { throw "tool-pins.env has no $key" }
+        $picked[$key] = $toolPins[$key]
+    }
+    return $picked
+}
+
 function Invoke-BkMediaStages {
 if ($Stages -contains 'media') {
     # Canonical per-branch version args (WindowsBuildDriver.Common).
@@ -984,7 +1026,7 @@ if ($Stages -contains 'media') {
             # Without it the trt-sdk stage mounts the toolchain's (absent) C:\tensorrt and ORT builds no TensorRT EP.
             $trtSdkArg = if ($isNvidia) { @{ TENSORRT_SDK_IMAGE = Get-BkTag 'windows-tensorrt-sdk' } } else { @{} }
             # Direct solves rely on the patched runhcs shim (see docs/windows-build-lanes.md § Traps); one solve per library for caching.
-            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-onnx' -Tag (Get-BkTag 'windows-media-core-onnx') -BuildArgs ($branchBuildArgs + $trtSdkArg)
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-onnx' -Tag (Get-BkTag 'windows-media-core-onnx') -BuildArgs ($branchBuildArgs + $trtSdkArg + (Get-BkToolPinArg -RepoRoot $repoRoot -Name 'DIRECTML_NUPKG_SHA256'))
             $onnxArg   = @{ MEDIA_CORE_ONNX_IMAGE = Get-BkTag 'windows-media-core-onnx' }
             $opencvArg = @{ MEDIA_CORE_OPENCV_IMAGE = Get-BkTag 'windows-media-core-opencv' }
             $ffmpegArg = @{ MEDIA_CORE_FFMPEG_IMAGE = Get-BkTag 'windows-media-core-ffmpeg' }
@@ -1020,7 +1062,7 @@ if ($Stages -contains 'media') {
             CORE_IMAGE      = Get-BkTag 'windows-media-core'
             LITERT_IMAGE    = $litertImage
             TVM_IMAGE       = $tvmImage
-        } + $archArgs
+        } + $archArgs + (Get-BkToolPinArg -RepoRoot $repoRoot -Name 'LIBVPX_MESON_COMMIT', 'LIBVPX_MESON_SHA256')
         # Mounting three branch trees is the only stage measured burning all 3 attempts.
         Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'built' -Tag (Get-BkTag 'windows-media') -BuildArgs $mergeArgs -MaxAttempts 5
     } else {
@@ -1072,7 +1114,7 @@ $torchTag = Get-BkTag 'windows-torch'
 
 # Computed once, so the FinalTar/PushRef re-solves stay cache hits of the final solve.
 $stampArgs = @{
-    BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+    BUILD_DATE = Get-BkBuildDate
     VCS_REF    = Get-BuildVcsRef
 }
 

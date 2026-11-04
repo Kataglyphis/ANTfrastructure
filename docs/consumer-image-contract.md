@@ -973,6 +973,33 @@ HKLM registration the bundle README names; `Test-Arm64Bundle.ps1` runs
 `:winamd64` carries the device since the 2026-10-04 republish (the smoke lists
 llvmpipe); the `:winarm64` bundle is published and its device gate lists llvmpipe (12/12 on the Snapdragon X).
 
+## Native DLL provenance
+
+Windows images carry manifests that tie shipped DLLs to their source and original license texts:
+
+| Manifest | Root | Covers |
+| --- | --- | --- |
+| `C:\runtime\share\native-provenance\gstreamer.json` | `C:\runtime` | Every DLL meson installed for GStreamer, OpenSSL, and the gst-plugins-rs contract plugins |
+| `%ONNX_ROOT%\provenance\directml.json` | `%ONNX_ROOT%` | `bin\DirectML.dll`, compared with the pinned nuget |
+| `C:\runtime\cuda-runtime\provenance.json` | `C:\runtime\cuda-runtime` | The flattened CUDA and cuDNN DLLs, on nvidia images |
+
+Each entry has `file`, `sha256`, `source` (`name`, `version`, `url`, and a hash or revision when known) and `notices`
+(`path`, `sha256`). Paths are relative to the root. Check one with `Assert-NativeProvenanceManifest` from
+`WindowsNativeProvenance.Common.psm1`, and a package's import closure with `Get-NativeClosureGap`.
+
+A manifest records where bytes came from and proves they are unchanged. It does not cover code a Rust plugin links
+statically, decide whether a license suits your distribution, or prove GPU inference. The NVIDIA display driver is
+a host dependency and is not listed.
+
+The CUDA runtime ships only names on Attachment A of the CUDA EULA or in cuDNN's terms. `nvfatbin_130_0.dll` is not on
+that list, so it left the image; `Copy-CudaRuntime.ps1` fails on any new unlisted DLL.
+
+ONNX Runtime's provider DLLs now sit in `%ONNX_ROOT%\bin` beside `onnxruntime.dll`, where the core loads them from.
+Nothing under `%ONNX_ROOT%\lib` is a provider DLL any more. Import libraries stay there.
+
+GStreamer inference pipelines use `onnxinference`, `tfliteinference` and the tensor decoders. NNStreamer's `tensor_filter`,
+`tensor_transform` and `tensor_decoder` are not in these images, and GStreamer has no `onnxruntime` element.
+
 ## The ort crate links the chain ONNX Runtime
 
 Both published images set the environment of the Rust `ort` / `ort-sys` crates,

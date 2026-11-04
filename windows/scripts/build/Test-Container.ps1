@@ -1014,6 +1014,32 @@ Invoke-OpenCvLinkSmoke -OpencvInclude $opencvInclude -OpencvSearchRoot $opencvSe
 }
 Invoke-SmokeSection10
 
+# Each manifest against the bytes this image ships; a merge stage that stamped one earlier cannot speak for what later layers did.
+function Invoke-SmokeNativeProvenance {
+    $module = Join-Path $scriptAssetRoot 'modules\WindowsNativeProvenance.Common.psm1'
+    Import-Module $module -Force -DisableNameChecking
+    $manifest = 'C:\runtime\share\native-provenance\gstreamer.json'
+    Assert-Test -Name 'GStreamer native DLLs match their provenance manifest' -Finding @(Get-NativeProvenanceFinding -Path $manifest -Root 'C:\runtime') `
+        -FailMessage 'a shipped GStreamer DLL or notice text no longer matches its manifest'
+    if (Test-Path -LiteralPath $manifest) {
+        $plugins = @(Get-ChildItem -LiteralPath 'C:\runtime\lib\gstreamer-1.0' -Filter '*.dll' -File).FullName
+        Assert-Test -Name 'every DLL the GStreamer plugins import has provenance' -Finding @(Get-NativeClosureGap -ManifestPath $manifest -Directory 'C:\runtime\bin' -Importer $plugins -GetImport { param($path) Get-PeImportNames -Path $path -IncludeDelayLoad }) `
+            -FailMessage 'a plugin imports a DLL from C:\runtime\bin that the manifest does not list; a consumer notice gate would reject it'
+    }
+    $onnxRoot = $env:ONNX_ROOT
+    Assert-Test -Name 'DirectML.dll matches its nuget provenance and license' -Finding @(Get-NativeProvenanceFinding -Path (Join-Path $onnxRoot 'provenance\directml.json') -Root $onnxRoot -RequiredFile 'bin\DirectML.dll') `
+        -FailMessage 'DirectML.dll, its license texts or its manifest changed after the ORT stage'
+    $split = @(Get-ChildItem -LiteralPath (Join-Path $onnxRoot 'lib') -Filter 'onnxruntime_providers_*.dll' -File -ErrorAction SilentlyContinue).Name
+    Assert-Test -Name 'ONNX Runtime providers sit beside the core DLL' -Finding $split -FailMessage "ORT loads a provider from onnxruntime.dll's own directory, so these under lib would not load"
+    if ($script:gpuNvidia) {
+        $cudaRoot = 'C:\runtime\cuda-runtime'
+        Assert-Test -Name 'CUDA and cuDNN runtime DLLs match their provenance manifest' -Finding @(Get-NativeProvenanceFinding -Path (Join-Path $cudaRoot 'provenance.json') -Root $cudaRoot -RequiredFile 'bin\cudnn64_9.dll') `
+            -FailMessage 'a flattened CUDA or cuDNN DLL or its license text no longer matches the manifest'
+        $notDistributable = @(Get-ChildItem -LiteralPath (Join-Path $cudaRoot 'bin') -Filter 'nvfatbin*.dll' -File -ErrorAction SilentlyContinue).Name
+        Assert-Test -Name 'the CUDA runtime carries nothing off the EULA distributable list' -Finding $notDistributable -FailMessage 'nvfatbin is not in Attachment A of the CUDA EULA'
+    }
+}
+
 function Invoke-SmokeSection11 {
 Invoke-SmokeNativeSectionBody -Section 11 -Body {
 Assert-CommandExists 'gst-launch-1.0'
@@ -1071,6 +1097,30 @@ if (Test-Path $requiredGstModule) {
         if ($note) { Write-Host "  [WARN] $note" -ForegroundColor Yellow }
         $true
     } -FailMessage 'the WebRTC loopback did not pass'
+    foreach ($codec in @(@{ Enc = 'vp8enc'; Dec = 'vp8dec' }, @{ Enc = 'vp9enc'; Dec = 'vp9dec' })) {
+        Assert-Test -Name "GStreamer $($codec.Enc) -> $($codec.Dec) carries real frames" -Condition {
+            $global:LASTEXITCODE = 0
+            & gst-launch-1.0 videotestsrc num-buffers=10 ! 'video/x-raw,format=I420,width=64,height=64' ! $codec.Enc ! $codec.Dec ! fakesink 2>&1 | Out-Null
+            $LASTEXITCODE -eq 0
+        }.GetNewClosure() -FailMessage "$($codec.Enc) or $($codec.Dec) failed: the plugin registered but libvpx does not encode or decode"
+    }
+    # The inference elements consumers build pipelines from; NNStreamer's tensor_* names are not in this image.
+    foreach ($element in 'onnxinference', 'tfliteinference', 'tensordecodebin') {
+        Assert-Test -Name "GStreamer element $element registers" -Condition {
+            $global:LASTEXITCODE = 0
+            & gst-inspect-1.0 $element 2>&1 | Out-Null
+            $LASTEXITCODE -eq 0
+        }.GetNewClosure() -FailMessage "$element is missing, so a pipeline using it cannot start"
+    }
+    # Fresh containers lacked MFPlat.dll, so this plugin never registered; no camera is needed, and none is proved.
+    if ((Get-WindowsTargetArch) -eq 'amd64') {
+        Assert-Test -Name 'GStreamer mfvideosrc registers (Media Foundation is enabled)' -Condition {
+            $global:LASTEXITCODE = 0
+            & gst-inspect-1.0 mfvideosrc 2>&1 | Out-Null
+            $LASTEXITCODE -eq 0
+        } -FailMessage 'mfvideosrc is missing: Dockerfile enables ServerMediaFoundation, without which gstmediafoundation.dll cannot load'
+    }
+    Invoke-SmokeNativeProvenance
 } else {
     Skip-Test "mandatory gst-plugin assertions (WindowsGstPlugins.Common.psm1 not found at $requiredGstModule -- image predates the contract)"
 }
@@ -1530,12 +1580,25 @@ function Invoke-SmokePythonSnippetSet {
         -Code "import onnxruntime; print(onnxruntime.get_available_providers())" `
         -ExpectMatch @('DmlExecutionProvider') `
         -FailMessage "base-interpreter onnxruntime lacks DmlExecutionProvider -- a PyPI onnxruntime variant shadowed the source-built wheel"
+    Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsOrtDmlCheck.Common.psm1') -Force -DisableNameChecking
+    $dmlMatMul = Invoke-OrtDmlMatMulProbe -Python (Get-Command python -ErrorAction Stop).Source
+    if ($dmlMatMul.Status -eq 'NoAdapter') {
+        Skip-Test "DirectML MatMul against the CPU: $($dmlMatMul.Detail)"
+    } else {
+        Assert-Test -Name 'DirectML MatMul(matrix, 1-D vector) matches the CPU' -Condition { $dmlMatMul.Status -eq 'Pass' }.GetNewClosure() -FailMessage $dmlMatMul.Detail
+    }
         }
         'Base' {
     Assert-PythonSnippet -Name "python onnxruntime-genai imports" `
         -Code "import onnxruntime_genai as og; print('py-genai', getattr(og, '__version__', 'n/a'))" `
         -ExpectMatch @('py-genai') `
         -FailMessage "import onnxruntime_genai failed (pyd or embedded DLL chain broken)"
+
+    # The shared tiny model never predicts the schema's one answer, so only a live llguidance mask yields it; real models are not checked.
+    Assert-SmokeCommandOutput -Name 'python onnxruntime-genai: schema-constrained generate() (llguidance)' `
+        -Command 'python' -ArgumentList @((Resolve-SmokeCompanion -ScriptRoot $PSScriptRoot -Name 'genai-guidance-smoke.py'), '--fixture', (Resolve-SmokeCompanion -ScriptRoot $PSScriptRoot -Name 'tiny-genai-model.py')) `
+        -ExpectMatch @('genai-guidance-schema-ok 7') `
+        -FailMessage 'GenAI did not honor a JSON schema: it was built without USE_GUIDANCE, or the mask or model load failed'
 
     # cv2: PNG encode/decode round-trip exercises core + imgcodecs via python.
     Assert-PythonSnippet -Name "python cv2 imports + PNG round-trip" `

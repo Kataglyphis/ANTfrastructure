@@ -356,7 +356,7 @@ windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 -MinInspe
 windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 `
     -HostToolPattern 'protoc\.exe|flatc\.exe|\\_deps\\'
 
-# on an arm64 device, from a bundle zip: eighteen steps, and the default floor is all of them
+# on an arm64 device, from a bundle zip: twenty-one steps, and the default floor is all of them
 windows\scripts\build\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip
 ```
 
@@ -1185,7 +1185,7 @@ resolved imports instead of 63 phantom unresolved edges.
 
 ## WebRTC on the cross lane (CON28, 2026-10-05)
 
-The plugin contract is the same thirteen entries on both lanes, so the arm64 bundle
+The plugin contract is the same fourteen entries on both lanes, so the arm64 bundle
 needs `dtls`, `srtp`, `sctp`, `rtpmanager`, `openh264`, `rswebrtc` and `rsrtp` as
 well. The cross gate proves each statically, as before: the DLL by its exact name
 `gst<name>.dll`, its dependency tree, and the `gst_plugin_<name>_get_desc` export,

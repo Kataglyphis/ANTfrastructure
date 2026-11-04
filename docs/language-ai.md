@@ -25,7 +25,7 @@ the text API, the model packages and the order of work. Owner goal of 2026-10-30
 | Piece | Where | Gap |
 |---|---|---|
 | GenAI at `ONNXRUNTIME_GENAI_VERSION` | Linux `/usr/local/lib/onnxruntime-genai` on amd64, arm64 and riscv64 (CPU; CUDA in the nvidia variant); Windows `ONNX_GENAI_ROOT` (DirectML; CUDA in the nvidia variant); the `:winarm64` bundle | no Android build, no web build |
-| llguidance: JSON schema and grammars | Linux, `--use_guidance` in `60-build-genai.sh` | Windows builds with `-DUSE_GUIDANCE=OFF` |
+| llguidance: JSON schema and grammars | Linux, `--use_guidance` in `60-build-genai.sh`; Windows, `-DUSE_GUIDANCE=ON` in `Build-OnnxGenaiFromSource.ps1` | Windows needs its next chain to ship it; arm64 has only the build's byte check |
 | `ort_genai.h`, `ort_genai_c.h` | GenAI's `include/` | required by the Linux artifact check since LAI-H1 ([contract](consumer-image-contract.md#genais-library-and-headers)) |
 | Ollama, Open WebUI, the APISIX gateway | [`linux/llm-stack/`](../linux/llm-stack/README.md) | none |
 | GenieX on Snapdragon | [`geniex-local-ai-setup.md`](geniex-local-ai-setup.md) | HTTP only |
@@ -51,7 +51,7 @@ Every binding (C++, C, Rust, Python, Dart) offers the same calls against two bac
 `seed`, `json_schema` and stop strings work in AccelerANTgine (C++, the C ABI, Python, its CLI), OxidANT
 (local and endpoint backends, its CLI, the Flutter bridge) and OrchestrANT (`GenerationOptions`,
 `orchestrant-chat`, `orchestrant-serve`), and the OmniAccelerANT playground sends them through OxidANT's
-bridge. `json_schema` answers the unsupported error on Windows, where GenAI builds without guidance.
+bridge. On Windows, `json_schema` answers the unsupported error until an image built with guidance ships.
 
 GenAI has no embedding call. An `embed` in process reads the `hidden_states` output of a decoder exported
 with `include_hidden_states=true`, takes the mean over the text's tokens and scales it to unit length.
@@ -149,7 +149,7 @@ Every item is open until its row says otherwise. Each repository's backlog names
 | ID | Work | Repo |
 |---|---|---|
 | LAI-H1 | Require the GenAI library and both headers in the Linux artifact check; the header copy fails instead of `\|\| true`. Done 2026-10-30. | hub |
-| LAI-H2 | Build GenAI with llguidance on Windows. Needs a Windows chain to prove. | hub |
+| LAI-H2 | Build GenAI with llguidance on Windows. In source; a local build linked it, and the smoke gate runs a schema-constrained `generate()` over the [test model](#the-test-model). Needs a Windows chain to ship. | hub |
 | LAI-H3 | This page: the decisions, the contract, the model search order. Done 2026-10-30. | hub |
 | LAI-H4 | A fixture that writes a tiny GenAI model, its config and tokenizer, so no test loads a model file ([§ The test model](#the-test-model)). Done 2026-10-30. | hub |
 | LAI-H5 | The image smoke's GenAI tier 4 decodes the test model on every arch instead of reporting `generate()` as unproven. Done 2026-10-30; arm64 and riscv64 prove it at the next chain. | hub |

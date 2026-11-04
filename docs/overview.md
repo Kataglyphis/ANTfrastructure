@@ -39,7 +39,7 @@ Three build lanes ([Linux Image Chain](#linux-image-chain)).
   components are through: the status banner of `docs/windows-cross-builds.md`. It moves, so do
   not restate it here.
 - **RUNTIME parity since 2026-08-26:** the same GStreamer plugin set (200 DLLs, six contract
-  plugins, `gst-ptp-helper`; the contract has thirteen since CON28 on 2026-10-05, and the seven
+  plugins, `gst-ptp-helper`; the contract has fourteen since CON183 on 2026-11-04, and the seven
   WebRTC ones run on an arm64 device since 2026-10-11), the same media/inference surface and the
   same six python wheels. The TVM/IREE **runtime** python packages are cross-built and assembled
   on this lane (#133).

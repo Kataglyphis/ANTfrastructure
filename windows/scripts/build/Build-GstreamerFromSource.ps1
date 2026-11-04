@@ -77,7 +77,7 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($sourceBuildM
 Import-Module (Resolve-SourceBuildLeafModule -AssetRoot $scriptAssetRoot -Name 'WindowsOrtProvenance.Build.psm1') -DisableNameChecking
 
 # Merge-lane leaf modules: do not fold them into WindowsSourceBuild.Common, which every media RUN mounts.
-foreach ($leafModule in @('WindowsMeson.Common.psm1', 'WindowsRustToolchain.Common.psm1')) {
+foreach ($leafModule in @('WindowsMeson.Common.psm1', 'WindowsRustToolchain.Common.psm1', 'WindowsNativeProvenance.Common.psm1', 'WindowsTargetArch.Common.psm1')) {
     $leafPath = Join-Path $scriptAssetRoot "modules\$leafModule"
     if (-not (Test-Path $leafPath)) { throw "Required module not found: $leafPath" }
     if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($leafPath)))) { Import-Module $leafPath }
@@ -435,12 +435,44 @@ Switch-BuildPhase '4. source tarball'
     return $gstSrcDir
 }
 
+# Provisioning deletes each git wrap it extracts, and gst-plugins-good finds vpx only through the wrap's [provide], so auto skipped the plugin; a pinned wrap-file stays.
+function Install-GstVpxWrap {
+    param([Parameter(Mandatory)][string]$SubprojectDir)
+    $commit = [string]$env:LIBVPX_MESON_COMMIT
+    $sha256 = [string]$env:LIBVPX_MESON_SHA256
+    if ($commit -notmatch '^[0-9a-f]{40}$' -or $sha256 -notmatch '^[0-9a-fA-F]{64}$') {
+        throw "LIBVPX_MESON_COMMIT ('$commit') and LIBVPX_MESON_SHA256 ('$sha256') must come from tool-pins.env through the driver"
+    }
+    $wrapPath = Join-Path $SubprojectDir 'vpx.wrap'
+    if (-not (Test-Path -LiteralPath $wrapPath -PathType Leaf)) { throw "$wrapPath is gone: GStreamer moved libvpx, so re-derive the pin" }
+    $file = "libvpx-$commit.tar.gz"
+    $url = "https://gitlab.freedesktop.org/gstreamer/meson-ports/libvpx/-/archive/$commit/$file"
+    $cache = Join-Path $SubprojectDir 'packagecache'
+    $null = New-Item -ItemType Directory -Force -Path $cache
+    $archive = Join-Path $cache $file
+    Invoke-WrapDownload -Url $url -DestinationPath $archive -Description "libvpx meson port $commit" -Logger { param($m) log $m }
+    $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+    if ($actual -ine $sha256) { throw "$file is $actual, not the pinned $sha256" }
+    # clang-cl has MSVC argument syntax, so the port drops the per-file SIMD flags it needs; meson applies this on extraction.
+    $diffName = '002-libvpx-clangcl-simd-flags.patch'
+    $packageFiles = Join-Path $SubprojectDir 'packagefiles'
+    $null = New-Item -ItemType Directory -Force -Path $packageFiles
+    Copy-Item -LiteralPath (Join-Path $scriptAssetRoot "patches\gstreamer\$diffName") -Destination $packageFiles -Force
+    $wrap = @('[wrap-file]', "directory = libvpx-$commit", "source_url = $url", "source_filename = $file", "source_hash = $($sha256.ToLowerInvariant())", "diff_files = $diffName", '', '[provide]', 'dependency_names = vpx', '') -join "`n"
+    [IO.File]::WriteAllText($wrapPath, $wrap, [Text.UTF8Encoding]::new($false))
+    log "libvpx meson port $commit cached and hash-checked"
+}
+
 function Initialize-GstWrapSources {
     param([string]$gstSrcDir, [string]$resolvedLogDir)
 Switch-BuildPhase '5. wrap prefetch + meson fixups'
     # $libffiVer stays in this file: SourceBuild.PinParity finds the pin site by file name.
     $libffiVer = if ($env:LIBFFI_MESON_VERSION) { $env:LIBFFI_MESON_VERSION } else { '3.2.9999.4' }
     $subprojDir = Join-Path $gstSrcDir 'subprojects'
+    Install-GstVpxWrap -SubprojectDir $subprojDir
+    # Before provisioning, which deletes the wraps it extracts; this is the manifest's source identity.
+    $script:GstWrapInventory = Get-MesonWrapInventory -SubprojectDir $subprojDir
+    if ($script:GstWrapInventory.ContainsKey('libffi')) { $script:GstWrapInventory['libffi'].Revision = "meson-$libffiVer" }
     # @(): the helper comma-wraps, but an empty result must still expose .Count.
     $wrapFailures = @(Invoke-GstWrapProvisioning -SubprojectDir $subprojDir -TempDir $resolvedLogDir `
         -LibffiVersion $libffiVer -Logger { param($m) log $m })
@@ -841,6 +873,12 @@ function Get-GstMesonSetupArgs {
         '-Dopus:intrinsics=disabled',
         # gstnvdecoder.cpp needs gst-d3d11 headers clang-cl cannot find; the CUDA gst-lib is detected separately.
         '-Dgst-plugins-bad:nvcodec=disabled',
+        # The port refuses a shared build off ELF and Darwin, and its tools and tests are not shipped.
+        '-Dvpx:default_library=static',
+        '-Dvpx:examples=disabled',
+        '-Dvpx:tools=disabled',
+        '-Dvpx:docs=disabled',
+        '-Dvpx:unit_tests=disabled',
         # A Rust dev tool whose crates.io index fetch fails in the offline container.
         '-Dgst-devtools:dots-viewer=disabled',
         "-Dc_link_args=[$linkArgElems]",
@@ -1197,8 +1235,37 @@ function Test-GstPlugin {
     }
 }
 
+# The sources still exist here and not after cleanup; meson's records name each DLL's subproject, so nothing is guessed from a file name.
+function Write-GstNativeProvenance {
+    param([string]$resolvedInstallDir, [string]$resolvedBuildDir, [string]$gstSrcDir, [string]$GstVersion, [string]$SslRoot, [string]$RustSourceDir)
+    $noticeDir = 'share\native-provenance\notices'
+    $manifest = Join-Path $resolvedInstallDir 'share\native-provenance\gstreamer.json'
+    $rootSource = @{ Name = 'gstreamer'; Version = $GstVersion; Url = "https://github.com/gstreamer/gstreamer/archive/refs/tags/$GstVersion.tar.gz" }
+    $entries = [System.Collections.Generic.List[object]]::new()
+    foreach ($entry in @(Get-MesonProvenanceEntry -BuildDir $resolvedBuildDir -SourceDir $gstSrcDir -Root $resolvedInstallDir -NoticeDir $noticeDir -Wrap $script:GstWrapInventory -RootSource $rootSource)) { $entries.Add($entry) }
+    # OpenSSL is a package copied in, not a subproject: its license sits beside the installed tree.
+    $sslTexts = @(Get-ChildItem -LiteralPath $SslRoot -Recurse -File -Include 'license*.txt', 'LICENSE' -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ($sslTexts.Count -eq 0) { throw "no OpenSSL license text under $SslRoot" }
+    $sslNotice = Copy-NativeNotice -Root $resolvedInstallDir -NoticeDir $noticeDir -Name 'openssl' -File @($sslTexts[0].FullName)
+    foreach ($dll in @(Get-ChildItem -Path (Join-Path $resolvedInstallDir 'bin\*') -File -Include 'libcrypto-*.dll', 'libssl-*.dll')) {
+        $entries.Add((New-NativeProvenanceEntry -Root $resolvedInstallDir -File "bin\$($dll.Name)" -Notice $sslNotice -Source @{ Name = 'OpenSSL'; Version = $dll.VersionInfo.ProductVersion; Url = "file:$SslRoot" }))
+    }
+    # gst-plugins-rs is cargo-built, so meson has no record of its two DLLs.
+    $rsNotice = Copy-NativeNotice -Root $resolvedInstallDir -NoticeDir $noticeDir -Name 'gst-plugins-rs' -File @((Get-NativeNoticeFile -Directory $RustSourceDir).FullName)
+    foreach ($name in @(Get-RequiredGstPlugin -Arch $script:GstTargetArch | Where-Object { $_.Detection -eq 'cargo' } | ForEach-Object { "gst$($_.Name).dll" })) {
+        $entries.Add((New-NativeProvenanceEntry -Root $resolvedInstallDir -File "lib\gstreamer-1.0\$name" -Notice $rsNotice -Source @{ Name = 'gst-plugins-rs'; Version = $GstVersion; Url = 'https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs' }))
+    }
+    Write-NativeProvenanceManifest -Path $manifest -Owner 'gstreamer' -Entry @($entries)
+    Assert-NativeProvenanceManifest -Path $manifest -Root $resolvedInstallDir
+    # A DLL in the plugins' import closure with no entry is what AccelerANTgine's notice gate rejects.
+    $plugins = @(Get-ChildItem -LiteralPath (Join-Path $resolvedInstallDir 'lib\gstreamer-1.0') -Filter '*.dll' -File).FullName
+    $gap = @(Get-NativeClosureGap -ManifestPath $manifest -Directory (Join-Path $resolvedInstallDir 'bin') -Importer $plugins -GetImport { param($path) Get-PeImportNames -Path $path -IncludeDelayLoad })
+    if ($gap.Count -gt 0) { throw "GStreamer plugins import DLLs with no provenance: $($gap -join ', ')" }
+    log "Native provenance: $($entries.Count) DLL(s) recorded in $manifest"
+}
+
 function Assert-GstInstalledPlugins {
-    param([string]$resolvedInstallDir, [string]$resolvedBuildDir, [string]$resolvedLogDir, [string]$gstSrcDir, [bool]$SkipPluginGate)
+    param([string]$resolvedInstallDir, [string]$resolvedBuildDir, [string]$resolvedLogDir, [string]$gstSrcDir, [bool]$SkipPluginGate, [string]$GstVersion, [string]$RustSourceDir)
 Switch-BuildPhase '9. verify (plugin + pc gates)'
     $gstLaunch = Join-Path $resolvedInstallDir 'bin\gst-launch-1.0.exe'
     if (Test-Path $gstLaunch) {
@@ -1260,6 +1327,9 @@ Switch-BuildPhase '9. verify (plugin + pc gates)'
     } else {
         log "All $(@(Get-RequiredGstPlugin -Arch $script:GstTargetArch).Count) mandatory GStreamer plugins verified present."
     }
+
+    Write-GstNativeProvenance -resolvedInstallDir $resolvedInstallDir -resolvedBuildDir $resolvedBuildDir -gstSrcDir $gstSrcDir -GstVersion $GstVersion `
+        -SslRoot $(if ($script:GstCross) { 'C:\opt\openssl-arm64' } else { [string]$env:OPENSSL_ROOT_DIR }) -RustSourceDir $RustSourceDir
 
     # G2: the onnx plugin's trees, build.ninja, meson's dependency record and log hold the chain ORT only; a pass stamps it.
     Assert-ChainOrtOnly -Consumer 'gstreamer' -OrtRoot $(if ($env:ONNX_ROOT) { $env:ONNX_ROOT } else { Join-Path $resolvedInstallDir 'lib\onnxruntime-source' }) `
@@ -1669,7 +1739,7 @@ try {
     $rsSrcDir = $gstRust.SourceDir
     $rsCargoScratch = $gstRust.CargoScratch
 
-    Assert-GstInstalledPlugins -resolvedInstallDir $resolvedInstallDir -resolvedBuildDir $resolvedBuildDir -resolvedLogDir $resolvedLogDir -gstSrcDir $gstSrcDir -SkipPluginGate $SkipPluginGate
+    Assert-GstInstalledPlugins -resolvedInstallDir $resolvedInstallDir -resolvedBuildDir $resolvedBuildDir -resolvedLogDir $resolvedLogDir -gstSrcDir $gstSrcDir -SkipPluginGate $SkipPluginGate -GstVersion $GstVersion -RustSourceDir $rsSrcDir
 
     Complete-GstBuild -gstSrcDir $gstSrcDir -resolvedBuildDir $resolvedBuildDir -rsSrcDir $rsSrcDir -rsCargoScratch $rsCargoScratch -KeepBuildArtifacts:$KeepBuildArtifacts
 

@@ -18,6 +18,7 @@ $ErrorActionPreference = 'Stop'  # fail-fast before module import
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
+Import-Module (Resolve-SourceBuildLeafModule -AssetRoot $scriptAssetRoot -Name 'WindowsNativeProvenance.Common.psm1') -DisableNameChecking
 
 # sccache aborts PTX-only nvcc output (mozilla/sccache#2862), which ORT's Blackwell LLM kernels are on MSVC.
 function Get-OrtPtxLauncherExemptArg {
@@ -548,6 +549,9 @@ function Invoke-OrtSourcePatches {
     $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\003-dml-clangcl-compat.patch') -SourceDir $SourceDir `
         -FallbackNote 'falling back to inline regex patcher' `
         -Fallback { Invoke-OnnxDmlClangClPatch -SourceDir $SourceDir; $true }
+    # A wrong answer with no error: there is no drift-tolerant form, so a patch that stops applying fails the build.
+    $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\006-dml-matmul-1d-rhs.patch') -SourceDir $SourceDir `
+        -Fatal -FallbackNote 'no fallback exists for the DirectML MatMul fix' -Fallback { $false }
 
     # Ninja is case-sensitive, and upstream spells the DirectML redist dir both arm64-win and ARM64-win.
     $dmlProviders = Join-Path $SourceDir 'cmake\onnxruntime_providers_dml.cmake'
@@ -789,6 +793,60 @@ function Initialize-OrtWebGpuSetup {
     return @{ Plan = $webgpuPlan; Input = $webgpu; CmakeArgs = $cmakeArgs }
 }
 
+# ORT loads a provider from onnxruntime.dll's own directory, and cmake installs MODULE targets under lib.
+function Move-OrtProviderBesideCore {
+    param([Parameter(Mandatory)][string]$OrtInstallDir)
+    $bin = Join-Path $OrtInstallDir 'bin'
+    if (-not (Test-Path -LiteralPath (Join-Path $bin 'onnxruntime.dll') -PathType Leaf)) { throw "no onnxruntime.dll in $bin to stage the providers beside" }
+    foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $OrtInstallDir 'lib') -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '^onnxruntime_providers_[a-z0-9_]+\.(dll|pdb)$' })) {
+        Move-Item -LiteralPath $file.FullName -Destination (Join-Path $bin $file.Name) -Force
+        Write-Host "ORT provider beside the core: $($file.Name)"
+    }
+}
+
+# The per-platform DirectML nuget is the DLL's source: its hash is pinned, its bytes must match, its original texts ship.
+function Install-OrtDirectMlProvenance {
+    param([Parameter(Mandatory)][string]$SearchDir, [Parameter(Mandatory)][string]$OrtInstallDir, [Parameter(Mandatory)][string]$ArchDir)
+    if ([string]::IsNullOrWhiteSpace($env:DIRECTML_NUPKG_SHA256)) { throw 'DIRECTML_NUPKG_SHA256 is unset: the driver passes it from tool-pins.env' }
+    $packages = @(Get-ChildItem -LiteralPath $SearchDir -Recurse -File -Filter 'Microsoft.AI.DirectML.*.nupkg')
+    if ($packages.Count -ne 1) { throw "expected one DirectML nuget under $SearchDir, found $($packages.Count)" }
+    $nupkg = $packages[0]
+    $sha = (Get-FileHash -LiteralPath $nupkg.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($sha -ne $env:DIRECTML_NUPKG_SHA256.ToLowerInvariant()) {
+        throw "$($nupkg.Name) is $sha, not the pinned $env:DIRECTML_NUPKG_SHA256: ORT moved its DirectML, so re-read the new package's license and move the pin"
+    }
+    $version = $nupkg.BaseName -replace '^Microsoft\.AI\.DirectML\.', ''
+    $dllRelative = 'bin\DirectML.dll'
+    $dll = Join-Path $OrtInstallDir $dllRelative
+    if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) { throw "$dll was not staged, so the DirectML EP cannot load" }
+    $noticeDir = Join-Path $OrtInstallDir 'licenses\directml'
+    $null = New-Item -ItemType Directory -Force -Path $noticeDir
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($nupkg.FullName)
+    try {
+        $member = $archive.GetEntry("bin/$ArchDir-win/DirectML.dll")
+        if (-not $member) { throw "$($nupkg.Name) has no bin/$ArchDir-win/DirectML.dll" }
+        $stream = $member.Open()
+        try { $packaged = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($stream)) } finally { $stream.Dispose() }
+        if ($packaged -ine (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash) { throw "$dll differs from the DLL in $($nupkg.Name)" }
+        $notices = @(foreach ($name in 'LICENSE.txt', 'LICENSE-CODE.txt', 'ThirdPartyNotices.txt') {
+                $text = $archive.GetEntry($name)
+                if (-not $text) { throw "$($nupkg.Name) has no $name" }
+                [IO.Compression.ZipFileExtensions]::ExtractToFile($text, (Join-Path $noticeDir $name), $true)
+                "licenses\directml\$name"
+            })
+    } finally { $archive.Dispose() }
+    $entry = New-NativeProvenanceEntry -Root $OrtInstallDir -File $dllRelative -Notice $notices -Source @{
+        Name = 'Microsoft.AI.DirectML'; Version = $version; Sha256 = $sha
+        Url  = "https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/$version"
+    }
+    $manifest = Join-Path $OrtInstallDir 'provenance\directml.json'
+    Write-NativeProvenanceManifest -Path $manifest -Owner 'directml' -Entry @($entry)
+    Assert-NativeProvenanceManifest -Path $manifest -Root $OrtInstallDir -RequiredFile $dllRelative
+    Write-Host "DirectML $version`: bytes match the pinned nuget, license texts staged"
+}
+
 function Install-OrtRuntimeSidecars {
     param([string]$SourceDir, [string]$ortInstallDir, $qnnSdk, $webgpuPlan, $webgpu, [string]$buildDir)
     # cmake --install skips DirectML.dll (0xC0000135); the filter picks the target's redist dir of the per-platform nuget.
@@ -797,6 +855,8 @@ function Install-OrtRuntimeSidecars {
         -SidecarFilter { $_.Directory.Name -eq "$ortDmlArchDir-win" } `
         -BesidePrimary 'onnxruntime.dll' -InstallDir $ortInstallDir `
         -Reason 'the DirectML EP may fail to load at runtime (0xC0000135)'
+    Install-OrtDirectMlProvenance -SearchDir $SourceDir -OrtInstallDir $ortInstallDir -ArchDir $ortDmlArchDir
+    Move-OrtProviderBesideCore -OrtInstallDir $ortInstallDir
 
     # cmake installs the QNN provider DLL but not the SDK's backend DLLs.
     if ($qnnSdk) { [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $ortInstallDir) }

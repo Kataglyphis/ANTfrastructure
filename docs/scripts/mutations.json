@@ -35223,5 +35223,125 @@
   "replace": "  if false; then",
   "test": "bash linux/scripts/tests/test-build-docs.sh",
   "why": "a theme version the lock records differently reads as a missing setuptools, offline, and has been chased as one"
+ },
+ {
+  "id": "lib.genai-guidance-off",
+  "target": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+  "find": "    '-DUSE_GUIDANCE=ON'\n",
+  "replace": "    '-DUSE_GUIDANCE=OFF'\n",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.GenaiGuidance.Tests.ps1 -ResultFile logs/code-quality/genai-guidance-mutation.json",
+  "why": "json_schema answers unsupported on Windows when GenAI builds without llguidance"
+ },
+ {
+  "id": "lib.genai-guidance-marker-dropped",
+  "target": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+  "find": "foreach ($mark in 'Error creating llg_tokenizer', 'toktrie') {",
+  "replace": "foreach ($mark in @()) {",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.GenaiGuidance.Tests.ps1 -ResultFile logs/code-quality/genai-guidance-mutation.json",
+  "why": "without the byte check a build that configured guidance but linked none passes on the cross lane, where no smoke runs"
+ },
+ {
+  "id": "lib.genai-guidance-gate-silent",
+  "target": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+  "find": "if ($genaiGuidance.Count -gt 0) { throw \"GenAI llguidance gate: $($genaiGuidance -join '; ')\" }",
+  "replace": "if ($genaiGuidance.Count -gt 0) { Write-Warning \"GenAI llguidance gate: $($genaiGuidance -join '; ')\" }",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.GenaiGuidance.Tests.ps1 -ResultFile logs/code-quality/genai-guidance-mutation.json",
+  "why": "a warning inside a green stage is how a missing feature ships"
+ },
+ {
+  "id": "smoke.genai-guidance-not-requested",
+  "target": "windows/scripts/build/genai-guidance-smoke.py",
+  "find": "        params.set_guidance(\"json_schema\", json.dumps(schema))\n",
+  "replace": "        pass\n",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.GenaiGuidance.Tests.ps1 -ResultFile logs/code-quality/genai-guidance-mutation.json",
+  "why": "a smoke that never asks for the schema would prove nothing about the mask"
+ },
+ {
+  "id": "smoke.genai-guidance-schema-unchecked",
+  "target": "windows/scripts/build/genai-guidance-smoke.py",
+  "find": "    if json.loads(answer) != 7:\n",
+  "replace": "    if False:\n",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.GenaiGuidance.Tests.ps1 -ResultFile logs/code-quality/genai-guidance-mutation.json",
+  "why": "valid JSON that breaks the schema must not print the sentinel"
+ },
+ {
+  "id": "smoke.genai-guidance-control-unchecked",
+  "target": "windows/scripts/build/genai-guidance-smoke.py",
+  "find": "        if control != oracle[\"continuation\"]:\n",
+  "replace": "        if False:\n",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.GenaiGuidance.Tests.ps1 -ResultFile logs/code-quality/genai-guidance-mutation.json",
+  "why": "if the model already emits the answer, the constrained run proves nothing"
+ },
+ {
+  "id": "provenance.bytes-unchecked",
+  "target": "windows/scripts/modules/WindowsNativeProvenance.Common.psm1",
+  "find": "elseif ((Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash -ine $Entry.sha256) {",
+  "replace": "elseif ($false) {",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/native-provenance-mutation.json",
+  "why": "a replaced DLL would keep its old license claim"
+ },
+ {
+  "id": "provenance.notice-optional",
+  "target": "windows/scripts/modules/WindowsNativeProvenance.Common.psm1",
+  "find": "if (@($Entry.notices).Count -eq 0) { $found += \"$name has no notice text\" }",
+  "replace": "if ($false) { $found += \"$name has no notice text\" }",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/native-provenance-mutation.json",
+  "why": "a DLL with no license text is what the consumer gate rejects"
+ },
+ {
+  "id": "provenance.unsafe-path",
+  "target": "windows/scripts/modules/WindowsNativeProvenance.Common.psm1",
+  "find": "if (@($Path -split '[\\\\/]') -contains '..') { return 'climbs out of the root' }",
+  "replace": "if ($false) { return 'climbs out of the root' }",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/native-provenance-mutation.json",
+  "why": "a manifest must not vouch for a file outside its root"
+ },
+ {
+  "id": "provenance.closure-gap-ignored",
+  "target": "windows/scripts/modules/WindowsNativeProvenance.Common.psm1",
+  "find": "if (-not $listed.Contains($name)) { $null = $gap.Add($name) }",
+  "replace": "if ($false) { $null = $gap.Add($name) }",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/native-provenance-mutation.json",
+  "why": "an unlisted imported DLL is the failure CON184 reports"
+ },
+ {
+  "id": "provenance.import-lib-listed",
+  "target": "windows/scripts/modules/WindowsNativeProvenance.Common.psm1",
+  "find": "if (\"$installed\" -imatch '\\.dll$') {",
+  "replace": "if ($true) {",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/native-provenance-mutation.json",
+  "why": "an import library is not a shipped runtime DLL"
+ },
+ {
+  "id": "dml-matmul.wrong-passes",
+  "target": "windows/scripts/modules/WindowsOrtDmlCheck.Common.psm1",
+  "find": "return & $verdict 'Wrong' \"DirectML returned",
+  "replace": "return & $verdict 'Pass' \"DirectML returned",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.DmlMatMul.Tests.ps1 -ResultFile logs/code-quality/dml-matmul-mutation.json",
+  "why": "the wrong answer is the whole point of this gate"
+ },
+ {
+  "id": "dml-matmul.crash-passes",
+  "target": "windows/scripts/modules/WindowsOrtDmlCheck.Common.psm1",
+  "find": "if ($ExitCode -ne 0) { return & $verdict 'ProbeFailed'",
+  "replace": "if ($false) { return & $verdict 'ProbeFailed'",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.DmlMatMul.Tests.ps1 -ResultFile logs/code-quality/dml-matmul-mutation.json",
+  "why": "a crashed probe must not read as a result"
+ },
+ {
+  "id": "dml-matmul.control-unchecked",
+  "target": "windows/scripts/modules/WindowsOrtDmlCheck.Common.psm1",
+  "find": "return & $verdict 'ProbeFailed' \"the CPU control returned",
+  "replace": "return & $verdict 'NoAdapter' \"the CPU control returned",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.DmlMatMul.Tests.ps1 -ResultFile logs/code-quality/dml-matmul-mutation.json",
+  "why": "a broken control would turn the gate into a skip"
+ },
+ {
+  "id": "lib.genai-guidance-outputs-kept",
+  "target": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+  "find": "-Filter 'llguidance*' -File | Remove-Item -Force",
+  "replace": "-Filter 'llguidance*' -File | Out-Null",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.GenaiGuidance.Tests.ps1 -ResultFile logs/code-quality/genai-guidance-mutation.json",
+  "why": "the install would ship 38 MB of Corrosion outputs nothing imports, and the gate would then fail the stage"
  }
 ]

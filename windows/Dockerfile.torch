@@ -18,6 +18,7 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 # The torch entry point needs this per-file closure even when the parent carries no build modules.
 COPY windows\scripts\modules\WindowsNative.Common.psm1 `
      windows\scripts\modules\WindowsTargetArch.Common.psm1 `
+     windows\scripts\modules\WindowsSdistCompiler.Common.psm1 `
      windows\scripts\modules\WindowsUvLock.Common.psm1 C:\temp\scripts\modules\
 COPY linux\scripts\03-media\runtime\ort-venv-census.py C:\temp\scripts\
 COPY windows\scripts\build\Build-TorchApp.ps1 C:\temp\scripts\

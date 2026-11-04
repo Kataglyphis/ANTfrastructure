@@ -75,6 +75,16 @@ $script:RequiredGstPluginContract = @(
             # Required on the cross lane too: a cross merge that fails to build it must go red.
             UnavailableOn = @{}
         },
+        # Reached only through vpx.wrap's [provide]; Install-GstVpxWrap keeps that wrap alive through provisioning.
+        [pscustomobject]@{
+            Name      = 'vpx'
+            Provides  = 'vp8enc / vp8dec / vp9enc / vp9dec — VP8 and VP9 through libvpx'
+            Detection = 'meson'
+            NeedsPc   = @()
+            MesonOption = 'gst-plugins-good:vpx'
+            Why       = 'WebRTC peers and AccelerANTgine require VP8, and auto silently built no plugin once wrap provisioning deleted its provider'
+            UnavailableOn = @{}
+        },
         # webrtcbin loads these by element name at run time, so only a load probe sees one missing.
         [pscustomobject]@{
             Name      = 'dtls'

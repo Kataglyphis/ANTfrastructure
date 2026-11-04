@@ -114,6 +114,9 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Stateful Windows fixtures use the harness binding APIs; preserve collection identity, fake argv and nested-function restoration.
    Required Windows siblings import unforced into their owner scope and fail on missing companions; test cold, private-warm and global-warm visibility.
    Windows compiler-wrapper setup and removal share the canonical variable list; emptying an environment variable and removing it remain distinct.
+   Windows native-DLL manifests share `WindowsNativeProvenance.Common.psm1`; a mismatch, missing text or unlisted closure DLL fails, and a manifest does not prove GPU inference.
+   Wrap provisioning deletes the git wraps it extracts; a dependency reached only through a wrap's `[provide]` needs a pinned wrap-file, and its plugin belongs in the contract.
+   Copied `Build-TorchApp.ps1`, `Invoke-PythonCiBuild.ps1` and `Invoke-CiPackaging.ps1` carry `WindowsSdistCompiler.Common.psm1`; its gate grades only what uv reports as built.
    Windows source builders share Meson binaries, ARM per-file feature selection, handoff transfers and sccache commands; retain caller flags and failure policy.
    CMake consumers use `Get-CmakeBuildArgs` for target, configuration and parallel flags; keep its argument order and caller-specific build verdict.
    Windows source builders share required-child path enumeration for FFmpeg's Vulkan SDK and the LiteRT wheel smoke; preserve leaf versus directory checks and each caller's fatal diagnostic.
