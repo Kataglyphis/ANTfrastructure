@@ -531,25 +531,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
          all three default children and the next nvidia/rocm builds. Preserve riscv64's GLib
          handoff, plugin health and SHIPPED-TRUTH D checks.
       2. Prove the mandatory GUI build in OxidANT's arm64 lane and its riscv64 sysroot test.
-      **GPU consumer evidence, 2026-10-30:** the locally cached amd64 `:latest-rocm`
-      (index `a5d68fbe…`) and `:latest-nvidia` (index `0e9dec34…`) lacked the GTK 4 /
-      `graphene-gobject-1.0` development surface needed by OxidANT's mandatory GUI build.
-      Installing `libgtk-4-dev` in disposable containers let both release builds finish; that
-      is a local workaround, not the image fix. Keep the selective amd64 package choice in the
-      consumer contract: do not pull a second distro GTK/GStreamer stack into the image just
-      to reproduce the workaround. Before the next GPU image publication, make both candidate
-      variants pass `verify_gtk4_dev_surface` and the `gtk4-dev` runtime contract as uid 1001,
-      then build OxidANT's GUI. Record the
-      image digests, architectures and results; verify the NVIDIA arm64 child separately.
-      The NVIDIA arm64 child `sha256:6cc1a6744b88cb0e4e031c79e1a0e8bcf9d7e0277f8fac63686b5a59368f5d11`
-      resolves `gtk4` 4.22.4 and `graphene-gobject-1.0` 1.10.8 through `pkg-config --exists`
-      as uid 1001 under user-mode emulation (2026-10-30). This is not a GUI build or the full
-      development-surface contract; retain the native arm64 checks.
-      **2026-11-02:** OxidANT's GPU workflows still install the package
-      (`linux-x64-amd-gpu.yml`, `linux-nvidia-gpu-build.yml`). Runs 41517659698 (`:latest-rocm`
-      `05518138…`) and 41517653860 (`:latest-nvidia` `70bc45db…`, x64) did so, which does not show
-      whether these digests still need it. Both lanes keep their install
-      ([why](docs/image-decisions.md#deliberate--not-gaps)).
+      **GPU consumers (2026-11-04):** the owner keeps `libgtk-4-dev` out of the amd64 GPU images. On `:latest-rocm`
+      `05518138…` and `:latest-nvidia` `70bc45db…`, without it, as uid 1001, `cargo build --locked -p kataglyphis_cli` links
+      against `/opt/gstreamer`'s GTK 4, so OxidANT's GPU lanes dropped their install. Left: a GPU lane run of the owner's
+      that proves those lanes, and the NVIDIA arm64 child's native GUI build: its `pkg-config --exists gtk4` passed only
+      under emulation. SHIPPED-TRUTH D reads `/opt/gstreamer/lib/*.so.*` and misses `multiarch`, where amd64's GTK 4 sits.
 
 - [ ] **CON176 — verify the Vulkan development surface in GPU consumer images** [S, ★★].
       On 2026-10-30 the cached amd64 `:latest-nvidia` (`0e9dec34…`) and `:latest-rocm`
