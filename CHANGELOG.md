@@ -20,6 +20,7 @@
   through the wheel. The default model keeps its bytes. LAI-O5 is done in OxidANT
   ([contract](docs/language-ai.md#the-text-contract)).
 - LAI-O4 is done in OxidANT: ObservANT's `/ask` and `/summary` read the visit log's figures.
+- LAI-F5 is done in OmniAccelerANT: questions on the Stream page.
 - `verify_agents_drift.py --hub` names the hub to read. `test-agents-drift.sh` uses it with a fixed page, because
   its cases read `language-ai.md`'s real rows and turned red when LAI-O4 and LAI-O5 closed.
 - `language-ai.md`: LAI-P4 and LAI-P5 are done in OrchestrANT, and LAI-P3 has its first slice.

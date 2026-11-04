@@ -183,7 +183,7 @@ Every item is open until its row says otherwise. Each repository's backlog names
 | 2 NLP and search | LAI-P4 | Classification, entities, summaries and translation between German and English with a JSON schema. Done 2026-11-04 (`orchestrant-text`): the tiny model proves the plumbing, and no quality has been measured. |
 | 3 Speech | LAI-A4, LAI-F4 | A GStreamer audio appsink and Whisper captions as `textoverlay` and WebRTC data; microphone input in the app. |
 | 4 Language meets vision | LAI-O4 | ObservANT's `/ask` and a daily summary over `/visits`. Done 2026-11-04: the model reads the log's figures, not the picture; a summary is on request, and nothing sends one on a schedule. Proven on the CPU with the test model and SmolLM2, whose answers are not good; the default chat model is LAI-M4's. |
-| 4 Language meets vision | LAI-F5 | Questions on the Stream page. |
+| 4 Language meets vision | LAI-F5 | Questions on the Stream page. Done 2026-11-04: a camera whose `/healthz` says `ask` offers them on its own web page; proven in Chrome against the real service with the test model and SmolLM2. Native builds have no ObservANT to ask. |
 | 4 Language meets vision | LAI-P5 | `yolo-monitor --describe`. Done 2026-11-04: a sentence from the detection counts, off the frame loop. |
 | 5 Extensions | LAI-H6 and spikes | GenAI for Android; HailoRT GenAI on Hailo-10H; QNN in process; a tool-calling agent over OrchestrANT's metrics; speech output. |
 
