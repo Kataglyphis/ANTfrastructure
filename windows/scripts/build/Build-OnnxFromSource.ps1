@@ -549,9 +549,8 @@ function Invoke-OrtSourcePatches {
     $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\003-dml-clangcl-compat.patch') -SourceDir $SourceDir `
         -FallbackNote 'falling back to inline regex patcher' `
         -Fallback { Invoke-OnnxDmlClangClPatch -SourceDir $SourceDir; $true }
-    # A wrong answer with no error: there is no drift-tolerant form, so a patch that stops applying fails the build.
-    $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\006-dml-matmul-1d-rhs.patch') -SourceDir $SourceDir `
-        -Fatal -FallbackNote 'no fallback exists for the DirectML MatMul fix' -Fallback { $false }
+    # DirectML's MatMul returns a wrong answer with no error without this.
+    Invoke-RequiredSourcePatch -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\006-dml-matmul-1d-rhs.patch') -SourceDir $SourceDir
 
     # Ninja is case-sensitive, and upstream spells the DirectML redist dir both arm64-win and ARM64-win.
     $dmlProviders = Join-Path $SourceDir 'cmake\onnxruntime_providers_dml.cmake'
@@ -809,42 +808,23 @@ function Move-OrtProviderBesideCore {
 function Install-OrtDirectMlProvenance {
     param([Parameter(Mandatory)][string]$SearchDir, [Parameter(Mandatory)][string]$OrtInstallDir, [Parameter(Mandatory)][string]$ArchDir)
     if ([string]::IsNullOrWhiteSpace($env:DIRECTML_NUPKG_SHA256)) { throw 'DIRECTML_NUPKG_SHA256 is unset: the driver passes it from tool-pins.env' }
-    $packages = @(Get-ChildItem -LiteralPath $SearchDir -Recurse -File -Filter 'Microsoft.AI.DirectML.*.nupkg')
-    if ($packages.Count -ne 1) { throw "expected one DirectML nuget under $SearchDir, found $($packages.Count)" }
-    $nupkg = $packages[0]
-    $sha = (Get-FileHash -LiteralPath $nupkg.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($sha -ne $env:DIRECTML_NUPKG_SHA256.ToLowerInvariant()) {
-        throw "$($nupkg.Name) is $sha, not the pinned $env:DIRECTML_NUPKG_SHA256: ORT moved its DirectML, so re-read the new package's license and move the pin"
-    }
+    $nupkg = @(Get-RequiredBuildArtifact -Root $SearchDir -Filter 'Microsoft.AI.DirectML.*.nupkg' -Recurse -MaximumCount 1 -FailureMessage {
+            param($files) "expected one DirectML nuget under $SearchDir, found $($files.Count)"
+        })[0]
+    # A mismatch means ORT moved its DirectML: re-read the new package's license, then move the pin.
+    Assert-FileSha256 -Path $nupkg.FullName -Expected $env:DIRECTML_NUPKG_SHA256 -Label $nupkg.Name -PinName 'DIRECTML_NUPKG_SHA256'
     $version = $nupkg.BaseName -replace '^Microsoft\.AI\.DirectML\.', ''
-    $dllRelative = 'bin\DirectML.dll'
-    $dll = Join-Path $OrtInstallDir $dllRelative
+    $notices = @('LICENSE.txt', 'LICENSE-CODE.txt', 'ThirdPartyNotices.txt' | ForEach-Object { "licenses\directml\$_" })
+    $packaged = "$($nupkg.FullName).DirectML.dll"
+    $members = [ordered]@{ "bin/$ArchDir-win/DirectML.dll" = $packaged }
+    foreach ($notice in $notices) { $members[(Split-Path -Leaf $notice)] = Join-Path $OrtInstallDir $notice }
+    Expand-NativeZipMember -Archive $nupkg.FullName -Member $members
+    $dll = Join-Path $OrtInstallDir 'bin\DirectML.dll'
     if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) { throw "$dll was not staged, so the DirectML EP cannot load" }
-    $noticeDir = Join-Path $OrtInstallDir 'licenses\directml'
-    $null = New-Item -ItemType Directory -Force -Path $noticeDir
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $archive = [IO.Compression.ZipFile]::OpenRead($nupkg.FullName)
-    try {
-        $member = $archive.GetEntry("bin/$ArchDir-win/DirectML.dll")
-        if (-not $member) { throw "$($nupkg.Name) has no bin/$ArchDir-win/DirectML.dll" }
-        $stream = $member.Open()
-        try { $packaged = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($stream)) } finally { $stream.Dispose() }
-        if ($packaged -ine (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash) { throw "$dll differs from the DLL in $($nupkg.Name)" }
-        $notices = @(foreach ($name in 'LICENSE.txt', 'LICENSE-CODE.txt', 'ThirdPartyNotices.txt') {
-                $text = $archive.GetEntry($name)
-                if (-not $text) { throw "$($nupkg.Name) has no $name" }
-                [IO.Compression.ZipFileExtensions]::ExtractToFile($text, (Join-Path $noticeDir $name), $true)
-                "licenses\directml\$name"
-            })
-    } finally { $archive.Dispose() }
-    $entry = New-NativeProvenanceEntry -Root $OrtInstallDir -File $dllRelative -Notice $notices -Source @{
-        Name = 'Microsoft.AI.DirectML'; Version = $version; Sha256 = $sha
-        Url  = "https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/$version"
-    }
-    $manifest = Join-Path $OrtInstallDir 'provenance\directml.json'
-    Write-NativeProvenanceManifest -Path $manifest -Owner 'directml' -Entry @($entry)
-    Assert-NativeProvenanceManifest -Path $manifest -Root $OrtInstallDir -RequiredFile $dllRelative
-    Write-Host "DirectML $version`: bytes match the pinned nuget, license texts staged"
+    Assert-FileSha256 -Path $packaged -Expected (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash -Label "the DLL in $($nupkg.Name), against the staged $dll"
+    $source = @{ Name = 'Microsoft.AI.DirectML'; Version = $version; Sha256 = $env:DIRECTML_NUPKG_SHA256; Url = "https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/$version" }
+    $entry = New-NativeProvenanceEntry -Root $OrtInstallDir -File 'bin\DirectML.dll' -Notice $notices -Source $source
+    Write-NativeProvenanceManifest -Path (Join-Path $OrtInstallDir 'provenance\directml.json') -Owner 'directml' -Entry @($entry) -Root $OrtInstallDir -RequiredFile 'bin\DirectML.dll'
 }
 
 function Install-OrtRuntimeSidecars {

@@ -66,7 +66,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot 'pyproject.toml') -PathTyp
     throw "$RepoRoot has no pyproject.toml: pass -RepoRoot, or run from the repo root"
 }
 . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
-$repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsScripts.Shared', 'WindowsBuild.Common', 'WindowsUv.Common', 'WindowsPythonWheel.Common', 'WindowsSdistCompiler.Common') -EnterRepoRoot -RepoRoot $RepoRoot
+$repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsScripts.Shared', 'WindowsBuild.Common', 'WindowsUv.Common', 'WindowsPythonWheel.Common') -EnterRepoRoot -RepoRoot $RepoRoot
 
 if (-not $SettingsFile) {
     $candidate = Join-Path $repoRoot 'scripts\windows\python-ci.psd1'
@@ -101,7 +101,7 @@ function Invoke-TestLeg([string]$Version, [string]$Extras) {
     try {
         $env:UV_SYNC_EXTRAS = $Extras
         $syncOut = [Collections.Generic.List[string]]::new()
-        $syncUv = New-UvBuildDelegates -Context $context -OutputBuffer $syncOut
+        $syncUv = New-UvCapturingDelegates -Context $context -OutputBuffer $syncOut
         try {
             Invoke-WithClangClSdist -BuiltOutput $syncOut -SitePackages (Join-Path $envPath 'Lib\site-packages') -LogInfo $script:UvLogInfo -Script {
                 Sync-UvProjectDependencies -UseLocked:(Test-Path -LiteralPath 'uv.lock') @syncUv

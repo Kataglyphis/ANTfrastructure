@@ -2793,6 +2793,7 @@ Export-ModuleMember -Function @(
     'Update-NinjaFile',
     'Invoke-SourcePatch',
     'Invoke-OnnxDmlClangClPatch',
+    'Invoke-RequiredSourcePatch',
     'Invoke-SourcePatchWithFallback',
     'Invoke-InlineRegexPatch',
     'Invoke-SourceFilePatchSet',

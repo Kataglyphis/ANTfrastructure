@@ -488,6 +488,31 @@ function Assert-GstWebRtcLoopback {
     return "the frames arrived, then webrtcsrc's signaller failed in teardown (BACKLOG CON68): $(@($r.TeardownError) -join ' | ')"
 }
 
-Export-ModuleMember -Function Get-RequiredGstPlugin, Write-PkgConfigFile,
+# Cast, then ReduceMean, on a 1x48x64x3 uint8 image, encoded so no onnx package or model file is needed.
+$script:OnnxInferenceModelHex = '08083a7b0a170a01781201662204436173742a090a02746f1801a001020a230a0166120179220a5265647563654d65616e2a0f0a086b65657064696d731801a0010212016d5a1b0a017812160a14080212100a0208010a0208300a0208400a020803621b0a017912160a14080112100a0208010a0208010a0208010a02080142040a00100d'
+
+<#
+.SYNOPSIS
+    Runs real frames through onnxinference over a tiny model and its .modelinfo sidecar; throws on failure.
+.NOTES
+    A path with a space and a registered element both passed while every session failed to load. Does not check the output values.
+#>
+function Assert-GstOnnxInferenceRun {
+    param(
+        [Parameter(Mandatory)][string]$GstLaunch,
+        [Parameter(Mandatory)][string]$WorkDir
+    )
+    $null = New-Item -ItemType Directory -Force -Path $WorkDir
+    $model = Join-Path $WorkDir 'onnx inference.onnx'
+    [IO.File]::WriteAllBytes($model, [Convert]::FromHexString($script:OnnxInferenceModelHex))
+    $modelInfo = @('[modelinfo]', 'version=1.0', 'group-id=smoke', '', '[x]', 'id=smoke-in', 'type=uint8', 'dims=1,48,64,3', 'dir=input', 'ranges=0.0,255.0', '',
+        '[y]', 'id=smoke-out', 'type=float32', 'dims=1,1,1,1', 'dir=output', '') -join "`n"
+    [IO.File]::WriteAllText("$model.modelinfo", $modelInfo, [Text.UTF8Encoding]::new($false))
+    $global:LASTEXITCODE = 0
+    $output = & $GstLaunch videotestsrc num-buffers=3 ! videoconvert ! videoscale ! 'video/x-raw,format=RGB,width=64,height=48' ! onnxinference "model-file=$($model.Replace('\', '/'))" ! fakesink 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "onnxinference did not run real frames (exit $LASTEXITCODE): $output" }
+}
+
+Export-ModuleMember -Function Assert-GstOnnxInferenceRun, Get-RequiredGstPlugin, Write-PkgConfigFile,
     Get-LibraryLinkName, Assert-PkgConfigModule, Get-GstRustCargoPlan, Get-GstRustSourceMirrorConfig, Invoke-GstWebRtcLoopback,
     Assert-GstWebRtcLoopback, Get-GstLoopbackTeardownError

@@ -35249,7 +35249,7 @@
   "why": "a warning inside a green stage is how a missing feature ships"
  },
  {
-  "id": "smoke.genai-guidance-not-requested",
+  "id": "genai-guidance.not-requested",
   "target": "windows/scripts/build/genai-guidance-smoke.py",
   "find": "        params.set_guidance(\"json_schema\", json.dumps(schema))\n",
   "replace": "        pass\n",
@@ -35257,7 +35257,7 @@
   "why": "a smoke that never asks for the schema would prove nothing about the mask"
  },
  {
-  "id": "smoke.genai-guidance-schema-unchecked",
+  "id": "genai-guidance.schema-unchecked",
   "target": "windows/scripts/build/genai-guidance-smoke.py",
   "find": "    if json.loads(answer) != 7:\n",
   "replace": "    if False:\n",
@@ -35265,7 +35265,7 @@
   "why": "valid JSON that breaks the schema must not print the sentinel"
  },
  {
-  "id": "smoke.genai-guidance-control-unchecked",
+  "id": "genai-guidance.control-unchecked",
   "target": "windows/scripts/build/genai-guidance-smoke.py",
   "find": "        if control != oracle[\"continuation\"]:\n",
   "replace": "        if False:\n",
@@ -35299,8 +35299,8 @@
  {
   "id": "provenance.closure-gap-ignored",
   "target": "windows/scripts/modules/WindowsNativeProvenance.Common.psm1",
-  "find": "if (-not $listed.Contains($name)) { $null = $gap.Add($name) }",
-  "replace": "if ($false) { $null = $gap.Add($name) }",
+  "find": "$seen.Keys | Where-Object { $_ -notin $listed } | Sort-Object",
+  "replace": "$seen.Keys | Where-Object { $false } | Sort-Object",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/native-provenance-mutation.json",
   "why": "an unlisted imported DLL is the failure CON184 reports"
  },
@@ -35343,5 +35343,77 @@
   "replace": "-Filter 'llguidance*' -File | Out-Null",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.GenaiGuidance.Tests.ps1 -ResultFile logs/code-quality/genai-guidance-mutation.json",
   "why": "the install would ship 38 MB of Corrosion outputs nothing imports, and the gate would then fail the stage"
+ },
+ {
+  "id": "sdist-compiler.msvc-build-passes",
+  "target": "windows/scripts/modules/WindowsSdistCompiler.Common.psm1",
+  "find": "if ($msvc.Count) { throw",
+  "replace": "if ($false) { throw",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only TorchApp.SdistCompiler.Tests.ps1 -ResultFile logs/code-quality/sdist-compiler-mutation.json",
+  "why": "an MSVC-linked sdist is the failure this gate exists for"
+ },
+ {
+  "id": "sdist-compiler.lib-unset",
+  "target": "windows/scripts/modules/WindowsSdistCompiler.Common.psm1",
+  "find": "LIB = $VsLib; ",
+  "replace": "",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only TorchApp.SdistCompiler.Tests.ps1 -ResultFile logs/code-quality/sdist-compiler-mutation.json",
+  "why": "lld-link finds an explicit system library only through LIB"
+ },
+ {
+  "id": "sdist-compiler.gate-skipped",
+  "target": "windows/scripts/modules/WindowsSdistCompiler.Common.psm1",
+  "find": "if ($SitePackages) { Assert-ClangClSdistBuild",
+  "replace": "if ($false) { Assert-ClangClSdistBuild",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only TorchApp.SdistCompiler.Tests.ps1 -ResultFile logs/code-quality/sdist-compiler-mutation.json",
+  "why": "a lane that grades nothing cannot notice a bypassed shim"
+ },
+ {
+  "id": "sdist-compiler.lane-packaging-unshimmed",
+  "target": "windows/scripts/python/Invoke-CiPackaging.ps1",
+  "find": "Invoke-WithClangClSdist -LogInfo $script:UvLogInfo -Script {",
+  "replace": "& {",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only TorchApp.SdistCompiler.Tests.ps1 -ResultFile logs/code-quality/sdist-compiler-mutation.json",
+  "why": "the free-threaded build would fall back to the VS compiler"
+ },
+ {
+  "id": "sdist-compiler.lane-ci-unshimmed",
+  "target": "windows/scripts/python/Invoke-PythonCiBuild.ps1",
+  "find": "Invoke-WithClangClSdist -BuiltOutput $syncOut -SitePackages (Join-Path $envPath 'Lib\\site-packages') -LogInfo $script:UvLogInfo -Script {",
+  "replace": "& {",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only TorchApp.SdistCompiler.Tests.ps1 -ResultFile logs/code-quality/sdist-compiler-mutation.json",
+  "why": "a test leg would build sdists with the VS compiler"
+ },
+ {
+  "id": "variant-chain.failed-push-ignored",
+  "target": "windows/scripts/modules/WindowsBkVariantChain.Common.psm1",
+  "find": "@($Push | Where-Object { $_.Process.HasExited -and $_.Process.ExitCode -ne 0 } |",
+  "replace": "@($Push | Where-Object { $false } |",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Driver.VariantChain.Tests.ps1 -ResultFile logs/code-quality/variant-chain-mutation.json",
+  "why": "a failed upload must fail the run"
+ },
+ {
+  "id": "variant-chain.rocm-off-amd64",
+  "target": "windows/scripts/modules/WindowsBkVariantChain.Common.psm1",
+  "find": "if ($TargetArch -ne 'amd64' -and $Variant -contains 'rocm') { throw",
+  "replace": "if ($false) { throw",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Driver.VariantChain.Tests.ps1 -ResultFile logs/code-quality/variant-chain-mutation.json",
+  "why": "rocm is amd64-only, and must be refused before any variant builds"
+ },
+ {
+  "id": "variant-chain.bad-chain-id",
+  "target": "windows/scripts/modules/WindowsBkVariantChain.Common.psm1",
+  "find": "if ($Request.ChainId -notmatch '^\\d{8}-\\d{6}$') { throw",
+  "replace": "if ($false) { throw",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Driver.VariantChain.Tests.ps1 -ResultFile logs/code-quality/variant-chain-mutation.json",
+  "why": "the id names the logs a push child joins"
+ },
+ {
+  "id": "provenance.onnxinference-exit-ignored",
+  "target": "windows/scripts/modules/WindowsGstPlugins.Common.psm1",
+  "find": "if ($LASTEXITCODE -ne 0) { throw \"onnxinference did not run real frames",
+  "replace": "if ($false) { throw \"onnxinference did not run real frames",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Gst.OnnxInferenceRun.Tests.ps1 -ResultFile logs/code-quality/gst-onnxinference-mutation.json",
+  "why": "a pipeline that fails must not read as a passed inference"
  }
 ]

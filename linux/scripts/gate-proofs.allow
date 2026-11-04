@@ -35,6 +35,11 @@ mutation-family:actions
 mutation-family:android-env
 mutation-family:boot
 mutation-family:chain-status
+mutation-family:dml-matmul
+mutation-family:genai-guidance
+mutation-family:sdist-compiler
+mutation-family:variant-chain
+mutation-family:provenance
 mutation-family:cross-build
 mutation-family:version-forwarding
 mutation-family:dead-code

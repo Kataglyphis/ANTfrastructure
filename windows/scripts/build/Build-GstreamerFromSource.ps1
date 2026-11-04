@@ -451,8 +451,7 @@ function Install-GstVpxWrap {
     $null = New-Item -ItemType Directory -Force -Path $cache
     $archive = Join-Path $cache $file
     Invoke-WrapDownload -Url $url -DestinationPath $archive -Description "libvpx meson port $commit" -Logger { param($m) log $m }
-    $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
-    if ($actual -ine $sha256) { throw "$file is $actual, not the pinned $sha256" }
+    Assert-FileSha256 -Path $archive -Expected $sha256 -Label $file -PinName 'LIBVPX_MESON_SHA256'
     # clang-cl has MSVC argument syntax, so the port drops the per-file SIMD flags it needs; meson applies this on extraction.
     $diffName = '002-libvpx-clangcl-simd-flags.patch'
     $packageFiles = Join-Path $SubprojectDir 'packagefiles'
@@ -696,6 +695,8 @@ function Invoke-GstMediaSourcePatches {
     param([string]$gstSrcDir)
     Invoke-GstMediaFoundationPatch -gstSrcDir $gstSrcDir
     Invoke-GstDtlsPatch -gstSrcDir $gstSrcDir
+    # Without it every onnxinference session reads the model path as UTF-16 and fails to load.
+    Invoke-RequiredSourcePatch -PatchFile (Join-Path $scriptAssetRoot 'patches\gstreamer\003-onnxinference-wide-model-path.patch') -SourceDir $gstSrcDir
     Invoke-GstCppStandardPatch -gstSrcDir $gstSrcDir
     Invoke-GstOpenCvSourcePatch -gstSrcDir $gstSrcDir
 
@@ -1255,8 +1256,7 @@ function Write-GstNativeProvenance {
     foreach ($name in @(Get-RequiredGstPlugin -Arch $script:GstTargetArch | Where-Object { $_.Detection -eq 'cargo' } | ForEach-Object { "gst$($_.Name).dll" })) {
         $entries.Add((New-NativeProvenanceEntry -Root $resolvedInstallDir -File "lib\gstreamer-1.0\$name" -Notice $rsNotice -Source @{ Name = 'gst-plugins-rs'; Version = $GstVersion; Url = 'https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs' }))
     }
-    Write-NativeProvenanceManifest -Path $manifest -Owner 'gstreamer' -Entry @($entries)
-    Assert-NativeProvenanceManifest -Path $manifest -Root $resolvedInstallDir
+    Write-NativeProvenanceManifest -Path $manifest -Owner 'gstreamer' -Entry @($entries) -Root $resolvedInstallDir
     # A DLL in the plugins' import closure with no entry is what AccelerANTgine's notice gate rejects.
     $plugins = @(Get-ChildItem -LiteralPath (Join-Path $resolvedInstallDir 'lib\gstreamer-1.0') -Filter '*.dll' -File).FullName
     $gap = @(Get-NativeClosureGap -ManifestPath $manifest -Directory (Join-Path $resolvedInstallDir 'bin') -Importer $plugins -GetImport { param($path) Get-PeImportNames -Path $path -IncludeDelayLoad })

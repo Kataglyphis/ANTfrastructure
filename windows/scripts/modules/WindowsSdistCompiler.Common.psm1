@@ -6,7 +6,7 @@
 Set-StrictMode -Version Latest
 
 # Unforced: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
-Import-Module (Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1') -DisableNameChecking -ErrorAction Stop
+foreach ($sibling in 'WindowsTargetArch.Common', 'WindowsScripts.Shared') { Import-Module (Join-Path $PSScriptRoot "$sibling.psm1") -DisableNameChecking -ErrorAction Stop }
 
 $script:ImageLlvmBin = 'C:\llvm-patched\bin'
 
@@ -45,14 +45,9 @@ function Enable-ClangClSdistShim {
     if (-not $VsLib) { $VsLib = Get-ClangClSdistVsLib }
     $null = New-Item -ItemType Directory -Force -Path $ShimDir
     $shim.GetEnumerator() | ForEach-Object { Copy-Item -LiteralPath (Join-Path $LlvmBin $_.Value) -Destination (Join-Path $ShimDir $_.Key) -Force }
-    $previous = @{ DISTUTILS_USE_SDK = $env:DISTUTILS_USE_SDK; MSSdk = $env:MSSdk; PATH = $env:PATH; CL = $env:CL; LIB = $env:LIB }
-    $env:DISTUTILS_USE_SDK = '1'
-    $env:MSSdk = '1'
-    $env:PATH = "$ShimDir;$env:PATH"
-    $env:LIB = $VsLib
     # cl.exe's common tentative definitions, which psutil's headers rely on.
-    $env:CL = ("/clang:-fcommon `"/clang:-resource-dir=$($resource[0].FullName)`" $($previous.CL)").TrimEnd()
-    return $previous
+    $cl = ("/clang:-fcommon `"/clang:-resource-dir=$($resource[0].FullName)`" $env:CL").TrimEnd()
+    return Set-ProcessEnvironmentValue -Values ([ordered]@{ DISTUTILS_USE_SDK = '1'; MSSdk = '1'; PATH = "$ShimDir;$env:PATH"; LIB = $VsLib; CL = $cl })
 }
 
 <#
@@ -60,12 +55,8 @@ function Enable-ClangClSdistShim {
     Restores what Enable-ClangClSdistShim returned and removes the shim.
 #>
 function Disable-ClangClSdistShim {
-    param([Parameter(Mandatory)][hashtable]$Previous, [Parameter(Mandatory)][string]$ShimDir)
-    # A null restored through SetEnvironmentVariable arrives as an empty value, not an absent one.
-    foreach ($name in $Previous.Keys) {
-        if ($null -eq $Previous[$name]) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
-        else { Set-Item -LiteralPath "Env:$name" -Value $Previous[$name] }
-    }
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Previous, [Parameter(Mandatory)][string]$ShimDir)
+    $null = Set-ProcessEnvironmentValue -Values $Previous
     Remove-Item -LiteralPath $ShimDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 

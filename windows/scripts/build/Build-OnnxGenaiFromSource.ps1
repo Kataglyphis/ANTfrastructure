@@ -81,10 +81,16 @@ function Install-GenaiRustTarget {
 }
 
 # A statically linked llguidance leaves both strings: the C++ guard that exists only under USE_GUIDANCE and a Rust source path.
+function Get-GenaiCmakeCacheMap {
+    param([AllowEmptyString()][string]$Text)
+    $map = [ordered]@{}
+    foreach ($entry in (Get-CmakeCacheEntries -Text $Text)) { if ($entry.Name) { $map[$entry.Name] = $entry.Value } }
+    return $map
+}
+
 function Get-GenaiGuidanceFinding {
     param([Parameter(Mandatory)][AllowEmptyString()][string]$CMakeCache, [Parameter(Mandatory)][string]$GenaiDll, [Parameter(Mandatory)][string]$TargetArch)
-    $cacheVars = @{}
-    foreach ($entry in (Get-CmakeCacheEntries -Text $CMakeCache)) { if ($entry.Name) { $cacheVars[$entry.Name] = $entry.Value } }
+    $cacheVars = Get-GenaiCmakeCacheMap -Text $CMakeCache
     if ($cacheVars['USE_GUIDANCE'] -ne 'ON') { "CMakeCache.txt has USE_GUIDANCE=$($cacheVars['USE_GUIDANCE']), not ON" }
     $triple = Get-RustTargetTriple -Arch $TargetArch
     if ($cacheVars['Rust_CARGO_TARGET'] -ne $triple) { "CMakeCache.txt has Rust_CARGO_TARGET=$($cacheVars['Rust_CARGO_TARGET']), not $triple" }
@@ -334,10 +340,7 @@ function Get-GenaiOrtConfigureFinding {
         if ($dirSeen.Count -eq 0) { "the configure log has no $($dirVar.Name) line" }
         $dirSeen | Where-Object { -not (& $isPath $_ $dirVar.Want) } | ForEach-Object { "ortlib.cmake set $($dirVar.Name) to '$_', not $($dirVar.Want)" }
     }
-    $cacheVars = [ordered]@{}
-    foreach ($entry in (Get-CmakeCacheEntries -Text $CMakeCache)) {
-        if ($entry.Name) { $cacheVars[$entry.Name] = $entry.Value }
-    }
+    $cacheVars = Get-GenaiCmakeCacheMap -Text $CMakeCache
     $blocked = ConvertTo-OrtGatePath $FetchBlockDir
     $pins = [ordered]@{ ORT_HOME = $shim; FETCHCONTENT_SOURCE_DIR_ORTLIB = $blocked; FETCHCONTENT_SOURCE_DIR_ONNXRUNTIME = $blocked }
     if ($cacheVars.Count -eq 0) { 'CMakeCache.txt is missing or has no entries, so ORT_HOME and the fetch block cannot be checked' }

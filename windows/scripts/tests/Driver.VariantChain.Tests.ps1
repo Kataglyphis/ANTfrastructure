@@ -5,8 +5,8 @@ Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsBkVarian
 
 function New-ChainPlan {
     param([string[]]$Variant = @('default', 'nvidia', 'rocm'), [switch]$ConcurrentPush, [string[]]$BuildArg = @(), [hashtable]$BuildOption = @{}, [string[]]$Stages = @('torch', 'final'), [string]$TargetArch = 'amd64')
-    return @(Get-BkVariantChainPlan -Variant $Variant -Repository 'ghcr.io/o/r' -ChainId '20261104-120000' -BuildDate '2026-11-04T11:00:00Z' `
-            -ConcurrentPush:$ConcurrentPush -BuildArg $BuildArg -BuildOption $BuildOption -Stages $Stages -TargetArch $TargetArch)
+    $request = @{ Variant = $Variant; Repository = 'ghcr.io/o/r'; BuildArg = $BuildArg; BuildOption = $BuildOption; Stages = $Stages; TargetArch = $TargetArch; ChainId = '20261104-120000'; BuildDate = '2026-11-04T11:00:00Z' }
+    return @(Get-BkVariantChainPlan -Request $request -ConcurrentPush:$ConcurrentPush)
 }
 
 # A process stand-in: exited with -ExitCode, or running until waited for or killed.
@@ -44,6 +44,11 @@ function Invoke-FakeChain {
 }
 
 Describe 'Get-BkVariantChainPlan' {
+    It 'refuses a chain id its push children could not join (mutation)' {
+        $request = @{ Variant = 'default'; Repository = 'ghcr.io/o/r'; BuildArg = @(); BuildOption = @{}; Stages = 'final'; TargetArch = 'amd64'; ChainId = 'not-an-id'; BuildDate = 'x' }
+        Assert-Throws { Get-BkVariantChainPlan -Request $request } -MessagePattern 'is not yyyyMMdd-HHmmss'
+    }
+
     It 'names each lane''s own tag, one stamp on build and push, and a final-only push child' {
         $plan = New-ChainPlan -ConcurrentPush
         Assert-Equal 'ghcr.io/o/r:winamd64,ghcr.io/o/r:winamd64-nvidia,ghcr.io/o/r:winamd64-rocm' (($plan | ForEach-Object PushRef) -join ',') 'lane tags'
@@ -99,10 +104,16 @@ Describe 'Invoke-BkVariantChain' {
         Assert-False ($r.Parameters[0].ContainsKey('PushRef')) 'no in-driver push'
     }
 
+    # Each failure stops the chain with this verdict and exactly this order of steps.
+    function script:Assert-ChainFailure {
+        param([hashtable]$Run, [string]$Verdict, [string]$Order)
+        $r = Invoke-FakeChain -Plan (New-ChainPlan -ConcurrentPush) -ConcurrentPush @Run
+        Assert-Match $Verdict $r.Error 'the verdict'
+        Assert-Equal $Order ($r.Log -join '|') 'nothing further started'
+    }
+
     It 'a failed push fails the run and starts no further variant' {
-        $r = Invoke-FakeChain -Plan (New-ChainPlan -ConcurrentPush) -ConcurrentPush -PushExit @{ default = 1 }
-        Assert-Match 'default push failed \(exit 1, ghcr.io/o/r:winamd64\)' $r.Error 'the verdict'
-        Assert-Equal 'build default|push default|wait default' ($r.Log -join '|') 'nvidia never started'
+        Assert-ChainFailure @{ PushExit = @{ default = 1 } } 'default push failed \(exit 1, ghcr.io/o/r:winamd64\)' 'build default|push default|wait default'
     }
 
     It 'the last variant''s failed push fails the run too' {
@@ -111,9 +122,7 @@ Describe 'Invoke-BkVariantChain' {
     }
 
     It 'a failed build fails the run, starts nothing more, and lets the finished variant''s push end' {
-        $r = Invoke-FakeChain -Plan (New-ChainPlan -ConcurrentPush) -ConcurrentPush -FailBuild nvidia -PushRunning
-        Assert-Match 'nvidia failed: stage died in nvidia' $r.Error 'the verdict'
-        Assert-Equal 'build default|push default|build nvidia|wait default' ($r.Log -join '|') 'rocm never started; default not killed'
+        Assert-ChainFailure @{ FailBuild = 'nvidia'; PushRunning = $true } 'nvidia failed: stage died in nvidia' 'build default|push default|build nvidia|wait default'
     }
 
     It 'an interrupted wait kills the running push tree' {
@@ -156,11 +165,13 @@ Describe 'Build-Buildkit.ps1 -PushOnly' {
     }
 
     It 'keeps the shared host state away from a push child, and stamps with the caller''s date' {
-        Assert-Match 'if \(\$SccacheEndpoint -and -not \$PushOnly\) \{\s+Publish-BkHostPreseed' $src 'no preseed or memory publish beside a build'
-        Assert-Match '(?s)function Set-BuildPhase \{.{0,200}if \(\$PushOnly\) \{ return \}' $src 'no phase write'
-        Assert-Match 'BUILD_DATE = Get-BkBuildDate' $src 'the shared stamp'
-        Assert-Match '(?s)function Get-BkBuildDate \{\s+if \(\$BuildDate\) \{ return \$BuildDate \}' $src 'the caller''s date wins'
-        Assert-Match '(?s)function Set-BkPushOnlyRunId \{.{0,60}\$script:RunId = "\$ParentRunId-push-' $src 'its logs join the chain'
-        Assert-Match '(?m)^Set-BkPushOnlyRunId\s*$' $src 'the id is set'
+        # No preseed, memory publish or phase write beside a build; the caller's stamp wins; its logs join the chain.
+        $wiring = 'if \(\$SccacheEndpoint -and -not \$PushOnly\) \{\s+Publish-BkHostPreseed',
+            '(?s)function Set-BuildPhase \{.{0,200}if \(\$PushOnly\) \{ return \}',
+            'BUILD_DATE = Get-BkBuildDate',
+            '(?s)function Get-BkBuildDate \{\s+if \(\$BuildDate\) \{ return \$BuildDate \}',
+            '(?s)function Set-BkPushOnlyRunId \{.{0,60}\$script:RunId = "\$ParentRunId-push-',
+            '(?m)^Set-BkPushOnlyRunId\s*$'
+        foreach ($pattern in $wiring) { Assert-Match $pattern $src }
     }
 }

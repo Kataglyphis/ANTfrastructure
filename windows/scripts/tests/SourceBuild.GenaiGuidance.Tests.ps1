@@ -6,7 +6,7 @@
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsTargetArch.Common.psm1') -Force
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
 $script:GenaiScript = 'windows\scripts\build\Build-OnnxGenaiFromSource.ps1'
-. (Get-ScriptFunctionDefinition -ScriptPath $script:GenaiScript -FunctionName 'Get-GenaiGuidanceCmakeArgs', 'Get-GenaiGuidanceFinding', 'Install-GenaiRustTarget')
+. (Get-ScriptFunctionDefinition -ScriptPath $script:GenaiScript -FunctionName 'Get-GenaiCmakeCacheMap', 'Get-GenaiGuidanceCmakeArgs', 'Get-GenaiGuidanceFinding', 'Install-GenaiRustTarget')
 
 $script:GuidanceCache = @'
 USE_GUIDANCE:BOOL=ON
@@ -65,42 +65,34 @@ Describe 'GenAI llguidance: the DLL gate' {
 
 Describe 'GenAI llguidance: wiring' {
     $ast = Get-TestScriptAst -ScriptPath $script:GenaiScript
-    function script:Get-GuidanceTopLevelCall {
+    # The one unconditional call of a command, for ordering by source offset.
+    function script:Get-GuidanceCall {
         param([string]$Name)
-        @(Get-TestAstCommands -Ast $ast -Name $Name | Where-Object {
-                $null -eq (Get-TestAstAncestor -Node $_ -First -Predicate { param($a)
-                        $a -is [System.Management.Automation.Language.FunctionDefinitionAst] -or
-                        $a -is [System.Management.Automation.Language.IfStatementAst] -or
-                        $a -is [System.Management.Automation.Language.LoopStatementAst] })
-            })
+        $hits = @(Get-TestAstCommands -Ast $ast -Name $Name | Where-Object { Test-TestAstUnconditional -Node $_ })
+        Assert-Equal 1 $hits.Count "one unconditional $Name"
+        return $hits[0].Extent
     }
     It 'prepares Rust and the scratch cargo home before configure, and gates after the install, unconditionally' {
-        $target = @(Get-GuidanceTopLevelCall 'Install-GenaiRustTarget')
-        $configure = @(Get-GuidanceTopLevelCall 'Invoke-CmakeConfigure')
-        $install = @(Get-GuidanceTopLevelCall 'Install-GenaiBuiltArtifacts')
-        $gate = @(Get-GuidanceTopLevelCall 'Assert-GenaiGuidance')
-        Assert-Equal 1 $target.Count 'one Install-GenaiRustTarget'
-        Assert-Equal 1 $gate.Count 'one gate'
-        Assert-True ($target[0].Extent.EndOffset -lt $configure[0].Extent.StartOffset) 'the target exists before configure'
-        Assert-True ($install[0].Extent.EndOffset -lt $gate[0].Extent.StartOffset) 'the gate reads the installed DLL'
-        Assert-Match "CARGO_HOME = Join-Path \`$SourceDir 'cargo-home'" $ast.Extent.Text
+        foreach ($order in @{ First = 'Install-GenaiRustTarget'; Then = 'Invoke-CmakeConfigure' }, @{ First = 'Install-GenaiBuiltArtifacts'; Then = 'Assert-GenaiGuidance' }) {
+            Assert-True ((Get-GuidanceCall $order.First).EndOffset -lt (Get-GuidanceCall $order.Then).StartOffset) "$($order.First) before $($order.Then)"
+        }
+        Assert-TestScriptContains -ScriptPath $script:GenaiScript -Literal "CARGO_HOME = Join-Path `$SourceDir 'cargo-home'"
     }
     It 'removes llguidance from the install before the gate reads it' {
-        $fn = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Install-GenaiBuiltArtifacts' }, $true))[0].Extent.Text
-        Assert-Match "-Filter 'llguidance\*' -File \| Remove-Item -Force" $fn
+        Assert-Match "-Filter 'llguidance\*' -File \| Remove-Item -Force" "$(Get-ScriptFunctionDefinition -ScriptPath $script:GenaiScript -FunctionName 'Install-GenaiBuiltArtifacts')"
     }
     It 'throws on a finding (mutation)' {
         Assert-Match 'if \(\$genaiGuidance\.Count -gt 0\) \{ throw ' $ast.Extent.Text
     }
     It 'mounts the Rust leaf and its sibling on the GenAI RUN alone, never in buildmods' {
-        $dockerfile = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\Dockerfile.media-builder'))
+        $dockerfile = Get-TestRepoText 'windows\Dockerfile.media-builder'
         foreach ($leaf in 'WindowsRustToolchain.Common.psm1', 'WindowsScripts.Shared.psm1') {
-            Assert-Match ("source=windows/scripts/modules/$leaf,target=C:\\bkmnt\\rustmods\\$leaf") $dockerfile
+            Assert-TestScriptContains -ScriptPath 'windows\Dockerfile.media-builder' -Literal "source=windows/scripts/modules/$leaf,target=C:\bkmnt\rustmods\$leaf"
         }
-        Assert-Equal 1 ([regex]::Matches($dockerfile, 'rustmods\\WindowsRustToolchain')).Count 'one stage carries it'
-        $genaiRun = [regex]::Match($dockerfile, "(?s)RUN --mount(?:(?!RUN --mount).)*-ResumeFrom 'ONNX GenAI'").Value
-        Assert-Match 'rustmods\\WindowsRustToolchain' $genaiRun 'the GenAI RUN'
-        Assert-True ($dockerfile -notmatch 'windows\\scripts\\modules\\WindowsRustToolchain') 'not COPYd into buildmods'
+        $carriers = @($dockerfile -split '(?m)^RUN ' | Where-Object { $_.Contains('rustmods\WindowsRustToolchain') })
+        Assert-Equal 1 $carriers.Count 'one RUN carries it'
+        Assert-True ($carriers[0].Contains("-ResumeFrom 'ONNX GenAI'")) 'the GenAI RUN'
+        Assert-False ($dockerfile.Contains('windows\scripts\modules\WindowsRustToolchain')) 'not COPYd into buildmods'
     }
     It 'ships the smoke script with the shared fixture and calls it from the Base group' {
         $image = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\Dockerfile'))
@@ -165,10 +157,10 @@ class Generator:
         Assert-True ($run.Output -notmatch 'genai-guidance-schema-ok') 'no sentinel'
     }
     It 'goes red on valid JSON the schema forbids, and on a control that did not follow the model' {
-        foreach ($case in @(@('defg', '8'), @('7', '7'))) {
-            $run = Invoke-GuidanceSmoke -Control $case[0] -Answer $case[1]
-            Assert-True ($run.Exit -ne 0) "$($case -join ' / '): nonzero exit"
-            Assert-True ($run.Output -notmatch 'genai-guidance-schema-ok') "$($case -join ' / '): no sentinel"
+        foreach ($case in @{ Control = 'defg'; Answer = '8' }, @{ Control = '7'; Answer = '7' }) {
+            $run = Invoke-GuidanceSmoke @case
+            Assert-True ($run.Exit -ne 0) "$($case.Answer): nonzero exit"
+            Assert-True ($run.Output -notmatch 'genai-guidance-schema-ok') "$($case.Answer): no sentinel"
         }
     }
     It 'goes red when set_guidance refuses, as an unsupported build does' {

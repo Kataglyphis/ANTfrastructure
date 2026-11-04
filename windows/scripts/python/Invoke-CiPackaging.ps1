@@ -29,7 +29,7 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
 # $RepoRoot and $repoRoot are one variable: this deliberately replaces the raw value with the resolved path.
-$repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common', 'WindowsTargetArch.Common', 'WindowsPythonWheel.Common', 'WindowsSdistCompiler.Common') -EnterRepoRoot -RepoRoot $RepoRoot
+$repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common', 'WindowsTargetArch.Common', 'WindowsPythonWheel.Common') -EnterRepoRoot -RepoRoot $RepoRoot
 if (-not $PythonVersion) { $PythonVersion = (Get-PinnedPythonVersion).MajorMinor }
 $arch = Get-WindowsTargetArch -Arch $TargetArch
 $cross = Test-WindowsCrossTarget -Arch $arch
@@ -55,7 +55,7 @@ function Invoke-PackagingEnvironmentBuild {
     }
     try {
         $syncOut = [Collections.Generic.List[string]]::new()
-        $syncUv = New-UvBuildDelegates -Context $script:BuildContext -OutputBuffer $syncOut
+        $syncUv = New-UvCapturingDelegates -Context $script:BuildContext -OutputBuffer $syncOut
         Invoke-WithClangClSdist -BuiltOutput $syncOut -SitePackages (Join-Path $envPath 'Lib\site-packages') -LogInfo $script:UvLogInfo -Script {
             Sync-UvProjectDependencies @syncUv
             Invoke-BuildExternal -Context $script:BuildContext -File 'uv' -Parameters $buildArgs | Out-Null

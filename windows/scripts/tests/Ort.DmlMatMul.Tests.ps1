@@ -37,21 +37,13 @@ Describe 'DirectML MatMul verdict' {
 
 Describe 'DirectML MatMul wiring' {
     It 'the patch fixes the right input and its failure is fatal' {
-        $root = Get-RepoRoot
-        $patch = Get-Content -LiteralPath (Join-Path $root 'windows\scripts\patches\onnxruntime\006-dml-matmul-1d-rhs.patch') -Raw
-        Assert-True ($patch.Contains('DmlOperatorMatMul.cpp')) 'patches the MatMul operator'
-        Assert-True ($patch.Contains('m_inputTensorDescs[1] = TensorDesc(')) 'replaces the right-hand descriptor'
-        $build = Get-Content -LiteralPath (Join-Path $root 'windows\scripts\build\Build-OnnxFromSource.ps1') -Raw
-        Assert-True ($build -match "(?s)006-dml-matmul-1d-rhs\.patch.*?-Fatal") 'a patch that stops applying fails the build'
+        Assert-TestScriptContains -ScriptPath 'windows\scripts\patches\onnxruntime\006-dml-matmul-1d-rhs.patch' -Literal 'DmlOperatorMatMul.cpp', 'm_inputTensorDescs[1] = TensorDesc('
+        Assert-Match 'Invoke-RequiredSourcePatch [^\r\n]*006-dml-matmul-1d-rhs\.patch' (Get-TestRepoText 'windows\scripts\build\Build-OnnxFromSource.ps1') 'a patch that stops applying fails the build'
     }
 
     It 'both gates run the probe, and only a missing adapter may skip' {
-        $root = Get-RepoRoot
-        $smoke = Get-Content -LiteralPath (Join-Path $root 'windows\scripts\build\Test-Container.ps1') -Raw
-        Assert-True ($smoke -match "(?s)Invoke-OrtDmlMatMulProbe.*?-eq 'NoAdapter'.*?Skip-Test.*?-eq 'Pass'") 'the image smoke grades it'
-        $device = Get-Content -LiteralPath (Join-Path $root 'windows\scripts\build\Test-Arm64Bundle.ps1') -Raw
-        Assert-True ($device -match "Status -notin @\('Pass', 'NoAdapter'\)") 'the device gate fails anything else'
-        $export = Get-Content -LiteralPath (Join-Path $root 'windows\scripts\build\Export-Arm64Bundle.ps1') -Raw
-        Assert-True ($export.Contains('WindowsOrtDmlCheck.Common.psm1')) 'the packing step carries the module'
+        Assert-Match "(?s)Invoke-OrtDmlMatMulProbe.*?-eq 'NoAdapter'.*?Skip-Test.*?-eq 'Pass'" (Get-TestRepoText 'windows\scripts\build\Test-Container.ps1') 'the image smoke grades it'
+        Assert-TestScriptContains -ScriptPath 'windows\scripts\build\Test-Arm64Bundle.ps1' -Literal "Status -notin @('Pass', 'NoAdapter')"
+        Assert-TestScriptContains -ScriptPath 'windows\scripts\build\Export-Arm64Bundle.ps1' -Literal 'WindowsOrtDmlCheck.Common.psm1'
     }
 }

@@ -865,9 +865,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 
 - [ ] **CON185 - provide Windows GStreamer tensor inference elements** [M].
-      **Consumer fix, not a missing plugin (checked 2026-11-04).** `tensor_transform` and `tensor_decoder` are NNStreamer's, and no
-      `onnxruntime` element registers in `:winamd64`. The image has `onnxinference`, `tfliteinference` and `tensordecodebin`, which the smoke
-      now requires. Left: AccelerANTgine's `Src/gstreamer_pipeline.cpp` moves to those elements, with its own test on a real model.
+      **Mostly a consumer fix (checked 2026-11-04).** `tensor_transform` and `tensor_decoder` are NNStreamer's, and no `onnxruntime` element
+      registers in `:winamd64`. The image has `onnxinference`, `tfliteinference` and `tensordecodebin`. But `onnxinference` failed every Windows session,
+      reading the model path as UTF-16, behind a smoke that only checked registration; `003-onnxinference-wide-model-path.patch` fixes that and both gates now
+      run real frames through a tiny model. AccelerANTgine's branch `con185-gst-inference` moves to `onnxinference`, unbuilt. Left: a chain, a `<model>.modelinfo`
+      for each of its models, and its own test on a real model. Output values are not checked.
       Cached `:winamd64-nvidia` image digest
       `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777` reports no
       `tensor_transform`, `onnxruntime`, or `tensor_decoder` via `gst-inspect-1.0`.

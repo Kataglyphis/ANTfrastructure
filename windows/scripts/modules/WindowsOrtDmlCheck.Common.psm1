@@ -40,20 +40,15 @@ function ConvertFrom-OrtDmlMatMulProbe {
     param([AllowEmptyString()][string]$Text, [int]$ExitCode = 0)
     $verdict = { param($status, $detail) [pscustomobject]@{ Status = $status; Detail = $detail } }
     if ($ExitCode -ne 0) { return & $verdict 'ProbeFailed' "the probe exited $ExitCode`: $Text" }
-    $line = @($Text -split "`r?`n" | Where-Object { $_ -match '^\{.*\}\s*$' }) | Select-Object -Last 1
-    if (-not $line) { return & $verdict 'ProbeFailed' "the probe printed no JSON line: $Text" }
-    $report = $line | ConvertFrom-Json
+    $lines = [regex]::Matches($Text, '(?m)^\{.*\}\s*$')
+    if ($lines.Count -eq 0) { return & $verdict 'ProbeFailed' "the probe printed no JSON line: $Text" }
+    $report = $lines[$lines.Count - 1].Value | ConvertFrom-Json
     $want = @(321, 654, 987, 1320)
-    $cpu = @($report.cpu)
-    if ($cpu.Count -ne 4 -or (@(0..3 | Where-Object { [math]::Abs($cpu[$_] - $want[$_]) -gt 1e-3 })).Count -gt 0) {
-        return & $verdict 'ProbeFailed' "the CPU control returned [$($cpu -join ', ')], expected [$($want -join ', ')]"
-    }
+    $matchesWant = { param($got) $values = @($got); $values.Count -eq 4 -and @(0..3 | Where-Object { [math]::Abs($values[$_] - $want[$_]) -gt 1e-3 }).Count -eq 0 }
+    if (-not (& $matchesWant $report.cpu)) { return & $verdict 'ProbeFailed' "the CPU control returned [$(@($report.cpu) -join ', ')], expected [$($want -join ', ')]" }
     if (-not $report.adapter) { return & $verdict 'NoAdapter' 'no DirectML adapter is visible here, so the shape was not checked' }
-    $dml = @($report.dml)
-    if ($dml.Count -ne 4 -or (@(0..3 | Where-Object { [math]::Abs($dml[$_] - $want[$_]) -gt 1e-3 })).Count -gt 0) {
-        return & $verdict 'Wrong' "DirectML returned [$($dml -join ', ')] where the CPU returned [$($cpu -join ', ')]"
-    }
-    return & $verdict 'Pass' "DirectML matches the CPU: [$($dml -join ', ')]"
+    if (-not (& $matchesWant $report.dml)) { return & $verdict 'Wrong' "DirectML returned [$(@($report.dml) -join ', ')] where the CPU returned [$($want -join ', ')]" }
+    return & $verdict 'Pass' "DirectML matches the CPU: [$(@($report.dml) -join ', ')]"
 }
 
 <#

@@ -1000,6 +1000,10 @@ Nothing under `%ONNX_ROOT%\lib` is a provider DLL any more. Import libraries sta
 GStreamer inference pipelines use `onnxinference`, `tfliteinference` and the tensor decoders. NNStreamer's `tensor_filter`,
 `tensor_transform` and `tensor_decoder` are not in these images, and GStreamer has no `onnxruntime` element.
 
+`onnxinference` refuses a model without a `<model>.modelinfo` file beside it (`Failed to load modelinfo`). Each section names one
+tensor, with `type`, `dims` and `dir` matching the model. GStreamer's `modelinfo-helper` in gst-devtools writes one.
+Windows images before this fix failed every session with a garbled path, whatever the model.
+
 ## The ort crate links the chain ONNX Runtime
 
 Both published images set the environment of the Rust `ort` / `ort-sys` crates,

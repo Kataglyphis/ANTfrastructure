@@ -4,7 +4,7 @@
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsOrtProvenance.Build.psm1') -Force -DisableNameChecking
 
 $script:GenaiOrtScript = 'windows\scripts\build\Build-OnnxGenaiFromSource.ps1'
-$script:GenaiOrtFns = @('New-GenaiOrtHome', 'Get-GenaiOrtCmakeArgs', 'Get-GenaiOrtConfigureFinding',
+$script:GenaiOrtFns = @('Get-GenaiCmakeCacheMap', 'New-GenaiOrtHome', 'Get-GenaiOrtCmakeArgs', 'Get-GenaiOrtConfigureFinding',
     'Get-GenaiOrtNinjaFinding', 'Get-GenaiOrtTreeFinding')
 $script:GenaiShim = 'C:/temp/onnx-genai-src/ort-home'
 $script:GenaiBlock = 'C:/temp/onnx-genai-src/ort-fetch-blocked'
@@ -341,18 +341,7 @@ $script:GenaiScriptAst = Get-TestScriptAst -ScriptPath $script:GenaiOrtScript
 
 Describe 'GenAI ORT: wiring in Build-OnnxGenaiFromSource.ps1' {
     $find = { param([scriptblock]$Predicate) @($script:GenaiScriptAst.FindAll($Predicate, $true)) }
-    # Unconditional wiring = a statement no function body, if or loop encloses.
-    function Test-GenaiScriptUnconditional {
-        param($Node)
-        $guard = Get-TestAstAncestor -Node $Node -First -Predicate {
-            param($ancestor)
-            $ancestor -is [System.Management.Automation.Language.FunctionDefinitionAst] -or
-                $ancestor -is [System.Management.Automation.Language.IfStatementAst] -or
-                $ancestor -is [System.Management.Automation.Language.LoopStatementAst]
-        }
-        $null -eq $guard
-    }
-    $callsOf = { param([string]$Name) @(Get-TestAstCommands -Ast $script:GenaiScriptAst -Name $Name | Where-Object { Test-GenaiScriptUnconditional -Node $_ }) }
+    $callsOf = { param([string]$Name) @(Get-TestAstCommands -Ast $script:GenaiScriptAst -Name $Name | Where-Object { Test-TestAstUnconditional -Node $_ }) }
     function Get-GenaiScriptAssignment {
         param([string]$Var)
         @(& $find { param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq $Var })
@@ -374,7 +363,7 @@ Describe 'GenAI ORT: wiring in Build-OnnxGenaiFromSource.ps1' {
         $append = @(Get-GenaiScriptAssignment -Var '$cmakeExtraGenAi' | Where-Object { $_.Right.Extent.Text -eq '$genaiOrtArgs' })
         Assert-Equal 1 $append.Count '$cmakeExtraGenAi += $genaiOrtArgs'
         Assert-Equal 'PlusEquals' "$($append[0].Operator)"
-        Assert-True ((Test-GenaiScriptUnconditional -Node $append[0]) -and $append[0].Extent.EndOffset -lt $configure[0].Extent.StartOffset) 'unconditional, before Invoke-CmakeConfigure'
+        Assert-True ((Test-TestAstUnconditional -Node $append[0]) -and $append[0].Extent.EndOffset -lt $configure[0].Extent.StartOffset) 'unconditional, before Invoke-CmakeConfigure'
         $body = $script:GenaiScriptAst.Extent.Text
         Assert-Equal 1 ([regex]::Matches($body, 'ORT_HOME:PATH=')).Count 'one ORT_HOME, in Get-GenaiOrtCmakeArgs'
         Assert-True ($body -notmatch 'USE_WINML|-DORT_VERSION') 'no WinML ORT, no package version'
@@ -393,7 +382,7 @@ Describe 'GenAI ORT: wiring in Build-OnnxGenaiFromSource.ps1' {
         $argsCall = @(& $callsOf 'Get-GenaiOrtCmakeArgs')[0]
         $reads = @(& $find { param($n) $n -is [System.Management.Automation.Language.ForEachStatementAst] -and $n.Variable.Extent.Text -eq '$recordFile' })
         Assert-Equal 1 $reads.Count 'one record-reading loop'
-        Assert-True ((Test-GenaiScriptUnconditional -Node $reads[0]) -and $reads[0].Extent.StartOffset -gt $configure[0].Extent.EndOffset) 'read unconditionally, after configure'
+        Assert-True ((Test-TestAstUnconditional -Node $reads[0]) -and $reads[0].Extent.StartOffset -gt $configure[0].Extent.EndOffset) 'read unconditionally, after configure'
         Assert-Equal "@(`$genaiCfgLog, (Join-Path `$genaiBuildDir 'CMakeCache.txt'), (Join-Path `$genaiBuildDir 'build.ninja'))" $reads[0].Condition.Extent.Text
         foreach ($p in @(@('ConfigureLog', 'onnx-genai-configure.log'), @('CMakeCache', 'CMakeCache.txt'), @('BuildNinja', 'build.ninja'))) {
             Assert-Equal "`$genaiRecord['$($p[1])']" (Get-GenaiScriptArgument -Call $gateCall -Param $p[0]) "-$($p[0])"
@@ -413,7 +402,7 @@ Describe 'GenAI ORT: wiring in Build-OnnxGenaiFromSource.ps1' {
             Assert-Equal 1 $checks.Count "one if ($var.Count -gt 0)"
             Assert-Null $checks[0].ElseClause "$var : no else arm"
             Assert-True ($checks[0].Clauses[0].Item2.Statements[0] -is [System.Management.Automation.Language.ThrowStatementAst]) "$var : a direct throw"
-            Assert-True (Test-GenaiScriptUnconditional -Node $checks[0]) "$var : unconditional"
+            Assert-True (Test-TestAstUnconditional -Node $checks[0]) "$var : unconditional"
             Assert-True ($checks[0].Extent.EndOffset -lt $cleanup[0].Extent.StartOffset) "$var : before Remove-SourceBuildTree"
         }
         $post = @(Get-GenaiScriptAssignment -Var '$genaiOrtPost')

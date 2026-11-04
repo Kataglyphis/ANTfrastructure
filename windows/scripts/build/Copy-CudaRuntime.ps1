@@ -20,8 +20,8 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 $targetArch = if ([string]::IsNullOrWhiteSpace($env:WINDOWS_TARGET_ARCH)) { 'amd64' } else { $env:WINDOWS_TARGET_ARCH }
 $binSubdir = if ($targetArch -eq 'amd64') { 'bin' } else { 'bin\arm64' }
 $sdks = @(
-    @{ Name = 'cuda'; Label = 'NVIDIA CUDA Toolkit'; Root = $env:CUDA_ROOT; Url = 'https://developer.nvidia.com/cuda-downloads'; Sha256 = $env:CUDA_INSTALLER_SHA256 }
-    @{ Name = 'cudnn'; Label = 'NVIDIA cuDNN'; Root = $env:CUDNN_ROOT; Url = 'https://developer.nvidia.com/cudnn'; Sha256 = '' }
+    @{ Name = 'cuda'; Root = $env:CUDA_ROOT; Source = @{ Name = 'NVIDIA CUDA Toolkit'; Url = 'https://developer.nvidia.com/cuda-downloads'; Sha256 = $env:CUDA_INSTALLER_SHA256 } }
+    @{ Name = 'cudnn'; Root = $env:CUDNN_ROOT; Source = @{ Name = 'NVIDIA cuDNN'; Url = 'https://developer.nvidia.com/cudnn' } }
 ) | Where-Object { $_.Root -and (Test-Path (Join-Path $_.Root $binSubdir)) }
 
 # No root set is a CPU lane, whose empty dir still feeds the merge's unconditional COPY; a set root that does not resolve is a broken nvidia base.
@@ -70,17 +70,15 @@ if (-not (Test-Path (Join-Path $dest 'cudnn64_9.dll'))) {
 $notice = @{}
 foreach ($sdk in $sdks) {
     $texts = @(Get-ChildItem -LiteralPath $sdk.Root -File -Filter 'LICENSE*')
-    if ($texts.Count -eq 0) { throw "$($sdk.Label) has no LICENSE file under $($sdk.Root)" }
+    if ($texts.Count -eq 0) { throw "$($sdk.Source.Name) has no LICENSE file under $($sdk.Root)" }
     $notice[$sdk.Name] = Copy-NativeNotice -Root $root -NoticeDir 'notices' -Name $sdk.Name -File @($texts.FullName)
 }
 foreach ($name in @($origin.Keys | Sort-Object)) {
     $sdk = $origin[$name]
-    $source = @{ Name = $sdk.Label; Version = (Split-Path -Leaf $sdk.Root); Url = $sdk.Url; Sha256 = $sdk.Sha256 }
-    $entries.Add((New-NativeProvenanceEntry -Root $root -File "bin\$name" -Source $source -Notice $notice[$sdk.Name]))
+    $entries.Add((New-NativeProvenanceEntry -Root $root -File "bin\$name" -Source ($sdk.Source + @{ Version = (Split-Path -Leaf $sdk.Root) }) -Notice $notice[$sdk.Name]))
 }
 $manifest = Join-Path $root 'provenance.json'
-Write-NativeProvenanceManifest -Path $manifest -Owner 'cuda-runtime' -Entry @($entries)
-Assert-NativeProvenanceManifest -Path $manifest -Root $root -RequiredFile 'bin\cudnn64_9.dll'
+Write-NativeProvenanceManifest -Path $manifest -Owner 'cuda-runtime' -Entry @($entries) -Root $root -RequiredFile 'bin\cudnn64_9.dll'
 
 Write-Host "Staged $count CUDA/cuDNN runtime DLLs into $dest (incl. cudnn64_9.dll) with their licenses and $manifest"
 exit 0

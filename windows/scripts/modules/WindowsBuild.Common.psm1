@@ -8,6 +8,8 @@ Set-StrictMode -Version Latest
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 # No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 Import-Module $sharedPath
+# Re-exported for the consumer lanes, whose native steps all run under the shim.
+Import-Module (Join-Path $PSScriptRoot 'WindowsSdistCompiler.Common.psm1') -DisableNameChecking -ErrorAction Stop
 
 # -- Logging primitives (module-internal; scripts use the Write-BuildLog* wrappers) --
 
@@ -694,23 +696,33 @@ function New-UvBuildDelegates {
     # Defined here, not in WindowsUv.Common, so the closures resolve Invoke-BuildExternal and Write-BuildLog*.
     param(
         [Parameter(Mandatory)]
-        [pscustomobject]$Context,
-        [Collections.Generic.List[string]]$OutputBuffer
+        [pscustomobject]$Context
     )
 
     return @{
         CommandRunner = {
             param([string]$File, [string[]]$CommandArgs)
-            Invoke-BuildExternal -Context $Context -File $File -Parameters $CommandArgs -OutputBuffer $OutputBuffer | Out-Null
+            Invoke-BuildExternal -Context $Context -File $File -Parameters $CommandArgs | Out-Null
         }.GetNewClosure()
         LogInfo    = { param([string]$Message); Write-BuildLog -Context $Context -Message $Message }.GetNewClosure()
         LogWarning = { param([string]$Message); Write-BuildLogWarning -Context $Context -Message $Message }.GetNewClosure()
     }
 }
 
+function New-UvCapturingDelegates {
+    # The sdist gate reads uv's Built lines from this buffer.
+    param([Parameter(Mandatory)][object]$Context, [Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[string]]$OutputBuffer)
+    $external = @{ Context = $Context; OutputBuffer = $OutputBuffer }
+    $delegates = New-UvBuildDelegates -Context $Context
+    $delegates.CommandRunner = { param($File, $CommandArgs) Invoke-BuildExternal @external -File $File -Parameters $CommandArgs | Out-Null }.GetNewClosure()
+    return $delegates
+}
+
 Export-ModuleMember -Function @(
     'Get-PyprojectPackageName',
     'New-UvBuildDelegates',
+    'New-UvCapturingDelegates',
+    'Invoke-WithClangClSdist',
     'New-BuildContext',
     'Open-BuildLog',
     'Close-BuildLog',

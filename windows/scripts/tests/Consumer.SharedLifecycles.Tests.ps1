@@ -26,7 +26,7 @@ function New-UvProjectEnvironment {
     'ignored environment output'
 }
 function Add-PythonLibPath { param($PythonDir) $State.Calls.Add("native:$PythonDir") }
-function New-UvBuildDelegates { param($Context, $OutputBuffer) @{} }
+function New-UvCapturingDelegates { param($Context, $OutputBuffer) @{} }
 function Invoke-WithClangClSdist { param($BuiltOutput, $SitePackages, $LogInfo, $Script) & $Script }
 function Sync-UvProjectDependencies {
     $State.Calls.Add('sync')

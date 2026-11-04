@@ -1,0 +1,30 @@
+diff --git a/subprojects/gst-plugins-bad/ext/onnx/gstonnxinference.c b/subprojects/gst-plugins-bad/ext/onnx/gstonnxinference.c
+index b067a2b..c1572a7 100644
+--- a/subprojects/gst-plugins-bad/ext/onnx/gstonnxinference.c
++++ b/subprojects/gst-plugins-bad/ext/onnx/gstonnxinference.c
+@@ -914,8 +914,25 @@ gst_onnx_inference_start (GstBaseTransform * trans)
+   }
+ 
+   // Create session
++#ifdef G_OS_WIN32
++  {
++    /* ORTCHAR_T is wchar_t here, so a gchar path would be read as UTF-16. */
++    gunichar2 *model_file_w =
++        g_utf8_to_utf16 (self->model_file, -1, NULL, NULL, NULL);
++
++    if (model_file_w == NULL) {
++      GST_ERROR_OBJECT (self, "model-file is not valid UTF-8: %s",
++          self->model_file);
++      goto error;
++    }
++    status = api->CreateSession (self->env, (const ORTCHAR_T *) model_file_w,
++        session_options, &self->session);
++    g_free (model_file_w);
++  }
++#else
+   status = api->CreateSession (self->env, self->model_file, session_options,
+       &self->session);
++#endif
+   if (status) {
+     GST_ERROR_OBJECT (self, "Failed to create session: %s",
+         api->GetErrorMessage (status));

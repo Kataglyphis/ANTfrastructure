@@ -42,22 +42,23 @@ function Get-BkVariantChainStep {
 .SYNOPSIS
     One step per variant: the driver's in-process build parameters and its push child's -File arguments.
 #>
+function Get-BkDriverDefaultStage {
+    # Read from the driver's own parameter default, so the chain cannot drift from it.
+    param([Parameter(Mandatory)][string]$DriverPath)
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($DriverPath, [ref]$null, [ref]$null)
+    $stages = @($ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'Stages' })
+    if ($stages.Count -ne 1 -or -not $stages[0].DefaultValue) { throw "$DriverPath has no -Stages default" }
+    return @($stages[0].DefaultValue.SafeGetValue())
+}
+
 function Get-BkVariantChainPlan {
-    param(
-        [Parameter(Mandatory)][string[]]$Variant,
-        [Parameter(Mandatory)][string]$Repository,
-        [Parameter(Mandatory)][ValidatePattern('^\d{8}-\d{6}$')][string]$ChainId,
-        [Parameter(Mandatory)][string]$BuildDate,
-        [string]$TargetArch = 'amd64',
-        [string[]]$Stages = @('base', 'sdk', 'toolchain', 'media', 'migraphx', 'llama', 'torch', 'final'),
-        [string[]]$BuildArg = @(),
-        [hashtable]$BuildOption = @{},
-        [switch]$ConcurrentPush
-    )
-    Assert-BkVariantChainRequest -Variant $Variant -TargetArch $TargetArch -Stages $Stages -BuildArg $BuildArg -BuildOption $BuildOption -ConcurrentPush ([bool]$ConcurrentPush)
-    foreach ($name in $Variant) {
-        Get-BkVariantChainStep -Name $name -Repository $Repository -TargetArch $TargetArch -Stages $Stages -BuildArg $BuildArg `
-            -BuildOption $BuildOption -ChainId $ChainId -BuildDate $BuildDate
+    # Request: Variant, Repository, TargetArch, Stages, BuildArg, BuildOption, ChainId, BuildDate.
+    param([Parameter(Mandatory)][hashtable]$Request, [switch]$ConcurrentPush)
+    if ($Request.ChainId -notmatch '^\d{8}-\d{6}$') { throw "chain id '$($Request.ChainId)' is not yyyyMMdd-HHmmss" }
+    $shared = @{ TargetArch = $Request.TargetArch; Stages = $Request.Stages; BuildArg = $Request.BuildArg; BuildOption = $Request.BuildOption }
+    Assert-BkVariantChainRequest -Variant $Request.Variant -ConcurrentPush ([bool]$ConcurrentPush) @shared
+    foreach ($name in $Request.Variant) {
+        Get-BkVariantChainStep -Name $name -Repository $Request.Repository -ChainId $Request.ChainId -BuildDate $Request.BuildDate @shared
     }
 }
 

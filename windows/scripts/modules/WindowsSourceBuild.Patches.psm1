@@ -123,6 +123,15 @@ function Invoke-SourcePatch {
     }
 }
 
+function Invoke-RequiredSourcePatch {
+    # A fix with no drift-tolerant form: a patch that stops applying fails the build.
+    param(
+        [Parameter(Mandatory)][string]$PatchFile,
+        [Parameter(Mandatory)][string]$SourceDir
+    )
+    $null = Invoke-SourcePatchWithFallback -PatchFile $PatchFile -SourceDir $SourceDir -Fatal -FallbackNote 'no fallback exists' -Fallback { $false }
+}
+
 function Invoke-SourcePatchWithFallback {
     # The .patch, then a drift-tolerant fallback in the caller's scope; -Fatal throws on a double miss.
     param(
@@ -489,7 +498,7 @@ Export-ModuleMember -Function @(
     'Edit-CppKeywordAlternatives',
     'Update-NinjaFile',
     'Invoke-SourcePatch',
-    'Invoke-SourcePatchWithFallback',
+    'Invoke-RequiredSourcePatch', 'Invoke-SourcePatchWithFallback',
     'Invoke-InlineRegexPatch',
     'Invoke-SourceFilePatchSet',
     'Edit-SourceStaticLibraryReferences',

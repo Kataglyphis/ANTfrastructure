@@ -144,14 +144,7 @@ function Set-BazelProcessEnv {
         The bazel server inherits the env it starts with, so the caller sets it before the first bazel call.
     #>
     param([Parameter(Mandatory)][System.Collections.IDictionary]$Values)
-    $previous = [ordered]@{}
-    foreach ($name in @($Values.Keys)) {
-        $previous[$name] = [Environment]::GetEnvironmentVariable($name)
-        # Remove-Item: SetEnvironmentVariable($null) leaves it defined-empty for native children.
-        if ($null -eq $Values[$name]) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
-        else { Set-Item -LiteralPath "Env:$name" -Value $Values[$name] }
-    }
-    return $previous
+    return Set-ProcessEnvironmentValue -Values $Values
 }
 
 function Invoke-BazelLogged {

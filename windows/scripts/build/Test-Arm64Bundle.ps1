@@ -24,7 +24,7 @@
 param(
     [string]$BundleRoot = 'C:\runtime',
     [string]$ZipPath = '',
-    [int]$MinPassed = 21,
+    [int]$MinPassed = 22,
     [switch]$AllowEmptyRun
 )
 
@@ -229,27 +229,39 @@ Invoke-BundleStep 'WebRTC loopback: webrtcsink -> webrtcsrc decodes 60 frames ov
     if ($note) { Write-Host "   $note" }
 } $results
 
-Invoke-BundleStep 'VP8 and VP9 encode and decode real frames' {
-    foreach ($codec in @(@('vp8enc', 'vp8dec'), @('vp9enc', 'vp9dec'))) {
-        & (Join-Path $BundleRoot 'bin\gst-launch-1.0.exe') videotestsrc num-buffers=10 ! 'video/x-raw,format=I420,width=64,height=64' ! $codec[0] ! $codec[1] ! fakesink | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "$($codec[0]) -> $($codec[1]) exited $LASTEXITCODE" }
+function Test-BundleVpxRoundTrip {
+    foreach ($codec in 'vp8', 'vp9') {
+        & (Join-Path $BundleRoot 'bin\gst-launch-1.0.exe') videotestsrc num-buffers=10 ! 'video/x-raw,format=I420,width=64,height=64' ! "${codec}enc" ! "${codec}dec" ! fakesink | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "$codec round trip exited $LASTEXITCODE" }
     }
-} $results
+}
+
 # A desktop Windows has Media Foundation unless it is an N edition; absent, the plugin cannot load and that is the host's fact.
-Invoke-BundleStep 'mfvideosrc registers wherever Media Foundation exists' {
+function Test-BundleOnnxInference {
+    Import-GateModule 'WindowsGstPlugins.Common.psm1'
+    Assert-GstOnnxInferenceRun -GstLaunch (Join-Path $BundleRoot 'bin\gst-launch-1.0.exe') -WorkDir (Join-Path ($env:RUNNER_TEMP ?? $env:TEMP) 'bundle-onnxinference')
+}
+
+function Test-BundleMfVideoSource {
     if (Test-Path -LiteralPath (Join-Path $env:SystemRoot 'System32\MFPlat.dll')) {
         & (Join-Path $BundleRoot 'bin\gst-inspect-1.0.exe') mfvideosrc | Out-Null
     } else {
         Write-Host '   no MFPlat.dll on this device: not checked'
     }
-} $results
+}
+
 # A wrong answer on a real adapter fails; no adapter is printed and proves nothing.
-Invoke-BundleStep 'DirectML MatMul(matrix, 1-D vector) matches the CPU wherever an adapter exists' {
+function Test-BundleDmlMatMul {
     Import-GateModule 'WindowsOrtDmlCheck.Common.psm1'
     $probe = Invoke-OrtDmlMatMulProbe -Python $py
     Write-Host "   $($probe.Status): $($probe.Detail)"
     if ($probe.Status -notin @('Pass', 'NoAdapter')) { throw $probe.Detail }
-} $results
+}
+
+Invoke-BundleStep 'VP8 and VP9 encode and decode real frames' { Test-BundleVpxRoundTrip } $results
+Invoke-BundleStep 'onnxinference runs real frames through a model' { Test-BundleOnnxInference } $results
+Invoke-BundleStep 'mfvideosrc registers wherever Media Foundation exists' { Test-BundleMfVideoSource } $results
+Invoke-BundleStep 'DirectML MatMul(matrix, 1-D vector) matches the CPU wherever an adapter exists' { Test-BundleDmlMatMul } $results
 
 $verdict = Get-BundleVerdict -Results $results -MinPassed $MinPassed -AllowEmptyRun:$AllowEmptyRun
 Write-Host "`n==== SUMMARY ===="

@@ -936,6 +936,30 @@ function Assert-TestAstCommand {
     }
 }
 
+function Test-TestAstUnconditional {
+    # A statement no function body, if or loop encloses.
+    param([Parameter(Mandatory)][Management.Automation.Language.Ast]$Node)
+    $null -eq (Get-TestAstAncestor -Node $Node -First -Predicate {
+            param($ancestor)
+            $ancestor -is [Management.Automation.Language.FunctionDefinitionAst] -or
+                $ancestor -is [Management.Automation.Language.IfStatementAst] -or
+                $ancestor -is [Management.Automation.Language.LoopStatementAst]
+        })
+}
+
+function Get-TestRepoText {
+    param([Parameter(Mandatory)][string]$Path)
+    return [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $Path))
+}
+
+function Assert-TestPathState {
+    # Present and Absent are relative to Root; Why names the fixture in a failure.
+    param([Parameter(Mandatory)][string]$Root, [string[]]$Present = @(), [string[]]$Absent = @())
+    foreach ($relative in $Present) { Assert-True (Test-Path -LiteralPath (Join-Path $Root $relative)) "expected $relative" }
+    foreach ($relative in $Absent) { Assert-False (Test-Path -LiteralPath (Join-Path $Root $relative)) "unexpected $relative" }
+}
+
+Export-ModuleMember -Function Test-TestAstUnconditional, Get-TestRepoText, Assert-TestPathState
 Export-ModuleMember -Function Get-TestAstAncestor, Assert-TestAstCommand, ConvertTo-TestScriptParseResult
 
 function New-TestZipFile {

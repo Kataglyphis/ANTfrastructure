@@ -25,7 +25,8 @@ None of this has run in a chain yet; `BACKLOG.md` says what each item still has 
 - **Native provenance (CON180, CON182, CON184):** one manifest format for GStreamer's DLLs, DirectML and the flattened CUDA runtime, with original license texts.
   `Copy-CudaRuntime.ps1` refuses a DLL off its distributable list, and `nvfatbin_130_0.dll` leaves the image.
 - **ORT providers (CON181):** they now sit in `bin` beside `onnxruntime.dll`. A consumer that read `%ONNX_ROOT%\lib\onnxruntime_providers_*.dll` must move.
-- **Inference elements (CON185):** the smoke requires `onnxinference`, `tfliteinference` and `tensordecodebin`; AccelerANTgine's NNStreamer names are its own fix.
+- **Inference elements (CON185):** `onnxinference` read the model path as UTF-16 on Windows and failed every session. `003-onnxinference-wide-model-path.patch` fixes it,
+  and both gates run real frames through a tiny model. The smoke also requires `tfliteinference` and `tensordecodebin`.
 - **GenAI with llguidance (LAI-H2):** `-DUSE_GUIDANCE=ON` on both lanes, linked statically, with a stage gate and a schema-constrained `generate()` on amd64.
 - **Sdists (CON93):** `Invoke-PythonCiBuild.ps1` and `Invoke-CiPackaging.ps1` share the torch stage's clang-cl shim through `WindowsSdistCompiler.Common.psm1`, and the shim
   now sets `LIB`, the real resource directory and `-fcommon`, and restores unset variables as absent.

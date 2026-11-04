@@ -17,10 +17,10 @@ param(
     [ValidateSet('default', 'nvidia', 'rocm')]
     [string[]]$Variant = @('default', 'nvidia', 'rocm'),
     [Parameter(Mandatory)][string]$Repository,
-    [ValidateSet('amd64', 'arm64')]
+    # The driver validates the arch, and it owns the full stage list.
     [string]$TargetArch = 'amd64',
-    [string[]]$Stages = @('base', 'sdk', 'toolchain', 'media', 'migraphx', 'llama', 'torch', 'final'),
-    [string[]]$BuildArg = @(),
+    [string[]]$Stages,
+    [string[]]$BuildArg,
     [hashtable]$BuildOption = @{},
     [switch]$ConcurrentPush
 )
@@ -35,8 +35,12 @@ $logDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'logs\windows-build-logs'
 $null = New-Item -ItemType Directory -Force -Path $logDir
 $now = Get-Date
 $chainId = $now.ToString('yyyyMMdd-HHmmss')
-$plan = @(Get-BkVariantChainPlan -Variant $Variant -Repository $Repository -ChainId $chainId -TargetArch $TargetArch -Stages $Stages -BuildArg $BuildArg `
-        -BuildOption $BuildOption -BuildDate $now.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') -ConcurrentPush:$ConcurrentPush)
+if (-not $Stages) { $Stages = Get-BkDriverDefaultStage -DriverPath $driver }
+$request = @{
+    Variant = $Variant; Repository = $Repository; TargetArch = $TargetArch; Stages = $Stages; BuildArg = @($BuildArg); BuildOption = $BuildOption
+    ChainId = $chainId; BuildDate = $now.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+}
+$plan = @(Get-BkVariantChainPlan -Request $request -ConcurrentPush:$ConcurrentPush)
 
 Invoke-BkVariantChain -Plan $plan -ConcurrentPush:$ConcurrentPush -InvokeBuild {
     param([hashtable]$Parameters)

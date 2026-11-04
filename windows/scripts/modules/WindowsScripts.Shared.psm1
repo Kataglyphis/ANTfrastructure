@@ -495,6 +495,24 @@ function Invoke-WithProcessEnvironment {
     }
 }
 
+function Set-ProcessEnvironmentValue {
+    <#
+    .SYNOPSIS
+        Sets name -> value in this process ($null removes it) and returns the previous values for the restore.
+    #>
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Values)
+    $previous = [ordered]@{}
+    foreach ($name in @($Values.Keys)) {
+        $previous[$name] = [Environment]::GetEnvironmentVariable($name)
+        # Remove-Item: SetEnvironmentVariable($null) leaves it defined-empty for native children.
+        if ($null -eq $Values[$name]) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
+        else { Set-Item -LiteralPath "Env:$name" -Value $Values[$name] }
+    }
+    return $previous
+}
+
+Export-ModuleMember -Function Set-ProcessEnvironmentValue
+
 function Invoke-S5cmdWithKey {
     # s5cmd reads the S3 key from its environment, so this process holds it only while s5cmd runs.
     param(

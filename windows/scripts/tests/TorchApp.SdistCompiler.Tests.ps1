@@ -6,6 +6,15 @@
 $script:TorchAppPath = Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-TorchApp.ps1'
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsSdistCompiler.Common.psm1') -Force -DisableNameChecking
 
+# A fake LLVM tree the shim can copy.
+function New-FakeLlvm([string]$Root, [switch]$NoResourceDir) {
+    $llvm = Join-Path $Root 'llvm\bin'
+    New-Item -ItemType Directory -Force $llvm | Out-Null
+    if (-not $NoResourceDir) { New-Item -ItemType Directory -Force (Join-Path $Root 'llvm\lib\clang\23') | Out-Null }
+    foreach ($n in 'clang-cl', 'lld-link', 'llvm-lib') { Set-Content (Join-Path $llvm "$n.exe") $n }
+    return $llvm
+}
+
 # A file that is a PE as far as Test-PeRichHeader reads: MZ, e_lfanew 0x80, a DOS stub with or without MSVC's marker.
 function New-FakePe([string]$Path, [switch]$Rich) {
     $bytes = [byte[]]::new(0x100)
@@ -98,10 +107,8 @@ Describe 'Enable-ClangClSdistShim' {
 
     It 'puts clang-cl, lld-link and llvm-lib first on PATH as cl, link and lib, and returns what it changed' {
         Invoke-InTestDir { param($d)
-            $llvm = Join-Path $d 'llvm\bin'
-            New-Item -ItemType Directory -Force $llvm | Out-Null
-            foreach ($n in 'clang-cl', 'lld-link', 'llvm-lib') { Set-Content (Join-Path $llvm "$n.exe") $n }
-            $resource = New-Item -ItemType Directory -Force (Join-Path $d 'llvm\lib\clang\23')
+            $llvm = New-FakeLlvm $d
+            $resource = Get-Item -LiteralPath (Join-Path $d 'llvm\lib\clang\23')
             $shim = Join-Path $d 'shim'
             Invoke-WithEnv @{ DISTUTILS_USE_SDK = $null; MSSdk = $null; PATH = $env:PATH; CL = '/DKEPT'; LIB = 'C:\fixture\lib' } {
                 $before = $env:PATH
@@ -132,9 +139,7 @@ Describe 'Enable-ClangClSdistShim' {
 
     It 'sets LIB for an sdist naming a system library on its link line, and removes it again' {
         Invoke-InTestDir { param($d)
-            $llvm = Join-Path $d 'llvm\bin'
-            New-Item -ItemType Directory -Force $llvm, (Join-Path $d 'llvm\lib\clang\23') | Out-Null
-            foreach ($n in 'clang-cl', 'lld-link', 'llvm-lib') { Set-Content (Join-Path $llvm "$n.exe") $n }
+            $llvm = New-FakeLlvm $d
             $shim = Join-Path $d 'shim'
             Invoke-WithEnv @{ DISTUTILS_USE_SDK = $null; MSSdk = $null; CL = $null; PATH = $env:PATH; LIB = $null } {
                 $previous = Enable-ClangClSdistShim -ShimDir $shim -LlvmBin $llvm -VsLib 'C:\vs\lib'
@@ -147,9 +152,7 @@ Describe 'Enable-ClangClSdistShim' {
 
     It 'throws without one resource directory, which a copied clang-cl cannot find alone' {
         Invoke-InTestDir { param($d)
-            $llvm = Join-Path $d 'llvm\bin'
-            New-Item -ItemType Directory -Force $llvm | Out-Null
-            foreach ($n in 'clang-cl', 'lld-link', 'llvm-lib') { Set-Content (Join-Path $llvm "$n.exe") $n }
+            $llvm = New-FakeLlvm $d -NoResourceDir
             $shim = Join-Path $d 'shim'
             Invoke-WithEnv @{ PATH = $env:PATH; LIB = 'C:\fixture\lib' } {
                 $before = $env:PATH
@@ -163,50 +166,51 @@ Describe 'Enable-ClangClSdistShim' {
 Describe 'Build-TorchApp.ps1: the sync runs inside the shim and the gate checks it after' {
     $script:TorchText = [IO.File]::ReadAllText($script:TorchAppPath)
 
+    It 'the torch stage copies the module with both siblings it imports, as its parent may carry none (mutation)' {
+        $copy = @((Get-TestRepoText 'windows\Dockerfile.torch') -split '(?m)^COPY ' | Where-Object { $_.Contains('WindowsSdistCompiler.Common.psm1') })
+        Assert-Equal 1 $copy.Count 'one COPY carries the shim'
+        foreach ($sibling in 'WindowsTargetArch.Common.psm1', 'WindowsScripts.Shared.psm1') { Assert-True $copy[0].Contains($sibling) "the COPY carries $sibling" }
+    }
+
     It 'enables the shim before both syncs, restores and removes it in a finally, then gates' {
         Assert-Match '(?s)\$sdistEnv = Enable-ClangClSdistShim -ShimDir \$shimDir\s+try \{.*uv sync --frozen.*uv sync \$syncArgs"\).*\} finally \{\s+Disable-ClangClSdistShim -Previous \$sdistEnv -ShimDir \$shimDir\s+\}\s+Assert-ClangClSdistBuild -SyncOutput \$syncOut -SitePackages \$venvSite' $script:TorchText
     }
 }
 
-# A fake LLVM tree the shim can copy.
-function New-FakeLlvm([string]$Root) {
-    $llvm = Join-Path $Root 'llvm\bin'
-    New-Item -ItemType Directory -Force $llvm, (Join-Path $Root 'llvm\lib\clang\23') | Out-Null
-    foreach ($n in 'clang-cl', 'lld-link', 'llvm-lib') { Set-Content (Join-Path $llvm "$n.exe") $n }
-    return $llvm
+# Runs -Test with a fake LLVM under a clean shim environment; $before is the PATH the shim must restore.
+function Invoke-InFakeShimEnvironment([scriptblock]$Test) {
+    Invoke-InTestDir { param($d)
+        $llvm = New-FakeLlvm $d
+        Invoke-WithEnv @{ DISTUTILS_USE_SDK = $null; MSSdk = $null; CL = $null; PATH = $env:PATH; LIB = 'C:\fixture\lib' } {
+            $before = $env:PATH
+            & $Test $d $llvm $before
+        }
+    }
 }
 
 Describe 'Invoke-WithClangClSdist' {
     It 'runs the step under the shim, restores the environment and grades what uv built' {
-        Invoke-InTestDir { param($d)
-            $llvm = New-FakeLlvm $d
+        Invoke-InFakeShimEnvironment { param($d, $llvm, $before)
             $site = New-LineProfilerSite $d -MsvcPyd
             $out = [Collections.Generic.List[string]]::new()
-            Invoke-WithEnv @{ DISTUTILS_USE_SDK = $null; MSSdk = $null; CL = $null; PATH = $env:PATH; LIB = 'C:\fixture\lib' } {
-                $before = $env:PATH
-                $seen = [Collections.Generic.List[string]]::new()
-                Assert-Throws {
-                    Invoke-WithClangClSdist -LlvmBin $llvm -BuiltOutput $out -SitePackages $site -Script {
-                        $seen.Add((Get-Content -LiteralPath (Join-Path ($env:PATH -split ';')[0] 'cl.exe')))
-                        $seen.Add($env:DISTUTILS_USE_SDK)
-                        $out.Add('   Built line-profiler==5.0.2')
-                    }
-                } -MessagePattern "MSVC's linker.*line-profiler"
-                Assert-Equal 'clang-cl|1' ($seen -join '|') 'the step saw the shim'
-                Assert-Equal $before $env:PATH 'the shim left PATH'
-            }
+            $seen = [Collections.Generic.List[string]]::new()
+            Assert-Throws {
+                Invoke-WithClangClSdist -LlvmBin $llvm -BuiltOutput $out -SitePackages $site -Script {
+                    $seen.Add((Get-Content -LiteralPath (Join-Path ($env:PATH -split ';')[0] 'cl.exe')))
+                    $seen.Add($env:DISTUTILS_USE_SDK)
+                    $out.Add('   Built line-profiler==5.0.2')
+                }
+            } -MessagePattern "MSVC's linker.*line-profiler"
+            Assert-Equal 'clang-cl|1' ($seen -join '|') 'the step saw the shim'
+            Assert-Equal $before $env:PATH 'the shim left PATH'
         }
     }
 
     It 'restores the environment and skips the gate when the step fails' {
-        Invoke-InTestDir { param($d)
-            $llvm = New-FakeLlvm $d
-            Invoke-WithEnv @{ DISTUTILS_USE_SDK = $null; MSSdk = $null; CL = $null; PATH = $env:PATH; LIB = 'C:\fixture\lib' } {
-                $before = $env:PATH
-                Assert-Throws { Invoke-WithClangClSdist -LlvmBin $llvm -SitePackages (Join-Path $d 'absent') -Script { throw 'fixture step failure' } } -MessagePattern 'fixture step failure'
-                Assert-Equal $before $env:PATH 'a failed step still restores PATH'
-                Assert-Null $env:DISTUTILS_USE_SDK 'and the switch'
-            }
+        Invoke-InFakeShimEnvironment { param($d, $llvm, $before)
+            Assert-Throws { Invoke-WithClangClSdist -LlvmBin $llvm -SitePackages (Join-Path $d 'absent') -Script { throw 'fixture step failure' } } -MessagePattern 'fixture step failure'
+            Assert-Equal $before $env:PATH 'a failed step still restores PATH'
+            Assert-Null $env:DISTUTILS_USE_SDK 'and the switch'
         }
     }
 

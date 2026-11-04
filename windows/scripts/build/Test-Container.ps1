@@ -1112,6 +1112,10 @@ if (Test-Path $requiredGstModule) {
             $LASTEXITCODE -eq 0
         }.GetNewClosure() -FailMessage "$element is missing, so a pipeline using it cannot start"
     }
+    Assert-Test -Name 'GStreamer onnxinference runs real frames through a model' -Condition {
+        Assert-GstOnnxInferenceRun -GstLaunch (Get-Command gst-launch-1.0 -ErrorAction Stop).Source -WorkDir (Join-Path $env:TEMP 'smoke-onnxinference')
+        $true
+    } -FailMessage 'onnxinference registers but cannot run a model'
     # Fresh containers lacked MFPlat.dll, so this plugin never registered; no camera is needed, and none is proved.
     if ((Get-WindowsTargetArch) -eq 'amd64') {
         Assert-Test -Name 'GStreamer mfvideosrc registers (Media Foundation is enabled)' -Condition {

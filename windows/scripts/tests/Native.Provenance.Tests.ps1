@@ -8,12 +8,11 @@ Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsNativePr
 
 function New-ProvenanceTree {
     $root = New-TestDir -Prefix 'native-provenance'
-    $null = New-Item -ItemType Directory -Force -Path (Join-Path $root 'bin'), (Join-Path $root 'n')
-    [IO.File]::WriteAllText((Join-Path $root 'bin\a.dll'), 'bytes-a')
-    [IO.File]::WriteAllText((Join-Path $root 'n\LICENSE'), 'text-a')
-    $entry = New-NativeProvenanceEntry -Root $root -File 'bin\a.dll' -Notice 'n\LICENSE' -Source @{ Name = 'a'; Version = '1'; Url = 'https://example.invalid/a'; Sha256 = '' }
+    Write-TestFileTree -Root $root -Files @{ 'bin\a.dll' = 'bytes-a'; 'n\LICENSE' = 'text-a' }
+    $entryArgs = @{ Root = $root; File = 'bin\a.dll'; Notice = 'n\LICENSE'; Source = @{ Name = 'a'; Version = '1'; Url = 'https://example.invalid/a'; Sha256 = '' } }
     $manifest = Join-Path $root 'm.json'
-    Write-NativeProvenanceManifest -Path $manifest -Owner 'test' -Entry @($entry)
+    $manifestArgs = @{ Path = $manifest; Owner = 'test'; Entry = @(New-NativeProvenanceEntry @entryArgs); Root = $root }
+    Write-NativeProvenanceManifest @manifestArgs
     return [pscustomobject]@{ Root = $root; Manifest = $manifest }
 }
 
@@ -64,16 +63,16 @@ Describe 'Native provenance manifest' {
         $t = New-ProvenanceTree
         try {
             Assert-True ((@(Get-NativeProvenanceFinding -Path $t.Manifest -Root $t.Root -RequiredFile 'bin\b.dll') -join ';') -match 'b\.dll is not in the manifest') 'a required file must be listed'
-            Assert-Throws { Write-NativeProvenanceManifest -Path (Join-Path $t.Root 'e.json') -Owner 'x' -Entry @() } -MessagePattern 'empty'
+            Assert-Throws { Write-NativeProvenanceManifest -Path (Join-Path $t.Root 'e.json') -Owner 'x' -Entry @() -Root $t.Root } -MessagePattern 'empty'
         } finally { Remove-TestDir $t.Root }
     }
 
     It 'walks the import closure, stops at unstaged names and reports only unlisted DLLs' {
         $t = New-ProvenanceTree
         try {
-            foreach ($name in 'b.dll', 'c.dll') { [IO.File]::WriteAllText((Join-Path $t.Root "bin\$name"), $name) }
-            $imports = @{ 'plugin.dll' = @('a.dll', 'KERNEL32.dll'); 'a.dll' = @('b.dll'); 'b.dll' = @('c.dll', 'a.dll'); 'c.dll' = @() }
-            $get = { param($path) $imports[(Split-Path -Leaf $path)] }.GetNewClosure()
+            Write-TestFileTree -Root $t.Root -Files @{ 'bin\b.dll' = 'b'; 'bin\c.dll' = 'c' }
+            $imports = @{ 'plugin.dll' = 'a.dll KERNEL32.dll'; 'a.dll' = 'b.dll'; 'b.dll' = 'c.dll a.dll'; 'c.dll' = '' }
+            $get = { param($path) $imports[(Split-Path -Leaf $path)] -split ' ' | Where-Object { $_ } }.GetNewClosure()
             $gap = @(Get-NativeClosureGap -ManifestPath $t.Manifest -Directory (Join-Path $t.Root 'bin') -Importer 'plugin.dll' -GetImport $get)
             Assert-Equal 'b.dll,c.dll' ($gap -join ',') 'transitive unlisted DLLs are named; listed and system ones are not'
         } finally { Remove-TestDir $t.Root }
@@ -119,19 +118,14 @@ Describe 'Meson records to manifest entries' {
 
 Describe 'Wiring' {
     It 'writes the manifest before GStreamer cleanup, and pins libvpx through the driver' {
-        $root = Get-RepoRoot
-        $gst = Get-Content -LiteralPath (Join-Path $root 'windows\scripts\build\Build-GstreamerFromSource.ps1') -Raw
+        $gst = Get-TestRepoText 'windows\scripts\build\Build-GstreamerFromSource.ps1'
         Assert-True ($gst.IndexOf('Assert-GstInstalledPlugins -resolvedInstallDir') -lt $gst.IndexOf('Complete-GstBuild -gstSrcDir')) 'the gate that writes it runs before cleanup'
-        Assert-True ($gst -match "-Dvpx:default_library=static") 'the port refuses a shared Windows build'
-        Assert-True ($gst.Contains('"diff_files = $diffName"')) 'the wrap applies the clang-cl SIMD patch'
-        $vpxPatch = Get-Content -LiteralPath (Join-Path $root 'windows\scripts\patches\gstreamer\002-libvpx-clangcl-simd-flags.patch') -Raw
-        Assert-True ($vpxPatch.Contains("+if tgt_cc == 'msvs' and c.get_id() != 'clang-cl'")) 'clang-cl takes the per-file flag table'
-        $merge = Get-Content -LiteralPath (Join-Path $root 'windows\Dockerfile.media-merge-builder') -Raw
-        foreach ($needle in 'ARG LIBVPX_MESON_COMMIT', 'ARG LIBVPX_MESON_SHA256', 'WindowsNativeProvenance.Common.psm1') { Assert-True ($merge.Contains($needle)) "the merge stage carries $needle" }
-        $pins = ConvertFrom-VersionsEnv -Path (Join-Path $root 'linux\scripts\01-core\tool-pins.env')
-        Assert-True ($pins['LIBVPX_MESON_COMMIT'] -match '^[0-9a-f]{40}$') 'commit pin'
-        Assert-True ($pins['LIBVPX_MESON_SHA256'] -match '^[0-9a-f]{64}$') 'hash pin'
-        Assert-True ($pins['DIRECTML_NUPKG_SHA256'] -match '^[0-9a-f]{64}$') 'nuget pin'
+        Assert-TestScriptContains -ScriptPath 'windows\scripts\build\Build-GstreamerFromSource.ps1' -Literal '-Dvpx:default_library=static', '"diff_files = $diffName"'
+        Assert-TestScriptContains -ScriptPath 'windows\scripts\patches\gstreamer\002-libvpx-clangcl-simd-flags.patch' -Literal "+if tgt_cc == 'msvs' and c.get_id() != 'clang-cl'"
+        Assert-TestScriptContains -ScriptPath 'windows\Dockerfile.media-merge-builder' -Literal 'ARG LIBVPX_MESON_COMMIT', 'ARG LIBVPX_MESON_SHA256', 'WindowsNativeProvenance.Common.psm1'
+        $pins = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\tool-pins.env')
+        Assert-Match '^[0-9a-f]{40}$' $pins['LIBVPX_MESON_COMMIT'] 'commit pin'
+        foreach ($key in 'LIBVPX_MESON_SHA256', 'DIRECTML_NUPKG_SHA256') { Assert-Match '^[0-9a-f]{64}$' $pins[$key] $key }
         $vpx = @(Get-RequiredGstPlugin -Arch amd64 | Where-Object { $_.Name -eq 'vpx' })
         Assert-Equal 'gst-plugins-good:vpx' $vpx[0].MesonOption 'the contract requires the plugin'
     }
@@ -143,9 +137,10 @@ Describe 'Wiring' {
             Copy-Item -LiteralPath (Join-Path $repo 'windows\scripts\build\Copy-CudaRuntime.ps1'), (Join-Path $repo 'windows\scripts\modules\WindowsNativeProvenance.Common.psm1') -Destination $dir
             $cuda = Join-Path $dir 'CUDA\v13.4'
             $cudnn = Join-Path $dir 'CUDNN\v9.27'
-            $null = New-Item -ItemType Directory -Force -Path (Join-Path $cuda 'bin\x64'), (Join-Path $cudnn 'bin\x64')
-            foreach ($file in 'bin\x64\cudart64_13.dll', 'bin\x64\nvfatbin_130_0.dll', 'bin\x64\cusparse64_13.dll', 'LICENSE') { Set-Content -LiteralPath (Join-Path $cuda $file) -Value $file }
-            foreach ($file in 'bin\x64\cudnn64_9.dll', 'LICENSE') { Set-Content -LiteralPath (Join-Path $cudnn $file) -Value "dnn $file" }
+            Write-TestFileTree -Root $dir -Files @{
+                'CUDA\v13.4\bin\x64\cudart64_13.dll' = 'rt'; 'CUDA\v13.4\bin\x64\nvfatbin_130_0.dll' = 'fat'; 'CUDA\v13.4\bin\x64\cusparse64_13.dll' = 'sparse'; 'CUDA\v13.4\LICENSE' = 'eula'
+                'CUDNN\v9.27\bin\x64\cudnn64_9.dll' = 'dnn'; 'CUDNN\v9.27\LICENSE' = 'dnn eula'
+            }
             $stage = Join-Path $dir 'out'
             $run = {
                 $text = & pwsh -NoProfile -Command "`$env:CUDA_ROOT='$cuda'; `$env:CUDNN_ROOT='$cudnn'; `$env:WINDOWS_TARGET_ARCH='amd64'; & '$dir\Copy-CudaRuntime.ps1' -StageRoot '$stage'; exit `$LASTEXITCODE" 2>&1 | Out-String
@@ -153,10 +148,7 @@ Describe 'Wiring' {
             }
             $ok = & $run
             Assert-Equal 0 $ok.Code "the stage passes: $($ok.Text)"
-            Assert-True (Test-Path -LiteralPath (Join-Path $stage 'bin\cudart64_13.dll')) 'a listed DLL is staged'
-            Assert-False (Test-Path -LiteralPath (Join-Path $stage 'bin\nvfatbin_130_0.dll')) 'nvfatbin is not distributable'
-            Assert-False (Test-Path -LiteralPath (Join-Path $stage 'bin\cusparse64_13.dll')) 'the trimmed set stays out'
-            Assert-True (Test-Path -LiteralPath (Join-Path $stage 'notices\cudnn\LICENSE')) 'the original license is staged'
+            Assert-TestPathState -Root $stage -Present 'bin\cudart64_13.dll', 'notices\cudnn\LICENSE' -Absent 'bin\nvfatbin_130_0.dll', 'bin\cusparse64_13.dll'
             Assert-Equal 0 @(Get-NativeProvenanceFinding -Path (Join-Path $stage 'provenance.json') -Root $stage -RequiredFile 'bin\cudart64_13.dll', 'bin\cudnn64_9.dll').Count 'the manifest holds'
             Set-Content -LiteralPath (Join-Path $cuda 'bin\x64\newthing64_1.dll') -Value 'x'
             $refused = & $run
@@ -165,7 +157,6 @@ Describe 'Wiring' {
     }
 
     It 'enables Media Foundation only for the amd64 payload' {
-        $text = Get-Content -LiteralPath (Join-Path (Get-RepoRoot) 'windows\Dockerfile') -Raw
-        Assert-True ($text -match "(?m)^RUN if \(\`$env:WINDOWS_TARGET_ARCH -eq 'amd64'\) \{ .*Enable-WindowsOptionalFeature .*ServerMediaFoundation") 'amd64 only, and -ErrorAction Stop keeps a failure fatal'
+        Assert-Match "(?m)^RUN if \(\`$env:WINDOWS_TARGET_ARCH -eq 'amd64'\) \{ .*Enable-WindowsOptionalFeature .*ServerMediaFoundation" (Get-TestRepoText 'windows\Dockerfile') 'amd64 only, and -ErrorAction Stop keeps a failure fatal'
     }
 }

@@ -356,7 +356,7 @@ windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 -MinInspe
 windows\scripts\build\Test-TargetArch.ps1 -Path C:\runtime -Arch arm64 `
     -HostToolPattern 'protoc\.exe|flatc\.exe|\\_deps\\'
 
-# on an arm64 device, from a bundle zip: twenty-one steps, and the default floor is all of them
+# on an arm64 device, from a bundle zip: twenty-two steps, and the default floor is all of them
 windows\scripts\build\Test-Arm64Bundle.ps1 -ZipPath C:\temp\winarm64-bundle.zip
 ```
 

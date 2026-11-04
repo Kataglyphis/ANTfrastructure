@@ -23,15 +23,11 @@ function Get-NativeProvenanceRelativePathError {
 function Read-MesonWrapSource {
     [OutputType([pscustomobject])]
     param([Parameter(Mandatory)][string]$Path)
-    $values = @{}
-    $section = ''
-    foreach ($line in [IO.File]::ReadAllLines($Path)) {
-        if ($line -match '^\s*\[(.+)\]\s*$') { $section = $Matches[1]; continue }
-        if ($section -in @('wrap-file', 'wrap-git') -and $line -match '^\s*([A-Za-z_-]+)\s*=\s*(.*?)\s*$') { $values[$Matches[1]] = $Matches[2] }
-    }
-    if (-not $section -or -not $values.ContainsKey('directory') -and -not $values.ContainsKey('url') -and -not $values.ContainsKey('source_url')) {
-        throw "$Path is not a readable wrap-file or wrap-git"
-    }
+    $blocks = ((Get-Content -LiteralPath $Path -Raw) -replace '\r', '') -split '(?m)^(?=\[)'
+    $section = @($blocks | Where-Object { $_ -match '^\[wrap-(file|git)\]' })
+    if ($section.Count -ne 1) { throw "$Path is not a readable wrap-file or wrap-git" }
+    # A wrap's values hold no backslashes, so StringData's escaping cannot change them.
+    $values = ($section[0] -replace '^.*\n', '') | ConvertFrom-StringData
     $name = [IO.Path]::GetFileNameWithoutExtension($Path)
     $read = { param($key) if ($values.ContainsKey($key)) { $values[$key] } else { '' } }
     $url = & $read 'source_url'
@@ -122,18 +118,21 @@ function New-NativeProvenanceEntry {
 
 <#
 .SYNOPSIS
-    Writes a manifest as UTF-8 JSON, refusing an empty entry list.
+    Writes a manifest as UTF-8 JSON and proves it against the tree under Root; refuses an empty entry list.
 #>
 function Write-NativeProvenanceManifest {
     param(
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][string]$Owner,
-        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Entry
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Entry,
+        [Parameter(Mandatory)][string]$Root,
+        [string[]]$RequiredFile = @()
     )
     if ($Entry.Count -eq 0) { throw "refusing to write an empty $Owner provenance manifest at $Path" }
     $null = New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path)
     $json = [ordered]@{ schema = 1; owner = $Owner; entries = @($Entry) } | ConvertTo-Json -Depth 6
     [IO.File]::WriteAllText($Path, $json + "`n", [Text.UTF8Encoding]::new($false))
+    Assert-NativeProvenanceManifest -Path $Path -Root $Root -RequiredFile $RequiredFile
 }
 
 function Get-NativeProvenanceEntryFinding {
@@ -175,16 +174,12 @@ function Get-NativeProvenanceFinding {
     if ($manifest.schema -ne 1) { return @("manifest $Path has schema '$($manifest.schema)', expected 1") }
     $entries = @($manifest.entries)
     if ($entries.Count -eq 0) { return @("manifest $Path lists nothing") }
-    $found = [System.Collections.Generic.List[string]]::new()
-    $seen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    foreach ($entry in $entries) {
-        if (-not $seen.Add("$($entry.file)")) { $found.Add("$($entry.file) is listed twice") }
-        foreach ($item in @(Get-NativeProvenanceEntryFinding -Entry $entry -Root $Root)) { $found.Add($item) }
-    }
-    foreach ($required in $RequiredFile) {
-        if (-not $seen.Contains($required)) { $found.Add("$required is not in the manifest") }
-    }
-    return [string[]]$found
+    $files = @($entries | ForEach-Object { "$($_.file)" })
+    return [string[]]@(
+        $files | Group-Object | Where-Object Count -GT 1 | ForEach-Object { "$($_.Name) is listed twice" }
+        $entries | ForEach-Object { Get-NativeProvenanceEntryFinding -Entry $_ -Root $Root }
+        $RequiredFile | Where-Object { $_ -notin $files } | ForEach-Object { "$_ is not in the manifest" }
+    )
 }
 
 <#
@@ -215,27 +210,29 @@ function Get-NativeClosureGap {
         [Parameter(Mandatory)][string[]]$Importer,
         [Parameter(Mandatory)][scriptblock]$GetImport
     )
-    $listed = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    foreach ($entry in @((Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json).entries)) { $null = $listed.Add((Split-Path -Leaf $entry.file)) }
-    $visited = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    $gap = [System.Collections.Generic.SortedSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    $queue = [System.Collections.Generic.Queue[string]]::new()
-    foreach ($path in $Importer) { $queue.Enqueue($path) }
-    while ($queue.Count -gt 0) {
-        foreach ($name in @(& $GetImport $queue.Dequeue())) {
+    $entries = @((Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json).entries)
+    $listed = @($entries | ForEach-Object { Split-Path -Leaf $_.file })
+    $seen = @{}
+    $pending = [System.Collections.Generic.List[string]]::new([string[]]$Importer)
+    for ($next = 0; $next -lt $pending.Count; $next++) {
+        foreach ($name in @(& $GetImport $pending[$next])) {
             $staged = Join-Path $Directory $name
-            if (-not $visited.Add($name) -or -not (Test-Path -LiteralPath $staged -PathType Leaf)) { continue }
-            if (-not $listed.Contains($name)) { $null = $gap.Add($name) }
-            $queue.Enqueue($staged)
+            if ($seen.ContainsKey($name) -or -not (Test-Path -LiteralPath $staged -PathType Leaf)) { continue }
+            $seen[$name] = $true
+            $pending.Add($staged)
         }
     }
-    return [string[]]@($gap)
+    return [string[]]@($seen.Keys | Where-Object { $_ -notin $listed } | Sort-Object)
+}
+
+function Read-MesonInfo {
+    param([Parameter(Mandatory)][string]$BuildDir, [Parameter(Mandatory)][string]$Name)
+    return Get-Content -LiteralPath (Join-Path $BuildDir "meson-info\$Name") -Raw | ConvertFrom-Json
 }
 
 function Get-MesonInstalledDll {
     param([Parameter(Mandatory)][string]$BuildDir)
-    $targets = Get-Content -LiteralPath (Join-Path $BuildDir 'meson-info\intro-targets.json') -Raw | ConvertFrom-Json
-    foreach ($target in @($targets)) {
+    foreach ($target in @(Read-MesonInfo -BuildDir $BuildDir -Name 'intro-targets.json')) {
         if (-not $target.installed) { continue }
         foreach ($installed in @($target.install_filename)) {
             if ("$installed" -imatch '\.dll$') { [pscustomobject]@{ Path = "$installed"; Subproject = $target.subproject } }
@@ -245,7 +242,7 @@ function Get-MesonInstalledDll {
 
 function Get-MesonSubprojectVersion {
     param([Parameter(Mandatory)][string]$BuildDir)
-    $projects = Get-Content -LiteralPath (Join-Path $BuildDir 'meson-info\intro-projectinfo.json') -Raw | ConvertFrom-Json
+    $projects = Read-MesonInfo -BuildDir $BuildDir -Name 'intro-projectinfo.json'
     $versions = @{ '' = "$($projects.version)" }
     foreach ($sub in @($projects.subprojects)) { $versions["$($sub.name)"] = "$($sub.version)" }
     return $versions
@@ -273,6 +270,26 @@ function Resolve-MesonDllSource {
     $source['Name'] = $sub
     $source['Version'] = $Version[$sub]
     return @{ Key = $sub; Directory = $inTree; Source = $source }
+}
+
+<#
+.SYNOPSIS
+    Extracts archive members to their destinations; a missing member throws.
+.PARAMETER Member
+    Member name -> destination file.
+#>
+function Expand-NativeZipMember {
+    param([Parameter(Mandatory)][string]$Archive, [Parameter(Mandatory)][System.Collections.IDictionary]$Member)
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [IO.Compression.ZipFile]::OpenRead($Archive)
+    try {
+        foreach ($name in @($Member.Keys)) {
+            $entry = $zip.GetEntry($name)
+            if (-not $entry) { throw "$Archive has no $name" }
+            $null = New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Member[$name])
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $Member[$name], $true)
+        }
+    } finally { $zip.Dispose() }
 }
 
 <#
@@ -309,6 +326,6 @@ function Get-MesonProvenanceEntry {
         })
 }
 
-Export-ModuleMember -Function Read-MesonWrapSource, Get-MesonWrapInventory, Get-NativeNoticeFile, Copy-NativeNotice,
+Export-ModuleMember -Function Expand-NativeZipMember, Read-MesonWrapSource, Get-MesonWrapInventory, Get-NativeNoticeFile, Copy-NativeNotice,
     New-NativeProvenanceEntry, Write-NativeProvenanceManifest, Get-NativeProvenanceFinding, Assert-NativeProvenanceManifest,
     Get-NativeClosureGap, Get-MesonProvenanceEntry
