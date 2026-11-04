@@ -422,4 +422,3 @@ foreach ($d in @("$env:USERPROFILE\.nuget\packages", "$env:LOCALAPPDATA\Temp")) 
     }
 }
 #endregion
-
