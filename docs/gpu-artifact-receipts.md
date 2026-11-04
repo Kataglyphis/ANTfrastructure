@@ -239,6 +239,34 @@ To build a GPU package yourself, run the repository's Windows build inside `:win
 `:winamd64-rocm`: AccelerANTgine's `Invoke-ContainerBuild.ps1 -OrtVariant nvidia|amd -Image IMAGE`
 or OmniAccelerANT's `Build-Windows.ps1 -OrtProvider cuda|directml`.
 
+### On Linux
+
+Run natively, not under WSL, where an RX 9070 XT hangs at its first HIP copy (BACKLOG CON202). These
+scripts run the finished packages on the CPU and the GPU; only self-hosted jobs call them, and no such
+runner exists yet, so a first run may find faults in the scripts themselves.
+
+The machine needs the vendor's kernel driver, `gh`, `python3` and `dpkg-deb`, and your user in the
+`render` and `video` groups. With a second GPU, keep the card you mean to test selected: an enabled
+`gfx1036` iGPU has no MIGraphX kernels, so disable it in the firmware or set `HIP_VISIBLE_DEVICES`.
+
+Clone each repository with `git clone --branch develop`, then `git submodule update --init` without
+`--recursive`, which fails on the depth of the nested submodules. Take the newest green run:
+
+```bash
+id=$(gh run list -R Kataglyphis/REPO --workflow WORKFLOW --branch develop --status success --limit 1 \
+  --json databaseId --jq '.[0].databaseId')
+gh run download "$id" -R Kataglyphis/REPO -n ARTIFACT -D ~/gpu/REPO
+```
+
+| REPO | WORKFLOW | ARTIFACT | Command, with `amd`/`migraphx` or `nvidia`/`cuda` |
+| --- | --- | --- | --- |
+| OxidANT | `linux-x64-amd-gpu.yml`, `linux-nvidia-gpu.yml` | `oxidant-gpu-amd-linux-x64`, `oxidant-gpu-nvidia-linux-x64` | `scripts/linux/profile-gpu-packages.sh ~/gpu/OxidANT migraphx two_cats.jpg` |
+| AccelerANTgine | `linux-gpu-candidate.yml` | `accelerantgine-gpu-amd-linux-x64` | `python3 -I third_party/ANTfrastructure/linux/scripts/lib/fetch-data-lock.py --lock models/models.lock`, then `scripts/linux/profile-gpu-candidate.sh ~/gpu/AccelerANTgine models/deim_dfine_n_coco.onnx migraphx` |
+| OrchestrANT | `linux-gpu-inventory.yml` | `orchestrant-gpu-amd-linux-x64` | `scripts/linux/profile-gpu-candidate.sh ~/gpu/OrchestrANT amd x64` |
+| OmniAccelerANT | `linux-gpu-candidates.yml` | `omni-accelerant-gpu-amd-linux-x64-default` | `PROFILE_EVIDENCE_DIR=~/gpu/omni-evidence scripts/linux/profile-gpu-packages.sh ~/gpu/OmniAccelerANT amd x64 migraphx` |
+
+The NVIDIA artifacts swap `amd` for `nvidia`. `two_cats.jpg` is ModelANT's `contracts/fixtures/two_cats.jpg`.
+
 ## Repeated ORT profile runs
 
 `python3 shared/python/verify_ort_profile.py PROFILE.json --device migraphx --min-runs 2`

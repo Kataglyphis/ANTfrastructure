@@ -411,6 +411,17 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 ## Open — Linux image (all arches)
 
+- [b] **CON224 — run the GPU packages on the cards no hosted runner has** [M, ★★★]. Owner decision: the
+      owner runs these, and no release to `main` until they pass. Blocked on that hardware. Hosted CI builds
+      all nine GPU workflows but tests on the CPU only. Windows AMD passed on 2026-11-03/04 on an RX 9070 XT
+      (unpacked ZIP and MSIX, not the MSI). Still open, for OxidANT, OrchestrANT, AccelerANTgine and OmniAccelerANT:
+      1. Linux AMD, in a native Ubuntu boot on the RX 9070 XT.
+      2. Linux NVIDIA, on a machine with a supported card (not the RTX 2080 until CON217).
+      3. Windows NVIDIA, on that machine. OrchestrANT's package uses DirectML there.
+      Steps: [§ A package on your own GPU](docs/gpu-artifact-receipts.md#a-package-on-your-own-gpu). The Linux
+      scripts have never run outside their tests. Done when each package passes `compare_detector_parity.py`
+      against the CPU with its operators on the provider. Failures on gfx1036 belong to CON202.
+
 - [ ] **CON217 — build CUDA compute capability 7.5, so RTX 20xx cards run the NVIDIA packages** [M, ★★].
       Owner decision 2026-11-02: add `75` (Turing: T4, RTX 20xx) to `CUDA_ARCHITECTURES`, today
       `86;87;89;120`. Found the same day on an RTX 2080 (driver 595.58.03) with OxidANT's Linux x64
