@@ -22,6 +22,8 @@
   The suite now pins the amd64 guards of the NVDEC plugin's link and gate, not only the calls.
 - `Dockerfile.media` is back at its budget (a stray blank line), `stage-deepstream-sbsa.sh` loses an unused variable,
   the Windows WiX defaults follow 7.0.1, and the Dawn row is re-captured at ORT v1.31.1: the same tag and SHA1.
+- `chain-status.arch-pipeline-reclaim-unlocked` could survive on a loaded runner, where the two lanes missed each
+  other by timing alone; its suite now also counts the lock calls and waits for both lanes to start.
 
 ## 2026-11-04 — DeepStream has an arm64 route (SBSA), staged by hand
 

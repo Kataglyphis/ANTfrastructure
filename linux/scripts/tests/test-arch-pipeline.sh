@@ -159,16 +159,20 @@ _chain_lane_image_lever "${S}" /x 40'
 CROSS_IMAGE_PRUNE=0 _chain_lane_image_lever "${S}" /x 40'
   t_assert_eq "" "$(cat "${W}/calls" 2>/dev/null)" "the operator's switch holds"
   _case "one lane reclaims at a time, and the next reads the free space again" 'echo 5 > "${W}/free"; S="${W}/state"; mkdir "${S}"
+flock() { printf "flock\n" >> "${W}/calls"; command flock "$@"; }
 _chain_lane_reclaim() {
   mkdir "${W}/inside" || printf "overlap\n" >> "${W}/calls"
+  for _ in {1..100}; do if [ -e "${W}/started.arm64" ] && [ -e "${W}/started.amd64" ]; then break; fi; sleep 0.1; done
   sleep 0.5
   printf "reclaim\n" >> "${W}/calls"
   rmdir "${W}/inside"
 }
-_chain_lane_disk_guard media arm64 "${S}" &
-_chain_lane_disk_guard media amd64 "${S}" &
+for lane in arm64 amd64; do
+  { : > "${W}/started.${lane}"; _chain_lane_disk_guard media "${lane}" "${S}"; } &
+done
 wait'
   t_assert_eq 2 "$(grep -c -x reclaim "${W}/calls")" "$(cat "${W}/out")"
+  t_assert_eq 2 "$(grep -c -x flock "${W}/calls")" "each lane takes the lock: a loaded host can separate the lanes in time, so overlap alone is no proof"
   t_assert_eq "" "$(grep -e overlap "${W}/calls")" "the lock serialises them"
   _case "a lane that gets the lock after enough was freed reclaims nothing" 'S="${W}/state"; mkdir "${S}"
 _chain_lane_reclaim media arm64 "${S}" /x 40'
