@@ -80,6 +80,9 @@ t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'DS_CROSS_CC="${CC}$
 t_assert_contains "$(t_fn_src "${DS}" ds_build_component)" '"LIB_INSTALL_DIR=$(ds_root)/lib/"' "every component installs into and rpaths DeepStream's lib dir, as on amd64"
 t_assert_contains "$(t_fn_src "${DS}" ds_link_tegra_dir)" 'ln -sfn "$(ds_root)/lib" "${link}"' "the hard-coded -L tegra dir resolves to that lib dir for the build"
 t_assert_contains "$(t_fn_src "${DS}" ds_build)" '${DS_TEGRA_LINK:+"${DS_TEGRA_LINK}"}' "and the link does not ship"
+# nvll_osd links -lcuda; the amd64 route finds the stub through LIBRARY_PATH, which a cross GCC ignores (third SBSA build, 2026-11-05).
+t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'DS_TRT_LINK_FLAGS="-L${sdk}/lib${DS_TARGET_DEVICE:+ -L/usr/local/cuda-${DS_CUDA_VER}/lib64 -L/usr/local/cuda-${DS_CUDA_VER}/lib64/stubs}"' \
+  "the cross components get the target's CUDA lib dir and its libcuda stub as explicit -L"
 t_assert_contains "$(sed -n '/^DS_BUILD_PACKAGES=(/,/^)/p' "${DS}")" 'zlib1g-dev' "zlib's dev package is named, not inherited"
 t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'ds_write_cuda_cross_view' "the Makefiles' /usr/local/cuda-\$(CUDA_VER) resolves to the target's headers and libs"
 t_assert_contains "$(_ds ds_gate_problem ENABLE_NVIDIA=false)" "needs ENABLE_NVIDIA=true"

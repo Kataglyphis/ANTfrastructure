@@ -37,7 +37,9 @@
   uses plus `-L/usr/lib/<triplet>` to the cross compiler strings (a first attempt on `CPATH` named the wrong dir),
   `zlib1g-dev` is a named build package, a failed civetweb prints its error lines, the component Makefiles'
   `TARGET_DEVICE=aarch64` branches (install into and `-L` L4T's `/usr/lib/<triplet>/tegra`) get an explicit
-  `LIB_INSTALL_DIR` and a build-time link to DeepStream's lib dir (`deepstream.sbsa-lib-install-dir`), and
+  `LIB_INSTALL_DIR` and a build-time link to DeepStream's lib dir (`deepstream.sbsa-lib-install-dir`), the cross
+  components get the CUDA view's `lib64` and `lib64/stubs` as explicit `-L` (a cross GCC ignores `LIBRARY_PATH`,
+  so `nvll_osd` could not find `-lcuda`), and
   `deepstream.cross-multiarch-headers` proves the include pair
   ([failure-modes.md](docs/failure-modes.md#zconfh-no-such-file-or-directory-in-civetweb-under-the-sbsa-deepstream-build)).
 
