@@ -512,7 +512,8 @@ ds_build() {
   problem="$(ds_arch_problem "${TARGET_ARCH:-$(dpkg --print-architecture)}")"; [ -z "${problem}" ] || ds_die "${problem}"
   problem="$(ds_gate_problem)"; [ -z "${problem}" ] || ds_die "${problem}"
   ds_cross_setup
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/deepstream.XXXXXX")"
+  # sccache hashes the preprocessed source, whose line markers carry the path: a mktemp tree missed every compile.
+  tmp="${TMPDIR:-/tmp}/deepstream-build"; rm -rf "${tmp}"; mkdir -p "${tmp}"
   ds_apt_install "${DS_BUILD_PACKAGES[@]}" "${DS_RUNTIME_PACKAGES[@]}"
   ds_stage_runtime_deb "${tmp}"
   ds_stage_tensorrt "${tmp}"

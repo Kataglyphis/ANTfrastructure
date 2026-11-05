@@ -35273,6 +35273,14 @@
   "why": "without the explicit lib dir the aarch64 Makefiles install into L4T's tegra dir, which the SBSA image does not have"
  },
  {
+  "id": "deepstream.build-dir-stable",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "  tmp=\"${TMPDIR:-/tmp}/deepstream-build\"; rm -rf \"${tmp}\"; mkdir -p \"${tmp}\"\n",
+  "replace": "  tmp=\"$(mktemp -d \"${TMPDIR:-/tmp}/deepstream.XXXXXX\")\"\n",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "a random build dir changes every preprocessed line marker, so sccache misses every DeepStream compile on every run"
+ },
+ {
   "id": "deepstream.dsexample-literal-gcc-patched",
   "target": "linux/scripts/05-frameworks/deepstream.sh",
   "find": "  sed -i 's/^\\tgcc /\\t$(CC) /' \"$1\"\n",

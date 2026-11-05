@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-05 — The DeepStream build hits sccache
+
+- Both arches' DeepStream steps reported `156 requests, 0 hits, 109 misses` on every chain: the sources were cloned
+  into a `mktemp -d` tree, and sccache hashes the preprocessed source whose line markers carry that path. The build
+  tree is now `${TMPDIR:-/tmp}/deepstream-build`, emptied first (`deepstream.build-dir-stable`,
+  [build-cache-tiers.md § 7](docs/build-cache-tiers.md#7-do-not-repeat-list)).
+
 ## 2026-11-05 — sccache gives way when the shared disk runs short
 
 - The VPS disk had 19 GB free with Nextcloud and its backups on it, and an hourly check at a 100 GiB cap left too little

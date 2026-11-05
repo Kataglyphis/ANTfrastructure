@@ -83,6 +83,8 @@ t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'DS_CROSS_CC="${CC}$
 t_assert_contains "$(t_fn_src "${DS}" ds_build_component)" '"LIB_INSTALL_DIR=${lib_dir}"' "every component installs into and rpaths DeepStream's lib dir, as on amd64"
 t_assert_contains "$(t_fn_src "${DS}" ds_link_tegra_dir)" 'ln -sfn "$(ds_root)/lib" "${link}"' "the hard-coded -L tegra dir resolves to that lib dir for the build"
 t_assert_contains "$(t_fn_src "${DS}" ds_build)" '${DS_TEGRA_LINK:+"${DS_TEGRA_LINK}"}' "and the link does not ship"
+# Both arches' DeepStream steps hit sccache 0 of 109 times on 2026-11-05: the mktemp dir changed every line marker.
+t_assert_contains "$(t_fn_src "${DS}" ds_build)" 'tmp="${TMPDIR:-/tmp}/deepstream-build"; rm -rf "${tmp}"; mkdir -p "${tmp}"' "the build tree has a fixed path, so sccache's hash repeats across runs"
 # gst-dsexample's dsexample_lib Makefile spells gcc, so the fourth SBSA build archived an x86-64 object (2026-11-05).
 t_assert_contains "$(t_fn_src "${DS}" ds_fetch_sources)" 'ds_patch_literal_compiler "${dir}/src/gst-plugins/gst-dsexample/dsexample_lib/Makefile"' "the patch runs on the fetched tree"
 _mk="${_T}/dsexample.mk"; printf 'all:\n\tgcc -ggdb -c -o dsexample_lib.o -fPIC dsexample_lib.c\n\tar rcs libdsexample.a dsexample_lib.o\n' > "${_mk}"
