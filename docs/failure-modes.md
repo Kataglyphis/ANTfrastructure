@@ -531,6 +531,10 @@ driver stub through `LIBRARY_PATH`, which GCC honours only as a native compiler;
 driver needs an explicit `-L` for `<cuda view>/lib64/stubs`.
 The fourth: `skipping incompatible dsexample_lib/libdsexample.a` then `cannot find -ldsexample`
 in `gst-dsexample`, whose `dsexample_lib/Makefile` spells `gcc` instead of `$(CC)`.
+The fifth: `cannot find -lgstnvdsseimeta` in `gst-nvmultistream2`. Nothing builds that
+library; the amd64 `.deb` ships it, the Jetson `.deb` and the SBSA container's DeepStream tree do
+not, and the container's own `libnvdsgst_multistream.so` needs it from the Tegra dir, so it is the
+fourth staged SBSA copy (`DEEPSTREAM_SBSA_LIBGSTNVDSSEIMETA_SHA256`).
 
 **Fix.** `ds_cross_setup` appends `-idirafter /usr/include/<triplet> -idirafter /usr/include
 -L/usr/lib/<triplet>` to the cross compiler strings every Makefile build receives

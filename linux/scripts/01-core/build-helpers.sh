@@ -91,7 +91,7 @@ deepstream_arch_supported() {
   dir="${DEEPSTREAM_SBSA_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/linux/deepstream-sbsa}"
   case "${1:-}" in
     amd64) return 0 ;;
-    arm64) [ -f "${dir}/libnvbufsurface.so.1.0.0" ] && [ -f "${dir}/libnvbufsurftransform.so.1.0.0" ] && [ -f "${dir}/libnvdsbufferpool.so" ] ;;
+    arm64) [ -f "${dir}/libnvbufsurface.so.1.0.0" ] && [ -f "${dir}/libnvbufsurftransform.so.1.0.0" ] && [ -f "${dir}/libnvdsbufferpool.so" ] && [ -f "${dir}/libgstnvdsseimeta.so.1.0.0" ] ;;
     *) return 1 ;;
   esac
 }

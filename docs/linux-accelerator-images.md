@@ -515,15 +515,16 @@ CROSS_VARIANT=nvidia bash linux/scripts/build-cross-chain.sh \
 In source since 2026-11-04 (CON42 phase 7), unproved until the first nvidia arm64 chain. NVIDIA
 publishes no SBSA DeepStream package: the arm64 release asset is Jetson's
 `deepstream-binaries-aarch64_<ver>_arm64.deb` (`DEEPSTREAM_BINARIES_ARM64_SHA256`), which leaves
-`libnvbufsurface`, `libnvbufsurftransform` and `libnvdsbufferpool` to L4T. Their SBSA builds, which
-need only `libEGL.so.1` and `libcuda.so.1`, exist in one place: `/usr/lib/aarch64-linux-gnu/tegra` of
+`libnvbufsurface`, `libnvbufsurftransform`, `libnvdsbufferpool` and `libgstnvdsseimeta` (which the
+new `nvstreammux` and the SEI serialization link; found 2026-11-05) to L4T. Their SBSA builds, which
+need only `libEGL.so.1`, `libcuda.so.1` and GStreamer, exist in one place: `/usr/lib/aarch64-linux-gnu/tegra` of
 NVIDIA's SBSA container (`DEEPSTREAM_SBSA_IMAGE`, pinned by digest; read 2026-11-04). The route:
 
-1. `bash linux/scripts/05-frameworks/stage-deepstream-sbsa.sh` on the build host copies the three
+1. `bash linux/scripts/05-frameworks/stage-deepstream-sbsa.sh` on the build host copies the four
    files and `LicenseAgreement.pdf` out of that digest into `linux/deepstream-sbsa/` (ignored by
    Git but for its README) and checks them against `DEEPSTREAM_SBSA_*_SHA256`. `--check` re-verifies.
 2. The media stage mounts the directory read-only. `ds_arch_problem arm64` refuses a missing file
-   or other bytes; with the three present the Jetson `.deb` is unpacked and overlaid with them.
+   or other bytes; with the four present the Jetson `.deb` is unpacked and overlaid with them.
 3. TensorRT 10 comes from the same CUDA repo's `sbsa` path (`DEEPSTREAM_TRT_*_ARM64_SHA256`), into
    the same private prefix as on amd64.
 4. The components cross-compile: the target toolchain from `setup_linux_cross_env` replaces each
@@ -542,7 +543,7 @@ NVIDIA's SBSA container (`DEEPSTREAM_SBSA_IMAGE`, pinned by digest; read 2026-11
    unless a host injects NVDEC.
 
 The chain gates the flag per arch (`deepstream_arch_supported`, `build-helpers.sh`): amd64 always,
-arm64 only with the three files staged. Licence: the three libraries ship under the DeepStream
+arm64 only with the four files staged. Licence: the four libraries ship under the DeepStream
 licence the container carries beside them; the owner approved staging them on 2026-11-04.
 
 ### What ships

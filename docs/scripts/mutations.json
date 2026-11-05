@@ -35267,7 +35267,7 @@
  {
   "id": "deepstream.sbsa-lib-install-dir",
   "target": "linux/scripts/05-frameworks/deepstream.sh",
-  "find": "  local -a mk=(make -C \"${src}/${dir}\" -j\"${jobs}\" \"CUDA_VER=${DS_CUDA_VER}\" \"CXX=${cxx}\" \"CC=${cc}\" \"LIB_INSTALL_DIR=$(ds_root)/lib/\"\n",
+  "find": "  local -a mk=(make -C \"${src}/${dir}\" -j\"${jobs}\" \"CUDA_VER=${DS_CUDA_VER}\" \"CXX=${cxx}\" \"CC=${cc}\" \"LIB_INSTALL_DIR=${lib_dir}\"\n",
   "replace": "  local -a mk=(make -C \"${src}/${dir}\" -j\"${jobs}\" \"CUDA_VER=${DS_CUDA_VER}\" \"CXX=${cxx}\" \"CC=${cc}\"\n",
   "test": "bash linux/scripts/tests/test-deepstream.sh",
   "why": "without the explicit lib dir the aarch64 Makefiles install into L4T's tegra dir, which the SBSA image does not have"

@@ -137,13 +137,14 @@ ds_runtime_asset() {
 }
 ds_runtime_asset_sha() { case "$(ds_arch)" in amd64) printf '%s' "${DEEPSTREAM_BINARIES_AMD64_SHA256}" ;; arm64) printf '%s' "${DEEPSTREAM_BINARIES_ARM64_SHA256}" ;; *) return 1 ;; esac; }
 
-# The Jetson .deb leaves these to L4T; the arm64 route stages NVIDIA's SBSA copies by hand (docs/linux-accelerator-images.md#deepstream-on-arm64-sbsa).
+# The Jetson .deb leaves these to L4T (the new nvstreammux links libgstnvdsseimeta too); the arm64 route stages NVIDIA's SBSA copies by hand (docs/linux-accelerator-images.md#deepstream-on-arm64-sbsa).
 ds_sbsa_dir() { printf '%s' "${DS_SBSA_DIR:-/opt/deepstream-sbsa}"; }
 ds_sbsa_libs() {
   printf '%s %s\n' \
     libnvbufsurface.so.1.0.0 DEEPSTREAM_SBSA_LIBNVBUFSURFACE_SHA256 \
     libnvbufsurftransform.so.1.0.0 DEEPSTREAM_SBSA_LIBNVBUFSURFTRANSFORM_SHA256 \
-    libnvdsbufferpool.so DEEPSTREAM_SBSA_LIBNVDSBUFFERPOOL_SHA256
+    libnvdsbufferpool.so DEEPSTREAM_SBSA_LIBNVDSBUFFERPOOL_SHA256 \
+    libgstnvdsseimeta.so.1.0.0 DEEPSTREAM_SBSA_LIBGSTNVDSSEIMETA_SHA256
 }
 
 # Prints every staged SBSA library that is missing or not the pinned bytes; empty output means the route can build.
@@ -394,12 +395,13 @@ ds_link_tegra_dir() {
 
 # nvstreammux is a static archive gst-nvmultistream2 links, so it is built but not installed, as in build.sh.
 ds_build_component() {
-  local src="$1" dir="$2" log="$3" cxx cc jobs
+  local src="$1" dir="$2" log="$3" cxx cc jobs lib_dir
+  lib_dir="$(ds_root)/lib/"
   cxx="$(ds_component_compiler "${src}/${dir}/Makefile" CXX "${DS_COMPAT_H}")${DS_TRT_LINK_FLAGS:+ ${DS_TRT_LINK_FLAGS}}"
   cc="$(ds_component_compiler "${src}/${dir}/Makefile" CC "${DS_COMPAT_H}")${DS_TRT_LINK_FLAGS:+ ${DS_TRT_LINK_FLAGS}}"
   jobs="${DS_JOBS:-$(nproc)}"
   # Under TARGET_DEVICE=aarch64 the Makefiles install into and rpath L4T's tegra dir; the SBSA route keeps amd64's DeepStream lib dir.
-  local -a mk=(make -C "${src}/${dir}" -j"${jobs}" "CUDA_VER=${DS_CUDA_VER}" "CXX=${cxx}" "CC=${cc}" "LIB_INSTALL_DIR=$(ds_root)/lib/"
+  local -a mk=(make -C "${src}/${dir}" -j"${jobs}" "CUDA_VER=${DS_CUDA_VER}" "CXX=${cxx}" "CC=${cc}" "LIB_INSTALL_DIR=${lib_dir}"
                "NVDS_VERSION=${DEEPSTREAM_VERSION%.*}" PROTOBUF_BIN_DIR=/usr/bin ${DS_TARGET_DEVICE:+"TARGET_DEVICE=${DS_TARGET_DEVICE}"})
   if "${mk[@]}" >"${log}" 2>&1 && { [ "${dir}" = src/utils/nvstreammux ] || "${mk[@]}" install >>"${log}" 2>&1; }; then
     return 0

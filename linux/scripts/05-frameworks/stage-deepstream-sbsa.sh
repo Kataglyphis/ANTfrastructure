@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stages the three Tegra libraries DeepStream's arm64 route needs out of NVIDIA's SBSA container: docs/linux-accelerator-images.md#deepstream-on-arm64-sbsa
+# Stages the four Tegra libraries DeepStream's arm64 route needs out of NVIDIA's SBSA container: docs/linux-accelerator-images.md#deepstream-on-arm64-sbsa
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,7 +29,7 @@ sbsa_verify() {
     printf '%s\n' "${problem}" >&2
     return 1
   fi
-  echo "deepstream-sbsa: ${DEST} holds the three pinned libraries from ${DEEPSTREAM_SBSA_IMAGE}"
+  echo "deepstream-sbsa: ${DEST} holds the four pinned libraries from ${DEEPSTREAM_SBSA_IMAGE}"
 }
 
 # nerdctl run with the host dir mounted; a kernel that refuses the default AppArmor profile gets one retry unconfined, said out loud.
@@ -43,7 +43,8 @@ sbsa_stage() {
   local f files=""
   command -v "${NERDCTL}" >/dev/null || { echo "deepstream-sbsa: ${NERDCTL} is not on PATH" >&2; return 1; }
   mkdir -p "${DEST}"
-  while read -r f _; do files+=" ${DS_TREE}/lib/${f%.1.0.0}"; done < <(ds_sbsa_libs)
+  # The Tegra dir holds all four; the DeepStream tree links only three of them, so the copy reads the dir itself.
+  while read -r f _; do files+=" /usr/lib/aarch64-linux-gnu/tegra/${f}"; done < <(ds_sbsa_libs)
   "${NERDCTL}" pull --platform linux/arm64 "${DEEPSTREAM_SBSA_IMAGE}" >/dev/null
   # The versioned names are what the tree links and the plugins need; the licence rides along as the container ships it.
   sbsa_run "set -e; for s in ${files}; do cp -L \"\$(readlink -f \"\$s\")\" /stage/; done; cp ${DS_TREE}/LicenseAgreement.pdf /stage/; \

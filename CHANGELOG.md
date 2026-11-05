@@ -40,7 +40,8 @@
   `LIB_INSTALL_DIR` and a build-time link to DeepStream's lib dir (`deepstream.sbsa-lib-install-dir`), the cross
   components get the CUDA view's `lib64` and `lib64/stubs` as explicit `-L` (a cross GCC ignores `LIBRARY_PATH`,
   so `nvll_osd` could not find `-lcuda`), `gst-dsexample`'s sub-make gets `$(CC)` for its literal `gcc`
-  (`deepstream.dsexample-literal-gcc-patched`), and
+  (`deepstream.dsexample-literal-gcc-patched`), `libgstnvdsseimeta.so.1.0.0` is the fourth staged SBSA copy
+  (nvmultistream2 links it; no arm64 `.deb` ships it; the SBSA container's Tegra dir does), and
   `deepstream.cross-multiarch-headers` proves the include pair
   ([failure-modes.md](docs/failure-modes.md#zconfh-no-such-file-or-directory-in-civetweb-under-the-sbsa-deepstream-build)).
 

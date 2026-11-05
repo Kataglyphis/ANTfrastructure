@@ -40,11 +40,14 @@ t_assert_eq "" "$(_ds 'ds_arch_problem amd64')"
 t_assert_contains "$(_ds 'ds_arch_problem arm64' DS_SBSA_DIR="${_T}/no-sbsa")" "libnvbufsurface.so.1.0.0 is not staged: run linux/scripts/05-frameworks/stage-deepstream-sbsa.sh"
 t_assert_contains "$(_ds 'ds_arch_problem riscv64')" "no runtime for 'riscv64'"
 mkdir -p "${_T}/sbsa"
-for f in libnvbufsurface.so.1.0.0 libnvbufsurftransform.so.1.0.0 libnvdsbufferpool.so; do printf '%s' "${f}" > "${_T}/sbsa/${f}"; done
+for f in libnvbufsurface.so.1.0.0 libnvbufsurftransform.so.1.0.0 libnvdsbufferpool.so libgstnvdsseimeta.so.1.0.0; do printf '%s' "${f}" > "${_T}/sbsa/${f}"; done
 _SBSA_PINS=(DEEPSTREAM_SBSA_LIBNVBUFSURFACE_SHA256="$(printf 'libnvbufsurface.so.1.0.0' | sha256sum | cut -d' ' -f1)"
   DEEPSTREAM_SBSA_LIBNVBUFSURFTRANSFORM_SHA256="$(printf 'libnvbufsurftransform.so.1.0.0' | sha256sum | cut -d' ' -f1)"
-  DEEPSTREAM_SBSA_LIBNVDSBUFFERPOOL_SHA256="$(printf 'libnvdsbufferpool.so' | sha256sum | cut -d' ' -f1)")
-t_assert_eq "" "$(_ds 'ds_arch_problem arm64' DS_SBSA_DIR="${_T}/sbsa" "${_SBSA_PINS[@]}")" "the pinned bytes, all three staged: arm64 builds"
+  DEEPSTREAM_SBSA_LIBNVDSBUFFERPOOL_SHA256="$(printf 'libnvdsbufferpool.so' | sha256sum | cut -d' ' -f1)"
+  DEEPSTREAM_SBSA_LIBGSTNVDSSEIMETA_SHA256="$(printf 'libgstnvdsseimeta.so.1.0.0' | sha256sum | cut -d' ' -f1)")
+t_assert_eq "" "$(_ds 'ds_arch_problem arm64' DS_SBSA_DIR="${_T}/sbsa" "${_SBSA_PINS[@]}")" "the pinned bytes, all four staged: arm64 builds"
+# nvmultistream2 (the new nvstreammux) and the SEI serialization link it; neither arm64 artefact of NVIDIA's ships it outside the SBSA container.
+t_assert_contains "$(_ds 'ds_sbsa_libs' )" "libgstnvdsseimeta.so.1.0.0 DEEPSTREAM_SBSA_LIBGSTNVDSSEIMETA_SHA256" "the SEI metadata library is the fourth staged SBSA copy"
 printf 'tampered' > "${_T}/sbsa/libnvdsbufferpool.so"
 t_assert_contains "$(_ds 'ds_arch_problem arm64' DS_SBSA_DIR="${_T}/sbsa" "${_SBSA_PINS[@]}")" "libnvdsbufferpool.so is not the pinned DEEPSTREAM_SBSA_LIBNVDSBUFFERPOOL_SHA256" \
   "other bytes under the pinned name are refused, not shipped"
@@ -77,7 +80,7 @@ t_assert_contains "$(t_fn_src "${DS}" ds_cross_setup)" 'DS_CROSS_CC="${CC} ${DS_
 t_assert_contains "$(t_fn_src "${DS}" ds_build_rest_server_deps)" "grep -n -B2 -A2 -e 'error' \"\${w}/civetweb.log\"" "a failed civetweb prints its error lines, not only a warning-filled tail"
 # TARGET_DEVICE=aarch64 makes the Makefiles install into and link against L4T's /usr/lib/<triplet>/tegra (the second SBSA build died on the cp).
 t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'DS_CROSS_CC="${CC}${DS_CROSS_SYSFLAGS:+ ${DS_CROSS_SYSFLAGS}}"' "the component builds keep the sysflags ds_cross_setup chose"
-t_assert_contains "$(t_fn_src "${DS}" ds_build_component)" '"LIB_INSTALL_DIR=$(ds_root)/lib/"' "every component installs into and rpaths DeepStream's lib dir, as on amd64"
+t_assert_contains "$(t_fn_src "${DS}" ds_build_component)" '"LIB_INSTALL_DIR=${lib_dir}"' "every component installs into and rpaths DeepStream's lib dir, as on amd64"
 t_assert_contains "$(t_fn_src "${DS}" ds_link_tegra_dir)" 'ln -sfn "$(ds_root)/lib" "${link}"' "the hard-coded -L tegra dir resolves to that lib dir for the build"
 t_assert_contains "$(t_fn_src "${DS}" ds_build)" '${DS_TEGRA_LINK:+"${DS_TEGRA_LINK}"}' "and the link does not ship"
 # gst-dsexample's dsexample_lib Makefile spells gcc, so the fourth SBSA build archived an x86-64 object (2026-11-05).
