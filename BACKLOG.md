@@ -1652,6 +1652,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 ## Open — hub tooling and the dev host
 
+- [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
+      the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
+      Left separately, before a release: the installer's licence wording for the end-user terms.
+- [ ] **CON228 — the MSVC runtime's notice in every Windows installer** [M, ★★]. Agreed 2026-11-05, after the running chains. A shared hub helper stages `Redist.txt` under `licenses\msvc-runtime\` when an installer carries the runtime,
+      called from CMake packaging, `New-PortableBundle` and the Python app path, with a gate on the finished MSI, MSIX and ZIP. The owner accepts a link instead of the full terms, but `https://aka.ms/vs/18/redistribution.lic` reached Bing's start page on 2026-11-05,
+      so the manifest and installers name `https://learn.microsoft.com/en-us/visualstudio/releases/2026/redistribution`.
 - [ ] **CON222 — evaluate offline gitleaks availability in consumer images** [S, ★★].
       On 2026-11-01, the cached Linux amd64 CPU image at registry digest
       `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
