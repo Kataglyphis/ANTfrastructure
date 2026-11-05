@@ -530,7 +530,7 @@ target too (`apt-lib-${TARGETARCH}-${TARGET_ARCH}`), as every other
 Dockerfile's are, and `install-cuda-stack.sh` runs `apt-get update` before its
 first install, as `install-tensorrt.sh` already did. `test-cuda-cross-sbsa.sh`
 refuses a build-arch-only id and an install without the update;
-`nvidia.apt-lists-keyed-by-target` and `nvidia.cuda-stack-refreshes-apt-lists`
+`cuda-stack.apt-lists-keyed-by-target` and `cuda-stack.installer-refreshes-apt-lists`
 prove both. The rule: a RUN that installs packages refreshes the lists itself;
 a cache mount carries nothing a RUN may rely on.
 

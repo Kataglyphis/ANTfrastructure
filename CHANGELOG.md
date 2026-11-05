@@ -21,7 +21,7 @@
   `Dockerfile.nvidia` keys its apt caches by the target too, as every other Dockerfile does, and because
   BuildKit's cache key ignores a cache mount's id (the re-keyed repo RUN stayed `CACHED`, the new mount was
   empty), `install-cuda-stack.sh` refreshes the lists before its first install. `test-cuda-cross-sbsa.sh`
-  refuses both regressions; `nvidia.apt-lists-keyed-by-target` and `nvidia.cuda-stack-refreshes-apt-lists` prove it
+  refuses both regressions; `cuda-stack.apt-lists-keyed-by-target` and `cuda-stack.installer-refreshes-apt-lists` prove it
   ([failure-modes.md](docs/failure-modes.md#the-cross-sbsa-packages-vanish-between-the-repo-run-and-the-install)).
   The default chain (three arches) and the rocm chain passed in the same sequence.
 - The push before it (8dcc7d6f) left `develop` red (issue 227): `GENAI_TINY_MODEL_PY` is registered as the
