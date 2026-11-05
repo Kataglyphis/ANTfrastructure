@@ -34299,10 +34299,10 @@
  {
   "id": "windows-lane.qnn-community-zip-fetched",
   "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
-  "find": "    $zip = if ($zips.Count -eq 1) { $zips[0].FullName } else { Get-QnnCommunityZip @community -ExpectedSha256 $ExpectedSha256 }\n",
-  "replace": "    $zip = if ($zips.Count -eq 1) { $zips[0].FullName } else { $null }\n",
+  "find": "    & $Fetch (Get-QnnCommunityZipUrl -Version $Version) $dest $ExpectedSha256\n",
+  "replace": "    $null = $Fetch\n",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.QnnCommunityZip.Tests.ps1 -ResultFile logs/code-quality/qnn-community-zip-mutation.json",
-  "why": "without the fetch an empty windows/qnn-sdk silently builds the Windows image without the QNN EP"
+  "why": "without the fetch the cache dir stays empty and the lane silently builds the Windows image without the QNN EP"
  },
  {
   "id": "lib.litecore-verified-download",

@@ -44,6 +44,13 @@ Describe 'Resolve-QnnSdk' {
         Assert-Throws { Resolve-QnnSdk -DropDir $script:drop -ExpectedSha256 $script:sha -ExtractDir $script:extract -Arch 'amd64' | Out-Null } 'the fake SDK has no x86_64 QnnCpu.dll -> amd64 must throw' -MessagePattern 'QnnCpu\.dll missing'
     }
 
+    It 'resolves the pinned Community zip a handed-in fetch delivers when nothing is staged (the Linux-portable fetch logic is SourceBuild.QnnCommunityZip.Tests.ps1)' {
+        $empty = Join-Path $script:tmp 'empty-fetch'; New-Item $empty -ItemType Directory -Force | Out-Null
+        $fetch = { param($Url, $Destination, $Sha) Copy-Item $script:zip $Destination }
+        $r = Resolve-QnnSdk -DropDir $empty -ExpectedSha256 $script:sha -ExtractDir $script:extract -Arch 'arm64' -Community @{ Version = '2.34.0'; CacheDir = (Join-Path $script:tmp 'cache'); Source = 'community'; Fetch = $fetch }
+        Assert-True ($r.Home -like '*\qairt\2.34.0') 'the fetched zip resolves like a staged one'
+    }
+
     It 'throws on two staged zips and on a zip that is not an SDK' {
         $two = Join-Path $script:tmp 'two'; New-Item $two -ItemType Directory -Force | Out-Null
         Copy-Item $script:zip (Join-Path $two 'a.zip'); Copy-Item $script:zip (Join-Path $two 'b.zip')
