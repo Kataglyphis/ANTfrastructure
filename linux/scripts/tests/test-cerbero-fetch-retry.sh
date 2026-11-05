@@ -34,6 +34,14 @@ t_assert_eq "3" "$(grep -c '^uv ' <<<"${_out}")"
 t_assert_eq "2" "$(grep -c '^sleep ' <<<"${_out}")"
 t_assert_contains "${_out}" "rc=1"
 
+t_case "the retry arms curl's stall timeout before the first fetch"
+t_assert_contains "$(t_fn_src "${SRC}" cerbero_fetch_package_retry)" "cerbero_curl_stall_guard
+    for attempt in 1 2 3; do"
+_out="$(CERBERO_HOME="${W}/cerbero" bash -c "$(t_fn_src "${SRC}" cerbero_curl_stall_guard)"'
+    cerbero_curl_stall_guard; printf "CURL_HOME=%s\n" "${CURL_HOME}"; cat "${CURL_HOME}/.curlrc"')"
+# curl reads $CURL_HOME/.curlrc for every call that has no -q, cerbero's included; under 1 KB/s for 60 s ends a stalled transfer.
+t_assert_eq $'CURL_HOME='"${W}"$'/cerbero/curl-home\nspeed-time = 60\nspeed-limit = 1024' "${_out}"
+
 t_case "the build fetches through the retry before it packages"
 t_assert_contains "$(cat "${SRC}")" "cerbero_fetch_package_retry || exit 1
 

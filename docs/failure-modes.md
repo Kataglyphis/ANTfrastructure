@@ -91,6 +91,7 @@ Two neighbours, so you land on the right page:
 - [`sccache-evict.service` fails with `sort: write failed: 'standard output': Broken pipe`](#sccache-evictservice-fails-with-sort-write-failed-standard-output-broken-pipe)
 - [`Using ccache: /usr/bin/ccache` in a build that should use sccache](#using-ccache-usrbinccache-in-a-build-that-should-use-sccache)
 - [Cerbero: `Checksum for … spandsp-0.0.6.tar.gz is 'eed29aa6…'`](#cerbero-checksum-for--spandsp-006targz-is-eed29aa6)
+- [Cerbero: a fetch hangs for hours on a stalled mirror](#cerbero-a-fetch-hangs-for-hours-on-a-stalled-mirror)
 - [Cerbero: a checksum fails once](#cerbero-a-checksum-fails-once)
 - [`import hailo_platform` fails: `_pyhailort` is a 4 KB module](#import-hailo_platform-fails-_pyhailort-is-a-4-kb-module)
 - [`cmake --list-presets`: `Unrecognized "version" field`](#cmake---list-presets-unrecognized-version-field)
@@ -1604,6 +1605,21 @@ recipe that names it. For spandsp the replacement is `https://gstreamer.freedesk
 which serves the 2014 tarball with the recipe's checksum. Before adding a redirect for another dead
 host, download from the replacement and compare its sha256 with the recipe's `tarball_checksum`, and
 never edit the checksum to match what came back.
+
+### Cerbero: a fetch hangs for hours on a stalled mirror
+
+The amd64 android stage of the nvidia chain sat at `[(55/88 @ 63%) mpg123 -> fetch]` for 80
+minutes on 2026-11-05 while the arm64 lane finished the same step. Inside the container one
+`curl` to `download.sourceforge.net` held an open socket with 225 KB of a 1 MB tarball and no
+further byte. Cerbero's curl line has `--connect-timeout 20` and `--retry 2` but no stall
+timeout, so a mirror that stops sending never fails and nothing retries or falls over to the
+freedesktop mirror.
+
+`cerbero_fetch_package_retry` now writes `speed-time = 60` and `speed-limit = 1024` into a
+`.curlrc` under `CERBERO_HOME` and exports `CURL_HOME` to it: curl reads that file for every
+call without `-q`, cerbero's included, and ends a transfer under 1 KB/s for 60 s, which
+cerbero's own retry and mirror list then handle. A hung fetch in a running build is ended by
+`kill -TERM` on that one `curl` (not the chain); cerbero retries the URL and then its mirror.
 
 ### Cerbero: a checksum fails once
 

@@ -453,9 +453,18 @@ echo "    Prefix: ${CERBERO_PREFIX}"
 # Proof-of-effect: the mirror line as WRITTEN into the .cbc, not the heredoc source.
 echo "    Extra mirrors: $(grep -m1 '^extra_mirrors = ' "${CONFIG_NAME}.cbc" || echo 'MISSING — FD-OUTAGE fallback NOT configured') (FD-OUTAGE)"
 
+# Cerbero's curl has a connect timeout but no stall timeout; a sourceforge mirror held one open for hours. See docs/failure-modes.md#cerbero-a-fetch-hangs-for-hours-on-a-stalled-mirror
+cerbero_curl_stall_guard() {
+    CURL_HOME="${CERBERO_HOME}/curl-home"
+    mkdir -p "${CURL_HOME}"
+    printf 'speed-time = 60\nspeed-limit = 1024\n' > "${CURL_HOME}/.curlrc"
+    export CURL_HOME
+}
+
 # A 200 error page fails the checksum, which cerbero does not retry or mirror: re-run the fetch alone. See docs/failure-modes.md#cerbero-a-checksum-fails-once
 cerbero_fetch_package_retry() {
     local attempt
+    cerbero_curl_stall_guard
     for attempt in 1 2 3; do
         uv run ./cerbero-uninstalled -c "${CONFIG_NAME}.cbc" "${CERBERO_JOBS_ARGS[@]}" fetch-package gstreamer-1.0 && return 0
         echo "WARNING: cerbero fetch-package failed (attempt ${attempt}/3); retrying the downloads only" >&2

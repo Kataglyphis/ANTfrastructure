@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-05 — Cerbero's curl gets a stall timeout
+
+- The amd64 android stage hung 80 minutes in `mpg123 -> fetch`: a sourceforge mirror stopped sending after 225 KB and
+  cerbero's curl, which has a connect timeout but no stall timeout, waited on the open socket. The fetch retry now
+  arms `speed-time = 60` / `speed-limit = 1024` through a `.curlrc` under `CERBERO_HOME` (`CURL_HOME`), so a stalled
+  transfer fails and cerbero's retry and mirror take over (`lib.cerbero-curl-stall-timeout`,
+  [failure-modes.md](docs/failure-modes.md#cerbero-a-fetch-hangs-for-hours-on-a-stalled-mirror)).
+
 ## 2026-11-05 — The DeepStream build hits sccache
 
 - Both arches' DeepStream steps reported `156 requests, 0 hits, 109 misses` on every chain: the sources were cloned
