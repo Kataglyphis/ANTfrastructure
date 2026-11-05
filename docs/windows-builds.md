@@ -716,7 +716,10 @@ against the image's ARM64 FFmpeg. The twin pass is the time from the GIL wheel t
 - **IREE v3.12.0 runtime**: 36 s over 68 ninja edges, none of them an arm_64 ukernel;
   `_runtime.cp314t-win_arm64.pyd`. The first run stopped at configure
   (`Could NOT find Python3 (missing: Python3_SABI_LIBRARIES)`): the target tree held no
-  `python3t.lib`, which `Install-CpythonTargetTree` stages now.
+  `python3t.lib`, which `Install-CpythonTargetTree` stages now. The same message returned on
+  2026-11-05 with the library staged (present in the image, checked); isolated FindPython runs on
+  CMake 4.4.4 found it every time, so the cause stays unknown, and the twin now names it through
+  `Python3_SABI_LIBRARY` and `Python_SABI_LIBRARY`.
 - **Every member of the four twins is `0xAA64`, and every module imports `python314t.dll`.** The
   merge gates over the resulting tree: the manifest's store check passed with 4 twins for 4
   twin-verdict GIL wheels; the arch gate inspected 1275 binaries with 0 violations and 0 unresolved

@@ -455,6 +455,21 @@ Describe 'IREE v3.12.0 on clang-cl (found proving the runtime twin)' {
         }
     }
 
+    It 'names the staged stable-ABI library for both FindPython prefixes, and only when it exists (mutation)' {
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-IreeFromSource.ps1' -FunctionName 'Get-IreeFreeThreadedCmakeArgs')
+        Invoke-InTestDir -Files @{ 'libs/python315t.lib' = 'x'; 'libs/python3t.lib' = 'x'; 'bare/python315t.lib' = 'x' } -Body {
+            param($d)
+            $python = @{ Exe = 'C:\v\python.exe'; Include = 'C:\i'; Lib = (Join-Path $d 'libs\python315t.lib') }
+            $stable = (Join-Path $d 'libs\python3t.lib') -replace '\\', '/'
+            $named = @(Get-IreeFreeThreadedCmakeArgs -CmakeExtra @('-DX=1') -Python $python -NumPyIncludeDir 'C:/n')
+            foreach ($prefix in 'Python3', 'Python') { Assert-True ("-D${prefix}_SABI_LIBRARY=$stable" -in $named) "$prefix gets python3t.lib" }
+            $python.Lib = Join-Path $d 'bare\python315t.lib'
+            $bare = @(Get-IreeFreeThreadedCmakeArgs -CmakeExtra @('-DX=1') -Python $python -NumPyIncludeDir 'C:/n')
+            Assert-Equal 0 @($bare | Where-Object { $_ -match 'SABI_LIBRARY' }).Count 'an absent library is left to FindPython, whose failure names it'
+            Assert-Equal 0 @($bare | Where-Object { [string]::IsNullOrEmpty($_) }).Count 'and leaves no empty configure argument'
+        }
+    }
+
     It 'points every IREE genrule at the configured Python and refuses another bare shape (mutation)' {
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-IreeFromSource.ps1' -FunctionName 'Set-IreeGenrulePython')
         $rule = '    "python3 $(rootpath //build_tools/scripts:gen.py) --out $(execpath x.h)"'

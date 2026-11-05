@@ -86,10 +86,13 @@ function Get-IreeFreeThreadedCmakeArgs {
     param([Parameter(Mandatory)][string[]]$CmakeExtra, [Parameter(Mandatory)][hashtable]$Python, [Parameter(Mandatory)][string]$NumPyIncludeDir)
     # Upstream turns abi3 on unless SOABI starts cpython-NNt, which Windows' cpXYt-win_amd64 never does (CMakeLists.txt:782-791).
     $abi3Off = @('-DIREE_ENABLE_PYTHON_STABLE_ABI=OFF', '-DMLIR_ENABLE_PYTHON_STABLE_ABI=OFF')
+    # FindPython's search can miss a staged python3t.lib on the cross lane, so a present library is named outright; see docs/windows-builds.md.
+    $stableLib = (Join-Path (Split-Path -Parent $Python.Lib) 'python3t.lib') -replace '\\', '/'
+    $stableAbi = @(if (Test-Path -LiteralPath $stableLib -PathType Leaf) { "-DPython3_SABI_LIBRARY=$stableLib", "-DPython_SABI_LIBRARY=$stableLib" })
     # nanobind caches the GIL pass's .cpXY-win_amd64.pyd suffix, which X.Yt never imports; -U makes it ask the venv again.
     return @($CmakeExtra | Where-Object { $_ -notmatch '^-DPython3?_(EXECUTABLE|INCLUDE_DIR|LIBRARY|NumPy_INCLUDE_DIR)=' }) +
         @(Get-PythonCMakeHintArgs -Python $Python -Prefix @('Python3', 'Python') -ForwardSlash -NumPyIncludeDir $NumPyIncludeDir) +
-        $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')
+        $stableAbi + $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')
 }
 
 # Cross only: clang-cl counts as MSVC, so upstream drops each arm_64 ukernel's -march; every configure needs them back per TU, with a floor.

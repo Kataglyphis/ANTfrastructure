@@ -32049,6 +32049,14 @@
   "why": "libwebm under the port's C++11 default fails on MSVC's STL 30 minutes into the merge stage"
  },
  {
+  "id": "lib.iree-twin-names-stable-abi-lib",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "        $stableAbi + $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')",
+  "replace": "        $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.FreeThreadedTwin.Tests.ps1 -ResultFile logs/code-quality/iree-twin-stable-abi.json",
+  "why": "the arm64 twin's configure stopped on missing Python3_SABI_LIBRARIES with python3t.lib staged"
+ },
+ {
   "id": "lib.iree-genrule-python-covers-compiler",
   "target": "windows/scripts/build/Build-IreeFromSource.ps1",
   "find": "foreach ($tree in 'compiler', 'runtime', 'tests', 'samples') {",
