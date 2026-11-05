@@ -35273,6 +35273,14 @@
   "why": "without the explicit lib dir the aarch64 Makefiles install into L4T's tegra dir, which the SBSA image does not have"
  },
  {
+  "id": "deepstream.dsexample-literal-gcc-patched",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "  sed -i 's/^\\tgcc /\\t$(CC) /' \"$1\"\n",
+  "replace": "  true\n",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "a sub-make that still spells gcc builds an x86-64 object into the arm64 plugin's archive"
+ },
+ {
   "id": "cuda-stack.apt-lists-keyed-by-target",
   "target": "linux/Dockerfile.nvidia",
   "find": "LABEL kataglyphis.step=cuda-repo\nRUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \\\n    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH}-${TARGET_ARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH}-${TARGET_ARCH} \\\n",

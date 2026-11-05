@@ -80,6 +80,13 @@ t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'DS_CROSS_CC="${CC}$
 t_assert_contains "$(t_fn_src "${DS}" ds_build_component)" '"LIB_INSTALL_DIR=$(ds_root)/lib/"' "every component installs into and rpaths DeepStream's lib dir, as on amd64"
 t_assert_contains "$(t_fn_src "${DS}" ds_link_tegra_dir)" 'ln -sfn "$(ds_root)/lib" "${link}"' "the hard-coded -L tegra dir resolves to that lib dir for the build"
 t_assert_contains "$(t_fn_src "${DS}" ds_build)" '${DS_TEGRA_LINK:+"${DS_TEGRA_LINK}"}' "and the link does not ship"
+# gst-dsexample's dsexample_lib Makefile spells gcc, so the fourth SBSA build archived an x86-64 object (2026-11-05).
+t_assert_contains "$(t_fn_src "${DS}" ds_fetch_sources)" 'ds_patch_literal_compiler "${dir}/src/gst-plugins/gst-dsexample/dsexample_lib/Makefile"' "the patch runs on the fetched tree"
+_mk="${_T}/dsexample.mk"; printf 'all:\n\tgcc -ggdb -c -o dsexample_lib.o -fPIC dsexample_lib.c\n\tar rcs libdsexample.a dsexample_lib.o\n' > "${_mk}"
+bash -c 'ds_die() { echo "DIE: $*" >&2; exit 1; }; source <(sed -n "/^ds_patch_literal_compiler()/,/^}/p" "$1"); ds_patch_literal_compiler "$2"' _ "${DS}" "${_mk}"
+t_assert_eq $'all:\n\t$(CC) -ggdb -c -o dsexample_lib.o -fPIC dsexample_lib.c\n\tar rcs libdsexample.a dsexample_lib.o' "$(cat "${_mk}")" "the literal gcc becomes \$(CC), which make hands the sub-make from the command line"
+printf 'all:\n\t$(CC) -c x.c\n' > "${_mk}"
+t_assert_eq "1" "$(bash -c 'ds_die() { echo "DIE: $*" >&2; exit 1; }; source <(sed -n "/^ds_patch_literal_compiler()/,/^}/p" "$1"); ( ds_patch_literal_compiler "$2" ) 2>/dev/null; echo $?' _ "${DS}" "${_mk}")" "a Makefile without the anchor fails loudly"
 # nvll_osd links -lcuda; the amd64 route finds the stub through LIBRARY_PATH, which a cross GCC ignores (third SBSA build, 2026-11-05).
 t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" '[ -z "${DS_TARGET_DEVICE:-}" ] || DS_TRT_LINK_FLAGS+=" -L/usr/local/cuda-${DS_CUDA_VER}/lib64 -L/usr/local/cuda-${DS_CUDA_VER}/lib64/stubs"' \
   "the cross components get the target's CUDA lib dir and its libcuda stub as explicit -L"

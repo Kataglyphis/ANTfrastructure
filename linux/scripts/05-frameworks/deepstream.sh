@@ -292,6 +292,13 @@ ds_fetch_sources() {
   rm -rf "$(ds_root)/sources"; mkdir -p "$(ds_root)/sources"
   cp -a "${dir}/includes" "$(ds_root)/sources/includes"
   cp "${dir}/LICENSE" "$(ds_root)/sources/LICENSE"
+  ds_patch_literal_compiler "${dir}/src/gst-plugins/gst-dsexample/dsexample_lib/Makefile"
+}
+
+# dsexample_lib's Makefile spells gcc instead of $(CC), so a cross build archived an x86-64 object; a moved anchor fails here, not hours in.
+ds_patch_literal_compiler() {
+  grep -q '^	gcc ' "$1" || ds_die "$1: no literal gcc line to swap for \$(CC); upstream moved it"
+  sed -i 's/^\tgcc /\t$(CC) /' "$1"
 }
 
 ds_excluded_reason() {

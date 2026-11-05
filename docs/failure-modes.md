@@ -529,6 +529,8 @@ link against L4T's `/usr/lib/aarch64-linux-gnu/tegra`, which only a Jetson has.
 The third: `aarch64-linux-gnu-ld.bfd: cannot find -lcuda` in `nvll_osd`. amd64 finds the
 driver stub through `LIBRARY_PATH`, which GCC honours only as a native compiler; the cross
 driver needs an explicit `-L` for `<cuda view>/lib64/stubs`.
+The fourth: `skipping incompatible dsexample_lib/libdsexample.a` then `cannot find -ldsexample`
+in `gst-dsexample`, whose `dsexample_lib/Makefile` spells `gcc` instead of `$(CC)`.
 
 **Fix.** `ds_cross_setup` appends `-idirafter /usr/include/<triplet> -idirafter /usr/include
 -L/usr/lib/<triplet>` to the cross compiler strings every Makefile build receives
@@ -536,7 +538,8 @@ driver needs an explicit `-L` for `<cuda view>/lib64/stubs`.
 error lines before its tail. Every component make gets `LIB_INSTALL_DIR=<DeepStream lib>/`, and
 for the build `/usr/lib/<triplet>/tegra` is a link to that dir, removed before the stage ends
 (`ds_link_tegra_dir`), and under cross the components' link flags name the CUDA view's `lib64`
-and `lib64/stubs`. `test-deepstream.sh` holds all of it;
+and `lib64/stubs`, and `ds_patch_literal_compiler` swaps that one literal `gcc` for `$(CC)` on the
+fetched tree (a moved anchor fails the fetch). `test-deepstream.sh` holds all of it;
 `deepstream.cross-multiarch-headers` proves the include pair. Proven in the gpu-arm64 image:
 a zlib+OpenSSL probe compiles and links to an AArch64 ELF with exactly these flags.
 
