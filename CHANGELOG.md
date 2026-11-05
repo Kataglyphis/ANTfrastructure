@@ -28,7 +28,8 @@
   The LiteCore pin left `build-android.sh` for `LITECORE_VERSION`/`LITECORE_SHA256`, forwarded by
   `Dockerfile.android`, and the archive comes through the asset mirror (CON227 done).
 - `resolve_qnn_sdk` fetches the pinned Community zip into the `qnn-sdk-<arch>` cache mount every
-  QNN-resolving media RUN now carries, so the arm64 image builds the ORT QNN EP without a hand-staged
+  QNN-resolving media RUN now carries (GenAI's verify RUN too, and the ORT gate grades that root by
+  default), so the arm64 image builds the ORT QNN EP without a hand-staged
   zip; a zip in `linux/qnn-sdk/` overrides it and must match the pin, `QNN_SDK_SOURCE=drop` keeps
   the old contract. The Community licence allows object-code distribution as part of a product only;
   the image ships the backend `.so` files as before ([qnn-linux.md](docs/qnn-linux.md#staging)).

@@ -185,7 +185,7 @@ ort_gate_default_caches() {
   local xdg="${XDG_CACHE_HOME:-${HOME:-/root}/.cache}" cargo="${CARGO_HOME:-${HOME:-/root}/.cargo}"
   printf '%s\t%s\n' pyke "${xdg}/ort.pyke.io" pip "${PIP_CACHE_DIR:-${xdg}/pip}" uv "${UV_CACHE_DIR:-${xdg}/uv}" \
     tree "${cargo}/registry" tree "${cargo}/git" tree "${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}" \
-    tree "${NUGET_PACKAGES:-${HOME:-/root}/.nuget/packages}"
+    tree "${NUGET_PACKAGES:-${HOME:-/root}/.nuget/packages}" tree "${QNN_SDK_CACHE_DIR:-/var/cache/qnn-sdk}"
 }
 
 _ortg_uv_findings() {  # <uv-cache>: an ORT wheel uv fetched over HTTP (.http); a local chain wheel is cached as .rev
