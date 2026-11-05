@@ -551,6 +551,8 @@ function Invoke-OrtSourcePatches {
         -Fallback { Invoke-OnnxDmlClangClPatch -SourceDir $SourceDir; $true }
     # DirectML's MatMul returns a wrong answer with no error without this.
     Invoke-RequiredSourcePatch -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\006-dml-matmul-1d-rhs.patch') -SourceDir $SourceDir
+    # Upstream only prints that it enables free-threading; a cross configure gets no define from anywhere else, and the module must not build against the GIL ABI.
+    Invoke-RequiredSourcePatch -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\007-pybind-free-threaded-define.patch') -SourceDir $SourceDir
 
     # Ninja is case-sensitive, and upstream spells the DirectML redist dir both arm64-win and ARM64-win.
     $dmlProviders = Join-Path $SourceDir 'cmake\onnxruntime_providers_dml.cmake'

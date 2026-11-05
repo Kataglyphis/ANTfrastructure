@@ -1702,9 +1702,9 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 **Symptom.** BK lane: `hcsshim::ImportLayer failed ... (0xb7) "already exists"` on the SAME chain-IDs across retries
 
-**Cause.** Persistent snapshotter debris from an earlier low-disk finalize failure — NOT transient, `buildctl prune` cannot reach it (0B reclaimable)
+**Cause.** Persistent snapshotter debris from an earlier low-disk finalize failure — NOT transient, `buildctl prune` cannot reach it (0B reclaimable). The step the log names need not hold it: on 2026-11-04 the error sat beside a COPY, and changing that file left the IDs unchanged, because the debris was in a cached layer below.
 
-**Fix.** Non-admin sidestep: cache-bust the layer above (any content change to the COPY'd/mounted file → new chain-IDs; live examples in the 2026-08-06 headers of `Install-ScoopTools.ps1` and `Install-Vcpkg.ps1`, the latter this exact 0xb7 case). Admin fix: prune/GC under the active gcpolicy.
+**Fix.** If the IDs survive a content change, run `-Stages base -NoCache` (80 min on 2026-11-05, and it cleared this). Non-admin sidestep: cache-bust the layer above (any content change to the COPY'd/mounted file → new chain-IDs; live examples in the 2026-08-06 headers of `Install-ScoopTools.ps1` and `Install-Vcpkg.ps1`, the latter this exact 0xb7 case). Admin fix: prune/GC under the active gcpolicy.
 
 ### `failed to reimport snapshot` / `failed to write compressed diff` — the hcs-temp flake family
 

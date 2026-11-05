@@ -33,6 +33,7 @@ None of this has run in a chain yet; `BACKLOG.md` says what each item still has 
 - **Variant pushes (CON126):** `Invoke-BkVariantChain.ps1 -ConcurrentPush` uploads each variant through a `Build-Buildkit.ps1 -PushOnly` child beside the next build; a failed
   build or push fails the run, and serial stays the default.
 - **arm64 wheels (CON108):** the store moves to flet and flet-desktop 1.0.5 and msgpack 1.2.4.
+- **arm64 free-threaded ORT (CON79):** `007-pybind-free-threaded-define.patch` defines `Py_GIL_DISABLED=1` on the pybind target, where upstream only prints that it does.
 
 ## 2026-11-04 — rustup-init rotated to 1.29.3
 

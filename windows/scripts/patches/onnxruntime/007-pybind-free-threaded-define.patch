@@ -1,0 +1,12 @@
+diff --git a/cmake/onnxruntime_python.cmake b/cmake/onnxruntime_python.cmake
+index 2c8ff75..9c6bf0b 100644
+--- a/cmake/onnxruntime_python.cmake
++++ b/cmake/onnxruntime_python.cmake
+@@ -88,6 +88,7 @@ execute_process(
+ )
+ if (_py_result EQUAL 0 AND _py_gil_disabled STREQUAL "1")
+   message(STATUS "Py_GIL_DISABLED=1 detected: Enabling free-threaded support for onnxruntime_pybind11_state")
++  target_compile_definitions(onnxruntime_pybind11_state PRIVATE Py_GIL_DISABLED=1)
+ endif()
+ 
+ if(MSVC)

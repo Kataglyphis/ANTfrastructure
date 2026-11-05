@@ -185,6 +185,8 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
       Done when those wheels install and import on himbeere2's Debian 13 and in the clean-host job.
 
 - [ ] **CON79 — the cp314t chain twins reach the published images, and phase 2** [L, ★★]. Linux native
+      **arm64 twin, 2026-11-05:** chain `20261105-024512` failed `Assert-NinjaFreeThreadedDefine`, because ORT's CMake only prints that it enables free-threading and a cross configure got no define.
+      `007-pybind-free-threaded-define.patch` sets it on the pybind target, unproved until an arm64 chain builds it.
       **Item 3 read 2026-11-04, unchanged:** the twin plan skips `twin:<KNOB>`, `FT_TORCH_TWIN` is not on Windows, and the twin must share the torch RUN, so its mount re-keys the compile.
       and Windows amd64 are in source since 2026-10-07 (CHANGELOG). Open:
       1. **Prove in full image builds**: Linux — FT-STORE is green on the published `:latest` amd64
@@ -376,8 +378,8 @@ Owner goal 2026-10-30: text, LLM and speech apps in the four code repositories o
 GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs/language-ai.md).
 
 - [ ] **LAI-H2 — GenAI builds with llguidance on Windows** [M, ★★]. `Build-OnnxGenaiFromSource.ps1`
-      **In source 2026-11-04.** A local build of GenAI 0.19.0 passed the stage gate and the smoke, and the arm64 parser crate builds with cargo. Left: a chain's
-      `:winamd64` smoke printing `genai-guidance-schema-ok 7`; arm64's full link and a device run.
+      **In source 2026-11-04.** A local build of GenAI 0.19.0 passed the stage gate and the smoke, and the arm64 parser crate builds with cargo. The nvidia chain of 2026-11-05
+      printed `GenAI llguidance gate OK` at the media-core stage. Left: a chain's `:winamd64` smoke printing `genai-guidance-schema-ok 7`; arm64's full link and a device run.
       passes `-DUSE_GUIDANCE=OFF`, so `json_schema` works on Linux only. Needs Rust in the
       media-core builder and a Windows chain to prove; done when the smoke gate runs a
       schema-constrained `generate()` on `:winamd64`.
