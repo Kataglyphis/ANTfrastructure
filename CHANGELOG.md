@@ -13,6 +13,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-05 — The runtime smoke hands OrchestrANT's wheel check its GenAI model
+
+- OrchestrANT's `orchestrant.smoke` (2026-11-01) decodes the model `ORCHESTRANT_SMOKE_GENAI_MODEL` names and only
+  warns without one, so the rebuild's amd64 runtime-image smoke counted 14 of 15 and failed its floor.
+  `check_app_wheel_smoke` now writes `lib/tiny-genai-model.py`'s model in-container and names it
+  ([the app-wheel floor](docs/gen1-riscv64-genai.md#the-app-wheel-floor)); `boot.genai-model-named-for-wheel-smoke` pins it.
+- The arm64 package stage's `rustup target add aarch64-linux-android` died once under QEMU 10.2.3 with signal 6
+  (abort, no message) while the host pushed amd64 and built riscv64; the same command in a plain arm64 container
+  on that host ran twice without fault, and the rerun passed. Recorded, not changed.
+
 ## 2026-11-04 — Samsung re-packed the LiteCore headers archive
 
 - The android stage's LiteRT build pins the LiteCore archive Samsung serves since 2026-11-03 (`97b00aea…3d7c41`,

@@ -439,6 +439,13 @@ the next run if any single wheel is legitimately optional on that arch — which
 is why arm64 was left alone and riscv64 stopped a wheel short of what it printed.
 Raise arm64 to 15, and riscv64 to 14, once a **second** run confirms the count.
 
+Since OrchestrANT's 2026-11-01 smoke, its `onnxruntime-genai` check decodes the model
+`ORCHESTRANT_SMOKE_GENAI_MODEL` names against that directory's `fixture.json` and only warns
+without one; a warning is not an ok. `check_app_wheel_smoke` therefore hands
+`lib/tiny-genai-model.py` into the container as `GENAI_TINY_MODEL_PY`, writes the model there and
+runs the smoke with the directory named. A model that cannot be written is reported and the smoke
+still runs, so the floor is what fails, not the gate's plumbing.
+
 ### Tier 4, MEASURED 2026-09-03
 
 Run by hand against the shipped images, not by the build. The result is stronger

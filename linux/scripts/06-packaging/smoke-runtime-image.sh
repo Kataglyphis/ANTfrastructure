@@ -249,14 +249,16 @@ check_app_wheel_smoke() {
     if [ "${_SMOKE_TORCH_EXPECTED}" = "1" ]; then
       echo "--- Functional: app wheel smoke (python -m orchestrant.smoke) ---"
       # Ratchet the ok-count, not exit 0 (a lost component only warns); floors only rise. docs/gen1-riscv64-genai.md#the-app-wheel-floor
-      local _wheel_floor _wheel_out _wheel_ok
+      local _wheel_floor _wheel_out _wheel_ok tiny_py="${_SCRIPT_DIR}/../lib/tiny-genai-model.py" tiny_src=""
       case "${target_arch}" in
         amd64)   _wheel_floor=15 ;;
         arm64)   _wheel_floor=14 ;;
         riscv64) _wheel_floor=13 ;;
         *)       _wheel_floor=0  ;;
       esac
-      if _wheel_out="$(_rt_run /opt/venv/bin/python -m orchestrant.smoke 2>&1)"; then
+      # The GenAI check decodes the model ORCHESTRANT_SMOKE_GENAI_MODEL names against its fixture.json; without one it only warns.
+      if [ -s "${tiny_py}" ]; then tiny_src="$(cat "${tiny_py}")"; else fail "no tiny GenAI model generator at ${tiny_py}"; fi
+      if _wheel_out="$(_rt_run -e "GENAI_TINY_MODEL_PY=${tiny_src}" bash -lc "$(_rt_app_wheel_smoke_command)" 2>&1)"; then
         printf '%s\n' "${_wheel_out}"
         _wheel_ok="$(printf '%s\n' "${_wheel_out}" | sed -n 's/.*=== \([0-9]\{1,\}\)\/[0-9]\{1,\} ok.*/\1/p' | tail -1)"
         # An unreadable count fails; passing would fall back to the exit status this ratchet distrusts.
@@ -280,6 +282,17 @@ check_app_wheel_smoke() {
       fi
     fi
     echo ""
+}
+
+# The tiny model is written in-container from the environment; a failed write still runs the smoke, whose floor then reports the warning.
+_rt_app_wheel_smoke_command() {
+  printf '%s\n' 'd="$(mktemp -d)"' \
+    'if printf "%s\n" "${GENAI_TINY_MODEL_PY:-}" | /opt/venv/bin/python - --out "$d/tiny-genai" >/dev/null 2>&1; then' \
+    '  export ORCHESTRANT_SMOKE_GENAI_MODEL="$d/tiny-genai"' \
+    'else' \
+    '  echo "tiny GenAI model not written in-container; generate() stays unproven"' \
+    'fi' \
+    'exec /opt/venv/bin/python -m orchestrant.smoke'
 }
 
 # The script is generated from fixed probe identifiers; the Python payload stays in the environment.

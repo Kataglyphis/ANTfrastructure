@@ -35223,5 +35223,13 @@
   "replace": "  if false; then",
   "test": "bash linux/scripts/tests/test-build-docs.sh",
   "why": "a theme version the lock records differently reads as a missing setuptools, offline, and has been chased as one"
+ },
+ {
+  "id": "boot.genai-model-named-for-wheel-smoke",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "    '  export ORCHESTRANT_SMOKE_GENAI_MODEL=\"$d/tiny-genai\"' \\\n",
+  "replace": "    '  ORCHESTRANT_SMOKE_GENAI_MODEL=\"$d/tiny-genai\"' \\\n",
+  "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+  "why": "an unexported name never reaches orchestrant.smoke, whose GenAI check then only warns and the amd64 floor goes red"
  }
 ]
