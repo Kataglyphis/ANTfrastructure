@@ -147,6 +147,21 @@ function Invoke-IreeFreeThreadedTwin {
     Remove-Item -LiteralPath $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+function Set-IreeGenrulePython {
+    param([string]$SourceDir)
+    # Genrules run a bare `python3`, which no Windows image has, and v3.13.0 added one 7,100 edges into the build; a command of another shape fails here.
+    foreach ($tree in 'compiler', 'runtime', 'tests', 'samples') {
+        $root = Join-Path $SourceDir $tree
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        foreach ($file in Get-ChildItem -LiteralPath $root -Recurse -File -Filter 'CMakeLists.txt') {
+            if (-not (Select-String -LiteralPath $file.FullName -SimpleMatch '"python3 ' -Quiet)) { continue }
+            [void](Invoke-InlineRegexPatch -Path $file.FullName -Pattern '"python3 \$\(rootpath' `
+                    -Replacement '"$${Python3_EXECUTABLE} $$(rootpath' -AssertGone '"python3 ' `
+                    -Description 'IREE genrule: the configured Python3_EXECUTABLE, not a bare python3')
+        }
+    }
+}
+
 function Install-IreeSourcePatches {
     param([string]$SourceDir)
 
@@ -185,11 +200,7 @@ function Install-IreeSourcePatches {
             -AssertGone 'ALWAYS_INLINE inline void\s*\r?\niree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
             -Description 'IREE ukernel: s8s4s32 1x8x16 i8mm tile is used by address -- plain external definition (C99 inline emitted no symbol)')
 
-    # v3.12.0's VM ISA genrules run a bare `python3`, which no Windows image has (measured 2026-10-07); the configured Python runs them.
-    $ireeIsa = Join-Path $SourceDir 'runtime\src\iree\vm\bytecode\isa\CMakeLists.txt'
-    [void](Invoke-InlineRegexPatch -IfPresent -Path $ireeIsa -SkipIfMatch 'Python3_EXECUTABLE' -Pattern '"python3 \$\(rootpath' `
-            -Replacement '"$${Python3_EXECUTABLE} $$(rootpath' -AssertGone '"python3 ' `
-            -Description 'IREE VM ISA genrules: the configured Python3_EXECUTABLE, not a bare python3')
+    Set-IreeGenrulePython -SourceDir $SourceDir
 
     return $ireeMasm
 }

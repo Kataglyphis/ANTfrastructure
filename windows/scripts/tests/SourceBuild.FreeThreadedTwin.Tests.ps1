@@ -455,7 +455,28 @@ Describe 'IREE v3.12.0 on clang-cl (found proving the runtime twin)' {
         }
     }
 
-    It 'runs the VM ISA genrules with the configured Python, as no Windows image has python3 (mutation)' {
+    It 'points every IREE genrule at the configured Python and refuses another bare shape (mutation)' {
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-IreeFromSource.ps1' -FunctionName 'Set-IreeGenrulePython')
+        $rule = '    "python3 $(rootpath //build_tools/scripts:gen.py) --out $(execpath x.h)"'
+        Invoke-InTestDir -Files @{
+            'compiler/src/PluginAPI/CMakeLists.txt' = $rule
+            'runtime/src/isa/CMakeLists.txt' = $rule
+            'tests/e2e/CMakeLists.txt' = $rule
+            'third_party/llvm/CMakeLists.txt' = $rule
+        } -Body {
+            param($d)
+            Set-IreeGenrulePython -SourceDir $d
+            foreach ($own in 'compiler/src/PluginAPI', 'runtime/src/isa', 'tests/e2e') {
+                Assert-Equal '    "${Python3_EXECUTABLE} $(rootpath //build_tools/scripts:gen.py) --out $(execpath x.h)"' (Get-Content -Raw (Join-Path $d "$own/CMakeLists.txt")).TrimEnd() "$own runs the configured Python"
+            }
+            Assert-Equal $rule (Get-Content -Raw (Join-Path $d 'third_party/llvm/CMakeLists.txt')).TrimEnd() 'vendored trees stay untouched'
+            Set-IreeGenrulePython -SourceDir $d
+            [System.IO.File]::WriteAllText((Join-Path $d 'compiler/src/PluginAPI/CMakeLists.txt'), '    "python3 $(location gen.py)"')
+            Assert-Throws { Set-IreeGenrulePython -SourceDir $d } 'another shape'
+        }
+    }
+
+    It 'keeps the interpreter swap and links the compiler builtins' {
         $iree = Get-TwinWiringText 'windows\scripts\build\Build-IreeFromSource.ps1'
         Assert-LiteralMatch "-Pattern '`"python3 \`$\(rootpath'" $iree 'the bare python3 genrule command'
         Assert-LiteralMatch "-Replacement '`"`$`${Python3_EXECUTABLE} `$`$(rootpath'" $iree 'becomes the configured interpreter'

@@ -631,9 +631,10 @@ builds):
   failed with `the GIL was re-enabled, first by gilmod._c`, and nothing reached the store.
 - **The ORT census over both stores** was clean with both wheels as references. With the GIL wheel
   alone, as before this change, the twin's `onnxruntime_pybind11_state.pyd` read as `STALE`.
-- **IREE v3.12.0 needed two fixes on clang-cl, twin or not**: its VM ISA genrules run a bare
-  `python3`, which no Windows image has, so `Build-IreeFromSource.ps1` points them at
-  `Python3_EXECUTABLE`; its profile statistics sink divides 128-bit integers, so every IREE link gets
+- **IREE v3.12.0 needed two fixes on clang-cl, twin or not**: its genrules run a bare
+  `python3`, which no Windows image has, so `Set-IreeGenrulePython` points every one in IREE's own
+  tree at `Python3_EXECUTABLE` (v3.13.0 added `PluginABIHash.h`, 7,100 edges in, which also re-runs
+  in the twin pass; the twin's edge count above is not re-measured); its profile statistics sink divides 128-bit integers, so every IREE link gets
   compiler-rt's `clang_rt.builtins-<arch>.lib` (`Get-IreeCompilerRtCmakeArgs`).
 
 **Not yet:** the ROCm lane's torch twin.

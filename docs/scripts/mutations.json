@@ -32041,6 +32041,22 @@
   "why": "the ROCm TVM branch returned ninja's whole log as its llvm-config path, and cmd.exe refused the resulting command line"
  },
  {
+  "id": "lib.iree-genrule-python-covers-compiler",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "foreach ($tree in 'compiler', 'runtime', 'tests', 'samples') {",
+  "replace": "foreach ($tree in 'runtime', 'tests', 'samples') {",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.FreeThreadedTwin.Tests.ps1 -ResultFile logs/code-quality/iree-genrule-python-compiler.json",
+  "why": "IREE's plugin ABI genrule sits under compiler/; skipping it fails the build 7,100 edges in on 'python3 is not recognized'"
+ },
+ {
+  "id": "lib.iree-genrule-python-refuses-other-shape",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": " -AssertGone '\"python3 ' `\n                    -Description 'IREE genrule:",
+  "replace": " `\n                    -Description 'IREE genrule:",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.FreeThreadedTwin.Tests.ps1 -ResultFile logs/code-quality/iree-genrule-python-shape.json",
+  "why": "a genrule command of a new shape would otherwise pass this step and fail deep in the ninja run"
+ },
+ {
   "id": "lib.iree-rocm-bitcode-requires-both-libs",
   "target": "windows/scripts/build/Build-IreeFromSource.ps1",
   "find": "$missing = @('ocml.bc', 'ockl.bc' | Where-Object",
