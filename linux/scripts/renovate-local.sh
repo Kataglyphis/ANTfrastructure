@@ -473,7 +473,7 @@ apply_pin_sweep() {
     return 0
   fi
   note "the versions.env sweep did not complete (above); Renovate's updates stay applied"
-  EXIT_CODE="${EXIT_REFUSED}"
+  EXIT_CODE=${EXIT_REFUSED}
   return 0
 }
 

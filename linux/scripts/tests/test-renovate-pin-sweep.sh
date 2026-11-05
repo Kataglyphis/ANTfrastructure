@@ -13,7 +13,7 @@ t_assert_contains "${_local}" '  apply)  run_report; report_default_submodules; 
 t_case "the report half fails loudly on an incomplete check; the apply half exits 2 and keeps Renovate's writes"
 t_assert_contains "${_local}" '"${PY_BIN}" "${tool}" --check || err "the versions.env sweep could not check every key' "a failed lookup is never 'up to date'"
 t_assert_contains "${_local}" 'if "${PY_BIN}" "${tool}" --write && "${PY_BIN}" "${TARGET}/docs/scripts/sync_versions.py" --write; then' "write, then sync the derived files"
-t_assert_contains "${_local}" '  EXIT_CODE="${EXIT_REFUSED}"' "a failed sweep is a refused update, not a rolled-back run"
+t_assert_contains "${_local}" '  EXIT_CODE=${EXIT_REFUSED}' "a failed sweep is a refused update, not a rolled-back run"
 t_assert_contains "${_local}" '[ "${DRY_RUN}" = 0 ] || { note ""; note "dry run: bump_versions.py --write and sync_versions.py --write would follow"; return 0; }' "a dry run writes nothing"
 
 t_case "--no-bump is a local flag, and a tree without the tool (a consumer) skips the sweep"

@@ -1250,6 +1250,7 @@ function Get-QnnCommunityZip {
         $Fetch = { param($Url, $Destination, $Sha) Invoke-DownloadWithRetry -Url $Url -DestinationPath $Destination -ExpectSignature 'PK' -ExpectedSha256 $Sha -Description "QAIRT Community zip $Version" }
     }
     Write-Host "QNN: fetching the pinned Community zip $Version into $CacheDir"
+    New-Item -ItemType Directory -Force -Path $CacheDir | Out-Null
     & $Fetch (Get-QnnCommunityZipUrl -Version $Version) $dest $ExpectedSha256
     if (-not (Test-Path -LiteralPath $dest)) { throw "QNN: the Community zip $Version was not written to $dest" }
     return $dest

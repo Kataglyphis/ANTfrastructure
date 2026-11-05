@@ -52,7 +52,7 @@
 - The Windows lane does the same: `Resolve-QnnSdk` fetches the pinned Community zip (its `lib\aarch64-windows-msvc`)
   into the `qnn-sdk-winamd64` cache mount of the four QNN RUNs of `Dockerfile.media-builder` when `windows/qnn-sdk`
   holds no zip; one pin (`QNN_SDK_VERSION`, `QNN_SDK_ZIP_SHA256`) serves both lanes, so the Linux-only key is gone.
-  `SourceBuild.Qnn.Tests.ps1` covers the fetched branch with a handed-in fetch; the Windows lane must prove it.
+  `SourceBuild.QnnCommunityZip.Tests.ps1` covers the fetched branch with a handed-in fetch; the Windows lane proves it.
 - `bump_versions.py` gained `spec_android_ndk`, `spec_litecore` and `spec_qnn_sdk` (the vendors list
   nothing, so LiteRT main is the oracle for the two SDKs), and `renovate-local.sh` runs the sweep in
   the same call: `--check` on report, `--write` plus `sync_versions.py --write` on apply, `--no-bump`
