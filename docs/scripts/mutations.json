@@ -35323,7 +35323,7 @@
  {
   "id": "deepstream.chain-route-predicate",
   "target": "linux/scripts/01-core/build-helpers.sh",
-  "find": "arm64) [ -f \"${dir}/libnvbufsurface.so.1.0.0\" ] && [ -f \"${dir}/libnvbufsurftransform.so.1.0.0\" ] && [ -f \"${dir}/libnvdsbufferpool.so\" ] ;;",
+  "find": "arm64) [ -f \"${dir}/libnvbufsurface.so.1.0.0\" ] && [ -f \"${dir}/libnvbufsurftransform.so.1.0.0\" ] && [ -f \"${dir}/libnvdsbufferpool.so\" ] && [ -f \"${dir}/libgstnvdsseimeta.so.1.0.0\" ] ;;",
   "replace": "arm64) return 0 ;;",
   "test": "bash linux/scripts/tests/test-deepstream.sh",
   "why": "an arm64 media stage without the staged libraries must get ENABLE_DEEPSTREAM=false, or the build dies hours in"

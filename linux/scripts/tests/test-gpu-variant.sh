@@ -185,9 +185,9 @@ t_assert_contains "$(SNIPPET='a=(); append_runtime_accelerator_build_args a amd6
   "ENABLE_DEEPSTREAM=true" "named amd64, still"
 t_assert_contains "$(SNIPPET='a=(); append_runtime_accelerator_build_args a arm64; printf "%s " "${a[@]}"' _graph CROSS_VARIANT=nvidia DEEPSTREAM_SBSA_DIR=/nonexistent)" \
   "ENABLE_DEEPSTREAM=false" "the arm64 package of a cross chain without the staged SBSA libraries gets false, as its media stage did (phase E, 2026-10-29)"
-_SBSA_FAKE="$(mktemp -d)"; for f in libnvbufsurface.so.1.0.0 libnvbufsurftransform.so.1.0.0 libnvdsbufferpool.so; do : > "${_SBSA_FAKE}/${f}"; done
+_SBSA_FAKE="$(mktemp -d)"; for f in libnvbufsurface.so.1.0.0 libnvbufsurftransform.so.1.0.0 libnvdsbufferpool.so libgstnvdsseimeta.so.1.0.0; do : > "${_SBSA_FAKE}/${f}"; done
 t_assert_contains "$(SNIPPET='a=(); append_runtime_accelerator_build_args a arm64; printf "%s " "${a[@]}"' _graph CROSS_VARIANT=nvidia DEEPSTREAM_SBSA_DIR="${_SBSA_FAKE}")" \
-  "ENABLE_DEEPSTREAM=true" "with the three staged, the arm64 package takes the chain's flag (CON42 phase 7)"
+  "ENABLE_DEEPSTREAM=true" "with the four staged, the arm64 package takes the chain's flag (CON42 phase 7)"
 rm -rf "${_SBSA_FAKE}"
 t_assert_contains "$(SNIPPET='a=(); append_runtime_accelerator_build_args a arm64; printf "%s " "${a[@]}"' _graph CROSS_VARIANT=nvidia)" \
   "ENABLE_TENSORRT=true" "TensorRT still ships: the cross debs install the target's runtime"
