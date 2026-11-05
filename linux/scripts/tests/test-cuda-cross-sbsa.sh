@@ -161,4 +161,14 @@ t_case "OpenCV cross repins the target libstdc++ link"
 t_assert_contains "${_ocv_src}" 'media_pin_target_libstdcxx_if_available _opencv_pin_available _opencv_pin_target_libstdcxx' "OpenCV pins GCC's target libstdc++ like ffmpeg and GStreamer do"
 t_assert_contains "${_ocv_src}" 'pin_target_libstdcxx "$(cross_target_arch)"' "for the cross target arch"
 
+t_case "the nvidia apt caches are keyed by the TARGET too, so two lanes cannot clean each other's lists"
+# apt-get update drops list files its sources no longer name; the amd64 lane's update erased the arm64 lane's cross-linux-sbsa list (2026-11-05).
+_df="$(cat "${TESTS_DIR}/../../Dockerfile.nvidia")"
+t_assert_eq "0" "$(printf '%s\n' "${_df}" | grep -c -F -e 'id=apt-lib-${TARGETARCH} ' -e 'id=apt-cache-${TARGETARCH} ')" \
+  "a cache id keyed by the BUILD arch alone is shared by every target built on it"
+t_assert_eq "3" "$(printf '%s\n' "${_df}" | grep -c -F -e 'id=apt-lib-${TARGETARCH}-${TARGET_ARCH} ')" \
+  "every apt list mount (repo, stack, tensorrt) carries the target"
+t_assert_eq "3" "$(printf '%s\n' "${_df}" | grep -c -F -e 'id=apt-cache-${TARGETARCH}-${TARGET_ARCH} ')" \
+  "and so does every apt archive mount"
+
 t_summary

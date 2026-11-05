@@ -33,18 +33,19 @@ ARG FAST_UBUNTU_PORTS_MIRROR_URL
 
 SHELL ["bash", "-lc"]
 
+# The apt caches carry the target too: a parallel lane's apt-get update cleans a sibling's cross lists out of a shared /var/lib/apt. docs/failure-modes.md#the-cross-sbsa-packages-vanish-between-the-repo-run-and-the-install
 LABEL kataglyphis.step=cuda-repo
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH}-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH}-${TARGET_ARCH} \
     set -euo pipefail; \
     TARGET_ARCH="${TARGET_ARCH:-}" bash /tmp/core-scripts/setup-cuda-repo.sh
 
 # CUDA toolkit, cuDNN, NCCL, math libraries
 LABEL kataglyphis.step=cuda-stack
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH}-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH}-${TARGET_ARCH} \
     set -euo pipefail; \
     _cuda_cross_dir=""; \
     if [ -n "${TARGET_ARCH:-}" ] && [ "${TARGET_ARCH}" != "${TARGETARCH}" ]; then \
@@ -97,8 +98,8 @@ RUN set -euo pipefail; \
     chmod 1777 /tmp
 LABEL kataglyphis.step=tensorrt
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH}-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH}-${TARGET_ARCH} \
     set -euo pipefail; \
     if [ "${ENABLE_TENSORRT}" = "false" ]; then \
         echo "ENABLE_TENSORRT=false — skipping TensorRT install (CUDA + cuDNN only)"; \

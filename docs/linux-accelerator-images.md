@@ -432,6 +432,11 @@ CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1 bash linux/scripts/build-cross-chain.sh
 CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1 bash linux/scripts/build-cross-stage.sh --stage gpu --arch arm64
 ```
 
+The stage's apt caches are keyed by build arch AND target (`apt-lib-amd64-arm64`): under
+`--parallel-archs` the amd64 lane's `apt-get update` would otherwise erase the cross repo's lists from
+a shared cache between two RUNs
+([failure-modes.md](failure-modes.md#the-cross-sbsa-packages-vanish-between-the-repo-run-and-the-install)).
+
 What the stage installs beside the host CUDA (`install-cuda-stack.sh`, `install-tensorrt.sh`),
 every step logged and gated:
 

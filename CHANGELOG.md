@@ -13,6 +13,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-05 — The nvidia lanes stop erasing each other's apt lists
+
+- The rebuild's nvidia chain (amd64 + arm64 SBSA, `--parallel-archs`) failed its arm64 gpu stage with
+  `Unable to locate package cuda-cross-sbsa-13-4` right after enabling that repo: both lanes shared the
+  `apt-lib-amd64` cache mount, and the amd64 lane's `apt-get update` deleted the cross-linux-sbsa lists.
+  `Dockerfile.nvidia` keys its apt caches by the target too, as every other Dockerfile does;
+  `test-cuda-cross-sbsa.sh` refuses the build-arch-only id and `nvidia.apt-lists-keyed-by-target` proves it
+  ([failure-modes.md](docs/failure-modes.md#the-cross-sbsa-packages-vanish-between-the-repo-run-and-the-install)).
+  The default chain (three arches) and the rocm chain passed in the same sequence.
+
 ## 2026-11-05 — The runtime smoke hands OrchestrANT's wheel check its GenAI model
 
 - OrchestrANT's `orchestrant.smoke` (2026-11-01) decodes the model `ORCHESTRANT_SMOKE_GENAI_MODEL` names and only

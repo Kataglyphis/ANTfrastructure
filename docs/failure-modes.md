@@ -42,6 +42,7 @@ Two neighbours, so you land on the right page:
 - [An unresolved `NEEDED` in a library that nothing scans](#an-unresolved-needed-in-a-library-that-nothing-scans)
 - [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
 - [The disk guard aims at the wrong number](#the-disk-guard-aims-at-the-wrong-number)
+- [The cross-sbsa packages vanish between the repo RUN and the install](#the-cross-sbsa-packages-vanish-between-the-repo-run-and-the-install)
 - [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
 - [apt: `libc6:i386` install is unsatisfiable after an archive/ports drift](#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift)
 - [A from-source CPython silently drops an extension module](#a-from-source-cpython-silently-drops-an-extension-module)
@@ -504,6 +505,28 @@ count toward it; since CON53 (2026-10-01) the script and the chain's fallback ad
 them, so `<N>` is GB of layer cache, not of the store. Local
 `:latest-<arch>` images are re-pullable and not build inputs; `nerdctl rmi`
 them last. Restarting the daemon is the BKD1 remedy above wearing a disk costume.
+
+### The cross-sbsa packages vanish between the repo RUN and the install
+
+**Symptom.** The nvidia chain's arm64 gpu stage, cross-built on the amd64 host
+with `CROSS_NVIDIA_SBSA=1` beside the amd64 lane (`--parallel-archs`), logs
+`CUDA cross repo enabled for TARGET_ARCH=arm64: ubuntu2604/cross-linux-sbsa` in
+its repo RUN and then dies in the next one with
+`E: Unable to locate package cuda-cross-sbsa-13-4` for the whole cross set,
+while NVIDIA's repo serves every one of them. Alone, the same lane passes.
+
+**Cause.** `/var/lib/apt` is a BuildKit cache mount, and `Dockerfile.nvidia`
+keyed it by the BUILD arch alone, so both lanes shared `apt-lib-amd64`. apt's
+`update` deletes the list files of sources it is not configured with
+(`APT::Get::List-Cleanup`); the amd64 lane's repo RUN ran its update a few
+seconds after the arm64 lane's and erased the cross-linux-sbsa list. `sharing=locked`
+serialises the RUNs; it does not keep one RUN's lists from the next.
+
+**Fix.** The three apt mounts of `Dockerfile.nvidia` are keyed by the target too
+(`apt-lib-${TARGETARCH}-${TARGET_ARCH}`), as every other Dockerfile's are;
+`test-cuda-cross-sbsa.sh` refuses a build-arch-only id and
+`nvidia.apt-lists-keyed-by-target` proves it. A stage that adds a repo whose
+lists another lane does not name must not share that lane's list cache.
 
 ### A renamed or dropped distro package kills a stage hours in
 

@@ -35185,6 +35185,14 @@
   "why": "a staged SBSA library with other bytes than the pin must be refused, never shipped"
  },
  {
+  "id": "nvidia.apt-lists-keyed-by-target",
+  "target": "linux/Dockerfile.nvidia",
+  "find": "LABEL kataglyphis.step=cuda-repo\nRUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \\\n    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH}-${TARGET_ARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH}-${TARGET_ARCH} \\\n",
+  "replace": "LABEL kataglyphis.step=cuda-repo\nRUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \\\n    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH}-${TARGET_ARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \\\n",
+  "test": "bash linux/scripts/tests/test-cuda-cross-sbsa.sh",
+  "why": "an apt list cache keyed by the build arch alone is shared by the amd64 and the arm64 (sbsa) lane, and one lane's apt-get update erases the other's cross repo lists"
+ },
+ {
   "id": "deepstream.sbsa-missing-file",
   "target": "linux/scripts/05-frameworks/deepstream.sh",
   "find": "if [ ! -f \"${dir}/${f}\" ]; then",
