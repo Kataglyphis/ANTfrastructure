@@ -512,7 +512,9 @@ them last. Restarting the daemon is the BKD1 remedy above wearing a disk costume
 
 **Symptom.** The nvidia chain's arm64 media stage, cross-built on the amd64 host, dies in
 the DeepStream RUN: `src/civetweb.c:452:10: fatal error: zconf.h: No such file or directory`,
-then `[deepstream] ERROR: civetweb failed`. `zlib.h` was found.
+then `[deepstream] ERROR: civetweb failed`. `zlib.h` was found. The next run, past civetweb,
+died in the first component: `cp: cannot create regular file
+'/usr/lib/aarch64-linux-gnu/tegra/': Not a directory`.
 
 **Cause.** The source-built cross GCC's sysroot is `/usr/aarch64-linux-gnu`: it searches
 `/usr/aarch64-linux-gnu/include` and never `/usr/include` or `/usr/include/aarch64-linux-gnu`,
@@ -522,10 +524,15 @@ builds (civetweb, then every component) got no such flag. A first fix put the mu
 `CPATH`, which the probe in the gpu image showed is not enough: the headers are under
 `/usr/include` itself.
 
+The second symptom is the Makefiles' `TARGET_DEVICE=aarch64` branches: they install into and
+link against L4T's `/usr/lib/aarch64-linux-gnu/tegra`, which only a Jetson has.
+
 **Fix.** `ds_cross_setup` appends `-idirafter /usr/include/<triplet> -idirafter /usr/include
 -L/usr/lib/<triplet>` to the cross compiler strings every Makefile build receives
 (`DS_CROSS_SYSFLAGS`), `zlib1g-dev` is a named build package, and a failed civetweb prints its
-error lines before its tail. `test-deepstream.sh` holds all three;
+error lines before its tail. Every component make gets `LIB_INSTALL_DIR=<DeepStream lib>/`, and
+for the build `/usr/lib/<triplet>/tegra` is a link to that dir, removed before the stage ends
+(`ds_link_tegra_dir`). `test-deepstream.sh` holds all of it;
 `deepstream.cross-multiarch-headers` proves the include pair. Proven in the gpu-arm64 image:
 a zlib+OpenSSL probe compiles and links to an AArch64 ELF with exactly these flags.
 

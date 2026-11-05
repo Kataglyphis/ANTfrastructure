@@ -35,7 +35,9 @@
   sysroot is `/usr/aarch64-linux-gnu`, so apt's `:arm64` headers under `/usr/include` are invisible to it, and
   DeepStream's Makefile builds carry no cross file. `ds_cross_setup` now appends the `-idirafter` pair cross-meson
   uses plus `-L/usr/lib/<triplet>` to the cross compiler strings (a first attempt on `CPATH` named the wrong dir),
-  `zlib1g-dev` is a named build package, a failed civetweb prints its error lines, and
+  `zlib1g-dev` is a named build package, a failed civetweb prints its error lines, the component Makefiles'
+  `TARGET_DEVICE=aarch64` branches (install into and `-L` L4T's `/usr/lib/<triplet>/tegra`) get an explicit
+  `LIB_INSTALL_DIR` and a build-time link to DeepStream's lib dir (`deepstream.sbsa-lib-install-dir`), and
   `deepstream.cross-multiarch-headers` proves the include pair
   ([failure-modes.md](docs/failure-modes.md#zconfh-no-such-file-or-directory-in-civetweb-under-the-sbsa-deepstream-build)).
 

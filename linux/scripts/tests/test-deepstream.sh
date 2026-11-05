@@ -75,6 +75,11 @@ t_assert_contains "$(t_fn_src "${DS}" ds_cross_setup)" 'cuda_cross_load' "the gp
 t_assert_contains "$(t_fn_src "${DS}" ds_cross_setup)" 'DS_CROSS_SYSFLAGS="-idirafter /usr/include/${multiarch} -idirafter /usr/include -L/usr/lib/${multiarch}"' "the target's multiarch headers and libs, lowest priority as cross-meson gives them"
 t_assert_contains "$(t_fn_src "${DS}" ds_cross_setup)" 'DS_CROSS_CC="${CC} ${DS_CROSS_SYSFLAGS}" DS_CROSS_CXX="${CXX} ${DS_CROSS_SYSFLAGS}"' "on the compiler string every Makefile build (civetweb, the components) receives"
 t_assert_contains "$(t_fn_src "${DS}" ds_build_rest_server_deps)" "grep -n -B2 -A2 -e 'error' \"\${w}/civetweb.log\"" "a failed civetweb prints its error lines, not only a warning-filled tail"
+# TARGET_DEVICE=aarch64 makes the Makefiles install into and link against L4T's /usr/lib/<triplet>/tegra (the second SBSA build died on the cp).
+t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'DS_CROSS_CC="${CC}${DS_CROSS_SYSFLAGS:+ ${DS_CROSS_SYSFLAGS}}"' "the component builds keep the sysflags ds_cross_setup chose"
+t_assert_contains "$(t_fn_src "${DS}" ds_build_component)" '"LIB_INSTALL_DIR=$(ds_root)/lib/"' "every component installs into and rpaths DeepStream's lib dir, as on amd64"
+t_assert_contains "$(t_fn_src "${DS}" ds_link_tegra_dir)" 'ln -sfn "$(ds_root)/lib" "${link}"' "the hard-coded -L tegra dir resolves to that lib dir for the build"
+t_assert_contains "$(t_fn_src "${DS}" ds_build)" '${DS_TEGRA_LINK:+"${DS_TEGRA_LINK}"}' "and the link does not ship"
 t_assert_contains "$(sed -n '/^DS_BUILD_PACKAGES=(/,/^)/p' "${DS}")" 'zlib1g-dev' "zlib's dev package is named, not inherited"
 t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'ds_write_cuda_cross_view' "the Makefiles' /usr/local/cuda-\$(CUDA_VER) resolves to the target's headers and libs"
 t_assert_contains "$(_ds ds_gate_problem ENABLE_NVIDIA=false)" "needs ENABLE_NVIDIA=true"

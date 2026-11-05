@@ -376,13 +376,23 @@ ds_write_gst_ldconf() {
   ldconfig
 }
 
+# Under TARGET_DEVICE=aarch64 the Makefiles link with -L/usr/lib/<triplet>/tegra, L4T's dir: for the build it is DeepStream's lib dir, and ds_build removes the link.
+ds_link_tegra_dir() {
+  local link
+  link="/usr/lib/$(ds_multiarch)/tegra"
+  [ ! -e "${link}" ] || ds_die "${link} exists; the SBSA route expected to provide it"
+  ln -sfn "$(ds_root)/lib" "${link}"
+  DS_TEGRA_LINK="${link}"
+}
+
 # nvstreammux is a static archive gst-nvmultistream2 links, so it is built but not installed, as in build.sh.
 ds_build_component() {
   local src="$1" dir="$2" log="$3" cxx cc jobs
   cxx="$(ds_component_compiler "${src}/${dir}/Makefile" CXX "${DS_COMPAT_H}")${DS_TRT_LINK_FLAGS:+ ${DS_TRT_LINK_FLAGS}}"
   cc="$(ds_component_compiler "${src}/${dir}/Makefile" CC "${DS_COMPAT_H}")${DS_TRT_LINK_FLAGS:+ ${DS_TRT_LINK_FLAGS}}"
   jobs="${DS_JOBS:-$(nproc)}"
-  local -a mk=(make -C "${src}/${dir}" -j"${jobs}" "CUDA_VER=${DS_CUDA_VER}" "CXX=${cxx}" "CC=${cc}"
+  # Under TARGET_DEVICE=aarch64 the Makefiles install into and rpath L4T's tegra dir; the SBSA route keeps amd64's DeepStream lib dir.
+  local -a mk=(make -C "${src}/${dir}" -j"${jobs}" "CUDA_VER=${DS_CUDA_VER}" "CXX=${cxx}" "CC=${cc}" "LIB_INSTALL_DIR=$(ds_root)/lib/"
                "NVDS_VERSION=${DEEPSTREAM_VERSION%.*}" PROTOBUF_BIN_DIR=/usr/bin ${DS_TARGET_DEVICE:+"TARGET_DEVICE=${DS_TARGET_DEVICE}"})
   if "${mk[@]}" >"${log}" 2>&1 && { [ "${dir}" = src/utils/nvstreammux ] || "${mk[@]}" install >>"${log}" 2>&1; }; then
     return 0
@@ -403,7 +413,8 @@ ds_build_components() {
   [ -n "${DS_CUDA_VER}" ] || ds_die "cannot read the CUDA version from nvcc"
   if ds_cross_active; then
     DS_TARGET_DEVICE="$(ds_target_device)"
-    DS_CROSS_CC="${CC}" DS_CROSS_CXX="${CXX}"
+    DS_CROSS_CC="${CC}${DS_CROSS_SYSFLAGS:+ ${DS_CROSS_SYSFLAGS}}" DS_CROSS_CXX="${CXX}${DS_CROSS_SYSFLAGS:+ ${DS_CROSS_SYSFLAGS}}"
+    ds_link_tegra_dir
     # The Makefiles hard-code /usr/local/cuda-$(CUDA_VER)/{include,lib64}: a view names the target's, and nvcc stays the host's.
     DS_CUDA_VER="${DS_CUDA_VER}-${CUDA_CROSS_TARGET_DIR}"
     ds_write_cuda_cross_view "/usr/local/cuda-${DS_CUDA_VER}"
@@ -498,7 +509,7 @@ ds_build() {
   ds_build_rest_server_deps "${tmp}/deps"
   ds_build_components "${tmp}/src" "${tmp}/logs" "$(ds_trt_sdk "${tmp}")"
   ds_fix_layout "$(ds_root)"
-  rm -rf "${tmp}" ${DS_TARGET_DEVICE:+"/usr/local/cuda-${DS_CUDA_VER}"}
+  rm -rf "${tmp}" ${DS_TARGET_DEVICE:+"/usr/local/cuda-${DS_CUDA_VER}"} ${DS_TEGRA_LINK:+"${DS_TEGRA_LINK}"}
   ds_write_gst_ldconf
   ds_write_trt_ldconf
   ds_link_trt_builder_resources

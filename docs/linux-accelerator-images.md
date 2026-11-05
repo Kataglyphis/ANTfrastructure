@@ -531,7 +531,11 @@ NVIDIA's SBSA container (`DEEPSTREAM_SBSA_IMAGE`, pinned by digest; read 2026-11
    Makefiles' `gcc -dumpmachine`, nvcc gets `-ccbin` and `--target-directory=sbsa-linux` from the
    gpu stage's `cross-target.env`, and `/usr/local/cuda-<ver>-sbsa-linux` is a view (host `bin`,
    target `include` and `lib64`) so the Makefiles' hard-coded CUDA paths link the target's
-   libraries. The REST server's dependencies take `append_cmake_cross_args`.
+   libraries. The REST server's dependencies take `append_cmake_cross_args`. The cross compiler
+   strings carry `-idirafter /usr/include/<triplet> -idirafter /usr/include -L/usr/lib/<triplet>`
+   (the cross GCC's sysroot is `/usr/<triplet>`, so apt's `:arm64` headers are invisible without
+   them), every component make gets `LIB_INSTALL_DIR=<DeepStream lib>/`, and `/usr/lib/<triplet>/tegra`,
+   which the Makefiles' aarch64 branches hard-code, is a build-time link to that dir.
 5. The build stage runs the file gates only and defers the loader and registration gates to the
    package stage, which runs natively under QEMU and repeats every gate; `nvv4l2decoder` and the
    libv4l2 plugin are amd64's, so the SBSA route registers eight elements and decodes in software
