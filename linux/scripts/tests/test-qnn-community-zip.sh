@@ -58,17 +58,17 @@ t_assert_eq "${_url}" "$(_run "QNN_SDK_CACHE_DIR=${CACHE}" qnn_community_zip_url
 
 t_case "no pin, or QNN_SDK_SOURCE=drop, fetches nothing and names no zip"
 t_assert_eq "rc=0" "$(_run "QNN_SDK_CACHE_DIR=${CACHE} QNN_SDK_VERSION=" qnn_pinned_community_zip)" "an empty version is silence, not an error"
-t_assert_eq "rc=0" "$(_run "QNN_SDK_CACHE_DIR=${CACHE} QNN_SDK_SOURCE=drop QNN_SDK_VERSION=2.51.1.261002 QNN_SDK_LINUX_ZIP_SHA256=ab" qnn_pinned_community_zip)" \
+t_assert_eq "rc=0" "$(_run "QNN_SDK_CACHE_DIR=${CACHE} QNN_SDK_SOURCE=drop QNN_SDK_VERSION=2.51.1.261002 QNN_SDK_ZIP_SHA256=ab" qnn_pinned_community_zip)" \
   "drop keeps the pre-2026-11-05 contract: only a staged zip counts"
 t_assert_eq "" "$(cat "${FETCH_LOG}")" "nothing was downloaded"
 
 t_case "a version without its sha is refused: a pin moves with its checksum"
-_out="$(_run "QNN_SDK_CACHE_DIR=${CACHE} QNN_SDK_VERSION=2.51.1.261002 QNN_SDK_LINUX_ZIP_SHA256=" qnn_pinned_community_zip)"
+_out="$(_run "QNN_SDK_CACHE_DIR=${CACHE} QNN_SDK_VERSION=2.51.1.261002 QNN_SDK_ZIP_SHA256=" qnn_pinned_community_zip)"
 t_assert_eq "rc=1" "${_out}" "rc 1 before any download"
 t_assert_eq "" "$(cat "${FETCH_LOG}")" "nothing was downloaded"
 
 t_case "a cache miss downloads the pinned zip, lowercased sha, into the cache dir and names it"
-_out="$(_run "QNN_SDK_CACHE_DIR=${CACHE} QNN_SDK_VERSION=2.51.1.261002 QNN_SDK_LINUX_ZIP_SHA256=ABCDEF" qnn_pinned_community_zip)"
+_out="$(_run "QNN_SDK_CACHE_DIR=${CACHE} QNN_SDK_VERSION=2.51.1.261002 QNN_SDK_ZIP_SHA256=ABCDEF" qnn_pinned_community_zip)"
 t_assert_eq "${CACHE}/qairt-2.51.1.261002.zip
 rc=0" "${_out}" "the zip's path on stdout"
 t_assert_eq "${_url} abcdef ${CACHE}/qairt-2.51.1.261002.zip" "$(cat "${FETCH_LOG}")" "one verified download, the sha as sha256sum wants it"
@@ -77,21 +77,21 @@ t_assert_eq "zipbytes" "$(cat "${CACHE}/qairt-2.51.1.261002.zip")" "the download
 t_case "a cache hit that verifies is not downloaded again; one that does not verify is"
 : > "${FETCH_LOG}"
 printf 'abcdef' > "${CACHE}/.verified"
-_out="$(_run "QNN_SDK_CACHE_DIR=${CACHE} QNN_SDK_VERSION=2.51.1.261002 QNN_SDK_LINUX_ZIP_SHA256=abcdef" qnn_pinned_community_zip)"
+_out="$(_run "QNN_SDK_CACHE_DIR=${CACHE} QNN_SDK_VERSION=2.51.1.261002 QNN_SDK_ZIP_SHA256=abcdef" qnn_pinned_community_zip)"
 t_assert_contains "${_out}" "rc=0" "a verified cached zip is used"
 t_assert_eq "" "$(cat "${FETCH_LOG}")" "no download for a verified cache hit"
 printf 'other' > "${CACHE}/.verified"
-_out="$(_run "QNN_SDK_CACHE_DIR=${CACHE} QNN_SDK_VERSION=2.51.1.261002 QNN_SDK_LINUX_ZIP_SHA256=abcdef" qnn_pinned_community_zip)"
+_out="$(_run "QNN_SDK_CACHE_DIR=${CACHE} QNN_SDK_VERSION=2.51.1.261002 QNN_SDK_ZIP_SHA256=abcdef" qnn_pinned_community_zip)"
 t_assert_eq "1" "$(grep -c . "${FETCH_LOG}")" "a cached zip that fails its sha is fetched again"
 
 t_case "resolve_qnn_sdk: an empty drop dir under drop is QNN off; under community it fetches and resolves the SDK root"
 : > "${FETCH_LOG}"
-_out="$(_run "QNN_SDK_CACHE_DIR=${CACHE} QNN_SDK_SOURCE=drop QNN_SDK_VERSION=2.51.1.261002 QNN_SDK_LINUX_ZIP_SHA256=abcdef" resolve_qnn_sdk "${DROP}")"
+_out="$(_run "QNN_SDK_CACHE_DIR=${CACHE} QNN_SDK_SOURCE=drop QNN_SDK_VERSION=2.51.1.261002 QNN_SDK_ZIP_SHA256=abcdef" resolve_qnn_sdk "${DROP}")"
 t_assert_eq "rc=0" "${_out}" "QNN off: empty stdout, rc 0"
 t_assert_eq "" "$(cat "${FETCH_LOG}")" "and nothing downloaded"
 # The stub downloader writes "zipbytes"; the resolver then hashes that file against the pin, so the pin is its sha256.
 _zipsha="$(printf 'zipbytes\n' | sha256sum | awk '{print $1}')"
-_out="$(_run "QNN_SDK_CACHE_DIR=${CACHE} QNN_SDK_EXTRACT_DIR=${TMPDIR}/extract QNN_SDK_VERSION=2.51.1.261002 QNN_SDK_LINUX_ZIP_SHA256=${_zipsha} PATH=${TMPDIR}/bin:${PATH}" resolve_qnn_sdk "${DROP}")"
+_out="$(_run "QNN_SDK_CACHE_DIR=${CACHE} QNN_SDK_EXTRACT_DIR=${TMPDIR}/extract QNN_SDK_VERSION=2.51.1.261002 QNN_SDK_ZIP_SHA256=${_zipsha} PATH=${TMPDIR}/bin:${PATH}" resolve_qnn_sdk "${DROP}")"
 t_assert_contains "${_out}" "${TMPDIR}/extract/qairt/2.51.1.261002" "the SDK root under the extract dir, as the staged-zip path resolves it"
 t_assert_contains "${_out}" "rc=0" "and rc 0"
 t_assert_eq "1" "$(grep -c . "${FETCH_LOG}")" "one download fed the staged-zip path"

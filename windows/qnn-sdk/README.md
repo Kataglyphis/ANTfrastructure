@@ -1,29 +1,18 @@
-# Qualcomm AI Engine Direct (QAIRT / "QNN") SDK drop — ONNX Runtime QNN EP (backlog #121)
+# Qualcomm AI Runtime (QAIRT / "QNN") SDK drop — Windows, optional override
 
-This directory is the **opt-in** drop point for the Qualcomm AI Engine Direct SDK zip.
-When a zip is staged here, `Build-OnnxFromSource.ps1` builds ONNX Runtime with the
-**QNN execution provider** (`onnxruntime_USE_QNN=ON`) and stages the QNN runtime DLLs
-beside `onnxruntime.dll`. When the directory holds nothing but this README, the build
-skips the QNN EP with a one-line notice — no zip is the default, supported state.
+Since 2026-11-05 the Windows lane needs nothing here: `Resolve-QnnSdk` fetches the public
+"Qualcomm AI Runtime Community" zip pinned in `versions.env` (`QNN_SDK_VERSION`,
+`QNN_SDK_ZIP_SHA256`, one pin for both lanes) into the `qnn-sdk-winamd64` cache mount the
+four QNN RUNs of `Dockerfile.media-builder` carry, and builds ONNX Runtime with the QNN
+execution provider from it. `docs/windows-cross-builds.md` § QNN execution provider has the
+mechanism; `docs/qnn-linux.md` § Staging the licence note and the bump path. This directory
+is the override:
 
-## Why a manual drop
-
-The SDK is **login-gated** (Qualcomm Package Manager / Qualcomm ID) and EULA-bound, so it
-cannot be downloaded by the build. Same contract as the TensorRT zip in
-`windows/downloads/`: you stage it, the build verifies and consumes it.
-
-## How to stage
-
-1. Download the Windows SDK from
-   https://qpm.qualcomm.com/#/main/tools/details/qualcomm_ai_engine_direct
-   (package "Qualcomm AI Engine Direct SDK", Windows). The archive is a zip that extracts
-   to `qairt\<version>\` with `include\QNN\`, `lib\aarch64-windows-msvc\` (HTP/NPU + CPU
-   backends for Windows-on-ARM) and `lib\x86_64-windows-msvc\` (CPU backend for x64).
-2. Copy the zip into this directory. Exactly **one** `*.zip` may sit here; the build takes
-   that one (any name).
-3. Optional integrity pin: set `QNN_SDK_ZIP_SHA256` in `linux/scripts/01-core/versions.env`
-   to the zip's SHA-256. When set, the build refuses a zip whose hash differs. Empty means
-   "unpinned" (documented-deliberate, like `TENSORRT_ZIP_SHA256` before it was populated).
+1. Exactly **one** `*.zip` here is used instead of the download (an offline copy, or a build
+   host without upstream access). It must match `QNN_SDK_ZIP_SHA256`; a different SDK is a
+   re-pin of both keys in the same commit.
+2. `QNN_SDK_SOURCE=drop` in the RUN's environment restores the pre-2026-11-05 contract: no
+   zip here, no QNN.
 
 The zip is git-ignored (`windows/qnn-sdk/*` except this README) and rides into the
 BuildKit context only when present — the media-core `onnx` and `genai` RUNs and the

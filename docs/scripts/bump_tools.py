@@ -489,5 +489,5 @@ def spec_qnn_sdk(cur: str) -> SpecResult:
         raise RuntimeError(f"QAIRT {v} is not served at {url}")
     extras = {}
     if v != cur and bv.WRITE_MODE:
-        extras["QNN_SDK_LINUX_ZIP_SHA256"] = bv.sha256_of_url(url)
+        extras["QNN_SDK_ZIP_SHA256"] = bv.sha256_of_url(url)
     return v, extras

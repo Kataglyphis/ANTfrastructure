@@ -418,8 +418,6 @@ def derived_keys() -> dict[str, str]:
 SHA_PAIR_EXEMPT = {
     # EULA-gated manual download, deliberately empty.
     "TENSORRT_ZIP_SHA256",
-    # The login-gated Windows Qualcomm SDK zip, staged by hand (Linux pins the public Community zip through spec_qnn_sdk).
-    "QNN_SDK_ZIP_SHA256",
     # Always-latest bootstrap installers: the hash is re-reviewed by hand on each deliberate update.
     "RUSTUP_INIT_SHA256",   # sh.rustup.rs
     "SCOOP_INSTALLER_SHA256",  # get.scoop.sh

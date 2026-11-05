@@ -27,6 +27,7 @@ function New-WbtFakeMediaVersionTable {
         AMF_HEADERS_SHA256        = 'amfsha-16'
         CUDA_ARCHITECTURES        = '89-fake'
         QNN_SDK_ZIP_SHA256        = 'qnnsha-13'
+        QNN_SDK_VERSION           = 'qnnver-27'
         LITERT_VERSION            = 'lrt-7'
         LITERT_LM_VERSION         = 'lm-8'
         TVM_REF                   = 'tvm-9'
@@ -68,6 +69,7 @@ Describe 'Get-MediaBranchVersionArg' {
                     CUDA_ARCHITECTURES        = '89-fake'
                     PYTHON_VERSION            = 'py-12'
                     QNN_SDK_ZIP_SHA256        = 'qnnsha-13'
+                    QNN_SDK_VERSION           = 'qnnver-27'
                     AMF_HEADERS_VERSION       = 'amf-15'
                     AMF_HEADERS_SHA256        = 'amfsha-16'
                 }
@@ -79,6 +81,7 @@ Describe 'Get-MediaBranchVersionArg' {
                     JRE_VERSION       = 'jre-14'
                     # This branch mounts windows/qnn-sdk, so without the pin Resolve-QnnSdk extracts unverified.
                     QNN_SDK_ZIP_SHA256 = 'qnnsha-13'
+                    QNN_SDK_VERSION    = 'qnnver-27'
                     LITERT_LM_WEBGPU_ACCELERATOR_SHA256 = 'lmacc-15'
                     LITERT_LM_WEBGPU_SAMPLER_SHA256     = 'lmsmp-16'
                     LITERT_LM_WEBGPU_DAWN_SHA256        = 'lmdawn-17'
@@ -90,6 +93,7 @@ Describe 'Get-MediaBranchVersionArg' {
                     IREE_VERSION = 'iree-10'
                     # Mounts windows/qnn-sdk, so it needs the same integrity pin as the others.
                     QNN_SDK_ZIP_SHA256 = 'qnnsha-13'
+                    QNN_SDK_VERSION    = 'qnnver-27'
                     # The same pin as media-core: the fan-in refuses two Cython versions.
                     PY_CYTHON_VERSION = 'cy-26'
                 }

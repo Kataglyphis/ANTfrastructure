@@ -704,7 +704,7 @@ while IFS='|' read -r _spec _oracle _cur _new _hurl _key; do
   t_assert_contains "${_out}" "same ('${_new}', {}) []" "${_spec}: an up-to-date pin hashes nothing"
 done <<ROWS
 spec_litecore|EXYNOS_AI_LITECORE_URL = 'https://x/ai-litecore-ubuntu2404-v1.2.0.tar.gz'|1.1.0|1.2.0|${_lurl}|LITECORE_SHA256
-spec_qnn_sdk|url = "${_qurl}",|2.49.0.260730|2.51.1.261002|${_qurl}|QNN_SDK_LINUX_ZIP_SHA256
+spec_qnn_sdk|url = "${_qurl}",|2.49.0.260730|2.51.1.261002|${_qurl}|QNN_SDK_ZIP_SHA256
 spec_android_ndk|${_ndk_xml}|29.0.14206865|30.0.16248370||
 ROWS
 _out="$(_bv_offline <<'PY'

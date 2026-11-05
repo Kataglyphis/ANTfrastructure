@@ -103,8 +103,9 @@ function Get-MediaBranchVersionArg {
                 PYAV_VERSION              = Get-VersionTableValue $VersionTable 'PYAV_VERSION'
                 # PyAV's Cython; media-tvm installs the same one, as the fan-in refuses two versions.
                 PY_CYTHON_VERSION         = Get-VersionTableValue $VersionTable 'PY_CYTHON_VERSION'
-                # Hand-staged QAIRT SDK zip pin; empty by default (no zip = QNN EP off).
+                # The QAIRT Community zip Resolve-QnnSdk fetches (or the staged zip must match); both keys travel together.
                 QNN_SDK_ZIP_SHA256        = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
+                QNN_SDK_VERSION           = Get-VersionTableValue $VersionTable 'QNN_SDK_VERSION'
                 NV_CODEC_HEADERS_REF      = Get-VersionTableValue $VersionTable 'NV_CODEC_HEADERS_REF'
                 # AMF headers for FFmpeg; only the rocm lane fetches them, every lane carries the pin.
                 AMF_HEADERS_VERSION       = Get-VersionTableValue $VersionTable 'AMF_HEADERS_VERSION'
@@ -131,6 +132,7 @@ function Get-MediaBranchVersionArg {
                 JRE_VERSION       = Get-VersionTableValue $VersionTable 'JRE_VERSION'
                 # This branch mounts windows/qnn-sdk too; without the pin the SDK is extracted unverified.
                 QNN_SDK_ZIP_SHA256 = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
+                QNN_SDK_VERSION    = Get-VersionTableValue $VersionTable 'QNN_SDK_VERSION'
                 # rocm lane's LiteRT-LM GPU payload pins (Build-LitertLmBazel.ps1); unused on cpu/nvidia.
                 LITERT_LM_WEBGPU_ACCELERATOR_SHA256 = Get-VersionTableValue $VersionTable 'LITERT_LM_WEBGPU_ACCELERATOR_SHA256'
                 LITERT_LM_WEBGPU_SAMPLER_SHA256     = Get-VersionTableValue $VersionTable 'LITERT_LM_WEBGPU_SAMPLER_SHA256'
@@ -160,6 +162,7 @@ function Get-MediaBranchVersionArg {
                 PY_CYTHON_VERSION = Get-VersionTableValue $VersionTable 'PY_CYTHON_VERSION'
                 # This branch mounts windows/qnn-sdk too; without the pin the SDK is extracted unverified.
                 QNN_SDK_ZIP_SHA256 = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
+                QNN_SDK_VERSION    = Get-VersionTableValue $VersionTable 'QNN_SDK_VERSION'
             }
         }
         'rocm-migraphx' {
@@ -183,7 +186,7 @@ function Get-MediaMergeVersionArg {
         'X265_VERSION', 'X265_SHA256',        # media-core: FFmpeg's static software codecs
         'PYTHON_VERSION', 'OPENCV_VERSION',   # media-core: OpenCV bindings target
         'PY_CYTHON_VERSION',                  # media-core + media-tvm: the Cython both branches install
-        'QNN_SDK_ZIP_SHA256',                 # QAIRT zip pin (#121/#154): every stage that mounts windows/qnn-sdk
+        'QNN_SDK_ZIP_SHA256', 'QNN_SDK_VERSION', # QAIRT zip pin (#121/#154): every stage that mounts windows/qnn-sdk
         'PROTOC_VERSION', 'JRE_VERSION',      # media-litert: litert-lm toolchain pins
         # media-litert: the rocm lane's LiteRT-LM GPU payload pins, checked in-branch only.
         'LITERT_LM_WEBGPU_ACCELERATOR_SHA256', 'LITERT_LM_WEBGPU_SAMPLER_SHA256',

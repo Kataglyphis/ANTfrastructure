@@ -112,11 +112,14 @@ ARG ONNXRUNTIME_VERSION=v1.31.1
 ARG CUDA_ARCHITECTURES="86;87;89;120"
 ARG PYTHON_VERSION=3.15.2
 # Declared in every stage that mounts windows/qnn-sdk, or that stage extracts the zip unverified; empty = no EP.
-ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
+ARG QNN_SDK_ZIP_SHA256="510b0067481c22d283a2db10cd520f0251df4aeea77a5afe4ff6428a4e40a7bc"
+# The Community zip Resolve-QnnSdk fetches into the qnn-sdk cache mount when windows/qnn-sdk holds no zip; empty = no fetch.
+ARG QNN_SDK_VERSION="2.51.1.261002"
 ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" `
     PYTHON_VERSION="${PYTHON_VERSION}" `
-    QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
+    QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}" `
+    QNN_SDK_VERSION="${QNN_SDK_VERSION}"
 # ARG only: an ENV would leak the value into every downstream stage; see docs/windows-build-resources.md § Persistent compile cache (sccache).
 ARG SCCACHE_CUDA_LAUNCHER="1"
 ARG SCCACHE_REPRO_CUDA_LLM=""
@@ -144,7 +147,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/onnxruntime,target=C:\bkmnt\patches\onnxruntime `
-    --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk `
+    --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk --mount=type=cache,target=C:\qnn-sdk-cache,id=qnn-sdk-winamd64,sharing=shared `
     --mount=type=bind,from=trt-sdk,source=/tensorrt,target=C:\tensorrt-sdk `
     $env:TENSORRT_SDK_ROOT = 'C:\tensorrt-sdk'; `
     & 'C:\bkmnt\Build-MediaCoreAll.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt' -ScrubAfter
@@ -267,8 +270,10 @@ ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 ARG ONNXRUNTIME_GENAI_VERSION=v0.19.0
 ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
 # Every stage that mounts windows/qnn-sdk declares this, or Resolve-QnnSdk extracts unverified.
-ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
+ARG QNN_SDK_ZIP_SHA256="510b0067481c22d283a2db10cd520f0251df4aeea77a5afe4ff6428a4e40a7bc"
 ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
+ARG QNN_SDK_VERSION="2.51.1.261002"
+ENV QNN_SDK_VERSION="${QNN_SDK_VERSION}"
 # The disk-only diagnostic switch; the cache endpoints are the RUN's secret mounts, which no history records.
 ARG SCCACHE_FORCE_LOCAL
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
@@ -282,14 +287,16 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/modules/WindowsOrtProvenance.Build.psm1,target=C:\bkmnt\ortmods\WindowsOrtProvenance.Build.psm1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
-    --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk `
+    --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk --mount=type=cache,target=C:\qnn-sdk-cache,id=qnn-sdk-winamd64,sharing=shared `
     & 'C:\bkmnt\Build-MediaCoreAll.ps1' -ResumeFrom 'ONNX GenAI' -Until 'ONNX GenAI' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 # litert: direct solve (bazel — never trips the defect), same mount pattern.
 FROM media-litert-env AS media-litert-built
 # Every stage that mounts windows/qnn-sdk declares this, or Resolve-QnnSdk extracts unverified.
-ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
+ARG QNN_SDK_ZIP_SHA256="510b0067481c22d283a2db10cd520f0251df4aeea77a5afe4ff6428a4e40a7bc"
 ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
+ARG QNN_SDK_VERSION="2.51.1.261002"
+ENV QNN_SDK_VERSION="${QNN_SDK_VERSION}"
 # The disk-only diagnostic switch; the cache endpoints are the RUN's secret mounts, which no history records.
 ARG SCCACHE_FORCE_LOCAL
 # bazel's output_base stays container-local (rename-heavy, and the cache mount is rename-hostile); the CMake fallback stays mounted.
@@ -308,7 +315,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Debug-LitertlmLink.ps1,target=C:\bkmnt\Debug-LitertlmLink.ps1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
-    --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk `
+    --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk --mount=type=cache,target=C:\qnn-sdk-cache,id=qnn-sdk-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/shims,target=C:\bkmnt\shims `
     --mount=type=bind,source=windows/scripts/patches/litert-lm,target=C:\bkmnt\patches\litert-lm `
     --mount=type=bind,source=windows/scripts/modules/WindowsBazel.Common.psm1,target=C:\bkmnt\bazelmods\WindowsBazel.Common.psm1 `
@@ -343,8 +350,10 @@ RUN --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,shari
 # tvm: direct solve, same mount pattern.
 FROM media-tvm-env AS media-tvm-built
 # Every stage that mounts windows/qnn-sdk declares this, or Resolve-QnnSdk extracts unverified.
-ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
+ARG QNN_SDK_ZIP_SHA256="510b0067481c22d283a2db10cd520f0251df4aeea77a5afe4ff6428a4e40a7bc"
 ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
+ARG QNN_SDK_VERSION="2.51.1.261002"
+ENV QNN_SDK_VERSION="${QNN_SDK_VERSION}"
 # ARG only, no ENV: Build-TvmFromSource.ps1 reads it at RUN time and nothing downstream should.
 ARG TVM_ROCM=0
 # The disk-only diagnostic switch; the cache endpoints are the RUN's secret mounts, which no history records.
@@ -364,6 +373,6 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=C:\bkmnt\free-threaded-twins.txt `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=tvmmods,source=/bkmods,target=C:\bkmnt\modules `
-    --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk `
+    --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk --mount=type=cache,target=C:\qnn-sdk-cache,id=qnn-sdk-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/patches/iree,target=C:\bkmnt\patches\iree `
     & 'C:\bkmnt\Build-MediaTvmAll.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter

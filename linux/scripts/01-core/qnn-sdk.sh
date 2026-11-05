@@ -16,10 +16,10 @@ qnn_community_zip_url() {
 
 # Echoes the pinned zip's path after a verified fetch (asset mirror first); empty = no pin or QNN_SDK_SOURCE=drop.
 qnn_pinned_community_zip() {
-    local version="${QNN_SDK_VERSION:-}" sha="${QNN_SDK_LINUX_ZIP_SHA256:-}" dest
+    local version="${QNN_SDK_VERSION:-}" sha="${QNN_SDK_ZIP_SHA256:-}" dest
     [ "${QNN_SDK_SOURCE}" = community ] || { info "QNN: QNN_SDK_SOURCE=${QNN_SDK_SOURCE}, the pinned Community zip is not fetched" >&2; return 0; }
     [ -n "${version}" ] || { info "QNN: QNN_SDK_VERSION empty, nothing to fetch" >&2; return 0; }
-    [ -n "${sha}" ] || err "QNN: QNN_SDK_VERSION=${version} without QNN_SDK_LINUX_ZIP_SHA256 -- a pin moves with its sha (bump_versions.py spec_qnn_sdk)"
+    [ -n "${sha}" ] || err "QNN: QNN_SDK_VERSION=${version} without QNN_SDK_ZIP_SHA256 -- a pin moves with its sha (bump_versions.py spec_qnn_sdk)"
     command -v download_verified_file >/dev/null 2>&1 || err "QNN: download_verified_file is not loaded (01-core/downloads.sh)"
     dest="${QNN_SDK_CACHE_DIR}/qairt-${version}.zip"
     mkdir -p "${QNN_SDK_CACHE_DIR}"
@@ -28,7 +28,7 @@ qnn_pinned_community_zip() {
     else
         info "QNN: fetching the pinned Community zip ${version} (asset mirror first)" >&2
         download_verified_file "$(qnn_community_zip_url "${version}")" "${sha,,}" "${dest}" \
-            || err "QNN: the Community zip ${version} could not be fetched or did not match QNN_SDK_LINUX_ZIP_SHA256"
+            || err "QNN: the Community zip ${version} could not be fetched or did not match QNN_SDK_ZIP_SHA256"
     fi
     printf '%s\n' "${dest}"
 }
@@ -61,16 +61,16 @@ resolve_qnn_sdk() {
         zip="$(printf '%s\n' "$zips" | head -1)"
     fi
 
-    local sha="${QNN_SDK_LINUX_ZIP_SHA256:-}"
+    local sha="${QNN_SDK_ZIP_SHA256:-}"
     if [ -n "$sha" ]; then
         local actual
         actual="$(sha256sum "$zip" | awk '{print $1}')"
         if [ "${actual^^}" != "${sha^^}" ]; then
             err "QNN: SDK zip SHA256 mismatch: expected ${sha}, got ${actual}"
         fi
-        info "QNN: SDK zip SHA256 verified (QNN_SDK_LINUX_ZIP_SHA256)" >&2
+        info "QNN: SDK zip SHA256 verified (QNN_SDK_ZIP_SHA256)" >&2
     else
-        warn "QNN: QNN_SDK_LINUX_ZIP_SHA256 empty — extracting UNVERIFIED (pin in versions.env)"
+        warn "QNN: QNN_SDK_ZIP_SHA256 empty — extracting UNVERIFIED (pin in versions.env)"
     fi
 
     : "${QNN_SDK_EXTRACT_DIR:=/tmp/qnn-sdk-extract}"

@@ -1095,7 +1095,7 @@ lane, targeting Snapdragon NPU. No environment toggle — staging a zip in
 `linux/qnn-sdk/` is the switch. When a Linux AArch64 SDK zip is present,
 `resolve_qnn_sdk` (shared module `01-core/qnn-sdk.sh`, loaded by
 `media_common_init`) extracts it, verifies the SHA-256 against
-`QNN_SDK_LINUX_ZIP_SHA256` in `versions.env` (if pinned), checks version
+`QNN_SDK_ZIP_SHA256` in `versions.env` (if pinned), checks version
 compat (`QNN_OP_STFT` canary), and each framework wires its own flag
 (mirroring Windows #121): ORT `onnxruntime_USE_QNN=ON +
 onnxruntime_QNN_HOME=<root> + QNN_ARCH_ABI=aarch64-oe-linux-gcc11.2` (ORT

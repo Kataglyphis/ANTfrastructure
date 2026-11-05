@@ -754,12 +754,12 @@ function Get-OrtPythonArgs {
 
 function Get-OrtAdditionalBuildPlan {
     param([bool]$onnxCross, [string]$SourceDir, [string]$onnxTargetArch, [bool]$cudaUsable)
-    # QNN EP: opt-in by staging the login-gated QAIRT zip in windows\qnn-sdk\; no zip, no EP.
+    # QNN EP: the staged zip in windows\qnn-sdk\, else the pinned Community zip Resolve-QnnSdk fetches; neither, no EP.
     $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
     $qnnArgs = @()
     if ($qnnSdk) { $qnnArgs = $qnnSdk.CmakeArgs }
     if ($qnnSdk) { Write-Host "ONNX: QNN EP ON (SDK root $($qnnSdk.Home), backends from $($qnnSdk.LibDir)) -- backlog #121" }
-    else { Write-Host 'ONNX: QNN EP off -- no SDK zip staged in windows\qnn-sdk (opt-in; see windows\qnn-sdk\README.md, backlog #121)' }
+    else { Write-Host 'ONNX: QNN EP off -- no zip in windows\qnn-sdk and no pinned Community zip (QNN_SDK_VERSION; see windows\qnn-sdk\README.md)' }
     # KleidiAI in MLAS, arm64 only: only build.py enables it upstream; see the KleidiAI note in docs/windows-cross-builds.md.
     $kleidiArgs = @()
     $kleidiSrc = $null

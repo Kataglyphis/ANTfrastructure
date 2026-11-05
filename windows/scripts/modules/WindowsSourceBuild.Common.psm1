@@ -1219,17 +1219,79 @@ function Invoke-HostToolCmakeBuild {
     No zip ($null) is the supported default. Throws on two zips, a hash mismatch, a non-SDK zip or a missing
     backend set.
 #>
+function Get-QnnCommunityZipUrl {
+    param([Parameter(Mandatory)][string]$Version)
+    "https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/$Version/v$Version.zip"
+}
+
+<#
+.SYNOPSIS
+    The pinned "Qualcomm AI Runtime Community" zip in the cache dir, fetched when absent or unverified; $null without a pin or under -Source drop.
+#>
+function Get-QnnCommunityZip {
+    param(
+        [string]$Version = '',
+        [string]$ExpectedSha256 = '',
+        [Parameter(Mandatory)][string]$CacheDir,
+        [string]$Source = 'community',
+        # <url> <destination> <sha256>: the real fetch is Invoke-DownloadWithRetry; tests hand in a copy.
+        [scriptblock]$Fetch = $null
+    )
+    if ($Source -ne 'community') { Write-Host "QNN: QNN_SDK_SOURCE=$Source -- the pinned Community zip is not fetched"; return $null }
+    if (-not $Version) { Write-Host 'QNN: QNN_SDK_VERSION empty -- nothing to fetch'; return $null }
+    if (-not "$ExpectedSha256".Trim()) { throw "QNN: QNN_SDK_VERSION=$Version without QNN_SDK_ZIP_SHA256 -- a pin moves with its sha (bump_versions.py spec_qnn_sdk)" }
+    $dest = Join-Path $CacheDir "qairt-$Version.zip"
+    if ((Test-Path -LiteralPath $dest) -and (Test-FileSha256 -Path $dest -Expected $ExpectedSha256)) {
+        Write-Host "QNN: pinned Community zip $Version already in $CacheDir"
+        return $dest
+    }
+    if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Force }
+    if (-not $Fetch) {
+        $Fetch = { param($Url, $Destination, $Sha) Invoke-DownloadWithRetry -Url $Url -DestinationPath $Destination -ExpectSignature 'PK' -ExpectedSha256 $Sha -Description "QAIRT Community zip $Version" }
+    }
+    Write-Host "QNN: fetching the pinned Community zip $Version into $CacheDir"
+    & $Fetch (Get-QnnCommunityZipUrl -Version $Version) $dest $ExpectedSha256
+    if (-not (Test-Path -LiteralPath $dest)) { throw "QNN: the Community zip $Version was not written to $dest" }
+    return $dest
+}
+
+function Test-FileSha256 {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Expected)
+    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash
+    return [string]::Equals($actual, "$Expected".Trim(), [StringComparison]::OrdinalIgnoreCase)
+}
+
+<#
+.SYNOPSIS
+    The staged zip in -DropDir, else the pinned Community zip; verified, extracted and anchored. $null = QNN off.
+#>
+# The Community-zip settings the RUN's environment provides; a caller (a test) overrides any of them.
+function Get-QnnCommunitySetting {
+    param([hashtable]$Override = @{})
+    $setting = @{
+        Version  = "$env:QNN_SDK_VERSION"
+        CacheDir = 'C:\qnn-sdk-cache'
+        Source   = if ($env:QNN_SDK_SOURCE) { "$env:QNN_SDK_SOURCE" } else { 'community' }
+        Fetch    = $null
+    }
+    foreach ($k in $Override.Keys) { $setting[$k] = $Override[$k] }
+    return $setting
+}
+
 function Resolve-QnnSdk {
     param(
         [Parameter(Mandatory)][string]$DropDir,
         [string]$ExpectedSha256 = '',
         [string]$ExtractDir = '',
-        [string]$Arch = ''
+        [string]$Arch = '',
+        [hashtable]$Community = @{}
     )
     $zips = @(Get-ChildItem -Path $DropDir -Filter '*.zip' -File -ErrorAction SilentlyContinue)
     if ($zips.Count -gt 1) { throw "QNN: exactly one SDK zip may sit in $DropDir (found $($zips.Count)): $($zips.Name -join ', ')" }
-    if ($zips.Count -eq 0) { return $null }
-    $zip = $zips[0].FullName
+    # The settings hashtable's keys are Get-QnnCommunityZip's parameters, so it splats.
+    $community = Get-QnnCommunitySetting -Override $Community
+    $zip = if ($zips.Count -eq 1) { $zips[0].FullName } else { Get-QnnCommunityZip @community -ExpectedSha256 $ExpectedSha256 }
+    if (-not $zip) { return $null }
     # A mismatch is fatal, an empty pin only warns: Assert-FileSha256 owns that policy.
     Assert-FileSha256 -Path $zip -Expected $ExpectedSha256 -Label 'QNN SDK zip' -PinName 'QNN_SDK_ZIP_SHA256'
     if (-not $ExtractDir) { $ExtractDir = Join-Path $env:TEMP_DIR 'qnn-sdk-extract' }
@@ -2776,6 +2838,9 @@ Export-ModuleMember -Function @(
     'Get-NinjaFeatureFlag',
     'Add-NinjaArmFeatureFlags',
     'Add-NinjaPerTuFlags',
+    'Get-QnnCommunityZipUrl',
+    'Get-QnnCommunityZip',
+    'Get-QnnCommunitySetting',
     'Resolve-QnnSdk',
     'Copy-QnnRuntime',
     'Write-AbsentOnCrossMarker',

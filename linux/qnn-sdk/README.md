@@ -2,15 +2,14 @@
 
 Since 2026-11-05 the Linux arm64 lane needs nothing here: `resolve_qnn_sdk` fetches the public
 "Qualcomm AI Runtime Community" zip pinned in `versions.env` (`QNN_SDK_VERSION`,
-`QNN_SDK_LINUX_ZIP_SHA256`) through the asset mirror; `docs/qnn-linux.md` § Staging has the
+`QNN_SDK_ZIP_SHA256`) through the asset mirror; `docs/qnn-linux.md` § Staging has the
 mechanism, the licence note and the bump path. This directory is the override:
 
 1. Exactly **one** `*.zip` here is used instead of the download (an offline copy, or a build
-   host without mirror and upstream access). It must match `QNN_SDK_LINUX_ZIP_SHA256`; a
+   host without mirror and upstream access). It must match `QNN_SDK_ZIP_SHA256`; a
    different SDK is a re-pin of both keys in the same commit.
 2. `QNN_SDK_SOURCE=drop` restores the pre-2026-11-05 contract: no zip here, no QNN.
-3. The Windows lane is separate: it stages the login-gated **Windows** SDK in `windows/qnn-sdk/`
-   under `QNN_SDK_ZIP_SHA256` — do not reuse that hash for Linux.
+3. The Windows lane does the same with the same zip and the same pin (`windows/qnn-sdk/README.md`).
 4. If a newer SDK renames the lib subdirectory, `QNN_SDK_LINUX_LIBDIR`
    (env override only — NOT a versions.env key; `qnn-sdk.sh` defaults it with
    `:=` to `aarch64-oe-linux-gcc11.2`) is the

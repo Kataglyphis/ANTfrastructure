@@ -1424,7 +1424,7 @@ each with its oracle, since neither vendor lists versions:
 |---|---|---|
 | `ANDROID_NDK_VERSION` | Google's `repository2-3.xml`, newest `ndk;*` on `channel-0` (stable) | none: sdkmanager checks the archive |
 | `LITECORE_VERSION` | the archive LiteRT main's Samsung vendor SDK fetches (`ci/tools/python/vendor_sdk/samsung/setup.py`) | `LITECORE_SHA256` |
-| `QNN_SDK_VERSION` | the Community zip LiteRT main's `third_party/qairt/workspace.bzl` fetches, refused unless the software center serves it | `QNN_SDK_LINUX_ZIP_SHA256` |
+| `QNN_SDK_VERSION` | the Community zip LiteRT main's `third_party/qairt/workspace.bzl` fetches, refused unless the software center serves it | `QNN_SDK_ZIP_SHA256` |
 
 Following LiteRT main means "the newest the consumer that uses it has validated", not the newest
 Samsung or Qualcomm have uploaded (Samsung served v1.2.1 while LiteRT pinned v1.2.0 on

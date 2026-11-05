@@ -34291,10 +34291,18 @@
  {
   "id": "lib.qnn-community-sha-required",
   "target": "linux/scripts/01-core/qnn-sdk.sh",
-  "find": "    [ -n \"${sha}\" ] || err \"QNN: QNN_SDK_VERSION=${version} without QNN_SDK_LINUX_ZIP_SHA256 -- a pin moves with its sha (bump_versions.py spec_qnn_sdk)\"\n",
+  "find": "    [ -n \"${sha}\" ] || err \"QNN: QNN_SDK_VERSION=${version} without QNN_SDK_ZIP_SHA256 -- a pin moves with its sha (bump_versions.py spec_qnn_sdk)\"\n",
   "replace": "    sha=\"${sha:-0}\"\n",
   "test": "bash linux/scripts/tests/test-qnn-community-zip.sh",
   "why": "a pinned version without its checksum would be downloaded unverified"
+ },
+ {
+  "id": "windows-lane.qnn-community-zip-fetched",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "    $zip = if ($zips.Count -eq 1) { $zips[0].FullName } else { Get-QnnCommunityZip @community -ExpectedSha256 $ExpectedSha256 }\n",
+  "replace": "    $zip = if ($zips.Count -eq 1) { $zips[0].FullName } else { $null }\n",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Qnn.Tests.ps1 -ResultFile logs/code-quality/qnn-community-zip-mutation.json",
+  "why": "without the fetch an empty windows/qnn-sdk silently builds the Windows image without the QNN EP"
  },
  {
   "id": "lib.litecore-verified-download",
