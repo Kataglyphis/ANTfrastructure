@@ -1029,13 +1029,14 @@ function Invoke-SmokeNativeProvenance {
     $onnxRoot = $env:ONNX_ROOT
     Assert-Test -Name 'DirectML.dll matches its nuget provenance and license' -Finding @(Get-NativeProvenanceFinding -Path (Join-Path $onnxRoot 'provenance\directml.json') -Root $onnxRoot -RequiredFile 'bin\DirectML.dll') `
         -FailMessage 'DirectML.dll, its license texts or its manifest changed after the ORT stage'
-    $split = @(Get-ChildItem -LiteralPath (Join-Path $onnxRoot 'lib') -Filter 'onnxruntime_providers_*.dll' -File -ErrorAction SilentlyContinue).Name
+    # Through the pipeline: under strict mode .Name on the empty list, the healthy result, throws and reads as a finding.
+    $split = @(Get-ChildItem -LiteralPath (Join-Path $onnxRoot 'lib') -Filter 'onnxruntime_providers_*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object Name)
     Assert-Test -Name 'ONNX Runtime providers sit beside the core DLL' -Finding $split -FailMessage "ORT loads a provider from onnxruntime.dll's own directory, so these under lib would not load"
     if ($script:gpuNvidia) {
         $cudaRoot = 'C:\runtime\cuda-runtime'
         Assert-Test -Name 'CUDA and cuDNN runtime DLLs match their provenance manifest' -Finding @(Get-NativeProvenanceFinding -Path (Join-Path $cudaRoot 'provenance.json') -Root $cudaRoot -RequiredFile 'bin\cudnn64_9.dll') `
             -FailMessage 'a flattened CUDA or cuDNN DLL or its license text no longer matches the manifest'
-        $notDistributable = @(Get-ChildItem -LiteralPath (Join-Path $cudaRoot 'bin') -Filter 'nvfatbin*.dll' -File -ErrorAction SilentlyContinue).Name
+        $notDistributable = @(Get-ChildItem -LiteralPath (Join-Path $cudaRoot 'bin') -Filter 'nvfatbin*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object Name)
         Assert-Test -Name 'the CUDA runtime carries nothing off the EULA distributable list' -Finding $notDistributable -FailMessage 'nvfatbin is not in Attachment A of the CUDA EULA'
     }
 }

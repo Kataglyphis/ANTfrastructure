@@ -123,6 +123,14 @@ Describe 'Meson records to manifest entries' {
 }
 
 Describe 'Wiring' {
+    It 'lists possibly empty findings through the pipeline, as strict mode throws on .Name of an empty list' {
+        $smoke = Get-TestRepoText 'windows\scripts\build\Test-Container.ps1'
+        Assert-False ($smoke -match '-ErrorAction SilentlyContinue\)\.(Name|FullName)') 'a healthy empty result would fail the smoke gate'
+        Set-StrictMode -Version Latest
+        Assert-Equal 0 @(@() | ForEach-Object Name).Count 'the pipeline form stays empty'
+        Assert-Throws { $null = @().Name } 'the property form throws' -MessagePattern 'Name'
+    }
+
     It 'writes the manifest before GStreamer cleanup, and pins libvpx through the driver' {
         $gst = Get-TestRepoText 'windows\scripts\build\Build-GstreamerFromSource.ps1'
         Assert-True ($gst.IndexOf('Assert-GstInstalledPlugins -resolvedInstallDir') -lt $gst.IndexOf('Complete-GstBuild -gstSrcDir')) 'the gate that writes it runs before cleanup'

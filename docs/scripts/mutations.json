@@ -35321,6 +35321,14 @@
   "why": "the manifest would name the release of the bundled wrap, not the pinned port the build ships"
  },
  {
+  "id": "provenance.smoke-empty-finding-list",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "-Filter 'nvfatbin*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object Name)",
+  "replace": "-Filter 'nvfatbin*.dll' -File -ErrorAction SilentlyContinue).Name",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/smoke-empty-finding-list.json",
+  "why": "the healthy empty list throws under strict mode and fails the smoke gate at the end of a chain"
+ },
+ {
   "id": "provenance.bytes-unchecked",
   "target": "windows/scripts/modules/WindowsNativeProvenance.Common.psm1",
   "find": "elseif ((Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash -ine $Entry.sha256) {",
