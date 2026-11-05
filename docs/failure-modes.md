@@ -43,6 +43,7 @@ Two neighbours, so you land on the right page:
 - [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
 - [The disk guard aims at the wrong number](#the-disk-guard-aims-at-the-wrong-number)
 - [The cross-sbsa packages vanish between the repo RUN and the install](#the-cross-sbsa-packages-vanish-between-the-repo-run-and-the-install)
+- [`zconf.h: No such file or directory` in civetweb under the SBSA DeepStream build](#zconfh-no-such-file-or-directory-in-civetweb-under-the-sbsa-deepstream-build)
 - [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
 - [apt: `libc6:i386` install is unsatisfiable after an archive/ports drift](#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift)
 - [A from-source CPython silently drops an extension module](#a-from-source-cpython-silently-drops-an-extension-module)
@@ -506,6 +507,21 @@ count toward it; since CON53 (2026-10-01) the script and the chain's fallback ad
 them, so `<N>` is GB of layer cache, not of the store. Local
 `:latest-<arch>` images are re-pullable and not build inputs; `nerdctl rmi`
 them last. Restarting the daemon is the BKD1 remedy above wearing a disk costume.
+
+### `zconf.h: No such file or directory` in civetweb under the SBSA DeepStream build
+
+**Symptom.** The nvidia chain's arm64 media stage, cross-built on the amd64 host, dies in
+the DeepStream RUN: `src/civetweb.c:452:10: fatal error: zconf.h: No such file or directory`,
+then `[deepstream] ERROR: civetweb failed`. `zlib.h` was found.
+
+**Cause.** `zlib.h` is arch-independent under `/usr/include`; `zconf.h` is the target's, under
+`/usr/include/aarch64-linux-gnu`, which the source-built cross GCC does not search on its own.
+The Meson and CMake cross builds add that dir (`cross-meson.sh`'s `-idirafter`); DeepStream's
+Makefile builds (civetweb, then every component) got no such flag.
+
+**Fix.** `ds_cross_setup` puts the target's multiarch `include` and `lib` dirs on `CPATH` and
+`LIBRARY_PATH`, and `zlib1g-dev` is a named build package; `test-deepstream.sh` holds both and
+`deepstream.cross-multiarch-headers` proves the first.
 
 ### The cross-sbsa packages vanish between the repo RUN and the install
 

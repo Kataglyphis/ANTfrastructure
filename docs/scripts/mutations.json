@@ -35257,6 +35257,14 @@
   "why": "a staged SBSA library with other bytes than the pin must be refused, never shipped"
  },
  {
+  "id": "deepstream.cross-multiarch-headers",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "  export CPATH=\"${CPATH:+${CPATH}:}/usr/include/${multiarch}\"\n",
+  "replace": "  export CPATH=\"${CPATH:-}\"\n",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "without the target's multiarch include dir the SBSA cross build of civetweb dies on zconf.h"
+ },
+ {
   "id": "cuda-stack.apt-lists-keyed-by-target",
   "target": "linux/Dockerfile.nvidia",
   "find": "LABEL kataglyphis.step=cuda-repo\nRUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \\\n    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH}-${TARGET_ARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH}-${TARGET_ARCH} \\\n",

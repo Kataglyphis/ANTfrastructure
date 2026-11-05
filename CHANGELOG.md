@@ -29,6 +29,14 @@
   end. The live server carries the fix and cut the bucket from 104.0 to 90.1 GiB. `test-sccache-evict.sh` runs the
   script's real text against stubs, and `lib.sccache-evict-reads-whole-list` proves it
   ([failure-modes.md](docs/failure-modes.md#sccache-evictservice-fails-with-sort-write-failed-standard-output-broken-pipe)).
+## 2026-11-05 — The SBSA DeepStream build finds the target's multiarch headers
+
+- The first arm64 media build of the nvidia chain (CON42 phase 7) died in civetweb on `zconf.h`: the cross GCC
+  searches `/usr/include` but not `/usr/include/aarch64-linux-gnu`, and DeepStream's Makefile builds carry no
+  cross file. `ds_cross_setup` now puts the target's multiarch include and lib dirs on `CPATH` and `LIBRARY_PATH`,
+  `zlib1g-dev` is a named build package, and `deepstream.cross-multiarch-headers` proves the include path
+  ([failure-modes.md](docs/failure-modes.md#zconfh-no-such-file-or-directory-in-civetweb-under-the-sbsa-deepstream-build)).
+
 ## 2026-11-05 — The ARM SDK pins move with the Renovate call; QNN on arm64 needs no staged zip
 
 - Android NDK r30 (`30.0.16248370`), LiteCore v1.2.0 (the archive LiteRT main builds against) and

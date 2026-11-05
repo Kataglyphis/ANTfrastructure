@@ -29,6 +29,8 @@ DS_BUILD_PACKAGES=(
   libyaml-cpp-dev libjson-glib-dev uuid-dev libjpeg-turbo8-dev libmosquitto-dev libjansson-dev
   libssl-dev libcurl4-openssl-dev libjsoncpp-dev libcjson-dev libhiredis-dev librdkafka-dev
   librabbitmq-dev protobuf-compiler libprotobuf-dev nlohmann-json3-dev libgles-dev libegl-dev
+  # civetweb's USE_ZLIB: on a cross build the target's zconf.h lives in its multiarch dir, never pulled in by chance.
+  zlib1g-dev
 )
 
 # shellcheck source=deepstream-verify.sh
@@ -512,7 +514,11 @@ ds_cross_setup() {
   cuda_cross_active || ds_die "no CUDA cross target in this image ($(cuda_cross_env_file)); the gpu stage must run with CROSS_NVIDIA_SBSA=1"
   cuda_cross_load
   DS_CROSS_CC="${CC}" DS_CROSS_CXX="${CXX}"
-  # The verify helpers judge foreign ELF with the target's nm and link into the target's multiarch dir.
+  # The Makefile builds (civetweb, the components) take no cross file: the target's multiarch headers and libs ride the compiler's search paths, as cross-meson's -idirafter does.
+  local multiarch
+  multiarch="$(ds_multiarch)"
+  export CPATH="${CPATH:+${CPATH}:}/usr/include/${multiarch}"
+  export LIBRARY_PATH="${LIBRARY_PATH:+${LIBRARY_PATH}:}/usr/lib/${multiarch}"
   DSV_NM="${NM}"
   DSV_MULTIARCH="$(ds_multiarch)"
   export DSV_NM DSV_MULTIARCH

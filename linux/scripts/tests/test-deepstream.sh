@@ -71,6 +71,10 @@ t_assert_eq "aarch64-linux-gnu-gcc -include /c.h" "$(_mfx 'CXX:= gcc' CXX)" "gst
 t_assert_eq "aarch64-linux-gnu-g++ -std=c++14 -include /c.h -Wno-error=non-c-typedef-for-linkage" "$(_mfx 'CXX=g++ -std=c++14' CXX)"
 t_assert_eq "aarch64-linux-gnu-gcc -include /c.h" "$(_mfx 'SRCS:= a.cpp' CC)" "make's default cc becomes the cross gcc"
 t_assert_contains "$(t_fn_src "${DS}" ds_cross_setup)" 'cuda_cross_load' "the gpu stage's CUDA cross target is loaded before any nvcc runs"
+# civetweb's zlib.h found zconf.h only in the target's multiarch dir; the first SBSA media build (2026-11-05) died there.
+t_assert_contains "$(t_fn_src "${DS}" ds_cross_setup)" 'export CPATH="${CPATH:+${CPATH}:}/usr/include/${multiarch}"' "the target's multiarch headers reach the Makefile builds"
+t_assert_contains "$(t_fn_src "${DS}" ds_cross_setup)" 'export LIBRARY_PATH="${LIBRARY_PATH:+${LIBRARY_PATH}:}/usr/lib/${multiarch}"' "and its libraries the links"
+t_assert_contains "$(sed -n '/^DS_BUILD_PACKAGES=(/,/^)/p' "${DS}")" 'zlib1g-dev' "zlib's dev package is named, not inherited"
 t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'ds_write_cuda_cross_view' "the Makefiles' /usr/local/cuda-\$(CUDA_VER) resolves to the target's headers and libs"
 t_assert_contains "$(_ds ds_gate_problem ENABLE_NVIDIA=false)" "needs ENABLE_NVIDIA=true"
 mkdir -p "${_T}/cuda/bin"; printf '#!/bin/sh\necho "Cuda compilation tools, release 13.4, V13.4.92"\n' > "${_T}/cuda/bin/nvcc"; chmod +x "${_T}/cuda/bin/nvcc"
