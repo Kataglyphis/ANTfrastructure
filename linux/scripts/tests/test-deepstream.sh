@@ -308,6 +308,8 @@ t_assert_contains "${_MAIN}" 'DSV_CROSS' "a cross build stage runs the file gate
 t_assert_contains "${_MAIN}" 'deferred to the package stage' "and says which gates wait"
 t_assert_contains "${_MAIN}" 'if [ "$(dsv_arch)" = amd64 ]; then dsv_check_v4l2_plugin; else dsv_ok' "the libv4l2 plugin gate is amd64's"
 t_assert_contains "$(t_fn_src "${DS}" ds_stage_runtime)" 'if [ "$(ds_arch)" = amd64 ]; then ds_link_v4l2_plugin; else ds_log' "the package stage links the plugin on amd64 only"
+# The first arm64 package stage (2026-11-05) died on lib/aarch64-linux-gnu/gstreamer-1.0: the cross GStreamer installs into lib/, and lib/multiarch is the link the image's GST_PLUGIN_PATH names on every arch.
+t_assert_contains "$(t_fn_src "${DS}" ds_stage_runtime)" 'gst_dir="${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/multiarch/gstreamer-1.0"' "the plugin link lands in the directory the registry scans"
 mkdir -p "${_T}/gpx"; printf 'x' > "${_T}/gpx/libthing.so"
 t_assert_contains "$(DSV_NM="${_T}/fake-nm" bash -c 'source "$1"; dsv_non_plugins "$2"' _ "${DSV}" "${_T}/gpx" 2>&1)" "libthing.so" "a foreign ELF is judged by the toolchain's nm (DSV_NM), not the host's"
 

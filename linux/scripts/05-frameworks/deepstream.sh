@@ -560,7 +560,8 @@ ds_stage_runtime() {
   if [ "$(ds_arch)" = amd64 ]; then ds_link_v4l2_plugin; else ds_log "no NVDEC libv4l2 plugin on $(ds_arch): nvv4l2decoder is not part of the SBSA route"; fi
   # The licence makes only the runtime .so files distributable; static archives serve builds only.
   find "${root}" -name '*.a' -type f -delete
-  gst_dir="${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gstreamer-1.0"
+  # The cross-built arm64 GStreamer has no lib/<triplet>; lib/multiarch is the link every arch's GST_PLUGIN_PATH names.
+  gst_dir="${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/multiarch/gstreamer-1.0"
   [ -d "${gst_dir}" ] || ds_die "no GStreamer plugin directory at ${gst_dir}"
   ln -sfn "${root}/lib/gst-plugins" "${gst_dir}/deepstream"
   DSV_WIRED=1 DSV_ARCH="$(ds_arch)" DS_ROOT="${root}" DS_TRT_PREFIX="$(ds_trt_prefix)" bash "${DS_SCRIPT_DIR}/deepstream-verify.sh"

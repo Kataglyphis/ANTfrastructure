@@ -555,7 +555,7 @@ licence the container carries beside them; the owner approved staging them on 20
 | `…/deepstream-9.1/sources/includes/` | the SDK headers, for building custom plugins; a custom `nvinfer` parser also needs TensorRT 10's headers, which do not ship ([§ Redistribution](#redistribution)) |
 | `…/deepstream-9.1/LicenseAgreement.pdf` | NVIDIA's licence, as the `.deb` ships it |
 | `/opt/nvidia/deepstream/tensorrt-10.16.1.11/` | DeepStream's own TensorRT 10: its runtime `.so` files and their docs (§ TensorRT 10 beside 11) |
-| `/opt/gstreamer/lib/<triplet>/gstreamer-1.0/deepstream` | a link to `…/lib/gst-plugins`; the registry scan follows it, so no `GST_PLUGIN_PATH` is needed |
+| `/opt/gstreamer/lib/multiarch/gstreamer-1.0/deepstream` | a link to `…/lib/gst-plugins` in the directory `GST_PLUGIN_PATH` names on every arch (the cross-built arm64 GStreamer has no `lib/<triplet>`); the registry scan follows it |
 | `/etc/ld.so.conf.d/010-deepstream-tensorrt.conf` | the TensorRT 10 lib dir, the only DeepStream path on the loader path |
 | `/usr/lib/<triplet>/libnvinfer_builder_resource_*.so.10.16.1` | links into the TensorRT 10 prefix, which an engine build `dlopen()`s by file name (§ [TensorRT builder resources, by file name](#tensorrt-builder-resources-by-file-name)) |
 | `/usr/lib/<triplet>/libv4l/plugins/libcuvidv4l2_plugin.so` | a link to NVIDIA's NVDEC plugin, so the distro `libv4l2` loads it (§ [NVDEC through the distro libv4l2](#nvdec-through-the-distro-libv4l2)) |

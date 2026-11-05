@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-05 — The arm64 package stage links DeepStream into the multiarch plugin dir
+
+- The first arm64 package stage of the nvidia chain died on `no GStreamer plugin directory at
+  /opt/gstreamer/lib/aarch64-linux-gnu/gstreamer-1.0`: `ds_stage_runtime` built the path from the host's multiarch
+  triplet, but the cross-built GStreamer installs into `lib/` with no triplet directory. The link now lands in
+  `lib/multiarch/gstreamer-1.0`, the directory `GST_PLUGIN_PATH` names on every arch
+  (`deepstream.plugin-dir-multiarch-link`,
+  [failure-modes.md](docs/failure-modes.md#no-gstreamer-plugin-directory-at-optgstreamerlibaarch64-linux-gnugstreamer-10)).
+
 ## 2026-11-05 — Cerbero's curl gets a stall timeout
 
 - The amd64 android stage hung 80 minutes in `mpg123 -> fetch`: a sourceforge mirror stopped sending after 225 KB and

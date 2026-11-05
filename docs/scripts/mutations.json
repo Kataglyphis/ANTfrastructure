@@ -35289,6 +35289,14 @@
   "why": "a random build dir changes every preprocessed line marker, so sccache misses every DeepStream compile on every run"
  },
  {
+  "id": "deepstream.plugin-dir-multiarch-link",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "  gst_dir=\"${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/multiarch/gstreamer-1.0\"\n",
+  "replace": "  gst_dir=\"${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gstreamer-1.0\"\n",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "the cross-built arm64 GStreamer has no lib/<triplet> dir, so the triplet form fails the arm64 package stage on a directory that does not exist"
+ },
+ {
   "id": "deepstream.dsexample-literal-gcc-patched",
   "target": "linux/scripts/05-frameworks/deepstream.sh",
   "find": "  sed -i 's/^\\tgcc /\\t$(CC) /' \"$1\"\n",

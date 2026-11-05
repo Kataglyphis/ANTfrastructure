@@ -43,6 +43,7 @@ Two neighbours, so you land on the right page:
 - [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
 - [The disk guard aims at the wrong number](#the-disk-guard-aims-at-the-wrong-number)
 - [The cross-sbsa packages vanish between the repo RUN and the install](#the-cross-sbsa-packages-vanish-between-the-repo-run-and-the-install)
+- [`no GStreamer plugin directory at /opt/gstreamer/lib/aarch64-linux-gnu/gstreamer-1.0`](#no-gstreamer-plugin-directory-at-optgstreamerlibaarch64-linux-gnugstreamer-10)
 - [`zconf.h: No such file or directory` in civetweb under the SBSA DeepStream build](#zconfh-no-such-file-or-directory-in-civetweb-under-the-sbsa-deepstream-build)
 - [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
 - [apt: `libc6:i386` install is unsatisfiable after an archive/ports drift](#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift)
@@ -508,6 +509,18 @@ count toward it; since CON53 (2026-10-01) the script and the chain's fallback ad
 them, so `<N>` is GB of layer cache, not of the store. Local
 `:latest-<arch>` images are re-pullable and not build inputs; `nerdctl rmi`
 them last. Restarting the daemon is the BKD1 remedy above wearing a disk costume.
+
+### `no GStreamer plugin directory at /opt/gstreamer/lib/aarch64-linux-gnu/gstreamer-1.0`
+
+The first arm64 package stage of the nvidia chain (2026-11-05) died in the DeepStream step after
+media had passed. `ds_stage_runtime` derived the plugin directory from
+`dpkg-architecture -qDEB_HOST_MULTIARCH`, amd64's layout, where the native GStreamer installs
+into `lib/x86_64-linux-gnu`. The cross-built arm64 GStreamer installs into `lib/` and has no
+triplet directory at all. Both layouts carry the `lib/multiarch` link, which is what the image's
+`GST_PLUGIN_PATH` names and the registry scans (`Scanning plugins in:
+/opt/gstreamer/lib/multiarch/gstreamer-1.0` in both media logs), so the DeepStream link now lands
+there. A plugin path taken from the host's multiarch triplet is an amd64 assumption; take it from
+the link or from the installed `.pc`.
 
 ### `zconf.h: No such file or directory` in civetweb under the SBSA DeepStream build
 
