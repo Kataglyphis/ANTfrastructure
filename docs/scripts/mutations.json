@@ -35259,10 +35259,10 @@
  {
   "id": "deepstream.cross-multiarch-headers",
   "target": "linux/scripts/05-frameworks/deepstream.sh",
-  "find": "  export CPATH=\"${CPATH:+${CPATH}:}/usr/include/${multiarch}\"\n",
-  "replace": "  export CPATH=\"${CPATH:-}\"\n",
+  "find": "  DS_CROSS_SYSFLAGS=\"-idirafter /usr/include/${multiarch} -idirafter /usr/include -L/usr/lib/${multiarch}\"\n",
+  "replace": "  DS_CROSS_SYSFLAGS=\"-L/usr/lib/${multiarch}\"\n",
   "test": "bash linux/scripts/tests/test-deepstream.sh",
-  "why": "without the target's multiarch include dir the SBSA cross build of civetweb dies on zconf.h"
+  "why": "without the -idirafter pair the cross GCC (sysroot /usr/<triplet>) never sees apt's :arm64 headers and the SBSA civetweb build dies on zconf.h"
  },
  {
   "id": "cuda-stack.apt-lists-keyed-by-target",

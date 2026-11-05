@@ -514,14 +514,20 @@ them last. Restarting the daemon is the BKD1 remedy above wearing a disk costume
 the DeepStream RUN: `src/civetweb.c:452:10: fatal error: zconf.h: No such file or directory`,
 then `[deepstream] ERROR: civetweb failed`. `zlib.h` was found.
 
-**Cause.** `zlib.h` is arch-independent under `/usr/include`; `zconf.h` is the target's, under
-`/usr/include/aarch64-linux-gnu`, which the source-built cross GCC does not search on its own.
-The Meson and CMake cross builds add that dir (`cross-meson.sh`'s `-idirafter`); DeepStream's
-Makefile builds (civetweb, then every component) got no such flag.
+**Cause.** The source-built cross GCC's sysroot is `/usr/aarch64-linux-gnu`: it searches
+`/usr/aarch64-linux-gnu/include` and never `/usr/include` or `/usr/include/aarch64-linux-gnu`,
+where apt puts the `:arm64` dev headers (`zlib1g-dev`, `libssl-dev`, ...). The Meson cross
+file adds both dirs with `-idirafter` (`cross-meson.sh` says why); DeepStream's Makefile
+builds (civetweb, then every component) got no such flag. A first fix put the multiarch dir on
+`CPATH`, which the probe in the gpu image showed is not enough: the headers are under
+`/usr/include` itself.
 
-**Fix.** `ds_cross_setup` puts the target's multiarch `include` and `lib` dirs on `CPATH` and
-`LIBRARY_PATH`, and `zlib1g-dev` is a named build package; `test-deepstream.sh` holds both and
-`deepstream.cross-multiarch-headers` proves the first.
+**Fix.** `ds_cross_setup` appends `-idirafter /usr/include/<triplet> -idirafter /usr/include
+-L/usr/lib/<triplet>` to the cross compiler strings every Makefile build receives
+(`DS_CROSS_SYSFLAGS`), `zlib1g-dev` is a named build package, and a failed civetweb prints its
+error lines before its tail. `test-deepstream.sh` holds all three;
+`deepstream.cross-multiarch-headers` proves the include pair. Proven in the gpu-arm64 image:
+a zlib+OpenSSL probe compiles and links to an AArch64 ELF with exactly these flags.
 
 ### The cross-sbsa packages vanish between the repo RUN and the install
 

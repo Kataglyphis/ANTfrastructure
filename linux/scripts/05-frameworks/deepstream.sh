@@ -439,7 +439,8 @@ ds_build_rest_server_deps() {
   ds_clone_dep https://github.com/civetweb/civetweb.git "${DEEPSTREAM_CIVETWEB_COMMIT}" "${w}/civetweb"
   printf 'CIVETWEB_%s {\n global:\n  *;\n local:\n  duk_*;\n};\n' "${DEEPSTREAM_CIVETWEB_VERSION#v}" > "${w}/civetweb/civetweb.ver"
   make -C "${w}/civetweb" -j"${DS_JOBS:-$(nproc)}" slib WITH_ALL=1 WITH_CPP=1 ${DS_CROSS_CC:+"CC=${DS_CROSS_CC}" "CXX=${DS_CROSS_CXX}"} \
-    LDFLAGS="-Wl,--version-script,${w}/civetweb/civetweb.ver" >"${w}/civetweb.log" 2>&1 || { tail -n 30 "${w}/civetweb.log" >&2; ds_die "civetweb failed"; }
+    LDFLAGS="-Wl,--version-script,${w}/civetweb/civetweb.ver" >"${w}/civetweb.log" 2>&1 \
+    || { grep -n -B2 -A2 -e 'error' "${w}/civetweb.log" | tail -n 40 >&2; tail -n 20 "${w}/civetweb.log" >&2; ds_die "civetweb failed (its error lines, then its tail, above)"; }
   cp -P "${w}/civetweb/libcivetweb.so"* "${lib}/"
   ds_clone_dep https://github.com/jupp0r/prometheus-cpp.git "${DEEPSTREAM_PROMETHEUS_CPP_COMMIT}" "${w}/prometheus-cpp"
   git -C "${w}/prometheus-cpp" submodule update -q --init --recursive --depth 1
@@ -513,12 +514,11 @@ ds_cross_setup() {
   setup_linux_cross_env || ds_die "no cross toolchain for $(ds_arch) in this image"
   cuda_cross_active || ds_die "no CUDA cross target in this image ($(cuda_cross_env_file)); the gpu stage must run with CROSS_NVIDIA_SBSA=1"
   cuda_cross_load
-  DS_CROSS_CC="${CC}" DS_CROSS_CXX="${CXX}"
-  # The Makefile builds (civetweb, the components) take no cross file: the target's multiarch headers and libs ride the compiler's search paths, as cross-meson's -idirafter does.
+  # The Makefile builds take no cross file, and the cross GCC's sysroot is /usr/<triplet>: apt's :<arch> headers and libs ride the compiler string, lowest priority like cross-meson's -idirafter.
   local multiarch
   multiarch="$(ds_multiarch)"
-  export CPATH="${CPATH:+${CPATH}:}/usr/include/${multiarch}"
-  export LIBRARY_PATH="${LIBRARY_PATH:+${LIBRARY_PATH}:}/usr/lib/${multiarch}"
+  DS_CROSS_SYSFLAGS="-idirafter /usr/include/${multiarch} -idirafter /usr/include -L/usr/lib/${multiarch}"
+  DS_CROSS_CC="${CC} ${DS_CROSS_SYSFLAGS}" DS_CROSS_CXX="${CXX} ${DS_CROSS_SYSFLAGS}"
   DSV_NM="${NM}"
   DSV_MULTIARCH="$(ds_multiarch)"
   export DSV_NM DSV_MULTIARCH
