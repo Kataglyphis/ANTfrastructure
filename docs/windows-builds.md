@@ -719,7 +719,9 @@ against the image's ARM64 FFmpeg. The twin pass is the time from the GIL wheel t
   `python3t.lib`, which `Install-CpythonTargetTree` stages now. The same message returned on
   2026-11-05 with the library staged (present in the image, checked); isolated FindPython runs on
   CMake 4.4.4 found it every time, so the cause stays unknown, and the twin now names it through
-  `Python3_SABI_LIBRARY` and `Python_SABI_LIBRARY`.
+  `Python3_SABI_LIBRARY` and `Python_SABI_LIBRARY`. That configure then gave the bindings no
+  `Py_GIL_DISABLED=1`, though the same isolated runs reported `Python_DEFINITIONS` correctly, with no
+  compiler in them; `Add-IreeTwinFreeThreadedDefine` sets it per object, `Assert-NinjaFreeThreadedDefine` still gates it.
 - **Every member of the four twins is `0xAA64`, and every module imports `python314t.dll`.** The
   merge gates over the resulting tree: the manifest's store check passed with 4 twins for 4
   twin-verdict GIL wheels; the arch gate inspected 1275 binaries with 0 violations and 0 unresolved

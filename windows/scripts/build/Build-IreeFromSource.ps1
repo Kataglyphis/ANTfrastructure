@@ -114,6 +114,14 @@ function Update-IreeCrossNinjaFile {
     [void](Add-NinjaArmFeatureFlags -NinjaFile $ireeNinja -Label 'IREE arm_64 ukernel feature' -Floor 5 -FeatureMap $ireeUkFeatureMap -TokenPattern '{0}\.c\.obj' -Include $isArm64Uk)
 }
 
+# The cross configure gives the bindings no define, and global flags would recompile every runtime object; see docs/windows-builds.md.
+function Add-IreeTwinFreeThreadedDefine {
+    param([Parameter(Mandatory)][string]$BuildDir)
+    [void](Add-NinjaPerTuFlags -NinjaFile (Join-Path $BuildDir 'build.ninja') -Label 'IREE twin Python bindings' -Floor 10 -AlreadyTaggedPattern 'Py_GIL_DISABLED=1' -Select {
+        param($line) if ($line -match 'runtime[\\/]bindings[\\/]python[\\/]CMakeFiles[\\/]\S+\.(cc|cpp)\.obj') { '-DPy_GIL_DISABLED=1' } else { '' }
+    })
+}
+
 # The cp3XYt twins of the IREE wheels from the GIL tree, reconfigured, rebuilt where Python reaches and packed per package.
 function Invoke-IreeFreeThreadedTwin {
     param(
@@ -131,7 +139,10 @@ function Invoke-IreeFreeThreadedTwin {
     $numpyInc = (Invoke-ShieldedNative -Label 'numpy include probe (free-threaded)' -CommandLine """$($ftPy.Exe)"" -c ""import numpy; print(numpy.get_include())""" | Select-Object -Last 1)
     $ftArgs = Get-IreeFreeThreadedCmakeArgs -CmakeExtra $CmakeExtra -Python $ftPy -NumPyIncludeDir $numpyInc
     Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $BuildDir -InstallPrefix $InstallDir -ExtraArgs $ftArgs | Out-Null
-    if ($Cross) { Update-IreeCrossNinjaFile -BuildDir $BuildDir }
+    if ($Cross) {
+        Update-IreeCrossNinjaFile -BuildDir $BuildDir
+        Add-IreeTwinFreeThreadedDefine -BuildDir $BuildDir
+    }
     [void](Assert-NinjaFreeThreadedDefine -BuildDir $BuildDir -Label 'IREE')
     # The GIL pass's abi3 modules (bare _runtime.pyd) are no output now; left in place, the twin would pack them (measured 2026-10-07).
     [void](Invoke-ShieldedNative -Label 'ninja -t cleandead (GIL-only outputs)' -CommandLine "ninja -C ""$BuildDir"" -t cleandead")

@@ -455,6 +455,23 @@ Describe 'IREE v3.12.0 on clang-cl (found proving the runtime twin)' {
         }
     }
 
+    It 'defines Py_GIL_DISABLED on the cross twin''s Python bindings only, and fails when they are gone (mutation)' {
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-IreeFromSource.ps1' -FunctionName 'Add-IreeTwinFreeThreadedDefine')
+        Assert-Match 'if \(\$Cross\) \{\s+Update-IreeCrossNinjaFile -BuildDir \$BuildDir\s+Add-IreeTwinFreeThreadedDefine -BuildDir \$BuildDir' (Get-TwinWiringText 'windows\scripts\build\Build-IreeFromSource.ps1') 'the cross twin calls it before the gate'
+        $edges = foreach ($n in 1..10) { "build runtime/bindings/python/CMakeFiles/nanobind-static.dir/n$n.cpp.obj: CXX_COMPILER`n  FLAGS = /O2" }
+        Invoke-InTestDir -Files @{} -Body {
+            param($d)
+            $ninja = Join-Path $d 'build.ninja'
+            Set-Content -LiteralPath $ninja -Value (@($edges) + "build runtime/src/iree/base/a.c.obj: C_COMPILER`n  FLAGS = /O1")
+            Add-IreeTwinFreeThreadedDefine -BuildDir $d
+            $text = Get-Content -LiteralPath $ninja
+            Assert-Equal 10 @($text -match '/O2 -DPy_GIL_DISABLED=1$').Count 'every binding object gets it'
+            Assert-Equal 1 @($text -match 'FLAGS = /O1$').Count 'no other object recompiles'
+            Set-Content -LiteralPath $ninja -Value "build other.cpp.obj: CXX_COMPILER`n  FLAGS = /O2"
+            Assert-Throws { Add-IreeTwinFreeThreadedDefine -BuildDir $d } 'bindings moved' -MessagePattern 'tagged only 0'
+        }
+    }
+
     It 'names the staged stable-ABI library for both FindPython prefixes, and only when it exists (mutation)' {
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-IreeFromSource.ps1' -FunctionName 'Get-IreeFreeThreadedCmakeArgs')
         Invoke-InTestDir -Files @{ 'libs/python315t.lib' = 'x'; 'libs/python3t.lib' = 'x'; 'bare/python315t.lib' = 'x' } -Body {
