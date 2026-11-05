@@ -4,19 +4,19 @@ The server half of [`windows-build-resources.md` § Two cache levels](../../docs
 Every Windows build host keeps its own dufs as level 0, and a Linux chain host its disk cache
 mount. This bucket is level 1, shared by all of them, so one host's compiles are hits on the next.
 
-## As built (2026-10-15, endpoint re-resolution 2026-10-16)
+## As built (2026-10-15, endpoint re-resolution 2026-10-16, disk limits 2026-11-05)
 
 | | |
 |---|---|
-| Host | Ubuntu 26.04 VPS, 4 cores, 7.7 GiB RAM; the disk is shared with Nextcloud (91 GB free after the setup) |
+| Host | Ubuntu 26.04 VPS, 4 cores, 7.7 GiB RAM; the disk is shared with Nextcloud and its Borg backups (91 GB free after the setup) |
 | Network | WireGuard split tunnel into the FritzBox: the VPS is `<s3-server-lan-ip>` (and `<ula-prefix>::216`) in the home LAN and routes only the home LAN through it, ~20 ms RTT |
 | Endpoint | The FritzBox's MyFritz name. `wg-reresolve-dns@wg0.timer` resolves it again every 30 s while the handshake is stale |
-| Store | Garage v2.4.1 as the system user `garage`, one node in zone `vps`, data and LMDB metadata in `/srv/garage`, metadata snapshot every 6 h, compression off, `MemoryMax=1G` |
+| Store | Garage v2.5.0 as the system user `garage`, one node in zone `vps`, data and LMDB metadata in `/srv/garage`, metadata snapshot every 6 h, compression off, `MemoryMax=1G` |
 | S3 | `http://<s3-server-lan-ip>:3900`, region `garage`; RPC on `127.0.0.1:3901`, admin API on `127.0.0.1:3903` |
 | Bucket | `sccache`, no key prefix, path-style addressing; 754,214 objects (48.9 GiB) after the seed on 2026-10-16 |
 | Keys | `sccache-client` (read and write on `sccache` only, for the clients) in `/root/sccache-s3-key.txt`; `sccache-evict` (the size cap's own) in `/etc/garage/evict-key.txt`; both 600 |
 | Firewall | ufw allows `3900/tcp` only on `wg0` from `<home-lan-cidr>`; the public IP has no listener on 3900 |
-| Size cap | every 10 minutes: over 60 GiB, delete oldest `LastModified` first down to 90 % (54 GiB); under 25 GiB free on the disk, shrink further, down to 10 GiB. Lowered from 100 GiB on 2026-11-05, when the disk had 19 GB free. Hard bucket quota 70 GiB (`release-assets`: 20 GiB) |
+| Size cap | every 10 minutes: over 60 GiB, delete oldest `LastModified` first down to 90 % (54 GiB); under 25 GiB free on the disk, shrink further, down to 10 GiB. Lowered from 100 GiB on 2026-11-05, when the disk had 19 GB free. Hard bucket quotas: `sccache` 70 GiB, `release-assets` 20 GiB |
 | Disk reserve | 5 GiB of ext4 reserved blocks (`tune2fs -r 1310720`), so a non-root writer such as Garage stops before root runs out |
 | Removed | the dufs/WebDAV service that ran there first (its unit, the port 5000 rule, its data dir) |
 
@@ -182,9 +182,32 @@ Set the quota only once the bucket is under it, or uploads fail until eviction c
 
 Change the cap with `CAP_GB` in `sccache-evict.service` (`systemctl edit sccache-evict.service`);
 the target is 90 % of it. Keep the layout's capacity above it (`garage layout assign … -c`, then
-`garage layout apply --version <next>`), and leave the shared disk room for Nextcloud: at the
-cap the bucket takes about 50 GB more than on 2026-10-17. A seed from a client gives every object the seed time, so the first
+`garage layout apply --version <next>`), and read `df` first: the disk is shared with Nextcloud. A seed from a client gives every object the seed time, so the first
 evictions go roughly in seed order until real traffic replaces them.
+
+### Decisions on the disk limits
+
+Taken 2026-11-05 at 19 GB free, when the bucket was over its old cap and eviction had been failing:
+
+| Decision | Why |
+|---|---|
+| Cap 60 GiB instead of 100 GiB | At most about 10 GiB arrived per day after the seed, and 48.9 of the 104 GiB were the seed of 2026-10-15. The cap costs misses, never data |
+| Check every 10 minutes | The script asks the admin API first and lists the bucket only when it has to act, so a quiet check costs almost nothing |
+| Free-space rule at 25 GiB, floor 10 GiB | Only the cache can give way for Nextcloud. The floor stops it being emptied for a shortfall it cannot solve |
+| Quota 70 GiB above the cap | Eviction runs late under a burst, and the quota holds without it. Between 60 and 70 GiB nothing is refused |
+| Reserve 5 GiB for root | The server stays reachable and can be cleaned up when everything else is out of space |
+| `release-assets` quota 20 GiB | Nothing evicts that bucket, so nothing else bounds it |
+| Oldest upload first, unchanged | A hit does not refresh `LastModified`, so a still-used old object can go. It costs one miss and comes back on the next upload |
+
+Not proven live: the free-space rule has only run against stubs, and what a sccache client does when
+the quota refuses an upload was not tried.
+
+**Still open, for the owner:**
+
+- Turn off Garage's metadata snapshots (5.7 GB, `metadata_auto_snapshot_interval`). The cache could
+  be rebuilt without them. It needs a Garage restart, so not during a build.
+- Move the Borg backups off this disk (38 GB). They would not survive losing it, and nothing here limits them.
+- Alert on low free space. The server tells nobody today, and Nextcloud can still fill the disk.
 
 ## 5. Check it
 
@@ -197,7 +220,10 @@ s5cmd --endpoint-url http://<s3-server-lan-ip>:3900 ls 's3://sccache/probe/*'
 s5cmd --endpoint-url http://<s3-server-lan-ip>:3900 cat s3://sccache/probe/a/b/c
 s5cmd --endpoint-url http://<s3-server-lan-ip>:3900 rm 's3://sccache/probe/*'
 AWS_SECRET_ACCESS_KEY=wrong s5cmd --endpoint-url http://<s3-server-lan-ip>:3900 ls 's3://sccache/*'   # 403, invalid signature
-garage bucket info sccache                                    # size and object count
+garage bucket info sccache                                    # size, object count and quota
+garage stats | grep 'resync queue'                            # deleted space still to come back
+df -h /srv/garage
+journalctl -t sccache-evict -n 5                              # what the last evictions removed
 systemctl list-timers 'wg-reresolve-dns@*' sccache-evict.timer
 ```
 
@@ -238,8 +264,8 @@ temp directory, and proves the rights each key needs; `--check` repeats only the
 keeps an existing bucket or key, so every host gets the same keys. `setup-asset-mirror.sh` reads
 `/etc/garage/garage.toml` (`GARAGE_CONFIG_FILE` overrides it) and stops when the
 `garage key info --show-secret` output no longer has a `Key ID:` and a `Secret key:` line.
-Nothing evicts the bucket, and its size is not measured yet: an old pin's objects stay until
-they are deleted by hand.
+Nothing evicts the bucket: an old pin's objects stay until they are deleted by hand. Its quota of
+20 GiB makes a fill fail loudly when it is reached (783 MiB, 33 objects on 2026-11-05).
 
 | File | Key | Read by |
 |---|---|---|
