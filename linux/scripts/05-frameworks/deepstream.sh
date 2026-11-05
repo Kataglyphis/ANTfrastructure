@@ -424,8 +424,9 @@ ds_build_components() {
   export CPATH="${sdk}/include${CPATH:+:${CPATH}}"
   export LIBRARY_PATH="${sdk}/lib:${trt}/lib:/usr/local/cuda-${DS_CUDA_VER}/lib64:/usr/local/cuda-${DS_CUDA_VER}/lib64/stubs${LIBRARY_PATH:+:${LIBRARY_PATH}}"
   # GCC 16 searches /usr/lib/x86_64-linux-gnu (TensorRT 11's dev links) before a bare LIBRARY_PATH dir: on 2026-10-28 -lnvinfer linked .so.11; only an explicit -L precedes it.
+  DS_TRT_LINK_FLAGS="-L${sdk}/lib"
   # A cross GCC ignores LIBRARY_PATH, so the target's CUDA lib dir and its libcuda stub ride the compiler string too.
-  DS_TRT_LINK_FLAGS="-L${sdk}/lib${DS_TARGET_DEVICE:+ -L/usr/local/cuda-${DS_CUDA_VER}/lib64 -L/usr/local/cuda-${DS_CUDA_VER}/lib64/stubs}"
+  [ -z "${DS_TARGET_DEVICE:-}" ] || DS_TRT_LINK_FLAGS+=" -L/usr/local/cuda-${DS_CUDA_VER}/lib64 -L/usr/local/cuda-${DS_CUDA_VER}/lib64/stubs"
   export NVCC_PREPEND_FLAGS="${NVCC_PREPEND_FLAGS:-} -include ${logdir}/gcc16-compat.h"
   PKG_CONFIG_PATH="$(ds_gst_pkgconfig_path)"
   export PKG_CONFIG_PATH
