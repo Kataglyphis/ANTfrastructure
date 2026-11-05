@@ -1658,6 +1658,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 - [ ] **CON228 — the MSVC runtime's notice in every Windows installer** [M, ★★]. Agreed 2026-11-05, after the running chains. A shared hub helper stages `Redist.txt` under `licenses\msvc-runtime\` when an installer carries the runtime,
       called from CMake packaging, `New-PortableBundle` and the Python app path, with a gate on the finished MSI, MSIX and ZIP. The owner accepts a link instead of the full terms, but `https://aka.ms/vs/18/redistribution.lic` reached Bing's start page on 2026-11-05,
       so the manifest and installers name `https://learn.microsoft.com/en-us/visualstudio/releases/2026/redistribution`.
+      The owner also wants the end-user paragraph on the installers' licence page (2026-11-05); its wording is a draft until someone qualified has read it.
+      Decided the same day: the GPU run of `006-dml-matmul-1d-rhs.patch` follows the image build, and the arm64 device run of the bundle comes later.
 - [ ] **CON222 — evaluate offline gitleaks availability in consumer images** [S, ★★].
       On 2026-11-01, the cached Linux amd64 CPU image at registry digest
       `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
