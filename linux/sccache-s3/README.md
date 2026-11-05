@@ -16,7 +16,8 @@ mount. This bucket is level 1, shared by all of them, so one host's compiles are
 | Bucket | `sccache`, no key prefix, path-style addressing; 754,214 objects (48.9 GiB) after the seed on 2026-10-16 |
 | Keys | `sccache-client` (read and write on `sccache` only, for the clients) in `/root/sccache-s3-key.txt`; `sccache-evict` (the size cap's own) in `/etc/garage/evict-key.txt`; both 600 |
 | Firewall | ufw allows `3900/tcp` only on `wg0` from `<home-lan-cidr>`; the public IP has no listener on 3900 |
-| Size cap | hourly: over 100 GiB, delete oldest `LastModified` first down to 90 % (90 GiB). Raised from 60 GiB on 2026-10-17, so Linux builds share the bucket; the bucket held 50.1 GiB (756k objects) then, and the shared disk had 87 GB free |
+| Size cap | every 10 minutes: over 60 GiB, delete oldest `LastModified` first down to 90 % (54 GiB); under 25 GiB free on the disk, shrink further, down to 10 GiB. Lowered from 100 GiB on 2026-11-05, when the disk had 19 GB free. Hard bucket quota 70 GiB (`release-assets`: 20 GiB) |
+| Disk reserve | 5 GiB of ext4 reserved blocks (`tune2fs -r 1310720`), so a non-root writer such as Garage stops before root runs out |
 | Removed | the dufs/WebDAV service that ran there first (its unit, the port 5000 rule, its data dir) |
 
 > **Addresses.** `<s3-server-lan-ip>`, `<webdav-lan-ip>`, `<router-lan-ip>` and `<home-lan-cidr>`
@@ -166,6 +167,18 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now sccache-evict.timer
 sudo systemctl start sccache-evict.service && journalctl -t sccache-evict -n 5
 ```
+
+Four things keep the shared disk from filling, none of them a guarantee against Nextcloud or its
+backups, which nothing here limits:
+
+| Layer | Set by | Stops |
+|---|---|---|
+| `CAP_GB` (60) | `sccache-evict.service` | the bucket's normal growth, checked every 10 minutes |
+| `MIN_FREE_GB` (25), `FLOOR_GB` (10) | `sccache-evict.service` | other writers: under 25 GiB free the bucket gives up the shortfall plus 5 GiB, but not while a resync backlog over 1000 is still freeing earlier deletes |
+| Bucket quota | `garage bucket set-quotas sccache --max-size 70GiB` | an upload burst faster than eviction: Garage refuses the writes |
+| Reserved blocks | `sudo tune2fs -r 1310720 <device>` | non-root writers, Garage included, at the last 5 GiB, so root can still log in and clean up |
+
+Set the quota only once the bucket is under it, or uploads fail until eviction catches up.
 
 Change the cap with `CAP_GB` in `sccache-evict.service` (`systemctl edit sccache-evict.service`);
 the target is 90 % of it. Keep the layout's capacity above it (`garage layout assign … -c`, then

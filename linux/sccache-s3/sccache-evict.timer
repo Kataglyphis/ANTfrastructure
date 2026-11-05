@@ -1,8 +1,8 @@
 [Unit]
-Description=Hourly sccache size-cap eviction
+Description=sccache size-cap and free-space eviction every 10 minutes
 
 [Timer]
-OnCalendar=hourly
+OnCalendar=*:0/10
 Persistent=true
 
 [Install]

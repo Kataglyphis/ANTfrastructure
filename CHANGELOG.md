@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-05 — sccache gives way when the shared disk runs short
+
+- The VPS disk had 19 GB free with Nextcloud and its backups on it, and an hourly check at a 100 GiB cap left too little
+  margin. The cap is 60 GiB, checked every 10 minutes, and `sccache-s3-evict` now also shrinks the bucket when the disk
+  has under 25 GiB free (`MIN_FREE_GB`), down to `FLOOR_GB`, without deleting again for space a resync is still freeing.
+  A 70 GiB bucket quota and 5 GiB of ext4 reserved blocks hold the rest; nothing here limits Nextcloud
+  ([size cap](linux/sccache-s3/README.md#4-the-size-cap)). `test-sccache-evict.sh` covers it.
+
 ## 2026-11-05 — The sccache size cap deletes again
 
 - `sccache-s3-evict` failed on every run over the cap and deleted nothing: its `awk` left early, `sort` died of

@@ -35327,5 +35327,29 @@
   "replace": "'{ if (free <= 0) exit; print \"rm",
   "test": "bash linux/scripts/tests/test-sccache-evict.sh",
   "why": "an awk that leaves early kills sort with SIGPIPE, pipefail ends the script before any delete, and the bucket grows past its cap on a disk shared with Nextcloud"
+ },
+ {
+  "id": "lib.sccache-evict-waits-for-resync",
+  "target": "linux/sccache-s3/sccache-s3-evict",
+  "find": "[ \"$QUEUE\" -gt 1000 ] && SHORT=0",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-sccache-evict.sh",
+  "why": "space a resync is still freeing would be deleted for again on every run, emptying the cache for a shortfall that is already solved"
+ },
+ {
+  "id": "lib.sccache-evict-keeps-floor",
+  "target": "linux/sccache-s3/sccache-s3-evict",
+  "find": "[ \"$DISK_TARGET\" -lt \"$FLOOR\" ] && DISK_TARGET=$FLOOR",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-sccache-evict.sh",
+  "why": "a disk filled by something else would delete the whole cache without freeing enough to matter"
+ },
+ {
+  "id": "lib.sccache-evict-shrinks-for-disk",
+  "target": "linux/sccache-s3/sccache-s3-evict",
+  "find": "[ \"$DISK_TARGET\" -lt \"$TARGET\" ] && TARGET=$DISK_TARGET",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-sccache-evict.sh",
+  "why": "under the cap with little free space the bucket would keep its size while the shared disk fills"
  }
 ]

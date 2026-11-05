@@ -26,11 +26,19 @@ case "$*" in
   *) exit 9 ;;
 esac
 EOF
+cat > "${BIN}/df" <<'EOF'
+#!/usr/bin/env bash
+printf 'Avail\n%s\n' "${STUB_AVAIL}"
+EOF
+cat > "${BIN}/garage" <<'EOF'
+#!/usr/bin/env bash
+printf '  resync queue length:   %s\n' "${STUB_QUEUE}"
+EOF
 cat > "${BIN}/logger" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${STUB_DIR}/logged"
 EOF
-chmod +x "${BIN}/curl" "${BIN}/s5cmd" "${BIN}/logger"
+chmod +x "${BIN}/curl" "${BIN}/s5cmd" "${BIN}/logger" "${BIN}/df" "${BIN}/garage"
 
 # Far more output after the cut than a pipe buffer holds, or an early awk exit would not reach sort.
 OBJECTS=300000 NEW=1000 SIZE=10240
@@ -42,8 +50,10 @@ USED=$(( OBJECTS * SIZE ))
 TARGET=$(( 1024 ** 3 * 9 / 10 ))
 EXPECTED=$(( (USED - TARGET + SIZE - 1) / SIZE ))
 
+export STUB_QUEUE=0
 _evict() {
-  STUB_DIR="${WORK}" STUB_BUCKET_BYTES="$1" CAP_GB=1 PATH="${BIN}:${PATH}" bash "${WORK}/evict"
+  STUB_DIR="${WORK}" STUB_BUCKET_BYTES="$1" STUB_AVAIL="${AVAIL:-$(( 1024 ** 4 ))}" \
+    CAP_GB="${CAP_GB:-1}" MIN_FREE_GB=25 FLOOR_GB="${FLOOR_GB:-1}" PATH="${BIN}:${PATH}" bash "${WORK}/evict"
 }
 
 t_case "a bucket over the cap is cut to 90 %, oldest first, with far more listed than deleted"
@@ -61,5 +71,24 @@ rm -f "${WORK}/listed" "${WORK}/ran"
 t_assert_rc 0 _evict 1024
 t_assert_eq absent "$([ -e "${WORK}/listed" ] && echo present || echo absent)" "listing"
 t_assert_eq absent "$([ -e "${WORK}/ran" ] && echo present || echo absent)" "deletes"
+
+GIB=$(( 1024 ** 3 ))
+_case_low_disk() {
+  rm -f "${WORK}/listed" "${WORK}/ran"
+  AVAIL=$(( 24 * GIB )) STUB_QUEUE="$1" CAP_GB=10 FLOOR_GB="$2" t_assert_rc 0 _evict "${USED}"
+}
+
+t_case "under the cap with low free space, the bucket shrinks by the shortfall and a margin"
+_case_low_disk 0 1
+# 3072000000 bytes under a 10 GiB cap; 1 GiB short plus the 5 GiB margin leaves nothing above a 1 GiB floor.
+t_assert_eq "$(( (USED - GIB + SIZE - 1) / SIZE ))" "$(wc -l < "${WORK}/ran" | tr -d ' ')" "deleted down to the floor"
+
+t_case "space a resync is still freeing is not deleted for twice"
+_case_low_disk 1001 1
+t_assert_eq absent "$([ -e "${WORK}/ran" ] && echo present || echo absent)" "deletes while the resync backlog is high"
+
+t_case "a bucket at the floor is left alone however low free space is"
+_case_low_disk 0 10
+t_assert_eq absent "$([ -e "${WORK}/ran" ] && echo present || echo absent)" "deletes at the floor"
 
 t_summary

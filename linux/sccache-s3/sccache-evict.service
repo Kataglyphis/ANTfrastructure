@@ -3,7 +3,7 @@ Description=Evict oldest sccache objects from Garage to stay under size cap
 
 [Service]
 Type=oneshot
-Environment=CAP_GB=100
+Environment=CAP_GB=60 MIN_FREE_GB=25 FLOOR_GB=10
 User=root
 Nice=10
 IOSchedulingClass=idle
