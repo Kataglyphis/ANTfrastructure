@@ -1660,6 +1660,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       so the manifest and installers name `https://learn.microsoft.com/en-us/visualstudio/releases/2026/redistribution`.
       The owner also wants the end-user paragraph on the installers' licence page (2026-11-05); its wording is a draft until someone qualified has read it.
       Decided the same day: the GPU run of `006-dml-matmul-1d-rhs.patch` follows the image build, and the arm64 device run of the bundle comes later.
+- [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). ORT's `onnxruntime_providers_cuda_llm` still runs nvcc bare (`sccache-ptx-exempt.cmake`), though the hub's sccache build carries the #2862 fix, proven only on Linux.
+      Drop the exemption and clear the bar: a provider link from hits, the smoke gate, and `Test-CudaCache.ps1`. Then measure CPython's MSBuild, gst-plugins-rs and Bazel per stage and report what stays uncached and why.
+- [ ] **CON230 — the Windows lane downloads TensorRT itself** [S, ★★★]. `Install-Tensorrt.ps1` tries the pre-11.x file names, so it always 404s. On 2026-11-05 `developer.nvidia.com/downloads/compute/machine-learning/tensorrt/11.4.0/zip/TensorRT-Enterprise-11.4.0.106-Windows-amd64-cuda-13.4-Release-external.zip`
+      answered a plain request with a zip, no login; NVIDIA's page asks to accept the licence first. Fix the URLs, verify against `TENSORRT_ZIP_SHA256`, keep the runtime-only rule, and correct the docs that call it login-gated. 11.4.0 also lists a Windows arm64 zip, which the docs' "x64-only" contradicts; arm64 is an owner decision.
 - [ ] **CON222 — evaluate offline gitleaks availability in consumer images** [S, ★★].
       On 2026-11-01, the cached Linux amd64 CPU image at registry digest
       `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
