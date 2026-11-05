@@ -520,13 +520,19 @@ keyed it by the BUILD arch alone, so both lanes shared `apt-lib-amd64`. apt's
 `update` deletes the list files of sources it is not configured with
 (`APT::Get::List-Cleanup`); the amd64 lane's repo RUN ran its update a few
 seconds after the arm64 lane's and erased the cross-linux-sbsa list. `sharing=locked`
-serialises the RUNs; it does not keep one RUN's lists from the next.
+serialises the RUNs; it does not keep one RUN's lists from the next. The
+second half: BuildKit keys a RUN without its cache mounts' contents or ids, so
+re-keying the mount alone left the repo RUN `CACHED` and the next RUN with an
+EMPTY `/var/lib/apt`, and every package was "unable to locate".
 
-**Fix.** The three apt mounts of `Dockerfile.nvidia` are keyed by the target too
-(`apt-lib-${TARGETARCH}-${TARGET_ARCH}`), as every other Dockerfile's are;
-`test-cuda-cross-sbsa.sh` refuses a build-arch-only id and
-`nvidia.apt-lists-keyed-by-target` proves it. A stage that adds a repo whose
-lists another lane does not name must not share that lane's list cache.
+**Fix.** Two: the three apt mounts of `Dockerfile.nvidia` are keyed by the
+target too (`apt-lib-${TARGETARCH}-${TARGET_ARCH}`), as every other
+Dockerfile's are, and `install-cuda-stack.sh` runs `apt-get update` before its
+first install, as `install-tensorrt.sh` already did. `test-cuda-cross-sbsa.sh`
+refuses a build-arch-only id and an install without the update;
+`nvidia.apt-lists-keyed-by-target` and `nvidia.cuda-stack-refreshes-apt-lists`
+prove both. The rule: a RUN that installs packages refreshes the lists itself;
+a cache mount carries nothing a RUN may rely on.
 
 ### A renamed or dropped distro package kills a stage hours in
 

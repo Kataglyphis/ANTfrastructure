@@ -12,6 +12,8 @@ else
   echo "CUDA_INSTALL_COMPAT=0 — skipping cuda-compat-${CUDA_VERSION_MAJOR_MINOR} (Tegra/Jetson: the driver comes from the L4T BSP)"
 fi
 
+# The lists live in a cache mount the cache key ignores: a cached repo RUN leaves a fresh mount empty. docs/failure-modes.md#the-cross-sbsa-packages-vanish-between-the-repo-run-and-the-install
+apt-get update -qq
 apt-get install -y --no-install-recommends \
     cuda-toolkit-${CUDA_VERSION_MAJOR_MINOR} \
     cuda-libraries-${CUDA_VERSION_MAJOR_MINOR} \

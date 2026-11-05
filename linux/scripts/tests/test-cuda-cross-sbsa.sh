@@ -171,4 +171,9 @@ t_assert_eq "3" "$(printf '%s\n' "${_df}" | grep -c -F -e 'id=apt-lib-${TARGETAR
 t_assert_eq "3" "$(printf '%s\n' "${_df}" | grep -c -F -e 'id=apt-cache-${TARGETARCH}-${TARGET_ARCH} ')" \
   "and so does every apt archive mount"
 
+t_case "the CUDA stack installer refreshes the apt lists itself before its first install"
+# BuildKit keys a RUN without its cache mounts' contents: a cached repo RUN hands the next one an empty /var/lib/apt (2026-11-05).
+_stack_head="${_stack%%apt-get install*}"
+t_assert_contains "${_stack_head}" 'apt-get update -qq' "an apt-get update precedes the first apt-get install"
+
 t_summary
