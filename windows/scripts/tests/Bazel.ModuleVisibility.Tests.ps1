@@ -4,29 +4,33 @@
 
 # The Bazel module's shared helper in the stage's bazelmods\ layout and a checkout's; a real Bazel run is not covered.
 
+function Copy-BazelLayoutModule {
+    param([string]$Name, [string[]]$Target)
+    $source = Join-Path (Get-RepoRoot) "windows\scripts\modules\$Name"
+    foreach ($dir in $Target) {
+        $null = New-Item -ItemType Directory -Force -Path $dir
+        Copy-Item -LiteralPath $source -Destination $dir
+    }
+}
+
+function Invoke-BazelVisibilityProbe {
+    param([string]$ModuleDir)
+    $command = "Import-Module '$ModuleDir\WindowsBazel.Common.psm1'; `$p = Set-BazelProcessEnv -Values @{ BAZEL_VISIBILITY_PROBE = 'on' }; if (`$env:BAZEL_VISIBILITY_PROBE -ne 'on') { exit 9 }; exit 0"
+    $output = & pwsh -NoProfile -Command $command 2>&1 | Out-String
+    [pscustomobject]@{ Code = $LASTEXITCODE; Output = $output }
+}
+
 Describe 'WindowsBazel.Common sees its shared helper in a cold session' {
     It 'works in the stage layout and the checkout layout, and refuses a missing companion (mutation)' {
-        $modules = Join-Path (Get-RepoRoot) 'windows\scripts\modules'
         $root = New-TestDir -Prefix 'bazel-visibility'
         try {
-            $stage = Join-Path $root 'stage'
-            $flat = Join-Path $root 'flat'
-            $alone = Join-Path $root 'alone\bazelmods'
-            $null = New-Item -ItemType Directory -Force -Path (Join-Path $stage 'bazelmods'), (Join-Path $stage 'modules'), $flat, $alone
-            Copy-Item -LiteralPath (Join-Path $modules 'WindowsBazel.Common.psm1') -Destination (Join-Path $stage 'bazelmods'), $flat, $alone
-            Copy-Item -LiteralPath (Join-Path $modules 'WindowsScripts.Shared.psm1') -Destination (Join-Path $stage 'modules')
-            Copy-Item -LiteralPath (Join-Path $modules 'WindowsScripts.Shared.psm1') -Destination $flat
-            $probe = {
-                param($moduleDir)
-                $command = "Import-Module '$moduleDir\WindowsBazel.Common.psm1'; `$p = Set-BazelProcessEnv -Values @{ BAZEL_VISIBILITY_PROBE = 'on' }; if (`$env:BAZEL_VISIBILITY_PROBE -ne 'on') { exit 9 }; exit 0"
-                $output = & pwsh -NoProfile -Command $command 2>&1 | Out-String
-                [pscustomobject]@{ Code = $LASTEXITCODE; Output = $output }
-            }
-            foreach ($dir in (Join-Path $stage 'bazelmods'), $flat) {
-                $run = & $probe $dir
+            Copy-BazelLayoutModule -Name 'WindowsBazel.Common.psm1' -Target "$root\stage\bazelmods", "$root\flat", "$root\alone\bazelmods"
+            Copy-BazelLayoutModule -Name 'WindowsScripts.Shared.psm1' -Target "$root\stage\modules", "$root\flat"
+            foreach ($dir in "$root\stage\bazelmods", "$root\flat") {
+                $run = Invoke-BazelVisibilityProbe -ModuleDir $dir
                 Assert-Equal 0 $run.Code "$dir must see Set-ProcessEnvironmentValue: $($run.Output)"
             }
-            $missing = & $probe $alone
+            $missing = Invoke-BazelVisibilityProbe -ModuleDir "$root\alone\bazelmods"
             Assert-True ($missing.Code -ne 0 -and $missing.Output -match 'needs WindowsScripts\.Shared') "a missing companion fails at import: $($missing.Output)"
         } finally { Remove-TestDir $root }
     }
