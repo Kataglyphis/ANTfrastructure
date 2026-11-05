@@ -876,6 +876,8 @@ function Get-GstMesonSetupArgs {
         '-Dgst-plugins-bad:nvcodec=disabled',
         # The port refuses a shared build off ELF and Darwin, and its tools and tests are not shipped.
         '-Dvpx:default_library=static',
+        # The port defaults to gnu++11,c++11 and unpacks after the cpp_std sweep; MSVC's STL needs C++14 or later.
+        '-Dvpx:cpp_std=c++17',
         '-Dvpx:examples=disabled',
         '-Dvpx:tools=disabled',
         '-Dvpx:docs=disabled',

@@ -120,7 +120,7 @@ Describe 'Wiring' {
     It 'writes the manifest before GStreamer cleanup, and pins libvpx through the driver' {
         $gst = Get-TestRepoText 'windows\scripts\build\Build-GstreamerFromSource.ps1'
         Assert-True ($gst.IndexOf('Assert-GstInstalledPlugins -resolvedInstallDir') -lt $gst.IndexOf('Complete-GstBuild -gstSrcDir')) 'the gate that writes it runs before cleanup'
-        Assert-TestScriptContains -ScriptPath 'windows\scripts\build\Build-GstreamerFromSource.ps1' -Literal '-Dvpx:default_library=static', '"diff_files = $diffName"'
+        Assert-TestScriptContains -ScriptPath 'windows\scripts\build\Build-GstreamerFromSource.ps1' -Literal '-Dvpx:default_library=static', '-Dvpx:cpp_std=c++17', '"diff_files = $diffName"'
         Assert-TestScriptContains -ScriptPath 'windows\scripts\patches\gstreamer\002-libvpx-clangcl-simd-flags.patch' -Literal "+if tgt_cc == 'msvs' and c.get_id() != 'clang-cl'"
         Assert-TestScriptContains -ScriptPath 'windows\Dockerfile.media-merge-builder' -Literal 'ARG LIBVPX_MESON_COMMIT', 'ARG LIBVPX_MESON_SHA256', 'WindowsNativeProvenance.Common.psm1'
         $pins = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\tool-pins.env')

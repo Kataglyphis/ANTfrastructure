@@ -33,6 +33,7 @@ None of this has run in a chain yet; `BACKLOG.md` says what each item still has 
 - **Variant pushes (CON126):** `Invoke-BkVariantChain.ps1 -ConcurrentPush` uploads each variant through a `Build-Buildkit.ps1 -PushOnly` child beside the next build; a failed
   build or push fails the run, and serial stays the default.
 - **arm64 wheels (CON108):** the store moves to flet and flet-desktop 1.0.5 and msgpack 1.2.4.
+- **libvpx's C++ standard (CON183):** the port's `gnu++11` default fails `libwebm` on MSVC's STL, and the `cpp_std` sweep runs before a wrap-file unpacks, so `-Dvpx:cpp_std=c++17` sets it.
 - **IREE v3.13.0's plugin hash:** a new genrule ran a bare `python3` and stopped amd64 35 minutes into the compile. `Set-IreeGenrulePython` now covers every genrule in IREE's own tree.
 - **arm64 free-threaded ORT (CON79):** `007-pybind-free-threaded-define.patch` defines `Py_GIL_DISABLED=1` on the pybind target, where upstream only prints that it does.
 

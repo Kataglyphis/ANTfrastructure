@@ -32041,6 +32041,14 @@
   "why": "the ROCm TVM branch returned ninja's whole log as its llvm-config path, and cmd.exe refused the resulting command line"
  },
  {
+  "id": "lib.gst-vpx-cpp-std",
+  "target": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+  "find": "        '-Dvpx:cpp_std=c++17',\n",
+  "replace": "",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/gst-vpx-cpp-std.json",
+  "why": "libwebm under the port's C++11 default fails on MSVC's STL 30 minutes into the merge stage"
+ },
+ {
   "id": "lib.iree-genrule-python-covers-compiler",
   "target": "windows/scripts/build/Build-IreeFromSource.ps1",
   "find": "foreach ($tree in 'compiler', 'runtime', 'tests', 'samples') {",
