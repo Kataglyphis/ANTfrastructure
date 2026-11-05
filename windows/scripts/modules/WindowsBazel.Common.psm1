@@ -5,6 +5,12 @@
 
 Set-StrictMode -Version Latest
 
+# The stage mounts this module under bazelmods\ and the shared closure under modules\; a checkout keeps both together.
+$bazelSharedModule = @((Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'), (Join-Path $PSScriptRoot '..\modules\WindowsScripts.Shared.psm1')) |
+    Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+if (-not $bazelSharedModule) { throw "WindowsBazel.Common needs WindowsScripts.Shared.psm1 beside it or in ..\modules, from $PSScriptRoot" }
+Import-Module $bazelSharedModule
+
 function Get-UrlWithRetry {
     <#
     .SYNOPSIS
