@@ -18125,9 +18125,9 @@
  },
  {
   "id": "probe.shared-python-payload-guard",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "_rt_python_probe_command() {\n  printf 'if [ -z \"${%s:-}\" ]; then",
-  "replace": "_rt_python_probe_command() {\n  printf 'if [ -z \"${%s:-}\" ] && false; then",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "smoke_python_probe_command() {\n  printf 'if [ -z \"${%s:-}\" ]; then",
+  "replace": "smoke_python_probe_command() {\n  printf 'if [ -z \"${%s:-}\" ] && false; then",
   "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
   "why": "an empty environment crossing must exit with the ABSENT sentinel before Python runs"
  },
@@ -20574,8 +20574,8 @@
  {
   "id": "lib.genai-smoke-tiny-missing-fails",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "else fail \"no tiny GenAI model generator at ${tiny_py}\"; fi",
-  "replace": "else :; fi",
+  "find": "else fail \"no tiny GenAI model generator at ${tiny_py}\"; fi\n    out=\"$(",
+  "replace": "else :; fi\n    out=\"$(",
   "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
   "why": "a checkout without the generator would hand tier 4 nothing and report generate() as merely unproven"
  },
@@ -35193,6 +35193,14 @@
   "why": "an apt list cache keyed by the build arch alone is shared by the amd64 and the arm64 (sbsa) lane, and one lane's apt-get update erases the other's cross repo lists"
  },
  {
+  "id": "nvidia.cuda-stack-refreshes-apt-lists",
+  "target": "linux/scripts/01-core/install-cuda-stack.sh",
+  "find": "apt-get update -qq\napt-get install -y --no-install-recommends \\\n    cuda-toolkit-${CUDA_VERSION_MAJOR_MINOR} \\\n",
+  "replace": "apt-get install -y --no-install-recommends \\\n    cuda-toolkit-${CUDA_VERSION_MAJOR_MINOR} \\\n",
+  "test": "bash linux/scripts/tests/test-cuda-cross-sbsa.sh",
+  "why": "the apt lists sit in a cache mount BuildKit's cache key ignores; a cached repo RUN leaves a fresh mount empty and the install must refresh the lists itself"
+ },
+ {
   "id": "deepstream.sbsa-missing-file",
   "target": "linux/scripts/05-frameworks/deepstream.sh",
   "find": "if [ ! -f \"${dir}/${f}\" ]; then",
@@ -35234,7 +35242,7 @@
  },
  {
   "id": "boot.genai-model-named-for-wheel-smoke",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
   "find": "    '  export ORCHESTRANT_SMOKE_GENAI_MODEL=\"$d/tiny-genai\"' \\\n",
   "replace": "    '  ORCHESTRANT_SMOKE_GENAI_MODEL=\"$d/tiny-genai\"' \\\n",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",

@@ -18,10 +18,17 @@
 - The rebuild's nvidia chain (amd64 + arm64 SBSA, `--parallel-archs`) failed its arm64 gpu stage with
   `Unable to locate package cuda-cross-sbsa-13-4` right after enabling that repo: both lanes shared the
   `apt-lib-amd64` cache mount, and the amd64 lane's `apt-get update` deleted the cross-linux-sbsa lists.
-  `Dockerfile.nvidia` keys its apt caches by the target too, as every other Dockerfile does;
-  `test-cuda-cross-sbsa.sh` refuses the build-arch-only id and `nvidia.apt-lists-keyed-by-target` proves it
+  `Dockerfile.nvidia` keys its apt caches by the target too, as every other Dockerfile does, and because
+  BuildKit's cache key ignores a cache mount's id (the re-keyed repo RUN stayed `CACHED`, the new mount was
+  empty), `install-cuda-stack.sh` refreshes the lists before its first install. `test-cuda-cross-sbsa.sh`
+  refuses both regressions; `nvidia.apt-lists-keyed-by-target` and `nvidia.cuda-stack-refreshes-apt-lists` prove it
   ([failure-modes.md](docs/failure-modes.md#the-cross-sbsa-packages-vanish-between-the-repo-run-and-the-install)).
   The default chain (three arches) and the rocm chain passed in the same sequence.
+- The push before it (8dcc7d6f) left `develop` red (issue 227): `GENAI_TINY_MODEL_PY` is registered as the
+  in-container name of the tiny-model source, not an operator knob; the two in-container command generators
+  (`smoke_app_wheel_command`, `smoke_python_probe_command`) live in `smoke-common.sh` beside the payloads they wrap,
+  so `smoke-runtime-image.sh` stays under its frozen size; and `lib.genai-smoke-tiny-missing-fails` names one edit
+  again now that the wheel smoke reads the generator the same way the GenAI probe does.
 
 ## 2026-11-05 — The runtime smoke hands OrchestrANT's wheel check its GenAI model
 

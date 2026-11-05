@@ -4,6 +4,7 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 SMOKE="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
+COMMON="${TESTS_DIR}/../06-packaging/smoke-common.sh"
 
 source "${TESTS_DIR}/runtime-function-fixtures.sh"
 _FN_CACHE="$(mktemp -d)"
@@ -43,7 +44,7 @@ _gate() {
     # Runs the real extraction program; returning ${HC} directly would bypass the code under test.
     inspect_image_config() { printf "%s" "${HC_JSON}" | python3 -c "$1" 2>/dev/null || true; }
     _rt_run() { printf "RUN_ARGS=<%s>\n%s\n" "$*" "${WHEEL_OUT}"; return "${RUN_RC}"; }
-    '"$(_extract _rt_app_wheel_smoke_command)"'
+    '"$(t_fn_src "${COMMON}" smoke_app_wheel_command)"'
     _SMOKE_TORCH_EXPECTED=1
     '"$(_extract _rt_healthcheck_cmd)"'
     '"$(_extract _boot_verdict)"'
