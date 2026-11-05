@@ -151,6 +151,8 @@ it from outside, e.g. a phone off the WLAN: `curl -m 5 http://<public-ip>:3900` 
 sccache never deletes an object, and a hit does not refresh `LastModified`. The cap is
 therefore oldest-written first, not least-recently-used. The script asks Garage's admin API
 for the bucket size first and lists the bucket only when it is over the cap.
+A run frees the disk only after Garage's GC has caught up, well after the bucket size has dropped
+(2026-11-05: 230,000 objects, 21 minutes for the deletes alone).
 
 ```bash
 # s5cmd 2.3.0, checksum from the release's s5cmd_checksums.txt

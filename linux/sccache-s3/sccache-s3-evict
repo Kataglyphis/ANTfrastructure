@@ -17,7 +17,8 @@ WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
 $S5 ls 's3://sccache/*' | awk '{print $1"T"$2, $3, $4}' > "$WORK/list"
 USED=$(awk '{s+=$2} END{print s+0}' "$WORK/list")
 [ "$USED" -le "$CAP" ] && exit 0
+# awk reads to the end: an early exit kills sort with SIGPIPE, and pipefail then ends the script before any delete.
 sort -k1,1 "$WORK/list" | awk -v free=$(( USED - TARGET )) \
-  '{ if (free <= 0) exit; print "rm \"s3://sccache/" $3 "\""; free -= $2 }' > "$WORK/cmds"
+  'free > 0 { print "rm \"s3://sccache/" $3 "\""; free -= $2 }' > "$WORK/cmds"
 $S5 --numworkers 64 run "$WORK/cmds" >/dev/null
 logger -t sccache-evict "garage: deleted $(wc -l < "$WORK/cmds") objects, was $USED bytes (cap ${CAP_GB:-100}G)"

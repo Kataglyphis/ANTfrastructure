@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-05 — The sccache size cap deletes again
+
+- `sccache-s3-evict` failed on every run over the cap and deleted nothing: its `awk` left early, `sort` died of
+  SIGPIPE, and `pipefail` ended the script before `s5cmd run`. It first bit on 2026-11-04, when the bucket passed
+  100 GiB for the first time, and the bucket kept growing on the disk it shares with Nextcloud. `awk` now reads to the
+  end. The live server carries the fix and cut the bucket from 104.0 to 90.1 GiB. `test-sccache-evict.sh` runs the
+  script's real text against stubs, and `lib.sccache-evict-reads-whole-list` proves it
+  ([failure-modes.md](docs/failure-modes.md#sccache-evictservice-fails-with-sort-write-failed-standard-output-broken-pipe)).
+
 ## 2026-11-05 — The nvidia lanes stop erasing each other's apt lists
 
 - The rebuild's nvidia chain (amd64 + arm64 SBSA, `--parallel-archs`) failed its arm64 gpu stage with

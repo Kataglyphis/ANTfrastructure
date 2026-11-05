@@ -87,6 +87,7 @@ Two neighbours, so you land on the right page:
 - [A push leaves the repo bare: `core.bare and core.worktree do not make sense`](#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense)
 - [A cross-built Rust tool links the build host's libbz2](#a-cross-built-rust-tool-links-the-build-hosts-libbz2)
 - [HailoRT's configure is slow while the cache looks healthy](#hailorts-configure-is-slow-while-the-cache-looks-healthy)
+- [`sccache-evict.service` fails with `sort: write failed: 'standard output': Broken pipe`](#sccache-evictservice-fails-with-sort-write-failed-standard-output-broken-pipe)
 - [`Using ccache: /usr/bin/ccache` in a build that should use sccache](#using-ccache-usrbinccache-in-a-build-that-should-use-sccache)
 - [Cerbero: `Checksum for … spandsp-0.0.6.tar.gz is 'eed29aa6…'`](#cerbero-checksum-for--spandsp-006targz-is-eed29aa6)
 - [Cerbero: a checksum fails once](#cerbero-a-checksum-fails-once)
@@ -1578,6 +1579,21 @@ checksum, with and without Cerbero's user agent.
 **Fix.** `cerbero_fetch_package_retry` runs `fetch-package gstreamer-1.0` up to three times, 30 s apart,
 before `package`. Only downloads repeat, and the checksum stays the gate. A host that is gone for good
 fails all three tries; see the spandsp entry above for that case.
+
+### `sccache-evict.service` fails with `sort: write failed: 'standard output': Broken pipe`
+
+**Symptom.** The hourly size cap fails after about two minutes, `journalctl -t sccache-evict` shows no
+`deleted … objects` line, and the bucket stays over `CAP_GB` and keeps growing (2026-11-04, the first time the
+bucket passed 100 GiB).
+
+**Cause.** The `awk` that picks the objects left with `exit` once it had enough. `sort` then died of SIGPIPE, and
+`set -o pipefail` ended the script before `s5cmd run`. Under the cap the script exits earlier, so nothing showed
+until the bucket first needed evicting.
+
+**Fix.** `awk` reads to the end of the list and only stops printing. Install the script again
+([size cap](../linux/sccache-s3/README.md#4-the-size-cap)); the next run works off the backlog. `test-sccache-evict.sh`
+holds this. A run of 230,000 objects took 21 minutes, and `df` falls only after Garage's GC has followed the bucket
+size, so check `garage stats` before reading a flat `df` as a failed run.
 
 ### `Using ccache: /usr/bin/ccache` in a build that should use sccache
 
