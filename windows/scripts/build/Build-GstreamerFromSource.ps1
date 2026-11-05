@@ -1264,6 +1264,8 @@ function Write-GstNativeProvenance {
     foreach ($name in @(Get-RequiredGstPlugin -Arch $script:GstTargetArch | Where-Object { $_.Detection -eq 'cargo' } | ForEach-Object { "gst$($_.Name).dll" })) {
         $entries.Add((New-NativeProvenanceEntry -Root $resolvedInstallDir -File "lib\gstreamer-1.0\$name" -Notice $rsNotice -Source @{ Name = 'gst-plugins-rs'; Version = $GstVersion; Url = 'https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs' }))
     }
+    # The cross lane stages the target's runtime in bin, where the plugins import it.
+    foreach ($entry in @(Get-MsvcRuntimeProvenanceEntry -Root $resolvedInstallDir -NoticeDir $noticeDir -GetVsInstallDir { Get-VisualStudioInstallPath })) { $entries.Add($entry) }
     Write-NativeProvenanceManifest -Path $manifest -Owner 'gstreamer' -Entry @($entries) -Root $resolvedInstallDir
     # A DLL in the plugins' import closure with no entry is what AccelerANTgine's notice gate rejects.
     $plugins = @(Get-ChildItem -LiteralPath (Join-Path $resolvedInstallDir 'lib\gstreamer-1.0') -Filter '*.dll' -File).FullName

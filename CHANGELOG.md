@@ -35,6 +35,7 @@ None of this has run in a chain yet; `BACKLOG.md` says what each item still has 
 - **arm64 wheels (CON108):** the store moves to flet and flet-desktop 1.0.5 and msgpack 1.2.4.
 - **IREE's arm64 twin:** its configure missed the staged `python3t.lib` and gave the bindings no `Py_GIL_DISABLED=1`, for a reason not reproduced outside the chain. The twin names the library through `Python3_SABI_LIBRARY` and sets the define per object.
 - **Smoke gate:** two manifest checks failed on their healthy empty result, because `.Name` of an empty list throws under strict mode.
+- **arm64 GStreamer provenance:** the MSVC runtime the cross lane stages in `bin` joins the manifest with Visual Studio's `Redist.txt`, which only points at Microsoft's terms.
 - **GStreamer provenance:** libffi's notice was looked up where its wrap says, not where provisioning extracts it, so the gate now locates each tree through meson's `defined_in`, reports every defect in one run and names the pinned libffi port instead of the bundled wrap's release.
 - **libvpx's C++ standard (CON183):** the port's `gnu++11` default fails `libwebm` on MSVC's STL, and the `cpp_std` sweep runs before a wrap-file unpacks, so `-Dvpx:cpp_std=c++17` sets it.
 - **IREE v3.13.0's plugin hash:** a new genrule ran a bare `python3` and stopped amd64 35 minutes into the compile. `Set-IreeGenrulePython` now covers every genrule in IREE's own tree.

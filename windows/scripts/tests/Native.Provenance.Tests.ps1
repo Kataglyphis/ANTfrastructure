@@ -122,7 +122,34 @@ Describe 'Meson records to manifest entries' {
     }
 }
 
+Describe 'MSVC runtime entries' {
+    It 'lists staged runtime DLLs with the install''s notice, and fails without a text or terms (mutation)' {
+        $root = New-TestDir -Prefix 'msvc-provenance'
+        try {
+            $null = New-Item -ItemType Directory -Force -Path (Join-Path $root 'r\bin'), (Join-Path $root 'vs\Licenses\1031')
+            $text = Join-Path $root 'vs\Licenses\1031\Redist.txt'
+            $call = @{ Root = (Join-Path $root 'r'); NoticeDir = 'n'; GetVsInstallDir = { Join-Path $root 'vs' }.GetNewClosure() }
+            Assert-Equal 0 @(Get-MsvcRuntimeProvenanceEntry -Root $call.Root -NoticeDir 'n' -GetVsInstallDir { throw 'a lane without the runtime must not look for Visual Studio' }).Count 'no staged runtime, no entry'
+            Copy-Item -LiteralPath (Join-Path $PSHOME 'pwsh.dll') -Destination (Join-Path $root 'r\bin\vcruntime140.dll')
+            Set-Content -LiteralPath (Join-Path $root 'r\bin\other.dll') -Value 'x'
+            Assert-Throws { Get-MsvcRuntimeProvenanceEntry @call } 'no text' -MessagePattern 'cannot ship with its notice'
+            Set-Content -LiteralPath $text -Value 'no link here'
+            Assert-Throws { Get-MsvcRuntimeProvenanceEntry @call } 'no terms' -MessagePattern 'names no redistribution terms'
+            Set-Content -LiteralPath $text -Value "Distributable Code`nsee https://example.invalid/redist.lic"
+            $entries = @(Get-MsvcRuntimeProvenanceEntry @call)
+            Assert-Equal 1 $entries.Count 'only the runtime, not another DLL in bin'
+            Assert-Equal 'bin\vcruntime140.dll' $entries[0].file 'the staged path'
+            Assert-Equal 'https://example.invalid/redist.lic' $entries[0].source['url'] 'the terms the notice names'
+            Assert-True (Test-Path -LiteralPath (Join-Path $root 'r\n\msvc-runtime\Redist.txt')) 'the original text is staged'
+        } finally { Remove-TestDir $root }
+    }
+}
+
 Describe 'Wiring' {
+    It 'records the staged MSVC runtime in the GStreamer manifest' {
+        Assert-TestScriptContains -ScriptPath 'windows\scripts\build\Build-GstreamerFromSource.ps1' -Literal 'Get-MsvcRuntimeProvenanceEntry -Root $resolvedInstallDir'
+    }
+
     It 'lists possibly empty findings through the pipeline, as strict mode throws on .Name of an empty list' {
         $smoke = Get-TestRepoText 'windows\scripts\build\Test-Container.ps1'
         Assert-False ($smoke -match '-ErrorAction SilentlyContinue\)\.(Name|FullName)') 'a healthy empty result would fail the smoke gate'

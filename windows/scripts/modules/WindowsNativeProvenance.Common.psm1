@@ -340,6 +340,33 @@ function Get-MesonProvenanceEntry {
     return $entries
 }
 
+<#
+.SYNOPSIS
+    Manifest entries for the MSVC runtime DLLs staged in Root\bin, with Visual Studio's redistribution notice; none when the lane stages none.
+#>
+function Get-MsvcRuntimeProvenanceEntry {
+    [OutputType([object[]])]
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string]$NoticeDir,
+        [Parameter(Mandatory)][scriptblock]$GetVsInstallDir
+    )
+    $dlls = @(Get-ChildItem -Path (Join-Path $Root 'bin\*') -File -Include 'msvcp140*.dll', 'vcruntime140*.dll', 'concrt140.dll', 'vccorlib140.dll')
+    if ($dlls.Count -eq 0) { return @() }
+    $vsDir = & $GetVsInstallDir
+    # Licenses\<lcid> follows the install's language, so no one folder name holds on every image.
+    $texts = @(Get-ChildItem -Path (Join-Path $vsDir 'Licenses\*\Redist.txt') -File -ErrorAction SilentlyContinue | Sort-Object FullName)
+    if ($texts.Count -eq 0) { throw "no Licenses\<lcid>\Redist.txt under $vsDir, so the staged MSVC runtime cannot ship with its notice" }
+    if ((Get-Content -LiteralPath $texts[0].FullName -Raw) -notmatch 'https://\S+') { throw "$($texts[0].FullName) names no redistribution terms" }
+    $terms = $Matches[0]
+    $notice = Copy-NativeNotice -Root $Root -NoticeDir $NoticeDir -Name 'msvc-runtime' -File @($texts[0].FullName)
+    return @(foreach ($dll in $dlls) {
+            $version = $dll.VersionInfo.ProductVersion
+            if (-not $version) { throw "$($dll.FullName) has no product version" }
+            New-NativeProvenanceEntry -Root $Root -File "bin\$($dll.Name)" -Notice $notice -Source @{ Name = 'Microsoft Visual C++ runtime'; Version = $version; Url = $terms }
+        })
+}
+
 Export-ModuleMember -Function Expand-NativeZipMember, Read-MesonWrapSource, Get-MesonWrapInventory, Get-NativeNoticeFile, Copy-NativeNotice,
     New-NativeProvenanceEntry, Write-NativeProvenanceManifest, Get-NativeProvenanceFinding, Assert-NativeProvenanceManifest,
-    Get-NativeClosureGap, Get-MesonProvenanceEntry
+    Get-NativeClosureGap, Get-MesonProvenanceEntry, Get-MsvcRuntimeProvenanceEntry

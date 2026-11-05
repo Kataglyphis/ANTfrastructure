@@ -837,7 +837,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `C:\runtime\share\native-provenance\gstreamer.json` from meson's records before cleanup, and the merge and smoke gates fail on a
       mismatch or an unlisted DLL in the plugins' import closure. A real `meson setup` of 1.29.2 mapped 275 DLLs to 34 sources, each with a
       notice file (`sqlite3` has only the wrap's `LICENSE.build`). Left: a chain, then AccelerANTgine's notice gate reading this manifest.
-      It does not cover what a Rust plugin links statically.
+      It does not cover what a Rust plugin links statically. On arm64 the MSVC runtime's notice is Visual Studio's `Redist.txt`, a pointer to `https://aka.ms/vs/18/redistribution.lic`, not the terms themselves.
       Cached `:winamd64-nvidia` digest `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777`
       ships GStreamer plugins whose PE closure includes `jpeg-8.3.2.dll`, `libcrypto-4-x64.dll`,
       `libssl-4-x64.dll`, `openh264-7.dll`, `png16-16.dll`, `srtp2-1.dll`, and `z-1.dll`;

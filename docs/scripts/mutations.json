@@ -35345,6 +35345,22 @@
   "why": "the healthy empty list throws under strict mode and fails the smoke gate at the end of a chain"
  },
  {
+  "id": "provenance.msvc-runtime-recorded",
+  "target": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+  "find": "    foreach ($entry in @(Get-MsvcRuntimeProvenanceEntry -Root $resolvedInstallDir -NoticeDir $noticeDir -GetVsInstallDir { Get-VisualStudioInstallPath })) { $entries.Add($entry) }\n",
+  "replace": "",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/msvc-runtime-provenance.json",
+  "why": "the arm64 plugins import the runtime from bin, and the closure gate fails a DLL the manifest omits"
+ },
+ {
+  "id": "provenance.msvc-runtime-needs-text",
+  "target": "windows/scripts/modules/WindowsNativeProvenance.Common.psm1",
+  "find": "    if ($texts.Count -eq 0) { throw \"no Licenses\\<lcid>\\Redist.txt under $vsDir, so the staged MSVC runtime cannot ship with its notice\" }\n",
+  "replace": "",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/msvc-runtime-provenance.json",
+  "why": "a runtime with no notice is what the manifest exists to refuse"
+ },
+ {
   "id": "provenance.bytes-unchecked",
   "target": "windows/scripts/modules/WindowsNativeProvenance.Common.psm1",
   "find": "elseif ((Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash -ine $Entry.sha256) {",
