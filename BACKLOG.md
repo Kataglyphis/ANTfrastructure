@@ -512,12 +512,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 - [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★]. In source (CHANGELOG 2026-11-03,
       `_disk_guard_release_stale_records`), tested with stubs only. Done when the next chain resumed after a stop
       logs `left by a stopped chain: restarting buildkitd` and reclaims without a hand restart.
-- [ ] **CON227 — the LiteCore archive goes through the asset mirror** [S, ★★]. Samsung re-packed
-      `ai-litecore-ubuntu2404-v1.1.0.tar.gz` under the same URL on 2026-11-03 and the android stage went red on the
-      pinned hash (CHANGELOG 2026-11-04). The LiteRT android build fetches it with plain `curl`, so the mirror holds
-      no copy and a rotation leaves nothing to diff against. Done when `build-android.sh` loads `downloads.sh` and
-      fetches it with `download_verified_file`, the mirror holds the pinned bytes, and the next chain logs
-      `asset-mirror| hit` for it.
 - [ ] **CON153 — the pinned release assets come from the Garage mirror** [S, ★★★]. Owner decision
       2026-10-26: Garage S3. In source ([`linux-cross-builds.md` § The asset mirror](docs/linux-cross-builds.md#the-asset-mirror),
       runbook in [`linux/sccache-s3/README.md`](linux/sccache-s3/README.md)): every `download_verified_file`

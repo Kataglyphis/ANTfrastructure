@@ -1410,6 +1410,26 @@ deliberately.
 
 GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and that `UBUNTU_CODENAME` in `linux/scripts/01-core/versions.env` matches a supported Ubuntu codename (the ARG is declared in `Dockerfile.nvidia` and `Dockerfile.media`; `Dockerfile.amd` hardcodes its ROCm repo paths) (default `resolute`/26.04). ROCm 10.x (10.1 since 2026-10-07) uses AMD's TheRock distribution (`stable.repo.amd.com`) with deb822 `.sources` format; MIGraphX is in a separate repo path under `/rocm/migraphx/packages/ubuntu2604/`. Package names are `amdrocm-*` prefixed and carry the release (`amdrocm-core-dev10.1`; MIGraphX is `amdrocm10-migraphx` since 10.1), so a ROCm bump moves `ROCM_VERSION` and `MIGRAPHX_VERSION` together, and a release `rocm_packages` in `setup-rocm-repo.sh` does not know needs its MIGraphX name added there first ([`linux-accelerator-images.md`](linux-accelerator-images.md#the-rocm-release-is-in-every-package-name)).
 
+## The sweep rides the Renovate call
+
+Since 2026-11-05 a hub run of `renovate-local.sh` ends in `bump_versions.py`: the report runs
+`--check` and fails when a lookup fails (a key it could not check is never "up to date"); `--apply`
+runs `--write` after Renovate's own apply, then `sync_versions.py --write`, and a sweep that does
+not complete exits 2 and leaves Renovate's writes in place (they are consistent on their own).
+`--no-bump` skips both; a dry run names what would follow; a consumer tree has no
+`docs/scripts/bump_versions.py` and gets no sweep. Three vendor feeds joined the safe tier with it,
+each with its oracle, since neither vendor lists versions:
+
+| key | oracle | paired |
+|---|---|---|
+| `ANDROID_NDK_VERSION` | Google's `repository2-3.xml`, newest `ndk;*` on `channel-0` (stable) | none: sdkmanager checks the archive |
+| `LITECORE_VERSION` | the archive LiteRT main's Samsung vendor SDK fetches (`ci/tools/python/vendor_sdk/samsung/setup.py`) | `LITECORE_SHA256` |
+| `QNN_SDK_VERSION` | the Community zip LiteRT main's `third_party/qairt/workspace.bzl` fetches, refused unless the software center serves it | `QNN_SDK_LINUX_ZIP_SHA256` |
+
+Following LiteRT main means "the newest the consumer that uses it has validated", not the newest
+Samsung or Qualcomm have uploaded (Samsung served v1.2.1 while LiteRT pinned v1.2.0 on
+2026-11-05); a hand pin ahead of the oracle is reported as behind until the oracle catches up.
+
 ## Pins, and why Node is one of them
 
 `RENOVATE_NODE_VERSION` and `RENOVATE_VERSION` live in

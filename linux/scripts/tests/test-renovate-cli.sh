@@ -35,6 +35,7 @@ t_assert_eq 'print-bin|0|1|0|0|cargo|||600|repo' \
   "$(parse_fixture local --refresh --print-bin --managers=cargo repo)"
 t_assert_eq 'report|0|0|1|1||||600|' "$(parse_fixture fleet --here --in-place)"
 t_assert_eq 'report|0|0|0|1||||600|' "$(parse_fixture fleet --vendored)"
+t_assert_eq 'report|0|0|0|0||||600|repo' "$(parse_fixture local --no-bump repo)"
 
 t_case "missing values and options from the other driver are refused"
 for flag in --managers --only --skip --timeout; do
@@ -44,7 +45,7 @@ done
 for flag in --only=x --here --vendored --timeout=0 --unknown; do
   t_assert_fails parse_fixture local "${flag}"
 done
-for flag in --refresh --print-bin; do
+for flag in --refresh --print-bin --no-bump; do
   t_assert_fails parse_fixture fleet "${flag}"
 done
 t_assert_fails parse_fixture fleet --submodule-path=first

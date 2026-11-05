@@ -8,7 +8,7 @@ source "${SCRIPT_DIR}/../../android-build-preamble.sh"
 # Arguments
 GST_VERSION="${GSTREAMER_VERSION:-1.29.2}"
 ANDROID_SDK="${ANDROID_HOME:-/opt/android-sdk}"
-ANDROID_NDK="${ANDROID_NDK_HOME:-${ANDROID_HOME:-/opt/android-sdk}/ndk/${ANDROID_NDK_VERSION:-29.0.14206865}}"
+ANDROID_NDK="${ANDROID_NDK_HOME:-${ANDROID_HOME:-/opt/android-sdk}/ndk/${ANDROID_NDK_VERSION:-30.0.16248370}}"
 INSTALL_PATH="${GSTREAMER_ROOT_ANDROID:-/opt/android/gstreamer}"
 TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-arm64}}"
 

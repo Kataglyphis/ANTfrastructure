@@ -34257,6 +34257,70 @@
   "why": "FLUTTER_VERSION moved without its commit makes every Windows Flutter install refuse"
  },
  {
+  "id": "lib.bump-android-ndk-stable-channel",
+  "target": "docs/scripts/bump_tools.py",
+  "find": "        if '<channelRef ref=\"channel-0\"/>' in m.group(2)\n",
+  "replace": "        if m.group(2) is not None\n",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "a beta on channel-1 must never become the NDK pin"
+ },
+ {
+  "id": "lib.bump-litecore-sha-pair",
+  "target": "docs/scripts/bump_tools.py",
+  "find": "        extras[\"LITECORE_SHA256\"] = bv.sha256_of_url(_LITECORE_URL.format(v=v))\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "a LiteCore bump without its sha is an unverified download that still looks pinned"
+ },
+ {
+  "id": "lib.bump-qnn-sdk-served",
+  "target": "docs/scripts/bump_tools.py",
+  "find": "    if v != cur and not bv.artifact_exists(url):\n        raise RuntimeError(f\"QAIRT {v} is not served at {url}\")\n",
+  "replace": "    if v != cur and not bv.artifact_exists(url):\n        pass\n",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "a version LiteRT names but the software center does not serve would pin a 404"
+ },
+ {
+  "id": "lib.qnn-community-zip-fetched",
+  "target": "linux/scripts/01-core/qnn-sdk.sh",
+  "find": "        zip=\"$(qnn_pinned_community_zip)\"\n",
+  "replace": "        zip=\"\"\n",
+  "test": "bash linux/scripts/tests/test-qnn-community-zip.sh",
+  "why": "without the fetch an empty drop dir silently builds the arm64 image without QNN"
+ },
+ {
+  "id": "lib.qnn-community-sha-required",
+  "target": "linux/scripts/01-core/qnn-sdk.sh",
+  "find": "    [ -n \"${sha}\" ] || err \"QNN: QNN_SDK_VERSION=${version} without QNN_SDK_LINUX_ZIP_SHA256 -- a pin moves with its sha (bump_versions.py spec_qnn_sdk)\"\n",
+  "replace": "    sha=\"${sha:-0}\"\n",
+  "test": "bash linux/scripts/tests/test-qnn-community-zip.sh",
+  "why": "a pinned version without its checksum would be downloaded unverified"
+ },
+ {
+  "id": "lib.litecore-verified-download",
+  "target": "linux/scripts/03-media/build/litert/android/build-android.sh",
+  "find": "download_verified_file \"${litecore_url}\" \"${LITECORE_SHA256}\" \"${litecore_root}/litecore.tar.gz\" \\\n",
+  "replace": "download_file \"${litecore_url}\" \"${litecore_root}/litecore.tar.gz\" \\\n",
+  "test": "bash linux/scripts/tests/test-litecore-pin.sh",
+  "why": "an unverified fetch would accept Samsung's next silent re-pack and skip the mirror"
+ },
+ {
+  "id": "renovate.pin-sweep-rides-the-report",
+  "target": "linux/scripts/renovate-local.sh",
+  "find": "  report) run_report; report_default_submodules; report_lock_maintenance; report_pin_sweep ;;\n",
+  "replace": "  report) run_report; report_default_submodules; report_lock_maintenance ;;\n",
+  "test": "bash linux/scripts/tests/test-renovate-pin-sweep.sh",
+  "why": "a report that skips the sweep calls a stale vendor pin current"
+ },
+ {
+  "id": "renovate.no-bump-is-local",
+  "target": "linux/scripts/renovate-cli.sh",
+  "find": "    local:--no-bump) assign_renovate_options BUMP 0 ;;\n",
+  "replace": "    fleet:--no-bump) assign_renovate_options BUMP 0 ;;\n",
+  "test": "bash linux/scripts/tests/test-renovate-cli.sh",
+  "why": "the opt-out belongs to the hub driver that runs the sweep"
+ },
+ {
   "id": "lib.iree-host-once-no-lock",
   "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
   "find": "    if ! flock -w \"${IREE_HOST_LOCK_WAIT_SECS:-14400}\" \"${lock}\"; then",

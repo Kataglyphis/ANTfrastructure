@@ -20,6 +20,7 @@ assign_renovate_options() {
 renovate_driver_option() {
   case "$1:$2" in
     local:--refresh) assign_renovate_options REFRESH 1 ;;
+    local:--no-bump) assign_renovate_options BUMP 0 ;;
     local:--print-bin) assign_renovate_options MODE print-bin ;;
     fleet:--here) assign_renovate_options HERE 1 ;;
     fleet:--github-owned) assign_renovate_options GITHUB_OWNED 1 ;;

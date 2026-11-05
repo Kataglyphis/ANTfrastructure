@@ -1,10 +1,37 @@
 #!/usr/bin/env bash
-# QNN SDK, arm64 only and opt-in: stage the login-gated zip in linux/qnn-sdk/. Mirrors Resolve-QnnSdk on Windows.
+# QNN SDK, arm64 only: a zip staged in linux/qnn-sdk/ wins, else the pinned Community zip is fetched. Mirrors Resolve-QnnSdk on Windows.
 
 [ -n "${_QNN_SDK_LOADED:-}" ] && return 0
 _QNN_SDK_LOADED=1
 
 : "${QNN_SDK_LINUX_LIBDIR:=aarch64-oe-linux-gcc11.2}"
+# community (default) fetches QNN_SDK_VERSION's public zip when nothing is staged; drop uses only a staged zip. docs/qnn-linux.md#staging
+: "${QNN_SDK_SOURCE:=community}"
+# A cache mount in Dockerfile.media; outside one the zip lands in the layer, so keep the mount.
+: "${QNN_SDK_CACHE_DIR:=/var/cache/qnn-sdk}"
+
+qnn_community_zip_url() {
+    printf 'https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/%s/v%s.zip\n' "$1" "$1"
+}
+
+# Echoes the pinned zip's path after a verified fetch (asset mirror first); empty = no pin or QNN_SDK_SOURCE=drop.
+qnn_pinned_community_zip() {
+    local version="${QNN_SDK_VERSION:-}" sha="${QNN_SDK_LINUX_ZIP_SHA256:-}" dest
+    [ "${QNN_SDK_SOURCE}" = community ] || { info "QNN: QNN_SDK_SOURCE=${QNN_SDK_SOURCE}, the pinned Community zip is not fetched" >&2; return 0; }
+    [ -n "${version}" ] || { info "QNN: QNN_SDK_VERSION empty, nothing to fetch" >&2; return 0; }
+    [ -n "${sha}" ] || err "QNN: QNN_SDK_VERSION=${version} without QNN_SDK_LINUX_ZIP_SHA256 -- a pin moves with its sha (bump_versions.py spec_qnn_sdk)"
+    command -v download_verified_file >/dev/null 2>&1 || err "QNN: download_verified_file is not loaded (01-core/downloads.sh)"
+    dest="${QNN_SDK_CACHE_DIR}/qairt-${version}.zip"
+    mkdir -p "${QNN_SDK_CACHE_DIR}"
+    if [ -f "${dest}" ] && download_verify_sha256 "${sha,,}" "${dest}" >/dev/null 2>&1; then
+        info "QNN: pinned Community zip ${version} already in ${QNN_SDK_CACHE_DIR}" >&2
+    else
+        info "QNN: fetching the pinned Community zip ${version} (asset mirror first)" >&2
+        download_verified_file "$(qnn_community_zip_url "${version}")" "${sha,,}" "${dest}" \
+            || err "QNN: the Community zip ${version} could not be fetched or did not match QNN_SDK_LINUX_ZIP_SHA256"
+    fi
+    printf '%s\n' "${dest}"
+}
 
 # Echoes QNN_HOME (empty = QNN off); logs go to stderr because info() writes to the captured stdout.
 resolve_qnn_sdk() {
@@ -19,16 +46,20 @@ resolve_qnn_sdk() {
     local zip_count
     zip_count="$(printf '%s\n' "$zips" | grep -c . 2>/dev/null)" || zip_count=0
 
-    if [ "$zip_count" -eq 0 ]; then
-        info "QNN: no SDK zip in ${drop_dir} — QNN off (default, supported state)" >&2
-        return 0
-    fi
     if [ "$zip_count" -gt 1 ]; then
         err "QNN: exactly one SDK zip may sit in ${drop_dir} (found ${zip_count})"
     fi
 
     local zip
-    zip="$(printf '%s\n' "$zips" | head -1)"
+    if [ "$zip_count" -eq 0 ]; then
+        zip="$(qnn_pinned_community_zip)"
+        if [ -z "${zip}" ]; then
+            info "QNN: no SDK zip in ${drop_dir} and no pinned Community zip — QNN off (supported state)" >&2
+            return 0
+        fi
+    else
+        zip="$(printf '%s\n' "$zips" | head -1)"
+    fi
 
     local sha="${QNN_SDK_LINUX_ZIP_SHA256:-}"
     if [ -n "$sha" ]; then

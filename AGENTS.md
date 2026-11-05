@@ -295,7 +295,7 @@ owns the bare `:latest`: Linux does, and Windows keeps its lane qualifier (owner
 - **A variant exists only for a stack that cannot ship in `:latest`** (owner directive
   2026-09-22): CUDA and ROCm are multi-GB, driver-bound and mutually exclusive. An accelerator
   whose runtime fits is built INTO the default image: Hailo-10H (amd64/arm64, `Dockerfile.torch`)
-  and QNN (arm64, when the QAIRT zip is staged — `docs/qnn-linux.md`). There is no `:latest-hailo`
+  and QNN (arm64, from the pinned public QAIRT Community zip — `docs/qnn-linux.md`). There is no `:latest-hailo`
   or `:latest-qnn`; the standalone `:hailo` variant and `Dockerfile.hailo` were retired on
   2026-09-22 as a duplicate of the standard build. A variant chain builds a variant (§ Build
   Workflow), never `ENABLE_*` flipped on the default one: that pushed GPU bytes under the default
@@ -619,9 +619,10 @@ it goes and the layout it needs: [`windows-cross-builds.md`](docs/windows-cross-
 
 ### QNN / Qualcomm AI Engine Direct Setup (Optional, #121)
 
-Login-gated and EULA-bound like TensorRT: staged by hand, never committed, and only the README
-rides along on each lane. Windows: [`windows-cross-builds.md`](docs/windows-cross-builds.md);
-Linux ARM64: [`qnn-linux.md`](docs/qnn-linux.md).
+Windows stages the login-gated, EULA-bound zip by hand, never committed, only the README riding
+along: [`windows-cross-builds.md`](docs/windows-cross-builds.md). Linux arm64 fetches the public
+Community zip at `QNN_SDK_VERSION` through the asset mirror; a zip in `linux/qnn-sdk/` is the
+override and must match the pin: [`qnn-linux.md`](docs/qnn-linux.md).
 
 ### Windows Build Notes
 

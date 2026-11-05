@@ -40,17 +40,27 @@ HOST_CXX="$(resolve_host_compiler cxx)"
 
 mkdir -p litert/build-android && cd litert/build-android
 
-# The default LiteCore URL (v2.2.0 and v2.3.0 alike) went 404 (upstream main dropped its 1.1.0/ path segment), and file(DOWNLOAD) checks neither status nor hash.
-litecore_url="https://soc-developer.semiconductor.samsung.com/api/v1/resource/download-file/ai-litecore-ubuntu2404-v1.1.0.tar.gz"
-# Samsung re-packs this archive under the same name (2026-11-03: new bytes, same headers set); re-pin from the live file, never relax the check.
-litecore_sha256="97b00aea3bf2ccef9a67893253a3455ee63ba601f0141d0de9743f4d313d7c41"
+# Upstream's file(DOWNLOAD) checks neither status nor hash, so the headers come from the pin in versions.env through the asset mirror (CON227).
+: "${LITECORE_VERSION:?LITECORE_VERSION not forwarded into the android stage (see Dockerfile.android ARG/ENV)}"
+: "${LITECORE_SHA256:?LITECORE_SHA256 not forwarded into the android stage (see Dockerfile.android ARG/ENV)}"
+if [ -f "$(dirname "${BASH_SOURCE[0]}")/../../../../01-core/modules.sh" ]; then
+  # shellcheck source=../../../../01-core/modules.sh disable=SC1091
+  source "$(dirname "${BASH_SOURCE[0]}")/../../../../01-core/modules.sh"
+else
+  # The image copies this file one level shallower than the repo, so its core is absolute: see Dockerfile.android.
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/modules.sh
+fi
+source_module download-loader.sh
+download_module_load
+litecore_url="https://soc-developer.semiconductor.samsung.com/api/v1/resource/download-file/ai-litecore-ubuntu2404-v${LITECORE_VERSION}.tar.gz"
 litecore_root="${PWD}/_litecore"
 mkdir -p "${litecore_root}"
-curl -fsSL --retry 3 -o "${litecore_root}/litecore.tar.gz" "${litecore_url}"
-printf '%s  %s\n' "${litecore_sha256}" "${litecore_root}/litecore.tar.gz" | sha256sum -c - \
-  || { echo "FATAL: Samsung AI LiteCore headers do not match the pinned sha256 (${litecore_url})" >&2; exit 1; }
+# Samsung re-packs an archive under the same name (2026-11-03): a mismatch means re-pin from the live file, never relax the check.
+download_verified_file "${litecore_url}" "${LITECORE_SHA256}" "${litecore_root}/litecore.tar.gz" \
+  || { echo "FATAL: Samsung AI LiteCore v${LITECORE_VERSION} headers do not match LITECORE_SHA256 (${litecore_url})" >&2; exit 1; }
 tar -xzf "${litecore_root}/litecore.tar.gz" -C "${litecore_root}"
-litecore_include="${litecore_root}/exynos-ai-litecore-v1.1.0/include"
+litecore_include="${litecore_root}/exynos-ai-litecore-v${LITECORE_VERSION}/include"
 [ -f "${litecore_include}/graph_wrapper_api.h" ] \
   || { echo "FATAL: ${litecore_include}/graph_wrapper_api.h missing from the LiteCore archive" >&2; exit 1; }
 

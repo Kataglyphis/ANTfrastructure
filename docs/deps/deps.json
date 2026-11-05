@@ -130,6 +130,13 @@
               "spdx": "Apache-2.0"
             },
             {
+              "name": "Qualcomm AI Runtime (QAIRT) Community SDK (arm64: ORT QNN EP backends)",
+              "var": "QNN_SDK_VERSION",
+              "url": "https://softwarecenter.qualcomm.com/",
+              "license": "Qualcomm AI Runtime Community License (object-code distribution as part of a product only)",
+              "spdx": "LicenseRef-Proprietary-EULA"
+            },
+            {
               "name": "OpenCV",
               "var": "OPENCV_VERSION",
               "url": "https://opencv.org/",
@@ -336,11 +343,18 @@
                 "url": "https://gitlab.freedesktop.org/gstreamer/gstreamer",
                 "ref": "same refs as the Media Layer rows above"
               }
+            },
+            {
+              "name": "Samsung Exynos AI LiteCore headers (LiteRT android build)",
+              "var": "LITECORE_VERSION",
+              "url": "https://soc-developer.semiconductor.samsung.com/global/development/ai-litecore",
+              "license": "Exynos AI LiteCore License (headers compiled against; no library shipped)",
+              "spdx": "LicenseRef-Proprietary-EULA"
             }
           ]
         },
         {
-          "title": "Optional GPU \u2014 NVIDIA",
+          "title": "Optional GPU — NVIDIA",
           "dockerfile": "Dockerfile.nvidia",
           "entries": [
             {
@@ -367,7 +381,7 @@
           ]
         },
         {
-          "title": "Optional \u2014 NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only)",
+          "title": "Optional — NVIDIA DeepStream (nvidia variant, ENABLE_DEEPSTREAM=true only)",
           "dockerfile": "Dockerfile.media",
           "entries": [
             {
@@ -415,7 +429,7 @@
           ]
         },
         {
-          "title": "Optional GPU \u2014 AMD",
+          "title": "Optional GPU — AMD",
           "dockerfile": "Dockerfile.amd",
           "entries": [
             {
@@ -435,7 +449,7 @@
           ]
         },
         {
-          "title": "Optional Accelerator \u2014 Hailo",
+          "title": "Optional Accelerator — Hailo",
           "dockerfile": "Dockerfile.torch",
           "entries": [
             {
@@ -757,7 +771,7 @@
               "var": null,
               "version_fixed": "bundled with Python",
               "url": "https://github.com/python/cpython-source-deps",
-              "license": "various (Apache 2.0, MIT, PD, \u2026)",
+              "license": "various (Apache 2.0, MIT, PD, …)",
               "spdx": "LicenseRef-Distro-Bundle",
               "source": {
                 "kind": "upstream-tag",
@@ -895,7 +909,7 @@
               }
             },
             {
-              "name": "GStreamer meson subprojects (glib, orc, libnice, x264, openh264, \u2026)",
+              "name": "GStreamer meson subprojects (glib, orc, libnice, x264, openh264, …)",
               "var": null,
               "version_fixed": "per wrap files",
               "url": "https://gstreamer.freedesktop.org/",
@@ -922,7 +936,7 @@
               }
             },
             {
-              "name": "Rust crates linked into gstrswebrtc.dll and gstrsrtp.dll (gstreamer-rs, gtk-rs-core, tokio, rustls, ring, \u2026)",
+              "name": "Rust crates linked into gstrswebrtc.dll and gstrsrtp.dll (gstreamer-rs, gtk-rs-core, tokio, rustls, ring, …)",
               "var": null,
               "version_fixed": "pinned by gst-plugins-rs's Cargo.lock at the GStreamer tag",
               "url": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs",
@@ -1233,7 +1247,7 @@
               "spdx": "MIT"
             },
             {
-              "name": "vcpkg packages (zlib, protobuf \u2014 linked into builds)",
+              "name": "vcpkg packages (zlib, protobuf — linked into builds)",
               "var": null,
               "version_fixed": "vcpkg baseline",
               "url": "https://github.com/microsoft/vcpkg",
@@ -1479,7 +1493,7 @@
               "spdx": "Apache-2.0"
             },
             {
-              "name": "Stevedore (Windows builds \u2014 bundled docker.exe)",
+              "name": "Stevedore (Windows builds — bundled docker.exe)",
               "var": null,
               "version_fixed": "host install",
               "url": "https://github.com/slonopotamus/stevedore",

@@ -21,6 +21,23 @@
   end. The live server carries the fix and cut the bucket from 104.0 to 90.1 GiB. `test-sccache-evict.sh` runs the
   script's real text against stubs, and `lib.sccache-evict-reads-whole-list` proves it
   ([failure-modes.md](docs/failure-modes.md#sccache-evictservice-fails-with-sort-write-failed-standard-output-broken-pipe)).
+## 2026-11-05 — The ARM SDK pins move with the Renovate call; QNN on arm64 needs no staged zip
+
+- Android NDK r30 (`30.0.16248370`), LiteCore v1.2.0 (the archive LiteRT main builds against) and
+  QAIRT 2.51.1.261002, the public "Qualcomm AI Runtime Community" zip, are pinned in `versions.env`.
+  The LiteCore pin left `build-android.sh` for `LITECORE_VERSION`/`LITECORE_SHA256`, forwarded by
+  `Dockerfile.android`, and the archive comes through the asset mirror (CON227 done).
+- `resolve_qnn_sdk` fetches the pinned Community zip into the `qnn-sdk-<arch>` cache mount every
+  QNN-resolving media RUN now carries, so the arm64 image builds the ORT QNN EP without a hand-staged
+  zip; a zip in `linux/qnn-sdk/` overrides it and must match the pin, `QNN_SDK_SOURCE=drop` keeps
+  the old contract. The Community licence allows object-code distribution as part of a product only;
+  the image ships the backend `.so` files as before ([qnn-linux.md](docs/qnn-linux.md#staging)).
+- `bump_versions.py` gained `spec_android_ndk`, `spec_litecore` and `spec_qnn_sdk` (the vendors list
+  nothing, so LiteRT main is the oracle for the two SDKs), and `renovate-local.sh` runs the sweep in
+  the same call: `--check` on report, `--write` plus `sync_versions.py --write` on apply, `--no-bump`
+  opts out ([the sweep rides the Renovate call](docs/dependency-updates.md#the-sweep-rides-the-renovate-call)).
+  Suites: `test-qnn-community-zip.sh`, `test-litecore-pin.sh`, `test-renovate-pin-sweep.sh`, three
+  offline spec cases; eight recipes bite.
 
 ## 2026-11-05 — The nvidia lanes stop erasing each other's apt lists
 

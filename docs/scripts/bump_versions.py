@@ -97,13 +97,17 @@ from bump_images import (  # noqa: F401  re-exported: tests and the spec modules
 from bump_tools import (  # noqa: F401  re-exported: tests and the spec modules reach these as bv.<name>
     _LITERT_LM_GPU_DLL_PINS,
     _same_major_node,
+    android_ndk_stable_versions,
     derive_protoc_from_litert_lm,
+    litecore_version_from_litert,
     litert_lm_gpu_pins,
     node_pins,
     protoc_from_protobuf_cmake,
+    qairt_version_from_litert,
     spec_abseil,
     spec_actionlint,
     spec_amf_headers,
+    spec_android_ndk,
     spec_appimagetool,
     spec_binaryen,
     spec_cargo_c,
@@ -113,6 +117,7 @@ from bump_tools import (  # noqa: F401  re-exported: tests and the spec modules 
     spec_git,
     spec_gstreamer,
     spec_hadolint,
+    spec_litecore,
     spec_litert_lm,
     spec_node,
     spec_nuget,
@@ -122,6 +127,7 @@ from bump_tools import (  # noqa: F401  re-exported: tests and the spec modules 
     spec_psscriptanalyzer,
     spec_pwsh,
     spec_python,
+    spec_qnn_sdk,
     spec_renovate_node,
     spec_rust,
     spec_shellcheck,
@@ -274,6 +280,9 @@ SAFE: list[tuple[str, Spec, str]] = [
     ("WASM_PACK_VERSION", spec_wasm_pack, "linux package image web-lane layer"),
     ("LAVAPIPE_VERSION", spec_lavapipe, "windows lavapipe ICD (amd64 + arm64)"),
     ("FLUTTER_VERSION", spec_flutter, "linux sdk flutter layer"),
+    ("ANDROID_NDK_VERSION", spec_android_ndk, "linux android stage (every android library)"),
+    ("LITECORE_VERSION", spec_litecore, "linux android litert stage"),
+    ("QNN_SDK_VERSION", spec_qnn_sdk, "linux media arm64 (onnxruntime, genai, tvm, app wheelhouse)"),
     ("WIX_VERSION", spec_wix, "windows base scoop layer"),
     ("WIX_UI_EXT_VERSION", spec_wix_ui, "windows base scoop layer"),
     ("WIX_FIREWALL_EXT_VERSION", spec_wix_firewall, "windows final stage"),
@@ -343,7 +352,7 @@ MANUAL = [
     # Windows rocm lane: slaved to MIGRAPHX_WINDOWS_COMMIT's requirements.txt, re-derived with it.
     "MIGRAPHX_WINDOWS_ABSEIL_VERSION", "MIGRAPHX_WINDOWS_PROTOBUF_VERSION",
     "MIGRAPHX_WINDOWS_MSGPACK_VERSION", "MIGRAPHX_WINDOWS_SQLITE_VERSION", "MIGRAPHX_WINDOWS_SQLITE_YEAR",
-    "ANDROID_SDK_VERSION", "ANDROID_NDK_VERSION", "ANDROID_COMPILE_SDK",
+    "ANDROID_SDK_VERSION", "ANDROID_COMPILE_SDK",
     "ANDROID_BUILD_TOOLS", "ANDROID_EXTRA_COMPILE_SDK", "ANDROID_EXTRA_BUILD_TOOLS",
     "ANDROID_CMAKE_VERSION", "ANDROID_API_LEVEL",
     "UBUNTU_VERSION", "UBUNTU_CODENAME", "WINDOWS_LTSC", "WINDOWS_SDK_BUILD",
@@ -409,8 +418,8 @@ def derived_keys() -> dict[str, str]:
 SHA_PAIR_EXEMPT = {
     # EULA-gated manual download, deliberately empty.
     "TENSORRT_ZIP_SHA256",
-    # Login-gated Qualcomm SDK zips, staged by hand per lane.
-    "QNN_SDK_ZIP_SHA256", "QNN_SDK_LINUX_ZIP_SHA256",
+    # The login-gated Windows Qualcomm SDK zip, staged by hand (Linux pins the public Community zip through spec_qnn_sdk).
+    "QNN_SDK_ZIP_SHA256",
     # Always-latest bootstrap installers: the hash is re-reviewed by hand on each deliberate update.
     "RUSTUP_INIT_SHA256",   # sh.rustup.rs
     "SCOOP_INSTALLER_SHA256",  # get.scoop.sh

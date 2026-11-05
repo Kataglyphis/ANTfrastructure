@@ -431,3 +431,63 @@ def spec_ubuntu_digest(cur: str) -> SpecResult:
 def spec_windows_digest(cur: str) -> SpecResult:
     env = bv.read_env()
     return bv.mcr_manifest_digest("windows/servercore", f"ltsc{env['WINDOWS_LTSC']}"), {}
+
+
+_NDK_REPOSITORY_XML = "https://dl.google.com/android/repository/repository2-3.xml"
+_LITERT_MAIN_RAW = "https://raw.githubusercontent.com/google-ai-edge/LiteRT/main/"
+_LITECORE_URL = "https://soc-developer.semiconductor.samsung.com/api/v1/resource/download-file/ai-litecore-ubuntu2404-v{v}.tar.gz"
+_QAIRT_COMMUNITY_URL = "https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/{v}/v{v}.zip"
+
+
+def android_ndk_stable_versions(xml: str) -> list[str]:
+    """Every ndk;<version> package Google's repository index puts on the stable channel (channel-0)."""
+    return [
+        m.group(1)
+        for m in re.finditer(r'<remotePackage path="ndk;([0-9.]+)">(.*?)</remotePackage>', xml, re.DOTALL)
+        if '<channelRef ref="channel-0"/>' in m.group(2)
+    ]
+
+
+def spec_android_ndk(cur: str) -> SpecResult:
+    """The newest stable NDK as sdkmanager names it (30.0.16248370); the archive's sha1 is sdkmanager's to check."""
+    versions = android_ndk_stable_versions(bv.http_text(_NDK_REPOSITORY_XML))
+    if not versions:
+        raise RuntimeError("no stable ndk;* package in repository2-3.xml")
+    return max(versions, key=lambda v: tuple(int(x) for x in v.split("."))), {}
+
+
+def litecore_version_from_litert(text: str) -> str | None:
+    """The LiteCore archive LiteRT main's Samsung vendor SDK fetches (ai-litecore-ubuntu2404-v1.2.0.tar.gz -> 1.2.0)."""
+    m = re.search(r"ai-litecore-ubuntu2404-v(\d+\.\d+\.\d+)\.tar\.gz", text)
+    return m.group(1) if m else None
+
+
+def spec_litecore(cur: str) -> SpecResult:
+    """Samsung lists no versions, so the pin follows the archive LiteRT main builds against, and the sha moves with it."""
+    v = litecore_version_from_litert(bv.http_text(_LITERT_MAIN_RAW + "ci/tools/python/vendor_sdk/samsung/setup.py"))
+    if v is None:
+        raise RuntimeError("LiteRT main's samsung vendor SDK names no ai-litecore-ubuntu2404 archive")
+    extras = {}
+    if v != cur and bv.WRITE_MODE:
+        extras["LITECORE_SHA256"] = bv.sha256_of_url(_LITECORE_URL.format(v=v))
+    return v, extras
+
+
+def qairt_version_from_litert(text: str) -> str | None:
+    """The QAIRT Community zip LiteRT main's workspace fetches (All/2.51.1.261002/v2.51.1.261002.zip -> 2.51.1.261002)."""
+    m = re.search(r"Qualcomm_AI_Runtime_Community/All/([0-9.]+)/v\1\.zip", text)
+    return m.group(1) if m else None
+
+
+def spec_qnn_sdk(cur: str) -> SpecResult:
+    """Qualcomm's software center lists nothing, so the pin follows LiteRT main; the zip must be served and its sha moves with it."""
+    v = qairt_version_from_litert(bv.http_text(_LITERT_MAIN_RAW + "third_party/qairt/workspace.bzl"))
+    if v is None:
+        raise RuntimeError("LiteRT main's qairt workspace names no Qualcomm_AI_Runtime_Community zip")
+    url = _QAIRT_COMMUNITY_URL.format(v=v)
+    if v != cur and not bv.artifact_exists(url):
+        raise RuntimeError(f"QAIRT {v} is not served at {url}")
+    extras = {}
+    if v != cur and bv.WRITE_MODE:
+        extras["QNN_SDK_LINUX_ZIP_SHA256"] = bv.sha256_of_url(url)
+    return v, extras
