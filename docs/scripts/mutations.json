@@ -35297,6 +35297,30 @@
   "why": "if the model already emits the answer, the constrained run proves nothing"
  },
  {
+  "id": "provenance.meson-directory-from-record",
+  "target": "windows/scripts/modules/WindowsNativeProvenance.Common.psm1",
+  "find": "    $directory = Get-MesonSubprojectDirectory -Dll $Dll -SourceDir $SourceDir\n",
+  "replace": "    $directory = Join-Path $SourceDir \"subprojects\\\\$(if ($Wrap.ContainsKey($sub)) { $Wrap[$sub].Directory } else { $sub })\"\n",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/provenance.meson-directory-from-record.json",
+  "why": "provisioning extracts libffi away from its wrap's directory key, so the wrap's name fails the gate after a full GStreamer build"
+ },
+ {
+  "id": "provenance.defects-reported-together",
+  "target": "windows/scripts/modules/WindowsNativeProvenance.Common.psm1",
+  "find": "if ($files.Count -eq 0) { $defects.Add(\"$($origin.Key) ($($origin.Directory)) has no license or notice file; $($full) cannot ship without one\"); continue }",
+  "replace": "if ($files.Count -eq 0) { throw \"$($origin.Key) has no license or notice file\" }",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/provenance.defects-reported-together.json",
+  "why": "each defect reported alone costs a further half-hour build"
+ },
+ {
+  "id": "provenance.libffi-identity-is-the-pin",
+  "target": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+  "find": "        $libffi.Url = Get-GstLibffiArchiveUrl -Version $libffiVer\n",
+  "replace": "",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/provenance.libffi-identity-is-the-pin.json",
+  "why": "the manifest would name the release of the bundled wrap, not the pinned port the build ships"
+ },
+ {
   "id": "provenance.bytes-unchecked",
   "target": "windows/scripts/modules/WindowsNativeProvenance.Common.psm1",
   "find": "elseif ((Get-FileHash -LiteralPath $full -Algorithm SHA256).Hash -ine $Entry.sha256) {",

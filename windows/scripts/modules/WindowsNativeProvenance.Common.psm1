@@ -235,7 +235,7 @@ function Get-MesonInstalledDll {
     foreach ($target in @(Read-MesonInfo -BuildDir $BuildDir -Name 'intro-targets.json')) {
         if (-not $target.installed) { continue }
         foreach ($installed in @($target.install_filename)) {
-            if ("$installed" -imatch '\.dll$') { [pscustomobject]@{ Path = "$installed"; Subproject = $target.subproject } }
+            if ("$installed" -imatch '\.dll$') { [pscustomobject]@{ Path = "$installed"; Subproject = $target.subproject; DefinedIn = "$($target.defined_in)" } }
         }
     }
 }
@@ -248,28 +248,37 @@ function Get-MesonSubprojectVersion {
     return $versions
 }
 
+# A provisioned wrap need not extract where its directory key says, so meson's own record of the target locates the tree.
+function Get-MesonSubprojectDirectory {
+    param([object]$Dll, [string]$SourceDir)
+    $prefix = [IO.Path]::GetFullPath((Join-Path $SourceDir 'subprojects')).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    if (-not $Dll.DefinedIn) { throw "$($Dll.Path) has no defined_in in meson's records" }
+    $definedIn = [IO.Path]::GetFullPath($Dll.DefinedIn)
+    if (-not $definedIn.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "$($Dll.Path) comes from subproject '$($Dll.Subproject)', defined outside $prefix at $definedIn"
+    }
+    return $prefix + ($definedIn.Substring($prefix.Length) -split '[\\/]')[0]
+}
+
 function Resolve-MesonDllSource {
     param([object]$Dll, [hashtable]$Wrap, [hashtable]$Version, [string]$SourceDir, [hashtable]$RootSource)
     $sub = "$($Dll.Subproject)"
     if (-not $sub) {
         return @{ Key = 'gstreamer'; Directory = $SourceDir; Source = $RootSource }
     }
+    $directory = Get-MesonSubprojectDirectory -Dll $Dll -SourceDir $SourceDir
     if ($Wrap.ContainsKey($sub)) {
         $w = $Wrap[$sub]
         return @{
             Key       = $sub
-            Directory = Join-Path $SourceDir "subprojects\$($w.Directory)"
+            Directory = $directory
             Source    = @{ Name = $sub; Version = $Version[$sub]; Url = $w.Url; Sha256 = $w.Sha256; Revision = $w.Revision; PatchUrl = $w.PatchUrl; PatchHash = $w.PatchHash }
         }
-    }
-    $inTree = Join-Path $SourceDir "subprojects\$sub"
-    if (-not (Test-Path -LiteralPath $inTree -PathType Container)) {
-        throw "$($Dll.Path) comes from subproject '$sub', which has neither a wrap nor a directory in $SourceDir"
     }
     $source = $RootSource.Clone()
     $source['Name'] = $sub
     $source['Version'] = $Version[$sub]
-    return @{ Key = $sub; Directory = $inTree; Source = $source }
+    return @{ Key = $sub; Directory = $directory; Source = $source }
 }
 
 <#
@@ -313,17 +322,22 @@ function Get-MesonProvenanceEntry {
     $version = Get-MesonSubprojectVersion -BuildDir $BuildDir
     $notices = @{}
     $prefix = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
-    return @(foreach ($dll in @(Get-MesonInstalledDll -BuildDir $BuildDir)) {
+    # Every defect at once: this runs after a half-hour build, so reporting one per run costs a build each.
+    $defects = [System.Collections.Generic.List[string]]::new()
+    $entries = @(foreach ($dll in @(Get-MesonInstalledDll -BuildDir $BuildDir)) {
             $full = [IO.Path]::GetFullPath($dll.Path)
-            if (-not $full.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw "$full is not installed under $Root" }
-            $origin = Resolve-MesonDllSource -Dll $dll -Wrap $Wrap -Version $version -SourceDir $SourceDir -RootSource $RootSource
+            if (-not $full.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { $defects.Add("$full is not installed under $Root"); continue }
+            try { $origin = Resolve-MesonDllSource -Dll $dll -Wrap $Wrap -Version $version -SourceDir $SourceDir -RootSource $RootSource }
+            catch { $defects.Add($_.Exception.Message); continue }
             if (-not $notices.ContainsKey($origin.Key)) {
-                $files = @(Get-NativeNoticeFile -Directory $origin.Directory)
-                if ($files.Count -eq 0) { throw "$($origin.Key) ($($origin.Directory)) has no license or notice file; $($full) cannot ship without one" }
+                $files = @(if (Test-Path -LiteralPath $origin.Directory -PathType Container) { Get-NativeNoticeFile -Directory $origin.Directory })
+                if ($files.Count -eq 0) { $defects.Add("$($origin.Key) ($($origin.Directory)) has no license or notice file; $($full) cannot ship without one"); continue }
                 $notices[$origin.Key] = Copy-NativeNotice -Root $Root -NoticeDir $NoticeDir -Name $origin.Key -File @($files.FullName)
             }
             New-NativeProvenanceEntry -Root $Root -File $full.Substring($prefix.Length) -Source $origin.Source -Notice $notices[$origin.Key]
         })
+    if ($defects.Count -gt 0) { throw "native provenance: $($defects.Count) defect(s): $($defects -join ' | ')" }
+    return $entries
 }
 
 Export-ModuleMember -Function Expand-NativeZipMember, Read-MesonWrapSource, Get-MesonWrapInventory, Get-NativeNoticeFile, Copy-NativeNotice,

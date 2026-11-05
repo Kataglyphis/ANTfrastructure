@@ -86,32 +86,38 @@ Describe 'Meson records to manifest entries' {
             $src = Join-Path $root 'src'
             $install = Join-Path $root 'inst'
             $info = Join-Path $root 'b\meson-info'
-            $null = New-Item -ItemType Directory -Force -Path (Join-Path $src 'subprojects\zlib-1.3'), (Join-Path $src 'subprojects\gst-good'), (Join-Path $install 'bin'), $info
+            $null = New-Item -ItemType Directory -Force -Path (Join-Path $src 'subprojects\zlib-1.3'), (Join-Path $src 'subprojects\gst-good'), (Join-Path $src 'subprojects\ffi'), (Join-Path $install 'bin'), $info
             Set-Content -LiteralPath (Join-Path $src 'subprojects\zlib.wrap') -Value "[wrap-file]`ndirectory = zlib-1.3`nsource_url = https://example.invalid/z.tar.xz`nsource_hash = abc`n`n[provide]`ndependency_names = zlib"
-            foreach ($file in 'src\LICENSE', 'src\subprojects\zlib-1.3\LICENSE', 'src\subprojects\gst-good\COPYING') { Set-Content -LiteralPath (Join-Path $root $file) -Value $file }
-            foreach ($dll in 'z-1.dll', 'gstgood.dll', 'gst.dll') { Set-Content -LiteralPath (Join-Path $install "bin\$dll") -Value $dll }
+            Set-Content -LiteralPath (Join-Path $src 'subprojects\ffi.wrap') -Value "[wrap-file]`ndirectory = ffi-as-released`nsource_url = https://example.invalid/f.tar.xz"
+            foreach ($file in 'src\LICENSE', 'src\subprojects\zlib-1.3\LICENSE', 'src\subprojects\gst-good\COPYING', 'src\subprojects\ffi\LICENSE') { Set-Content -LiteralPath (Join-Path $root $file) -Value $file }
+            foreach ($dll in 'z-1.dll', 'gstgood.dll', 'gst.dll', 'ffi-7.dll') { Set-Content -LiteralPath (Join-Path $install "bin\$dll") -Value $dll }
             $targets = @(
-                @{ installed = $true; subproject = 'zlib'; install_filename = @((Join-Path $install 'bin\z-1.dll'), (Join-Path $install 'lib\z.lib')) }
-                @{ installed = $true; subproject = 'gst-good'; install_filename = @(Join-Path $install 'bin\gstgood.dll') }
-                @{ installed = $true; subproject = $null; install_filename = @(Join-Path $install 'bin\gst.dll') }
+                @{ installed = $true; subproject = 'zlib'; defined_in = (Join-Path $src 'subprojects\zlib-1.3\meson.build'); install_filename = @((Join-Path $install 'bin\z-1.dll'), (Join-Path $install 'lib\z.lib')) }
+                @{ installed = $true; subproject = 'gst-good'; defined_in = (Join-Path $src 'subprojects/gst-good/ext/meson.build'); install_filename = @(Join-Path $install 'bin\gstgood.dll') }
+                @{ installed = $true; subproject = 'ffi'; defined_in = (Join-Path $src 'subprojects\ffi\src\meson.build'); install_filename = @(Join-Path $install 'bin\ffi-7.dll') }
+                @{ installed = $true; subproject = $null; defined_in = (Join-Path $src 'meson.build'); install_filename = @(Join-Path $install 'bin\gst.dll') }
                 @{ installed = $false; subproject = 'zlib'; install_filename = @() }
             )
             Set-Content -LiteralPath (Join-Path $info 'intro-targets.json') -Value ($targets | ConvertTo-Json -Depth 4)
-            Set-Content -LiteralPath (Join-Path $info 'intro-projectinfo.json') -Value (@{ version = '1.0'; subprojects = @(@{ name = 'zlib'; version = '1.3' }, @{ name = 'gst-good'; version = '1.0' }) } | ConvertTo-Json -Depth 4)
+            Set-Content -LiteralPath (Join-Path $info 'intro-projectinfo.json') -Value (@{ version = '1.0'; subprojects = @(@{ name = 'zlib'; version = '1.3' }, @{ name = 'gst-good'; version = '1.0' }, @{ name = 'ffi'; version = '3.2' }) } | ConvertTo-Json -Depth 4)
             $wrap = Get-MesonWrapInventory -SubprojectDir (Join-Path $src 'subprojects')
             Assert-Equal 'zlib-1.3' $wrap['zlib'].Directory 'the wrap names its directory'
             $call = @{ BuildDir = (Join-Path $root 'b'); SourceDir = $src; Root = $install; NoticeDir = 'n'; Wrap = $wrap; RootSource = @{ Name = 'gst'; Version = '1.0'; Url = 'https://example.invalid/g' } }
             $entries = @(Get-MesonProvenanceEntry @call)
-            Assert-Equal 3 $entries.Count 'only installed DLLs, never the import library'
+            Assert-Equal 4 $entries.Count 'only installed DLLs, never the import library'
             $byFile = @{}
             foreach ($e in $entries) { $byFile[$e.file] = $e }
             Assert-Equal 'abc' $byFile['bin\z-1.dll'].source['sha256'] 'a wrap keeps its source hash'
             Assert-Equal 'gst-good' $byFile['bin\gstgood.dll'].source['name'] 'an in-tree subproject keeps its own name'
             Assert-Equal 'https://example.invalid/g' $byFile['bin\gstgood.dll'].source['url'] 'and the root source URL'
             Assert-True (Test-Path -LiteralPath (Join-Path $install 'n\zlib\LICENSE')) 'the original text is staged'
-            Remove-Item -LiteralPath (Join-Path $src 'subprojects\zlib-1.3\LICENSE')
+            Assert-True (Test-Path -LiteralPath (Join-Path $install 'n\ffi\LICENSE')) 'a wrap extracted elsewhere is found through meson''s record'
+            Remove-Item -LiteralPath (Join-Path $src 'subprojects\zlib-1.3\LICENSE'), (Join-Path $src 'subprojects\ffi\LICENSE')
             Remove-Item -LiteralPath (Join-Path $install 'n') -Recurse
-            Assert-Throws { Get-MesonProvenanceEntry @call } -MessagePattern 'has no license or notice file'
+            Assert-Throws { Get-MesonProvenanceEntry @call } 'every missing notice' -MessagePattern '2 defect.*zlib.*no license or notice.*ffi.*no license or notice'
+            $targets[1].defined_in = (Join-Path $root 'elsewhere\meson.build')
+            Set-Content -LiteralPath (Join-Path $info 'intro-targets.json') -Value ($targets | ConvertTo-Json -Depth 4)
+            Assert-Throws { Get-MesonProvenanceEntry @call } 'a tree outside subprojects' -MessagePattern 'defined outside'
         } finally { Remove-TestDir $root }
     }
 }
@@ -120,6 +126,7 @@ Describe 'Wiring' {
     It 'writes the manifest before GStreamer cleanup, and pins libvpx through the driver' {
         $gst = Get-TestRepoText 'windows\scripts\build\Build-GstreamerFromSource.ps1'
         Assert-True ($gst.IndexOf('Assert-GstInstalledPlugins -resolvedInstallDir') -lt $gst.IndexOf('Complete-GstBuild -gstSrcDir')) 'the gate that writes it runs before cleanup'
+        Assert-TestScriptContains -ScriptPath 'windows\scripts\build\Build-GstreamerFromSource.ps1' -Literal '$libffi.Url = Get-GstLibffiArchiveUrl -Version $libffiVer', '$libffi.Sha256 = '''''
         Assert-TestScriptContains -ScriptPath 'windows\scripts\build\Build-GstreamerFromSource.ps1' -Literal '-Dvpx:default_library=static', '-Dvpx:cpp_std=c++17', '"diff_files = $diffName"'
         Assert-TestScriptContains -ScriptPath 'windows\scripts\patches\gstreamer\002-libvpx-clangcl-simd-flags.patch' -Literal "+if tgt_cc == 'msvs' and c.get_id() != 'clang-cl'"
         Assert-TestScriptContains -ScriptPath 'windows\Dockerfile.media-merge-builder' -Literal 'ARG LIBVPX_MESON_COMMIT', 'ARG LIBVPX_MESON_SHA256', 'WindowsNativeProvenance.Common.psm1'

@@ -200,6 +200,11 @@ function Invoke-MesonSubprojectArchive {
 }
 
 # git clone fails in Windows containers, so wrap-gits become tarballs; returns failures for the caller's fail-closed throw.
+function Get-GstLibffiArchiveUrl {
+    param([Parameter(Mandatory)][string]$Version)
+    return "https://gitlab.freedesktop.org/gstreamer/meson-ports/libffi/-/archive/meson-$Version/libffi-meson-$Version.tar.bz2"
+}
+
 function Invoke-GstWrapProvisioning {
     param(
         [Parameter(Mandatory)][string]$SubprojectDir,
@@ -245,7 +250,7 @@ function Invoke-GstWrapProvisioning {
     $libffiTarget = Join-Path $SubprojectDir 'libffi'
     if (-not (Test-Path $libffiTarget)) {
         & $say 'Force-downloading libffi...'
-        $libffiUrl = "https://gitlab.freedesktop.org/gstreamer/meson-ports/libffi/-/archive/meson-$LibffiVersion/libffi-meson-$LibffiVersion.tar.bz2"
+        $libffiUrl = Get-GstLibffiArchiveUrl -Version $LibffiVersion
         $libffiTmp = Join-Path $TempDir 'libffi.tar.bz2'
         $archive = Invoke-MesonSubprojectArchive -Url $libffiUrl -Archive $libffiTmp -Target $libffiTarget `
             -Description "libffi meson port $LibffiVersion" -Logger $Logger
@@ -340,4 +345,4 @@ function Assert-LibffiTypeExport {
 
 Export-ModuleMember -Function Invoke-MesonBuildSubprojectPatch, Select-MesonLogExcerpt,
     Get-MesonSetupFailureClass, Invoke-WrapDownload, Expand-SubprojectArchive,
-    Invoke-GstWrapProvisioning, Read-PeExportData, Assert-LibffiTypeExport
+    Invoke-GstWrapProvisioning, Get-GstLibffiArchiveUrl, Read-PeExportData, Assert-LibffiTypeExport

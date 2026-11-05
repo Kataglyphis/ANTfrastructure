@@ -471,7 +471,13 @@ Switch-BuildPhase '5. wrap prefetch + meson fixups'
     Install-GstVpxWrap -SubprojectDir $subprojDir
     # Before provisioning, which deletes the wraps it extracts; this is the manifest's source identity.
     $script:GstWrapInventory = Get-MesonWrapInventory -SubprojectDir $subprojDir
-    if ($script:GstWrapInventory.ContainsKey('libffi')) { $script:GstWrapInventory['libffi'].Revision = "meson-$libffiVer" }
+    # The build ships the pinned port, not the release the bundled wrap names, and no hash is pinned for it.
+    if ($script:GstWrapInventory.ContainsKey('libffi')) {
+        $libffi = $script:GstWrapInventory['libffi']
+        $libffi.Revision = "meson-$libffiVer"
+        $libffi.Url = Get-GstLibffiArchiveUrl -Version $libffiVer
+        $libffi.Sha256 = ''
+    }
     # @(): the helper comma-wraps, but an empty result must still expose .Count.
     $wrapFailures = @(Invoke-GstWrapProvisioning -SubprojectDir $subprojDir -TempDir $resolvedLogDir `
         -LibffiVersion $libffiVer -Logger { param($m) log $m })
