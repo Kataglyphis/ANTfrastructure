@@ -14,12 +14,14 @@ function Invoke-QnnZipCase {
         try {
             $zip = Join-Path $root 'v2.34.0.zip'
             New-TestZipFile -Path $zip -Member ([ordered]@{ 'qairt/2.34.0/include/QNN/QnnInterface.h' = '// fake' })
-            $script:QnnFetched = @()
+            # A list, shared by reference: a $script: counter inside the closure would land in the closure's own scope.
+            $fetched = [Collections.Generic.List[string]]::new()
             $state = @{
-                Zip   = $zip
-                Sha   = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash
-                Cache = (Join-Path $root 'cache')
-                Fetch = { param($Url, $Destination, $Sha) $script:QnnFetched += $Url; Copy-Item $zip $Destination }.GetNewClosure()
+                Zip     = $zip
+                Sha     = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash
+                Cache   = (Join-Path $root 'cache')
+                Fetched = $fetched
+                Fetch   = { param($Url, $Destination, $Sha) $fetched.Add($Url); Copy-Item $zip $Destination }.GetNewClosure()
             }
             & $Case $state
         } finally { Remove-TestDir -Path $root }
@@ -32,13 +34,13 @@ Describe 'Get-QnnCommunityZip' {
             param($s)
             $got = Get-MutQnnCommunityZip -Version '2.34.0' -ExpectedSha256 $s.Sha -CacheDir $s.Cache -Source 'community' -Fetch $s.Fetch
             Assert-Equal (Join-Path $s.Cache 'qairt-2.34.0.zip') $got 'the zip lands in the cache dir under its version'
-            Assert-Equal 1 $script:QnnFetched.Count 'one fetch'
-            Assert-Equal 'https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.34.0/v2.34.0.zip' $script:QnnFetched[0] 'the software center URL for that version'
+            Assert-Equal 1 $s.Fetched.Count 'one fetch'
+            Assert-Equal 'https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.34.0/v2.34.0.zip' $s.Fetched[0] 'the software center URL for that version'
             $null = Get-MutQnnCommunityZip -Version '2.34.0' -ExpectedSha256 $s.Sha -CacheDir $s.Cache -Source 'community' -Fetch $s.Fetch
-            Assert-Equal 1 $script:QnnFetched.Count 'a verified cached zip is not fetched again'
+            Assert-Equal 1 $s.Fetched.Count 'a verified cached zip is not fetched again'
             Set-Content -LiteralPath $got -Value 'corrupt'
             $null = Get-MutQnnCommunityZip -Version '2.34.0' -ExpectedSha256 $s.Sha -CacheDir $s.Cache -Source 'community' -Fetch $s.Fetch
-            Assert-Equal 2 $script:QnnFetched.Count 'a cached zip that fails its sha is fetched again'
+            Assert-Equal 2 $s.Fetched.Count 'a cached zip that fails its sha is fetched again'
         }
     }
 
