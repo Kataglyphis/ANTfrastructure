@@ -436,6 +436,8 @@ ds_build_components() {
   DS_TRT_LINK_FLAGS="-L${sdk}/lib"
   # A cross GCC ignores LIBRARY_PATH, so the target's CUDA lib dir and its libcuda stub ride the compiler string too.
   [ -z "${DS_TARGET_DEVICE:-}" ] || DS_TRT_LINK_FLAGS+=" -L/usr/local/cuda-${DS_CUDA_VER}/lib64 -L/usr/local/cuda-${DS_CUDA_VER}/lib64/stubs"
+  # The sysflags' -L/usr/lib/<triplet> (TensorRT 11's dev links) must not precede the SDK's -L on the compiler word: the first SBSA package stage found nvinfer linked .so.11.
+  [ -z "${DS_TARGET_DEVICE:-}" ] || { DS_CROSS_CC="${CC} ${DS_TRT_LINK_FLAGS} ${DS_CROSS_SYSFLAGS}"; DS_CROSS_CXX="${CXX} ${DS_TRT_LINK_FLAGS} ${DS_CROSS_SYSFLAGS}"; }
   export NVCC_PREPEND_FLAGS="${NVCC_PREPEND_FLAGS:-} -include ${logdir}/gcc16-compat.h"
   PKG_CONFIG_PATH="$(ds_gst_pkgconfig_path)"
   export PKG_CONFIG_PATH
@@ -496,6 +498,17 @@ ds_write_cuda_cross_view() {
   ds_log "CUDA cross view $1 -> ${CUDA_CROSS_TARGET_ROOT}"
 }
 
+# The Jetson .deb's files carry no RUNPATH (L4T puts its tegra dir on ld.so.conf) and NEED a bare libcufft.so; the amd64 .deb's carry both, and the image puts no DeepStream dir on ld.so.conf.
+ds_sbsa_runpaths() {
+  local root="$1" f n=0 dyn
+  while IFS= read -r f; do
+    dyn="$(readelf -d "${f}" 2>/dev/null || true)"
+    if ! grep -qE 'RUNPATH|RPATH' <<<"${dyn}"; then patchelf --set-rpath "${root}/lib" "${f}"; n=$((n + 1)); fi
+    if grep -qE '\(NEEDED\).*\[libcufft\.so\]' <<<"${dyn}"; then patchelf --replace-needed libcufft.so libcufft.so.12 "${f}"; fi
+  done < <(find "${root}/lib" "${root}/lib/gst-plugins" -maxdepth 1 -name '*.so*' -type f | LC_ALL=C sort)
+  ds_log "RUNPATH ${root}/lib set on ${n} files that carried none"
+}
+
 # gst-plugins/ must hold only plugins: a helper .so there is dlclose()d by the registry scan and crashes the next plugin.
 ds_fix_layout() {
   local root="$1" f
@@ -521,6 +534,7 @@ ds_build() {
   ds_build_rest_server_deps "${tmp}/deps"
   ds_build_components "${tmp}/src" "${tmp}/logs" "$(ds_trt_sdk "${tmp}")"
   ds_fix_layout "$(ds_root)"
+  [ -z "${DS_TARGET_DEVICE:-}" ] || ds_sbsa_runpaths "$(ds_root)"
   rm -rf "${tmp}" ${DS_TARGET_DEVICE:+"/usr/local/cuda-${DS_CUDA_VER}"} ${DS_TEGRA_LINK:+"${DS_TEGRA_LINK}"}
   ds_write_gst_ldconf
   ds_write_trt_ldconf

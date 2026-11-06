@@ -541,6 +541,12 @@ NVIDIA's SBSA container (`DEEPSTREAM_SBSA_IMAGE`, pinned by digest; read 2026-11
    package stage, which runs natively under QEMU and repeats every gate; `nvv4l2decoder` and the
    libv4l2 plugin are amd64's, so the SBSA route registers eight elements and decodes in software
    unless a host injects NVDEC.
+6. The Jetson `.deb`'s files carry no RUNPATH (L4T puts its tegra dir on `ld.so.conf`) and NEED a
+   bare `libcufft.so`; the build stage sets `RUNPATH=…/deepstream-9.1/lib` on every file without
+   one and rewrites that NEEDED to `libcufft.so.12`, as the amd64 `.deb` carries both. The three
+   VPI consumers (`nvmultiobjecttracker`, `opticalflow_orin`, `vpicanmatch`) stay unresolved on
+   `libnvvpi.so.4`, excused on arm64 only: VPI is L4T's. The TensorRT 10 SDK's `-L` precedes the
+   sysroot flags on the compiler word, or the components link the image's TensorRT 11.
 
 The chain gates the flag per arch (`deepstream_arch_supported`, `build-helpers.sh`): amd64 always,
 arm64 only with the four files staged. Licence: the four libraries ship under the DeepStream

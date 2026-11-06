@@ -95,6 +95,21 @@ t_assert_eq "1" "$(bash -c 'ds_die() { echo "DIE: $*" >&2; exit 1; }; source <(s
 # nvll_osd links -lcuda; the amd64 route finds the stub through LIBRARY_PATH, which a cross GCC ignores (third SBSA build, 2026-11-05).
 t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" '[ -z "${DS_TARGET_DEVICE:-}" ] || DS_TRT_LINK_FLAGS+=" -L/usr/local/cuda-${DS_CUDA_VER}/lib64 -L/usr/local/cuda-${DS_CUDA_VER}/lib64/stubs"' \
   "the cross components get the target's CUDA lib dir and its libcuda stub as explicit -L"
+# The first SBSA package stage (2026-11-05) found nvinfer linked libnvinfer.so.11: the sysflags' -L/usr/lib/<triplet> preceded the SDK's -L on the compiler word.
+t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" '[ -z "${DS_TARGET_DEVICE:-}" ] || { DS_CROSS_CC="${CC} ${DS_TRT_LINK_FLAGS} ${DS_CROSS_SYSFLAGS}"; DS_CROSS_CXX="${CXX} ${DS_TRT_LINK_FLAGS} ${DS_CROSS_SYSFLAGS}"; }' \
+  "on a cross build the TensorRT 10 SDK's -L precedes the sysroot flags"
+# The same stage found 105 unresolved sonames: the Jetson .deb's files carry no RUNPATH and NEED a bare libcufft.so.
+t_assert_contains "$(t_fn_src "${DS}" ds_build)" '[ -z "${DS_TARGET_DEVICE:-}" ] || ds_sbsa_runpaths "$(ds_root)"' "the cross build sets the RUNPATHs the amd64 .deb carries"
+mkdir -p "${_T}/rp/lib/gst-plugins" "${_T}/rp/bin"; : > "${_T}/rp/lib/libwith.so"; : > "${_T}/rp/lib/libbare.so.1.0.0"; : > "${_T}/rp/lib/gst-plugins/libcufft-user.so"; : > "${_T}/rp/lib/notalib.txt"
+printf '#!/usr/bin/env bash\ncase "$2" in *libwith*) echo " 0x1d (RUNPATH) Library runpath: [/x]";; *cufft-user*) echo " 0x1 (NEEDED) Shared library: [libcufft.so]";; esac\n' > "${_T}/rp/bin/readelf"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "${PATCHELF_CALLS}"\n' > "${_T}/rp/bin/patchelf"; chmod +x "${_T}/rp/bin/"*
+: > "${_T}/rp/calls"
+_out="$(PATH="${_T}/rp/bin:${PATH}" PATCHELF_CALLS="${_T}/rp/calls" bash -c 'ds_log() { echo "$*"; }; source <(sed -n "/^ds_sbsa_runpaths()/,/^}/p" "$1"); ds_sbsa_runpaths "$2"' _ "${DS}" "${_T}/rp")"
+t_assert_eq $'--set-rpath '"${_T}"$'/rp/lib '"${_T}"$'/rp/lib/gst-plugins/libcufft-user.so\n--replace-needed libcufft.so libcufft.so.12 '"${_T}"$'/rp/lib/gst-plugins/libcufft-user.so\n--set-rpath '"${_T}"$'/rp/lib '"${_T}"$'/rp/lib/libbare.so.1.0.0' "$(cat "${_T}/rp/calls")" \
+  "a file with a RUNPATH is left alone; the others get the lib dir, and the bare libcufft.so NEEDED becomes the versioned one"
+t_assert_contains "${_out}" "RUNPATH ${_T}/rp/lib set on 2 files that carried none"
+t_assert_eq "3" "$(DSV_ARCH=arm64 bash -c 'source "$1"; printf "%s\n" "${DSV_ALLOWED_MISSING[@]}" | grep -c libnvvpi' _ "${DSV}")" "arm64 excuses the three VPI consumers"
+t_assert_eq "0" "$(DSV_ARCH=amd64 bash -c 'source "$1"; printf "%s\n" "${DSV_ALLOWED_MISSING[@]}" | grep -c libnvvpi' _ "${DSV}")" "amd64 does not: its .deb resolves VPI"
 t_assert_contains "$(sed -n '/^DS_BUILD_PACKAGES=(/,/^)/p' "${DS}")" 'zlib1g-dev' "zlib's dev package is named, not inherited"
 t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'ds_write_cuda_cross_view' "the Makefiles' /usr/local/cuda-\$(CUDA_VER) resolves to the target's headers and libs"
 t_assert_contains "$(_ds ds_gate_problem ENABLE_NVIDIA=false)" "needs ENABLE_NVIDIA=true"

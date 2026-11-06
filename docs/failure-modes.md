@@ -43,6 +43,7 @@ Two neighbours, so you land on the right page:
 - [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
 - [The disk guard aims at the wrong number](#the-disk-guard-aims-at-the-wrong-number)
 - [The cross-sbsa packages vanish between the repo RUN and the install](#the-cross-sbsa-packages-vanish-between-the-repo-run-and-the-install)
+- [`BROKEN lib/gst-plugins/libgstnvvideoconvert.so -> libnvbufsurface.so.1.0.0` on the arm64 package stage](#broken-libgst-pluginslibgstnvvideoconvertso---libnvbufsurfaceso100-on-the-arm64-package-stage)
 - [`no GStreamer plugin directory at /opt/gstreamer/lib/aarch64-linux-gnu/gstreamer-1.0`](#no-gstreamer-plugin-directory-at-optgstreamerlibaarch64-linux-gnugstreamer-10)
 - [`zconf.h: No such file or directory` in civetweb under the SBSA DeepStream build](#zconfh-no-such-file-or-directory-in-civetweb-under-the-sbsa-deepstream-build)
 - [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
@@ -509,6 +510,20 @@ count toward it; since CON53 (2026-10-01) the script and the chain's fallback ad
 them, so `<N>` is GB of layer cache, not of the store. Local
 `:latest-<arch>` images are re-pullable and not build inputs; `nerdctl rmi`
 them last. Restarting the daemon is the BKD1 remedy above wearing a disk costume.
+
+### `BROKEN lib/gst-plugins/libgstnvvideoconvert.so -> libnvbufsurface.so.1.0.0` on the arm64 package stage
+
+The second arm64 package stage of the nvidia chain (2026-11-06) failed DeepStream's soname
+closure with 105 rows and `FOREIGN-TRT … libnvinfer.so.11`. Two causes, both the Jetson route's:
+the Jetson `.deb`'s libraries carry no RUNPATH, because L4T puts `/usr/lib/aarch64-linux-gnu/tegra`
+on `ld.so.conf`, while the amd64 `.deb`'s carry `RUNPATH=…/deepstream-9.1/lib:/usr/local/cuda/lib64`
+and the image keeps DeepStream's lib dir off `ld.so.conf` (`libnvv4l2.so` carries the SONAME
+`libv4l2.so.0`); and the cross components linked TensorRT 11, because the sysflags'
+`-L/usr/lib/aarch64-linux-gnu` (TensorRT 11's dev links) preceded the SDK's `-L` on the compiler
+word. `ds_sbsa_runpaths` now sets the RUNPATH on every file without one and rewrites the bare
+`libcufft.so` NEEDED to `libcufft.so.12`; the SDK's `-L` comes first; the three VPI consumers are
+excused on arm64 only. A file list from an L4T package is built for an `ld.so.conf` the SBSA image
+does not have: check RUNPATHs before trusting the closure.
 
 ### `no GStreamer plugin directory at /opt/gstreamer/lib/aarch64-linux-gnu/gstreamer-1.0`
 
