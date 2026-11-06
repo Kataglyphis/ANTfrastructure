@@ -890,13 +890,11 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
 
 ### E1. Optional inputs, expectations
 
-- **TensorRT (GPU lane, optional):** drop the NVIDIA EULA zip into
-  `windows\downloads\` if you have one, with its hash in `versions.env`'s
-  `TENSORRT_ZIP_SHA256` (a mismatch fails the build); **without a zip the build
-  skips TensorRT gracefully** — the zip-less state is the normal state of the
-  reference host's GPU lane
-  ([`windows-builds.md`](windows-builds.md) § TensorRT setup (GPU lane, optional)).
-  Do not wait on it.
+- **TensorRT (GPU lane):** the `-Gpu` lane downloads the pinned zip itself and
+  checks it against `versions.env`'s `TENSORRT_ZIP_SHA256`; a zip staged in
+  `windows\downloads\` saves the download. Without network access to NVIDIA
+  and without a staged zip the nvidia lane fails
+  ([`windows-builds.md`](windows-builds.md) § TensorRT setup (GPU lane)).
 - **Cost:** cold full chain ≈ 5–6 h (≈ 2.5 h in the media fan-out); hot
   rebuild of the whole BK chain ≈ 44 min. Parallelism is memory-bound —
   ~35–45 % average CPU during compiles is the expected signature, not a

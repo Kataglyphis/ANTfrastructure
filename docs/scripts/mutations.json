@@ -35679,5 +35679,29 @@
   "replace": "true",
   "test": "bash linux/scripts/tests/test-sccache-evict.sh",
   "why": "under the cap with little free space the bucket would keep its size while the shared disk fills"
+ },
+ {
+  "id": "host.trt-url-tensorrt11-scheme",
+  "target": "windows/scripts/host/Install-Tensorrt.ps1",
+  "find": "zip/TensorRT-Enterprise-$Version-Windows-amd64-cuda-$Cuda-Release-external.zip",
+  "replace": "tensorrt-$Version.Windows10.x86_64.cuda-$Cuda.zip",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Host.TensorRtAcquisition.Tests.ps1 -ResultFile logs/code-quality/trt-acquisition-mutation.json",
+  "why": "the pre-11 file names 404 on every run, so the lane never had TensorRT"
+ },
+ {
+  "id": "host.trt-missing-throws",
+  "target": "windows/scripts/host/Install-Tensorrt.ps1",
+  "find": "        throw \"TensorRT $Version could not be downloaded",
+  "replace": "        return $null\n        throw \"TensorRT $Version could not be downloaded",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Host.TensorRtAcquisition.Tests.ps1 -ResultFile logs/code-quality/trt-acquisition-mutation.json",
+  "why": "a failed download that returns quietly ships a CUDA-only nvidia image"
+ },
+ {
+  "id": "smoke.trt-required-expect-gpu",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "-Condition { $script:tensorRtStaged } -FailMessage 'caller passed -ExpectGpu but TENSORRT_ROOT is empty",
+  "replace": "-Condition { $true } -FailMessage 'caller passed -ExpectGpu but TENSORRT_ROOT is empty",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Host.TensorRtAcquisition.Tests.ps1 -ResultFile logs/code-quality/trt-acquisition-mutation.json",
+  "why": "the smoke gate must reject an nvidia image that lost TensorRT"
  }
 ]

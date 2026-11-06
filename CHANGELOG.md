@@ -13,6 +13,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-06 — The Windows nvidia lane downloads TensorRT and fails without it
+
+- `Install-Tensorrt.ps1` guessed the pre-11.x file names, which 404 for TensorRT 11, so every
+  `-Gpu` image shipped without TensorRT while the log read "Continuing WITHOUT TensorRT". It now
+  downloads `TensorRT-Enterprise-<ver>-Windows-amd64-cuda-<cuda>-Release-external.zip` from
+  `developer.nvidia.com/downloads/compute/machine-learning/tensorrt/`, for the image's CUDA line
+  only, and grades it with the unchanged `TENSORRT_ZIP_SHA256`: the 11.4.0.106 zip fetched on the
+  host on 2026-11-06 hashed to the pin. A staged zip in `windows/downloads/` still wins.
+- No TensorRT now fails the nvidia lane (owner, 2026-11-06): the installer and `Set-TensorrtTree.ps1`
+  throw, and the smoke gate fails an `-ExpectGpu` image with an empty `TENSORRT_ROOT`
+  (`host.trt-url-tensorrt11-scheme`, `host.trt-missing-throws`, `smoke.trt-required-expect-gpu`).
+  The runtime-only rule is unchanged. Windows arm64 TensorRT stays off as an owner decision (CON230).
+
 ## 2026-11-05 — The arm64 package stage links DeepStream into the multiarch plugin dir
 
 - The first arm64 package stage of the nvidia chain died on `no GStreamer plugin directory at

@@ -847,7 +847,7 @@ Each patch is in this repository at the path shown, and travels with the corresp
   BSD, zlib, Public Domain).  Check `/usr/share/doc/<pkg>/copyright` inside
   the image for exact terms.
 - NVIDIA EULAs require acceptance before download/use.  The build fetches
-  CUDA/cuDNN from NVIDIA; Windows stages TensorRT by hand, Linux installs it from
+  CUDA/cuDNN from NVIDIA; Windows downloads the TensorRT zip, Linux installs it from
   NVIDIA's CUDA apt repo.  `:latest-nvidia` carries CUDA, cuDNN, DeepStream's
   TensorRT 10 and, from the first build after 2026-10-20, TensorRT 11.
 - TensorRT's `eula-review` is decided (owner, 2026-10-21): every published image carries

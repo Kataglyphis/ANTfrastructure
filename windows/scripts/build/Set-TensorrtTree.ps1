@@ -37,8 +37,7 @@ $stable = Join-Path $TensorRtRoot 'current'
 $alreadyStable = $false
 
 if (-not (Test-Path $TensorRtRoot)) {
-    Write-Host "TensorRT: '$TensorRtRoot' absent -> nothing to normalize (EP skipped downstream)."
-    return
+    throw "TensorRT: '$TensorRtRoot' is absent after Install-Tensorrt.ps1; the nvidia lane needs TensorRT."
 }
 if (Test-Path $stable) {
     # No return: a pre-existing or half-populated 'current' must still pass the DLL gate.

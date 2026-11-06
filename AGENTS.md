@@ -615,10 +615,11 @@ The three most often regressed:
   Dockerfile. Host-tool pins no image build reads live in `tool-pins.env` beside it (§ Version
   Bumping).
 
-### TensorRT Setup (Optional)
+### TensorRT Setup
 
-EULA-gated, so nothing downloads it: stage the zip by hand and the Windows lane picks it up. Where
-it goes and the layout it needs: [`windows-cross-builds.md`](docs/windows-cross-builds.md).
+The Windows `-Gpu` lane downloads the pinned TensorRT zip and checks its SHA256; a zip staged in
+`windows/downloads/` wins. A missing TensorRT fails the nvidia lane; never restore the graceful
+skip. Layout and rules: [`windows-cross-builds.md`](docs/windows-cross-builds.md).
 
 ### QNN / Qualcomm AI Engine Direct Setup (Optional, #121)
 

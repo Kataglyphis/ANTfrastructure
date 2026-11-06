@@ -227,8 +227,8 @@ ship; a gate fails an image that carries one.
   `nvdsinfer_custom_impl.h`, which includes `NvInfer.h`: build one in a stage that installs
   `libnvinfer-headers-dev` 10.16.1.11. No family repo builds one (searched 2026-10-21).
 - **Windows** (`:winamd64-nvidia`; `:winamd64` is CPU and has no TensorRT): the DLLs ORT's TensorRT
-  EP loads ([`windows-builds.md` § TensorRT setup](windows-builds.md#tensorrt-setup-gpu-lane-optional)).
-  The published images are zip-less and carry none.
+  EP loads ([`windows-builds.md` § TensorRT setup](windows-builds.md#tensorrt-setup-gpu-lane)).
+  Images published before the download fix (CON230, 2026-11-06) carry none.
 
 #### Stage images: a private package
 

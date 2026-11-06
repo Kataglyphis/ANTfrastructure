@@ -46,7 +46,7 @@ Initialize-SmokeTestRun -ExitOnFirstFailure:$ExitOnFirstFailure
 # NVIDIA probes would fail a legitimate CPU image, so they key on CUDA_ROOT; DirectML is DX12-based and always checked.
 $script:gpuNvidia = (-not $SkipCudaTests) -and (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('CUDA_ROOT')))
 
-# TensorRT follows the staged tree, not the lane: a zip-less GPU lane is normal, a staged tree without the EP fails.
+# The EP checks follow the staged tree; -ExpectGpu additionally requires the tree in section 7.
 $script:tensorRtStaged = Test-TensorRtTreeStaged
 
 function Get-CommandVersion {
@@ -639,6 +639,8 @@ if ($script:gpuNvidia) {
     Assert-CudaSmokePrerequisites
 
     Invoke-CudnnSmoke
+    # The lane downloads TensorRT itself, so an nvidia image without it is a defect, not the zip-less normal.
+    if ($ExpectGpu) { Assert-Test -Name 'TensorRT runtime staged (-ExpectGpu)' -Condition { $script:tensorRtStaged } -FailMessage 'caller passed -ExpectGpu but TENSORRT_ROOT is empty -- the nvidia image shipped without TensorRT' }
 } elseif ($ExpectGpu) {
     # -ExpectGpu says this is an nvidia image, so a missing CUDA_ROOT is a defect, not a CPU lane.
     Assert-Test -Name 'CUDA section runs (-ExpectGpu)' -Condition { $false } -FailMessage 'caller passed -ExpectGpu but CUDA_ROOT is not set (or -SkipCudaTests was passed) -- nvidia image lost its baked CUDA env?'
