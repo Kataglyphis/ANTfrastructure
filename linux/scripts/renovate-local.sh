@@ -15,6 +15,7 @@ _renovate_usage() {
 #   renovate-local.sh --managers <csv> <root>     default: whatever the tree HAS
 #   --submodule-path <path>                       select one exact direct gitlink; repeatable
 #   renovate-local.sh --print-bin                 the resolved renovate.js
+#   --no-bump                                     skip the versions.env sweep (bump_versions.py) a hub run adds
 #   renovate-fleet.sh beside this one runs it over EVERY repo the family has
 #   Every live run installs npm's latest Renovate CLI before the dependency scan.
 
@@ -64,6 +65,7 @@ TARGET=""
 SELECTED_SUBMODULES=()
 DRY_RUN=0
 REFRESH=0
+BUMP=1
 
 # shellcheck source=renovate-cli.sh
 . "$(dirname "${BASH_SOURCE[0]}")/renovate-cli.sh" || err "cannot load renovate-cli.sh beside me"
@@ -445,6 +447,36 @@ run_report() {
   report_skipped
 }
 
+# The hub's versions.env keys no datasource can own (vendor feeds, paired checksums) ride the same call. docs/dependency-updates.md#the-sweep-rides-the-renovate-call
+pin_sweep_tool() {
+  [ "${BUMP}" = 1 ] || return 1
+  [ -f "${TARGET}/docs/scripts/bump_versions.py" ] || return 1
+  printf '%s\n' "${TARGET}/docs/scripts/bump_versions.py"
+}
+
+report_pin_sweep() {
+  local tool
+  tool="$(pin_sweep_tool)" || return 0
+  note ""
+  note "versions.env pins outside Renovate's reach (bump_versions.py --check):"
+  "${PY_BIN}" "${tool}" --check || err "the versions.env sweep could not check every key (above); nothing is reported as current"
+}
+
+# After run_apply, outside its rollback: a failed sweep leaves the Renovate half applied and exits 2, as a refused update does.
+apply_pin_sweep() {
+  local tool
+  tool="$(pin_sweep_tool)" || return 0
+  [ "${DRY_RUN}" = 0 ] || { note ""; note "dry run: bump_versions.py --write and sync_versions.py --write would follow"; return 0; }
+  note ""
+  note "versions.env sweep (bump_versions.py --write, then sync_versions.py --write):"
+  if "${PY_BIN}" "${tool}" --write && "${PY_BIN}" "${TARGET}/docs/scripts/sync_versions.py" --write; then
+    return 0
+  fi
+  note "the versions.env sweep did not complete (above); Renovate's updates stay applied"
+  EXIT_CODE=${EXIT_REFUSED}
+  return 0
+}
+
 # A skipped dep is never "behind", so without this list an unreadable pin (ROCm's 10.0 under semver) reads as up to date.
 report_skipped() {
   local kind mgr file dep cur why k=0 design=""
@@ -722,8 +754,8 @@ detect_managers
 run_renovate
 scan_default_submodules
 case "${MODE}" in
-  report) run_report; report_default_submodules; report_lock_maintenance ;;
-  apply)  run_report; report_default_submodules; report_lock_maintenance; run_apply ;;
+  report) run_report; report_default_submodules; report_lock_maintenance; report_pin_sweep ;;
+  apply)  run_report; report_default_submodules; report_lock_maintenance; run_apply; apply_pin_sweep ;;
   *)      err "unreachable mode ${MODE}" ;;
 esac
 # Explicit: the status of that case's last command is no contract.

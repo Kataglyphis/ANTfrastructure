@@ -12,6 +12,13 @@ t_case "a full count passes"
 _ratchet_says "=== 15/15 ok, 0 failure(s) ===" "PASS app wheel smoke passed" \
   "at the floor must pass"
 
+t_case "the wheel smoke hands the tiny GenAI model in: its generator crosses as the environment, the smoke names the written directory"
+_out="$(_gate check_app_wheel_smoke "" "=== 15/15 ok, 0 failure(s) ===" 0)"
+t_assert_contains "${_out}" 'GENAI_TINY_MODEL_PY=#!/usr/bin/env python3' "the generator source is the environment value"
+t_assert_contains "${_out}" '"fixture.json": oracle' "the generator that crosses writes the fixture the check decodes against"
+t_assert_contains "${_out}" 'export ORCHESTRANT_SMOKE_GENAI_MODEL="$d/tiny-genai"' "the smoke runs with the written model named"
+t_assert_contains "${_out}" 'python -m orchestrant.smoke' "the app smoke still runs after the model is written"
+
 # WE: the healthcheck
 t_case "the healthcheck gate reads the command, not the OCI verb"
 _out="$(_gate check_healthcheck_config '/opt/venv/bin/python3 -c "import onnxruntime" || exit 1')"

@@ -7,6 +7,8 @@ on:
       - "CI · disk refusal self-test"
       - "Composite actions · self-test"
       - "Security audit"
+      # The docs lane pulls the image too and was refused at 19G free on 2026-11-05 with no retry.
+      - "Docs · build + publish"
     types: [completed]
 
 permissions:

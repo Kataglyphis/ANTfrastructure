@@ -245,8 +245,8 @@ t_assert_contains "${_OUT}" "GENAI_MODEL_DIR=/nonexistent-genai-model is not a d
 
 # The actual wrapper is reused here, with only the host interpreter substituted.
 _SRI="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
-eval "$(t_fn_src "${_SRI}" _rt_python_probe_command)"
-_WRAP="$(_rt_python_probe_command SMOKE_GENAI_PY GENAI-BIND)"
+eval "$(t_fn_src "${_SRI%/*}/smoke-common.sh" smoke_python_probe_command)"
+_WRAP="$(smoke_python_probe_command SMOKE_GENAI_PY GENAI-BIND)"
 _HOST_WRAP="${_WRAP//\/opt\/venv\/bin\/python/python3 -S}"
 t_case "the program survives the SMOKE_GENAI_PY env-var round trip with the same verdict"
 _INJ_OUT="$(env -u GENAI_MODEL_DIR PYTHONPATH="${STUB}" PYTHONDONTWRITEBYTECODE=1 \

@@ -432,6 +432,11 @@ CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1 bash linux/scripts/build-cross-chain.sh
 CROSS_VARIANT=nvidia CROSS_NVIDIA_SBSA=1 bash linux/scripts/build-cross-stage.sh --stage gpu --arch arm64
 ```
 
+The stage's apt caches are keyed by build arch AND target (`apt-lib-amd64-arm64`): under
+`--parallel-archs` the amd64 lane's `apt-get update` would otherwise erase the cross repo's lists from
+a shared cache between two RUNs
+([failure-modes.md](failure-modes.md#the-cross-sbsa-packages-vanish-between-the-repo-run-and-the-install)).
+
 What the stage installs beside the host CUDA (`install-cuda-stack.sh`, `install-tensorrt.sh`),
 every step logged and gated:
 
@@ -510,15 +515,16 @@ CROSS_VARIANT=nvidia bash linux/scripts/build-cross-chain.sh \
 In source since 2026-11-04 (CON42 phase 7), unproved until the first nvidia arm64 chain. NVIDIA
 publishes no SBSA DeepStream package: the arm64 release asset is Jetson's
 `deepstream-binaries-aarch64_<ver>_arm64.deb` (`DEEPSTREAM_BINARIES_ARM64_SHA256`), which leaves
-`libnvbufsurface`, `libnvbufsurftransform` and `libnvdsbufferpool` to L4T. Their SBSA builds, which
-need only `libEGL.so.1` and `libcuda.so.1`, exist in one place: `/usr/lib/aarch64-linux-gnu/tegra` of
+`libnvbufsurface`, `libnvbufsurftransform`, `libnvdsbufferpool` and `libgstnvdsseimeta` (which the
+new `nvstreammux` and the SEI serialization link; found 2026-11-05) to L4T. Their SBSA builds, which
+need only `libEGL.so.1`, `libcuda.so.1` and GStreamer, exist in one place: `/usr/lib/aarch64-linux-gnu/tegra` of
 NVIDIA's SBSA container (`DEEPSTREAM_SBSA_IMAGE`, pinned by digest; read 2026-11-04). The route:
 
-1. `bash linux/scripts/05-frameworks/stage-deepstream-sbsa.sh` on the build host copies the three
+1. `bash linux/scripts/05-frameworks/stage-deepstream-sbsa.sh` on the build host copies the four
    files and `LicenseAgreement.pdf` out of that digest into `linux/deepstream-sbsa/` (ignored by
    Git but for its README) and checks them against `DEEPSTREAM_SBSA_*_SHA256`. `--check` re-verifies.
 2. The media stage mounts the directory read-only. `ds_arch_problem arm64` refuses a missing file
-   or other bytes; with the three present the Jetson `.deb` is unpacked and overlaid with them.
+   or other bytes; with the four present the Jetson `.deb` is unpacked and overlaid with them.
 3. TensorRT 10 comes from the same CUDA repo's `sbsa` path (`DEEPSTREAM_TRT_*_ARM64_SHA256`), into
    the same private prefix as on amd64.
 4. The components cross-compile: the target toolchain from `setup_linux_cross_env` replaces each
@@ -526,14 +532,18 @@ NVIDIA's SBSA container (`DEEPSTREAM_SBSA_IMAGE`, pinned by digest; read 2026-11
    Makefiles' `gcc -dumpmachine`, nvcc gets `-ccbin` and `--target-directory=sbsa-linux` from the
    gpu stage's `cross-target.env`, and `/usr/local/cuda-<ver>-sbsa-linux` is a view (host `bin`,
    target `include` and `lib64`) so the Makefiles' hard-coded CUDA paths link the target's
-   libraries. The REST server's dependencies take `append_cmake_cross_args`.
+   libraries. The REST server's dependencies take `append_cmake_cross_args`. The cross compiler
+   strings carry `-idirafter /usr/include/<triplet> -idirafter /usr/include -L/usr/lib/<triplet>`
+   (the cross GCC's sysroot is `/usr/<triplet>`, so apt's `:arm64` headers are invisible without
+   them), every component make gets `LIB_INSTALL_DIR=<DeepStream lib>/`, and `/usr/lib/<triplet>/tegra`,
+   which the Makefiles' aarch64 branches hard-code, is a build-time link to that dir.
 5. The build stage runs the file gates only and defers the loader and registration gates to the
    package stage, which runs natively under QEMU and repeats every gate; `nvv4l2decoder` and the
    libv4l2 plugin are amd64's, so the SBSA route registers eight elements and decodes in software
    unless a host injects NVDEC.
 
 The chain gates the flag per arch (`deepstream_arch_supported`, `build-helpers.sh`): amd64 always,
-arm64 only with the three files staged. Licence: the three libraries ship under the DeepStream
+arm64 only with the four files staged. Licence: the four libraries ship under the DeepStream
 licence the container carries beside them; the owner approved staging them on 2026-11-04.
 
 ### What ships
@@ -545,7 +555,7 @@ licence the container carries beside them; the owner approved staging them on 20
 | `…/deepstream-9.1/sources/includes/` | the SDK headers, for building custom plugins; a custom `nvinfer` parser also needs TensorRT 10's headers, which do not ship ([§ Redistribution](#redistribution)) |
 | `…/deepstream-9.1/LicenseAgreement.pdf` | NVIDIA's licence, as the `.deb` ships it |
 | `/opt/nvidia/deepstream/tensorrt-10.16.1.11/` | DeepStream's own TensorRT 10: its runtime `.so` files and their docs (§ TensorRT 10 beside 11) |
-| `/opt/gstreamer/lib/<triplet>/gstreamer-1.0/deepstream` | a link to `…/lib/gst-plugins`; the registry scan follows it, so no `GST_PLUGIN_PATH` is needed |
+| `/opt/gstreamer/lib/multiarch/gstreamer-1.0/deepstream` | a link to `…/lib/gst-plugins` in the directory `GST_PLUGIN_PATH` names on every arch (the cross-built arm64 GStreamer has no `lib/<triplet>`); the registry scan follows it |
 | `/etc/ld.so.conf.d/010-deepstream-tensorrt.conf` | the TensorRT 10 lib dir, the only DeepStream path on the loader path |
 | `/usr/lib/<triplet>/libnvinfer_builder_resource_*.so.10.16.1` | links into the TensorRT 10 prefix, which an engine build `dlopen()`s by file name (§ [TensorRT builder resources, by file name](#tensorrt-builder-resources-by-file-name)) |
 | `/usr/lib/<triplet>/libv4l/plugins/libcuvidv4l2_plugin.so` | a link to NVIDIA's NVDEC plugin, so the distro `libv4l2` loads it (§ [NVDEC through the distro libv4l2](#nvdec-through-the-distro-libv4l2)) |

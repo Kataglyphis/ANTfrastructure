@@ -2,21 +2,38 @@
 
 # QNN on Linux (QAIRT)
 
-arm64-only, and **opt-in**: the lane is off unless a QAIRT SDK zip is staged in
-`linux/qnn-sdk/`. With no zip the build is byte-identical to a QNN-less build on
-every arch. See `linux/qnn-sdk/README.md` for the staging discipline.
+arm64-only, and **on by default since 2026-11-05**: the media stage fetches the public
+"Qualcomm AI Runtime Community" zip at `QNN_SDK_VERSION` (`versions.env`) through the asset
+mirror, verified against `QNN_SDK_ZIP_SHA256`. A zip staged in `linux/qnn-sdk/` is used
+instead of the download; `QNN_SDK_SOURCE=drop` restores the pre-2026-11-05 contract, where only
+a staged zip turns the lane on. amd64 and riscv64 stay QNN-less on every path. The Windows lane
+follows the same contract with the same zip and pin.
 
 ## Staging
 
-The zip is login-gated (qpm.qualcomm.com, Qualcomm ID + EULA). Drop exactly one
-`*.zip` in `linux/qnn-sdk/`; `Dockerfile.media` bind-mounts that directory at
-`/opt/scripts/qnn-sdk` on every heavy RUN.
+Nothing to stage: `resolve_qnn_sdk` (`01-core/qnn-sdk.sh`, loaded by `media_common_init`)
+downloads `softwarecenter.qualcomm.com/.../Qualcomm_AI_Runtime_Community/All/<v>/v<v>.zip`
+with `download_verified_file` (asset mirror first, `QNN_SDK_ZIP_SHA256` the only gate) into
+the `qnn-sdk-<arch>` cache mount every QNN-resolving media RUN carries
+(`/var/cache/qnn-sdk`, `QNN_SDK_CACHE_DIR`), once per chain. The zip is ~3 GB; it never lands in
+a layer. The Community zip carries every target (`aarch64-oe-linux-gcc11.2`, the Windows
+`aarch64-windows-msvc`, android, the hexagon skels), so one pin serves both lanes.
 
-`QNN_SDK_LINUX_ZIP_SHA256` in `versions.env` is populated with the
-**v2.49.0.260730** hash, so re-staging that exact version needs **no re-pin** —
-the existing hash validates it and a mismatch means a different build was
-downloaded. Only a newer SDK needs `sha256sum <zip>` plus a `versions.env` update
-in the same commit.
+The pin moves with `bump_versions.py` `spec_qnn_sdk` (the sweep `renovate-local.sh` runs):
+Qualcomm's software center lists no versions, so the pin follows the zip LiteRT main builds
+against (`third_party/qairt/workspace.bzl`), refuses one the center does not serve, and moves
+the sha with the version; the Windows lane fetches the same zip under the same pin
+([windows-cross-builds.md](windows-cross-builds.md#qnn-execution-provider-121-2026-08-24-sdk-staged--multi-framework-2026-08-29)) ([dependency-updates.md](dependency-updates.md#the-sweep-rides-the-renovate-call)).
+
+**Licence.** The Community zip's `LICENSE.pdf` grants distribution of the Software "solely in
+object code format" as part of a product and "not on a standalone basis". The arm64 image ships
+only the backend `.so` files beside ORT, as the hand-staged zip did; the zip itself stays in the
+cache mount. The row in `docs/third-party-licenses.md` carries `LicenseRef-Proprietary-EULA`,
+TensorRT's class.
+
+A zip in `linux/qnn-sdk/` (exactly one `*.zip`) is used instead of the download and must match
+the same pin: it is an offline copy, not a way to ship other bytes. Re-pin for a different SDK
+(`sha256sum <zip>` into `QNN_SDK_ZIP_SHA256`, `QNN_SDK_VERSION` to match) in the same commit.
 
 `resolve_qnn_sdk` (`01-core/qnn-sdk.sh`) verifies the hash, extracts, and asserts
 three canaries: the `include/QNN/QnnInterface.h` anchor, `libQnnCpu.so` under
@@ -123,7 +140,7 @@ IREE have no Qualcomm path at all.
 
 ## Validation, 2026-09-03 (media-arm64, real v2.49.0.260730 staged)
 
-* `QNN: SDK zip SHA256 verified (QNN_SDK_LINUX_ZIP_SHA256)` — the existing pin
+* `QNN: SDK zip SHA256 verified (QNN_SDK_ZIP_SHA256)` — the existing pin
   validated the staged zip; no re-pin was needed.
 * ORT: `Built target onnxruntime_providers_qnn` →
   `libonnxruntime_providers_qnn.so` linked.

@@ -365,11 +365,12 @@ t_assert_contains "${_out}" "same ('101', {})" "an up-to-date build drags no ext
 t_assert_contains "${_out}" "raised none of the newest 30 ggml-org/llama.cpp builds publishes both a win-cpu-x64 and a win-vulkan-x64 zip" \
   "no matching pair of zips is a lookup failure, never a silent 'up to date'"
 
-# <tags-json> <spec> <older-pin> <newest-pin>: a report run, a --write run and an up-to-date run, each with its hashed assets.
+# <tags-json> <spec> <older-pin> <newest-pin> [prelude]: a report run, a --write run and an up-to-date run, each with its hashed assets; the prelude fakes more upstream lookups.
 _bv_spec_runs() {
   _bv_tags_offline "$1" <<PY
 hashed = []
 bv.asset_sha256 = lambda repo, tag, asset, sums=(): hashed.append((repo, tag, asset)) or "e" * 64
+${5:-}
 bv.WRITE_MODE = False
 print("report", bv.$2("$3"), hashed)
 bv.WRITE_MODE = True
@@ -677,5 +678,52 @@ t_assert_contains "${_out}" "/network_installers/cuda_13.4.3_windows_x86_64_netw
   "the hashed file is the network installer Install-Cuda.ps1 runs"
 t_assert_contains "${_out}" "full False" "the ~4 GB full installer is never the pinned file"
 t_assert_contains "${_out}" "raised cuda_13.4.3_windows_x86_64_network.exe: MD5" "an MD5 that is not NVIDIA's refuses the pin"
+
+# _bv_vendor_spec_runs <spec> <oracle text> <current> <latest>: the oracle page, the served-probe and the hashing faked.
+_bv_vendor_spec_runs() {
+  BV_ORACLE="$2" _bv_spec_runs '[]' "$1" "$3" "$4" "bv.http_text = lambda url: os.environ['BV_ORACLE']
+bv.artifact_exists = lambda url: True
+bv.sha256_of_url = lambda url: hashed.append(url) or 'e' * 64"
+}
+_e64="$(printf 'e%.0s' {1..64})"
+
+t_case "the vendor feeds: LiteCore and QAIRT follow LiteRT main with their sha, the NDK Google's stable channel, and the archive's sha moves with it under --write (offline)"
+_lurl="https://soc-developer.semiconductor.samsung.com/api/v1/resource/download-file/ai-litecore-ubuntu2404-v1.2.0.tar.gz"
+_qurl="https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.51.1.261002/v2.51.1.261002.zip"
+# One stable 30.x, a newer 31.x beta on channel-1 and the current pin: the beta must lose.
+_ndk_xml='<remotePackage path="ndk;30.0.16248370"><channelRef ref="channel-0"/></remotePackage><remotePackage path="ndk;31.0.17000000"><channelRef ref="channel-1"/></remotePackage><remotePackage path="ndk;29.0.14206865"><channelRef ref="channel-0"/></remotePackage>'
+# spec | oracle text | current | latest | hashed URL | paired key (empty: nothing paired)
+while IFS='|' read -r _spec _oracle _cur _new _hurl _key; do
+  _out="$(_bv_vendor_spec_runs "${_spec}" "${_oracle}" "${_cur}" "${_new}")"
+  t_assert_contains "${_out}" "report ('${_new}', {}) []" "${_spec}: a report run names the oracle's version and downloads nothing"
+  if [ -n "${_key}" ]; then
+    t_assert_contains "${_out}" "bump ('${_new}', {'${_key}': '${_e64}'}) ['${_hurl}']" "${_spec}: --write hashes exactly the vendor's archive for that version"
+  else
+    t_assert_contains "${_out}" "bump ('${_new}', {}) []" "${_spec}: nothing is paired, the package manager checks the archive"
+  fi
+  t_assert_contains "${_out}" "same ('${_new}', {}) []" "${_spec}: an up-to-date pin hashes nothing"
+done <<ROWS
+spec_litecore|EXYNOS_AI_LITECORE_URL = 'https://x/ai-litecore-ubuntu2404-v1.2.0.tar.gz'|1.1.0|1.2.0|${_lurl}|LITECORE_SHA256
+spec_qnn_sdk|url = "${_qurl}",|2.49.0.260730|2.51.1.261002|${_qurl}|QNN_SDK_ZIP_SHA256
+spec_android_ndk|${_ndk_xml}|29.0.14206865|30.0.16248370||
+ROWS
+_out="$(_bv_offline <<'PY'
+def raised(spec, cur):
+    try:
+        spec(cur)
+    except RuntimeError as e:
+        return f"raised {e}"
+    return "no error"
+bv.http_text = lambda url: "nothing named here"
+print("\n".join(raised(spec, "0") for spec in (bv.spec_litecore, bv.spec_qnn_sdk, bv.spec_android_ndk)))
+bv.http_text = lambda url: 'Qualcomm_AI_Runtime_Community/All/2.51.1.261002/v2.51.1.261002.zip'
+bv.artifact_exists = lambda url: False
+print(raised(bv.spec_qnn_sdk, "2.49.0.260730"))
+PY
+)"
+t_assert_contains "${_out}" "raised LiteRT main's samsung vendor SDK names no" "a vendor file without the archive raises"
+t_assert_contains "${_out}" "raised LiteRT main's qairt workspace names no" "a workspace without the zip raises"
+t_assert_contains "${_out}" "raised no stable ndk;* package" "an index without a stable NDK raises instead of reporting the current pin as newest"
+t_assert_contains "${_out}" "raised QAIRT 2.51.1.261002 is not served at ${_qurl}" "a version the software center does not serve raises"
 
 t_summary

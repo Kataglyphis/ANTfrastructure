@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# The QNN SDK is login-gated, so a fake zip with its layout is the only exercise of the SDK-present branch.
+# A fake zip with the SDK's layout exercises the staged branch; the fetched branch is SourceBuild.QnnCommunityZip.Tests.ps1 (harness-style).
 
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules/WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
 
@@ -42,6 +42,13 @@ Describe 'Resolve-QnnSdk' {
     It 'throws on a SHA mismatch and on a missing backend set for the target' {
         Assert-Throws { Resolve-QnnSdk -DropDir $script:drop -ExpectedSha256 ('0' * 64) -ExtractDir $script:extract -Arch 'arm64' | Out-Null } 'hash mismatch must throw' -MessagePattern 'SHA256 mismatch'
         Assert-Throws { Resolve-QnnSdk -DropDir $script:drop -ExpectedSha256 $script:sha -ExtractDir $script:extract -Arch 'amd64' | Out-Null } 'the fake SDK has no x86_64 QnnCpu.dll -> amd64 must throw' -MessagePattern 'QnnCpu\.dll missing'
+    }
+
+    It 'resolves the pinned Community zip a handed-in fetch delivers when nothing is staged (the Linux-portable fetch logic is SourceBuild.QnnCommunityZip.Tests.ps1)' {
+        $empty = Join-Path $script:tmp 'empty-fetch'; New-Item $empty -ItemType Directory -Force | Out-Null
+        $fetch = { param($Url, $Destination, $Sha) Copy-Item $script:zip $Destination }
+        $r = Resolve-QnnSdk -DropDir $empty -ExpectedSha256 $script:sha -ExtractDir $script:extract -Arch 'arm64' -Community @{ Version = '2.34.0'; CacheDir = (Join-Path $script:tmp 'cache'); Source = 'community'; Fetch = $fetch }
+        Assert-True ($r.Home -like '*\qairt\2.34.0') 'the fetched zip resolves like a staged one'
     }
 
     It 'throws on two staged zips and on a zip that is not an SDK' {

@@ -137,6 +137,13 @@
               "spdx": "Apache-2.0"
             },
             {
+              "name": "Qualcomm AI Runtime (QAIRT) Community SDK (arm64: ORT QNN EP backends)",
+              "var": "QNN_SDK_VERSION",
+              "url": "https://softwarecenter.qualcomm.com/",
+              "license": "Qualcomm AI Runtime Community License (object-code distribution as part of a product only)",
+              "spdx": "LicenseRef-Proprietary-EULA"
+            },
+            {
               "name": "OpenCV",
               "var": "OPENCV_VERSION",
               "url": "https://opencv.org/",
@@ -343,6 +350,13 @@
                 "url": "https://gitlab.freedesktop.org/gstreamer/gstreamer",
                 "ref": "same refs as the Media Layer rows above"
               }
+            },
+            {
+              "name": "Samsung Exynos AI LiteCore headers (LiteRT android build)",
+              "var": "LITECORE_VERSION",
+              "url": "https://soc-developer.semiconductor.samsung.com/global/development/ai-litecore",
+              "license": "Exynos AI LiteCore License (headers compiled against; no library shipped)",
+              "spdx": "LicenseRef-Proprietary-EULA"
             }
           ]
         },

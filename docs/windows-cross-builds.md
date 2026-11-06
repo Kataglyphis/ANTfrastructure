@@ -997,11 +997,15 @@ Four findings from the first runs (3–6), each fixed in code and, where it is a
 
 ## QNN execution provider (#121, 2026-08-24; SDK staged + multi-framework 2026-08-29)
 
-The Qualcomm AI Engine Direct SDK is login-gated, so the wiring is **opt-in by staging a zip**:
-drop it into `windows/qnn-sdk/` (git-ignored except its README; bind-mounted into the
-media-core `onnx`, `genai`, `litert`, and `tvm` RUNs at `C:\temp\qnn-sdk`), optionally pin
-it with `QNN_SDK_ZIP_SHA256` in `versions.env`. `Resolve-QnnSdk` (in
-`WindowsSourceBuild.Common.psm1`) extracts it, anchors the SDK root on
+Since 2026-11-05 the lane needs no staged zip: `Resolve-QnnSdk` (in
+`WindowsSourceBuild.Common.psm1`) fetches the public "Qualcomm AI Runtime Community" zip at
+`QNN_SDK_VERSION`, verified against `QNN_SDK_ZIP_SHA256` (one pin for both lanes, moved by
+`bump_versions.py` `spec_qnn_sdk`), into the `qnn-sdk-winamd64` cache mount the media-core
+`onnx`, `genai`, `litert` and `tvm` RUNs carry beside the `windows/qnn-sdk` bind mount at
+`C:\temp\qnn-sdk`. A zip staged there is used instead and must match the same pin;
+`QNN_SDK_SOURCE=drop` keeps the staged-only contract. The Community zip carries
+`lib\aarch64-windows-msvc` and `lib\x86_64-windows-msvc` beside the Linux targets
+([qnn-linux.md § Staging](qnn-linux.md#staging) has the licence note). The resolver extracts it, anchors the SDK root on
 `include\QNN\QnnInterface.h`, asserts `lib\<arch>\QnnCpu.dll` exists for the target, and
 checks version compatibility against the ORT build (QNN_OP_STFT canary — falls back to
 QNN-off if the SDK is too old). `Copy-QnnRuntime` stages the per-arch backend DLLs
@@ -1369,7 +1373,7 @@ The **Linux ARM64 lane** mirrors this (backlog QNN-LINUX, **PROVEN 2026-08-30**
 on a staged QAIRT v2.49.0.260730 zip — arm64 media build GREEN): stage the
 Linux AArch64 SDK zip in `linux/qnn-sdk/` (different SDK —
 `lib/aarch64-oe-linux-gcc11.2/`, not `aarch64-windows-msvc`), pin with
-`QNN_SDK_LINUX_ZIP_SHA256` in `versions.env`. ORT-only today; framework
+`QNN_SDK_ZIP_SHA256` in `versions.env`. ORT-only today; framework
 fan-out to GenAI/LiteRT/TVM/IREE is OPEN. No zip = QNN off. Mechanism (the
 `QNN_ARCH_ABI` override, `stage_qnn_runtime`, the bind-mount): see
 [`docs/linux-cross-builds.md`](linux-cross-builds.md) (QNN EP, in the

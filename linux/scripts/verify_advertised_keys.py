@@ -28,6 +28,7 @@ EXCUSED = {
     "MEDIAPIPE_GENAI_VERSION": "android/mediapipe lane, not the cross runtime image",
     "ANDROID_CMAKE_VERSION": "android lane image, not the cross runtime image",
     "ANDROID_NDK_VERSION": "android lane image, not the cross runtime image",
+    "LITECORE_VERSION": "android lane build input: headers the LiteRT build compiles against, nothing shipped",
     "HAILORT_VERSION": "graded by the Hailo RUN in Dockerfile.torch, not the runtime "
                        "smoke: build-hailort.sh fails the build unless hailortcli "
                        "--version and gst-inspect-1.0 hailonet pass (amd64/arm64)",

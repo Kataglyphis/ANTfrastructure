@@ -208,6 +208,19 @@
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
     },
     {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Qualcomm-AI-Runtime-QAIRT-Community-SDK-arm64-O-2315e032",
+      "name": "Qualcomm AI Runtime (QAIRT) Community SDK (arm64: ORT QNN EP backends)",
+      "versionInfo": "2.51.1.261002",
+      "downloadLocation": "https://softwarecenter.qualcomm.com/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: eula-review"
+    },
+    {
       "SPDXID": "SPDXRef-Package-Linux-Images-OpenCV-e51e1f63",
       "name": "OpenCV",
       "versionInfo": "5.0.0",
@@ -431,7 +444,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Android-NDK-fcb2e0bc",
       "name": "Android NDK",
-      "versionInfo": "29.0.14206865",
+      "versionInfo": "30.0.16248370",
       "downloadLocation": "https://developer.android.com/ndk",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -479,6 +492,19 @@
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Linux Images / Android Layer (Dockerfile.android)",
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file, offer-source, allow-relink | Corresponding source required. Upstream: https://gitlab.freedesktop.org/gstreamer/gstreamer at same refs as the Media Layer rows above"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Samsung-Exynos-AI-LiteCore-headers-LiteRT-andro-d02a20f2",
+      "name": "Samsung Exynos AI LiteCore headers (LiteRT android build)",
+      "versionInfo": "1.2.0",
+      "downloadLocation": "https://soc-developer.semiconductor.samsung.com/global/development/ai-litecore",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Android Layer (Dockerfile.android)",
+      "licenseComments": "Obligations: eula-review"
     },
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-CUDA-Toolkit-9221b61d",
@@ -2206,6 +2232,11 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Qualcomm-AI-Runtime-QAIRT-Community-SDK-arm64-O-2315e032"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Linux-Images-OpenCV-e51e1f63"
     },
     {
@@ -2307,6 +2338,11 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Android-builds-of-LiteRT-ONNX-Runtime-OpenCV-GS-96c346fb"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Samsung-Exynos-AI-LiteCore-headers-LiteRT-andro-d02a20f2"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

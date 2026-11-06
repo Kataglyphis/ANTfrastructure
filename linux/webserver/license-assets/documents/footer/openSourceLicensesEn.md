@@ -45,6 +45,7 @@ its own license terms.
 | llguidance (static in GenAI) | ONNX Runtime GenAI deps.txt 94fa3912 | [github.com/microsoft/llguidance](https://github.com/microsoft/llguidance) | MIT |
 | ONNX Runtime GenAI | v0.19.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | LiteRT (TensorFlow Lite) | v2.3.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
+| Qualcomm AI Runtime (QAIRT) Community SDK (arm64: ORT QNN EP backends) | 2.51.1.261002 | [softwarecenter.qualcomm.com](https://softwarecenter.qualcomm.com/) | Qualcomm AI Runtime Community License (object-code distribution as part of a product only) |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
 | GStreamer Rust plugins (gst-plugins-rs) | 1.29.2 | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MPL-2.0 |
@@ -67,10 +68,11 @@ its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Android SDK | 15859902 | [developer.android.com/studio](https://developer.android.com/studio) | Apache 2.0 / Google ToS |
-| Android NDK | 29.0.14206865 | [developer.android.com/ndk](https://developer.android.com/ndk) | Apache 2.0 |
+| Android NDK | 30.0.16248370 | [developer.android.com/ndk](https://developer.android.com/ndk) | Apache 2.0 |
 | Android Build Tools | 36.0.0 | [developer.android.com/studio/releases/build-tools](https://developer.android.com/studio/releases/build-tools) | Apache 2.0 |
 | Android CMake | 4.1.2 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
 | Android builds of LiteRT / ONNX Runtime / OpenCV / GStreamer | same versions as Media Layer | [developer.android.com/ndk](https://developer.android.com/ndk) | Apache 2.0 / MIT / LGPLv2+ (per component) |
+| Samsung Exynos AI LiteCore headers (LiteRT android build) | 1.2.0 | [soc-developer.semiconductor.samsung.com/global/development/ai-litecore](https://soc-developer.semiconductor.samsung.com/global/development/ai-litecore) | Exynos AI LiteCore License (headers compiled against; no library shipped) |
 
 ### Optional GPU — NVIDIA (`Dockerfile.nvidia`)
 

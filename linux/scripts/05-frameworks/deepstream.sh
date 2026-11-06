@@ -29,6 +29,8 @@ DS_BUILD_PACKAGES=(
   libyaml-cpp-dev libjson-glib-dev uuid-dev libjpeg-turbo8-dev libmosquitto-dev libjansson-dev
   libssl-dev libcurl4-openssl-dev libjsoncpp-dev libcjson-dev libhiredis-dev librdkafka-dev
   librabbitmq-dev protobuf-compiler libprotobuf-dev nlohmann-json3-dev libgles-dev libegl-dev
+  # civetweb's USE_ZLIB: on a cross build the target's zconf.h lives in its multiarch dir, never pulled in by chance.
+  zlib1g-dev
 )
 
 # shellcheck source=deepstream-verify.sh
@@ -135,13 +137,14 @@ ds_runtime_asset() {
 }
 ds_runtime_asset_sha() { case "$(ds_arch)" in amd64) printf '%s' "${DEEPSTREAM_BINARIES_AMD64_SHA256}" ;; arm64) printf '%s' "${DEEPSTREAM_BINARIES_ARM64_SHA256}" ;; *) return 1 ;; esac; }
 
-# The Jetson .deb leaves these to L4T; the arm64 route stages NVIDIA's SBSA copies by hand (docs/linux-accelerator-images.md#deepstream-on-arm64-sbsa).
+# The Jetson .deb leaves these to L4T (the new nvstreammux links libgstnvdsseimeta too); the arm64 route stages NVIDIA's SBSA copies by hand (docs/linux-accelerator-images.md#deepstream-on-arm64-sbsa).
 ds_sbsa_dir() { printf '%s' "${DS_SBSA_DIR:-/opt/deepstream-sbsa}"; }
 ds_sbsa_libs() {
   printf '%s %s\n' \
     libnvbufsurface.so.1.0.0 DEEPSTREAM_SBSA_LIBNVBUFSURFACE_SHA256 \
     libnvbufsurftransform.so.1.0.0 DEEPSTREAM_SBSA_LIBNVBUFSURFTRANSFORM_SHA256 \
-    libnvdsbufferpool.so DEEPSTREAM_SBSA_LIBNVDSBUFFERPOOL_SHA256
+    libnvdsbufferpool.so DEEPSTREAM_SBSA_LIBNVDSBUFFERPOOL_SHA256 \
+    libgstnvdsseimeta.so.1.0.0 DEEPSTREAM_SBSA_LIBGSTNVDSSEIMETA_SHA256
 }
 
 # Prints every staged SBSA library that is missing or not the pinned bytes; empty output means the route can build.
@@ -290,6 +293,13 @@ ds_fetch_sources() {
   rm -rf "$(ds_root)/sources"; mkdir -p "$(ds_root)/sources"
   cp -a "${dir}/includes" "$(ds_root)/sources/includes"
   cp "${dir}/LICENSE" "$(ds_root)/sources/LICENSE"
+  ds_patch_literal_compiler "${dir}/src/gst-plugins/gst-dsexample/dsexample_lib/Makefile"
+}
+
+# dsexample_lib's Makefile spells gcc instead of $(CC), so a cross build archived an x86-64 object; a moved anchor fails here, not hours in.
+ds_patch_literal_compiler() {
+  grep -q '^	gcc ' "$1" || ds_die "$1: no literal gcc line to swap for \$(CC); upstream moved it"
+  sed -i 's/^\tgcc /\t$(CC) /' "$1"
 }
 
 ds_excluded_reason() {
@@ -374,13 +384,24 @@ ds_write_gst_ldconf() {
   ldconfig
 }
 
+# Under TARGET_DEVICE=aarch64 the Makefiles link with -L/usr/lib/<triplet>/tegra, L4T's dir: for the build it is DeepStream's lib dir, and ds_build removes the link.
+ds_link_tegra_dir() {
+  local link
+  link="/usr/lib/$(ds_multiarch)/tegra"
+  [ ! -e "${link}" ] || ds_die "${link} exists; the SBSA route expected to provide it"
+  ln -sfn "$(ds_root)/lib" "${link}"
+  DS_TEGRA_LINK="${link}"
+}
+
 # nvstreammux is a static archive gst-nvmultistream2 links, so it is built but not installed, as in build.sh.
 ds_build_component() {
-  local src="$1" dir="$2" log="$3" cxx cc jobs
+  local src="$1" dir="$2" log="$3" cxx cc jobs lib_dir
+  lib_dir="$(ds_root)/lib/"
   cxx="$(ds_component_compiler "${src}/${dir}/Makefile" CXX "${DS_COMPAT_H}")${DS_TRT_LINK_FLAGS:+ ${DS_TRT_LINK_FLAGS}}"
   cc="$(ds_component_compiler "${src}/${dir}/Makefile" CC "${DS_COMPAT_H}")${DS_TRT_LINK_FLAGS:+ ${DS_TRT_LINK_FLAGS}}"
   jobs="${DS_JOBS:-$(nproc)}"
-  local -a mk=(make -C "${src}/${dir}" -j"${jobs}" "CUDA_VER=${DS_CUDA_VER}" "CXX=${cxx}" "CC=${cc}"
+  # Under TARGET_DEVICE=aarch64 the Makefiles install into and rpath L4T's tegra dir; the SBSA route keeps amd64's DeepStream lib dir.
+  local -a mk=(make -C "${src}/${dir}" -j"${jobs}" "CUDA_VER=${DS_CUDA_VER}" "CXX=${cxx}" "CC=${cc}" "LIB_INSTALL_DIR=${lib_dir}"
                "NVDS_VERSION=${DEEPSTREAM_VERSION%.*}" PROTOBUF_BIN_DIR=/usr/bin ${DS_TARGET_DEVICE:+"TARGET_DEVICE=${DS_TARGET_DEVICE}"})
   if "${mk[@]}" >"${log}" 2>&1 && { [ "${dir}" = src/utils/nvstreammux ] || "${mk[@]}" install >>"${log}" 2>&1; }; then
     return 0
@@ -401,7 +422,8 @@ ds_build_components() {
   [ -n "${DS_CUDA_VER}" ] || ds_die "cannot read the CUDA version from nvcc"
   if ds_cross_active; then
     DS_TARGET_DEVICE="$(ds_target_device)"
-    DS_CROSS_CC="${CC}" DS_CROSS_CXX="${CXX}"
+    DS_CROSS_CC="${CC}${DS_CROSS_SYSFLAGS:+ ${DS_CROSS_SYSFLAGS}}" DS_CROSS_CXX="${CXX}${DS_CROSS_SYSFLAGS:+ ${DS_CROSS_SYSFLAGS}}"
+    ds_link_tegra_dir
     # The Makefiles hard-code /usr/local/cuda-$(CUDA_VER)/{include,lib64}: a view names the target's, and nvcc stays the host's.
     DS_CUDA_VER="${DS_CUDA_VER}-${CUDA_CROSS_TARGET_DIR}"
     ds_write_cuda_cross_view "/usr/local/cuda-${DS_CUDA_VER}"
@@ -412,6 +434,8 @@ ds_build_components() {
   export LIBRARY_PATH="${sdk}/lib:${trt}/lib:/usr/local/cuda-${DS_CUDA_VER}/lib64:/usr/local/cuda-${DS_CUDA_VER}/lib64/stubs${LIBRARY_PATH:+:${LIBRARY_PATH}}"
   # GCC 16 searches /usr/lib/x86_64-linux-gnu (TensorRT 11's dev links) before a bare LIBRARY_PATH dir: on 2026-10-28 -lnvinfer linked .so.11; only an explicit -L precedes it.
   DS_TRT_LINK_FLAGS="-L${sdk}/lib"
+  # A cross GCC ignores LIBRARY_PATH, so the target's CUDA lib dir and its libcuda stub ride the compiler string too.
+  [ -z "${DS_TARGET_DEVICE:-}" ] || DS_TRT_LINK_FLAGS+=" -L/usr/local/cuda-${DS_CUDA_VER}/lib64 -L/usr/local/cuda-${DS_CUDA_VER}/lib64/stubs"
   export NVCC_PREPEND_FLAGS="${NVCC_PREPEND_FLAGS:-} -include ${logdir}/gcc16-compat.h"
   PKG_CONFIG_PATH="$(ds_gst_pkgconfig_path)"
   export PKG_CONFIG_PATH
@@ -437,7 +461,8 @@ ds_build_rest_server_deps() {
   ds_clone_dep https://github.com/civetweb/civetweb.git "${DEEPSTREAM_CIVETWEB_COMMIT}" "${w}/civetweb"
   printf 'CIVETWEB_%s {\n global:\n  *;\n local:\n  duk_*;\n};\n' "${DEEPSTREAM_CIVETWEB_VERSION#v}" > "${w}/civetweb/civetweb.ver"
   make -C "${w}/civetweb" -j"${DS_JOBS:-$(nproc)}" slib WITH_ALL=1 WITH_CPP=1 ${DS_CROSS_CC:+"CC=${DS_CROSS_CC}" "CXX=${DS_CROSS_CXX}"} \
-    LDFLAGS="-Wl,--version-script,${w}/civetweb/civetweb.ver" >"${w}/civetweb.log" 2>&1 || { tail -n 30 "${w}/civetweb.log" >&2; ds_die "civetweb failed"; }
+    LDFLAGS="-Wl,--version-script,${w}/civetweb/civetweb.ver" >"${w}/civetweb.log" 2>&1 \
+    || { grep -n -B2 -A2 -e 'error' "${w}/civetweb.log" | tail -n 40 >&2; tail -n 20 "${w}/civetweb.log" >&2; ds_die "civetweb failed (its error lines, then its tail, above)"; }
   cp -P "${w}/civetweb/libcivetweb.so"* "${lib}/"
   ds_clone_dep https://github.com/jupp0r/prometheus-cpp.git "${DEEPSTREAM_PROMETHEUS_CPP_COMMIT}" "${w}/prometheus-cpp"
   git -C "${w}/prometheus-cpp" submodule update -q --init --recursive --depth 1
@@ -487,7 +512,8 @@ ds_build() {
   problem="$(ds_arch_problem "${TARGET_ARCH:-$(dpkg --print-architecture)}")"; [ -z "${problem}" ] || ds_die "${problem}"
   problem="$(ds_gate_problem)"; [ -z "${problem}" ] || ds_die "${problem}"
   ds_cross_setup
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/deepstream.XXXXXX")"
+  # sccache hashes the preprocessed source, whose line markers carry the path: a mktemp tree missed every compile.
+  tmp="${TMPDIR:-/tmp}/deepstream-build"; rm -rf "${tmp}"; mkdir -p "${tmp}"
   ds_apt_install "${DS_BUILD_PACKAGES[@]}" "${DS_RUNTIME_PACKAGES[@]}"
   ds_stage_runtime_deb "${tmp}"
   ds_stage_tensorrt "${tmp}"
@@ -495,7 +521,7 @@ ds_build() {
   ds_build_rest_server_deps "${tmp}/deps"
   ds_build_components "${tmp}/src" "${tmp}/logs" "$(ds_trt_sdk "${tmp}")"
   ds_fix_layout "$(ds_root)"
-  rm -rf "${tmp}" ${DS_TARGET_DEVICE:+"/usr/local/cuda-${DS_CUDA_VER}"}
+  rm -rf "${tmp}" ${DS_TARGET_DEVICE:+"/usr/local/cuda-${DS_CUDA_VER}"} ${DS_TEGRA_LINK:+"${DS_TEGRA_LINK}"}
   ds_write_gst_ldconf
   ds_write_trt_ldconf
   ds_link_trt_builder_resources
@@ -511,8 +537,11 @@ ds_cross_setup() {
   setup_linux_cross_env || ds_die "no cross toolchain for $(ds_arch) in this image"
   cuda_cross_active || ds_die "no CUDA cross target in this image ($(cuda_cross_env_file)); the gpu stage must run with CROSS_NVIDIA_SBSA=1"
   cuda_cross_load
-  DS_CROSS_CC="${CC}" DS_CROSS_CXX="${CXX}"
-  # The verify helpers judge foreign ELF with the target's nm and link into the target's multiarch dir.
+  # The Makefile builds take no cross file, and the cross GCC's sysroot is /usr/<triplet>: apt's :<arch> headers and libs ride the compiler string, lowest priority like cross-meson's -idirafter.
+  local multiarch
+  multiarch="$(ds_multiarch)"
+  DS_CROSS_SYSFLAGS="-idirafter /usr/include/${multiarch} -idirafter /usr/include -L/usr/lib/${multiarch}"
+  DS_CROSS_CC="${CC} ${DS_CROSS_SYSFLAGS}" DS_CROSS_CXX="${CXX} ${DS_CROSS_SYSFLAGS}"
   DSV_NM="${NM}"
   DSV_MULTIARCH="$(ds_multiarch)"
   export DSV_NM DSV_MULTIARCH
@@ -531,7 +560,8 @@ ds_stage_runtime() {
   if [ "$(ds_arch)" = amd64 ]; then ds_link_v4l2_plugin; else ds_log "no NVDEC libv4l2 plugin on $(ds_arch): nvv4l2decoder is not part of the SBSA route"; fi
   # The licence makes only the runtime .so files distributable; static archives serve builds only.
   find "${root}" -name '*.a' -type f -delete
-  gst_dir="${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gstreamer-1.0"
+  # The cross-built arm64 GStreamer has no lib/<triplet>; lib/multiarch is the link every arch's GST_PLUGIN_PATH names.
+  gst_dir="${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/multiarch/gstreamer-1.0"
   [ -d "${gst_dir}" ] || ds_die "no GStreamer plugin directory at ${gst_dir}"
   ln -sfn "${root}/lib/gst-plugins" "${gst_dir}/deepstream"
   DSV_WIRED=1 DSV_ARCH="$(ds_arch)" DS_ROOT="${root}" DS_TRT_PREFIX="$(ds_trt_prefix)" bash "${DS_SCRIPT_DIR}/deepstream-verify.sh"

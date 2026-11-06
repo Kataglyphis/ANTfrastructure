@@ -42,6 +42,9 @@ Two neighbours, so you land on the right page:
 - [An unresolved `NEEDED` in a library that nothing scans](#an-unresolved-needed-in-a-library-that-nothing-scans)
 - [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
 - [The disk guard aims at the wrong number](#the-disk-guard-aims-at-the-wrong-number)
+- [The cross-sbsa packages vanish between the repo RUN and the install](#the-cross-sbsa-packages-vanish-between-the-repo-run-and-the-install)
+- [`no GStreamer plugin directory at /opt/gstreamer/lib/aarch64-linux-gnu/gstreamer-1.0`](#no-gstreamer-plugin-directory-at-optgstreamerlibaarch64-linux-gnugstreamer-10)
+- [`zconf.h: No such file or directory` in civetweb under the SBSA DeepStream build](#zconfh-no-such-file-or-directory-in-civetweb-under-the-sbsa-deepstream-build)
 - [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
 - [apt: `libc6:i386` install is unsatisfiable after an archive/ports drift](#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift)
 - [A from-source CPython silently drops an extension module](#a-from-source-cpython-silently-drops-an-extension-module)
@@ -86,8 +89,10 @@ Two neighbours, so you land on the right page:
 - [A push leaves the repo bare: `core.bare and core.worktree do not make sense`](#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense)
 - [A cross-built Rust tool links the build host's libbz2](#a-cross-built-rust-tool-links-the-build-hosts-libbz2)
 - [HailoRT's configure is slow while the cache looks healthy](#hailorts-configure-is-slow-while-the-cache-looks-healthy)
+- [`sccache-evict.service` fails with `sort: write failed: 'standard output': Broken pipe`](#sccache-evictservice-fails-with-sort-write-failed-standard-output-broken-pipe)
 - [`Using ccache: /usr/bin/ccache` in a build that should use sccache](#using-ccache-usrbinccache-in-a-build-that-should-use-sccache)
 - [Cerbero: `Checksum for … spandsp-0.0.6.tar.gz is 'eed29aa6…'`](#cerbero-checksum-for--spandsp-006targz-is-eed29aa6)
+- [Cerbero: a fetch hangs for hours on a stalled mirror](#cerbero-a-fetch-hangs-for-hours-on-a-stalled-mirror)
 - [Cerbero: a checksum fails once](#cerbero-a-checksum-fails-once)
 - [`import hailo_platform` fails: `_pyhailort` is a 4 KB module](#import-hailo_platform-fails-_pyhailort-is-a-4-kb-module)
 - [`cmake --list-presets`: `Unrecognized "version" field`](#cmake---list-presets-unrecognized-version-field)
@@ -504,6 +509,85 @@ count toward it; since CON53 (2026-10-01) the script and the chain's fallback ad
 them, so `<N>` is GB of layer cache, not of the store. Local
 `:latest-<arch>` images are re-pullable and not build inputs; `nerdctl rmi`
 them last. Restarting the daemon is the BKD1 remedy above wearing a disk costume.
+
+### `no GStreamer plugin directory at /opt/gstreamer/lib/aarch64-linux-gnu/gstreamer-1.0`
+
+The first arm64 package stage of the nvidia chain (2026-11-05) died in the DeepStream step after
+media had passed. `ds_stage_runtime` derived the plugin directory from
+`dpkg-architecture -qDEB_HOST_MULTIARCH`, amd64's layout, where the native GStreamer installs
+into `lib/x86_64-linux-gnu`. The cross-built arm64 GStreamer installs into `lib/` and has no
+triplet directory at all. Both layouts carry the `lib/multiarch` link, which is what the image's
+`GST_PLUGIN_PATH` names and the registry scans (`Scanning plugins in:
+/opt/gstreamer/lib/multiarch/gstreamer-1.0` in both media logs), so the DeepStream link now lands
+there. A plugin path taken from the host's multiarch triplet is an amd64 assumption; take it from
+the link or from the installed `.pc`.
+
+### `zconf.h: No such file or directory` in civetweb under the SBSA DeepStream build
+
+**Symptom.** The nvidia chain's arm64 media stage, cross-built on the amd64 host, dies in
+the DeepStream RUN: `src/civetweb.c:452:10: fatal error: zconf.h: No such file or directory`,
+then `[deepstream] ERROR: civetweb failed`. `zlib.h` was found. The next run, past civetweb,
+died in the first component: `cp: cannot create regular file
+'/usr/lib/aarch64-linux-gnu/tegra/': Not a directory`.
+
+**Cause.** The source-built cross GCC's sysroot is `/usr/aarch64-linux-gnu`: it searches
+`/usr/aarch64-linux-gnu/include` and never `/usr/include` or `/usr/include/aarch64-linux-gnu`,
+where apt puts the `:arm64` dev headers (`zlib1g-dev`, `libssl-dev`, ...). The Meson cross
+file adds both dirs with `-idirafter` (`cross-meson.sh` says why); DeepStream's Makefile
+builds (civetweb, then every component) got no such flag. A first fix put the multiarch dir on
+`CPATH`, which the probe in the gpu image showed is not enough: the headers are under
+`/usr/include` itself.
+
+The second symptom is the Makefiles' `TARGET_DEVICE=aarch64` branches: they install into and
+link against L4T's `/usr/lib/aarch64-linux-gnu/tegra`, which only a Jetson has.
+The third: `aarch64-linux-gnu-ld.bfd: cannot find -lcuda` in `nvll_osd`. amd64 finds the
+driver stub through `LIBRARY_PATH`, which GCC honours only as a native compiler; the cross
+driver needs an explicit `-L` for `<cuda view>/lib64/stubs`.
+The fourth: `skipping incompatible dsexample_lib/libdsexample.a` then `cannot find -ldsexample`
+in `gst-dsexample`, whose `dsexample_lib/Makefile` spells `gcc` instead of `$(CC)`.
+The fifth: `cannot find -lgstnvdsseimeta` in `gst-nvmultistream2`. Nothing builds that
+library; the amd64 `.deb` ships it, the Jetson `.deb` and the SBSA container's DeepStream tree do
+not, and the container's own `libnvdsgst_multistream.so` needs it from the Tegra dir, so it is the
+fourth staged SBSA copy (`DEEPSTREAM_SBSA_LIBGSTNVDSSEIMETA_SHA256`).
+
+**Fix.** `ds_cross_setup` appends `-idirafter /usr/include/<triplet> -idirafter /usr/include
+-L/usr/lib/<triplet>` to the cross compiler strings every Makefile build receives
+(`DS_CROSS_SYSFLAGS`), `zlib1g-dev` is a named build package, and a failed civetweb prints its
+error lines before its tail. Every component make gets `LIB_INSTALL_DIR=<DeepStream lib>/`, and
+for the build `/usr/lib/<triplet>/tegra` is a link to that dir, removed before the stage ends
+(`ds_link_tegra_dir`), and under cross the components' link flags name the CUDA view's `lib64`
+and `lib64/stubs`, and `ds_patch_literal_compiler` swaps that one literal `gcc` for `$(CC)` on the
+fetched tree (a moved anchor fails the fetch). `test-deepstream.sh` holds all of it;
+`deepstream.cross-multiarch-headers` proves the include pair. Proven in the gpu-arm64 image:
+a zlib+OpenSSL probe compiles and links to an AArch64 ELF with exactly these flags.
+
+### The cross-sbsa packages vanish between the repo RUN and the install
+
+**Symptom.** The nvidia chain's arm64 gpu stage, cross-built on the amd64 host
+with `CROSS_NVIDIA_SBSA=1` beside the amd64 lane (`--parallel-archs`), logs
+`CUDA cross repo enabled for TARGET_ARCH=arm64: ubuntu2604/cross-linux-sbsa` in
+its repo RUN and then dies in the next one with
+`E: Unable to locate package cuda-cross-sbsa-13-4` for the whole cross set,
+while NVIDIA's repo serves every one of them. Alone, the same lane passes.
+
+**Cause.** `/var/lib/apt` is a BuildKit cache mount, and `Dockerfile.nvidia`
+keyed it by the BUILD arch alone, so both lanes shared `apt-lib-amd64`. apt's
+`update` deletes the list files of sources it is not configured with
+(`APT::Get::List-Cleanup`); the amd64 lane's repo RUN ran its update a few
+seconds after the arm64 lane's and erased the cross-linux-sbsa list. `sharing=locked`
+serialises the RUNs; it does not keep one RUN's lists from the next. The
+second half: BuildKit keys a RUN without its cache mounts' contents or ids, so
+re-keying the mount alone left the repo RUN `CACHED` and the next RUN with an
+EMPTY `/var/lib/apt`, and every package was "unable to locate".
+
+**Fix.** Two: the three apt mounts of `Dockerfile.nvidia` are keyed by the
+target too (`apt-lib-${TARGETARCH}-${TARGET_ARCH}`), as every other
+Dockerfile's are, and `install-cuda-stack.sh` runs `apt-get update` before its
+first install, as `install-tensorrt.sh` already did. `test-cuda-cross-sbsa.sh`
+refuses a build-arch-only id and an install without the update;
+`cuda-stack.apt-lists-keyed-by-target` and `cuda-stack.installer-refreshes-apt-lists`
+prove both. The rule: a RUN that installs packages refreshes the lists itself;
+a cache mount carries nothing a RUN may rely on.
 
 ### A renamed or dropped distro package kills a stage hours in
 
@@ -1535,6 +1619,21 @@ which serves the 2014 tarball with the recipe's checksum. Before adding a redire
 host, download from the replacement and compare its sha256 with the recipe's `tarball_checksum`, and
 never edit the checksum to match what came back.
 
+### Cerbero: a fetch hangs for hours on a stalled mirror
+
+The amd64 android stage of the nvidia chain sat at `[(55/88 @ 63%) mpg123 -> fetch]` for 80
+minutes on 2026-11-05 while the arm64 lane finished the same step. Inside the container one
+`curl` to `download.sourceforge.net` held an open socket with 225 KB of a 1 MB tarball and no
+further byte. Cerbero's curl line has `--connect-timeout 20` and `--retry 2` but no stall
+timeout, so a mirror that stops sending never fails and nothing retries or falls over to the
+freedesktop mirror.
+
+`cerbero_fetch_package_retry` now writes `speed-time = 60` and `speed-limit = 1024` into a
+`.curlrc` under `CERBERO_HOME` and exports `CURL_HOME` to it: curl reads that file for every
+call without `-q`, cerbero's included, and ends a transfer under 1 KB/s for 60 s, which
+cerbero's own retry and mirror list then handle. A hung fetch in a running build is ended by
+`kill -TERM` on that one `curl` (not the chain); cerbero retries the URL and then its mirror.
+
 ### Cerbero: a checksum fails once
 
 **Symptom.** One arch's `android-gstreamer` stops at `Recipe '<name>' failed at the build step 'fetch'`
@@ -1549,6 +1648,21 @@ checksum, with and without Cerbero's user agent.
 **Fix.** `cerbero_fetch_package_retry` runs `fetch-package gstreamer-1.0` up to three times, 30 s apart,
 before `package`. Only downloads repeat, and the checksum stays the gate. A host that is gone for good
 fails all three tries; see the spandsp entry above for that case.
+
+### `sccache-evict.service` fails with `sort: write failed: 'standard output': Broken pipe`
+
+**Symptom.** The hourly size cap fails after about two minutes, `journalctl -t sccache-evict` shows no
+`deleted … objects` line, and the bucket stays over `CAP_GB` and keeps growing (2026-11-04, the first time the
+bucket passed 100 GiB).
+
+**Cause.** The `awk` that picks the objects left with `exit` once it had enough. `sort` then died of SIGPIPE, and
+`set -o pipefail` ended the script before `s5cmd run`. Under the cap the script exits earlier, so nothing showed
+until the bucket first needed evicting.
+
+**Fix.** `awk` reads to the end of the list and only stops printing. Install the script again
+([size cap](../linux/sccache-s3/README.md#4-the-size-cap)); the next run works off the backlog. `test-sccache-evict.sh`
+holds this. A run of 230,000 objects took 21 minutes, and `df` falls only after Garage's GC has followed the bucket
+size, so check `garage stats` before reading a flat `df` as a failed run.
 
 ### `Using ccache: /usr/bin/ccache` in a build that should use sccache
 

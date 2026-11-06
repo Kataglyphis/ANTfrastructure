@@ -1217,6 +1217,9 @@ keeps the design.
   `buildctl prune --filter type==regular` (§ 3.2.1, `prune-safe.sh`).
 - Do not size the runtime-lane disk gate per arch. It is per *concurrent* build
   (§ 3.2); the per-arch number refuses every run on this host.
+- Do not compile in a `mktemp -d` tree. sccache hashes the preprocessed source, and its
+  line markers carry the path, so a random directory misses on every run: DeepStream
+  hit 0 of 109 on both arches on 2026-11-05 until its build tree got a fixed name.
 - Do not judge a cache change by whether the flags appear in the command. Judge
   it by bytes that did not move: cache hits on **intermediate** vertices, or a
   measured wall-clock delta. Two changes were reverted on 2026-08-23 for

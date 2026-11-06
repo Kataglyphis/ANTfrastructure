@@ -197,7 +197,7 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
-    --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
+    --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly --mount=type=cache,target=/var/cache/qnn-sdk,sharing=locked,id=qnn-sdk-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=secret,id=sccache_s3,required=false \
@@ -241,7 +241,7 @@ LABEL kataglyphis.step=onnxruntime-genai
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/onnxruntime-genai,target=/opt/scripts/patches/onnxruntime-genai,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
-    --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
+    --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly --mount=type=cache,target=/var/cache/qnn-sdk,sharing=locked,id=qnn-sdk-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=secret,id=sccache_s3,required=false \
@@ -260,7 +260,7 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target
     --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/01-core/path-helpers.sh,readonly \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
-    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} --mount=type=cache,target=/var/cache/qnn-sdk,sharing=locked,id=qnn-sdk-${TARGET_ARCH} \
     set -euo pipefail; \
     if [ "${BUILD_GENAI:-true}" = "true" ]; then \
       bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-genai; \
@@ -358,7 +358,7 @@ LABEL kataglyphis.step=litert
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/litert,target=/opt/scripts/patches/litert,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \
-    --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
+    --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly --mount=type=cache,target=/var/cache/qnn-sdk,sharing=locked,id=qnn-sdk-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=secret,id=sccache_s3,required=false \
@@ -397,7 +397,7 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
-    --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
+    --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly --mount=type=cache,target=/var/cache/qnn-sdk,sharing=locked,id=qnn-sdk-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH}-tvm \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH}-tvm \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
@@ -490,7 +490,7 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=cache,target
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/torchvision,target=/opt/scripts/patches/torchvision,readonly \
-    --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
+    --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly --mount=type=cache,target=/var/cache/qnn-sdk,sharing=locked,id=qnn-sdk-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH}-wheelhouse \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH}-wheelhouse \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \

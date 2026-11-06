@@ -8,7 +8,7 @@ source "${_SCRIPT_DIR}/smoke-common.sh"
 
 : "${ANDROID_SDK_ROOT:=/opt/android-sdk}"
 # Fallbacks only; the image ENV from versions.env wins. Keep them equal to versions.env.
-: "${ANDROID_NDK_VERSION:=29.0.14206865}"
+: "${ANDROID_NDK_VERSION:=30.0.16248370}"
 : "${ANDROID_API_LEVEL:=34}"
 : "${ANDROID_BUILD_TOOLS:=36.0.0}"
 

@@ -10534,8 +10534,8 @@
  {
   "id": "ort-chain.g2-cache-nuget",
   "target": "linux/scripts/03-media/ort-provenance.sh",
-  "find": "    tree \"${NUGET_PACKAGES:-${HOME:-/root}/.nuget/packages}\"\n",
-  "replace": "\n",
+  "find": "    tree \"${NUGET_PACKAGES:-${HOME:-/root}/.nuget/packages}\" tree \"${QNN_SDK_CACHE_DIR:-/var/cache/qnn-sdk}\"\n",
+  "replace": "    tree \"${QNN_SDK_CACHE_DIR:-/var/cache/qnn-sdk}\"\n",
   "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
   "why": "NuGet's package folder is a default G2 root, as on Windows"
  },
@@ -10622,16 +10622,16 @@
  {
   "id": "ort-chain.g2-genai-fetch-uv",
   "target": "linux/Dockerfile.media",
-  "find": "ort-provenance.sh,readonly \\\n    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/01-core/path-helpers.sh,readonly \\\n    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \\\n    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
-  "replace": "ort-provenance.sh,readonly \\\n    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/01-core/path-helpers.sh,readonly \\\n    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \\\n    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
+  "find": "ort-provenance.sh,readonly \\\n    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/01-core/path-helpers.sh,readonly \\\n    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} --mount=type=cache,target=/var/cache/qnn-sdk,sharing=locked,id=qnn-sdk-${TARGET_ARCH} \\\n    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
+  "replace": "ort-provenance.sh,readonly \\\n    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/01-core/path-helpers.sh,readonly \\\n    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} --mount=type=cache,target=/var/cache/qnn-sdk,sharing=locked,id=qnn-sdk-${TARGET_ARCH} \\\n    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
   "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
   "why": "GenAI's G2 RUN grades the uv cache the GenAI build RUN fetched into"
  },
  {
   "id": "ort-chain.g2-genai-fetch-pip",
   "target": "linux/Dockerfile.media",
-  "find": "    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \\\n    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
-  "replace": "    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
+  "find": "    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} --mount=type=cache,target=/var/cache/qnn-sdk,sharing=locked,id=qnn-sdk-${TARGET_ARCH} \\\n    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
+  "replace": "    --mount=type=cache,target=/var/cache/qnn-sdk,sharing=locked,id=qnn-sdk-${TARGET_ARCH} \\\n    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
   "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
   "why": "GenAI's G2 RUN grades the pip cache the GenAI build RUN fetched into"
  },
@@ -18125,9 +18125,9 @@
  },
  {
   "id": "probe.shared-python-payload-guard",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "_rt_python_probe_command() {\n  printf 'if [ -z \"${%s:-}\" ]; then",
-  "replace": "_rt_python_probe_command() {\n  printf 'if [ -z \"${%s:-}\" ] && false; then",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "smoke_python_probe_command() {\n  printf 'if [ -z \"${%s:-}\" ]; then",
+  "replace": "smoke_python_probe_command() {\n  printf 'if [ -z \"${%s:-}\" ] && false; then",
   "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
   "why": "an empty environment crossing must exit with the ABSENT sentinel before Python runs"
  },
@@ -20574,8 +20574,8 @@
  {
   "id": "lib.genai-smoke-tiny-missing-fails",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "else fail \"no tiny GenAI model generator at ${tiny_py}\"; fi",
-  "replace": "else :; fi",
+  "find": "else fail \"no tiny GenAI model generator at ${tiny_py}\"; fi\n    out=\"$(",
+  "replace": "else :; fi\n    out=\"$(",
   "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
   "why": "a checkout without the generator would hand tier 4 nothing and report generate() as merely unproven"
  },
@@ -31665,6 +31665,14 @@
   "why": "one error page from sqlite.org under HTTP 200 stopped riscv64's android-gstreamer (2026-10-27)"
  },
  {
+  "id": "lib.cerbero-curl-stall-timeout",
+  "target": "linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh",
+  "find": "    printf 'speed-time = 60\\nspeed-limit = 1024\\n' > \"${CURL_HOME}/.curlrc\"\n",
+  "replace": "    printf 'speed-limit = 1024\\n' > \"${CURL_HOME}/.curlrc\"\n",
+  "test": "bash linux/scripts/tests/test-cerbero-fetch-retry.sh",
+  "why": "without speed-time curl applies no stall window, and a mirror that stops sending holds the android stage open for hours"
+ },
+ {
   "id": "lib.cerbero-fetch-before-package",
   "target": "linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh",
   "find": "    cerbero_fetch_package_retry || exit 1\n",
@@ -34297,6 +34305,78 @@
   "why": "FLUTTER_VERSION moved without its commit makes every Windows Flutter install refuse"
  },
  {
+  "id": "lib.bump-android-ndk-stable-channel",
+  "target": "docs/scripts/bump_tools.py",
+  "find": "        if '<channelRef ref=\"channel-0\"/>' in m.group(2)\n",
+  "replace": "        if m.group(2) is not None\n",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "a beta on channel-1 must never become the NDK pin"
+ },
+ {
+  "id": "lib.bump-litecore-sha-pair",
+  "target": "docs/scripts/bump_tools.py",
+  "find": "        extras[\"LITECORE_SHA256\"] = bv.sha256_of_url(_LITECORE_URL.format(v=v))\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "a LiteCore bump without its sha is an unverified download that still looks pinned"
+ },
+ {
+  "id": "lib.bump-qnn-sdk-served",
+  "target": "docs/scripts/bump_tools.py",
+  "find": "    if v != cur and not bv.artifact_exists(url):\n        raise RuntimeError(f\"QAIRT {v} is not served at {url}\")\n",
+  "replace": "    if v != cur and not bv.artifact_exists(url):\n        pass\n",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "a version LiteRT names but the software center does not serve would pin a 404"
+ },
+ {
+  "id": "lib.qnn-community-zip-fetched",
+  "target": "linux/scripts/01-core/qnn-sdk.sh",
+  "find": "        zip=\"$(qnn_pinned_community_zip)\"\n",
+  "replace": "        zip=\"\"\n",
+  "test": "bash linux/scripts/tests/test-qnn-community-zip.sh",
+  "why": "without the fetch an empty drop dir silently builds the arm64 image without QNN"
+ },
+ {
+  "id": "lib.qnn-community-sha-required",
+  "target": "linux/scripts/01-core/qnn-sdk.sh",
+  "find": "    [ -n \"${sha}\" ] || err \"QNN: QNN_SDK_VERSION=${version} without QNN_SDK_ZIP_SHA256 -- a pin moves with its sha (bump_versions.py spec_qnn_sdk)\"\n",
+  "replace": "    sha=\"${sha:-0}\"\n",
+  "test": "bash linux/scripts/tests/test-qnn-community-zip.sh",
+  "why": "a pinned version without its checksum would be downloaded unverified"
+ },
+ {
+  "id": "windows-lane.qnn-community-zip-fetched",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "    & $Fetch (Get-QnnCommunityZipUrl -Version $Version) $dest $ExpectedSha256\n",
+  "replace": "    $null = $Fetch\n",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.QnnCommunityZip.Tests.ps1 -ResultFile logs/code-quality/qnn-community-zip-mutation.json",
+  "why": "without the fetch the cache dir stays empty and the lane silently builds the Windows image without the QNN EP"
+ },
+ {
+  "id": "lib.litecore-verified-download",
+  "target": "linux/scripts/03-media/build/litert/android/build-android.sh",
+  "find": "download_verified_file \"${litecore_url}\" \"${LITECORE_SHA256}\" \"${litecore_root}/litecore.tar.gz\" \\\n",
+  "replace": "download_file \"${litecore_url}\" \"${litecore_root}/litecore.tar.gz\" \\\n",
+  "test": "bash linux/scripts/tests/test-litecore-pin.sh",
+  "why": "an unverified fetch would accept Samsung's next silent re-pack and skip the mirror"
+ },
+ {
+  "id": "renovate.pin-sweep-rides-the-report",
+  "target": "linux/scripts/renovate-local.sh",
+  "find": "  report) run_report; report_default_submodules; report_lock_maintenance; report_pin_sweep ;;\n",
+  "replace": "  report) run_report; report_default_submodules; report_lock_maintenance ;;\n",
+  "test": "bash linux/scripts/tests/test-renovate-pin-sweep.sh",
+  "why": "a report that skips the sweep calls a stale vendor pin current"
+ },
+ {
+  "id": "renovate.no-bump-is-local",
+  "target": "linux/scripts/renovate-cli.sh",
+  "find": "    local:--no-bump) assign_renovate_options BUMP 0 ;;\n",
+  "replace": "    fleet:--no-bump) assign_renovate_options BUMP 0 ;;\n",
+  "test": "bash linux/scripts/tests/test-renovate-cli.sh",
+  "why": "the opt-out belongs to the hub driver that runs the sweep"
+ },
+ {
   "id": "lib.iree-host-once-no-lock",
   "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
   "find": "    if ! flock -w \"${IREE_HOST_LOCK_WAIT_SECS:-14400}\" \"${lock}\"; then",
@@ -35225,6 +35305,62 @@
   "why": "a staged SBSA library with other bytes than the pin must be refused, never shipped"
  },
  {
+  "id": "deepstream.cross-multiarch-headers",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "  DS_CROSS_SYSFLAGS=\"-idirafter /usr/include/${multiarch} -idirafter /usr/include -L/usr/lib/${multiarch}\"\n",
+  "replace": "  DS_CROSS_SYSFLAGS=\"-L/usr/lib/${multiarch}\"\n",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "without the -idirafter pair the cross GCC (sysroot /usr/<triplet>) never sees apt's :arm64 headers and the SBSA civetweb build dies on zconf.h"
+ },
+ {
+  "id": "deepstream.sbsa-lib-install-dir",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "  local -a mk=(make -C \"${src}/${dir}\" -j\"${jobs}\" \"CUDA_VER=${DS_CUDA_VER}\" \"CXX=${cxx}\" \"CC=${cc}\" \"LIB_INSTALL_DIR=${lib_dir}\"\n",
+  "replace": "  local -a mk=(make -C \"${src}/${dir}\" -j\"${jobs}\" \"CUDA_VER=${DS_CUDA_VER}\" \"CXX=${cxx}\" \"CC=${cc}\"\n",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "without the explicit lib dir the aarch64 Makefiles install into L4T's tegra dir, which the SBSA image does not have"
+ },
+ {
+  "id": "deepstream.build-dir-stable",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "  tmp=\"${TMPDIR:-/tmp}/deepstream-build\"; rm -rf \"${tmp}\"; mkdir -p \"${tmp}\"\n",
+  "replace": "  tmp=\"$(mktemp -d \"${TMPDIR:-/tmp}/deepstream.XXXXXX\")\"\n",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "a random build dir changes every preprocessed line marker, so sccache misses every DeepStream compile on every run"
+ },
+ {
+  "id": "deepstream.plugin-dir-multiarch-link",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "  gst_dir=\"${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/multiarch/gstreamer-1.0\"\n",
+  "replace": "  gst_dir=\"${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/gstreamer-1.0\"\n",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "the cross-built arm64 GStreamer has no lib/<triplet> dir, so the triplet form fails the arm64 package stage on a directory that does not exist"
+ },
+ {
+  "id": "deepstream.dsexample-literal-gcc-patched",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "  sed -i 's/^\\tgcc /\\t$(CC) /' \"$1\"\n",
+  "replace": "  true\n",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "a sub-make that still spells gcc builds an x86-64 object into the arm64 plugin's archive"
+ },
+ {
+  "id": "cuda-stack.apt-lists-keyed-by-target",
+  "target": "linux/Dockerfile.nvidia",
+  "find": "LABEL kataglyphis.step=cuda-repo\nRUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \\\n    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH}-${TARGET_ARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH}-${TARGET_ARCH} \\\n",
+  "replace": "LABEL kataglyphis.step=cuda-repo\nRUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \\\n    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH}-${TARGET_ARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \\\n",
+  "test": "bash linux/scripts/tests/test-cuda-cross-sbsa.sh",
+  "why": "an apt list cache keyed by the build arch alone is shared by the amd64 and the arm64 (sbsa) lane, and one lane's apt-get update erases the other's cross repo lists"
+ },
+ {
+  "id": "cuda-stack.installer-refreshes-apt-lists",
+  "target": "linux/scripts/01-core/install-cuda-stack.sh",
+  "find": "apt-get update -qq\napt-get install -y --no-install-recommends \\\n    cuda-toolkit-${CUDA_VERSION_MAJOR_MINOR} \\\n",
+  "replace": "apt-get install -y --no-install-recommends \\\n    cuda-toolkit-${CUDA_VERSION_MAJOR_MINOR} \\\n",
+  "test": "bash linux/scripts/tests/test-cuda-cross-sbsa.sh",
+  "why": "the apt lists sit in a cache mount BuildKit's cache key ignores; a cached repo RUN leaves a fresh mount empty and the install must refresh the lists itself"
+ },
+ {
   "id": "deepstream.sbsa-missing-file",
   "target": "linux/scripts/05-frameworks/deepstream.sh",
   "find": "if [ ! -f \"${dir}/${f}\" ]; then",
@@ -35251,7 +35387,7 @@
  {
   "id": "deepstream.chain-route-predicate",
   "target": "linux/scripts/01-core/build-helpers.sh",
-  "find": "arm64) [ -f \"${dir}/libnvbufsurface.so.1.0.0\" ] && [ -f \"${dir}/libnvbufsurftransform.so.1.0.0\" ] && [ -f \"${dir}/libnvdsbufferpool.so\" ] ;;",
+  "find": "arm64) [ -f \"${dir}/libnvbufsurface.so.1.0.0\" ] && [ -f \"${dir}/libnvbufsurftransform.so.1.0.0\" ] && [ -f \"${dir}/libnvdsbufferpool.so\" ] && [ -f \"${dir}/libgstnvdsseimeta.so.1.0.0\" ] ;;",
   "replace": "arm64) return 0 ;;",
   "test": "bash linux/scripts/tests/test-deepstream.sh",
   "why": "an arm64 media stage without the staged libraries must get ENABLE_DEEPSTREAM=false, or the build dies hours in"
@@ -35503,5 +35639,45 @@
   "replace": "if ($false) { throw \"onnxinference did not run real frames",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Gst.OnnxInferenceRun.Tests.ps1 -ResultFile logs/code-quality/gst-onnxinference-mutation.json",
   "why": "a pipeline that fails must not read as a passed inference"
+ },
+ {
+  "id": "boot.genai-model-named-for-wheel-smoke",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "    '  export ORCHESTRANT_SMOKE_GENAI_MODEL=\"$d/tiny-genai\"' \\\n",
+  "replace": "    '  ORCHESTRANT_SMOKE_GENAI_MODEL=\"$d/tiny-genai\"' \\\n",
+  "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+  "why": "an unexported name never reaches orchestrant.smoke, whose GenAI check then only warns and the amd64 floor goes red"
+ },
+ {
+  "id": "lib.sccache-evict-reads-whole-list",
+  "target": "linux/sccache-s3/sccache-s3-evict",
+  "find": "'free > 0 { print \"rm",
+  "replace": "'{ if (free <= 0) exit; print \"rm",
+  "test": "bash linux/scripts/tests/test-sccache-evict.sh",
+  "why": "an awk that leaves early kills sort with SIGPIPE, pipefail ends the script before any delete, and the bucket grows past its cap on a disk shared with Nextcloud"
+ },
+ {
+  "id": "lib.sccache-evict-waits-for-resync",
+  "target": "linux/sccache-s3/sccache-s3-evict",
+  "find": "[ \"$QUEUE\" -gt 1000 ] && SHORT=0",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-sccache-evict.sh",
+  "why": "space a resync is still freeing would be deleted for again on every run, emptying the cache for a shortfall that is already solved"
+ },
+ {
+  "id": "lib.sccache-evict-keeps-floor",
+  "target": "linux/sccache-s3/sccache-s3-evict",
+  "find": "[ \"$DISK_TARGET\" -lt \"$FLOOR\" ] && DISK_TARGET=$FLOOR",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-sccache-evict.sh",
+  "why": "a disk filled by something else would delete the whole cache without freeing enough to matter"
+ },
+ {
+  "id": "lib.sccache-evict-shrinks-for-disk",
+  "target": "linux/sccache-s3/sccache-s3-evict",
+  "find": "[ \"$DISK_TARGET\" -lt \"$TARGET\" ] && TARGET=$DISK_TARGET",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-sccache-evict.sh",
+  "why": "under the cap with little free space the bucket would keep its size while the shared disk fills"
  }
 ]

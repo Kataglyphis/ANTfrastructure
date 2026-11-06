@@ -708,6 +708,22 @@ smoke_genai_py() {
   _smoke_genai_py_verdict
 }
 
+# The tiny model is written in-container from the environment; a failed write still runs the smoke, whose floor then reports the warning.
+smoke_app_wheel_command() {
+  printf '%s\n' 'd="$(mktemp -d)"' \
+    'if printf "%s\n" "${GENAI_TINY_MODEL_PY:-}" | /opt/venv/bin/python - --out "$d/tiny-genai" >/dev/null 2>&1; then' \
+    '  export ORCHESTRANT_SMOKE_GENAI_MODEL="$d/tiny-genai"' \
+    'else' \
+    '  echo "tiny GenAI model not written in-container; generate() stays unproven"' \
+    'fi' \
+    'exec /opt/venv/bin/python -m orchestrant.smoke'
+}
+
+# The script is generated from fixed probe identifiers; the Python payload stays in the environment.
+smoke_python_probe_command() {
+  printf 'if [ -z "${%s:-}" ]; then\n  echo "%s ABSENT: %s is empty inside the container -- the program never crossed the boundary"\n  exit 4\nfi\nprintf "%%s\\n" "${%s}" | /opt/venv/bin/python -' "$1" "$2" "$1" "$1"
+}
+
 smoke_native_dispatch() {
   if smoke_cross_presence_gate "$1" "$2"; then return 0; fi
   shift 2

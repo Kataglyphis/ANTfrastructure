@@ -209,6 +209,11 @@ CROSS_DISK_WATCH_SECS
 # by the smoke's UBUNTU_VERSION probe (06-packaging/smoke-runtime-image.sh).
 VERSION_ID
 
+# Not an operator switch: the smoke hands lib/tiny-genai-model.py's source into
+# the container under this name; the GenAI probe and the wheel smoke write the
+# model from it (06-packaging/smoke-runtime-image.sh).
+GENAI_TINY_MODEL_PY
+
 # Optional override for the cargo version the toolchain smoke pins; defaults to
 # RUST_VERSION, because cargo ships with the Rust toolchain and tracks it.
 CARGO_VERSION

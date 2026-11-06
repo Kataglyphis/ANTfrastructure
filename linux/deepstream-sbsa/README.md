@@ -1,7 +1,8 @@
 # DeepStream SBSA libraries — Linux arm64 (CON42 phase 7)
 
-The drop point for the three Tegra libraries DeepStream's arm64 route needs:
-`libnvbufsurface.so.1.0.0`, `libnvbufsurftransform.so.1.0.0` and `libnvdsbufferpool.so`.
+The drop point for the four Tegra libraries DeepStream's arm64 route needs:
+`libnvbufsurface.so.1.0.0`, `libnvbufsurftransform.so.1.0.0`, `libnvdsbufferpool.so` and
+`libgstnvdsseimeta.so.1.0.0` (the new `nvstreammux` and the SEI serialization link it).
 NVIDIA's Jetson runtime `.deb` leaves them to L4T, and their SBSA builds ship only inside
 NVIDIA's SBSA container (`DEEPSTREAM_SBSA_IMAGE` in `versions.env`, pinned by digest).
 
@@ -13,7 +14,7 @@ bash linux/scripts/05-frameworks/stage-deepstream-sbsa.sh --check  # verifies wh
 ```
 
 The media stage mounts this directory read-only and refuses any byte that is not the
-pinned one. With the three files present, an nvidia chain builds DeepStream for arm64;
+pinned one. With the four files present, an nvidia chain builds DeepStream for arm64;
 without them the arm64 media stage gets `ENABLE_DEEPSTREAM=false` and says why.
 Everything here but this README is ignored by Git. The contract and its limits:
 [`docs/linux-accelerator-images.md` § DeepStream on arm64 (SBSA)](../../docs/linux-accelerator-images.md#deepstream-on-arm64-sbsa).

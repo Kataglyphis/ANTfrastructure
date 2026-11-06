@@ -40,11 +40,14 @@ t_assert_eq "" "$(_ds 'ds_arch_problem amd64')"
 t_assert_contains "$(_ds 'ds_arch_problem arm64' DS_SBSA_DIR="${_T}/no-sbsa")" "libnvbufsurface.so.1.0.0 is not staged: run linux/scripts/05-frameworks/stage-deepstream-sbsa.sh"
 t_assert_contains "$(_ds 'ds_arch_problem riscv64')" "no runtime for 'riscv64'"
 mkdir -p "${_T}/sbsa"
-for f in libnvbufsurface.so.1.0.0 libnvbufsurftransform.so.1.0.0 libnvdsbufferpool.so; do printf '%s' "${f}" > "${_T}/sbsa/${f}"; done
+for f in libnvbufsurface.so.1.0.0 libnvbufsurftransform.so.1.0.0 libnvdsbufferpool.so libgstnvdsseimeta.so.1.0.0; do printf '%s' "${f}" > "${_T}/sbsa/${f}"; done
 _SBSA_PINS=(DEEPSTREAM_SBSA_LIBNVBUFSURFACE_SHA256="$(printf 'libnvbufsurface.so.1.0.0' | sha256sum | cut -d' ' -f1)"
   DEEPSTREAM_SBSA_LIBNVBUFSURFTRANSFORM_SHA256="$(printf 'libnvbufsurftransform.so.1.0.0' | sha256sum | cut -d' ' -f1)"
-  DEEPSTREAM_SBSA_LIBNVDSBUFFERPOOL_SHA256="$(printf 'libnvdsbufferpool.so' | sha256sum | cut -d' ' -f1)")
-t_assert_eq "" "$(_ds 'ds_arch_problem arm64' DS_SBSA_DIR="${_T}/sbsa" "${_SBSA_PINS[@]}")" "the pinned bytes, all three staged: arm64 builds"
+  DEEPSTREAM_SBSA_LIBNVDSBUFFERPOOL_SHA256="$(printf 'libnvdsbufferpool.so' | sha256sum | cut -d' ' -f1)"
+  DEEPSTREAM_SBSA_LIBGSTNVDSSEIMETA_SHA256="$(printf 'libgstnvdsseimeta.so.1.0.0' | sha256sum | cut -d' ' -f1)")
+t_assert_eq "" "$(_ds 'ds_arch_problem arm64' DS_SBSA_DIR="${_T}/sbsa" "${_SBSA_PINS[@]}")" "the pinned bytes, all four staged: arm64 builds"
+# nvmultistream2 (the new nvstreammux) and the SEI serialization link it; neither arm64 artefact of NVIDIA's ships it outside the SBSA container.
+t_assert_contains "$(_ds 'ds_sbsa_libs' )" "libgstnvdsseimeta.so.1.0.0 DEEPSTREAM_SBSA_LIBGSTNVDSSEIMETA_SHA256" "the SEI metadata library is the fourth staged SBSA copy"
 printf 'tampered' > "${_T}/sbsa/libnvdsbufferpool.so"
 t_assert_contains "$(_ds 'ds_arch_problem arm64' DS_SBSA_DIR="${_T}/sbsa" "${_SBSA_PINS[@]}")" "libnvdsbufferpool.so is not the pinned DEEPSTREAM_SBSA_LIBNVDSBUFFERPOOL_SHA256" \
   "other bytes under the pinned name are refused, not shipped"
@@ -71,6 +74,28 @@ t_assert_eq "aarch64-linux-gnu-gcc -include /c.h" "$(_mfx 'CXX:= gcc' CXX)" "gst
 t_assert_eq "aarch64-linux-gnu-g++ -std=c++14 -include /c.h -Wno-error=non-c-typedef-for-linkage" "$(_mfx 'CXX=g++ -std=c++14' CXX)"
 t_assert_eq "aarch64-linux-gnu-gcc -include /c.h" "$(_mfx 'SRCS:= a.cpp' CC)" "make's default cc becomes the cross gcc"
 t_assert_contains "$(t_fn_src "${DS}" ds_cross_setup)" 'cuda_cross_load' "the gpu stage's CUDA cross target is loaded before any nvcc runs"
+# The cross GCC's sysroot is /usr/<triplet>, so apt's :arm64 headers under /usr/include are invisible without these; the first SBSA media build (2026-11-05) died on zconf.h.
+t_assert_contains "$(t_fn_src "${DS}" ds_cross_setup)" 'DS_CROSS_SYSFLAGS="-idirafter /usr/include/${multiarch} -idirafter /usr/include -L/usr/lib/${multiarch}"' "the target's multiarch headers and libs, lowest priority as cross-meson gives them"
+t_assert_contains "$(t_fn_src "${DS}" ds_cross_setup)" 'DS_CROSS_CC="${CC} ${DS_CROSS_SYSFLAGS}" DS_CROSS_CXX="${CXX} ${DS_CROSS_SYSFLAGS}"' "on the compiler string every Makefile build (civetweb, the components) receives"
+t_assert_contains "$(t_fn_src "${DS}" ds_build_rest_server_deps)" "grep -n -B2 -A2 -e 'error' \"\${w}/civetweb.log\"" "a failed civetweb prints its error lines, not only a warning-filled tail"
+# TARGET_DEVICE=aarch64 makes the Makefiles install into and link against L4T's /usr/lib/<triplet>/tegra (the second SBSA build died on the cp).
+t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'DS_CROSS_CC="${CC}${DS_CROSS_SYSFLAGS:+ ${DS_CROSS_SYSFLAGS}}"' "the component builds keep the sysflags ds_cross_setup chose"
+t_assert_contains "$(t_fn_src "${DS}" ds_build_component)" '"LIB_INSTALL_DIR=${lib_dir}"' "every component installs into and rpaths DeepStream's lib dir, as on amd64"
+t_assert_contains "$(t_fn_src "${DS}" ds_link_tegra_dir)" 'ln -sfn "$(ds_root)/lib" "${link}"' "the hard-coded -L tegra dir resolves to that lib dir for the build"
+t_assert_contains "$(t_fn_src "${DS}" ds_build)" '${DS_TEGRA_LINK:+"${DS_TEGRA_LINK}"}' "and the link does not ship"
+# Both arches' DeepStream steps hit sccache 0 of 109 times on 2026-11-05: the mktemp dir changed every line marker.
+t_assert_contains "$(t_fn_src "${DS}" ds_build)" 'tmp="${TMPDIR:-/tmp}/deepstream-build"; rm -rf "${tmp}"; mkdir -p "${tmp}"' "the build tree has a fixed path, so sccache's hash repeats across runs"
+# gst-dsexample's dsexample_lib Makefile spells gcc, so the fourth SBSA build archived an x86-64 object (2026-11-05).
+t_assert_contains "$(t_fn_src "${DS}" ds_fetch_sources)" 'ds_patch_literal_compiler "${dir}/src/gst-plugins/gst-dsexample/dsexample_lib/Makefile"' "the patch runs on the fetched tree"
+_mk="${_T}/dsexample.mk"; printf 'all:\n\tgcc -ggdb -c -o dsexample_lib.o -fPIC dsexample_lib.c\n\tar rcs libdsexample.a dsexample_lib.o\n' > "${_mk}"
+bash -c 'ds_die() { echo "DIE: $*" >&2; exit 1; }; source <(sed -n "/^ds_patch_literal_compiler()/,/^}/p" "$1"); ds_patch_literal_compiler "$2"' _ "${DS}" "${_mk}"
+t_assert_eq $'all:\n\t$(CC) -ggdb -c -o dsexample_lib.o -fPIC dsexample_lib.c\n\tar rcs libdsexample.a dsexample_lib.o' "$(cat "${_mk}")" "the literal gcc becomes \$(CC), which make hands the sub-make from the command line"
+printf 'all:\n\t$(CC) -c x.c\n' > "${_mk}"
+t_assert_eq "1" "$(bash -c 'ds_die() { echo "DIE: $*" >&2; exit 1; }; source <(sed -n "/^ds_patch_literal_compiler()/,/^}/p" "$1"); ( ds_patch_literal_compiler "$2" ) 2>/dev/null; echo $?' _ "${DS}" "${_mk}")" "a Makefile without the anchor fails loudly"
+# nvll_osd links -lcuda; the amd64 route finds the stub through LIBRARY_PATH, which a cross GCC ignores (third SBSA build, 2026-11-05).
+t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" '[ -z "${DS_TARGET_DEVICE:-}" ] || DS_TRT_LINK_FLAGS+=" -L/usr/local/cuda-${DS_CUDA_VER}/lib64 -L/usr/local/cuda-${DS_CUDA_VER}/lib64/stubs"' \
+  "the cross components get the target's CUDA lib dir and its libcuda stub as explicit -L"
+t_assert_contains "$(sed -n '/^DS_BUILD_PACKAGES=(/,/^)/p' "${DS}")" 'zlib1g-dev' "zlib's dev package is named, not inherited"
 t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'ds_write_cuda_cross_view' "the Makefiles' /usr/local/cuda-\$(CUDA_VER) resolves to the target's headers and libs"
 t_assert_contains "$(_ds ds_gate_problem ENABLE_NVIDIA=false)" "needs ENABLE_NVIDIA=true"
 mkdir -p "${_T}/cuda/bin"; printf '#!/bin/sh\necho "Cuda compilation tools, release 13.4, V13.4.92"\n' > "${_T}/cuda/bin/nvcc"; chmod +x "${_T}/cuda/bin/nvcc"
@@ -283,6 +308,8 @@ t_assert_contains "${_MAIN}" 'DSV_CROSS' "a cross build stage runs the file gate
 t_assert_contains "${_MAIN}" 'deferred to the package stage' "and says which gates wait"
 t_assert_contains "${_MAIN}" 'if [ "$(dsv_arch)" = amd64 ]; then dsv_check_v4l2_plugin; else dsv_ok' "the libv4l2 plugin gate is amd64's"
 t_assert_contains "$(t_fn_src "${DS}" ds_stage_runtime)" 'if [ "$(ds_arch)" = amd64 ]; then ds_link_v4l2_plugin; else ds_log' "the package stage links the plugin on amd64 only"
+# The first arm64 package stage (2026-11-05) died on lib/aarch64-linux-gnu/gstreamer-1.0: the cross GStreamer installs into lib/, and lib/multiarch is the link the image's GST_PLUGIN_PATH names on every arch.
+t_assert_contains "$(t_fn_src "${DS}" ds_stage_runtime)" 'gst_dir="${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/multiarch/gstreamer-1.0"' "the plugin link lands in the directory the registry scans"
 mkdir -p "${_T}/gpx"; printf 'x' > "${_T}/gpx/libthing.so"
 t_assert_contains "$(DSV_NM="${_T}/fake-nm" bash -c 'source "$1"; dsv_non_plugins "$2"' _ "${DSV}" "${_T}/gpx" 2>&1)" "libthing.so" "a foreign ELF is judged by the toolchain's nm (DSV_NM), not the host's"
 

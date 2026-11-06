@@ -220,7 +220,7 @@ assembly in both native and cross flows.
 | Media | libcamera, FFmpeg | ✔️ |
 | Compiler | GCC <!-- generated:gcc -->16.2.0<!-- /generated:gcc -->, LLVM/Clang <!-- generated:llvm -->23.1.5<!-- /generated:llvm --> | ✔️ |
 | Language runtime | Python <!-- generated:python -->3.15.2<!-- /generated:python -->, Node.js <!-- generated:node -->26.13.0<!-- /generated:node --> | ✔️ |
-| Android | SDK <!-- generated:android_sdk -->15859902<!-- /generated:android_sdk -->, NDK <!-- generated:android_ndk -->29.0.14206865<!-- /generated:android_ndk --> | ✔️ |
+| Android | SDK <!-- generated:android_sdk -->15859902<!-- /generated:android_sdk -->, NDK <!-- generated:android_ndk -->30.0.16248370<!-- /generated:android_ndk --> | ✔️ |
 | Windows | MSVC Build Tools, CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda -->, GStreamer <!-- generated:gstreamer -->1.29.2<!-- /generated:gstreamer --> | ✔️ |
 | Windows | Vulkan SDK <!-- generated:vulkan -->1.4.363.0<!-- /generated:vulkan -->, ONNX Runtime <!-- generated:onnx -->1.31.1<!-- /generated:onnx --> | ✔️ |
 | Windows-on-ARM | Cross-built **artifact bundle** (`:winarm64` labels a `windows/amd64` image; publishing: [above](#the-architecture-summary-agentsmd-carried)): media + inference measured at runtime parity with amd64 on 2026-08-26 (statically verified only; HEAD carries unvalidated changes since). **CUDA/cuDNN and HailoRT cross-built since 2026-09-20/21 (#176 + Phase 3: arm64 toolkit payload, ORT CUDA EP, GenAI CUDA, OpenCV CUDA modules, TVM CUDA, `libhailort.dll` + `hailortcli`, all 0xAA64; running them needs an arm64 device).** Not included: classic TensorRT, TAPPAS, the pyhailort wheel, the TVM/IREE compilers, LiteRT-LM, the torch app. [Details](windows-cross-builds.md) | ✔️ |
