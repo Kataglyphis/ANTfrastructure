@@ -4,8 +4,9 @@
 # Stages and checks the MSVC runtime's notice in Windows packages; see docs/third-party-licenses.md § The MSVC runtime notice
 
 Set-StrictMode -Version Latest
-Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -DisableNameChecking -ErrorAction Stop
-Import-Module (Join-Path $PSScriptRoot 'WindowsMsiLicense.Common.psm1') -DisableNameChecking -ErrorAction Stop
+foreach ($sibling in 'WindowsScripts.Shared', 'WindowsMsiLicense.Common') {
+    Import-Module (Join-Path $PSScriptRoot "$sibling.psm1") -DisableNameChecking -ErrorAction Stop
+}
 
 $script:MsvcRuntimeDllPattern = '^(msvcp140.*|vcruntime140.*|concrt140|vccorlib140)\.dll$'
 $script:MsvcNoticeDir = 'licenses/msvc-runtime'
@@ -23,7 +24,7 @@ function Find-MsvcRedistText {
     #>
     param([string]$VsInstallDir = '')
     if (-not $VsInstallDir) { $VsInstallDir = Get-VisualStudioInstallPath }
-    $texts = @(Get-ChildItem -Path (Join-Path $VsInstallDir 'Licenses\*\Redist.txt') -File -ErrorAction SilentlyContinue |
+    $texts = @(Get-ChildItem -Path (Join-Path $VsInstallDir 'Licenses/*/Redist.txt') -File -ErrorAction SilentlyContinue |
             Sort-Object @{ Expression = { $_.Directory.Name -ne '1033' } }, FullName)
     if ($texts.Count -eq 0) { throw "no Licenses\<lcid>\Redist.txt under '$VsInstallDir', so the MSVC runtime cannot ship with its notice" }
     return $texts[0].FullName

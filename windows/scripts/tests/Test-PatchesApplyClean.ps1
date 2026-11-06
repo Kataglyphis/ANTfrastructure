@@ -49,10 +49,13 @@ $defaultRefs = @{
     HAILORT     = 'v5.4.0'
     MIGRAPHX    = '95672916ed289d4be9d230a9be732e1bbad97e8c'
     LITERT      = 'v2.3.0'
+    LIBVPX      = '5ad3f2a5a9e0e39ac991dea9a8ec4681bad6010f'
 }
 if (Test-Path $versionsFile) {
     Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1') -Force
     $fileVersions = ConvertFrom-VersionsEnv -Path $versionsFile
+    $toolPins = Join-Path (Split-Path $versionsFile -Parent) 'tool-pins.env'
+    if (Test-Path -LiteralPath $toolPins) { $pins = ConvertFrom-VersionsEnv -Path $toolPins; foreach ($k in $pins.Keys) { $fileVersions[$k] = $pins[$k] } }
     foreach ($entry in @(
             @{ Ref = 'ONNXRUNTIME'; Key = 'ONNXRUNTIME_VERSION' },
             @{ Ref = 'OPENCV';      Key = 'OPENCV_VERSION' },
@@ -64,7 +67,9 @@ if (Test-Path $versionsFile) {
             # A commit, not a tag: the one Build-MigraphxFromSource.ps1 downloads (archive/<sha>).
             @{ Ref = 'MIGRAPHX';    Key = 'MIGRAPHX_WINDOWS_COMMIT' },
             # The tag Build-LitertWheelBazel.ps1 clones; its patches feed the ai-edge-litert wheel.
-            @{ Ref = 'LITERT';      Key = 'LITERT_VERSION' }
+            @{ Ref = 'LITERT';      Key = 'LITERT_VERSION' },
+            # The meson port commit GStreamer's vpx.wrap names; its patch lives beside GStreamer's because the wrap applies it.
+            @{ Ref = 'LIBVPX';      Key = 'LIBVPX_MESON_COMMIT' }
         )) {
         if ($fileVersions.Contains($entry.Key)) {
             $val = $fileVersions[$entry.Key]
@@ -85,7 +90,10 @@ $repoMap = @{
     'hailo'          = @{ Url = 'https://github.com/hailo-ai/hailort.git';        Ref = $defaultRefs.HAILORT }
     'migraphx'       = @{ Url = 'https://github.com/ROCm/AMDMIGraphX.git';        Ref = $defaultRefs.MIGRAPHX }
     'litert'         = @{ Url = 'https://github.com/google-ai-edge/LiteRT.git';   Ref = $defaultRefs.LITERT }
+    'libvpx'         = @{ Url = 'https://gitlab.freedesktop.org/gstreamer/meson-ports/libvpx.git'; Ref = $defaultRefs.LIBVPX }
 }
+# A patch meson applies to a wrap's port sits with its consumer's patches, so its repo key is named here.
+$patchRepoKey = @{ '002-libvpx-clangcl-simd-flags.patch' = 'libvpx' }
 
 function Get-PatchTargetPaths {
     param([string]$PatchFile)
@@ -146,8 +154,8 @@ function Get-PatchApplyStatus {
 }
 
 function Get-StaticPatchResult {
-    param([IO.FileInfo]$Patch, [hashtable]$RepoMap, [hashtable]$Clones, [string]$WorkDir, [string]$PatchExe)
-    $repoKey = Split-Path (Split-Path $Patch.FullName -Parent) -Leaf
+    param([IO.FileInfo]$Patch, [hashtable]$RepoMap, [hashtable]$Clones, [string]$WorkDir, [string]$PatchExe, [hashtable]$PatchRepoKey = @{})
+    $repoKey = if ($PatchRepoKey.ContainsKey($Patch.Name)) { $PatchRepoKey[$Patch.Name] } else { Split-Path (Split-Path $Patch.FullName -Parent) -Leaf }
     $spec = $RepoMap[$repoKey]
     if (-not $spec) {
         return [pscustomobject]@{ Patch = $Patch.Name; Repo = $repoKey; Ref = '?'; Status = 'FAIL (no repo mapping - add it to $repoMap)' }
@@ -175,7 +183,7 @@ $clones = @{}   # repoKey|ref -> clone dir (reused across patches for the same r
 
 try {
     foreach ($patch in $patches) {
-        $results.Add((Get-StaticPatchResult -Patch $patch -RepoMap $repoMap -Clones $clones -WorkDir $WorkDir -PatchExe $patchExe))
+        $results.Add((Get-StaticPatchResult -Patch $patch -RepoMap $repoMap -Clones $clones -WorkDir $WorkDir -PatchExe $patchExe -PatchRepoKey $patchRepoKey))
     }
 }
 finally {

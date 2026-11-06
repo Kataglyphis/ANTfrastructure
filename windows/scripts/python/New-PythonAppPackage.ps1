@@ -22,7 +22,7 @@ Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsMsix.Common.psm1') -Fo
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsMsix.Signing.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsTargetArch.Common.psm1') -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsPythonApp.Common.psm1') -Force -DisableNameChecking
-foreach ($sibling in 'WindowsMsiLicense.Common', 'WindowsOrtLicense.Common', 'WindowsMsvcRuntimeNotice.Common') {
+foreach ($sibling in 'WindowsMsiLicense.Common', 'WindowsOrtLicense.Common') {
     Import-Module (Join-Path $PSScriptRoot "..\modules\$sibling.psm1") -DisableNameChecking -ErrorAction Stop
 }
 

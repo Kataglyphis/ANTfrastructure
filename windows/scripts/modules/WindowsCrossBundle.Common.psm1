@@ -5,8 +5,9 @@
 
 Set-StrictMode -Version Latest
 
-Import-Module (Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1') -DisableNameChecking -ErrorAction Stop
-Import-Module (Join-Path $PSScriptRoot 'WindowsMsvcRuntimeNotice.Common.psm1') -DisableNameChecking -ErrorAction Stop
+foreach ($sibling in 'WindowsTargetArch.Common', 'WindowsMsvcRuntimeNotice.Common') {
+    Import-Module (Join-Path $PSScriptRoot "$sibling.psm1") -DisableNameChecking -ErrorAction Stop
+}
 
 # Where the family images install the media stack's DLLs, for the target arch of the image.
 $script:ImageRuntimeBin = 'C:\runtime\bin'
@@ -164,14 +165,14 @@ function New-PortableBundle {
     }
 
     # CPack installs the notice itself; a closure-added runtime gets it here.
-    $notice = @(Get-ChildItem -LiteralPath $bundle -Recurse -File -Filter 'Redist.txt' | Where-Object { ($_.FullName -replace '\\', '/') -match '/licenses/msvc-runtime/Redist\.txt$' })
-    $redist = if ($notice.Count -gt 0) { $notice[0].FullName } else { Copy-MsvcRuntimeNotice -Root $bundle }
+    $redist = Join-Path $bundle 'licenses\msvc-runtime\Redist.txt'
+    if (-not (Test-Path -LiteralPath $redist -PathType Leaf)) { $redist = Copy-MsvcRuntimeNotice -Root $bundle }
 
     $null = New-Item -ItemType Directory -Force -Path $packages
-    $installers = @(Get-ChildItem -LiteralPath $BuildDir -File | Where-Object { $_.Extension -in '.msi', '.zip' })
-    $installers += @($installers | ForEach-Object { Join-Path $BuildDir "$($_.BaseName).exe" } | Select-Object -Unique |
+    $cpack = @(Get-ChildItem -LiteralPath $BuildDir -File | Where-Object { $_.Extension -in '.msi', '.zip' })
+    foreach ($installer in $cpack) { & $PackageCheck $installer.FullName $redist }
+    $installers = $cpack + @($cpack | ForEach-Object { Join-Path $BuildDir "$($_.BaseName).exe" } | Select-Object -Unique |
             Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Get-Item)
-    foreach ($installer in @($installers | Where-Object { $_.Extension -in '.msi', '.zip' })) { & $PackageCheck $installer.FullName $redist }
     $installers | Copy-Item -Destination $packages
     return [pscustomobject]@{ Bundle = $bundle; Packages = $packages; Added = $added; Installers = @($installers | ForEach-Object Name) }
 }

@@ -359,6 +359,8 @@ MANUAL = [
     "VISUAL_STUDIO_VERSION", "RUST_NIGHTLY_TOOLCHAIN",
     "OPENCV_VERSION", "FFMPEG_VERSION",
     "JRE_VERSION", "LIBFFI_MESON_VERSION",
+    # The libvpx release GStreamer's vpx.wrap ports at LIBVPX_MESON_COMMIT, moved with GSTREAMER_VERSION.
+    "LIBVPX_VERSION",
     # Deliberate pins and non-versions
     "PY_SETUPTOOLS_LT82_VERSION",  # deliberate <82 compat pin — pairs with PY_SETUPTOOLS_VERSION
     "FLATPAK_RUNTIME_VERSION",     # freedesktop runtime BRANCH (26.08), not a package version
@@ -416,8 +418,12 @@ def derived_keys() -> dict[str, str]:
 
 # SHA pins no spec refreshes, each for a stated reason; a *_URL-paired pin needs no entry (url_paired_sha_keys).
 SHA_PAIR_EXEMPT = {
-    # EULA-gated manual download, deliberately empty.
+    # Slaved to TENSORRT_VERSION; the Windows lane downloads the zip and the hash is re-measured from it.
     "TENSORRT_ZIP_SHA256",
+    # Slaved to LIBVPX_MESON_COMMIT, which moves with GSTREAMER_VERSION's vpx.wrap; re-measured from the archive.
+    "LIBVPX_MESON_SHA256",
+    # Slaved to the DirectML nuget ORT's packages.config names; a mismatch is the signal to re-read its licence.
+    "DIRECTML_NUPKG_SHA256",
     # Always-latest bootstrap installers: the hash is re-reviewed by hand on each deliberate update.
     "RUSTUP_INIT_SHA256",   # sh.rustup.rs
     "SCOOP_INSTALLER_SHA256",  # get.scoop.sh

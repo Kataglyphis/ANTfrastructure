@@ -8,7 +8,7 @@ Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -ErrorAction Stop
 
 # Unforced imports bind each required companion into this owner without unloading the caller's copy.
-foreach ($sibling in 'WindowsPythonWheel.Common', 'WindowsOrtPayload.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common', 'WindowsIcon.Common', 'WindowsMsix.Common') {
+foreach ($sibling in 'WindowsPythonWheel.Common', 'WindowsOrtPayload.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common', 'WindowsMsvcRuntimeNotice.Common', 'WindowsIcon.Common', 'WindowsMsix.Common') {
     Import-Module (Join-Path $PSScriptRoot "$sibling.psm1") -DisableNameChecking -ErrorAction Stop
 }
 
@@ -820,4 +820,4 @@ $(($apps -join "`n").TrimEnd())
 
 Export-ModuleMember -Function Get-PythonAppWheelFile, Initialize-PythonAppDirectory, New-PythonAppWorkDirectory, Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, New-PythonAppCrossRuntime, Get-PythonAbiTag, Select-PythonAppWheel, Install-PythonAppPackage, Install-PythonCrossSite, Install-PythonAppCrossPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
     New-PythonAppLauncher, Copy-PythonAppRuntimeClosure, Invoke-PythonAppSelfTest, ConvertTo-PythonAppIcon, New-WindowsIconResource, Resolve-PackageLicense, Copy-PackageLicense, New-PythonAppWxs, Get-PythonAppBundleInputPath,
-    New-PythonAppAppxManifest
+    New-PythonAppAppxManifest, Copy-MsvcRuntimeNotice, Assert-PackageMsvcRuntimeNotice

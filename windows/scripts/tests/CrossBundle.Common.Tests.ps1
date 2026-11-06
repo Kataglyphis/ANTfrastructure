@@ -129,7 +129,8 @@ Describe 'New-PortableBundle' {
             foreach ($f in 'app.msi', 'app.zip', 'app.exe', 'unit_tests.exe') { $null = New-Item -ItemType File -Force -Path (Join-Path $build $f) }
             $checked = [System.Collections.Generic.List[string]]::new()
             $check = { param($Path, $RedistText) $checked.Add((Split-Path $Path -Leaf)) }.GetNewClosure()
-            $r = New-PortableBundle -BuildDir $build -DistDir "$dir\dist" -Arch arm64 -SearchDirectory $search -Runner (New-FakeInstall $dir) -PackageCheck $check
+            $bundleArgs = @{ BuildDir = $build; DistDir = "$dir\dist"; Arch = 'arm64'; SearchDirectory = $search; Runner = (New-FakeInstall $dir); PackageCheck = $check }
+            $r = New-PortableBundle @bundleArgs
             Assert-Equal "cmake --install $build --prefix $dir\dist\bundle --config Release" (Get-Content -LiteralPath "$dir\install.log")
             Assert-Equal 'app.msi,app.zip' (@($checked | Sort-Object) -join ',') 'every CPack MSI and ZIP is checked for the MSVC runtime notice'
             Assert-Equal 'a.dll,B.DLL,c.dll,d.dll' (@($r.Added | Sort-Object) -join ',') 'the closure of app.exe'

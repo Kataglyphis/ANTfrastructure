@@ -17,6 +17,8 @@ SCHEMA = {"enum": [7]}
 def load_fixture(path):
     """Import the fixture writer, whose hyphenated name import statements cannot reach."""
     spec = importlib.util.spec_from_file_location("tiny_genai_model", path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load the fixture writer {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -39,7 +41,8 @@ def generate(og, model, tokenizer, oracle, schema):
 
 def run(fixture_script):
     """Return the constrained answer after proving the unconstrained control follows the model."""
-    import onnxruntime_genai as og
+    # Only the image provides it; ty checks this script without the image's site-packages.
+    og = importlib.import_module("onnxruntime_genai")
 
     fixture = load_fixture(fixture_script)
     with tempfile.TemporaryDirectory(prefix="genai-guidance-") as directory:

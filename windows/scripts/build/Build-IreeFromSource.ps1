@@ -95,6 +95,12 @@ function Get-IreeFreeThreadedCmakeArgs {
         $stableAbi + $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')
 }
 
+function Add-IreeNinjaTuFlag {
+    param([Parameter(Mandatory)][string]$BuildDir, [Parameter(Mandatory)][string]$Label, [Parameter(Mandatory)][string]$Flag, [Parameter(Mandatory)][scriptblock]$Include)
+    $pick = { param($line) if (& $Include $line) { $Flag } else { '' } }.GetNewClosure()
+    [void](Add-NinjaPerTuFlags -NinjaFile (Join-Path $BuildDir 'build.ninja') -Label $Label -Floor 10 -AlreadyTaggedPattern ([regex]::Escape($Flag)) -Select $pick)
+}
+
 # Cross only: clang-cl counts as MSVC, so upstream drops each arm_64 ukernel's -march; every configure needs them back per TU, with a floor.
 function Update-IreeCrossNinjaFile {
     param([Parameter(Mandatory)][string]$BuildDir)
@@ -108,18 +114,16 @@ function Update-IreeCrossNinjaFile {
     # -Dasm=__asm__ restores the GNU asm keyword MS compat turns off; a pattern matching nothing would pass silently.
     $ireeNinja = Join-Path $BuildDir 'build.ninja'
     $isArm64Uk = { param($line) $line -match 'ukernel[\\/]arch[\\/]arm_64[\\/]' -and $line -match '\.c\.obj' }
-    [void](Add-NinjaPerTuFlags -NinjaFile $ireeNinja -Label 'IREE arm_64 ukernel (asm keyword)' -Floor 10 -AlreadyTaggedPattern '-Dasm=__asm__' -Select {
-        param($line) if (& $isArm64Uk $line) { '-Dasm=__asm__' } else { '' }
-    }.GetNewClosure())
+    Add-IreeNinjaTuFlag -BuildDir $BuildDir -Label 'IREE arm_64 ukernel (asm keyword)' -Flag '-Dasm=__asm__' -Include $isArm64Uk
     [void](Add-NinjaArmFeatureFlags -NinjaFile $ireeNinja -Label 'IREE arm_64 ukernel feature' -Floor 5 -FeatureMap $ireeUkFeatureMap -TokenPattern '{0}\.c\.obj' -Include $isArm64Uk)
 }
 
 # The cross configure gives the bindings no define, and global flags would recompile every runtime object; see docs/windows-builds.md.
 function Add-IreeTwinFreeThreadedDefine {
     param([Parameter(Mandatory)][string]$BuildDir)
-    [void](Add-NinjaPerTuFlags -NinjaFile (Join-Path $BuildDir 'build.ninja') -Label 'IREE twin Python bindings' -Floor 10 -AlreadyTaggedPattern 'Py_GIL_DISABLED=1' -Select {
-        param($line) if ($line -match 'runtime[\\/]bindings[\\/]python[\\/]CMakeFiles[\\/]\S+\.(cc|cpp)\.obj') { '-DPy_GIL_DISABLED=1' } else { '' }
-    })
+    Add-IreeNinjaTuFlag -BuildDir $BuildDir -Label 'IREE twin Python bindings' -Flag '-DPy_GIL_DISABLED=1' -Include {
+        param($line) $line -match 'runtime[\\/]bindings[\\/]python[\\/]CMakeFiles[\\/]\S+\.(cc|cpp)\.obj'
+    }
 }
 
 # The cp3XYt twins of the IREE wheels from the GIL tree, reconfigured, rebuilt where Python reaches and packed per package.

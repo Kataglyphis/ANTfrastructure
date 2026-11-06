@@ -28,7 +28,6 @@ Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsOrtPayload.Common.psm1') -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsTargetArch.Common.psm1') -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsPythonApp.Common.psm1') -Force -DisableNameChecking
-Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsMsvcRuntimeNotice.Common.psm1') -DisableNameChecking
 
 function Initialize-PythonAppBundleWorkspace {
     param($App, [string]$RepoRoot, [string]$Bundle)

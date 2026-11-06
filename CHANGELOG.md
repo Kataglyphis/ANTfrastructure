@@ -13,6 +13,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-06 — develop is green again after the Windows image fixes
+
+- The push of `b2b906d8` turned Linux preflight, eight mutation shards and the Windows patch-drift
+  job red (#234, #235). The Windows suites behind the new recipes failed on Linux pwsh, where CI
+  proves them: the meson provenance case and the MSVC notice suite now use separators and an
+  interpreter every host has, and the cases that need Windows (cmd.exe, VsDevCmd, the twin builds)
+  moved to `TorchApp.SdistCompilerVs.Tests.ps1`, leaving the recipes on `SourceBuild.IreeTwin.Tests.ps1`.
+- `LIBVPX_MESON_SHA256`, `DIRECTML_NUPKG_SHA256` and `LIBVPX_VERSION` are classified in
+  `bump_versions.py`; `genai-guidance-smoke.py` passes ty. New duplication was refactored away rather
+  than budgeted: `Get-BinDllProvenanceEntry` (OpenSSL and the MSVC runtime), `Add-IreeNinjaTuFlag`,
+  and `WindowsPythonApp.Common` re-exporting the notice API. Two allowlist rows became stale and left.
+- The drift check maps `002-libvpx-clangcl-simd-flags.patch` to the libvpx meson port at
+  `LIBVPX_MESON_COMMIT`, which the wrap applies it to, instead of GStreamer's tree.
+- Still red until `:winarm64` is published again (#236): the device gate runs the published bundle,
+  which predates libvpx (`no element "vp8enc"`) and the onnxinference wide-path fix (0xC0000005).
+
 ## 2026-11-06 — Windows packages carry the MSVC runtime's notice
 
 - A ZIP, MSIX or MSI that carries the VC++ runtime ships `licenses/msvc-runtime/Redist.txt` and a

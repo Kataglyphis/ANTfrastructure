@@ -344,6 +344,29 @@ function Get-MesonProvenanceEntry {
 .SYNOPSIS
     Manifest entries for the MSVC runtime DLLs staged in Root\bin, with Visual Studio's redistribution notice; none when the lane stages none.
 #>
+function Get-BinDllProvenanceEntry {
+    <#
+    .SYNOPSIS
+        Stages -NoticeFile as notice -Name and returns one entry per <Root>\bin DLL matching -Include, versioned by the DLL itself.
+    #>
+    [OutputType([object[]])]
+    param(
+        [Parameter(Mandatory)][hashtable]$Package,
+        [Parameter(Mandatory)][string[]]$Include,
+        [Parameter(Mandatory)][string]$SourceName,
+        [Parameter(Mandatory)][string]$SourceUrl,
+        [switch]$RequireVersion
+    )
+    $dlls = @(Get-ChildItem -Path (Join-Path $Package.Root 'bin\*') -File -Include $Include)
+    if ($dlls.Count -eq 0) { return @() }
+    $notice = Copy-NativeNotice -Root $Package.Root -NoticeDir $Package.NoticeDir -Name $Package.Name -File @(& $Package.NoticeFile)
+    return @(foreach ($dll in $dlls) {
+            $version = $dll.VersionInfo.ProductVersion
+            if ($RequireVersion -and -not $version) { throw "$($dll.FullName) has no product version" }
+            New-NativeProvenanceEntry -Root $Package.Root -File "bin\$($dll.Name)" -Notice $notice -Source @{ Name = $SourceName; Version = $version; Url = $SourceUrl }
+        })
+}
+
 function Get-MsvcRuntimeProvenanceEntry {
     [OutputType([object[]])]
     param(
@@ -351,22 +374,19 @@ function Get-MsvcRuntimeProvenanceEntry {
         [Parameter(Mandatory)][string]$NoticeDir,
         [Parameter(Mandatory)][scriptblock]$GetVsInstallDir
     )
-    $dlls = @(Get-ChildItem -Path (Join-Path $Root 'bin\*') -File -Include 'msvcp140*.dll', 'vcruntime140*.dll', 'concrt140.dll', 'vccorlib140.dll')
-    if ($dlls.Count -eq 0) { return @() }
+    $runtime = @('msvcp140*.dll', 'vcruntime140*.dll', 'concrt140.dll', 'vccorlib140.dll')
+    if (@(Get-ChildItem -Path (Join-Path $Root 'bin\*') -File -Include $runtime).Count -eq 0) { return @() }
     $vsDir = & $GetVsInstallDir
     # Licenses\<lcid> follows the install's language, so no one folder name holds on every image.
     $texts = @(Get-ChildItem -Path (Join-Path $vsDir 'Licenses\*\Redist.txt') -File -ErrorAction SilentlyContinue | Sort-Object FullName)
     if ($texts.Count -eq 0) { throw "no Licenses\<lcid>\Redist.txt under $vsDir, so the staged MSVC runtime cannot ship with its notice" }
     if ((Get-Content -LiteralPath $texts[0].FullName -Raw) -notmatch 'https://\S+') { throw "$($texts[0].FullName) names no redistribution terms" }
     $terms = $Matches[0]
-    $notice = Copy-NativeNotice -Root $Root -NoticeDir $NoticeDir -Name 'msvc-runtime' -File @($texts[0].FullName)
-    return @(foreach ($dll in $dlls) {
-            $version = $dll.VersionInfo.ProductVersion
-            if (-not $version) { throw "$($dll.FullName) has no product version" }
-            New-NativeProvenanceEntry -Root $Root -File "bin\$($dll.Name)" -Notice $notice -Source @{ Name = 'Microsoft Visual C++ runtime'; Version = $version; Url = $terms }
-        })
+    $text = $texts[0].FullName
+    $package = @{ Root = $Root; NoticeDir = $NoticeDir; Name = 'msvc-runtime'; NoticeFile = { $text }.GetNewClosure() }
+    return Get-BinDllProvenanceEntry -Package $package -Include $runtime -SourceName 'Microsoft Visual C++ runtime' -SourceUrl $terms -RequireVersion
 }
 
 Export-ModuleMember -Function Expand-NativeZipMember, Read-MesonWrapSource, Get-MesonWrapInventory, Get-NativeNoticeFile, Copy-NativeNotice,
     New-NativeProvenanceEntry, Write-NativeProvenanceManifest, Get-NativeProvenanceFinding, Assert-NativeProvenanceManifest,
-    Get-NativeClosureGap, Get-MesonProvenanceEntry, Get-MsvcRuntimeProvenanceEntry
+    Get-NativeClosureGap, Get-MesonProvenanceEntry, Get-BinDllProvenanceEntry, Get-MsvcRuntimeProvenanceEntry
