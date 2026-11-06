@@ -1655,7 +1655,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
       Left separately, before a release: the installer's licence wording for the end-user terms.
-- [ ] **CON228 — the MSVC runtime's notice in every Windows installer** [M, ★★]. Agreed 2026-11-05, after the running chains. A shared hub helper stages `Redist.txt` under `licenses\msvc-runtime\` when an installer carries the runtime,
+- [x] **CON228 — the MSVC runtime's notice in every Windows installer** [M, ★★]. Done 2026-11-06 in source ([`third-party-licenses.md` § The MSVC runtime notice](docs/third-party-licenses.md#the-msvc-runtime-notice)); the notice's wording is still a draft for review.
+      Before: Agreed 2026-11-05, after the running chains. A shared hub helper stages `Redist.txt` under `licenses\msvc-runtime\` when an installer carries the runtime,
       called from CMake packaging, `New-PortableBundle` and the Python app path, with a gate on the finished MSI, MSIX and ZIP. The owner accepts a link instead of the full terms, but `https://aka.ms/vs/18/redistribution.lic` reached Bing's start page on 2026-11-05,
       so the manifest and installers name `https://learn.microsoft.com/en-us/visualstudio/releases/2026/redistribution`.
       The owner also wants the end-user paragraph on the installers' licence page (2026-11-05); its wording is a draft until someone qualified has read it.

@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-06 — Windows packages carry the MSVC runtime's notice
+
+- A ZIP, MSIX or MSI that carries the VC++ runtime ships `licenses/msvc-runtime/Redist.txt` and a
+  `README.txt` with the end-user notice and the learn.microsoft.com link; the wording is a draft for
+  review. CPack installs both and adds the notice to the WiX licence page; `New-PortableBundle` and
+  the Python app bundle stage them; `Assert-PackageMsvcRuntimeNotice` fails a finished package with
+  the runtime and without the notice (`WindowsMsvcRuntimeNotice.Common.psm1`, CON228;
+  `Msvc.RuntimeNotice.Tests.ps1`, `test-cmake-windows-arch.sh`, four `msvc-notice` recipes).
+
 ## 2026-11-06 — ORT's LLM kernels compile through sccache on Windows
 
 - `onnxruntime_providers_cuda_llm`, the last CUDA target on bare nvcc, keeps the sccache launcher:

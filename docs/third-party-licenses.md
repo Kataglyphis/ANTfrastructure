@@ -841,6 +841,28 @@ Each patch is in this repository at the path shown, and travels with the corresp
 
 ---
 
+## The MSVC runtime notice
+
+A Windows package that carries `msvcp140*.dll`, `vcruntime140*.dll`, `concrt140.dll` or
+`vccorlib140.dll` ships `licenses/msvc-runtime/Redist.txt`, copied from the Visual Studio install's
+`Licenses/<lcid>/Redist.txt` (English first), and `licenses/msvc-runtime/README.txt`, the end-user
+notice in [`cmake/msvc-runtime-notice.txt`](../cmake/msvc-runtime-notice.txt). The owner accepts a
+link to the full terms: `https://learn.microsoft.com/en-us/visualstudio/releases/2026/redistribution`,
+because `aka.ms/vs/18/redistribution.lic`, the link inside Redist.txt, reached Bing's start page on
+2026-11-05. **The notice's wording is a draft** until someone qualified has read it.
+
+- **CPack** (`cmake/CPackCommon.cmake`, `kataglyphis_install_msvc_runtime_notice`) installs both
+  files when `InstallRequiredSystemLibraries` or `KATAGLYPHIS_PACKAGE_DLL_DIR` brings the runtime,
+  and appends the notice to the WiX licence page.
+- **`New-PortableBundle`** stages them for a runtime the DLL closure added, and checks every CPack
+  MSI and ZIP before copying it out.
+- **Python apps**: `New-PythonAppBundle.ps1` stages them after the VC++ runtime closure;
+  `New-PythonAppPackage.ps1` checks the ZIP, MSI and MSIX.
+- **The gate** (`Assert-PackageMsvcRuntimeNotice`, `WindowsMsvcRuntimeNotice.Common.psm1`) fails a
+  finished package that carries the runtime without a `Redist.txt` byte-equal to the staged one. It
+  reads the package's members, so it does not depend on the staging step having run. It does not
+  judge the terms, and it does not cover NSIS `.exe` installers.
+
 ## Notes
 
 - Ubuntu system packages carry diverse licenses (GPL, LGPL, Apache 2.0, MIT,

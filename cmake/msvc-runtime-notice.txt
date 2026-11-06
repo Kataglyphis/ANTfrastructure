@@ -1,0 +1,11 @@
+DRAFT: wording to be reviewed by someone qualified before a release.
+
+Microsoft Visual C++ runtime
+
+This package contains the Microsoft Visual C++ runtime libraries (msvcp140*.dll, vcruntime140*.dll,
+concrt140.dll, vccorlib140.dll). They are Distributable Code under the Microsoft Visual Studio license
+terms. Microsoft and its suppliers own them; they are licensed, not sold. Your use of them is subject to
+the terms in Redist.txt beside this file and at
+https://learn.microsoft.com/en-us/visualstudio/releases/2026/redistribution
+You may not modify, reverse engineer, decompile or disassemble them, or redistribute them on their own,
+except as those terms permit.

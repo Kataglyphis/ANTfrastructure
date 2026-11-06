@@ -35719,5 +35719,37 @@
   "replace": "+                    Cacheable::Yes\n",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtCudaLauncher.Tests.ps1 -ResultFile logs/code-quality/ort-cuda-launcher-mutation.json",
   "why": "without the fix a PTX-only gencode aborts nvcc under sccache with Missing cubin file output"
+ },
+ {
+  "id": "msvc-notice.gate-requires-notice",
+  "target": "windows/scripts/modules/WindowsMsvcRuntimeNotice.Common.psm1",
+  "find": "    if ($notices.Count -ne 1) { throw",
+  "replace": "    if ($false) { throw",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msvc.RuntimeNotice.Tests.ps1 -ResultFile logs/code-quality/msvc-notice-mutation.json",
+  "why": "a package that carries the MSVC runtime without its notice breaks the redistribution terms"
+ },
+ {
+  "id": "msvc-notice.staged-with-runtime",
+  "target": "windows/scripts/modules/WindowsMsvcRuntimeNotice.Common.psm1",
+  "find": "    if ($dlls.Count -eq 0) { return $null }\n",
+  "replace": "    return $null\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msvc.RuntimeNotice.Tests.ps1 -ResultFile logs/code-quality/msvc-notice-mutation.json",
+  "why": "a bundle that carries the runtime must get Redist.txt and the end-user notice"
+ },
+ {
+  "id": "msvc-notice.portable-bundle-gate",
+  "target": "windows/scripts/modules/WindowsCrossBundle.Common.psm1",
+  "find": "{ & $PackageCheck $installer.FullName $redist }",
+  "replace": "{ }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only CrossBundle.Common.Tests.ps1 -ResultFile logs/code-quality/msvc-notice-mutation.json",
+  "why": "a CPack MSI or ZIP must be checked for the notice before it is copied out"
+ },
+ {
+  "id": "cmake-msvc-notice.installs-redist",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "  install(FILES \"${_text}\" DESTINATION licenses/msvc-runtime)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cmake-windows-arch.sh",
+  "why": "a CPack package that installs the MSVC runtime must install its Redist.txt"
  }
 ]

@@ -116,7 +116,8 @@ Both run in the family image, from a built app wheel (`--wheel-dir`, default `di
    - The Windows builder keeps launcher selection and data copying in separate steps; a
      fixture checks requested console scripts, missing names and the copied payload path.
 6. **Native closure.**
-   - Windows: the VC++ runtime goes beside `python.exe`.
+   - Windows: the VC++ runtime goes beside `python.exe`, with its notice under
+     `licenses/msvc-runtime/` ([`third-party-licenses.md` § The MSVC runtime notice](third-party-licenses.md#the-msvc-runtime-notice)).
    - Linux: `python-app-closure.sh` copies every missing shared library into `runtime/lib` and
      gives each user an `$ORIGIN` RUNPATH.
    - Linux: `bundle-loader.sh --beside` puts the image's loader and glibc in front of the
