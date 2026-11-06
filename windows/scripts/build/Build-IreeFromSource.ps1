@@ -370,7 +370,7 @@ function Invoke-IreePythonWheelStage {
                 throw "IREE python package dir missing setup.py: $pkgDir"
             }
             $wheelOut = Join-Path $SourceDir "dist-$($pkg.Dir)"
-            Write-Host "Building IREE $($pkg.Dir) wheel (reusing the ninja build tree)..."
+            Write-Host ("Building IREE $($pkg.Dir) wheel (reusing the ninja build tree); C: has {0:N1} GB free..." -f ((Get-PSDrive C).Free / 1GB))
             Invoke-CpythonPip -Python $Python -Arguments @('wheel', $pkgDir, '--no-deps', '--no-build-isolation', '-w', $wheelOut)
             Install-StagedPythonWheel -Python $Python -SourceDir $wheelOut -ModuleName $pkg.Module | Out-Null
         }
