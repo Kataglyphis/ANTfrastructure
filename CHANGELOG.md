@@ -13,6 +13,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-06 — ORT's LLM kernels compile through sccache on Windows
+
+- `onnxruntime_providers_cuda_llm`, the last CUDA target on bare nvcc, keeps the sccache launcher:
+  `Get-OrtPtxLauncherExemptArg` and `sccache-ptx-exempt.cmake` are gone. The hub's sccache build
+  carries mozilla/sccache#2809, and in the nvidia toolchain image it compiled `sm_86` plus PTX-only
+  `compute_120` without `Missing "cubin" file output`, warm 5 of 5 from the cache.
+  `SourceBuild.OrtCudaLauncher.Tests.ps1` refuses an exemption's return
+  (`lib.ort-cuda-launcher-no-exemption`, `sccache.ptx-only-pass-runs-uncached`). The chain proof
+  (provider link from hits, smoke gate, `Test-Cache.ps1`) comes with the next nvidia chain.
+- v0.19.0 is exactly `SCCACHE_SOURCE_REV` and carries #2876; #2809 merged on 2026-11-02 and is in no
+  release yet, so the hub's build stays (`shared/upstream/sccache/README.md`).
+
 ## 2026-11-06 — The Windows nvidia lane downloads TensorRT and fails without it
 
 - `Install-Tensorrt.ps1` guessed the pre-11.x file names, which 404 for TensorRT 11, so every

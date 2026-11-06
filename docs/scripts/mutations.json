@@ -35703,5 +35703,21 @@
   "replace": "-Condition { $true } -FailMessage 'caller passed -ExpectGpu but TENSORRT_ROOT is empty",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Host.TensorRtAcquisition.Tests.ps1 -ResultFile logs/code-quality/trt-acquisition-mutation.json",
   "why": "the smoke gate must reject an nvidia image that lost TensorRT"
+ },
+ {
+  "id": "lib.ort-cuda-launcher-no-exemption",
+  "target": "windows/scripts/build/Build-OnnxFromSource.ps1",
+  "find": "        Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'\n",
+  "replace": "        Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'\n        $gpuArgs += '-DCMAKE_PROJECT_onnxruntime_INCLUDE=C:/x/sccache-ptx-exempt.cmake'\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtCudaLauncher.Tests.ps1 -ResultFile logs/code-quality/ort-cuda-launcher-mutation.json",
+  "why": "a per-target exemption puts ORT's LLM kernels back on bare nvcc, the one uncached CUDA compile"
+ },
+ {
+  "id": "sccache.ptx-only-pass-runs-uncached",
+  "target": "shared/upstream/sccache/patches/0001-ptxas-ptx-verify-noncacheable.patch",
+  "find": "+                    Cacheable::No\n",
+  "replace": "+                    Cacheable::Yes\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtCudaLauncher.Tests.ps1 -ResultFile logs/code-quality/ort-cuda-launcher-mutation.json",
+  "why": "without the fix a PTX-only gencode aborts nvcc under sccache with Missing cubin file output"
  }
 ]
