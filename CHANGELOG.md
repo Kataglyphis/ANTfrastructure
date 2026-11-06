@@ -26,6 +26,9 @@
   and `WindowsPythonApp.Common` re-exporting the notice API. Two allowlist rows became stale and left.
 - The drift check maps `002-libvpx-clangcl-simd-flags.patch` to the libvpx meson port at
   `LIBVPX_MESON_COMMIT`, which the wrap applies it to, instead of GStreamer's tree.
+- The libvpx patch's repo now lives in the drift check's one repo map (`Patches`), not a second table
+  whose parameter duplicated another suite's signature; the TensorRT and MSVC-notice recipe families
+  are declared in `gate-proofs.allow`.
 - Still red until `:winarm64` is published again (#236): the device gate runs the published bundle,
   which predates libvpx (`no element "vp8enc"`) and the onnxinference wide-path fix (0xC0000005).
 

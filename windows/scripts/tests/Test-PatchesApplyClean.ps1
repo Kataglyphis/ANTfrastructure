@@ -90,10 +90,9 @@ $repoMap = @{
     'hailo'          = @{ Url = 'https://github.com/hailo-ai/hailort.git';        Ref = $defaultRefs.HAILORT }
     'migraphx'       = @{ Url = 'https://github.com/ROCm/AMDMIGraphX.git';        Ref = $defaultRefs.MIGRAPHX }
     'litert'         = @{ Url = 'https://github.com/google-ai-edge/LiteRT.git';   Ref = $defaultRefs.LITERT }
-    'libvpx'         = @{ Url = 'https://gitlab.freedesktop.org/gstreamer/meson-ports/libvpx.git'; Ref = $defaultRefs.LIBVPX }
+    # Meson applies this patch to the wrap's port, though it sits with its consumer's patches.
+    'libvpx'         = @{ Url = 'https://gitlab.freedesktop.org/gstreamer/meson-ports/libvpx.git'; Ref = $defaultRefs.LIBVPX; Patches = @('002-libvpx-clangcl-simd-flags.patch') }
 }
-# A patch meson applies to a wrap's port sits with its consumer's patches, so its repo key is named here.
-$patchRepoKey = @{ '002-libvpx-clangcl-simd-flags.patch' = 'libvpx' }
 
 function Get-PatchTargetPaths {
     param([string]$PatchFile)
@@ -154,8 +153,9 @@ function Get-PatchApplyStatus {
 }
 
 function Get-StaticPatchResult {
-    param([IO.FileInfo]$Patch, [hashtable]$RepoMap, [hashtable]$Clones, [string]$WorkDir, [string]$PatchExe, [hashtable]$PatchRepoKey = @{})
-    $repoKey = if ($PatchRepoKey.ContainsKey($Patch.Name)) { $PatchRepoKey[$Patch.Name] } else { Split-Path (Split-Path $Patch.FullName -Parent) -Leaf }
+    param([IO.FileInfo]$Patch, [hashtable]$RepoMap, [hashtable]$Clones, [string]$WorkDir, [string]$PatchExe)
+    $repoKey = $RepoMap.Keys | Where-Object { $RepoMap[$_].ContainsKey('Patches') -and $RepoMap[$_]['Patches'] -contains $Patch.Name } | Select-Object -First 1
+    if (-not $repoKey) { $repoKey = Split-Path (Split-Path $Patch.FullName -Parent) -Leaf }
     $spec = $RepoMap[$repoKey]
     if (-not $spec) {
         return [pscustomobject]@{ Patch = $Patch.Name; Repo = $repoKey; Ref = '?'; Status = 'FAIL (no repo mapping - add it to $repoMap)' }
@@ -183,7 +183,7 @@ $clones = @{}   # repoKey|ref -> clone dir (reused across patches for the same r
 
 try {
     foreach ($patch in $patches) {
-        $results.Add((Get-StaticPatchResult -Patch $patch -RepoMap $repoMap -Clones $clones -WorkDir $WorkDir -PatchExe $patchExe -PatchRepoKey $patchRepoKey))
+        $results.Add((Get-StaticPatchResult -Patch $patch -RepoMap $repoMap -Clones $clones -WorkDir $WorkDir -PatchExe $patchExe))
     }
 }
 finally {

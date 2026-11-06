@@ -214,3 +214,9 @@ mutation-family:quality-report
 # The benchmark history against earlier default-branch results (bench-history.py and its action); proof: test-bench-history.sh.
 mutation-family:bench-history
 mutation-family:fleet-health
+# TensorRT acquisition and the nvidia smoke's TensorRT requirement; proof: Host.TensorRtAcquisition.Tests.ps1.
+mutation-family:host
+mutation-family:smoke
+# The MSVC runtime notice in packages; proof: Msvc.RuntimeNotice.Tests.ps1 and test-cmake-windows-arch.sh.
+mutation-family:msvc-notice
+mutation-family:cmake-msvc-notice
