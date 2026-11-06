@@ -29,6 +29,7 @@ Two neighbours, so you land on the right page:
 - [Interrupted test run leaves a child alive](#interrupted-test-run-leaves-a-child-alive)
 - [`exec format error` on a foreign-arch build](#exec-format-error-on-a-foreign-arch-build)
 - [`no space left on device`](#no-space-left-on-device)
+- [`No space left on device` in a Windows RUN while the host has space](#no-space-left-on-device-in-a-windows-run-while-the-host-has-space)
 - [Stale downstream images](#stale-downstream-images)
 - [`no active session` / `grpc: the client connection is closing` mid-chain](#no-active-session--grpc-the-client-connection-is-closing-mid-chain)
 - [`registry_pin_ref` fails on a fresh push](#registry_pin_ref-fails-on-a-fresh-push)
@@ -250,6 +251,17 @@ until its 90- or 300-second limit.
 **Cause.** Disk full from cached images/artifacts
 
 **Fix.** In order: (1) `linux/host-config/prune-safe.sh` (spares compile caches), (2) `nerdctl rmi` of specific already-pushed tags, (3) `nerdctl system prune -a -f` ONLY with no chain running — it deletes ALL non-container-referenced images INCLUDING tagged cross-stage locals (bit us mid-run 2026-08-18; registry-pinned handoffs survived via re-pull)
+
+### `No space left on device` in a Windows RUN while the host has space
+
+**Symptom.** A Windows BuildKit step fails with `No space left on device` or
+`There is not enough space on the disk`, and the driver's resource summary shows
+tens of GB free on the build drive.
+
+**Cause.** The RUN's own sandbox of about 20 GB is full, not the host disk.
+
+**Fix.** Move the step's large tree onto a cache mount, as IREE's build tree is:
+[`windows-build-resources.md` § The 20 GB RUN scratch](windows-build-resources.md#the-20-gb-run-scratch).
 
 ### Stale downstream images
 

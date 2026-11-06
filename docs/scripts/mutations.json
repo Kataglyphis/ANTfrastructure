@@ -32073,6 +32073,54 @@
   "why": "without it the arm64 twin stops at Assert-NinjaFreeThreadedDefine, whose gate this does not relax"
  },
  {
+  "id": "lib.iree-scratch-mount-path",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "$script:IreeBuildMount = 'C:\\iree-build'",
+  "replace": "$script:IreeBuildMount = 'C:\\iree-build-elsewhere'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeScratch.Tests.ps1 -ResultFile logs/code-quality/iree-scratch-mutation.json",
+  "why": "a path the RUN does not mount puts IREE back in the 20 GB scratch, where the compiler wheel found 0.3 GB free"
+ },
+ {
+  "id": "lib.iree-scratch-cache-mounted",
+  "target": "windows/Dockerfile.media-builder",
+  "find": "    --mount=type=cache,target=C:\\iree-build,id=iree-build-winamd64,sharing=locked `\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeScratch.Tests.ps1 -ResultFile logs/code-quality/iree-scratch-mutation.json",
+  "why": "an unmounted build dir is ordinary scratch again"
+ },
+ {
+  "id": "lib.iree-scratch-mount-preferred",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "    if (-not (Test-Path -LiteralPath $script:IreeBuildMount -PathType Container)) { return Join-Path $SourceDir 'build' }\n",
+  "replace": "    return Join-Path $SourceDir 'build'\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeScratch.Tests.ps1 -ResultFile logs/code-quality/iree-scratch-mutation.json",
+  "why": "a resolver that ignores the mount builds in the scratch however the RUN is wired"
+ },
+ {
+  "id": "lib.iree-scratch-reset-before-configure",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "    Reset-SourceBuildDirectory -Path $script:IreeBuildMount\n    return $script:IreeBuildMount\n",
+  "replace": "    return $script:IreeBuildMount\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeScratch.Tests.ps1 -ResultFile logs/code-quality/iree-scratch-mutation.json",
+  "why": "a previous run's tree on the mount would reach this run's configure"
+ },
+ {
+  "id": "lib.iree-scratch-clear-empties",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "-PathType Container) { Reset-SourceBuildDirectory -Path $script:IreeBuildMount }\n}",
+  "replace": "-PathType Container) { }\n}",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeScratch.Tests.ps1 -ResultFile logs/code-quality/iree-scratch-mutation.json",
+  "why": "a kept tree holds tens of GB of host disk in the cache store"
+ },
+ {
+  "id": "lib.iree-scratch-clear-called",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "Remove-SourceBuildTree -Path $SourceDir\nClear-IreeBuildMount\n",
+  "replace": "Remove-SourceBuildTree -Path $SourceDir\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeScratch.Tests.ps1 -ResultFile logs/code-quality/iree-scratch-mutation.json",
+  "why": "a clear that never runs keeps the tree on the host"
+ },
+ {
   "id": "lib.iree-twin-names-stable-abi-lib",
   "target": "windows/scripts/build/Build-IreeFromSource.ps1",
   "find": "        $stableAbi + $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')",

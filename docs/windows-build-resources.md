@@ -113,6 +113,23 @@ path and its `-MediaCoreCpus` flag went with `build.ps1` on 2026-08-31. The
 litert/tvm aux branches get the whole budget once media-core is done — halved per
 child under `-ConcurrentAux`, which overlaps only those two.
 
+## The 20 GB RUN scratch
+
+Each `RUN` writes to a sandbox of about 20 GB, however much the host has free
+(measured 2026-11-06 on `bk-windows-toolchain`: 19.8 GB free, a 25 GB file fails
+with `There is not enough space on the disk`). A BuildKit cache mount is a separate
+snapshot without that cap: the same probe wrote 25 GB into one.
+
+A step that outgrows the sandbox fails with `No space left on device` while the
+host still has tens of GB. IREE did, with LLVM in its tree: after the ninja build
+and install the compiler wheel found 0.3 GB. Its build tree therefore lives on the
+media-tvm RUN's `iree-build-winamd64` cache mount at `C:\iree-build`, which
+`Build-IreeFromSource.ps1` uses whenever it exists; a checkout run without it keeps
+the tree under the source directory. The script empties the mount before configure,
+so no earlier run's tree reaches CMake, and again after the wheels, so the host gets
+the space back. `SourceBuild.IreeScratch.Tests.ps1` holds the path on both sides and
+both resets.
+
 ## Building a project inside the image, as AGENTS.md carried it
 
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.

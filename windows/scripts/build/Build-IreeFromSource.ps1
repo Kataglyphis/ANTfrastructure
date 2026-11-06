@@ -19,6 +19,22 @@ $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScrip
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
 
+# The media-tvm RUN's cache mount, outside its 20 GB scratch; see docs/windows-build-resources.md#the-20-gb-run-scratch.
+$script:IreeBuildMount = 'C:\iree-build'
+
+# A mounted tree outlives the RUN, so a run starts from an empty one; without the mount the tree stays in the checkout.
+function Resolve-IreeBuildDir {
+    param([Parameter(Mandatory)][string]$SourceDir)
+    if (-not (Test-Path -LiteralPath $script:IreeBuildMount -PathType Container)) { return Join-Path $SourceDir 'build' }
+    Reset-SourceBuildDirectory -Path $script:IreeBuildMount
+    return $script:IreeBuildMount
+}
+
+# The host gets the mount's space back once the wheels are out.
+function Clear-IreeBuildMount {
+    if (Test-Path -LiteralPath $script:IreeBuildMount -PathType Container) { Reset-SourceBuildDirectory -Path $script:IreeBuildMount }
+}
+
 # rocm lane only: HIP HAL driver + rocm compiler target. @() on cpu/nvidia/cross keeps their configure unchanged.
 function Get-IreeRocmCmakeArgs {
     param([Parameter(Mandatory)][hashtable]$GpuEnv, [bool]$Cross)
@@ -442,7 +458,7 @@ $ireeMasm = Install-IreeSourcePatches -SourceDir $SourceDir
 # Also copies pyconfig.h into Include\, where FindPython looks; in-tree CPython keeps it in PC\.
 $py = Initialize-ToolchainPythonEnvironment
 
-$buildDir = Join-Path $SourceDir 'build'
+$buildDir = Resolve-IreeBuildDir -SourceDir $SourceDir
 $ireeInstallDir = Join-Path $InstallDir 'iree'
 
 # Cross is runtime-only: host tools build natively for IREE_HOST_BIN_DIR, and the compiler would need target-arch LLVM.
@@ -524,6 +540,7 @@ if ($ireeTwins.Count -gt 0) {
 }
 
 Remove-SourceBuildTree -Path $SourceDir
+Clear-IreeBuildMount
 
 if ($qnnSdk) { [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $ireeInstallDir) }
 

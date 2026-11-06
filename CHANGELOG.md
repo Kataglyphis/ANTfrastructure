@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-06 — IREE builds outside the 20 GB RUN scratch
+
+- The amd64 media-tvm stage failed with `No space left on device` in IREE's compiler wheel while
+  the host had 65 GB free: every Windows RUN gets a sandbox of about 20 GB, and IREE with LLVM
+  in-tree left 0.3 GB. Its build tree now lives on the RUN's `iree-build-winamd64` cache mount at
+  `C:\iree-build`, emptied before configure and after the wheels; a checkout run keeps the old tree.
+  Each wheel logs the free space it starts with. `SourceBuild.IreeScratch.Tests.ps1` and six
+  mutations hold the path on both sides, the resolver and both resets.
+
 ## 2026-11-06 — develop is green again after the Windows image fixes
 
 - The push of `b2b906d8` turned Linux preflight, eight mutation shards and the Windows patch-drift
