@@ -70,7 +70,7 @@ $1; echo \"FAILURES=\${FAILURES}\"" 2>&1
 
 t_case "the plugin-health check reads the registry blacklist"
 t_assert_contains "$(t_rt_recorded "${_RT}" $'GST_SCAN_DONE\nBLACKLISTED libgstvalidatessim.so\nGST_BLACKLIST_DONE' \
-  check_gstreamer_plugin_health img amd64)" "FAILURES=1" "a clean scanner pass does not excuse a blacklisted plugin"
+  _PARITY_GST_KNOWN_BROKEN= check_gstreamer_plugin_health img amd64)" "FAILURES=1" "a clean scanner pass does not excuse a blacklisted plugin (the recorded probe answers every gst-inspect, so the NVIDIA entries stay out of this case)"
 t_assert_contains "$(t_fn_src "${RT_SMOKE}" main)" 'check_gst_validate_ssim "${image_tag}" "${target_arch}"'
 
 t_case "an empty blacklist passes; a blacklisted plugin fails by name"

@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-06 — QNN's Hexagon skeletons are DSP payload, and NVIDIA's gst plugins are recorded
+
+- The first green arm64 nvidia package stage reached the runtime-image smoke, which failed on 107 QDSP6 objects
+  under `onnxruntime-cpu/lib/hexagon-v*/`: the HTP backend's skeletons, run by the DSP, never by the image's
+  loader. The tree-arch scanner skips those dirs and names machine 164 `QDSP6` (`tree-arch.hexagon-skels-are-dsp-payload`,
+  `tree-arch.hexagon-filter-is-narrow`). The five `libgstnv*.so` plugins that need the driver's `libcuda.so.1` are
+  recorded per arch in `_PARITY_GST_KNOWN_BROKEN` (`parity.nvidia-gst-plugins-recorded`,
+  [failure-modes.md](docs/failure-modes.md#tree-arch-usrlocallibonnxruntime-cpu-ships-107-em164-objects-on-arm64)).
+
 ## 2026-11-06 — A required `rustup … add` is retried under qemu-user
 
 - The arm64 package stage of the nvidia chain died in `rustup component add rustfmt` with a qemu-user SIGABRT

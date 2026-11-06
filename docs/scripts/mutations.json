@@ -4280,6 +4280,30 @@
   "why": "the package stage held a second copy of the fill for months and its filename-only guard is what let the foreign arches take the builder's libs; one owner or the bug comes back"
  },
  {
+  "id": "tree-arch.hexagon-skels-are-dsp-payload",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "-linux-[a-z0-9]+/|/hexagon-v[0-9]+/\")",
+  "replace": "-linux-[a-z0-9]+/\")",
+  "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+  "why": "without the hexagon-v*/ filter the 107 QDSP6 skels of the QNN HTP backend red every arm64 runtime-image smoke"
+ },
+ {
+  "id": "tree-arch.hexagon-filter-is-narrow",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "-linux-[a-z0-9]+/|/hexagon-v[0-9]+/\")",
+  "replace": "-linux-[a-z0-9]+/|/\")",
+  "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+  "why": "the DSP exemption must cover the skeleton dirs and nothing else: widened, it hides a builder-arch object anywhere in the tree"
+ },
+ {
+  "id": "parity.nvidia-gst-plugins-recorded",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "_PARITY_GST_KNOWN_BROKEN=\"amd64:libgstnvunixfd.so amd64:libgstnvvideo4linux2.so amd64:libgstnvvideoconvert.so amd64:libgstnvvideosinks.so arm64:libgstnvvideoconvert.so\"",
+  "replace": "_PARITY_GST_KNOWN_BROKEN=\"\"",
+  "test": "bash linux/scripts/tests/test-smoke-arch-parity.sh",
+  "why": "unrecorded, the five NVIDIA gst plugins that need the driver's libcuda.so.1 warn as new drift on every nvidia runtime-image smoke"
+ },
+ {
   "id": "tree-arch.frozen-table-empty",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
   "find": "_RT_TREE_ARCH_FROZEN=\"\"",

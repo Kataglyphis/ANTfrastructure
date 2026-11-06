@@ -96,6 +96,16 @@ the path once for both the configure path and the wheel path, and **asserts
 `QnnLog.h` is really there** before handing it to CMake — so a future SDK layout
 change fails immediately with a clear message instead of deep inside a compile.
 
+## The Hexagon skeletons are DSP payload
+
+`qnn-sdk.sh` stages the backend `.so` files and the `hexagon-v<nn>/` skeleton dirs into the
+ORT tree. The skeletons are Hexagon (QDSP6, ELF machine 164) objects the HTP backend uploads to
+the DSP; the image's own loader never maps them. The runtime-image smoke's tree-arch gate
+therefore skips `hexagon-v<nn>/` dirs, as it skips a cross toolchain's target payload, and names
+a QDSP6 object anywhere else (`tree-arch.hexagon-skels-are-dsp-payload`,
+`tree-arch.hexagon-filter-is-narrow`). The 2026-11-06 arm64 smoke found 107 of them under
+`onnxruntime-cpu/lib/` before the filter existed.
+
 ## No staged SDK: upstream's unhashed 1.5 GB download
 
 When `QAIRT_HEADERS_DIR` is empty, upstream `file(DOWNLOAD)`s QAIRT

@@ -119,6 +119,13 @@ t_assert_fails _rt_table '_parity_gst_plugin_known arm64 libgstgtk4.so'
 t_assert_fails _rt_table '_parity_gst_plugin_known amd64 libgstgtk4.so'
 t_assert_fails _rt_table '_parity_gst_plugin_known arm64 libgstcoreelements.so'
 
+t_case "NVIDIA's gst plugins are documented per arch: they need the driver's libcuda.so.1, injected on a GPU host"
+for _p in libgstnvunixfd.so libgstnvvideo4linux2.so libgstnvvideoconvert.so libgstnvvideosinks.so; do
+  t_assert_eq 0 "$(_rt_table "_parity_gst_plugin_known amd64 ${_p}; echo \$?")" "amd64 ${_p}"
+done
+t_assert_eq 0 "$(_rt_table '_parity_gst_plugin_known arm64 libgstnvvideoconvert.so; echo $?')" "arm64 ships nvvideoconvert only (no NVDEC, no sinks, no unixfd on the SBSA route)"
+t_assert_fails _rt_table '_parity_gst_plugin_known arm64 libgstnvvideo4linux2.so'
+
 # Generated ONNX fixture: all three exit paths, against stub numpy/onnxruntime
 
 # Sourced in a subshell: smoke-common.sh's `set -e` would abort the suite on the first failing assertion.

@@ -365,6 +365,20 @@ for _t in rustup gcc-16.2.0 llvm; do
 done
 rm -rf "${_XT}"
 
+t_case "QNN's Hexagon skeletons are DSP payload; a QDSP6 object anywhere else is a finding"
+t_needs "a POSIX python3 (Windows' python sees drive-letter paths)" t_posix_python
+# The 2026-11-06 arm64 runtime-image smoke found 107 EM164 objects under onnxruntime-cpu/lib/hexagon-v*/: the HTP backend's skels, not the image's binaries.
+_QD="$(mktemp -d)"
+mkdir -p "${_QD}/ort/lib/hexagon-v73/unsigned" "${_QD}/ort/lib/hexagon-v68" "${_QD}/ort/lib"
+t_fake_elf "${_QD}/ort/lib/hexagon-v73/unsigned/libCalculator_skel.so" 164
+t_fake_elf "${_QD}/ort/lib/hexagon-v68/libQnnHtpV68Skel.so" 164
+t_fake_elf "${_QD}/ort/lib/libQnnHtp.so" 183
+t_fake_elf "${_QD}/ort/lib/libstray_skel.so" 164
+_out="$(_scan "${_QD}/ort")"
+t_assert_contains "${_out}" "TREE ${_QD}/ort AArch64 1" "the backend the image loads is asserted"
+t_assert_contains "${_out}" "TREE ${_QD}/ort QDSP6 1 ${_QD}/ort/lib/libstray_skel.so" "a Hexagon object outside a hexagon-v*/ dir is named by its machine, not hidden"
+rm -rf "${_QD}"
+
 t_case "a huge tree cannot crowd the shipped binaries out of the scan"
 t_needs "a POSIX python3 (Windows' python sees drive-letter paths)" t_posix_python
 # Two rustup toolchains: the first one's rust-src sorts ahead of the second one's bin/ and would starve it.

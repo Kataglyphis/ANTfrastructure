@@ -856,7 +856,7 @@ import re
 
 # No space in a label: the verdict line is read back with `read -r verb tree machine
 # count sample`, and "Intel 80386" ate the count column on 2026-09-04.
-EM = {3: "Intel-80386", 40: "ARM", 62: "X86-64", 183: "AArch64", 243: "RISC-V"}
+EM = {3: "Intel-80386", 40: "ARM", 62: "X86-64", 164: "QDSP6", 183: "AArch64", 243: "RISC-V"}
 # A cross toolchain SHIPS foreign objects on purpose: these three directory shapes are
 # its target payload, not the image's own binaries. Everything else in the tree -- the
 # compilers and libraries the image itself runs -- is still asserted.
@@ -866,12 +866,12 @@ CROSS_PAYLOAD = (
     "/lib/clang/",                # clang: multilib sanitizer/builtins runtimes
     "/lib/gcc/",                  # gcc: per-target crt objects, one dir per triple
 )
-GCC_TARGET_DIR = re.compile(r"/gcc-[^/]+/[a-z0-9_]+(?:-[a-z0-9]+)?-linux-[a-z0-9]+/")
+TARGET_DIR = re.compile(r"/gcc-[^/]+/[a-z0-9_]+(?:-[a-z0-9]+)?-linux-[a-z0-9]+/|/hexagon-v[0-9]+/")  # gcc's per-triple dirs; QNN's Hexagon (QDSP6) skels run on the DSP: docs/qnn-linux.md#the-hexagon-skeletons-are-dsp-payload
 
 def _cross_payload(path):
     if any(marker in path for marker in CROSS_PAYLOAD):
         return True
-    return bool(GCC_TARGET_DIR.search(path))
+    return bool(TARGET_DIR.search(path))
 CAP = int(os.environ.get("RT_TREE_CAP") or "20000")
 for tree in os.environ.get("RT_TREES", "").split():
     if not os.path.isdir(tree):
@@ -1125,8 +1125,8 @@ _parity_ort_flavor() {
   esac
 }
 
-# A list, not case arms, so the health check can enumerate stale entries; empty since CON41 (arm64 gtk4 loads).
-_PARITY_GST_KNOWN_BROKEN=""
+# A list, not case arms, so the health check can enumerate stale entries. NVIDIA's gst plugins NEED libcuda.so.1, which nvidia-container-toolkit injects on a GPU host; the package stage proves they register against the stub.
+_PARITY_GST_KNOWN_BROKEN="amd64:libgstnvunixfd.so amd64:libgstnvvideo4linux2.so amd64:libgstnvvideoconvert.so amd64:libgstnvvideosinks.so arm64:libgstnvvideoconvert.so"
 
 # The gtk4 entry holds only where the resolved libvulkan lacks vkCreateWaylandSurfaceKHR.
 _rt_gtk4_vulkan_wayland() {

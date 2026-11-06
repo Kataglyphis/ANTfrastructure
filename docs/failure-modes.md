@@ -1290,6 +1290,21 @@ runtime smoke's `check_lavapipe_subgroup` fails an image whose variable or lavap
 anything else. Retire both once the image's Mesa carries upstream ebcfbe60 (2026-08-22), which
 deletes that sort.
 
+### `tree-arch: /usr/local/lib/onnxruntime-cpu ships 107 EM164 object(s)` on arm64
+
+**Symptom.** The nvidia runtime-image smoke fails arm64 with one row, `e.g.
+…/onnxruntime-cpu/lib/hexagon-v66/unsigned/libCalculator_skel.so`, after every build gate passed
+(2026-11-06). amd64 is green: QNN is arm64-only.
+
+**Cause.** The QNN EP stages the HTP backend's Hexagon skeletons (QDSP6, ELF machine 164) beside
+the backend libraries, and the tree-arch scanner read them as builder-arch objects.
+
+**Fix.** The scanner skips `hexagon-v<nn>/` dirs and labels machine 164 `QDSP6`
+([qnn-linux.md](qnn-linux.md#the-hexagon-skeletons-are-dsp-payload)). The same smoke warns
+(non-fatal) that `libgstnv*.so` cannot load: they need the driver's `libcuda.so.1`, which
+nvidia-container-toolkit injects on a GPU host; the five are recorded per arch in
+`_PARITY_GST_KNOWN_BROKEN`, and the package stage proves they register against the stub.
+
 ### `rustup component add` aborts under qemu-user
 
 **Symptom.** The arm64 package stage dies in `setup-package-image.sh` with
