@@ -13,6 +13,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-06 — The SBSA DeepStream files get RUNPATHs and link TensorRT 10
+
+- The second arm64 package stage failed DeepStream's soname closure (105 rows) and found `nvinfer` linked
+  `libnvinfer.so.11`. The Jetson `.deb`'s files carry no RUNPATH (L4T's `ld.so.conf` has the tegra dir) and NEED a
+  bare `libcufft.so`; `ds_sbsa_runpaths` now sets `RUNPATH=…/deepstream-9.1/lib` on every file without one and
+  rewrites that NEEDED to `libcufft.so.12`, as the amd64 `.deb` carries. The TensorRT 10 SDK's `-L` precedes the
+  sysroot flags on the cross compiler word, and the three VPI consumers are excused on arm64 only
+  (`deepstream.sbsa-trt-sdk-before-sysflags`, `deepstream.sbsa-runpaths-set`, `deepstream.sbsa-vpi-excused`,
+  [failure-modes.md](docs/failure-modes.md#broken-libgst-pluginslibgstnvvideoconvertso---libnvbufsurfaceso100-on-the-arm64-package-stage)).
+
 ## 2026-11-05 — The arm64 package stage links DeepStream into the multiarch plugin dir
 
 - The first arm64 package stage of the nvidia chain died on `no GStreamer plugin directory at
