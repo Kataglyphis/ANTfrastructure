@@ -35347,7 +35347,7 @@
  {
   "id": "deepstream.sbsa-runpaths-set",
   "target": "linux/scripts/05-frameworks/deepstream.sh",
-  "find": "    if ! grep -qE 'RUNPATH|RPATH' <<<\"${dyn}\"; then patchelf --set-rpath \"${root}/lib\" \"${f}\"; n=$((n + 1)); fi\n",
+  "find": "    if ! grep -qE 'RUNPATH|RPATH' <<<\"${dyn}\"; then patchelf --set-rpath \"\\$ORIGIN:${root}/lib\" \"${f}\"; n=$((n + 1)); fi\n",
   "replace": "    if ! grep -qE 'RUNPATH|RPATH' <<<\"${dyn}\"; then n=$((n + 1)); fi\n",
   "test": "bash linux/scripts/tests/test-deepstream.sh",
   "why": "without the RUNPATH the Jetson .deb's files resolve none of DeepStream's own libraries, which are kept off ld.so.conf"
@@ -35375,6 +35375,22 @@
   "replace": "      :\n",
   "test": "bash linux/scripts/tests/test-deepstream.sh",
   "why": "a bare CUDA NEEDED (libcufft.so, libcublas.so, libnppi*.so) names a dev link the package stage does not ship; unrewritten it stays BROKEN in the closure"
+ },
+ {
+  "id": "deepstream.sbsa-origin-runpath",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "patchelf --set-rpath \"\\$ORIGIN:${root}/lib\" \"${f}\"",
+  "replace": "patchelf --set-rpath \"${root}/lib\" \"${f}\"",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "without $ORIGIN libnvdsgst_deepstream_bins.so resolves none of the nine sibling plugins it NEEDs: nine BROKEN closure rows on every arm64 package stage"
+ },
+ {
+  "id": "deepstream.sbsa-host-cuda-sonames",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "  for d in \"$2\" \"$3\"; do\n",
+  "replace": "  for d in \"$2\"; do\n",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "the staged arm64 runtime holds cudart's dev link only; without the host toolkit libcufft.so, libcublas.so and libnppi*.so stay bare and BROKEN"
  },
  {
   "id": "deepstream.sbsa-amd64-excuses",

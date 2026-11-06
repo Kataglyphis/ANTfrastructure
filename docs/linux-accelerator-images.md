@@ -543,9 +543,12 @@ NVIDIA's SBSA container (`DEEPSTREAM_SBSA_IMAGE`, pinned by digest; read 2026-11
    unless a host injects NVDEC.
 6. The Jetson `.deb`'s files carry no RUNPATH (L4T puts its tegra dir on `ld.so.conf`) and NEED
    bare CUDA names (`libcufft.so`, `libcublas.so`, `libnppial.so`, `libnppist.so`); the build
-   stage sets `RUNPATH=…/deepstream-9.1/lib` on every file without one and rewrites each bare
-   NEEDED to the SONAME of the target CUDA's dev link (`libcufft.so.12`, `libcublas.so.13`, …),
-   as the amd64 `.deb` carries both. The SBSA container ships `libnvdsbufferpool.so` under its
+   stage sets `RUNPATH=$ORIGIN:…/deepstream-9.1/lib` on every file without one (`$ORIGIN` first:
+   `libnvdsgst_deepstream_bins.so` NEEDs nine sibling plugins, as amd64's `-rpath=$ORIGIN` reaches)
+   and rewrites each bare NEEDED to the SONAME of the CUDA dev link (`libcufft.so.12`,
+   `libcublas.so.13`, …), read from the target view or, since the staged arm64 runtime holds only
+   cudart's, from the host toolkit of the same version, as the amd64 `.deb` carries both. The SBSA
+   container ships `libnvdsbufferpool.so` under its
    bare name; the stage copies it under its SONAME `libnvdsbufferpool.so.1.0.0`, which every
    plugin NEEDs, and links the bare name. The three VPI consumers (`nvmultiobjecttracker`,
    `opticalflow_orin`, `vpicanmatch`) stay unresolved on `libnvvpi.so.4`, excused on arm64

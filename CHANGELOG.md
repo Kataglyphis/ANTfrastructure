@@ -13,6 +13,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-06 — The SBSA RUNPATH starts with `$ORIGIN`, and the CUDA SONAMEs come from the host toolkit too
+
+- The fourth arm64 package stage left 15 closure rows with every element registering: nine were
+  `libnvdsgst_deepstream_bins.so` NEEDing its sibling plugins in `gst-plugins/`, out of reach of a RUNPATH that
+  names `lib/` alone, and six were still bare `libcufft.so`, `libcublas.so`, `libnppial.so` and `libnppist.so`,
+  because the staged arm64 runtime holds only cudart's dev link. `ds_sbsa_runpaths` now writes
+  `RUNPATH=$ORIGIN:…/lib`, as the amd64 Makefiles do, and `ds_sbsa_cuda_soname` reads the SONAME from the target
+  view or the host toolkit of the same version (`deepstream.sbsa-origin-runpath`, `deepstream.sbsa-host-cuda-sonames`,
+  [failure-modes.md](docs/failure-modes.md#broken-libgst-pluginslibgstnvvideoconvertso---libnvbufsurfaceso100-on-the-arm64-package-stage)).
+
 ## 2026-11-06 — The SBSA bufferpool is staged under its SONAME, and every bare CUDA NEEDED is rewritten
 
 - The third arm64 package stage left 24 closure rows and four elements that "do not register" from

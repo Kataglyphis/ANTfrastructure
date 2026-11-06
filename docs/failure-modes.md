@@ -537,6 +537,16 @@ keeps the amd64-only excuses off arm64 (`deepstream.sbsa-bufferpool-soname`,
 "does not register" with `/nonexistent` as its origin has an unresolved NEEDED; read the closure
 rows above it first.
 
+The fourth stage (2026-11-06) left 15 rows and every element registering: nine were
+`libnvdsgst_deepstream_bins.so -> libnvdsgst_<plugin>.so`, its siblings in `gst-plugins/`, which a
+RUNPATH naming `lib/` alone cannot reach (the amd64 Makefiles write `-rpath=$ORIGIN:…/lib`); the
+other six were still bare `libcufft.so`, `libcublas.so`, `libnppial.so` and `libnppist.so`, because
+the staged arm64 runtime holds only cudart's dev link, so the SONAME lookup found nothing to
+rewrite to. The RUNPATH now starts with `$ORIGIN`, and the lookup falls back to the host toolkit of
+the same CUDA version, whose SONAMEs are the target's (`deepstream.sbsa-origin-runpath`,
+`deepstream.sbsa-host-cuda-sonames`). A grep that reads a closure verdict must match `BROKEN`
+itself: a filter on `ok` matched `msgbr**ok**er` and hid fourteen of the fifteen rows.
+
 ### `no GStreamer plugin directory at /opt/gstreamer/lib/aarch64-linux-gnu/gstreamer-1.0`
 
 The first arm64 package stage of the nvidia chain (2026-11-05) died in the DeepStream step after

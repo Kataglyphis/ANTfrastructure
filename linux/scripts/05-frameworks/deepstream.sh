@@ -501,16 +501,27 @@ ds_write_cuda_cross_view() {
 
 # The Jetson .deb's files carry no RUNPATH (L4T puts its tegra dir on ld.so.conf) and NEED bare CUDA names (libcufft.so, libcublas.so, libnppi*.so); the amd64 .deb's carry both, and the image puts no DeepStream dir on ld.so.conf.
 ds_sbsa_runpaths() {
-  local root="$1" cuda="$2" f n=0 dyn bare soname
+  local root="$1" cuda="$2" host="$3" f n=0 dyn bare soname
   while IFS= read -r f; do
     dyn="$(readelf -d "${f}" 2>/dev/null || true)"
-    if ! grep -qE 'RUNPATH|RPATH' <<<"${dyn}"; then patchelf --set-rpath "${root}/lib" "${f}"; n=$((n + 1)); fi
+    # $ORIGIN first: libnvdsgst_deepstream_bins.so NEEDs nine sibling plugins, which the amd64 Makefiles' -rpath=$ORIGIN reaches.
+    if ! grep -qE 'RUNPATH|RPATH' <<<"${dyn}"; then patchelf --set-rpath "\$ORIGIN:${root}/lib" "${f}"; n=$((n + 1)); fi
     for bare in $(sed -n 's/.*(NEEDED).*\[\(lib[^]]*\.so\)\]/\1/p' <<<"${dyn}"); do
-      soname="$(readelf -d "${cuda}/${bare}" 2>/dev/null | sed -n 's/.*(SONAME).*\[\(.*\)\]/\1/p' || true)"
+      soname="$(ds_sbsa_cuda_soname "${bare}" "${cuda}" "${host}")"
       [ -z "${soname}" ] || patchelf --replace-needed "${bare}" "${soname}" "${f}"
     done
   done < <(find "${root}/lib" "${root}/lib/gst-plugins" -maxdepth 1 -name '*.so*' -type f | LC_ALL=C sort)
-  ds_log "RUNPATH ${root}/lib set on ${n} files that carried none"
+  ds_log "RUNPATH \$ORIGIN:${root}/lib set on ${n} files that carried none"
+}
+
+# The staged arm64 runtime holds cudart's dev link only; cuFFT, cuBLAS and NPP are the same SONAME on every arch, so the host toolkit answers for them.
+ds_sbsa_cuda_soname() {
+  local bare="$1" d soname
+  for d in "$2" "$3"; do
+    soname="$(readelf -d "${d}/${bare}" 2>/dev/null | sed -n 's/.*(SONAME).*\[\(.*\)\]/\1/p' || true)"
+    if [ -n "${soname}" ]; then printf '%s' "${soname}"; return 0; fi
+  done
+  return 0
 }
 
 # gst-plugins/ must hold only plugins: a helper .so there is dlclose()d by the registry scan and crashes the next plugin.
@@ -538,7 +549,7 @@ ds_build() {
   ds_build_rest_server_deps "${tmp}/deps"
   ds_build_components "${tmp}/src" "${tmp}/logs" "$(ds_trt_sdk "${tmp}")"
   ds_fix_layout "$(ds_root)"
-  [ -z "${DS_TARGET_DEVICE:-}" ] || ds_sbsa_runpaths "$(ds_root)" "/usr/local/cuda-${DS_CUDA_VER}/lib64"
+  [ -z "${DS_TARGET_DEVICE:-}" ] || ds_sbsa_runpaths "$(ds_root)" "/usr/local/cuda-${DS_CUDA_VER}/lib64" "/usr/local/cuda-${DS_CUDA_VER%%-*}/lib64"
   rm -rf "${tmp}" ${DS_TARGET_DEVICE:+"/usr/local/cuda-${DS_CUDA_VER}"} ${DS_TEGRA_LINK:+"${DS_TEGRA_LINK}"}
   ds_write_gst_ldconf
   ds_write_trt_ldconf
