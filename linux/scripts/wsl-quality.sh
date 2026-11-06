@@ -261,10 +261,12 @@ run_windows_tests() {
 }
 
 run_quality_checks() {
-  # Suites run this from fixture directories, so the project path must not depend on the working directory.
-  local python_command="uv run --project ${REPO_ROOT}/quality --locked --no-sync --python ${PYTHON_VERSION} python"
+  local python_command
   local parallelism="${jobs}"
   verify_environment
+  # Suites run "${PREFLIGHT_PYTHON}" quoted from fixture directories, so it must be one absolute interpreter.
+  python_command="$(uv run --project "${REPO_ROOT}/quality" --locked --no-sync --python "${PYTHON_VERSION}" \
+    python -c 'import sys; print(sys.executable)')" || die "the locked quality Python does not start"
   mkdir -p "${LOG_DIR}"
   run_logged linux-preflight env PREFLIGHT_PYTHON="${python_command}" PREFLIGHT_JOBS="${parallelism}" \
     RUN_TESTS_JOBS="${parallelism}" LINT_SHELL_JOBS="${parallelism}" PREFLIGHT_SKIP=mutations \

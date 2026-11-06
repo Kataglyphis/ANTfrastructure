@@ -29,8 +29,8 @@
 - The libvpx patch's repo now lives in the drift check's one repo map (`Patches`), not a second table
   whose parameter duplicated another suite's signature; the TensorRT and MSVC-notice recipe families
   are declared in `gate-proofs.allow`.
-- `wsl-quality.sh check` names the quality project by absolute path: suites that ran its Python from a
-  fixture directory failed with `Project directory quality does not exist`.
+- `wsl-quality.sh check` hands the suites one absolute interpreter path: 108 of them run
+  `"${PREFLIGHT_PYTHON}"` quoted, so the multi-word `uv run ... python` exited 127 in each.
 - Still red until `:winarm64` is published again (#236): the device gate runs the published bundle,
   which predates libvpx (`no element "vp8enc"`) and the onnxinference wide-path fix (0xC0000005).
 

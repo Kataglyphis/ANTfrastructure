@@ -30155,10 +30155,10 @@
  {
   "id": "lib.wsl-quality-python-project-absolute",
   "target": "linux/scripts/wsl-quality.sh",
-  "find": "  local python_command=\"uv run --project ${REPO_ROOT}/quality --locked",
-  "replace": "  local python_command=\"uv run --project quality --locked",
+  "find": "    python -c 'import sys; print(sys.executable)')\" || die",
+  "replace": "    python -c 'import sys; print(sys.executable)')\"; python_command=\"uv run --project ${REPO_ROOT}/quality --locked --no-sync --python ${PYTHON_VERSION} python\" || die",
   "test": "bash linux/scripts/tests/test-wsl-quality.sh",
-  "why": "a relative quality project fails every suite that runs the preflight Python from a fixture directory"
+  "why": "a multi-word PREFLIGHT_PYTHON exits 127 in every suite that runs it quoted"
  },
  {
   "id": "lib.wsl-quality-requires-native-pester",
