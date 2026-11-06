@@ -1290,6 +1290,20 @@ runtime smoke's `check_lavapipe_subgroup` fails an image whose variable or lavap
 anything else. Retire both once the image's Mesa carries upstream ebcfbe60 (2026-08-22), which
 deletes that sort.
 
+### `rustup component add` aborts under qemu-user
+
+**Symptom.** The arm64 package stage dies in `setup-package-image.sh` with
+`qemu: uncaught target signal 6 (Aborted) - core dumped` and
+`install-rust.sh: line 82: … Aborted (core dumped) rustup component add rustfmt`, right after
+`info: downloading component rustfmt`; the same step passed in the three runs before (2026-11-06).
+
+**Cause.** rustup downloads and unpacks on several threads, and a qemu-user process can abort
+mid-download; nothing in the image or the pins changed between the green and the red run.
+
+**Fix.** `rustup_required` in `install-rust.sh` runs each required `rustup … add` up to three
+times, five seconds apart, and fails the installer after the third; the optional adds keep
+`try_rustup`. A run that fails all three attempts is not this transient: read the lines above it.
+
 ### Headless Chrome prints nothing under qemu-user
 
 **Symptom.** In an emulated arm64 container, `chrome --headless --dump-dom <url>` prints

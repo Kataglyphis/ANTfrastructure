@@ -24281,6 +24281,22 @@
   "why": "Android reads its own command-line tools digest without borrowing the Rust pin."
  },
  {
+  "id": "toolchain.rustup-required-retries",
+  "target": "linux/scripts/02-toolchain/install-rust.sh",
+  "find": "  for attempt in 1 2 3; do\n",
+  "replace": "  for attempt in 1; do\n",
+  "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+  "why": "a single qemu-user SIGABRT in rustup's download would again cost the whole arm64 package stage"
+ },
+ {
+  "id": "toolchain.rustup-required-propagates",
+  "target": "linux/scripts/02-toolchain/install-rust.sh",
+  "find": "    [ \"${attempt}\" -eq 3 ] || sleep 5\n  done\n  return 1\n",
+  "replace": "    [ \"${attempt}\" -eq 3 ] || sleep 5\n  done\n  return 0\n",
+  "test": "bash linux/scripts/tests/test-setup-package-image.sh",
+  "why": "three failed attempts must fail the installer; a required component silently missing ships an image whose cargo fmt or clippy gate cannot run"
+ },
+ {
   "id": "lib.raw-pin-rust-key-binding",
   "target": "linux/scripts/02-toolchain/install-rust.sh",
   "find": "load_raw_pin_if_empty RUSTUP_INIT_SHA256 RUSTUP_INIT_SHA256 /opt/scripts/core/versions.env",

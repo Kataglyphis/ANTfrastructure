@@ -75,17 +75,28 @@ try_rustup() {
   printf 'WARNING: optional rustup command failed: %s\n' "$*" >&2
 }
 
+# A required add runs three times before it fails: under qemu-user rustup's download aborted once with SIGABRT mid-component (docs/failure-modes.md#rustup-component-add-aborts-under-qemu-user).
+rustup_required() {
+  local attempt
+  for attempt in 1 2 3; do
+    "$@" && return 0
+    printf 'WARNING: required rustup command failed (attempt %s of 3): %s\n' "${attempt}" "$*" >&2
+    [ "${attempt}" -eq 3 ] || sleep 5
+  done
+  return 1
+}
+
 # Required: the runtime has no rustup, and cargo clippy would silently fall back to Ubuntu's older /bin toolchain.
-rustup component add clippy
+rustup_required rustup component add clippy
 
 # Required: without rustfmt a consumer's cargo fmt gate cannot run at all.
-rustup component add rustfmt
+rustup_required rustup component add rustfmt
 
 # Required: consumer lanes check wasm32 on stable, and the runtime has no rustup to add it.
-rustup target add wasm32-unknown-unknown
+rustup_required rustup target add wasm32-unknown-unknown
 
 # Required: Cargokit builds an Android app's Rust for it, and adding it per build needs the network.
-rustup target add aarch64-linux-android
+rustup_required rustup target add aarch64-linux-android
 
 # Pinned nightly (a bare "nightly" floats to today's build).
 : "${RUST_NIGHTLY_TOOLCHAIN:=nightly-2026-06-28}"

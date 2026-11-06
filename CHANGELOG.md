@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-06 — A required `rustup … add` is retried under qemu-user
+
+- The arm64 package stage of the nvidia chain died in `rustup component add rustfmt` with a qemu-user SIGABRT
+  mid-download, a step the three runs before had passed. `rustup_required` in `install-rust.sh` runs each of the
+  four required adds up to three times and fails the installer after the third (`toolchain.rustup-required-retries`,
+  `toolchain.rustup-required-propagates`,
+  [failure-modes.md](docs/failure-modes.md#rustup-component-add-aborts-under-qemu-user)).
+
 ## 2026-11-06 — The SBSA RUNPATH starts with `$ORIGIN`, and the CUDA SONAMEs come from the host toolkit too
 
 - The fourth arm64 package stage left 15 closure rows with every element registering: nine were

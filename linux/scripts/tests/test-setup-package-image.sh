@@ -551,4 +551,18 @@ _out="$( bash -c '
 t_assert_contains "${_out}" "WARN: no rustup/cargo under"
 t_assert_contains "${_out}" "EXIT 0"
 
+# rustup_required; see docs/failure-modes.md#rustup-component-add-aborts-under-qemu-user
+_RR="${TESTS_DIR}/../02-toolchain/install-rust.sh"
+_rr_src="$(t_fn_src "${_RR}" rustup_required)" || exit 1
+# _rr <failures before success>: prints "rc=<n> calls=<n>" with the retry sleep stubbed out.
+_rr() {
+  local tmp; tmp="$(t_mktemp -d)"; : > "${tmp}/calls"
+  bash -c 'eval "$1"; sleep() { :; }; fake() { echo x >> "$3"; [ "$(wc -l < "$3")" -gt "$2" ]; }; rustup_required fake _ "$2" "$3" 2>/dev/null; echo "rc=$? calls=$(wc -l < "$3")"' _ "${_rr_src}" "$1" "${tmp}/calls"
+}
+t_case "a required rustup add that aborts once (the 2026-11-06 qemu SIGABRT) is retried and succeeds"
+t_assert_eq "rc=0 calls=2" "$(_rr 1)" "second attempt succeeds"
+t_case "a required rustup add that keeps failing fails the installer after three attempts"
+t_assert_eq "rc=1 calls=3" "$(_rr 9)" "three attempts, then the failure propagates"
+t_assert_eq "4" "$(grep -c '^rustup_required rustup ' "${_RR}")" "the four required adds go through the retry, the optional ones through try_rustup"
+
 t_summary
