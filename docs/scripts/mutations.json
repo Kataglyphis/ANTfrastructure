@@ -35361,6 +35361,30 @@
   "why": "the three VPI consumers of the Jetson .deb cannot resolve on the SBSA route; unexcused they fail the closure gate on every arm64 package stage"
  },
  {
+  "id": "deepstream.sbsa-bufferpool-soname",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "    case \"${f}\" in *.so.1.0.0) cp \"${dir}/${f}\" \"${lib}/${f}\" ;; *) cp \"${dir}/${f}\" \"${lib}/${f}.1.0.0\"; f=\"${f}.1.0.0\" ;; esac\n",
+  "replace": "    cp \"${dir}/${f}\" \"${lib}/${f}\"\n",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "staged under its bare name, libnvdsbufferpool.so resolves for nothing that NEEDs its SONAME, and four plugins fail to register on every arm64 package stage"
+ },
+ {
+  "id": "deepstream.sbsa-bare-cuda-needs",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "      [ -z \"${soname}\" ] || patchelf --replace-needed \"${bare}\" \"${soname}\" \"${f}\"\n",
+  "replace": "      :\n",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "a bare CUDA NEEDED (libcufft.so, libcublas.so, libnppi*.so) names a dev link the package stage does not ship; unrewritten it stays BROKEN in the closure"
+ },
+ {
+  "id": "deepstream.sbsa-amd64-excuses",
+  "target": "linux/scripts/05-frameworks/deepstream-verify.sh",
+  "find": "[ \"$(dsv_arch)\" != amd64 ] || DSV_ALLOWED_MISSING+=(\"${DSV_ALLOWED_MISSING_AMD64[@]}\")\n",
+  "replace": "DSV_ALLOWED_MISSING+=(\"${DSV_ALLOWED_MISSING_AMD64[@]}\")\n",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "the Jetson .deb ships no UCX plugin and no Maxine helper; excused on arm64 too, those entries fail the closure gate as stale"
+ },
+ {
   "id": "deepstream.dsexample-literal-gcc-patched",
   "target": "linux/scripts/05-frameworks/deepstream.sh",
   "find": "  sed -i 's/^\\tgcc /\\t$(CC) /' \"$1\"\n",

@@ -206,14 +206,15 @@ ds_stage_runtime_deb() {
   [ "$(ds_arch)" != arm64 ] || ds_stage_sbsa_libs
 }
 
-# The three Tegra libraries, verified against their pins, into the tree with the unversioned links the plugins and the Makefiles link.
+# The four SBSA libraries, verified against their pins, into the tree under their SONAME, with the unversioned links the plugins and the Makefiles link.
 ds_stage_sbsa_libs() {
   local problem dir lib f key
   problem="$(ds_sbsa_problem)"; [ -z "${problem}" ] || ds_die "${problem}"
   dir="$(ds_sbsa_dir)"; lib="$(ds_root)/lib"
   while read -r f key; do
-    cp "${dir}/${f}" "${lib}/${f}"
-    case "${f}" in *.so.1.0.0) ln -sfn "${f}" "${lib}/${f%.1.0.0}" ;; esac
+    # The container ships libnvdsbufferpool.so under its bare name; its SONAME libnvdsbufferpool.so.1.0.0 is what every plugin NEEDs.
+    case "${f}" in *.so.1.0.0) cp "${dir}/${f}" "${lib}/${f}" ;; *) cp "${dir}/${f}" "${lib}/${f}.1.0.0"; f="${f}.1.0.0" ;; esac
+    ln -sfn "${f}" "${lib}/${f%.1.0.0}"
   done < <(ds_sbsa_libs)
   ds_log "SBSA libraries from ${DEEPSTREAM_SBSA_IMAGE} -> ${lib}"
 }
@@ -498,13 +499,16 @@ ds_write_cuda_cross_view() {
   ds_log "CUDA cross view $1 -> ${CUDA_CROSS_TARGET_ROOT}"
 }
 
-# The Jetson .deb's files carry no RUNPATH (L4T puts its tegra dir on ld.so.conf) and NEED a bare libcufft.so; the amd64 .deb's carry both, and the image puts no DeepStream dir on ld.so.conf.
+# The Jetson .deb's files carry no RUNPATH (L4T puts its tegra dir on ld.so.conf) and NEED bare CUDA names (libcufft.so, libcublas.so, libnppi*.so); the amd64 .deb's carry both, and the image puts no DeepStream dir on ld.so.conf.
 ds_sbsa_runpaths() {
-  local root="$1" f n=0 dyn
+  local root="$1" cuda="$2" f n=0 dyn bare soname
   while IFS= read -r f; do
     dyn="$(readelf -d "${f}" 2>/dev/null || true)"
     if ! grep -qE 'RUNPATH|RPATH' <<<"${dyn}"; then patchelf --set-rpath "${root}/lib" "${f}"; n=$((n + 1)); fi
-    if grep -qE '\(NEEDED\).*\[libcufft\.so\]' <<<"${dyn}"; then patchelf --replace-needed libcufft.so libcufft.so.12 "${f}"; fi
+    for bare in $(sed -n 's/.*(NEEDED).*\[\(lib[^]]*\.so\)\]/\1/p' <<<"${dyn}"); do
+      soname="$(readelf -d "${cuda}/${bare}" 2>/dev/null | sed -n 's/.*(SONAME).*\[\(.*\)\]/\1/p' || true)"
+      [ -z "${soname}" ] || patchelf --replace-needed "${bare}" "${soname}" "${f}"
+    done
   done < <(find "${root}/lib" "${root}/lib/gst-plugins" -maxdepth 1 -name '*.so*' -type f | LC_ALL=C sort)
   ds_log "RUNPATH ${root}/lib set on ${n} files that carried none"
 }
@@ -534,7 +538,7 @@ ds_build() {
   ds_build_rest_server_deps "${tmp}/deps"
   ds_build_components "${tmp}/src" "${tmp}/logs" "$(ds_trt_sdk "${tmp}")"
   ds_fix_layout "$(ds_root)"
-  [ -z "${DS_TARGET_DEVICE:-}" ] || ds_sbsa_runpaths "$(ds_root)"
+  [ -z "${DS_TARGET_DEVICE:-}" ] || ds_sbsa_runpaths "$(ds_root)" "/usr/local/cuda-${DS_CUDA_VER}/lib64"
   rm -rf "${tmp}" ${DS_TARGET_DEVICE:+"/usr/local/cuda-${DS_CUDA_VER}"} ${DS_TEGRA_LINK:+"${DS_TEGRA_LINK}"}
   ds_write_gst_ldconf
   ds_write_trt_ldconf

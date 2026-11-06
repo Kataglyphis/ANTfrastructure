@@ -99,17 +99,30 @@ t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" '[ -z "${DS_TARGET_D
 t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" '[ -z "${DS_TARGET_DEVICE:-}" ] || { DS_CROSS_CC="${CC} ${DS_TRT_LINK_FLAGS} ${DS_CROSS_SYSFLAGS}"; DS_CROSS_CXX="${CXX} ${DS_TRT_LINK_FLAGS} ${DS_CROSS_SYSFLAGS}"; }' \
   "on a cross build the TensorRT 10 SDK's -L precedes the sysroot flags"
 # The same stage found 105 unresolved sonames: the Jetson .deb's files carry no RUNPATH and NEED a bare libcufft.so.
-t_assert_contains "$(t_fn_src "${DS}" ds_build)" '[ -z "${DS_TARGET_DEVICE:-}" ] || ds_sbsa_runpaths "$(ds_root)"' "the cross build sets the RUNPATHs the amd64 .deb carries"
-mkdir -p "${_T}/rp/lib/gst-plugins" "${_T}/rp/bin"; : > "${_T}/rp/lib/libwith.so"; : > "${_T}/rp/lib/libbare.so.1.0.0"; : > "${_T}/rp/lib/gst-plugins/libcufft-user.so"; : > "${_T}/rp/lib/notalib.txt"
-printf '#!/usr/bin/env bash\ncase "$2" in *libwith*) echo " 0x1d (RUNPATH) Library runpath: [/x]";; *cufft-user*) echo " 0x1 (NEEDED) Shared library: [libcufft.so]";; esac\n' > "${_T}/rp/bin/readelf"
+t_assert_contains "$(t_fn_src "${DS}" ds_build)" '[ -z "${DS_TARGET_DEVICE:-}" ] || ds_sbsa_runpaths "$(ds_root)" "/usr/local/cuda-${DS_CUDA_VER}/lib64"' "the cross build sets the RUNPATHs the amd64 .deb carries, naming the target's CUDA lib dir"
+# The third SBSA package stage (2026-11-06) found libcublas.so, libnppial.so and libnppist.so NEEDed bare too: the versioned name comes from the CUDA dev link's SONAME.
+mkdir -p "${_T}/rp/lib/gst-plugins" "${_T}/rp/bin" "${_T}/rp/cuda"; : > "${_T}/rp/lib/libwith.so"; : > "${_T}/rp/lib/libbare.so.1.0.0"; : > "${_T}/rp/lib/gst-plugins/libcufft-user.so"; : > "${_T}/rp/lib/notalib.txt"
+printf '#!/usr/bin/env bash\ncase "$2" in *libwith*) echo " 0x1d (RUNPATH) Library runpath: [/x]";; *cufft-user*) printf " 0x1 (NEEDED) Shared library: [%%s]\\n" libcufft.so libnvds_meta.so libcublas.so libcudart.so.13;; *cuda/libcufft.so) echo " 0xe (SONAME) Library soname: [libcufft.so.12]";; *cuda/libcublas.so) echo " 0xe (SONAME) Library soname: [libcublas.so.13]";; *cuda/*) exit 1;; esac\n' > "${_T}/rp/bin/readelf"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "${PATCHELF_CALLS}"\n' > "${_T}/rp/bin/patchelf"; chmod +x "${_T}/rp/bin/"*
 : > "${_T}/rp/calls"
-_out="$(PATH="${_T}/rp/bin:${PATH}" PATCHELF_CALLS="${_T}/rp/calls" bash -c 'ds_log() { echo "$*"; }; source <(sed -n "/^ds_sbsa_runpaths()/,/^}/p" "$1"); ds_sbsa_runpaths "$2"' _ "${DS}" "${_T}/rp")"
-t_assert_eq $'--set-rpath '"${_T}"$'/rp/lib '"${_T}"$'/rp/lib/gst-plugins/libcufft-user.so\n--replace-needed libcufft.so libcufft.so.12 '"${_T}"$'/rp/lib/gst-plugins/libcufft-user.so\n--set-rpath '"${_T}"$'/rp/lib '"${_T}"$'/rp/lib/libbare.so.1.0.0' "$(cat "${_T}/rp/calls")" \
-  "a file with a RUNPATH is left alone; the others get the lib dir, and the bare libcufft.so NEEDED becomes the versioned one"
+_out="$(PATH="${_T}/rp/bin:${PATH}" PATCHELF_CALLS="${_T}/rp/calls" bash -c 'set -euo pipefail; ds_log() { echo "$*"; }; source <(sed -n "/^ds_sbsa_runpaths()/,/^}/p" "$1"); ds_sbsa_runpaths "$2" "$2/cuda"' _ "${DS}" "${_T}/rp")"
+t_assert_eq $'--set-rpath '"${_T}"$'/rp/lib '"${_T}"$'/rp/lib/gst-plugins/libcufft-user.so\n--replace-needed libcufft.so libcufft.so.12 '"${_T}"$'/rp/lib/gst-plugins/libcufft-user.so\n--replace-needed libcublas.so libcublas.so.13 '"${_T}"$'/rp/lib/gst-plugins/libcufft-user.so\n--set-rpath '"${_T}"$'/rp/lib '"${_T}"$'/rp/lib/libbare.so.1.0.0' "$(cat "${_T}/rp/calls")" \
+  "a file with a RUNPATH is left alone; the others get the lib dir, and every bare NEEDED with a CUDA dev link becomes that link's SONAME; libnvds_meta.so has none and stays"
 t_assert_contains "${_out}" "RUNPATH ${_T}/rp/lib set on 2 files that carried none"
 t_assert_eq "3" "$(DSV_ARCH=arm64 bash -c 'source "$1"; printf "%s\n" "${DSV_ALLOWED_MISSING[@]}" | grep -c libnvvpi' _ "${DSV}")" "arm64 excuses the three VPI consumers"
 t_assert_eq "0" "$(DSV_ARCH=amd64 bash -c 'source "$1"; printf "%s\n" "${DSV_ALLOWED_MISSING[@]}" | grep -c libnvvpi' _ "${DSV}")" "amd64 does not: its .deb resolves VPI"
+# The same stage reported the UCX, Maxine and bare-bufferpool excuses STALE: the Jetson .deb has none of those files, and its sparse4d NEEDs libnvdsbufferpool.so.1.0.0.
+t_assert_eq "0" "$(DSV_ARCH=arm64 bash -c 'source "$1"; printf "%s\n" "${DSV_ALLOWED_MISSING[@]}" | grep -cE "libnvdsgst_ucx|libNVCVImage|\|libnvdsbufferpool\.so\|"' _ "${DSV}")" "arm64 excuses neither UCX nor Maxine nor the bare bufferpool name"
+t_assert_eq "1" "$(DSV_ARCH=arm64 bash -c 'source "$1"; printf "%s\n" "${DSV_ALLOWED_MISSING[@]}" | grep -c "lib/libnvdsgst_sparse4d.so|libnvdsbufferpool.so.1.0.0|"' _ "${DSV}")" "arm64 excuses sparse4d's versioned bufferpool NEEDED"
+t_assert_eq "4" "$(DSV_ARCH=amd64 bash -c 'source "$1"; printf "%s\n" "${DSV_ALLOWED_MISSING[@]}" | grep -cE "libnvdsgst_ucx|libNVCVImage|\|libnvdsbufferpool\.so\|"' _ "${DSV}")" "amd64 keeps its four"
+t_assert_eq "0" "$(DSV_ARCH=amd64 bash -c 'source "$1"; printf "%s\n" "${DSV_ALLOWED_MISSING[@]}" | grep -c "libnvdsbufferpool.so.1.0.0"' _ "${DSV}")" "amd64's .deb resolves the versioned name"
+# The SBSA container ships libnvdsbufferpool.so bare; staged under that name, nothing that NEEDs its SONAME resolved (the third SBSA package stage).
+mkdir -p "${_T}/st/opt/deepstream-9.1/lib"
+_out="$(_ds 'ds_log() { :; }; ds_stage_sbsa_libs; find "$(ds_root)/lib" -mindepth 1 -printf "%y %f %l\n" | LC_ALL=C sort' DS_SBSA_DIR="${_T}/sbsa" DS_OPT="${_T}/st/opt" "${_SBSA_PINS[@]}")"
+t_assert_contains "${_out}" "f libnvdsbufferpool.so.1.0.0 " "the bufferpool is a regular file under its SONAME"
+t_assert_contains "${_out}" "l libnvdsbufferpool.so libnvdsbufferpool.so.1.0.0" "with the unversioned link the Makefiles' -lnvdsbufferpool needs"
+t_assert_contains "${_out}" "l libnvbufsurface.so libnvbufsurface.so.1.0.0" "the versioned files keep their links"
+t_assert_eq "8" "$(printf '%s\n' "${_out}" | grep -c -e '\.so')" "four files, four links, nothing else"
 t_assert_contains "$(sed -n '/^DS_BUILD_PACKAGES=(/,/^)/p' "${DS}")" 'zlib1g-dev' "zlib's dev package is named, not inherited"
 t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'ds_write_cuda_cross_view' "the Makefiles' /usr/local/cuda-\$(CUDA_VER) resolves to the target's headers and libs"
 t_assert_contains "$(_ds ds_gate_problem ENABLE_NVIDIA=false)" "needs ENABLE_NVIDIA=true"
@@ -221,12 +234,12 @@ t_assert_eq "absent" "$([ -e "${_T}/d3/opt/nvidia" ] && echo present || echo abs
 t_assert_contains "$(t_fn_src "${PAY}" copy_media_payloads)" "copy_deepstream_payload" "the copy is wired into the payload run"
 
 t_case "closure verdict: driver sonames pass, an unexcused miss is BROKEN, an unused excuse is STALE"
-_verdict() { printf '%b' "$1" | bash -c 'source "$1"; dsv_closure_verdict' _ "${DSV}"; }
-_ALL_EXCUSED="$(bash -c 'source "$1"; for e in "${DSV_ALLOWED_MISSING[@]}"; do IFS="|" read -r f n _ <<< "$e"; echo "$f $n"; done' _ "${DSV}")"
+_verdict() { printf '%b' "$1" | DSV_ARCH=amd64 bash -c 'source "$1"; dsv_closure_verdict' _ "${DSV}"; }
+_ALL_EXCUSED="$(DSV_ARCH=amd64 bash -c 'source "$1"; for e in "${DSV_ALLOWED_MISSING[@]}"; do IFS="|" read -r f n _ <<< "$e"; echo "$f $n"; done' _ "${DSV}")"
 t_assert_eq "" "$(_verdict "${_ALL_EXCUSED}\nlib/gst-plugins/libnvdsgst_infer.so libcuda.so.1\nlib/libnvds_stats.so libnvidia-ml.so.1\n")"
 t_assert_contains "$(_verdict "${_ALL_EXCUSED}\nlib/gst-plugins/libnvdsgst_infer.so libnvinfer.so.10\n")" \
   "BROKEN lib/gst-plugins/libnvdsgst_infer.so -> libnvinfer.so.10"
-t_assert_contains "$(_verdict "$(printf '%s\n' "${_ALL_EXCUSED}" | tail -n +2)\n")" "STALE lib/gst-plugins/libnvdsgst_ucx.so -> libucs.so.0"
+t_assert_contains "$(_verdict "$(printf '%s\n' "${_ALL_EXCUSED}" | grep -v 'libnvdsgst_ucx.so libucs.so.0')\n")" "STALE lib/gst-plugins/libnvdsgst_ucx.so -> libucs.so.0"
 
 t_case "one GStreamer: a plugin resolving a GStreamer soname outside the prefix is flagged"
 _gst() { printf '%b' "$1" | GSTREAMER_PREFIX=/opt/gstreamer bash -c 'source "$1"; dsv_gst_origin_verdict' _ "${DSV}"; }
