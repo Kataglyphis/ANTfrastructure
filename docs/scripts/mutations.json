@@ -30153,6 +30153,14 @@
   "why": "a failed native Windows test run must retain its nonzero exit through the WSL logging pipe"
  },
  {
+  "id": "lib.wsl-quality-python-project-absolute",
+  "target": "linux/scripts/wsl-quality.sh",
+  "find": "  local python_command=\"uv run --project ${REPO_ROOT}/quality --locked",
+  "replace": "  local python_command=\"uv run --project quality --locked",
+  "test": "bash linux/scripts/tests/test-wsl-quality.sh",
+  "why": "a relative quality project fails every suite that runs the preflight Python from a fixture directory"
+ },
+ {
   "id": "lib.wsl-quality-requires-native-pester",
   "target": "linux/scripts/wsl-quality.sh",
   "find": "  windows_pester_ready || die \"Windows Pester >= ${PESTER_MIN_VERSION} is missing; run bash linux/scripts/wsl-quality.sh setup\"",

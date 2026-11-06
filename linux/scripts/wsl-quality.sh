@@ -261,7 +261,8 @@ run_windows_tests() {
 }
 
 run_quality_checks() {
-  local python_command="uv run --project quality --locked --no-sync --python ${PYTHON_VERSION} python"
+  # Suites run this from fixture directories, so the project path must not depend on the working directory.
+  local python_command="uv run --project ${REPO_ROOT}/quality --locked --no-sync --python ${PYTHON_VERSION} python"
   local parallelism="${jobs}"
   verify_environment
   mkdir -p "${LOG_DIR}"

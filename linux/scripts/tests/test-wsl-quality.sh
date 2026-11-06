@@ -33,6 +33,7 @@ t_assert_contains "${_source}" 'PSScriptAnalyzer' "PowerShell lint installs its 
 
 t_case "check runs mutation proofs after the non-mutation preflight"
 t_assert_contains "${_source}" 'PREFLIGHT_SKIP=mutations' "preflight mutation work is not duplicated"
+t_assert_contains "${_source}" 'python_command="uv run --project ${REPO_ROOT}/quality ' "suites in fixture directories still find the quality project"
 t_assert_contains "${_source}" 'verify_mutations.py" --jobs' "the whole mutation manifest still runs"
 t_assert_contains "${_source}" 'logs/code-quality/wsl' "run logs stay in the ignored log tree"
 
