@@ -1,6 +1,7 @@
 # MIGraphX EP binds a strided partition output onto ORT's dense buffer and corrupts it
 
-Upstream: microsoft/onnxruntime, issue (bug report). Status: see the README beside this file.
+Upstream: microsoft/onnxruntime, issue (bug report). **Status (2026-11-07): not to be filed**, see `PR.md`:
+MIGraphX fixed the root cause (ROCm/AMDMIGraphX#5345) and the built-in EP is unmaintained.
 
 ## Title
 

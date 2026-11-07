@@ -4,6 +4,14 @@ Upstream: microsoft/onnxruntime, branch `main`. Patch: `0001-MIGraphX-EP-Make-a-
 generated against the file contents of `main` at `1f84d530` (2026-11-07); it applies to v1.31.0 and v1.31.1
 unchanged (the compute function is identical there).
 
+**Status (2026-11-07): not to be filed.** AMD declared the built-in MIGraphX EP unmaintained
+(microsoft/onnxruntime#32571, 2026-09-24: "Changes to this code are not maintained anymore. Please move to the
+plugin EP repo"). The successor, `onnxruntime/onnxruntime-ep-amdgpu`, compiles with MIGraphX's
+`standardize_outputs` option (ROCm/AMDMIGraphX#5345, merged 2026-10-01) and its `compile_program` refuses a
+non-standard output loudly where MIGraphX ignores the option. The patch stays here as the documented
+alternative for the built-in EP on a MIGraphX that predates #5345 (ROCm 10.1's 2.18.0 does); BACKLOG CON231
+moves our image to the plugin EP.
+
 ## Description
 
 MIGraphX can return a partition output as a strided view, for example when the partition ends in
@@ -47,6 +55,19 @@ still wrong; `HIP_LAUNCH_BLOCKING` and `AMD_SERIALIZE_*` changed nothing.
   MIGraphX build (`--use_migraphx`) and an AMD GPU; review the three files once on such a host.
 - The pre-existing fallback for outputs that are not parameters (`hipMemcpyWithStream` of
   `res_shape.bytes()`) has the same assumption for a strided result and is left as is.
+
+## Related
+
+- microsoft/onnxruntime#32571 (closed, not merged): the maintainer's statement above; it touched the same
+  `#output_` name parsing (`main:#output_:00010` from index 10 on).
+- microsoft/onnxruntime#26092 (merged 2025-12-09): the output-binding loop this patch changes.
+- microsoft/onnxruntime#27551 (merged 2026-03-09): the EP's allocation fix.
+- microsoft/onnxruntime#31986 (closed): wrong `Resize` results on the EP, a MIGraphX layout bug
+  (ROCm/AMDMIGraphX#4713), not this class.
+- ROCm/AMDMIGraphX#5345 (merged 2026-10-01): `auto_contiguous.standardize_outputs`, the root-cause fix;
+  absent from the `rocm-10.1` tag.
+- onnxruntime/onnxruntime-ep-amdgpu `src/migraphx/mgx_program_ops.cc` at `58afd43b`: `compile_program` sets
+  the option and throws `MIGraphX compiled a non-standard output for ONNX Runtime` otherwise.
 
 ## Submit recipe
 

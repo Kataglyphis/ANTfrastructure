@@ -3,6 +3,12 @@
 Upstream: microsoft/onnxruntime, branch `main`. Patch: `0001-MIGraphX-EP-Add-GridSample-to-the-supported-ops.patch`,
 one line in the EP's supported-op list, generated against `main` at `1f84d530` (2026-11-07).
 
+**Status (2026-11-07): not to be filed.** The built-in EP is unmaintained (see
+`../onnxruntime-migraphx-strided-output/PR.md`), and the plugin EP `onnxruntime/onnxruntime-ep-amdgpu` takes
+its op list from `migraphx::get_onnx_operators()`, so `GridSample` is supported there without a change
+(MIGraphX parses it in `src/onnx/parse_gridsample.cpp`). The patch stays as our image's local change to the
+built-in EP until BACKLOG CON231 moves it to the plugin.
+
 ## Description
 
 MIGraphX parses and runs ONNX `GridSample` (bilinear, zeros padding, `align_corners`; checked with
@@ -26,6 +32,13 @@ necessary on its own.
 - Other `GridSample` modes (`nearest`, `bicubic`, `border`/`reflection` padding) were not exercised;
   a mode MIGraphX rejects would fail the partition's compile, as any unsupported attribute does today.
 - Not built in an ORT checkout on this host.
+
+## Related
+
+- onnxruntime/onnxruntime-ep-amdgpu `src/migraphx/mgx_ep.cc` at `58afd43b`: `supported_op_types` is
+  `migraphx::get_onnx_operators()`.
+- ROCm/AMDMIGraphX `src/onnx/parse_gridsample.cpp` (in `rocm-10.1`): the parser the op list relies on.
+- `../onnxruntime-migraphx-strided-output/PR.md`: the companion fix and why neither is filed.
 
 ## Submit recipe
 

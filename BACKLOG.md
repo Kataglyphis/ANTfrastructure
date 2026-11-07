@@ -419,31 +419,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       scripts have never run outside their tests. Done when each package passes `compare_detector_parity.py`
       against the CPU with its operators on the provider. Failures on gfx1036 belong to CON202.
 
-- [ ] **CON225 — ORT's MIGraphX provider corrupts a partition output with non-standard strides** [M, ★★★].
-      Found 2026-11-04 on the RX 9070 XT (gfx1201) with ORT v1.31.0 (`--use_migraphx`) and MIGraphX 2.18.0:
-      `deim_dfine_n_coco` returns three drifting detections where the CPU finds five, in every Linux AMD
-      package. Pure MIGraphX compiles the whole graph and matches the CPU (max diff 0.0025, three identical
-      runs). The EP leaves the six `GridSample` ops and the stem's ceil-mode `MaxPool` on the CPU, so the
-      graph splits into five partitions, and one of them is only the `Slice` + `Reshape` that cut the 40×40
-      level out of the shared value tensor. MIGraphX returns that output as a view with strides
-      `[32000, 2000, 40, 1]`, and the EP binds that shape straight onto ORT's dense `[8, 16, 40, 40]` buffer
-      (`migraphx_execution_provider.cc`, the `#output_N` binding in the compute function): ORT reads
-      strided data as dense (emulating that reproduces ORT's tensor to 6e-6 on the 80 % the write defines)
-      and the overrun corrupts neighbours, which is why run 1 differs from run 2 and
-      `enable_mem_pattern=False` makes it deterministic but still wrong. `HIP_LAUNCH_BLOCKING` and
-      `AMD_SERIALIZE_*` change nothing. Two fixes, both upstreamable: make the EP copy a non-standard
-      output through a contiguous scratch, and add `GridSample` to its op list (MIGraphX has it), which
-      makes this model one partition. Carry them as `linux/scripts/patches/onnxruntime/` entries applied by
-      `apply_ort_gpu_source_patches`, rebuild the rocm chain, and report upstream with the evidence in
-      `~/gpu/work` on the build host. Windows DirectML has its own wrong-result class (CON220); the Windows
-      ROCm image is not affected by this partition (its ORT is CUDA/DirectML only). Done when all four Linux
-      AMD packages pass `compare_detector_parity.py` on the RX 9070 XT (CON224 item 1). In the image since the
-      rocm media build of 2026-11-05 (`APPLIED: ORT 003-migraphx-gridsample.patch` and
-      `004-migraphx-refuse-nonstandard-output.patch` in its log). **Proven 2026-11-07**: all four Linux AMD
-      packages pass parity on the RX 9070 XT (CON224 item 1). Upstream: two PRs are prepared under
-      `linux/upstream/` (the strided-output fix with its test, and the GridSample one-liner), status rows in
-      `linux/upstream/README.md`; the owner files them.
-
 - [ ] **CON217 — build CUDA compute capability 7.5, so RTX 20xx cards run the NVIDIA packages** [M, ★★].
       Owner decision 2026-11-02: add `75` (Turing: T4, RTX 20xx) to `CUDA_ARCHITECTURES`, today
       `86;87;89;120`. Found the same day on an RTX 2080 (driver 595.58.03) with OxidANT's Linux x64
@@ -1029,6 +1004,19 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       This is an image-to-consumer provenance handoff gap, not a conclusion about redistribution
       rights or proof that the existing host-runtime artifact is broken. Evidence and scoped
       commands: `_implementation/rocm-bundled-provenance-20261031/VALIDATION.md`.
+
+- [b] **CON231 — move the Linux rocm variant to AMD's plugin MIGraphX EP and a MIGraphX with #5345** [M, ★★★].
+      Owner decision. microsoft/onnxruntime's built-in MIGraphX EP is unmaintained (AMD on onnxruntime#32571,
+      2026-09-24: "Changes to this code are not maintained anymore. Please move to the plugin EP repo"); the successor
+      is `onnxruntime/onnxruntime-ep-amdgpu` (plugin ABI, ORT ≥ 1.24), which the Windows ROCm lane already carries
+      ([windows-rocm.md](docs/windows-rocm.md)). It takes its op list from `migraphx::get_onnx_operators()`
+      (`GridSample` included) and compiles with `standardize_outputs`, refusing a non-standard output loudly where
+      MIGraphX ignores the option; MIGraphX standardizes GPU outputs since ROCm/AMDMIGraphX#5345 (2026-10-01), which
+      ROCm 10.1's 2.18.0 predates. Blocked on a ROCm release that carries #5345. Done when the Linux rocm image ships
+      the plugin EP against such a MIGraphX, the four AMD packages pass CON224 item 1 on it, and
+      `003-migraphx-gridsample.patch` and `004-migraphx-refuse-nonstandard-output.patch` are retired. Until then the
+      two patches stay (CON225, closed 2026-11-07: fix proven on the RX 9070 XT, root cause fixed upstream, the
+      prepared PRs under `linux/upstream/` are not filed).
 
 - [ ] **CON202 — investigate locked detector failure on WSL gfx1036 with MIGraphX** [L, ★★★].
       On 2026-10-31 the cached Linux x64 `:latest-rocm` image digest

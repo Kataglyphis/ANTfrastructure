@@ -18,8 +18,10 @@
 - `linux/upstream/` is the Linux lane's index of prepared upstream submissions, as `windows/upstream/` is the
   Windows lane's. First entries: the MIGraphX EP fix that stages a strided partition output and makes it dense
   through a cached one-op `contiguous` program (with a unit test; the mechanism proved standalone on gfx1201 by
-  `proof.cc`), and the one-line `GridSample` addition to the EP's op list. Both wait for the owner to file them
-  (BACKLOG CON225).
+  `proof.cc`), and the one-line `GridSample` addition to the EP's op list. Neither is filed: AMD declared the
+  built-in EP unmaintained (onnxruntime#32571), MIGraphX fixed the root cause (AMDMIGraphX#5345, `standardize_outputs`),
+  and AMD's plugin EP sets that option, refuses a non-standard output otherwise and lists every op MIGraphX parses.
+  CON225 closes; CON231 moves the Linux rocm variant to the plugin EP once a ROCm carries #5345.
 
 ## 2026-11-07 — between runs the disk guard spends the image lever first
 
