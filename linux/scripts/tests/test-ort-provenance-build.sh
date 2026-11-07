@@ -413,6 +413,7 @@ _ocv="$(_flat "${SCRIPTS}/03-media/build/opencv/build-opencv.sh")"
 _ff="$(_flat "${SCRIPTS}/03-media/build/ffmpeg/build-ffmpeg.sh")"
 _gst="$(_flat "${SCRIPTS}/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh")"
 _gen="$(_flat "${SCRIPTS}/03-media/verify-genai-ort.sh")"
+_mgx="$(_flat "${SCRIPTS}/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh")"
 t_assert_contains "${_ocv}" 'source "${SCRIPT_DIR}/../../ort-provenance.sh"'
 t_assert_contains "${_ff}" 'source "${SCRIPT_DIR}/../../ort-provenance.sh"'
 t_assert_contains "${_gst}" 'source "${_GST_MONOREPO_DIR}/../../../ort-provenance.sh"'
@@ -424,6 +425,9 @@ t_assert_contains "${_ff}" '--record "${FFMPEG_SRC}/ffbuild/config.mak" --log "$
 t_assert_contains "${_gst}" \
   '--record builddir/build.ninja --record builddir/meson-info/intro-dependencies.json --log builddir/meson-logs/meson-log.txt || exit 1'
 t_assert_contains "${_gen}" '--tree "${src}" --log "${src}/build/genai-build.log" "${g2[@]}"'
+t_assert_contains "${_mgx}" \
+  '--tree "${work}" --shim "${work}/ort" --record "${work}/build/CMakeCache.txt" --record "${work}/build/build.ninja" --log "${work}/configure.log" || err'
+t_assert_contains "${_mgx}" 'cmake "${cmake_args[@]}" "${defines[@]}" 2>&1 | tee "${work}/configure.log"' "the plugin EP's configure tees into the log G2 reads"
 _gb="${SCRIPTS}/03-media/build/onnxruntime/build/60-build-genai.sh"
 t_assert_contains "$(cat "${_gb}")" 'GENAI_BUILD_LOG="${GENAI_SRC_DIR}/build/genai-build.log"'
 t_assert_eq 2 "$(grep -c -F -e ' 2>&1 | tee -a "${GENAI_BUILD_LOG}"' "${_gb}" || true)" "both GenAI build.py calls tee into the log G2 reads"
@@ -432,7 +436,7 @@ t_assert_contains "$(t_fn_src "${SCRIPTS}/03-media/build/ffmpeg/build-ffmpeg.sh"
 t_assert_contains "$(t_fn_src "${SCRIPTS}/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh" build_gstreamer_monorepo)" \
   "$(printf '  _gst_monorepo_install\n  _gst_monorepo_ort_provenance\n}')"
 t_assert_contains "$(t_fn_src "${SCRIPTS}/03-media/verify-genai-ort.sh" main)" "$(printf 'chain bytes"\n  _genai_ort_g2 "${src}" "${out}" "${roots[@]}"\n}')"
-for _f in "${_ocv}" "${_ff}" "${_gst}" "${_gen}"; do
+for _f in "${_ocv}" "${_ff}" "${_gst}" "${_gen}" "${_mgx}"; do
   t_assert_eq 1 "$(printf '%s\n' "${_f}" | grep -c -E -e '(^|[[:space:]])ort_assert_chain_only[[:space:]]' || true)" "one call"
 done
 
@@ -441,9 +445,10 @@ t_case "each stamp lands where the census contract reads it (mutation)"
 source "${CENSUS}"
 _contract="$(ort_census_contract)"
 _stamp_of() { printf '%s\n' "$1" | grep -o -E -e "ort_assert_chain_only $2 --stamp \"[^\"]+\"" | sed -E 's/.*--stamp "([^"]+)"/\1/' || true; }
-declare -A _srcs=([opencv]="${_ocv}" [ffmpeg]="${_ff}" [gstreamer]="${_gst}" [genai]="${_gen}")
+declare -A _srcs=([opencv]="${_ocv}" [ffmpeg]="${_ff}" [gstreamer]="${_gst}" [genai]="${_gen}" [amdgpu-ep]="${_mgx}")
 for _row in "opencv|OPENCV_PREFIX|/opt/opencv5" "ffmpeg|FFMPEG_PREFIX|/opt/ffmpeg" \
-            "gstreamer|GSTREAMER_PREFIX|/opt/gstreamer" "genai|out|/usr/local/lib/onnxruntime-genai"; do
+            "gstreamer|GSTREAMER_PREFIX|/opt/gstreamer" "genai|out|/usr/local/lib/onnxruntime-genai" \
+            "amdgpu-ep|MGXEP_OUTPUT_DIR|/usr/local/lib/onnxruntime-ep-amdgpu"; do
   IFS='|' read -r _n _var _val <<< "${_row}"
   _s="$(_stamp_of "${_srcs[${_n}]}" "${_n}")"
   _want="$(printf '%s\n' "${_contract}" | awk -F'|' -v n="${_n}" '$1 == n { print $3 }')"
@@ -453,21 +458,21 @@ t_assert_contains "$(sed -n 's/^  local src=[^ ]* out=\([^ ]*\) .*/\1/p' "${SCRI
   "/usr/local/lib/onnxruntime-genai" "verify-genai-ort.sh's default --output-dir is the GenAI prefix"
 t_assert_eq 1 "$(ort_census_stamps_armed)" "the census arms its STAMP verdict on this helper"
 
-t_case "Dockerfile.media mounts G2 per file into exactly the five consumer RUNs and copies it nowhere (mutation)"
+t_case "Dockerfile.media mounts G2 per file into exactly the six consumer RUNs and copies it nowhere (mutation)"
 # _runs <needle>: each joined Dockerfile.media RUN holding <needle>, skipping comment lines as BuildKit does.
 _runs() {
   awk -v needle="$1" '/^RUN / { buf = ""; inrun = 1 } inrun && /^[[:space:]]*#/ { next }
     inrun { buf = buf $0 " "; if ($0 !~ /\\$/) { inrun = 0; if (index(buf, needle)) print buf } }' "${DF}"
 }
 _mount='source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly'
-t_assert_eq 5 "$(_runs "${_mount}" | wc -l | tr -d ' ')" "five RUNs mount it"
+t_assert_eq 6 "$(_runs "${_mount}" | wc -l | tr -d ' ')" "six RUNs mount it"
 for _consumer in "03-media/build/opencv/build-opencv.sh" "03-media/build/ffmpeg/build-ffmpeg.sh" \
-                 "build-gstreamer-stage.sh" "03-media/verify-genai-ort.sh --src-dir"; do
+                 "build-gstreamer-stage.sh" "03-media/verify-genai-ort.sh --src-dir" "35-build-migraphx-plugin-ep.sh build"; do
   _all="$(_runs "${_consumer}" | wc -l | tr -d ' ')"
   t_assert_eq "${_all}" "$(_runs "${_consumer}" | grep -c -F -e "${_mount}" || true)" "every ${_consumer} RUN mounts it"
 done
 _path_mount='source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/01-core/path-helpers.sh,readonly'
-t_assert_eq 5 "$(_runs "${_mount}" | grep -c -F -e "${_path_mount}" || true)" "every provenance RUN ships its repo-shaped companion"
+t_assert_eq 6 "$(_runs "${_mount}" | grep -c -F -e "${_path_mount}" || true)" "every provenance RUN ships its repo-shaped companion"
 t_assert_fails grep -q -E -e '^(COPY|ADD) .*ort-provenance\.sh' "${DF}"
 t_assert_fails grep -q -E -e 'source=linux/scripts/03-media(/core)?,' "${DF}"
 

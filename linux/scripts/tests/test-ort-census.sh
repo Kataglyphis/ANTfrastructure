@@ -422,7 +422,7 @@ t_assert_contains "${_cc}" '*) bad=$((bad + 1)); fail "ORT census:' "every non-E
 _ia="$(ort_census_image_args | tr '\n' ' ')"
 for _want in '--image' '--ref /usr/local/lib/onnxruntime-cpu' '--ref /usr/local/lib/onnxruntime-gpu' '--ref /opt/android/onnxruntime' \
   '--ref-manifest /usr/local/lib/onnxruntime-cpu/ort-provenance.sha256' '--core /usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so.1' \
-  '--chain-root /opt/onnxruntime' '--contract genai|'; do
+  '--chain-root /opt/onnxruntime' '--contract genai|' '--contract amdgpu-ep|libmigraphx-ep.so|'; do
   t_assert_contains "${_ia}" "${_want}" "image args carry ${_want}"
 done
 

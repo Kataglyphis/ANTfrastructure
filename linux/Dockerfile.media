@@ -217,7 +217,7 @@ LABEL kataglyphis.step=onnxruntime-gpu
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
-    --mount=type=bind,source=linux/scripts/patches/onnxruntime,target=/opt/scripts/patches/onnxruntime,readonly \
+    --mount=type=bind,source=linux/scripts/patches/onnxruntime,target=/opt/scripts/patches/onnxruntime,readonly --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/01-core/path-helpers.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \

@@ -16876,6 +16876,14 @@
   "why": "an arm64 nvidia build has no TensorRT route, so it must not default to one"
  },
  {
+  "id": "onnx-ep-amdgpu.census-contract-entry",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": " \\\n    'amdgpu-ep|libmigraphx-ep.so|/usr/local/lib/onnxruntime-ep-amdgpu/ort-provenance/amdgpu-ep.json'\n",
+  "replace": "\n",
+  "why": "without its contract entry the image census reports the plugin UNREGISTERED, which stopped the fourth rocm proof chain at its runtime gate",
+  "test": "bash linux/scripts/tests/test-ort-provenance-build.sh"
+ },
+ {
   "id": "onnx-ep-amdgpu.seed-sha-stays-local",
   "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
   "find": "  local work=\"$1\" seeded=\"$2\" name vkey skey fmt url sha dir\n",

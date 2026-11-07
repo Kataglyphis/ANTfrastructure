@@ -16,7 +16,8 @@ ort_census_contract() {
     'opencv|libopencv_dnn.so*,libopencv_gapi.so*,cv2*.so|/opt/opencv5/ort-provenance/opencv.json' \
     'gstreamer|libgstonnx.so*|/opt/gstreamer/ort-provenance/gstreamer.json' \
     'ffmpeg|libavfilter.so*|/opt/ffmpeg/ort-provenance/ffmpeg.json' \
-    'genai|libonnxruntime-genai.so*,onnxruntime_genai*.so|/usr/local/lib/onnxruntime-genai/ort-provenance/genai.json'
+    'genai|libonnxruntime-genai.so*,onnxruntime_genai*.so|/usr/local/lib/onnxruntime-genai/ort-provenance/genai.json' \
+    'amdgpu-ep|libmigraphx-ep.so|/usr/local/lib/onnxruntime-ep-amdgpu/ort-provenance/amdgpu-ep.json'
 }
 
 # The chain ORT of a Linux image: its prefixes and the wheel manifest collect-artifacts.sh writes.

@@ -150,6 +150,8 @@ mgxep_build() {
   source "${core}/load-versions-env.sh"; load_versions_env "${core}/versions.env"
   # shellcheck source=../../../../01-core/cmake-cache-linker.sh
   source "${core}/cmake-cache-linker.sh"
+  # shellcheck source=../../../ort-provenance.sh
+  source "${SCRIPT_DIR}/../../../ort-provenance.sh"
   command -v download_verified_file >/dev/null 2>&1 || source "${core}/downloads.sh"
   local work="${MGXEP_WORK_DIR}" commit sha src seeded declared name dir mgx rocm ort_prefix python
   rm -rf "${work}"; mkdir -p "${work}"
@@ -178,7 +180,7 @@ mgxep_build() {
   )
   append_cmake_cache_linker_args cmake_args
   info ">>> MIGraphX plugin EP ${commit:0:12}: ${#defines[@]} pinned seeds, ${JOBS} jobs, MIGraphX at ${mgx}"
-  CXXFLAGS="${CXXFLAGS:-} -D__HIP_PLATFORM_AMD__=1" cmake "${cmake_args[@]}" "${defines[@]}"
+  CXXFLAGS="${CXXFLAGS:-} -D__HIP_PLATFORM_AMD__=1" cmake "${cmake_args[@]}" "${defines[@]}" 2>&1 | tee "${work}/configure.log"
   cmake_assert_compiler_cache_pin "${work}/build" "${CMAKE_COMPILER_CACHE_PIN:-}"
   cmake --build "${work}/build" --parallel "${JOBS}"
   local so
@@ -194,6 +196,10 @@ mgxep_build() {
     find "${dir}" -maxdepth 1 -iname 'LICENSE*' -type f -exec cp -a {} "${MGXEP_OUTPUT_DIR}/licenses/${name}/" \;
   done
   printf 'onnxruntime-ep-amdgpu %s\nsource-sha256 %s\n' "${commit}" "${sha}" > "${MGXEP_OUTPUT_DIR}/provenance.txt"
+  # G2: the work tree, both records and the configure log name no ORT but the chain's; a pass stamps the prefix for the census.
+  ort_assert_chain_only amdgpu-ep --stamp "${MGXEP_OUTPUT_DIR}/ort-provenance/amdgpu-ep.json" --chain "${MGXEP_ORT_DIR}" \
+    --tree "${work}" --shim "${work}/ort" --record "${work}/build/CMakeCache.txt" --record "${work}/build/build.ninja" \
+    --log "${work}/configure.log" || err "the plugin EP's build inputs reach an ONNX Runtime other than the chain's"
   mgxep_verify_library "${MGXEP_OUTPUT_DIR}/lib/libmigraphx-ep.so"
   info "MIGraphX plugin EP installed: ${MGXEP_OUTPUT_DIR}/lib/libmigraphx-ep.so ($(stat -c %s "${MGXEP_OUTPUT_DIR}/lib/libmigraphx-ep.so") bytes)"
 }

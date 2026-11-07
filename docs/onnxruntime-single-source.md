@@ -183,6 +183,7 @@ selector and `_deps` pruning. Directory-name sharing does not widen exemptions.
 | GStreamer `onnx` plugin | Windows (merge stage) | the merged `ONNX_ROOT` | G2 reads `build.ninja`, `intro-dependencies.json` and the meson log |
 | GStreamer `onnx` plugin | Linux | the chain `.pc` | `gst_onnx_ort_findings` reads `build.ninja` |
 | AMD GPU plugin EP (`migraphx-ep.dll`) | Windows rocm spike | built against the image's ORT | G2 in phase 5 |
+| AMD GPU plugin EP (`libmigraphx-ep.so`) | Linux rocm variant | `35-build-migraphx-plugin-ep.sh`: an imported `onnxruntime::onnxruntime` over the chain's GPU library, every FetchContent seeded from a pinned archive, offline | G2 over the work tree, `CMakeCache.txt`, `build.ninja` and the configure log; census entry `amdgpu-ep` |
 | WebGPU EP | Windows rocm spike | built in-tree into the chain `onnxruntime.dll`, not as a plugin | configure and wheel gates in `Build-OnnxFromSource.ps1` ([`windows-rocm.md` § ONNX Runtime WebGPU EP](windows-rocm.md#onnx-runtime-webgpu-ep-rocm-lane-spike)) |
 | App venv (OrchestrANT) | both | purge every ORT distribution the census names, force-install the chain wheels, then the census check | `ort-venv-census.py` |
 | Consumer CI venvs | both, inside our images | `uv_reconcile_chain_ort` / `Sync-UvChainOnnxRuntime` | census check plus an import proof ([`python-ci.md` § Trap 3](python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi)) |
@@ -270,7 +271,7 @@ before its tree is removed:
 | Lane | Call sites | Stamp |
 |---|---|---|
 | Windows | `Build-OpencvFromSource.ps1`, `Build-OnnxGenaiFromSource.ps1`, `Build-FfmpegFromSource.ps1`, `Build-GstreamerFromSource.ps1`, `Build-OrtAmdgpuEpFromSource.ps1` | `C:\runtime\share\ort-provenance\<consumer>.json` |
-| Linux | `build-opencv.sh` (both passes), `build-ffmpeg.sh`, `build-gstreamer-monorepo.sh`, `verify-genai-ort.sh` | `<prefix>/ort-provenance/<consumer>.json` under `/opt/opencv5`, `/opt/ffmpeg`, `/opt/gstreamer`, `/usr/local/lib/onnxruntime-genai` |
+| Linux | `build-opencv.sh` (both passes), `build-ffmpeg.sh`, `build-gstreamer-monorepo.sh`, `verify-genai-ort.sh`, `35-build-migraphx-plugin-ep.sh` | `<prefix>/ort-provenance/<consumer>.json` under `/opt/opencv5`, `/opt/ffmpeg`, `/opt/gstreamer`, `/usr/local/lib/onnxruntime-genai`, `/usr/local/lib/onnxruntime-ep-amdgpu` |
 
 A stamp names the sha256 of the chain core library it was gated against. A
 failing rerun deletes the old stamp first. G1 arms its STAMP verdict once the G2

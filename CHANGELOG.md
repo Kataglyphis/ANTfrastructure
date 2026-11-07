@@ -27,12 +27,15 @@
 - CON153 is proved inside a RUN: the fourth rocm proof chain's media stage logged `asset-mirror| hit` for all ten
   plugin-EP archives that `fill-asset-mirror.sh --apply` had mirrored from the previous run's misses. The entry
   shrinks to its leftover, a chain-start line that says when the secret is absent.
-- The proof chains found four gaps in the first integration, each now held by a suite case and a recipe:
+- The proof chains found five gaps in the first integration, each now held by a suite case and a recipe:
   the seed reads ran under the media scripts' `IFS` and fetched `'' ''` (shell safety class 3); the export
   check missed the version script's `CreateEpFactories@@VERS_1.0`; and the media merge stage never COPYed
   the plugin tree, so the pinned media image lacked it while every in-branch gate was green; and the seed loop
   reused the source's `sha`, so `provenance.txt` named abseil's hash (the `:latest-rocm` of 2026-11-07 carries
-  that line until its next publish). The plugin step
+  that line until its next publish); and the module reached the wrapper without a chain-only ORT gate (G2) or a census
+  entry, so SHIPPED-TRUTH E stopped the fourth chain with `UNREGISTERED`, as designed. The build now ends in
+  `ort_assert_chain_only amdgpu-ep` over its work tree, records and configure log, the census contract names the
+  module and its stamp, and `F11_GATE_CALLS` holds the call. The plugin step
   now runs on every chain and leaves an empty tree where it does not build, and the merge stage copies it
   ([failure-modes.md](docs/failure-modes.md#a-media-artifact-is-built-and-verified-and-the-merged-image-does-not-carry-it)).
 - Owner decision: the Linux rocm variant moves to AMD's out-of-tree plugin EP. The media stage builds
