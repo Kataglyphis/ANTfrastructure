@@ -992,7 +992,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       wrapper ships `/usr/local/lib/onnxruntime-ep-amdgpu/lib/libmigraphx-ep.so` and sets `ORT_AMDGPU_EP_ROOT`,
       the gates check it ([accelerator page](docs/linux-accelerator-images.md#amds-plugin-migraphx-ep),
       [contract](docs/consumer-image-contract.md#amds-plugin-migraphx-ep)); the next rocm chain proves it in the
-      image. **Step 2:** each consumer registers the plugin where `ORT_AMDGPU_EP_ROOT` is set, in this order:
+      image. **Windows needs no image step:** `:winamd64-rocm` has built `migraphx-ep.dll` into `C:\runtime\lib\onnxruntime-ep-amdgpu`
+      (`ORT_AMDGPU_EP_ROOT`, same `ORT_AMDGPU_EP_COMMIT`) since 2026-10-07 ([windows-rocm.md](docs/windows-rocm.md#migraphx-and-the-ort-plugin-ep-rocm-lane-spike)),
+      and its ORT never carried the built-in MIGraphX EP, so step 3 is Linux-only; what Windows lacks is the on-card
+      proof (the smoke is GPU-less) and the consumer registration below, which reads the same variable on both
+      lanes. **Step 2:** each consumer registers the plugin where `ORT_AMDGPU_EP_ROOT` is set, in this order:
       OrchestrANT (Python, `register_execution_provider_library`), AccelerANTgine (C++,
       `Env::RegisterExecutionProviderLibrary`), OxidANT (Rust, `ort` rc.13 `register_execution_provider_library`),
       OmniAccelerANT (Dart over the native bridge); each change passes CON224 item 1's parity run with the plugin's
