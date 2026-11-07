@@ -166,12 +166,14 @@ ENV ORT_SKIP_DOWNLOAD=1
 ENV ORT_DYLIB_PATH=${ONNXRUNTIME_OUTPUT_DIR}/lib/libonnxruntime.so
 F
   for r in build/opencv/build-opencv.sh build/ffmpeg/build-ffmpeg.sh build/gstreamer/common/build-gstreamer-stage.sh \
-           "verify-genai-ort.sh --src-dir /opt/onnxruntime-genai"; do
+           "verify-genai-ort.sh --src-dir /opt/onnxruntime-genai" "build/onnxruntime/build/35-build-migraphx-plugin-ep.sh build"; do
     printf 'RUN --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \\\n    bash /opt/scripts/03-media/%s\n' "${r}"
   done | _write "${d}/linux/Dockerfile.media"
   printf 'ORT_CHAIN_SOURCE_ROOTS=(/opt/onnxruntime)\nort_assert_chain_only() { :; }\n' | _write "${m}/ort-provenance.sh"
   printf '  ort_assert_chain_only genai --stamp "${out}/ort-provenance/genai.json" --tree "${src}" "${g2[@]}"\n' \
     | _write "${m}/verify-genai-ort.sh"
+  printf '  ort_assert_chain_only amdgpu-ep --stamp "${MGXEP_OUTPUT_DIR}/ort-provenance/amdgpu-ep.json" --tree "${work}" || err "gate"\n' \
+    | _write "${m}/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh"
   printf '        "-DWITH_ONNXRUNTIME=ON"\n        "-DHAVE_ONNXRUNTIME=1"\n        "-DDOWNLOAD_ONNXRUNTIME=OFF"\n' \
     | _write "${m}/build/opencv/opencv-ort.sh"
   _write "${m}/build/opencv/build-opencv.sh" <<'F'
@@ -362,6 +364,7 @@ windows/scripts/build/Build-FfmpegFromSource.ps1	$a Assert-ChainOrtOnly -Consume
 windows/scripts/build/Build-OpencvFromSource.ps1	/Get-OpencvOrtConfigureFinding -Log/d	calls Get-OpencvOrtConfigureFinding exactly once
 linux/scripts/03-media/build/opencv/build-opencv.sh	/ort_assert_chain_only/d	build-opencv.sh calls ort_assert_chain_only exactly once
 linux/scripts/03-media/verify-genai-ort.sh	/ort_assert_chain_only/d	verify-genai-ort.sh calls ort_assert_chain_only exactly once
+linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh	/ort_assert_chain_only/d	35-build-migraphx-plugin-ep.sh calls ort_assert_chain_only exactly once
 linux/scripts/03-media/build/opencv/build-opencv.sh	/opencv_ort_assert_configure/d	calls opencv_ort_assert_configure exactly once
 linux/scripts/03-media/runtime/validate-media-runtime.sh	/ort_dpkg_gate/d	calls ort_dpkg_gate exactly once
 windows/Dockerfile.media-builder	/WindowsOrtProvenance/d	every consumer RUN mounts its G2 helper
