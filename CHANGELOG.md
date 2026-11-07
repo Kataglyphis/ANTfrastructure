@@ -23,6 +23,13 @@
   `lib.smoke-finding-empty-if-result` mutation hold it
   ([failure-modes.md](docs/failure-modes.md#a-smoke-check-fails-and-names-no-finding)).
 
+## 2026-11-07 — the asset mirror answers from the build host
+
+- CON153: with the keys installed, the chain's download helper served a pinned asset from the Garage bucket on the
+  first try, and the running chain passes the `asset_mirror` secret to every stage build. The three pinned
+  sccache 0.19.0 Linux tarballs are mirrored by hand (`fill-asset-mirror.sh --apply --url … --sha …`), since the
+  2026-10-27 fill predates that pin. The in-RUN `asset-mirror| hit` line waits for a cold download.
+
 ## 2026-11-07 — two ONNX Runtime PRs prepared for the MIGraphX EP
 
 - `linux/upstream/` is the Linux lane's index of prepared upstream submissions, as `windows/upstream/` is the
