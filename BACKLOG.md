@@ -554,9 +554,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `asset-mirror| hit` for the pinned assets. **Not proved on 2026-11-06/07** (default, rocm and nvidia
       reruns): `~/.config/kataglyphis/asset-mirror.env` is absent on the build host (`set-asset-mirror.sh --check`
       says so), `append_asset_mirror_secret` therefore mounted no secret, and no stage log of the round carries an
-      `asset-mirror|` line; `host_secret_file_ready` is silent on a missing file. The owner re-runs
-      `set-asset-mirror.sh --from <garage-host>`; a one-line `[INFO] asset mirror: none` at chain start would make
-      the next absence visible.
+      `asset-mirror|` line; `host_secret_file_ready` is silent on a missing file. The owner installed the keys on
+      2026-11-07 (`set-asset-mirror.sh --check`: both keys work); the next chain carries the proof. A one-line
+      `[INFO] asset mirror: none` at chain start would make the next absence visible.
 
 - [ ] **CON129 — finish GTK 4 validation on foreign arches and GPU variants** [M, ★★★].
       The mandatory `gui_unix` feature is enabled in OxidANT. On the recorded `3c558d88` index,
