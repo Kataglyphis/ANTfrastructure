@@ -3058,16 +3058,16 @@
  {
   "id": "disk-guard.lane-images-first",
   "target": "linux/scripts/build-cross-chain.sh",
-  "find": "  _disk_guard_image_store_fallback \"${bc_dir}\" \"${need}\" \"$(_disk_guard_stage_tags '' 1)\" 0\n",
-  "replace": "  :\n",
+  "find": "  _disk_guard_image_store_fallback \"${bc_dir}\" \"${need}\" \"$(_disk_guard_stage_tags '' 1)\" 0\n  _disk_guard_trim_cache_export \"${bc_dir}\" \"${need}\" \"${protected}\" \"\" \"${CROSS_TRIM_KEEP_SLUGS:-3}\"\n",
+  "replace": "  _disk_guard_trim_cache_export \"${bc_dir}\" \"${need}\" \"${protected}\" \"\" \"${CROSS_TRIM_KEEP_SLUGS:-3}\"\n  _disk_guard_image_store_fallback \"${bc_dir}\" \"${need}\" \"$(_disk_guard_stage_tags '' 1)\" 0\n",
   "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
   "why": "the lane-entry gate spends the free image lever before the levers that cost rebuild time"
  },
  {
   "id": "disk-guard.stage-images-first",
   "target": "linux/scripts/build-cross-chain.sh",
-  "find": "      _disk_guard_image_store_fallback \"${bc_dir}\" \"${threshold}\" \"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0\n",
-  "replace": "      :\n",
+  "find": "      _disk_guard_image_store_fallback \"${bc_dir}\" \"${threshold}\" \"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0\n      free_gb=\"$(_disk_guard_free_gb \"${bc_dir}\")\"\n      [ -n \"${free_gb}\" ] || return 0\n      if [ \"${free_gb}\" -lt \"${threshold}\" ]; then\n        _chain_evict_slugs \"${bc_dir}\" protected _chain_bc_free_gb _chain_num_below \"${threshold}\" free_gb\n        [ -n \"${free_gb}\" ] || return 0\n      fi\n",
+  "replace": "      _chain_evict_slugs \"${bc_dir}\" protected _chain_bc_free_gb _chain_num_below \"${threshold}\" free_gb\n      [ -n \"${free_gb}\" ] || return 0\n      _disk_guard_image_store_fallback \"${bc_dir}\" \"${threshold}\" \"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0\n      free_gb=\"$(_disk_guard_free_gb \"${bc_dir}\")\"\n      [ -n \"${free_gb}\" ] || return 0\n",
   "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
   "why": "the between-stage guard spends the free image lever before the export eviction"
  },
@@ -4362,16 +4362,16 @@
  {
   "id": "disk-guard.lane-gate-episode",
   "target": "linux/scripts/build-cross-chain.sh",
-  "find": "  _disk_guard_reclaim_begin\n  _disk_guard_trim_cache_export",
-  "replace": "  _disk_guard_trim_cache_export",
+  "find": "  _disk_guard_reclaim_begin\n  # Images first: before",
+  "replace": "  # Images first: before",
   "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
   "why": "the once-per-caller latch is per PROCESS: a prune the base stage made would still be latched when the lane refuses hours later"
  },
  {
   "id": "disk-guard.stage-guard-episode",
   "target": "linux/scripts/build-cross-chain.sh",
-  "find": "      _disk_guard_reclaim_begin\n      _chain_evict_slugs",
-  "replace": "      _chain_evict_slugs",
+  "find": "      _disk_guard_reclaim_begin\n      # Images first: the arch loop",
+  "replace": "      # Images first: the arch loop",
   "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
   "why": "same latch, other gate: after the first between-stage prune every later stage would log `already pruned once here` and reclaim nothing"
  },
@@ -7201,17 +7201,17 @@
  },
  {
   "id": "chain-status.image-lever-wired-between-stages",
-  "target": "linux/scripts/01-core/chain-storage.sh",
-  "find": "        _disk_guard_image_store_fallback \"${bc_dir}\" \"${threshold}\" \\\n          \"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0\n",
-  "replace": "",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "      _disk_guard_image_store_fallback \"${bc_dir}\" \"${threshold}\" \"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0\n",
+  "replace": "      :\n",
   "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
   "why": "the between-stage guard is one of the two places nothing is in flight; unwired, the chain gives up on cache exports with the image store untouched"
  },
  {
   "id": "chain-status.image-lever-protects-the-completed-stage",
-  "target": "linux/scripts/01-core/chain-storage.sh",
-  "find": "          \"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0",
-  "replace": "          \"$(_disk_guard_stage_tags \"${completed_stage}\" 0)\" 0",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "\"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0\n",
+  "replace": "\"$(_disk_guard_stage_tags \"${completed_stage}\" 0)\" 0\n",
   "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
   "why": "the stage just completed is the NEXT stage's parent; dropping it from the protected set is how a local OCI handoff loses the image it is about to read"
  },
