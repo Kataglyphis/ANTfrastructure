@@ -1015,8 +1015,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ROCm 10.1's 2.18.0 predates. Blocked on a ROCm release that carries #5345. Done when the Linux rocm image ships
       the plugin EP against such a MIGraphX, the four AMD packages pass CON224 item 1 on it, and
       `003-migraphx-gridsample.patch` and `004-migraphx-refuse-nonstandard-output.patch` are retired. Until then the
-      two patches stay (CON225, closed 2026-11-07: fix proven on the RX 9070 XT, root cause fixed upstream, the
-      prepared PRs under `linux/upstream/` are not filed).
+      two patches stay (CON225, closed 2026-11-07: fix proven on the RX 9070 XT, root cause fixed upstream; the
+      prepared PRs were removed, `linux/upstream/README.md` keeps the reasons and git 2a819d85 the patches).
 
 - [ ] **CON202 — investigate locked detector failure on WSL gfx1036 with MIGraphX** [L, ★★★].
       On 2026-10-31 the cached Linux x64 `:latest-rocm` image digest

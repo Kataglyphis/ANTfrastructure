@@ -7,5 +7,16 @@ stay under `linux/scripts/patches/`, applied by the image build. The Windows lan
 
 | Directory | Upstream | Kind | Status |
 |---|---|---|---|
-| [`onnxruntime-migraphx-strided-output`](onnxruntime-migraphx-strided-output/PR.md) | microsoft/onnxruntime | PR (patch + test) and the issue text (`ISSUE.md`) | **not to be filed** (2026-11-07): the built-in EP is unmaintained (onnxruntime#32571) and MIGraphX fixed the root cause (AMDMIGraphX#5345); kept as the documented alternative for MIGraphX ≤ 2.18, mechanism proved by `proof.cc`, evidence in `~/gpu/work` on the build host. Follow-up: BACKLOG CON231 |
-| [`onnxruntime-migraphx-gridsample`](onnxruntime-migraphx-gridsample/PR.md) | microsoft/onnxruntime | PR (one line) | **not to be filed**: the plugin EP lists every op MIGraphX parses, GridSample included |
+| (none) | | | |
+
+## Not filed, and why
+
+- **MIGraphX EP: strided partition output bound to ORT's dense buffer** (2026-11-07). The built-in MIGraphX EP in
+  microsoft/onnxruntime is unmaintained (AMD on onnxruntime#32571: "move to the plugin EP repo"); MIGraphX fixed the
+  root cause in ROCm/AMDMIGraphX#5345 (`standardize_outputs`, not in `rocm-10.1`), and the plugin EP
+  `onnxruntime/onnxruntime-ep-amdgpu` sets that option and refuses a non-standard output otherwise. The prepared
+  patch (a cached one-op `contiguous` program per strided output, with a unit test) and its standalone proof were
+  removed the same day at the owner's request; they live in git history at 2a819d85. Our image keeps
+  `linux/scripts/patches/onnxruntime/004-migraphx-refuse-nonstandard-output.patch` until BACKLOG CON231.
+- **MIGraphX EP: `GridSample` in the op list**: the plugin EP lists every op `migraphx::get_onnx_operators()`
+  returns, so nothing to file; our image keeps `003-migraphx-gridsample.patch` for the built-in EP (CON231).

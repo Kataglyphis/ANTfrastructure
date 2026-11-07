@@ -21,7 +21,9 @@
   `proof.cc`), and the one-line `GridSample` addition to the EP's op list. Neither is filed: AMD declared the
   built-in EP unmaintained (onnxruntime#32571), MIGraphX fixed the root cause (AMDMIGraphX#5345, `standardize_outputs`),
   and AMD's plugin EP sets that option, refuses a non-standard output otherwise and lists every op MIGraphX parses.
-  CON225 closes; CON231 moves the Linux rocm variant to the plugin EP once a ROCm carries #5345.
+  CON225 closes; CON231 moves the Linux rocm variant to the plugin EP once a ROCm carries #5345. The two
+  directories were removed the same day at the owner's request (the patches stay in git at 2a819d85);
+  `linux/upstream/README.md` keeps the reasons.
 
 ## 2026-11-07 — between runs the disk guard spends the image lever first
 
