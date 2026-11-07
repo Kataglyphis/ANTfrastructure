@@ -231,9 +231,9 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=
     if [ "${ENABLE_NVIDIA}" = "true" ] || [ "${ENABLE_AMD}" = "true" ]; then \
         bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step gpu; \
         bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-gpu; \
-        bash /opt/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh build; \
-        bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-ep-amdgpu; \
     else echo "Skipping ONNX GPU build (ENABLE_NVIDIA=${ENABLE_NVIDIA:-false}, ENABLE_AMD=${ENABLE_AMD:-false})"; fi; \
+    bash /opt/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh build; \
+    bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-ep-amdgpu; \
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
 # The patches mount carries the riscv64 target_platform patch (docs/gen1-riscv64-genai.md).
@@ -884,7 +884,7 @@ ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
     PYTHONPATH="${OPENCV_OUTPUT_DIR}/lib/python${PYTHON_MAJOR_MINOR}/site-packages:${PYTHONPATH}"
 
 COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-gpu
-
+COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-ep-amdgpu /usr/local/lib/onnxruntime-ep-amdgpu
 COPY --link --from=litert ${LITERT_OUTPUT_DIR}/wheels /opt/litert-wheels
 COPY --link --from=litert /usr/local/lib/litert-web /usr/local/lib/litert-web
 COPY --link --from=litert /usr/local/lib/litert-lm-web /usr/local/lib/litert-lm-web

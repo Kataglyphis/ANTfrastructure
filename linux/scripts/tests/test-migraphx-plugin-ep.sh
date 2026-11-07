@@ -99,7 +99,14 @@ t_assert_contains "$(_v 'CreateEpFactories' '')" "does not export ReleaseEpFacto
 t_assert_contains "$(_v 'CreateEpFactories ReleaseEpFactory' 'libonnxruntime.so.1')" "cannot resolve: libonnxruntime.so.1"
 t_assert_contains "$(mgxep_verify_library "${_T}/absent.so" 2>&1)" "is missing"
 
-t_case "the build step is a no-op outside the rocm variant"
-t_assert_eq "Skipping the MIGraphX plugin EP (ENABLE_AMD=false)" "$(ENABLE_AMD=false mgxep_build 2>&1)"
+t_case "outside the rocm variant the build step only leaves the empty output tree the media merge COPYs"
+t_assert_eq "Skipping the MIGraphX plugin EP (ENABLE_AMD=false)" "$(MGXEP_OUTPUT_DIR="${_T}/placeholder" ENABLE_AMD=false mgxep_build 2>&1)"
+t_assert_ok test -d "${_T}/placeholder"
+t_assert_eq "" "$(ls -A "${_T}/placeholder")" "nothing is built"
+
+t_case "the plugin reaches the merged media image: run unconditionally in the GPU RUN, copied by the merge stage (the first rocm proof image lacked it)"
+_df="${TESTS_DIR}/../../Dockerfile.media"
+t_assert_eq 1 "$(grep -cE '^COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-ep-amdgpu /usr/local/lib/onnxruntime-ep-amdgpu$' "${_df}")" "the merge stage copies the plugin tree"
+t_assert_eq "    bash /opt/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh build; \\" "$(grep -E '35-build-migraphx-plugin-ep.sh build' "${_df}")" "the call sits after the GPU if/fi, so every chain leaves the tree"
 
 t_summary

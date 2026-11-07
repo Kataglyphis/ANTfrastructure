@@ -125,7 +125,8 @@ mgxep_verify_library() {
 }
 
 mgxep_build() {
-  if [ "${ENABLE_AMD:-false}" != "true" ]; then echo "Skipping the MIGraphX plugin EP (ENABLE_AMD=${ENABLE_AMD:-false})"; return 0; fi
+  # The empty tree keeps the media merge's COPY --from=onnxruntime valid on the chains that do not build it.
+  if [ "${ENABLE_AMD:-false}" != "true" ]; then mkdir -p "${MGXEP_OUTPUT_DIR}"; echo "Skipping the MIGraphX plugin EP (ENABLE_AMD=${ENABLE_AMD:-false})"; return 0; fi
   # shellcheck source=lib/common.sh
   source "${SCRIPT_DIR}/lib/common.sh"
   source_build_acceleration_helpers

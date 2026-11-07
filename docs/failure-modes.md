@@ -1246,6 +1246,23 @@ gets because the EP leaves `GridSample` on the CPU.
 built on that image passes `compare_detector_parity.py` on the RX 9070 XT. Before blaming the provider, put `/opt/rocm/core-10.1/lib` and `extras-10/lib`
 on the loader path: a missing `libmigraphx_c.so.3` fails at provider load, not with wrong numbers.
 
+### A media artifact is built and verified, and the merged image does not carry it
+
+**Symptom.** A new output of a `Dockerfile.media` fan-out branch (first seen with the plugin MIGraphX EP,
+`/usr/local/lib/onnxruntime-ep-amdgpu`, 2026-11-07) passes its own `verify-media-artifacts.sh` stage, the
+media stage goes green, and the pinned media image has no such directory. The chain then finds out hours
+later, in the wrapper's runtime gate, or not at all when the path is only `observe`d.
+
+**Cause.** The media stage merges its branches by explicit `COPY --link --from=<branch>` lines; an output
+nobody lists stays in the branch image. The branch's verify stage runs inside the branch, so it cannot see
+the gap. A GPU-only output needs an empty placeholder tree on the chains that do not build it, or that COPY
+fails there: `ensure_onnx_gpu_placeholder_output_dir` does it for `onnxruntime-gpu`, the plugin's skip branch
+for its own tree.
+
+**Fix.** Every new branch output gets its COPY in the merge stage and a placeholder on every chain, pinned by
+a suite and a mutation recipe (`onnx-ep-amdgpu.merge-copy-present`). Prove a new path on the PINNED media
+image (`nerdctl run … ls <path>`), not on the branch's log.
+
 ### An AppImage GPU profile times out while the DEB passes
 
 **Symptom.** OmniAccelerANT's `profile-gpu-packages.sh` passes the tarball and the DEB, then stops without
