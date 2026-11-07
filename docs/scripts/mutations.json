@@ -16876,6 +16876,14 @@
   "why": "an arm64 nvidia build has no TensorRT route, so it must not default to one"
  },
  {
+  "id": "onnx-ep-amdgpu.seed-sha-stays-local",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
+  "find": "  local work=\"$1\" seeded=\"$2\" name vkey skey fmt url sha dir\n",
+  "replace": "  local work=\"$1\" seeded=\"$2\" name vkey skey fmt url dir\n",
+  "why": "a seed loop that writes the caller's sha makes provenance.txt record the last seed's hash as the source's, as the first rocm proof image did",
+  "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh"
+ },
+ {
   "id": "onnx-ep-amdgpu.placeholder-tree-kept",
   "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
   "find": "then mkdir -p \"${MGXEP_OUTPUT_DIR}\"; echo \"Skipping the MIGraphX plugin EP",

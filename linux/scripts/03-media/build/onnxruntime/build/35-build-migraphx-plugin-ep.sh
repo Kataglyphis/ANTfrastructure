@@ -124,6 +124,20 @@ mgxep_verify_library() {
   return "${rc}"
 }
 
+# <work> <seeded-file> <defines-array-name>: fetch every pinned seed; its own locals keep the caller's sha (the first proof image recorded absl's hash as the source's).
+mgxep_seed_all() {
+  local work="$1" seeded="$2" name vkey skey fmt url sha dir
+  local -n _mgxep_defines="$3"
+  : > "${seeded}"
+  while IFS='|' read -r name vkey skey fmt; do
+    IFS=' ' read -r _ url sha < <(mgxep_seed_spec "${name}" "${vkey}" "${skey}" "${fmt}")
+    # absl is protobuf's own fetch, not a declaration of the EP; protobuf_FORCE_FETCH_DEPENDENCIES points it at the seed.
+    [ "${name}" = absl ] || printf '%s %s\n' "${name}" "${url}" >> "${seeded}"
+    dir="$(mgxep_fetch_seed "${name}" "${url}" "${sha}" "${work}")"
+    _mgxep_defines+=("-D$(mgxep_seed_define "${name}"):PATH=${dir}")
+  done < <(mgxep_seed_table)
+}
+
 mgxep_build() {
   # The empty tree keeps the media merge's COPY --from=onnxruntime valid on the chains that do not build it.
   if [ "${ENABLE_AMD:-false}" != "true" ]; then mkdir -p "${MGXEP_OUTPUT_DIR}"; echo "Skipping the MIGraphX plugin EP (ENABLE_AMD=${ENABLE_AMD:-false})"; return 0; fi
@@ -137,22 +151,15 @@ mgxep_build() {
   # shellcheck source=../../../../01-core/cmake-cache-linker.sh
   source "${core}/cmake-cache-linker.sh"
   command -v download_verified_file >/dev/null 2>&1 || source "${core}/downloads.sh"
-  local work="${MGXEP_WORK_DIR}" commit sha src seeded declared name url seed dir mgx rocm ort_prefix python
+  local work="${MGXEP_WORK_DIR}" commit sha src seeded declared name dir mgx rocm ort_prefix python
   rm -rf "${work}"; mkdir -p "${work}"
   commit="$(mgxep_pin ORT_AMDGPU_EP_COMMIT)"; sha="$(mgxep_pin ORT_AMDGPU_EP_SOURCE_SHA256)"
   [[ "${commit}" =~ ^[0-9a-f]{40}$ ]] || err "ORT_AMDGPU_EP_COMMIT=${commit} is not a 40-hex commit"
   src="$(mgxep_fetch_seed onnxruntime-ep-amdgpu "$(mgxep_source_url "${commit}")" "${sha}" "${work}")"
   declared="${work}/declared.txt"; seeded="${work}/seeded.txt"
   mgxep_declared_urls "${src}/src/CMakeLists.txt" > "${declared}"
-  : > "${seeded}"
   local -a defines=()
-  while IFS='|' read -r name vkey skey fmt; do
-    IFS=' ' read -r _ url sha < <(mgxep_seed_spec "${name}" "${vkey}" "${skey}" "${fmt}")
-    # absl is protobuf's own fetch, not a declaration of the EP; protobuf_FORCE_FETCH_DEPENDENCIES points it at the seed.
-    [ "${name}" = absl ] || printf '%s %s\n' "${name}" "${url}" >> "${seeded}"
-    dir="$(mgxep_fetch_seed "${name}" "${url}" "${sha}" "${work}")"
-    defines+=("-D$(mgxep_seed_define "${name}"):PATH=${dir}")
-  done < <(mgxep_seed_table)
+  mgxep_seed_all "${work}" "${seeded}" defines
   mgxep_assert_seeded "${declared}" "${seeded}" "${MGXEP_INACTIVE_SEEDS}"
   mgx="$(find "${MIGRAPHX_HOME:-/opt/rocm}" -maxdepth 5 -path '*/lib/cmake/migraphx' -type d 2>/dev/null | sort | tail -n 1 || true)"
   [ -f "${mgx}/migraphx-config.cmake" ] || err "no migraphx-config.cmake under ${MIGRAPHX_HOME:-/opt/rocm}"

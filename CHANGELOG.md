@@ -24,10 +24,12 @@
   ([failure-modes.md](docs/failure-modes.md#a-smoke-check-fails-and-names-no-finding)).
 ## 2026-11-07 — `:latest-rocm` ships AMD's plugin MIGraphX EP (CON231, step 1)
 
-- The proof chain found three gaps in the first integration, each now held by a suite case and a recipe:
+- The proof chains found four gaps in the first integration, each now held by a suite case and a recipe:
   the seed reads ran under the media scripts' `IFS` and fetched `'' ''` (shell safety class 3); the export
   check missed the version script's `CreateEpFactories@@VERS_1.0`; and the media merge stage never COPYed
-  the plugin tree, so the pinned media image lacked it while every in-branch gate was green. The plugin step
+  the plugin tree, so the pinned media image lacked it while every in-branch gate was green; and the seed loop
+  reused the source's `sha`, so `provenance.txt` named abseil's hash (the `:latest-rocm` of 2026-11-07 carries
+  that line until its next publish). The plugin step
   now runs on every chain and leaves an empty tree where it does not build, and the merge stage copies it
   ([failure-modes.md](docs/failure-modes.md#a-media-artifact-is-built-and-verified-and-the-merged-image-does-not-carry-it)).
 - Owner decision: the Linux rocm variant moves to AMD's out-of-tree plugin EP. The media stage builds

@@ -71,6 +71,16 @@ dir="$(mgxep_fetch_seed fmt https://example.invalid/fmt-12.1.0.tar.gz "$(printf 
 t_assert_eq "${_T}/w/seeds/fmt" "${dir}"
 t_assert_eq "https://example.invalid/fmt-12.1.0.tar.gz $(printf 'a%.0s' {1..64}) ${_T}/w/dl/fmt-12.1.0.tar.gz" "$(cat "${_T}/fetched")"
 
+t_case "fetching every seed leaves the caller's sha alone (the first proof image recorded absl's hash as the source's)"
+mgxep_fetch_seed() { printf '%s %s\n' "$1" "$3" >> "${_T}/all-fetched"; printf '%s/seeds/%s\n' "$4" "$1"; }
+sha="source-sha"; declare -a defs=()
+mgxep_seed_all "${_T}/all" "${_T}/all-seeded.txt" defs
+t_assert_eq "source-sha" "${sha}"
+t_assert_eq 9 "${#defs[@]}" "one define per pinned seed, absl included"
+t_assert_eq "$(cat "${_T}/seeded.txt")" "$(cat "${_T}/all-seeded.txt")" "the seeded list the gate reads"
+t_assert_contains "${defs[*]}" "-DFETCHCONTENT_SOURCE_DIR_RANGE-V3:PATH=${_T}/all/seeds/range-v3"
+t_assert_eq "fmt ${ORT_AMDGPU_EP_FMT_SHA256}" "$(grep '^fmt ' "${_T}/all-fetched")" "each seed is fetched under its own pin"
+
 t_case "the ORT prefix gives find_package an imported target over the chain's versioned library"
 mkdir -p "${_T}/ort/lib" "${_T}/ort/include" && : > "${_T}/ort/include/onnxruntime_c_api.h" && printf 'x' > "${_T}/ort/lib/libonnxruntime.so.1.31.1"
 p="$(mgxep_ort_prefix "${_T}/ort" "${_T}/ortp")"
