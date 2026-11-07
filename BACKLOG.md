@@ -490,44 +490,25 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `sccache-stats|` hits above 90 % of their compiles, and the Vulkan step drops below 10 min. Measured
       2026-11-06 (default arm64 media, `media-arm64.log` of run 20261106-161650): `onnxruntime 2/9` logged
       `sccache-stats| 2922 requests, 2885 hits` (98.7 %), the largest step 6230 of 6230; DeepStream's step on the
-      nvidia arm64 media of 2026-11-06 logged 109 of 156. The sdk stage was not rebuilt in that round, so its
-      dependency step and the Vulkan step stay unmeasured.
-- [ ] **CON165 — ONNX Runtime builds with one job under `--parallel-archs`; prove the governor on a chain** [S, ★★★]. In source since 2026-10-27: the launcher's compile governor and `PAR_INTRA_STEP_BUDGET=2` ([docs](docs/build-parallelism-memory-tuning.md#the-compile-governor)). Done when a chain's resource trace keeps `compilers` at or under 32 with no OOM kill and ONNX Runtime and IREE log more than one job. Found 2026-10-26:
-      `Using JOBS=1` in `media-arm64.log`, since `compute_jobs_with_mem_cap "" 2000` divides RAM by
-      `BUILD_MEM_DIVISOR=18` (3 arches × `PAR_INTRA_STEP_BUDGET=6`). With the cache warm a serial build costs
-      little; cold, it is the 104 min step. Measured 2026-10-27 (`resources-20261027-024119-*.csv`, 32 cores,
-      62 GB): over the media stage the median CPU was 12 % with 4 compilers running, while memory peaked at 54 GB
-      used and the 8 GB swap filled, so a fixed divisor is too tight for the long idle tail and right for the
-      peaks. amd64 builds its ONNX Runtime variants one after another at one job each, hours after arm64 and
-      riscv64 have moved on. Work: measure ONNX Runtime's peak per job, then size its jobs from `MemAvailable` when
-      the step starts instead of the static `BUILD_MEM_DIVISOR` share
-      ([`build-parallelism-memory-tuning.md`](docs/build-parallelism-memory-tuning.md)). Done when that step
-      logs more than one job on an idle host and no arch is OOM-killed. IREE's wheelhouse build has the same
-      cause: both its host and target LLVM builds ran `cmake --build … -- -j1` for over 3 h on arm64 and riscv64.
-      Measured 2026-11-05 (nvidia media, amd64 and arm64 under `--parallel-archs`, run 20261105-151158): ONNX
-      Runtime built its CPU variant with `-j6` (amd64) and `-j5` (arm64) and the GPU variant with `-j2`; alone
-      (default arm64 media, 2026-11-06) it logged `Using JOBS=26`. **Decided 2026-11-07 (owner): the governor's
-      own brake is the measure, not a compiler count and not the swap.** The sampler's `compilers` column counts
-      `pgrep -x 'cc1plus|cc1|clang|clang++|rustc|lto1|ld|go'`, drivers and linkers included, so 41 is about 20
-      governed compiles; `MemAvailable` never fell below 29 GB (the admit floor is 3 GB; 4 of 1761 samples were
-      above 32), and the swap was already full in the trace's FIRST row (stale pages from before the chain:
-      `swapoff -a && swapon -a` clears it, the owner's call). The IREE half is unmeasured since: every android
-      stage of the round hit the layer cache (0.3 s). Done when a cold arm64 or riscv64 android stage logs
-      IREE's host and target LLVM builds with more than one job.
-- [ ] **CON168 — prove on a chain that one lane compiles the IREE host LLVM** [S, ★★]. In source since 2026-11-03
-      ([`iree-two-stage-build.md` § One host stage per chain](docs/iree-two-stage-build.md#one-host-stage-per-chain)):
-      the first lane builds under a lock in the `id=iree-host` cache mount, the next restores (`IREE_HOST_CACHE=off`
-      reverts). `test-iree-host-once.sh` proves it with a stub `cmake`. Done when the next chain's arm64 and riscv64
-      media logs show one host compile and `IREE host stage: reusing` in the other lane. Seen 2026-11-05 on the
-      nvidia chain: `media-arm64.log` logged `IREE host stage: reusing` beside the amd64 lane; the three-arch
-      default chain has not run its media stage since (its arm64 media ran alone on 2026-11-06 and configured).
+      nvidia arm64 media of 2026-11-06 logged 109 of 156. On the cold three-arch media of 2026-11-07
+      `onnxruntime 2/9` logged 3040 of 3073 (amd64), 2885 of 2922 (arm64) and 2276 of 2312 (riscv64) hits, each with
+      about 35 `errors` (configure-time probes). The sdk stage was not rebuilt in either round, so its dependency
+      step and the Vulkan step stay unmeasured.
 - [ ] **CON169 — prove one pipeline per arch on a chain, then decide its default** [M, ★★★]. In source since
       2026-11-03, opt-in ([`linux-cross-builds.md` § One pipeline per arch](docs/linux-cross-builds.md#one-pipeline-per-arch)):
       `CROSS_ARCH_PIPELINE=1` runs each arch through its stages, with a per-lane disk guard scoped to finished arches.
       Proved by `test-arch-pipeline.sh` (rendezvous, stub stage runner, the real driver's dry run). Done when a chain
       logs an arch's `stage=android start` while another arch's `stage=media` runs, no image removal lands under a
-      running build, and the lanes' overlapping disk use fits; then make it the default or record why not. Not
-      exercised in the 2026-11-05/07 reruns, which ran the stock lanes; the async push (item 10 above) is proved.
+      running build, and the lanes' overlapping disk use fits; then make it the default or record why not.
+      **Proved 2026-11-07** (default chain, `--from-stage media --to-stage android`, three arches, cold media after
+      the versions.env merge, run 20261107-124836): amd64's `stage=android start` at 15:12:45 while arm64's media ran
+      to 15:13:43 and riscv64's to 15:14:50; no image removal during the run (471G free at the join); media 84 min
+      and android 20-40 min per arch, chain 2 h 06 min; the cache-size cap then LRU-pruned two nvidia export slugs
+      (106G), as designed. The same run measured CON163 (ORT 98-99 % hits), CON165 (ORT `-j3` per arch, IREE's
+      host LLVM 24 min, peak 34 compilers, 26 GB free, no OOM) and CON168 (arm64 compiled the IREE host, riscv64
+      reused it), which closed the latter two. Left, the owner's decision on the default: the overlap here was two
+      minutes because the three cold media stages finished together; the 2 h gain of 2026-10-27 needs unequal
+      stages, and the per-lane disk guard has not run under pressure yet.
 - [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★]. In source (CHANGELOG 2026-11-03,
       `_disk_guard_release_stale_records`), tested with stubs only. Done when the next chain resumed after a stop
       logs `left by a stopped chain: restarting buildkitd` and reclaims without a hand restart.

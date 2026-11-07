@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-07 — one pipeline per arch ran on a chain
+
+- CON169: `CROSS_ARCH_PIPELINE=1` ran the default chain's media and android stages for amd64, arm64 and riscv64
+  as three lanes; amd64 started its android stage while the other two were still in media, nothing was removed
+  under a running build, and the chain passed in 2 h 06 min. The cold media stages (the versions.env merge
+  re-keyed them) measured ONNX Runtime at 98-99 % sccache hits and `-j3` per arch, IREE's host LLVM at 24 min on
+  arm64 with riscv64 reusing it, a peak of 34 compiler processes and 26 GB of free memory: CON165 and CON168 close.
+  The mode stays opt-in until the owner decides its default.
+
 ## 2026-11-07 — the asset mirror answers from the build host
 
 - CON153: with the keys installed, the chain's download helper served a pinned asset from the Garage bucket on the
