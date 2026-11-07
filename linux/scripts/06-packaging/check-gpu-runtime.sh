@@ -14,7 +14,7 @@ printf 'GPUR MGXEP_ROOT %s\n' "${ORT_AMDGPU_EP_ROOT-<unset>}"
 mgxep="${ORT_AMDGPU_EP_ROOT:-/usr/local/lib/onnxruntime-ep-amdgpu}/lib/libmigraphx-ep.so"
 if [ -f "${mgxep}" ]; then
   echo "GPUR MGXEP_SO ${mgxep}"
-  echo "GPUR MGXEP_EXPORTS $(readelf --dyn-syms -W "${mgxep}" 2>/dev/null | grep -cE ' (CreateEpFactories|ReleaseEpFactory)$')"
+  echo "GPUR MGXEP_EXPORTS $(readelf --dyn-syms -W "${mgxep}" 2>/dev/null | grep -cE ' (CreateEpFactories|ReleaseEpFactory)(@@[A-Za-z0-9_.]+)?$')"
   echo "GPUR MGXEP_UNRESOLVED $(ldd "${mgxep}" 2>/dev/null | awk '$2 == "=>" && $3 == "not" {print $1}' | tr '\n' ' ')"
 else echo "GPUR MGXEP_SO <absent>"; fi
 case ":${PATH}:" in *:/opt/rocm/bin:*) echo "GPUR PATHROCM yes" ;; *) echo "GPUR PATHROCM no" ;; esac
@@ -68,25 +68,34 @@ _gpur_ep() {
   esac
 }
 
-# <probe>: an AMD image needs its roots and a working hipcc, any other image none of them.
-gpu_rocm_verdict() {
-  local probe="$1" root k
-  if [ "$(_gpur_on "${probe}" 2)" != true ]; then
-    case "$(_gpur "${probe}" ROCM_PATH)$(_gpur "${probe}" HIP_PATH)" in
-      ""|"<unset><unset>") echo "OK no ROCm root is advertised" ;;
-      *) echo "BAD a non-rocm image advertises ROCM_PATH='$(_gpur "${probe}" ROCM_PATH)' HIP_PATH='$(_gpur "${probe}" HIP_PATH)'" ;;
-    esac
-    [ "$(_gpur "${probe}" PATHROCM)" = no ] || echo "BAD a non-rocm image puts /opt/rocm/bin on PATH"
-    case "$(_gpur "${probe}" MGXEP_ROOT)" in ""|"<unset>") ;; *) echo "BAD a non-rocm image advertises ORT_AMDGPU_EP_ROOT='$(_gpur "${probe}" MGXEP_ROOT)'" ;; esac
-    return 0
-  fi
-  root="$(_gpur "${probe}" ROCMDIR)"
-  [ "${root}" != "<absent>" ] || { echo "BAD ENABLE_AMD=true but the image has no /opt/rocm"; return 0; }
+# <probe>: a non-rocm image must advertise no ROCm root, PATH entry or plugin EP root.
+_gpu_rocm_absent_verdict() {
+  local probe="$1"
+  case "$(_gpur "${probe}" ROCM_PATH)$(_gpur "${probe}" HIP_PATH)" in
+    ""|"<unset><unset>") echo "OK no ROCm root is advertised" ;;
+    *) echo "BAD a non-rocm image advertises ROCM_PATH='$(_gpur "${probe}" ROCM_PATH)' HIP_PATH='$(_gpur "${probe}" HIP_PATH)'" ;;
+  esac
+  [ "$(_gpur "${probe}" PATHROCM)" = no ] || echo "BAD a non-rocm image puts /opt/rocm/bin on PATH"
+  case "$(_gpur "${probe}" MGXEP_ROOT)" in ""|"<unset>") ;; *) echo "BAD a non-rocm image advertises ORT_AMDGPU_EP_ROOT='$(_gpur "${probe}" MGXEP_ROOT)'" ;; esac
+}
+
+# <probe>: the two roots, the PATH entry and the HIP version the wrapper must set.
+_gpu_rocm_roots_verdict() {
+  local probe="$1" k
   for k in ROCM_PATH HIP_PATH; do
     if [ "$(_gpur "${probe}" "${k}")" = /opt/rocm ]; then echo "OK ${k}=/opt/rocm"; else echo "BAD ${k} is '$(_gpur "${probe}" "${k}")', not /opt/rocm"; fi
   done
   if [ "$(_gpur "${probe}" PATHROCM)" = yes ]; then echo "OK /opt/rocm/bin is on PATH"; else echo "BAD /opt/rocm/bin is not on PATH"; fi
   if [ -n "$(_gpur "${probe}" HIPVERSION)" ]; then echo "OK /opt/rocm carries HIP $(_gpur "${probe}" HIPVERSION)"; else echo "BAD /opt/rocm/bin/hipconfig --version printed nothing"; fi
+}
+
+# <probe>: an AMD image needs its roots and a working hipcc, any other image none of them.
+gpu_rocm_verdict() {
+  local probe="$1" root
+  if [ "$(_gpur_on "${probe}" 2)" != true ]; then _gpu_rocm_absent_verdict "${probe}"; return 0; fi
+  root="$(_gpur "${probe}" ROCMDIR)"
+  [ "${root}" != "<absent>" ] || { echo "BAD ENABLE_AMD=true but the image has no /opt/rocm"; return 0; }
+  _gpu_rocm_roots_verdict "${probe}"
   if [ "$(_gpur "${probe}" HIPROCMPATH)" = "${root}" ]; then echo "OK the hipconfig on PATH names ${root}"
   else echo "BAD the hipconfig on PATH names '$(_gpur "${probe}" HIPROCMPATH)', not ${root}"; fi
   case "$(_gpur "${probe}" HIPCLANG)" in

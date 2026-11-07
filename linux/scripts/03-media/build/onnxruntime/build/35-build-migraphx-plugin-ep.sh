@@ -115,8 +115,9 @@ mgxep_seed_define() { printf 'FETCHCONTENT_SOURCE_DIR_%s' "$(printf '%s' "$1" | 
 mgxep_verify_library() {
   local so="$1" rc=0 missing
   [ -f "${so}" ] || { printf 'ERROR: %s is missing\n' "${so}" >&2; return 1; }
+  # The EP's version script tags its exports (CreateEpFactories@@VERS_1.0), so the suffix is optional here.
   for sym in CreateEpFactories ReleaseEpFactory; do
-    readelf --dyn-syms -W "${so}" 2>/dev/null | grep -qE " ${sym}$" || { printf 'ERROR: %s does not export %s\n' "${so}" "${sym}" >&2; rc=1; }
+    readelf --dyn-syms -W "${so}" 2>/dev/null | grep -qE " ${sym}(@@[A-Za-z0-9_.]+)?$" || { printf 'ERROR: %s does not export %s\n' "${so}" "${sym}" >&2; rc=1; }
   done
   missing="$(ldd "${so}" 2>/dev/null | awk '$2 == "=>" && $3 == "not" {print $1}' | tr '\n' ' ')"
   [ -z "${missing}" ] || { printf 'ERROR: %s cannot resolve: %s\n' "${so}" "${missing}" >&2; rc=1; }

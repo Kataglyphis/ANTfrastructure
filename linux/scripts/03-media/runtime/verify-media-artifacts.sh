@@ -215,7 +215,7 @@ case "${STAGE}" in
     verify_dir_not_empty "${PREFIX}/licenses" "plugin EP licence texts"
     # The loader looks these two up by name; a module without them registers nothing.
     for sym in CreateEpFactories ReleaseEpFactory; do
-      if readelf --dyn-syms -W "${PREFIX}/lib/libmigraphx-ep.so" 2>/dev/null | grep -qE " ${sym}$"; then pass_check "plugin EP exports ${sym}"
+      if readelf --dyn-syms -W "${PREFIX}/lib/libmigraphx-ep.so" 2>/dev/null | grep -qE " ${sym}(@@[A-Za-z0-9_.]+)?$"; then pass_check "plugin EP exports ${sym}"
       else fail_check "plugin EP does not export ${sym}"; fi
     done
     ;;

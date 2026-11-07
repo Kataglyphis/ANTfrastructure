@@ -16926,7 +16926,7 @@
  {
   "id": "gpu-runtime.plugin-ep-root-only-on-rocm",
   "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
-  "find": "    case \"$(_gpur \"${probe}\" MGXEP_ROOT)\" in \"\"|\"<unset>\") ;; *) echo \"BAD a non-rocm image advertises ORT_AMDGPU_EP_ROOT='$(_gpur \"${probe}\" MGXEP_ROOT)'\" ;; esac\n",
+  "find": "  case \"$(_gpur \"${probe}\" MGXEP_ROOT)\" in \"\"|\"<unset>\") ;; *) echo \"BAD a non-rocm image advertises ORT_AMDGPU_EP_ROOT='$(_gpur \"${probe}\" MGXEP_ROOT)'\" ;; esac\n",
   "replace": "",
   "why": "a default image advertising a plugin root it does not ship would send consumers to a missing library",
   "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh"
@@ -16958,8 +16958,8 @@
  {
   "id": "gpu-runtime.non-rocm-roots",
   "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
-  "find": "      \"\"|\"<unset><unset>\") echo \"OK no ROCm root is advertised\" ;;",
-  "replace": "      *) echo \"OK no ROCm root is advertised\" ;;",
+  "find": "    \"\"|\"<unset><unset>\") echo \"OK no ROCm root is advertised\" ;;",
+  "replace": "    *) echo \"OK no ROCm root is advertised\" ;;",
   "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
   "why": "a cpu or nvidia image must advertise no ROCm root"
  },

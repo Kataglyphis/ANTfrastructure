@@ -50,7 +50,7 @@ t_assert_eq "" "$(IFS=$'\n\t'; mgxep_assert_seeded "${_T}/declared.txt" "${_T}/s
 t_assert_contains "$(IFS=$'\n\t'; mgxep_assert_seeded "${_T}/declared.txt" "${_T}/short.txt" 'eigen d3dx12 boost' 2>&1)" "json (https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz) has no hash-pinned seed"
 
 t_case "a pin that is empty, odd or not a sha256 is refused before any fetch"
-t_assert_contains "$(ORT_AMDGPU_EP_FMT_VERSION= mgxep_seed_spec fmt ORT_AMDGPU_EP_FMT_VERSION ORT_AMDGPU_EP_FMT_SHA256 'x{0}' 2>&1)" "ORT_AMDGPU_EP_FMT_VERSION is not set"
+t_assert_contains "$(ORT_AMDGPU_EP_FMT_VERSION='' mgxep_seed_spec fmt ORT_AMDGPU_EP_FMT_VERSION ORT_AMDGPU_EP_FMT_SHA256 'x{0}' 2>&1)" "ORT_AMDGPU_EP_FMT_VERSION is not set"
 t_assert_contains "$(ORT_AMDGPU_EP_FMT_VERSION='12.1.0;rm -rf' mgxep_seed_spec fmt ORT_AMDGPU_EP_FMT_VERSION ORT_AMDGPU_EP_FMT_SHA256 'x{0}' 2>&1)" "is not a plain version token"
 t_assert_contains "$(ORT_AMDGPU_EP_FMT_SHA256=abc mgxep_seed_spec fmt ORT_AMDGPU_EP_FMT_VERSION ORT_AMDGPU_EP_FMT_SHA256 'x{0}' 2>&1)" "is not a 64-hex sha256"
 t_assert_eq "https://github.com/onnxruntime/onnxruntime-ep-amdgpu/archive/${ORT_AMDGPU_EP_COMMIT}.tar.gz" "$(mgxep_source_url "${ORT_AMDGPU_EP_COMMIT}")"
@@ -93,6 +93,8 @@ EOF
 chmod +x "${_T}/bin/readelf" "${_T}/bin/ldd"
 _v() { PATH="${_T}/bin:${PATH}" FAKE_EXPORTS="$1" FAKE_MISSING="$2" mgxep_verify_library "${_T}/libmigraphx-ep.so" 2>&1; }
 t_assert_eq "" "$(_v 'CreateEpFactories ReleaseEpFactory' '')"
+t_assert_eq "" "$(_v 'CreateEpFactories@@VERS_1.0 ReleaseEpFactory@@VERS_1.0 GetBackendTelemetry@@VERS_1.0' '')" "the version script tags the exports; the first rocm chain failed on the bare pattern"
+t_assert_contains "$(_v 'CreateEpFactoriesX@@VERS_1.0 ReleaseEpFactory@@VERS_1.0' '')" "does not export CreateEpFactories"
 t_assert_contains "$(_v 'CreateEpFactories' '')" "does not export ReleaseEpFactory"
 t_assert_contains "$(_v 'CreateEpFactories ReleaseEpFactory' 'libonnxruntime.so.1')" "cannot resolve: libonnxruntime.so.1"
 t_assert_contains "$(mgxep_verify_library "${_T}/absent.so" 2>&1)" "is missing"

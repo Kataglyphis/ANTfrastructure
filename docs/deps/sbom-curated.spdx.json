@@ -1588,7 +1588,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-ONNX-Runtime-plugin-EP-for-AMD-GPUs-migraphx-e-ae93c3a3",
       "name": "ONNX Runtime plugin EP for AMD GPUs (migraphx-ep.dll, C:\\runtime\\lib\\onnxruntime-ep-amdgpu)",
-      "versionInfo": "99ab5cb43caa421e0b19870fa4ce9323117e5e56",
+      "versionInfo": "58afd43bc4c2ddc7582712e1d75cbfd4c3bb03fc",
       "downloadLocation": "https://github.com/onnxruntime/onnxruntime-ep-amdgpu",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
