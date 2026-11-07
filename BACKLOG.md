@@ -514,25 +514,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 - [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★]. In source (CHANGELOG 2026-11-03,
       `_disk_guard_release_stale_records`), tested with stubs only. Done when the next chain resumed after a stop
       logs `left by a stopped chain: restarting buildkitd` and reclaims without a hand restart.
-- [ ] **CON153 — the pinned release assets come from the Garage mirror** [S, ★★★]. Owner decision
-      2026-10-26: Garage S3. In source ([`linux-cross-builds.md` § The asset mirror](docs/linux-cross-builds.md#the-asset-mirror),
-      runbook in [`linux/sccache-s3/README.md`](linux/sccache-s3/README.md)): every `download_verified_file`
-      asks `<mirror>/<sha256>/<name>` first and falls back upstream, through the `asset_mirror` BuildKit
-      secret. The bucket, both keys and this host's env files exist since 2026-10-26 (`--check` passes); a
-      new chain host runs `set-asset-mirror.sh --from <ssh-target> --url <bucket-url>`. Filled on 2026-10-27 from that chain's
-      misses: 32 of 33 assets. Done when the next chain logs
-      `asset-mirror| hit` for the pinned assets. **Not proved on 2026-11-06/07** (default, rocm and nvidia
-      reruns): `~/.config/kataglyphis/asset-mirror.env` is absent on the build host (`set-asset-mirror.sh --check`
-      says so), `append_asset_mirror_secret` therefore mounted no secret, and no stage log of the round carries an
-      `asset-mirror|` line; `host_secret_file_ready` is silent on a missing file. The owner installed the keys on
-      2026-11-07 (`set-asset-mirror.sh --check`: both keys work). Proved from the host the same day:
-      `download_mirror_fetch` served `shellcheck-v0.11.0.linux.x86_64.tar.xz` from the bucket with the pinned sha256,
-      and the next chain's build commands carry `--secret id=asset_mirror` (media logs of run 20261107-124836). The
-      bucket holds the 33 objects of the 2026-10-27 fill plus the three `sccache-v0.19.0-965c019-pr2809` Linux
-      tarballs mirrored by hand (the 0.18.0 objects stay until deleted by hand). Still to see: `asset-mirror| hit`
-      inside a RUN, which needs a cold download; every stage of this round hit its download cache. A one-line
-      `[INFO] asset mirror: none` at chain start would make the next absence visible.
-
+- [ ] **CON153 leftover — the chain says at start whether the asset-mirror secret is present** [S, ★]. The mirror
+      itself is proved: with the keys installed, the rocm media stage of 2026-11-07 (run 20261107-192205) logged
+      `asset-mirror| hit` for all ten plugin-EP archives that `fill-asset-mirror.sh --apply` had mirrored from the
+      previous run's misses. What stayed invisible for two rounds was the ABSENCE of the host env file:
+      `host_secret_file_ready` is silent on a missing file. One `[INFO] asset mirror: none` line at chain start.
 - [ ] **CON129 — finish GTK 4 validation on foreign arches and GPU variants** [M, ★★★].
       The mandatory `gui_unix` feature is enabled in OxidANT. On the recorded `3c558d88` index,
       its x64 run `39865676735` passed 728 normal and 728 instrumented tests with real Xvfb/GTK;

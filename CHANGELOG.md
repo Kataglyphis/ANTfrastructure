@@ -24,6 +24,9 @@
   ([failure-modes.md](docs/failure-modes.md#a-smoke-check-fails-and-names-no-finding)).
 ## 2026-11-07 — `:latest-rocm` ships AMD's plugin MIGraphX EP (CON231, step 1)
 
+- CON153 is proved inside a RUN: the fourth rocm proof chain's media stage logged `asset-mirror| hit` for all ten
+  plugin-EP archives that `fill-asset-mirror.sh --apply` had mirrored from the previous run's misses. The entry
+  shrinks to its leftover, a chain-start line that says when the secret is absent.
 - The proof chains found four gaps in the first integration, each now held by a suite case and a recipe:
   the seed reads ran under the media scripts' `IFS` and fetched `'' ''` (shell safety class 3); the export
   check missed the version script's `CreateEpFactories@@VERS_1.0`; and the media merge stage never COPYed
