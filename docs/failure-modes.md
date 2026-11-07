@@ -537,6 +537,18 @@ word. `ds_sbsa_runpaths` now sets the RUNPATH on every file without one and rewr
 excused on arm64 only. A file list from an L4T package is built for an `ld.so.conf` the SBSA image
 does not have: check RUNPATHs before trusting the closure.
 
+The third stage (2026-11-06) left 24 rows, most `-> libnvdsbufferpool.so.1.0.0`, and four elements
+(`nvstreammux`, `nvvideoconvert`, `nvmultistreamtiler`, `nvstreamdemux`) reported
+`does not register … (got '/nonexistent')`: the SBSA container ships `libnvdsbufferpool.so` under
+its bare name, so the staged copy resolved for nothing that NEEDs its SONAME. Three more rows were
+bare `libcublas.so`, `libnppial.so` and `libnppist.so`, and four excuses (UCX, Maxine, the bare
+bufferpool name) were STALE on a `.deb` that ships none of those files. The stage now copies the
+bufferpool under its SONAME, rewrites every bare NEEDED to the target CUDA dev link's SONAME, and
+keeps the amd64-only excuses off arm64 (`deepstream.sbsa-bufferpool-soname`,
+`deepstream.sbsa-bare-cuda-needs`, `deepstream.sbsa-amd64-excuses`). A plugin whose element
+"does not register" with `/nonexistent` as its origin has an unresolved NEEDED; read the closure
+rows above it first.
+
 ### `no GStreamer plugin directory at /opt/gstreamer/lib/aarch64-linux-gnu/gstreamer-1.0`
 
 The first arm64 package stage of the nvidia chain (2026-11-05) died in the DeepStream step after

@@ -11,29 +11,34 @@ DSV_DRIVER_SONAMES=(libcuda.so.1 libnvidia-ml.so.1)
 
 # "<file under DS_ROOT>|<soname>|<why it may stay unresolved>"; an entry that no longer matches fails as stale.
 DSV_ALLOWED_MISSING=(
-  "lib/gst-plugins/libnvdsgst_ucx.so|libucs.so.0|UCX: Ubuntu's libucx0 depends on ROCm's HIP runtime"
-  "lib/gst-plugins/libnvdsgst_ucx.so|libucp.so.0|UCX: Ubuntu's libucx0 depends on ROCm's HIP runtime"
   "lib/libnvds_3d_dataloader_realsense.so|librealsense2.so|Intel RealSense SDK, not shipped"
   "lib/libnvdsgst_sparse4d.so|libtorch.so|libtorch lives in the app venv, not on the loader path"
   "lib/libnvdsgst_sparse4d.so|libtorch_cpu.so|libtorch lives in the app venv, not on the loader path"
   "lib/libnvdsgst_sparse4d.so|libc10.so|libtorch lives in the app venv, not on the loader path"
-  "lib/libnvdsgst_aigshelper.so|libNVCVImage.so|NVIDIA Maxine (NVCV), not distributed with DeepStream"
   "lib/libnvdsgst_sparse4d.so|libnvds_meta.so|NVIDIA's RUNPATH names deepstream-9.0; it cannot load without libtorch anyway"
-  "lib/libnvdsgst_sparse4d.so|libnvdsbufferpool.so|NVIDIA's RUNPATH names deepstream-9.0; it cannot load without libtorch anyway"
   "lib/libnvdsgst_sparse4d.so|libnvdsgst_helper.so|NVIDIA's RUNPATH names deepstream-9.0; it cannot load without libtorch anyway"
   "lib/libnvds_tritoninferfilter.so|libnvds_infer_server.so|Triton: nvdsinferserver is not built"
+)
+# The Jetson .deb ships no UCX plugin and no Maxine helper, and its sparse4d NEEDs the versioned bufferpool name.
+DSV_ALLOWED_MISSING_AMD64=(
+  "lib/gst-plugins/libnvdsgst_ucx.so|libucs.so.0|UCX: Ubuntu's libucx0 depends on ROCm's HIP runtime"
+  "lib/gst-plugins/libnvdsgst_ucx.so|libucp.so.0|UCX: Ubuntu's libucx0 depends on ROCm's HIP runtime"
+  "lib/libnvdsgst_aigshelper.so|libNVCVImage.so|NVIDIA Maxine (NVCV), not distributed with DeepStream"
+  "lib/libnvdsgst_sparse4d.so|libnvdsbufferpool.so|NVIDIA's RUNPATH names deepstream-9.0; it cannot load without libtorch anyway"
 )
 # VPI is L4T's; the SBSA route has none, and the Jetson .deb's three VPI consumers stay unresolved there.
 DSV_ALLOWED_MISSING_ARM64=(
   "lib/libnvds_nvmultiobjecttracker.so|libnvvpi.so.4|VPI is L4T's, not on the SBSA route"
   "lib/libnvds_opticalflow_orin.so|libnvvpi.so.4|VPI is L4T's, not on the SBSA route"
   "lib/libnvds_vpicanmatch.so|libnvvpi.so.4|VPI is L4T's, not on the SBSA route"
+  "lib/libnvdsgst_sparse4d.so|libnvdsbufferpool.so.1.0.0|NVIDIA's RUNPATH names deepstream-9.0; it cannot load without libtorch anyway"
 )
 
 DSV_ELEMENTS=(nvinfer nvstreammux nvvideoconvert nvtracker nvdsosd nvv4l2decoder nvmultistreamtiler nvstreamdemux nvurisrcbin)
 
 # The package stage runs natively; a cross build stage names the target (deepstream.sh).
 dsv_arch() { printf '%s' "${DSV_ARCH:-${TARGET_ARCH:-$(dpkg --print-architecture)}}"; }
+[ "$(dsv_arch)" != amd64 ] || DSV_ALLOWED_MISSING+=("${DSV_ALLOWED_MISSING_AMD64[@]}")
 [ "$(dsv_arch)" != arm64 ] || DSV_ALLOWED_MISSING+=("${DSV_ALLOWED_MISSING_ARM64[@]}")
 # nvv4l2decoder is NVDEC through libv4l2, an amd64 (and Jetson) element; the SBSA route has no decoder plugin.
 dsv_elements() {

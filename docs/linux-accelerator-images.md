@@ -541,12 +541,17 @@ NVIDIA's SBSA container (`DEEPSTREAM_SBSA_IMAGE`, pinned by digest; read 2026-11
    package stage, which runs natively under QEMU and repeats every gate; `nvv4l2decoder` and the
    libv4l2 plugin are amd64's, so the SBSA route registers eight elements and decodes in software
    unless a host injects NVDEC.
-6. The Jetson `.deb`'s files carry no RUNPATH (L4T puts its tegra dir on `ld.so.conf`) and NEED a
-   bare `libcufft.so`; the build stage sets `RUNPATH=…/deepstream-9.1/lib` on every file without
-   one and rewrites that NEEDED to `libcufft.so.12`, as the amd64 `.deb` carries both. The three
-   VPI consumers (`nvmultiobjecttracker`, `opticalflow_orin`, `vpicanmatch`) stay unresolved on
-   `libnvvpi.so.4`, excused on arm64 only: VPI is L4T's. The TensorRT 10 SDK's `-L` precedes the
-   sysroot flags on the compiler word, or the components link the image's TensorRT 11.
+6. The Jetson `.deb`'s files carry no RUNPATH (L4T puts its tegra dir on `ld.so.conf`) and NEED
+   bare CUDA names (`libcufft.so`, `libcublas.so`, `libnppial.so`, `libnppist.so`); the build
+   stage sets `RUNPATH=…/deepstream-9.1/lib` on every file without one and rewrites each bare
+   NEEDED to the SONAME of the target CUDA's dev link (`libcufft.so.12`, `libcublas.so.13`, …),
+   as the amd64 `.deb` carries both. The SBSA container ships `libnvdsbufferpool.so` under its
+   bare name; the stage copies it under its SONAME `libnvdsbufferpool.so.1.0.0`, which every
+   plugin NEEDs, and links the bare name. The three VPI consumers (`nvmultiobjecttracker`,
+   `opticalflow_orin`, `vpicanmatch`) stay unresolved on `libnvvpi.so.4`, excused on arm64
+   only: VPI is L4T's; the UCX and Maxine excuses are amd64's, since the Jetson `.deb` ships
+   neither file. The TensorRT 10 SDK's `-L` precedes the sysroot flags on the compiler word, or
+   the components link the image's TensorRT 11.
 
 The chain gates the flag per arch (`deepstream_arch_supported`, `build-helpers.sh`): amd64 always,
 arm64 only with the four files staged. Licence: the four libraries ship under the DeepStream
@@ -880,9 +885,9 @@ the package stage (against the wired plugin link) and by the runtime smoke
 (`check_deepstream`, which also fails a tree in any non-nvidia image):
 
 - **Soname closure** with `LD_LIBRARY_PATH` unset. `libcuda.so.1` and `libnvidia-ml.so.1`
-  are the driver's. Eleven other misses are documented exceptions (UCX, RealSense, libtorch,
-  NVIDIA Maxine, the Triton filter, and `libnvdsgst_sparse4d.so`, whose `RUNPATH` NVIDIA left
-  pointing at `deepstream-9.0`); an exception that stops applying fails as stale. The
+  are the driver's. The other misses are documented exceptions, per arch (UCX, RealSense,
+  libtorch, NVIDIA Maxine, the Triton filter, and `libnvdsgst_sparse4d.so`, whose `RUNPATH`
+  NVIDIA left pointing at `deepstream-9.0`); an exception that stops applying fails as stale. The
   third-party libraries built for `nvds_rest_server` get an `$ORIGIN` `RUNPATH`, since their
   own install paths do not exist in the image.
 - **One GStreamer**: every plugin resolves `libgst*-1.0.so.0` from `/opt/gstreamer`, and the

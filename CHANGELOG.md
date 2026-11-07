@@ -86,6 +86,16 @@
   throw, and the smoke gate fails an `-ExpectGpu` image with an empty `TENSORRT_ROOT`
   (`host.trt-url-tensorrt11-scheme`, `host.trt-missing-throws`, `smoke.trt-required-expect-gpu`).
   The runtime-only rule is unchanged. Windows arm64 TensorRT stays off as an owner decision (CON230).
+## 2026-11-06 — The SBSA bufferpool is staged under its SONAME, and every bare CUDA NEEDED is rewritten
+
+- The third arm64 package stage left 24 closure rows and four elements that "do not register" from
+  `/nonexistent`: the SBSA container ships `libnvdsbufferpool.so` bare, and nothing that NEEDs
+  `libnvdsbufferpool.so.1.0.0` resolved it; `libcublas.so`, `libnppial.so` and `libnppist.so` were NEEDed
+  bare like `libcufft.so`; and the UCX, Maxine and bare-bufferpool excuses were STALE on a `.deb` without those
+  files. `ds_stage_sbsa_libs` copies the bufferpool under its SONAME with the bare link, `ds_sbsa_runpaths`
+  rewrites every bare NEEDED to the target CUDA dev link's SONAME, and the amd64-only excuses are gated per arch
+  (`deepstream.sbsa-bufferpool-soname`, `deepstream.sbsa-bare-cuda-needs`, `deepstream.sbsa-amd64-excuses`,
+  [failure-modes.md](docs/failure-modes.md#broken-libgst-pluginslibgstnvvideoconvertso---libnvbufsurfaceso100-on-the-arm64-package-stage)).
 
 ## 2026-11-06 — The SBSA DeepStream files get RUNPATHs and link TensorRT 10
 
