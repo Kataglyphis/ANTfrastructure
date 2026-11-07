@@ -2764,7 +2764,7 @@ steps. The regression exercises the actual branches without attaching to a proce
 with nothing after the colon, on a complete TensorRT runtime. An `if`/`else` that yields no output assigns
 PowerShell's empty result; bound to `Assert-Test -Finding`, that becomes `$null`, and `@($null).Count` is 1.
 `Assert-Test` treats a `$null` finding list as empty, and a finding list built from `if`/`else` is wrapped in
-`@()` around the whole statement. `Smoke.Operations.Tests.ps1` and `lib.smoke-finding-empty-if-result` hold it.
+`@()` around the whole statement. `Smoke.FindingVerdict.Tests.ps1` and `lib.smoke-finding-empty-if-result` hold it.
 
 ## The docs lock check asks for setuptools
 
