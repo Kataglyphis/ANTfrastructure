@@ -2236,8 +2236,9 @@ Adrenalin or Windows update**: a GONE verdict is the signal to retire the toggle
 
 CUDA-cache probe (non-admin, ~2 min, safe beside a live build): a tiny buildctl solve FROM the local
 toolchain image compiles one `.cu` TWICE through sccache against the live WebDAV endpoint. Exit 0
-only when the recompile HIT (per-component: CUDA/Device/PTX/CUBIN) AND objects landed in the store.
-Verified 2026-08-10 (4/4 hits, 4 objects on disk). **Run after every sccache bump**: the launcher's
+only when the first compile MISSED (a per-run nonce in code; a comment nonce is stripped by preprocessing)
+and the recompile HIT (per-component: CUDA/Device/PTX/CUBIN), which only a store write can serve.
+Verified 2026-08-10 (4/4 hits, 4 objects on disk) and 2026-11-06 on `bk-windows-toolchain-nvidia` (4 misses, 4 hits). **Run after every sccache bump**: the launcher's
 value rests on this property.
 
 #### `Invoke-SccacheCudaLlmDeadlock.ps1`

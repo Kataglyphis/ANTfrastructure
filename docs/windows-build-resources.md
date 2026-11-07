@@ -415,7 +415,7 @@ Why the source build existed, and what would bring a bare-nvcc exception back:
   until the DLL link. A candidate must pass
   `windows/scripts/diagnostics/Test-CudaCache.ps1` (its in-container payload
   `verify-cuda-cache/Test-Cache.ps1` compiles the same `.cu` twice and asserts
-  a cache hit AND a backend write) plus an ONNX canary through the fused_moe
+  a miss on a per-run nonce in code, then a hit only a backend write can serve) plus an ONNX canary through the fused_moe
   launchers before cuda_llm is re-wrapped.
 
 **The CUDA launcher (`CMAKE_CUDA_COMPILER_LAUNCHER`) is ON BY DEFAULT since
@@ -473,6 +473,10 @@ after a decision history worth keeping:
     Configure printed `nvcc stays bare for onnxruntime_providers_cuda_llm` every time. Both warm
     builds linked `onnxruntime_providers_cuda` from hits, and the chain's smoke gate passed 301
     assertions with none skipped. `Test-CudaCache.ps1`, the third canary, did not run.
+  - **The first chain without the exemption, 2026-11-06** (nvidia, after a toolchain rebuild):
+    ORT's CUDA RUN compiled 4937 times through sccache, `moe_gemm` kernels included, with 0
+    failures and 4330 WebDAV writes; 1663 hits (25 %), because the rebuilt toolchain re-keyed
+    most objects. `Test-CudaCache.ps1` passed the same night (4 misses, then 4 hits).
   - OpenCV passes `-real` archs only and was never affected.
 
 **The disk level is off**: Windows BuildKit cache mounts lose writes into a directory

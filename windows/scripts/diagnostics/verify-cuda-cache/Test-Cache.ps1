@@ -17,9 +17,9 @@ $env:INCLUDE = $msvcRoot + '\include;' + $sdkInc + '\ucrt;' + $sdkInc + '\shared
 & $scc --start-server
 & $scc -z | Out-Null
 
-# A per-run nonce makes compile 1 a guaranteed miss; against a warm L2 it would hit and never write.
+# A per-run nonce in code, not a comment, which preprocessing strips from the cache key; it makes compile 1 a guaranteed miss.
 $nonce = [guid]::NewGuid().ToString('N')
-Set-Content -Path C:\cachetest.cu -Value ("// nonce: $nonce`n" + '__global__ void k(float* p){ p[threadIdx.x] *= 2.0f; }')
+Set-Content -Path C:\cachetest.cu -Value ("__device__ const char cachetest_nonce[] = `"$nonce`";`n" + '__global__ void k(float* p){ p[threadIdx.x] *= 2.0f; }')
 & $scc $nvcc ('-ccbin=' + $cl) -arch=sm_80 -c C:\cachetest.cu -o C:\t1.obj
 if ($LASTEXITCODE -ne 0) { throw ('first compile failed: ' + $LASTEXITCODE) }
 & $scc $nvcc ('-ccbin=' + $cl) -arch=sm_80 -c C:\cachetest.cu -o C:\t2.obj
@@ -28,7 +28,8 @@ if ($LASTEXITCODE -ne 0) { throw ('second compile failed: ' + $LASTEXITCODE) }
 $stats = & $scc --show-stats | Out-String
 Write-Host $stats
 $hits = 0; if ($stats -match 'Cache hits\s+(\d+)') { $hits = [int]$Matches[1] }
-$writes = 0; if ($stats -match 'Cache writes\s+(\d+)') { $writes = [int]$Matches[1] }
-Write-Host ('CUDA-CACHE-VERIFY hits=' + $hits + ' writes=' + $writes)
+$misses = 0; if ($stats -match 'Cache misses\s+(\d+)') { $misses = [int]$Matches[1] }
+Write-Host ('CUDA-CACHE-VERIFY hits=' + $hits + ' misses=' + $misses)
+# sccache 0.19 prints no write count; the nonce makes compile 1 a miss, so a later hit can only come from what it wrote to the L2.
+if ($misses -lt 1) { throw 'NO CACHE MISS on the nonce compile - the probe did not reach sccache' }
 if ($hits -lt 1) { throw 'NO CACHE HIT on identical recompile - CUDA caching is broken' }
-if ($writes -lt 1) { throw 'NO CACHE WRITE - objects never reached the WebDAV L2' }

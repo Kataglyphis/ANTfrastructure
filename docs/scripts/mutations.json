@@ -32121,6 +32121,38 @@
   "why": "a clear that never runs keeps the tree on the host"
  },
  {
+  "id": "lib.diag-cudacache-repo-root",
+  "target": "windows/scripts/diagnostics/Test-CudaCache.ps1",
+  "find": "$repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent",
+  "replace": "$repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Diagnostics.ModulePaths.Tests.ps1 -ResultFile logs/code-quality/diag-module-paths-mutation.json",
+  "why": "a root one level short imports windows\\windows\\scripts\\modules and the CUDA cache proof never starts"
+ },
+ {
+  "id": "lib.diag-rdna4-repo-root",
+  "target": "windows/scripts/diagnostics/Test-Rdna4LayerLock.ps1",
+  "find": "$repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent",
+  "replace": "$repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Diagnostics.ModulePaths.Tests.ps1 -ResultFile logs/code-quality/diag-module-paths-mutation.json",
+  "why": "a root one level short leaves the RDNA4 A/B without its modules"
+ },
+ {
+  "id": "lib.cuda-probe-nonce-in-code",
+  "target": "windows/scripts/diagnostics/verify-cuda-cache/Test-Cache.ps1",
+  "find": "(\"__device__ const char cachetest_nonce[] = `\"$nonce`\";`n\" + ",
+  "replace": "(\"// nonce: $nonce`n\" + ",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Diagnostics.CudaCacheProbe.Tests.ps1 -ResultFile logs/code-quality/cuda-probe-mutation.json",
+  "why": "a comment nonce is stripped by preprocessing, so a warm cache hits twice and the probe proves no write"
+ },
+ {
+  "id": "lib.cuda-probe-requires-miss",
+  "target": "windows/scripts/diagnostics/verify-cuda-cache/Test-Cache.ps1",
+  "find": "if ($misses -lt 1) { throw 'NO CACHE MISS on the nonce compile - the probe did not reach sccache' }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Diagnostics.CudaCacheProbe.Tests.ps1 -ResultFile logs/code-quality/cuda-probe-mutation.json",
+  "why": "without the miss check two warm hits pass and the write path goes unproven"
+ },
+ {
   "id": "lib.iree-twin-names-stable-abi-lib",
   "target": "windows/scripts/build/Build-IreeFromSource.ps1",
   "find": "        $stableAbi + $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')",

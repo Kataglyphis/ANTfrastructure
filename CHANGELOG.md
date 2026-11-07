@@ -13,6 +13,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-07 — the CUDA cache probe runs again and proves a write
+
+- `Test-CudaCache.ps1` and `Test-Rdna4LayerLock.ps1` computed the repo root one level short and
+  stopped at `Import-Module` (`windows\windows\scripts\modules`). `Diagnostics.ModulePaths.Tests.ps1`
+  evaluates every diagnostic script's repo root and module import, with two mutations.
+- The probe's nonce sat in a comment, which preprocessing strips from sccache's key, so a warm
+  cache hit twice; sccache 0.19 also prints no write count. The nonce is now code, and the probe
+  requires a miss, then a hit (`Diagnostics.CudaCacheProbe.Tests.ps1`, two mutations).
+  It passed on `bk-windows-toolchain-nvidia`: 4 misses, then 4 hits (CON229).
+
 ## 2026-11-06 — IREE builds outside the 20 GB RUN scratch
 
 - The amd64 media-tvm stage failed with `No space left on device` in IREE's compiler wheel while
