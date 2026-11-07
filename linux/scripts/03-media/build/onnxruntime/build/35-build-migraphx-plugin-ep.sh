@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 MGXEP_OUTPUT_DIR="${MGXEP_OUTPUT_DIR:-/usr/local/lib/onnxruntime-ep-amdgpu}"
 MGXEP_ORT_DIR="${MGXEP_ORT_DIR:-/usr/local/lib/onnxruntime-gpu}"
+# The ORT build links every chain library into /usr/local/lib; G2 must know both prefixes or the CPU-only providers read as foreign.
+MGXEP_ORT_CPU_DIR="${MGXEP_ORT_CPU_DIR:-/usr/local/lib/onnxruntime-cpu}"
 MGXEP_WORK_DIR="${MGXEP_WORK_DIR:-/tmp/onnxruntime-ep-amdgpu}"
 # Declared under if(USE_DML), which stays OFF; a seed for them would pin bytes the build never reads.
 MGXEP_INACTIVE_SEEDS="${MGXEP_INACTIVE_SEEDS:-eigen d3dx12 boost}"
@@ -198,7 +200,7 @@ mgxep_build() {
   printf 'onnxruntime-ep-amdgpu %s\nsource-sha256 %s\n' "${commit}" "${sha}" > "${MGXEP_OUTPUT_DIR}/provenance.txt"
   # G2: the work tree, both records and the configure log name no ORT but the chain's; a pass stamps the prefix for the census.
   ort_assert_chain_only amdgpu-ep --stamp "${MGXEP_OUTPUT_DIR}/ort-provenance/amdgpu-ep.json" --chain "${MGXEP_ORT_DIR}" \
-    --tree "${work}" --shim "${work}/ort" --record "${work}/build/CMakeCache.txt" --record "${work}/build/build.ninja" \
+    --chain "${MGXEP_ORT_CPU_DIR}" --tree "${work}" --shim "${work}/ort" --record "${work}/build/CMakeCache.txt" --record "${work}/build/build.ninja" \
     --log "${work}/configure.log" || err "the plugin EP's build inputs reach an ONNX Runtime other than the chain's"
   mgxep_verify_library "${MGXEP_OUTPUT_DIR}/lib/libmigraphx-ep.so"
   info "MIGraphX plugin EP installed: ${MGXEP_OUTPUT_DIR}/lib/libmigraphx-ep.so ($(stat -c %s "${MGXEP_OUTPUT_DIR}/lib/libmigraphx-ep.so") bytes)"

@@ -426,7 +426,7 @@ t_assert_contains "${_gst}" \
   '--record builddir/build.ninja --record builddir/meson-info/intro-dependencies.json --log builddir/meson-logs/meson-log.txt || exit 1'
 t_assert_contains "${_gen}" '--tree "${src}" --log "${src}/build/genai-build.log" "${g2[@]}"'
 t_assert_contains "${_mgx}" \
-  '--tree "${work}" --shim "${work}/ort" --record "${work}/build/CMakeCache.txt" --record "${work}/build/build.ninja" --log "${work}/configure.log" || err'
+  '--chain "${MGXEP_ORT_DIR}" --chain "${MGXEP_ORT_CPU_DIR}" --tree "${work}" --shim "${work}/ort" --record "${work}/build/CMakeCache.txt" --record "${work}/build/build.ninja" --log "${work}/configure.log" || err'
 t_assert_contains "${_mgx}" 'cmake "${cmake_args[@]}" "${defines[@]}" 2>&1 | tee "${work}/configure.log"' "the plugin EP's configure tees into the log G2 reads"
 _gb="${SCRIPTS}/03-media/build/onnxruntime/build/60-build-genai.sh"
 t_assert_contains "$(cat "${_gb}")" 'GENAI_BUILD_LOG="${GENAI_SRC_DIR}/build/genai-build.log"'
