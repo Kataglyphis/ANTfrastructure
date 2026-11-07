@@ -638,7 +638,7 @@ Found by reading the last nine `:latest` chain logs and their resource samples.
   tree shape on 13 files and passes the subset; the published `:winamd64-nvidia` passes with its
   empty `C:\tensorrt`.
   [linux-accelerator-images.md § Redistribution](linux-accelerator-images.md#redistribution),
-  [windows-builds.md § TensorRT setup](windows-builds.md#tensorrt-setup-gpu-lane-optional).
+  [windows-builds.md § TensorRT setup](windows-builds.md#tensorrt-setup-gpu-lane).
 
 ## 2026-10-21 — TensorRT 11 and its ORT EP in `:latest-nvidia`; `:latest-rocm` finds its ROCm (CON31)
 
