@@ -16876,6 +16876,14 @@
   "why": "an arm64 nvidia build has no TensorRT route, so it must not default to one"
  },
  {
+  "id": "onnx-ep-amdgpu.seed-gate-reads-under-media-ifs",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
+  "find": "  while IFS=' ' read -r name url; do\n",
+  "replace": "  while read -r name url; do\n",
+  "why": "under the media scripts' IFS=newline-tab a plain read puts the whole line into name, and the gate compares nothing (the first rocm run after cc6ea51b fetched '' '')",
+  "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh"
+ },
+ {
   "id": "onnx-ep-amdgpu.drifted-seed-refused",
   "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
   "find": "    elif [ \"${seed}\" != \"${url}\" ]; then bad=\"${bad}; ${name} is declared as ${url} but the seed pins ${seed}\"; fi\n",

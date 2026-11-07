@@ -56,7 +56,8 @@ mgxep_declared_urls() {
 mgxep_assert_seeded() {
   local declared="$1" seeded="$2" inactive=" $3 " name url seed bad=""
   [ -s "${declared}" ] || { printf 'ERROR: no FetchContent_Declare found; the upstream layout moved and this gate would check nothing\n' >&2; return 1; }
-  while read -r name url; do
+  # IFS=' ': the media scripts run under IFS=$'\n\t', where a plain read would put the whole line into name.
+  while IFS=' ' read -r name url; do
     case "${inactive}" in *" ${name} "*) continue ;; esac
     seed="$(awk -v n="${name}" '$1 == n {print $2}' "${seeded}")"
     if [ -z "${seed}" ]; then bad="${bad}; ${name} (${url}) has no hash-pinned seed"
@@ -144,7 +145,7 @@ mgxep_build() {
   : > "${seeded}"
   local -a defines=()
   while IFS='|' read -r name vkey skey fmt; do
-    read -r _ url sha < <(mgxep_seed_spec "${name}" "${vkey}" "${skey}" "${fmt}")
+    IFS=' ' read -r _ url sha < <(mgxep_seed_spec "${name}" "${vkey}" "${skey}" "${fmt}")
     # absl is protobuf's own fetch, not a declaration of the EP; protobuf_FORCE_FETCH_DEPENDENCIES points it at the seed.
     [ "${name}" = absl ] || printf '%s %s\n' "${name}" "${url}" >> "${seeded}"
     dir="$(mgxep_fetch_seed "${name}" "${url}" "${sha}" "${work}")"

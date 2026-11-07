@@ -43,6 +43,12 @@ t_assert_contains "$(mgxep_assert_seeded "${_T}/declared.txt" "${_T}/seeded.txt"
 : > "${_T}/none.txt"
 t_assert_contains "$(mgxep_assert_seeded "${_T}/none.txt" "${_T}/seeded.txt" '' 2>&1)" "no FetchContent_Declare found" "an empty declaration list is a moved layout, not a pass"
 
+t_case "the seed gate and the spec read split on spaces under the media scripts' IFS (shell safety class 3)"
+_ifs_seeded="$(IFS=$'\n\t'; while IFS='|' read -r name vkey skey fmt; do IFS=' ' read -r _ url _ < <(mgxep_seed_spec "${name}" "${vkey}" "${skey}" "${fmt}"); [ "${name}" = absl ] || printf '%s %s\n' "${name}" "${url}"; done < <(mgxep_seed_table))"
+t_assert_eq "$(cat "${_T}/seeded.txt")" "${_ifs_seeded}" "the url column survives IFS=newline-tab"
+t_assert_eq "" "$(IFS=$'\n\t'; mgxep_assert_seeded "${_T}/declared.txt" "${_T}/seeded.txt" 'eigen d3dx12 boost' 2>&1)" "the gate reads name and url apart under that IFS"
+t_assert_contains "$(IFS=$'\n\t'; mgxep_assert_seeded "${_T}/declared.txt" "${_T}/short.txt" 'eigen d3dx12 boost' 2>&1)" "json (https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz) has no hash-pinned seed"
+
 t_case "a pin that is empty, odd or not a sha256 is refused before any fetch"
 t_assert_contains "$(ORT_AMDGPU_EP_FMT_VERSION= mgxep_seed_spec fmt ORT_AMDGPU_EP_FMT_VERSION ORT_AMDGPU_EP_FMT_SHA256 'x{0}' 2>&1)" "ORT_AMDGPU_EP_FMT_VERSION is not set"
 t_assert_contains "$(ORT_AMDGPU_EP_FMT_VERSION='12.1.0;rm -rf' mgxep_seed_spec fmt ORT_AMDGPU_EP_FMT_VERSION ORT_AMDGPU_EP_FMT_SHA256 'x{0}' 2>&1)" "is not a plain version token"
