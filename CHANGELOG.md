@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-07 — two ONNX Runtime PRs prepared for the MIGraphX EP
+
+- `linux/upstream/` is the Linux lane's index of prepared upstream submissions, as `windows/upstream/` is the
+  Windows lane's. First entries: the MIGraphX EP fix that stages a strided partition output and makes it dense
+  through a cached one-op `contiguous` program (with a unit test; the mechanism proved standalone on gfx1201 by
+  `proof.cc`), and the one-line `GridSample` addition to the EP's op list. Both wait for the owner to file them
+  (BACKLOG CON225).
+
 ## 2026-11-07 — between runs the disk guard spends the image lever first
 
 - Owner decision: `_chain_runtime_lane_disk_gate` and `_chain_stage_disk_guard` remove dangling images and the

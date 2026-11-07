@@ -440,8 +440,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       AMD packages pass `compare_detector_parity.py` on the RX 9070 XT (CON224 item 1). In the image since the
       rocm media build of 2026-11-05 (`APPLIED: ORT 003-migraphx-gridsample.patch` and
       `004-migraphx-refuse-nonstandard-output.patch` in its log). **Proven 2026-11-07**: all four Linux AMD
-      packages pass parity on the RX 9070 XT (CON224 item 1). Upstream: the report is prepared in
-      `linux/upstream/onnxruntime-migraphx-strided-output/ISSUE.md`; its status row is in `linux/upstream/README.md`.
+      packages pass parity on the RX 9070 XT (CON224 item 1). Upstream: two PRs are prepared under
+      `linux/upstream/` (the strided-output fix with its test, and the GridSample one-liner), status rows in
+      `linux/upstream/README.md`; the owner files them.
 
 - [ ] **CON217 — build CUDA compute capability 7.5, so RTX 20xx cards run the NVIDIA packages** [M, ★★].
       Owner decision 2026-11-02: add `75` (Turing: T4, RTX 20xx) to `CUDA_ARCHITECTURES`, today

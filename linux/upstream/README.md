@@ -7,4 +7,5 @@ stay under `linux/scripts/patches/`, applied by the image build. The Windows lan
 
 | Directory | Upstream | Kind | Status |
 |---|---|---|---|
-| [`onnxruntime-migraphx-strided-output`](onnxruntime-migraphx-strided-output/ISSUE.md) | microsoft/onnxruntime | issue | prepared 2026-11-07, not posted: the agent sandbox refuses to create a public issue, the owner posts it with the command in the file (BACKLOG CON225); evidence in `~/gpu/work` on the build host |
+| [`onnxruntime-migraphx-strided-output`](onnxruntime-migraphx-strided-output/PR.md) | microsoft/onnxruntime | PR (patch + test) and the issue text (`ISSUE.md`) | prepared 2026-11-07, not posted; the owner files it (BACKLOG CON225). Evidence in `~/gpu/work` on the build host, the mechanism proved by `proof.cc` |
+| [`onnxruntime-migraphx-gridsample`](onnxruntime-migraphx-gridsample/PR.md) | microsoft/onnxruntime | PR (one line) | prepared 2026-11-07, not posted; companion of the strided-output fix |

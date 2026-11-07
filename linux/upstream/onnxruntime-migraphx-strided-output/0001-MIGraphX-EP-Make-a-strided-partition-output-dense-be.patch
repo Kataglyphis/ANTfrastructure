@@ -1,0 +1,232 @@
+From 45b17f8cb3277c5d87953df62567f9b960a4d887 Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Sat, 7 Nov 2026 12:19:35 +0100
+Subject: [PATCH] [MIGraphX EP] Make a strided partition output dense before
+ ORT reads it
+
+MIGraphX can return a partition output as a strided view, for example when
+the partition ends in Slice + Reshape. The compute function bound that
+output parameter straight onto ORT's dense output tensor with MIGraphX's
+shape: the view's span is larger than the dense tensor, so the write
+overran the allocation and ORT read the strided bytes as dense. The result
+was wrong and changed between runs (ORT 1.31.0, MIGraphX 2.18.0, gfx1201).
+
+An output whose parameter shape is not standard is now staged in a scratch
+buffer from the kernel context's allocator and copied into ORT's tensor by
+a one-op "contiguous" program compiled for the same target, cached per
+output parameter and rebuilt with the program. Standard outputs are bound
+as before.
+
+The new test runs Add -> Slice -> Reshape on the MIGraphX EP twice and
+compares with the expected values.
+---
+ .../migraphx/migraphx_execution_provider.cc   | 48 ++++++++++-
+ .../migraphx/migraphx_execution_provider.h    |  2 +
+ .../providers/migraphx/migraphx_basic_test.cc | 84 +++++++++++++++++++
+ 3 files changed, 133 insertions(+), 1 deletion(-)
+
+diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
+index cc7144e..b1ff48e 100644
+--- a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
++++ b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
+@@ -1306,6 +1306,27 @@ std::string make_hash(const char* v) {
+ constexpr std::uint64_t MIGraphX_Version =
+     ((MIGRAPHX_VERSION_MAJOR << 16) | (MIGRAPHX_VERSION_MINOR << 8) | MIGRAPHX_VERSION_PATCH);
+ 
++// MIGraphX may return a partition output as a strided view (a partition that ends in Slice/Reshape).
++// ORT's output tensor is dense and smaller than the view's span, so such an output is staged in a
++// scratch buffer and copied through a one-op "contiguous" program compiled for the same target.
++static migraphx::program MakeContiguousProgram(const migraphx::shape& view, const migraphx::target& t) {
++  migraphx::program prog;
++  auto mm = prog.get_main_module();
++  auto x = mm.add_parameter("x", view);
++  auto y = mm.add_instruction(migraphx::operation("contiguous"), migraphx::instructions{x});
++  mm.add_return(migraphx::instructions{y});
++  prog.compile(t);
++  return prog;
++}
++
++struct StridedOutput {
++  std::string name;
++  migraphx::shape view;
++  void* output_data;
++  Ort::Allocator allocator;
++  Ort::MemoryAllocation scratch;  // declared last: freed before the allocator that owns it
++};
++
+ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
+                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
+   migraphx::onnx_options options;
+@@ -1534,6 +1555,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
+         }
+ 
+         mgx_state->prog = prog;
++        mgx_state->contiguous_progs.clear();
+         param_shapes = prog.get_parameter_shapes();
+         no_input_shape = false;
+       }
+@@ -1541,6 +1563,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
+       migraphx::program_parameters m;
+       auto prog_output_shapes = prog.get_output_shapes();
+       std::vector<std::size_t> prog_output_indices;
++      std::vector<StridedOutput> strided_outputs;
+       if (param_shapes.size() > 0) {
+         for (auto&& name : param_shapes.names()) {
+           if (map_input_name_index.count(name) > 0) {
+@@ -1586,7 +1609,15 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
+ 
+               // argument shape
+               auto mgx_arg_shape = param_shapes[name];
+-              m.add(name, migraphx::argument(mgx_arg_shape, output_data));
++              if (mgx_arg_shape.standard()) {
++                m.add(name, migraphx::argument(mgx_arg_shape, output_data));
++              } else {
++                const OrtMemoryInfo* mem_info = output_tensor.GetTensorMemoryInfo();
++                Ort::Allocator allocator = ctx.GetAllocator(*mem_info);
++                Ort::MemoryAllocation scratch = allocator.GetAllocation(mgx_arg_shape.bytes());
++                m.add(name, migraphx::argument(mgx_arg_shape, scratch.get()));
++                strided_outputs.push_back({name, mgx_arg_shape, output_data, std::move(allocator), std::move(scratch)});
++              }
+             }
+           }
+         }
+@@ -1600,6 +1631,21 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
+         Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
+         auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(rocm_stream));
+ 
++        for (auto& out : strided_outputs) {
++          auto it = mgx_state->contiguous_progs.find(out.name);
++          if (it == mgx_state->contiguous_progs.end()) {
++            it = mgx_state->contiguous_progs.emplace(out.name, MakeContiguousProgram(out.view, t)).first;
++          }
++          auto contiguous_shapes = it->second.get_parameter_shapes();
++          migraphx::program_parameters contiguous_params;
++          for (auto&& pname : contiguous_shapes.names()) {
++            const bool is_output = std::string_view(pname).find("#output_") != std::string_view::npos;
++            contiguous_params.add(pname, migraphx::argument(contiguous_shapes[pname],
++                                                            is_output ? out.output_data : out.scratch.get()));
++          }
++          it->second.run_async(contiguous_params, static_cast<hipStream_t>(rocm_stream));
++        }
++
+         // In case of input parameters are reused as output parameter call hipMemcpy
+         auto output_num = prog_outputs.size();
+         if (prog_output_indices.size() < output_num) {
+diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.h b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.h
+index 99f790b..c83e8c4 100644
+--- a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.h
++++ b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.h
+@@ -45,6 +45,8 @@ struct MIGraphXFuncState {
+   migraphx::onnx_options options;
+   migraphx::target t{};
+   std::unordered_map<std::string, std::size_t> input_name_indexes;
++  // One "contiguous" program per output parameter that MIGraphX returns as a strided view, keyed by its name.
++  std::unordered_map<std::string, migraphx::program> contiguous_progs;
+   std::mutex* mgx_mu_ptr = nullptr;
+   bool no_input_shape = false;
+   bool fp16_enable = false;
+diff --git a/onnxruntime/test/providers/migraphx/migraphx_basic_test.cc b/onnxruntime/test/providers/migraphx/migraphx_basic_test.cc
+index 9f85d37..17ff5a7 100644
+--- a/onnxruntime/test/providers/migraphx/migraphx_basic_test.cc
++++ b/onnxruntime/test/providers/migraphx/migraphx_basic_test.cc
+@@ -7,6 +7,7 @@
+ #include "gtest/gtest.h"
+ #include "test/util/include/default_providers.h"
+ #include "test/util/include/scoped_env_vars.h"
++#include "test/test_environment.h"
+ #include "core/providers/migraphx/migraphx_execution_provider_utils.h"
+ #include <string>
+ #include <thread>
+@@ -188,6 +189,89 @@ TEST(MIGraphXExecutionProviderTest, canEvalArgument) {
+   ASSERT_EQ(canEvalNodeArgument(gv, node2, {1}, input_nodes), true);
+ }
+ 
++/**
++ * Add -> Slice -> Reshape: MIGraphX keeps the sliced tensor a strided view and returns it as the
++ * partition's output, so the provider has to make it dense before ORT reads it.
++ */
++static void CreateSlicedViewModel(onnxruntime::Model& model) {
++  auto& graph = model.MainGraph();
++
++  ONNX_NAMESPACE::TypeProto float_tensor;
++  float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
++  for (int dim : {1, 2, 8}) {
++    float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
++  }
++  ONNX_NAMESPACE::TypeProto float_tensor_any;
++  float_tensor_any.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
++
++  // The NodeArg copies its TypeProto, so a local one per initializer is enough.
++  auto add_int64_initializer = [&graph](const std::string& name, const std::vector<int64_t>& values) -> NodeArg& {
++    TensorProto t;
++    t.add_dims(static_cast<int64_t>(values.size()));
++    for (auto v : values) t.add_int64_data(v);
++    t.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
++    t.set_name(name);
++    graph.AddInitializedTensor(t);
++    ONNX_NAMESPACE::TypeProto type;
++    type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
++    type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(static_cast<int64_t>(values.size()));
++    return graph.GetOrCreateNodeArg(name, &type);
++  };
++  TensorProto one;
++  one.add_dims(1);
++  one.add_float_data(1.f);
++  one.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
++  one.set_name("One");
++  graph.AddInitializedTensor(one);
++  auto& starts = add_int64_initializer("starts", {0});
++  auto& ends = add_int64_initializer("ends", {6});
++  auto& axes = add_int64_initializer("axes", {2});
++  auto& shape = add_int64_initializer("shape", {1, 2, 2, 3});
++
++  auto& x = graph.GetOrCreateNodeArg("X", &float_tensor);
++  auto& sum = graph.GetOrCreateNodeArg("sum", &float_tensor_any);
++  auto& sliced = graph.GetOrCreateNodeArg("sliced", &float_tensor_any);
++  auto& m = graph.GetOrCreateNodeArg("M", &float_tensor_any);
++  auto& one_arg = graph.GetOrCreateNodeArg("One", &float_tensor_any);
++  graph.AddNode("add", "Add", "", {&x, &one_arg}, {&sum});
++  graph.AddNode("slice", "Slice", "", {&sum, &starts, &ends, &axes}, {&sliced});
++  graph.AddNode("reshape", "Reshape", "", {&sliced, &shape}, {&m});
++  auto status = graph.Resolve();
++  ASSERT_TRUE(status.IsOK());
++}
++
++TEST(MIGraphXExecutionProviderTest, StridedPartitionOutputIsDense) {
++  PathString model_name = ORT_TSTR("migraphx_strided_output_test.onnx");
++  onnxruntime::Model model("migraphx_strided_output_test", false, DefaultLoggingManager().DefaultLogger());
++  CreateSlicedViewModel(model);
++  ASSERT_TRUE(onnxruntime::Model::Save(model, model_name).IsOK());
++
++  SessionOptions so;
++  so.session_logid = "MIGraphXExecutionProviderTest.StridedPartitionOutputIsDense";
++  InferenceSession session_object{so, GetEnvironment()};
++  ASSERT_TRUE(session_object.RegisterExecutionProvider(DefaultMIGraphXExecutionProvider()).IsOK());
++  ASSERT_TRUE(session_object.Load(model_name).IsOK());
++  ASSERT_TRUE(session_object.Initialize().IsOK());
++
++  std::vector<int64_t> dims_x = {1, 2, 8};
++  std::vector<float> values_x(16);
++  for (size_t i = 0; i < values_x.size(); ++i) values_x[i] = static_cast<float>(i);
++  OrtValue ml_value_x;
++  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value_x);
++  NameMLValMap feeds;
++  feeds.insert(std::make_pair("X", ml_value_x));
++
++  // (X + 1)[:, :, 0:6] reshaped to [1, 2, 2, 3]; a strided write read as dense gives other numbers.
++  std::vector<int64_t> expected_dims = {1, 2, 2, 3};
++  std::vector<float> expected_values = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 9.f, 10.f, 11.f, 12.f, 13.f, 14.f};
++  RunOptions run_options;
++  for (int run = 0; run < 2; ++run) {
++    std::vector<OrtValue> fetches;
++    ASSERT_TRUE(session_object.Run(run_options, feeds, {"M"}, &fetches).IsOK());
++    VerifyOutputs(fetches, expected_dims, expected_values);
++  }
++}
++
+ #if defined(WIN32)
+ static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
+   // Access the underlying InferenceSession.
+-- 
+2.53.0
+
