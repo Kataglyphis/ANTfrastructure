@@ -130,7 +130,11 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
       Open: 8 (in source, opt-in: `Invoke-BkVariantChain.ps1 -ConcurrentPush`, proved with fake builds only; the next multi-variant chain must show `final` and its gates as
       cache hits in the push child's log, and `-ConcurrentAux` still never ran),
       9 (parallel runtime builds: `BUILD_MEM_DIVISOR` plus a disk gate that sizes, worth it only
-      where builds outlast uploads). 10 is in source, opt-in: CON169. **The next 3-arch runtime run must show**: `[runtime-push] arch=amd64
+      where builds outlast uploads). 10 is in source, opt-in: CON169. **Shown by the 3-arch runtime run of
+      2026-11-06** (default, run 20261106-180139): `[runtime-push] arch=amd64 start` at 18:35 UTC before arm64's
+      `step=base` and the `[smoke arm64]` lines, `[runtime-push] arch=amd64 done` after them (two attempts, the
+      first lost its connection after 33 min), `queue drained: 3 push(es), waited 511s`, and both gates
+      `3 arch(es), 3 at a time`. The proof asked for: `[runtime-push] arch=amd64
       start` before arm64's `step=base` and `RUN` lines, `[runtime-push] arch=amd64 done` after
       them, `[runtime-push] queue drained: 3 push(es), waited N s` (the residual upload),
       `[runtime-gates] … 3 arch(es), 3 at a time`, `[smoke <arch>]` lines among the wrapper
@@ -401,7 +405,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
          reported `ok` because it counts operators and compares no detections; give it the parity check.
          Host setup the page did not say: `libmigraphx_c.so.3` comes only from AMD's `amdrocm10-migraphx`
          (Ubuntu 26.04's own ROCm 7.1 has no MIGraphX), `/opt/rocm/core-10.1/lib` and `extras-10/lib` go on the
-         loader path, and OmniAccelerANT needs `xvfb-run`. Rerun after CON225 ships.
+         loader path, and OmniAccelerANT needs `xvfb-run`. Rerun after CON225 ships. **CON225 is in the image
+         since 2026-11-05** (`:latest-rocm` republished 2026-11-07 00:24 UTC, amd64 `sha256:1dc71c8d3dfb…`), but
+         the four consumer GPU workflows last ran on 2026-11-03/04 against the unpatched image: dispatch them
+         first, then `~/gpu/run-con224-linux-amd.sh` with `LD_LIBRARY_PATH=/opt/rocm/core-10.1/lib:/opt/rocm/extras-10/lib`.
       2. Linux NVIDIA, on a machine with a supported card (not the RTX 2080 until CON217).
       3. Windows NVIDIA, on that machine. OrchestrANT's package uses DirectML there.
       Steps: [§ A package on your own GPU](docs/gpu-artifact-receipts.md#a-package-on-your-own-gpu). The Linux
@@ -426,7 +433,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `apply_ort_gpu_source_patches`, rebuild the rocm chain, and report upstream with the evidence in
       `~/gpu/work` on the build host. Windows DirectML has its own wrong-result class (CON220); the Windows
       ROCm image is not affected by this partition (its ORT is CUDA/DirectML only). Done when all four Linux
-      AMD packages pass `compare_detector_parity.py` on the RX 9070 XT (CON224 item 1).
+      AMD packages pass `compare_detector_parity.py` on the RX 9070 XT (CON224 item 1). In the image since the
+      rocm media build of 2026-11-05 (`APPLIED: ORT 003-migraphx-gridsample.patch` and
+      `004-migraphx-refuse-nonstandard-output.patch` in its log); the packages that prove it wait on CON224 item 1.
 
 - [ ] **CON217 — build CUDA compute capability 7.5, so RTX 20xx cards run the NVIDIA packages** [M, ★★].
       Owner decision 2026-11-02: add `75` (Turing: T4, RTX 20xx) to `CUDA_ARCHITECTURES`, today
@@ -496,7 +505,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       SDK RUN mounts both caches and pins its launcher, and ONNX Runtime, LiteRT and the riscv64 torch wheel pin
       `CCACHE_BINARY` against pthreadpool's FORCE, gated by `cmake_assert_compiler_cache_pin`. Done when a second
       chain's `sdk-arm64`/`sdk-riscv64` dependency step and ONNX Runtime's `onnxruntime 2/9` step log
-      `sccache-stats|` hits above 90 % of their compiles, and the Vulkan step drops below 10 min.
+      `sccache-stats|` hits above 90 % of their compiles, and the Vulkan step drops below 10 min. Measured
+      2026-11-06 (default arm64 media, `media-arm64.log` of run 20261106-161650): `onnxruntime 2/9` logged
+      `sccache-stats| 2922 requests, 2885 hits` (98.7 %), the largest step 6230 of 6230; DeepStream's step on the
+      nvidia arm64 media of 2026-11-06 logged 109 of 156. The sdk stage was not rebuilt in that round, so its
+      dependency step and the Vulkan step stay unmeasured.
 - [ ] **CON165 — ONNX Runtime builds with one job under `--parallel-archs`; prove the governor on a chain** [S, ★★★]. In source since 2026-10-27: the launcher's compile governor and `PAR_INTRA_STEP_BUDGET=2` ([docs](docs/build-parallelism-memory-tuning.md#the-compile-governor)). Done when a chain's resource trace keeps `compilers` at or under 32 with no OOM kill and ONNX Runtime and IREE log more than one job. Found 2026-10-26:
       `Using JOBS=1` in `media-arm64.log`, since `compute_jobs_with_mem_cap "" 2000` divides RAM by
       `BUILD_MEM_DIVISOR=18` (3 arches × `PAR_INTRA_STEP_BUDGET=6`). With the cache warm a serial build costs
@@ -509,17 +522,25 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ([`build-parallelism-memory-tuning.md`](docs/build-parallelism-memory-tuning.md)). Done when that step
       logs more than one job on an idle host and no arch is OOM-killed. IREE's wheelhouse build has the same
       cause: both its host and target LLVM builds ran `cmake --build … -- -j1` for over 3 h on arm64 and riscv64.
+      Measured 2026-11-05 (nvidia media, amd64 and arm64 under `--parallel-archs`, run 20261105-151158): ONNX
+      Runtime built its CPU variant with `-j6` (amd64) and `-j5` (arm64) and the GPU variant with `-j2`; alone
+      (default arm64 media, 2026-11-06) it logged `Using JOBS=26`. The trace peaked at 41 compilers (34 alone),
+      31 GB used and the 8 GB swap full, with no OOM kill in the kernel journal. The 32-compiler target is missed
+      by 9 under two arches: decide whether the cap or the full swap is the number to hold.
 - [ ] **CON168 — prove on a chain that one lane compiles the IREE host LLVM** [S, ★★]. In source since 2026-11-03
       ([`iree-two-stage-build.md` § One host stage per chain](docs/iree-two-stage-build.md#one-host-stage-per-chain)):
       the first lane builds under a lock in the `id=iree-host` cache mount, the next restores (`IREE_HOST_CACHE=off`
       reverts). `test-iree-host-once.sh` proves it with a stub `cmake`. Done when the next chain's arm64 and riscv64
-      media logs show one host compile and `IREE host stage: reusing` in the other lane.
+      media logs show one host compile and `IREE host stage: reusing` in the other lane. Seen 2026-11-05 on the
+      nvidia chain: `media-arm64.log` logged `IREE host stage: reusing` beside the amd64 lane; the three-arch
+      default chain has not run its media stage since (its arm64 media ran alone on 2026-11-06 and configured).
 - [ ] **CON169 — prove one pipeline per arch on a chain, then decide its default** [M, ★★★]. In source since
       2026-11-03, opt-in ([`linux-cross-builds.md` § One pipeline per arch](docs/linux-cross-builds.md#one-pipeline-per-arch)):
       `CROSS_ARCH_PIPELINE=1` runs each arch through its stages, with a per-lane disk guard scoped to finished arches.
       Proved by `test-arch-pipeline.sh` (rendezvous, stub stage runner, the real driver's dry run). Done when a chain
       logs an arch's `stage=android start` while another arch's `stage=media` runs, no image removal lands under a
-      running build, and the lanes' overlapping disk use fits; then make it the default or record why not.
+      running build, and the lanes' overlapping disk use fits; then make it the default or record why not. Not
+      exercised in the 2026-11-05/07 reruns, which ran the stock lanes; the async push (item 10 above) is proved.
 - [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★]. In source (CHANGELOG 2026-11-03,
       `_disk_guard_release_stale_records`), tested with stubs only. Done when the next chain resumed after a stop
       logs `left by a stopped chain: restarting buildkitd` and reclaims without a hand restart.
@@ -530,7 +551,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       secret. The bucket, both keys and this host's env files exist since 2026-10-26 (`--check` passes); a
       new chain host runs `set-asset-mirror.sh --from <ssh-target> --url <bucket-url>`. Filled on 2026-10-27 from that chain's
       misses: 32 of 33 assets. Done when the next chain logs
-      `asset-mirror| hit` for the pinned assets.
+      `asset-mirror| hit` for the pinned assets. **Not proved on 2026-11-06/07** (default, rocm and nvidia
+      reruns): `~/.config/kataglyphis/asset-mirror.env` is absent on the build host (`set-asset-mirror.sh --check`
+      says so), `append_asset_mirror_secret` therefore mounted no secret, and no stage log of the round carries an
+      `asset-mirror|` line; `host_secret_file_ready` is silent on a missing file. The owner re-runs
+      `set-asset-mirror.sh --from <garage-host>`; a one-line `[INFO] asset mirror: none` at chain start would make
+      the next absence visible.
 
 - [ ] **CON129 — finish GTK 4 validation on foreign arches and GPU variants** [M, ★★★].
       The mandatory `gui_unix` feature is enabled in OxidANT. On the recorded `3c558d88` index,
@@ -1642,7 +1668,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       - OmniAccelerANT's `nvinfer` path: later, by owner decision (2026-10-12).
       - `nvblender` upstream: a forum draft (both defects, with the RTX 2080's repro) waits for the owner's review in
         `~/upstream-drafts/2026-10-12/nvidia-deepstream/` on the build host; nothing is posted.
-      - **Phase 7 (arm64): in source since 2026-11-04, unproved.** The Jetson runtime `.deb` plus the three Tegra
+      - **Phase 7 (arm64): proved 2026-11-06.** The nvidia arm64 package stage passed the DeepStream gates and
+        `:latest-nvidia` (published 2026-11-06 16:14 UTC) carries the arm64 child `sha256:5da325d78f3d…` beside
+        amd64 `sha256:308346ff945e…`, after the fix trail e8307eb9, 2e7ad352, 1e12dfbf and fe7506ce (RUNPATHs,
+        `$ORIGIN`, TensorRT 10, the CUDA SONAMEs from the host toolkit). The nine elements register from the
+        cross-compiled tree. Left for arm64: a GPU run on a Jetson or an SBSA host, as phase 8 did on amd64.
+        What phase 7 ships: the Jetson runtime `.deb` plus the three Tegra
         libraries only NVIDIA's SBSA container ships (`/usr/lib/aarch64-linux-gnu/tegra`), staged by hand through
         `stage-deepstream-sbsa.sh` and pinned by digest and sha256; TensorRT 10 from the repo's `sbsa` path; the
         components cross-compiled with the gpu stage's CUDA cross target ([§ DeepStream on arm64 (SBSA)](docs/linux-accelerator-images.md#deepstream-on-arm64-sbsa)).
