@@ -13,6 +13,79 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-07 — the CUDA cache probe runs again and proves a write
+
+- `Test-CudaCache.ps1` and `Test-Rdna4LayerLock.ps1` computed the repo root one level short and
+  stopped at `Import-Module` (`windows\windows\scripts\modules`). `Diagnostics.ModulePaths.Tests.ps1`
+  evaluates every diagnostic script's repo root and module import, with two mutations.
+- The probe's nonce sat in a comment, which preprocessing strips from sccache's key, so a warm
+  cache hit twice; sccache 0.19 also prints no write count. The nonce is now code, and the probe
+  requires a miss, then a hit (`Diagnostics.CudaCacheProbe.Tests.ps1`, two mutations).
+  It passed on `bk-windows-toolchain-nvidia`: 4 misses, then 4 hits (CON229).
+
+## 2026-11-06 — IREE builds outside the 20 GB RUN scratch
+
+- The amd64 media-tvm stage failed with `No space left on device` in IREE's compiler wheel while
+  the host had 65 GB free: every Windows RUN gets a sandbox of about 20 GB, and IREE with LLVM
+  in-tree left 0.3 GB. Its build tree now lives on the RUN's `iree-build-winamd64` cache mount at
+  `C:\iree-build`, emptied before configure and after the wheels; a checkout run keeps the old tree.
+  Each wheel logs the free space it starts with. `SourceBuild.IreeScratch.Tests.ps1` and six
+  mutations hold the path on both sides, the resolver and both resets.
+
+## 2026-11-06 — develop is green again after the Windows image fixes
+
+- The push of `b2b906d8` turned Linux preflight, eight mutation shards and the Windows patch-drift
+  job red (#234, #235). The Windows suites behind the new recipes failed on Linux pwsh, where CI
+  proves them: the meson provenance case and the MSVC notice suite now use separators and an
+  interpreter every host has, and the cases that need Windows (cmd.exe, VsDevCmd, the twin builds)
+  moved to `TorchApp.SdistCompilerVs.Tests.ps1`, leaving the recipes on `SourceBuild.IreeTwin.Tests.ps1`.
+- `LIBVPX_MESON_SHA256`, `DIRECTML_NUPKG_SHA256` and `LIBVPX_VERSION` are classified in
+  `bump_versions.py`; `genai-guidance-smoke.py` passes ty. New duplication was refactored away rather
+  than budgeted: `Get-BinDllProvenanceEntry` (OpenSSL and the MSVC runtime), `Add-IreeNinjaTuFlag`,
+  and `WindowsPythonApp.Common` re-exporting the notice API. Two allowlist rows became stale and left.
+- The drift check maps `002-libvpx-clangcl-simd-flags.patch` to the libvpx meson port at
+  `LIBVPX_MESON_COMMIT`, which the wrap applies it to, instead of GStreamer's tree.
+- The libvpx patch's repo now lives in the drift check's one repo map (`Patches`), not a second table
+  whose parameter duplicated another suite's signature; the TensorRT and MSVC-notice recipe families
+  are declared in `gate-proofs.allow`.
+- `wsl-quality.sh check` hands the suites one absolute interpreter path: 108 of them run
+  `"${PREFLIGHT_PYTHON}"` quoted, so the multi-word `uv run ... python` exited 127 in each.
+- Still red until `:winarm64` is published again (#236): the device gate runs the published bundle,
+  which predates libvpx (`no element "vp8enc"`) and the onnxinference wide-path fix (0xC0000005).
+
+## 2026-11-06 — Windows packages carry the MSVC runtime's notice
+
+- A ZIP, MSIX or MSI that carries the VC++ runtime ships `licenses/msvc-runtime/Redist.txt` and a
+  `README.txt` with the end-user notice and the learn.microsoft.com link; the wording is a draft for
+  review. CPack installs both and adds the notice to the WiX licence page; `New-PortableBundle` and
+  the Python app bundle stage them; `Assert-PackageMsvcRuntimeNotice` fails a finished package with
+  the runtime and without the notice (`WindowsMsvcRuntimeNotice.Common.psm1`, CON228;
+  `Msvc.RuntimeNotice.Tests.ps1`, `test-cmake-windows-arch.sh`, four `msvc-notice` recipes).
+
+## 2026-11-06 — ORT's LLM kernels compile through sccache on Windows
+
+- `onnxruntime_providers_cuda_llm`, the last CUDA target on bare nvcc, keeps the sccache launcher:
+  `Get-OrtPtxLauncherExemptArg` and `sccache-ptx-exempt.cmake` are gone. The hub's sccache build
+  carries mozilla/sccache#2809, and in the nvidia toolchain image it compiled `sm_86` plus PTX-only
+  `compute_120` without `Missing "cubin" file output`, warm 5 of 5 from the cache.
+  `SourceBuild.OrtCudaLauncher.Tests.ps1` refuses an exemption's return
+  (`lib.ort-cuda-launcher-no-exemption`, `sccache.ptx-only-pass-runs-uncached`). The chain proof
+  (provider link from hits, smoke gate, `Test-Cache.ps1`) comes with the next nvidia chain.
+- v0.19.0 is exactly `SCCACHE_SOURCE_REV` and carries #2876; #2809 merged on 2026-11-02 and is in no
+  release yet, so the hub's build stays (`shared/upstream/sccache/README.md`).
+
+## 2026-11-06 — The Windows nvidia lane downloads TensorRT and fails without it
+
+- `Install-Tensorrt.ps1` guessed the pre-11.x file names, which 404 for TensorRT 11, so every
+  `-Gpu` image shipped without TensorRT while the log read "Continuing WITHOUT TensorRT". It now
+  downloads `TensorRT-Enterprise-<ver>-Windows-amd64-cuda-<cuda>-Release-external.zip` from
+  `developer.nvidia.com/downloads/compute/machine-learning/tensorrt/`, for the image's CUDA line
+  only, and grades it with the unchanged `TENSORRT_ZIP_SHA256`: the 11.4.0.106 zip fetched on the
+  host on 2026-11-06 hashed to the pin. A staged zip in `windows/downloads/` still wins.
+- No TensorRT now fails the nvidia lane (owner, 2026-11-06): the installer and `Set-TensorrtTree.ps1`
+  throw, and the smoke gate fails an `-ExpectGpu` image with an empty `TENSORRT_ROOT`
+  (`host.trt-url-tensorrt11-scheme`, `host.trt-missing-throws`, `smoke.trt-required-expect-gpu`).
+  The runtime-only rule is unchanged. Windows arm64 TensorRT stays off as an owner decision (CON230).
 ## 2026-11-06 — QNN's Hexagon skeletons are DSP payload, and NVIDIA's gst plugins are recorded
 
 - The first green arm64 nvidia package stage reached the runtime-image smoke, which failed on 107 QDSP6 objects

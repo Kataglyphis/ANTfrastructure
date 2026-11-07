@@ -1686,14 +1686,36 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
       Left separately, before a release: the installer's licence wording for the end-user terms.
-- [ ] **CON228 — the MSVC runtime's notice in every Windows installer** [M, ★★]. Agreed 2026-11-05, after the running chains. A shared hub helper stages `Redist.txt` under `licenses\msvc-runtime\` when an installer carries the runtime,
+- [x] **CON228 — the MSVC runtime's notice in every Windows installer** [M, ★★]. Done 2026-11-06 in source ([`third-party-licenses.md` § The MSVC runtime notice](docs/third-party-licenses.md#the-msvc-runtime-notice)); the notice's wording is still a draft for review.
+      Before: Agreed 2026-11-05, after the running chains. A shared hub helper stages `Redist.txt` under `licenses\msvc-runtime\` when an installer carries the runtime,
       called from CMake packaging, `New-PortableBundle` and the Python app path, with a gate on the finished MSI, MSIX and ZIP. The owner accepts a link instead of the full terms, but `https://aka.ms/vs/18/redistribution.lic` reached Bing's start page on 2026-11-05,
       so the manifest and installers name `https://learn.microsoft.com/en-us/visualstudio/releases/2026/redistribution`.
       The owner also wants the end-user paragraph on the installers' licence page (2026-11-05); its wording is a draft until someone qualified has read it.
       Decided the same day: the GPU run of `006-dml-matmul-1d-rhs.patch` follows the image build, and the arm64 device run of the bundle comes later.
-- [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). ORT's `onnxruntime_providers_cuda_llm` still runs nvcc bare (`sccache-ptx-exempt.cmake`), though the hub's sccache build carries the #2862 fix, proven only on Linux.
-      Drop the exemption and clear the bar: a provider link from hits, the smoke gate, and `Test-CudaCache.ps1`. Then measure CPython's MSBuild, gst-plugins-rs and Bazel per stage and report what stays uncached and why.
-- [ ] **CON230 — the Windows lane downloads TensorRT itself** [S, ★★★]. `Install-Tensorrt.ps1` tries the pre-11.x file names, so it always 404s. On 2026-11-05 `developer.nvidia.com/downloads/compute/machine-learning/tensorrt/11.4.0/zip/TensorRT-Enterprise-11.4.0.106-Windows-amd64-cuda-13.4-Release-external.zip`
+- [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
+      Done 2026-11-06: the `cuda_llm` exemption is gone (CHANGELOG). The nvidia chain of 2026-11-06 compiled ORT's CUDA RUN through sccache, MoE kernels included: 4937 compilations, 0 failures, 4330 WebDAV writes; 1663 hits (25 %) on a freshly rebuilt toolchain. `Test-CudaCache.ps1` passed on that toolchain (4 misses, then 4 hits). Still open: the warm rerun, and 289 failed S3 writes in that RUN.
+      What still compiles outside sccache, from the chain logs of 2026-11-05/06 (rocm, nvidia, arm64), longest first:
+
+      | Stage | Step | Uncached share | Reason | Possible fix |
+      |---|---|---|---|---|
+      | merge (GStreamer) | meson setup probes | 382-385 s amd64, 1028 s arm64 | compile-and-link probes (`/Fe`) | not sccache's: fewer probes or a cached meson configure |
+      | media-core (nvidia) | GenAI's 6 CUDA files | about 280 s of a 439 s step | no CUDA launcher ARG on that RUN | map a `GENAI_CUDA_LAUNCHER` ARG to `SCCACHE_CUDA_LAUNCHER`, as OpenCV does |
+      | toolchain | host CPython, GIL and free-threaded | 237 s | MSBuild `build.bat`, and the RUN has no sccache mounts | mounts plus an sccache `cl` for MSBuild (`CLToolExe`), untested |
+      | media-core (arm64) | target CPython | 204 s | same as host CPython | same |
+      | media-tvm | apache-tvm-ffi wheel and its cp315t twin | about 188 s, unconfirmed | scikit-build-core configures without a launcher | `CMAKE_*_COMPILER_LAUNCHER` around the pip calls; confirm with stats first |
+      | merge (GStreamer) | gst-plugins-rs cargo | 177-190 s | cdylibs, which sccache cannot cache (documented) | a cargo target-dir cache mount or a version-keyed stage |
+      | media-core (ffmpeg) | PyAV wheel and twin | most of 123-127 s | setuptools calls `cl.exe` bare | an sccache shim as `cl.exe` with `DISTUTILS_USE_SDK=1` |
+      | torch (rocm) | torchvision | 44 s, 0 requests | `BuildExtension` calls the compilers directly | an sccache shim on PATH, untested |
+      | media-core (ffmpeg) | dav1d, x264 | about 22 s each | meson collapses `CC='sccache clang-cl'` (hub #182) | `New-SccacheCompilerShim`, as GStreamer does |
+      | merge (arm64) | psutil sdist | 24 s | no sccache mounts; the shim copies clang-cl | sccache shim plus mounts |
+      | media-core | GenAI llguidance cargo | tens of seconds, unmeasured | no `RUSTC_WRAPPER` | `RUSTC_WRAPPER=sccache` for that cargo call |
+      | base | `cargo install` tools, vcpkg zlib | not measured (cache hits) | sccache is not installed yet in that stage | low value |
+
+      Not sccache, but cached: LiteRT-LM and the LiteRT wheel use Bazel's own remote cache (WebDAV only, no S3 level). Cached but never drained, so their stats are missing and S3 uploads can be lost: HailoRT, the OpenCV GStreamer plugin, the arm64 Vulkan validation layers.
+      Open questions: the 569 "non-cacheable" nvcc runs in ORT's nvidia stats, and the rocm ORT run that lost its S3 level to a 10 s server-start timeout.
+- [x] **CON230 — the Windows lane downloads TensorRT itself** [S, ★★★]. Done 2026-11-06 in source: the download, the pin check and the loud failure (CHANGELOG); the first nvidia chain with TensorRT is still to run.
+      Open, an owner decision: Windows arm64 TensorRT. 11.4.0 lists a Windows arm64 zip, and the cross bundle builds ORT without the TensorRT EP today.
+      Before: `Install-Tensorrt.ps1` tries the pre-11.x file names, so it always 404s. On 2026-11-05 `developer.nvidia.com/downloads/compute/machine-learning/tensorrt/11.4.0/zip/TensorRT-Enterprise-11.4.0.106-Windows-amd64-cuda-13.4-Release-external.zip`
       answered a plain request with a zip, no login; NVIDIA's page asks to accept the licence first. Fix the URLs, verify against `TENSORRT_ZIP_SHA256`, keep the runtime-only rule, and correct the docs that call it login-gated. 11.4.0 also lists a Windows arm64 zip, which the docs' "x64-only" contradicts; arm64 is an owner decision.
 - [ ] **CON222 — evaluate offline gitleaks availability in consumer images** [S, ★★].
       On 2026-11-01, the cached Linux amd64 CPU image at registry digest

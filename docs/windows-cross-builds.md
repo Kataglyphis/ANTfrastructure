@@ -1328,7 +1328,7 @@ it finds one, without weakening the short-circuit for genuine errors.
 
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
 
-TensorRT is **not downloaded automatically** — it needs an accepted NVIDIA EULA.
+The `-Gpu` lane **downloads TensorRT itself** since 2026-11-06 (CON230); a staged zip wins.
 [`docs/windows-builds.md`](windows-builds.md) § TensorRT setup owns the
 staging procedure, the `current/` rationale and the reasoning behind each rule
 below. The rules themselves:
@@ -1340,11 +1340,9 @@ below. The rules themselves:
   failing the build loudly is intended.
 - `TENSORRT_VERSION` must never derive a **filesystem** path or the runtime
   PATH; the tree is resolved from disk and normalised to `current`.
-- **No zip staged is the NORMAL state of this host's GPU lane — do NOT
-  re-harden the graceful skip into a fail-fast.** That was tried on 2026-08-04
-  and reverted the next day.
-- **A PRESENT zip fails CLOSED**: a half-extracted tree is a build failure,
-  while an absent one is supported.
+- **No TensorRT fails the nvidia lane** (owner, 2026-11-06). The graceful skip
+  of 2026-08-05 is gone: it existed only because nothing could fetch the zip.
+- **A PRESENT zip fails CLOSED**: a half-extracted tree is a build failure.
 
 ## QNN staging on Windows, as AGENTS.md carried it
 

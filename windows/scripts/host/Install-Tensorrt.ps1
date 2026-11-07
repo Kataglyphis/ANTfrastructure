@@ -49,56 +49,46 @@ function Find-TensorRtStagedZip {
     return $null
 }
 
-function Invoke-TensorRtZipDownload {
-    param([Parameter(Mandatory)][string]$Version, [Parameter(Mandatory)][string]$Destination)
+function Get-TensorRtZipUrl {
+    param([Parameter(Mandatory)][string]$Version, [Parameter(Mandatory)][string]$Cuda)
     $parts = $Version.Split('.')
     $dirVersion = if ($parts.Length -ge 3) { "$($parts[0]).$($parts[1]).$($parts[2])" } else { $Version }
-    # The first URL follows the CUDA pin; all are auth-gated guesses that may 404.
-    $cudaSuffix = Resolve-ContainerImageValue -EnvironmentVariable 'CUDA_VERSION_MAJOR_MINOR' -DefaultValue '13.4'
-    $urls = @(
-        "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$Version.Windows10.x86_64.cuda-$cudaSuffix.zip",
-        "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$Version.Windows10.x86_64.cuda-13.0.zip",
-        "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$Version.Windows10.x86_64.cuda-12.8.zip"
-    ) | Select-Object -Unique
-    foreach ($url in $urls) {
-        Write-Host "Trying download: $url"
-        # PK rejects NVIDIA's login HTML page, so a guess falls through instead of extracting garbage.
-        try {
-            Invoke-DownloadWithRetry -Url $url -DestinationPath $Destination -MaxAttempts 1 -InitialDelaySeconds 0 -ExpectSignature PK -Description "TensorRT $Version"
-            return $true
-        } catch {
-            Write-Host "  Failed: $($_.Exception.Message)"
-        }
-    }
-    return $false
+    return "https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/$dirVersion/zip/TensorRT-Enterprise-$Version-Windows-amd64-cuda-$Cuda-Release-external.zip"
 }
 
-# Find a TensorRT zip: local path arg > repo downloads dir > download from NVIDIA
-$trtZip = $null
-
-# 1. Check explicit local path
-if ($LocalZipPath -and (Test-Path $LocalZipPath)) {
-    $trtZip = $LocalZipPath
-    Write-Host "Using TensorRT zip from: $LocalZipPath"
-}
-
-if (-not $trtZip) { $trtZip = Find-TensorRtStagedZip -RepoDir (Join-Path $env:TEMP_DIR 'downloads') }
-
-# 4. Download from NVIDIA (fallback, may fail without auth)
-if (-not $trtZip -and $TensorRtVersion) {
-    $trtZip = Join-Path $env:TEMP 'tensorrt.zip'
-    if (-not (Invoke-TensorRtZipDownload -Version $TensorRtVersion -Destination $trtZip)) {
-        # Graceful skip: no zip is a supported configuration, and ORT skips the TensorRT EP on an empty root.
-        Write-Warning ('TensorRT {0} not available (EULA-gated download; no zip staged in windows\downloads). Continuing WITHOUT TensorRT — CUDA + cuDNN still work, the ORT TensorRT EP stays disabled. To include it: place tensorrt-*.zip in windows\downloads\ or pass -LocalZipPath / set TENSORRT_ZIP_PATH.' -f $TensorRtVersion)
-        return
+function Invoke-TensorRtZipDownload {
+    param([Parameter(Mandatory)][string]$Version, [Parameter(Mandatory)][string]$Destination)
+    # Only the image's CUDA line: a zip built for another CUDA major links a cudart the image does not carry.
+    $cuda = Resolve-ContainerImageValue -EnvironmentVariable 'CUDA_VERSION_MAJOR_MINOR' -DefaultValue '13.4'
+    $url = Get-TensorRtZipUrl -Version $Version -Cuda $cuda
+    Write-Host "Downloading TensorRT: $url"
+    # PK rejects an HTML licence page, so a changed NVIDIA scheme fails here instead of extracting garbage.
+    try {
+        Invoke-DownloadWithRetry -Url $url -DestinationPath $Destination -MaxAttempts 3 -InitialDelaySeconds 10 -ExpectSignature PK -Description "TensorRT $Version"
+        return $true
+    } catch {
+        Write-Host "  Failed: $($_.Exception.Message)"
+        return $false
     }
 }
 
-if (-not $trtZip -or -not (Test-Path $trtZip)) {
-    # Same graceful-skip contract as above.
-    Write-Warning 'No TensorRT zip found -- continuing WITHOUT TensorRT (CUDA + cuDNN still work). Stage the EULA-gated tensorrt-*.zip in windows\downloads\ to include it.'
-    return
+function Resolve-TensorRtZip {
+    param([string]$LocalZipPath, [Parameter(Mandatory)][string]$RepoDir, [string]$Version, [Parameter(Mandatory)][string]$Destination)
+    if ($LocalZipPath -and (Test-Path -LiteralPath $LocalZipPath)) {
+        Write-Host "Using TensorRT zip from: $LocalZipPath"
+        return $LocalZipPath
+    }
+    $staged = Find-TensorRtStagedZip -RepoDir $RepoDir
+    if ($staged) { return $staged }
+    if (-not $Version) { throw 'TensorRT: TENSORRT_VERSION is empty and no zip is staged; the nvidia lane needs TensorRT.' }
+    # A missing TensorRT once shipped silently as a CUDA-only image; see docs/windows-cross-builds.md § TensorRT.
+    if (-not (Invoke-TensorRtZipDownload -Version $Version -Destination $Destination)) {
+        throw "TensorRT $Version could not be downloaded and no zip is staged in windows\downloads; the nvidia lane needs TensorRT."
+    }
+    return $Destination
 }
+
+$trtZip = Resolve-TensorRtZip -LocalZipPath $LocalZipPath -RepoDir (Join-Path $env:TEMP_DIR 'downloads') -Version $TensorRtVersion -Destination (Join-Path $env:TEMP 'tensorrt.zip')
 
 # Whichever tier found the zip, it must match the pin; an empty pin warns, a mismatch throws.
 $trtSha = Resolve-ContainerImageValue -EnvironmentVariable 'TENSORRT_ZIP_SHA256' -DefaultValue ''

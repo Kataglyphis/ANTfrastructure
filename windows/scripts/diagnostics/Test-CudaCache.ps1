@@ -14,7 +14,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Import-Module (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'windows\scripts\modules\WindowsScripts.Shared.psm1')
+$repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsScripts.Shared.psm1')
 
 if (-not $Endpoint) { throw 'no WebDAV endpoint: pass -Endpoint or set SCCACHE_WEBDAV_ENDPOINT (Machine scope)' }
 $BuildCtl = Resolve-BuildCtlPath -BuildCtl $BuildCtl
@@ -33,7 +34,6 @@ try {
     Set-Content -Path (Join-Path $ctx 'Dockerfile') -Value ($runLines -join "`n") -Encoding ascii
 
     Write-Host "== CUDA cache verify: $BaseImage vs $Endpoint ==" -ForegroundColor Cyan
-    $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
     $fullLog = Get-DiagnosticLogPath -RepoRoot $repoRoot -Name 'verify-cuda-cache'
     # No --output: the verdict is the RUN's exit code, and an export would only litter the store.
     & $BuildCtl --addr npipe:////./pipe/buildkitd build --frontend dockerfile.v0 `

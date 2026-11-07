@@ -5,7 +5,9 @@
 
 Set-StrictMode -Version Latest
 
-Import-Module (Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1') -DisableNameChecking -ErrorAction Stop
+foreach ($sibling in 'WindowsTargetArch.Common', 'WindowsMsvcRuntimeNotice.Common') {
+    Import-Module (Join-Path $PSScriptRoot "$sibling.psm1") -DisableNameChecking -ErrorAction Stop
+}
 
 # Where the family images install the media stack's DLLs, for the target arch of the image.
 $script:ImageRuntimeBin = 'C:\runtime\bin'
@@ -125,6 +127,8 @@ function Copy-PeImportClosure {
     The bundle runs on a clean machine. The installers are the build dir's .msi and .zip, and the .exe NSIS names like one of them;
     its other .exe files are tests. With -RequireCompleteInstall a DLL the closure has to add throws: the installers pack the
     install tree, so every one of them would lack it.
+.PARAMETER PackageCheck
+    Checks one finished .msi or .zip as { param($Path, $RedistText) }; the default is Assert-PackageMsvcRuntimeNotice.
 .PARAMETER Runner
     Runs cmake as { param($File, [string[]]$Arguments) }; the default throws on a non-zero exit. A build passes its logged runner.
 .OUTPUTS
@@ -139,6 +143,7 @@ function New-PortableBundle {
         [string]$Arch = '',
         [string[]]$SearchDirectory = @(),
         [switch]$RequireCompleteInstall,
+        [scriptblock]$PackageCheck = { param($Path, $RedistText) Assert-PackageMsvcRuntimeNotice -Path $Path -RedistText $RedistText },
         [scriptblock]$Runner = { param($File, [string[]]$Arguments) & $File @Arguments; if ($LASTEXITCODE) { throw "$File $($Arguments -join ' ') exited $LASTEXITCODE" } }
     )
 
@@ -159,9 +164,14 @@ function New-PortableBundle {
         throw "The install tree lacks $($added -join ', '), which its binaries import, so every installer would ship without it: seed the package DLL closure with the binary that imports it."
     }
 
+    # CPack installs the notice itself; a closure-added runtime gets it here.
+    $redist = Join-Path $bundle 'licenses\msvc-runtime\Redist.txt'
+    if (-not (Test-Path -LiteralPath $redist -PathType Leaf)) { $redist = Copy-MsvcRuntimeNotice -Root $bundle }
+
     $null = New-Item -ItemType Directory -Force -Path $packages
-    $installers = @(Get-ChildItem -LiteralPath $BuildDir -File | Where-Object { $_.Extension -in '.msi', '.zip' })
-    $installers += @($installers | ForEach-Object { Join-Path $BuildDir "$($_.BaseName).exe" } | Select-Object -Unique |
+    $cpack = @(Get-ChildItem -LiteralPath $BuildDir -File | Where-Object { $_.Extension -in '.msi', '.zip' })
+    foreach ($installer in $cpack) { & $PackageCheck $installer.FullName $redist }
+    $installers = $cpack + @($cpack | ForEach-Object { Join-Path $BuildDir "$($_.BaseName).exe" } | Select-Object -Unique |
             Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Get-Item)
     $installers | Copy-Item -Destination $packages
     return [pscustomobject]@{ Bundle = $bundle; Packages = $packages; Added = $added; Installers = @($installers | ForEach-Object Name) }

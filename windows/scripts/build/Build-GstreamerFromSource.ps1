@@ -1253,12 +1253,12 @@ function Write-GstNativeProvenance {
     $entries = [System.Collections.Generic.List[object]]::new()
     foreach ($entry in @(Get-MesonProvenanceEntry -BuildDir $resolvedBuildDir -SourceDir $gstSrcDir -Root $resolvedInstallDir -NoticeDir $noticeDir -Wrap $script:GstWrapInventory -RootSource $rootSource)) { $entries.Add($entry) }
     # OpenSSL is a package copied in, not a subproject: its license sits beside the installed tree.
-    $sslTexts = @(Get-ChildItem -LiteralPath $SslRoot -Recurse -File -Include 'license*.txt', 'LICENSE' -ErrorAction SilentlyContinue | Select-Object -First 1)
-    if ($sslTexts.Count -eq 0) { throw "no OpenSSL license text under $SslRoot" }
-    $sslNotice = Copy-NativeNotice -Root $resolvedInstallDir -NoticeDir $noticeDir -Name 'openssl' -File @($sslTexts[0].FullName)
-    foreach ($dll in @(Get-ChildItem -Path (Join-Path $resolvedInstallDir 'bin\*') -File -Include 'libcrypto-*.dll', 'libssl-*.dll')) {
-        $entries.Add((New-NativeProvenanceEntry -Root $resolvedInstallDir -File "bin\$($dll.Name)" -Notice $sslNotice -Source @{ Name = 'OpenSSL'; Version = $dll.VersionInfo.ProductVersion; Url = "file:$SslRoot" }))
-    }
+    $ssl = @{ Root = $resolvedInstallDir; NoticeDir = $noticeDir; Name = 'openssl'; NoticeFile = {
+            $texts = @(Get-ChildItem -LiteralPath $SslRoot -Recurse -File -Include 'license*.txt', 'LICENSE' -ErrorAction SilentlyContinue | Select-Object -First 1)
+            if ($texts.Count -eq 0) { throw "no OpenSSL license text under $SslRoot" }
+            $texts[0].FullName
+        }.GetNewClosure() }
+    $entries.AddRange([object[]]@(Get-BinDllProvenanceEntry -Package $ssl -Include 'libcrypto-*.dll', 'libssl-*.dll' -SourceName 'OpenSSL' -SourceUrl "file:$SslRoot"))
     # gst-plugins-rs is cargo-built, so meson has no record of its two DLLs.
     $rsNotice = Copy-NativeNotice -Root $resolvedInstallDir -NoticeDir $noticeDir -Name 'gst-plugins-rs' -File @((Get-NativeNoticeFile -Directory $RustSourceDir).FullName)
     foreach ($name in @(Get-RequiredGstPlugin -Arch $script:GstTargetArch | Where-Object { $_.Detection -eq 'cargo' } | ForEach-Object { "gst$($_.Name).dll" })) {

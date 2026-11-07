@@ -113,6 +113,23 @@ path and its `-MediaCoreCpus` flag went with `build.ps1` on 2026-08-31. The
 litert/tvm aux branches get the whole budget once media-core is done — halved per
 child under `-ConcurrentAux`, which overlaps only those two.
 
+## The 20 GB RUN scratch
+
+Each `RUN` writes to a sandbox of about 20 GB, however much the host has free
+(measured 2026-11-06 on `bk-windows-toolchain`: 19.8 GB free, a 25 GB file fails
+with `There is not enough space on the disk`). A BuildKit cache mount is a separate
+snapshot without that cap: the same probe wrote 25 GB into one.
+
+A step that outgrows the sandbox fails with `No space left on device` while the
+host still has tens of GB. IREE did, with LLVM in its tree: after the ninja build
+and install the compiler wheel found 0.3 GB. Its build tree therefore lives on the
+media-tvm RUN's `iree-build-winamd64` cache mount at `C:\iree-build`, which
+`Build-IreeFromSource.ps1` uses whenever it exists; a checkout run without it keeps
+the tree under the source directory. The script empties the mount before configure,
+so no earlier run's tree reaches CMake, and again after the wheels, so the host gets
+the space back. `SourceBuild.IreeScratch.Tests.ps1` holds the path on both sides and
+both resets.
+
 ## Building a project inside the image, as AGENTS.md carried it
 
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.
@@ -398,7 +415,7 @@ Why the source build existed, and what would bring a bare-nvcc exception back:
   until the DLL link. A candidate must pass
   `windows/scripts/diagnostics/Test-CudaCache.ps1` (its in-container payload
   `verify-cuda-cache/Test-Cache.ps1` compiles the same `.cu` twice and asserts
-  a cache hit AND a backend write) plus an ONNX canary through the fused_moe
+  a miss on a per-run nonce in code, then a hit only a backend write can serve) plus an ONNX canary through the fused_moe
   launchers before cuda_llm is re-wrapped.
 
 **The CUDA launcher (`CMAKE_CUDA_COMPILER_LAUNCHER`) is ON BY DEFAULT since
@@ -424,10 +441,13 @@ after a decision history worth keeping:
   compiles through the launcher, link green).
 - Opt out per run with `-BuildArg SCCACHE_CUDA_LAUNCHER=`; **never flip the
   default off silently.**
-- **Except ORT's PTX-only targets when Blackwell is in the arch list (2026-09-26, narrowed
-  2026-10-15).** sccache 0.18.0 aborts an nvcc compile whose output for one arch is PTX only
-  (`Missing "cubin" file output`, mozilla/sccache#2862, open). The first chain with `120` died
-  at [2323/2383] on `fpA_intB_gemm`.
+- **ORT's PTX-only targets keep the launcher too, since 2026-11-06 (CON229).** Before, from
+  2026-09-26, they went bare: sccache 0.18.0 aborts an nvcc compile whose output for one arch is
+  PTX only (`Missing "cubin" file output`, mozilla/sccache#2862). The first chain with `120` died
+  at [2323/2383] on `fpA_intB_gemm`. The hub's sccache carries the fix (mozilla/sccache#2809,
+  [`shared/upstream/sccache/README.md`](../shared/upstream/sccache/README.md), proven on Windows
+  2026-11-06), so `Get-OrtPtxLauncherExemptArg` and `sccache-ptx-exempt.cmake` are gone;
+  `SourceBuild.OrtCudaLauncher.Tests.ps1` refuses their return. The history:
   - **Which targets.** ORT turns `86;87;89;120` into `86-real;87-real;89-real;120a-real`
     (`cmake/external/cuda_configuration.cmake`). Only `onnxruntime_providers_cuda_llm` (and
     the CUDA plugin's `_llm` twin) gets `120-virtual` instead, on MSVC alone
@@ -436,13 +456,11 @@ after a decision history worth keeping:
   - **Until 2026-10-15** `Disable-OrtCudaLauncherForPtx` kept nvcc bare for all of ORT, and
     the nvidia ORT stage took 83 min (4956 s in the chain of 2026-10-14, the longest step of
     any chain).
-  - **Now** `Get-OrtPtxLauncherExemptArg` keeps the launcher and passes
+  - **2026-10-15 to 2026-11-06** `Get-OrtPtxLauncherExemptArg` kept the launcher and passed
     `-DCMAKE_PROJECT_onnxruntime_INCLUDE=…/patches/onnxruntime/sccache-ptx-exempt.cmake`.
     That file, deferred to the end of ORT's configure, clears `CUDA_COMPILER_LAUNCHER` on
     every target with a `-virtual` arch and prints them
     (`sccache-ptx-exempt: nvcc stays bare for onnxruntime_providers_cuda_llm; …`).
-  - **Tests.** `SourceBuild.OrtCudaLauncher.Tests.ps1` runs CMake on a stand-in project:
-    a `-virtual` target loses the launcher, in a subdirectory too, and a real-only one keeps it.
   - **Measured on the nvidia stage, 2026-10-16:**
 
     | Run | Stage | CUDA through sccache |
@@ -455,8 +473,11 @@ after a decision history worth keeping:
     Configure printed `nvcc stays bare for onnxruntime_providers_cuda_llm` every time. Both warm
     builds linked `onnxruntime_providers_cuda` from hits, and the chain's smoke gate passed 301
     assertions with none skipped. `Test-CudaCache.ps1`, the third canary, did not run.
-  - Drop both when a released sccache fixes #2862. OpenCV passes `-real` archs only and is
-    unaffected.
+  - **The first chain without the exemption, 2026-11-06** (nvidia, after a toolchain rebuild):
+    ORT's CUDA RUN compiled 4937 times through sccache, `moe_gemm` kernels included, with 0
+    failures and 4330 WebDAV writes; 1663 hits (25 %), because the rebuilt toolchain re-keyed
+    most objects. `Test-CudaCache.ps1` passed the same night (4 misses, then 4 hits).
+  - OpenCV passes `-real` archs only and was never affected.
 
 **The disk level is off**: Windows BuildKit cache mounts lose writes into a directory
 an earlier RUN populated, so no chain names `disk`, and the host's WebDAV is level 0 (§ Two

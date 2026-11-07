@@ -1,12 +1,12 @@
 # The hub's sccache build
 
 Both lanes install sccache from the hub's release `sccache-v<SCCACHE_BUILD_ID>`, not from
-mozilla's. Two bugs that cost cache hits are fixed upstream, and no release carries either fix
-yet:
+mozilla's. Two bugs that cost cache hits are fixed upstream. v0.19.0 (2026-10-24) is exactly
+`SCCACHE_SOURCE_REV` and carries #2876; no release carries #2809 yet (checked 2026-11-06):
 
 | Bug | Effect here | Fix |
 |---|---|---|
-| mozilla/sccache#2862: a PTX-only gencode (`code=compute_90`) fails with `Missing "cubin" file output` | ORT's `-virtual` targets, and every CUDA compile on a Blackwell arch list, had to run nvcc bare | mozilla/sccache#2809 (open, unreviewed), in [`patches/`](patches/) |
+| mozilla/sccache#2862: a PTX-only gencode (`code=compute_90`) fails with `Missing "cubin" file output` | ORT's `-virtual` targets, and every CUDA compile on a Blackwell arch list, had to run nvcc bare | mozilla/sccache#2809, merged 2026-11-02, in [`patches/`](patches/) |
 | clang-cl C++20 named modules: an importer's cache key ignored the interfaces it imports, so sccache served stale objects | no Windows lane could keep its cache across CI runs | mozilla/sccache#2876, merged 2026-10-17 into `main` |
 
 `versions.env` pins the source: `SCCACHE_SOURCE_REV` (upstream `main` at #2876's merge) and
@@ -36,6 +36,14 @@ therefore only change their download base and version.
   identical to the bare build's. The objects linked, and the kernels gave the right results
   on the GPU. That was the failure shape of 2026-08-10: missing instantiations, visible
   only at link time.
+
+## Verified on Windows (2026-11-06, CUDA 13.4, the nvidia toolchain image)
+
+`sccache 0.19.0+965c019.pr2809` compiled a kernel for `sm_86` plus PTX-only `compute_120`
+(`-gencode arch=compute_120,code=compute_120`, the shape of ORT's `120-virtual`) without
+`Missing "cubin" file output`. The warm rerun took 5 of 5 cacheable steps from the cache, 2 of
+them PTX; the 2 ptxas verification passes ran uncached, as the patch intends. ORT's
+`onnxruntime_providers_cuda_llm` therefore keeps the launcher since then.
 
 ## Moving back to mozilla's releases
 

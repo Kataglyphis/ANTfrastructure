@@ -55,7 +55,8 @@ _ROOT="${_WORK}/repo with space"
 _LOG="${_WORK}/logs"
 _BASH="$(command -v bash)"
 mkdir -p "${_BIN}" "${_ROOT}/linux/scripts" "${_ROOT}/windows/scripts/tests" "${_LOG}" "${_WORK}/empty"
-printf '%s\n' '#!/usr/bin/env bash' 'echo preflight-fixture' > "${_ROOT}/linux/scripts/preflight.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'echo preflight-fixture' \
+  'printf "PREFLIGHT_PYTHON=%s\n" "${PREFLIGHT_PYTHON}" >> "${TEST_LINUX_CALLS}"' > "${_ROOT}/linux/scripts/preflight.sh"
 cat > "${_BIN}/wslpath" <<'SH'
 #!/usr/bin/env bash
 [ "${TEST_WSLPATH_RC:-0}" -eq 0 ] || exit "${TEST_WSLPATH_RC}"
@@ -104,6 +105,7 @@ SH
 cat > "${_BIN}/uv" <<'SH'
 #!/usr/bin/env bash
 [ "${1:-}" != --version ] || { printf '%s\n' 'uv 0.1.0'; exit 0; }
+case "$*" in *'print(sys.executable)'*) printf '%s\n' '/fixture/quality/.venv/bin/python'; exit 0 ;; esac
 printf '%s\n' 'uv fixture'
 SH
 cat > "${_BIN}/shellcheck" <<'SH'
@@ -259,6 +261,7 @@ t_assert_contains "${_run}" 'RC=0'
 t_assert_grep "${_WORK}/linux-calls" 'Invoke-Lint.ps1'
 t_assert_grep "${_WORK}/linux-calls" 'Invoke-CodeComplexity.ps1'
 t_assert_no_grep "${_WORK}/linux-calls" 'Invoke-Tests.ps1'
+t_assert_grep "${_WORK}/linux-calls" '^PREFLIGHT_PYTHON=/fixture/quality/[.]venv/bin/python$'
 t_assert_contains "$(cat "${_WORK}/native-argv")" 'C:\repo space\windows\scripts\tests\Invoke-Tests.ps1'
 t_assert_contains "$(cat "${_WORK}/native-argv")" "$(printf '%s\n' '-ExecutionPolicy' 'Bypass')"
 t_assert_contains "$(cat "${_WORK}/native-argv")" "$(printf '%s\n' '-Jobs' '3')"

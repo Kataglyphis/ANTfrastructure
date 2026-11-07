@@ -154,6 +154,7 @@ if (-not $VcRuntimeDir) {
 if (-not $VcRuntimeDir) { throw "No $packageArch VC++ redist CRT directory; pass -VcRuntimeDir" }
 $copied = @(Copy-PythonAppRuntimeClosure -Runtime $runtime -SearchDirectory $VcRuntimeDir -Arch $arch)
 Write-Host "  copied: $(@($copied | ForEach-Object { Split-Path $_ -Leaf }) -join ', ')"
+$null = Copy-MsvcRuntimeNotice -Root $bundle
 
 Write-Host '== import walk: every DLL a binary imports ships in the bundle or with Windows'
 & (Join-Path $PSScriptRoot '..\build\Test-TargetArch.ps1') -Path $bundle -Arch $arch -ImportWalk -Standalone -MinInspected 20

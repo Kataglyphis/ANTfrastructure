@@ -23,6 +23,13 @@ Describe 'Patch drift gate accounting' {
                     -RepoMap @{ mapped = @{ Url = 'unused'; Ref = 'v1' } } -Clones @{} -WorkDir $root -PatchExe 'unused'
                 Assert-Equal 'SKIP (no +++ b/ headers)' $created.Status
             } },
+        @{ Name = 'checks a patch against the repo that claims it, not its directory'; Files = @{ 'consumer/port.patch' = "--- /dev/null`n+++ b/new-file`n" }; Exercise = {
+                param($root)
+                $map = @{ consumer = @{ Url = 'unused'; Ref = 'c1' }; port = @{ Url = 'unused'; Ref = 'p1'; Patches = @('port.patch') } }
+                $claimed = Get-StaticPatchResult -Patch (Get-Item -LiteralPath (Join-Path $root 'consumer/port.patch')) -RepoMap $map -Clones @{} -WorkDir $root -PatchExe 'unused'
+                Assert-Equal 'port' $claimed.Repo
+                Assert-Equal 'p1' $claimed.Ref
+            } },
         @{ Name = 'reports clone failure and leaves its cache empty'; Files = @{ 'mapped/one.patch' = "--- a/file`n+++ b/file`n" }; Exercise = {
                 param($root)
                 $cache = @{}

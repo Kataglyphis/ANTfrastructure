@@ -20,6 +20,8 @@ Describe 'Python application package license checks' {
             Assert-True ($body.IndexOf($check) -lt $body.IndexOf('if (-not $test)')) "$($case.Function) checks even with SkipTest"
             Assert-True ($body.Contains($case.Ort)) "$($case.Function) checks optional ONNX Runtime texts"
             Assert-True ($body.IndexOf($case.Ort) -lt $body.IndexOf('if (-not $test)')) "$($case.Function) checks ORT even with SkipTest"
+            $msvc = "Assert-PackageMsvcRuntimeNotice -Path $($case.Artifact) -RedistText `$msvcRedist"
+            Assert-True ($body.Contains($msvc) -and $body.IndexOf($msvc) -lt $body.IndexOf('if (-not $test)')) "$($case.Function) checks the MSVC runtime notice even with SkipTest"
         }
         $msi = (Get-ScriptFunctionDefinition -ScriptPath $path -FunctionName 'Invoke-MsiAppPackage').ToString()
         Assert-True ($msi.Contains("Get-WixSourceFileId -WixPath `$wxs -SourcePath (Join-Path `$Bundle 'LICENSE')")) 'MSI maps this bundle license dynamically'

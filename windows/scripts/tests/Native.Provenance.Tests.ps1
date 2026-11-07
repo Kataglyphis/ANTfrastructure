@@ -81,21 +81,21 @@ Describe 'Native provenance manifest' {
 
 Describe 'Meson records to manifest entries' {
     It 'maps a wrap, an in-tree subproject and the root project, and fails a source without notices' {
-        $root = New-TestDir -Prefix 'meson-provenance'
-        try {
+        $tree = @{
+            'src/subprojects/zlib.wrap' = "[wrap-file]`ndirectory = zlib-1.3`nsource_url = https://example.invalid/z.tar.xz`nsource_hash = abc`n`n[provide]`ndependency_names = zlib"
+            'src/subprojects/ffi.wrap' = "[wrap-file]`ndirectory = ffi-as-released`nsource_url = https://example.invalid/f.tar.xz"
+            'src/LICENSE' = 'gst'; 'src/subprojects/zlib-1.3/LICENSE' = 'zlib'; 'src/subprojects/gst-good/COPYING' = 'good'; 'src/subprojects/ffi/LICENSE' = 'ffi'
+            'inst/bin/z-1.dll' = 'z'; 'inst/bin/gstgood.dll' = 'good'; 'inst/bin/gst.dll' = 'gst'; 'inst/bin/ffi-7.dll' = 'ffi'; 'b/meson-info/.keep' = ''
+        }
+        Invoke-InTestDir -Files $tree -Body { param($root)
             $src = Join-Path $root 'src'
             $install = Join-Path $root 'inst'
-            $info = Join-Path $root 'b\meson-info'
-            $null = New-Item -ItemType Directory -Force -Path (Join-Path $src 'subprojects\zlib-1.3'), (Join-Path $src 'subprojects\gst-good'), (Join-Path $src 'subprojects\ffi'), (Join-Path $install 'bin'), $info
-            Set-Content -LiteralPath (Join-Path $src 'subprojects\zlib.wrap') -Value "[wrap-file]`ndirectory = zlib-1.3`nsource_url = https://example.invalid/z.tar.xz`nsource_hash = abc`n`n[provide]`ndependency_names = zlib"
-            Set-Content -LiteralPath (Join-Path $src 'subprojects\ffi.wrap') -Value "[wrap-file]`ndirectory = ffi-as-released`nsource_url = https://example.invalid/f.tar.xz"
-            foreach ($file in 'src\LICENSE', 'src\subprojects\zlib-1.3\LICENSE', 'src\subprojects\gst-good\COPYING', 'src\subprojects\ffi\LICENSE') { Set-Content -LiteralPath (Join-Path $root $file) -Value $file }
-            foreach ($dll in 'z-1.dll', 'gstgood.dll', 'gst.dll', 'ffi-7.dll') { Set-Content -LiteralPath (Join-Path $install "bin\$dll") -Value $dll }
+            $info = Join-Path $root 'b/meson-info'
             $targets = @(
-                @{ installed = $true; subproject = 'zlib'; defined_in = (Join-Path $src 'subprojects\zlib-1.3\meson.build'); install_filename = @((Join-Path $install 'bin\z-1.dll'), (Join-Path $install 'lib\z.lib')) }
-                @{ installed = $true; subproject = 'gst-good'; defined_in = (Join-Path $src 'subprojects/gst-good/ext/meson.build'); install_filename = @(Join-Path $install 'bin\gstgood.dll') }
-                @{ installed = $true; subproject = 'ffi'; defined_in = (Join-Path $src 'subprojects\ffi\src\meson.build'); install_filename = @(Join-Path $install 'bin\ffi-7.dll') }
-                @{ installed = $true; subproject = $null; defined_in = (Join-Path $src 'meson.build'); install_filename = @(Join-Path $install 'bin\gst.dll') }
+                @{ installed = $true; subproject = 'zlib'; defined_in = (Join-Path $src 'subprojects/zlib-1.3/meson.build'); install_filename = @((Join-Path $install 'bin/z-1.dll'), (Join-Path $install 'lib/z.lib')) }
+                @{ installed = $true; subproject = 'gst-good'; defined_in = (Join-Path $src 'subprojects/gst-good/ext/meson.build'); install_filename = @(Join-Path $install 'bin/gstgood.dll') }
+                @{ installed = $true; subproject = 'ffi'; defined_in = (Join-Path $src 'subprojects/ffi/src/meson.build'); install_filename = @(Join-Path $install 'bin/ffi-7.dll') }
+                @{ installed = $true; subproject = $null; defined_in = (Join-Path $src 'meson.build'); install_filename = @(Join-Path $install 'bin/gst.dll') }
                 @{ installed = $false; subproject = 'zlib'; install_filename = @() }
             )
             Set-Content -LiteralPath (Join-Path $info 'intro-targets.json') -Value ($targets | ConvertTo-Json -Depth 4)
@@ -106,19 +106,19 @@ Describe 'Meson records to manifest entries' {
             $entries = @(Get-MesonProvenanceEntry @call)
             Assert-Equal 4 $entries.Count 'only installed DLLs, never the import library'
             $byFile = @{}
-            foreach ($e in $entries) { $byFile[$e.file] = $e }
-            Assert-Equal 'abc' $byFile['bin\z-1.dll'].source['sha256'] 'a wrap keeps its source hash'
-            Assert-Equal 'gst-good' $byFile['bin\gstgood.dll'].source['name'] 'an in-tree subproject keeps its own name'
-            Assert-Equal 'https://example.invalid/g' $byFile['bin\gstgood.dll'].source['url'] 'and the root source URL'
-            Assert-True (Test-Path -LiteralPath (Join-Path $install 'n\zlib\LICENSE')) 'the original text is staged'
-            Assert-True (Test-Path -LiteralPath (Join-Path $install 'n\ffi\LICENSE')) 'a wrap extracted elsewhere is found through meson''s record'
-            Remove-Item -LiteralPath (Join-Path $src 'subprojects\zlib-1.3\LICENSE'), (Join-Path $src 'subprojects\ffi\LICENSE')
+            foreach ($e in $entries) { $byFile[($e.file -replace '\\', '/')] = $e }
+            Assert-Equal 'abc' $byFile['bin/z-1.dll'].source['sha256'] 'a wrap keeps its source hash'
+            Assert-Equal 'gst-good' $byFile['bin/gstgood.dll'].source['name'] 'an in-tree subproject keeps its own name'
+            Assert-Equal 'https://example.invalid/g' $byFile['bin/gstgood.dll'].source['url'] 'and the root source URL'
+            Assert-True (Test-Path -LiteralPath (Join-Path $install 'n/zlib/LICENSE')) 'the original text is staged'
+            Assert-True (Test-Path -LiteralPath (Join-Path $install 'n/ffi/LICENSE')) 'a wrap extracted elsewhere is found through meson''s record'
+            Remove-Item -LiteralPath (Join-Path $src 'subprojects/zlib-1.3/LICENSE'), (Join-Path $src 'subprojects/ffi/LICENSE')
             Remove-Item -LiteralPath (Join-Path $install 'n') -Recurse
             Assert-Throws { Get-MesonProvenanceEntry @call } 'every missing notice' -MessagePattern '2 defect.*zlib.*no license or notice.*ffi.*no license or notice'
-            $targets[1].defined_in = (Join-Path $root 'elsewhere\meson.build')
+            $targets[1].defined_in = (Join-Path $root 'elsewhere/meson.build')
             Set-Content -LiteralPath (Join-Path $info 'intro-targets.json') -Value ($targets | ConvertTo-Json -Depth 4)
             Assert-Throws { Get-MesonProvenanceEntry @call } 'a tree outside subprojects' -MessagePattern 'defined outside'
-        } finally { Remove-TestDir $root }
+        }
     }
 }
 

@@ -127,8 +127,12 @@ Describe 'New-PortableBundle' {
             $search = New-ClosureFixture -Dir $dir
             $build = Join-Path $dir 'build'
             foreach ($f in 'app.msi', 'app.zip', 'app.exe', 'unit_tests.exe') { $null = New-Item -ItemType File -Force -Path (Join-Path $build $f) }
-            $r = New-PortableBundle -BuildDir $build -DistDir "$dir\dist" -Arch arm64 -SearchDirectory $search -Runner (New-FakeInstall $dir)
+            $checked = [System.Collections.Generic.List[string]]::new()
+            $check = { param($Path, $RedistText) $checked.Add((Split-Path $Path -Leaf)) }.GetNewClosure()
+            $bundleArgs = @{ BuildDir = $build; DistDir = "$dir\dist"; Arch = 'arm64'; SearchDirectory = $search; Runner = (New-FakeInstall $dir); PackageCheck = $check }
+            $r = New-PortableBundle @bundleArgs
             Assert-Equal "cmake --install $build --prefix $dir\dist\bundle --config Release" (Get-Content -LiteralPath "$dir\install.log")
+            Assert-Equal 'app.msi,app.zip' (@($checked | Sort-Object) -join ',') 'every CPack MSI and ZIP is checked for the MSVC runtime notice'
             Assert-Equal 'a.dll,B.DLL,c.dll,d.dll' (@($r.Added | Sort-Object) -join ',') 'the closure of app.exe'
             Assert-True (Test-Path -LiteralPath "$dir\dist\bundle\bin\d.dll") 'beside the binary'
             Assert-Equal 'app.exe,app.msi,app.zip' (@(Get-ChildItem -LiteralPath "$dir\dist\packages" -Name | Sort-Object) -join ',')

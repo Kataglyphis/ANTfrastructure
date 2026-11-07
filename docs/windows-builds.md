@@ -1041,7 +1041,7 @@ in order and applies the tags:
 .\windows\Build-Buildkit.ps1 -TargetArch arm64
 
 # GPU lane: base -> nvidia (CUDA + cuDNN + TensorRT, tagged sdk) -> toolchain -> media -> torch -> final
-# TensorRT is optional: a zip in windows/downloads/ adds it (see § TensorRT setup (GPU lane, optional) below).
+# TensorRT is downloaded, or taken from windows/downloads/ (see § TensorRT setup (GPU lane) below).
 .\windows\Build-Buildkit.ps1 -Gpu            # same as -Variant nvidia
 
 # ROCm variant (amd64 only): base -> rocm (tagged sdk) -> toolchain -> media -> migraphx
@@ -1089,45 +1089,49 @@ in order and applies the tags:
   `C:\temp\*-src` build trees for debugging. By default each build script removes its source tree
   after installing, so the trees don't bloat the image layers.
 
-### TensorRT setup (GPU lane, optional)
+### TensorRT setup (GPU lane)
 
 **The authoritative home of the TensorRT setup procedure and the `current/` rationale** (since
 2026-08-24; it previously lived in AGENTS.md § TensorRT Setup, which now keeps the operational rules
 and links here). Update THIS section, never a copy.
 
-TensorRT is **not downloaded automatically**: it requires accepting NVIDIA's EULA. To include it:
+**The `-Gpu` lane downloads TensorRT itself** (since 2026-11-06, CON230). `Install-Tensorrt.ps1`
+fetches `https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/<x.y.z>/zip/TensorRT-Enterprise-<TENSORRT_VERSION>-Windows-amd64-cuda-<CUDA_VERSION_MAJOR_MINOR>-Release-external.zip`
+(`Get-TensorRtZipUrl`), which answered a plain request with the zip on 2026-11-05, no login.
+NVIDIA's web page asks you to accept the TensorRT licence before downloading; the owner reviewed
+it, and the image ships only the runtime DLLs it names distributable. Only the image's CUDA line
+is tried: a zip for another CUDA major links a cudart the image does not carry. Before 11.x the
+script guessed `tensorrt-<ver>.Windows10.x86_64.cuda-<x.y>.zip`, which 404s for 11.x, so every
+nvidia image until then shipped without TensorRT while the log read "Continuing WITHOUT TensorRT".
 
-1. Download from https://developer.nvidia.com/tensorrt (e.g.
-   `TensorRT-Enterprise-11.4.0.106-Windows-amd64-cuda-13.4-Release-external.zip`, which NVIDIA's
-   CDN serves under `developer.download.nvidia.com/compute/machine-learning/tensorrt/11.4.0/zip/`;
-   measured 2026-10-13). The owner directive that governs this (always take the newest release,
-   never lower the pin to match a zip) is [`../AGENTS.md`](../AGENTS.md) § TensorRT Setup.
+A zip staged in `windows/downloads/` still wins and saves the ~1.9 GB download on a cold
+`trt-extract` layer. To stage or bump one:
+
+1. Take the newest release (owner directive: never lower the pin to match a zip,
+   [`../AGENTS.md`](../AGENTS.md) § TensorRT Setup).
 2. Place the zip in `windows/downloads/` and **delete the superseded one**. The extract step
    version-sorts and takes the highest (a `[version]` cast, so `11.10.0.1` beats `11.2.1.2`; a
    plain string sort gets that backwards), but a stale ~2 GB zip still bloats the `COPY downloads`
    layer.
 3. Set `TENSORRT_ZIP_SHA256` in `versions.env` to the new zip's hash
    (`Get-FileHash -Algorithm SHA256 windows\downloads\TensorRT-*.zip`, lowercase). It was EMPTY
-   until 2026-08-14, so ~2 GB of EULA-gated payload entered the image unverified. A stale hash now
-   fails the build loudly, by design.
+   until 2026-08-14, so ~2 GB of payload entered the image unverified. The download is graded by
+   the same pin, and a stale hash fails the build loudly, by design.
 4. The `Dockerfile.nvidia` build auto-detects it. `TENSORRT_VERSION` never derives a **filesystem**
    path (the tree is resolved from disk and normalized to `current`) and is otherwise used for
-   drift REPORTING. One exception: `Install-Tensorrt.ps1` still builds its NVIDIA CDN fallback URLs
-   out of the pin, used only when no zip is staged.
+   drift REPORTING. One exception: `Install-Tensorrt.ps1` builds its download URL out of the pin.
 
-**No zip: the build skips TensorRT gracefully.** CUDA + cuDNN still work; `Install-Tensorrt.ps1`
-warns and returns, ORT auto-disables the TensorRT EP, and the smoke test's `TENSORRT_ROOT` pointer
-passes on the guaranteed-empty `C:\tensorrt`. This zip-less configuration is the NORMAL state of
-this host's GPU lane. Do NOT re-harden it into a fail-fast: a 2026-08-04 "fail-fast" variant
-(premised on the wrong claim that the smoke test would reject a TensorRT-less nvidia image) broke
-the first hardened `-Gpu` rebuild and was reverted on 2026-08-05. The ORT build script auto-detects
-`$env:TENSORRT_ROOT` and enables the TensorRT EP when available.
+**No TensorRT fails the nvidia lane** (owner, 2026-11-06). `Install-Tensorrt.ps1` throws when no
+zip is staged and the download fails, `Set-TensorrtTree.ps1` throws on an absent root, and the
+smoke gate's §7 fails an `-ExpectGpu` image whose `TENSORRT_ROOT` is empty. The graceful skip of
+2026-08-05 existed because nothing could fetch the zip; with the download it only hid a missing
+TensorRT. The ORT build script auto-detects `$env:TENSORRT_ROOT` and enables the TensorRT EP.
 
 **The smoke's TensorRT assertions follow the staged state (2026-09-20).** With a tree staged they
 require the EP (`cuda=1 trt=1`, the provider DLL, the python EP); zip-less they assert its ABSENCE
 (`cuda=1 trt=0`, no provider DLL, python CUDA-EP only), keyed on `Test-TensorRtTreeStaged`, the same
-presence rule `Resolve-TensorRtRoot` applies at build time. So the zip-less lane reports zero skips,
-and a STAGED tree with a silently-disabled EP still reds. Before this fix the asserts were
+presence rule `Resolve-TensorRtRoot` applies at build time. A STAGED tree with a silently-disabled
+EP reds; under `-ExpectGpu` an empty tree reds too (2026-11-06). Before this fix the asserts were
 unconditional and turned the documented normal zip-less state into three false reds on the
 2026-09-20 `-Gpu` run.
 
@@ -1903,14 +1907,14 @@ smoke mount both provide it. There are no private fallback implementations.
 Bind-mounted into `Dockerfile.nvidia`'s `trt-extract` stage. Renames the extracted tree to
 **`current`** so the runtime PATH never spells the pin, WARNS (never fails) on pin-vs-zip drift,
 and **fails closed** when neither `bin\` nor `lib\` carries runtime DLLs. Why (backlog #38):
-§ TensorRT setup (GPU lane, optional).
+§ TensorRT setup (GPU lane).
 
 #### `Copy-TensorrtRuntime.ps1`
 
 Bind-mounted into `trt-extract` after `Set-TensorrtTree.ps1`. Copies the DLLs ORT's TensorRT EP
 loads, and the licence texts, into `C:\tensorrt-runtime`, which the sdk image COPYs as `C:\tensorrt`;
-throws when one of the four kinds is missing. Zip-less, it leaves the destination empty.
-§ TensorRT setup (GPU lane, optional).
+throws when one of the four kinds is missing.
+§ TensorRT setup (GPU lane).
 
 ### Host setup and maintenance — `windows/scripts/host/`
 
@@ -2232,8 +2236,9 @@ Adrenalin or Windows update**: a GONE verdict is the signal to retire the toggle
 
 CUDA-cache probe (non-admin, ~2 min, safe beside a live build): a tiny buildctl solve FROM the local
 toolchain image compiles one `.cu` TWICE through sccache against the live WebDAV endpoint. Exit 0
-only when the recompile HIT (per-component: CUDA/Device/PTX/CUBIN) AND objects landed in the store.
-Verified 2026-08-10 (4/4 hits, 4 objects on disk). **Run after every sccache bump**: the launcher's
+only when the first compile MISSED (a per-run nonce in code; a comment nonce is stripped by preprocessing)
+and the recompile HIT (per-component: CUDA/Device/PTX/CUBIN), which only a store write can serve.
+Verified 2026-08-10 (4/4 hits, 4 objects on disk) and 2026-11-06 on `bk-windows-toolchain-nvidia` (4 misses, 4 hits). **Run after every sccache bump**: the launcher's
 value rests on this property.
 
 #### `Invoke-SccacheCudaLlmDeadlock.ps1`

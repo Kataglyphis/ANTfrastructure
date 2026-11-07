@@ -44,17 +44,20 @@ rm -f "${_script}"
 t_assert_eq "${_crt}/msvcp140.dll;${_crt}/vcruntime140.dll;${_crt}/concrt140.dll" "${_libs}" \
   "every arm64 runtime file but vcruntime140_1.dll"
 
-t_case "a staged package DLL directory installs its DLLs beside the executables, and nothing else"
-# _installed_files <KATAGLYPHIS_PACKAGE_DLL_DIR> -> the files `cmake --install` lays down, sorted
-_installed_files() {
+# _install_listing <CPackCommon calls> [configure args...] -> the files `cmake --install` lays down, sorted
+_install_listing() {
   local proj
   proj="$(_cmake_project "include(\"${HUB_CMAKE}/CPackCommon.cmake\")
-kataglyphis_install_package_dlls()")"
-  cmake -S "${proj}" -B "${proj}/b" "-DKATAGLYPHIS_PACKAGE_DLL_DIR=$1" >/dev/null 2>&1
+$1")"
+  shift
+  cmake -S "${proj}" -B "${proj}/b" "$@" >/dev/null 2>&1
   cmake --install "${proj}/b" --prefix "${proj}/out" >/dev/null 2>&1
   (cd "${proj}/out" 2>/dev/null && find . -type f | sort | tr '\n' ' ')
   rm -rf "${proj}"
 }
+
+t_case "a staged package DLL directory installs its DLLs beside the executables, and nothing else"
+_installed_files() { _install_listing "kataglyphis_install_package_dlls()" "-DKATAGLYPHIS_PACKAGE_DLL_DIR=$1"; }
 _stage="$(mktemp -d)"
 : > "${_stage}/gstreamer-1.0-0.dll"
 : > "${_stage}/vcruntime140.dll"
@@ -64,5 +67,21 @@ t_assert_eq "./bin/gstreamer-1.0-0.dll ./bin/vcruntime140.dll " "$(_installed_fi
   "the staged DLLs land in bin, the log beside them does not"
 t_assert_eq "" "$(_installed_files "")" "an empty directory name installs nothing"
 rm -rf "${_stage}"
+
+t_case "a package that carries the MSVC runtime installs Redist.txt and the end-user notice, one without it neither"
+# _notice_files <runtime libs> -> the files the notice installs, sorted
+_notice_files() {
+  local vs
+  vs="$(mktemp -d)"
+  mkdir -p "${vs}/VC/Redist/MSVC/14.50/x64" "${vs}/Licenses/1033"
+  printf 'terms' > "${vs}/Licenses/1033/Redist.txt"
+  _install_listing "set(MSVC_REDIST_DIR \"$(cd "${vs}" && { pwd -W 2>/dev/null || pwd; })/VC/Redist/MSVC/14.50\")
+set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS $1)
+kataglyphis_install_msvc_runtime_notice(_n)"
+  rm -rf "${vs}"
+}
+t_assert_eq "./licenses/msvc-runtime/README.txt ./licenses/msvc-runtime/Redist.txt " \
+  "$(_notice_files '"C:/crt/msvcp140.dll;C:/crt/vcruntime140.dll"')" "the runtime installs its notice"
+t_assert_eq "" "$(_notice_files '"C:/crt/other.dll"')" "no runtime, no notice"
 
 t_summary

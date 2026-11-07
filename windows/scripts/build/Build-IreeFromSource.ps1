@@ -19,6 +19,22 @@ $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScrip
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
 
+# The media-tvm RUN's cache mount, outside its 20 GB scratch; see docs/windows-build-resources.md#the-20-gb-run-scratch.
+$script:IreeBuildMount = 'C:\iree-build'
+
+# A mounted tree outlives the RUN, so a run starts from an empty one; without the mount the tree stays in the checkout.
+function Resolve-IreeBuildDir {
+    param([Parameter(Mandatory)][string]$SourceDir)
+    if (-not (Test-Path -LiteralPath $script:IreeBuildMount -PathType Container)) { return Join-Path $SourceDir 'build' }
+    Reset-SourceBuildDirectory -Path $script:IreeBuildMount
+    return $script:IreeBuildMount
+}
+
+# The host gets the mount's space back once the wheels are out.
+function Clear-IreeBuildMount {
+    if (Test-Path -LiteralPath $script:IreeBuildMount -PathType Container) { Reset-SourceBuildDirectory -Path $script:IreeBuildMount }
+}
+
 # rocm lane only: HIP HAL driver + rocm compiler target. @() on cpu/nvidia/cross keeps their configure unchanged.
 function Get-IreeRocmCmakeArgs {
     param([Parameter(Mandatory)][hashtable]$GpuEnv, [bool]$Cross)
@@ -95,6 +111,12 @@ function Get-IreeFreeThreadedCmakeArgs {
         $stableAbi + $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')
 }
 
+function Add-IreeNinjaTuFlag {
+    param([Parameter(Mandatory)][string]$BuildDir, [Parameter(Mandatory)][string]$Label, [Parameter(Mandatory)][string]$Flag, [Parameter(Mandatory)][scriptblock]$Include)
+    $pick = { param($line) if (& $Include $line) { $Flag } else { '' } }.GetNewClosure()
+    [void](Add-NinjaPerTuFlags -NinjaFile (Join-Path $BuildDir 'build.ninja') -Label $Label -Floor 10 -AlreadyTaggedPattern ([regex]::Escape($Flag)) -Select $pick)
+}
+
 # Cross only: clang-cl counts as MSVC, so upstream drops each arm_64 ukernel's -march; every configure needs them back per TU, with a floor.
 function Update-IreeCrossNinjaFile {
     param([Parameter(Mandatory)][string]$BuildDir)
@@ -108,18 +130,16 @@ function Update-IreeCrossNinjaFile {
     # -Dasm=__asm__ restores the GNU asm keyword MS compat turns off; a pattern matching nothing would pass silently.
     $ireeNinja = Join-Path $BuildDir 'build.ninja'
     $isArm64Uk = { param($line) $line -match 'ukernel[\\/]arch[\\/]arm_64[\\/]' -and $line -match '\.c\.obj' }
-    [void](Add-NinjaPerTuFlags -NinjaFile $ireeNinja -Label 'IREE arm_64 ukernel (asm keyword)' -Floor 10 -AlreadyTaggedPattern '-Dasm=__asm__' -Select {
-        param($line) if (& $isArm64Uk $line) { '-Dasm=__asm__' } else { '' }
-    }.GetNewClosure())
+    Add-IreeNinjaTuFlag -BuildDir $BuildDir -Label 'IREE arm_64 ukernel (asm keyword)' -Flag '-Dasm=__asm__' -Include $isArm64Uk
     [void](Add-NinjaArmFeatureFlags -NinjaFile $ireeNinja -Label 'IREE arm_64 ukernel feature' -Floor 5 -FeatureMap $ireeUkFeatureMap -TokenPattern '{0}\.c\.obj' -Include $isArm64Uk)
 }
 
 # The cross configure gives the bindings no define, and global flags would recompile every runtime object; see docs/windows-builds.md.
 function Add-IreeTwinFreeThreadedDefine {
     param([Parameter(Mandatory)][string]$BuildDir)
-    [void](Add-NinjaPerTuFlags -NinjaFile (Join-Path $BuildDir 'build.ninja') -Label 'IREE twin Python bindings' -Floor 10 -AlreadyTaggedPattern 'Py_GIL_DISABLED=1' -Select {
-        param($line) if ($line -match 'runtime[\\/]bindings[\\/]python[\\/]CMakeFiles[\\/]\S+\.(cc|cpp)\.obj') { '-DPy_GIL_DISABLED=1' } else { '' }
-    })
+    Add-IreeNinjaTuFlag -BuildDir $BuildDir -Label 'IREE twin Python bindings' -Flag '-DPy_GIL_DISABLED=1' -Include {
+        param($line) $line -match 'runtime[\\/]bindings[\\/]python[\\/]CMakeFiles[\\/]\S+\.(cc|cpp)\.obj'
+    }
 }
 
 # The cp3XYt twins of the IREE wheels from the GIL tree, reconfigured, rebuilt where Python reaches and packed per package.
@@ -366,7 +386,7 @@ function Invoke-IreePythonWheelStage {
                 throw "IREE python package dir missing setup.py: $pkgDir"
             }
             $wheelOut = Join-Path $SourceDir "dist-$($pkg.Dir)"
-            Write-Host "Building IREE $($pkg.Dir) wheel (reusing the ninja build tree)..."
+            Write-Host ("Building IREE $($pkg.Dir) wheel (reusing the ninja build tree); C: has {0:N1} GB free..." -f ((Get-PSDrive C).Free / 1GB))
             Invoke-CpythonPip -Python $Python -Arguments @('wheel', $pkgDir, '--no-deps', '--no-build-isolation', '-w', $wheelOut)
             Install-StagedPythonWheel -Python $Python -SourceDir $wheelOut -ModuleName $pkg.Module | Out-Null
         }
@@ -438,7 +458,7 @@ $ireeMasm = Install-IreeSourcePatches -SourceDir $SourceDir
 # Also copies pyconfig.h into Include\, where FindPython looks; in-tree CPython keeps it in PC\.
 $py = Initialize-ToolchainPythonEnvironment
 
-$buildDir = Join-Path $SourceDir 'build'
+$buildDir = Resolve-IreeBuildDir -SourceDir $SourceDir
 $ireeInstallDir = Join-Path $InstallDir 'iree'
 
 # Cross is runtime-only: host tools build natively for IREE_HOST_BIN_DIR, and the compiler would need target-arch LLVM.
@@ -520,6 +540,7 @@ if ($ireeTwins.Count -gt 0) {
 }
 
 Remove-SourceBuildTree -Path $SourceDir
+Clear-IreeBuildMount
 
 if ($qnnSdk) { [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $ireeInstallDir) }
 

@@ -20,18 +20,6 @@ $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
 Import-Module (Resolve-SourceBuildLeafModule -AssetRoot $scriptAssetRoot -Name 'WindowsNativeProvenance.Common.psm1') -DisableNameChecking
 
-# sccache aborts PTX-only nvcc output (mozilla/sccache#2862), which ORT's Blackwell LLM kernels are on MSVC.
-function Get-OrtPtxLauncherExemptArg {
-    # Only the targets with a -virtual arch go bare (sccache-ptx-exempt.cmake); dropping the launcher for all of ORT cost 83 min a chain.
-    param([string]$Architectures = (Get-CudaArchitectureList), [Parameter(Mandatory)][string]$PatchDir)
-    if ($env:SCCACHE_CUDA_LAUNCHER -ne '1') { return @() }
-    if (-not @($Architectures -split ';' | Where-Object { $_ -match '^12[01]' }).Count) { return @() }
-    $include = Join-Path $PatchDir 'sccache-ptx-exempt.cmake'
-    if (-not (Test-Path -LiteralPath $include)) { throw "ONNX: $include is missing; a Blackwell arch list then aborts nvcc under sccache (mozilla/sccache#2862)" }
-    Write-Host "nvcc keeps sccache for ONNX Runtime but its PTX-only targets: CUDA_ARCHITECTURES=$Architectures names Blackwell (mozilla/sccache#2862); configure prints which"
-    return @("-DCMAKE_PROJECT_onnxruntime_INCLUDE=$($include -replace '\\', '/')")
-}
-
 # rocm-lane WebGPU EP spike; see docs/windows-rocm.md § ONNX Runtime WebGPU EP (rocm lane, spike).
 function Get-OrtWebGpuPlan {
     param([Parameter(Mandatory)][hashtable]$GpuEnv, [bool]$Cross, [AllowEmptyString()][string]$SpikeFlag)
@@ -674,7 +662,6 @@ function Get-OrtCudaArgs {
     $gpuArgs = @()
     if ($cudaUsable) {
         Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
-        $gpuArgs += Get-OrtPtxLauncherExemptArg -PatchDir (Join-Path $scriptAssetRoot 'patches\onnxruntime')
         $cudaRoot = $gpuEnv.CudaRoot
         $cudnnRoot = $gpuEnv.CudnnRoot
         # Shared cuDNN import-lib finder (prefers cudnn.lib over the 9.x split sub-libs); $null when absent.

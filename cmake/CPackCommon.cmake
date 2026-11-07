@@ -206,6 +206,65 @@ function(kataglyphis_install_package_dlls)
 endfunction()
 
 # Captured here: inside a function CMAKE_CURRENT_LIST_DIR is the caller's directory.
+set(_KATAGLYPHIS_MSVC_RUNTIME_NOTICE "${CMAKE_CURRENT_LIST_DIR}/msvc-runtime-notice.txt")
+
+# The MSVC runtime ships only with its notice; see docs/third-party-licenses.md#the-msvc-runtime-notice
+function(kataglyphis_install_msvc_runtime_notice out_var)
+  set(${out_var}
+      ""
+      PARENT_SCOPE)
+  set(_libs ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS})
+  if(KATAGLYPHIS_PACKAGE_DLL_DIR)
+    file(GLOB _staged "${KATAGLYPHIS_PACKAGE_DLL_DIR}/*.dll")
+    list(APPEND _libs ${_staged})
+  endif()
+  list(
+    FILTER
+    _libs
+    INCLUDE
+    REGEX
+    "[/\\\\](msvcp140[^/\\\\]*|vcruntime140[^/\\\\]*|concrt140|vccorlib140)\\.dll$")
+  if(NOT _libs)
+    return()
+  endif()
+  set(_roots)
+  if(MSVC_REDIST_DIR)
+    get_filename_component(_vs "${MSVC_REDIST_DIR}/../../../.." ABSOLUTE)
+    list(APPEND _roots "${_vs}")
+  endif()
+  if(DEFINED ENV{VSINSTALLDIR})
+    list(APPEND _roots "$ENV{VSINSTALLDIR}")
+  endif()
+  if(CMAKE_GENERATOR_INSTANCE)
+    list(APPEND _roots "${CMAKE_GENERATOR_INSTANCE}")
+  endif()
+  set(_text "")
+  foreach(_root IN LISTS _roots)
+    if(EXISTS "${_root}/Licenses/1033/Redist.txt")
+      set(_text "${_root}/Licenses/1033/Redist.txt")
+      break()
+    endif()
+    file(GLOB _texts "${_root}/Licenses/*/Redist.txt")
+    if(_texts)
+      list(SORT _texts)
+      list(GET _texts 0 _text)
+      break()
+    endif()
+  endforeach()
+  if(NOT _text)
+    message(FATAL_ERROR "kataglyphis_cpack_common: the packages carry the MSVC runtime, but no Licenses/<lcid>/Redist.txt was found under: ${_roots}")
+  endif()
+  install(FILES "${_text}" DESTINATION licenses/msvc-runtime)
+  install(
+    FILES "${_KATAGLYPHIS_MSVC_RUNTIME_NOTICE}"
+    DESTINATION licenses/msvc-runtime
+    RENAME README.txt)
+  set(${out_var}
+      "${_KATAGLYPHIS_MSVC_RUNTIME_NOTICE}"
+      PARENT_SCOPE)
+endfunction()
+
+# Captured here: inside a function CMAKE_CURRENT_LIST_DIR is the caller's directory.
 set(_KATAGLYPHIS_ELF_CLOSURE "${CMAKE_CURRENT_LIST_DIR}/../linux/scripts/06-packaging/python-app-closure.sh")
 set(_KATAGLYPHIS_BUNDLE_LOADER "${CMAKE_CURRENT_LIST_DIR}/../linux/scripts/06-packaging/bundle-loader.sh")
 set(_KATAGLYPHIS_PATCHELF_KEEP_GLIBC "${CMAKE_CURRENT_LIST_DIR}/../linux/scripts/06-packaging/patchelf-keep-glibc.sh")
@@ -513,6 +572,10 @@ macro(kataglyphis_cpack_common)
   else()
     include(InstallRequiredSystemLibraries)
   endif()
+  set(_kgcpack_msvc_notice "")
+  if(WIN32)
+    kataglyphis_install_msvc_runtime_notice(_kgcpack_msvc_notice)
+  endif()
 
   set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
   set(CPACK_PACKAGE_FILE_NAME
@@ -601,7 +664,17 @@ macro(kataglyphis_cpack_common)
           DIRECTORY
           APPEND
           PROPERTY CMAKE_CONFIGURE_DEPENDS "${KGCPACK_LICENSE_FILE}")
-        kataglyphis_write_license_rtf("${KGCPACK_LICENSE_FILE}" "${KGCPACK_WIX_LICENSE_RTF}")
+        if(_kgcpack_msvc_notice)
+          # The licence page names the runtime's end-user terms too.
+          file(READ "${KGCPACK_LICENSE_FILE}" _kgcpack_page)
+          file(READ "${_kgcpack_msvc_notice}" _kgcpack_notice)
+          file(WRITE "${PROJECT_BINARY_DIR}/kataglyphis-license-page.txt" "${_kgcpack_page}\n\n${_kgcpack_notice}")
+          kataglyphis_write_license_rtf("${PROJECT_BINARY_DIR}/kataglyphis-license-page.txt" "${KGCPACK_WIX_LICENSE_RTF}")
+          unset(_kgcpack_page)
+          unset(_kgcpack_notice)
+        else()
+          kataglyphis_write_license_rtf("${KGCPACK_LICENSE_FILE}" "${KGCPACK_WIX_LICENSE_RTF}")
+        endif()
       elseif(NOT EXISTS "${KGCPACK_WIX_LICENSE_RTF}")
         message(FATAL_ERROR "kataglyphis_cpack_common: WIX_LICENSE_RTF does not exist: ${KGCPACK_WIX_LICENSE_RTF}")
       endif()
@@ -719,6 +792,7 @@ macro(kataglyphis_cpack_common)
   unset(_kgcpack_package_icon)
   unset(_kgcpack_arch_lc)
   unset(_kgcpack_generate_license_rtf)
+  unset(_kgcpack_msvc_notice)
   unset(_kgcpack_flags)
   unset(_kgcpack_args)
   unset(KGCPACK_UNPARSED_ARGUMENTS)

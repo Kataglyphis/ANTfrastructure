@@ -30193,6 +30193,14 @@
   "why": "a failed native Windows test run must retain its nonzero exit through the WSL logging pipe"
  },
  {
+  "id": "lib.wsl-quality-python-project-absolute",
+  "target": "linux/scripts/wsl-quality.sh",
+  "find": "    python -c 'import sys; print(sys.executable)')\" || die",
+  "replace": "    python -c 'import sys; print(sys.executable)')\"; python_command=\"uv run --project ${REPO_ROOT}/quality --locked --no-sync --python ${PYTHON_VERSION} python\" || die",
+  "test": "bash linux/scripts/tests/test-wsl-quality.sh",
+  "why": "a multi-word PREFLIGHT_PYTHON exits 127 in every suite that runs it quoted"
+ },
+ {
   "id": "lib.wsl-quality-requires-native-pester",
   "target": "linux/scripts/wsl-quality.sh",
   "find": "  windows_pester_ready || die \"Windows Pester >= ${PESTER_MIN_VERSION} is missing; run bash linux/scripts/wsl-quality.sh setup\"",
@@ -32101,15 +32109,95 @@
   "target": "windows/scripts/build/Build-IreeFromSource.ps1",
   "find": "        Add-IreeTwinFreeThreadedDefine -BuildDir $BuildDir\n",
   "replace": "",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.FreeThreadedTwin.Tests.ps1 -ResultFile logs/code-quality/iree-twin-gil-define.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTwin.Tests.ps1 -ResultFile logs/code-quality/iree-twin-gil-define.json",
   "why": "without it the arm64 twin stops at Assert-NinjaFreeThreadedDefine, whose gate this does not relax"
+ },
+ {
+  "id": "lib.iree-scratch-mount-path",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "$script:IreeBuildMount = 'C:\\iree-build'",
+  "replace": "$script:IreeBuildMount = 'C:\\iree-build-elsewhere'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeScratch.Tests.ps1 -ResultFile logs/code-quality/iree-scratch-mutation.json",
+  "why": "a path the RUN does not mount puts IREE back in the 20 GB scratch, where the compiler wheel found 0.3 GB free"
+ },
+ {
+  "id": "lib.iree-scratch-cache-mounted",
+  "target": "windows/Dockerfile.media-builder",
+  "find": "    --mount=type=cache,target=C:\\iree-build,id=iree-build-winamd64,sharing=locked `\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeScratch.Tests.ps1 -ResultFile logs/code-quality/iree-scratch-mutation.json",
+  "why": "an unmounted build dir is ordinary scratch again"
+ },
+ {
+  "id": "lib.iree-scratch-mount-preferred",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "    if (-not (Test-Path -LiteralPath $script:IreeBuildMount -PathType Container)) { return Join-Path $SourceDir 'build' }\n",
+  "replace": "    return Join-Path $SourceDir 'build'\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeScratch.Tests.ps1 -ResultFile logs/code-quality/iree-scratch-mutation.json",
+  "why": "a resolver that ignores the mount builds in the scratch however the RUN is wired"
+ },
+ {
+  "id": "lib.iree-scratch-reset-before-configure",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "    Reset-SourceBuildDirectory -Path $script:IreeBuildMount\n    return $script:IreeBuildMount\n",
+  "replace": "    return $script:IreeBuildMount\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeScratch.Tests.ps1 -ResultFile logs/code-quality/iree-scratch-mutation.json",
+  "why": "a previous run's tree on the mount would reach this run's configure"
+ },
+ {
+  "id": "lib.iree-scratch-clear-empties",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "-PathType Container) { Reset-SourceBuildDirectory -Path $script:IreeBuildMount }\n}",
+  "replace": "-PathType Container) { }\n}",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeScratch.Tests.ps1 -ResultFile logs/code-quality/iree-scratch-mutation.json",
+  "why": "a kept tree holds tens of GB of host disk in the cache store"
+ },
+ {
+  "id": "lib.iree-scratch-clear-called",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "Remove-SourceBuildTree -Path $SourceDir\nClear-IreeBuildMount\n",
+  "replace": "Remove-SourceBuildTree -Path $SourceDir\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeScratch.Tests.ps1 -ResultFile logs/code-quality/iree-scratch-mutation.json",
+  "why": "a clear that never runs keeps the tree on the host"
+ },
+ {
+  "id": "lib.diag-cudacache-repo-root",
+  "target": "windows/scripts/diagnostics/Test-CudaCache.ps1",
+  "find": "$repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent",
+  "replace": "$repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Diagnostics.ModulePaths.Tests.ps1 -ResultFile logs/code-quality/diag-module-paths-mutation.json",
+  "why": "a root one level short imports windows\\windows\\scripts\\modules and the CUDA cache proof never starts"
+ },
+ {
+  "id": "lib.diag-rdna4-repo-root",
+  "target": "windows/scripts/diagnostics/Test-Rdna4LayerLock.ps1",
+  "find": "$repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent",
+  "replace": "$repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Diagnostics.ModulePaths.Tests.ps1 -ResultFile logs/code-quality/diag-module-paths-mutation.json",
+  "why": "a root one level short leaves the RDNA4 A/B without its modules"
+ },
+ {
+  "id": "lib.cuda-probe-nonce-in-code",
+  "target": "windows/scripts/diagnostics/verify-cuda-cache/Test-Cache.ps1",
+  "find": "(\"__device__ const char cachetest_nonce[] = `\"$nonce`\";`n\" + ",
+  "replace": "(\"// nonce: $nonce`n\" + ",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Diagnostics.CudaCacheProbe.Tests.ps1 -ResultFile logs/code-quality/cuda-probe-mutation.json",
+  "why": "a comment nonce is stripped by preprocessing, so a warm cache hits twice and the probe proves no write"
+ },
+ {
+  "id": "lib.cuda-probe-requires-miss",
+  "target": "windows/scripts/diagnostics/verify-cuda-cache/Test-Cache.ps1",
+  "find": "if ($misses -lt 1) { throw 'NO CACHE MISS on the nonce compile - the probe did not reach sccache' }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Diagnostics.CudaCacheProbe.Tests.ps1 -ResultFile logs/code-quality/cuda-probe-mutation.json",
+  "why": "without the miss check two warm hits pass and the write path goes unproven"
  },
  {
   "id": "lib.iree-twin-names-stable-abi-lib",
   "target": "windows/scripts/build/Build-IreeFromSource.ps1",
   "find": "        $stableAbi + $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')",
   "replace": "        $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.FreeThreadedTwin.Tests.ps1 -ResultFile logs/code-quality/iree-twin-stable-abi.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTwin.Tests.ps1 -ResultFile logs/code-quality/iree-twin-stable-abi.json",
   "why": "the arm64 twin's configure stopped on missing Python3_SABI_LIBRARIES with python3t.lib staged"
  },
  {
@@ -32117,7 +32205,7 @@
   "target": "windows/scripts/build/Build-IreeFromSource.ps1",
   "find": "foreach ($tree in 'compiler', 'runtime', 'tests', 'samples') {",
   "replace": "foreach ($tree in 'runtime', 'tests', 'samples') {",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.FreeThreadedTwin.Tests.ps1 -ResultFile logs/code-quality/iree-genrule-python-compiler.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTwin.Tests.ps1 -ResultFile logs/code-quality/iree-genrule-python-compiler.json",
   "why": "IREE's plugin ABI genrule sits under compiler/; skipping it fails the build 7,100 edges in on 'python3 is not recognized'"
  },
  {
@@ -32125,7 +32213,7 @@
   "target": "windows/scripts/build/Build-IreeFromSource.ps1",
   "find": " -AssertGone '\"python3 ' `\n                    -Description 'IREE genrule:",
   "replace": " `\n                    -Description 'IREE genrule:",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.FreeThreadedTwin.Tests.ps1 -ResultFile logs/code-quality/iree-genrule-python-shape.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTwin.Tests.ps1 -ResultFile logs/code-quality/iree-genrule-python-shape.json",
   "why": "a genrule command of a new shape would otherwise pass this step and fail deep in the ninja run"
  },
  {
@@ -35783,5 +35871,77 @@
   "replace": "true",
   "test": "bash linux/scripts/tests/test-sccache-evict.sh",
   "why": "under the cap with little free space the bucket would keep its size while the shared disk fills"
+ },
+ {
+  "id": "host.trt-url-tensorrt11-scheme",
+  "target": "windows/scripts/host/Install-Tensorrt.ps1",
+  "find": "zip/TensorRT-Enterprise-$Version-Windows-amd64-cuda-$Cuda-Release-external.zip",
+  "replace": "tensorrt-$Version.Windows10.x86_64.cuda-$Cuda.zip",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Host.TensorRtAcquisition.Tests.ps1 -ResultFile logs/code-quality/trt-acquisition-mutation.json",
+  "why": "the pre-11 file names 404 on every run, so the lane never had TensorRT"
+ },
+ {
+  "id": "host.trt-missing-throws",
+  "target": "windows/scripts/host/Install-Tensorrt.ps1",
+  "find": "        throw \"TensorRT $Version could not be downloaded",
+  "replace": "        return $null\n        throw \"TensorRT $Version could not be downloaded",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Host.TensorRtAcquisition.Tests.ps1 -ResultFile logs/code-quality/trt-acquisition-mutation.json",
+  "why": "a failed download that returns quietly ships a CUDA-only nvidia image"
+ },
+ {
+  "id": "smoke.trt-required-expect-gpu",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "-Condition { $script:tensorRtStaged } -FailMessage 'caller passed -ExpectGpu but TENSORRT_ROOT is empty",
+  "replace": "-Condition { $true } -FailMessage 'caller passed -ExpectGpu but TENSORRT_ROOT is empty",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Host.TensorRtAcquisition.Tests.ps1 -ResultFile logs/code-quality/trt-acquisition-mutation.json",
+  "why": "the smoke gate must reject an nvidia image that lost TensorRT"
+ },
+ {
+  "id": "lib.ort-cuda-launcher-no-exemption",
+  "target": "windows/scripts/build/Build-OnnxFromSource.ps1",
+  "find": "        Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'\n",
+  "replace": "        Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'\n        $gpuArgs += '-DCMAKE_PROJECT_onnxruntime_INCLUDE=C:/x/sccache-ptx-exempt.cmake'\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtCudaLauncher.Tests.ps1 -ResultFile logs/code-quality/ort-cuda-launcher-mutation.json",
+  "why": "a per-target exemption puts ORT's LLM kernels back on bare nvcc, the one uncached CUDA compile"
+ },
+ {
+  "id": "sccache.ptx-only-pass-runs-uncached",
+  "target": "shared/upstream/sccache/patches/0001-ptxas-ptx-verify-noncacheable.patch",
+  "find": "+                    Cacheable::No\n",
+  "replace": "+                    Cacheable::Yes\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtCudaLauncher.Tests.ps1 -ResultFile logs/code-quality/ort-cuda-launcher-mutation.json",
+  "why": "without the fix a PTX-only gencode aborts nvcc under sccache with Missing cubin file output"
+ },
+ {
+  "id": "msvc-notice.gate-requires-notice",
+  "target": "windows/scripts/modules/WindowsMsvcRuntimeNotice.Common.psm1",
+  "find": "    if ($notices.Count -ne 1) { throw",
+  "replace": "    if ($false) { throw",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msvc.RuntimeNotice.Tests.ps1 -ResultFile logs/code-quality/msvc-notice-mutation.json",
+  "why": "a package that carries the MSVC runtime without its notice breaks the redistribution terms"
+ },
+ {
+  "id": "msvc-notice.staged-with-runtime",
+  "target": "windows/scripts/modules/WindowsMsvcRuntimeNotice.Common.psm1",
+  "find": "    if ($dlls.Count -eq 0) { return $null }\n",
+  "replace": "    return $null\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msvc.RuntimeNotice.Tests.ps1 -ResultFile logs/code-quality/msvc-notice-mutation.json",
+  "why": "a bundle that carries the runtime must get Redist.txt and the end-user notice"
+ },
+ {
+  "id": "msvc-notice.portable-bundle-gate",
+  "target": "windows/scripts/modules/WindowsCrossBundle.Common.psm1",
+  "find": "{ & $PackageCheck $installer.FullName $redist }",
+  "replace": "{ }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Msvc.RuntimeNotice.Tests.ps1 -ResultFile logs/code-quality/msvc-notice-mutation.json",
+  "why": "a CPack MSI or ZIP must be checked for the notice before it is copied out"
+ },
+ {
+  "id": "cmake-msvc-notice.installs-redist",
+  "target": "cmake/CPackCommon.cmake",
+  "find": "  install(FILES \"${_text}\" DESTINATION licenses/msvc-runtime)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cmake-windows-arch.sh",
+  "why": "a CPack package that installs the MSVC runtime must install its Redist.txt"
  }
 ]

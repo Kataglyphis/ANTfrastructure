@@ -317,13 +317,15 @@ foreach (`$case in `$cases) {
                 @{ Owner = 'WindowsUv.Common'; Copy = @(); Message = 'WindowsUvLock.Common.psm1' },
                 @{ Owner = 'WindowsPythonApp.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
                 @{ Owner = 'WindowsPythonApp.Common'; Copy = @('WindowsScripts.Shared'); Message = 'WindowsPythonWheel.Common.psm1' },
-                @{ Owner = 'WindowsPythonApp.Common'; Copy = @('WindowsScripts.Shared', 'WindowsPythonWheel.Common', 'WindowsOrtPayload.Common', 'WindowsOrtProvenance.Common', 'WindowsOnnx.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common'); Message = 'WindowsIcon.Common.psm1' },
-                @{ Owner = 'WindowsPythonApp.Common'; Copy = @('WindowsScripts.Shared', 'WindowsPythonWheel.Common', 'WindowsOrtPayload.Common', 'WindowsOrtProvenance.Common', 'WindowsOnnx.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common', 'WindowsIcon.Common'); Message = 'WindowsMsix.Common.psm1' },
+                @{ Owner = 'WindowsPythonApp.Common'; Copy = @('WindowsScripts.Shared', 'WindowsPythonWheel.Common', 'WindowsOrtPayload.Common', 'WindowsOrtProvenance.Common', 'WindowsOnnx.Common', 'WindowsTargetArch.Common', 'WindowsMsiLicense.Common', 'WindowsMsvcRuntimeNotice.Common', 'WindowsCrossBundle.Common'); Message = 'WindowsIcon.Common.psm1' },
+                @{ Owner = 'WindowsPythonApp.Common'; Copy = @('WindowsScripts.Shared', 'WindowsPythonWheel.Common', 'WindowsOrtPayload.Common', 'WindowsOrtProvenance.Common', 'WindowsOnnx.Common', 'WindowsTargetArch.Common', 'WindowsMsiLicense.Common', 'WindowsMsvcRuntimeNotice.Common', 'WindowsCrossBundle.Common', 'WindowsIcon.Common'); Message = 'WindowsMsix.Common.psm1' },
                 @{ Owner = 'WindowsOrtPayload.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
                 @{ Owner = 'WindowsBuildDriver.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
                 @{ Owner = 'WindowsTesting.Common'; Copy = @(); Message = 'WindowsBuild.Common.psm1' },
                 @{ Owner = 'WindowsSmokeTest.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
-                @{ Owner = 'WindowsCrossBundle.Common'; Copy = @(); Message = 'WindowsTargetArch.Common.psm1' }
+                @{ Owner = 'WindowsCrossBundle.Common'; Copy = @(); Message = 'WindowsTargetArch.Common.psm1' },
+                @{ Owner = 'WindowsCrossBundle.Common'; Copy = @('WindowsTargetArch.Common'); Message = 'WindowsMsvcRuntimeNotice.Common.psm1' },
+                @{ Owner = 'WindowsMsvcRuntimeNotice.Common'; Copy = @('WindowsScripts.Shared'); Message = 'WindowsMsiLicense.Common.psm1' }
             )
             foreach ($case in $cases) {
                 $destination = Join-Path $dir $case.Owner
