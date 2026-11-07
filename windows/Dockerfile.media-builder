@@ -109,7 +109,7 @@ ENV TVM_REF="${TVM_REF}" `
 # Each compile stage declares only its own version keys; ENV so CUDA_ARCHITECTURES/PYTHON_VERSION reach the downstream stages.
 FROM common AS media-core-built-onnx
 ARG ONNXRUNTIME_VERSION=v1.31.1
-ARG CUDA_ARCHITECTURES="86;87;89;120"
+ARG CUDA_ARCHITECTURES="75;86;87;89;120"
 ARG PYTHON_VERSION=3.15.2
 # Declared in every stage that mounts windows/qnn-sdk, or that stage extracts the zip unverified; empty = no EP.
 ARG QNN_SDK_ZIP_SHA256="510b0067481c22d283a2db10cd520f0251df4aeea77a5afe4ff6428a4e40a7bc"

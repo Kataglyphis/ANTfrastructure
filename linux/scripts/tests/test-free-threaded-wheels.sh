@@ -392,7 +392,7 @@ _oft_run() {
 }
 _ftpy="${_oft}/tmp/onnxruntime-ft-venv/bin/python"
 _nv=(--build_dir /ort/build_native_gpu --config Release --build_shared_lib --skip_tests --build_wheel --use_cuda --cuda_home /usr/local/cuda
-  --cudnn_home /usr --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=86;87;89;120" --use_tensorrt --use_full_protobuf --tensorrt_home /tmp/tensorrt --no_telemetry)
+  --cudnn_home /usr --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75;86;87;89;120" --use_tensorrt --use_full_protobuf --tensorrt_home /tmp/tensorrt --no_telemetry)
 _mgx=(--build_dir /ort/build_native_gpu_migraphx --config Release --build_shared_lib --skip_tests --cmake_extra_defines hip_DIR=/opt/rocm/core-10.1/lib/cmake/hip
   --cmake_extra_defines CMAKE_PREFIX_PATH=/opt/rocm/core-10.1/lib/cmake --use_migraphx --migraphx_home /opt/rocm/extras-10 --no_telemetry --build_wheel)
 for _fl in nv mgx; do

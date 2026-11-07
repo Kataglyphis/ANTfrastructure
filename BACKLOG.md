@@ -420,8 +420,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       against the CPU with its operators on the provider. Failures on gfx1036 belong to CON202.
 
 - [ ] **CON217 — build CUDA compute capability 7.5, so RTX 20xx cards run the NVIDIA packages** [M, ★★].
-      Owner decision 2026-11-02: add `75` (Turing: T4, RTX 20xx) to `CUDA_ARCHITECTURES`, today
-      `86;87;89;120`. Found the same day on an RTX 2080 (driver 595.58.03) with OxidANT's Linux x64
+      Owner decision 2026-11-02, **in source 2026-11-07**: `75` (Turing: T4, RTX 20xx) joins `CUDA_ARCHITECTURES`,
+      now `75;86;87;89;120`, in every place AGENTS.md's "To add or remove one" names; the next nvidia chain builds
+      it (one more cubin per CUDA source file in ONNX Runtime and OpenCV: record its time and size). Found 2026-11-02 on an RTX 2080 (driver 595.58.03) with OxidANT's Linux x64
       NVIDIA package (run 41415056257): the package runs on the CPU, and CUDA stops with
       `cudaErrorNoKernelImageForDevice`, so that card gets a named failure or, on `auto`, the CPU
       ([§ A card without a CUDA kernel](docs/linux-accelerator-images.md#a-card-without-a-cuda-kernel)).
@@ -508,7 +509,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       host LLVM 24 min, peak 34 compilers, 26 GB free, no OOM) and CON168 (arm64 compiled the IREE host, riscv64
       reused it), which closed the latter two. Left, the owner's decision on the default: the overlap here was two
       minutes because the three cold media stages finished together; the 2 h gain of 2026-10-27 needs unequal
-      stages, and the per-lane disk guard has not run under pressure yet.
+      stages, and the per-lane disk guard has not run under pressure yet. **Owner decision 2026-11-07: stays
+      opt-in** until a pipeline run has reclaimed under real disk pressure; then decide again.
 - [ ] **CON171 — a stopped chain leaves BuildKit records in use** [S, ★]. In source (CHANGELOG 2026-11-03,
       `_disk_guard_release_stale_records`), tested with stubs only. Done when the next chain resumed after a stop
       logs `left by a stopped chain: restarting buildkitd` and reclaims without a hand restart.

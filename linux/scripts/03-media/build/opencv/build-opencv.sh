@@ -520,9 +520,9 @@ _opencv_cmake_cuda_opts() {
         else
             _ocmcd_out+=("-DWITH_TENSORRT=ON")
         fi
-        _ocmcd_out+=("-DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES:-86;87;89;120}")
+        _ocmcd_out+=("-DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES:-75;86;87;89;120}")
         # OpenCV's own CUDA detection reads CUDA_ARCH_BIN, in dotted form (87 -> 8.7), not the list above.
-        _ocv_arch_bin="$(printf '%s' "${CUDA_ARCHITECTURES:-86;87;89;120}" \
+        _ocv_arch_bin="$(printf '%s' "${CUDA_ARCHITECTURES:-75;86;87;89;120}" \
             | tr ';' '\n' | sed -E 's/^([0-9]+)([0-9])$/\1.\2/' | paste -sd';' -)"
         _ocmcd_out+=("-DCUDA_ARCH_BIN=${_ocv_arch_bin}")
         echo "OpenCV CUDA arches: CUDA_ARCH_BIN=${_ocv_arch_bin}"

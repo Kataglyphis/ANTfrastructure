@@ -22,7 +22,7 @@ Describe 'canonical pin values (backlog #58, #60)' {
 
     It 'keeps CUDA_ARCHITECTURES at the full owner-mandated set (NEVER trim)' {
         # Never trimmed as a speed lever: the set changes only with versions.env and this line together.
-        Assert-Equal '86;87;89;120' (Get-Pin 'CUDA_ARCHITECTURES') `
+        Assert-Equal '75;86;87;89;120' (Get-Pin 'CUDA_ARCHITECTURES') `
             'versions.env CUDA_ARCHITECTURES was trimmed — this is the SOURCE OF TRUTH the container actually builds with, and trimming it is silent (a green build with missing arch coverage).'
     }
 

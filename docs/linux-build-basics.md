@@ -130,7 +130,7 @@ other:
   compile survives AND that cache activity was recorded.
 - **sccache is irreplaceable for Rust AND the GPU compilers**: ccache cannot wrap rustc, nvcc's
   device compiles or hipcc (ROCm); sccache handles all three first-class. With
-  `CUDA_ARCHITECTURES="86;87;89;120"` every CUDA kernel compiles FOUR times, so for the GPU
+  `CUDA_ARCHITECTURES="75;86;87;89;120"` every CUDA kernel compiles FIVE times, so for the GPU
   onnxruntime/opencv builds this is the single biggest cache lever in the repo. Gates:
   `ENABLE_SCCACHE_RUST` (only the `media_common_init` call; the gstreamer lane wires Rust regardless,
   see the Rust row above), `ENABLE_SCCACHE_CUDA` (nvcc in the ONNX GPU build and OpenCV's CUDA

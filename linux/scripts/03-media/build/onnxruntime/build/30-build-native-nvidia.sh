@@ -153,7 +153,7 @@ info "NumPy version: $(${HOST_PYTHON} -c 'import numpy; print(numpy.__version__)
 ensure_onnx_output_tree "${NATIVE_GPU_OUTPUT_DIR}"
 
 # ORT normalises every arch entry to sm_<cc>a-real itself, so the list passes through unchanged.
-ONNX_CUDA_ARCHS="${CUDA_ARCHITECTURES:-86;87;89;120}"
+ONNX_CUDA_ARCHS="${CUDA_ARCHITECTURES:-75;86;87;89;120}"
 
 BUILD_ARGS=()
 _ort_cuda_cross_defines=()

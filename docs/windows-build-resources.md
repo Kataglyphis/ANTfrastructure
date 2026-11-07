@@ -448,7 +448,7 @@ after a decision history worth keeping:
   [`shared/upstream/sccache/README.md`](../shared/upstream/sccache/README.md), proven on Windows
   2026-11-06), so `Get-OrtPtxLauncherExemptArg` and `sccache-ptx-exempt.cmake` are gone;
   `SourceBuild.OrtCudaLauncher.Tests.ps1` refuses their return. The history:
-  - **Which targets.** ORT turns `86;87;89;120` into `86-real;87-real;89-real;120a-real`
+  - **Which targets.** ORT turns `75;86;87;89;120` into `75-real;86-real;87-real;89-real;120a-real`
     (`cmake/external/cuda_configuration.cmake`). Only `onnxruntime_providers_cuda_llm` (and
     the CUDA plugin's `_llm` twin) gets `120-virtual` instead, on MSVC alone
     (`REPLACE_SM120_REAL_WITH_VIRTUAL`: native `sm_120a` pulls tcgen05 headers MSVC cannot

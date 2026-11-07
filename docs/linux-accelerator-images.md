@@ -796,8 +796,8 @@ plugins and `nvdsvisionencoder` (nothing in the sample data drives them), `nvegl
 (`nvdsinfer`, `nvll_osd`) build with nvcc's default, sm_75 SASS plus sm_75 PTX, so they run
 on every card from Turing on (newer ones JIT the PTX once). TensorRT 10.16 ships builder
 resources for sm_75, 80, 86, 89, 90, 100 and 120. So the RTX 2080 (sm_75) can run
-DeepStream, although the variant's `CUDA_ARCHITECTURES` (86;87;89;120) leaves it out of
-ONNX Runtime and OpenCV.
+DeepStream; since 2026-11-07 the variant's `CUDA_ARCHITECTURES` (75;86;87;89;120) covers it in
+ONNX Runtime and OpenCV too (CON217).
 
 ### TensorRT 10 beside 11
 

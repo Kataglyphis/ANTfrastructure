@@ -22,6 +22,15 @@
   finding list as empty, and `Test-Container.ps1` wraps the gap in `@()`. A Smoke.FindingVerdict case and the
   `lib.smoke-finding-empty-if-result` mutation hold it
   ([failure-modes.md](docs/failure-modes.md#a-smoke-check-fails-and-names-no-finding)).
+## 2026-11-07 — CUDA compute capability 7.5 joins the build (CON217)
+
+- Owner decision: `CUDA_ARCHITECTURES` is `75;86;87;89;120`, so T4 and RTX 20xx cards get a cubin from ONNX Runtime
+  and OpenCV instead of `cudaErrorNoKernelImageForDevice`. Moved together, as AGENTS.md requires: the pin, the
+  Windows canonical-value and resolver suites, `test-version-forwarding.sh`, the mutation recipe, the ORT and
+  OpenCV fallbacks, the media-builder ARG and the PowerShell default, and the pages that quote the set. The next
+  nvidia chain compiles every CUDA kernel five times instead of four.
+- CON169: the owner keeps one pipeline per arch opt-in until a run has reclaimed disk under pressure.
+
 ## 2026-11-07 — one pipeline per arch ran on a chain
 
 - CON169: `CROSS_ARCH_PIPELINE=1` ran the default chain's media and android stages for amd64, arm64 and riscv64
