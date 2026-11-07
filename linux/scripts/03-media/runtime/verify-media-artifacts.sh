@@ -9,7 +9,7 @@ case "${1:-}" in
     echo "Validate that a media build stage produced actual output (shared libs,"
     echo "binaries, headers) before downstream stages consume it."
     echo ""
-    echo "Stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu,"
+    echo "Stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu, onnxruntime-ep-amdgpu,"
     echo "        onnxruntime-pkgconfig, litert, litert-headers, opencv, opencv-core,"
     echo "        ffmpeg, gstreamer, libcamera, app-wheels, sizes, media-inputs"
     exit 0
@@ -204,6 +204,22 @@ case "${STAGE}" in
     verify_dir_not_empty "${PREFIX}" "ONNX Runtime GPU output dir"
     ;;
 
+  onnxruntime-ep-amdgpu)
+    PREFIX="${PREFIX:-/usr/local/lib/onnxruntime-ep-amdgpu}"
+    if [ "${ENABLE_AMD:-false}" != "true" ]; then
+      echo "SKIP [${STAGE}]: AMD disabled"
+      exit 0
+    fi
+    verify_shared_lib "${PREFIX}/lib" 'libmigraphx-ep.so' "MIGraphX plugin EP"
+    verify_file_nonempty "${PREFIX}/provenance.txt" "plugin EP provenance"
+    verify_dir_not_empty "${PREFIX}/licenses" "plugin EP licence texts"
+    # The loader looks these two up by name; a module without them registers nothing.
+    for sym in CreateEpFactories ReleaseEpFactory; do
+      if readelf --dyn-syms -W "${PREFIX}/lib/libmigraphx-ep.so" 2>/dev/null | grep -qE " ${sym}$"; then pass_check "plugin EP exports ${sym}"
+      else fail_check "plugin EP does not export ${sym}"; fi
+    done
+    ;;
+
   onnxruntime-pkgconfig)
     PREFIX="${PREFIX:-/usr/local/lib/onnxruntime-cpu}"
     verify_file_exists "${PREFIX}/runtime/lib/pkgconfig/libonnxruntime.pc" "ONNX Runtime pkg-config"
@@ -345,7 +361,7 @@ case "${STAGE}" in
 
   *)
     echo "ERROR: Unknown verification stage: ${STAGE}" >&2
-    echo "Known stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu, onnxruntime-pkgconfig, litert, litert-headers, opencv, opencv-core, ffmpeg, gstreamer, libcamera, app-wheels, armnn, sizes, media-inputs" >&2
+    echo "Known stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu, onnxruntime-ep-amdgpu, onnxruntime-pkgconfig, litert, litert-headers, opencv, opencv-core, ffmpeg, gstreamer, libcamera, app-wheels, armnn, sizes, media-inputs" >&2
     exit 1
     ;;
 esac

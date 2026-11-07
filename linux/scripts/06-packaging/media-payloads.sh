@@ -4,6 +4,7 @@ media_optional_payloads() {
   cat <<'PAYLOADS'
 /usr/local/lib/onnxruntime-genai|observe
 /usr/local/lib/onnxruntime-gpu|observe
+/usr/local/lib/onnxruntime-ep-amdgpu|observe
 /usr/local/include/tflite|observe
 /usr/local/include/absl|copy
 /usr/local/include/tensorflow|observe

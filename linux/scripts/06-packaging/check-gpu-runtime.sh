@@ -10,6 +10,13 @@ set -uo pipefail
 printf 'GPUR ENABLE %s %s %s\n' "${ENABLE_NVIDIA:-false}" "${ENABLE_AMD:-false}" "${ENABLE_TENSORRT:-false}"
 printf 'GPUR ROCM_PATH %s\n' "${ROCM_PATH-<unset>}"
 printf 'GPUR HIP_PATH %s\n' "${HIP_PATH-<unset>}"
+printf 'GPUR MGXEP_ROOT %s\n' "${ORT_AMDGPU_EP_ROOT-<unset>}"
+mgxep="${ORT_AMDGPU_EP_ROOT:-/usr/local/lib/onnxruntime-ep-amdgpu}/lib/libmigraphx-ep.so"
+if [ -f "${mgxep}" ]; then
+  echo "GPUR MGXEP_SO ${mgxep}"
+  echo "GPUR MGXEP_EXPORTS $(readelf --dyn-syms -W "${mgxep}" 2>/dev/null | grep -cE ' (CreateEpFactories|ReleaseEpFactory)$')"
+  echo "GPUR MGXEP_UNRESOLVED $(ldd "${mgxep}" 2>/dev/null | awk '$2 == "=>" && $3 == "not" {print $1}' | tr '\n' ' ')"
+else echo "GPUR MGXEP_SO <absent>"; fi
 case ":${PATH}:" in *:/opt/rocm/bin:*) echo "GPUR PATHROCM yes" ;; *) echo "GPUR PATHROCM no" ;; esac
 if [ -d /opt/rocm ]; then echo "GPUR ROCMDIR $(readlink -f /opt/rocm)"; else echo "GPUR ROCMDIR <absent>"; fi
 # The venv's rocm-sdk shims come first on PATH; with ROCM_PATH they hand over to /opt/rocm.
@@ -70,6 +77,7 @@ gpu_rocm_verdict() {
       *) echo "BAD a non-rocm image advertises ROCM_PATH='$(_gpur "${probe}" ROCM_PATH)' HIP_PATH='$(_gpur "${probe}" HIP_PATH)'" ;;
     esac
     [ "$(_gpur "${probe}" PATHROCM)" = no ] || echo "BAD a non-rocm image puts /opt/rocm/bin on PATH"
+    case "$(_gpur "${probe}" MGXEP_ROOT)" in ""|"<unset>") ;; *) echo "BAD a non-rocm image advertises ORT_AMDGPU_EP_ROOT='$(_gpur "${probe}" MGXEP_ROOT)'" ;; esac
     return 0
   fi
   root="$(_gpur "${probe}" ROCMDIR)"
@@ -90,6 +98,23 @@ gpu_rocm_verdict() {
     *) echo "BAD hipcc cannot build a HIP program: $(_gpur "${probe}" HIPCC)" ;;
   esac
   _gpur_ep "${probe}" MIGraphXExecutionProvider
+  gpu_plugin_ep_verdict "${probe}"
+}
+
+# <probe>: the rocm image ships AMD's plugin MIGraphX EP where ORT_AMDGPU_EP_ROOT says, with its two exports and a resolvable closure.
+gpu_plugin_ep_verdict() {
+  local probe="$1" root
+  root="$(_gpur "${probe}" MGXEP_ROOT)"
+  if [ "${root}" = /usr/local/lib/onnxruntime-ep-amdgpu ]; then echo "OK ORT_AMDGPU_EP_ROOT=${root}"
+  else echo "BAD ORT_AMDGPU_EP_ROOT is '${root}', not /usr/local/lib/onnxruntime-ep-amdgpu"; fi
+  case "$(_gpur "${probe}" MGXEP_SO)" in
+    ""|"<absent>") echo "BAD the plugin MIGraphX EP libmigraphx-ep.so is missing"; return 0 ;;
+    *) echo "OK libmigraphx-ep.so is shipped" ;;
+  esac
+  if [ "$(_gpur "${probe}" MGXEP_EXPORTS)" = 2 ]; then echo "OK libmigraphx-ep.so exports CreateEpFactories and ReleaseEpFactory"
+  else echo "BAD libmigraphx-ep.so exports $(_gpur "${probe}" MGXEP_EXPORTS) of the 2 plugin entry points"; fi
+  if [ -z "$(_gpur "${probe}" MGXEP_UNRESOLVED | tr -d ' ')" ]; then echo "OK libmigraphx-ep.so resolves every library it needs"
+  else echo "BAD libmigraphx-ep.so cannot resolve: $(_gpur "${probe}" MGXEP_UNRESOLVED)"; fi
 }
 
 # <probe> <TENSORRT_VERSION>: TensorRT's runtime in the default lib dir, nothing else of its SDK, and the EP that loads it.

@@ -993,18 +993,26 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       rights or proof that the existing host-runtime artifact is broken. Evidence and scoped
       commands: `_implementation/rocm-bundled-provenance-20261031/VALIDATION.md`.
 
-- [b] **CON231 — move the Linux rocm variant to AMD's plugin MIGraphX EP and a MIGraphX with #5345** [M, ★★★].
-      Owner decision. microsoft/onnxruntime's built-in MIGraphX EP is unmaintained (AMD on onnxruntime#32571,
-      2026-09-24: "Changes to this code are not maintained anymore. Please move to the plugin EP repo"); the successor
-      is `onnxruntime/onnxruntime-ep-amdgpu` (plugin ABI, ORT ≥ 1.24), which the Windows ROCm lane already carries
-      ([windows-rocm.md](docs/windows-rocm.md)). It takes its op list from `migraphx::get_onnx_operators()`
-      (`GridSample` included) and compiles with `standardize_outputs`, refusing a non-standard output loudly where
-      MIGraphX ignores the option; MIGraphX standardizes GPU outputs since ROCm/AMDMIGraphX#5345 (2026-10-01), which
-      ROCm 10.1's 2.18.0 predates. Blocked on a ROCm release that carries #5345. Done when the Linux rocm image ships
-      the plugin EP against such a MIGraphX, the four AMD packages pass CON224 item 1 on it, and
-      `003-migraphx-gridsample.patch` and `004-migraphx-refuse-nonstandard-output.patch` are retired. Until then the
-      two patches stay (CON225, closed 2026-11-07: fix proven on the RX 9070 XT, root cause fixed upstream; the
-      prepared PRs were removed, `linux/upstream/README.md` keeps the reasons and git 2a819d85 the patches).
+- [ ] **CON231 — move the Linux rocm variant to AMD's plugin MIGraphX EP** [M, ★★★]. Owner decision 2026-11-07
+      ("switch to it"). microsoft/onnxruntime's built-in MIGraphX EP is unmaintained (AMD on onnxruntime#32571,
+      2026-09-24: "Changes to this code are not maintained anymore. Please move to the plugin EP repo"); the
+      successor is `onnxruntime/onnxruntime-ep-amdgpu` (plugin ABI, ORT ≥ 1.24), which takes its op list from
+      `migraphx::get_onnx_operators()` (`GridSample` included) and compiles with `standardize_outputs`, refusing a
+      non-standard output loudly where MIGraphX ignores the option (MIGraphX standardizes GPU outputs since
+      ROCm/AMDMIGraphX#5345, 2026-10-01, which ROCm 10.1's 2.18.0 predates). **Spike 2026-11-07:** built inside
+      `:latest-rocm` against its ORT 1.31 and MIGraphX 2.18.0 in 59 s; on the RX 9070 XT the DEIM detector ran
+      through the plugin in 4 ms per frame with detector parity to the CPU (five detections, IoU ≥ 0.9), so the
+      move does not wait for a newer ROCm. **Step 1 (in source 2026-11-07):** the media stage builds it, the
+      wrapper ships `/usr/local/lib/onnxruntime-ep-amdgpu/lib/libmigraphx-ep.so` and sets `ORT_AMDGPU_EP_ROOT`,
+      the gates check it ([accelerator page](docs/linux-accelerator-images.md#amds-plugin-migraphx-ep),
+      [contract](docs/consumer-image-contract.md#amds-plugin-migraphx-ep)); the next rocm chain proves it in the
+      image. **Step 2:** each consumer registers the plugin where `ORT_AMDGPU_EP_ROOT` is set, in this order:
+      OrchestrANT (Python, `register_execution_provider_library`), AccelerANTgine (C++,
+      `Env::RegisterExecutionProviderLibrary`), OxidANT (Rust, `ort` rc.13 `register_execution_provider_library`),
+      OmniAccelerANT (Dart over the native bridge); each change passes CON224 item 1's parity run with the plugin's
+      operators in the profile. **Step 3:** drop `--use_migraphx` from the ORT build and retire
+      `003-migraphx-gridsample.patch` and `004-migraphx-refuse-nonstandard-output.patch`. Done when the four AMD
+      packages pass parity on the plugin and the built-in provider is gone from the image.
 
 - [ ] **CON202 — investigate locked detector failure on WSL gfx1036 with MIGraphX** [L, ★★★].
       On 2026-10-31 the cached Linux x64 `:latest-rocm` image digest

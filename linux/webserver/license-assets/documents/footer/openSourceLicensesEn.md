@@ -247,7 +247,7 @@ its own license terms.
 | msgpack-c (header-only, in migraphx.dll) | 3.3.0 | [github.com/msgpack/msgpack-c](https://github.com/msgpack/msgpack-c) | Boost 1.0 (its bundled Boost Predef/Preprocessor too) |
 | SQLite amalgamation (static, in migraphx.dll) | 3500400 | [www.sqlite.org](https://www.sqlite.org/) | Public domain (the SQLite blessing; no text to ship) |
 | nlohmann/json (header-only, in migraphx.dll; TheRock's copy) | as shipped in TheRock | [github.com/nlohmann/json](https://github.com/nlohmann/json) | MIT (TheRock ships no licence file for it, so the header's own copyright + SPDX notice is staged instead) |
-| ONNX Runtime plugin EP for AMD GPUs (migraphx-ep.dll, C:\runtime\lib\onnxruntime-ep-amdgpu) | 99ab5cb43caa421e0b19870fa4ce9323117e5e56 | [github.com/onnxruntime/onnxruntime-ep-amdgpu](https://github.com/onnxruntime/onnxruntime-ep-amdgpu) | MIT; the texts of everything linked into it ship in C:\runtime\lib\onnxruntime-ep-amdgpu\licenses |
+| ONNX Runtime plugin EP for AMD GPUs (migraphx-ep.dll, C:\runtime\lib\onnxruntime-ep-amdgpu) | 58afd43bc4c2ddc7582712e1d75cbfd4c3bb03fc | [github.com/onnxruntime/onnxruntime-ep-amdgpu](https://github.com/onnxruntime/onnxruntime-ep-amdgpu) | MIT; the texts of everything linked into it ship in C:\runtime\lib\onnxruntime-ep-amdgpu\licenses |
 | fmt (static, in migraphx-ep.dll) | 12.1.0 | [github.com/fmtlib/fmt](https://github.com/fmtlib/fmt) | MIT |
 | Microsoft GSL (header-only, in migraphx-ep.dll) | 4.2.1 | [github.com/microsoft/GSL](https://github.com/microsoft/GSL) | MIT |
 | range-v3 (header-only, in migraphx-ep.dll) | 0.12.0 | [github.com/ericniebler/range-v3](https://github.com/ericniebler/range-v3) | Boost 1.0 (its LICENSE.txt also carries the libc++ and SGI/HP notices of adapted code) |

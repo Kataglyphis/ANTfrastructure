@@ -272,6 +272,8 @@ ENV PATH="${PATH}${ANDROID_HOME:+:${ANDROID_HOME}/cmdline-tools/latest/bin:${AND
 ARG ROCM_ON=${ENABLE_AMD/false/}
 ENV ROCM_PATH=${ROCM_ON:+/opt/rocm} \
     HIP_PATH=${ROCM_ON:+/opt/rocm}
+# AMD's plugin MIGraphX EP; a consumer registers ${ORT_AMDGPU_EP_ROOT}/lib/libmigraphx-ep.so: docs/consumer-image-contract.md#amds-plugin-migraphx-ep
+ENV ORT_AMDGPU_EP_ROOT=${ROCM_ON:+/usr/local/lib/onnxruntime-ep-amdgpu}
 # Appended, so a ROCm tool never shadows the image's own of the same name.
 ENV PATH="${PATH}${ROCM_ON:+:/opt/rocm/bin}"
 

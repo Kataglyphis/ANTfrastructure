@@ -1051,6 +1051,32 @@ deps, so `triton-rocm` moves with it) only acts if the two drift. The extra was
 `develop` since 2026-09-29
 ([`linux-cross-builds.md`](linux-cross-builds.md#the-app-the-wrapper-builds)).
 
+### AMD's plugin MIGraphX EP
+
+Since 2026-11-07 the rocm media stage also builds AMD's out-of-tree ONNX Runtime plugin EP
+([onnxruntime/onnxruntime-ep-amdgpu](https://github.com/onnxruntime/onnxruntime-ep-amdgpu), `ORT_AMDGPU_EP_COMMIT`)
+and the wrapper ships it at `/usr/local/lib/onnxruntime-ep-amdgpu/lib/libmigraphx-ep.so`, named by
+`ORT_AMDGPU_EP_ROOT`. The built-in MIGraphX provider in `microsoft/onnxruntime` is unmaintained (AMD on
+onnxruntime#32571); the plugin takes its op list from `migraphx::get_onnx_operators()`, compiles with
+`standardize_outputs` and refuses a strided output loudly where MIGraphX ignores the option (BACKLOG CON231).
+The spike that decided it: built inside `:latest-rocm` against the image's ORT 1.31 and MIGraphX 2.18.0 in 59 s,
+the plugin ran the DEIM detector on an RX 9070 XT in 4 ms per frame with detector parity to the CPU provider.
+
+`35-build-migraphx-plugin-ep.sh` builds it the way the Windows lane does: the source archive and every
+`FetchContent_Declare` URL of its `src/CMakeLists.txt` are fetched through `download_verified_file` at the
+`ORT_AMDGPU_EP_*` pins and seeded as `FETCHCONTENT_SOURCE_DIR_<NAME>` under `FETCHCONTENT_FULLY_DISCONNECTED`;
+a declaration without a seed at the same URL, or a seed at another URL, fails the build (the Linux twin of
+`Assert-FetchContentSeeded`). ORT's install ships no CMake package, so the script writes an imported
+`onnxruntime::onnxruntime` over the chain's `libonnxruntime.so.1`; MIGraphX comes from the image's
+`lib/cmake/migraphx`. It runs inside the ORT GPU `RUN`, whose mounts already carry it: the pins come from the mounted
+`versions.env`, which re-keys that `RUN` on any pin change anyway, so a plugin bump costs an ORT GPU rebuild and
+nothing else gains from a `RUN` of its own. The module links through the compiler-cache launcher and is checked for its two exports
+(`CreateEpFactories`, `ReleaseEpFactory`) and a resolvable closure, in the media stage
+(`verify-media-artifacts.sh onnxruntime-ep-amdgpu`) and in the runtime smoke (`gpu_plugin_ep_verdict`). The
+texts of everything linked into it ship under `licenses/`. A consumer registers it as
+[the contract says](consumer-image-contract.md#amds-plugin-migraphx-ep); the built-in provider stays in the
+image until every consumer has moved.
+
 ### Running it on an AMD GPU
 
 The image runs as uid 1001, and `--device` keeps each node's host owner and mode: on Ubuntu

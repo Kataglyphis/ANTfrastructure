@@ -22,6 +22,19 @@
   finding list as empty, and `Test-Container.ps1` wraps the gap in `@()`. A Smoke.FindingVerdict case and the
   `lib.smoke-finding-empty-if-result` mutation hold it
   ([failure-modes.md](docs/failure-modes.md#a-smoke-check-fails-and-names-no-finding)).
+## 2026-11-07 — `:latest-rocm` ships AMD's plugin MIGraphX EP (CON231, step 1)
+
+- Owner decision: the Linux rocm variant moves to AMD's out-of-tree plugin EP. The media stage builds
+  `libmigraphx-ep.so` from the pinned `onnxruntime/onnxruntime-ep-amdgpu` commit (`35-build-migraphx-plugin-ep.sh`:
+  every FetchContent seeded from a sha256-pinned archive, `FETCHCONTENT_FULLY_DISCONNECTED`, an imported
+  `onnxruntime::onnxruntime` over the chain's library, the two exports and the closure checked), the package
+  stage ships it under `/usr/local/lib/onnxruntime-ep-amdgpu` and sets `ORT_AMDGPU_EP_ROOT`, and the runtime
+  smoke's GPU gate judges it (`gpu_plugin_ep_verdict`). The shared `ORT_AMDGPU_EP_COMMIT` moves to the commit the
+  spike proved on an RX 9070 XT (4 ms per frame, detector parity). The built-in provider stays until every
+  consumer registers the plugin ([contract](docs/consumer-image-contract.md#amds-plugin-migraphx-ep)).
+  `test-migraphx-plugin-ep.sh` (27) and `test-gpu-runtime-check.sh` (82) hold it; recipes `onnx-ep-amdgpu.*` and
+  `gpu-runtime.plugin-ep-*` bite.
+
 ## 2026-11-07 — CUDA compute capability 7.5 joins the build (CON217)
 
 - Owner decision: `CUDA_ARCHITECTURES` is `75;86;87;89;120`, so T4 and RTX 20xx cards get a cubin from ONNX Runtime

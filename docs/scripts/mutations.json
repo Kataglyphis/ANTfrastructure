@@ -16876,6 +16876,54 @@
   "why": "an arm64 nvidia build has no TensorRT route, so it must not default to one"
  },
  {
+  "id": "onnx-ep-amdgpu.drifted-seed-refused",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
+  "find": "    elif [ \"${seed}\" != \"${url}\" ]; then bad=\"${bad}; ${name} is declared as ${url} but the seed pins ${seed}\"; fi\n",
+  "replace": "    fi\n",
+  "why": "a seed at another URL than upstream declares would pin bytes the build never reads while the real fetch stays unpinned",
+  "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh"
+ },
+ {
+  "id": "onnx-ep-amdgpu.exports-both-checked",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
+  "find": "  for sym in CreateEpFactories ReleaseEpFactory; do\n",
+  "replace": "  for sym in CreateEpFactories; do\n",
+  "why": "ORT's plugin loader calls both entry points; a module without ReleaseEpFactory registers and then leaks or crashes",
+  "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh"
+ },
+ {
+  "id": "onnx-ep-amdgpu.one-top-level-dir",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
+  "find": "  [ -n \"${top}\" ] && [ \"$(find \"${dir}.x\" -mindepth 1 -maxdepth 1 | wc -l)\" -eq 1 ] || { printf 'ERROR: %s does not hold one top-level directory\\n' \"${archive}\" >&2; return 1; }\n",
+  "replace": "  [ -n \"${top}\" ] || { printf 'ERROR: %s does not hold one top-level directory\\n' \"${archive}\" >&2; return 1; }\n",
+  "why": "an archive with two top-level entries would seed half a dependency silently",
+  "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh"
+ },
+ {
+  "id": "onnx-ep-amdgpu.pin-token-shape",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
+  "find": "    *[!A-Za-z0-9._+-]*) printf 'ERROR: %s=%s is not a plain version token\\n' \"${key}\" \"${value}\" >&2; return 1 ;;\n",
+  "replace": "",
+  "why": "a pin that is not a plain token would be spliced into a URL and a shell command",
+  "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh"
+ },
+ {
+  "id": "gpu-runtime.plugin-ep-exports-read",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": "  if [ \"$(_gpur \"${probe}\" MGXEP_EXPORTS)\" = 2 ]; then echo \"OK libmigraphx-ep.so exports CreateEpFactories and ReleaseEpFactory\"\n",
+  "replace": "  if true; then echo \"OK libmigraphx-ep.so exports CreateEpFactories and ReleaseEpFactory\"\n",
+  "why": "a shipped module that lost an entry point would register nothing; the verdict must count the exports",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh"
+ },
+ {
+  "id": "gpu-runtime.plugin-ep-root-only-on-rocm",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": "    case \"$(_gpur \"${probe}\" MGXEP_ROOT)\" in \"\"|\"<unset>\") ;; *) echo \"BAD a non-rocm image advertises ORT_AMDGPU_EP_ROOT='$(_gpur \"${probe}\" MGXEP_ROOT)'\" ;; esac\n",
+  "replace": "",
+  "why": "a default image advertising a plugin root it does not ship would send consumers to a missing library",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh"
+ },
+ {
   "id": "gpu-runtime.rocm-roots-read",
   "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
   "find": "if [ \"$(_gpur \"${probe}\" \"${k}\")\" = /opt/rocm ]; then echo \"OK ${k}=/opt/rocm\"; else",

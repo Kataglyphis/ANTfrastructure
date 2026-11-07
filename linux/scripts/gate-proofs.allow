@@ -219,4 +219,6 @@ mutation-family:host
 mutation-family:smoke
 # The MSVC runtime notice in packages; proof: Msvc.RuntimeNotice.Tests.ps1 and test-cmake-windows-arch.sh.
 mutation-family:msvc-notice
+# AMD's plugin MIGraphX EP build on Linux; proof: test-migraphx-plugin-ep.sh.
+mutation-family:onnx-ep-amdgpu
 mutation-family:cmake-msvc-notice

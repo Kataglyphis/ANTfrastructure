@@ -1004,6 +1004,30 @@ GStreamer inference pipelines use `onnxinference`, `tfliteinference` and the ten
 tensor, with `type`, `dims` and `dir` matching the model. GStreamer's `modelinfo-helper` in gst-devtools writes one.
 Windows images before this fix failed every session with a garbled path, whatever the model.
 
+## AMD's plugin MIGraphX EP
+
+`:latest-rocm` ships AMD's plugin MIGraphX execution provider beside the built-in one and names it:
+
+| Variable | Linux (`linux/Dockerfile.package`, rocm variant only) |
+|---|---|
+| `ORT_AMDGPU_EP_ROOT` | `/usr/local/lib/onnxruntime-ep-amdgpu`; empty in every other variant |
+
+The library is `${ORT_AMDGPU_EP_ROOT}/lib/libmigraphx-ep.so`. Register it once per process, then select the
+device it reports; the EP's name is the registration name you choose:
+
+- Python (`onnxruntime` 1.31): `ort.register_execution_provider_library("MIGraphX", path)`, then
+  `so.add_provider_for_devices([d for d in ort.get_ep_devices() if d.ep_name == "MIGraphX"], {})`.
+- C++: `Ort::Env::RegisterExecutionProviderLibrary("MIGraphX", path)`, then
+  `SessionOptions::AppendExecutionProvider_V2` with the matching `OrtEpDevice`.
+- Rust (`ort` 2.0.0-rc.13): `Environment::register_execution_provider_library`.
+
+Prefer it over `MIGraphXExecutionProvider` where the variable is set: the built-in provider is unmaintained
+upstream and binds a strided partition output onto ORT's dense buffer on MIGraphX ≤ 2.18
+([failure-modes](failure-modes.md#a-linux-amd-package-returns-fewer-drifting-detections-on-migraphx)); the plugin
+refuses that case loudly and supports every op MIGraphX parses. Why and how it is built:
+[linux-accelerator-images.md](linux-accelerator-images.md#amds-plugin-migraphx-ep); the move per consumer is
+BACKLOG CON231.
+
 ## The ort crate links the chain ONNX Runtime
 
 Both published images set the environment of the Rust `ort` / `ort-sys` crates,

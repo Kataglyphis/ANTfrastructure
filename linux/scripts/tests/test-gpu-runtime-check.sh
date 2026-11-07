@@ -16,6 +16,8 @@ GPUR HIPVERSION 7.16.26385-0000000
 GPUR HIPROCMPATH ${SDK}
 GPUR HIPCLANG ${SDK}/lib/llvm/bin
 GPUR HIPCC fail ld.lld: error: cannot open ${SDK}/lib/libamdhip64.so: No such file or directory
+GPUR MGXEP_ROOT <unset>
+GPUR MGXEP_SO <absent>
 GPUR ORTEP MIGraphXExecutionProvider,WebGpuExecutionProvider,CPUExecutionProvider"
 # The same image with the wrapper's ROCM_PATH, HIP_PATH and PATH entry.
 ROCM_FIXED="GPUR ENABLE false true false
@@ -27,6 +29,10 @@ GPUR HIPVERSION 7.16.26385-0000000
 GPUR HIPROCMPATH /opt/rocm
 GPUR HIPCLANG /opt/rocm/core-10.1/lib/llvm/bin
 GPUR HIPCC ok
+GPUR MGXEP_ROOT /usr/local/lib/onnxruntime-ep-amdgpu
+GPUR MGXEP_SO /usr/local/lib/onnxruntime-ep-amdgpu/lib/libmigraphx-ep.so
+GPUR MGXEP_EXPORTS 2
+GPUR MGXEP_UNRESOLVED
 GPUR ORTEP MIGraphXExecutionProvider,WebGpuExecutionProvider,CPUExecutionProvider"
 LIB=/usr/lib/x86_64-linux-gnu
 DS=/opt/nvidia/deepstream/tensorrt-10.16.1.11/lib
@@ -80,13 +86,24 @@ t_assert_contains "${v}" "BAD /opt/rocm/bin is not on PATH"
 t_assert_contains "${v}" "BAD the hipconfig on PATH names '${SDK}', not /opt/rocm"
 t_assert_contains "${v}" "BAD hipcc's clang is '${SDK}/lib/llvm/bin'"
 t_assert_contains "${v}" "BAD hipcc cannot build a HIP program: fail ld.lld"
-t_assert_eq 6 "$(_bad "${v}")" "six findings, the EP listing still passes"
+t_assert_contains "${v}" "BAD ORT_AMDGPU_EP_ROOT is '<unset>', not /usr/local/lib/onnxruntime-ep-amdgpu"
+t_assert_contains "${v}" "BAD the plugin MIGraphX EP libmigraphx-ep.so is missing"
+t_assert_eq 8 "$(_bad "${v}")" "eight findings, the EP listing still passes"
 
 t_case "the fixed wrapper passes"
 v="$(_rocm "${ROCM_FIXED}")"
 t_assert_eq 0 "$(_bad "${v}")" "no BAD line: ${v}"
 t_assert_contains "${v}" "OK hipcc builds a HIP program for gfx1201"
 t_assert_contains "${v}" "OK onnxruntime lists MIGraphXExecutionProvider"
+t_assert_contains "${v}" "OK libmigraphx-ep.so exports CreateEpFactories and ReleaseEpFactory"
+t_assert_contains "${v}" "OK libmigraphx-ep.so resolves every library it needs"
+
+t_case "the plugin EP is judged on its own: exports, closure, and a non-rocm image must not advertise it"
+_finds rocm "${ROCM_FIXED}" 's/^GPUR MGXEP_EXPORTS 2$/GPUR MGXEP_EXPORTS 1/' "BAD libmigraphx-ep.so exports 1 of the 2 plugin entry points"
+_finds rocm "${ROCM_FIXED}" 's/^GPUR MGXEP_UNRESOLVED.*$/GPUR MGXEP_UNRESOLVED libonnxruntime.so.1/' "BAD libmigraphx-ep.so cannot resolve: libonnxruntime.so.1"
+_finds rocm "${ROCM_FIXED}" 's#^GPUR MGXEP_ROOT .*#GPUR MGXEP_ROOT /opt/ep#' "BAD ORT_AMDGPU_EP_ROOT is '/opt/ep', not /usr/local/lib/onnxruntime-ep-amdgpu"
+_finds rocm "${ROCM_FIXED}" 's/^GPUR ENABLE false true false$/GPUR ENABLE false false false/; s#^GPUR ROCM_PATH .*#GPUR ROCM_PATH <unset>#; s#^GPUR HIP_PATH .*#GPUR HIP_PATH <unset>#; s/^GPUR PATHROCM yes$/GPUR PATHROCM no/' \
+  "BAD a non-rocm image advertises ORT_AMDGPU_EP_ROOT='/usr/local/lib/onnxruntime-ep-amdgpu'"
 
 t_case "each rocm root and tool is judged on its own"
 _finds rocm "${ROCM_FIXED}" 's|^GPUR HIP_PATH .*|GPUR HIP_PATH /opt/rocm-10.1|' "BAD HIP_PATH is '/opt/rocm-10.1'"
@@ -157,7 +174,7 @@ t_assert_contains "${_PROBE}" "/usr/local/tensorrt /opt/nvidia \\( -name 'NvInfe
 t_case "a probe that never ran fails once, never reads as an image without a GPU stack"
 t_assert_eq "BAD the GPU probe printed nothing; the container did not run it" "$(gpu_runtime_verdict "" 11.4.0.106)"
 t_assert_eq 0 "$(_bad "$(gpu_runtime_verdict "${TRT_GOOD}" 11.4.0.106)")" "a real probe goes through both verdicts"
-t_assert_eq 6 "$(_bad "$(gpu_runtime_verdict "${ROCM_SHIPPED}" 11.4.0.106)")"
+t_assert_eq 8 "$(_bad "$(gpu_runtime_verdict "${ROCM_SHIPPED}" 11.4.0.106)")" "six roots and tools plus the two plugin EP findings"
 t_assert_contains "$(declare -f check_gpu_runtime)" "gpu_runtime_verdict" "the smoke check uses it"
 
 t_case "the wrapper's ROCm environment exists only in a rocm image"

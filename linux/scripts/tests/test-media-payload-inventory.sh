@@ -12,11 +12,11 @@ t_source_functions "${COPY}" _dest copy_path copy_media_payloads || exit 1
 t_source_functions "${VALIDATOR}" _smoke_optional_payloads || exit 1
 WORK="$(mktemp -d '/tmp/ant-payload fixture.XXXXXXXX')"
 trap 'rm -rf "${WORK}"' EXIT
-expected=(/usr/local/lib/onnxruntime-genai /usr/local/lib/onnxruntime-gpu /usr/local/include/tflite /usr/local/include/absl
+expected=(/usr/local/lib/onnxruntime-genai /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-ep-amdgpu /usr/local/include/tflite /usr/local/include/absl
   /usr/local/include/tensorflow /usr/local/include/flatbuffers /usr/local/include/c /usr/local/lib/pkgconfig/litert.pc
   /usr/local/lib/pkgconfig/tensorflow-lite.pc /usr/local/lib/pkgconfig/tensorflowlite_c.pc /usr/local/lib/pkgconfig/libvvdec.pc
   /usr/local/lib/litert-web /usr/local/lib/litert-lm-web /usr/local/lib/onnxruntime-web)
-observed=(/usr/local/lib/onnxruntime-genai /usr/local/lib/onnxruntime-gpu /usr/local/include/tflite /usr/local/include/tensorflow /usr/local/lib/pkgconfig/litert.pc)
+observed=(/usr/local/lib/onnxruntime-genai /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-ep-amdgpu /usr/local/include/tflite /usr/local/include/tensorflow /usr/local/lib/pkgconfig/litert.pc)
 copy_glob() { :; }
 copy_cuda_payload() { printf 'CUDA\n' >> "${WORK}/order"; }
 copy_tensorrt_payload() { printf 'TENSORRT\n' >> "${WORK}/order"; }
@@ -55,7 +55,7 @@ function [ {
   if builtin [ "${1:-}" = -e ]; then builtin [ -e "${WORK}/smoke$2" ]; else builtin [ "$@"; fi
 }
 for mode in present absent; do
-  t_case "${mode}: exactly the original five optional payloads are observed in order"
+  t_case "${mode}: exactly the six observed optional payloads are reported in order"
   rm -rf "${WORK}/smoke"
   if builtin [ "${mode}" = present ]; then
     for path in "${observed[@]}"; do mkdir -p "${WORK}/smoke${path}"; done
