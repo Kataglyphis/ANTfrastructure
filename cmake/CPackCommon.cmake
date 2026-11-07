@@ -247,12 +247,19 @@ function(kataglyphis_install_msvc_runtime_notice out_var)
     file(GLOB _texts "${_root}/Licenses/*/Redist.txt")
     if(_texts)
       list(SORT _texts)
-      list(GET _texts 0 _text)
+      list(
+        GET
+        _texts
+        0
+        _text)
       break()
     endif()
   endforeach()
   if(NOT _text)
-    message(FATAL_ERROR "kataglyphis_cpack_common: the packages carry the MSVC runtime, but no Licenses/<lcid>/Redist.txt was found under: ${_roots}")
+    message(
+      FATAL_ERROR
+        "kataglyphis_cpack_common: the packages carry the MSVC runtime, but no Licenses/<lcid>/Redist.txt was found under: ${_roots}"
+    )
   endif()
   install(FILES "${_text}" DESTINATION licenses/msvc-runtime)
   install(
@@ -669,7 +676,8 @@ macro(kataglyphis_cpack_common)
           file(READ "${KGCPACK_LICENSE_FILE}" _kgcpack_page)
           file(READ "${_kgcpack_msvc_notice}" _kgcpack_notice)
           file(WRITE "${PROJECT_BINARY_DIR}/kataglyphis-license-page.txt" "${_kgcpack_page}\n\n${_kgcpack_notice}")
-          kataglyphis_write_license_rtf("${PROJECT_BINARY_DIR}/kataglyphis-license-page.txt" "${KGCPACK_WIX_LICENSE_RTF}")
+          kataglyphis_write_license_rtf("${PROJECT_BINARY_DIR}/kataglyphis-license-page.txt"
+                                        "${KGCPACK_WIX_LICENSE_RTF}")
           unset(_kgcpack_page)
           unset(_kgcpack_notice)
         else()
