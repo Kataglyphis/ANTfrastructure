@@ -4296,7 +4296,7 @@
   "why": "the DSP exemption must cover the skeleton dirs and nothing else: widened, it hides a builder-arch object anywhere in the tree"
  },
  {
-  "id": "parity.nvidia-gst-plugins-recorded",
+  "id": "runtime-smoke.nvidia-gst-plugins-recorded",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
   "find": "_PARITY_GST_KNOWN_BROKEN=\"amd64:libgstnvunixfd.so amd64:libgstnvvideo4linux2.so amd64:libgstnvvideoconvert.so amd64:libgstnvvideosinks.so arm64:libgstnvvideoconvert.so\"",
   "replace": "_PARITY_GST_KNOWN_BROKEN=\"\"",
@@ -24305,7 +24305,7 @@
   "why": "Android reads its own command-line tools digest without borrowing the Rust pin."
  },
  {
-  "id": "toolchain.rustup-required-retries",
+  "id": "rust.rustup-required-retries",
   "target": "linux/scripts/02-toolchain/install-rust.sh",
   "find": "  for attempt in 1 2 3; do\n",
   "replace": "  for attempt in 1; do\n",
@@ -24313,7 +24313,7 @@
   "why": "a single qemu-user SIGABRT in rustup's download would again cost the whole arm64 package stage"
  },
  {
-  "id": "toolchain.rustup-required-propagates",
+  "id": "rust.rustup-required-propagates",
   "target": "linux/scripts/02-toolchain/install-rust.sh",
   "find": "    [ \"${attempt}\" -eq 3 ] || sleep 5\n  done\n  return 1\n",
   "replace": "    [ \"${attempt}\" -eq 3 ] || sleep 5\n  done\n  return 0\n",

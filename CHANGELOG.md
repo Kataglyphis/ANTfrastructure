@@ -92,15 +92,15 @@
   under `onnxruntime-cpu/lib/hexagon-v*/`: the HTP backend's skeletons, run by the DSP, never by the image's
   loader. The tree-arch scanner skips those dirs and names machine 164 `QDSP6` (`tree-arch.hexagon-skels-are-dsp-payload`,
   `tree-arch.hexagon-filter-is-narrow`). The five `libgstnv*.so` plugins that need the driver's `libcuda.so.1` are
-  recorded per arch in `_PARITY_GST_KNOWN_BROKEN` (`parity.nvidia-gst-plugins-recorded`,
+  recorded per arch in `_PARITY_GST_KNOWN_BROKEN` (`runtime-smoke.nvidia-gst-plugins-recorded`,
   [failure-modes.md](docs/failure-modes.md#tree-arch-usrlocallibonnxruntime-cpu-ships-107-em164-objects-on-arm64)).
 
 ## 2026-11-06 — A required `rustup … add` is retried under qemu-user
 
 - The arm64 package stage of the nvidia chain died in `rustup component add rustfmt` with a qemu-user SIGABRT
   mid-download, a step the three runs before had passed. `rustup_required` in `install-rust.sh` runs each of the
-  four required adds up to three times and fails the installer after the third (`toolchain.rustup-required-retries`,
-  `toolchain.rustup-required-propagates`,
+  four required adds up to three times and fails the installer after the third (`rust.rustup-required-retries`,
+  `rust.rustup-required-propagates`,
   [failure-modes.md](docs/failure-modes.md#rustup-component-add-aborts-under-qemu-user)).
 
 ## 2026-11-06 — The SBSA RUNPATH starts with `$ORIGIN`, and the CUDA SONAMEs come from the host toolkit too
