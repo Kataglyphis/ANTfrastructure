@@ -1686,12 +1686,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
       Left separately, before a release: the installer's licence wording for the end-user terms.
-- [x] **CON228 — the MSVC runtime's notice in every Windows installer** [M, ★★]. Done 2026-11-06 in source ([`third-party-licenses.md` § The MSVC runtime notice](docs/third-party-licenses.md#the-msvc-runtime-notice)); the notice's wording is still a draft for review.
-      Before: Agreed 2026-11-05, after the running chains. A shared hub helper stages `Redist.txt` under `licenses\msvc-runtime\` when an installer carries the runtime,
-      called from CMake packaging, `New-PortableBundle` and the Python app path, with a gate on the finished MSI, MSIX and ZIP. The owner accepts a link instead of the full terms, but `https://aka.ms/vs/18/redistribution.lic` reached Bing's start page on 2026-11-05,
-      so the manifest and installers name `https://learn.microsoft.com/en-us/visualstudio/releases/2026/redistribution`.
-      The owner also wants the end-user paragraph on the installers' licence page (2026-11-05); its wording is a draft until someone qualified has read it.
-      Decided the same day: the GPU run of `006-dml-matmul-1d-rhs.patch` follows the image build, and the arm64 device run of the bundle comes later.
+- [ ] **CON228 — the MSVC runtime notice's end-user paragraph is a draft** [S, ★]. The notice itself shipped
+      2026-11-06 ([`third-party-licenses.md` § The MSVC runtime notice](docs/third-party-licenses.md#the-msvc-runtime-notice));
+      the paragraph on the installers' licence page stays a draft until someone qualified has read it.
 - [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
       Done 2026-11-06: the `cuda_llm` exemption is gone (CHANGELOG). The nvidia chain of 2026-11-06 compiled ORT's CUDA RUN through sccache, MoE kernels included: 4937 compilations, 0 failures, 4330 WebDAV writes; 1663 hits (25 %) on a freshly rebuilt toolchain. `Test-CudaCache.ps1` passed on that toolchain (4 misses, then 4 hits). Still open: the warm rerun, and 289 failed S3 writes in that RUN.
       What still compiles outside sccache, from the chain logs of 2026-11-05/06 (rocm, nvidia, arm64), longest first:
@@ -1713,10 +1710,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
       Not sccache, but cached: LiteRT-LM and the LiteRT wheel use Bazel's own remote cache (WebDAV only, no S3 level). Cached but never drained, so their stats are missing and S3 uploads can be lost: HailoRT, the OpenCV GStreamer plugin, the arm64 Vulkan validation layers.
       Open questions: the 569 "non-cacheable" nvcc runs in ORT's nvidia stats, and the rocm ORT run that lost its S3 level to a 10 s server-start timeout.
-- [x] **CON230 — the Windows lane downloads TensorRT itself** [S, ★★★]. Done 2026-11-06 in source: the download, the pin check and the loud failure (CHANGELOG); the first nvidia chain with TensorRT is still to run.
-      Open, an owner decision: Windows arm64 TensorRT. 11.4.0 lists a Windows arm64 zip, and the cross bundle builds ORT without the TensorRT EP today.
-      Before: `Install-Tensorrt.ps1` tries the pre-11.x file names, so it always 404s. On 2026-11-05 `developer.nvidia.com/downloads/compute/machine-learning/tensorrt/11.4.0/zip/TensorRT-Enterprise-11.4.0.106-Windows-amd64-cuda-13.4-Release-external.zip`
-      answered a plain request with a zip, no login; NVIDIA's page asks to accept the licence first. Fix the URLs, verify against `TENSORRT_ZIP_SHA256`, keep the runtime-only rule, and correct the docs that call it login-gated. 11.4.0 also lists a Windows arm64 zip, which the docs' "x64-only" contradicts; arm64 is an owner decision.
+- [b] **CON230 — Windows arm64 TensorRT** [S, ★]. An owner decision: the Windows lane downloads TensorRT itself
+      since 2026-11-06 (amd64; the first nvidia chain with it runs on the Windows host as G5). 11.4.0 lists a Windows
+      arm64 zip, and the cross bundle builds ORT without the TensorRT EP today.
 - [ ] **CON222 — evaluate offline gitleaks availability in consumer images** [S, ★★].
       On 2026-11-01, the cached Linux amd64 CPU image at registry digest
       `sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
