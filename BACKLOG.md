@@ -1661,8 +1661,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       so the manifest and installers name `https://learn.microsoft.com/en-us/visualstudio/releases/2026/redistribution`.
       The owner also wants the end-user paragraph on the installers' licence page (2026-11-05); its wording is a draft until someone qualified has read it.
       Decided the same day: the GPU run of `006-dml-matmul-1d-rhs.patch` follows the image build, and the arm64 device run of the bundle comes later.
-- [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). ORT's `onnxruntime_providers_cuda_llm` still runs nvcc bare (`sccache-ptx-exempt.cmake`), though the hub's sccache build carries the #2862 fix, proven only on Linux.
-      Done 2026-11-06: the `cuda_llm` exemption is gone (CHANGELOG); its chain proof (provider link from hits, smoke gate, `Test-Cache.ps1`) comes with the next nvidia chain.
+- [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
+      Done 2026-11-06: the `cuda_llm` exemption is gone (CHANGELOG). The nvidia chain of 2026-11-06 compiled ORT's CUDA RUN through sccache, MoE kernels included: 4937 compilations, 0 failures, 4330 WebDAV writes; 1663 hits (25 %) on a freshly rebuilt toolchain. Still open: the warm rerun and `Test-Cache.ps1`, and 289 failed S3 writes in that RUN.
       What still compiles outside sccache, from the chain logs of 2026-11-05/06 (rocm, nvidia, arm64), longest first:
 
       | Stage | Step | Uncached share | Reason | Possible fix |
