@@ -13,6 +13,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-07 — the Linux AMD packages pass on the RX 9070 XT; comgr keys its cache on `TMPDIR`
+
+- CON224 item 1 and CON225: on the packages rebuilt on the patched `:latest-rocm`, OxidANT, AccelerANTgine,
+  OrchestrANT and OmniAccelerANT pass `compare_detector_parity.py` on MIGraphX. OmniAccelerANT's AppImage lane
+  first hit its 180 s launch timeout: comgr keys its kernel cache on `TMPDIR`, which that lane randomizes, so
+  every AppImage run compiles the detector's kernels again (370 s cold, 84 s warm). OmniAccelerANT 179d532 gives
+  the launch 900 s (`PROFILE_GPU_TIMEOUT`); [failure-modes.md](docs/failure-modes.md#an-appimage-gpu-profile-times-out-while-the-deb-passes).
+- The build host's asset-mirror keys are installed (`set-asset-mirror.sh --check` green); CON153's proof comes
+  with the next chain.
+
 ## 2026-11-07 — the CUDA cache probe runs again and proves a write
 
 - `Test-CudaCache.ps1` and `Test-Rdna4LayerLock.ps1` computed the repo root one level short and

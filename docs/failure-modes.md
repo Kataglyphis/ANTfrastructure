@@ -1240,9 +1240,24 @@ RX 9070 XT with ORT v1.31.0 and MIGraphX 2.18.0.
 dense buffer (BACKLOG CON225). It needs a partition that ends in a `Slice`/`Reshape` view, which this model
 gets because the EP leaves `GridSample` on the CPU.
 
-**Fix.** The EP patches in CON225. Until then no Linux AMD package of this model is trustworthy on the GPU;
-the CPU path is unaffected. Before blaming the provider, put `/opt/rocm/core-10.1/lib` and `extras-10/lib`
+**Fix.** The EP patches `003-migraphx-gridsample.patch` and `004-migraphx-refuse-nonstandard-output.patch`
+(CON225), in the rocm image since its 2026-11-05 media build and proven on 2026-11-07: every Linux AMD package
+built on that image passes `compare_detector_parity.py` on the RX 9070 XT. Before blaming the provider, put `/opt/rocm/core-10.1/lib` and `extras-10/lib`
 on the loader path: a missing `libmigraphx_c.so.3` fails at provider load, not with wrong numbers.
+
+### An AppImage GPU profile times out while the DEB passes
+
+**Symptom.** OmniAccelerANT's `profile-gpu-packages.sh` passes the tarball and the DEB, then stops without
+a message after the AppImage's CPU profile; its `appimage/gpu-profile_*.json` is 0 bytes and `timeout`
+returned 124. Seen 2026-11-07 on an RX 9070 XT (ROCm 10.1, MIGraphX 2.18.0) with bytes identical to the DEB's.
+
+**Cause.** comgr keys its kernel cache (`~/.cache/comgr`) on `TMPDIR`, and the AppImage lane launches with a
+fresh `TMPDIR` for its isolated extraction, so every AppImage run compiles the detector's kernels again.
+Measured with the extracted AppImage run directly: a fresh `TMPDIR` took 370 s and wrote 275 cache
+entries, the default `/tmp` took 84 s and wrote none. The 180 s launch timeout could never cover it.
+
+**Fix.** OmniAccelerANT 179d532: the launch budget is 900 s (`PROFILE_GPU_TIMEOUT` overrides it). A lane
+that wants the cache has to keep `TMPDIR` stable between runs; the isolation stays.
 
 ### An exception through std::call_once segfaults in libunwind
 

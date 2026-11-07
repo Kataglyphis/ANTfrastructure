@@ -269,6 +269,10 @@ gh run download "$id" -R Kataglyphis/REPO -n ARTIFACT -D ~/gpu/REPO
 | OmniAccelerANT | `linux-gpu-candidates.yml` | `omni-accelerant-gpu-amd-linux-x64-default` | `PROFILE_EVIDENCE_DIR=~/gpu/omni-evidence scripts/linux/profile-gpu-packages.sh ~/gpu/OmniAccelerANT amd x64 migraphx` |
 
 The NVIDIA artifacts swap `amd` for `nvidia`. `two_cats.jpg` is ModelANT's `contracts/fixtures/two_cats.jpg`.
+A GPU run that compiles the detector's kernels from a cold comgr cache takes about six minutes on a gfx1201;
+OmniAccelerANT's launch budget is 900 s (`PROFILE_GPU_TIMEOUT`), and its AppImage lane is cold on every run
+([failure-modes](failure-modes.md#an-appimage-gpu-profile-times-out-while-the-deb-passes)). On 2026-11-07 all
+four AMD packages passed on an RX 9070 XT.
 
 ## Repeated ORT profile runs
 

@@ -406,9 +406,13 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
          Host setup the page did not say: `libmigraphx_c.so.3` comes only from AMD's `amdrocm10-migraphx`
          (Ubuntu 26.04's own ROCm 7.1 has no MIGraphX), `/opt/rocm/core-10.1/lib` and `extras-10/lib` go on the
          loader path, and OmniAccelerANT needs `xvfb-run`. Rerun after CON225 ships. **CON225 is in the image
-         since 2026-11-05** (`:latest-rocm` republished 2026-11-07 00:24 UTC, amd64 `sha256:1dc71c8d3dfb…`), but
-         the four consumer GPU workflows last ran on 2026-11-03/04 against the unpatched image: dispatch them
-         first, then `~/gpu/run-con224-linux-amd.sh` with `LD_LIBRARY_PATH=/opt/rocm/core-10.1/lib:/opt/rocm/extras-10/lib`.
+         since 2026-11-05** (`:latest-rocm` republished 2026-11-07 00:24 UTC, amd64 `sha256:1dc71c8d3dfb…`).
+         **Passed 2026-11-07** on the packages rebuilt on it (runs 42353535648, 42353537377, 42353538989,
+         42353540607): OxidANT, AccelerANTgine, OrchestrANT and OmniAccelerANT's tarball and DEB pass
+         `compare_detector_parity.py` on MIGraphX against the CPU; the AppImage first hit the 180 s launch
+         timeout (a cold kernel compile, [failure-modes](docs/failure-modes.md#an-appimage-gpu-profile-times-out-while-the-deb-passes))
+         and passes with OmniAccelerANT 179d532's 900 s budget. Runner: `~/gpu/run-con224-linux-amd.sh` with
+         `LD_LIBRARY_PATH=/opt/rocm/core-10.1/lib:/opt/rocm/extras-10/lib`.
       2. Linux NVIDIA, on a machine with a supported card (not the RTX 2080 until CON217).
       3. Windows NVIDIA, on that machine. OrchestrANT's package uses DirectML there.
       Steps: [§ A package on your own GPU](docs/gpu-artifact-receipts.md#a-package-on-your-own-gpu). The Linux
@@ -435,7 +439,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ROCm image is not affected by this partition (its ORT is CUDA/DirectML only). Done when all four Linux
       AMD packages pass `compare_detector_parity.py` on the RX 9070 XT (CON224 item 1). In the image since the
       rocm media build of 2026-11-05 (`APPLIED: ORT 003-migraphx-gridsample.patch` and
-      `004-migraphx-refuse-nonstandard-output.patch` in its log); the packages that prove it wait on CON224 item 1.
+      `004-migraphx-refuse-nonstandard-output.patch` in its log). **Proven 2026-11-07**: all four Linux AMD
+      packages pass parity on the RX 9070 XT (CON224 item 1). Left: the upstream report with the evidence in `~/gpu/work`.
 
 - [ ] **CON217 — build CUDA compute capability 7.5, so RTX 20xx cards run the NVIDIA packages** [M, ★★].
       Owner decision 2026-11-02: add `75` (Turing: T4, RTX 20xx) to `CUDA_ARCHITECTURES`, today
