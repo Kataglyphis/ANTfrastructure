@@ -440,7 +440,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       AMD packages pass `compare_detector_parity.py` on the RX 9070 XT (CON224 item 1). In the image since the
       rocm media build of 2026-11-05 (`APPLIED: ORT 003-migraphx-gridsample.patch` and
       `004-migraphx-refuse-nonstandard-output.patch` in its log). **Proven 2026-11-07**: all four Linux AMD
-      packages pass parity on the RX 9070 XT (CON224 item 1). Left: the upstream report with the evidence in `~/gpu/work`.
+      packages pass parity on the RX 9070 XT (CON224 item 1). Upstream: the report is prepared in
+      `linux/upstream/onnxruntime-migraphx-strided-output/ISSUE.md`; its status row is in `linux/upstream/README.md`.
 
 - [ ] **CON217 — build CUDA compute capability 7.5, so RTX 20xx cards run the NVIDIA packages** [M, ★★].
       Owner decision 2026-11-02: add `75` (Turing: T4, RTX 20xx) to `CUDA_ARCHITECTURES`, today
@@ -529,9 +530,14 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       cause: both its host and target LLVM builds ran `cmake --build … -- -j1` for over 3 h on arm64 and riscv64.
       Measured 2026-11-05 (nvidia media, amd64 and arm64 under `--parallel-archs`, run 20261105-151158): ONNX
       Runtime built its CPU variant with `-j6` (amd64) and `-j5` (arm64) and the GPU variant with `-j2`; alone
-      (default arm64 media, 2026-11-06) it logged `Using JOBS=26`. The trace peaked at 41 compilers (34 alone),
-      31 GB used and the 8 GB swap full, with no OOM kill in the kernel journal. The 32-compiler target is missed
-      by 9 under two arches: decide whether the cap or the full swap is the number to hold.
+      (default arm64 media, 2026-11-06) it logged `Using JOBS=26`. **Decided 2026-11-07 (owner): the governor's
+      own brake is the measure, not a compiler count and not the swap.** The sampler's `compilers` column counts
+      `pgrep -x 'cc1plus|cc1|clang|clang++|rustc|lto1|ld|go'`, drivers and linkers included, so 41 is about 20
+      governed compiles; `MemAvailable` never fell below 29 GB (the admit floor is 3 GB; 4 of 1761 samples were
+      above 32), and the swap was already full in the trace's FIRST row (stale pages from before the chain:
+      `swapoff -a && swapon -a` clears it, the owner's call). The IREE half is unmeasured since: every android
+      stage of the round hit the layer cache (0.3 s). Done when a cold arm64 or riscv64 android stage logs
+      IREE's host and target LLVM builds with more than one job.
 - [ ] **CON168 — prove on a chain that one lane compiles the IREE host LLVM** [S, ★★]. In source since 2026-11-03
       ([`iree-two-stage-build.md` § One host stage per chain](docs/iree-two-stage-build.md#one-host-stage-per-chain)):
       the first lane builds under a lock in the `id=iree-host` cache mount, the next restores (`IREE_HOST_CACHE=off`
