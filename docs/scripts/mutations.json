@@ -32209,6 +32209,14 @@
   "why": "without the miss check two warm hits pass and the write path goes unproven"
  },
  {
+  "id": "lib.smoke-finding-empty-if-result",
+  "target": "windows/scripts/modules/WindowsSmokeTest.Common.psm1",
+  "find": "{ ($null -eq $Finding) -or @($Finding).Count -eq 0 }",
+  "replace": "{ @($Finding).Count -eq 0 }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.Operations.Tests.ps1 -ResultFile logs/code-quality/smoke-finding-mutation.json",
+  "why": "an empty if/else result binds -Finding as $null, so the healthy TensorRT EP check failed with no finding named"
+ },
+ {
   "id": "lib.iree-twin-names-stable-abi-lib",
   "target": "windows/scripts/build/Build-IreeFromSource.ps1",
   "find": "        $stableAbi + $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')",

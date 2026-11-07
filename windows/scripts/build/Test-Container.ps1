@@ -704,7 +704,7 @@ function Assert-OrtTensorRtProviderSmoke {
             if ($script:tensorRtStaged) {
                 # The runtime subset must hold what the EP imports and LoadLibrary()s, or the EP fails only at session creation.
                 $trtEp = Get-RequiredSmokeDll -Root $onnxRoot -Filter 'onnxruntime_providers_tensorrt.dll' -Description 'ONNX TensorRT provider DLL (onnxruntime_providers_tensorrt.dll)'
-                $trtGap = if ($trtEp) { @(Get-TensorRtEpGap -EpImports @(Get-PeImportNames -Path $trtEp.FullName -IncludeDelayLoad) -BinDir (Join-Path $env:TENSORRT_ROOT 'current\bin')) } else { @('onnxruntime_providers_tensorrt.dll') }
+                $trtGap = @(if ($trtEp) { Get-TensorRtEpGap -EpImports @(Get-PeImportNames -Path $trtEp.FullName -IncludeDelayLoad) -BinDir (Join-Path $env:TENSORRT_ROOT 'current\bin') } else { 'onnxruntime_providers_tensorrt.dll' })
                 Assert-Test -Name 'ORT TensorRT EP finds every TensorRT DLL it loads in TENSORRT_ROOT\current\bin' -Finding $trtGap -FailMessage "missing from the shipped TensorRT runtime: $($trtGap -join ', ')"
                 # The real gate: enumerate compiled-in EPs and require CUDA + TensorRT to be present.
                 Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime CUDA + TensorRT EPs available (GetAvailableProviders)' -WorkName 'onnx-eps' -Source $onnxEpProbeSource -ExpectMatch 'cuda=1 trt=1' -FailMessage 'ONNX Runtime does not expose CUDAExecutionProvider + TensorrtExecutionProvider (GPU EPs missing -- build fell back to CPU?)'

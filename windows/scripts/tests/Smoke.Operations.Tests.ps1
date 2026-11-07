@@ -89,8 +89,10 @@ Describe 'Smoke command and compilation operations' {
     It 'requires an empty finding list and preserves assertion failure and abort accounting' {
         Initialize-SmokeTestRun
         Assert-Test -Name clear -Finding @() -FailMessage clear
+        $none = if ($true) { @() } else { @('unreached') }
+        Assert-Test -Name 'empty if result' -Finding $none -FailMessage 'an empty if result is no finding'
         Assert-Test -Name missing -Finding @('missing artifact') -FailMessage 'missing artifact'
-        Assert-Equal 1 (Get-SmokeTestSummary).Passed
+        Assert-Equal 2 (Get-SmokeTestSummary).Passed
         Assert-Equal 1 (Get-SmokeTestSummary).Failed
         Assert-Match 'missing artifact' ((Get-SmokeTestSummary).FailureDetails -join '|')
         Initialize-SmokeTestRun -ExitOnFirstFailure
