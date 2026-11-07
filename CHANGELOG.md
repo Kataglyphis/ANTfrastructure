@@ -13,6 +13,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-07 — the TensorRT EP smoke check passes a complete runtime
+
+- The first nvidia chain with TensorRT staged failed its smoke gate on
+  `ORT TensorRT EP finds every TensorRT DLL it loads ... missing from the shipped TensorRT runtime:`, naming
+  nothing. `Get-TensorRtEpGap` had found no gap; its empty result, assigned through `if`/`else`, bound
+  `Assert-Test -Finding` as `$null`, which `@()` counts as one finding. `Assert-Test` now treats a `$null`
+  finding list as empty, and `Test-Container.ps1` wraps the gap in `@()`. A Smoke.Operations case and the
+  `lib.smoke-finding-empty-if-result` mutation hold it
+  ([failure-modes.md](docs/failure-modes.md#a-smoke-check-fails-and-names-no-finding)).
+
 ## 2026-11-07 — two ONNX Runtime PRs prepared for the MIGraphX EP
 
 - `linux/upstream/` is the Linux lane's index of prepared upstream submissions, as `windows/upstream/` is the

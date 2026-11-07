@@ -170,6 +170,7 @@ Two neighbours, so you land on the right page:
 - [`dtlsconnection ... unexpected eof while reading` at the first DTLS step](#dtlsconnection--unexpected-eof-while-reading-at-the-first-dtls-step)
 - [`static_assert failed: 'unexpected size'` from `std::find` under clang-cl](#static_assert-failed-unexpected-size-from-stdfind-under-clang-cl)
 - [A Windows test exits `0xC0000005` with no gtest line and no dump](#a-windows-test-exits-0xc0000005-with-no-gtest-line-and-no-dump)
+- [A smoke check fails and names no finding](#a-smoke-check-fails-and-names-no-finding)
 
 
 ---
@@ -2756,6 +2757,14 @@ when optional debugger detail read `$cdb`, initialized only by automatic discove
 Initialize that optional state before the branch. Manual mode now scans the supplied
 process/handle pair without requiring cdb; automatic discovery retains its debugger
 steps. The regression exercises the actual branches without attaching to a process.
+
+### A smoke check fails and names no finding
+
+`[FAIL] ORT TensorRT EP finds every TensorRT DLL it loads in TENSORRT_ROOT\current\bin : missing from the shipped TensorRT runtime: `,
+with nothing after the colon, on a complete TensorRT runtime. An `if`/`else` that yields no output assigns
+PowerShell's empty result; bound to `Assert-Test -Finding`, that becomes `$null`, and `@($null).Count` is 1.
+`Assert-Test` treats a `$null` finding list as empty, and a finding list built from `if`/`else` is wrapped in
+`@()` around the whole statement. `Smoke.Operations.Tests.ps1` and `lib.smoke-finding-empty-if-result` hold it.
 
 ## The docs lock check asks for setuptools
 

@@ -93,7 +93,8 @@ function Assert-Test {
 
     if ($script:abortRun) { return }
     try {
-        $result = if ($PSBoundParameters.ContainsKey('Finding')) { @($Finding).Count -eq 0 } else { & $Condition }
+        # An empty if/else result binds as $null, which @() would count as one finding.
+        $result = if ($PSBoundParameters.ContainsKey('Finding')) { ($null -eq $Finding) -or @($Finding).Count -eq 0 } else { & $Condition }
         if ($result) {
             Write-Host "  [PASS] $Name" -ForegroundColor Green
             $script:passed++
