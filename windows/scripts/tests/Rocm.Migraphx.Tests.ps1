@@ -489,7 +489,7 @@ Describe 'Build-OrtAmdgpuEpFromSource.ps1' {
             'Get-OrtAmdgpuEpCmakeArgs', 'Get-OrtAmdgpuEpStageGap', 'Install-OrtAmdgpuEpArtifacts'))
 
     function Assert-MgxEpPinUrls {
-        # src/CMakeLists.txt at ORT_AMDGPU_EP_COMMIT (99ab5cb), non-DML declarations, verbatim.
+        # src/CMakeLists.txt at ORT_AMDGPU_EP_COMMIT (58afd43b; identical to 99ab5cb's), non-DML declarations, verbatim.
         $declared = [ordered]@{
             fmt           = 'https://github.com/fmtlib/fmt/releases/download/12.1.0/fmt-12.1.0.zip'
             gsl           = 'https://github.com/microsoft/GSL/archive/refs/tags/v4.2.1.zip'
@@ -501,7 +501,7 @@ Describe 'Build-OrtAmdgpuEpFromSource.ps1' {
             'range-v3'    = 'https://github.com/ericniebler/range-v3/archive/refs/tags/0.12.0.zip'
         }
         $table = Get-MgxVersionTable
-        Assert-Equal '99ab5cb43caa421e0b19870fa4ce9323117e5e56' $table['ORT_AMDGPU_EP_COMMIT'] 'the URLs above belong to this commit; re-derive them with a bump'
+        Assert-Equal '58afd43bc4c2ddc7582712e1d75cbfd4c3bb03fc' $table['ORT_AMDGPU_EP_COMMIT'] 'the URLs above belong to this commit; re-derive them with a bump'
         $seeded = @{}
         foreach ($spec in @(Get-MigraphxPinnedSourceSpec -Set OrtAmdgpuEp)) {
             Invoke-WithEnv @{ ($spec.VersionKey) = $table[$spec.VersionKey]; ($spec.ShaKey) = $table[$spec.ShaKey] } {
