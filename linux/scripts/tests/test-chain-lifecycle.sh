@@ -533,7 +533,7 @@ TARGET_ARCHES="arm64"
 _im_reset() { : > "${_IM_LOG}"; _lane_free="$1"; }
 _im_calls() { cat "${_IM_LOG}"; }
 
-t_case "the between-stage guard reaches the image store, and only after buildkit"
+t_case "the between-stage guard reaches the image store with nothing in flight"
 _im_reset 10
 _bk_reset_calls 10
 _stage_guard >/dev/null 2>&1
@@ -568,6 +568,36 @@ _bk_reset_calls 500
 _stage_guard >/dev/null 2>&1
 t_assert_eq "" "$(_im_calls)"
 unset CROSS_NO_LOCAL_CACHE_EXPORT
+_lane_free=999
+
+# Between runs the image lever goes FIRST: it freed 363G on 2026-11-06 at no rebuild cost; every lever after it costs rebuild time.
+_ORDER_LOG="${workdir}/order.txt"
+_disk_guard_image_store_fallback() { printf 'images\n' >> "${_ORDER_LOG}"; }
+_disk_guard_trim_cache_export() { printf 'trim\n' >> "${_ORDER_LOG}"; }
+_disk_guard_release_stale_records() { printf 'stale\n' >> "${_ORDER_LOG}"; }
+_disk_guard_buildkit_fallback() { printf 'buildkit\n' >> "${_ORDER_LOG}"; }
+_chain_evict_slugs() { printf 'evict\n' >> "${_ORDER_LOG}"; }
+_order_seen() { tr '\n' ' ' < "${_ORDER_LOG}" | sed 's/ $//'; }
+
+t_case "the lane-entry gate spends the image lever before the export trim and the buildkit prune"
+: > "${_ORDER_LOG}"
+_lane_free=88
+_lane_run
+t_assert_eq "images trim stale buildkit" "$(_order_seen)" "the free lever goes first, the costly ones after"
+
+t_case "the between-stage guard spends it before the export eviction and the buildkit prune"
+: > "${_ORDER_LOG}"
+_lane_free=10
+_stage_guard >/dev/null 2>&1
+t_assert_eq "images evict stale buildkit" "$(_order_seen)"
+
+t_case "a between-stage guard the image lever rescued evicts no cache export"
+: > "${_ORDER_LOG}"
+_lane_free=10
+_disk_guard_image_store_fallback() { printf 'images\n' >> "${_ORDER_LOG}"; _lane_free=200; }
+_stage_guard >/dev/null 2>&1
+t_assert_eq "images" "$(_order_seen)" "a rescued stage keeps its exports and never reaches the store"
+_disk_guard_image_store_fallback() { printf 'images\n' >> "${_ORDER_LOG}"; }
 _lane_free=999
 
 # B3: a runtime failure skips every gate after the per-arch wrapper loop, so the report must name them

@@ -468,8 +468,14 @@ _chain_stage_disk_guard() {
       protected="$(_disk_guard_protected_slugs "${completed_stage}")"
       log "[disk-guard] ${free_gb}G free < ${threshold}G after stage ${completed_stage:-?} — LRU-pruning cache exports in ${bc_dir} (protected: ${protected:-none})"
       _disk_guard_reclaim_begin
-      _chain_evict_slugs "${bc_dir}" protected _chain_bc_free_gb _chain_num_below "${threshold}" free_gb
+      # Images first: the arch loop has joined, and this lever costs no rebuild time (docs/build-cache-tiers.md#322-the-image-store-lever-disk3).
+      _disk_guard_image_store_fallback "${bc_dir}" "${threshold}" "$(_disk_guard_stage_tags "${completed_stage}" 1)" 0
+      free_gb="$(_disk_guard_free_gb "${bc_dir}")"
       [ -n "${free_gb}" ] || return 0
+      if [ "${free_gb}" -lt "${threshold}" ]; then
+        _chain_evict_slugs "${bc_dir}" protected _chain_bc_free_gb _chain_num_below "${threshold}" free_gb
+        [ -n "${free_gb}" ] || return 0
+      fi
       _chain_recover_disk_pressure "${bc_dir}" "${threshold}" "${completed_stage}"
     fi
   fi
@@ -533,11 +539,11 @@ _chain_runtime_lane_disk_gate() {
   log "[disk-guard] runtime lane needs ~${need}G free but only ${free_gb}G is left — reclaiming before the wrapper builds start."
   protected="$(_disk_guard_protected_slugs '')"
   _disk_guard_reclaim_begin
+  # Images first: before any wrapper build nothing is in flight, and this lever costs no rebuild time (docs/build-cache-tiers.md#322-the-image-store-lever-disk3).
+  _disk_guard_image_store_fallback "${bc_dir}" "${need}" "$(_disk_guard_stage_tags '' 1)" 0
   _disk_guard_trim_cache_export "${bc_dir}" "${need}" "${protected}" "" "${CROSS_TRIM_KEEP_SLUGS:-3}"
   _disk_guard_release_stale_records "${bc_dir}" "${need}"
   _disk_guard_buildkit_fallback "${bc_dir}" "${need}"
-  # Before any wrapper build is the only point in the lane where the image store is reachable.
-  _disk_guard_image_store_fallback "${bc_dir}" "${need}" "$(_disk_guard_stage_tags '' 1)" 0
   _disk_guard_reclaim_record "runtime-lane-entry" "${free_gb}" "${bc_dir}"
   free_gb="$(_disk_guard_free_gb "${bc_dir}")"
   [ -n "${free_gb}" ] || return 0

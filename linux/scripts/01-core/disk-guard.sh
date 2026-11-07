@@ -423,7 +423,7 @@ _disk_guard_image_store_fallback() {
   _DISK_GUARD_IMAGE_PRUNES=$(( ${_DISK_GUARD_IMAGE_PRUNES:-0} + 1 ))
   t0="${SECONDS}"
 
-  _disk_guard_log "[disk-images] ${before}G free < ${target_gb}G after the buildkit prune — removing dangling images first"
+  _disk_guard_log "[disk-images] ${before}G free < ${target_gb}G — removing dangling images first"
   _disk_guard_nerdctl image prune -f >/dev/null 2>&1 || true
   step="$(_disk_guard_free_gb "${path}")"
   [ -n "${step}" ] || step="${before}"

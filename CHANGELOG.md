@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-07 — between runs the disk guard spends the image lever first
+
+- Owner decision: `_chain_runtime_lane_disk_gate` and `_chain_stage_disk_guard` remove dangling images and the
+  stage tags the run does not need BEFORE they trim cache exports, restart buildkitd for stale records or prune
+  the buildkit store; the image lever costs no rebuild time and freed 363G on 2026-11-06. The in-stage sampler
+  is unchanged. `test-chain-lifecycle.sh` pins both orders (`disk-guard.lane-images-first`,
+  `disk-guard.stage-images-first`); [build-cache-tiers.md § 3.2.2](docs/build-cache-tiers.md#322-the-image-store-lever-disk3).
+
 ## 2026-11-07 — the Linux AMD packages pass on the RX 9070 XT; comgr keys its cache on `TMPDIR`
 
 - CON224 item 1 and CON225: on the packages rebuilt on the patched `:latest-rocm`, OxidANT, AccelerANTgine,

@@ -3056,6 +3056,22 @@
   "why": "same-name masking blinds the gate to ffmpeg's cleanup(); only the suite pin sees it come back"
  },
  {
+  "id": "disk-guard.lane-images-first",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "  _disk_guard_image_store_fallback \"${bc_dir}\" \"${need}\" \"$(_disk_guard_stage_tags '' 1)\" 0\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+  "why": "the lane-entry gate spends the free image lever before the levers that cost rebuild time"
+ },
+ {
+  "id": "disk-guard.stage-images-first",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "      _disk_guard_image_store_fallback \"${bc_dir}\" \"${threshold}\" \"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0\n",
+  "replace": "      :\n",
+  "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+  "why": "the between-stage guard spends the free image lever before the export eviction"
+ },
+ {
   "id": "disk-guard.buildkit-fallback-unwired",
   "target": "linux/scripts/01-core/disk-guard.sh",
   "find": "  _disk_guard_buildkit_fallback \"${bc_dir}\" \"${threshold}\"\n",

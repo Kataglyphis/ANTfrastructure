@@ -549,6 +549,14 @@ the two gates that run between runs (`_chain_stage_disk_guard` after the arch
 loop has joined, and `_chain_runtime_lane_disk_gate` before any wrapper build
 starts) pass 0. `CROSS_IMAGE_PRUNE=0` disables the lever entirely.
 
+**Between runs this lever goes FIRST** (owner decision 2026-11-07). Both gates spend it
+before the cache-export trim, the stale-record restart and the buildkit prune: dangling
+images and stage tags this run does not need cost no rebuild time (a pushed tag is a
+re-pull), while every later lever costs re-export or recompile time. On 2026-11-06 the
+image lever alone took the host from 199G to 562G free. The in-stage sampler keeps its
+order, since it may not touch images at all. `test-chain-lifecycle.sh` pins the order
+of both gates.
+
 `CROSS_ARCH_PIPELINE=1` has no such join between stages, so its per-lane guard keeps away from
 this function and removes only named tags of arches that finished
 ([one pipeline per arch](linux-cross-builds.md#one-pipeline-per-arch)).

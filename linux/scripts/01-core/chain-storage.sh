@@ -8,12 +8,6 @@ _chain_recover_disk_pressure() {
         _disk_guard_buildkit_fallback "${bc_dir}" "${threshold}"
         free_gb="$(_disk_guard_free_gb "${bc_dir}")"
       fi
-      # The image store is safe only between stages. docs/build-cache-tiers.md#322-the-image-store-lever-disk3
-      if [ -z "${free_gb}" ] || [ "${free_gb}" -lt "${threshold}" ]; then
-        _disk_guard_image_store_fallback "${bc_dir}" "${threshold}" \
-          "$(_disk_guard_stage_tags "${completed_stage}" 1)" 0
-        free_gb="$(_disk_guard_free_gb "${bc_dir}")"
-      fi
       if [ -z "${free_gb}" ] || [ "${free_gb}" -lt "${threshold}" ]; then
         log "[disk-guard] still ${free_gb:-?}G free after pruning — skipping local cache exports for remaining stages (CROSS_NO_LOCAL_CACHE_EXPORT=1)"
         export CROSS_NO_LOCAL_CACHE_EXPORT=1
