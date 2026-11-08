@@ -115,6 +115,7 @@ Describe 'TensorRT SDK stays in the build stages' {
         Assert-Match '-SdkRoot .C:\\tensorrt. -Destination .C:\\tensorrt-runtime.' $nvidia 'built in trt-extract'
         Assert-Match 'from=trt-sdk,source=/tensorrt,target=C:\\tensorrt-sdk[\s\S]+TENSORRT_SDK_ROOT = .C:\\tensorrt-sdk.' (& $read 'windows\Dockerfile.media-builder') 'the ORT RUN mounts it'
         Assert-Match "trt-extract' -Tag \(Get-BkTag 'windows-tensorrt-sdk'\)[\s\S]+TENSORRT_SDK_IMAGE = Get-BkTag 'windows-tensorrt-sdk'" (& $read 'windows\Build-Buildkit.ps1') 'tagged and handed over'
-        Assert-Match 'Get-TensorRtShipViolation\)[\s\S]+Get-TensorRtEpGap -EpImports @\(Get-PeImportNames' (& $read 'windows\scripts\build\Test-Container.ps1') 'the smoke gates both'
+        Assert-Match 'Get-TensorRtShipViolation\)[\s\S]+Get-OrtNvidiaPluginFinding -OrtRoot' (& $read 'windows\scripts\build\Test-Container.ps1') 'the smoke gates both'
+        Assert-Match 'function Get-OrtNvidiaPluginFinding[\s\S]+Get-TensorRtEpGap -EpImports @\(Get-PeImportNames -Path \$trt\.FullName -IncludeDelayLoad\)' (& $read 'windows\scripts\modules\WindowsSmokeTest.Common.psm1') 'the plugin finding grades what the TensorRT plugin delay-loads'
     }
 }

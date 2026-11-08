@@ -127,6 +127,7 @@ inline fallback. The grades are the owner's call.
 | `hailo/002-ioctl-nullptr-template-specialization.patch` | The two `nullptr_t` member specialisations in `driver_os_specific.cpp` lack `template<>`, which clang-cl enforces | `Build-HailortFromSource.ps1` |
 | `hailo/003-windows-lockedfile-dtor.patch` | The Windows `filesystem.cpp` stub declares `LockedFile::~LockedFile` and never defines it (undefined symbol at link) | `Build-HailortFromSource.ps1` |
 | `hailo/004-cmake-target-arch-macro.patch` | `CMakeLists.txt` defines `_AMD64_=1` for any 64-bit build, ARM64 included; now `_ARM64_=1` there | `Build-HailortFromSource.ps1` |
+| `onnxruntime/008-cuda-plugin-clangcl-force-include.patch` | `onnxruntime_providers_cuda_plugin.cmake` keys its force-includes on `CXX_COMPILER_ID:MSVC`, so clang-cl gets GCC's `-include`; the frontend variant is the right test | `Build-OnnxFromSource.ps1` (regex fallback) |
 | `opencv_contrib/002-arm64-cudafilters-popcount.patch` | `wavelet_matrix_2d.cuh` uses the x86-only `_mm_popcnt_u64` under `_MSC_VER`; a software popcount on `_M_ARM64` (#176) | `Build-OpencvFromSource.ps1` (applied without a fallback) |
 | `linux/scripts/patches/onnxruntime-genai/002-ort-1.31-model-package-api.patch`, shared with the Linux lane and graded there (`upstreamable-patches.md` entry 23) | GenAI v0.17.0 names experimental typedefs ORT v1.31.0 removed; it takes the model-package entries from the stable `OrtModelPackageApi` table instead | `Build-OnnxGenaiFromSource.ps1` (applied without a fallback) |
 
@@ -138,7 +139,6 @@ They are correct **for this build** and wrong for everyone else.
 | --- | --- |
 | `ffmpeg/001-allow-msys-builds.patch` | Turns FFmpeg's `die "Native MSYS builds are discouraged"` into a notice. Upstream means the `die`. |
 | `ffmpeg/makedef` | Whole-file replacement of FFmpeg's `makedef`, not a diff. |
-| `onnxruntime/002-disable-cuda-pch.patch` | Comments out `target_precompile_headers` because CUDA 13.x CCCL PCH breaks clang-cl interleaving. A build workaround, not a defect. |
 | `onnxruntime/005-xqa-host-stub-sccache.patch` | Emits the XQA host stub unconditionally. Correct only because this build pins `CUDA_ARCHITECTURES` to sm80+; a pre-sm80 build would regress. The patch header says so itself. |
 | ORT `onnxruntime.rc` non-ASCII strip, CUTLASS `_udiv128` | A byte-filter and a floating ExternalProject SHA. Neither is expressible as an upstream diff. |
 | MSVC STL `yvals_core.h` `_EMIT_STL_ERROR` no-op | Patches an **installed MSVC toolset header**, not any upstream repo. |

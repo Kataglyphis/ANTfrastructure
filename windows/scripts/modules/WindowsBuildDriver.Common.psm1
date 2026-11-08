@@ -109,6 +109,17 @@ function Get-MediaBranchVersionArg {
                 # Qualcomm's QNN plugin EP fork (Build-OrtQnnEpFromSource.ps1), built in the ORT RUN.
                 ORT_QNN_EP_VERSION        = Get-VersionTableValue $VersionTable 'ORT_QNN_EP_VERSION'
                 ORT_QNN_EP_SOURCE_SHA256  = Get-VersionTableValue $VersionTable 'ORT_QNN_EP_SOURCE_SHA256'
+                # The TensorRT plugin EP and its FetchContent seeds (Build-OrtTensorRtEpFromSource.ps1), built in the ORT RUN.
+                ORT_TENSORRT_EP_COMMIT              = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_COMMIT'
+                ORT_TENSORRT_EP_SOURCE_SHA256       = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_SOURCE_SHA256'
+                ORT_TENSORRT_EP_PROTOBUF_VERSION    = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_PROTOBUF_VERSION'
+                ORT_TENSORRT_EP_PROTOBUF_SHA256     = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_PROTOBUF_SHA256'
+                ORT_TENSORRT_EP_ONNX_COMMIT         = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_ONNX_COMMIT'
+                ORT_TENSORRT_EP_ONNX_SHA256         = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_ONNX_SHA256'
+                ORT_TENSORRT_EP_GSL_VERSION         = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_GSL_VERSION'
+                ORT_TENSORRT_EP_GSL_SHA256          = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_GSL_SHA256'
+                ORT_TENSORRT_EP_FLATBUFFERS_VERSION = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_FLATBUFFERS_VERSION'
+                ORT_TENSORRT_EP_FLATBUFFERS_SHA256  = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_FLATBUFFERS_SHA256'
                 NV_CODEC_HEADERS_REF      = Get-VersionTableValue $VersionTable 'NV_CODEC_HEADERS_REF'
                 # AMF headers for FFmpeg; only the rocm lane fetches them, every lane carries the pin.
                 AMF_HEADERS_VERSION       = Get-VersionTableValue $VersionTable 'AMF_HEADERS_VERSION'
@@ -191,6 +202,10 @@ function Get-MediaMergeVersionArg {
         'PY_CYTHON_VERSION',                  # media-core + media-tvm: the Cython both branches install
         'QNN_SDK_ZIP_SHA256', 'QNN_SDK_VERSION', # QAIRT zip pin (#121/#154): every stage that mounts windows/qnn-sdk
         'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', # media-core: the QNN plugin EP fork
+        # media-core: the TensorRT plugin EP and its seeds.
+        'ORT_TENSORRT_EP_COMMIT', 'ORT_TENSORRT_EP_SOURCE_SHA256', 'ORT_TENSORRT_EP_PROTOBUF_VERSION', 'ORT_TENSORRT_EP_PROTOBUF_SHA256',
+        'ORT_TENSORRT_EP_ONNX_COMMIT', 'ORT_TENSORRT_EP_ONNX_SHA256', 'ORT_TENSORRT_EP_GSL_VERSION', 'ORT_TENSORRT_EP_GSL_SHA256',
+        'ORT_TENSORRT_EP_FLATBUFFERS_VERSION', 'ORT_TENSORRT_EP_FLATBUFFERS_SHA256',
         'PROTOC_VERSION', 'JRE_VERSION',      # media-litert: litert-lm toolchain pins
         # media-litert: the rocm lane's LiteRT-LM GPU payload pins, checked in-branch only.
         'LITERT_LM_WEBGPU_ACCELERATOR_SHA256', 'LITERT_LM_WEBGPU_SAMPLER_SHA256',

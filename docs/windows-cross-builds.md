@@ -1056,6 +1056,12 @@ no plugin, with one notice, as before.
   `Copy-OrtQnnEpHeader` lays the fork's `_deps\ort_core-src` public headers flat into
   `ort-home\include`. It loads into the chain's ORT through the plugin ABI. Leave the fork's
   `ort_core` pin alone: Qualcomm validated the plugin against it.
+- The fork inherits ORT's MSVC-only `/experimental:external` and its warnings-as-errors; clang-cl reports the switch as
+  unused and `-WX` makes that fatal. The ORT build's own fix runs on the fork's `build.ninja` too
+  (`Update-NinjaFile -OrtMsvcOnlyFlags`), found by the first arm64 chain of 2026-11-08.
+- The fork's POST_BUILD copies the DLL into its own wheel tree (`onnxruntime_qnn\`), so the build
+  tree holds two. `Get-OrtQnnEpBuiltDll` stages the link output at the build root; a recursive
+  search stopped the second arm64 chain of 2026-11-08 on "found 2".
 - The stage ships `C:\runtime\lib\onnxruntime-ep-qnn`: the DLL, the QAIRT backends and
   `hexagon-v*` skels beside it, `licenses\onnxruntime-qnn\` and `licenses\qairt\`, and a
   `provenance\onnxruntime-qnn.json` manifest. `ORT_QNN_EP_ROOT` names the directory; a
@@ -1068,6 +1074,41 @@ no plugin, with one notice, as before.
   `CreateEpFactories` and `ReleaseEpFactory`, a `Qnn*.dll` sits beside it, and the chain
   ORT carries no in-tree `onnxruntime_providers_qnn.dll`. As with DirectML, a green build
   proves the right bytes ship, never NPU execution.
+
+### The CUDA and TensorRT plugin EPs
+
+Owner decision 2026-11-08 (BACKLOG CON233): the nvidia lane builds no in-tree CUDA or TensorRT EP.
+
+- **CUDA** is ORT's own plugin build, `-Donnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON` beside
+  `USE_CUDA`. The DLL keeps the name `onnxruntime_providers_cuda.dll` beside `onnxruntime.dll` and
+  exports only `CreateEpFactories` and `ReleaseEpFactory`; `Assert-OrtCudaPluginEp` fails a build
+  that still exports the provider bridge's `GetProvider`. The plugin CMake keys its force-includes
+  on `CXX_COMPILER_ID`, which is `Clang` under clang-cl, so clang-cl got GCC's `-include` and
+  would read the header as a second input; patch 008 tests the frontend variant instead. The
+  in-tree CUDA CMake is no longer configured, so its PCH patch 002 is gone.
+- **Consumers register it.** The Python wheel registers its bundled copy at import
+  (`cuda-plugin-ep=1` in `get_build_info()`); GenAI 0.19 takes a registered
+  `CUDAExecutionProvider` before its provider-bridge path; C and C++ call
+  `RegisterExecutionProviderLibrary`. `GetAvailableProviders` still lists `CUDAExecutionProvider`,
+  because `USE_CUDA` stays defined for the core, so it proves nothing about the plugin.
+- **TensorRT** is `onnxruntime/onnxruntime-ep-tensorrt` at `ORT_TENSORRT_EP_COMMIT`, built by
+  `Build-OrtTensorRtEpFromSource.ps1` as the `TensorRT plugin EP` stage of the ORT RUN, amd64
+  only (NVIDIA ships no Windows arm64 TensorRT). `ORT_HOME` is a shim of the chain's flat headers
+  and `onnxruntime.lib`, `TENSORRT_HOME` the SDK mount, the major the SDK's `nvinfer_<major>.lib`.
+  Its four FetchContent dependencies are SHA256-pinned seeds (`ORT_TENSORRT_EP_*`): the build
+  refuses a declaration that is not a seed of the same repository and tag, and
+  `FETCHCONTENT_FULLY_DISCONNECTED` with CMP0170 makes any other download fatal. 7-Zip leaves
+  flatbuffers' in-tree doc and Java-test links unextracted (`Get-SevenZipSkippedLink`).
+- The stage ships `C:\runtime\lib\onnxruntime-ep-tensorrt` (`ORT_TENSORRT_EP_ROOT`): the DLL,
+  `licenses\` with the plugin's and each statically linked seed's texts, and
+  `provenance\onnxruntime-ep-tensorrt.json`. No TensorRT DLL is copied beside it: the plugin's
+  loader falls back to the normal search order, which finds `TENSORRT_ROOT\current\bin` on PATH.
+  It is a G2 consumer, `tensorrt-ep`.
+- **What the smoke proves without an NVIDIA GPU**: the file contract
+  (`Get-OrtNvidiaPluginFinding`: the plugin ABI only, every TensorRT DLL the plugin delay-loads in
+  the runtime set, no in-tree TensorRT EP) and `cuda-plugin-ep=1` in the build info. Both
+  factories call `cudaGetDeviceCount` first, so the registration probe runs only where
+  `nvcuda.dll` loads and is a visible skip elsewhere. No check here proves a kernel runs.
 
 ### Verification cannot mean "run it"
 
@@ -1421,7 +1462,7 @@ Components with no arm64 story, and what stands in their place.
 - **The payload**: `Install-Cuda.ps1 -TargetArch arm64` installs the x64 toolkit as before (headers + nvcc, the host tools) and stages the arm64 redist components (`cuda_cudart`, `libcublas`, `libcufft`, `libcurand`, `libnvjitlink`) into the same root as `lib\arm64` / `bin\arm64`; cuDNN comes from `cudnn-windows-arm64-<pin>_cuda13.4-archive.zip`. All SHA-pinned in `versions.env` from `redistrib_13.4.2.json` / `redistrib_9.26.0.json`. `Dockerfile.nvidia` takes `WINDOWS_TARGET_ARCH` and appends `bin\arm64` AFTER the x64 dirs (cudart64_13.dll exists under both arches). Since 2026-10-03 the payload also carries `cuda_nvrtc` and `cuda_cupti` (13.4.92, SHA-pinned) for consumers that compile kernels at run time or profile; `cuda_nvtx`'s windows-arm64 archive is header-only, so there is nothing to stage for it.
 - **The build**: `Get-NvccCudaCmakeArgs` drives `Hostx64\arm64\cl.exe` + `--use-local-env` on the cross lane, and `Get-CudnnLibraryDir` picks `lib\arm64`. `Build-OnnxFromSource.ps1` enables `USE_CUDA` on cross only when `Test-CudaWindowsArm64Payload` finds `lib\arm64\cudart.lib` + `cudadevrt.lib` — a positive payload signal, never a host GPU probe. Result (2026-09-20, `bk-20260920-031232`): `onnxruntime_providers_cuda.dll` **0xAA64** in the `win_arm64` wheel, 2065-object ORT build, arch gate 1011/0.
 - **Phase 2 landed the same day: OpenCV, GenAI and TVM build their CUDA paths for arm64 too.** OpenCV's CUDA modules link NPP/cusolver/cusparse, so the arm64 payload gained `libnpp`, `libcusolver` and `libcusparse`; its one x86 intrinsic (`_mm_popcnt_u64` in cudafilters' `wavelet_matrix_2d.cuh`) is patched to a software popcount (`patches/opencv_contrib/002-arm64-cudafilters-popcount.patch`, probe-proven in `out/probe-arm64-popcount`). GenAI produces `onnxruntime-genai-cuda.dll` **0xAA64**. TVM's legacy `FindCUDA` hardcodes `lib\x64` on WIN32, so the cross branch names `CUDA_CUDART_LIBRARY`/`CUDA_CUBLAS_LIBRARY`/`CUDA_CUDA_LIBRARY` (`lib\arm64`), `CUDA_HOST_COMPILER` (the Hostx64\arm64 cl) and `CUDA_NVCC_FLAGS=--use-local-env`. Result (2026-09-20, `bk-20260920-203631`): smoke **120/0/15**, arch gate **1047/0**, OpenCV's `opencv_cuda*500.dll` installed under `lib\opencv5\arm64\vc18\bin`.
-- **Still OFF**: classic TensorRT (x64-only; TensorRT-RTX is the arm64 successor and is not wired). DirectML stays ON beside CUDA, as on amd64.
+- **Still OFF**: TensorRT (x64-only; the TensorRT plugin stage exits on this lane, and TensorRT-RTX, the arm64 successor, is not wired). DirectML stays ON beside CUDA, as on amd64. Since 2026-11-08 the CUDA EP is the plugin build on this lane too ([§ The CUDA and TensorRT plugin EPs](#the-cuda-and-tensorrt-plugin-eps)).
 - **The smoke** runs its host-toolchain §7 on this lane (nvcc is x64) with the cuDNN run-probe replaced by a link + PE-machine assert (`Assert-NativeLinkRun -CrossLinkOnly`), because the arm64 DLL cannot execute here. The payload sections still skip in-suite; the payload's presence and arch are gated by the merge-stage wheel/arch checks and the whole-image arch gate instead.
 - **What no gate here proves**: that the arm64 CUDA EP *runs*. That needs an RTX Spark / N1x-class device.
 

@@ -121,11 +121,7 @@ function Get-OrtQnnEpForeignCore {
 function Get-OrtQnnEpModuleFinding {
     # The plugin entry points, and an import closure of the chain's ORT, QAIRT backends beside it and the OS.
     param([Parameter(Mandatory)][string]$Dll)
-    $found = @()
-    $exports = @(Get-PeExportNames -Path $Dll)
-    foreach ($symbol in 'CreateEpFactories', 'ReleaseEpFactory') {
-        if ($exports -notcontains $symbol) { $found += "$(Split-Path -Leaf $Dll) does not export $symbol" }
-    }
+    $found = @(Get-OrtPluginEpExportGap -Path $Dll)
     $dir = Split-Path -Parent $Dll
     foreach ($import in @(Get-PeImportNames -Path $Dll -IncludeDelayLoad)) {
         if ($import -match '^onnxruntime' -and $import -notin 'onnxruntime.dll', 'onnxruntime_providers_shared.dll') { $found += "imports $import, which is not the chain ORT" }
@@ -145,11 +141,19 @@ function Copy-OrtQnnEpLicense {
     return @('licenses\onnxruntime-qnn\LICENSE', 'licenses\onnxruntime-qnn\ThirdPartyNotices.txt')
 }
 
+function Get-OrtQnnEpBuiltDll {
+    # The fork's POST_BUILD copies the DLL into its wheel tree too; the link output at the build root is the one ninja built.
+    param([Parameter(Mandatory)][string]$BuildDir)
+    $built = Get-Item -LiteralPath (Join-Path $BuildDir 'onnxruntime_providers_qnn.dll') -ErrorAction SilentlyContinue
+    if (-not $built) { throw "QNN plugin EP: no link output onnxruntime_providers_qnn.dll at the build root $BuildDir" }
+    return $built
+}
+
 function Install-OrtQnnEpArtifact {
     # One directory: the DLL, its QAIRT backends, the licence texts and a provenance manifest that proves them.
     param([Parameter(Mandatory)][string]$BuildDir, [Parameter(Mandatory)][string]$ForkRoot, [Parameter(Mandatory)]$Sdk,
         [Parameter(Mandatory)][string]$EpDir, [Parameter(Mandatory)]$Pin)
-    $built = Get-UniqueBuildArtifact -Root $BuildDir -Filter 'onnxruntime_providers_qnn.dll' -Context 'QNN plugin EP'
+    $built = Get-OrtQnnEpBuiltDll -BuildDir $BuildDir
     Reset-SourceBuildDirectory -Path $EpDir
     Copy-Item -LiteralPath $built.FullName -Destination $EpDir -Force
     [void](Copy-QnnRuntime -Sdk $Sdk -OrtInstallDir $EpDir)
@@ -187,6 +191,8 @@ $qnnArgs = Get-OrtQnnEpCmakeArgs -QnnHome $sdk.Home -QnnArchAbi (Get-QnnSdkLibDi
 Invoke-CmakeConfigure -SourceDir (Join-Path $forkRoot 'cmake') -BuildDir $buildDir -InstallPrefix $epDir -BuildType $BuildType -ExtraArgs $qnnArgs 2>&1 |
     Tee-Object -FilePath $cfgLog
 Write-Host "QNN plugin EP: $(Copy-OrtQnnEpHeader -OrtHome $ortHome -OrtCoreSource (Join-Path $buildDir '_deps\ort_core-src')) ORT header(s) from the fork's ort_core"
+# The fork inherits ORT's MSVC-only switches and warnings-as-errors, which stop clang-cl as they would the ORT build.
+Update-NinjaFile -NinjaFile (Join-Path $buildDir 'build.ninja') -OrtMsvcOnlyFlags
 
 Switch-BuildPhase '3. build'
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -Targets @('onnxruntime_providers_qnn') -RetryJobs 2

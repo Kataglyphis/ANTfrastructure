@@ -8,6 +8,10 @@
 BeforeAll {
     $script:dfPath = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'Dockerfile.media-builder'
     $script:stages = Get-TestDockerfileStageFacts -Path $script:dfPath
+    # The TensorRT plugin EP and its four seeds, built in the ORT RUN.
+    $script:TrtEpKeys = @('ORT_TENSORRT_EP_COMMIT', 'ORT_TENSORRT_EP_SOURCE_SHA256', 'ORT_TENSORRT_EP_PROTOBUF_VERSION', 'ORT_TENSORRT_EP_PROTOBUF_SHA256',
+        'ORT_TENSORRT_EP_ONNX_COMMIT', 'ORT_TENSORRT_EP_ONNX_SHA256', 'ORT_TENSORRT_EP_GSL_VERSION', 'ORT_TENSORRT_EP_GSL_SHA256',
+        'ORT_TENSORRT_EP_FLATBUFFERS_VERSION', 'ORT_TENSORRT_EP_FLATBUFFERS_SHA256')
 
     # branch -> env stage and its BK descendant; media-core is partitioned per component and has its own Describe.
     $script:branches = @(
@@ -17,7 +21,7 @@ BeforeAll {
 
     # Each media-core stage declares exactly its component's keys, so one bump never re-runs the ONNX build.
     $script:coreComponentKeys = @{
-        'media-core-built-onnx'   = @('ONNXRUNTIME_VERSION', 'CUDA_ARCHITECTURES', 'PYTHON_VERSION', 'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256')
+        'media-core-built-onnx'   = @('ONNXRUNTIME_VERSION', 'CUDA_ARCHITECTURES', 'PYTHON_VERSION', 'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256') + $script:TrtEpKeys
         'media-core-built-ffmpeg' = @('FFMPEG_VERSION', 'PYAV_VERSION', 'PY_CYTHON_VERSION', 'NV_CODEC_HEADERS_REF',
                                       'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',
                                       'DAV1D_VERSION', 'DAV1D_SHA256', 'X264_MESON_BRANCH', 'X264_MESON_COMMIT',
@@ -129,7 +133,7 @@ Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
                          'FFMPEG_VERSION', 'PYAV_VERSION', 'PY_CYTHON_VERSION', 'QNN_SDK_ZIP_SHA256', 'QNN_SDK_VERSION', 'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256',
                          'NV_CODEC_HEADERS_REF', 'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',
                          'DAV1D_VERSION', 'DAV1D_SHA256', 'X264_MESON_BRANCH', 'X264_MESON_COMMIT', 'X265_VERSION', 'X265_SHA256',
-                         'CUDA_ARCHITECTURES', 'PYTHON_VERSION')) { $table[$k] = 'fixture' }
+                         'CUDA_ARCHITECTURES', 'PYTHON_VERSION') + $script:TrtEpKeys) { $table[$k] = 'fixture' }
         $driverKeys = @((Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $table).Keys) | Sort-Object -Unique
         # Shared keys count toward the union: they live in more than one stage.
         $union      = @(@($script:coreComponentKeys.Values | ForEach-Object { $_ }) + $script:sharedCoreKeys) | Sort-Object -Unique

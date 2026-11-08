@@ -81,6 +81,7 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     ONNX_ROOT="C:\runtime\lib\onnxruntime-source" `
     ONNX_GENAI_ROOT="C:\runtime\lib\onnxruntime-genai-source" `
     ORT_QNN_EP_ROOT="C:\runtime\lib\onnxruntime-ep-qnn" `
+    ORT_TENSORRT_EP_ROOT="C:\runtime\lib\onnxruntime-ep-tensorrt" `
     ONNX_VERSION="${ONNXRUNTIME_VERSION}" `
     ONNX_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
     LITERT_ROOT="C:\runtime\lib\litert" `

@@ -36,6 +36,34 @@
   (`# PYTHON_APP_PLUGIN_EP_API=1` replaces the TensorRT marker; `python-ci-linux.yml` checks it and passes `MIGraphX`).
 - Suites: `test-tensorrt-plugin-ep.sh` (new), and the GPU runtime, G2, census, bundle, AppImage, package and self-test
   suites moved with the code; 29 recipes in the `onnx-ep-tensorrt`, `gpu-runtime`, `provenance` and `packaging` families.
+## 2026-11-08 — Windows nvidia: the CUDA and TensorRT EPs are plugins (CON233)
+
+- Owner: "Windows sofort komplett". The nvidia lane builds CUDA as ORT's plugin
+  (`onnxruntime_BUILD_CUDA_EP_AS_PLUGIN`, same DLL and EP name) and no in-tree TensorRT EP. Patch 008 keys the plugin
+  CMake's force-includes on the MSVC frontend variant, so clang-cl gets `/FI`; the in-tree CUDA CMake and its PCH patch 002
+  are gone. `Assert-OrtCudaPluginEp` fails a staged DLL that still exports the provider bridge's `GetProvider`.
+- `Build-OrtTensorRtEpFromSource.ps1` builds `onnxruntime/onnxruntime-ep-tensorrt` at `ORT_TENSORRT_EP_COMMIT` in the ORT
+  RUN (amd64): an `ORT_HOME` shim over the chain, its protobuf, onnx, GSL and flatbuffers as SHA256-pinned seeds
+  (`ORT_TENSORRT_EP_*`), downloads disconnected, a G2 stamp as consumer `tensorrt-ep`, licence texts and provenance in
+  `C:\runtime\lib\onnxruntime-ep-tensorrt` (`ORT_TENSORRT_EP_ROOT`). `Get-SevenZipSkippedLink` moved beside
+  `Expand-SourceTarball` so both plugin builders share it.
+- The smoke grades both plugins by their file contract (`Get-OrtNvidiaPluginFinding`, the shared
+  `Get-OrtPluginEpExportGap`) and the build info (`cuda-plugin-ep=1`); registration runs only where `nvcuda.dll` loads.
+  `SourceBuild.OrtTensorRtEp.Tests.ps1` and 20 new mutation recipes (`lib.trt-ep-*`, `lib.ort-cuda-plugin-*`,
+  `lib.nvidia-smoke-*`, `lib.plugin-ep-export-gap-bridge`) hold it. Not proven yet: an nvidia chain build, and registration or inference on an NVIDIA host.
+
+## 2026-11-08 — the QNN plugin EP stages its link output
+
+- The second arm64 chain compiled the QNN plugin and stopped in its staging: the fork's POST_BUILD copies
+  `onnxruntime_providers_qnn.dll` into its wheel tree, so a recursive search found two. `Get-OrtQnnEpBuiltDll` takes the
+  link output at the build root (`lib.qnn-ep-link-output`).
+
+## 2026-11-08 — the QNN plugin EP compiles under clang-cl
+
+- The first arm64 chain with the QNN plugin stopped in its compile: the fork passes ORT's MSVC-only
+  `/experimental:external` under warnings-as-errors. `Update-NinjaFile -OrtMsvcOnlyFlags` now owns ORT's three MSVC-only
+  strip patterns, and both the ORT build and the fork run it after configure (`lib.qnn-ep-ninja-msvc-only`,
+  `lib.ninja-msvc-only-wx`).
 
 ## 2026-11-08 — every ORT EP with a plugin moves to it, consumers first (owner directive)
 

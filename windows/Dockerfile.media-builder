@@ -118,13 +118,34 @@ ARG QNN_SDK_VERSION="2.51.1.261002"
 # Qualcomm's QNN plugin EP fork, built after ORT in this RUN (Build-OrtQnnEpFromSource.ps1).
 ARG ORT_QNN_EP_VERSION="2.7.0"
 ARG ORT_QNN_EP_SOURCE_SHA256="c389a1ea8aa0009b4781525c9168bd8d3d30ef21ca21e422206a46431981d8a3"
+# The TensorRT plugin EP and its four FetchContent seeds, built after ORT in this RUN (Build-OrtTensorRtEpFromSource.ps1).
+ARG ORT_TENSORRT_EP_COMMIT="6403f3cefe22c78313df90eca6b01fde54afa1ed"
+ARG ORT_TENSORRT_EP_SOURCE_SHA256="42087b512d6823cad1c81679f7e25e19a2fcecaccfb2109eba39261f1d686be4"
+ARG ORT_TENSORRT_EP_PROTOBUF_VERSION="21.12"
+ARG ORT_TENSORRT_EP_PROTOBUF_SHA256="22fdaf641b31655d4b2297f9981fa5203b2866f8332d3c6333f6b0107bb320de"
+ARG ORT_TENSORRT_EP_ONNX_COMMIT="e709452ef2bbc1d113faf678c24e6d3467696e83"
+ARG ORT_TENSORRT_EP_ONNX_SHA256="3001af7fb316cefd02c3b586139167d43eb3cf79b78aed47645831593dfbd015"
+ARG ORT_TENSORRT_EP_GSL_VERSION="4.0.0"
+ARG ORT_TENSORRT_EP_GSL_SHA256="f0e32cb10654fea91ad56bde89170d78cfbf4363ee0b01d8f097de2ba49f6ce9"
+ARG ORT_TENSORRT_EP_FLATBUFFERS_VERSION="23.5.26"
+ARG ORT_TENSORRT_EP_FLATBUFFERS_SHA256="1cce06b17cddd896b6d73cc047e36a254fb8df4d7ea18a46acf16c4c0cd3f3f3"
 ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" `
     PYTHON_VERSION="${PYTHON_VERSION}" `
     QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}" `
     QNN_SDK_VERSION="${QNN_SDK_VERSION}" `
     ORT_QNN_EP_VERSION="${ORT_QNN_EP_VERSION}" `
-    ORT_QNN_EP_SOURCE_SHA256="${ORT_QNN_EP_SOURCE_SHA256}"
+    ORT_QNN_EP_SOURCE_SHA256="${ORT_QNN_EP_SOURCE_SHA256}" `
+    ORT_TENSORRT_EP_COMMIT="${ORT_TENSORRT_EP_COMMIT}" `
+    ORT_TENSORRT_EP_SOURCE_SHA256="${ORT_TENSORRT_EP_SOURCE_SHA256}" `
+    ORT_TENSORRT_EP_PROTOBUF_VERSION="${ORT_TENSORRT_EP_PROTOBUF_VERSION}" `
+    ORT_TENSORRT_EP_PROTOBUF_SHA256="${ORT_TENSORRT_EP_PROTOBUF_SHA256}" `
+    ORT_TENSORRT_EP_ONNX_COMMIT="${ORT_TENSORRT_EP_ONNX_COMMIT}" `
+    ORT_TENSORRT_EP_ONNX_SHA256="${ORT_TENSORRT_EP_ONNX_SHA256}" `
+    ORT_TENSORRT_EP_GSL_VERSION="${ORT_TENSORRT_EP_GSL_VERSION}" `
+    ORT_TENSORRT_EP_GSL_SHA256="${ORT_TENSORRT_EP_GSL_SHA256}" `
+    ORT_TENSORRT_EP_FLATBUFFERS_VERSION="${ORT_TENSORRT_EP_FLATBUFFERS_VERSION}" `
+    ORT_TENSORRT_EP_FLATBUFFERS_SHA256="${ORT_TENSORRT_EP_FLATBUFFERS_SHA256}"
 # ARG only: an ENV would leak the value into every downstream stage; see docs/windows-build-resources.md § Persistent compile cache (sccache).
 ARG SCCACHE_CUDA_LAUNCHER="1"
 ARG SCCACHE_REPRO_CUDA_LLM=""
@@ -148,7 +169,9 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-OnnxFromSource.ps1,target=C:\bkmnt\Build-OnnxFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-OrtQnnEpFromSource.ps1,target=C:\bkmnt\Build-OrtQnnEpFromSource.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1,target=C:\bkmnt\Build-OrtTensorRtEpFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsNativeProvenance.Common.psm1,target=C:\bkmnt\ortmods\WindowsNativeProvenance.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsOrtProvenance.Build.psm1,target=C:\bkmnt\ortmods\WindowsOrtProvenance.Build.psm1 `
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=C:\bkmnt\free-threaded-wheel.py `
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=C:\bkmnt\free-threaded-twins.txt `
     --mount=type=bind,source=windows/scripts/build/Build-TargetCpython.ps1,target=C:\bkmnt\Build-TargetCpython.ps1 `
@@ -159,7 +182,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk --mount=type=cache,target=C:\qnn-sdk-cache,id=qnn-sdk-winamd64,sharing=shared `
     --mount=type=bind,from=trt-sdk,source=/tensorrt,target=C:\tensorrt-sdk `
     $env:TENSORRT_SDK_ROOT = 'C:\tensorrt-sdk'; `
-    & 'C:\bkmnt\Build-MediaCoreAll.ps1' -Until 'QNN plugin EP' -ScriptDir 'C:\bkmnt' -ScrubAfter
+    & 'C:\bkmnt\Build-MediaCoreAll.ps1' -Until 'TensorRT plugin EP' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 # FFmpeg before OpenCV, whose videoio otherwise falls back to its own prebuilt FFmpeg; every RUN passes -ResumeFrom and -Until.
 FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-ffmpeg

@@ -1045,6 +1045,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       chain), the nvidia and rocm proof chains, and detector parity on `TensorRTPluginExecutionProvider` on a card.
       Windows is this hub's Windows session. DirectML has no plugin and stays. The evidence, with links to every
       plugin: the 2026-11-08 deep research.
+      **Windows, owner 2026-11-08 ("Windows sofort komplett"): steps 2 and 4 landed in source together.** CUDA is the
+      plugin build, the in-tree TensorRT EP is gone, and `Build-OrtTensorRtEpFromSource.ps1` builds the TensorRT plugin
+      with SHA256-pinned seeds ([windows-cross-builds.md](docs/windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps)).
+      **Open on Windows:** an nvidia chain build to prove both compile and stage; registration and inference on an NVIDIA
+      host (this one has none); consumers registering both plugins through the step-3 helpers.
       The precedent is complete for TensorRT RTX: NVIDIA's plugin
       ([NVIDIA/TensorRT-RTX-EP-ABI](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI), since ORT 1.23), the ORT docs
       deprecate the built-in EP, and microsoft/onnxruntime#32276 (merged 2026-10-28) removed it from `main`; eight

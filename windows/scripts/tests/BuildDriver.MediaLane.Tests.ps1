@@ -14,6 +14,14 @@ $script:WbtBazelToolPins = @{
     LITERT_WINDOWS_ACCELERATOR_WHEEL_URL = 'accurl-39'; LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256 = 'accsha-40'
     LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256 = 'webgpusha-41'
 }
+# The TensorRT plugin EP and its seeds: media-core keys built in the ORT RUN, never the merge's.
+$script:WbtTrtEpPins = @{
+    ORT_TENSORRT_EP_COMMIT = 'trtc-42'; ORT_TENSORRT_EP_SOURCE_SHA256 = 'trtsha-43'
+    ORT_TENSORRT_EP_PROTOBUF_VERSION = 'trtpb-44'; ORT_TENSORRT_EP_PROTOBUF_SHA256 = 'trtpbsha-45'
+    ORT_TENSORRT_EP_ONNX_COMMIT = 'trtonnx-46'; ORT_TENSORRT_EP_ONNX_SHA256 = 'trtonnxsha-47'
+    ORT_TENSORRT_EP_GSL_VERSION = 'trtgsl-48'; ORT_TENSORRT_EP_GSL_SHA256 = 'trtgslsha-49'
+    ORT_TENSORRT_EP_FLATBUFFERS_VERSION = 'trtfb-50'; ORT_TENSORRT_EP_FLATBUFFERS_SHA256 = 'trtfbsha-51'
+}
 
 function New-WbtFakeMediaVersionTable {
     $table = @{
@@ -50,7 +58,7 @@ function New-WbtFakeMediaVersionTable {
         # The one Cython both branches install into the host CPython (CON80).
         PY_CYTHON_VERSION                   = 'cy-26'
     }
-    return $table + $script:WbtCodecPins + $script:WbtBazelToolPins
+    return $table + $script:WbtCodecPins + $script:WbtBazelToolPins + $script:WbtTrtEpPins
 }
 
 Describe 'Get-MediaBranchVersionArg' {
@@ -104,7 +112,7 @@ Describe 'Get-MediaBranchVersionArg' {
             }
         )
         # media-core also forwards FFmpeg's codec pins, from the one table the fixture merges too.
-        $cases[0].Expected += $script:WbtCodecPins
+        $cases[0].Expected += $script:WbtCodecPins + $script:WbtTrtEpPins
         $cases[1].Expected += $script:WbtBazelToolPins
         foreach ($case in $cases) {
             $actual = Get-MediaBranchVersionArg -Branch $case.Branch -VersionTable $table
@@ -152,7 +160,7 @@ Describe 'Get-MediaMergeVersionArg' {
         Assert-False ($merge.Contains('AMF_HEADERS_VERSION')) 'AMF_HEADERS_VERSION is excluded from the merge env'
         Assert-False ($merge.Contains('AMF_HEADERS_SHA256')) 'AMF_HEADERS_SHA256 is excluded from the merge env'
         Assert-False ($merge.Contains('PY_CYTHON_VERSION')) 'PY_CYTHON_VERSION is a branch pin; the merge installs no Cython'
-        foreach ($k in $script:WbtCodecPins.Keys) {
+        foreach ($k in @($script:WbtCodecPins.Keys) + @($script:WbtTrtEpPins.Keys)) {
             Assert-False ($merge.Contains($k)) "$k is excluded from the merge env"
         }
         # No lane-shaped leakage:

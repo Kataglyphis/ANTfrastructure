@@ -58,6 +58,7 @@ function Get-OrtConsumerContract {
         [pscustomobject]@{ Name = 'ffmpeg'; Pattern = @('avfilter-*.dll') }
         [pscustomobject]@{ Name = 'genai'; Pattern = @('onnxruntime-genai*.dll', 'onnxruntime_genai*.pyd') }
         [pscustomobject]@{ Name = 'amdgpu-ep'; Pattern = @('migraphx-ep.dll') }
+        [pscustomobject]@{ Name = 'tensorrt-ep'; Pattern = @('onnxruntime_ep_tensorrt.dll') }
     )
 }
 

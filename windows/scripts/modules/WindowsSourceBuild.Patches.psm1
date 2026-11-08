@@ -27,8 +27,12 @@ function Update-NinjaFile {
     param(
         [Parameter(Mandatory)]
         [string]$NinjaFile,
-        [string[]]$StripPatterns = @()
+        [string[]]$StripPatterns = @(),
+        # ORT's MSVC-only switches, which clang-cl reports as unused and its -WX turns into errors (ORT and the QNN fork alike).
+        [switch]$OrtMsvcOnlyFlags
     )
+    # [ \t]*, not \s*, which eats a line ending and merges the next ninja statement.
+    if ($OrtMsvcOnlyFlags) { $StripPatterns = @('--compiler-options /experimental:external[ \t]*', '(?<=\s)/experimental:external(?=\s)', '(?<=\s)-WX(?=\s)') + $StripPatterns }
     if (Edit-SourceFile -Path $NinjaFile -Quiet -Transform {
             param($original)
             # Collapsing whitespace outside changed lines would corrupt paths embedded in build.ninja.

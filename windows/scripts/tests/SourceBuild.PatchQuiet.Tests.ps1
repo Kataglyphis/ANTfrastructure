@@ -48,7 +48,10 @@ Describe 'Shared source patch consumers' {
                 Apply = { param($path) Edit-CppKeywordAlternatives -Path $path } },
             @{ Name = 'build.ninja'; Input = "  FLAGS = /WX  /O2`r`n  KEEP = a  b`r`n";
                 Expected = " FLAGS = /O2`r`n  KEEP = a  b`r`n"; Message = 'Patched build.ninja for clang-cl compatibility:';
-                Apply = { param($path) Update-NinjaFile -NinjaFile $path -StripPatterns @('/WX') } }
+                Apply = { param($path) Update-NinjaFile -NinjaFile $path -StripPatterns @('/WX') } },
+            @{ Name = 'fork.ninja'; Input = "  FLAGS = /experimental:external /external:W0 -WX /O2`r`n  CUDA = --compiler-options /experimental:external -O3`r`n";
+                Expected = " FLAGS = /external:W0 /O2`r`n CUDA = -O3`r`n"; Message = 'Patched build.ninja for clang-cl compatibility:';
+                Apply = { param($path) Update-NinjaFile -NinjaFile $path -OrtMsvcOnlyFlags } }
         )
         foreach ($case in $cases) {
             Invoke-WithPatchFile -InitialText $case.Input -Name $case.Name -Body { param($path, $dir)

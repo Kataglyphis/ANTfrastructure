@@ -2,7 +2,7 @@
 # 35-build-migraphx-plugin-ep.sh's pins, seed gate, archive handling and library verdict; no download, no compiler, no GPU.
 set -u
 EP_SCRIPT=35-build-migraphx-plugin-ep.sh
-# shellcheck source=plugin-ep-fixture.sh
+# shellcheck source=linux/scripts/tests/plugin-ep-fixture.sh
 source "$(dirname "${BASH_SOURCE[0]}")/plugin-ep-fixture.sh"
 
 # src/CMakeLists.txt of onnxruntime-ep-amdgpu at 58afd43b (2026-11-02), recorded: the eleven declarations, eigen/d3dx12/boost under if(USE_DML).

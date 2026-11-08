@@ -442,8 +442,9 @@ SHA_PAIR_EXEMPT = {
     "ORT_AMDGPU_EP_RANGE_V3_SHA256",
     # Slaved to the MANUAL ORT_QNN_EP_VERSION (the fork's tag tarball), re-measured by hand.
     "ORT_QNN_EP_SOURCE_SHA256",
-    # Slaved to ORT_TENSORRT_EP_COMMIT (the plugin's commit tarball), re-measured by hand.
-    "ORT_TENSORRT_EP_SOURCE_SHA256",
+    # Slaved to ORT_TENSORRT_EP_COMMIT (the plugin's commit tarball and its CMakeLists GIT_TAGs), re-measured by hand.
+    "ORT_TENSORRT_EP_SOURCE_SHA256", "ORT_TENSORRT_EP_PROTOBUF_SHA256", "ORT_TENSORRT_EP_ONNX_SHA256",
+    "ORT_TENSORRT_EP_GSL_SHA256", "ORT_TENSORRT_EP_FLATBUFFERS_SHA256",
     # Slaved to the Renovate-moved PY_PSUTIL_VERSION; Build-TargetSdistWheel.ps1 stops the arm64 merge until it moves too.
     "PY_PSUTIL_SDIST_SHA256",
 }

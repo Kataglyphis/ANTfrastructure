@@ -699,21 +699,55 @@ function Get-RequiredSmokeDll {
     return Find-SmokeArtifact -Root $Root -Filter $Filter
 }
 
-function Assert-OrtTensorRtProviderSmoke {
+function Get-OrtPluginRegistrationProbeSource {
+    # The paths are baked in: Assert-NativeLinkRun passes the probe no arguments.
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Plugin)
+    $rows = @(foreach ($name in $Plugin.Keys) { '        {{"{0}", L"{1}"}},' -f $name, ($Plugin[$name] -replace '\\', '\\') }) -join "`n"
+    return @'
+#include <onnxruntime_c_api.h>
+#include <cstdio>
+int main() {
+    const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    OrtEnv* env = nullptr;
+    if (!api || api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "plugin-probe", &env) != nullptr) return 2;
+    struct Plugin { const char* name; const ORTCHAR_T* path; };
+    const Plugin plugins[] = {
+@ROWS@
+    };
+    for (const Plugin& p : plugins) {
+        if (OrtStatus* s = api->RegisterExecutionProviderLibrary(env, p.name, p.path)) {
+            std::printf("register %s failed: %s\n", p.name, api->GetErrorMessage(s));
+            api->ReleaseStatus(s);
+            return 3;
+        }
+    }
+    std::printf("plugins registered=%zu\n", sizeof(plugins) / sizeof(plugins[0]));
+    api->ReleaseEnv(env);
+    return 0;
+}
+'@.Replace('@ROWS@', $rows)
+}
+
+function Assert-OrtNvidiaPluginSmoke {
     param([string]$OnnxRoot, [hashtable]$OnnxLink, [string]$OnnxEpProbeSource)
-            if ($script:tensorRtStaged) {
-                # The runtime subset must hold what the EP imports and LoadLibrary()s, or the EP fails only at session creation.
-                $trtEp = Get-RequiredSmokeDll -Root $onnxRoot -Filter 'onnxruntime_providers_tensorrt.dll' -Description 'ONNX TensorRT provider DLL (onnxruntime_providers_tensorrt.dll)'
-                $trtGap = @(if ($trtEp) { Get-TensorRtEpGap -EpImports @(Get-PeImportNames -Path $trtEp.FullName -IncludeDelayLoad) -BinDir (Join-Path $env:TENSORRT_ROOT 'current\bin') } else { 'onnxruntime_providers_tensorrt.dll' })
-                Assert-Test -Name 'ORT TensorRT EP finds every TensorRT DLL it loads in TENSORRT_ROOT\current\bin' -Finding $trtGap -FailMessage "missing from the shipped TensorRT runtime: $($trtGap -join ', ')"
-                # The real gate: enumerate compiled-in EPs and require CUDA + TensorRT to be present.
-                Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime CUDA + TensorRT EPs available (GetAvailableProviders)' -WorkName 'onnx-eps' -Source $onnxEpProbeSource -ExpectMatch 'cuda=1 trt=1' -FailMessage 'ONNX Runtime does not expose CUDAExecutionProvider + TensorrtExecutionProvider (GPU EPs missing -- build fell back to CPU?)'
-            } else {
-                # Zip-less, the normal state: the EP must be absent, while CUDA stays required.
-                $trtDllCount = @(Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_providers_tensorrt.dll' -Recurse -ErrorAction SilentlyContinue).Count
-                Assert-Test -Name 'ONNX TensorRT provider DLL absent (zip-less GPU lane -- no EULA zip staged)' -Condition { $trtDllCount -eq 0 }.GetNewClosure() -FailMessage "onnxruntime_providers_tensorrt.dll found under $onnxRoot although no TensorRT tree is staged -- the ORT build and the staged state disagree"
-                Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime CUDA EP available, TensorRT EP absent (GetAvailableProviders, zip-less lane)' -WorkName 'onnx-eps' -Source $onnxEpProbeSource -ExpectMatch 'cuda=1 trt=0' -FailMessage 'ONNX Runtime does not expose CUDAExecutionProvider on a zip-less GPU lane (an absent TensorRT EP is expected here) -- build fell back to CPU?'
-            }
+    # Both plugins replace in-tree EPs; the runtime subset must hold what the TensorRT plugin delay-loads, or it fails at session creation.
+    $finding = @(Get-OrtNvidiaPluginFinding -OrtRoot $OnnxRoot -TensorRtEpRoot $env:ORT_TENSORRT_EP_ROOT `
+            -TensorRtBinDir $(if ($env:TENSORRT_ROOT) { Join-Path $env:TENSORRT_ROOT 'current\bin' } else { '' }) -TensorRtStaged $script:tensorRtStaged)
+    Assert-Test -Name 'NVIDIA plugin EPs: CUDA plugin beside the core, TensorRT plugin under ORT_TENSORRT_EP_ROOT, no in-tree TensorRT EP' `
+        -Finding $finding -FailMessage ($finding -join '; ')
+    # USE_CUDA still lists CUDA in GetAvailableProviders, so only the build info tells the plugin build from a provider-bridge one.
+    Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime is a CUDA plugin-EP build without an in-tree TensorRT EP (build info, GetAvailableProviders)' -WorkName 'onnx-eps' -Source $onnxEpProbeSource -ExpectMatch 'trt=0 dml=\d cudaplugin=1' -FailMessage 'ONNX Runtime lacks cuda-plugin-ep=1 in its build info or still compiles in TensorrtExecutionProvider'
+    $plugins = [ordered]@{ CUDAExecutionProvider = (Join-Path $OnnxRoot 'bin\onnxruntime_providers_cuda.dll') }
+    if ($script:tensorRtStaged) { $plugins['TensorRTPluginExecutionProvider'] = Join-Path "$env:ORT_TENSORRT_EP_ROOT" 'onnxruntime_ep_tensorrt.dll' }
+    $driver = [IntPtr]::Zero
+    # Both factories call cudaGetDeviceCount first, which fails hard without the NVIDIA driver.
+    if ([System.Runtime.InteropServices.NativeLibrary]::TryLoad('nvcuda.dll', [ref]$driver)) {
+        [System.Runtime.InteropServices.NativeLibrary]::Free($driver)
+        Assert-NativeLinkRun @onnxLink -Name "ONNX Runtime registers the NVIDIA plugin EPs ($($plugins.Keys -join ', '))" -WorkName 'onnx-plugin-register' `
+            -Source (Get-OrtPluginRegistrationProbeSource -Plugin $plugins) -ExpectMatch "plugins registered=$($plugins.Count)" -FailMessage 'RegisterExecutionProviderLibrary refused an NVIDIA plugin EP'
+    } else {
+        Skip-Test "ONNX Runtime registers the NVIDIA plugin EPs (no nvcuda.dll: this host has no NVIDIA driver, and both factories need one)"
+    }
 }
 
 function Assert-OrtDmlProviderSmoke {
@@ -749,15 +783,15 @@ int main() {
         if (std::strcmp(providers[i], "DmlExecutionProvider") == 0) dml = 1;
     }
     api->ReleaseAvailableProviders(providers, n);
-    std::printf("providers cuda=%d trt=%d dml=%d\n", cuda, trt, dml);
+    const int cudaplugin = std::strstr(api->GetBuildInfoString(), "cuda-plugin-ep=1") != nullptr;
+    std::printf("providers cuda=%d trt=%d dml=%d cudaplugin=%d\n", cuda, trt, dml, cudaplugin);
     return 0;
 }
 '@
 
-        # GetAvailableProviders catches a silent CPU fallback without requiring a GPU device.
+        # The file contract and the build info catch a silent CPU fallback without requiring a GPU device.
         if ($script:gpuNvidia) {
-            $null = Get-RequiredSmokeDll -Root $onnxRoot -Filter 'onnxruntime_providers_cuda.dll' -Description 'ONNX CUDA provider DLL (onnxruntime_providers_cuda.dll)'
-            Assert-OrtTensorRtProviderSmoke -OnnxRoot $onnxRoot -OnnxLink $onnxLink -OnnxEpProbeSource $onnxEpProbeSource
+            Assert-OrtNvidiaPluginSmoke -OnnxRoot $onnxRoot -OnnxLink $onnxLink -OnnxEpProbeSource $onnxEpProbeSource
         }
         Assert-OrtDmlProviderSmoke -OnnxRoot $OnnxRoot -OnnxLink $OnnxLink -OnnxEpProbeSource $onnxEpProbeSource
         # Qualcomm's plugin EP replaces the in-tree QNN EP; it loads by RegisterExecutionProviderLibrary, so the file contract is the check.
@@ -1652,13 +1686,11 @@ function Invoke-PythonRuntimeSmoke {
     Invoke-SmokePythonSnippetSet -Group Dml
 
     if ($script:gpuNvidia) {
-        # Follows the staged state: a zip-less lane passes with the CUDA EP alone.
-        $pyEpExpect = if ($script:tensorRtStaged) { @('CUDAExecutionProvider', 'TensorrtExecutionProvider') } else { @('CUDAExecutionProvider') }
-        $pyEpName = if ($script:tensorRtStaged) { 'python onnxruntime exposes CUDA + TensorRT EPs (GPU lane)' } else { 'python onnxruntime exposes CUDA EP (GPU lane, zip-less: TensorRT EP absent by design)' }
-        Assert-PythonSnippet -Name $pyEpName `
-            -Code "import onnxruntime; print(onnxruntime.get_available_providers())" `
-            -ExpectMatch $pyEpExpect `
-            -FailMessage "base-interpreter onnxruntime lacks the expected GPU EP(s) (TensorRT staged: $($script:tensorRtStaged))"
+        # onnxruntime registers the bundled CUDA plugin at import only when its build info and capi\ DLL agree.
+        Assert-PythonSnippet -Name 'python onnxruntime bundles the CUDA plugin EP it registers at import (GPU lane)' `
+            -Code "import os, onnxruntime as o; d = os.path.join(os.path.dirname(o.__file__), 'capi', 'onnxruntime_providers_cuda.dll'); print('cuda-plugin', 'cuda-plugin-ep=1' in o.get_build_info(), os.path.isfile(d), 'TensorrtExecutionProvider' in o.get_available_providers())" `
+            -ExpectMatch @('cuda-plugin True True False') `
+            -FailMessage 'the onnxruntime wheel is not a CUDA plugin-EP build, lacks capi\onnxruntime_providers_cuda.dll, or still compiles in the TensorRT EP'
     }
 
     Invoke-SmokePythonSnippetSet -Group Base

@@ -247,58 +247,6 @@
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
-      "SPDXID": "SPDXRef-Package-Linux-Images-Protocol-Buffers-static-in-libonnxruntime-ep-te-cb01a9a8",
-      "name": "Protocol Buffers (static, in libonnxruntime_ep_tensorrt.so)",
-      "versionInfo": "21.12",
-      "downloadLocation": "https://github.com/protocolbuffers/protobuf",
-      "filesAnalyzed": false,
-      "supplier": "NOASSERTION",
-      "licenseDeclared": "BSD-3-Clause",
-      "licenseConcluded": "BSD-3-Clause",
-      "copyrightText": "NOASSERTION",
-      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
-      "licenseComments": "Obligations: keep-notice, include-text"
-    },
-    {
-      "SPDXID": "SPDXRef-Package-Linux-Images-ONNX-static-in-libonnxruntime-ep-tensorrt.so-pi-f2500cbc",
-      "name": "ONNX (static, in libonnxruntime_ep_tensorrt.so; pinned by commit)",
-      "versionInfo": "e709452ef2bbc1d113faf678c24e6d3467696e83",
-      "downloadLocation": "https://github.com/onnx/onnx",
-      "filesAnalyzed": false,
-      "supplier": "NOASSERTION",
-      "licenseDeclared": "Apache-2.0",
-      "licenseConcluded": "Apache-2.0",
-      "copyrightText": "NOASSERTION",
-      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
-      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
-    },
-    {
-      "SPDXID": "SPDXRef-Package-Linux-Images-Microsoft-GSL-header-only-in-libonnxruntime-ep--dd5ce6c0",
-      "name": "Microsoft GSL (header-only, in libonnxruntime_ep_tensorrt.so)",
-      "versionInfo": "4.0.0",
-      "downloadLocation": "https://github.com/microsoft/GSL",
-      "filesAnalyzed": false,
-      "supplier": "NOASSERTION",
-      "licenseDeclared": "MIT",
-      "licenseConcluded": "MIT",
-      "copyrightText": "NOASSERTION",
-      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
-      "licenseComments": "Obligations: keep-notice, include-text"
-    },
-    {
-      "SPDXID": "SPDXRef-Package-Linux-Images-FlatBuffers-static-in-libonnxruntime-ep-tensorr-47a6f4d0",
-      "name": "FlatBuffers (static, in libonnxruntime_ep_tensorrt.so)",
-      "versionInfo": "23.5.26",
-      "downloadLocation": "https://github.com/google/flatbuffers",
-      "filesAnalyzed": false,
-      "supplier": "NOASSERTION",
-      "licenseDeclared": "Apache-2.0",
-      "licenseConcluded": "Apache-2.0",
-      "copyrightText": "NOASSERTION",
-      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
-      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
-    },
-    {
       "SPDXID": "SPDXRef-Package-Linux-Images-OpenCV-e51e1f63",
       "name": "OpenCV",
       "versionInfo": "5.0.0",
@@ -1220,6 +1168,71 @@
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Windows Image / GPU Layer",
       "licenseComments": "Obligations: eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-ONNX-Runtime-plugin-EP-for-NVIDIA-TensorRT-onn-3b84cebe",
+      "name": "ONNX Runtime plugin EP for NVIDIA TensorRT (onnxruntime_ep_tensorrt.dll, C:\\runtime\\lib\\onnxruntime-ep-tensorrt; nvidia variant, amd64)",
+      "versionInfo": "6403f3cefe22c78313df90eca6b01fde54afa1ed",
+      "downloadLocation": "https://github.com/onnxruntime/onnxruntime-ep-tensorrt",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / GPU Layer",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Protocol-Buffers-utf8-range-static-in-onnxrunt-bce3a917",
+      "name": "Protocol Buffers + utf8_range (static, in onnxruntime_ep_tensorrt.dll)",
+      "versionInfo": "21.12",
+      "downloadLocation": "https://github.com/protocolbuffers/protobuf",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause AND MIT",
+      "licenseConcluded": "BSD-3-Clause AND MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / GPU Layer",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-ONNX-static-in-onnxruntime-ep-tensorrt.dll-36a1b825",
+      "name": "ONNX (static, in onnxruntime_ep_tensorrt.dll)",
+      "versionInfo": "e709452ef2bbc1d113faf678c24e6d3467696e83",
+      "downloadLocation": "https://github.com/onnx/onnx",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / GPU Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Microsoft-GSL-header-only-in-onnxruntime-ep-te-2277b292",
+      "name": "Microsoft GSL (header-only, in onnxruntime_ep_tensorrt.dll)",
+      "versionInfo": "4.0.0",
+      "downloadLocation": "https://github.com/microsoft/GSL",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / GPU Layer",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-FlatBuffers-static-in-onnxruntime-ep-tensorrt.-4a3409c5",
+      "name": "FlatBuffers (static, in onnxruntime_ep_tensorrt.dll)",
+      "versionInfo": "23.5.26",
+      "downloadLocation": "https://github.com/google/flatbuffers",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / GPU Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
     },
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-AMD-ROCm-for-Windows-TheRock-tarball-C-TheRock-f2cf0040",
@@ -2325,26 +2338,6 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Protocol-Buffers-static-in-libonnxruntime-ep-te-cb01a9a8"
-    },
-    {
-      "spdxElementId": "SPDXRef-DOCUMENT",
-      "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-ONNX-static-in-libonnxruntime-ep-tensorrt.so-pi-f2500cbc"
-    },
-    {
-      "spdxElementId": "SPDXRef-DOCUMENT",
-      "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Microsoft-GSL-header-only-in-libonnxruntime-ep--dd5ce6c0"
-    },
-    {
-      "spdxElementId": "SPDXRef-DOCUMENT",
-      "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-FlatBuffers-static-in-libonnxruntime-ep-tensorr-47a6f4d0"
-    },
-    {
-      "spdxElementId": "SPDXRef-DOCUMENT",
-      "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Linux-Images-OpenCV-e51e1f63"
     },
     {
@@ -2696,6 +2689,31 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Windows-Image-TensorRT-5571ddd1"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-ONNX-Runtime-plugin-EP-for-NVIDIA-TensorRT-onn-3b84cebe"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Protocol-Buffers-utf8-range-static-in-onnxrunt-bce3a917"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-ONNX-static-in-onnxruntime-ep-tensorrt.dll-36a1b825"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Microsoft-GSL-header-only-in-onnxruntime-ep-te-2277b292"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-FlatBuffers-static-in-onnxruntime-ep-tensorrt.-4a3409c5"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

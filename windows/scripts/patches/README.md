@@ -29,7 +29,7 @@ are under [`windows/upstream/`](../../upstream/README.md). Do not post any of th
 without the owner saying so.
 
 Where a `.patch` could drift, the build applies it **first** and falls back to the drift-tolerant
-inline form in a `try/catch` (see `002-disable-cuda-pch` and `003-dml-clangcl-compat` in
+inline form in a `try/catch` (see `008-cuda-plugin-clangcl-force-include` and `003-dml-clangcl-compat` in
 `Build-OnnxFromSource.ps1`) — best of both: a clean diff for review, a robust net for CI.
 
 ## Static `.patch` files
@@ -40,10 +40,10 @@ All paths are `-p1`, applied to the root of the named upstream checkout. Pinned 
 | Patch | Upstream @ pinned ref | What it does | git headers |
 |-------|-----------------------|--------------|-------------|
 | `onnxruntime/001-softmax-clangcl-keywords.patch` | microsoft/onnxruntime **`ONNXRUNTIME_VERSION`** | `softmax.cc`: the one real ISO-646 keyword operator `or` → `\|\|` on the dispatch `if` (clang-cl in MS-compat mode treats `or` as an identifier without `<iso646.h>`). Comments left untouched. | ✅ `index` |
-| `onnxruntime/002-disable-cuda-pch.patch` | microsoft/onnxruntime **`ONNXRUNTIME_VERSION`** | `onnxruntime_providers_cuda.cmake`: comment out `target_precompile_headers(...)` — CUDA 13.x CCCL PCH breaks clang-cl interleaving. | ✅ `index` |
 | `onnxruntime/003-dml-clangcl-compat.patch` | microsoft/onnxruntime **`ONNXRUNTIME_VERSION`** | DirectML EP (5 files) under clang-cl + `USE_DML=ON`: (#1) out-of-line `AbstractOperatorDesc` special members / `GetTensors<>()` / 4 tensor accessors past `OperatorField`'s definition to break a mutual-recursion incomplete-type (llvm #57700); (#2) drop the spurious `.##Z` token-paste in `MLOperatorAuthorImpl.cpp`'s `CASE_PROTO`; (#3) widen `Dispatch<uint32_t TSize>` → `size_t` in `DmlDFT.h`/`DmlGridSample.h`. | ✅ `index` |
 | `onnxruntime/004-tunable-severity-macro-collision.patch` | microsoft/onnxruntime **`ONNXRUNTIME_VERSION`** | `tunable.h`: `#undef ERROR` / `#undef VERBOSE` after the includes, so `wingdi.h`'s `ERROR` no longer expands inside `LOGS_DEFAULT` (CUDA EP). | ✅ `index` |
 | `onnxruntime/005-xqa-host-stub-sccache.patch` | microsoft/onnxruntime **`ONNXRUNTIME_VERSION`** | `xqa_impl_gen.cuh`: emit the XQA host stub unconditionally, because sccache's nvcc decomposition can drop the `HAS_SM80_OR_LATER` define in the host pass. Correct only for an sm80+ `CUDA_ARCHITECTURES`. | ✅ `index` |
+| `onnxruntime/008-cuda-plugin-clangcl-force-include.patch` | microsoft/onnxruntime **`ONNXRUNTIME_VERSION`** | `onnxruntime_providers_cuda_plugin.cmake`: the four force-include tests use `CXX_COMPILER_FRONTEND_VARIANT:MSVC` instead of `CXX_COMPILER_ID:MSVC`, so clang-cl gets `/FI` rather than GCC's `-include`. | ✅ `index` |
 | `onnxruntime/006-dml-matmul-1d-rhs.patch` | microsoft/onnxruntime **`ONNXRUNTIME_VERSION`** | `DmlOperatorMatMul.cpp`: give a 1-D right-hand input its padded physical shape. Upstream broadcasts from the unpadded `[n]`, which sets the `n` axis stride to 0, so every row reads `B[0]` and the result is wrong with no error (CON220). Fatal when it stops applying. | ✅ `index` |
 | `onnxruntime/007-pybind-free-threaded-define.patch` | microsoft/onnxruntime **`ONNXRUNTIME_VERSION`** | `onnxruntime_python.cmake`: define `Py_GIL_DISABLED=1` on the pybind target where upstream only prints that it enables free-threading. The arm64 twin failed `Assert-NinjaFreeThreadedDefine` without it; the target-scoped define recompiles no other object. Fatal when it stops applying. | ✅ `index` |
 | `opencv/001-cmake-clang-cl-compat.patch` | opencv/opencv **`OPENCV_VERSION`** | root `CMakeLists.txt` (CMP0146/CMP0148 OLD→NEW) + `cmake/FindONNX.cmake` + `cmake/OpenCVDetectCUDA{Language,Utils}.cmake` for clang-cl/CUDA compat. | ✅ `index` |

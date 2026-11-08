@@ -625,6 +625,8 @@ The three most often regressed:
 The Windows `-Gpu` lane downloads the pinned TensorRT zip and checks its SHA256; a zip staged in
 `windows/downloads/` wins. A missing TensorRT fails the nvidia lane; never restore the graceful
 skip. Layout and rules: [`windows-cross-builds.md`](docs/windows-cross-builds.md).
+ORT's CUDA and TensorRT EPs are plugins on that lane (CON233); never restore `USE_TENSORRT` or the
+provider-bridge CUDA EP: [the plugin EPs](docs/windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
 
 ### QNN / Qualcomm AI Engine Direct Setup (Optional, #121)
 

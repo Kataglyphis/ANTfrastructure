@@ -2,7 +2,7 @@
 # 36-build-qnn-plugin-ep.sh's pins, skip tree, ORT home shim, library verdict, the verify stages, the census root and the Dockerfile wiring; no download, no compiler, no device.
 set -u
 EP_SCRIPT=36-build-qnn-plugin-ep.sh
-# shellcheck source=plugin-ep-fixture.sh
+# shellcheck source=linux/scripts/tests/plugin-ep-fixture.sh
 source "$(dirname "${BASH_SOURCE[0]}")/plugin-ep-fixture.sh"
 BUILD="${TESTS_DIR}/../03-media/build/onnxruntime/build"
 DF="${TESTS_DIR}/../../Dockerfile.media"

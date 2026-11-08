@@ -266,8 +266,9 @@ import iree.compiler
 import iree.runtime
 print('iree-compiler', getattr(iree.compiler, '__version__', 'n/a'))
 if '--require-cuda-ep' in sys.argv:
-    assert 'CUDAExecutionProvider' in providers, 'ERROR: local onnxruntime wheel lost its CUDAExecutionProvider!'
-    print('CUDAExecutionProvider present (build check, no device required)')
+    plugin = os.path.join(os.path.dirname(onnxruntime.__file__), 'capi', 'onnxruntime_providers_cuda.dll')
+    assert 'cuda-plugin-ep=1' in onnxruntime.get_build_info() and os.path.isfile(plugin), 'ERROR: local onnxruntime wheel lost its bundled CUDA plugin EP!'
+    print('CUDA plugin EP bundled (build check, no device required)')
 print('torch-app-env OK')
 '@
         $cudaFlag = if ($gpuLane) { ' --require-cuda-ep' } else { '' }

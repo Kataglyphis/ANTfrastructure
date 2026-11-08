@@ -12,6 +12,7 @@ Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsOrtProve
 $script:GateConsumerScript = [ordered]@{
     opencv = 'Build-OpencvFromSource.ps1'; genai = 'Build-OnnxGenaiFromSource.ps1'; ffmpeg = 'Build-FfmpegFromSource.ps1'
     gstreamer = 'Build-GstreamerFromSource.ps1'; 'amdgpu-ep' = 'Build-OrtAmdgpuEpFromSource.ps1'
+    'tensorrt-ep' = 'Build-OrtTensorRtEpFromSource.ps1'
 }
 $script:GateMount = 'source=windows/scripts/modules/WindowsOrtProvenance.Build.psm1,target=C:\bkmnt\ortmods\WindowsOrtProvenance.Build.psm1'
 
@@ -82,7 +83,7 @@ function Assert-OrtGateDockerfileMounts {
     $consumers = 0
     foreach ($df in 'windows\Dockerfile.media-builder', 'windows\Dockerfile.media-merge-builder', 'windows\Dockerfile.rocm-migraphx') {
         foreach ($line in (ConvertTo-TestDockerLogicalLine -Text (& $Read $df))) {
-            $isConsumer = $line -match 'source=windows/scripts/build/Build-(Opencv|OnnxGenai|Ffmpeg|Gstreamer|OrtAmdgpuEp)FromSource\.ps1'
+            $isConsumer = $line -match 'source=windows/scripts/build/Build-(Opencv|OnnxGenai|Ffmpeg|Gstreamer|OrtAmdgpuEp|OrtTensorRtEp)FromSource\.ps1'
             if ($line -match '^RUN\s') {
                 if ($isConsumer) { $consumers++ }
                 Assert-Equal $isConsumer $line.Contains($script:GateMount) "$df RUN: $($line.Substring(0, [Math]::Min(120, $line.Length)))"
@@ -90,7 +91,7 @@ function Assert-OrtGateDockerfileMounts {
             Assert-False ($line -match '^COPY\s.*WindowsOrtProvenance\.Build') "$df COPYs the gate into a stage"
         }
     }
-    Assert-Equal 5 $consumers 'five consumer RUNs (FFmpeg, OpenCV, GenAI, GStreamer, the rocm EP)'
+    Assert-Equal 6 $consumers 'six consumer RUNs (FFmpeg, OpenCV, GenAI, GStreamer, the rocm EP, the ORT RUN''s TensorRT EP)'
 }
 
 Describe 'ORT gate (G2): a clean consumer build' {
@@ -427,13 +428,13 @@ Describe 'ORT gate (G2): wiring' {
     It 'each consumer imports the module from modules\ or its per-file mount, gates before its tree is removed, unconditionally (mutation)' {
         # The first command that removes the tree (or opens the cleanup phase) must come after the gate.
         $end = @{ opencv = 'Remove-SourceBuildTree'; genai = 'Remove-SourceBuildTree'; ffmpeg = 'Remove-SourceBuildTree'
-            gstreamer = 'Switch-BuildPhase'; 'amdgpu-ep' = 'Complete-CurrentBuildPhase' }
+            gstreamer = 'Switch-BuildPhase'; 'amdgpu-ep' = 'Complete-CurrentBuildPhase'; 'tensorrt-ep' = 'Complete-CurrentBuildPhase' }
         foreach ($consumer in $script:GateConsumerScript.Keys) {
             $rel = "windows\scripts\build\$($script:GateConsumerScript[$consumer])"
             $text = & $read $rel
             $ast = ConvertTo-TestScriptAst -Text $text
-            # GenAI also resolves its Rust toolchain leaf; only the gate's import is graded.
-            $resolve = @(Get-TestAstCommands -Ast $ast -Name 'Resolve-SourceBuildLeafModule' | Where-Object { (Get-TestCommandArguments -Command $_).Name -notmatch 'WindowsRustToolchain' })
+            # GenAI also resolves its Rust toolchain leaf and the TensorRT EP its provenance leaf; only the gate's import is graded.
+            $resolve = @(Get-TestAstCommands -Ast $ast -Name 'Resolve-SourceBuildLeafModule' | Where-Object { (Get-TestCommandArguments -Command $_).Name -notmatch 'WindowsRustToolchain|WindowsNativeProvenance' })
             Assert-Equal 1 $resolve.Count "$consumer resolves the gate once"
             $resolveArguments = Get-TestCommandArguments -Command $resolve[0]
             Assert-Equal '$scriptAssetRoot' $resolveArguments.AssetRoot "$consumer uses its mounted asset root"
@@ -459,6 +460,7 @@ Describe 'ORT gate (G2): wiring' {
             gstreamer = @("(Join-Path `$resolvedBuildDir 'meson-logs\meson-log.txt')",
                 "(Join-Path `$resolvedBuildDir 'build.ninja'), (Join-Path `$resolvedBuildDir 'meson-info\intro-dependencies.json')", '')
             'amdgpu-ep' = @('$epCfgLog', "(Join-Path `$buildDir 'CMakeCache.txt'), (Join-Path `$buildDir 'build.ninja')", '$epCfgLog')
+            'tensorrt-ep' = @('$cfgLog', "(Join-Path `$buildDir 'CMakeCache.txt'), (Join-Path `$buildDir 'build.ninja')", '$cfgLog')
         }
         foreach ($consumer in $want.Keys) {
             Assert-OrtGateConsumerRecords -Consumer $consumer -Expected $want[$consumer] -Read $read

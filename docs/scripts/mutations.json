@@ -32305,6 +32305,22 @@
   "why": "a configure that dropped the static plugin would pass the WebGPU gate"
  },
  {
+  "id": "lib.qnn-ep-ninja-msvc-only",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "Update-NinjaFile -NinjaFile (Join-Path $buildDir 'build.ninja') -OrtMsvcOnlyFlags\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
+  "why": "the fork's /experimental:external and -WX stop clang-cl on the first TU that names them"
+ },
+ {
+  "id": "lib.ninja-msvc-only-wx",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Patches.psm1",
+  "find": ", '(?<=\\s)-WX(?=\\s)')",
+  "replace": ")",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.PatchQuiet.Tests.ps1 -ResultFile logs/code-quality/ninja-msvc-only-mutation.json",
+  "why": "without the -WX strip every unused-argument warning stops the ORT and QNN fork builds"
+ },
+ {
   "id": "lib.qnn-ep-pin-sha-required",
   "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
   "find": "    if (\"$Sha256\" -notmatch '^[0-9A-Fa-f]{64}$') { throw \"ORT_QNN_EP_SOURCE_SHA256='$Sha256' is not a 64-hex SHA256: refusing to fetch the QNN plugin unverified\" }\n",
@@ -32329,12 +32345,20 @@
   "why": "an ORT core the fork built itself would ship beside the chain's"
  },
  {
+  "id": "lib.qnn-ep-link-output",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "    $built = Get-Item -LiteralPath (Join-Path $BuildDir 'onnxruntime_providers_qnn.dll') -ErrorAction SilentlyContinue\n",
+  "replace": "    $built = Get-ChildItem -LiteralPath $BuildDir -Recurse -Filter 'onnxruntime_providers_qnn.dll' | Select-Object -Last 1\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
+  "why": "a recursive pick finds the fork's wheel-tree copy as well, and staging stops on two DLLs or takes the wrong one"
+ },
+ {
   "id": "lib.qnn-ep-module-exports",
   "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
-  "find": "        if ($exports -notcontains $symbol) { $found += \"$(Split-Path -Leaf $Dll) does not export $symbol\" }\n",
-  "replace": "",
+  "find": "    $found = @(Get-OrtPluginEpExportGap -Path $Dll)\n",
+  "replace": "    $found = @()\n",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
-  "why": "a module without the plugin entry points cannot be registered"
+  "why": "a module without the plugin entry points cannot be registered, and the shared export gap must reach the finding"
  },
  {
   "id": "lib.qnn-smoke-no-in-tree-ep",
@@ -32347,10 +32371,170 @@
  {
   "id": "lib.qnn-ep-in-ort-run",
   "target": "windows/Dockerfile.media-builder",
-  "find": "-Until 'QNN plugin EP'",
+  "find": "-Until 'TensorRT plugin EP'",
   "replace": "-Until 'ONNX Runtime'",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
-  "why": "the ORT RUN would stop before the plugin builds"
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "the ORT RUN would stop before both plugin EPs build"
+ },
+ {
+  "id": "lib.trt-ep-pin-sha-required",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "        if ($sha -notmatch '^[0-9A-Fa-f]{64}$') { throw \"$($row.Sha)='$sha' is not a 64-hex SHA256: refusing to fetch $($row.Name) unverified\" }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "an empty hash reaches Invoke-DownloadWithRetry as no check, and a seed downloads unverified"
+ },
+ {
+  "id": "lib.trt-ep-seed-tag-drift",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "            elseif ($seeded[$name] -ne $Declared[$name]) {",
+  "replace": "            elseif ($false) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "a plugin bump that moves a GIT_TAG would build against the old pinned seed"
+ },
+ {
+  "id": "lib.trt-ep-seed-unseeded",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "            if (-not $seeded.ContainsKey($name)) {",
+  "replace": "            if ($false) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "a new FetchContent the plugin declares would be named as a drifted seed instead of an unpinned download"
+ },
+ {
+  "id": "lib.trt-ep-home-implib",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "    if ($lib.Count -eq 0) { throw \"the chain ORT at $OrtPrefix holds no onnxruntime.lib (Build-OnnxFromSource.ps1 runs first)\" }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "a chain without its import library would fail later with no name for what is missing"
+ },
+ {
+  "id": "lib.trt-ep-fetch-disconnected",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "        '-DFETCHCONTENT_FULLY_DISCONNECTED:BOOL=ON', '-DCMAKE_POLICY_DEFAULT_CMP0170:STRING=NEW'",
+  "replace": "        '-DCMAKE_POLICY_DEFAULT_CMP0170:STRING=NEW'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "a declaration the seed gate misses would clone its repository unverified instead of failing"
+ },
+ {
+  "id": "lib.trt-ep-module-delay-import",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "            if ($imports -notcontains $trt) { \"$(Split-Path -Leaf $Dll) does not import $trt\" }",
+  "replace": "            if ($false) { }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "a plugin linked against another TensorRT major would stage without a finding"
+ },
+ {
+  "id": "lib.trt-ep-license-utf8",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "protobuf = @('LICENSE', 'third_party\\utf8_range\\LICENSE')",
+  "replace": "protobuf = @('LICENSE')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "protobuf links its bundled utf8_range, whose MIT text must ship too"
+ },
+ {
+  "id": "lib.trt-ep-g2-gate",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "Assert-ChainOrtOnly -Consumer 'tensorrt-ep' -OrtRoot $ortPrefix -TreeRoot $SourceDir -Shim $ortHome -Log $cfgLog `\n    -Record (Join-Path $buildDir 'CMakeCache.txt'), (Join-Path $buildDir 'build.ninja')\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "without the stamp the image census reads the TensorRT plugin as an unregistered ORT consumer, and no gate proves it compiled against the chain"
+ },
+ {
+  "id": "lib.trt-ep-census-contract",
+  "target": "windows/scripts/modules/WindowsOrtProvenance.Common.psm1",
+  "find": "        [pscustomobject]@{ Name = 'tensorrt-ep'; Pattern = @('onnxruntime_ep_tensorrt.dll') }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "the census would flag the stamped TensorRT plugin as UNREGISTERED"
+ },
+ {
+  "id": "lib.trt-ep-media-core-stage",
+  "target": "windows/scripts/build/Build-MediaCoreAll.ps1",
+  "find": "    @{ Name = 'TensorRT plugin EP'; Script = 'Build-OrtTensorRtEpFromSource.ps1'; SourceDir = 'C:\\temp\\ort-trt-ep-src' }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "the nvidia image would ship no TensorRT EP at all, the in-tree one being gone"
+ },
+ {
+  "id": "lib.trt-ep-driver-forward",
+  "target": "windows/scripts/modules/WindowsBuildDriver.Common.psm1",
+  "find": "                ORT_TENSORRT_EP_GSL_SHA256          = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_GSL_SHA256'\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "the stage would take the Dockerfile default and a versions.env bump would never reach it"
+ },
+ {
+  "id": "lib.trt-ep-dockerfile-env",
+  "target": "windows/Dockerfile.media-builder",
+  "find": "    ORT_TENSORRT_EP_GSL_SHA256=\"${ORT_TENSORRT_EP_GSL_SHA256}\" `\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "the builder reads its pins from the environment; a pin the ARG declares but the ENV drops refuses the build"
+ },
+ {
+  "id": "lib.plugin-ep-export-gap-bridge",
+  "target": "windows/scripts/modules/WindowsTargetArch.Common.psm1",
+  "find": "        if ($ForbidProviderBridge -and $exports -contains 'GetProvider') { \"$leaf exports GetProvider: the in-tree provider-bridge EP, not the plugin\" }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "a provider-bridge CUDA EP under the plugin's DLL name would pass every export check"
+ },
+ {
+  "id": "lib.nvidia-smoke-in-tree-trt",
+  "target": "windows/scripts/modules/WindowsSmokeTest.Common.psm1",
+  "find": "        Get-ChildItem -LiteralPath $OrtRoot -Recurse -Filter 'onnxruntime_providers_tensorrt.dll' -File -ErrorAction SilentlyContinue |\n            ForEach-Object { \"$($_.FullName) is an in-tree TensorRT EP in the chain ORT\" }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "an in-tree TensorRT EP back in the chain ORT would ship beside the plugin unnoticed"
+ },
+ {
+  "id": "lib.nvidia-smoke-unexpected-trt",
+  "target": "windows/scripts/modules/WindowsSmokeTest.Common.psm1",
+  "find": "        if (-not $TensorRtStaged -and $trt) { \"$($trt.FullName) is staged although no TensorRT runtime is\" }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "a TensorRT plugin without its runtime fails only at the consumer's first session"
+ },
+ {
+  "id": "lib.nvidia-smoke-build-info",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "-ExpectMatch 'trt=0 dml=\\d cudaplugin=1'",
+  "replace": "-ExpectMatch 'trt=0'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "USE_CUDA lists CUDA either way, so only the build info tells a plugin build from a provider-bridge one"
+ },
+ {
+  "id": "lib.ort-cuda-plugin-flag",
+  "target": "windows/scripts/build/Build-OnnxFromSource.ps1",
+  "find": "'-Donnxruntime_USE_CUDA=ON', '-Donnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON', '-Donnxruntime_USE_TENSORRT=OFF'",
+  "replace": "'-Donnxruntime_USE_CUDA=ON', '-Donnxruntime_USE_TENSORRT=OFF'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "the nvidia lane would build the legacy provider-bridge CUDA EP again"
+ },
+ {
+  "id": "lib.ort-cuda-plugin-gate-call",
+  "target": "windows/scripts/build/Build-OnnxFromSource.ps1",
+  "find": "if ($cudaUsable) { Assert-OrtCudaPluginEp -OrtInstallDir $ortInstallDir }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "a CUDA EP that is not the plugin would be found only by the smoke, hours later"
+ },
+ {
+  "id": "lib.ort-cuda-plugin-forbid-bridge",
+  "target": "windows/scripts/build/Build-OnnxFromSource.ps1",
+  "find": "@(Get-OrtPluginEpExportGap -Path $dll -ForbidProviderBridge)",
+  "replace": "@(Get-OrtPluginEpExportGap -Path $dll)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "a build exporting both ABIs would keep the provider bridge the plugin replaces"
+ },
+ {
+  "id": "lib.ort-cuda-plugin-clangcl-fallback",
+  "target": "windows/scripts/build/Build-OnnxFromSource.ps1",
+  "find": "-Replacement '$$<CXX_COMPILER_FRONTEND_VARIANT:MSVC>'",
+  "replace": "-Replacement '$$<CXX_COMPILER_ID:MSVC>'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "on patch drift clang-cl would get GCC's -include again and stop on the first plugin TU"
  },
  {
   "id": "lib.qnn-census-plugin-root",
@@ -36107,8 +36291,8 @@
  {
   "id": "lib.ort-cuda-launcher-no-exemption",
   "target": "windows/scripts/build/Build-OnnxFromSource.ps1",
-  "find": "        Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'\n",
-  "replace": "        Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'\n        $gpuArgs += '-DCMAKE_PROJECT_onnxruntime_INCLUDE=C:/x/sccache-ptx-exempt.cmake'\n",
+  "find": "        Write-Host 'NVIDIA GPU detected: enabling the CUDA plugin EP + cuDNN'\n",
+  "replace": "        Write-Host 'NVIDIA GPU detected: enabling the CUDA plugin EP + cuDNN'\n        $gpuArgs += '-DCMAKE_PROJECT_onnxruntime_INCLUDE=C:/x/sccache-ptx-exempt.cmake'\n",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtCudaLauncher.Tests.ps1 -ResultFile logs/code-quality/ort-cuda-launcher-mutation.json",
   "why": "a per-target exemption puts ORT's LLM kernels back on bare nvcc, the one uncached CUDA compile"
  },
