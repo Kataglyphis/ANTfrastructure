@@ -336,6 +336,20 @@ its files: a `windows-2025` job packs the published image's `C:\runtime` with
 host-portable `Build.ExportArm64Modules.Tests.ps1` runs the parsed production copy loop and
 imports its exported module in a fresh PowerShell process for Linux mutation CI. ZIP checks remain in the
 Windows bundle suite. These prove module transport, not execution of the ARM64 payload.
+
+The export also stages the chain core, provider bridge and DirectML DLL beside the
+executables in the ZIP's `bin/`. Windows searches System32 before PATH, so registering
+`ONNX_ROOT/bin` in `BUNDLE-ENV` alone lets the device's older Windows ML ORT win.
+Run [42521429496](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/42521429496)
+at `d63c982d` failed with API31 requested but ORT1.17.1/API17 loaded, followed by
+`0xC0000005`; its frame-only control passed. The export uses `Copy-ChainOrtBeside`
+in a temporary overlay and gives bsdtar that overlay as additional inputs, preserving
+the source image and its G1 placement rules. An existing destination path refuses
+before archive creation, avoiding duplicate-member precedence. Native ZIP tests check
+the exact DLL bytes; portable staging tests and two mutations cover both target
+machines, missing/wrong-machine cores and duplicate paths. None proves inference;
+the ARM64 device gate must still pass against the exported result.
+
 Consumer lanes hosted it
 from 2026-10-03 to 2026-10-11, until a WebRTC defect turned BeschleunigerBallett's renderer lane red
 and skipped its GPU suites over a component the renderer never uses.

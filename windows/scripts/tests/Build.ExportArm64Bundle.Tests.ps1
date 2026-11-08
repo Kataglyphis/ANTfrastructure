@@ -11,6 +11,9 @@ Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
     $empty = Join-Path $script:work 'empty'
     $script:out = Join-Path $script:work 'out'
     Write-TestFileTree -Root $real -Files @{ 'BUNDLE-ENV.ps1' = ''; 'python/python.exe' = 'fake' }
+    foreach ($name in 'onnxruntime.dll', 'onnxruntime_providers_shared.dll', 'DirectML.dll') {
+        New-OrtTestPe -Path (Join-Path $real "lib/onnxruntime-source/bin/$name") -Text @($name)
+    }
     [void](New-Item -ItemType Directory -Force -Path $empty)
     }
 
@@ -43,6 +46,10 @@ Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
         Expand-Archive -LiteralPath (Join-Path $script:out 'bundle.zip') -DestinationPath $dest -Force
         Assert-True (Test-Path (Join-Path $dest 'BUNDLE-ENV.ps1')) 'BUNDLE-ENV.ps1 extracts'
         Assert-True (Test-Path (Join-Path $dest 'python\python.exe')) 'python extracts'
+        foreach ($name in 'onnxruntime.dll', 'onnxruntime_providers_shared.dll', 'DirectML.dll') {
+            Assert-Equal (Get-FileHash (Join-Path $real "lib/onnxruntime-source/bin/$name")).Hash (Get-FileHash (Join-Path $dest "bin/$name")).Hash 'the chain DLL is beside gst-launch in the finished ZIP'
+            Assert-False (Test-Path -LiteralPath (Join-Path $real "bin/$name")) 'export leaves the image tree unchanged'
+        }
     }
 
     AfterAll { Remove-TestDir -Path $script:work }

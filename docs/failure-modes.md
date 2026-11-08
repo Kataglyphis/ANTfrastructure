@@ -22,6 +22,18 @@ Two neighbours, so you land on the right page:
 > the triage index: enough to recognise the failure and act, with a link when
 > the full history matters.
 
+## ARM64 onnxinference crashes after requesting an unavailable ORT API
+
+Device run42521429496 at d63c982d reported API31 requested, ORT1.17.1/API17 loaded
+and exit0xC0000005; the same frames without onnxinference passed. The exported ZIP
+had no chain `onnxruntime.dll` beside `gst-launch-1.0.exe`. Windows searches the
+system directory before PATH ([loader order](https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order)),
+so a PATH-only bundle can select the client's Windows ML copy. Export now uses
+the shared chain-staging helper to put the core, bridge and DirectML beside the
+executables in the ZIP, without changing the source image. Existing paths refuse
+duplicate archive members. See [device verification](windows-cross-builds.md#verification).
+ZIP/PE fixtures prove transport; the real device run must still prove execution.
+
 ## Contents
 
 **Linux and cross-lane**

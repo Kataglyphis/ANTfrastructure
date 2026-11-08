@@ -13,6 +13,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-08 — the ARM64 export carries app-local chain ORT DLLs
+
+- Device run42521429496 at d63c982d reached the real ONNX frame probe but loaded
+  ORT1.17.1/API17 while gstonnx requested API31, then crashed with 0xC0000005.
+  The ZIP now carries the chain core, provider bridge and DirectML beside its
+  executables, ahead of the client's System32 lookup. A small temporary overlay
+  preserves the image tree; duplicate archive paths fail. Native ZIP/hash tests
+  fail before the fix, portable PE staging covers both architectures, and two
+  mutations prove omission and duplicate-path refusal. Device execution remains
+  pending; this does not accept the older published IREE twin or prove GPU use.
+
 ## 2026-11-08 — the ARM64 device-gate export carries the GStreamer module's shared sibling
 
 - The ARM64 device job in run 42489063718 could not reach its WebRTC and ONNX frame probes: the

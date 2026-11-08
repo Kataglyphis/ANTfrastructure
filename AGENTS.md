@@ -109,6 +109,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Require child cleanup APIs before starting timers or watchers; advisory cleanup signals then reaps and retains caller PID guards, reset and command status.
    Windows module visibility suites share the cold-import probe; keep child failures and parent-session isolation observable.
    ARM64 device-gate exports carry required module siblings; prove cold imports from the exported directory before device execution.
+   Exported ARM64 bundles stage chain ORT DLLs beside their executables; reject duplicate ZIP paths and preserve the source image tree.
    Architecture and UV test suites carry their shared fixture companions; use harness PE and wheel constructors for valid samples.
    Windows structural tests use the harness AST readers, command binder and Dockerfile stage parser; parse errors must fail before inspecting declarations. Copy `WindowsAst.Common.psm1` beside any copied harness module tree.
    Windows probe transports share child cleanup and report parsing; retain stderr, timeout, exit and assertion accounting policies.

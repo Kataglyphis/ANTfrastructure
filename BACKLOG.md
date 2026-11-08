@@ -859,6 +859,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       reading the model path as UTF-16, behind a smoke that only checked registration; `003-onnxinference-wide-model-path.patch` fixes that and both gates now
       run real frames through a tiny model. AccelerANTgine's branch `con185-gst-inference` moves to `onnxinference`, unbuilt. Left: a chain, a `<model>.modelinfo`
       for each of its models, and its own test on a real model. Output values are not checked.
+      ARM64 device run42521429496 at d63c982d still crashed: gstonnx requested API31,
+      but loaded ORT1.17.1/API17. The export now stages the chain DLLs beside its
+      executables; native ZIP hashes and portable PE/mutation checks cover transport.
+      A passing ARM64 device run remains required; this entry stays open.
       Cached `:winamd64-nvidia` image digest
       `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777` reports no
       `tensor_transform`, `onnxruntime`, or `tensor_decoder` via `gst-inspect-1.0`.

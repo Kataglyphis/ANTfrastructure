@@ -36615,5 +36615,21 @@
   "replace": "",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.ExportArm64Modules.Tests.ps1 -ResultFile logs/code-quality/export-arm64-mutation.json",
   "why": "the device gate cannot import its GStreamer probes when their required shared sibling is omitted"
+ },
+ {
+  "id": "lib.arm64-export-ort-core",
+  "target": "windows/scripts/build/Export-Arm64Bundle.ps1",
+  "find": "$files = @(Copy-ChainOrtBeside -OnnxRoot $chain -Destination (Join-Path $StageRoot 'bin'))",
+  "replace": "$files = @()",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.ExportArm64Runtime.Tests.ps1 -ResultFile logs/code-quality/export-arm64-ort-mutation.json",
+  "why": "a client host loads its older System32 ORT when the export omits the chain DLL beside gst-launch"
+ },
+ {
+  "id": "lib.arm64-export-ort-duplicate",
+  "target": "windows/scripts/build/Export-Arm64Bundle.ps1",
+  "find": "if (Test-Path -LiteralPath (Join-Path $BundleRoot $relative)) {",
+  "replace": "if ($false) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.ExportArm64Runtime.Tests.ps1 -ResultFile logs/code-quality/export-arm64-ort-mutation.json",
+  "why": "two archive members with the same runtime DLL path leave extraction precedence ambiguous"
  }
 ]
