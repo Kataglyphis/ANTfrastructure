@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-08 — the ARM64 device-gate export carries the GStreamer module's shared sibling
+
+- The ARM64 device job in run 42489063718 could not reach its WebRTC and ONNX frame probes: the
+  exported GStreamer module required `WindowsScripts.Shared.psm1`, but the export omitted it.
+  The export now carries that sibling; its suite checks all exported module hashes and imports
+  the exported GStreamer module in a fresh child session. The regression fails before the fix,
+  and `lib.arm64-export-shared-module` removes the sibling to prove the guard. Device execution
+  and the previously reported ONNX crash still require a passing ARM64 device run.
+
 ## 2026-11-08 — the IREE cross twin gives nanobind its ABI through SKBUILD_SOABI
 
 - The arm64 chain at 2ef097ca stopped in media-tvm on `IREE twin: build.ninja builds no nanobind-static-*-ft library`.

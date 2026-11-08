@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# The device gate unpacks what this packs: a zip without the two markers is a bundle the device cannot run.
+# Cold imports catch missing export companions; they do not execute the ARM64 payload.
 
 Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
     BeforeAll {
@@ -31,10 +31,16 @@ Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
         Assert-True (Test-Path (Join-Path $script:out 'Test-Arm64Bundle.ps1')) 'the gate script travels with it'
         $helper = Join-Path (Get-RepoRoot) 'linux\scripts\02-toolchain\python\free-threaded-wheel.py'
         Assert-Equal (Get-FileHash $helper).Hash (Get-FileHash (Join-Path $script:out 'free-threaded-wheel.py')).Hash 'and the helper the gate proves the cp3XYt twins with'
-        foreach ($module in 'WindowsGstPlugins.Common.psm1', 'WindowsTargetArch.Common.psm1', 'WindowsPythonWheel.Common.psm1') {
+        foreach ($module in 'WindowsGstPlugins.Common.psm1', 'WindowsTargetArch.Common.psm1',
+            'WindowsScripts.Shared.psm1', 'WindowsPythonWheel.Common.psm1', 'WindowsOrtDmlCheck.Common.psm1') {
             $src = Join-Path (Get-RepoRoot) "windows\scripts\modules\$module"
             Assert-Equal (Get-FileHash $src).Hash (Get-FileHash (Join-Path $script:out $module)).Hash "and $module, which a gate step imports"
         }
+    }
+
+    It 'imports the exported GStreamer module in a cold session' {
+        $result = Test-ColdModuleCommands -ModulePath (Join-Path $script:out 'WindowsGstPlugins.Common.psm1') -CommandName Assert-GstOnnxInferenceRun, Assert-GstWebRtcLoopback
+        Assert-Equal 0 $result.ExitCode $result.Output
     }
 
     It 'the zip expands to the bundle markers' {

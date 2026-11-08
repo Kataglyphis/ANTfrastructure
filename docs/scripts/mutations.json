@@ -36607,5 +36607,13 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-tensorrt-plugin-ep.sh",
   "why": "a cross build that keeps the host's TENSORRT_HOME links the host's x86_64 libnvinfer into an arm64 module"
+ },
+ {
+  "id": "lib.arm64-export-shared-module",
+  "target": "windows/scripts/build/Export-Arm64Bundle.ps1",
+  "find": "'WindowsScripts.Shared.psm1', ",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.ExportArm64Bundle.Tests.ps1 -ResultFile logs/code-quality/export-arm64-mutation.json",
+  "why": "the device gate cannot import its GStreamer probes when their required shared sibling is omitted"
  }
 ]
