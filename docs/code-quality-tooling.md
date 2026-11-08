@@ -408,6 +408,11 @@ or clears `TMPDIR`. Hadolint and actionlint keep their caches in the run's outer
 Linux x64 CI runs them on pushes and pull requests. Discovery fails when there are no suites,
 and a host that permits skips must still run at least one suite successfully.
 
+Wheelhouse failure receipts include GNU find's exact diagnostic quoting. Their child probes
+use `C.UTF-8`, matching the recorded text, and run beneath both `C` and `C.UTF-8` parent
+locales. This keeps `LC_ALL=C` runs deterministic while preserving the original stdout,
+stderr and exit-status receipts. The fixture tests do not build wheels or images.
+
 The scheduler tracks supervising workers before releasing their commands. Its
 cancellation marker also covers launches in progress; cleanup joins only recorded
 workers and stops their watchdogs and command groups. Nested runners receive a
@@ -990,7 +995,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4597 entries** over **619 distinct test commands**; both digits are
+manifest holds **4598 entries** over **619 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

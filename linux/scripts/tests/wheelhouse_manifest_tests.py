@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parent.parent
 SOURCE = Path(sys.argv.pop(1)).resolve()
@@ -55,6 +56,7 @@ def capture(source: Path) -> dict[str, dict[str, int | str]]:
                 for context in ("strict", "conditional"):
                     env = dict(
                         os.environ,
+                        LC_ALL="C.UTF-8",
                         API=api,
                         FAIL=failure,
                         CONTEXT=context,
@@ -87,10 +89,12 @@ class ManifestContracts(unittest.TestCase):
         expected = json.loads(
             Path(__file__).with_name("wheelhouse-manifest-receipts.json").read_text()
         )
-        actual = capture(SOURCE)
-        for case, receipt in expected.items():
-            with self.subTest(case=case):
-                self.assertEqual(receipt, actual[case])
+        for inherited_locale in ("C", "C.UTF-8"):
+            with patch.dict(os.environ, LC_ALL=inherited_locale):
+                actual = capture(SOURCE)
+            for case, receipt in expected.items():
+                with self.subTest(locale=inherited_locale, case=case):
+                    self.assertEqual(receipt, actual[case])
 
     def test_missing_companion_imports(self: "ManifestContracts") -> None:
         with tempfile.TemporaryDirectory(prefix="ant-wheel-import-") as temporary:

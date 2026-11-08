@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-08 — wheelhouse receipt probes keep their recorded diagnostic locale
+
+- A full Linux preflight under `LC_ALL=C` exposed locale-dependent GNU find quotes in the wheelhouse
+  failure fixture. Its child probes now use `C.UTF-8` and compare the original receipts under both parent
+  locales. The original bytes and statuses stay checked; `lib.wheelhouse-receipt-locale` restores inherited
+  locale selection to prove the regression. These are offline fixture checks, with no wheel or image build.
+
 ## 2026-11-08 — accept a Windows ARM64 image by digest before changing its tag
 
 - The ARM64 workflow accepts an optional lowercase SHA256 digest. Both container

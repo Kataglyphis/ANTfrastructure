@@ -36791,5 +36791,13 @@
   "replace": "print('CPU ORT check removed')",
   "test": "LC_ALL=C bash linux/scripts/tests/test-app-venv-plugin-eps.sh",
   "why": "the AMD wrapper must still import and verify the chain CPU ORT alongside its separate GPU plugin"
+ },
+ {
+  "id": "lib.wheelhouse-receipt-locale",
+  "target": "linux/scripts/tests/wheelhouse_manifest_tests.py",
+  "find": "                        LC_ALL=\"C.UTF-8\",",
+  "replace": "                        LC_ALL=os.environ[\"LC_ALL\"],",
+  "test": "bash linux/scripts/tests/test-wheelhouse-manifest.sh",
+  "why": "raw diagnostic receipts must remain identical under C and UTF-8 parent locales without normalizing the recorded bytes"
  }
 ]

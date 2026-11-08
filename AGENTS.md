@@ -199,6 +199,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Core disk probes share validation without merging zero-disabled and nonnegative-free-space policies.
    Test workers use the harness optional-function emitter; keep required definitions mandatory.
    Stream receipt suites carry `stream-receipt-fixture.sh`; keep their expected results independent of production code.
+   Wheelhouse stderr fixtures pin child locale to C.UTF-8; retain both parent-locale controls and original receipt bytes.
    Named mutation-check suites carry their case-executor companion; failed controls and invalid recipes remain failed results.
    Shared mirror enumeration preserves source-file order and original shell-option behavior; artifact and image probes retain caller failure policies.
    ORT and GenAI provenance checks share hashing and chain-byte membership; keep their distinct archive and exemption policies.
