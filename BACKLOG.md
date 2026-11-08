@@ -991,8 +991,13 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       move does not wait for a newer ROCm. **Step 1 (in source 2026-11-07):** the media stage builds it, the
       wrapper ships `/usr/local/lib/onnxruntime-ep-amdgpu/lib/libmigraphx-ep.so` and sets `ORT_AMDGPU_EP_ROOT`,
       the gates check it ([accelerator page](docs/linux-accelerator-images.md#amds-plugin-migraphx-ep),
-      [contract](docs/consumer-image-contract.md#amds-plugin-migraphx-ep)); the next rocm chain proves it in the
-      image. **Windows needs no image step:** `:winamd64-rocm` has built `migraphx-ep.dll` into `C:\runtime\lib\onnxruntime-ep-amdgpu`
+      [contract](docs/consumer-image-contract.md#amds-plugin-migraphx-ep)). **Proved in the published image
+      2026-11-08:** `:latest-rocm` = wrapper `sha256:796e6abed4d3…` (sixth proof chain, run 20261107-214614, hub
+      3f70ce2e) carries `libmigraphx-ep.so` with both exports, the chain-only stamp and the correct source sha256;
+      runtime smoke 0 failures, acceptance receipt passed for all six consumers, promoted by the manifest-only
+      replay after the chain's own acceptance had refused a dirty hub tree
+      ([failure-modes](docs/failure-modes.md#a-chain-passes-every-gate-and-then-stops-at-image-acceptance-commit-the-hub-tooling-before-creating-an-acceptance-receipt)).
+      The six gaps the proof chains found are each held by a suite case and a recipe. **Windows needs no image step:** `:winamd64-rocm` has built `migraphx-ep.dll` into `C:\runtime\lib\onnxruntime-ep-amdgpu`
       (`ORT_AMDGPU_EP_ROOT`, same `ORT_AMDGPU_EP_COMMIT`) since 2026-10-07 ([windows-rocm.md](docs/windows-rocm.md#migraphx-and-the-ort-plugin-ep-rocm-lane-spike)),
       and its ORT never carried the built-in MIGraphX EP, so step 3 is Linux-only; what Windows lacks is the on-card
       proof (the smoke is GPU-less) and the consumer registration below, which reads the same variable on both
