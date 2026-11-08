@@ -46,6 +46,12 @@ t_assert_eq "${_r}/lib/libnvonnxparser.so.11" "$(readlink -f "${_home}/libnvonnx
 rm -f "${_r}/lib/libnvinfer_plugin.so.11"
 t_assert_contains "$(TRTEP_WORK_DIR="${_T}/w2" TENSORRT_VERSION=11.4.0.106 TENSORRT_HOME="${_r}" trtep_tensorrt_home 2>&1)" "no libnvinfer_plugin.so.11 under any of:"
 t_assert_contains "$(TRTEP_WORK_DIR="${_T}/w3" TENSORRT_VERSION='' TENSORRT_HOME="${_r}" trtep_tensorrt_home 2>&1)" "TENSORRT_VERSION is not set"
+# A CUDA cross target hands the plugin the target's TensorRT root; a native build keeps TENSORRT_HOME (the arm64 nvidia lane, unproven by a build yet).
+_cross="$(bash -c 'source "$1"; cuda_cross_active() { return 0; }; cuda_cross_load() { CUDA_CROSS_TENSORRT_HOME=/target/tensorrt; }; TENSORRT_HOME=/host; trtep_enter_cross_env; printf "%s" "${TENSORRT_HOME}"' _ "${EP}")"
+t_assert_eq /target/tensorrt "${_cross}"
+_native="$(bash -c 'source "$1"; cuda_cross_active() { return 1; }; TENSORRT_HOME=/host; trtep_enter_cross_env; printf "%s" "${TENSORRT_HOME}"' _ "${EP}")"
+t_assert_eq /host "${_native}"
+t_assert_contains "$(t_fn_src "${EP}" trtep_compile)" 'trtep_enter_cross_env' "the compile enters the cross environment before it links the TensorRT tree"
 # The header discovery itself (TENSORRT_HOME first, then first_match_using over /usr/include and /usr/local) is the ORT subject of header_discovery_tests.py.
 t_assert_eq "${_r}/include/NvInfer.h" "$(TENSORRT_HOME="${_r}" trtep_tensorrt_header)"
 t_assert_contains "$(TENSORRT_HOME="${_T}/nowhere" bash -c 'source "$1"; unset -f first_match_using 2>/dev/null; trtep_tensorrt_header' _ "${EP}" 2>&1)" "requires first_match_using from guard-helpers.sh"

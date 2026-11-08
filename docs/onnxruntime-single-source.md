@@ -563,6 +563,10 @@ Two couplings to keep in mind:
 
 ## Not proven by a build yet
 
+- The TensorRT plugin EP on the arm64 nvidia (SBSA) lane: `37-build-tensorrt-plugin-ep.sh` takes the CUDA cross
+  target's TensorRT root and nvcc defines (`trtep_enter_cross_env`, `trtep_cross_args`), but no arm64 nvidia media
+  chain has run since the move (2026-11-08); the amd64 build is proved in the nvidia android image.
+
 One lane has reached part of it: on 2026-09-25 the Windows rocm lane's AMDGPU
 EP stage ran G2 and hit the third red below, on the EP's own intermediate `.tar`
 (fixed the same day, [`windows-rocm.md`](windows-rocm.md)). For every other lane

@@ -36567,5 +36567,13 @@
   "replace": "  if false; then fail_check \"$2 exports the legacy GetProvider bridge: the in-tree EP, not the plugin\"\n",
   "test": "bash linux/scripts/tests/test-tensorrt-plugin-ep.sh",
   "why": "ORT 1.31.1's in-tree CUDA module exports CreateEpFactories and ReleaseEpFactory as well; a stage that reads only those waves the legacy EP through"
+ },
+ {
+  "id": "onnx-ep-tensorrt.cross-target-tensorrt-root",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
+  "find": "  TENSORRT_HOME=\"${CUDA_CROSS_TENSORRT_HOME}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-tensorrt-plugin-ep.sh",
+  "why": "a cross build that keeps the host's TENSORRT_HOME links the host's x86_64 libnvinfer into an arm64 module"
  }
 ]

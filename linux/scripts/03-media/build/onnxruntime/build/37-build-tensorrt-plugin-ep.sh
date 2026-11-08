@@ -124,11 +124,17 @@ trtep_cuda_cache_args() {
   for arg in "${build_args[@]}"; do [ "${arg}" = --cmake_extra_defines ] || _tcc_out+=("-D${arg}"); done
 }
 
-# <array name>: a CUDA cross target (gpu stage, CROSS_NVIDIA_SBSA=1) takes the cross toolchain and nvcc's cross defines; a native build nothing.
+# A CUDA cross target (gpu stage, CROSS_NVIDIA_SBSA=1): the target's TensorRT root, as the in-tree build took it, so the shim links the target's libraries and not the host's.
+trtep_enter_cross_env() {
+  cuda_cross_active || return 0
+  cuda_cross_load || err "cuda_cross_load failed"
+  TENSORRT_HOME="${CUDA_CROSS_TENSORRT_HOME}"
+}
+
+# <array name>: a CUDA cross target takes the cross toolchain and nvcc's cross defines; a native build nothing.
 trtep_cross_args() {
   local -n _tca_out="$1"
   cuda_cross_active || return 0
-  cuda_cross_load || err "cuda_cross_load failed"
   # shellcheck source=../../../../01-core/cross-meson.sh
   command -v append_cmake_cross_args >/dev/null 2>&1 || source "${PLUGIN_EP_CORE}/cross-meson.sh"
   append_cmake_cross_args _tca_out
@@ -138,6 +144,7 @@ trtep_cross_args() {
 # Configure against the chain ORT and the image's TensorRT, build, and name the module in TRTEP_SO_PATH.
 trtep_compile() {
   local work="${TRTEP_WORK_DIR}" ort_prefix trt_home
+  trtep_enter_cross_env
   ort_prefix="$(mgxep_ort_prefix "${TRTEP_ORT_DIR}" "${work}/ort")"
   trt_home="$(trtep_tensorrt_home)"
   # shellcheck disable=SC2034  # read through the nameref in plugin_ep_configure_and_build
