@@ -33,10 +33,13 @@ done
 cat > "${PYTHONPATH}/torch.py" <<'PY'
 import os
 from types import SimpleNamespace
+
 version = SimpleNamespace(hip=None if os.environ.get("CPU_TORCH") else "10.1", cuda="13.4")
 PY
 cat > "${PYTHONPATH}/onnxruntime.py" <<'PY'
 import os
+
+
 def get_available_providers():
     return ([] if os.environ.get("NO_CPU_ORT") else ["CPUExecutionProvider"]) + ["CUDAExecutionProvider"]
 PY
