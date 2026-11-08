@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-08 — runner-default fixtures isolate the outer worker cap
+
+- The full local mutation run exposed `ordered-jobs.default-one-per-cpu` surviving when the outer
+  preflight exported `RUN_TESTS_JOBS=4`. The copied runner fixture now clears that inherited value
+  before applying explicit case arguments; serial and invalid inherited caps exercise its default.
+  The existing default mutation and a new fixture-isolation mutation prove the rendezvous controls.
+  These fixtures check scheduling and verdicts, not the coverage of the suites they invoke.
+
 ## 2026-11-08 — wheelhouse receipt probes keep their recorded diagnostic locale
 
 - A full Linux preflight under `LC_ALL=C` exposed locale-dependent GNU find quotes in the wheelhouse

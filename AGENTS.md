@@ -108,6 +108,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    AMD Python bundles carry the plugin MIGraphX EP beside the chain core and prove it against the image's module; their self-test proves registration, not availability.
    GPU-less app-venv checks load the selected MIGraphX/TensorRT plugin and require both factory exports; registration and inference need separate evidence.
    Require child cleanup APIs before starting timers or watchers; advisory cleanup signals then reaps and retains caller PID guards, reset and command status.
+   Runner fixtures clear inherited RUN_TESTS_JOBS before applying explicit case values; default scheduling controls must exercise the default.
    Windows module visibility suites share the cold-import probe; keep child failures and parent-session isolation observable.
    ARM64 device-gate exports carry required module siblings; prove cold imports from the exported directory before device execution.
    Exported ARM64 bundles stage chain ORT DLLs beside their executables; reject duplicate ZIP paths and preserve the source image tree.

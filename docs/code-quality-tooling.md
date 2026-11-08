@@ -399,7 +399,9 @@ registration order, so the log reads like a serial run, only sooner. One level d
 drives `run-tests.sh` (`RUN_TESTS_JOBS`, suites in name order, same totals), and `lint-shell.sh`
 runs one shellcheck per file `LINT_SHELL_JOBS` at a time and refuses a run that did not report on
 every file. `wsl-quality.sh check --jobs N` passes the same limit to both nested runners. Each
-knob set to `1` restores the serial path.
+knob set to `1` restores the serial path. The copied runner fixture clears the inherited
+`RUN_TESTS_JOBS` before applying its case arguments. Its default case supplies serial and
+invalid outer caps so either value leaking into the child fails the rendezvous assertions.
 
 The runner's leftover check (`AGENTS.md`, no ghosts) cannot see a suite that writes `/tmp` by name
 or clears `TMPDIR`. Hadolint and actionlint keep their caches in the run's outer `TMPDIR`.
@@ -995,7 +997,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4598 entries** over **619 distinct test commands**; both digits are
+manifest holds **4599 entries** over **619 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

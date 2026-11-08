@@ -36799,5 +36799,13 @@
   "replace": "                        LC_ALL=os.environ[\"LC_ALL\"],",
   "test": "bash linux/scripts/tests/test-wheelhouse-manifest.sh",
   "why": "raw diagnostic receipts must remain identical under C and UTF-8 parent locales without normalizing the recorded bytes"
+ },
+ {
+  "id": "ordered-jobs.fixture-clears-parent-jobs",
+  "target": "linux/scripts/tests/test-run-tests.sh",
+  "find": "out=\"$(env -u RUN_TESTS_JOBS MEET=",
+  "replace": "out=\"$(env MEET=",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "an inherited worker cap must not select the copied fixture runner default or hide its scheduling mutation"
  }
 ]
