@@ -39,6 +39,11 @@ _bundle_fails_with 'host GPU runtime requires a matching GPU image variant' ENAB
 _bundle_fails_with 'PYTHON_APP_HOST_GPU_RUNTIME must be true or false' PYTHON_APP_HOST_GPU_RUNTIME=invalid
 _bundle_fails_with 'no chain ONNX Runtime wheel' ENABLE_AMD=true PYTHON_APP_HOST_GPU_RUNTIME=true
 
+t_case 'an AMD image bundle carries the plugin MIGraphX EP beside the chain core (the fixture stops before that step)'
+t_assert_contains "$(cat "$SCRIPT")" 'cp -L "${plugin_module}" "$(ort_python_provider_file "${site_packages}/onnxruntime/capi" migraphx)"' \
+  'the image module is copied into capi, where the self-test and the package proof read it'
+t_assert_contains "$(cat "$SCRIPT")" 'err "the rocm image carries no plugin MIGraphX EP at ${plugin_module}"' 'a rocm image without the module fails the bundle'
+
 t_case 'missing or empty license fails before an existing bundle is reset'
 printf 'keep existing bundle\n' > "$work/bundle/sentinel"
 rm "$work/project/LICENSE"
