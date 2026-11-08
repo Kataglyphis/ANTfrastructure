@@ -17,9 +17,10 @@
 
 - The ARM64 device job in run 42489063718 could not reach its WebRTC and ONNX frame probes: the
   exported GStreamer module required `WindowsScripts.Shared.psm1`, but the export omitted it.
-  The export now carries that sibling; its suite checks all exported module hashes and imports
+  The export now carries that sibling; tests check all exported module hashes and import
   the exported GStreamer module in a fresh child session. The regression fails before the fix,
-  and `lib.arm64-export-shared-module` removes the sibling to prove the guard. Device execution
+  and `lib.arm64-export-shared-module` removes the sibling to prove the guard through a
+  host-portable copy-loop suite; native ZIP tests remain in the Windows suite. Device execution
   and the previously reported ONNX crash still require a passing ARM64 device run.
 
 ## 2026-11-08 — the IREE cross twin gives nanobind its ABI through SKBUILD_SOABI

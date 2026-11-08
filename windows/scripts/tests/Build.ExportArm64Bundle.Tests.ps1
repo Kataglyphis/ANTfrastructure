@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Cold imports catch missing export companions; they do not execute the ARM64 payload.
+# Archive and copied-byte checks do not prove ARM64 payload execution.
 
 Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
     BeforeAll {
@@ -36,11 +36,6 @@ Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
             $src = Join-Path (Get-RepoRoot) "windows\scripts\modules\$module"
             Assert-Equal (Get-FileHash $src).Hash (Get-FileHash (Join-Path $script:out $module)).Hash "and $module, which a gate step imports"
         }
-    }
-
-    It 'imports the exported GStreamer module in a cold session' {
-        $result = Test-ColdModuleCommands -ModulePath (Join-Path $script:out 'WindowsGstPlugins.Common.psm1') -CommandName Assert-GstOnnxInferenceRun, Assert-GstWebRtcLoopback
-        Assert-Equal 0 $result.ExitCode $result.Output
     }
 
     It 'the zip expands to the bundle markers' {

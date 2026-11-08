@@ -332,8 +332,10 @@ executes, not just loads. The hub's own `windows-arm64.yml` runs the gate daily 
 its files: a `windows-2025` job packs the published image's `C:\runtime` with
 `Export-Arm64Bundle.ps1`, and a `windows-11-arm` job extracts and runs it. The export carries
 `WindowsScripts.Shared.psm1` beside the GStreamer module, which imports it for the ONNX probes.
-`Build.ExportArm64Bundle.Tests.ps1` checks the copied bytes and imports the exported module in a
-fresh PowerShell process; this proves the module transport, not execution of the ARM64 payload.
+`Build.ExportArm64Bundle.Tests.ps1` checks the native ZIP and copied module bytes. The
+host-portable `Build.ExportArm64Modules.Tests.ps1` runs the parsed production copy loop and
+imports its exported module in a fresh PowerShell process for Linux mutation CI. ZIP checks remain in the
+Windows bundle suite. These prove module transport, not execution of the ARM64 payload.
 Consumer lanes hosted it
 from 2026-10-03 to 2026-10-11, until a WebRTC defect turned BeschleunigerBallett's renderer lane red
 and skipped its GPU suites over a component the renderer never uses.
