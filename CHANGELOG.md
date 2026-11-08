@@ -32,6 +32,12 @@
   `Copy-Item` wrote the DLL as a file under the directory's name. Both plugin builders (QNN, TensorRT) recreate it
   first; install tests over a stale tree and `lib.qnn-ep-stage-dir` / `lib.trt-ep-stage-dir` hold it.
 
+## 2026-11-08 — `:latest` ships Qualcomm's plugin QNN EP on arm64 (CON232 proved)
+
+- The seventh proof chain (runtime stage, three arches, run 20261108-131033) published `:latest` with arm64 at
+  `sha256:19b99d3f4d02…`: the plugin module, 48 QAIRT backends, `ORT_QNN_EP_ROOT`, no in-tree QNN provider, all smokes
+  and the acceptance receipt green. The sixth chain had failed only on GitHub's 503 for the HailoRT tarball, now mirrored.
+
 ## 2026-11-08 — Linux: the CUDA EP is the plugin, the TensorRT EP NVIDIA's plugin, the in-tree TensorRT and MIGraphX EPs are gone (CON233, CON231 step 3)
 
 - Owner decision (second of the day): "sofort komplett, inklusive Entfernen" on both lanes. The nvidia ORT GPU build

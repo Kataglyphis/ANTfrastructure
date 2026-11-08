@@ -1021,8 +1021,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       tarball with `--ort_home` over the chain prefix, ships `/usr/local/lib/onnxruntime-ep-qnn` (module, QAIRT
       backends, licences, provenance), sets `ORT_QNN_EP_ROOT` on arm64 only, drops the in-tree EP from the ORT CPU
       build and GenAI, and gates it (verify stage, census root, runtime probe; [qnn-linux.md](docs/qnn-linux.md#the-plugin-ep)).
-      Done when the next default chain publishes `:latest` with the plugin on arm64 (the arm64 ORT CPU build re-keys
-      without `onnxruntime_USE_QNN`), the Windows arm64 bundle ships `onnxruntime_providers_qnn.dll` the same way
+      **Proved in the published image 2026-11-08:** `:latest` arm64 = `sha256:19b99d3f4d02…` (seventh proof chain, run
+      20261108-131033, hub 118c5425) carries `/usr/local/lib/onnxruntime-ep-qnn/lib/libonnxruntime_providers_qnn.so`
+      (4.4 MB, fork v2.7.0, QAIRT 2.51.1, 48 backend libraries) with `ORT_QNN_EP_ROOT` set and no in-tree QNN provider in
+      the CPU prefix; runtime smoke and acceptance receipt passed for all six consumers on all three arches. Still done
+      only when the Windows arm64 bundle ships `onnxruntime_providers_qnn.dll` the same way
       (Windows session, after its `:winarm64` publish), and the consumers register it through CON231 step 2's code
       path. **Not proven on hardware** on Linux (no Qualcomm Linux device in the fleet); the Windows side has the
       Snapdragon X for the on-card parity run.
