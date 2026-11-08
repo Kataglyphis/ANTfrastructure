@@ -225,16 +225,26 @@ function Get-OrtPluginEpExportFinding {
     return @(Get-OrtPluginEpExportGap -Path $Path -ForbidProviderBridge:$ForbidProviderBridge)
 }
 
+function Get-OrtTreeDll {
+    # Every copy under the chain ORT, wherever cmake or the wheel step put it.
+    param([Parameter(Mandatory)][string]$OrtRoot, [Parameter(Mandatory)][string]$Name)
+    return @(Get-ChildItem -LiteralPath $OrtRoot -Recurse -Filter $Name -File -ErrorAction SilentlyContinue)
+}
+
+function Get-OrtPluginDll {
+    param([AllowEmptyString()][string]$EpRoot, [Parameter(Mandatory)][string]$Name)
+    if ($EpRoot) { return Get-Item -LiteralPath (Join-Path $EpRoot $Name) -ErrorAction SilentlyContinue }
+}
+
 function Get-OrtNvidiaPluginFinding {
     # The CUDA plugin under the legacy name, the TensorRT plugin under its root, and no in-tree TensorRT EP left in the chain ORT.
     param([Parameter(Mandatory)][string]$OrtRoot, [AllowEmptyString()][string]$TensorRtEpRoot, [AllowEmptyString()][string]$TensorRtBinDir, [bool]$TensorRtStaged)
-    $cuda = @(Get-ChildItem -LiteralPath $OrtRoot -Recurse -Filter 'onnxruntime_providers_cuda.dll' -File -ErrorAction SilentlyContinue)
-    $trt = if ($TensorRtEpRoot) { Get-Item -LiteralPath (Join-Path $TensorRtEpRoot 'onnxruntime_ep_tensorrt.dll') -ErrorAction SilentlyContinue }
+    $cuda = @(Get-OrtTreeDll -OrtRoot $OrtRoot -Name 'onnxruntime_providers_cuda.dll')
+    $trt = Get-OrtPluginDll -EpRoot $TensorRtEpRoot -Name 'onnxruntime_ep_tensorrt.dll'
     return @(
         if ($cuda.Count -eq 0) { "no onnxruntime_providers_cuda.dll under $OrtRoot" }
         foreach ($dll in $cuda) { Get-OrtPluginEpExportFinding -Path $dll.FullName -ForbidProviderBridge }
-        Get-ChildItem -LiteralPath $OrtRoot -Recurse -Filter 'onnxruntime_providers_tensorrt.dll' -File -ErrorAction SilentlyContinue |
-            ForEach-Object { "$($_.FullName) is an in-tree TensorRT EP in the chain ORT" }
+        Get-OrtTreeDll -OrtRoot $OrtRoot -Name 'onnxruntime_providers_tensorrt.dll' | ForEach-Object { "$($_.FullName) is an in-tree TensorRT EP in the chain ORT" }
         if ($TensorRtStaged -and -not $trt) { "no onnxruntime_ep_tensorrt.dll under ORT_TENSORRT_EP_ROOT='$TensorRtEpRoot' although TensorRT is staged" }
         if (-not $TensorRtStaged -and $trt) { "$($trt.FullName) is staged although no TensorRT runtime is" }
         if ($TensorRtStaged -and $trt) {
@@ -247,13 +257,12 @@ function Get-OrtNvidiaPluginFinding {
 function Get-OrtQnnPluginFinding {
     # Qualcomm's plugin EP beside its QAIRT backends, and no in-tree QNN EP in the chain ORT it replaces.
     param([AllowEmptyString()][string]$EpRoot, [string]$OrtRoot)
-    $plugin = if ($EpRoot) { Get-Item -LiteralPath (Join-Path $EpRoot 'onnxruntime_providers_qnn.dll') -ErrorAction SilentlyContinue }
+    $plugin = Get-OrtPluginDll -EpRoot $EpRoot -Name 'onnxruntime_providers_qnn.dll'
     if (-not $plugin) { return , "no onnxruntime_providers_qnn.dll under ORT_QNN_EP_ROOT='$EpRoot'" }
     return @(
         Get-OrtPluginEpExportFinding -Path $plugin.FullName
         if (-not (Get-ChildItem -LiteralPath $plugin.DirectoryName -Filter 'Qnn*.dll' -File)) { "no QAIRT backend DLL (Qnn*.dll) beside the plugin in $EpRoot" }
-        Get-ChildItem -LiteralPath $OrtRoot -Recurse -Filter 'onnxruntime_providers_qnn.dll' -File -ErrorAction SilentlyContinue |
-            ForEach-Object { "$($_.FullName) is an in-tree QNN EP in the chain ORT" }
+        Get-OrtTreeDll -OrtRoot $OrtRoot -Name 'onnxruntime_providers_qnn.dll' | ForEach-Object { "$($_.FullName) is an in-tree QNN EP in the chain ORT" }
     )
 }
 

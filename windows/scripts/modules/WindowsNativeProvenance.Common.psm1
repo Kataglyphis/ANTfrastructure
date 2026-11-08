@@ -138,17 +138,36 @@ function Write-NativeProvenanceManifest {
 <#
 .SYNOPSIS
     The one-file manifest at Root\provenance\<Owner>.json, written and proven; the file is its required entry.
+.PARAMETER Source
+    A Name/Version/Sha256/Url table, or a source pin (Version, Sha256, Url) that takes the owner's name.
 #>
 function Write-NativeFileProvenance {
     param(
         [Parameter(Mandatory)][string]$Root,
         [Parameter(Mandatory)][string]$Owner,
         [Parameter(Mandatory)][string]$File,
-        [Parameter(Mandatory)][hashtable]$Source,
+        [Parameter(Mandatory)]$Source,
         [Parameter(Mandatory)][string[]]$Notice
     )
+    if ($Source -isnot [hashtable]) { $Source = @{ Name = $Owner; Version = $Source.Version; Sha256 = $Source.Sha256; Url = $Source.Url } }
     $entry = New-NativeProvenanceEntry -Root $Root -File $File -Notice $Notice -Source $Source
     Write-NativeProvenanceManifest -Path (Join-Path $Root "provenance\$Owner.json") -Owner $Owner -Entry @($entry) -Root $Root -RequiredFile $File
+}
+
+<#
+.SYNOPSIS
+    A fresh stage holding one built file, what -Populate adds beside it, and its manifest over the notices -Populate returns.
+.DESCRIPTION
+    The directory is recreated after the removal: a copy to a missing directory writes the file under the directory's name.
+#>
+function Install-NativeFileStage {
+    param([Parameter(Mandatory)][IO.FileInfo]$File, [Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$Owner,
+        [Parameter(Mandatory)]$Source, [Parameter(Mandatory)][scriptblock]$Populate)
+    if (Test-Path -LiteralPath $Root) { Remove-Item -LiteralPath $Root -Recurse -Force }
+    $null = New-Item -ItemType Directory -Force -Path $Root
+    Copy-Item -LiteralPath $File.FullName -Destination $Root -Force
+    Write-NativeFileProvenance -Root $Root -Owner $Owner -File $File.Name -Source $Source -Notice @(& $Populate $Root)
+    return (Join-Path $Root $File.Name)
 }
 
 function Get-NativeProvenanceEntryFinding {
@@ -404,5 +423,5 @@ function Get-MsvcRuntimeProvenanceEntry {
 }
 
 Export-ModuleMember -Function Expand-NativeZipMember, Read-MesonWrapSource, Get-MesonWrapInventory, Get-NativeNoticeFile, Copy-NativeNotice,
-    New-NativeProvenanceEntry, Write-NativeProvenanceManifest, Write-NativeFileProvenance, Get-NativeProvenanceFinding, Assert-NativeProvenanceManifest,
+    New-NativeProvenanceEntry, Write-NativeProvenanceManifest, Write-NativeFileProvenance, Install-NativeFileStage, Get-NativeProvenanceFinding, Assert-NativeProvenanceManifest,
     Get-NativeClosureGap, Get-MesonProvenanceEntry, Get-BinDllProvenanceEntry, Get-MsvcRuntimeProvenanceEntry

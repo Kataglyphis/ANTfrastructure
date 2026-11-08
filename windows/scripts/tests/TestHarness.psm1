@@ -981,3 +981,38 @@ function New-TestZipFile {
     } finally { $archive.Dispose() }
 }
 Export-ModuleMember -Function New-TestZipFile
+
+# Global, as a suite's top-level import is: the suite and the functions it dot-sources call these modules.
+function Import-TestRepoModule {
+    param([Parameter(Mandatory)][string[]]$Name)
+    foreach ($leaf in $Name) { Import-Module ([IO.Path]::Combine((Get-RepoRoot), 'windows', 'scripts', 'modules', "$leaf.psm1")) -Force -DisableNameChecking -Global }
+}
+Export-ModuleMember -Function Import-TestRepoModule
+
+# A chain ORT prefix as Build-OnnxFromSource.ps1 installs it: flat public headers, the core and shared-provider DLLs and import libraries.
+function New-TestOrtChainPrefix {
+    param([Parameter(Mandatory)][string]$Dir)
+    $chain = Join-Path $Dir 'onnxruntime-source'
+    Write-TestFileTree -Root $chain -Files @{
+        'include/onnxruntime/onnxruntime_c_api.h' = 'c'; 'include/onnxruntime/onnxruntime_cxx_api.h' = 'cxx'
+        'bin/onnxruntime.dll' = 'chain core'; 'lib/onnxruntime.lib' = 'chain implib'
+        'bin/onnxruntime_providers_shared.dll' = 'chain shared'; 'lib/onnxruntime_providers_shared.lib' = 'chain shared implib'
+    }
+    return $chain
+}
+Export-ModuleMember -Function New-TestOrtChainPrefix
+
+# Stages over a stale directory and asserts the one-directory contract the plugin EP builders share.
+function Invoke-TestPluginStage {
+    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][scriptblock]$Install, [string[]]$Expected = @())
+    $ep = Join-Path $Dir 'ep'
+    Write-TestFileTree -Root $ep -Files @{ 'stale.dll' = 'old' }
+    $pin = [pscustomobject]@{ Version = '1.0.0'; Sha256 = ('ab' * 32); Url = 'https://github.com/onnxruntime/plugin/archive/v1.0.0.tar.gz' }
+    $staged = & $Install $ep $pin
+    Assert-True (Test-Path -LiteralPath $ep -PathType Container) 'a directory, never a file under its name'
+    Assert-Equal 'plugin' (Get-Content -LiteralPath $staged -Raw).Trim() 'the built plugin'
+    Assert-False (Test-Path -LiteralPath (Join-Path $ep 'stale.dll')) 'the previous stage is gone'
+    foreach ($rel in $Expected) { Assert-True (Test-Path -LiteralPath (Join-Path $ep $rel) -PathType Leaf) "$rel in the stage" }
+    return $ep
+}
+Export-ModuleMember -Function Invoke-TestPluginStage

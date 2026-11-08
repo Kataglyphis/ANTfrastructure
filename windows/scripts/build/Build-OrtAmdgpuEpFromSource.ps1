@@ -162,8 +162,7 @@ try {
     if ($static -match '^amdhip64') { throw 'migraphx-ep.dll imports amdhip64 statically: /DELAYLOAD did not reach the linker' }
     if ($static -notcontains 'migraphx_c.dll') { throw "migraphx-ep.dll does not import migraphx_c.dll (imports: $($static -join ', '))" }
     # G2: the EP source, its seeds and build tree name no ORT but the chain's CMake package; a pass stamps it for G1.
-    Assert-ChainOrtOnly -Consumer 'amdgpu-ep' -OrtRoot $OnnxRuntimeDir -TreeRoot $WorkDir -Log $epCfgLog `
-        -Record (Join-Path $buildDir 'CMakeCache.txt'), (Join-Path $buildDir 'build.ninja')
+    Assert-ChainOrtOnly -Consumer 'amdgpu-ep' -OrtRoot $OnnxRuntimeDir -TreeRoot $WorkDir -Log $epCfgLog -CmakeBuildDir $buildDir
     Complete-CurrentBuildPhase
 } catch {
     Complete-SourceBuildFailure -Label 'onnxruntime-ep-amdgpu' -ErrorRecord $_

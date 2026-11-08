@@ -13,6 +13,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-08 — the Windows plugin EP builders share their steps; develop's gates green again
+
+- b89caee3 turned five hub gates red: code duplication (eight pairs), comment size, PowerShell complexity
+  (`Get-MediaBranchVersionArg` at 86 lines), the version snapshot's pinned builder count and, through them, a mutation
+  shard. The QNN and TensorRT builders now share `Save-VerifiedSourceArchive`, `Get-OrtChainPrefixFile`,
+  `Get-OrtPluginEpCmakeArgs`, `Invoke-CmakeConfigureLogged` and `Install-NativeFileStage`; the four CMake G2 consumers pass
+  `Assert-ChainOrtOnly -CmakeBuildDir`; media-core's pins are a key list; the suites share `Import-TestRepoModule`,
+  `Invoke-TestPluginStage` and `New-TestOrtChainPrefix`. No allowance was added, and the Test-Container/Install-Cuda row
+  left `code-dupes.allow` as it fell under the threshold.
+- G2 reads a plugin EP's own `onnxruntime_ep_*` binaries and its `Microsoft.ML.OnnxRuntime.EP.*` C# package as a
+  consumer's, as the Linux gate does, so the TensorRT plugin's gate can pass (`lib.g2-plugin-ep-*`).
+
 ## 2026-11-08 — the plugin EP stages create their directory
 
 - The third arm64 chain stopped in the QNN plugin's staging with `Could not find a part of the path

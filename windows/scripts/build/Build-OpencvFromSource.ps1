@@ -778,8 +778,7 @@ Write-SccacheStatsToStderr -Advanced -RequireRemote
 Assert-OpencvCv2Installed -ocvTargetArch $ocvTargetArch -ocvTargetPy $ocvTargetPy -InstallDir $InstallDir -ocvPy $ocvPy
 
 # G2: the whole tree, both records and the configure log hold the chain ORT only; a pass stamps it for G1.
-Assert-ChainOrtOnly -Consumer 'opencv' -OrtRoot $ortRoot -TreeRoot $SourceDir -Shim $ortShimRoot -Log $cfgLog `
-    -Record (Join-Path $buildDir 'CMakeCache.txt'), (Join-Path $buildDir 'build.ninja')
+Assert-ChainOrtOnly -Consumer 'opencv' -OrtRoot $ortRoot -TreeRoot $SourceDir -Shim $ortShimRoot -Log $cfgLog -CmakeBuildDir $buildDir
 
 Remove-SourceBuildTree -Path $SourceDir
 

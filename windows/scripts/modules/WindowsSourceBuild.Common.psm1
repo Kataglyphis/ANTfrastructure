@@ -307,6 +307,16 @@ function Invoke-CmakeConfigure {
     return $true
 }
 
+function Invoke-CmakeConfigureLogged {
+    # The configure teed into a log on the persistent mount, which outlives a failed solve; returns the log's path.
+    param([Parameter(Mandatory)][string]$LogName, [Parameter(Mandatory)][string]$SourceDir, [Parameter(Mandatory)][string]$BuildDir,
+        [Parameter(Mandatory)][string]$InstallPrefix, [string]$BuildType = 'Release', [string[]]$ExtraArgs = @())
+    $log = Get-PersistentBuildLogPath -Name $LogName -FallbackDir (Split-Path -Parent $BuildDir)
+    Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $BuildDir -InstallPrefix $InstallPrefix -BuildType $BuildType -ExtraArgs $ExtraArgs 2>&1 |
+        Tee-Object -FilePath $log | Out-Host
+    return $log
+}
+
 function Assert-CmakeArgsConsumed {
     # CMake caches an undeclared -DNAME= as UNINITIALIZED but a typed -DNAME:BOOL= as declared: pass feature flags untyped.
     param(
@@ -2060,6 +2070,36 @@ function Get-SevenZipSkippedLink {
     return $links
 }
 
+function Get-OrtPluginEpCmakeArgs {
+    # ORT-derived trees turn warnings into errors that clang-cl raises and MSVC does not, so a plugin EP builds as the chain ORT does.
+    param([Parameter(Mandatory)][string]$Python)
+    $cxx = (@('/WX-', '/clang:-Wno-invalid-specialization', '/clang:-Wno-unused-value', (Get-WarningNoiseSuppressionFlags)) | Where-Object { $_ }) -join ' '
+    $py = $Python -replace '\\', '/'
+    return @("-DCMAKE_CXX_FLAGS:STRING=$cxx", '-DCMAKE_COMPILE_WARNING_AS_ERROR=OFF', '-DCMAKE_POLICY_VERSION_MINIMUM:STRING=3.5',
+        "-DPython_EXECUTABLE:FILEPATH=$py", "-DPython3_EXECUTABLE:FILEPATH=$py")
+}
+
+function Get-OrtChainPrefixFile {
+    # A plugin EP stage runs after ORT in the same RUN, so a missing chain file means that stage did not run.
+    param([Parameter(Mandatory)][string]$OrtPrefix, [Parameter(Mandatory)][string]$Name)
+    $hit = @('bin', 'lib' | ForEach-Object { Join-Path $OrtPrefix "$_\$Name" } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
+    if ($hit.Count -eq 0) { throw "the chain ORT at $OrtPrefix holds no $Name (Build-OnnxFromSource.ps1 runs first)" }
+    return $hit[0]
+}
+
+function Save-VerifiedSourceArchive {
+    # A pin (Name, Version, Url, Sha256) downloaded, checked and extracted; returns the source root.
+    param([Parameter(Mandatory)]$Pin, [Parameter(Mandatory)][string]$Archive, [Parameter(Mandatory)][string]$Destination, [scriptblock]$SkippedLinkResolver)
+    # Invoke-DownloadWithRetry reads an empty hash as no check.
+    if ("$($Pin.Sha256)" -notmatch '^[0-9A-Fa-f]{64}$') { throw "$($Pin.Name) $($Pin.Version) has no 64-hex SHA256: refusing to fetch it unverified" }
+    Invoke-DownloadWithRetry -Url $Pin.Url -DestinationPath $Archive -Description "$($Pin.Name) $($Pin.Version)" -ExpectedSha256 $Pin.Sha256
+    $extract = @{ Archive = $Archive; Destination = $Destination; RemoveIntermediateTar = $true }
+    if ($SkippedLinkResolver) { $extract['SkippedLinkResolver'] = $SkippedLinkResolver }
+    $root = Expand-SourceTarball @extract
+    Remove-Item -LiteralPath $Archive -Force
+    return $root
+}
+
 function Expand-SourceTarball {
     param(
         [Parameter(Mandatory)][string]$Archive,
@@ -2818,6 +2858,7 @@ Export-ModuleMember -Function @(
     'Invoke-GitClone',
     'Reset-SourceBuildDirectory',
     'Invoke-CmakeConfigure',
+    'Invoke-CmakeConfigureLogged',
     'Get-SourceBuildSccache',
     'Get-CMakeRocmIsolationArgs',
     'Assert-CmakeArgsConsumed',
@@ -2889,6 +2930,9 @@ Export-ModuleMember -Function @(
     'Edit-SourceRegexText',
     'Invoke-NinjaBuildWithRetry',
     'Get-SevenZipSkippedLink',
+    'Save-VerifiedSourceArchive',
+    'Get-OrtChainPrefixFile',
+    'Get-OrtPluginEpCmakeArgs',
     'Expand-SourceTarball',
     'Initialize-ExtractedGitRepo',
     'Import-CanonicalVersions',

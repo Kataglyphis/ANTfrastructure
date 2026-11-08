@@ -577,14 +577,9 @@ function Invoke-CudnnSmoke {
     $cudnnRoot = [Environment]::GetEnvironmentVariable('CUDNN_ROOT')
     Assert-DirectoryExists -Path $cudnnRoot -Description "CUDNN_ROOT directory"
 
-    # Recursive, as cuDNN may use subdirs; @() keeps .Count on a single result.
-    $cudnnHeaders = @(Get-ChildItem -Path $cudnnRoot -Filter 'cudnn*.h' -Recurse -ErrorAction SilentlyContinue)
-    $cudnnLibs = @(Get-ChildItem -Path $cudnnRoot -Filter 'cudnn*.lib' -Recurse -ErrorAction SilentlyContinue)
-    $cudnnDlls = @(Get-ChildItem -Path $cudnnRoot -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue)
-
-    Assert-Test -Name "cuDNN headers (cudnn*.h)" -Condition { $cudnnHeaders.Count -gt 0 } -FailMessage "No cuDNN headers found"
-    Assert-Test -Name "cuDNN libs (cudnn*.lib)" -Condition { $cudnnLibs.Count -gt 0 } -FailMessage "No cuDNN libs found"
-    Assert-Test -Name "cuDNN DLLs (cudnn*.dll)" -Condition { $cudnnDlls.Count -gt 0 } -FailMessage "No cuDNN DLLs found"
+    # Recursive, as cuDNN may use subdirs.
+    $cudnnKinds = [ordered]@{ headers = 'cudnn*.h'; libs = 'cudnn*.lib'; DLLs = 'cudnn*.dll' }
+    foreach ($kind in $cudnnKinds.Keys) { Assert-ArtifactPresent -Root $cudnnRoot -Filter $cudnnKinds[$kind] -Description "cuDNN $kind ($($cudnnKinds[$kind]))" }
 
     # PTX only, as there is no GPU here; -ccbin names the MSVC host compiler, which is not on PATH.
     $nvccCcbin = if ($env:VCToolsInstallDir) { Join-Path $env:VCToolsInstallDir 'bin\Hostx64\x64' } else { $null }

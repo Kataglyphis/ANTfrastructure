@@ -8,10 +8,10 @@ Set-StrictMode -Version Latest
 
 # ORT headers and binaries, compared byte for byte by name (.pc/.cmake metadata is not ORT code).
 $script:OrtGateCodeName = [regex]::new('^(?:lib)?onnxruntime[^\\/]*\.(?:h|hpp|inc|lib|dll|pyd|a|so(?:\.[0-9]+)*)$|_provider_factory\.h$|^onnxruntime_pybind11_state', 'IgnoreCase')
-# Any ORT library: the core, a provider, a static component (onnxruntime_session.lib), the pybind module; GenAI's and extensions' are not ORT.
-$script:OrtGateBinaryName = [regex]::new('^(?:lib)?onnxruntime(?:_(?!genai|extensions)[a-z0-9_]+)?\.(?:dll|lib|a|so(?:\.[0-9]+)*)$|^onnxruntime_pybind11_state[^\\/]*\.(?:pyd|so)$', 'IgnoreCase')
+# Any ORT library: the core, a provider, a static component (onnxruntime_session.lib), the pybind module; GenAI's, extensions' and a plugin EP's (onnxruntime_ep_*) are not ORT.
+$script:OrtGateBinaryName = [regex]::new('^(?:lib)?onnxruntime(?:_(?!genai|extensions|ep_)[a-z0-9_]+)?\.(?:dll|lib|a|so(?:\.[0-9]+)*)$|^onnxruntime_pybind11_state[^\\/]*\.(?:pyd|so)$', 'IgnoreCase')
 $script:OrtGateArchive = [regex]::new('onnxruntime(?![_.-]?(?:genai|extensions))[^\\/]*\.(?:zip|nupkg|tgz|txz|tar|gz|xz|bz2|7z|whl|aar)$|\.tar\.lzma2$', 'IgnoreCase')
-$script:OrtGateFetchedDir = [regex]::new('^(?:(?:ortlib|onnxruntime)-(?:src|subbuild|build)|ort\.pyke\.io|microsoft\.ml\.onnxruntime(?!genai)[a-z0-9.]*|(?:microsoft\.ml\.)?onnxruntime(?:[.-][a-z0-9]+)*-(?:win|linux|osx|android)-.+)$', 'IgnoreCase')
+$script:OrtGateFetchedDir = [regex]::new('^(?:(?:ortlib|onnxruntime)-(?:src|subbuild|build)|ort\.pyke\.io|microsoft\.ml\.onnxruntime(?!genai|\.ep\.)[a-z0-9.]*|(?:microsoft\.ml\.)?onnxruntime(?:[.-][a-z0-9]+)*-(?:win|linux|osx|android)-.+)$', 'IgnoreCase')
 # A fetch names a download host, a package id, a release archive, or has ORT as a fetch verb's object.
 $script:OrtGateFetchLine = [regex]::new('github\.com/microsoft/onnxruntime(?:-genai)?/releases/download|pkgs\.dev\.azure\.com|nuget\.org/\S*onnxruntime|microsoft\.ml\.onnxruntime(?!genai)|microsoft\.(?:windows\.)?ai\.machinelearning|(?:cdn|ort)\.pyke\.io|(?:pythonhosted|pypi)\.org/\S*onnxruntime|onnxruntime-(?:win|linux|osx|android)-[a-z0-9_]+-[0-9]|(?<![\w-])(?:collecting|downloading|fetching|extracting|populating)\s+(?:onnx runtime|onnxruntime|ortlib)(?![ _.-]?(?:genai|extensions))|\bapt(?:-get)?\s+install\b.*\blibonnxruntime', 'IgnoreCase')
 # A quoted path in record text (flag prefix allowed), kept whole: `-I"C:/Program Files/x"`.
@@ -368,6 +368,8 @@ function Assert-ChainOrtOnly {
         [Parameter(Mandatory)][ValidatePattern('^[a-z0-9][a-z0-9-]*$')][string]$Consumer,
         [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$TreeRoot,
         [AllowEmptyCollection()][string[]]$Record = @(),
+        # A CMake build tree: its CMakeCache.txt and build.ninja join -Record.
+        [AllowEmptyString()][string]$CmakeBuildDir = '',
         [AllowEmptyCollection()][string[]]$Log = @(),
         [AllowEmptyCollection()][string[]]$Shim = @(),
         [AllowEmptyCollection()][string[]]$CacheRoot = (Get-OrtGateDefaultCache),
@@ -379,6 +381,7 @@ function Assert-ChainOrtOnly {
     )
     $stamp = Get-OrtGateStampPath -Consumer $Consumer -StampDir $StampDir
     if (Test-Path -LiteralPath $stamp) { Remove-Item -LiteralPath $stamp -Force }
+    if ($CmakeBuildDir) { $Record = @($Record) + @('CMakeCache.txt', 'build.ninja' | ForEach-Object { Join-Path $CmakeBuildDir $_ }) }
     $index = Get-OrtGateChainIndex -OrtRoot $OrtRoot -ChainWheel (Get-OrtGateChainWheel -WheelDir $WheelDir -OrtVersion $OrtVersion)
     $count = @{ Files = 0; Compared = 0; Tokens = 0; ChainRefs = 0 }
     $refs = @(@($OrtRoot) + @($Shim) | Where-Object { $_ })

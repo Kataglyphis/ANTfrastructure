@@ -32330,9 +32330,9 @@
  },
  {
   "id": "lib.qnn-ep-home-full-chain",
-  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
-  "find": "        if ($hit.Count -eq 0) { throw \"the chain ORT at $OrtPrefix holds no $name (Build-OnnxFromSource.ps1 runs first)\" }\n",
-  "replace": "        if ($hit.Count -eq 0) { continue }\n",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "    if ($hit.Count -eq 0) { throw \"the chain ORT at $OrtPrefix holds no $Name (Build-OnnxFromSource.ps1 runs first)\" }\n",
+  "replace": "    if ($hit.Count -eq 0) { return $null }\n",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
   "why": "a partial --ort_home lets the fork's copy step fail or pick another ORT"
  },
@@ -32346,19 +32346,19 @@
  },
  {
   "id": "lib.qnn-ep-stage-dir",
-  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
-  "find": "    $null = New-Item -ItemType Directory -Force -Path $EpDir\n",
+  "target": "windows/scripts/modules/WindowsNativeProvenance.Common.psm1",
+  "find": "    $null = New-Item -ItemType Directory -Force -Path $Root\n",
   "replace": "",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
   "why": "the reset removes the plugin directory, and the copy then writes the DLL as a file named after it"
  },
  {
   "id": "lib.trt-ep-stage-dir",
-  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
-  "find": "    $null = New-Item -ItemType Directory -Force -Path $EpDir\n",
+  "target": "windows/scripts/modules/WindowsNativeProvenance.Common.psm1",
+  "find": "    if (Test-Path -LiteralPath $Root) { Remove-Item -LiteralPath $Root -Recurse -Force }\n",
   "replace": "",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
-  "why": "the reset removes the plugin directory, and the copy then writes the DLL as a file named after it"
+  "why": "a stage over the previous one keeps whatever the last build left beside the plugin"
  },
  {
   "id": "lib.qnn-ep-link-output",
@@ -32379,8 +32379,8 @@
  {
   "id": "lib.qnn-smoke-no-in-tree-ep",
   "target": "windows/scripts/modules/WindowsSmokeTest.Common.psm1",
-  "find": "        Get-ChildItem -LiteralPath $OrtRoot -Recurse -Filter 'onnxruntime_providers_qnn.dll'",
-  "replace": "        Get-ChildItem -LiteralPath $OrtRoot -Recurse -Filter 'never-a-file.dll'",
+  "find": "-Name 'onnxruntime_providers_qnn.dll' | ForEach-Object",
+  "replace": "-Name 'never-a-file.dll' | ForEach-Object",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
   "why": "an in-tree QNN EP left in the chain ORT would pass beside the plugin"
  },
@@ -32403,26 +32403,26 @@
  {
   "id": "lib.trt-ep-seed-tag-drift",
   "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
-  "find": "            elseif ($seeded[$name] -ne $Declared[$name]) {",
-  "replace": "            elseif ($false) {",
+  "find": "    $declaredSeeds = @($Declared.Keys | Where-Object { $_ -ne 'googletest' } | ForEach-Object { \"$_ $($Declared[$_])\" })\n",
+  "replace": "    $declaredSeeds = $pinned\n",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
   "why": "a plugin bump that moves a GIT_TAG would build against the old pinned seed"
  },
  {
   "id": "lib.trt-ep-seed-unseeded",
   "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
-  "find": "            if (-not $seeded.ContainsKey($name)) {",
-  "replace": "            if ($false) {",
+  "find": "Compare-Object -CaseSensitive",
+  "replace": "Compare-Object",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
-  "why": "a new FetchContent the plugin declares would be named as a drifted seed instead of an unpinned download"
+  "why": "a repository spelled otherwise is another download, which the seed does not cover"
  },
  {
   "id": "lib.trt-ep-home-implib",
   "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
-  "find": "    if ($lib.Count -eq 0) { throw \"the chain ORT at $OrtPrefix holds no onnxruntime.lib (Build-OnnxFromSource.ps1 runs first)\" }\n",
-  "replace": "",
+  "find": "    $lib = Get-OrtChainPrefixFile -OrtPrefix $OrtPrefix -Name 'onnxruntime.lib'\n",
+  "replace": "    $lib = Get-OrtChainPrefixFile -OrtPrefix $OrtPrefix -Name 'onnxruntime.dll'\n",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
-  "why": "a chain without its import library would fail later with no name for what is missing"
+  "why": "the plugin links the chain's import library; a shim with the DLL instead links nothing or another ORT"
  },
  {
   "id": "lib.trt-ep-fetch-disconnected",
@@ -32451,7 +32451,7 @@
  {
   "id": "lib.trt-ep-g2-gate",
   "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
-  "find": "Assert-ChainOrtOnly -Consumer 'tensorrt-ep' -OrtRoot $ortPrefix -TreeRoot $SourceDir -Shim $ortHome -Log $cfgLog `\n    -Record (Join-Path $buildDir 'CMakeCache.txt'), (Join-Path $buildDir 'build.ninja')\n",
+  "find": "Assert-ChainOrtOnly -Consumer 'tensorrt-ep' -OrtRoot $ortPrefix -TreeRoot $SourceDir -Shim $ortHome -Log $cfgLog -CmakeBuildDir $buildDir\n",
   "replace": "",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
   "why": "without the stamp the image census reads the TensorRT plugin as an unregistered ORT consumer, and no gate proves it compiled against the chain"
@@ -32475,8 +32475,8 @@
  {
   "id": "lib.trt-ep-driver-forward",
   "target": "windows/scripts/modules/WindowsBuildDriver.Common.psm1",
-  "find": "                ORT_TENSORRT_EP_GSL_SHA256          = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_GSL_SHA256'\n",
-  "replace": "",
+  "find": "'ORT_TENSORRT_EP_GSL_SHA256', 'ORT_TENSORRT_EP_FLATBUFFERS_VERSION'",
+  "replace": "'ORT_TENSORRT_EP_FLATBUFFERS_VERSION'",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
   "why": "the stage would take the Dockerfile default and a versions.env bump would never reach it"
  },
@@ -32499,7 +32499,7 @@
  {
   "id": "lib.nvidia-smoke-in-tree-trt",
   "target": "windows/scripts/modules/WindowsSmokeTest.Common.psm1",
-  "find": "        Get-ChildItem -LiteralPath $OrtRoot -Recurse -Filter 'onnxruntime_providers_tensorrt.dll' -File -ErrorAction SilentlyContinue |\n            ForEach-Object { \"$($_.FullName) is an in-tree TensorRT EP in the chain ORT\" }\n",
+  "find": "        Get-OrtTreeDll -OrtRoot $OrtRoot -Name 'onnxruntime_providers_tensorrt.dll' | ForEach-Object { \"$($_.FullName) is an in-tree TensorRT EP in the chain ORT\" }\n",
   "replace": "",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
   "why": "an in-tree TensorRT EP back in the chain ORT would ship beside the plugin unnoticed"
@@ -32551,6 +32551,22 @@
   "replace": "-Replacement '$$<CXX_COMPILER_ID:MSVC>'",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
   "why": "on patch drift clang-cl would get GCC's -include again and stop on the first plugin TU"
+ },
+ {
+  "id": "lib.g2-plugin-ep-binary-consumer",
+  "target": "windows/scripts/modules/WindowsOrtProvenance.Build.psm1",
+  "find": "(?:_(?!genai|extensions|ep_)[a-z0-9_]+)?",
+  "replace": "(?:_(?!genai|extensions)[a-z0-9_]+)?",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "the TensorRT plugin's own onnxruntime_ep_tensorrt.dll would read as an ORT the chain does not build, and its G2 gate would always fail"
+ },
+ {
+  "id": "lib.g2-plugin-ep-csharp-consumer",
+  "target": "windows/scripts/modules/WindowsOrtProvenance.Build.psm1",
+  "find": "microsoft\\.ml\\.onnxruntime(?!genai|\\.ep\\.)[a-z0-9.]*",
+  "replace": "microsoft\\.ml\\.onnxruntime(?!genai)[a-z0-9.]*",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "the plugin's C# package directory (Microsoft.ML.OnnxRuntime.EP.TensorRT) would read as a fetched NuGet ORT"
  },
  {
   "id": "lib.qnn-census-plugin-root",

@@ -3,9 +3,8 @@
 # SPDX-License-Identifier: MIT
 # Synthetic PEs and fixture trees cover the pins, seeds, shim and gates; compiling and registering the plugins needs a chain run.
 
-foreach ($leaf in 'WindowsScripts.Shared', 'WindowsTargetArch.Common', 'WindowsSourceBuild.Common', 'WindowsSmokeTest.Common', 'WindowsOrtProvenance.Common', 'WindowsBuildDriver.Common', 'WindowsNativeProvenance.Common') {
-    Import-Module ([IO.Path]::Combine((Get-RepoRoot), 'windows', 'scripts', 'modules', "$leaf.psm1")) -Force -DisableNameChecking
-}
+Import-TestRepoModule -Name 'WindowsScripts.Shared', 'WindowsTargetArch.Common', 'WindowsSourceBuild.Common', 'WindowsSmokeTest.Common',
+    'WindowsOrtProvenance.Common', 'WindowsBuildDriver.Common', 'WindowsNativeProvenance.Common', 'WindowsOrtProvenance.Build'
 $script:TrtEpScript = 'windows\scripts\build\Build-OrtTensorRtEpFromSource.ps1'
 $script:OnnxScript = 'windows\scripts\build\Build-OnnxFromSource.ps1'
 $script:TrtEpFunction = @('Get-OrtTensorRtEpPin', 'Get-OrtTensorRtEpDeclaration', 'Get-OrtTensorRtEpSeedGap', 'Get-OrtTensorRtMajor',
@@ -19,6 +18,33 @@ function Get-TrtEpPinTable {
     $pins = [ordered]@{}
     foreach ($k in @($table.Keys | Where-Object { $_ -like 'ORT_TENSORRT_EP_*' } | Sort-Object)) { $pins[$k] = $table[$k] }
     return $pins
+}
+
+function New-TrtEpPluginPe {
+    # The plugin ABI, the chain ORT and TensorRT 11 delay-loaded, unless a case overrides one.
+    param([Parameter(Mandatory)][string]$Path, [string[]]$Import = @('onnxruntime.dll'), [string[]]$DelayImport = $script:TrtDelay, [string[]]$Export = $script:PluginExports)
+    New-OrtTestPe -Path $Path -Import $Import -DelayImport $DelayImport -Export $Export
+}
+
+function New-TrtRuntimeBin {
+    # The TENSORRT_ROOT\current\bin set holding what the plugin delay-loads.
+    param([Parameter(Mandatory)][string]$Dir, [string[]]$Extra = @())
+    $files = @{}
+    foreach ($name in @($script:TrtDelay) + $Extra) { $files[$name] = 'x' }
+    Write-TestFileTree -Root $Dir -Files $files
+    return $Dir
+}
+
+function New-TrtEpSeedRoot {
+    # The plugin and its four seeds, each with the licence texts Copy-OrtTensorRtEpLicense takes.
+    param([Parameter(Mandatory)][string]$Dir)
+    $roots = [ordered]@{}
+    foreach ($n in 'onnxruntime-ep-tensorrt', 'protobuf', 'onnx', 'gsl', 'flatbuffers') {
+        $roots[$n] = Join-Path $Dir "$n-src"
+        Write-TestFileTree -Root $roots[$n] -Files @{ 'LICENSE' = "$n text" }
+    }
+    Write-TestFileTree -Root $roots['protobuf'] -Files @{ 'third_party/utf8_range/LICENSE' = 'utf8 text' }
+    return $roots
 }
 
 function Get-TrtEpCMakeFixture {
@@ -76,11 +102,13 @@ Describe 'Build-OrtTensorRtEpFromSource.ps1' {
         Assert-Equal 'https://github.com/protocolbuffers/protobuf.git@v21.12' $declared['protobuf'] 'the tag, not its comment'
         Assert-Equal 0 @(Get-OrtTensorRtEpSeedGap -Declared $declared -Pin $pins).Count 'every active declaration is seeded'
         $drift = @(Get-OrtTensorRtEpSeedGap -Declared (Get-OrtTensorRtEpDeclaration -CMakeText (Get-TrtEpCMakeFixture -OnnxTag 'v1.19.0')) -Pin $pins) -join ';'
-        Assert-Match 'onnx is declared as https://github\.com/onnx/onnx\.git@v1\.19\.0' $drift 'a moved tag'
+        Assert-Match 'declares onnx https://github\.com/onnx/onnx\.git@v1\.19\.0, which no hash-pinned seed matches' $drift 'a moved tag'
         $extra = "FetchContent_Declare(`n  eigen`n  GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git`n  GIT_TAG 3.4.0`n)"
-        Assert-Match 'eigen \(.*\) has no hash-pinned seed' (@(Get-OrtTensorRtEpSeedGap -Declared (Get-OrtTensorRtEpDeclaration -CMakeText (Get-TrtEpCMakeFixture -Extra $extra)) -Pin $pins) -join ';') 'a new download'
+        Assert-Match 'declares eigen .*, which no hash-pinned seed matches' (@(Get-OrtTensorRtEpSeedGap -Declared (Get-OrtTensorRtEpDeclaration -CMakeText (Get-TrtEpCMakeFixture -Extra $extra)) -Pin $pins) -join ';') 'a new download'
         $gone = Get-OrtTensorRtEpDeclaration -CMakeText ((Get-TrtEpCMakeFixture) -replace '(?s)FetchContent_Declare\(\s*onnx.*?\)', '')
-        Assert-Match 'no longer declares the seeded onnx' (@(Get-OrtTensorRtEpSeedGap -Declared $gone -Pin $pins) -join ';') 'a dropped seed'
+        Assert-Match 'the seed onnx .* is no longer what the plugin declares' (@(Get-OrtTensorRtEpSeedGap -Declared $gone -Pin $pins) -join ';') 'a dropped seed'
+        $caseDrift = @(Get-OrtTensorRtEpSeedGap -Declared ([ordered]@{ protobuf = 'https://github.com/protocolbuffers/Protobuf.git@v21.12'; onnx = $declared['onnx'] }) -Pin $pins) -join ';'
+        Assert-Match 'declares protobuf https://github\.com/protocolbuffers/Protobuf\.git' $caseDrift 'a repository spelled otherwise is another download'
         Assert-Match 'declares no FetchContent' (@(Get-OrtTensorRtEpSeedGap -Declared (Get-OrtTensorRtEpDeclaration -CMakeText '') -Pin $pins) -join ';') 'a moved layout checks nothing'
     }
 
@@ -94,21 +122,16 @@ Describe 'Build-OrtTensorRtEpFromSource.ps1' {
         }
     }
 
-    It 'builds an ORT_HOME of the chain''s flat headers and import library only, and refuses a chain without either (mutation)' {
+    It 'builds an ORT_HOME of the chain''s flat headers and import library only, and refuses a chain without headers (mutation)' {
         Invoke-InTestDir { param($dir)
-            $chain = Join-Path $dir 'onnxruntime-source'
-            Write-TestFileTree -Root $chain -Files @{
-                'include/onnxruntime/onnxruntime_c_api.h' = 'c'; 'include/onnxruntime/onnxruntime_cxx_api.h' = 'cxx'
-                'lib/onnxruntime.lib' = 'chain implib'; 'bin/onnxruntime.dll' = 'chain core'
-            }
-            $ortHome = New-OrtTensorRtEpHome -OrtPrefix $chain -Path (Join-Path $dir 'ort-home')
-            Assert-Equal 'onnxruntime_c_api.h,onnxruntime_cxx_api.h' (@(Get-ChildItem -LiteralPath (Join-Path $ortHome 'include') -File | ForEach-Object Name | Sort-Object) -join ',') 'flat headers'
-            Assert-Equal 'chain implib' (Get-Content -LiteralPath (Join-Path $ortHome 'lib/onnxruntime.lib') -Raw).Trim() 'the chain''s import library'
-            Assert-Equal 'onnxruntime.lib' (@(Get-ChildItem -LiteralPath (Join-Path $ortHome 'lib') -File).Name -join ',') 'no DLL the census would count'
-            Remove-Item -LiteralPath (Join-Path $chain 'lib/onnxruntime.lib')
-            Assert-Throws { New-OrtTensorRtEpHome -OrtPrefix $chain -Path (Join-Path $dir 'ort-home') } 'no import library' -MessagePattern 'holds no onnxruntime\.lib'
+            $chain = New-TestOrtChainPrefix -Dir $dir
+            $shim ={ New-OrtTensorRtEpHome -OrtPrefix $chain -Path (Join-Path $dir 'ort-home') }
+            $ortHome = & $shim
+            $tree = @(Get-ChildItem -LiteralPath $ortHome -Recurse -File | ForEach-Object {
+                    "$([IO.Path]::GetRelativePath($ortHome, $_.FullName) -replace '\\', '/')=$([IO.File]::ReadAllText($_.FullName))" } | Sort-Object) -join ';'
+            Assert-Equal 'include/onnxruntime_c_api.h=c;include/onnxruntime_cxx_api.h=cxx;lib/onnxruntime.lib=chain implib' $tree 'flat headers and the import library, no DLL the census would count'
             Remove-Item -LiteralPath (Join-Path $chain 'include/onnxruntime/onnxruntime_c_api.h')
-            Assert-Throws { New-OrtTensorRtEpHome -OrtPrefix $chain -Path (Join-Path $dir 'ort-home') } 'no headers' -MessagePattern 'installs no include'
+            Assert-Throws $shim 'no headers' -MessagePattern 'installs no include'
         }
     }
 
@@ -126,17 +149,16 @@ Describe 'Build-OrtTensorRtEpFromSource.ps1' {
 
     It 'requires the plugin ABI, the chain ORT and every TensorRT DLL it delay-loads in the runtime set (mutation)' {
         Invoke-InTestDir { param($dir)
-            $bin = Join-Path $dir 'trt-bin'
-            Write-TestFileTree -Root $bin -Files @{ 'nvinfer_11.dll' = 'x'; 'nvinfer_plugin_11.dll' = 'x'; 'nvonnxparser_11.dll' = 'x' }
+            $bin = New-TrtRuntimeBin -Dir (Join-Path $dir 'trt-bin')
             $dll = Join-Path $dir 'onnxruntime_ep_tensorrt.dll'
-            New-OrtTestPe -Path $dll -Import @('onnxruntime.dll', 'cudart64_13.dll') -DelayImport $script:TrtDelay -Export $script:PluginExports
+            New-TrtEpPluginPe -Path $dll -Import @('onnxruntime.dll', 'cudart64_13.dll')
             Assert-Equal 0 @(Get-OrtTensorRtEpModuleFinding -Dll $dll -TrtMajor '11' -TensorRtBin $bin).Count 'healthy'
-            New-OrtTestPe -Path $dll -Import @('onnxruntime.dll', 'onnxruntime_foreign.dll') -DelayImport @('nvinfer_11.dll', 'nvonnxparser_11.dll') -Export ($script:PluginExports + 'GetProvider')
+            New-TrtEpPluginPe -Path $dll -Import @('onnxruntime.dll', 'onnxruntime_foreign.dll') -DelayImport @('nvinfer_11.dll', 'nvonnxparser_11.dll') -Export ($script:PluginExports + 'GetProvider')
             $f = @(Get-OrtTensorRtEpModuleFinding -Dll $dll -TrtMajor '11' -TensorRtBin $bin) -join ';'
             Assert-Match 'does not import nvinfer_plugin_11\.dll' $f 'a TensorRT DLL it no longer loads'
             Assert-Match 'onnxruntime_foreign\.dll, which is not the chain ORT' $f 'a foreign ORT import'
             Assert-Match 'exports GetProvider' $f 'the provider-bridge entry'
-            New-OrtTestPe -Path $dll -Import @('onnxruntime.dll') -DelayImport $script:TrtDelay -Export $script:PluginExports
+            New-TrtEpPluginPe -Path $dll
             Remove-Item -LiteralPath (Join-Path $bin 'nvonnxparser_11.dll')
             Assert-Match 'nvonnxparser_11\.dll is not in' (@(Get-OrtTensorRtEpModuleFinding -Dll $dll -TrtMajor '11' -TensorRtBin $bin) -join ';') 'a DLL the runtime set lacks'
         }
@@ -144,12 +166,7 @@ Describe 'Build-OrtTensorRtEpFromSource.ps1' {
 
     It 'stages the plugin''s and every statically linked seed''s licence texts and refuses a moved one' {
         Invoke-InTestDir { param($dir)
-            $roots = [ordered]@{}
-            foreach ($n in 'onnxruntime-ep-tensorrt', 'protobuf', 'onnx', 'gsl', 'flatbuffers') {
-                $roots[$n] = Join-Path $dir "$n-src"
-                Write-TestFileTree -Root $roots[$n] -Files @{ 'LICENSE' = "$n text" }
-            }
-            Write-TestFileTree -Root $roots['protobuf'] -Files @{ 'third_party/utf8_range/LICENSE' = 'utf8 text' }
+            $roots = New-TrtEpSeedRoot -Dir $dir
             $ep = Join-Path $dir 'ep'
             $texts = @(Copy-OrtTensorRtEpLicense -EpDir $ep -SourceRoot $roots)
             Assert-Equal 6 $texts.Count 'five LICENSE files and utf8_range'
@@ -162,20 +179,12 @@ Describe 'Build-OrtTensorRtEpFromSource.ps1' {
 
     It 'stages one directory over a stale one: the plugin, its licence texts and provenance, and no TensorRT DLL (mutation)' {
         Invoke-InTestDir { param($dir)
-            $roots = [ordered]@{}
-            foreach ($n in 'onnxruntime-ep-tensorrt', 'protobuf', 'onnx', 'gsl', 'flatbuffers') {
-                $roots[$n] = Join-Path $dir "$n-src"
-                Write-TestFileTree -Root $roots[$n] -Files @{ 'LICENSE' = "$n text" }
-            }
-            Write-TestFileTree -Root $roots['protobuf'] -Files @{ 'third_party/utf8_range/LICENSE' = 'utf8 text' }
-            $build = Join-Path $dir 'build'; $ep = Join-Path $dir 'ep'
+            $roots = New-TrtEpSeedRoot -Dir $dir
+            $build = Join-Path $dir 'build'
             Write-TestFileTree -Root $build -Files @{ 'onnxruntime_ep_tensorrt.dll' = 'plugin'; 'nvinfer_11.dll' = 'POST_BUILD copy' }
-            Write-TestFileTree -Root $ep -Files @{ 'stale.dll' = 'old' }
-            $pin = [pscustomobject]@{ Version = ('c' * 40); Sha256 = ('ab' * 32); Url = 'https://github.com/onnxruntime/onnxruntime-ep-tensorrt/archive/x.tar.gz' }
-            $staged = Install-OrtTensorRtEpArtifact -BuildDir $build -SourceRoot $roots -EpDir $ep -Pin $pin
-            Assert-True (Test-Path -LiteralPath $ep -PathType Container) 'a directory, never a file under its name'
-            Assert-Equal 'plugin' (Get-Content -LiteralPath $staged -Raw).Trim() 'the built plugin'
-            Assert-True (Test-Path -LiteralPath (Join-Path $ep 'provenance/onnxruntime-ep-tensorrt.json') -PathType Leaf) 'its provenance manifest'
+            $ep = Invoke-TestPluginStage -Dir $dir -Expected @('provenance/onnxruntime-ep-tensorrt.json') -Install {
+                param($ep, $pin) Install-OrtTensorRtEpArtifact -BuildDir $build -SourceRoot $roots -EpDir $ep -Pin $pin
+            }
             Assert-Equal 'onnxruntime_ep_tensorrt.dll' (@(Get-ChildItem -LiteralPath $ep -Filter '*.dll' -File).Name -join ',') 'no TensorRT DLL and no stale stage beside it'
         }
     }
@@ -199,11 +208,11 @@ Describe 'Get-OrtPluginEpExportGap' {
 Describe 'Get-OrtNvidiaPluginFinding (smoke)' {
     It 'passes both plugins and names each gap: a bridge CUDA EP, an in-tree TensorRT EP, a missing or unexpected TensorRT plugin, a DLL the runtime lacks (mutation)' {
         Invoke-InTestDir { param($dir)
-            $ort = Join-Path $dir 'ort'; $ep = Join-Path $dir 'ep-trt'; $bin = Join-Path $dir 'trt-bin'
+            $ort = Join-Path $dir 'ort'; $ep = Join-Path $dir 'ep-trt'
             $cuda = Join-Path $ort 'bin/onnxruntime_providers_cuda.dll'; $trt = Join-Path $ep 'onnxruntime_ep_tensorrt.dll'
             New-OrtTestPe -Path $cuda -Import @('onnxruntime.dll', 'nvcuda.dll') -Export $script:PluginExports
-            New-OrtTestPe -Path $trt -Import @('onnxruntime.dll') -DelayImport $script:TrtDelay -Export $script:PluginExports
-            Write-TestFileTree -Root $bin -Files @{ 'nvinfer_11.dll' = 'x'; 'nvinfer_plugin_11.dll' = 'x'; 'nvonnxparser_11.dll' = 'x'; 'nvinfer_builder_resource_win_11.dll' = 'x' }
+            New-TrtEpPluginPe -Path $trt
+            $bin = New-TrtRuntimeBin -Dir (Join-Path $dir 'trt-bin') -Extra 'nvinfer_builder_resource_win_11.dll'
             $finding = { param([bool]$Staged = $true) @(Get-OrtNvidiaPluginFinding -OrtRoot $ort -TensorRtEpRoot $ep -TensorRtBinDir $bin -TensorRtStaged $Staged) -join ';' }
             Assert-Equal '' (& $finding) 'healthy'
             Assert-Match 'is staged although no TensorRT runtime is' (& $finding $false) 'a plugin without its runtime'
@@ -273,17 +282,26 @@ Describe 'NVIDIA plugin EP wiring' {
         foreach ($k in (Get-TrtEpPinTable).Keys) { Assert-True ($forwarded -contains $k) "the driver forwards $k to media-core" }
     }
 
-    It 'stamps G2 unconditionally after its own checks, over its whole tree with the shim as a chain reference (mutation)' {
+    It 'stamps G2 unconditionally after its own checks, over its whole tree, the shim and its CMake records (mutation)' {
         $ast = Get-TestScriptAst -ScriptPath $script:TrtEpScript
         $gate = @(Get-TestAstCommands -Ast $ast -Name 'Assert-ChainOrtOnly')
-        Assert-Equal 1 $gate.Count 'one gate call'
-        $a = Get-TestCommandArguments -Command $gate[0]
-        Assert-Equal "'tensorrt-ep'" $a.Consumer 'under its contract name'
-        Assert-Equal '$SourceDir' $a.TreeRoot 'the sources, seeds and build tree'
-        Assert-Equal '$ortHome' $a.Shim 'the shim holds chain copies'
-        Assert-Equal 0 @(Get-TestAstAncestor -Node $gate[0] -Type ([System.Management.Automation.Language.IfStatementAst])).Count 'no if around the call'
-        $checks = @(Get-TestAstCommands -Ast $ast -Name 'Get-OrtTensorRtEpModuleFinding' | Where-Object { $_.Extent.StartOffset -gt 0 })[-1]
+        Assert-TestAstCommand -Command $gate -Text "Assert-ChainOrtOnly -Consumer 'tensorrt-ep' -OrtRoot `$ortPrefix -TreeRoot `$SourceDir -Shim `$ortHome -Log `$cfgLog -CmakeBuildDir `$buildDir"
+        Assert-True (Test-TestAstUnconditional -Node $gate[0]) 'no if, loop or function around the call'
+        $checks = @(Get-TestAstCommands -Ast $ast -Name 'Get-OrtTensorRtEpModuleFinding')[-1]
         Assert-True ($checks.Extent.EndOffset -lt $gate[0].Extent.StartOffset) 'after the module checks'
+    }
+
+    It 'the G2 gate reads a -CmakeBuildDir tree''s CMakeCache.txt and build.ninja, and a plugin EP''s files are no foreign ORT (mutation)' {
+        Invoke-InTestDir { param($dir)
+            $log = Join-Path $dir 'configure.log'
+            Set-Content -LiteralPath $log -Value 'configured'
+            $gate = @{ Consumer = 'probe'; TreeRoot = $dir; OrtRoot = (New-TestOrtChainPrefix -Dir $dir); WheelDir = ''; OrtVersion = ''; CacheRoot = @(); Log = $log; StampDir = (Join-Path $dir 'stamp') }
+            Write-TestFileTree -Root $dir -Files @{ 'build/onnxruntime_ep_tensorrt.dll' = 'plugin'; 'build/onnxruntime_ep_tensorrt.lib' = 'implib'
+                'src/csharp/Microsoft.ML.OnnxRuntime.EP.TensorRT/TensorRTEp.cs' = 'cs' }
+            $why = try { Assert-ChainOrtOnly @gate -CmakeBuildDir (Join-Path $dir 'nope') 6>$null; '' } catch { $_.Exception.Message }
+            Assert-Match 'nope.CMakeCache\.txt is missing.*nope.build\.ninja is missing' $why 'both records of a missing tree'
+            Assert-False ($why -match 'onnxruntime_ep_tensorrt|OnnxRuntime\.EP') 'the plugin''s own module and C# package are a consumer''s, not a foreign ORT'
+        }
     }
 
     It 'the census holds the TensorRT plugin to the gated consumer contract, and the smoke grades both plugins' {

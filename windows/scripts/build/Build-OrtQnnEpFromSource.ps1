@@ -33,8 +33,8 @@ function Get-OrtQnnEpPin {
     if ("$Version" -notmatch '^\d+\.\d+\.\d+$') { throw "ORT_QNN_EP_VERSION='$Version' is not a release version (stale versions.env, or the Dockerfile ARG is missing)" }
     if ("$Sha256" -notmatch '^[0-9A-Fa-f]{64}$') { throw "ORT_QNN_EP_SOURCE_SHA256='$Sha256' is not a 64-hex SHA256: refusing to fetch the QNN plugin unverified" }
     return [pscustomobject]@{
-        Version = $Version; Sha256 = $Sha256.ToLowerInvariant()
-        Url     = "https://github.com/onnxruntime/onnxruntime-qnn/archive/refs/tags/v$Version.tar.gz"
+        Name = 'onnxruntime-qnn'; Version = $Version; Sha256 = $Sha256.ToLowerInvariant()
+        Url  = "https://github.com/onnxruntime/onnxruntime-qnn/archive/refs/tags/v$Version.tar.gz"
     }
 }
 
@@ -51,9 +51,7 @@ function Get-OrtQnnEpChainFile {
     param([Parameter(Mandatory)][string]$OrtPrefix)
     $files = [ordered]@{}
     foreach ($name in 'onnxruntime.dll', 'onnxruntime.lib', 'onnxruntime_providers_shared.dll', 'onnxruntime_providers_shared.lib') {
-        $hit = @('bin', 'lib' | ForEach-Object { Join-Path $OrtPrefix "$_\$name" } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
-        if ($hit.Count -eq 0) { throw "the chain ORT at $OrtPrefix holds no $name (Build-OnnxFromSource.ps1 runs first)" }
-        $files[$name] = $hit[0]
+        $files[$name] = Get-OrtChainPrefixFile -OrtPrefix $OrtPrefix -Name $name
     }
     return $files
 }
@@ -93,16 +91,12 @@ function Get-OrtQnnEpCmakeArgs {
         [Parameter(Mandatory)][string]$OrtHome,
         [Parameter(Mandatory)][string]$Python
     )
-    $cxx = (@('/WX-', '/clang:-Wno-invalid-specialization', '/clang:-Wno-unused-value', (Get-WarningNoiseSuppressionFlags)) | Where-Object { $_ }) -join ' '
     return @(
         '-Donnxruntime_USE_QNN=ON', '-Donnxruntime_BUILD_SHARED_LIB=ON', '-Donnxruntime_BUILD_UNIT_TESTS=OFF'
         '-Donnxruntime_RUN_ONNX_TESTS=OFF', '-Donnxruntime_GENERATE_TEST_REPORTS=OFF', '-Donnxruntime_BUILD_BENCHMARKS=OFF'
         "-Donnxruntime_QNN_HOME=$($QnnHome -replace '\\', '/')", "-DQNN_ARCH_ABI=$QnnArchAbi"
         "-Donnxruntime_ORT_HOME=$($OrtHome -replace '\\', '/')"
-        "-DPython_EXECUTABLE:FILEPATH=$($Python -replace '\\', '/')"
-        '-DCMAKE_COMPILE_WARNING_AS_ERROR=OFF', '-DCMAKE_POLICY_VERSION_MINIMUM:STRING=3.5'
-        "-DCMAKE_CXX_FLAGS:STRING=$cxx"
-    )
+    ) + @(Get-OrtPluginEpCmakeArgs -Python $Python)
 }
 
 function Get-OrtQnnEpForeignCore {
@@ -153,16 +147,11 @@ function Install-OrtQnnEpArtifact {
     # One directory: the DLL, its QAIRT backends, the licence texts and a provenance manifest that proves them.
     param([Parameter(Mandatory)][string]$BuildDir, [Parameter(Mandatory)][string]$ForkRoot, [Parameter(Mandatory)]$Sdk,
         [Parameter(Mandatory)][string]$EpDir, [Parameter(Mandatory)]$Pin)
-    $built = Get-OrtQnnEpBuiltDll -BuildDir $BuildDir
-    Reset-SourceBuildDirectory -Path $EpDir
-    # The reset removes the directory, and a copy to a missing one writes a file under its name.
-    $null = New-Item -ItemType Directory -Force -Path $EpDir
-    Copy-Item -LiteralPath $built.FullName -Destination $EpDir -Force
-    [void](Copy-QnnRuntime -Sdk $Sdk -OrtInstallDir $EpDir)
-    $texts = Copy-OrtQnnEpLicense -EpDir $EpDir -ForkRoot $ForkRoot -QairtRoot $Sdk.Home
-    Write-NativeFileProvenance -Root $EpDir -Owner 'onnxruntime-qnn' -File $built.Name -Notice $texts `
-        -Source @{ Name = 'onnxruntime-qnn'; Version = $Pin.Version; Sha256 = $Pin.Sha256; Url = $Pin.Url }
-    return (Join-Path $EpDir $built.Name)
+    return Install-NativeFileStage -File (Get-OrtQnnEpBuiltDll -BuildDir $BuildDir) -Root $EpDir -Owner 'onnxruntime-qnn' -Source $Pin -Populate {
+        param($dir)
+        [void](Copy-QnnRuntime -Sdk $Sdk -OrtInstallDir $dir)
+        Copy-OrtQnnEpLicense -EpDir $dir -ForkRoot $ForkRoot -QairtRoot $Sdk.Home
+    }
 }
 
 $epDir = Join-Path $InstallDir 'lib\onnxruntime-ep-qnn'
@@ -178,20 +167,15 @@ if (-not $sdk) {
 }
 $pin = Get-OrtQnnEpPin
 Reset-SourceBuildDirectory -Path $SourceDir
-$archive = Join-Path $SourceDir "onnxruntime-qnn-$($pin.Version).tar.gz"
-Invoke-DownloadWithRetry -Url $pin.Url -DestinationPath $archive -Description "onnxruntime-qnn $($pin.Version)" -ExpectedSha256 $pin.Sha256
-$forkRoot = Expand-SourceTarball -Archive $archive -Destination (Join-Path $SourceDir 'src') -RemoveIntermediateTar
-Remove-Item -LiteralPath $archive -Force
+$forkRoot = Save-VerifiedSourceArchive -Pin $pin -Archive (Join-Path $SourceDir "onnxruntime-qnn-$($pin.Version).tar.gz") -Destination (Join-Path $SourceDir 'src')
 $ortHome = New-OrtQnnEpHome -OrtPrefix $ortPrefix -Path (Join-Path $SourceDir 'ort-home')
 Write-Host "QNN plugin EP v$($pin.Version) ($arch): QAIRT $($sdk.Home), chain ORT $ortPrefix, ort_core headers v$(Get-OrtQnnEpCoreVersion -ForkRoot $forkRoot)"
 
 Switch-BuildPhase '2. configure (onnxruntime_ORT_HOME: no ORT core of its own)'
 $py = Initialize-ToolchainPythonEnvironment
 $buildDir = Join-Path $SourceDir 'build'
-$cfgLog = Get-PersistentBuildLogPath -Name 'ort-qnn-ep-configure.log' -FallbackDir $SourceDir
 $qnnArgs = Get-OrtQnnEpCmakeArgs -QnnHome $sdk.Home -QnnArchAbi (Get-QnnSdkLibDirName -Arch $arch) -OrtHome $ortHome -Python $py.Exe
-Invoke-CmakeConfigure -SourceDir (Join-Path $forkRoot 'cmake') -BuildDir $buildDir -InstallPrefix $epDir -BuildType $BuildType -ExtraArgs $qnnArgs 2>&1 |
-    Tee-Object -FilePath $cfgLog
+$null = Invoke-CmakeConfigureLogged -LogName 'ort-qnn-ep-configure.log' -SourceDir (Join-Path $forkRoot 'cmake') -BuildDir $buildDir -InstallPrefix $epDir -BuildType $BuildType -ExtraArgs $qnnArgs
 Write-Host "QNN plugin EP: $(Copy-OrtQnnEpHeader -OrtHome $ortHome -OrtCoreSource (Join-Path $buildDir '_deps\ort_core-src')) ORT header(s) from the fork's ort_core"
 # The fork inherits ORT's MSVC-only switches and warnings-as-errors, which stop clang-cl as they would the ORT build.
 Update-NinjaFile -NinjaFile (Join-Path $buildDir 'build.ninja') -OrtMsvcOnlyFlags

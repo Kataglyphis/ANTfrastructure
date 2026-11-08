@@ -459,8 +459,7 @@ Invoke-GenaiWheelStage -BuildDir $genaiBuildDir -Python $py -PythonOn $genaiPyth
 # Again after the build (a build-time fetch lands in the tree too), and the install must hold no ORT copy of its own.
 $genaiOrtPost = @(Get-GenaiOrtTreeFinding -TreeRoot $SourceDir -OrtRoot $genaiOrtRoot) + @(Get-GenaiOrtTreeFinding -TreeRoot $genaiInstallDir -OrtRoot $genaiOrtRoot -ForbidCopies)
 # G2 throws on those findings too (one throw point), and stamps GenAI for G1 only on a clean pass.
-Assert-ChainOrtOnly -Consumer 'genai' -OrtRoot $genaiOrtRoot -TreeRoot $SourceDir -Shim $genaiOrtHome -Log $genaiCfgLog -Finding $genaiOrtPost `
-    -Record (Join-Path $genaiBuildDir 'CMakeCache.txt'), (Join-Path $genaiBuildDir 'build.ninja')
+Assert-ChainOrtOnly -Consumer 'genai' -OrtRoot $genaiOrtRoot -TreeRoot $SourceDir -Shim $genaiOrtHome -Log $genaiCfgLog -Finding $genaiOrtPost -CmakeBuildDir $genaiBuildDir
 
 $env:CARGO_HOME = $genaiCargoHomeBefore
 Remove-SourceBuildTree -Path $SourceDir

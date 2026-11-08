@@ -236,6 +236,8 @@ Describe 'ORT gate (G2): foreign ORT in the build inputs' {
             & $red $fx 'no build record names the chain ONNX Runtime'
             $fx = New-OrtGateFixture -Dir (Join-Path $dir 'b')
             & $red $fx 'the build record .*nope\.ninja is missing' @{ Record = @((Join-Path $fx.Tree 'build\CMakeCache.txt'), (Join-Path $fx.Tree 'nope.ninja')) }
+            & $red $fx 'the build record .*nope[\\/]+build\.ninja is missing' @{ Record = @(); CmakeBuildDir = (Join-Path $fx.Tree 'nope') }
+            Assert-False (Invoke-OrtGateCase -Fx $fx -Set @{ Record = @(); CmakeBuildDir = (Join-Path $fx.Tree 'build') }).Failed '-CmakeBuildDir reads the tree''s CMakeCache.txt and build.ninja'
             & $red $fx 'the build log .*nope\.log is missing' @{ Log = @(Join-Path $fx.Tree 'nope.log') }
             & $red $fx 'no build log was given, so no configure or build step was checked' @{ Log = @() }
             & $red $fx 'no tree at' @{ TreeRoot = @(Join-Path $dir 'absent'); Shim = @() }
@@ -421,7 +423,8 @@ Describe 'ORT gate (G2): wiring' {
         $call = @(Get-TestAstCommands -Ast $ast -Name 'Assert-ChainOrtOnly')[0]
         $arguments = Get-TestCommandArguments -Command $call
         Assert-Equal $Expected[0] $arguments.Log "$Consumer -Log"
-        Assert-Equal $Expected[1] $arguments.Record "$Consumer -Record"
+        Assert-Equal "$($Expected[1])" "$($arguments['Record'])" "$Consumer -Record"
+        Assert-Equal "$(@($Expected + '')[3])" "$($arguments['CmakeBuildDir'])" "$Consumer -CmakeBuildDir"
         if ($Expected[2]) { Assert-Match ('Tee-Object -FilePath ' + [regex]::Escape($Expected[2]) + '\b') $text "$Consumer tees its configure into the log G2 reads" }
     }
 
@@ -454,13 +457,13 @@ Describe 'ORT gate (G2): wiring' {
     It 'each call site hands G2 exactly its records and the log its configure was teed into (mutation)' {
         # A dropped record or log stays green as long as one other names the chain, so each set is pinned here.
         $want = [ordered]@{
-            opencv = @('$cfgLog', "(Join-Path `$buildDir 'CMakeCache.txt'), (Join-Path `$buildDir 'build.ninja')", '$cfgLog')
-            genai = @('$genaiCfgLog', "(Join-Path `$genaiBuildDir 'CMakeCache.txt'), (Join-Path `$genaiBuildDir 'build.ninja')", '$genaiCfgLog')
+            opencv = @('$cfgLog', '', '$cfgLog', '$buildDir')
+            genai = @('$genaiCfgLog', '', '$genaiCfgLog', '$genaiBuildDir')
             ffmpeg = @("(Join-Path `$srcDir 'ffbuild\config.log')", "(Join-Path `$srcDir 'ffbuild\config.mak')", '')
             gstreamer = @("(Join-Path `$resolvedBuildDir 'meson-logs\meson-log.txt')",
                 "(Join-Path `$resolvedBuildDir 'build.ninja'), (Join-Path `$resolvedBuildDir 'meson-info\intro-dependencies.json')", '')
-            'amdgpu-ep' = @('$epCfgLog', "(Join-Path `$buildDir 'CMakeCache.txt'), (Join-Path `$buildDir 'build.ninja')", '$epCfgLog')
-            'tensorrt-ep' = @('$cfgLog', "(Join-Path `$buildDir 'CMakeCache.txt'), (Join-Path `$buildDir 'build.ninja')", '$cfgLog')
+            'amdgpu-ep' = @('$epCfgLog', '', '$epCfgLog', '$buildDir')
+            'tensorrt-ep' = @('$cfgLog', '', '', '$buildDir')
         }
         foreach ($consumer in $want.Keys) {
             Assert-OrtGateConsumerRecords -Consumer $consumer -Expected $want[$consumer] -Read $read

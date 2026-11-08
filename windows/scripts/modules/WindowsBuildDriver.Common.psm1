@@ -84,6 +84,38 @@ function Get-VersionTableValue {
     return $VersionTable[$Key]
 }
 
+function Get-VersionTableSubset {
+    param([Parameter(Mandatory)][hashtable]$VersionTable, [Parameter(Mandatory)][string[]]$Key)
+    $out = @{}
+    foreach ($k in $Key) { $out[$k] = Get-VersionTableValue $VersionTable $k }
+    return $out
+}
+
+function Get-MediaCoreVersionArg {
+    # Every pin a media-core script reads: a missing key silently falls back to the base image's baked value.
+    param([Parameter(Mandatory)][hashtable]$VersionTable)
+    $keys = @(
+        'ONNXRUNTIME_VERSION', 'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_VERSION', 'FFMPEG_VERSION', 'PYAV_VERSION',
+        # PyAV's Cython; media-tvm installs the same one, as the fan-in refuses two versions.
+        'PY_CYTHON_VERSION',
+        # The QAIRT Community zip Resolve-QnnSdk fetches (or the staged zip must match); both keys travel together.
+        'QNN_SDK_ZIP_SHA256', 'QNN_SDK_VERSION',
+        # The QNN and TensorRT plugin EPs and the TensorRT plugin's FetchContent seeds, built in the ORT RUN.
+        'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', 'ORT_TENSORRT_EP_COMMIT', 'ORT_TENSORRT_EP_SOURCE_SHA256',
+        'ORT_TENSORRT_EP_PROTOBUF_VERSION', 'ORT_TENSORRT_EP_PROTOBUF_SHA256', 'ORT_TENSORRT_EP_ONNX_COMMIT', 'ORT_TENSORRT_EP_ONNX_SHA256',
+        'ORT_TENSORRT_EP_GSL_VERSION', 'ORT_TENSORRT_EP_GSL_SHA256', 'ORT_TENSORRT_EP_FLATBUFFERS_VERSION', 'ORT_TENSORRT_EP_FLATBUFFERS_SHA256',
+        # AMF headers (fetched on the rocm lane only) and FFmpeg's static software codecs (Build-FfmpegCodecs.ps1, amd64).
+        'NV_CODEC_HEADERS_REF', 'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256', 'DAV1D_VERSION', 'DAV1D_SHA256',
+        'X264_MESON_BRANCH', 'X264_MESON_COMMIT', 'X265_VERSION', 'X265_SHA256',
+        # build-opencv resolves the CPython it builds bindings against.
+        'CUDA_ARCHITECTURES', 'PYTHON_VERSION'
+    )
+    $out = Get-VersionTableSubset -VersionTable $VersionTable -Key $keys
+    # build-opencv reads OPENCV_VERSION as well as the Dockerfile's SOURCE alias.
+    $out['OPENCV_SOURCE_VERSION'] = $out['OPENCV_VERSION']
+    return $out
+}
+
 function Get-MediaBranchVersionArg {
     # Versions only; callers add the lane-shaped BASE_IMAGE, MEMORY_LIMIT_GB and sccache args.
     param(
@@ -92,50 +124,7 @@ function Get-MediaBranchVersionArg {
     )
     switch ($Branch) {
         # Must list every pin a branch's scripts read: a missing key silently falls back to the base image's baked value.
-        'media-core' {
-            return @{
-                ONNXRUNTIME_VERSION       = Get-VersionTableValue $VersionTable 'ONNXRUNTIME_VERSION'
-                ONNXRUNTIME_GENAI_VERSION = Get-VersionTableValue $VersionTable 'ONNXRUNTIME_GENAI_VERSION'
-                OPENCV_SOURCE_VERSION     = Get-VersionTableValue $VersionTable 'OPENCV_VERSION'
-                # build-opencv reads OPENCV_VERSION as well as the SOURCE alias.
-                OPENCV_VERSION            = Get-VersionTableValue $VersionTable 'OPENCV_VERSION'
-                FFMPEG_VERSION            = Get-VersionTableValue $VersionTable 'FFMPEG_VERSION'
-                PYAV_VERSION              = Get-VersionTableValue $VersionTable 'PYAV_VERSION'
-                # PyAV's Cython; media-tvm installs the same one, as the fan-in refuses two versions.
-                PY_CYTHON_VERSION         = Get-VersionTableValue $VersionTable 'PY_CYTHON_VERSION'
-                # The QAIRT Community zip Resolve-QnnSdk fetches (or the staged zip must match); both keys travel together.
-                QNN_SDK_ZIP_SHA256        = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
-                QNN_SDK_VERSION           = Get-VersionTableValue $VersionTable 'QNN_SDK_VERSION'
-                # Qualcomm's QNN plugin EP fork (Build-OrtQnnEpFromSource.ps1), built in the ORT RUN.
-                ORT_QNN_EP_VERSION        = Get-VersionTableValue $VersionTable 'ORT_QNN_EP_VERSION'
-                ORT_QNN_EP_SOURCE_SHA256  = Get-VersionTableValue $VersionTable 'ORT_QNN_EP_SOURCE_SHA256'
-                # The TensorRT plugin EP and its FetchContent seeds (Build-OrtTensorRtEpFromSource.ps1), built in the ORT RUN.
-                ORT_TENSORRT_EP_COMMIT              = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_COMMIT'
-                ORT_TENSORRT_EP_SOURCE_SHA256       = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_SOURCE_SHA256'
-                ORT_TENSORRT_EP_PROTOBUF_VERSION    = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_PROTOBUF_VERSION'
-                ORT_TENSORRT_EP_PROTOBUF_SHA256     = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_PROTOBUF_SHA256'
-                ORT_TENSORRT_EP_ONNX_COMMIT         = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_ONNX_COMMIT'
-                ORT_TENSORRT_EP_ONNX_SHA256         = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_ONNX_SHA256'
-                ORT_TENSORRT_EP_GSL_VERSION         = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_GSL_VERSION'
-                ORT_TENSORRT_EP_GSL_SHA256          = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_GSL_SHA256'
-                ORT_TENSORRT_EP_FLATBUFFERS_VERSION = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_FLATBUFFERS_VERSION'
-                ORT_TENSORRT_EP_FLATBUFFERS_SHA256  = Get-VersionTableValue $VersionTable 'ORT_TENSORRT_EP_FLATBUFFERS_SHA256'
-                NV_CODEC_HEADERS_REF      = Get-VersionTableValue $VersionTable 'NV_CODEC_HEADERS_REF'
-                # AMF headers for FFmpeg; only the rocm lane fetches them, every lane carries the pin.
-                AMF_HEADERS_VERSION       = Get-VersionTableValue $VersionTable 'AMF_HEADERS_VERSION'
-                AMF_HEADERS_SHA256        = Get-VersionTableValue $VersionTable 'AMF_HEADERS_SHA256'
-                # FFmpeg's static software codecs (Build-FfmpegCodecs.ps1, amd64).
-                DAV1D_VERSION             = Get-VersionTableValue $VersionTable 'DAV1D_VERSION'
-                DAV1D_SHA256              = Get-VersionTableValue $VersionTable 'DAV1D_SHA256'
-                X264_MESON_BRANCH         = Get-VersionTableValue $VersionTable 'X264_MESON_BRANCH'
-                X264_MESON_COMMIT         = Get-VersionTableValue $VersionTable 'X264_MESON_COMMIT'
-                X265_VERSION              = Get-VersionTableValue $VersionTable 'X265_VERSION'
-                X265_SHA256               = Get-VersionTableValue $VersionTable 'X265_SHA256'
-                CUDA_ARCHITECTURES        = Get-VersionTableValue $VersionTable 'CUDA_ARCHITECTURES'
-                # build-opencv resolves the CPython it builds bindings against.
-                PYTHON_VERSION            = Get-VersionTableValue $VersionTable 'PYTHON_VERSION'
-            }
-        }
+        'media-core' { return Get-MediaCoreVersionArg -VersionTable $VersionTable }
         'media-litert' {
             return @{
                 LITERT_VERSION    = Get-VersionTableValue $VersionTable 'LITERT_VERSION'
@@ -183,9 +172,7 @@ function Get-MediaBranchVersionArg {
             # Not a media branch (Dockerfile.rocm-migraphx); Rocm.Migraphx.Tests.ps1 holds ARG parity.
             $keys = @('MIGRAPHX_VERSION', 'ROCM_WINDOWS_GFX_FAMILY') +
                 @($VersionTable.Keys | Where-Object { $_ -match '^(MIGRAPHX_WINDOWS|ORT_AMDGPU_EP)_' } | Sort-Object)
-            $out = @{}
-            foreach ($k in $keys) { $out[$k] = Get-VersionTableValue $VersionTable $k }
-            return $out
+            return Get-VersionTableSubset -VersionTable $VersionTable -Key $keys
         }
     }
 }

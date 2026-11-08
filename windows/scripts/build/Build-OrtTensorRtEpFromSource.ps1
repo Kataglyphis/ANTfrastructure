@@ -65,25 +65,20 @@ function Get-OrtTensorRtEpSeedGap {
     # googletest is declared only under the plugin's own tests, which stay off.
     param([Parameter(Mandatory)][AllowEmptyCollection()][System.Collections.IDictionary]$Declared, [Parameter(Mandatory)][object[]]$Pin)
     if ($Declared.Count -eq 0) { return , 'the plugin CMake declares no FetchContent dependency: its layout moved and this check would check nothing' }
-    $seeded = @{}
-    foreach ($p in @($Pin | Where-Object { $_.Repo })) { $seeded[$p.Name] = "$($p.Repo)@$($p.Tag)" }
-    return @(
-        foreach ($name in @($Declared.Keys | Where-Object { $_ -ne 'googletest' })) {
-            if (-not $seeded.ContainsKey($name)) { "$name ($($Declared[$name])) has no hash-pinned seed" }
-            elseif ($seeded[$name] -ne $Declared[$name]) { "$name is declared as $($Declared[$name]) but the seed pins $($seeded[$name])" }
-        }
-        foreach ($name in $seeded.Keys) { if (-not $Declared.Contains($name)) { "the plugin no longer declares the seeded $name" } }
-    )
+    $pinned = @($Pin | Where-Object { $_.Repo } | ForEach-Object { "$($_.Name) $($_.Repo)@$($_.Tag)" })
+    $declaredSeeds = @($Declared.Keys | Where-Object { $_ -ne 'googletest' } | ForEach-Object { "$_ $($Declared[$_])" })
+    # Case-sensitive: a repository URL is matched as upstream spells it (GSL.git).
+    return @(Compare-Object -CaseSensitive -ReferenceObject $pinned -DifferenceObject $declaredSeeds | ForEach-Object {
+            if ($_.SideIndicator -eq '=>') { "the plugin declares $($_.InputObject), which no hash-pinned seed matches" }
+            else { "the seed $($_.InputObject) is no longer what the plugin declares" }
+        })
 }
 
 function Save-OrtTensorRtEpSource {
     # flatbuffers' docs and Java tests are in-tree links 7-Zip refuses; nothing the build reads.
     param([Parameter(Mandatory)]$Pin, [Parameter(Mandatory)][string]$WorkDir)
-    $archive = Join-Path $WorkDir "$($Pin.Name).tar.gz"
-    Invoke-DownloadWithRetry -Url $Pin.Url -DestinationPath $archive -Description "$($Pin.Name) $($Pin.Version)" -ExpectedSha256 $Pin.Sha256
-    $root = Expand-SourceTarball -Archive $archive -Destination (Join-Path $WorkDir "$($Pin.Name)-src") -SkippedLinkResolver ${function:Get-SevenZipSkippedLink} -RemoveIntermediateTar
-    Remove-Item -LiteralPath $archive -Force
-    return $root
+    return Save-VerifiedSourceArchive -Pin $Pin -Archive (Join-Path $WorkDir "$($Pin.Name).tar.gz") -Destination (Join-Path $WorkDir "$($Pin.Name)-src") `
+        -SkippedLinkResolver ${function:Get-SevenZipSkippedLink}
 }
 
 function Get-OrtTensorRtMajor {
@@ -100,12 +95,11 @@ function New-OrtTensorRtEpHome {
     param([Parameter(Mandatory)][string]$OrtPrefix, [Parameter(Mandatory)][string]$Path)
     $headers = Join-Path $OrtPrefix 'include\onnxruntime'
     if (-not (Test-Path -LiteralPath (Join-Path $headers 'onnxruntime_c_api.h') -PathType Leaf)) { throw "the chain ORT at $OrtPrefix installs no include\onnxruntime\onnxruntime_c_api.h" }
-    $lib = @('lib', 'bin' | ForEach-Object { Join-Path $OrtPrefix "$_\onnxruntime.lib" } | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
-    if ($lib.Count -eq 0) { throw "the chain ORT at $OrtPrefix holds no onnxruntime.lib (Build-OnnxFromSource.ps1 runs first)" }
+    $lib = Get-OrtChainPrefixFile -OrtPrefix $OrtPrefix -Name 'onnxruntime.lib'
     Reset-SourceBuildDirectory -Path $Path
-    $null = New-Item -ItemType Directory -Force -Path (Join-Path $Path 'include'), (Join-Path $Path 'lib')
-    Get-ChildItem -LiteralPath $headers -File | Copy-Item -Destination (Join-Path $Path 'include') -Force
-    Copy-Item -LiteralPath $lib[0] -Destination (Join-Path $Path 'lib\onnxruntime.lib') -Force
+    foreach ($copy in @(@($lib, 'lib'), @((Join-Path $headers '*.h'), 'include'))) {
+        Copy-Item -Path $copy[0] -Destination (New-Item -ItemType Directory -Force -Path (Join-Path $Path $copy[1])).FullName -Force
+    }
     return $Path
 }
 
@@ -118,8 +112,6 @@ function Get-OrtTensorRtEpCmakeArgs {
         [Parameter(Mandatory)][string]$Python,
         [Parameter(Mandatory)][System.Collections.IDictionary]$SeedRoot
     )
-    $cxx = (@('/WX-', '/clang:-Wno-invalid-specialization', '/clang:-Wno-unused-value', (Get-WarningNoiseSuppressionFlags)) | Where-Object { $_ }) -join ' '
-    $py = $Python -replace '\\', '/'
     return @(
         "-DORT_HOME:PATH=$($OrtHome -replace '\\', '/')", "-DTENSORRT_HOME:PATH=$($TensorRtSdk -replace '\\', '/')"
         "-DTRT_MAJOR_VERSION:STRING=$TrtMajor"
@@ -127,10 +119,7 @@ function Get-OrtTensorRtEpCmakeArgs {
         '-Donnxruntime_ep_tensorrt_OBJECT_CACHE=OFF', '-Donnxruntime_ep_tensorrt_INSTALL=OFF'
         '-Dprotobuf_WITH_ZLIB=OFF', '-DFLATBUFFERS_BUILD_FLATC=OFF'
         '-DFETCHCONTENT_FULLY_DISCONNECTED:BOOL=ON', '-DCMAKE_POLICY_DEFAULT_CMP0170:STRING=NEW'
-        '-DCMAKE_POLICY_VERSION_MINIMUM:STRING=3.5', '-DCMAKE_COMPILE_WARNING_AS_ERROR=OFF'
-        "-DPython3_EXECUTABLE:FILEPATH=$py", "-DPython_EXECUTABLE:FILEPATH=$py"
-        "-DCMAKE_CXX_FLAGS:STRING=$cxx"
-    ) + @(Get-NvccCudaCmakeArgs -CudaRoot $CudaRoot -CudaStandard '17') +
+    ) + @(Get-OrtPluginEpCmakeArgs -Python $Python) + @(Get-NvccCudaCmakeArgs -CudaRoot $CudaRoot -CudaStandard '17') +
         @(foreach ($name in $SeedRoot.Keys) { "-DFETCHCONTENT_SOURCE_DIR_$($name.ToUpperInvariant()):PATH=$($SeedRoot[$name] -replace '\\', '/')" })
 }
 
@@ -175,14 +164,9 @@ function Install-OrtTensorRtEpArtifact {
     param([Parameter(Mandatory)][string]$BuildDir, [Parameter(Mandatory)][System.Collections.IDictionary]$SourceRoot,
         [Parameter(Mandatory)][string]$EpDir, [Parameter(Mandatory)]$Pin)
     $built = Get-UniqueBuildArtifact -Root $BuildDir -Filter 'onnxruntime_ep_tensorrt.dll' -Context 'TensorRT plugin EP'
-    Reset-SourceBuildDirectory -Path $EpDir
-    # The reset removes the directory, and a copy to a missing one writes a file under its name.
-    $null = New-Item -ItemType Directory -Force -Path $EpDir
-    Copy-Item -LiteralPath $built.FullName -Destination $EpDir -Force
-    $texts = Copy-OrtTensorRtEpLicense -EpDir $EpDir -SourceRoot $SourceRoot
-    Write-NativeFileProvenance -Root $EpDir -Owner 'onnxruntime-ep-tensorrt' -File $built.Name -Notice $texts `
-        -Source @{ Name = 'onnxruntime-ep-tensorrt'; Version = $Pin.Version; Sha256 = $Pin.Sha256; Url = $Pin.Url }
-    return (Join-Path $EpDir $built.Name)
+    return Install-NativeFileStage -File $built -Root $EpDir -Owner 'onnxruntime-ep-tensorrt' -Source $Pin -Populate {
+        param($dir) Copy-OrtTensorRtEpLicense -EpDir $dir -SourceRoot $SourceRoot
+    }
 }
 
 $epDir = Join-Path $InstallDir 'lib\onnxruntime-ep-tensorrt'
@@ -216,12 +200,10 @@ Write-Host "TensorRT plugin EP $($pins[0].Version.Substring(0, 12)): TensorRT $t
 Switch-BuildPhase '2. configure (ORT_HOME over the chain ORT, every FetchContent seeded)'
 $py = Initialize-ToolchainPythonEnvironment
 $buildDir = Join-Path $SourceDir 'build'
-$cfgLog = Get-PersistentBuildLogPath -Name 'ort-trt-ep-configure.log' -FallbackDir $SourceDir
 $seedRoots = [ordered]@{}
 foreach ($name in @($roots.Keys | Where-Object { $_ -ne 'onnxruntime-ep-tensorrt' })) { $seedRoots[$name] = $roots[$name] }
 $trtArgs = Get-OrtTensorRtEpCmakeArgs -OrtHome $ortHome -TensorRtSdk $trtSdk -TrtMajor $trtMajor -CudaRoot $gpuEnv.CudaRoot -Python $py.Exe -SeedRoot $seedRoots
-Invoke-CmakeConfigure -SourceDir $epSource -BuildDir $buildDir -InstallPrefix $epDir -BuildType $BuildType -ExtraArgs $trtArgs 2>&1 |
-    Tee-Object -FilePath $cfgLog
+$cfgLog = Invoke-CmakeConfigureLogged -LogName 'ort-trt-ep-configure.log' -SourceDir $epSource -BuildDir $buildDir -InstallPrefix $epDir -BuildType $BuildType -ExtraArgs $trtArgs
 
 Switch-BuildPhase '3. build'
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -Targets @('onnxruntime_ep_tensorrt') -RetryJobs 2
@@ -232,8 +214,7 @@ $staged = Install-OrtTensorRtEpArtifact -BuildDir $buildDir -SourceRoot $roots -
 $findings = @(Get-OrtTensorRtEpModuleFinding -Dll $staged -TrtMajor $trtMajor -TensorRtBin (Join-Path $trtSdk 'bin'))
 if ($findings.Count -gt 0) { throw "TensorRT plugin EP check:`n  $($findings -join "`n  ")" }
 # The plugin compiles against the shim's copies of the chain headers; a pass stamps it for the image census.
-Assert-ChainOrtOnly -Consumer 'tensorrt-ep' -OrtRoot $ortPrefix -TreeRoot $SourceDir -Shim $ortHome -Log $cfgLog `
-    -Record (Join-Path $buildDir 'CMakeCache.txt'), (Join-Path $buildDir 'build.ninja')
+Assert-ChainOrtOnly -Consumer 'tensorrt-ep' -OrtRoot $ortPrefix -TreeRoot $SourceDir -Shim $ortHome -Log $cfgLog -CmakeBuildDir $buildDir
 Complete-CurrentBuildPhase
 Write-BuildPhaseSummary -Label 'onnxruntime-ep-tensorrt'
 Complete-SourceBuild -Banner "=== TensorRT plugin EP build completed ($epDir) ===" -SourceDir $SourceDir

@@ -699,8 +699,7 @@ function Get-OrtCudaArgs {
                     $true
                 }
 
-        # ONNX-specific CMake flags (names like `onnxruntime_USE_CUDA` are ORT-only -- kept local, not in the generic helper).
-        # The plugin replaces the in-tree CUDA EP under the same DLL and EP name; TensorRT is its own plugin (Build-OrtTensorRtEpFromSource.ps1).
+        # The plugin replaces the in-tree CUDA EP under the same DLL and EP name; TensorRT is its own plugin stage.
         $gpuArgs += '-Donnxruntime_USE_CUDA=ON', '-Donnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON', '-Donnxruntime_USE_TENSORRT=OFF'
         # nvcc's host is MSVC cl.exe, as nvcc rejects clang-cl; /wd4067 is ORT-specific.
         $gpuArgs += Get-NvccCudaCmakeArgs -CudaRoot $cudaRoot -CudaStandard '17' -ExtraCudaFlags '-Xcompiler=/wd4067'
