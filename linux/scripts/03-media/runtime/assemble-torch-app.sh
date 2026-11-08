@@ -622,6 +622,26 @@ install_fallback_project_extras() {
   return 0
 }
 
+# Factory registration enumerates GPUs; native loading and exports prove neither registration nor inference.
+verify_ort_plugin_library() {
+  uv run --no-sync --active python -I - "$@" <<'PY'
+import ctypes
+import os
+import sys
+from pathlib import Path
+
+root_variable, module = sys.argv[1:]
+root = os.environ.get(root_variable, "")
+if not root or not Path(root).is_absolute():
+    raise RuntimeError(f"{root_variable} must name an absolute plugin root")
+path = Path(root) / "lib" / module
+library = ctypes.CDLL(str(path))
+for export in ("CreateEpFactories", "ReleaseEpFactory"):
+    getattr(library, export)
+print(f"ORT-PLUGIN PASS {module}: native load and both factory exports; registration/inference not tested")
+PY
+}
+
 verify_project_environment() {
   activate_project_environment
 
@@ -640,13 +660,14 @@ verify_project_environment() {
     uv run --no-sync --active python -c "import torch; cuda_ver = torch.version.cuda; print(f'PyTorch CUDA Build Version: {cuda_ver}'); assert cuda_ver is not None, 'ERROR: PyTorch was NOT built with CUDA!'"
     uv run --no-sync --active python -c "import onnxruntime as ort; providers = ort.get_available_providers(); print(f'ONNX Runtime Available Providers: {providers}'); assert 'CUDAExecutionProvider' in providers, 'ERROR: ONNX Runtime does NOT have CUDAExecutionProvider!'"
     if [ "${ENABLE_TENSORRT:-false}" = "true" ]; then
-      uv run --no-sync --active python -c "import onnxruntime as ort; assert 'TensorrtExecutionProvider' in ort.get_available_providers(), 'ERROR: ENABLE_TENSORRT=true but ONNX Runtime has no TensorrtExecutionProvider!'"
+      verify_ort_plugin_library ORT_TENSORRT_EP_ROOT libonnxruntime_ep_tensorrt.so || return $?
     fi
   elif [ "${ENABLE_AMD:-false}" = "true" ]; then
-    # Without this a ROCm image with CPU torch and no MIGraphX EP ships green.
+    # CPU ORT plus the separate plugin replaces the removed in-tree MIGraphX provider.
     echo "Testing ROCm Support (Build checks only, not runtime)"
     uv run --no-sync --active python -c "import torch; hip = torch.version.hip; print(f'PyTorch HIP Build Version: {hip}'); assert hip is not None, 'ERROR: PyTorch was NOT built with ROCm/HIP!'"
-    uv run --no-sync --active python -c "import onnxruntime as ort; providers = ort.get_available_providers(); print(f'ONNX Runtime Available Providers: {providers}'); assert 'MIGraphXExecutionProvider' in providers, 'ERROR: ONNX Runtime does NOT have MIGraphXExecutionProvider!'"
+    uv run --no-sync --active python -c "import onnxruntime as ort; providers = ort.get_available_providers(); print(f'ONNX Runtime Available Providers: {providers}'); assert 'CPUExecutionProvider' in providers, 'ERROR: the chain CPU ONNX Runtime has no CPUExecutionProvider!'"
+    verify_ort_plugin_library ORT_AMDGPU_EP_ROOT libmigraphx-ep.so || return $?
   fi
 
   echo "Installed packages in the virtual environment:"

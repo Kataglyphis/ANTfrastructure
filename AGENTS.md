@@ -106,6 +106,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied `35-build-migraphx-plugin-ep.sh` and `37-build-tensorrt-plugin-ep.sh` carry `plugin-ep-exports.sh` and `plugin-ep-seeds.txt` beside them; the media verify stage reads the export probe from the mounted ORT build directory, so keep that directory mount on the GPU RUN.
    G2 reads `onnxruntime_ep_*` modules and `Microsoft.ML.OnnxRuntime.EP.*` directories as ORT consumers, never as ORT.
    AMD Python bundles carry the plugin MIGraphX EP beside the chain core and prove it against the image's module; their self-test proves registration, not availability.
+   GPU-less app-venv checks load the selected MIGraphX/TensorRT plugin and require both factory exports; registration and inference need separate evidence.
    Require child cleanup APIs before starting timers or watchers; advisory cleanup signals then reaps and retains caller PID guards, reset and command status.
    Windows module visibility suites share the cold-import probe; keep child failures and parent-session isolation observable.
    ARM64 device-gate exports carry required module siblings; prove cold imports from the exported directory before device execution.

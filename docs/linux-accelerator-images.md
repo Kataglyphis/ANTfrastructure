@@ -1067,10 +1067,10 @@ The ROCm variant chain inserts `Dockerfile.amd` as its `gpu` stage **after** the
 | File | Purpose |
 | --- | --- |
 | `linux/Dockerfile.amd` | Installs ROCm 10.1 + MIGraphX 2.18 from AMD TheRock repo (HIP, MIOpen, RCCL, rocBLAS, rocFFT, MIGraphX) |
-| `linux/Dockerfile.media` | Media stack: conditionally builds ORT with MIGraphX EP when `ENABLE_AMD=true` |
+| `linux/Dockerfile.media` | Media stack: builds the MIGraphX plugin against the CPU ORT prefix when `ENABLE_AMD=true` |
 | `linux/Dockerfile.android` | Conditionally builds on top of the AMD media image |
 | `linux/Dockerfile.torch` | Conditionally tags the final entrypoint image |
-| `linux/scripts/03-media/build/onnxruntime/build/30-build-native-amd.sh` | ORT build script with MIGraphX EP |
+| `linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh` | Builds AMD's plugin EP against the chain CPU ORT |
 
 **Notes:**
 - The ROCm version is pinned by `ROCM_VERSION` in `linux/scripts/01-core/versions.env`.
@@ -1081,8 +1081,7 @@ The ROCm variant chain inserts `Dockerfile.amd` as its `gpu` stage **after** the
   carries the ROCm release ([below](#the-rocm-release-is-in-every-package-name)).
   `MIGRAPHX_VERSION` moves together with `ROCM_VERSION`.
 - MIGraphX packages come from a separate repo path (`/rocm/migraphx/packages/ubuntu2604/`) on the same `stable.repo.amd.com` host. The toolchain image pins the AMD repo to provide only ROCm/MIGraphX packages via an apt pin on Origin "AMD ROCm".
-- The ONNX Runtime MIGraphX Execution Provider replaces the older ROCm EP. The build script passes `--use_migraphx --migraphx_home <MIGraphX's prefix>` (`/opt/rocm/extras-10` on 10.1, [below](#where-rocm-101-puts-migraphx)) instead of `--use_rocm`.
-- The build produces an `onnxruntime-migraphx` Python wheel (instead of `onnxruntime-rocm`), and its `cp3XYt` twin from the same tree ([free-threaded wheels](consumer-image-contract.md#the-free-threaded-wheels)).
+- AMD's [plugin MIGraphX EP](#amds-plugin-migraphx-ep) replaces the in-tree provider. The rocm variant builds no ORT GPU prefix or `onnxruntime-migraphx` wheel; it ships the chain CPU `onnxruntime` wheel and its [free-threaded twin](consumer-image-contract.md#the-free-threaded-wheels).
 - The media stage strips all external apt sources from the SDK base image and configures clean resolute-only sources to prevent cross-distro package conflicts. 01-core modules are bind-mounted into build stages so `media_common_init()` can locate cross-build helpers.
 
 **Build (orchestrated):**
@@ -1096,7 +1095,7 @@ Same variant rules as NVIDIA (starts at `gpu`, own state, one chain at a time),
 plus: **amd64 only** — any other `--target-arches` is refused. The runtime lane
 copies `/opt/rocm` into the package (`copy-media-payloads.sh`
 `copy_rocm_payload`; `publish_rocm_ld_path` writes `/etc/ld.so.conf.d/000-rocm.conf`), and the wrappers
-take `onnxruntime-migraphx` + the app's `pytorch-rocm10` extra. That extra reads
+take the CPU `onnxruntime` wheel, AMD's plugin EP and the app's `pytorch-rocm10` extra. That extra reads
 the same wheel line as the pinned `PYTORCH_ROCM_INDEX` (`rocm7.14`, the newest
 carrying torch 2.14 for cp314 — there is no rocm10 line), so
 `assemble-torch-app.sh`'s re-install of the `PYTORCH_VERSION` pair from it (with
@@ -1107,7 +1106,7 @@ deps, so `triton-rocm` moves with it) only acts if the two drift. The extra was
 
 ### AMD's plugin MIGraphX EP
 
-Since 2026-11-07 the rocm media stage also builds AMD's out-of-tree ONNX Runtime plugin EP
+Since 2026-11-07 the rocm media stage builds AMD's out-of-tree ONNX Runtime plugin EP
 ([onnxruntime/onnxruntime-ep-amdgpu](https://github.com/onnxruntime/onnxruntime-ep-amdgpu), `ORT_AMDGPU_EP_COMMIT`)
 and the wrapper ships it at `/usr/local/lib/onnxruntime-ep-amdgpu/lib/libmigraphx-ep.so`, named by
 `ORT_AMDGPU_EP_ROOT`. The built-in MIGraphX provider in `microsoft/onnxruntime` is unmaintained (AMD on
@@ -1122,9 +1121,9 @@ the plugin ran the DEIM detector on an RX 9070 XT in 4 ms per frame with detecto
 a declaration without a seed at the same URL, or a seed at another URL, fails the build (the Linux twin of
 `Assert-FetchContentSeeded`). ORT's install ships no CMake package, so the script writes an imported
 `onnxruntime::onnxruntime` over the chain's `libonnxruntime.so.1`; MIGraphX comes from the image's
-`lib/cmake/migraphx`. It runs inside the ORT GPU `RUN`, whose mounts already carry it: the pins come from the mounted
-`versions.env`, which re-keys that `RUN` on any pin change anyway, so a plugin bump costs an ORT GPU rebuild and
-nothing else gains from a `RUN` of its own. The module links through the compiler-cache launcher and is checked for its two exports
+`lib/cmake/migraphx`. It runs inside the media stage's `onnxruntime-gpu` `RUN`, which skips the ORT GPU build on
+rocm and builds the plugin over the CPU prefix. Its source and pins come from that `RUN`'s existing mounts.
+The module links through the compiler-cache launcher and is checked for its two exports
 (`CreateEpFactories`, `ReleaseEpFactory`) and a resolvable closure, in the media stage
 (`verify-media-artifacts.sh onnxruntime-ep-amdgpu`) and in the runtime smoke (`gpu_plugin_ep_verdict`). The
 texts of everything linked into it ship under `licenses/`. A consumer registers it as
@@ -1133,6 +1132,11 @@ MIGraphX EP: the rocm variant has no ORT GPU build any more (the in-tree `--use_
 `onnxruntime-migraphx` wheel and the two MIGraphX patches are gone, CON231 step 3), the plugin builds over the
 CPU prefix, the wrapper's app venv takes the CPU `onnxruntime` wheel, and the runtime smoke fails an
 image that still ships `libonnxruntime_providers_migraphx.so`.
+
+The app-venv build uses `verify_ort_plugin_library` for the selected MIGraphX and TensorRT modules: the
+advertised root must be absolute, `ctypes.CDLL` must load the module and its dependencies, and both factory
+exports must resolve. AMD also requires the CPU ORT provider; the HIP/CUDA Torch checks remain required. This does not register a factory or run
+inference: MIGraphX registration itself enumerates GPUs and fails with HIP error 100 without a device.
 
 ### Running it on an AMD GPU
 
@@ -1238,19 +1242,12 @@ Three places followed MIGraphX out of `/opt/rocm/lib`:
   `/etc/ld.so.conf.d/rocm.conf`, beside `/opt/rocm/lib`. It finds `migraphx.hpp`
   anywhere under `/opt/rocm`, and fails unless `ldconfig -p` lists
   `libmigraphx_c`. The first 10.1 install stopped at `migraphx.hpp not found`.
-- **`30-build-native-amd.sh`** passes ORT MIGraphX's own prefix as
-  `--migraphx_home`. It is the directory above `lib/cmake/migraphx`, found under
-  `MIGRAPHX_HOME`, which stays the ROCm root for the HIP probe. ORT's
-  `find_package(migraphx REQUIRED PATHS /opt/rocm)` does not reach `extras-10`.
-  A CMake probe that copies ORT v1.30.0's lookup failed with `/opt/rocm`. With
-  `/opt/rocm/extras-10` it found MIGraphX 2.18.0 and the external-data API, and
-  linked and ran without a GPU. The script itself then built ORT v1.30.0 against
-  the install in a throwaway `:latest` container. It made an
-  `onnxruntime_migraphx-1.30.0` cp314 wheel that lists
-  `MIGraphXExecutionProvider`. With no GPU, a session loads the EP and stops at
-  `HIP failure 100: no ROCm-capable device`, then falls back to CPU.
+- **`35-build-migraphx-plugin-ep.sh`** discovers the directories above
+  `lib/cmake/migraphx` and `lib/cmake/hip` under `MIGRAPHX_HOME` and passes both
+  through `CMAKE_PREFIX_PATH`. The lookup root remains `/opt/rocm`, while the
+  MIGraphX package comes from `extras-10`; no in-tree ORT MIGraphX build remains.
 - **`publish_rocm_ld_path`** adds the same directory to the runtime image's
-  `000-rocm.conf`, because `libonnxruntime_providers_migraphx.so` needs
+  `000-rocm.conf`, because `libmigraphx-ep.so` needs
   `libmigraphx_c.so.3`.
 
 The 10.1 layout also reached the **CPU** ORT build, which never asks for ROCm.
@@ -1269,7 +1266,7 @@ took both and put `-I/opt/rocm/include` on `onnxruntime_flatbuffers`.
 - **`append_onnx_rocm_isolation_args`** gives the CPU build
   `CMAKE_IGNORE_PREFIX_PATH=${ROCM_HOME:-/opt/rocm}` when that root exists,
   the Linux twin of the Windows rocm lane's isolation argument. Its configure
-  then names `/opt/rocm` in no `flags.make`. The MIGraphX build does not call it.
+  then names `/opt/rocm` in no `flags.make`. The plugin build supplies its own ROCm prefixes.
 
 TheRock's LLVM is clang 24 now. `Dockerfile.package` borrows libFuzzer only from
 a same-major `clang/23` copy, so a rocm image no longer finds one to borrow.
@@ -1367,7 +1364,7 @@ has.
 | 5 | `/dev/kfd` access for uid 1001, documented with numeric host GIDs (or the udev rule), plus `--device /dev/kfd --device /dev/dri --group-add`, `--ipc=host`, `--shm-size` | **Done 2026-10-21** (CON31): the run line, and an entrypoint warning that names the missing `--group-add` ([§ Running it on an AMD GPU](#running-it-on-an-amd-gpu)). |
 | 6 | Do NOT add `--security-opt seccomp=unconfined` to the documented run command, and never bake `HSA_OVERRIDE_GFX_VERSION` | Both are cargo-cult carried from old ROCm guides; the first weakens every consumer's sandbox, the second silently lies about the GPU. |
 | 7 | Writable MIOpen cache/db paths | The image is designed to run `--read-only`; MIOpen writes on first use. |
-| 8 | Build-time self-check that works with NO GPU | `hipconfig`, `rocm_agent_enumerator`, `migraphx-driver`, `ldd`, and ONNX Runtime listing `MIGraphXExecutionProvider` all work GPU-less; `rocminfo`/`amd-smi` need a device. Write `amd-smi`, not `rocm-smi` (deprecated in ROCm 10.0). |
+| 8 | Build-time self-check that works with NO GPU | `hipconfig`, `rocm_agent_enumerator`, `migraphx-driver` and the plugin export/closure checks work GPU-less; `rocminfo`/`amd-smi` and inference need a device. Write `amd-smi`, not `rocm-smi` (deprecated in ROCm 10.0). |
 | 9 | Point consumers at AMD's Container Runtime Toolkit (CDI), which supports nerdctl | Cleaner than hand-rolled device flags, and it covers Ubuntu 26.04. |
 | 10 | Fix the Renovate comment on `ROCM_VERSION` | It watches a TheRock git tag, not the apt package we install. |
 
