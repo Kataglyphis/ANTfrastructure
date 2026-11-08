@@ -2,29 +2,23 @@
 # AMD's out-of-tree ONNX Runtime plugin EP for MIGraphX, built against the chain's ORT and the image's MIGraphX: docs/linux-accelerator-images.md#amds-plugin-migraphx-ep
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=plugin-ep-exports.sh
+source "${SCRIPT_DIR}/plugin-ep-exports.sh"
 
+# The ROCm root the in-tree EP build used to default; the plugin's MIGraphX and HIP CMake packages are found below it.
+MIGRAPHX_HOME="${MIGRAPHX_HOME:-/opt/rocm}"
 MGXEP_OUTPUT_DIR="${MGXEP_OUTPUT_DIR:-/usr/local/lib/onnxruntime-ep-amdgpu}"
-MGXEP_ORT_DIR="${MGXEP_ORT_DIR:-/usr/local/lib/onnxruntime-gpu}"
-# The ORT build links every chain library into /usr/local/lib; G2 must know both prefixes or the CPU-only providers read as foreign.
-MGXEP_ORT_CPU_DIR="${MGXEP_ORT_CPU_DIR:-/usr/local/lib/onnxruntime-cpu}"
+# The rocm image's only ORT: its GPU EP is this plugin, so there is no ORT GPU build to link against.
+MGXEP_ORT_DIR="${MGXEP_ORT_DIR:-/usr/local/lib/onnxruntime-cpu}"
 MGXEP_WORK_DIR="${MGXEP_WORK_DIR:-/tmp/onnxruntime-ep-amdgpu}"
 # Declared under if(USE_DML), which stays OFF; a seed for them would pin bytes the build never reads.
 MGXEP_INACTIVE_SEEDS="${MGXEP_INACTIVE_SEEDS:-eigen d3dx12 boost}"
 
-# name|VERSION key|SHA256 key|URL with {0} for the version: one row per FetchContent_Declare, URL exactly as upstream declares it.
-mgxep_seed_table() {
-  cat <<'TABLE'
-fmt|ORT_AMDGPU_EP_FMT_VERSION|ORT_AMDGPU_EP_FMT_SHA256|https://github.com/fmtlib/fmt/releases/download/{0}/fmt-{0}.zip
-gsl|ORT_AMDGPU_EP_GSL_VERSION|ORT_AMDGPU_EP_GSL_SHA256|https://github.com/microsoft/GSL/archive/refs/tags/v{0}.zip
-json|ORT_AMDGPU_EP_JSON_VERSION|ORT_AMDGPU_EP_JSON_SHA256|https://github.com/nlohmann/json/releases/download/v{0}/json.tar.xz
-zlib|ORT_AMDGPU_EP_ZLIB_VERSION|ORT_AMDGPU_EP_ZLIB_SHA256|https://github.com/madler/zlib/releases/download/v{0}/zlib-{0}.tar.xz
-protobuf|ORT_AMDGPU_EP_PROTOBUF_VERSION|ORT_AMDGPU_EP_PROTOBUF_SHA256|https://github.com/protocolbuffers/protobuf/archive/refs/tags/v{0}.zip
-onnx|ORT_AMDGPU_EP_ONNX_VERSION|ORT_AMDGPU_EP_ONNX_SHA256|https://github.com/onnx/onnx/archive/refs/tags/v{0}.zip
-flatbuffers|ORT_AMDGPU_EP_FLATBUFFERS_VERSION|ORT_AMDGPU_EP_FLATBUFFERS_SHA256|https://github.com/google/flatbuffers/archive/refs/tags/v{0}.zip
-range-v3|ORT_AMDGPU_EP_RANGE_V3_VERSION|ORT_AMDGPU_EP_RANGE_V3_SHA256|https://github.com/ericniebler/range-v3/archive/refs/tags/{0}.zip
-absl|ORT_AMDGPU_EP_ABSEIL_VERSION|ORT_AMDGPU_EP_ABSEIL_SHA256|https://github.com/abseil/abseil-cpp/archive/refs/tags/{0}.tar.gz
-TABLE
+# <plugin>: that plugin's rows of plugin-ep-seeds.txt (the one table both plugin builds read), without the plugin column.
+plugin_ep_seed_table() {
+  awk -F'|' -v p="$1" '$1 == p { sub(/^[^|]*\|/, ""); print }' "${SCRIPT_DIR}/plugin-ep-seeds.txt"
 }
+mgxep_seed_table() { plugin_ep_seed_table amdgpu; }
 
 mgxep_source_url() { printf 'https://github.com/onnxruntime/onnxruntime-ep-amdgpu/archive/%s.tar.gz' "$1"; }
 
@@ -53,19 +47,20 @@ mgxep_declared_urls() {
     | awk '$2 == "URL" {print tolower($1), $3} $2 == "GIT_REPOSITORY" {print tolower($1), "git:" $3}'
 }
 
-# <declared file> <seeded file> <inactive names>: every active declaration has a seed for the SAME URL, or the build would download unpinned.
-mgxep_assert_seeded() {
-  local declared="$1" seeded="$2" inactive=" $3 " name url seed bad=""
+# <declared file> <seeded file> <inactive names>: every active declaration ("name <URL>" or "name <repository> <tag>") has a seed for the SAME source, or the build would fetch unpinned.
+plugin_ep_assert_seeded() {
+  local declared="$1" seeded="$2" inactive=" $3 " name source seed bad=""
   [ -s "${declared}" ] || { printf 'ERROR: no FetchContent_Declare found; the upstream layout moved and this gate would check nothing\n' >&2; return 1; }
   # IFS=' ': the media scripts run under IFS=$'\n\t', where a plain read would put the whole line into name.
-  while IFS=' ' read -r name url; do
+  while IFS=' ' read -r name source; do
     case "${inactive}" in *" ${name} "*) continue ;; esac
-    seed="$(awk -v n="${name}" '$1 == n {print $2}' "${seeded}")"
-    if [ -z "${seed}" ]; then bad="${bad}; ${name} (${url}) has no hash-pinned seed"
-    elif [ "${seed}" != "${url}" ]; then bad="${bad}; ${name} is declared as ${url} but the seed pins ${seed}"; fi
+    seed="$(awk -v n="${name}" '$1 == n {$1 = ""; sub(/^ /, ""); print}' "${seeded}")"
+    if [ -z "${seed}" ]; then bad="${bad}; ${name} (${source}) has no hash-pinned seed"
+    elif [ "${seed}" != "${source}" ]; then bad="${bad}; ${name} is declared as ${source} but the seed pins ${seed}"; fi
   done < "${declared}"
-  [ -z "${bad}" ] || { printf 'ERROR: FetchContent would download unpinned%s\n' "${bad}" >&2; return 1; }
+  [ -z "${bad}" ] || { printf 'ERROR: FetchContent would fetch unpinned%s\n' "${bad}" >&2; return 1; }
 }
+mgxep_assert_seeded() { plugin_ep_assert_seeded "$@"; }
 
 # <archive> <dir>: the archive's single top-level directory, extracted into <dir>.
 mgxep_extract() {
@@ -100,6 +95,8 @@ mgxep_ort_prefix() {
   [ -f "${inc}/onnxruntime_c_api.h" ] || { printf 'ERROR: no onnxruntime_c_api.h under %s/include\n' "${ort}" >&2; return 1; }
   mkdir -p "${dir}/lib/cmake/onnxruntime"
   ln -sfn "${ort}/include" "${dir}/include"; ln -sf "${so}" "${dir}/lib/$(basename "${so}")"; ln -sf "${so}" "${dir}/lib/libonnxruntime.so.1"
+  # The TensorRT plugin's find_library wants the unversioned name under ORT_HOME/lib.
+  ln -sf "${so}" "${dir}/lib/libonnxruntime.so"
   cat > "${dir}/lib/cmake/onnxruntime/onnxruntimeConfig.cmake" <<EOF
 if(NOT TARGET onnxruntime::onnxruntime)
     add_library(onnxruntime::onnxruntime SHARED IMPORTED)
@@ -112,12 +109,12 @@ EOF
 # <seed name>: CMake's FETCHCONTENT_SOURCE_DIR_<NAME> key, upper-cased with the dash kept (range-v3 -> RANGE-V3).
 mgxep_seed_define() { printf 'FETCHCONTENT_SOURCE_DIR_%s' "$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')"; }
 
-# <so>: the module exists and exports what ORT's plugin loader calls; a version script may tag the names (CreateEpFactories@@VERS_1.0).
+# <so>: the module exists and exports what ORT's plugin loader calls.
 plugin_ep_exports_ok() {
   local so="$1" rc=0 sym
   [ -f "${so}" ] || { printf 'ERROR: %s is missing\n' "${so}" >&2; return 1; }
   for sym in CreateEpFactories ReleaseEpFactory; do
-    readelf --dyn-syms -W "${so}" 2>/dev/null | grep -qE " ${sym}(@@[A-Za-z0-9_.]+)?$" || { printf 'ERROR: %s does not export %s\n' "${so}" "${sym}" >&2; rc=1; }
+    plugin_ep_module_has_export "${so}" "${sym}" || { printf 'ERROR: %s does not export %s\n' "${so}" "${sym}" >&2; rc=1; }
   done
   return "${rc}"
 }
@@ -145,7 +142,7 @@ mgxep_seed_all() {
   local work="$1" seeded="$2" name vkey skey fmt url sha dir
   local -n _mgxep_defines="$3"
   : > "${seeded}"
-  while IFS='|' read -r name vkey skey fmt; do
+  while IFS='|' read -r name vkey skey fmt _; do
     IFS=' ' read -r _ url sha < <(mgxep_seed_spec "${name}" "${vkey}" "${skey}" "${fmt}")
     # absl is protobuf's own fetch, not a declaration of the EP; protobuf_FORCE_FETCH_DEPENDENCIES points it at the seed.
     [ "${name}" = absl ] || printf '%s %s\n' "${name}" "${url}" >> "${seeded}"
@@ -188,6 +185,28 @@ plugin_ep_source() {
   local sha
   sha="$(plugin_ep_sha_pin "$3")" || return 1
   mgxep_fetch_seed "$1" "$2" "${sha}" "$4"
+}
+
+# <output dir> <work dir> <plugin seed name>: every seed linked into the module ships its licence text (the Linux twin of the Windows lane's Save-MigraphxLicense).
+plugin_ep_seed_licenses() {
+  local out="$1" dir name
+  for dir in "$2"/seeds/*/; do
+    name="$(basename "${dir}")"; [ "${name}" != "$3" ] || continue
+    mkdir -p "${out}/licenses/${name}"
+    find "${dir}" -maxdepth 1 -iname 'LICENSE*' -type f -exec cp -a {} "${out}/licenses/${name}/" \;
+  done
+}
+
+# <module> <output dir> <plugin name> <source dir> <work dir> <licence file>...: the module under lib/ with the plugin's and every seed's licence texts.
+plugin_ep_install() {
+  plugin_ep_install_module "$1" "$2" "$3" "$4" "${@:6}"
+  plugin_ep_seed_licenses "$2" "$5" "$3"
+}
+
+# <array name> <work dir>: what G2 reads for a plugin build: the work tree, the ORT shim, both CMake records and the configure log.
+plugin_ep_g2_records() {
+  local -n _pgr="$1"
+  _pgr=(--tree "$2" --shim "$2/ort" --record "$2/build/CMakeCache.txt" --record "$2/build/build.ninja" --log "$2/configure.log")
 }
 
 # <output dir> <line>...: provenance.txt, one fact per line, read by the verify stage and by hand.
@@ -236,16 +255,25 @@ mgxep_sources() {
   mgxep_assert_seeded "${declared}" "${seeded}" "${MGXEP_INACTIVE_SEEDS}"
 }
 
+# <work dir> <cmake args array> <seed defines array>: configure (the log G2 reads), assert the compiler-cache pin, build.
+plugin_ep_configure_and_build() {
+  local -n _pcb_args="$2" _pcb_defines="$3"
+  cmake "${_pcb_args[@]}" "${_pcb_defines[@]}" 2>&1 | tee "$1/configure.log"
+  cmake_assert_compiler_cache_pin "$1/build" "${CMAKE_COMPILER_CACHE_PIN:-}"
+  cmake --build "$1/build" --parallel "${JOBS}"
+}
+
 # Configure against the image's MIGraphX and the chain ORT, build, and name the module in MGXEP_SO.
 mgxep_compile() {
   local work="${MGXEP_WORK_DIR}" mgx rocm ort_prefix python
-  mgx="$(find "${MIGRAPHX_HOME:-/opt/rocm}" -maxdepth 5 -path '*/lib/cmake/migraphx' -type d 2>/dev/null | sort | tail -n 1 || true)"
-  [ -f "${mgx}/migraphx-config.cmake" ] || err "no migraphx-config.cmake under ${MIGRAPHX_HOME:-/opt/rocm}"
+  mgx="$(find "${MIGRAPHX_HOME}" -maxdepth 5 -path '*/lib/cmake/migraphx' -type d 2>/dev/null | sort | tail -n 1 || true)"
+  [ -f "${mgx}/migraphx-config.cmake" ] || err "no migraphx-config.cmake under ${MIGRAPHX_HOME}"
   mgx="${mgx%/lib/cmake/migraphx}"
-  rocm="$(find "${MIGRAPHX_HOME:-/opt/rocm}" -maxdepth 5 -path '*/lib/cmake/hip' -type d 2>/dev/null | sort | tail -n 1 || true)"
+  rocm="$(find "${MIGRAPHX_HOME}" -maxdepth 5 -path '*/lib/cmake/hip' -type d 2>/dev/null | sort | tail -n 1 || true)"
   rocm="${rocm%/lib/cmake/hip}"
   ort_prefix="$(mgxep_ort_prefix "${MGXEP_ORT_DIR}" "${work}/ort")"
   setup_host_python_environment; python="${HOST_PYTHON_BIN}"
+  # shellcheck disable=SC2034  # read through the nameref in plugin_ep_configure_and_build
   local -a cmake_args=(
     -S "${MGXEP_SRC}" -B "${work}/build" -G Ninja -DCMAKE_BUILD_TYPE=Release
     -DUSE_MIGRAPHX=ON -DUSE_AMDGPU=OFF -DUSE_DML=OFF -DUSE_HIP=OFF
@@ -256,27 +284,19 @@ mgxep_compile() {
   )
   append_cmake_cache_linker_args cmake_args
   info ">>> MIGraphX plugin EP ${MGXEP_COMMIT:0:12}: ${#MGXEP_DEFINES[@]} pinned seeds, ${JOBS} jobs, MIGraphX at ${mgx}"
-  CXXFLAGS="${CXXFLAGS:-} -D__HIP_PLATFORM_AMD__=1" cmake "${cmake_args[@]}" "${MGXEP_DEFINES[@]}" 2>&1 | tee "${work}/configure.log"
-  cmake_assert_compiler_cache_pin "${work}/build" "${CMAKE_COMPILER_CACHE_PIN:-}"
-  cmake --build "${work}/build" --parallel "${JOBS}"
+  CXXFLAGS="${CXXFLAGS:-} -D__HIP_PLATFORM_AMD__=1" plugin_ep_configure_and_build "${work}" cmake_args MGXEP_DEFINES
   MGXEP_SO="$(plugin_ep_built_module "${work}/build" libmigraphx-ep.so)"
 }
 
 # Install the module with every licence text linked into it, write the provenance, and pass G2.
 mgxep_stage() {
-  local work="${MGXEP_WORK_DIR}" dir name
-  plugin_ep_install_module "${MGXEP_SO}" "${MGXEP_OUTPUT_DIR}" onnxruntime-ep-amdgpu "${MGXEP_SRC}" LICENSE LICENSES
-  # Everything linked into the module ships its text: the Linux twin of the Windows lane's Save-MigraphxLicense.
-  for dir in "${work}"/seeds/*/; do
-    name="$(basename "${dir}")"; [ "${name}" != onnxruntime-ep-amdgpu ] || continue
-    mkdir -p "${MGXEP_OUTPUT_DIR}/licenses/${name}"
-    find "${dir}" -maxdepth 1 -iname 'LICENSE*' -type f -exec cp -a {} "${MGXEP_OUTPUT_DIR}/licenses/${name}/" \;
-  done
+  local -a g2
+  plugin_ep_install "${MGXEP_SO}" "${MGXEP_OUTPUT_DIR}" onnxruntime-ep-amdgpu "${MGXEP_SRC}" "${MGXEP_WORK_DIR}" LICENSE LICENSES
   plugin_ep_provenance "${MGXEP_OUTPUT_DIR}" "onnxruntime-ep-amdgpu ${MGXEP_COMMIT}" "source-sha256 ${MGXEP_SHA}"
   # G2: the work tree, both records and the configure log name no ORT but the chain's; a pass stamps the prefix for the census.
-  ort_assert_chain_only amdgpu-ep --stamp "${MGXEP_OUTPUT_DIR}/ort-provenance/amdgpu-ep.json" --chain "${MGXEP_ORT_DIR}" \
-    --chain "${MGXEP_ORT_CPU_DIR}" --tree "${work}" --shim "${work}/ort" --record "${work}/build/CMakeCache.txt" --record "${work}/build/build.ninja" \
-    --log "${work}/configure.log" || err "the plugin EP's build inputs reach an ONNX Runtime other than the chain's"
+  plugin_ep_g2_records g2 "${MGXEP_WORK_DIR}"
+  ort_assert_chain_only amdgpu-ep --stamp "${MGXEP_OUTPUT_DIR}/ort-provenance/amdgpu-ep.json" --chain "${MGXEP_ORT_DIR}" "${g2[@]}" \
+    || err "the plugin EP's build inputs reach an ONNX Runtime other than the chain's"
 }
 
 mgxep_build() {

@@ -1007,9 +1007,14 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       OrchestrANT (Python, `register_execution_provider_library`), AccelerANTgine (C++,
       `Env::RegisterExecutionProviderLibrary`), OxidANT (Rust, `ort` rc.13 `register_execution_provider_library`),
       OmniAccelerANT (Dart over the native bridge); each change passes CON224 item 1's parity run with the plugin's
-      operators in the profile. **Step 3:** drop `--use_migraphx` from the ORT build and retire
-      `003-migraphx-gridsample.patch` and `004-migraphx-refuse-nonstandard-output.patch`. Done when the four AMD
-      packages pass parity on the plugin and the built-in provider is gone from the image.
+      operators in the profile. **Step 3 (in source 2026-11-08, owner: "sofort komplett, inklusive Entfernen"):**
+      `30-build-native-amd.sh`, `--use_migraphx`, the `onnxruntime-migraphx` wheel and the two MIGraphX patches are
+      gone; the rocm variant has no ORT GPU build, the plugin builds over the CPU prefix, the wrapper's app venv
+      takes the CPU `onnxruntime` wheel, and the runtime smoke fails an image with `libonnxruntime_providers_migraphx.so`.
+      AMD Python bundles carry the plugin beside the chain core (`capi/libmigraphx-ep.so`, proved against the image's
+      module) and require `MIGraphX` in the self-test's `registered_plugin_eps`
+      ([python-app-bundles.md](docs/python-app-bundles.md#linux-gpu-bundles)). Proved when the next rocm chain
+      publishes. Done when the four AMD packages pass parity on the plugin (step 2).
 
 - [ ] **CON232 — move the QNN EP to Qualcomm's plugin EP (`onnxruntime-qnn`)** [M, ★★]. Owner decision
       2026-11-08: now, both lanes. **Linux in source 2026-11-08:** arm64 builds the fork at v2.7.0 from its pinned
@@ -1028,12 +1033,18 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Windows chain builds it and `:winarm64` republishes; a Snapdragon run of a registered session is still open.
 - [ ] **CON233 — move every EP with a plugin to it, CUDA and TensorRT included** [L, ★★].
       **Owner decision 2026-11-08, superseding the triggers below:** every EP that has a plugin moves, at its newest
-      version, and the in-tree paths go, in this order: (1) plugins no consumer must register (WebGPU as
-      `onnxruntime_WEBGPU_STATIC_PLUGIN`; Windows rocm done in source); (2) the TensorRT plugin beside the in-tree EP,
-      pinned at `ORT_TENSORRT_EP_COMMIT` (newest commit, no release yet); (3) CON231 step 2's registration helper per language
-      and every consumer; (4) CUDA as `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN` (it replaces the legacy EP, so only after 3) and the
-      in-tree TensorRT and Linux `--use_migraphx` removals. Windows is this hub's Windows session, Linux the Linux session's.
-      DirectML has no plugin and stays. The evidence, with links to every plugin: the 2026-11-08 deep research.
+      version, and the in-tree paths go. Second decision the same day ("sofort komplett, inklusive Entfernen", both
+      lanes): no consumer-first order; the removals land now and consumers lose their GPU EP until they register.
+      **Linux in source 2026-11-08:** the ORT GPU build adds `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON` and asserts the
+      module's exports; the TensorRT EP is the plugin (`37-build-tensorrt-plugin-ep.sh`, `ORT_TENSORRT_EP_ROOT`, four
+      seeded git dependencies, G2 + census + runtime verdicts; built in the nvidia android image in 97 s); the in-tree
+      TensorRT and MIGraphX EPs are gone (CON231 step 3). The Python packaging lane drops the venv TensorRT provider
+      ([accelerator page](docs/linux-accelerator-images.md#the-cuda-plugin-ep),
+      [contract](docs/consumer-image-contract.md#nvidias-plugin-tensorrt-ep)). **Open on Linux:** the WebGPU EP as
+      `onnxruntime_WEBGPU_STATIC_PLUGIN` (re-keys every CPU ORT build, so every media stage on three arches: its own
+      chain), the nvidia and rocm proof chains, and detector parity on `TensorRTPluginExecutionProvider` on a card.
+      Windows is this hub's Windows session. DirectML has no plugin and stays. The evidence, with links to every
+      plugin: the 2026-11-08 deep research.
       The precedent is complete for TensorRT RTX: NVIDIA's plugin
       ([NVIDIA/TensorRT-RTX-EP-ABI](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI), since ORT 1.23), the ORT docs
       deprecate the built-in EP, and microsoft/onnxruntime#32276 (merged 2026-10-28) removed it from `main`; eight

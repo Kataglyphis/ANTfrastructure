@@ -287,12 +287,12 @@ _append_wheels_image_args() {
   return 0
 }
 
-# "<ONNX_PACKAGE> <PYTORCH_EXTRA>" for a GPU wrapper, empty for CPU; assemble-torch-app.sh enforces the ROCm torch pin.
+# "<ONNX_PACKAGE> <PYTORCH_EXTRA>" for a GPU wrapper (rocm takes the CPU ORT: its MIGraphX EP is the plugin), empty for CPU; assemble-torch-app.sh enforces the ROCm torch pin.
 runtime_gpu_backend_pair() {
   if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     printf '%s' 'onnxruntime-gpu pytorch-cu130'
   elif [ "${ENABLE_AMD:-false}" = "true" ]; then
-    printf '%s' 'onnxruntime-migraphx pytorch-rocm10'
+    printf '%s' 'onnxruntime pytorch-rocm10'
   fi
 }
 

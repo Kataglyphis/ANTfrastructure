@@ -146,27 +146,12 @@ t_assert_eq "1" "${_rc}"
 t_assert_contains "${_out}" "migraphx.hpp not found" "no MIGraphX headers anywhere under /opt/rocm"
 rm -rf "${_R101}" "${_R100}"
 
-t_case "the ORT MIGraphX EP build hands ORT MIGraphX's own prefix, not the ROCm root"
-AMD_ORT="${TESTS_DIR}/../03-media/build/onnxruntime/build/30-build-native-amd.sh"
-_PREFIX="$(awk 'index($0, "_migraphx_config_dir=\"$(find") == 1 {p = 1} p {print} p && index($0, "_migraphx_prefix=") == 1 {exit}' "${AMD_ORT}")"
-_prefix() { MIGRAPHX_HOME="$1" bash -c 'set -euo pipefail; err() { echo "ERR $*"; exit 1; }'$'\n'"${_PREFIX}"$'\necho "${_migraphx_prefix}"' 2>&1; }
-_H="$(mktemp -d)"
-_tree "${_H}" core-10.1/lib/cmake/hip/hip-config.cmake extras-10/lib/cmake/migraphx/migraphx-config.cmake
-t_assert_eq "${_H}/extras-10" "$(_prefix "${_H}")" "find_package(migraphx PATHS /opt/rocm) misses extras-10 (CMake probe, 2026-10-07)"
-rm -rf "${_H:?}/extras-10"; _tree "${_H}" lib/cmake/migraphx/migraphx-config.cmake
-t_assert_eq "${_H}" "$(_prefix "${_H}")" "the 10.0 layout keeps the ROCm root"
-rm -rf "${_H:?}/lib"
-t_assert_contains "$(_prefix "${_H}")" "ERR MIGraphX not found" "no MIGraphX config fails before ORT's configure"
-rm -rf "${_H}"
-t_assert_contains "$(_prefix "${_H}")" "ERR MIGraphX not found" "a missing root says so, not a silent pipefail exit"
-t_assert_contains "$(cat "${AMD_ORT}")" '--migraphx_home "${_migraphx_prefix}"' "and that prefix is what ORT gets"
-
 t_case "the runtime's 000-rocm.conf carries MIGraphX's lib dir beside HIP's, and never the ASAN tree's"
 # _published <root>: publish_rocm_ld_path over <root>, then the 000-rocm.conf it wrote.
 _published() { bash -c 'set -euo pipefail'$'\n'"$(_under "$1" /etc/ld.so.conf.d/000-rocm.conf "${_PUB}")"$'\npublish_rocm_ld_path'; cat "$1/000-rocm.conf"; }
 _RT="$(_root opt/rocm/{core,core-asan}-10.1/lib/libamdhip64.so.7 opt/rocm/extras-10/lib/libmigraphx_c.so.3)"
 t_assert_eq "$(printf '%s\n' "${_RT}/opt/rocm/"{core-10.1/lib,extras-10/lib,lib})" "$(_published "${_RT}" 2>&1)" \
-  "libonnxruntime_providers_migraphx.so needs libmigraphx_c.so.3 at run time; the ASAN libraries are preloaded by hand"
+  "the plugin MIGraphX EP (libmigraphx-ep.so) needs libmigraphx_c.so.3 at run time; the ASAN libraries are preloaded by hand"
 rm -rf "${_RT}"
 
 t_summary

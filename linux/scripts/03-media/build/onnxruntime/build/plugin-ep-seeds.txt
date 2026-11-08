@@ -1,0 +1,15 @@
+# plugin|name|VERSION key|SHA256 key|archive URL with {0}[|GIT_REPOSITORY as upstream declares it|GIT_TAG with {0}]: one row per FetchContent_Declare the plugin builds read.
+# amdgpu declares URLs (seeded at the SAME URL); tensorrt declares git repositories by tag (seeded from the release archive of that tag).
+amdgpu|fmt|ORT_AMDGPU_EP_FMT_VERSION|ORT_AMDGPU_EP_FMT_SHA256|https://github.com/fmtlib/fmt/releases/download/{0}/fmt-{0}.zip
+amdgpu|gsl|ORT_AMDGPU_EP_GSL_VERSION|ORT_AMDGPU_EP_GSL_SHA256|https://github.com/microsoft/GSL/archive/refs/tags/v{0}.zip
+amdgpu|json|ORT_AMDGPU_EP_JSON_VERSION|ORT_AMDGPU_EP_JSON_SHA256|https://github.com/nlohmann/json/releases/download/v{0}/json.tar.xz
+amdgpu|zlib|ORT_AMDGPU_EP_ZLIB_VERSION|ORT_AMDGPU_EP_ZLIB_SHA256|https://github.com/madler/zlib/releases/download/v{0}/zlib-{0}.tar.xz
+amdgpu|protobuf|ORT_AMDGPU_EP_PROTOBUF_VERSION|ORT_AMDGPU_EP_PROTOBUF_SHA256|https://github.com/protocolbuffers/protobuf/archive/refs/tags/v{0}.zip
+amdgpu|onnx|ORT_AMDGPU_EP_ONNX_VERSION|ORT_AMDGPU_EP_ONNX_SHA256|https://github.com/onnx/onnx/archive/refs/tags/v{0}.zip
+amdgpu|flatbuffers|ORT_AMDGPU_EP_FLATBUFFERS_VERSION|ORT_AMDGPU_EP_FLATBUFFERS_SHA256|https://github.com/google/flatbuffers/archive/refs/tags/v{0}.zip
+amdgpu|range-v3|ORT_AMDGPU_EP_RANGE_V3_VERSION|ORT_AMDGPU_EP_RANGE_V3_SHA256|https://github.com/ericniebler/range-v3/archive/refs/tags/{0}.zip
+amdgpu|absl|ORT_AMDGPU_EP_ABSEIL_VERSION|ORT_AMDGPU_EP_ABSEIL_SHA256|https://github.com/abseil/abseil-cpp/archive/refs/tags/{0}.tar.gz
+tensorrt|protobuf|ORT_TENSORRT_EP_PROTOBUF_VERSION|ORT_TENSORRT_EP_PROTOBUF_SHA256|https://github.com/protocolbuffers/protobuf/archive/refs/tags/v{0}.tar.gz|https://github.com/protocolbuffers/protobuf.git|v{0}
+tensorrt|onnx|ORT_TENSORRT_EP_ONNX_COMMIT|ORT_TENSORRT_EP_ONNX_SHA256|https://github.com/onnx/onnx/archive/{0}.tar.gz|https://github.com/onnx/onnx.git|{0}
+tensorrt|gsl|ORT_TENSORRT_EP_GSL_VERSION|ORT_TENSORRT_EP_GSL_SHA256|https://github.com/microsoft/GSL/archive/refs/tags/v{0}.tar.gz|https://github.com/microsoft/GSL.git|v{0}
+tensorrt|flatbuffers|ORT_TENSORRT_EP_FLATBUFFERS_VERSION|ORT_TENSORRT_EP_FLATBUFFERS_SHA256|https://github.com/google/flatbuffers/archive/refs/tags/v{0}.tar.gz|https://github.com/google/flatbuffers.git|v{0}

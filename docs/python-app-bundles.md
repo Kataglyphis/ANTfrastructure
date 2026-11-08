@@ -135,11 +135,16 @@ Both run in the family image, from a built app wheel (`--wheel-dir`, default `di
 
 ### Linux GPU bundles
 
-A Linux NVIDIA or ROCm image requires its respective CUDA or MIGraphX execution provider in
-the self-test's `available_providers` report, including the packaged launchers. This permits a
-build without GPU hardware; it does not prove GPU inference. `PYTHON_APP_REQUIRE_PROVIDER`
-can require a provider explicitly and must agree with the image variant. The bundle manifest
-records the requirement, and a package from that bundle cannot use `--no-test` to bypass it.
+A Linux NVIDIA image requires `CUDAExecutionProvider` in the self-test's `available_providers`
+report (the CUDA plugin EP keeps its place in ORT's compile-time list and the GPU wheel registers it
+on import). A ROCm image requires the plugin MIGraphX EP, `MIGraphX`, in the report's
+`registered_plugin_eps`: ORT's available list never names a plugin, so the self-test registers
+`onnxruntime/capi/libmigraphx-ep.so` (the builder copies the image's module there, byte for byte
+`${ORT_AMDGPU_EP_ROOT}/lib/libmigraphx-ep.so`) and reports what it registered. Both hold for the
+packaged launchers too. This permits a build without GPU hardware; it does not prove GPU
+inference. `PYTHON_APP_REQUIRE_PROVIDER` (`CUDAExecutionProvider` or `MIGraphX`) can require the
+EP explicitly and must agree with the image variant. The bundle manifest records the
+requirement, and a package from that bundle cannot use `--no-test` to bypass it.
 On a host with a compatible GPU, set `PYTHON_APP_REQUIRE_ACTIVE_PROVIDER=true` while running the
 packager to require the provider in the actual inference session. A CPU fallback then fails, but
 session activation alone does not prove that any operator ran on the GPU. Profile an inference
@@ -152,16 +157,14 @@ assets and notices and run the package on a clean host with the compatible vendo
 before distributing it. The build container's GPU SDK or its available-provider list alone is not evidence of GPU inference or a portable package.
 The default CPU bundle path is unchanged.
 
-`PYTHON_APP_HOST_GPU_RUNTIME=true` instead leaves the selected CUDA or MIGraphX provider's
-vendor libraries to the host. The option requires a GPU provider and a matching SDK tree in
-the build image. The builder matches the core, shared bridge and selected provider to one
-unstripped wheel, reads the provider's direct imports, refuses unknown imports, records their
-exact vendor SONAMEs in `bundle.json` and `REQUIRES-GPU-RUNTIME.txt`, and rejects accidentally
-bundled SDK libraries. If a CUDA wheel also contains the TensorRT provider, its bytes must match
-that same wheel; its additional direct imports are recorded separately as optional TensorRT
-host requirements, not as CUDA requirements. The selected CUDA and optional TensorRT providers
-remain in the package, while their vendor SDK libraries stay on the host. A library listed as an
-additional TensorRT import can still be needed dynamically by another provider. It preserves nonempty `LD_LIBRARY_PATH` entries
+`PYTHON_APP_HOST_GPU_RUNTIME=true` instead leaves the selected GPU EP's vendor libraries to the
+host. The option requires a GPU EP and a matching SDK tree in the build image. The builder matches
+the core (and, for CUDA, the shared bridge and the CUDA plugin EP) to one unstripped wheel, proves
+the MIGraphX plugin module against the image's copy, reads the EP's direct imports, refuses unknown
+imports (the MIGraphX plugin's `libonnxruntime.so.1` is the bundled core, not a host import),
+records the exact vendor SONAMEs in `bundle.json` and `REQUIRES-GPU-RUNTIME.txt`, and rejects
+accidentally bundled SDK libraries. The TensorRT EP is no longer a venv provider: it is the image's
+plugin module under `ORT_TENSORRT_EP_ROOT`, which a bundle does not carry. It preserves nonempty `LD_LIBRARY_PATH` entries
 through either bundled-loader path. The installed host needs a compatible GPU driver and
 CUDA/cuDNN or ROCm/MIGraphX runtime, including dynamically loaded assets; the package does
 not install that runtime. CUDA and MIGraphX package filenames carry `-gpu-nvidia` and

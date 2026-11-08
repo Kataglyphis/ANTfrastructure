@@ -102,6 +102,10 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied core and dependency preambles carry `cross-active-fallback.sh`; source it at the original registration point to retain alias binding.
    Ordered directory visitors retain the caller's `dir` binding, append policy and unconditional selected calls.
    The plugin QNN EP stage checks the module, both exports and the HTP backend beside it on arm64; the CPU prefix refuses an in-tree QNN provider.
+   The GPU prefix refuses an in-tree TensorRT provider and requires the CUDA module's plugin exports; the TensorRT plugin stage runs on nvidia images with TensorRT.
+   Copied `35-build-migraphx-plugin-ep.sh` and `37-build-tensorrt-plugin-ep.sh` carry `plugin-ep-exports.sh` and `plugin-ep-seeds.txt` beside them; the media verify stage reads the export probe from the mounted ORT build directory, so keep that directory mount on the GPU RUN.
+   G2 reads `onnxruntime_ep_*` modules and `Microsoft.ML.OnnxRuntime.EP.*` directories as ORT consumers, never as ORT.
+   AMD Python bundles carry the plugin MIGraphX EP beside the chain core and prove it against the image's module; their self-test proves registration, not availability.
    Require child cleanup APIs before starting timers or watchers; advisory cleanup signals then reaps and retains caller PID guards, reset and command status.
    Windows module visibility suites share the cold-import probe; keep child failures and parent-session isolation observable.
    Architecture and UV test suites carry their shared fixture companions; use harness PE and wheel constructors for valid samples.
@@ -1027,7 +1031,7 @@ grades this repo's own surface against them.
 - **CMake cache/linker:** `cmake-cache-linker.sh` → `append_cmake_cache_linker_args <array_ref>`, sourced by `03-media/core/common.sh` automatically.
 - **Install deps preamble:** `cross-apt.sh` → `install_deps_preamble [packages...]`.
 - **Media ENV reference:** `03-media/runtime/media-env.sh` is the canonical definition of PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH/GI_TYPELIB_PATH; the `Dockerfile.media` and `Dockerfile.package` ENV blocks must stay in sync with it.
-- **Media artifact verification:** `03-media/runtime/verify-media-artifacts.sh` checks that each media build stage produced output, called from `Dockerfile.media` RUN steps after every library build. Stages: `onnxruntime-cpu`, `onnxruntime-genai`, `onnxruntime-gpu`, `onnxruntime-pkgconfig`, `litert`, `litert-headers`, `opencv`, `opencv-core`, `ffmpeg`, `gstreamer`, `libcamera`, `armnn`, `app-wheels`, `media-inputs`, `sizes`.
+- **Media artifact verification:** `03-media/runtime/verify-media-artifacts.sh` checks that each media build stage produced output, called from `Dockerfile.media` RUN steps after every library build. Stages: `onnxruntime-cpu`, `onnxruntime-genai`, `onnxruntime-gpu`, `onnxruntime-ep-amdgpu`, `onnxruntime-ep-qnn`, `onnxruntime-ep-tensorrt`, `onnxruntime-pkgconfig`, `litert`, `litert-headers`, `opencv`, `opencv-core`, `ffmpeg`, `gstreamer`, `libcamera`, `armnn`, `app-wheels`, `media-inputs`, `sizes`.
 - **Runtime stage elements:** the `Dockerfile.torch` final stage is canonical for the COPY of runtime scripts, WORKDIR, VOLUME, ENTRYPOINT, CMD, HEALTHCHECK, the kataglyphis user, OCI labels.
 - **Builder functions:** `run_nerdctl_build()` is the canonical nerdctl build wrapper (`BUILDKIT_HOST` support); use it instead of an ad hoc `nerdctl build`.
 
@@ -1203,6 +1207,17 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
     `onnxruntime/core/` directory: consumers name that directory as data (OxidANT's loader,
     FFmpeg's configure line) and must stay importers. A file that DEFINES `OrtGetApiBase` (ELF
     dynamic symbol, PE export) is ORT under any name.
+  - **Every EP that has a plugin is the plugin** (owner decision 2026-11-08, both lanes). On Linux the nvidia
+    variant's CUDA EP is the ORT GPU build with `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON` (same module name, and the
+    in-tree module exports the two plugin entry points too: only its `GetProvider` bridge tells them apart, read by
+    `assert_onnx_cuda_plugin_ep`, the GPU verify stage and `gpu_cuda_plugin_verdict`), its
+    TensorRT EP is NVIDIA's plugin (`37-build-tensorrt-plugin-ep.sh`, `/usr/local/lib/onnxruntime-ep-tensorrt`,
+    `ORT_TENSORRT_EP_ROOT`, G2 + census contract), and the rocm variant's MIGraphX EP is AMD's plugin over the CPU
+    prefix; the rocm variant has no ORT GPU build. Never pass `--use_tensorrt` or `--use_migraphx` again, never
+    ship `libonnxruntime_providers_tensorrt.so` or `libonnxruntime_providers_migraphx.so` (the verify stages and
+    the runtime smoke fail both), and keep the plugin EP check free of `grep -q`: it closes the pipe on a module
+    with thousands of symbols and `pipefail` fails `readelf`
+    ([the plugin pages](docs/linux-accelerator-images.md#the-cuda-plugin-ep)).
   - Qualcomm's plugin QNN EP (`36-build-qnn-plugin-ep.sh`, arm64) is the chain's build of Qualcomm's ORT fork, from
     the pinned tag tarball with `--ort_home` over the chain prefix, and a census ROOT, never a downloaded wheel or
     archive; the ORT CPU build carries no in-tree QNN EP ([qnn-linux.md](docs/qnn-linux.md#the-plugin-ep)).

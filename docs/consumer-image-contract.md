@@ -1004,9 +1004,36 @@ GStreamer inference pipelines use `onnxinference`, `tfliteinference` and the ten
 tensor, with `type`, `dims` and `dir` matching the model. GStreamer's `modelinfo-helper` in gst-devtools writes one.
 Windows images before this fix failed every session with a garbled path, whatever the model.
 
+## The CUDA plugin EP
+
+`:latest-nvidia`'s CUDA EP is ORT 1.31's plugin build of the same code
+([linux-accelerator-images.md](linux-accelerator-images.md#the-cuda-plugin-ep)): the module keeps its
+name, `/usr/local/lib/onnxruntime-gpu/lib/libonnxruntime_providers_cuda.so`, and the
+`onnxruntime-gpu` wheel in `/opt/venv` registers it on import, so Python's
+`providers=["CUDAExecutionProvider"]` is unchanged. A C++ or Rust consumer registers that path under
+the name `CUDAExecutionProvider` once per process before it creates a session
+(`Ort::Env::RegisterExecutionProviderLibrary`, `Environment::register_execution_provider_library`);
+the legacy `OrtSessionOptionsAppendExecutionProvider_CUDA` bridge is gone with `GetProvider`.
+
+## NVIDIA's plugin TensorRT EP
+
+`:latest-nvidia` ships NVIDIA's standalone TensorRT plugin EP
+([linux-accelerator-images.md](linux-accelerator-images.md#the-plugin-tensorrt-ep)) and names it:
+
+| Variable | Linux (`linux/Dockerfile.package`, nvidia variant with `ENABLE_TENSORRT`) |
+|---|---|
+| `ORT_TENSORRT_EP_ROOT` | `/usr/local/lib/onnxruntime-ep-tensorrt`; empty in every other image |
+
+The library is `${ORT_TENSORRT_EP_ROOT}/lib/libonnxruntime_ep_tensorrt.so`. Register it under the
+name `TensorRTPluginExecutionProvider`, select the device it reports, and pass plain provider
+options; the calls are the ones under [AMD's plugin MIGraphX EP](#amds-plugin-migraphx-ep) with this
+name and root. The in-tree `TensorrtExecutionProvider` left the GPU prefix and the wheel on
+2026-11-08; under TensorRT ≥ 11.4 the FP16/INT8/BF16 options are ignored. The Python app bundles
+do not carry it: it is an image-root module a consumer registers by path.
+
 ## AMD's plugin MIGraphX EP
 
-`:latest-rocm` ships AMD's plugin MIGraphX execution provider beside the built-in one and names it:
+`:latest-rocm` ships AMD's plugin MIGraphX execution provider, its only MIGraphX EP since 2026-11-08, and names it:
 
 | Variable | Linux (`linux/Dockerfile.package`, rocm variant only) |
 |---|---|
@@ -1021,12 +1048,17 @@ device it reports; the EP's name is the registration name you choose:
   `SessionOptions::AppendExecutionProvider_V2` with the matching `OrtEpDevice`.
 - Rust (`ort` 2.0.0-rc.13): `Environment::register_execution_provider_library`.
 
-Prefer it over `MIGraphXExecutionProvider` where the variable is set: the built-in provider is unmaintained
-upstream and binds a strided partition output onto ORT's dense buffer on MIGraphX ≤ 2.18
+`MIGraphXExecutionProvider` no longer exists in the image: the built-in provider was unmaintained
+upstream and bound a strided partition output onto ORT's dense buffer on MIGraphX ≤ 2.18
 ([failure-modes](failure-modes.md#a-linux-amd-package-returns-fewer-drifting-detections-on-migraphx)); the plugin
-refuses that case loudly and supports every op MIGraphX parses. Why and how it is built:
+refuses that case loudly and supports every op MIGraphX parses. The rocm image's ORT is the CPU build
+(`onnxruntime`, not `onnxruntime-migraphx`), so `get_available_providers()` never names MIGraphX; the
+plugin is reached by registration alone. A Python app bundle built from the image carries the module
+beside the chain ORT as `onnxruntime/capi/libmigraphx-ep.so`, and its self-test reports it under
+`registered_plugin_eps` ([python-app-bundles.md](python-app-bundles.md#linux-gpu-bundles)): resolve
+`ORT_AMDGPU_EP_ROOT` first, then that path. Why and how it is built:
 [linux-accelerator-images.md](linux-accelerator-images.md#amds-plugin-migraphx-ep); the move per consumer is
-BACKLOG CON231.
+BACKLOG CON231 step 2.
 
 ## Qualcomm's plugin QNN EP
 

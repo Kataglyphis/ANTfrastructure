@@ -58,10 +58,10 @@ Notes:
 EOF
 }
 
-# ORT's CUDA source fixes; ROCm hipifies the same contrib_ops/cuda tree, so both GPU builds take them.
+# ORT's CUDA source fixes; the MIGraphX patches left with the in-tree EP (docs/upstreamable-patches.md entries 24 and 25).
 apply_ort_gpu_source_patches() {
   local dir=/opt/scripts/patches/onnxruntime patch
-  local -a patches=(002-cuda-dynamic-sparse-attention-cstdint.patch 003-migraphx-gridsample.patch 004-migraphx-refuse-nonstandard-output.patch)
+  local -a patches=(002-cuda-dynamic-sparse-attention-cstdint.patch)
   for patch in "${patches[@]}"; do
     [ -f "${dir}/${patch}" ] || err "ORT patch ${dir}/${patch} not found -- is linux/scripts/patches/onnxruntime bind-mounted into the GPU RUN (Dockerfile.media)?"
     bash /opt/scripts/core/apply-patch.sh "${dir}/${patch}" "${ORT_SRC_DIR}" "ORT ${patch}" \

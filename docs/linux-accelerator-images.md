@@ -160,18 +160,72 @@ Windows engines.
 `Dockerfile.nvidia` puts its `lib` on `LD_LIBRARY_PATH`. The package stage copies the runtime
 files above (`copy_tensorrt_payload`).
 
-**The ORT TensorRT EP.** `30-build-native-nvidia.sh` adds `--use_tensorrt --use_full_protobuf
---tensorrt_home /usr/local/tensorrt` (ORT's built-in parser, the default). ORT v1.31.0 handles
-TensorRT 11 in its source: networks are strongly typed, and the FP16/INT8 options only log a
-warning. The EP ships in the native GPU tree and in the `onnxruntime-gpu` wheels. It links
-`libnvinfer.so.11` and `libnvonnxparser.so.11` and `dlopen()`s `libnvinfer_plugin.so.11`, all
-with local binding ([§ TensorRT 10 beside 11](#tensorrt-10-beside-11)). GenAI stays a plain CUDA
-build: its `--use_trt_rtx` is TensorRT-RTX, whose wheel requires `onnxruntime-trt-rtx`, which
-nothing here builds.
+**The ORT TensorRT EP is the plugin** ([§ The plugin TensorRT EP](#the-plugin-tensorrt-ep)). Since
+2026-11-08 the ORT GPU build passes no `--use_tensorrt`: the in-tree EP, its `--use_full_protobuf`
+and the `/usr/local/tensorrt` merge tree are gone, `verify-media-artifacts.sh onnxruntime-gpu`
+fails a `libonnxruntime_providers_tensorrt.so` in the GPU prefix, and the runtime smoke fails one
+anywhere in the image. GenAI stays a plain CUDA build: its `--use_trt_rtx` is TensorRT-RTX, whose
+wheel requires `onnxruntime-trt-rtx`, which nothing here builds.
 
 **Size**: +2.81 GB in the runtime image (14 files; 1.93 GB of debs), +2.82 GB in the `gpu` stage,
-which media and android inherit, plus the EP library (957 KB). DeepStream's TensorRT 10 (2.6 GB)
+which media and android inherit, plus the plugin module (6.4 MB). DeepStream's TensorRT 10 (2.6 GB)
 stays beside it.
+
+### The CUDA plugin EP
+
+Since 2026-11-08 the ORT GPU build adds `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON` (ORT 1.31,
+[its design](https://github.com/microsoft/onnxruntime/blob/v1.31.1/docs/cuda_plugin_ep/QUICK_START.md)):
+`libonnxruntime_providers_cuda.so` keeps its name in `/usr/local/lib/onnxruntime-gpu/lib` and in
+the `onnxruntime-gpu` wheel's `capi/`, but it is a plugin EP, exporting `CreateEpFactories` and
+`ReleaseEpFactory` and no `GetProvider` bridge. ORT 1.31.1's in-tree module exports the two plugin
+entry points as well (measured in the nvidia android image), so the `GetProvider` bridge alone tells the
+two apart, and
+`30-build-native-nvidia.sh` reads them after the build (`assert_onnx_cuda_plugin_ep`), the media
+verify stage reads them again, and the runtime smoke's `gpu_cuda_plugin_verdict` fails an image
+whose module still exports `GetProvider` or whose wheel's build info lacks `cuda-plugin-ep=1`
+(the published `:latest-nvidia` of 2026-10-19 is that image). The wheel registers the plugin on
+`import onnxruntime`; `InferenceSession(..., providers=["CUDAExecutionProvider"])` then resolves
+it through the registered plugin's device, so Python code is unchanged. A C++ or Rust consumer
+registers `${ORT_GPU_DIR}/lib/libonnxruntime_providers_cuda.so` under the name
+`CUDAExecutionProvider` before it creates a session
+([the contract](consumer-image-contract.md#the-cuda-plugin-ep)). cuDNN stays a build-time header
+dependency; kernels that need it fail with `NOT_IMPLEMENTED` where no CUDA fallback exists.
+
+### The plugin TensorRT EP
+
+The TensorRT EP is NVIDIA's standalone plugin
+([onnxruntime/onnxruntime-ep-tensorrt](https://github.com/onnxruntime/onnxruntime-ep-tensorrt),
+`ORT_TENSORRT_EP_COMMIT`; no release or tag yet, so a commit tarball), built by
+`37-build-tensorrt-plugin-ep.sh` in the ORT GPU `RUN` and shipped at
+`/usr/local/lib/onnxruntime-ep-tensorrt/lib/libonnxruntime_ep_tensorrt.so`, named by
+`ORT_TENSORRT_EP_ROOT` on an nvidia image with `ENABLE_TENSORRT` (`ENABLE_TENSORRT=false`, the
+Jetson image, builds none and leaves the empty tree the media merge copies). It registers under
+the name `TensorRTPluginExecutionProvider`; the plugin itself needs an ORT ≥ 1.24.4 core.
+
+The script follows the MIGraphX plugin's pattern: the source archive and the four git
+dependencies its `CMakeLists.txt` declares by tag (protobuf v21.12, onnx at a commit, GSL v4.0.0,
+flatbuffers v23.5.26; the `tensorrt` rows of `plugin-ep-seeds.txt`, the one table both plugin builds
+read) come through `download_verified_file` at the `ORT_TENSORRT_EP_*` pins as
+release archives, seeded as `FETCHCONTENT_SOURCE_DIR_<NAME>` under
+`FETCHCONTENT_FULLY_DISCONNECTED`; a declaration without a seed at the same repository and tag
+fails the build (googletest is declared only under the tests option, which stays off). The plugin
+wants `ORT_HOME/include` and `ORT_HOME/lib/libonnxruntime.so` (the chain GPU prefix through the
+same shim the MIGraphX plugin uses) and `TENSORRT_HOME/include` with `libnvinfer.so.11`,
+`libnvinfer_plugin.so.11` and `libnvonnxparser.so.11` directly beside it, which the apt packages
+split, so the script links a tree. nvcc is the image's CUDA at `CUDA_ARCHITECTURES`, through the
+sccache-class launcher the resolver names (`-Donnxruntime_ep_tensorrt_OBJECT_CACHE=OFF`, so the
+project's own `find_program(sccache)` does not decide). Measured in the nvidia android image on
+2026-11-08: 97 s for configure and build, 6.4 MB. The module links `libonnxruntime.so.1`,
+`libnvinfer.so.11`, `libnvinfer_plugin.so.11`, `libnvonnxparser.so.11`, `libcudart.so.13` and
+`libz.so.1`; G2 (`ort_assert_chain_only tensorrt-ep`, both chain prefixes) stamps the tree, the
+census knows it as the consumer `tensorrt-ep`, and the runtime smoke's `gpu_tensorrt_plugin_verdict`
+wants the root, both exports, a resolved closure and TensorRT 11 from the default lib dir.
+
+Two traps the first in-image runs found, both now gates: the module's export check must not use
+`grep -q`, which closes the pipe at the first of its ~4000 dynamic symbols and lets `pipefail`
+fail `readelf` ([failure-modes](failure-modes.md#a-plugin-module-with-both-exports-fails-its-export-check)); and
+G2 must read `libonnxruntime_ep_*` modules and `Microsoft.ML.OnnxRuntime.EP.*` package
+directories as consumers of ORT, not as ORT (`_ortg_component_name`).
 
 **Measured** on 2026-10-21 in a throwaway container on the published `:latest-nvidia`
 (`sha256:0e9dec34…`, built 2026-10-19), as root, without a GPU:
@@ -1074,8 +1128,11 @@ nothing else gains from a `RUN` of its own. The module links through the compile
 (`CreateEpFactories`, `ReleaseEpFactory`) and a resolvable closure, in the media stage
 (`verify-media-artifacts.sh onnxruntime-ep-amdgpu`) and in the runtime smoke (`gpu_plugin_ep_verdict`). The
 texts of everything linked into it ship under `licenses/`. A consumer registers it as
-[the contract says](consumer-image-contract.md#amds-plugin-migraphx-ep); the built-in provider stays in the
-image until every consumer has moved.
+[the contract says](consumer-image-contract.md#amds-plugin-migraphx-ep). Since 2026-11-08 it is the only
+MIGraphX EP: the rocm variant has no ORT GPU build any more (the in-tree `--use_migraphx` EP, its
+`onnxruntime-migraphx` wheel and the two MIGraphX patches are gone, CON231 step 3), the plugin builds over the
+CPU prefix, the wrapper's app venv takes the CPU `onnxruntime` wheel, and the runtime smoke fails an
+image that still ships `libonnxruntime_providers_migraphx.so`.
 
 ### Running it on an AMD GPU
 

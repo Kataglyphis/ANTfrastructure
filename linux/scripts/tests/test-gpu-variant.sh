@@ -213,7 +213,7 @@ t_assert_contains "$(_chain CROSS_VARIANT=nvidia ENABLE_DEEPSTREAM=true CROSS_NO
 t_case "the runtime lane refuses to write default tags under a variant"
 RFNS="${CORE}/runtime-build-fns.sh"
 t_assert_eq "onnxruntime-gpu pytorch-cu130" "$(ENABLE_NVIDIA=true bash -c "$(t_fn_src "${RFNS}" runtime_gpu_backend_pair)"$'\nruntime_gpu_backend_pair')"
-t_assert_eq "onnxruntime-migraphx pytorch-rocm10" "$(ENABLE_AMD=true bash -c "$(t_fn_src "${RFNS}" runtime_gpu_backend_pair)"$'\nruntime_gpu_backend_pair')"
+t_assert_eq "onnxruntime pytorch-rocm10" "$(ENABLE_AMD=true bash -c "$(t_fn_src "${RFNS}" runtime_gpu_backend_pair)"$'\nruntime_gpu_backend_pair')" "a rocm wrapper runs the CPU ORT beside the plugin MIGraphX EP"
 t_assert_eq "" "$(bash -c "$(t_fn_src "${RFNS}" runtime_gpu_backend_pair)"$'\nruntime_gpu_backend_pair')" "a CPU image keeps the Dockerfile defaults"
 # --dry-run is a flag here (DRY_RUN is not read); the timeout keeps a regression from starting a real build.
 _RT="${TESTS_DIR}/../build-runtime-artifacts.sh"

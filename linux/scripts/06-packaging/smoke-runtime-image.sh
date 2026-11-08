@@ -1117,7 +1117,6 @@ _parity_exempt() {
 # Exactly one onnxruntime flavour per arch; $2/$3 are the image's ENABLE_NVIDIA/ENABLE_AMD.
 _parity_ort_flavor() {
   [ "${2:-false}" = "true" ] && { printf '%s' 'onnxruntime_gpu'; return 0; }
-  [ "${3:-false}" = "true" ] && { printf '%s' 'onnxruntime_migraphx'; return 0; }
   case "$1" in
     amd64)         printf '%s' 'onnxruntime_dnnl' ;;
     arm64|riscv64) printf '%s' 'onnxruntime_webgpu' ;;
@@ -1212,8 +1211,7 @@ done' 2>/dev/null)"; then
     # ORT: exactly one distribution, and the one this arch is meant to have.
     local ort_have ort_want
     ort_have="$(printf '%s\n' "${wheels}" | grep -E '^onnxruntime(_[a-z0-9]+)?$' | grep -v '^onnxruntime_genai$' | tr '\n' ' ' || true)"
-    ort_want="$(_parity_ort_flavor "${target_arch}" "$(printf '%s\n' "${probe}" | sed -n 's/^NVIDIA //p')" \
-      "$(printf '%s\n' "${probe}" | sed -n 's/^AMD //p')")"
+    ort_want="$(_parity_ort_flavor "${target_arch}" "$(printf '%s\n' "${probe}" | sed -n 's/^NVIDIA //p')")"
     case "$(printf '%s' "${ort_have}" | wc -w)" in
       1) if [ "${ort_have% }" = "${ort_want}" ]; then
            pass "ARCH-PARITY: exactly one onnxruntime distribution, ${ort_want} as the table expects (${target_arch})"

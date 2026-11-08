@@ -222,4 +222,5 @@ mutation-family:msvc-notice
 # AMD's plugin MIGraphX EP build on Linux; proof: test-migraphx-plugin-ep.sh.
 mutation-family:onnx-ep-amdgpu
 mutation-family:onnx-ep-qnn
+mutation-family:onnx-ep-tensorrt
 mutation-family:cmake-msvc-notice

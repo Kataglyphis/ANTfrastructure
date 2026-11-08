@@ -27,15 +27,17 @@ t_assert_eq 0 "${rc}"
 t_assert_contains "${out}" 'libmigraphx_c.so.3'
 t_assert_contains "${out}" 'libamdhip64.so.7'
 
-t_case 'TensorRT returns only its exact optional CUDA and TensorRT imports'
-cp "${work}/provider.so" "${work}/tensorrt.so"
-patchelf --add-needed libnvinfer.so.11 --add-needed libnvonnxparser.so.11 --add-needed libcudnn.so.9 --add-needed libcublas.so.13 "${work}/tensorrt.so"
-out="$(ort_host_runtime_needed "${work}/tensorrt.so" tensorrt)"; rc=$?
+t_case 'the plugin MIGraphX EP links the bundled chain ORT, which is no host import'
+cp "${work}/provider.so" "${work}/plugin.so"
+patchelf --add-needed libonnxruntime.so.1 --add-needed libmigraphx_c.so.3 --add-needed libamdhip64.so.7 "${work}/plugin.so"
+out="$(ort_host_runtime_needed "${work}/plugin.so" migraphx)"; rc=$?
 t_assert_eq 0 "${rc}"
-t_assert_contains "${out}" 'libnvinfer.so.11'
-t_assert_contains "${out}" 'libnvonnxparser.so.11'
-t_assert_contains "${out}" 'libcudnn.so.9'
-t_assert_contains "${out}" 'libcublas.so.13'
+t_assert_contains "${out}" 'libmigraphx_c.so.3'
+t_assert_contains "${out}" 'libamdhip64.so.7'
+t_assert_eq 2 "$(printf '%s\n' "${out}" | grep -c .)" "libonnxruntime.so.1 travels in the bundle and is not listed"
+cp "${work}/provider.so" "${work}/plugin-cuda.so"
+patchelf --add-needed libonnxruntime.so.1 --add-needed libcuda.so.1 "${work}/plugin-cuda.so"
+t_assert_fails ort_host_runtime_needed "${work}/plugin-cuda.so" cuda "the CUDA plugin EP links no chain ORT by SONAME; an unexpected import fails closed"
 
 t_case 'unknown imports, wrong providers and malformed files fail'
 patchelf --add-needed libunreviewed.so.1 "${work}/cuda.so"
@@ -43,24 +45,13 @@ t_assert_fails ort_host_runtime_needed "${work}/cuda.so" cuda
 t_assert_fails ort_host_runtime_needed "${work}/amd.so" cuda
 t_assert_fails ort_host_runtime_needed "${work}/provider.so" migraphx
 t_assert_fails ort_host_runtime_needed "${work}/provider.so" invalid
-cp "${work}/provider.so" "${work}/incomplete-tensorrt.so"
-patchelf --add-needed libnvinfer.so.11 --add-needed libcudnn.so.9 "${work}/incomplete-tensorrt.so"
-t_assert_fails ort_host_runtime_needed "${work}/incomplete-tensorrt.so" tensorrt
-cp "${work}/tensorrt.so" "${work}/zlib-tensorrt.so"
-patchelf --add-needed libz.so.1 "${work}/zlib-tensorrt.so"
-t_assert_ok ort_host_runtime_needed "${work}/zlib-tensorrt.so" tensorrt
 cp "${work}/provider.so" "${work}/zlib-cuda.so"
 patchelf --add-needed libcuda.so.1 --add-needed libz.so.1 "${work}/zlib-cuda.so"
 t_assert_fails ort_host_runtime_needed "${work}/zlib-cuda.so" cuda
-cp "${work}/tensorrt.so" "${work}/unknown-tensorrt.so"
-patchelf --add-needed libunknown-sdk.so.1 "${work}/unknown-tensorrt.so"
-t_assert_fails ort_host_runtime_needed "${work}/unknown-tensorrt.so" tensorrt
-cp "${work}/tensorrt.so" "${work}/unreviewed-cudnn.so"
-patchelf --add-needed libcudnn_extra.so.9 "${work}/unreviewed-cudnn.so"
-t_assert_fails ort_host_runtime_needed "${work}/unreviewed-cudnn.so" tensorrt
+t_assert_fails ort_host_runtime_needed "${work}/amd.so" tensorrt "TensorRT is no venv provider kind any more: its EP is the image's plugin"
 # shellcheck disable=SC2329
 readelf() { command readelf "$@" | sed '$d'; }
-t_assert_fails ort_host_runtime_needed "${work}/tensorrt.so" tensorrt
+t_assert_fails ort_host_runtime_needed "${work}/amd.so" migraphx
 unset -f readelf
 cp "${work}/provider.so" "${work}/glob.so"
 patchelf --add-needed 'libcuda.so.*' "${work}/glob.so"
@@ -95,7 +86,7 @@ t_assert_fails ort_assert_no_bundled_host_runtime "${work}/bundle" cuda
 unset -f find
 t_assert_ok ort_assert_no_bundled_host_runtime "${work}/bundle" cuda
 
-t_case 'Python GPU requirements come from one exact wheel and distinguish optional TensorRT'
+t_case 'Python CUDA requirements come from one exact wheel: core, shared bridge and the CUDA plugin EP'
 site="${work}/python-capi"
 wheels="${work}/wheels"
 mkdir -p "${site}" "${wheels}"
@@ -103,38 +94,55 @@ cp "${work}/provider.so" "${site}/libonnxruntime.so.1.31.0"
 cp "${work}/provider.so" "${site}/libonnxruntime_providers_shared.so"
 cp "${work}/provider.so" "${site}/libonnxruntime_providers_cuda.so"
 patchelf --add-needed libcudart.so.13 --add-needed libcublas.so.13 "${site}/libonnxruntime_providers_cuda.so"
-cp "${work}/tensorrt.so" "${site}/libonnxruntime_providers_tensorrt.so"
+# write_wheel <wheel> <capi dir> [glob]: a wheel holding the capi libraries the glob selects and both notice texts.
 write_wheel() {
-  python3 - "${wheels}/onnxruntime_gpu-1.31.0-py3-none-any.whl" "${site}" <<'PY'
+  python3 - "$1" "$2" "${3:-libonnxruntime*.so*}" <<'PY'
 import sys
 import zipfile
 from pathlib import Path
 
 with zipfile.ZipFile(sys.argv[1], 'w') as wheel:
-    for library in sorted(Path(sys.argv[2]).glob('libonnxruntime*.so*')):
+    for library in sorted(Path(sys.argv[2]).glob(sys.argv[3])):
         wheel.write(library, f'onnxruntime/capi/{library.name}')
     wheel.writestr('onnxruntime/LICENSE', 'license')
     wheel.writestr('onnxruntime/ThirdPartyNotices.txt', 'notices')
 PY
 }
-write_wheel
-out="$(ort_python_host_runtime_needed "${site}" cuda "${wheels}" "${work}/proof")"; rc=$?
-t_assert_eq 0 "${rc}"
-t_assert_contains "${out}" $'required\tlibcudart.so.13'
-t_assert_contains "${out}" $'required\tlibcublas.so.13'
-t_assert_contains "${out}" $'optional\tlibcudnn.so.9'
-t_assert_contains "${out}" $'optional\tlibnvinfer.so.11'
-t_assert_contains "${out}" $'optional\tlibnvonnxparser.so.11'
-overlap="$(printf '%s\n' "${out}" | grep -xF $'optional\tlibcublas.so.13' || true)"
-t_assert_eq '' "${overlap}" 'required CUDA dependency must not be repeated as optional'
-patchelf --add-needed libunknown-sdk.so.1 "${site}/libonnxruntime_providers_tensorrt.so"
+# needed_lines <site> <kind> <proof> <soname>...: the host imports come back as exactly these required lines, in NEEDED order.
+needed_lines() {
+  local site="$1" kind="$2" proof="$3" soname out rc
+  shift 3
+  out="$(ort_python_host_runtime_needed "${site}" "${kind}" "${wheels}" "${proof}")"; rc=$?
+  t_assert_eq 0 "${rc}"
+  for soname in "$@"; do t_assert_contains "${out}" "$(printf 'required\t%s' "${soname}")"; done
+  t_assert_eq "$#" "$(printf '%s\n' "${out}" | grep -c .)" "exactly the required lines for ${kind}"
+}
+write_wheel "${wheels}/onnxruntime_gpu-1.31.0-py3-none-any.whl" "${site}"
+needed_lines "${site}" cuda "${work}/proof" libcudart.so.13 libcublas.so.13
+patchelf --add-needed libunknown-sdk.so.1 "${site}/libonnxruntime_providers_cuda.so"
+t_assert_fails ort_python_host_runtime_needed "${site}" cuda "${wheels}" "${work}/proof" 'an unreviewed import fails even though the wheel matches'
+write_wheel "${wheels}/onnxruntime_gpu-1.31.0-py3-none-any.whl" "${site}"
 t_assert_fails ort_python_host_runtime_needed "${site}" cuda "${wheels}" "${work}/proof"
-write_wheel
-t_assert_fails ort_python_host_runtime_needed "${site}" cuda "${wheels}" "${work}/proof"
-rm "${site}/libonnxruntime_providers_tensorrt.so"
-write_wheel
-out="$(ort_python_host_runtime_needed "${site}" cuda "${wheels}" "${work}/proof")"; rc=$?
-t_assert_eq 0 "${rc}"
-optional="$(printf '%s\n' "${out}" | grep '^optional' || true)"
-t_assert_eq '' "${optional}" 'CUDA-only wheel must not add optional dependencies'
+
+t_case 'Python MIGraphX requirements come from the plugin module, which must be the image'"'"'s copy beside a wheel-proven core'
+amdsite="${work}/python-amd-capi"
+mkdir -p "${amdsite}" "${work}/ep root/lib"
+cp "${work}/provider.so" "${amdsite}/libonnxruntime.so.1.31.0"
+cp "${work}/provider.so" "${amdsite}/libmigraphx-ep.so"
+patchelf --add-needed libonnxruntime.so.1 --add-needed libmigraphx_c.so.3 --add-needed libamdhip64.so.7 "${amdsite}/libmigraphx-ep.so"
+write_wheel "${wheels}/onnxruntime-1.31.0-py3-none-any.whl" "${amdsite}" 'libonnxruntime.so.*'
+rm -f "${wheels}/onnxruntime_gpu-1.31.0-py3-none-any.whl"
+t_assert_fails ort_python_host_runtime_needed "${amdsite}" migraphx "${wheels}" "${work}/proof-amd" 'no image copy under the default root'
+cp "${amdsite}/libmigraphx-ep.so" "${work}/ep root/lib/libmigraphx-ep.so"
+export ORT_AMDGPU_EP_ROOT="${work}/ep root"
+needed_lines "${amdsite}" migraphx "${work}/proof-amd" libmigraphx_c.so.3 libamdhip64.so.7
+unset ORT_AMDGPU_EP_ROOT
+printf 'sdk\n' > "${work}/bundle/lib/libmigraphx-ep.so"
+t_assert_ok ort_assert_no_bundled_host_runtime "${work}/bundle" migraphx 'the plugin module is the bundle'"'"'s own EP, not a host SDK library'
+printf 'sdk\n' > "${work}/bundle/lib/libmigraphx_c.so.3"
+t_assert_fails ort_assert_no_bundled_host_runtime "${work}/bundle" migraphx
+rm "${work}/bundle/lib/libmigraphx-ep.so" "${work}/bundle/lib/libmigraphx_c.so.3"
+printf 'x' >> "${work}/ep root/lib/libmigraphx-ep.so"
+t_assert_fails env ORT_AMDGPU_EP_ROOT="${work}/ep root" bash -c 'source "$1"; ort_python_host_runtime_needed "$2" migraphx "$3" "$4"' _ "${TESTS_DIR}/../06-packaging/ort-runtime-bundle.sh" "${amdsite}" "${wheels}" "${work}/proof-amd" 'a module that differs from the image copy fails'
+t_assert_fails env ORT_AMDGPU_EP_ROOT="${work}/nowhere" bash -c 'source "$1"; ort_python_host_runtime_needed "$2" migraphx "$3" "$4"' _ "${TESTS_DIR}/../06-packaging/ort-runtime-bundle.sh" "${amdsite}" "${wheels}" "${work}/proof-amd" 'no image copy, no proof'
 t_summary

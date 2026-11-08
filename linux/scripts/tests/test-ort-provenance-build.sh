@@ -194,9 +194,10 @@ _case nuget
 mkdir -p "${CASE}/home/.nuget/packages/microsoft.ml.onnxruntime/1.24.4"
 _red "fetched ONNX Runtime content at ${CASE}/home/.nuget/packages/microsoft.ml.onnxruntime"
 _case nuget-dir
-mkdir -p "${CASE}/nuget/microsoft.ml.onnxruntime.directml/1.24.4" "${CASE}/nuget/microsoft.ml.onnxruntimegenai/0.14.0"
+mkdir -p "${CASE}/nuget/microsoft.ml.onnxruntime.directml/1.24.4" "${CASE}/nuget/microsoft.ml.onnxruntimegenai/0.14.0" "${CASE}/nuget/microsoft.ml.onnxruntime.ep.tensorrt/0.1.0"
 NUGET_PACKAGES="${CASE}/nuget" _red "fetched ONNX Runtime content at ${CASE}/nuget/microsoft.ml.onnxruntime.directml"
 t_assert_fails grep -q -e 'onnxruntimegenai' <<< "${OUTPUT}"
+t_assert_fails grep -q -e 'onnxruntime.ep.tensorrt' <<< "${OUTPUT}" "a plugin EP's NuGet package is a consumer of ORT, not ORT"
 
 t_case "a cache's files are not the tree's: the stamp counts the tree alone (mutation)"
 _case stamp-count
@@ -272,8 +273,12 @@ _red "${TREE}/third_party/ort/build/libonnxruntime_providers.a is an ONNX Runtim
 t_assert_contains "${OUTPUT}" "${TREE}/third_party/ort/build/libonnxruntime_mlas.a is an ONNX Runtime binary the chain does not build"
 t_assert_contains "${OUTPUT}" "build.ninja: ${TREE}/third_party/ort/build/libonnxruntime_session.a is an ONNX Runtime binary"
 _case static-genai
-for _l in libonnxruntime_extensions.so libonnxruntime_extensions.a libonnxruntime_genai.a libonnxruntime-genai.so; do _put "${TREE}/build/lib/${_l}" "not ort"; done
-_run; t_assert_eq 0 "${RC}" "GenAI's and extensions' own libs are not ORT: ${OUTPUT}"
+for _l in libonnxruntime_extensions.so libonnxruntime_extensions.a libonnxruntime_genai.a libonnxruntime-genai.so libonnxruntime_ep_tensorrt.so; do _put "${TREE}/build/lib/${_l}" "not ort"; done
+# The TensorRT plugin's own C# package dir is named like a NuGet ORT; a plugin EP consumes ORT and is not ORT.
+mkdir -p "${TREE}/csharp/Microsoft.ML.OnnxRuntime.EP.TensorRT"
+_run; t_assert_eq 0 "${RC}" "GenAI's, extensions' and a plugin EP's own files are not ORT: ${OUTPUT}"
+mkdir -p "${TREE}/csharp/Microsoft.ML.OnnxRuntime.Gpu"
+_red "fetched ONNX Runtime content at ${TREE}/csharp/Microsoft.ML.OnnxRuntime.Gpu"
 
 t_case "a record path with spaces is read whole: a CMakeCache value, ninja's \$ escape, a quoted flag, meson JSON (mutation)"
 _case spaces
@@ -414,6 +419,7 @@ _ff="$(_flat "${SCRIPTS}/03-media/build/ffmpeg/build-ffmpeg.sh")"
 _gst="$(_flat "${SCRIPTS}/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh")"
 _gen="$(_flat "${SCRIPTS}/03-media/verify-genai-ort.sh")"
 _mgx="$(_flat "${SCRIPTS}/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh")"
+_trt="$(_flat "${SCRIPTS}/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh")"
 t_assert_contains "${_ocv}" 'source "${SCRIPT_DIR}/../../ort-provenance.sh"'
 t_assert_contains "${_ff}" 'source "${SCRIPT_DIR}/../../ort-provenance.sh"'
 t_assert_contains "${_gst}" 'source "${_GST_MONOREPO_DIR}/../../../ort-provenance.sh"'
@@ -425,9 +431,16 @@ t_assert_contains "${_ff}" '--record "${FFMPEG_SRC}/ffbuild/config.mak" --log "$
 t_assert_contains "${_gst}" \
   '--record builddir/build.ninja --record builddir/meson-info/intro-dependencies.json --log builddir/meson-logs/meson-log.txt || exit 1'
 t_assert_contains "${_gen}" '--tree "${src}" --log "${src}/build/genai-build.log" "${g2[@]}"'
-t_assert_contains "${_mgx}" \
-  '--chain "${MGXEP_ORT_DIR}" --chain "${MGXEP_ORT_CPU_DIR}" --tree "${work}" --shim "${work}/ort" --record "${work}/build/CMakeCache.txt" --record "${work}/build/build.ninja" --log "${work}/configure.log" || err'
-t_assert_contains "${_mgx}" 'cmake "${cmake_args[@]}" "${MGXEP_DEFINES[@]}" 2>&1 | tee "${work}/configure.log"' "the plugin EP's configure tees into the log G2 reads"
+# The plugin builds share one record set; a dropped record there would blind both.
+t_assert_contains "${_mgx}" '_pgr=(--tree "$2" --shim "$2/ort" --record "$2/build/CMakeCache.txt" --record "$2/build/build.ninja" --log "$2/configure.log")'
+t_assert_contains "${_mgx}" '--chain "${MGXEP_ORT_DIR}" "${g2[@]}" || err'
+t_assert_contains "${_mgx}" 'plugin_ep_g2_records g2 "${MGXEP_WORK_DIR}"'
+t_assert_contains "${_mgx}" 'cmake "${_pcb_args[@]}" "${_pcb_defines[@]}" 2>&1 | tee "$1/configure.log"' "the plugin EPs' shared configure tees into the log G2 reads"
+t_assert_contains "${_mgx}" 'plugin_ep_configure_and_build "${work}" cmake_args MGXEP_DEFINES' "and the MIGraphX build goes through it"
+# The GPU build links every chain library into /usr/local/lib; without the CPU prefix as a second chain the CPU-only providers read as foreign.
+t_assert_contains "${_trt}" '--chain "${TRTEP_ORT_DIR}" --chain "${TRTEP_ORT_CPU_DIR}" "${g2[@]}" || err'
+t_assert_contains "${_trt}" 'plugin_ep_g2_records g2 "${TRTEP_WORK_DIR}"'
+t_assert_contains "${_trt}" 'plugin_ep_configure_and_build "${work}" cmake_args TRTEP_DEFINES' "and so does the TensorRT plugin build"
 _gb="${SCRIPTS}/03-media/build/onnxruntime/build/60-build-genai.sh"
 t_assert_contains "$(cat "${_gb}")" 'GENAI_BUILD_LOG="${GENAI_SRC_DIR}/build/genai-build.log"'
 t_assert_eq 2 "$(grep -c -F -e ' 2>&1 | tee -a "${GENAI_BUILD_LOG}"' "${_gb}" || true)" "both GenAI build.py calls tee into the log G2 reads"
@@ -436,7 +449,7 @@ t_assert_contains "$(t_fn_src "${SCRIPTS}/03-media/build/ffmpeg/build-ffmpeg.sh"
 t_assert_contains "$(t_fn_src "${SCRIPTS}/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh" build_gstreamer_monorepo)" \
   "$(printf '  _gst_monorepo_install\n  _gst_monorepo_ort_provenance\n}')"
 t_assert_contains "$(t_fn_src "${SCRIPTS}/03-media/verify-genai-ort.sh" main)" "$(printf 'chain bytes"\n  _genai_ort_g2 "${src}" "${out}" "${roots[@]}"\n}')"
-for _f in "${_ocv}" "${_ff}" "${_gst}" "${_gen}" "${_mgx}"; do
+for _f in "${_ocv}" "${_ff}" "${_gst}" "${_gen}" "${_mgx}" "${_trt}"; do
   t_assert_eq 1 "$(printf '%s\n' "${_f}" | grep -c -E -e '(^|[[:space:]])ort_assert_chain_only[[:space:]]' || true)" "one call"
 done
 
@@ -445,10 +458,10 @@ t_case "each stamp lands where the census contract reads it (mutation)"
 source "${CENSUS}"
 _contract="$(ort_census_contract)"
 _stamp_of() { printf '%s\n' "$1" | grep -o -E -e "ort_assert_chain_only $2 --stamp \"[^\"]+\"" | sed -E 's/.*--stamp "([^"]+)"/\1/' || true; }
-declare -A _srcs=([opencv]="${_ocv}" [ffmpeg]="${_ff}" [gstreamer]="${_gst}" [genai]="${_gen}" [amdgpu-ep]="${_mgx}")
+declare -A _srcs=([opencv]="${_ocv}" [ffmpeg]="${_ff}" [gstreamer]="${_gst}" [genai]="${_gen}" [amdgpu-ep]="${_mgx}" [tensorrt-ep]="${_trt}")
 for _row in "opencv|OPENCV_PREFIX|/opt/opencv5" "ffmpeg|FFMPEG_PREFIX|/opt/ffmpeg" \
             "gstreamer|GSTREAMER_PREFIX|/opt/gstreamer" "genai|out|/usr/local/lib/onnxruntime-genai" \
-            "amdgpu-ep|MGXEP_OUTPUT_DIR|/usr/local/lib/onnxruntime-ep-amdgpu"; do
+            "amdgpu-ep|MGXEP_OUTPUT_DIR|/usr/local/lib/onnxruntime-ep-amdgpu" "tensorrt-ep|TRTEP_OUTPUT_DIR|/usr/local/lib/onnxruntime-ep-tensorrt"; do
   IFS='|' read -r _n _var _val <<< "${_row}"
   _s="$(_stamp_of "${_srcs[${_n}]}" "${_n}")"
   _want="$(printf '%s\n' "${_contract}" | awk -F'|' -v n="${_n}" '$1 == n { print $3 }')"
@@ -467,7 +480,7 @@ _runs() {
 _mount='source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly'
 t_assert_eq 6 "$(_runs "${_mount}" | wc -l | tr -d ' ')" "six RUNs mount it"
 for _consumer in "03-media/build/opencv/build-opencv.sh" "03-media/build/ffmpeg/build-ffmpeg.sh" \
-                 "build-gstreamer-stage.sh" "03-media/verify-genai-ort.sh --src-dir" "35-build-migraphx-plugin-ep.sh build"; do
+                 "build-gstreamer-stage.sh" "03-media/verify-genai-ort.sh --src-dir" "35-build-migraphx-plugin-ep.sh build" "37-build-tensorrt-plugin-ep.sh build"; do
   _all="$(_runs "${_consumer}" | wc -l | tr -d ' ')"
   t_assert_eq "${_all}" "$(_runs "${_consumer}" | grep -c -F -e "${_mount}" || true)" "every ${_consumer} RUN mounts it"
 done

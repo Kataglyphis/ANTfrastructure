@@ -1,17 +1,9 @@
 #!/usr/bin/env bash
 # 35-build-migraphx-plugin-ep.sh's pins, seed gate, archive handling and library verdict; no download, no compiler, no GPU.
 set -u
-TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-EP="${TESTS_DIR}/../03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh"
-ENVF="${TESTS_DIR}/../01-core/versions.env"
-_T="$(mktemp -d)"
-trap 'rm -rf "${_T}"' EXIT
-# shellcheck source=../03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh
-source "${EP}"
-# shellcheck source=../01-core/load-versions-env.sh
-source "${TESTS_DIR}/../01-core/load-versions-env.sh"
-load_versions_env "${ENVF}"
+EP_SCRIPT=35-build-migraphx-plugin-ep.sh
+# shellcheck source=plugin-ep-fixture.sh
+source "$(dirname "${BASH_SOURCE[0]}")/plugin-ep-fixture.sh"
 
 # src/CMakeLists.txt of onnxruntime-ep-amdgpu at 58afd43b (2026-11-02), recorded: the eleven declarations, eigen/d3dx12/boost under if(USE_DML).
 cp "${TESTS_DIR}/fixtures/onnxruntime-ep-amdgpu-CMakeLists.txt" "${_T}/CMakeLists.txt"
@@ -86,8 +78,15 @@ mkdir -p "${_T}/ort/lib" "${_T}/ort/include" && : > "${_T}/ort/include/onnxrunti
 p="$(mgxep_ort_prefix "${_T}/ort" "${_T}/ortp")"
 t_assert_contains "$(cat "${p}/lib/cmake/onnxruntime/onnxruntimeConfig.cmake")" "IMPORTED_LOCATION \"${_T}/ort/lib/libonnxruntime.so.1.31.1\""
 t_assert_eq "${_T}/ort/lib/libonnxruntime.so.1.31.1" "$(readlink -f "${p}/lib/libonnxruntime.so.1")" "the SONAME link the module NEEDs"
+t_assert_eq "${_T}/ort/lib/libonnxruntime.so.1.31.1" "$(readlink -f "${p}/lib/libonnxruntime.so")" "the unversioned name the TensorRT plugin's find_library wants"
+t_assert_eq /usr/local/lib/onnxruntime-cpu "${MGXEP_ORT_DIR}" "the rocm image's only ORT is the CPU build"
 rm -rf "${_T}/noort"; mkdir -p "${_T}/noort/lib"
 t_assert_contains "$(mgxep_ort_prefix "${_T}/noort" "${_T}/noortp" 2>&1)" "no libonnxruntime.so.N"
+
+t_case "the export check survives a module with thousands of dynamic symbols under pipefail (grep -q closed the pipe on the TensorRT plugin)"
+# A readelf stand-in that names the first entry point early and then writes far past the pipe buffer: a -q grep's early exit kills it with SIGPIPE.
+printf 'x' > "${_T}/big.so"
+t_assert_eq 0 "$(bash -c 'set -o pipefail; source "$1"; readelf() { printf "   2: 0 0 FUNC GLOBAL DEFAULT 11 CreateEpFactories\n"; seq 1 200000 | sed "s/^/   1: 0 0 FUNC GLOBAL DEFAULT 11 sym/"; printf "   3: 0 0 FUNC GLOBAL DEFAULT 11 ReleaseEpFactory@@VERS_1.0\n"; }; plugin_ep_exports_ok "$2"; echo $?' _ "${EP}" "${_T}/big.so" 2>&1 | tail -n 1)" "both exports found, no SIGPIPE"
 
 t_case "the library verdict wants both plugin exports and a resolvable closure"
 mkdir -p "${_T}/bin"; printf 'x' > "${_T}/libmigraphx-ep.so"

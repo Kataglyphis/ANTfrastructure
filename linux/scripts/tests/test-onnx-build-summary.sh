@@ -45,20 +45,19 @@ t_assert_contains "$(_run "Build complete" "${_work}/bare")" "[INFO] Wheels in"
 t_case "no build script keeps a second copy of the summary"
 # Separate copies drift; one owner is the point.
 _copies="$(grep -l -e '-lh .*wheels.*\*\.whl' \
-  "${ORT}/30-build-native.sh" "${ORT}/30-build-native-amd.sh" \
+  "${ORT}/30-build-native.sh" \
   "${ORT}/30-build-native-nvidia.sh" "${ORT}/60-build-genai.sh" 2>/dev/null || true)"
 t_assert_eq "" "${_copies}" "these must call report_onnx_build_output, not re-list the wheels"
 
-t_case "all four build scripts call the owner"
-for _s in 30-build-native.sh 30-build-native-amd.sh 30-build-native-nvidia.sh 60-build-genai.sh; do
+t_case "all three build scripts call the owner"
+for _s in 30-build-native.sh 30-build-native-nvidia.sh 60-build-genai.sh; do
   t_assert_ok grep -q "report_onnx_build_output " "${ORT}/${_s}"
 done
 
 
 # Each native build owns its arg list, so every one must carry the GCC 16 workarounds for sqlite and Dawn.
 t_case "every native ORT build disables telemetry (GCC-16 sqlite -Werror)"
-for _s in 30-build-native.sh 30-build-native-nvidia.sh 30-build-native-amd.sh; do
-  [ -f "${ORT}/${_s}" ] || continue
+for _s in 30-build-native.sh 30-build-native-nvidia.sh; do
   t_assert_ok grep -q -- "--no_telemetry" "${ORT}/${_s}"
 done
 
@@ -108,7 +107,6 @@ t_assert_eq "--cmake_extra_defines CMAKE_IGNORE_PREFIX_PATH=${_work}/rocm" "$(_i
   "the rocm lane's CPU ORT must not take nlohmann_json or flatbuffers from ROCm"
 t_assert_eq "" "$(_isoargs "${_work}/no-rocm")" "no ROCm root, no argument"
 t_assert_ok grep -q "^append_onnx_rocm_isolation_args BUILD_ARGS" "${ORT}/30-build-native.sh"
-t_assert_eq "0" "$(grep -c "append_onnx_rocm_isolation_args" "${ORT}/30-build-native-amd.sh" || true)" \
-  "the MIGraphX build needs ROCm and must not hide it"
+t_assert_eq "" "$(ls "${ORT}"/30-build-native-amd.sh 2>/dev/null)" "the in-tree MIGraphX build is gone; the rocm image's GPU EP is the plugin (35)"
 
 t_summary

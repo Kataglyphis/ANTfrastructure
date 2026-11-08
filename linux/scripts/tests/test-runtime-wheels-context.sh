@@ -57,7 +57,8 @@ t_assert_contains "${_out}" "ONNX_PACKAGE=onnxruntime-gpu" \
 t_assert_contains "${_out}" "PYTORCH_EXTRA=pytorch-cu130" \
   "the CPU torch default failed the torch.version.cuda gate"
 _out="$(ENABLE_AMD=true _args)"
-t_assert_contains "${_out}" "ONNX_PACKAGE=onnxruntime-migraphx" "a rocm wrapper gets the MIGraphX ORT"
+t_assert_contains "${_out}" "ONNX_PACKAGE=onnxruntime" "a rocm wrapper gets the CPU ORT; its MIGraphX EP is the plugin"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -F 'onnxruntime-migraphx')" "the in-tree MIGraphX flavour is gone"
 t_assert_contains "${_out}" "PYTORCH_EXTRA=pytorch-rocm10" "and the app's ROCm torch extra"
 _out="$(ENABLE_NVIDIA=true PYTORCH_EXTRA=pytorch-custom ONNX_PACKAGE=onnxruntime _args)"
 t_assert_contains "${_out}" "PYTORCH_EXTRA=pytorch-custom" "a pinned torch extra is kept"
@@ -85,7 +86,7 @@ _WH="$(mktemp -d)"
 _prune() {
   rm -f "${_WH}"/*.whl
   for w in onnxruntime_dnnl-1.30.0-cp314-cp314-linux_x86_64.whl onnxruntime-1.30.0-cp314-cp314-linux_x86_64.whl \
-           onnxruntime_gpu-1.30.0-cp314-cp314-linux_x86_64.whl onnxruntime_migraphx-1.30.0-cp314-cp314-linux_x86_64.whl \
+           onnxruntime_gpu-1.30.0-cp314-cp314-linux_x86_64.whl \
            onnxruntime_webgpu-1.30.0-cp314-cp314-linux_x86_64.whl onnxruntime_genai-0.15.2-cp314-cp314-linux_x86_64.whl; do
     : > "${_WH}/${w}"; done
   ONNX_PACKAGE="$1" bash -c "${_PRUNE_SRC//\/opt\/wheels/${_WH}}"$'\nprune_conflicting_onnx_wheels'
@@ -93,7 +94,8 @@ _prune() {
 }
 t_assert_eq "onnxruntime_genai onnxruntime_gpu " "$(_prune onnxruntime-gpu)" \
   "the amd64 dnnl/CPU wheels went in beside the CUDA one (two dists, one onnxruntime/ dir)"
-t_assert_eq "onnxruntime_genai onnxruntime_migraphx " "$(_prune onnxruntime-migraphx)"
+t_assert_eq "onnxruntime onnxruntime_dnnl onnxruntime_genai onnxruntime_webgpu " "$(_prune onnxruntime)" "the CPU package (every rocm wrapper) drops only the CUDA wheel and GPU genai"
+t_assert_contains "$(ONNX_PACKAGE=onnxruntime-migraphx bash -c "${_PRUNE_SRC//\/opt\/wheels/${_WH}}"$'\nprune_conflicting_onnx_wheels' 2>&1)" "Unsupported ONNX package: onnxruntime-migraphx" "the retired flavour is refused"
 rm -rf "${_WH}"
 
 rm -rf "${WORK}" "${_BIN}" "${_ROOTFS}"

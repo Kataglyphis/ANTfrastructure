@@ -192,19 +192,14 @@ prune_conflicting_onnx_wheels() {
   case "${ONNX_PACKAGE}" in
     onnxruntime|onnxruntime-webgpu)
       # GPU genai only: a bare *genai* glob deletes the CPU wheel build_uv_sync_args needs.
-      rm -f /opt/wheels/*_gpu-*.whl /opt/wheels/*_migraphx-*.whl \
+      rm -f /opt/wheels/*_gpu-*.whl \
             /opt/wheels/*genai_cuda-*.whl /opt/wheels/*genai_rocm-*.whl \
             /opt/wheels/*genai_directml-*.whl
       ;;
-    onnxruntime-gpu|onnxruntime-migraphx)
+    onnxruntime-gpu)
       # Every other flavour shares site-packages/onnxruntime with the GPU wheel; the last one in owns capi/.
       rm -f /opt/wheels/*webgpu*.whl /opt/wheels/onnxruntime_dnnl-*.whl \
             /opt/wheels/onnxruntime-[0-9]*.whl
-      if [ "${ONNX_PACKAGE}" = "onnxruntime-gpu" ]; then
-        rm -f /opt/wheels/onnxruntime_migraphx-*.whl
-      else
-        rm -f /opt/wheels/onnxruntime_gpu-*.whl
-      fi
       ;;
     *)
       printf 'Unsupported ONNX package: %s\n' "${ONNX_PACKAGE}" >&2

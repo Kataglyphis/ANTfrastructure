@@ -361,7 +361,7 @@ for _s in "${ORT_BUILD}"/30-build-native*.sh; do
   t_assert_contains "$(sed '/^[[:space:]]*$/d' "${_s}" | tail -n 1)" ' BUILD_ARGS' "${_s##*/}: over the very args its GIL build.sh took"
   t_assert_eq "" "$(grep -i -e 'python3*_include' "${_s}" || true)" "${_s##*/}: no Python include define the twin pass would inherit"
 done
-t_assert_eq 3 "${_ort_steps}" "the CPU build and both GPU flavours"
+t_assert_eq 2 "${_ort_steps}" "the CPU build and the CUDA GPU build (the rocm image runs the CPU ORT)"
 t_assert_contains "$(cat "${MEDIA}")" "COPY --link --from=pyav /opt/pyav/wheels-free-threaded /opt/wheels-free-threaded"
 t_assert_contains "$(cat "${MEDIA}")" "COPY --link --from=tvm /opt/tvm/wheels-free-threaded /opt/tvm-wheels-free-threaded"
 t_assert_contains "$(cat "${MEDIA}")" "COPY --link --from=app-wheelhouse /opt/app-wheels-free-threaded /opt/app-wheels-free-threaded"
@@ -392,10 +392,10 @@ _oft_run() {
 }
 _ftpy="${_oft}/tmp/onnxruntime-ft-venv/bin/python"
 _nv=(--build_dir /ort/build_native_gpu --config Release --build_shared_lib --skip_tests --build_wheel --use_cuda --cuda_home /usr/local/cuda
-  --cudnn_home /usr --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75;86;87;89;120" --use_tensorrt --use_full_protobuf --tensorrt_home /tmp/tensorrt --no_telemetry)
-_mgx=(--build_dir /ort/build_native_gpu_migraphx --config Release --build_shared_lib --skip_tests --cmake_extra_defines hip_DIR=/opt/rocm/core-10.1/lib/cmake/hip
-  --cmake_extra_defines CMAKE_PREFIX_PATH=/opt/rocm/core-10.1/lib/cmake --use_migraphx --migraphx_home /opt/rocm/extras-10 --no_telemetry --build_wheel)
-for _fl in nv mgx; do
+  --cudnn_home /usr --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75;86;87;89;120" --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON --no_telemetry)
+_wg=(--build_dir /ort/build_native --config Release --build_shared_lib --skip_tests --use_webgpu --use_external_dawn
+  --cmake_extra_defines "CMAKE_CXX_FLAGS=-Wno-error=invalid-constexpr -Wno-invalid-constexpr" --no_telemetry --build_wheel)
+for _fl in nv wg; do
   declare -n _ga="_${_fl}"
   _b="${_ga[1]}"
   _out="$(_oft_run "${_b}" /out/gpu "${_ga[@]}")"
@@ -412,8 +412,8 @@ done
 _out="$(OFT_RC=1 _oft_run /ort/build_native_gpu /out/gpu "${_nv[@]}")"
 t_assert_contains "${_out}" "ERR ONNX Runtime: the free-threaded pass over /ort/build_native_gpu failed"
 t_assert_eq "" "$(grep '^STORE' <<<"${_out}" || true)" "a failed pass stores nothing"
-_out="$(_oft_run /ort/build_native_gpu_migraphx /out/gpu "${_mgx[@]:0:${#_mgx[@]}-1}")"
-t_assert_eq "RC=0" "${_out}" "a MIGraphX cross build without --build_wheel has no GIL wheel to twin, and runs no pass"
+_out="$(_oft_run /ort/build_native /out/gpu "${_wg[@]:0:${#_wg[@]}-1}")"
+t_assert_eq "RC=0" "${_out}" "a cross build without --build_wheel has no GIL wheel to twin, and runs no pass"
 
 t_case "wiring: the GIL store is verified before the twins are touched, and only it is installed"
 _line() { grep -n -e "$1" "${MEDIA}" | cut -d: -f1 | head -n 1; }

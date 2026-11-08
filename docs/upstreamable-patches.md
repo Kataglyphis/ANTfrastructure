@@ -863,6 +863,10 @@ ORT reaches 1.31. Check `main` for its own port first.
 
 ## 24. onnxruntime: the MIGraphX provider leaves GridSample on the CPU
 
+> **Retired 2026-11-08** with the in-tree MIGraphX EP (BACKLOG CON231 step 3): the rocm image's only
+> MIGraphX EP is AMD's plugin, which lists every op `migraphx::get_onnx_operators()` returns. The
+> patch file is gone; the entry stays as history.
+
 `linux/scripts/patches/onnxruntime/003-migraphx-gridsample.patch` ·
 applied by `apply_ort_gpu_source_patches` (`03-media/build/onnxruntime/build/lib/common.sh`) in
 the amd and nvidia native builds · applies to **v1.31.0** and **v1.31.1** (checked 2026-11-04).
@@ -886,6 +890,9 @@ back to the CPU and splits deformable-attention models into partitions.
 ---
 
 ## 25. onnxruntime: the MIGraphX provider binds a strided output onto a dense buffer
+
+> **Retired 2026-11-08** with entry 24: the plugin EP compiles with `standardize_outputs` and refuses a
+> non-standard output itself. The patch file is gone; the entry stays as history.
 
 `linux/scripts/patches/onnxruntime/004-migraphx-refuse-nonstandard-output.patch` ·
 applied with entry 24 · applies to **v1.31.0** and **v1.31.1**.

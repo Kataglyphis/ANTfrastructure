@@ -17,7 +17,8 @@ ort_census_contract() {
     'gstreamer|libgstonnx.so*|/opt/gstreamer/ort-provenance/gstreamer.json' \
     'ffmpeg|libavfilter.so*|/opt/ffmpeg/ort-provenance/ffmpeg.json' \
     'genai|libonnxruntime-genai.so*,onnxruntime_genai*.so|/usr/local/lib/onnxruntime-genai/ort-provenance/genai.json' \
-    'amdgpu-ep|libmigraphx-ep.so|/usr/local/lib/onnxruntime-ep-amdgpu/ort-provenance/amdgpu-ep.json'
+    'amdgpu-ep|libmigraphx-ep.so|/usr/local/lib/onnxruntime-ep-amdgpu/ort-provenance/amdgpu-ep.json' \
+    'tensorrt-ep|libonnxruntime_ep_tensorrt.so|/usr/local/lib/onnxruntime-ep-tensorrt/ort-provenance/tensorrt-ep.json'
 }
 
 # The chain ORT of a Linux image, onnxruntime-ep-qnn included (the chain's build of Qualcomm's ORT fork, a root, not a consumer): docs/onnxruntime-single-source.md#a-plugin-ep-built-from-an-ort-fork-is-a-chain-root

@@ -29,7 +29,7 @@ _ortg_under() {
 }
 
 _ortg_component_name() {
-  case "${1,,}" in *onnxruntime[-_.]genai* | *onnxruntime[-_.]extensions*) return 0 ;; esac
+  case "${1,,}" in *onnxruntime[-_.]genai* | *onnxruntime[-_.]extensions* | *onnxruntime[-_.]ep[-_.]*) return 0 ;; esac
   return 1
 }
 
@@ -122,7 +122,7 @@ _ortg_scan_root() {  # <root> <via-link>: one root's fetched ORT dirs and ORT-na
     esac
   done < <(find -H "${r}" \( -type l -xtype d -printf 'L\t%p\n' \) -o \( -type d \( "${fetched_directory_names[@]}" -o -name 'ort.pyke.io' \
         -o -iname 'onnxruntime-linux-*' -o -iname 'onnxruntime-win-*' -o -iname 'onnxruntime-osx-*' -o -iname 'onnxruntime-android-*' \
-        -o \( -iname 'microsoft.ml.onnxruntime*' ! -iname 'microsoft.ml.onnxruntimegenai*' \) \) -printf 'D\t%p\n' \) \
+        -o \( -iname 'microsoft.ml.onnxruntime*' ! -iname 'microsoft.ml.onnxruntimegenai*' ! -iname 'microsoft.ml.onnxruntime.ep.*' \) \) -printf 'D\t%p\n' \) \
         -o \( \( -type f -o -type l \) \( "${file_candidates[@]}" \) \
         -printf 'F\t%p\n' \) 2>"${err}" || true)
   if [ -s "${err}" ]; then echo "cannot read all of ${r}: $(head -n 1 "${err}")"; fi

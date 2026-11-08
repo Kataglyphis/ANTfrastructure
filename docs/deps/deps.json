@@ -151,11 +151,39 @@
               "spdx": "MIT"
             },
             {
-              "name": "ONNX Runtime plugin EP for NVIDIA TensorRT (onnxruntime_ep_tensorrt, beside the in-tree TensorRT EP; nvidia lanes)",
+              "name": "ONNX Runtime plugin EP for NVIDIA TensorRT (libonnxruntime_ep_tensorrt.so, /usr/local/lib/onnxruntime-ep-tensorrt; the only TensorRT EP, nvidia lanes)",
               "var": "ORT_TENSORRT_EP_COMMIT",
               "url": "https://github.com/onnxruntime/onnxruntime-ep-tensorrt",
+              "license": "MIT; the texts of everything linked into it ship in /usr/local/lib/onnxruntime-ep-tensorrt/licenses",
+              "spdx": "MIT"
+            },
+            {
+              "name": "Protocol Buffers (static, in libonnxruntime_ep_tensorrt.so)",
+              "var": "ORT_TENSORRT_EP_PROTOBUF_VERSION",
+              "url": "https://github.com/protocolbuffers/protobuf",
+              "license": "BSD 3-Clause",
+              "spdx": "BSD-3-Clause"
+            },
+            {
+              "name": "ONNX (static, in libonnxruntime_ep_tensorrt.so; pinned by commit)",
+              "var": "ORT_TENSORRT_EP_ONNX_COMMIT",
+              "url": "https://github.com/onnx/onnx",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "Microsoft GSL (header-only, in libonnxruntime_ep_tensorrt.so)",
+              "var": "ORT_TENSORRT_EP_GSL_VERSION",
+              "url": "https://github.com/microsoft/GSL",
               "license": "MIT",
               "spdx": "MIT"
+            },
+            {
+              "name": "FlatBuffers (static, in libonnxruntime_ep_tensorrt.so)",
+              "var": "ORT_TENSORRT_EP_FLATBUFFERS_VERSION",
+              "url": "https://github.com/google/flatbuffers",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
             },
             {
               "name": "OpenCV",

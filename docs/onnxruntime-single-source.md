@@ -185,7 +185,9 @@ selector and `_deps` pruning. Directory-name sharing does not widen exemptions.
 | AMD GPU plugin EP (`migraphx-ep.dll`) | Windows rocm spike | built against the image's ORT | G2 in phase 5 |
 | Qualcomm plugin QNN EP (`libonnxruntime_providers_qnn.so`) | Linux arm64 | `36-build-qnn-plugin-ep.sh`: Qualcomm's ORT fork built with `--ort_home` over the chain prefix, no ORT core of its own | a chain root in the census, not a G2 consumer ([why](#a-plugin-ep-built-from-an-ort-fork-is-a-chain-root)) |
 | Qualcomm plugin QNN EP (`onnxruntime_providers_qnn.dll`) | Windows amd64 and arm64 | `Build-OrtQnnEpFromSource.ps1`: the same fork with `-Donnxruntime_ORT_HOME` over the chain's DLLs and import libs, no ORT core of its own (`Get-OrtQnnEpForeignCore`) | a chain root (`C:\temp\ort-qnn-ep-src`) and a chain reference dir (`Get-OrtPluginEpDir`) in the census ([windows-cross-builds.md](windows-cross-builds.md#the-qnn-plugin-ep)) |
-| AMD GPU plugin EP (`libmigraphx-ep.so`) | Linux rocm variant | `35-build-migraphx-plugin-ep.sh`: an imported `onnxruntime::onnxruntime` over the chain's GPU library, every FetchContent seeded from a pinned archive, offline | G2 over the work tree, `CMakeCache.txt`, `build.ninja` and the configure log; census entry `amdgpu-ep` |
+| AMD GPU plugin EP (`libmigraphx-ep.so`) | Linux rocm variant | `35-build-migraphx-plugin-ep.sh`: an imported `onnxruntime::onnxruntime` over the chain's CPU library (the rocm variant has no ORT GPU build), every FetchContent seeded from a pinned archive, offline | G2 over the work tree, `CMakeCache.txt`, `build.ninja` and the configure log; census entry `amdgpu-ep` |
+| CUDA plugin EP (`libonnxruntime_providers_cuda.so`) | Linux nvidia variant | the ORT GPU build itself, with `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON`: chain bytes under the in-tree module's name, told apart by its exports | `assert_onnx_cuda_plugin_ep` after the build, the GPU verify stage, `gpu_cuda_plugin_verdict` in the runtime smoke |
+| TensorRT plugin EP (`libonnxruntime_ep_tensorrt.so`) | Linux nvidia variant with TensorRT | `37-build-tensorrt-plugin-ep.sh`: `ORT_HOME` over the chain GPU prefix, four git dependencies seeded from pinned release archives | G2 (`tensorrt-ep`, both chain prefixes), the census contract row `tensorrt-ep`, `gpu_tensorrt_plugin_verdict` |
 | WebGPU EP | Windows rocm spike | built in-tree into the chain `onnxruntime.dll`, not as a plugin | configure and wheel gates in `Build-OnnxFromSource.ps1` ([`windows-rocm.md` § ONNX Runtime WebGPU EP](windows-rocm.md#onnx-runtime-webgpu-ep-rocm-lane-spike)) |
 | App venv (OrchestrANT) | both | purge every ORT distribution the census names, force-install the chain wheels, then the census check | `ort-venv-census.py` |
 | Consumer CI venvs | both, inside our images | `uv_reconcile_chain_ort` / `Sync-UvChainOnnxRuntime` | census check plus an import proof ([`python-ci.md` § Trap 3](python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi)) |
@@ -462,7 +464,11 @@ its dependencies, its output root listed in `_ORT_CENSUS_REFS` (`check-ort-prove
 with the fork tree in `Get-OrtChainSourceRoot`) so the census reads it as chain bytes, and no wheel, archive or PyPI package of it anywhere. A module that
 needs an `libonnxruntime*` the chain prefix does not hold fails its build (`qnnep_verify_library`).
 The AMD plugin is different: it is a small consumer of ORT's C API with a non-ORT name, so it takes
-the consumer route (G2 + contract).
+the consumer route (G2 + contract). NVIDIA's TensorRT plugin takes the same route under an ORT-looking
+name: `libonnxruntime_ep_tensorrt.so` and its C# package `Microsoft.ML.OnnxRuntime.EP.TensorRT` are
+consumers, which `_ortg_component_name` and the census's `INSTANCE` pattern (`_providers_` only) both
+know; the first in-image build failed its own G2 before that
+([failure-modes](failure-modes.md#a-plugin-module-with-both-exports-fails-its-export-check)).
 
 ## The shared Windows glue
 

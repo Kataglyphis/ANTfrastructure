@@ -9,15 +9,20 @@ t_skip_unless 'strip' command -v strip
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 case "$(uname -m)" in
-  x86_64|amd64) variant=amd; provider=migraphx ;;
-  aarch64|arm64) variant=nvidia; provider=cuda ;;
+  x86_64|amd64) variant=amd; engine=libmigraphx-ep.so ;;
+  aarch64|arm64) variant=nvidia; engine=libonnxruntime_providers_cuda.so ;;
   *) echo 'SKIP: GPU AppImages support x64 and arm64 only'; exit 0 ;;
 esac
-mkdir -p "$work/fixture/usr/lib/engine" "$work/fixture/usr/share/licenses/onnxruntime" "$work/wheels"
+mkdir -p "$work/fixture/usr/lib/engine" "$work/fixture/usr/share/licenses/onnxruntime" "$work/wheels" "$work/ep root/lib"
 printf 'int fixture(void) { return 17; }\n' > "$work/fixture.c"
-for name in libonnxruntime.so.1 libonnxruntime_providers_shared.so "libonnxruntime_providers_${provider}.so"; do
-  cc -shared -fPIC -g "$work/fixture.c" -o "$work/fixture/usr/lib/engine/$name" || exit 1
+# The plugin module carries ORT's two plugin entry points; the AMD verdict reads them.
+printf 'int CreateEpFactories(void) { return 0; }\nint ReleaseEpFactory(void) { return 0; }\n' > "$work/plugin.c"
+for name in libonnxruntime.so.1 libonnxruntime_providers_shared.so "$engine"; do
+  src="$work/fixture.c"; [ "$name" != libmigraphx-ep.so ] || src="$work/plugin.c"
+  cc -shared -fPIC -g "$src" -o "$work/fixture/usr/lib/engine/$name" || exit 1
 done
+cp "$work/fixture/usr/lib/engine/libmigraphx-ep.so" "$work/ep root/lib/" 2>/dev/null || true
+export ORT_AMDGPU_EP_ROOT="$work/ep root"
 printf 'license\n' > "$work/fixture/usr/share/licenses/onnxruntime/LICENSE"
 printf 'notices\n' > "$work/fixture/usr/share/licenses/onnxruntime/ThirdPartyNotices.txt"
 python3 - "$work" <<'PY'
@@ -44,23 +49,27 @@ IMAGE
 chmod +x "$work/image"
 export FIXTURE_ROOT="$work/fixture" ORT_CHAIN_WHEEL_DIR="$work/wheels"
 check() { bash "$verifier" "$work/image" "$(uname -m)" usr/lib/engine usr/share/licenses/onnxruntime "$variant"; }
-t_case 'finished AppImage binaries and both original texts match one wheel'
+t_case 'finished AppImage binaries and both original texts match one wheel (the AMD plugin module the image copy)'
 t_assert_ok check
+if [ "$variant" = amd ]; then
+  t_assert_contains "$(check)" 'PASS: finished AppImage ORT payload and notices match one GPU wheel (migraphx)'
+  t_assert_contains "$(ORT_AMDGPU_EP_ROOT="$work/nowhere" check 2>&1)" "is not the image's" 'a plugin module no image copy vouches for fails'
+fi
 t_case 'a changed or stripped provider fails even when stripping the wheel would match it'
-cp "$work/fixture/usr/lib/engine/libonnxruntime_providers_${provider}.so" "$work/provider"
-strip --strip-all "$work/fixture/usr/lib/engine/libonnxruntime_providers_${provider}.so"
+cp "$work/fixture/usr/lib/engine/${engine}" "$work/provider"
+strip --strip-all "$work/fixture/usr/lib/engine/${engine}"
 t_assert_fails check
-cp "$work/provider" "$work/fixture/usr/lib/engine/libonnxruntime_providers_${provider}.so"
-printf x >> "$work/fixture/usr/lib/engine/libonnxruntime_providers_${provider}.so"
+cp "$work/provider" "$work/fixture/usr/lib/engine/${engine}"
+printf x >> "$work/fixture/usr/lib/engine/${engine}"
 t_assert_fails check
-cp "$work/provider" "$work/fixture/usr/lib/engine/libonnxruntime_providers_${provider}.so"
+cp "$work/provider" "$work/fixture/usr/lib/engine/${engine}"
 t_case 'missing provider, altered notice and unsupported variants fail'
-mv "$work/fixture/usr/lib/engine/libonnxruntime_providers_${provider}.so" "$work/missing"
+mv "$work/fixture/usr/lib/engine/${engine}" "$work/missing"
 t_assert_fails check
-ln -s libonnxruntime_providers_shared.so "$work/fixture/usr/lib/engine/libonnxruntime_providers_${provider}.so"
+ln -s libonnxruntime_providers_shared.so "$work/fixture/usr/lib/engine/${engine}"
 t_assert_fails check
-rm "$work/fixture/usr/lib/engine/libonnxruntime_providers_${provider}.so"
-mv "$work/missing" "$work/fixture/usr/lib/engine/libonnxruntime_providers_${provider}.so"
+rm "$work/fixture/usr/lib/engine/${engine}"
+mv "$work/missing" "$work/fixture/usr/lib/engine/${engine}"
 t_case 'a versioned core symlink works, but a core alias to a provider fails'
 cp "$work/fixture/usr/lib/engine/libonnxruntime.so.1" "$work/fixture/usr/lib/engine/libonnxruntime.so.1.2.3"
 rm "$work/fixture/usr/lib/engine/libonnxruntime.so.1"

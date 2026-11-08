@@ -1,21 +1,11 @@
 #!/usr/bin/env bash
 # 36-build-qnn-plugin-ep.sh's pins, skip tree, ORT home shim, library verdict, the verify stages, the census root and the Dockerfile wiring; no download, no compiler, no device.
 set -u
-TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
+EP_SCRIPT=36-build-qnn-plugin-ep.sh
+# shellcheck source=plugin-ep-fixture.sh
+source "$(dirname "${BASH_SOURCE[0]}")/plugin-ep-fixture.sh"
 BUILD="${TESTS_DIR}/../03-media/build/onnxruntime/build"
-EP="${BUILD}/36-build-qnn-plugin-ep.sh"
-VERIFY="${TESTS_DIR}/../03-media/runtime/verify-media-artifacts.sh"
 DF="${TESTS_DIR}/../../Dockerfile.media"
-_T="$(mktemp -d)"
-trap 'rm -rf "${_T}"' EXIT
-# shellcheck source=../03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh
-source "${EP}"
-# The build scripts turn errexit on when sourced; the harness counts failures itself.
-set +e
-# shellcheck source=../01-core/load-versions-env.sh
-source "${TESTS_DIR}/../01-core/load-versions-env.sh"
-load_versions_env "${TESTS_DIR}/../01-core/versions.env"
 
 t_case "the plugin comes from the pinned fork tag, never a prebuilt wheel or archive"
 t_assert_eq "https://github.com/onnxruntime/onnxruntime-qnn/archive/refs/tags/v2.7.0.tar.gz" "$(qnnep_source_url 2.7.0)"
@@ -83,9 +73,9 @@ t_case "the CPU prefix refuses an in-tree QNN provider; the plugin stage checks 
 mkdir -p "${_T}/cpu/lib" "${_T}/cpu/include/onnxruntime/core/session"; printf 'x' > "${_T}/cpu/lib/libonnxruntime.so.1.31.1"; printf 'x' > "${_T}/cpu/include/onnxruntime/core/session/onnxruntime_c_api.h"
 t_assert_ok bash "${VERIFY}" onnxruntime-cpu "${_T}/cpu"
 printf 'x' > "${_T}/cpu/lib/libonnxruntime_providers_qnn.so"
-_out="$(bash "${VERIFY}" onnxruntime-cpu "${_T}/cpu" 2>&1)"; _rc=$?
+_verify onnxruntime-cpu "${_T}/cpu"
 t_assert_eq 1 "${_rc}" "an in-tree provider in the CPU prefix fails the stage"
-t_assert_contains "${_out}" "the QNN EP ships as the plugin in /usr/local/lib/onnxruntime-ep-qnn"
+t_assert_contains "${_out}" "libonnxruntime_providers_qnn.so in cpu: that EP ships as the plugin in /usr/local/lib/onnxruntime-ep-qnn"
 mkdir -p "${_T}/qnn/lib" "${_T}/qnn/licenses/onnxruntime-qnn" "${_T}/qnn/licenses/qairt"
 printf 'x' > "${_T}/qnn/lib/libonnxruntime_providers_qnn.so"; printf 'x' > "${_T}/qnn/lib/libQnnHtp.so"; printf 'v\n' > "${_T}/qnn/provenance.txt"
 printf 'MIT\n' > "${_T}/qnn/licenses/onnxruntime-qnn/LICENSE"; printf 'EULA\n' > "${_T}/qnn/licenses/qairt/LICENSE.pdf"
@@ -93,13 +83,13 @@ _out="$(PATH="${_T}/bin:${PATH}" FAKE_EXPORTS='CreateEpFactories@@VERS_1.0 Relea
 t_assert_eq 0 "${_rc}" "${_out}"
 t_assert_contains "${_out}" "plugin QNN EP exports ReleaseEpFactory"
 t_assert_contains "${_out}" "QAIRT HTP backend beside the plugin"
-_out="$(PATH="${_T}/bin:${PATH}" FAKE_EXPORTS='CreateEpFactories' TARGET_ARCH=arm64 bash "${VERIFY}" onnxruntime-ep-qnn "${_T}/qnn" 2>&1)"; _rc=$?
+PATH="${_T}/bin:${PATH}" FAKE_EXPORTS='CreateEpFactories' TARGET_ARCH=arm64 _verify onnxruntime-ep-qnn "${_T}/qnn"
 t_assert_eq 1 "${_rc}" "a module without ReleaseEpFactory fails the stage"
 mkdir -p "${_T}/empty"
-_out="$(TARGET_ARCH=arm64 bash "${VERIFY}" onnxruntime-ep-qnn "${_T}/empty" 2>&1)"; _rc=$?
+TARGET_ARCH=arm64 _verify onnxruntime-ep-qnn "${_T}/empty"
 t_assert_eq 1 "${_rc}" "arm64 without the plugin fails"
 t_assert_contains "${_out}" "arm64 builds the plugin QNN EP, but"
-_out="$(TARGET_ARCH=amd64 bash "${VERIFY}" onnxruntime-ep-qnn "${_T}/empty" 2>&1)"; _rc=$?
+TARGET_ARCH=amd64 _verify onnxruntime-ep-qnn "${_T}/empty"
 t_assert_eq 0 "${_rc}" "amd64 skips"
 t_assert_contains "${_out}" "SKIP [onnxruntime-ep-qnn]"
 

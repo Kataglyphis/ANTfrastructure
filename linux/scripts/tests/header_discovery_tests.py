@@ -18,8 +18,8 @@ SCRIPTS = Path(sys.argv.pop(1)).resolve()
 SUBJECTS = {
     "litert": ("03-media/build/litert/build-litert.sh", "_install_manual_flatbuffers"),
     "ort": (
-        "03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
-        "init_nvidia_defaults",
+        "03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
+        "trtep_tensorrt_header",
     ),
 }
 

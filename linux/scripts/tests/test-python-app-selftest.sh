@@ -48,4 +48,11 @@ t_assert_ok python3 "${SELFTEST}" --require-provider MIGraphXExecutionProvider -
 t_assert_contains "$(t_out python3 "${SELFTEST}" --require-provider MIGraphXExecutionProvider -- python3 "${W}/app.py" "${W}/fallback.out" 0)" 'did not activate MIGraphXExecutionProvider'
 t_assert_contains "$(t_out python3 "${SELFTEST}" --require-provider MIGraphXExecutionProvider -- python3 "${W}/app.py" "${W}/good.out" 0)" 'did not activate MIGraphXExecutionProvider'
 
+t_case "a plugin EP is required as registered, since onnxruntime's available list never names it"
+printf '{\n  "ok": true,\n  "available_providers": ["CPUExecutionProvider"],\n  "registered_plugin_eps": ["MIGraphX"],\n  "providers": ["MIGraphX", "CPUExecutionProvider"]\n}\n' > "${_work}/plugin.out"
+t_assert_ok python3 "${SELFTEST}" --require-registered-plugin MIGraphX -- python3 "${W}/app.py" "${W}/plugin.out" 0
+t_assert_ok python3 "${SELFTEST}" --require-registered-plugin MIGraphX --require-provider MIGraphX -- python3 "${W}/app.py" "${W}/plugin.out" 0
+t_assert_contains "$(t_out python3 "${SELFTEST}" --require-registered-plugin MIGraphX -- python3 "${W}/app.py" "${W}/gpu.out" 0)" 'did not register the plugin EP MIGraphX'
+t_assert_contains "$(t_out python3 "${SELFTEST}" --require-available-provider MIGraphX -- python3 "${W}/app.py" "${W}/plugin.out" 0)" 'did not list MIGraphX as available' "the old flag cannot stand in for registration"
+
 t_summary

@@ -34,8 +34,8 @@ while [ "$#" -gt 0 ]; do
       echo "  all         Run every step (default)"
       echo ""
       echo "Environment:"
-      echo "  ENABLE_NVIDIA=true   Enable CUDA/TensorRT EPs"
-      echo "  ENABLE_AMD=true      Enable MIGraphX EP"
+      echo "  ENABLE_NVIDIA=true   Build the CUDA plugin EP into the GPU ORT (the TensorRT EP is 37-build-tensorrt-plugin-ep.sh)"
+      echo "  ENABLE_AMD=true      No GPU ORT build; the MIGraphX EP is 35-build-migraphx-plugin-ep.sh"
       echo "  BUILD_GENAI=false    Skip GenAI build"
       exit 0
       ;;
@@ -52,7 +52,8 @@ run_gpu_build_step() {
   if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     bash "${SCRIPT_DIR}/30-build-native-nvidia.sh" "${FORWARDED_ARGS[@]}"
   elif [ "${ENABLE_AMD:-false}" = "true" ]; then
-    bash "${SCRIPT_DIR}/30-build-native-amd.sh" "${FORWARDED_ARGS[@]}"
+    # The rocm image runs the CPU ORT; its MIGraphX EP is AMD's plugin (35-build-migraphx-plugin-ep.sh), not an ORT GPU build.
+    info "Skipping the ONNX Runtime GPU build: the rocm variant's GPU EP is the plugin MIGraphX EP"
   else
     info "Skipping GPU build (ENABLE_NVIDIA=${ENABLE_NVIDIA:-false}, ENABLE_AMD=${ENABLE_AMD:-false})"
   fi

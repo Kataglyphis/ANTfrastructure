@@ -274,6 +274,9 @@ ENV ROCM_PATH=${ROCM_ON:+/opt/rocm} \
     HIP_PATH=${ROCM_ON:+/opt/rocm}
 # AMD's plugin MIGraphX EP; a consumer registers ${ORT_AMDGPU_EP_ROOT}/lib/libmigraphx-ep.so: docs/consumer-image-contract.md#amds-plugin-migraphx-ep
 ENV ORT_AMDGPU_EP_ROOT=${ROCM_ON:+/usr/local/lib/onnxruntime-ep-amdgpu}
+# NVIDIA's plugin TensorRT EP; a consumer registers ${ORT_TENSORRT_EP_ROOT}/lib/libonnxruntime_ep_tensorrt.so: docs/consumer-image-contract.md#nvidias-plugin-tensorrt-ep
+ARG TRT_ON=${ENABLE_TENSORRT/false/}
+ENV ORT_TENSORRT_EP_ROOT=${TRT_ON:+/usr/local/lib/onnxruntime-ep-tensorrt}
 # arm64 alone builds the plugin QNN EP; the two removals leave QNN_ON non-empty only there.
 ARG QNN_ON1=${TARGETARCH#amd64}
 ARG QNN_ON=${QNN_ON1#riscv64}

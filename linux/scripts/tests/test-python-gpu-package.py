@@ -2,6 +2,7 @@
 """Exercise finished Linux GPU packages against a single wheel-proven bundle."""
 import io
 import json
+import os
 import shutil
 import subprocess
 import tarfile
@@ -12,8 +13,8 @@ from pathlib import Path
 
 VERIFIER = Path(__file__).resolve().parents[1] / "06-packaging/verify-python-gpu-package.py"
 CAPI = Path("runtime/lib/python3.15/site-packages/onnxruntime/capi")
-LIBS = ("libonnxruntime.so.1.31.0", "libonnxruntime_providers_shared.so",
-        "libonnxruntime_providers_cuda.so", "libonnxruntime_providers_tensorrt.so")
+LIBS = ("libonnxruntime.so.1.31.0", "libonnxruntime_providers_shared.so", "libonnxruntime_providers_cuda.so")
+PLUGIN = "libmigraphx-ep.so"
 
 
 class FinishedPackageProof(unittest.TestCase):
@@ -91,7 +92,7 @@ class FinishedPackageProof(unittest.TestCase):
 
     def test_valid_and_mutated_finished_formats(self) -> None:
         for kind in ("tar", "deb", "appimage"):
-            for mutation in ("valid", "missing-cuda", "missing-tensorrt", "altered-cuda", "altered-tensorrt", "extra", "metadata", "linked"):
+            for mutation in ("valid", "missing-cuda", "altered-cuda", "extra", "metadata", "linked"):
                 with self.subTest(kind=kind, mutation=mutation):
                     result = self.verify(kind, mutation)
                     self.assertEqual(result.returncode == 0, mutation == "valid", result.stdout + result.stderr)
@@ -112,6 +113,58 @@ class FinishedPackageProof(unittest.TestCase):
 
     def test_source_provider_modified_after_wheel_build_rejected(self) -> None:
         (self.bundle / CAPI / LIBS[-1]).write_bytes((self.bundle / CAPI / LIBS[0]).read_bytes())
+        self.assertNotEqual(self.verify("tar", "valid").returncode, 0)
+
+
+class PluginMigraphxPackageProof(FinishedPackageProof):
+    """An AMD bundle carries the CPU core and the image's plugin MIGraphX EP; the wheel proves the core, the image copy the plugin."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        for name in LIBS[1:]:
+            (self.bundle / CAPI / name).unlink()
+        elf = b"\x7fELF\x02\x01" + bytes(12) + b"\x3e\x00" + bytes(64)
+        (self.bundle / CAPI / PLUGIN).write_bytes(elf + b"\x09")
+        self.ep_root = self.root / "ep root"
+        (self.ep_root / "lib").mkdir(parents=True)
+        shutil.copy(self.bundle / CAPI / PLUGIN, self.ep_root / "lib" / PLUGIN)
+        (self.bundle / "bundle.json").write_text(json.dumps({"required_provider": "MIGraphX", "host_gpu_sonames": ["libmigraphx_c.so.3"]}))
+        with zipfile.ZipFile(self.wheels / "onnxruntime_gpu-1.0-py3-none-any.whl", "w") as wheel:
+            wheel.write(self.bundle / CAPI / LIBS[0], f"onnxruntime/capi/{LIBS[0]}")
+            wheel.writestr("onnxruntime/LICENSE", "test license")
+            wheel.writestr("onnxruntime/ThirdPartyNotices.txt", "test notices")
+
+    def verify(self, kind: str, mutation: str) -> subprocess.CompletedProcess[str]:
+        artifact, prefix = self.package(kind, mutation)
+        env = {**os.environ, "ORT_AMDGPU_EP_ROOT": str(self.ep_root)}
+        return subprocess.run(["python3", str(VERIFIER), "--bundle", str(self.bundle), "--wheel-dir", str(self.wheels),
+                               "--artifact", str(artifact), "--prefix", prefix], check=False, capture_output=True, text=True, env=env)
+
+    def test_valid_and_mutated_finished_formats(self) -> None:
+        for kind in ("tar", "deb", "appimage"):
+            for mutation in ("valid", "metadata"):
+                with self.subTest(kind=kind, mutation=mutation):
+                    result = self.verify(kind, mutation)
+                    self.assertEqual(result.returncode == 0, mutation == "valid", result.stdout + result.stderr)
+
+    def test_plugin_module_must_match_the_image(self) -> None:
+        (self.ep_root / "lib" / PLUGIN).write_bytes(b"other build")
+        result = self.verify("tar", "valid")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("is not the image's plugin MIGraphX EP", result.stderr)
+
+    def test_missing_plugin_module_rejected(self) -> None:
+        (self.bundle / CAPI / PLUGIN).unlink()
+        self.assertNotEqual(self.verify("tar", "valid").returncode, 0)
+
+    def test_duplicate_archive_provider_rejected(self) -> None:
+        self.skipTest("the duplicate fixture names the CUDA provider")
+
+    def test_source_provider_not_in_wheel_rejected(self) -> None:
+        self.skipTest("a rogue provider beside the plugin is the parent class's case")
+
+    def test_source_provider_modified_after_wheel_build_rejected(self) -> None:
+        (self.bundle / CAPI / PLUGIN).write_bytes(b"changed after the proof")
         self.assertNotEqual(self.verify("tar", "valid").returncode, 0)
 
 

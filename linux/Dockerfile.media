@@ -226,14 +226,13 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
-    if [ "${ENABLE_NVIDIA}" = "true" ] || [ "${ENABLE_AMD}" = "true" ]; then \
-        bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step gpu; \
-        bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-gpu; \
-    else echo "Skipping ONNX GPU build (ENABLE_NVIDIA=${ENABLE_NVIDIA:-false}, ENABLE_AMD=${ENABLE_AMD:-false})"; fi; \
+    if [ "${ENABLE_NVIDIA}" = "true" ]; then bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step gpu; \
+        bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-gpu; else echo "Skipping ONNX GPU build (ENABLE_NVIDIA=${ENABLE_NVIDIA:-false})"; fi; \
     bash /opt/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh build; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-ep-amdgpu; \
     bash /opt/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh build; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-ep-qnn; \
+    bash /opt/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh build; bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-ep-tensorrt; \
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
 # The patches mount carries the riscv64 target_platform patch (docs/gen1-riscv64-genai.md).
@@ -885,6 +884,7 @@ ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
 COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-gpu
 COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-ep-amdgpu /usr/local/lib/onnxruntime-ep-amdgpu
 COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-ep-qnn /usr/local/lib/onnxruntime-ep-qnn
+COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-ep-tensorrt /usr/local/lib/onnxruntime-ep-tensorrt
 COPY --link --from=litert ${LITERT_OUTPUT_DIR}/wheels /opt/litert-wheels
 COPY --link --from=litert /usr/local/lib/litert-web /usr/local/lib/litert-web
 COPY --link --from=litert /usr/local/lib/litert-lm-web /usr/local/lib/litert-lm-web

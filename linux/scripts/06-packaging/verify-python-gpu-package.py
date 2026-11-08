@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Prove a finished Python GPU package preserves one wheel's ORT provider set."""
+"""Prove a finished Python GPU package preserves its bundle's ORT engine set: one wheel's providers, or the image's plugin MIGraphX EP."""
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -14,7 +15,18 @@ from pathlib import Path, PurePosixPath
 from typing import IO
 
 PROVIDER = re.compile(r"libonnxruntime_providers_[A-Za-z0-9_]+\.so(?:\.[0-9]+)*\Z")
-KINDS = {"CUDAExecutionProvider": "cuda", "MIGraphXExecutionProvider": "migraphx"}
+KINDS = {"CUDAExecutionProvider": "cuda", "MIGraphX": "migraphx"}
+PLUGIN_MODULE = "libmigraphx-ep.so"
+REQUIRED = {"cuda": {"libonnxruntime_providers_shared.so", "libonnxruntime_providers_cuda.so"}, "migraphx": {PLUGIN_MODULE}}
+
+
+def is_engine(name: str) -> bool:
+    """An ORT provider file or the plugin MIGraphX EP beside the core."""
+    return name.startswith("libonnxruntime_providers_") or name == PLUGIN_MODULE
+
+
+def image_plugin_module() -> Path:
+    return Path(os.environ.get("ORT_AMDGPU_EP_ROOT") or "/usr/local/lib/onnxruntime-ep-amdgpu") / "lib" / PLUGIN_MODULE
 
 
 def sha(stream: IO[bytes]) -> tuple[str, int]:
@@ -43,12 +55,12 @@ def source_libraries(root: Path, kind: str) -> tuple[Path, list[Path], set[str]]
     if len(capis) != 1 or not capis[0].is_dir() or not capis[0].resolve().is_relative_to(root):
         raise ValueError("GPU bundle must contain exactly one in-bundle ORT capi directory")
     capi = capis[0]
-    candidates = [p for p in capi.iterdir() if p.name.startswith("libonnxruntime_providers_")]
-    if any(not PROVIDER.fullmatch(p.name) for p in candidates):
+    candidates = [p for p in capi.iterdir() if is_engine(p.name)]
+    if any(p.name != PLUGIN_MODULE and not PROVIDER.fullmatch(p.name) for p in candidates):
         raise ValueError("invalid ORT provider filename")
     providers = {p.name for p in candidates}
-    if not {"libonnxruntime_providers_shared.so", f"libonnxruntime_providers_{kind}.so"} <= providers:
-        raise ValueError("required ORT provider or shared bridge is missing")
+    if not REQUIRED[kind] <= providers:
+        raise ValueError("required ORT GPU EP module or shared bridge is missing")
     cores = list(capi.glob("libonnxruntime.so.*"))
     if len(cores) != 1:
         raise ValueError("GPU bundle must contain exactly one ORT core")
@@ -82,6 +94,16 @@ def source_inventory(bundle: Path) -> tuple[Path, dict[str, tuple[str, int]], se
     return capi, hashes, providers
 
 
+def prove_plugin(capi: Path) -> None:
+    """The bundled plugin MIGraphX EP is byte for byte the image's module; no wheel carries it."""
+    bundled = capi / PLUGIN_MODULE
+    if not bundled.exists():
+        return
+    with bundled.open("rb") as stream, image_plugin_module().open("rb") as image:
+        if sha(stream) != sha(image):
+            raise ValueError(f"{bundled} is not the image's plugin MIGraphX EP")
+
+
 def prove_wheel(capi: Path, wheels: Path, scratch: Path) -> None:
     libraries = sorted(capi.glob("libonnxruntime.so.*")) + sorted(capi.glob("libonnxruntime_providers_*.so*"))
     command = [sys.executable, str(Path(__file__).with_name("stage-ort-wheel-licenses.py")),
@@ -109,7 +131,7 @@ def check_tar_member(archive: tarfile.TarFile, entry: tarfile.TarInfo, targets: 
         raise ValueError(f"linked or non-directory package parent: {name}")
     if name.startswith(provider_dir) and "/" not in name[len(provider_dir):]:
         base = name[len(provider_dir):]
-        if base.startswith("libonnxruntime_providers_"):
+        if is_engine(base):
             if base in actual_providers:
                 raise ValueError(f"duplicate provider: {name}")
             actual_providers.add(base)
@@ -142,7 +164,7 @@ def check_directory(root: Path, prefix: str, expected: dict[str, tuple[str, int]
     provider_dir = base / capi
     if not provider_dir.is_dir() or not provider_dir.resolve().is_relative_to(root):
         raise ValueError("AppImage ORT directory is missing or escapes its root")
-    actual = {p.name for p in provider_dir.iterdir() if p.name.startswith("libonnxruntime_providers_")}
+    actual = {p.name for p in provider_dir.iterdir() if is_engine(p.name)}
     if actual != providers:
         raise ValueError("AppImage has a different ORT provider set")
     for relative, wanted in expected.items():
@@ -195,6 +217,7 @@ def main() -> int:
         capi, hashes, providers = source_inventory(args.bundle)
         with tempfile.TemporaryDirectory(prefix="python-gpu-wheel-") as temporary:
             prove_wheel(capi, args.wheel_dir, Path(temporary))
+        prove_plugin(capi)
         capi_relative = capi.relative_to(args.bundle.resolve()).as_posix()
         check_artifact(args.artifact, prefix, hashes, providers, capi_relative)
         _, after, after_providers = source_inventory(args.bundle)

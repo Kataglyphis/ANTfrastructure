@@ -65,7 +65,7 @@ t_case "a pushed artifact uses its immutable pin"
 t_assert_eq 'IMAGE <repo@sha256:fixture> ARGS <existing>' "$(_artifact_args repo@sha256:fixture)"
 t_case "an unpinned artifact retains the original mutable reference"
 t_assert_eq 'IMAGE <mutable/arm64> ARGS <existing>' "$(_artifact_args '')"
-for _site in '30-build-native.sh cpu' '30-build-native-amd.sh gpu' '30-build-native-nvidia.sh gpu'; do
+for _site in '30-build-native.sh cpu' '30-build-native-nvidia.sh gpu'; do
   read -r _file _mode <<< "${_site}"
   t_assert_contains "$(cat "${ORT}/${_file}")" "install_onnx_native_dependencies ${_mode}"
 done

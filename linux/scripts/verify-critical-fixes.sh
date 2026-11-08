@@ -338,6 +338,7 @@ F11_GATE_CALLS=(
   "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh|ort_assert_chain_only"
   "linux/scripts/03-media/verify-genai-ort.sh|ort_assert_chain_only"
   "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh|ort_assert_chain_only"
+  "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh|ort_assert_chain_only"
   "linux/scripts/03-media/build/opencv/build-opencv.sh|opencv_ort_assert_configure"
   "linux/scripts/03-media/build/opencv/build-opencv.sh|opencv_ort_assert_installed"
   "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh|ffmpeg_ort_link_findings"

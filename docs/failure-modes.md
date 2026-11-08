@@ -2817,6 +2817,23 @@ native exit used to throw before the gate kept the output. `Assert-GstOnnxInfere
 keeps it and, on a failure, reruns the frames without `onnxinference`, the full pipeline with
 `ORC_CODE=backup` and with `GST_DEBUG=onnx*:6`, so the next device run names the failing
 element. The cause is open until that run.
+### A plugin module with both exports fails its export check
+
+**Symptom.** `ERROR: …/libonnxruntime_ep_tensorrt.so does not export CreateEpFactories` (and
+`ReleaseEpFactory`) from `plugin_ep_exports_ok` or the verify stage, while `readelf --dyn-syms`
+on the same file lists both. The MIGraphX and QNN plugins pass the same check.
+
+**Cause.** `readelf … | grep -qE ' CreateEpFactories…$'` under `set -o pipefail`. `grep -q` exits at
+its first match; `readelf` is still writing the rest of ~4000 dynamic symbols into a closed pipe,
+dies of SIGPIPE (141), and `pipefail` makes the pipeline fail. The small plugins have a few hundred
+symbols, so `readelf` finishes before `grep` closes the pipe and the trap never fires (shell safety
+class 2, the `printf | grep -q` form).
+
+**Fix.** `plugin_ep_module_has_export` (`plugin-ep-exports.sh`, the one probe the plugin builds and the verify stage share) reads the whole table:
+`grep -E … >/dev/null`, never `grep -q`. The suites hold it with a `readelf` stand-in that names the
+first export early and then writes 200 000 lines; the recipes `onnx-ep-amdgpu.exports-grep-reads-whole-table`
+and `onnx-ep-tensorrt.verify-exports-grep-reads-whole-table` prove the stand-in bites.
+
 ## The docs lock check asks for setuptools
 
 **Symptom.** `docs/uv.lock is missing or stale`, right after `Failed to build sphinx-kataglyphis-theme`,

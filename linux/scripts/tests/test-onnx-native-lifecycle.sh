@@ -6,16 +6,14 @@ source "${TESTS_DIR}/test-harness.sh"
 ORT="${TESTS_DIR}/../03-media/build/onnxruntime/build"
 COMMON="${1:-${ORT}/lib/common.sh}"
 CPU="${2:-${ORT}/30-build-native.sh}"
-AMD="${3:-${ORT}/30-build-native-amd.sh}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 for helper in run_onnx_native_build collect_onnx_native_wheels; do
   if grep -Eq "^${helper}\(\)" "${COMMON}"; then eval "$(t_fn_src "${COMMON}" "${helper}")"; fi
 done
-for backend in cpu amd; do
-  script="${CPU}"
-  [ "${backend}" != amd ] || script="${AMD}"
-  python3 - "${script}" "${WORK}/${backend}.sh" <<'PY'
+backend=cpu
+script="${CPU}"
+python3 - "${script}" "${WORK}/${backend}.sh" <<'PY'
 import sys
 from pathlib import Path
 
@@ -25,11 +23,10 @@ start = min(text.index(marker) for marker in starts if marker in text)
 end = text.index('copy_onnx_headers_to_output ', start)
 Path(sys.argv[2]).write_text(text[start:end] + '\necho tail-complete\n')
 PY
-done
 t_emit_optional_functions run_onnx_native_build collect_onnx_native_wheels > "${WORK}/runner.sh"
 cat >> "${WORK}/runner.sh" <<'RUNNER'
 WORK="$1"; backend="$2"; cross="$3"; build_rc="$4"; wheels="$5"; collect_rc="$6"
-export NATIVE_CPU_BUILD_DIR="${WORK}/CPU build" NATIVE_GPU_BUILD_DIR="${WORK}/AMD build"
+export NATIVE_CPU_BUILD_DIR="${WORK}/CPU build" NATIVE_GPU_BUILD_DIR="${WORK}/GPU build"
 export NATIVE_CPU_OUTPUT_DIR="${WORK}/output" NATIVE_GPU_OUTPUT_DIR="${WORK}/output"
 export NATIVE_CPU_CONFIG=RelWithDebInfo ORT_SRC_DIR="${WORK}/source tree" HOST_PYTHON='/fixture/python path'
 export BUILD_SH=fixture_build
@@ -69,9 +66,9 @@ run_tail() {
     > "${WORK}/output.txt" 2>&1 || status=$?
   printf '%s' "${status}"
 }
-for backend in cpu amd; do
-  build_tree="${WORK}/CPU build"; wheel_label='ONNX Runtime wheel'; source_label='ONNX Runtime'
-  if [ "${backend}" = amd ]; then build_tree="${WORK}/AMD build"; wheel_label='MIGraphX wheel'; source_label='ONNX Runtime MIGraphX'; fi
+backend=cpu
+build_tree="${WORK}/CPU build"; wheel_label='ONNX Runtime wheel'; source_label='ONNX Runtime'
+{
   for cross in native cross; do
     for result in success failure; do
       t_case "${backend} ${cross}: ${result} build"
@@ -108,5 +105,5 @@ for backend in cpu amd; do
   t_case "${backend}: wheel collection failure remains fatal"
   t_assert_eq 17 "$(run_tail "${backend}" native 0 absent 17)"
   t_assert_rc 1 grep -Eq '^fallback' "${WORK}/calls"
-done
+}
 t_summary

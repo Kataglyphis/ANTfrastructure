@@ -51,14 +51,14 @@ t_assert_eq 0 "$(find "${work}/empty-output" -name '*.tar.gz' | wc -l | tr -d ' 
 mv "${repo}/saved" "${repo}/LICENSE"
 
 t_case 'a GPU bundle cannot be packaged with its provider test disabled'
-printf '{"wheel":"demo-1.2.3-py3-none-any.whl","required_provider":"MIGraphXExecutionProvider"}\n' > "${bundle}/bundle.json"
+printf '{"wheel":"demo-1.2.3-py3-none-any.whl","required_provider":"MIGraphX"}\n' > "${bundle}/bundle.json"
 t_assert_fails package_fixture tar "${work}/gpu-output" "${work}/output" --no-test
-t_assert_contains "$(cat "${work}/output")" 'GPU package must run its MIGraphXExecutionProvider self-test'
+t_assert_contains "$(cat "${work}/output")" 'GPU package must run its MIGraphX self-test'
 
 t_case 'a fake GPU bundle is rejected after writing its distinctly named candidate'
 cat > "${bundle}/bin/demo" <<'SH'
 #!/bin/sh
-printf '{\n  "ok": true,\n  "available_providers": ["MIGraphXExecutionProvider"]\n}\n'
+printf '{\n  "ok": true,\n  "registered_plugin_eps": ["MIGraphX"]\n}\n'
 SH
 chmod +x "${bundle}/bin/demo"
 t_assert_fails package_fixture tar "${work}/gpu-output" "${work}/gpu-proof-output"
@@ -69,15 +69,19 @@ t_case 'hardware validation requires the active provider while a build requires 
 eval "$(t_fn_src "$SUBJECT" prove)" || exit 1
 export SELFTEST=checker
 export RUN_TESTS=true
-export required_provider=MIGraphXExecutionProvider
+eval "$(t_fn_src "${_T_SCRIPTS}/06-packaging/python-app-cli.sh" python_app_provider_requirement)" || exit 1
+export required_provider=MIGraphX
 python3() { printf '%s\n' "$@" > "${work}/provider-args"; }
 info() { :; }
 err() { return 1; }
 PYTHON_APP_REQUIRE_ACTIVE_PROVIDER=false t_assert_ok prove /bundle demo
-t_assert_contains "$(cat "${work}/provider-args")" '--require-available-provider'
+t_assert_contains "$(cat "${work}/provider-args")" '--require-registered-plugin' "a plugin EP is registered, never in onnxruntime's compile-time list"
 t_assert_eq 0 "$(grep -xcF -- '--require-provider' "${work}/provider-args" || true)"
 PYTHON_APP_REQUIRE_ACTIVE_PROVIDER=true t_assert_ok prove /bundle demo
 t_assert_contains "$(cat "${work}/provider-args")" '--require-provider'
+export required_provider=CUDAExecutionProvider
+PYTHON_APP_REQUIRE_ACTIVE_PROVIDER=false t_assert_ok prove /bundle demo
+t_assert_contains "$(cat "${work}/provider-args")" '--require-available-provider' "the CUDA plugin EP stays in the compile-time list and registers on import"
 
 t_case 'AppImage packaging invokes the native verifier on its exact output and license'
 _appimage="$(t_fn_src "$SUBJECT" package_appimage)" || exit 1

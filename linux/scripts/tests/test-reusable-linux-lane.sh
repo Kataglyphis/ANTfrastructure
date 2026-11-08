@@ -179,7 +179,7 @@ cp "${ROOT}/linux/scripts/06-packaging/verify-python-gpu-package.py" "${_pin_dir
 sed -i '/^# PYTHON_APP_GPU_FINISHED_BINARY_API=1$/d' "${_pin_dir}/python-app-package.sh"
 t_assert_fails bash -c 'cd "$1" && bash "$2"' _ "${_work}/pin" "${GPU_PIN}"
 cp "${ROOT}/linux/scripts/06-packaging/python-app-package.sh" "${_pin_dir}/"
-sed -i '/^# PYTHON_APP_OPTIONAL_TENSORRT_HOST_RUNTIME_API=1$/d' "${_pin_dir}/python-app-bundle.sh"
+sed -i '/^# PYTHON_APP_PLUGIN_EP_API=1$/d' "${_pin_dir}/python-app-bundle.sh"
 t_assert_fails bash -c 'cd "$1" && bash "$2"' _ "${_work}/pin" "${GPU_PIN}"
 cp "${ROOT}/linux/scripts/06-packaging/python-app-bundle.sh" "${_pin_dir}/"
 sed -i '/^# ORT_PYTHON_GPU_HOST_IMPORTS_API=1$/d' "${_pin_dir}/ort-runtime-bundle.sh"

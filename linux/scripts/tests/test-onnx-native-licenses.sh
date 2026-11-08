@@ -38,11 +38,9 @@ t_assert_eq 0 "$(t_rc stage_onnx_native_licenses "$source_dir" "${work}/cpu outp
 t_assert_ok cmp "${source_dir}/LICENSE" "${work}/cpu output/licenses/LICENSE"
 t_assert_ok cmp "${source_dir}/ThirdPartyNotices.txt" "${work}/cpu output/licenses/ThirdPartyNotices.txt"
 
-t_case 'the actual CPU and both GPU entries send their own output and checked-out source to the shared finalizer'
+t_case 'the actual CPU and GPU entries send their own output and checked-out source to the shared finalizer'
 t_assert_contains "$(cat "${ORT}/30-build-native.sh")" 'finalize_onnx_native_output "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_CPU_OUTPUT_DIR}" "${ORT_SRC_DIR}"'
-for script in 30-build-native-amd.sh 30-build-native-nvidia.sh; do
-  t_assert_contains "$(cat "${ORT}/${script}")" 'finalize_onnx_native_output "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}"'
-done
+t_assert_contains "$(cat "${ORT}/30-build-native-nvidia.sh")" 'finalize_onnx_native_output "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}"'
 
 for file in LICENSE ThirdPartyNotices.txt; do
   t_case "a missing or empty ${file} fails before publishing symlinks"

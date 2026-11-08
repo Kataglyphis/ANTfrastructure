@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The GPU variants' runtime contract without a GPU: ROCm's roots and toolchain, TensorRT's runtime and the ORT EP that loads it. docs/linux-accelerator-images.md#the-gpu-runtime-gate
+# The GPU variants' runtime contract without a GPU: ROCm's roots and toolchain, TensorRT's runtime, and the plugin EPs (CUDA, TensorRT, MIGraphX, QNN) that load them. docs/linux-accelerator-images.md#the-gpu-runtime-gate
 
 # Sourced by smoke-runtime-image.sh; sets no shell options.
 
@@ -7,6 +7,9 @@
 gpu_runtime_probe_script() {
   cat <<'PROBE'
 set -uo pipefail
+# <module>: how many of ORT's two plugin entry points it exports (a version script may tag them).
+ep_exports() { readelf --dyn-syms -W "$1" 2>/dev/null | grep -cE ' (CreateEpFactories|ReleaseEpFactory)(@@[A-Za-z0-9_.]+)?$'; }
+ep_unresolved() { ldd "$1" 2>/dev/null | awk '$2 == "=>" && $3 == "not" {print $1}' | tr '\n' ' '; }
 printf 'GPUR ENABLE %s %s %s\n' "${ENABLE_NVIDIA:-false}" "${ENABLE_AMD:-false}" "${ENABLE_TENSORRT:-false}"
 printf 'GPUR ROCM_PATH %s\n' "${ROCM_PATH-<unset>}"
 printf 'GPUR HIP_PATH %s\n' "${HIP_PATH-<unset>}"
@@ -14,15 +17,15 @@ printf 'GPUR MGXEP_ROOT %s\n' "${ORT_AMDGPU_EP_ROOT-<unset>}"
 mgxep="${ORT_AMDGPU_EP_ROOT:-/usr/local/lib/onnxruntime-ep-amdgpu}/lib/libmigraphx-ep.so"
 if [ -f "${mgxep}" ]; then
   echo "GPUR MGXEP_SO ${mgxep}"
-  echo "GPUR MGXEP_EXPORTS $(readelf --dyn-syms -W "${mgxep}" 2>/dev/null | grep -cE ' (CreateEpFactories|ReleaseEpFactory)(@@[A-Za-z0-9_.]+)?$')"
-  echo "GPUR MGXEP_UNRESOLVED $(ldd "${mgxep}" 2>/dev/null | awk '$2 == "=>" && $3 == "not" {print $1}' | tr '\n' ' ')"
+  echo "GPUR MGXEP_EXPORTS $(ep_exports "${mgxep}")"
+  echo "GPUR MGXEP_UNRESOLVED $(ep_unresolved "${mgxep}")"
 else echo "GPUR MGXEP_SO <absent>"; fi
 printf 'GPUR ARCH %s\n' "$(uname -m)"
 printf 'GPUR QNNEP_ROOT %s\n' "${ORT_QNN_EP_ROOT-<unset>}"
 qnnep="${ORT_QNN_EP_ROOT:-/usr/local/lib/onnxruntime-ep-qnn}/lib/libonnxruntime_providers_qnn.so"
 if [ -f "${qnnep}" ]; then
   echo "GPUR QNNEP_SO ${qnnep}"
-  echo "GPUR QNNEP_EXPORTS $(readelf --dyn-syms -W "${qnnep}" 2>/dev/null | grep -cE ' (CreateEpFactories|ReleaseEpFactory)(@@[A-Za-z0-9_.]+)?$')"
+  echo "GPUR QNNEP_EXPORTS $(ep_exports "${qnnep}")"
   echo "GPUR QNNEP_BACKENDS $(find "${qnnep%/*}" -maxdepth 1 -name 'libQnn*.so' -type f 2>/dev/null | wc -l)"
 else echo "GPUR QNNEP_SO <absent>"; fi
 case ":${PATH}:" in *:/opt/rocm/bin:*) echo "GPUR PATHROCM yes" ;; *) echo "GPUR PATHROCM no" ;; esac
@@ -54,11 +57,25 @@ done
 for f in $(command -v trtexec 2>/dev/null) /usr/src/tensorrt/bin/trtexec; do [ -e "${f}" ] && echo "GPUR TRTBIN ${f}"; done
 py="$(/opt/venv/bin/python -I -c 'import importlib.util as u; s = u.find_spec("tensorrt"); print(s.origin if s else "")' 2>/dev/null)"
 [ -z "${py}" ] || echo "GPUR TRTPY ${py}"
-for f in $(find /usr/local/lib/onnxruntime-gpu /opt/venv/lib/python3*/site-packages/onnxruntime -name 'libonnxruntime_providers_tensorrt.so' 2>/dev/null); do
-  echo "GPUR ORTTRT ${f}"
-  ldd "${f}" 2>/dev/null | awk -v f="${f}" '$1 ~ /^lib(nvinfer|nvonnxparser|tensorrt)/ {print "GPUR ORTDEP", f, $1, ($3 == "not" ? "NOTFOUND" : $3)}'
+# The CUDA EP keeps the in-tree file name; only the exports say whether it is the plugin (CreateEpFactories) or the legacy bridge (GetProvider).
+cudaep=/usr/local/lib/onnxruntime-gpu/lib/libonnxruntime_providers_cuda.so
+if [ -f "${cudaep}" ]; then
+  echo "GPUR CUDAEP_SO ${cudaep}"
+  echo "GPUR CUDAEP_EXPORTS $(ep_exports "${cudaep}")"
+  echo "GPUR CUDAEP_BRIDGE $(readelf --dyn-syms -W "${cudaep}" 2>/dev/null | grep -cE ' GetProvider(@@[A-Za-z0-9_.]+)?$')"
+else echo "GPUR CUDAEP_SO <absent>"; fi
+for f in $(find /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-cpu /opt/venv/lib/python3*/site-packages/onnxruntime \( -name 'libonnxruntime_providers_tensorrt.so' -o -name 'libonnxruntime_providers_migraphx.so' \) 2>/dev/null); do
+  echo "GPUR ORTINTREE ${f}"
 done
-echo "GPUR ORTEP $(/opt/venv/bin/python -I -c 'import onnxruntime as o; print(",".join(o.get_available_providers()))' 2>/dev/null || echo '<none>')"
+echo "GPUR ORTBUILD $(/opt/venv/bin/python -I -c 'import onnxruntime as o; print(o.get_build_info())' 2>/dev/null | grep -oE 'cuda-plugin-ep=1' || echo '-')"
+printf 'GPUR TRTEP_ROOT %s\n' "${ORT_TENSORRT_EP_ROOT-<unset>}"
+trtep="${ORT_TENSORRT_EP_ROOT:-/usr/local/lib/onnxruntime-ep-tensorrt}/lib/libonnxruntime_ep_tensorrt.so"
+if [ -f "${trtep}" ]; then
+  echo "GPUR TRTEP_SO ${trtep}"
+  echo "GPUR TRTEP_EXPORTS $(ep_exports "${trtep}")"
+  echo "GPUR TRTEP_UNRESOLVED $(ep_unresolved "${trtep}")"
+  ldd "${trtep}" 2>/dev/null | awk '$1 ~ /^lib(nvinfer|nvonnxparser|tensorrt)/ {print "GPUR TRTEP_DEP", $1, ($3 == "not" ? "NOTFOUND" : $3)}'
+else echo "GPUR TRTEP_SO <absent>"; fi
 PROBE
 }
 
@@ -68,13 +85,6 @@ _gpur() { printf '%s\n' "$1" | sed -n "s/^GPUR $2 //p"; }
 # <probe> <1|2|3>: ENABLE_NVIDIA, ENABLE_AMD or ENABLE_TENSORRT as the image saw it.
 _gpur_on() { _gpur "$1" ENABLE | awk -v i="$2" '{print $i}'; }
 
-# <probe> <provider>: OK or BAD, by onnxruntime's own provider list.
-_gpur_ep() {
-  case ",$(_gpur "$1" ORTEP)," in
-    *,"$2",*) echo "OK onnxruntime lists $2" ;;
-    *) echo "BAD onnxruntime lacks $2: $(_gpur "$1" ORTEP)" ;;
-  esac
-}
 
 # <probe>: a non-rocm image must advertise no ROCm root, PATH entry or plugin EP root.
 _gpu_rocm_absent_verdict() {
@@ -114,7 +124,6 @@ gpu_rocm_verdict() {
     ok) echo "OK hipcc builds a HIP program for gfx1201" ;;
     *) echo "BAD hipcc cannot build a HIP program: $(_gpur "${probe}" HIPCC)" ;;
   esac
-  _gpur_ep "${probe}" MIGraphXExecutionProvider
   gpu_plugin_ep_verdict "${probe}"
 }
 
@@ -131,12 +140,42 @@ _plugin_ep_verdict() {
   else echo "BAD ${so} exports $(_gpur "${probe}" "${k}_EXPORTS") of the 2 plugin entry points"; fi
 }
 
+# <probe> <key> <module>: ldd left nothing unresolved for a native plugin module.
+_plugin_ep_closure_verdict() {
+  if [ -z "$(_gpur "$1" "$2_UNRESOLVED" | tr -d ' ')" ]; then echo "OK $3 resolves every library it needs"
+  else echo "BAD $3 cannot resolve: $(_gpur "$1" "$2_UNRESOLVED")"; fi
+}
 # <probe>: the rocm image ships AMD's plugin MIGraphX EP where ORT_AMDGPU_EP_ROOT says, with its two exports and a resolvable closure.
 gpu_plugin_ep_verdict() {
   local probe="$1"
   _plugin_ep_verdict "${probe}" MGXEP /usr/local/lib/onnxruntime-ep-amdgpu libmigraphx-ep.so ORT_AMDGPU_EP_ROOT "MIGraphX EP" || return 0
-  if [ -z "$(_gpur "${probe}" MGXEP_UNRESOLVED | tr -d ' ')" ]; then echo "OK libmigraphx-ep.so resolves every library it needs"
-  else echo "BAD libmigraphx-ep.so cannot resolve: $(_gpur "${probe}" MGXEP_UNRESOLVED)"; fi
+  _plugin_ep_closure_verdict "${probe}" MGXEP libmigraphx-ep.so
+}
+# <probe>: an nvidia image ships the CUDA EP as the plugin (both entry points, no GetProvider bridge) in a wheel that registers it on import; no image ships an in-tree TensorRT or MIGraphX EP.
+gpu_cuda_plugin_verdict() {
+  local probe="$1" so f
+  so="$(_gpur "${probe}" CUDAEP_SO)"
+  while IFS= read -r f; do [ -z "${f}" ] || echo "BAD an in-tree ORT provider ships: ${f} (the TensorRT and MIGraphX EPs are plugins)"; done <<< "$(_gpur "${probe}" ORTINTREE)"
+  if [ "$(_gpur_on "${probe}" 1)" != true ]; then
+    case "${so}" in ""|"<absent>") echo "OK no CUDA EP in an image without ENABLE_NVIDIA" ;; *) echo "BAD a non-nvidia image ships ${so}" ;; esac
+    return 0
+  fi
+  case "${so}" in ""|"<absent>") echo "BAD ENABLE_NVIDIA=true but the GPU prefix has no libonnxruntime_providers_cuda.so"; return 0 ;; esac
+  if [ "$(_gpur "${probe}" CUDAEP_EXPORTS)" = 2 ] && [ "$(_gpur "${probe}" CUDAEP_BRIDGE)" = 0 ]; then echo "OK ${so} is the plugin CUDA EP (CreateEpFactories and ReleaseEpFactory, no GetProvider)"
+  else echo "BAD ${so} exports $(_gpur "${probe}" CUDAEP_EXPORTS) plugin entry points and $(_gpur "${probe}" CUDAEP_BRIDGE) GetProvider: the legacy CUDA EP, not the plugin"; fi
+  if [ "$(_gpur "${probe}" ORTBUILD)" = "cuda-plugin-ep=1" ]; then echo "OK the venv's onnxruntime was built with the CUDA plugin EP and registers it on import"
+  else echo "BAD the venv's onnxruntime build info lacks cuda-plugin-ep=1; nothing registers the CUDA EP"; fi
+}
+# <probe> <TensorRT major>: the plugin TensorRT EP where ORT_TENSORRT_EP_ROOT says, its exports, a resolvable closure, and TensorRT <major> from the default lib dir.
+gpu_tensorrt_plugin_verdict() {
+  local probe="$1" m="$2" bad
+  _plugin_ep_verdict "${probe}" TRTEP /usr/local/lib/onnxruntime-ep-tensorrt libonnxruntime_ep_tensorrt.so ORT_TENSORRT_EP_ROOT "TensorRT EP" || return 0
+  _plugin_ep_closure_verdict "${probe}" TRTEP libonnxruntime_ep_tensorrt.so
+  bad="$(_gpur "${probe}" TRTEP_DEP | awk -v s=".so.${m}" '
+    $1 ~ /^libtensorrt/ {print; next}
+    substr($1, length($1) - length(s) + 1) != s || $2 !~ /^\/usr\/lib\/[^\/]*-linux-gnu\// {print}')"
+  if [ -z "${bad}" ] && [ -n "$(_gpur "${probe}" TRTEP_DEP)" ]; then echo "OK the plugin TensorRT EP loads TensorRT ${m} from the default lib dir"
+  else echo "BAD the plugin TensorRT EP resolves: $(printf '%s' "${bad:-nothing}" | tr '\n' ';')"; fi
 }
 
 # <probe>: arm64 ships Qualcomm's plugin QNN EP where ORT_QNN_EP_ROOT says, with its exports and QAIRT backends; every other arch neither advertises nor ships it.
@@ -157,14 +196,15 @@ accel_qnn_plugin_verdict() {
 
 # <probe> <TENSORRT_VERSION>: TensorRT's runtime in the default lib dir, nothing else of its SDK, and the EP that loads it.
 gpu_tensorrt_verdict() {
-  local probe="$1" want="$2" m="${2%%.*}" mm pp got r f bad
+  local probe="$1" want="$2" m="${2%%.*}" mm pp got r f
   if [ "$(_gpur_on "${probe}" 3)" != true ]; then
     if _gpur "${probe}" LDSO | awk -v s=".so.${m}" 'substr($1, length($1) - length(s) + 1) == s' | grep -q .; then
       echo "BAD ENABLE_TENSORRT is not true, but the loader resolves TensorRT ${m}"
     else
       echo "OK no TensorRT ${m} in an image without ENABLE_TENSORRT"
     fi
-    [ -z "$(_gpur "${probe}" ORTTRT)" ] || echo "BAD an ORT TensorRT EP ships without TensorRT: $(_gpur "${probe}" ORTTRT | tr '\n' ' ')"
+    case "$(_gpur "${probe}" TRTEP_SO)" in ""|"<absent>") ;; *) echo "BAD a plugin TensorRT EP ships without TensorRT: $(_gpur "${probe}" TRTEP_SO)" ;; esac
+    case "$(_gpur "${probe}" TRTEP_ROOT)" in ""|"<unset>") ;; *) echo "BAD an image without ENABLE_TENSORRT advertises ORT_TENSORRT_EP_ROOT='$(_gpur "${probe}" TRTEP_ROOT)'" ;; esac
     return 0
   fi
   [ -n "${m}" ] || { echo "BAD no TENSORRT_VERSION to check the image against"; return 0; }
@@ -181,14 +221,7 @@ gpu_tensorrt_verdict() {
   else echo "BAD getInferLibVersion() of libnvinfer.so.${m} is '${got}', TENSORRT_VERSION is ${want}"; fi
   if _gpur "${probe}" TRTRES | grep -qF ".so.${m}."; then echo "OK $(_gpur "${probe}" TRTRES | grep -cF ".so.${m}.") builder resources in the default lib dir"
   else echo "BAD no TensorRT ${m} builder resource in the default lib dir; no engine builds"; fi
-  [ "$(_gpur "${probe}" ORTTRT | grep -c .)" -ge 2 ] \
-    || echo "BAD the ORT TensorRT EP is not in both the native tree and the venv: $(_gpur "${probe}" ORTTRT | tr '\n' ' ')"
-  bad="$(_gpur "${probe}" ORTDEP | awk -v s=".so.${m}" '
-    $2 ~ /^libtensorrt/ {print; next}
-    substr($2, length($2) - length(s) + 1) != s || $3 !~ /^\/usr\/lib\/[^\/]*-linux-gnu\// {print}')"
-  if [ -z "${bad}" ] && [ -n "$(_gpur "${probe}" ORTDEP)" ]; then echo "OK the ORT TensorRT EP loads TensorRT ${m} from the default lib dir"
-  else echo "BAD the ORT TensorRT EP resolves: $(printf '%s' "${bad:-nothing}" | tr '\n' ';')"; fi
-  _gpur_ep "${probe}" TensorrtExecutionProvider
+  gpu_tensorrt_plugin_verdict "${probe}" "${m}"
 }
 
 # <probe>: whatever ENABLE_TENSORRT says, no image ships a TensorRT header, dev link, trtexec or Python binding (owner 2026-10-21).
@@ -204,6 +237,7 @@ gpu_runtime_verdict() {
   _gpur "$1" ENABLE | grep -q . || { echo "BAD the GPU probe printed nothing; the container did not run it"; return 0; }
   gpu_rocm_verdict "$1"
   accel_qnn_plugin_verdict "$1"
+  gpu_cuda_plugin_verdict "$1"
   gpu_tensorrt_verdict "$1" "$2"
   gpu_tensorrt_sdk_verdict "$1"
 }

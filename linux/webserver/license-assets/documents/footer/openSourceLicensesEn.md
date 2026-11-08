@@ -47,7 +47,11 @@ its own license terms.
 | LiteRT (TensorFlow Lite) | v2.3.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
 | Qualcomm AI Runtime (QAIRT) Community SDK (arm64: the plugin QNN EP's backends) | 2.51.1.261002 | [softwarecenter.qualcomm.com](https://softwarecenter.qualcomm.com/) | Qualcomm AI Runtime Community License (object-code distribution as part of a product only) |
 | ONNX Runtime plugin EP for Qualcomm QNN (libonnxruntime_providers_qnn.so, /usr/local/lib/onnxruntime-ep-qnn; arm64) | 2.7.0 | [github.com/onnxruntime/onnxruntime-qnn](https://github.com/onnxruntime/onnxruntime-qnn) | MIT; its ThirdPartyNotices.txt ships in /usr/local/lib/onnxruntime-ep-qnn/licenses |
-| ONNX Runtime plugin EP for NVIDIA TensorRT (onnxruntime_ep_tensorrt, beside the in-tree TensorRT EP; nvidia lanes) | 6403f3cefe22c78313df90eca6b01fde54afa1ed | [github.com/onnxruntime/onnxruntime-ep-tensorrt](https://github.com/onnxruntime/onnxruntime-ep-tensorrt) | MIT |
+| ONNX Runtime plugin EP for NVIDIA TensorRT (libonnxruntime_ep_tensorrt.so, /usr/local/lib/onnxruntime-ep-tensorrt; the only TensorRT EP, nvidia lanes) | 6403f3cefe22c78313df90eca6b01fde54afa1ed | [github.com/onnxruntime/onnxruntime-ep-tensorrt](https://github.com/onnxruntime/onnxruntime-ep-tensorrt) | MIT; the texts of everything linked into it ship in /usr/local/lib/onnxruntime-ep-tensorrt/licenses |
+| Protocol Buffers (static, in libonnxruntime_ep_tensorrt.so) | 21.12 | [github.com/protocolbuffers/protobuf](https://github.com/protocolbuffers/protobuf) | BSD 3-Clause |
+| ONNX (static, in libonnxruntime_ep_tensorrt.so; pinned by commit) | e709452ef2bbc1d113faf678c24e6d3467696e83 | [github.com/onnx/onnx](https://github.com/onnx/onnx) | Apache 2.0 |
+| Microsoft GSL (header-only, in libonnxruntime_ep_tensorrt.so) | 4.0.0 | [github.com/microsoft/GSL](https://github.com/microsoft/GSL) | MIT |
+| FlatBuffers (static, in libonnxruntime_ep_tensorrt.so) | 23.5.26 | [github.com/google/flatbuffers](https://github.com/google/flatbuffers) | Apache 2.0 |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
 | GStreamer Rust plugins (gst-plugins-rs) | 1.29.2 | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MPL-2.0 |

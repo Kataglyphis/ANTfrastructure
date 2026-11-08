@@ -128,16 +128,38 @@ report_prefix_sizes() {
   echo "" >&2
 }
 
+# <module> <label>: both entry points ORT's plugin loader calls, through the probe the plugin builds share (every plugin stage runs in the RUN that mounts it).
+verify_plugin_ep_exports() {
+  local so="$1" label="$2" sym
+  # shellcheck source=../build/onnxruntime/build/plugin-ep-exports.sh
+  source "$(dirname "${BASH_SOURCE[0]}")/../build/onnxruntime/build/plugin-ep-exports.sh"
+  for sym in CreateEpFactories ReleaseEpFactory; do
+    if plugin_ep_module_has_export "${so}" "${sym}"; then pass_check "${label} exports ${sym}"
+    else fail_check "${label} does not export ${sym}"; fi
+  done
+}
+
+# <module> <label>: ORT 1.31's in-tree CUDA module exports both plugin entry points too; only its GetProvider bridge tells the legacy EP from the plugin.
+verify_no_legacy_bridge() {
+  if plugin_ep_module_has_export "$1" GetProvider; then fail_check "$2 exports the legacy GetProvider bridge: the in-tree EP, not the plugin"
+  else pass_check "$2 has no GetProvider bridge"; fi
+}
+
+# <prefix> <in-tree module glob> <plugin prefix>: an in-tree provider beside its plugin would be a second EP of the same kind.
+refuse_in_tree_provider() {
+  if find "$1/lib" -maxdepth 1 -name "$2" -print -quit 2>/dev/null | grep -q .; then
+    echo "FAIL [${STAGE}]: ${2%\**} in ${1##*/}: that EP ships as the plugin in $3"
+    exit 1
+  fi
+}
+
 # <prefix> <module> <label>: a plugin EP tree: the module, its provenance and licence texts, and the two exports the loader looks up by name.
 verify_plugin_ep_tree() {
-  local prefix="$1" so="$2" label="$3" sym
+  local prefix="$1" so="$2" label="$3"
   verify_shared_lib "${prefix}/lib" "${so}" "${label}"
   verify_file_nonempty "${prefix}/provenance.txt" "${label} provenance"
   verify_dir_not_empty "${prefix}/licenses" "${label} licence texts"
-  for sym in CreateEpFactories ReleaseEpFactory; do
-    if readelf --dyn-syms -W "${prefix}/lib/${so}" 2>/dev/null | grep -qE " ${sym}(@@[A-Za-z0-9_.]+)?$"; then pass_check "${label} exports ${sym}"
-    else fail_check "${label} does not export ${sym}"; fi
-  done
+  verify_plugin_ep_exports "${prefix}/lib/${so}" "${label}"
 }
 
 case "${STAGE}" in
@@ -147,11 +169,7 @@ case "${STAGE}" in
     verify_shared_lib "${PREFIX}/lib" "libonnxruntime.so*" "libonnxruntime.so"
     verify_dir_not_empty "${PREFIX}/include" "ONNX Runtime CPU include dir"
     verify_file_exists "${PREFIX}/include/onnxruntime/core/session/onnxruntime_c_api.h" "ONNX Runtime C API header"
-    # The QNN EP is the plugin under onnxruntime-ep-qnn; an in-tree provider here would be a second one.
-    if find "${PREFIX}/lib" -maxdepth 1 -name 'libonnxruntime_providers_qnn.so*' -print -quit 2>/dev/null | grep -q .; then
-      echo "FAIL [${STAGE}]: libonnxruntime_providers_qnn.so in the CPU prefix: the QNN EP ships as the plugin in /usr/local/lib/onnxruntime-ep-qnn"
-      exit 1
-    fi
+    refuse_in_tree_provider "${PREFIX}" 'libonnxruntime_providers_qnn.so*' /usr/local/lib/onnxruntime-ep-qnn
     ;;
 
   onnxruntime-genai)
@@ -197,11 +215,14 @@ case "${STAGE}" in
 
   onnxruntime-gpu)
     PREFIX="${PREFIX:-/usr/local/lib/onnxruntime-gpu}"
-    if [ "${ENABLE_NVIDIA:-false}" != "true" ] && [ "${ENABLE_AMD:-false}" != "true" ]; then
-      echo "SKIP [${STAGE}]: GPU disabled"
+    if [ "${ENABLE_NVIDIA:-false}" != "true" ]; then
+      echo "SKIP [${STAGE}]: no ONNX Runtime GPU build (the rocm variant's GPU EP is the plugin MIGraphX EP)"
       exit 0
     fi
     verify_dir_not_empty "${PREFIX}" "ONNX Runtime GPU output dir"
+    verify_plugin_ep_exports "${PREFIX}/lib/libonnxruntime_providers_cuda.so" "CUDA plugin EP"
+    verify_no_legacy_bridge "${PREFIX}/lib/libonnxruntime_providers_cuda.so" "CUDA plugin EP"
+    refuse_in_tree_provider "${PREFIX}" 'libonnxruntime_providers_tensorrt.so*' /usr/local/lib/onnxruntime-ep-tensorrt
     ;;
 
   onnxruntime-ep-amdgpu)
@@ -223,6 +244,16 @@ case "${STAGE}" in
     verify_plugin_ep_tree "${PREFIX}" libonnxruntime_providers_qnn.so "plugin QNN EP"
     verify_shared_lib "${PREFIX}/lib" 'libQnnHtp.so' "QAIRT HTP backend beside the plugin"
     verify_dir_not_empty "${PREFIX}/licenses/qairt" "QAIRT licence text"
+    ;;
+
+  onnxruntime-ep-tensorrt)
+    PREFIX="${PREFIX:-/usr/local/lib/onnxruntime-ep-tensorrt}"
+    if [ "${ENABLE_NVIDIA:-false}" != "true" ] || [ "${ENABLE_TENSORRT:-true}" = "false" ]; then
+      echo "SKIP [${STAGE}]: no plugin TensorRT EP (ENABLE_NVIDIA=${ENABLE_NVIDIA:-false}, ENABLE_TENSORRT=${ENABLE_TENSORRT:-true})"
+      exit 0
+    fi
+    verify_plugin_ep_tree "${PREFIX}" libonnxruntime_ep_tensorrt.so "plugin TensorRT EP"
+    verify_dir_not_empty "${PREFIX}/licenses/protobuf" "protobuf licence text beside the plugin"
     ;;
 
   onnxruntime-pkgconfig)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Build ONNX Runtime with the CUDA, TensorRT and cuDNN execution providers.
+# Build ONNX Runtime with the CUDA EP as a plugin EP (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN); the TensorRT EP is the standalone plugin of 37-build-tensorrt-plugin-ep.sh.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
@@ -13,59 +13,18 @@ init_nvidia_defaults() {
 
   CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
 
-  TENSORRT_HOME="${TENSORRT_HOME:-/usr/local/tensorrt}"
-  if [ ! -d "${TENSORRT_HOME}" ] || [ ! -f "${TENSORRT_HOME}/include/NvInfer.h" ]; then
-    if ! declare -F first_match_using >/dev/null; then
-      printf 'ERROR: TensorRT header discovery requires first_match_using from guard-helpers.sh\n' >&2
-      exit 1
-    fi
-    TRT_INC=$(
-      _ort_trt_header_caller_argv=("$@")
-      _ort_trt_header_find() {
-        local -a _ort_trt_header_exec_argv=("$@")
-        set -- "${_ort_trt_header_caller_argv[@]}"
-        find "${_ort_trt_header_exec_argv[@]}"
-      }
-      first_match_using _ort_trt_header_find /usr/include /usr/local -name "NvInfer.h"
-    )
-    if [ -n "$TRT_INC" ]; then
-      # build.sh wants TENSORRT_HOME/{include,lib}, which the distro packages split, so link a merged tree.
-      mkdir -p /tmp/tensorrt/include /tmp/tensorrt/lib
-      ln -snf "$(dirname "$TRT_INC")"/* /tmp/tensorrt/include/
-      ARCH="$(uname -m)"
-      case "$ARCH" in
-        x86_64) DEB_ARCH="x86_64-linux-gnu" ;;
-        aarch64) DEB_ARCH="aarch64-linux-gnu" ;;
-        *) DEB_ARCH="$ARCH" ;;
-      esac
-      if [ -d "/usr/lib/${DEB_ARCH}" ]; then
-        ln -snf "/usr/lib/${DEB_ARCH}"/libnvinfer* /tmp/tensorrt/lib/ 2>/dev/null || true
-      fi
-      ln -snf /usr/lib/libnvinfer* /tmp/tensorrt/lib/ 2>/dev/null || true
-      TENSORRT_HOME="/tmp/tensorrt"
-    else
-      for candidate in /usr /usr/local; do
-        if [ -f "${candidate}/include/NvInfer.h" ]; then
-          TENSORRT_HOME="${candidate}"
-          break
-        fi
-      done
-    fi
-  fi
-
   # cuDNN: usually ships as part of CUDA or in /usr/lib/x86_64-linux-gnu
   CUDNN_HOME="${CUDNN_HOME:-${CUDA_HOME}}"
 
   NATIVE_GPU_BUILD_DIR="${NATIVE_GPU_BUILD_DIR:-${ORT_SRC_DIR}/build_native_gpu}"
 }
 
-# A CUDA cross target (gpu stage, CROSS_NVIDIA_SBSA=1): the target's TensorRT and cuDNN roots, nvcc's -ccbin and -target-dir.
+# A CUDA cross target (gpu stage, CROSS_NVIDIA_SBSA=1): the target's cuDNN root, nvcc's -ccbin and -target-dir.
 enter_nvidia_cross_env() {
   cross_build_is_active || return 0
   setup_linux_cross_env
   cuda_cross_active || err "cross build with ENABLE_NVIDIA=true, but the base image has no CUDA cross target ($(cuda_cross_env_file)); build the gpu stage with CROSS_NVIDIA_SBSA=1"
   cuda_cross_load || err "cuda_cross_load failed"
-  TENSORRT_HOME="${CUDA_CROSS_TENSORRT_HOME}"
   CUDNN_HOME="${CUDA_CROSS_CUDNN_HOME}"
   # ORT's cuDNN.cmake takes HINTS from CUDNN_PATH; the host's /usr/include/x86_64-linux-gnu must never win the probe.
   export CUDNN_PATH="${CUDA_CROSS_CUDNN_HOME}"
@@ -77,6 +36,16 @@ parse_nvidia_args() {
   init_nvidia_defaults
 }
 
+# <output dir>: the shipped CUDA module is the plugin (both entry points, no GetProvider bridge) and no in-tree TensorRT EP came with it.
+assert_onnx_cuda_plugin_ep() {
+  local so="$1/lib/libonnxruntime_providers_cuda.so" syms
+  [ -f "${so}" ] || err "the GPU build produced no ${so}"
+  syms="$(readelf --dyn-syms -W "${so}" 2>/dev/null | awk '{print $NF}' | grep -xE 'CreateEpFactories|ReleaseEpFactory|GetProvider' | sort -u | tr '\n' ' ')"
+  [ "${syms}" = "CreateEpFactories ReleaseEpFactory " ] || err "${so} exports '${syms}', not the plugin EP's two entry points (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON did not take)"
+  ! compgen -G "$1/lib/libonnxruntime_providers_tensorrt.so*" >/dev/null \
+    || err "the GPU build still produced an in-tree TensorRT EP; the TensorRT EP is the plugin of 37-build-tensorrt-plugin-ep.sh"
+  info "CUDA EP is the plugin EP: ${so} exports CreateEpFactories and ReleaseEpFactory"
+}
 parse_nvidia_args "$@"
 
 # A CUDA job runs one cicc per nvcc thread; see docs/failure-modes.md § A CUDA compile is `Killed` though average memory looked fine
@@ -96,18 +65,6 @@ if [ ! -x "${CUDA_HOME}/bin/nvcc" ]; then
 fi
 CUDA_VERSION_FULL="$("${CUDA_HOME}/bin/nvcc" --version | awk '/release/ {gsub(/,/,""); print $5; exit}')"
 info "CUDA version: ${CUDA_VERSION_FULL}"
-
-# TensorRT is required unless ENABLE_TENSORRT=false, which a CUDA+cuDNN image without it (Jetson) sets.
-_ORT_USE_TENSORRT=1
-if [ "${ENABLE_TENSORRT:-true}" = "false" ]; then
-  _ORT_USE_TENSORRT=0
-  info "ENABLE_TENSORRT=false — building the ONNX Runtime CUDA EP WITHOUT TensorRT"
-elif [ ! -f "${TENSORRT_HOME}/include/NvInfer.h" ]; then
-  err "TensorRT headers not found at ${TENSORRT_HOME}/include/NvInfer.h. \
-Set TENSORRT_HOME to your TensorRT installation, or pass ENABLE_TENSORRT=false to \
-build the CUDA EP without it."
-fi
-[ "${_ORT_USE_TENSORRT}" = "1" ] && info "TensorRT home: ${TENSORRT_HOME}"
 
 CUDNN_H=""
 for candidate in \
@@ -146,7 +103,7 @@ BUILD_SH="${ORT_SRC_DIR}/build.sh"
 [[ -x "${BUILD_SH}" ]] || err "build.sh not found at ${BUILD_SH}"
 apply_ort_gpu_source_patches
 
-info ">>> Native GPU build (CUDA+TensorRT+cuDNN): ${NATIVE_CPU_CONFIG} (${JOBS} parallel jobs)"
+info ">>> Native GPU build (CUDA plugin EP + cuDNN): ${NATIVE_CPU_CONFIG} (${JOBS} parallel jobs)"
 info "Using Python: ${HOST_PYTHON}"
 info "NumPy version: $(${HOST_PYTHON} -c 'import numpy; print(numpy.__version__)')"
 
@@ -158,25 +115,19 @@ ONNX_CUDA_ARCHS="${CUDA_ARCHITECTURES:-75;86;87;89;120}"
 BUILD_ARGS=()
 _ort_cuda_cross_defines=()
 append_onnx_native_base_build_args BUILD_ARGS "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${JOBS}"
+# The plugin build writes the same libonnxruntime_providers_cuda.so name; only its exports (CreateEpFactories, no GetProvider) tell them apart: docs/linux-accelerator-images.md#the-cuda-plugin-ep
 BUILD_ARGS+=(
   --use_cuda
   --cuda_home          "${CUDA_HOME}"
   --cudnn_home         "${CUDNN_HOME}"
   --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${ONNX_CUDA_ARCHS}"
+  --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
 )
 # The GPU wheel follows the CPU build's rule (cross only with the target's Python dev files), plus nvcc's cross defines.
 append_onnx_wheel_mode_args BUILD_ARGS
 if cuda_cross_active; then
   append_cmake_cuda_cross_args _ort_cuda_cross_defines
   BUILD_ARGS+=(--cmake_extra_defines "${_ort_cuda_cross_defines[@]#-D}")
-fi
-# --use_full_protobuf travels WITH the TensorRT EP: it is the TRT EP that needs it.
-if [ "${_ORT_USE_TENSORRT}" = "1" ]; then
-  BUILD_ARGS+=(
-    --use_tensorrt
-    --use_full_protobuf
-    --tensorrt_home    "${TENSORRT_HOME}"
-  )
 fi
 BUILD_ARGS+=(--use_xnnpack)
 
@@ -198,6 +149,7 @@ collect_wheels_from_tree "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_GPU_OUTPUT_DIR}" "G
 copy_onnx_headers_to_output "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIVE_GPU_BUILD_DIR}"
 finalize_onnx_native_output "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}"
 
+assert_onnx_cuda_plugin_ep "${NATIVE_GPU_OUTPUT_DIR}"
 report_onnx_build_output "GPU build complete" "${NATIVE_GPU_OUTPUT_DIR}"
 
 # Last, so every GIL output above is final before the tree is reconfigured.

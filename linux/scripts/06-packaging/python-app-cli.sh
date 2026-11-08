@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# <provider>: the self-test flag a GPU requirement takes; a plugin EP (MIGraphX) is registered, never in onnxruntime's compile-time list.
+python_app_provider_requirement() {
+  case "$1" in MIGraphX) printf -- '--require-registered-plugin' ;; *) printf -- '--require-available-provider' ;; esac
+}
+
 # Both package drivers keep their defaults; this parser only writes options the selected driver accepts.
 parse_python_app_args() {
   local mode="$1" variable

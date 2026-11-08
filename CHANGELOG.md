@@ -13,6 +13,30 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-08 — Linux: the CUDA EP is the plugin, the TensorRT EP NVIDIA's plugin, the in-tree TensorRT and MIGraphX EPs are gone (CON233, CON231 step 3)
+
+- Owner decision (second of the day): "sofort komplett, inklusive Entfernen" on both lanes. The nvidia ORT GPU build
+  passes `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON` and no `--use_tensorrt`; `assert_onnx_cuda_plugin_ep` fails a module
+  that still exports `GetProvider` (the in-tree module exports the two plugin entry points too, so only the bridge
+  tells) or an in-tree TensorRT EP beside it, the GPU verify stage repeats both, and the
+  runtime smoke's `gpu_cuda_plugin_verdict` also wants `cuda-plugin-ep=1` in the venv wheel's build info.
+- `37-build-tensorrt-plugin-ep.sh` builds NVIDIA's plugin TensorRT EP at `ORT_TENSORRT_EP_COMMIT` with its four git
+  dependencies seeded from pinned release archives (`ORT_TENSORRT_EP_{PROTOBUF,ONNX,GSL,FLATBUFFERS}_*`), an `ORT_HOME`
+  shim over the chain GPU prefix and a `TENSORRT_HOME` tree over the apt runtime; it ships at
+  `/usr/local/lib/onnxruntime-ep-tensorrt` with `ORT_TENSORRT_EP_ROOT`, G2-stamped, in the census contract, verified by
+  its media stage and by `gpu_tensorrt_plugin_verdict`. Four in-image runs found and fixed: the seed gate lower-cased the
+  repository too, `grep -q` on a 4000-symbol module killed `readelf` under `pipefail`, G2 read the module and its C#
+  package as ORT, and a bare verify call had no `TENSORRT_VERSION`.
+- The rocm variant: `30-build-native-amd.sh`, `--use_migraphx`, the `onnxruntime-migraphx` wheel and patches 003/004 are
+  gone; the plugin MIGraphX EP builds over the CPU prefix, the wrapper takes the CPU `onnxruntime` wheel, and an image
+  with `libonnxruntime_providers_migraphx.so` fails its runtime smoke.
+- Packaging: `stage_ort_runtime amd` stages the plugin module from `ORT_AMDGPU_EP_ROOT`; Python AMD bundles copy it beside
+  the chain core, prove it against the image's copy and require `MIGraphX` in the self-test's `registered_plugin_eps`
+  (`--require-registered-plugin`); the venv TensorRT provider and its optional host imports are gone
+  (`# PYTHON_APP_PLUGIN_EP_API=1` replaces the TensorRT marker; `python-ci-linux.yml` checks it and passes `MIGraphX`).
+- Suites: `test-tensorrt-plugin-ep.sh` (new), and the GPU runtime, G2, census, bundle, AppImage, package and self-test
+  suites moved with the code; 29 recipes in the `onnx-ep-tensorrt`, `gpu-runtime`, `provenance` and `packaging` families.
+
 ## 2026-11-08 — every ORT EP with a plugin moves to it, consumers first (owner directive)
 
 - Owner decision: every ONNX Runtime EP that has a plugin moves to the plugin system on both lanes, at its newest
