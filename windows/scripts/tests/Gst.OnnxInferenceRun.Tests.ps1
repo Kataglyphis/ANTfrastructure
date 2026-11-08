@@ -28,6 +28,18 @@ exit ([int]$env:FAKE_GST_EXIT)
             Remove-TestDir $dir
         }
     }
+
+    It 'bisects a failed run: the frames alone, ORC off and the onnx log, then restores the environment (mutation)' {
+        $crash = "if (-not (`$args -contains 'onnxinference')) { exit 0 }`nif (`$env:ORC_CODE -eq 'backup') { 'orc off'; exit 0 }`n`"gst said `$(`$env:GST_DEBUG)`"; exit 7"
+        Invoke-InTestDir -Files @{ 'crash.ps1' = $crash } -Body {
+            param($root)
+            $why = try { Assert-GstOnnxInferenceRun -GstLaunch (Join-Path $root 'crash.ps1') -WorkDir (Join-Path $root 'diag'); '' } catch { "$_" }
+            foreach ($expect in 'without onnxinference: exit 0', 'ORC_CODE=backup: exit 0\s+orc off', 'GST_DEBUG=onnx\*:6: exit 7\s+gst said onnx\*:6') {
+                Assert-Match "diagnosis, $expect" $why "the bisect reports '$expect'"
+            }
+            Assert-True ($null -eq $env:ORC_CODE -and $null -eq $env:GST_DEBUG) 'the probes restore the environment'
+        }
+    }
 }
 
 Describe 'onnxinference wiring' {

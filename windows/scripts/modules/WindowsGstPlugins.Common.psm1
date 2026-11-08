@@ -14,6 +14,10 @@ if (Test-Path $gstTargetArchPath) {
            'Get-RequiredGstPlugin filters the contract per target arch and cannot answer correctly ' +
            'without it. Add WindowsTargetArch.Common.psm1 to the COPY list that carries this module.')
 }
+# Invoke-WithProcessEnvironment runs the onnxinference probes; the merge stage and the image carry it beside this file.
+$gstSharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
+if (-not (Test-Path -LiteralPath $gstSharedPath -PathType Leaf)) { throw "WindowsGstPlugins.Common: required sibling module not found at $gstSharedPath" }
+Import-Module $gstSharedPath -ErrorAction Stop
 
 # Keep one private template so callers cannot alter the next build or smoke gate's contract.
 $script:RequiredGstPluginContract = @(
@@ -508,9 +512,41 @@ function Assert-GstOnnxInferenceRun {
     $modelInfo = @('[modelinfo]', 'version=1.0', 'group-id=smoke', '', '[x]', 'id=smoke-in', 'type=uint8', 'dims=1,48,64,3', 'dir=input', 'ranges=0.0,255.0', '',
         '[y]', 'id=smoke-out', 'type=float32', 'dims=1,1,1,1', 'dir=output', '') -join "`n"
     [IO.File]::WriteAllText("$model.modelinfo", $modelInfo, [Text.UTF8Encoding]::new($false))
-    $global:LASTEXITCODE = 0
-    $output = & $GstLaunch videotestsrc num-buffers=3 ! videoconvert ! videoscale ! 'video/x-raw,format=RGB,width=64,height=48' ! onnxinference "model-file=$($model.Replace('\', '/'))" ! fakesink 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) { throw "onnxinference did not run real frames (exit $LASTEXITCODE): $output" }
+    # One argument per word, as gst-launch parses them; the model path is one argument, spaces and all.
+    $frames = 'videotestsrc num-buffers=3 ! videoconvert ! videoscale ! video/x-raw,format=RGB,width=64,height=48' -split ' '
+    $full = $frames + ('! onnxinference' -split ' ') + "model-file=$($model.Replace('\', '/'))" + ('! fakesink' -split ' ')
+    $run = Invoke-GstLaunchProbe -GstLaunch $GstLaunch -Pipeline $full
+    if ($run.ExitCode -ne 0) {
+        throw "onnxinference did not run real frames (exit $($run.ExitCode)): $($run.Output)`n$(Get-GstOnnxInferenceDiagnosis -GstLaunch $GstLaunch -Frames $frames -Full $full)"
+    }
+}
+
+function Invoke-GstLaunchProbe {
+    # Exit code and output of one run: a crash must not take the output that names its cause with it.
+    param([Parameter(Mandatory)][string]$GstLaunch, [Parameter(Mandatory)][string[]]$Pipeline, [System.Collections.IDictionary]$Environment = @{})
+    $launch = {
+        # Inside the block: it runs in Invoke-WithProcessEnvironment's scope, not this function's.
+        $PSNativeCommandUseErrorActionPreference = $false
+        $global:LASTEXITCODE = 0
+        $text = & $GstLaunch @Pipeline 2>&1 | Out-String
+        [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $text.Trim() }
+    }
+    return Invoke-WithProcessEnvironment -Environment $Environment -ScriptBlock $launch
+}
+
+function Get-GstOnnxInferenceDiagnosis {
+    # A failed run bisected where it failed: the frames alone, ORC's JIT off, and the onnx element's own log.
+    param([Parameter(Mandatory)][string]$GstLaunch, [Parameter(Mandatory)][string[]]$Frames, [Parameter(Mandatory)][string[]]$Full)
+    $probes = [ordered]@{
+        'without onnxinference' = @{ Pipeline = $Frames + @('!', 'fakesink'); Environment = @{} }
+        'ORC_CODE=backup'       = @{ Pipeline = $Full; Environment = @{ ORC_CODE = 'backup' } }
+        'GST_DEBUG=onnx*:6'     = @{ Pipeline = $Full; Environment = @{ GST_DEBUG = 'onnx*:6,GST_PLUGIN_LOADING:4' } }
+    }
+    $report = foreach ($label in $probes.Keys) {
+        $probe = Invoke-GstLaunchProbe -GstLaunch $GstLaunch -Pipeline $probes[$label].Pipeline -Environment $probes[$label].Environment
+        "  diagnosis, ${label}: exit $($probe.ExitCode)`n    $((@($probe.Output -split '\r?\n') | Select-Object -Last 12) -join "`n    ")"
+    }
+    return $report -join "`n"
 }
 
 Export-ModuleMember -Function Assert-GstOnnxInferenceRun, Get-RequiredGstPlugin, Write-PkgConfigFile,

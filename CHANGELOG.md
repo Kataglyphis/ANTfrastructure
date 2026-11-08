@@ -13,6 +13,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-08 — the ARM64 device gate's two red steps (issue 236)
+
+- IREE's cross `cp3XYt` twin re-enabled the GIL on the device (`first by iree._runtime_libs._runtime`):
+  FindPython runs no interpreter on the cross lane, `Python_SOABI` stayed empty, and nanobind configured
+  without free-threading. The twin passes `Python_SOABI=cp3XYt-<tag>` (`Get-IreeTwinSoabi`) and
+  `Assert-IreeTwinFreeThreadedNanobind` fails a configure without a `nanobind-static-*-ft` library.
+- `onnxinference` exits `0xC0000005` on the device, and the gate lost the output to PowerShell's native-exit
+  error. `Assert-GstOnnxInferenceRun` keeps it and bisects a failure (frames alone, `ORC_CODE=backup`,
+  `GST_DEBUG=onnx*:6`), restoring the environment after each probe. The crash itself stays open until a device run.
+- `SourceBuild.IreeTwin.Tests.ps1` and `Gst.OnnxInferenceRun.Tests.ps1` gain the cases, with five new recipes
+  ([failure-modes.md](docs/failure-modes.md#the-gil-was-re-enabled-first-by-iree_runtime_libs_runtime-on-an-arm64-device)).
+
 ## 2026-11-08 — Windows builds the QNN plugin EP in the ORT RUN (CON232)
 
 - Windows amd64 and arm64 build Qualcomm's plugin EP from the pinned fork, as the `QNN plugin EP` stage of the ORT

@@ -22,19 +22,38 @@ Describe 'IREE v3.13.0 twin on clang-cl' {
         }
     }
 
-    It 'names the staged stable-ABI library for both FindPython prefixes, and only when it exists (mutation)' {
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/build/Build-IreeFromSource.ps1' -FunctionName 'Get-IreeFreeThreadedCmakeArgs')
+    It 'names the staged stable-ABI library for both FindPython prefixes when it exists, and the cross SOABI on request (mutation)' {
+        $twinArgs = Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/build/Build-IreeFromSource.ps1' -FunctionName @('Get-IreeFreeThreadedCmakeArgs', 'Get-IreeTwinSoabi')
+        . $twinArgs
         Invoke-InTestDir -Files @{ 'libs/python315t.lib' = 'x'; 'libs/python3t.lib' = 'x'; 'bare/python315t.lib' = 'x' } -Body {
             param($d)
             $python = @{ Exe = 'C:\v\python.exe'; Include = 'C:\i'; Lib = (Join-Path $d 'libs/python315t.lib') }
             $stable = (Join-Path $d 'libs/python3t.lib') -replace '\\', '/'
             $named = @(Get-IreeFreeThreadedCmakeArgs -CmakeExtra @('-DX=1') -Python $python -NumPyIncludeDir 'C:/n')
             foreach ($prefix in 'Python3', 'Python') { Assert-True ("-D${prefix}_SABI_LIBRARY=$stable" -in $named) "$prefix gets python3t.lib" }
+            Assert-Equal 0 @($named | Where-Object { $_ -match '_SOABI=' }).Count 'the native lane leaves SOABI to FindPython'
+            $soabi = Get-IreeTwinSoabi -Lib $python.Lib -WheelTag 'win_arm64'
+            Assert-Equal 'cp315t-win_arm64' $soabi 'the target import library names the SOABI'
+            $cross = @(Get-IreeFreeThreadedCmakeArgs -CmakeExtra @('-DX=1') -Python $python -NumPyIncludeDir 'C:/n' -Soabi $soabi)
+            foreach ($prefix in 'Python3', 'Python') { Assert-True ("-D${prefix}_SOABI=cp315t-win_arm64" -in $cross) "$prefix gets the SOABI, so nanobind configures free-threaded" }
+            Assert-Throws { Get-IreeTwinSoabi -Lib (Join-Path $d 'libs/python315.lib') -WheelTag 'win_arm64' } 'a GIL library' -MessagePattern 'is not a python3XYt\.lib'
             $python.Lib = Join-Path $d 'bare/python315t.lib'
             $bare = @(Get-IreeFreeThreadedCmakeArgs -CmakeExtra @('-DX=1') -Python $python -NumPyIncludeDir 'C:/n')
             Assert-Equal 0 @($bare | Where-Object { $_ -match 'SABI_LIBRARY' }).Count 'an absent library is left to FindPython, whose failure names it'
             Assert-Equal 0 @($bare | Where-Object { [string]::IsNullOrEmpty($_) }).Count 'and leaves no empty configure argument'
         }
+        Assert-Match '(?s)Get-IreeTwinSoabi -Lib \$ftPy\.Lib[^\r\n]*\r?\n\s+\$ftArgs = Get-IreeFreeThreadedCmakeArgs [^\r\n]*-Soabi \$soabi' (Get-Content -Raw -LiteralPath (Join-Path (Get-RepoRoot) 'windows/scripts/build/Build-IreeFromSource.ps1')) 'the twin passes it'
+    }
+
+    It 'fails a twin configure that builds no free-threaded nanobind, the abi3 library''s nb_ft.cpp notwithstanding (mutation)' {
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/build/Build-IreeFromSource.ps1' -FunctionName 'Assert-IreeTwinFreeThreadedNanobind')
+        $edge = 'build runtime/bindings/python/CMakeFiles/nanobind-static-{0}.dir/__/_deps/nanobind-src/src/nb_ft.cpp.obj: CXX_COMPILER'
+        Invoke-InTestDir -Files @{ 'gil/build.ninja' = ($edge -f 'abi3'); 'ft/build.ninja' = ($edge -f 'ft') } -Body {
+            param($root)
+            Assert-Throws { Assert-IreeTwinFreeThreadedNanobind -BuildDir (Join-Path $root 'gil') } 'GIL nanobind' -MessagePattern 'no nanobind-static-\*-ft library'
+            Assert-IreeTwinFreeThreadedNanobind -BuildDir (Join-Path $root 'ft')
+        }
+        Assert-Match '(?s)Add-IreeTwinFreeThreadedDefine -BuildDir \$BuildDir\s+\}\s+Assert-IreeTwinFreeThreadedNanobind -BuildDir \$BuildDir' (Get-Content -Raw -LiteralPath (Join-Path (Get-RepoRoot) 'windows/scripts/build/Build-IreeFromSource.ps1')) 'every twin gates it after configure'
     }
 
     It 'points every IREE genrule at the configured Python and refuses another bare shape (mutation)' {

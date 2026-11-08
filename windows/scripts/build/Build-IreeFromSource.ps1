@@ -99,7 +99,9 @@ function Edit-IreeCleanEggInfo {
 
 # The configure args for the cp3XYt twins: the GIL pass's, Python pointed at the free-threaded venv, and no abi3, which X.Yt cannot load.
 function Get-IreeFreeThreadedCmakeArgs {
-    param([Parameter(Mandatory)][string[]]$CmakeExtra, [Parameter(Mandatory)][hashtable]$Python, [Parameter(Mandatory)][string]$NumPyIncludeDir)
+    param([Parameter(Mandatory)][string[]]$CmakeExtra, [Parameter(Mandatory)][hashtable]$Python, [Parameter(Mandatory)][string]$NumPyIncludeDir,
+        # The cross lane's: FindPython runs no interpreter there, and nanobind reads free-threading from SOABI's trailing t.
+        [string]$Soabi = '')
     # Upstream turns abi3 on unless SOABI starts cpython-NNt, which Windows' cpXYt-win_amd64 never does (CMakeLists.txt:782-791).
     $abi3Off = @('-DIREE_ENABLE_PYTHON_STABLE_ABI=OFF', '-DMLIR_ENABLE_PYTHON_STABLE_ABI=OFF')
     # FindPython's search can miss a staged python3t.lib on the cross lane, so a present library is named outright; see docs/windows-builds.md.
@@ -108,7 +110,25 @@ function Get-IreeFreeThreadedCmakeArgs {
     # nanobind caches the GIL pass's .cpXY-win_amd64.pyd suffix, which X.Yt never imports; -U makes it ask the venv again.
     return @($CmakeExtra | Where-Object { $_ -notmatch '^-DPython3?_(EXECUTABLE|INCLUDE_DIR|LIBRARY|NumPy_INCLUDE_DIR)=' }) +
         @(Get-PythonCMakeHintArgs -Python $Python -Prefix @('Python3', 'Python') -ForwardSlash -NumPyIncludeDir $NumPyIncludeDir) +
-        $stableAbi + $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')
+        $stableAbi + $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S') + @(if ($Soabi) { "-DPython3_SOABI=$Soabi", "-DPython_SOABI=$Soabi" })
+}
+
+# The cp3XYt-<tag> SOABI of the target's free-threaded CPython, from its import library's name.
+function Get-IreeTwinSoabi {
+    param([Parameter(Mandatory)][string]$Lib, [Parameter(Mandatory)][string]$WheelTag)
+    # Split by hand: on Linux pwsh, where the twin's tests run, a backslash is no separator.
+    $leaf = ($Lib -split '[\\/]')[-1]
+    if ($leaf -notmatch '^python(\d{3,})t\.lib$') { throw "the free-threaded import library $Lib is not a python3XYt.lib, so the twin's SOABI is unknown" }
+    return "cp$($Matches[1])t-$WheelTag"
+}
+
+# NB_FREE_THREADED=0 builds nanobind without nb_ft.cpp and a module without Py_mod_gil, so the GIL comes back at import.
+function Assert-IreeTwinFreeThreadedNanobind {
+    param([Parameter(Mandatory)][string]$BuildDir)
+    # The library name, not nb_ft.cpp: the GIL pass's abi3 library compiles that file too.
+    if (-not (Select-String -LiteralPath (Join-Path $BuildDir 'build.ninja') -Pattern 'nanobind-static(-[a-z0-9]+)*-ft[\\/.]' -Quiet)) {
+        throw 'IREE twin: build.ninja builds no nanobind-static-*-ft library, so nanobind configured without free-threading and the module re-enables the GIL'
+    }
 }
 
 function Add-IreeNinjaTuFlag {
@@ -157,12 +177,14 @@ function Invoke-IreeFreeThreadedTwin {
     )
     $ftPy = New-FreeThreadedBuildPython -GilPython $GilPython -VenvDir $VenvDir -Package pip, wheel, setuptools, numpy
     $numpyInc = (Invoke-ShieldedNative -Label 'numpy include probe (free-threaded)' -CommandLine """$($ftPy.Exe)"" -c ""import numpy; print(numpy.get_include())""" | Select-Object -Last 1)
-    $ftArgs = Get-IreeFreeThreadedCmakeArgs -CmakeExtra $CmakeExtra -Python $ftPy -NumPyIncludeDir $numpyInc
+    $soabi = if ($Cross) { Get-IreeTwinSoabi -Lib $ftPy.Lib -WheelTag (Get-WindowsTargetArchInfo -Arch (Get-WindowsTargetArch)).PythonWheelTag } else { '' }
+    $ftArgs = Get-IreeFreeThreadedCmakeArgs -CmakeExtra $CmakeExtra -Python $ftPy -NumPyIncludeDir $numpyInc -Soabi $soabi
     Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $BuildDir -InstallPrefix $InstallDir -ExtraArgs $ftArgs | Out-Null
     if ($Cross) {
         Update-IreeCrossNinjaFile -BuildDir $BuildDir
         Add-IreeTwinFreeThreadedDefine -BuildDir $BuildDir
     }
+    Assert-IreeTwinFreeThreadedNanobind -BuildDir $BuildDir
     [void](Assert-NinjaFreeThreadedDefine -BuildDir $BuildDir -Label 'IREE')
     # The GIL pass's abi3 modules (bare _runtime.pyd) are no output now; left in place, the twin would pack them (measured 2026-10-07).
     [void](Invoke-ShieldedNative -Label 'ninja -t cleandead (GIL-only outputs)' -CommandLine "ninja -C ""$BuildDir"" -t cleandead")

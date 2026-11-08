@@ -171,6 +171,8 @@ Two neighbours, so you land on the right page:
 - [`static_assert failed: 'unexpected size'` from `std::find` under clang-cl](#static_assert-failed-unexpected-size-from-stdfind-under-clang-cl)
 - [A Windows test exits `0xC0000005` with no gtest line and no dump](#a-windows-test-exits-0xc0000005-with-no-gtest-line-and-no-dump)
 - [A smoke check fails and names no finding](#a-smoke-check-fails-and-names-no-finding)
+- [`the GIL was re-enabled, first by iree._runtime_libs._runtime` on an ARM64 device](#the-gil-was-re-enabled-first-by-iree_runtime_libs_runtime-on-an-arm64-device)
+- [`onnxinference` exits `0xC0000005` on an ARM64 device](#onnxinference-exits-0xc0000005-on-an-arm64-device)
 
 
 ---
@@ -2799,6 +2801,22 @@ PowerShell's empty result; bound to `Assert-Test -Finding`, that becomes `$null`
 `Assert-Test` treats a `$null` finding list as empty, and a finding list built from `if`/`else` is wrapped in
 `@()` around the whole statement. `Smoke.FindingVerdict.Tests.ps1` and `lib.smoke-finding-empty-if-result` hold it.
 
+### `the GIL was re-enabled, first by iree._runtime_libs._runtime` on an ARM64 device
+
+The ARM64 bundle's free-threaded step loads every `cp3XYt` twin with the GIL off. IREE's cross twin
+configured nanobind without free-threading: FindPython runs no interpreter on the cross lane, so
+`Python_SOABI` stayed empty and nanobind's `NB_ABI` had no trailing `t`. The twin now passes
+`Python_SOABI` and fails its configure without a `nanobind-static-*-ft` library
+([windows-builds.md](windows-builds.md#the-free-threaded-wheels) has the measurements).
+
+### `onnxinference` exits `0xC0000005` on an ARM64 device
+
+`Program "gst-launch-1.0.exe" ended with non-zero exit code: -1073741819`, 0.1 s into the bundle
+gate's onnxinference step, while the DirectML MatMul step runs the same chain ORT from Python. A
+native exit used to throw before the gate kept the output. `Assert-GstOnnxInferenceRun` now
+keeps it and, on a failure, reruns the frames without `onnxinference`, the full pipeline with
+`ORC_CODE=backup` and with `GST_DEBUG=onnx*:6`, so the next device run names the failing
+element. The cause is open until that run.
 ## The docs lock check asks for setuptools
 
 **Symptom.** `docs/uv.lock is missing or stale`, right after `Failed to build sphinx-kataglyphis-theme`,

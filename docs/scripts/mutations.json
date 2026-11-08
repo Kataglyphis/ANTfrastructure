@@ -32393,6 +32393,30 @@
   "why": "the arm64 twin's configure stopped on missing Python3_SABI_LIBRARIES with python3t.lib staged"
  },
  {
+  "id": "lib.iree-twin-cross-soabi",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": " + @(if ($Soabi) { \"-DPython3_SOABI=$Soabi\", \"-DPython_SOABI=$Soabi\" })",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTwin.Tests.ps1 -ResultFile logs/code-quality/iree-twin-stable-abi.json",
+  "why": "without the SOABI the cross twin's nanobind configures with the GIL and the module re-enables it on import"
+ },
+ {
+  "id": "lib.iree-twin-nanobind-ft-gated",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "    Assert-IreeTwinFreeThreadedNanobind -BuildDir $BuildDir\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTwin.Tests.ps1 -ResultFile logs/code-quality/iree-twin-stable-abi.json",
+  "why": "a twin whose nanobind is the GIL build would pack and fail only on the device"
+ },
+ {
+  "id": "lib.iree-twin-nanobind-ft-pattern",
+  "target": "windows/scripts/build/Build-IreeFromSource.ps1",
+  "find": "-Pattern 'nanobind-static(-[a-z0-9]+)*-ft[\\\\/.]' -Quiet",
+  "replace": "-Pattern 'nb_ft\\.cpp\\.obj' -Quiet",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTwin.Tests.ps1 -ResultFile logs/code-quality/iree-twin-stable-abi.json",
+  "why": "nb_ft.cpp is in the abi3 library too, so a file-name gate passes a GIL nanobind"
+ },
+ {
   "id": "lib.iree-genrule-python-covers-compiler",
   "target": "windows/scripts/build/Build-IreeFromSource.ps1",
   "find": "foreach ($tree in 'compiler', 'runtime', 'tests', 'samples') {",
@@ -36019,10 +36043,26 @@
  {
   "id": "provenance.onnxinference-exit-ignored",
   "target": "windows/scripts/modules/WindowsGstPlugins.Common.psm1",
-  "find": "if ($LASTEXITCODE -ne 0) { throw \"onnxinference did not run real frames",
-  "replace": "if ($false) { throw \"onnxinference did not run real frames",
+  "find": "    if ($run.ExitCode -ne 0) {",
+  "replace": "    if ($false) {",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Gst.OnnxInferenceRun.Tests.ps1 -ResultFile logs/code-quality/gst-onnxinference-mutation.json",
   "why": "a pipeline that fails must not read as a passed inference"
+ },
+ {
+  "id": "lib.gst-onnx-diagnosis-orc-off",
+  "target": "windows/scripts/modules/WindowsGstPlugins.Common.psm1",
+  "find": "Environment = @{ ORC_CODE = 'backup' }",
+  "replace": "Environment = @{ ORC_CODE = 'jit' }",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Gst.OnnxInferenceRun.Tests.ps1 -ResultFile logs/code-quality/gst-onnxinference-mutation.json",
+  "why": "the ORC probe would run with the JIT on and say nothing about ORC"
+ },
+ {
+  "id": "lib.gst-onnx-probe-restores-env",
+  "target": "windows/scripts/modules/WindowsGstPlugins.Common.psm1",
+  "find": "    return Invoke-WithProcessEnvironment -Environment $Environment -ScriptBlock $launch",
+  "replace": "    foreach ($n in @($Environment.Keys)) { Set-Item -LiteralPath \"Env:$n\" -Value $Environment[$n] }; return & $launch",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Gst.OnnxInferenceRun.Tests.ps1 -ResultFile logs/code-quality/gst-onnxinference-mutation.json",
+  "why": "a probe's ORC_CODE or GST_DEBUG would leak into every later gate step"
  },
  {
   "id": "boot.genai-model-named-for-wheel-smoke",
