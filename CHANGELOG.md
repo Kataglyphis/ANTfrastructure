@@ -13,6 +13,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-09 — correct the Windows cache pin and dated GPU evidence
+
+- The resource guide now describes the pinned hub sccache binary and its source,
+  patch and checksum path, replacing stale instructions for upstream 0.18.0.
+  The #2862 report remains open; #2809 merged on 2026-11-02. Per-stage gaps and
+  the missing CUDA-plugin repeat measurement stay open in CON229.
+- GPU notes distinguish the earlier AMD reference-host result from the native
+  RTX 2080 driver probe of 2026-11-08. Driver discovery, container file checks and
+  actual plugin inference retain separate evidence requirements.
+- The dated ARM64 media/cache result records the final disk-guard refusal; it
+  does not claim final smoke, device acceptance or image publication. README and
+  backlog pointers now lead to the corrected evidence and its limits.
+
 ## 2026-11-08 — accept a Windows ARM64 image by digest before changing its tag
 
 - The ARM64 workflow accepts an optional lowercase SHA256 digest. Both container

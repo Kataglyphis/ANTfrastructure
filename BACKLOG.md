@@ -1058,7 +1058,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       plugin build, the in-tree TensorRT EP is gone, and `Build-OrtTensorRtEpFromSource.ps1` builds the TensorRT plugin
       with SHA256-pinned seeds ([windows-cross-builds.md](docs/windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps)).
       **Open on Windows:** an nvidia chain build to prove both compile and stage; registration and inference on an NVIDIA
-      host (this one has none); consumers registering both plugins through the step-3 helpers.
+      host; consumers registering both plugins through the step-3 helpers. The 2026-11-08 goal-host probe initializes an
+      RTX 2080 (SM 7.5, driver API 13.5), but does not load or run the built plugins. Container file smokes do not prove
+      native CUDA execution ([host and runtime limits](docs/windows-build-resources.md#gpu-acceleration-in-containers-directml-on-the-host-gpu)).
       The precedent is complete for TensorRT RTX: NVIDIA's plugin
       ([NVIDIA/TensorRT-RTX-EP-ABI](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI), since ORT 1.23), the ORT docs
       deprecate the built-in EP, and microsoft/onnxruntime#32276 (merged 2026-10-28) removed it from `main`; eight
@@ -1751,6 +1753,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the paragraph on the installers' licence page stays a draft until someone qualified has read it.
 - [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
       Done 2026-11-06: the `cuda_llm` exemption is gone (CHANGELOG). The nvidia chain of 2026-11-06 compiled ORT's CUDA RUN through sccache, MoE kernels included: 4937 compilations, 0 failures, 4330 WebDAV writes; 1663 hits (25 %) on a freshly rebuilt toolchain. `Test-CudaCache.ps1` passed on that toolchain (4 misses, then 4 hits). The warm reruns of 2026-11-07 hit: ORT's CUDA RUN 5993 hits, 0 misses (PTX, CUBIN and nvcc 100 %, 30:26 against 2:00:39 cold), OpenCV's 3355 hits, 1 miss. Still open: 289 failed S3 writes in the cold RUN.
+      Checked 2026-11-09: #2862 remains open and #2809 is merged; the pin is unchanged. The ARM64 goal at `7c575e34`
+      rebuilt GStreamer with real compiler hits, but its final step stopped at the unchanged disk floor. The
+      [resource page](docs/windows-build-resources.md#persistent-compile-cache-sccache) records the counters and limits.
+      The new CUDA-plugin configuration still needs its own initial/repeat compilation proof; the older in-tree
+      NVIDIA runs and cached image layers do not supply it.
       What still compiles outside sccache, from the chain logs of 2026-11-05/06 (rocm, nvidia, arm64), longest first:
 
       | Stage | Step | Uncached share | Reason | Possible fix |

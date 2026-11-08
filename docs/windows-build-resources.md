@@ -6,9 +6,9 @@ SPDX-License-Identifier: MIT
 # Windows build resources — CPU, memory, cache and GPU
 
 How much of the host a Windows container build may take, the measured ceilings,
-and how the compile cache is wired. Every number here was measured on this
-repo's build host — treat them as *this host's* envelope and re-measure
-elsewhere.
+and how the compile cache is wired. Measurements belong to the host and software
+used for that run. Re-measure after a host, GPU or driver change; the dated goal
+probe below does not replace the earlier reference-host measurements.
 
 Neighbours: the lanes themselves are
 [`windows-build-lanes.md`](windows-build-lanes.md); consumer-project build
@@ -28,13 +28,18 @@ The linked README gives the C ABI, test command and 32-adapter limit.
 
 ## GPU acceleration in containers (DirectML on the host GPU)
 
-On Windows, **GPU acceleration in containers is DirectX-only** — Direct3D 12 and
+On Windows, [Microsoft documents GPU acceleration in containers as DirectX-only](https://learn.microsoft.com/en-us/virtualization/windowscontainers/deploy-containers/gpu-acceleration) — Direct3D 12 and
 everything layered on it, which includes **DirectML** (the ONNX `DmlExecutionProvider`
 and onnxruntime-genai's DML path). CUDA/TensorRT cannot be GPU-accelerated in a
-Windows container. On this host that is exactly the point: the machine has an **AMD
-Radeon RX 9070 XT** (+ iGPU) and **no NVIDIA GPU**, so DirectML — being
-vendor-agnostic — is the *only* GPU path. (The CUDA and TensorRT plugin EPs are still built and
-smoke-checked by their file contract, but they have no device to run on here.)
+Windows container through that device interface. The earlier reference-host
+measurements below used an **AMD Radeon RX 9070 XT** and its iGPU.
+
+**Goal-host probe, 2026-11-08:** native CUDA driver initialization succeeds on one
+**NVIDIA GeForce RTX 2080**, SM 7.5, driver API 13.5. Display enumeration reports no
+AMD adapter. This proves driver initialization and discovery only. CUDA/TensorRT
+plugin registration and inference still need native Windows checks against the
+built payload; ROCm hardware execution still needs a suitable AMD host. A container
+file-contract smoke does not supply those runtime proofs.
 
 Running DirectML on the physical GPU **inside a container** requires all of:
 
@@ -51,19 +56,20 @@ Running DirectML on the physical GPU **inside a container** requires all of:
    (`26200` / 25H2) vs Server base image (`servercore:ltsc2025` = `26100`) skew that
    breaks `docker build --isolation process` layer commits.
 
-**Current status on this host: BLOCKED by the build skew.** The GPUs *are* GPU-PV
+**Earlier AMD reference-host result: BLOCKED by the build skew.** The GPUs were GPU-PV
 partitionable (`Get-VMHostPartitionableGpu` lists both AMD adapters), process
-isolation works, and the DirectML runtime is built correctly — but GPU device
-assignment fails at `CreateComputeSystem` because the `ltsc2025` (`26100`) base does
-not match the host (`26200`), and no public client `26200` base image exists to
-rebuild against. A DXGI enumeration inside the (correctly-flagged) container therefore
-sees only `Microsoft Basic Render Driver` (WARP), zero hardware adapters.
+isolation worked, and the DirectML runtime was built — but GPU device assignment
+failed at `CreateComputeSystem` because the `ltsc2025` (`26100`) base did not match
+the host (`26200`). The probe found no matching public client base at the time.
+DXGI enumeration inside the container saw only `Microsoft Basic Render Driver`
+(WARP), zero hardware adapters. This historical result is not a current passthrough
+test on the RTX host.
 
 To retire the block: rebuild the base on a `servercore`/`nanoserver` tag whose build
 equals the host, **or** run the image on a host whose build equals the image
-(`26100`, e.g. a Windows Server 2025 host). Until then, **DirectML on the AMD GPU
-still works fine _outside_ containers** — run the source-built ORT / GenAI binaries
-directly on the bare host and the `DmlExecutionProvider` selects the RX 9070 XT.
+(`26100`, e.g. a Windows Server 2025 host). Native Windows execution is the separate
+path for checking the source-built ORT / GenAI binaries on the physical adapter;
+require actual inference on the selected provider before claiming hardware use.
 
 Re-check after any Docker / containerd / hcsshim / Windows / base-image / GPU-driver
 upgrade with the self-contained probe under `windows/scripts/diagnostics/`:
@@ -305,10 +311,11 @@ there; the tiers, the numbers and the two incidents are here.
      `-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav`, and only after
      re-verifying against a newer buildkit.
      **`SCCACHE_DIR` alone does nothing** without the chain variable.
-   - **sccache is the released 0.18.0 zip, installed into `CARGO_BIN`** (since
-     2026-09-18; the `SCCACHE_GIT_REV` source build is retired). 0.18.0 carries
-     #2722 + #2811 + #2816 — everything the pin carried. History and the CUDA
-     canary bar: § Persistent compile cache (sccache).
+   - **sccache is the pinned hub build `0.19.0+965c019.pr2809`, installed into
+     `CARGO_BIN` from the checksum-verified zip.** `SCCACHE_SOURCE_REV` and the
+     shared patch series select its source; the Windows stage does not compile
+     sccache itself. History and the CUDA canary bar: § Persistent compile cache
+     (sccache).
    - **`CMAKE_CUDA_COMPILER_LAUNCHER` is ON BY DEFAULT since 2026-08-18.** Never
      flip that default off silently, and never export the launcher onto a new
      sccache without all THREE canaries — the miscompile it once caused is
@@ -376,15 +383,33 @@ The host cache initializer and CMake build setup share one `SCCACHE_MAX_JOBS`
 defaulting helper. Each caller keeps its own activation point and log message;
 both preserve an explicit limit and fill an absent or empty value from the CPU count.
 
-**sccache is the OFFICIAL RELEASED 0.18.0 zip since 2026-09-18 — the source
-build at `SCCACHE_GIT_REV` is retired.** `Install-RustToolchain.ps1` downloads
-`sccache-v0.18.0-x86_64-pc-windows-msvc.zip`, verifies it against
-`SCCACHE_WINDOWS_ZIP_SHA256`, and installs `sccache.exe` into `CARGO_BIN`,
-which precedes the scoop shims on PATH. `Test-Toolchain.ps1` asserts the
-version, which works now because 0.18.0 reports 0.18.0 — unlike
-main-at-git-rev, which still said 0.17.0 and forced a path-based assert.
+**The pin is the hub build `0.19.0+965c019.pr2809`.** Its source is
+`SCCACHE_SOURCE_REV=965c01943a40c9df96264474bbe28ba98f2e1487` plus the shared
+patch series. `Install-RustToolchain.ps1` downloads the hub asset
+`sccache-v0.19.0-965c019-pr2809-x86_64-pc-windows-msvc.zip`, verifies
+`SCCACHE_WINDOWS_ZIP_SHA256`, and installs `sccache.exe` into `CARGO_BIN` ahead of
+the scoop shims. The Windows image installs that binary rather than building it.
+The [shared source-build record](../shared/upstream/sccache/README.md) owns the
+patches, canary evidence and conditions for returning to upstream release assets.
 
-Why the source build existed, and what would bring a bare-nvcc exception back:
+**Upstream checked 2026-11-09:** [sccache#2862](https://github.com/mozilla/sccache/issues/2862)
+is still open; its fix [#2809](https://github.com/mozilla/sccache/pull/2809) merged
+on 2026-11-02. The pin carries that fix. The older bare-nvcc exemption for
+`onnxruntime_providers_cuda_llm` is removed; reintroducing it would lose the cache
+coverage already proved by the earlier NVIDIA chain.
+
+**Current evidence boundary:** CON229 in [BACKLOG.md](../BACKLOG.md) owns the dated
+per-stage coverage gaps. The ARM64 goal run `bk-20261108-231320` at `7c575e34`
+actually rebuilt GStreamer: one reported block contains 5,198 compiler-cache hits,
+12 misses, 99 cache errors and 80 compilation failures. The RUN includes configure
+probes; its aggregate counters do not identify every error's cause and must not be
+summed with their duplicate log rendering. GStreamer and the 1,508-binary media
+architecture gate passed, then the final-stage disk guard refused 24.6 GiB versus
+40 GiB. This is media evidence; final smoke and device acceptance did not run.
+The CUDA-plugin repeat build remains required, including real compiler requests
+and hits. A cached image layer supplies no such measurement.
+
+Historical fixes and the canary bar before changing the pin:
 
 - **CUDA 13.3's `--simt-only` dryrun mis-parse.** Released sccache decomposes
   nvcc by parsing `nvcc --dryrun`; 13.3.33 emits `--simt-only` AFTER the input
