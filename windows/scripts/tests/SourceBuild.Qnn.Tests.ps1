@@ -31,12 +31,10 @@ Describe 'Resolve-QnnSdk' {
         Assert-True ($null -eq (Resolve-QnnSdk -DropDir $empty -ExtractDir $script:extract -Arch 'arm64')) 'no zip -> $null, no throw'
     }
 
-    It 'resolves the SDK root, the target backend dir and the two cmake switches (arm64)' {
+    It 'resolves the SDK root and the target backend dir (arm64)' {
         $r = Resolve-QnnSdk -DropDir $script:drop -ExpectedSha256 $script:sha -ExtractDir $script:extract -Arch 'arm64'
         Assert-True ($r.Home -like '*\qairt\2.34.0') "home is the version dir (got $($r.Home))"
         Assert-True ($r.LibDir -like '*\lib\aarch64-windows-msvc') 'target backend dir'
-        Assert-True ($r.CmakeArgs -contains '-Donnxruntime_USE_QNN=ON') 'USE_QNN switch'
-        Assert-True (($r.CmakeArgs | Where-Object { $_ -like '-Donnxruntime_QNN_HOME=*/qairt/2.34.0' }) -ne $null) 'QNN_HOME with forward slashes'
     }
 
     It 'throws on a SHA mismatch and on a missing backend set for the target' {

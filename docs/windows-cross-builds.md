@@ -1016,8 +1016,8 @@ The QNN SDK gives a build-time flag to **ONE framework** (corrected 2026-08-31, 
 
 | Framework | CMake flag | What it enables |
 |---|---|---|
-| **ONNX Runtime** | `onnxruntime_USE_QNN=ON` | ORT QNN execution provider — NPU inference for ONNX models |
-| **ONNX Runtime GenAI** | (inherits from ORT) | QNN runtime DLLs staged beside GenAI install |
+| **ONNX Runtime** | *(none since 2026-11-08)* | The in-tree `onnxruntime_USE_QNN` EP is gone; Qualcomm's plugin EP replaces it (§ The QNN plugin EP) |
+| **ONNX Runtime GenAI** | *(none)* | Nothing: it inherited the in-tree EP, and the QAIRT DLLs beside it went with that |
 | **LiteRT** | *(none — see #154)* | Nothing. `TFLITE_ENABLE_QNN` was invented; the real switch is `LITERT_ENABLE_QUALCOMM` in the `litert/` tree, which this lane does not configure |
 | **TVM** | *(none — see #154)* | Nothing. TVM has no QNN option at all; its `qnn` is the Quantized-Neural-Network dialect, and its Snapdragon path is the separate Hexagon SDK |
 | **IREE** | *(none — see #154)* | Nothing. IREE has never had a Qualcomm backend |
@@ -1038,6 +1038,36 @@ because the contract has three consumers (build gate, smoke test, healthcheck) a
 *them disagreeing is the documented 2026-07-11 regression* that shipped an image without plugins.
 With no entry carrying an arch key any more, the filter is provably a no-op on both lanes: every
 entry comes back in the same order.
+
+### The QNN plugin EP
+
+Owner decision 2026-11-08 (BACKLOG CON232): the QNN EP is Qualcomm's plugin EP on both lanes,
+built from its pinned ORT fork `onnxruntime/onnxruntime-qnn` at `ORT_QNN_EP_VERSION`, whose
+tag tarball is checked against `ORT_QNN_EP_SOURCE_SHA256`. `Build-OrtQnnEpFromSource.ps1`
+runs as the `QNN plugin EP` stage of the ORT RUN, right after the chain ORT is installed, on
+amd64 and arm64 alike (the Community zip carries both QAIRT Windows targets). No QAIRT zip,
+no plugin, with one notice, as before.
+
+- `-Donnxruntime_ORT_HOME` makes the fork build no ORT core of its own. Its `ort-home` holds
+  the chain's `onnxruntime.dll/.lib` and `onnxruntime_providers_shared.dll/.lib` under the
+  names its prebuilt step copies, and `Get-OrtQnnEpForeignCore` fails any core in the build
+  tree whose bytes are not the chain's.
+- The plugin compiles against the ORT headers the fork was developed for: after configure,
+  `Copy-OrtQnnEpHeader` lays the fork's `_deps\ort_core-src` public headers flat into
+  `ort-home\include`. It loads into the chain's ORT through the plugin ABI. Leave the fork's
+  `ort_core` pin alone: Qualcomm validated the plugin against it.
+- The stage ships `C:\runtime\lib\onnxruntime-ep-qnn`: the DLL, the QAIRT backends and
+  `hexagon-v*` skels beside it, `licenses\onnxruntime-qnn\` and `licenses\qairt\`, and a
+  `provenance\onnxruntime-qnn.json` manifest. `ORT_QNN_EP_ROOT` names the directory; a
+  consumer registers `onnxruntime_providers_qnn.dll` with `RegisterExecutionProviderLibrary`
+  under the name `QNNExecutionProvider`.
+- The ORT census counts `C:\temp\ort-qnn-ep-src` (the fork and its `ort_core`) as a chain
+  root and the plugin directory as a chain reference
+  ([why](onnxruntime-single-source.md#a-plugin-ep-built-from-an-ort-fork-is-a-chain-root)).
+- The smoke gate checks the file contract (`Get-OrtQnnPluginFinding`): the plugin exports
+  `CreateEpFactories` and `ReleaseEpFactory`, a `Qnn*.dll` sits beside it, and the chain
+  ORT carries no in-tree `onnxruntime_providers_qnn.dll`. As with DirectML, a green build
+  proves the right bytes ship, never NPU execution.
 
 ### Verification cannot mean "run it"
 

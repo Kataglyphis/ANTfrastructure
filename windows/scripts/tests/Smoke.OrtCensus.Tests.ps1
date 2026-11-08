@@ -506,10 +506,12 @@ Describe 'ORT census: wiring' {
             "foreach (`$d in 'System32', 'SysWOW64')", '-ExtraFile $inboxFile')
     }
 
-    It 'the declared chain root is Build-OnnxFromSource.ps1''s SourceDir, and the image census scans the whole drive by name' {
-        $onnx = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-OnnxFromSource.ps1'))
-        $src = [regex]::Match($onnx, '\[string\]\$SourceDir\s*=\s*''([^'']+)''').Groups[1].Value
-        Assert-Equal $src ((Get-OrtChainSourceRoot) -join ',') 'fingerprint root = build dir'
+    It 'the declared chain roots are the SourceDirs of the ORT and QNN plugin builds, and the image census scans the whole drive by name' {
+        $src = foreach ($script in 'Build-OnnxFromSource.ps1', 'Build-OrtQnnEpFromSource.ps1') {
+            $text = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) "windows\scripts\build\$script"))
+            [regex]::Match($text, '\[string\]\$SourceDir\s*=\s*''([^'']+)''').Groups[1].Value
+        }
+        Assert-Equal ($src -join ',') ((Get-OrtChainSourceRoot) -join ',') 'fingerprint roots = the two build dirs'
         $mod = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsOrtProvenance.Common.psm1'))
         Assert-Match "-ContentRoot @\('C:\\runtime', 'C:\\temp\\cpython', 'C:\\python-freethreaded', 'C:\\opt', 'C:\\Users'\) -NameRoot @\(\`$drive\)" $mod 'content roots + a whole-drive name scan'
         Assert-Match "System32 = \`$\(if \(\`$CrossTarget\) \{ '' \} else \{ Join-Path \`$winDir 'System32' \}\)" $mod 'System32 modeled on amd64'

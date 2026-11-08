@@ -284,13 +284,6 @@ $cmakeExtraGenAi = @(
 ) + $genaiPythonArgs + $genaiPyLinkArgs + $genaiCudaArgs + @(Get-GenaiGuidanceCmakeArgs -TargetArch $genaiTargetArch)
 # `Python_*` for genai's find_package(Python), `PYTHON_*` for its vendored pybind11's FindPythonLibsNew.
 $cmakeExtraGenAi += Get-PythonCMakeHintArgs -Python $tpy -Prefix @('Python', 'PYTHON')
-# GenAI inherits ORT's QNN EP; its runtime DLLs are staged beside the GenAI install.
-$qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
-if ($qnnSdk) {
-    Write-Host "GenAI: QNN runtime staged from $($qnnSdk.LibDir) -- backlog #121"
-    [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $genaiInstallDir)
-}
-
 # ortlib.cmake wants include\ and lib\ with the DLL beside its import lib; the chain's layout differs, so this copy stands in.
 function New-GenaiOrtHome {
     param([Parameter(Mandatory)][string]$OrtRoot, [Parameter(Mandatory)][string]$ShimRoot)

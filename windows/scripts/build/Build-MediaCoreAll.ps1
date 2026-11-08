@@ -28,6 +28,8 @@ $stages = @(
     # Target CPython first: the cross consumers link its python3XY.lib; it reuses the toolchain's tree, never deleted.
     @{ Name = 'Target CPython'; Script = 'Build-TargetCpython.ps1';       SourceDir = 'C:\temp\cpython' }
     @{ Name = 'ONNX Runtime'; Script = 'Build-OnnxFromSource.ps1';       SourceDir = 'C:\temp\onnx-src' }
+    # Qualcomm's plugin EP links against the chain ORT just installed, so it shares the ORT RUN.
+    @{ Name = 'QNN plugin EP'; Script = 'Build-OrtQnnEpFromSource.ps1';  SourceDir = 'C:\temp\ort-qnn-ep-src' }
     @{ Name = 'ONNX GenAI';   Script = 'Build-OnnxGenaiFromSource.ps1'; SourceDir = 'C:\temp\onnx-genai-src' }
     @{ Name = 'FFmpeg';       Script = 'Build-FfmpegFromSource.ps1';     SourceDir = 'C:\temp\ffmpeg-src' }
     @{ Name = 'OpenCV';       Script = 'Build-OpencvFromSource.ps1';     SourceDir = 'C:\temp\opencv-src' }

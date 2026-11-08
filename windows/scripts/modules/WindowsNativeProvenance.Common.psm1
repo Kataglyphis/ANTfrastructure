@@ -135,6 +135,22 @@ function Write-NativeProvenanceManifest {
     Assert-NativeProvenanceManifest -Path $Path -Root $Root -RequiredFile $RequiredFile
 }
 
+<#
+.SYNOPSIS
+    The one-file manifest at Root\provenance\<Owner>.json, written and proven; the file is its required entry.
+#>
+function Write-NativeFileProvenance {
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string]$Owner,
+        [Parameter(Mandatory)][string]$File,
+        [Parameter(Mandatory)][hashtable]$Source,
+        [Parameter(Mandatory)][string[]]$Notice
+    )
+    $entry = New-NativeProvenanceEntry -Root $Root -File $File -Notice $Notice -Source $Source
+    Write-NativeProvenanceManifest -Path (Join-Path $Root "provenance\$Owner.json") -Owner $Owner -Entry @($entry) -Root $Root -RequiredFile $File
+}
+
 function Get-NativeProvenanceEntryFinding {
     param([object]$Entry, [string]$Root)
     $name = $Entry.file
@@ -388,5 +404,5 @@ function Get-MsvcRuntimeProvenanceEntry {
 }
 
 Export-ModuleMember -Function Expand-NativeZipMember, Read-MesonWrapSource, Get-MesonWrapInventory, Get-NativeNoticeFile, Copy-NativeNotice,
-    New-NativeProvenanceEntry, Write-NativeProvenanceManifest, Get-NativeProvenanceFinding, Assert-NativeProvenanceManifest,
+    New-NativeProvenanceEntry, Write-NativeProvenanceManifest, Write-NativeFileProvenance, Get-NativeProvenanceFinding, Assert-NativeProvenanceManifest,
     Get-NativeClosureGap, Get-MesonProvenanceEntry, Get-BinDllProvenanceEntry, Get-MsvcRuntimeProvenanceEntry

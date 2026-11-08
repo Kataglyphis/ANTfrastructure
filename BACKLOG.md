@@ -1021,6 +1021,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       (Windows session, after its `:winarm64` publish), and the consumers register it through CON231 step 2's code
       path. **Not proven on hardware** on Linux (no Qualcomm Linux device in the fleet); the Windows side has the
       Snapdragon X for the on-card parity run.
+      **Windows in source 2026-11-08:** amd64 and arm64 build the same fork in the ORT RUN (`Build-OrtQnnEpFromSource.ps1`,
+      `-Donnxruntime_ORT_HOME` over the chain DLLs), ship `C:\runtime\lib\onnxruntime-ep-qnn` with `ORT_QNN_EP_ROOT`, drop
+      the in-tree EP from ORT and GenAI, and gate it (foreign-core and export checks, census root and reference dir,
+      smoke file contract; [windows-cross-builds.md](docs/windows-cross-builds.md#the-qnn-plugin-ep)). Proven when a
+      Windows chain builds it and `:winarm64` republishes; a Snapdragon run of a registered session is still open.
 - [ ] **CON233 — move CUDA/TensorRT to the plugin EPs when NVIDIA and Microsoft deprecate the in-tree ones** [L, ★★].
       The precedent is complete for TensorRT RTX: NVIDIA's plugin
       ([NVIDIA/TensorRT-RTX-EP-ABI](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI), since ORT 1.23), the ORT docs

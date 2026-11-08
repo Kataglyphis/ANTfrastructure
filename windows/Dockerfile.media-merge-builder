@@ -80,6 +80,7 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     GSTREAMER_BIN="C:\runtime\bin" `
     ONNX_ROOT="C:\runtime\lib\onnxruntime-source" `
     ONNX_GENAI_ROOT="C:\runtime\lib\onnxruntime-genai-source" `
+    ORT_QNN_EP_ROOT="C:\runtime\lib\onnxruntime-ep-qnn" `
     ONNX_VERSION="${ONNXRUNTIME_VERSION}" `
     ONNX_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
     LITERT_ROOT="C:\runtime\lib\litert" `

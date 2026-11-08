@@ -33,8 +33,15 @@ function Assert-OrtCensusDependency {
 }
 
 function Get-OrtChainSourceRoot {
-    # Build-OnnxFromSource.ps1's -SourceDir; verify-critical-fixes.sh pins the two equal.
-    return @('C:\temp\onnx-src')
+    # The -SourceDir of Build-OnnxFromSource.ps1 and of Build-OrtQnnEpFromSource.ps1, whose fork and ort_core build the chain's QNN plugin.
+    return @('C:\temp\onnx-src', 'C:\temp\ort-qnn-ep-src')
+}
+
+function Get-OrtPluginEpDir {
+    # Plugin EPs built from an ORT fork against the chain: chain references, not consumers (docs/onnxruntime-single-source.md#a-plugin-ep-built-from-an-ort-fork-is-a-chain-root).
+    param([string]$RuntimeRoot = 'C:\runtime')
+    # A string, not Join-Path: the census tests run on Linux pwsh, which has no C: drive.
+    return @("$($RuntimeRoot.TrimEnd('\'))\lib\onnxruntime-ep-qnn")
 }
 
 function Get-OrtChainPrefix {
@@ -624,9 +631,9 @@ function Invoke-OrtImageCensus {
     return Invoke-OrtCensus -ContentRoot @('C:\runtime', 'C:\temp\cpython', 'C:\python-freethreaded', 'C:\opt', 'C:\Users') -NameRoot @($drive) `
         -ExtraFile $inboxFile `
         -ExcludeRoot @(if ($CrossTarget) { $winDir }) `
-        -ReferenceDir @("$prefix\bin", "$prefix\lib") -ReferenceWheel @(Get-OrtChainReferenceWheel -OrtVersion $OrtVersion) `
+        -ReferenceDir (@("$prefix\bin", "$prefix\lib") + @(Get-OrtPluginEpDir)) -ReferenceWheel @(Get-OrtChainReferenceWheel -OrtVersion $OrtVersion) `
         -CoreLib "$prefix\bin\onnxruntime.dll" -Verdict @{
-            AllowedHome = @($prefix, $wheelDir, $ftWheelDir); Contract = (Get-OrtConsumerContract); RequireStamp = [bool]$RequireStamp
+            AllowedHome = @($prefix, $wheelDir, $ftWheelDir) + @(Get-OrtPluginEpDir); Contract = (Get-OrtConsumerContract); RequireStamp = [bool]$RequireStamp
             SearchPath = @("$env:PATH" -split ';' | Where-Object { $_ }); Exemption = $Exemption; Arch = $Arch
             System32 = $(if ($CrossTarget) { '' } else { Join-Path $winDir 'System32' })
             InboxRoot = @(if (-not $CrossTarget) { $winDir })
@@ -659,7 +666,7 @@ function Test-OrtProvenanceTree {
 }
 
 Export-ModuleMember -Function @(
-    'Get-OrtChainSourceRoot', 'Get-OrtChainPrefix', 'Get-OrtConsumerContract', 'Get-OrtStampPath', 'Test-OrtInstanceName',
+    'Get-OrtChainSourceRoot', 'Get-OrtPluginEpDir', 'Get-OrtChainPrefix', 'Get-OrtConsumerContract', 'Get-OrtStampPath', 'Test-OrtInstanceName',
     'Get-OrtSourceRoot', 'Get-OrtBinaryFact', 'Get-OrtArchiveFact', 'Get-OrtTreeFact', 'Get-OrtSitePackageOwner',
     'Get-OrtChainWheel', 'Get-OrtChainWheelStore', 'Get-OrtChainReferenceWheel', 'Test-OrtStampCurrent', 'Get-OrtCensusFinding', 'Invoke-OrtCensus', 'Write-OrtCensusReport',
     'Invoke-OrtImageCensus', 'Test-OrtProvenanceTree'

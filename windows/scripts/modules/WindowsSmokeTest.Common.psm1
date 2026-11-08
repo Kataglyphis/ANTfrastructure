@@ -218,6 +218,21 @@ function Get-TensorRtEpGap {
     return $gap.ToArray()
 }
 
+function Get-OrtQnnPluginFinding {
+    # Qualcomm's plugin EP beside its QAIRT backends, and no in-tree QNN EP in the chain ORT it replaces.
+    param([AllowEmptyString()][string]$EpRoot, [string]$OrtRoot)
+    $plugin = if ($EpRoot) { Get-Item -LiteralPath (Join-Path $EpRoot 'onnxruntime_providers_qnn.dll') -ErrorAction SilentlyContinue }
+    if (-not $plugin) { return , "no onnxruntime_providers_qnn.dll under ORT_QNN_EP_ROOT='$EpRoot'" }
+    $exported = if (Get-Command -Name Get-PeExportNames -ErrorAction SilentlyContinue) { @(Get-PeExportNames -Path $plugin.FullName) } else { $null }
+    return @(
+        if ($null -eq $exported) { 'Get-PeExportNames is unavailable (WindowsTargetArch.Common), so the exports are unread' }
+        else { 'CreateEpFactories', 'ReleaseEpFactory' | Where-Object { $exported -notcontains $_ } | ForEach-Object { "the plugin does not export $_" } }
+        if (-not (Get-ChildItem -LiteralPath $plugin.DirectoryName -Filter 'Qnn*.dll' -File)) { "no QAIRT backend DLL (Qnn*.dll) beside the plugin in $EpRoot" }
+        Get-ChildItem -LiteralPath $OrtRoot -Recurse -Filter 'onnxruntime_providers_qnn.dll' -File -ErrorAction SilentlyContinue |
+            ForEach-Object { "$($_.FullName) is an in-tree QNN EP in the chain ORT" }
+    )
+}
+
 function Get-FfmpegSmokeListingCheck {
     param([switch]$Nvidia, [switch]$CrossTarget, [switch]$Rocm)
     $nativeDefault = -not $CrossTarget -and -not $Rocm
@@ -508,6 +523,7 @@ Export-ModuleMember -Function @(
     'Test-TensorRtTreeStaged'
     'Get-TensorRtShipViolation'
     'Get-TensorRtEpGap'
+    'Get-OrtQnnPluginFinding'
     'Get-FfmpegSmokeListingCheck'
     'Get-SmokeInstallRoot'
     'Get-SmokeExistingInstallRoot'

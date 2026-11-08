@@ -28,6 +28,8 @@ function New-WbtFakeMediaVersionTable {
         CUDA_ARCHITECTURES        = '89-fake'
         QNN_SDK_ZIP_SHA256        = 'qnnsha-13'
         QNN_SDK_VERSION           = 'qnnver-27'
+        ORT_QNN_EP_VERSION        = 'qnnep-28'
+        ORT_QNN_EP_SOURCE_SHA256  = 'qnnepsha-29'
         LITERT_VERSION            = 'lrt-7'
         LITERT_LM_VERSION         = 'lm-8'
         TVM_REF                   = 'tvm-9'
@@ -70,6 +72,8 @@ Describe 'Get-MediaBranchVersionArg' {
                     PYTHON_VERSION            = 'py-12'
                     QNN_SDK_ZIP_SHA256        = 'qnnsha-13'
                     QNN_SDK_VERSION           = 'qnnver-27'
+                    ORT_QNN_EP_VERSION        = 'qnnep-28'
+                    ORT_QNN_EP_SOURCE_SHA256  = 'qnnepsha-29'
                     AMF_HEADERS_VERSION       = 'amf-15'
                     AMF_HEADERS_SHA256        = 'amfsha-16'
                 }

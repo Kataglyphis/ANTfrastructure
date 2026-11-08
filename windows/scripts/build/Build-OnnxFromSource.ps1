@@ -746,12 +746,8 @@ function Get-OrtPythonArgs {
 
 function Get-OrtAdditionalBuildPlan {
     param([bool]$onnxCross, [string]$SourceDir, [string]$onnxTargetArch, [bool]$cudaUsable)
-    # QNN EP: the staged zip in windows\qnn-sdk\, else the pinned Community zip Resolve-QnnSdk fetches; neither, no EP.
-    $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
-    $qnnArgs = @()
-    if ($qnnSdk) { $qnnArgs = $qnnSdk.CmakeArgs }
-    if ($qnnSdk) { Write-Host "ONNX: QNN EP ON (SDK root $($qnnSdk.Home), backends from $($qnnSdk.LibDir)) -- backlog #121" }
-    else { Write-Host 'ONNX: QNN EP off -- no zip in windows\qnn-sdk and no pinned Community zip (QNN_SDK_VERSION; see windows\qnn-sdk\README.md)' }
+    # QNN is Qualcomm's plugin EP, which Build-OrtQnnEpFromSource.ps1 builds against this ORT.
+    Write-Host 'ONNX: QNN EP not in-tree -- the QNN plugin EP stage builds it against this ORT'
     # KleidiAI in MLAS, arm64 only: only build.py enables it upstream; see the KleidiAI note in docs/windows-cross-builds.md.
     $kleidiArgs = @()
     $kleidiSrc = $null
@@ -763,7 +759,7 @@ function Get-OrtAdditionalBuildPlan {
     $ltoArgs = @()
     if (-not $cudaUsable) { $ltoArgs = @('-Donnxruntime_ENABLE_LTO=ON') + @(Get-LlvmArchiverCmakeArg) }
     Write-Host "ONNX: ThinLTO $(if ($cudaUsable) { 'OFF (CUDA lane)' } else { 'ON' })"
-    return @{ QnnSdk = $qnnSdk; QnnArgs = $qnnArgs; KleidiSrc = $kleidiSrc; KleidiArgs = $kleidiArgs; LtoArgs = $ltoArgs }
+    return @{ KleidiSrc = $kleidiSrc; KleidiArgs = $kleidiArgs; LtoArgs = $ltoArgs }
 }
 
 function Initialize-OrtWebGpuSetup {
@@ -812,12 +808,11 @@ function Install-OrtDirectMlProvenance {
     if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) { throw "$dll was not staged, so the DirectML EP cannot load" }
     Assert-FileSha256 -Path $packaged -Expected (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash -Label "the DLL in $($nupkg.Name), against the staged $dll"
     $source = @{ Name = 'Microsoft.AI.DirectML'; Version = $version; Sha256 = $env:DIRECTML_NUPKG_SHA256; Url = "https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/$version" }
-    $entry = New-NativeProvenanceEntry -Root $OrtInstallDir -File 'bin\DirectML.dll' -Notice $notices -Source $source
-    Write-NativeProvenanceManifest -Path (Join-Path $OrtInstallDir 'provenance\directml.json') -Owner 'directml' -Entry @($entry) -Root $OrtInstallDir -RequiredFile 'bin\DirectML.dll'
+    Write-NativeFileProvenance -Root $OrtInstallDir -Owner 'directml' -File 'bin\DirectML.dll' -Source $source -Notice $notices
 }
 
 function Install-OrtRuntimeSidecars {
-    param([string]$SourceDir, [string]$ortInstallDir, $qnnSdk, $webgpuPlan, $webgpu, [string]$buildDir)
+    param([string]$SourceDir, [string]$ortInstallDir, $webgpuPlan, $webgpu, [string]$buildDir)
     # cmake --install skips DirectML.dll (0xC0000135); the filter picks the target's redist dir of the per-platform nuget.
     $ortDmlArchDir = "$(Get-WindowsTargetArch)" -replace '^amd64$', 'x64'
     Copy-SidecarDll -SidecarName 'DirectML.dll' -SearchDir $SourceDir `
@@ -827,8 +822,6 @@ function Install-OrtRuntimeSidecars {
     Install-OrtDirectMlProvenance -SearchDir $SourceDir -OrtInstallDir $ortInstallDir -ArchDir $ortDmlArchDir
     Move-OrtProviderBesideCore -OrtInstallDir $ortInstallDir
 
-    # cmake installs the QNN provider DLL but not the SDK's backend DLLs.
-    if ($qnnSdk) { [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $ortInstallDir) }
     $webgpuDllSha = if ($webgpuPlan.WebGpu) { Install-OrtWebGpuRuntime -DxcDir $webgpu.DxcDir -OrtInstallDir $ortInstallDir } else { @{} }
     if ($webgpuPlan.WebGpu) { Add-OrtWebGpuWheelNotice -BuildDir $buildDir -DxcDir $webgpu.DxcDir -DxcVersion $webgpu.Pin.DXC_VERSION }
     return $webgpuDllSha
@@ -922,8 +915,6 @@ $pythonArgs = @(Get-OrtPythonArgs -onnxCross $onnxCross -tpy $tpy)
 $dmlArg = '-Donnxruntime_USE_DML=ON'
 if ($onnxCross) { Write-Host 'ONNX: DirectML EP ON for the cross lane too (backlog #113 - the redist DOES ship bin/arm64-win/DirectML.lib; the old failure was an upper-case path, not a missing package)' }
 $ortExtras = Get-OrtAdditionalBuildPlan -onnxCross $onnxCross -SourceDir $SourceDir -onnxTargetArch $onnxTargetArch -cudaUsable $cudaUsable
-$qnnSdk = $ortExtras.QnnSdk
-$qnnArgs = $ortExtras.QnnArgs
 $kleidiSrc = $ortExtras.KleidiSrc
 $kleidiArgs = $ortExtras.KleidiArgs
 $ltoArgs = $ortExtras.LtoArgs
@@ -933,7 +924,7 @@ $cmakeArgs = @(
     $dmlArg, '-Dprotobuf_MSVC_STATIC_RUNTIME=OFF'
 ) + $pythonArgs + @(
     "-DCMAKE_CXX_FLAGS:STRING=$cxxFlags"
-) + $gpuArgs + $qnnArgs + $kleidiArgs + $ltoArgs
+) + $gpuArgs + $kleidiArgs + $ltoArgs
 $webgpuSetup = Initialize-OrtWebGpuSetup -gpuEnv $gpuEnv -onnxCross $onnxCross -SourceDir $SourceDir -WebGpuWorkDir $WebGpuWorkDir -py $py -cmakeArgs $cmakeArgs
 $webgpuPlan = $webgpuSetup.Plan
 $webgpu = $webgpuSetup.Input
@@ -967,7 +958,7 @@ Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 2 -Inst
 # Hit-rate evidence on stderr, which the 2 MiB step-log clip never truncates.
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 
-$webgpuDllSha = Install-OrtRuntimeSidecars -SourceDir $SourceDir -ortInstallDir $ortInstallDir -qnnSdk $qnnSdk -webgpuPlan $webgpuPlan -webgpu $webgpu -buildDir $buildDir
+$webgpuDllSha = Install-OrtRuntimeSidecars -SourceDir $SourceDir -ortInstallDir $ortInstallDir -webgpuPlan $webgpuPlan -webgpu $webgpu -buildDir $buildDir
 
 Invoke-OrtPythonWheelsAndMarker -onnxCross $onnxCross -tpy $tpy -py $py -buildDir $buildDir -SourceDir $SourceDir -webgpuPlan $webgpuPlan -webgpu $webgpu -webgpuDllSha $webgpuDllSha -ftPlan $ftPlan -cmakeArgs $cmakeArgs -pythonArgs $pythonArgs -cmakeSrc $cmakeSrc -ortInstallDir $ortInstallDir -WebGpuWorkDir $WebGpuWorkDir
 

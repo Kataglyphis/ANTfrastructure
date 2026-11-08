@@ -1314,9 +1314,8 @@ function Resolve-QnnSdk {
         }
     }
     return @{
-        Home      = $home_
-        LibDir    = $libDir
-        CmakeArgs = @('-Donnxruntime_USE_QNN=ON', "-Donnxruntime_QNN_HOME=$($home_ -replace '\\', '/')")
+        Home   = $home_
+        LibDir = $libDir
     }
 }
 

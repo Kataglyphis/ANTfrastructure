@@ -32329,6 +32329,62 @@
   "why": "an empty if/else result binds -Finding as $null, so the healthy TensorRT EP check failed with no finding named"
  },
  {
+  "id": "lib.qnn-ep-pin-sha-required",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "    if (\"$Sha256\" -notmatch '^[0-9A-Fa-f]{64}$') { throw \"ORT_QNN_EP_SOURCE_SHA256='$Sha256' is not a 64-hex SHA256: refusing to fetch the QNN plugin unverified\" }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
+  "why": "without the hash check the fork tarball downloads unverified"
+ },
+ {
+  "id": "lib.qnn-ep-home-full-chain",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "        if ($hit.Count -eq 0) { throw \"the chain ORT at $OrtPrefix holds no $name (Build-OnnxFromSource.ps1 runs first)\" }\n",
+  "replace": "        if ($hit.Count -eq 0) { continue }\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
+  "why": "a partial --ort_home lets the fork's copy step fail or pick another ORT"
+ },
+ {
+  "id": "lib.qnn-ep-foreign-core-bytes",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "-ne $sha[$file.Name]) { $found += $file.FullName }",
+  "replace": "-eq 'never') { $found += $file.FullName }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
+  "why": "an ORT core the fork built itself would ship beside the chain's"
+ },
+ {
+  "id": "lib.qnn-ep-module-exports",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "        if ($exports -notcontains $symbol) { $found += \"$(Split-Path -Leaf $Dll) does not export $symbol\" }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
+  "why": "a module without the plugin entry points cannot be registered"
+ },
+ {
+  "id": "lib.qnn-smoke-no-in-tree-ep",
+  "target": "windows/scripts/modules/WindowsSmokeTest.Common.psm1",
+  "find": "        Get-ChildItem -LiteralPath $OrtRoot -Recurse -Filter 'onnxruntime_providers_qnn.dll'",
+  "replace": "        Get-ChildItem -LiteralPath $OrtRoot -Recurse -Filter 'never-a-file.dll'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
+  "why": "an in-tree QNN EP left in the chain ORT would pass beside the plugin"
+ },
+ {
+  "id": "lib.qnn-ep-in-ort-run",
+  "target": "windows/Dockerfile.media-builder",
+  "find": "-Until 'QNN plugin EP'",
+  "replace": "-Until 'ONNX Runtime'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
+  "why": "the ORT RUN would stop before the plugin builds"
+ },
+ {
+  "id": "lib.qnn-census-plugin-root",
+  "target": "windows/scripts/modules/WindowsOrtProvenance.Common.psm1",
+  "find": "return @('C:\\temp\\onnx-src', 'C:\\temp\\ort-qnn-ep-src')",
+  "replace": "return @('C:\\temp\\onnx-src')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
+  "why": "the census would call the plugin FOREIGN: its fork and ort_core build outside onnx-src"
+ },
+ {
   "id": "lib.iree-twin-names-stable-abi-lib",
   "target": "windows/scripts/build/Build-IreeFromSource.ps1",
   "find": "        $stableAbi + $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S')",

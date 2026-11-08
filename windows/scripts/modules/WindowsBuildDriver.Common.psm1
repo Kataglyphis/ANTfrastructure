@@ -106,6 +106,9 @@ function Get-MediaBranchVersionArg {
                 # The QAIRT Community zip Resolve-QnnSdk fetches (or the staged zip must match); both keys travel together.
                 QNN_SDK_ZIP_SHA256        = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
                 QNN_SDK_VERSION           = Get-VersionTableValue $VersionTable 'QNN_SDK_VERSION'
+                # Qualcomm's QNN plugin EP fork (Build-OrtQnnEpFromSource.ps1), built in the ORT RUN.
+                ORT_QNN_EP_VERSION        = Get-VersionTableValue $VersionTable 'ORT_QNN_EP_VERSION'
+                ORT_QNN_EP_SOURCE_SHA256  = Get-VersionTableValue $VersionTable 'ORT_QNN_EP_SOURCE_SHA256'
                 NV_CODEC_HEADERS_REF      = Get-VersionTableValue $VersionTable 'NV_CODEC_HEADERS_REF'
                 # AMF headers for FFmpeg; only the rocm lane fetches them, every lane carries the pin.
                 AMF_HEADERS_VERSION       = Get-VersionTableValue $VersionTable 'AMF_HEADERS_VERSION'
@@ -187,6 +190,7 @@ function Get-MediaMergeVersionArg {
         'PYTHON_VERSION', 'OPENCV_VERSION',   # media-core: OpenCV bindings target
         'PY_CYTHON_VERSION',                  # media-core + media-tvm: the Cython both branches install
         'QNN_SDK_ZIP_SHA256', 'QNN_SDK_VERSION', # QAIRT zip pin (#121/#154): every stage that mounts windows/qnn-sdk
+        'ORT_QNN_EP_VERSION', 'ORT_QNN_EP_SOURCE_SHA256', # media-core: the QNN plugin EP fork
         'PROTOC_VERSION', 'JRE_VERSION',      # media-litert: litert-lm toolchain pins
         # media-litert: the rocm lane's LiteRT-LM GPU payload pins, checked in-branch only.
         'LITERT_LM_WEBGPU_ACCELERATOR_SHA256', 'LITERT_LM_WEBGPU_SAMPLER_SHA256',

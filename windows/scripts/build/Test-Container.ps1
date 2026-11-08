@@ -760,6 +760,10 @@ int main() {
             Assert-OrtTensorRtProviderSmoke -OnnxRoot $onnxRoot -OnnxLink $onnxLink -OnnxEpProbeSource $onnxEpProbeSource
         }
         Assert-OrtDmlProviderSmoke -OnnxRoot $OnnxRoot -OnnxLink $OnnxLink -OnnxEpProbeSource $onnxEpProbeSource
+        # Qualcomm's plugin EP replaces the in-tree QNN EP; it loads by RegisterExecutionProviderLibrary, so the file contract is the check.
+        $qnnFinding = @(Get-OrtQnnPluginFinding -EpRoot $env:ORT_QNN_EP_ROOT -OrtRoot $OnnxRoot)
+        Assert-Test -Name 'QNN plugin EP under ORT_QNN_EP_ROOT (exports, QAIRT backends, no in-tree QNN EP)' `
+            -Finding $qnnFinding -FailMessage ($qnnFinding -join '; ')
 }
 
 $script:SmokeNativeSectionNames = @{

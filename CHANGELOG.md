@@ -13,6 +13,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-08 — Windows builds the QNN plugin EP in the ORT RUN (CON232)
+
+- Windows amd64 and arm64 build Qualcomm's plugin EP from the pinned fork, as the `QNN plugin EP` stage of the ORT
+  RUN (`Build-OrtQnnEpFromSource.ps1`). `-Donnxruntime_ORT_HOME` points at a shim holding the chain's
+  `onnxruntime.dll/.lib` and `onnxruntime_providers_shared.dll/.lib`; the fork's `ort_core` headers are copied
+  flat into it after configure. The build fails on an ORT core in its tree that is not the chain's bytes, and on a
+  module without `CreateEpFactories`/`ReleaseEpFactory` or with an import outside the chain, QAIRT and the OS.
+- `C:\runtime\lib\onnxruntime-ep-qnn` holds the DLL, the QAIRT backends, both licence sets and a provenance
+  manifest; `ORT_QNN_EP_ROOT` names it. ORT and GenAI lose the in-tree EP and its staged QAIRT DLLs, and
+  `Resolve-QnnSdk` no longer returns CMake switches.
+- The ORT census counts the fork tree as a chain root and the plugin directory as a chain reference; the smoke
+  gate checks the file contract (`Get-OrtQnnPluginFinding`). `SourceBuild.OrtQnnEp.Tests.ps1` and seven
+  `lib.qnn-*` mutations hold it ([windows-cross-builds.md](docs/windows-cross-builds.md#the-qnn-plugin-ep)).
+
 ## 2026-11-08 — the QNN EP is Qualcomm's plugin EP (CON232)
 
 - Owner decision: the QNN execution provider moves to Qualcomm's plugin EP on both lanes. Linux arm64 builds
