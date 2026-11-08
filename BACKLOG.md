@@ -1004,6 +1004,41 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `003-migraphx-gridsample.patch` and `004-migraphx-refuse-nonstandard-output.patch`. Done when the four AMD
       packages pass parity on the plugin and the built-in provider is gone from the image.
 
+- [ ] **CON232 — move the QNN EP to Qualcomm's plugin EP (`onnxruntime-qnn`)** [M, ★★]. Same pattern as
+      CON231, one step earlier in the cycle. Qualcomm ships the QNN EP as a plugin library
+      ([onnxruntime/onnxruntime-qnn](https://github.com/onnxruntime/onnxruntime-qnn), 2.x: Linux arm64 wheels and
+      tarballs since 2.1.1, Windows ARM64 wheel/NuGet/ZIP, Android Maven; "plugs into a standard ONNX Runtime
+      installation at runtime", its README says "migrate or get started"). The in-tree "Provider Bridge EP" we build
+      on Linux arm64 (`30-build-native.sh`, `libonnxruntime_providers_qnn.so` with the public QAIRT zip,
+      [qnn-linux.md](docs/qnn-linux.md)) and on the Windows arm64 bundle is still shipped upstream and not marked
+      deprecated (2026-11-08). **Start when** CON231 step 2 is in the consumers (the registration code is the same
+      for every plugin) **and** one of: the in-tree QNN EP gets a deprecation notice or `--use_qnn` a build warning;
+      Qualcomm's plugin wheel for our ORT minor exists for Linux arm64. **Do:** pin the plugin source like
+      `35-build-migraphx-plugin-ep.sh` does (seeds, G2 gate, census contract, `ORT_QNN_EP_ROOT`), keep the QAIRT
+      runtime staging, drop `onnxruntime_QNN_HOME` from the ORT build, prove on a Snapdragon device against the CPU
+      provider (the on-device parity gate, not enumeration). Windows arm64 follows the same move in
+      `Build-OnnxFromSource.ps1`.
+
+- [ ] **CON233 — move CUDA/TensorRT to the plugin EPs when NVIDIA and Microsoft deprecate the in-tree ones** [L, ★★].
+      The precedent is complete for TensorRT RTX: NVIDIA's plugin
+      ([NVIDIA/TensorRT-RTX-EP-ABI](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI), since ORT 1.23), the ORT docs
+      deprecate the built-in EP, and microsoft/onnxruntime#32276 (merged 2026-10-28) removed it from `main`; eight
+      releases from plugin to deletion. We never built TRT RTX (GenAI `USE_TRT_RTX=OFF`), so nothing to do there. The
+      classic TensorRT EP we build in-tree (`30-build-native-nvidia.sh --use_cuda --use_tensorrt`, Windows
+      `Build-OnnxFromSource.ps1 -Donnxruntime_USE_TENSORRT=ON`) is NOT deprecated as of 2026-11-08: `--use_tensorrt`
+      carries no warning in `build.py`, the 1.30/1.31 notes mention TensorRT only in fixes, and the plugin
+      ([onnxruntime/onnxruntime-ep-tensorrt](https://github.com/onnxruntime/onnxruntime-ep-tensorrt), "migrated from
+      the in-tree EP", ORT >= 1.23, TensorRT 10/11, Linux and Windows) has no release and lives in the ONNX Runtime
+      org, not NVIDIA's. CUDA stays in-tree with a parallel "CUDA Plugin EP" release from the same tree (v0.3.0 with
+      1.31). **Start when** one of: the TensorRT plugin publishes a release or moves into NVIDIA's organization;
+      `--use_tensorrt` or `--use_cuda` gets a deprecation warning or a release note deprecates the in-tree EP; the
+      CUDA plugin EP becomes the only CUDA provider shipped. **Do:** as CON231 (pinned source build with seeds, G2
+      gate, census entry, `ORT_TENSORRT_EP_ROOT`), against the image's TensorRT 11 runtime files only
+      ([TensorRT 11](docs/linux-accelerator-images.md#tensorrt-11)), on the five `CUDA_ARCHITECTURES`; prove with the
+      detector parity on `TensorrtExecutionProvider` on a card of each supported major; then drop `--use_tensorrt`
+      and, if the CUDA plugin is the only CUDA provider by then, `--use_cuda`. Consumers already register plugins
+      after CON231 step 2.
+
 - [ ] **CON202 — investigate locked detector failure on WSL gfx1036 with MIGraphX** [L, ★★★].
       On 2026-10-31 the cached Linux x64 `:latest-rocm` image digest
       `sha256:a5d68fbe64e579de09473290489b6953b5bce9aeb7644c18b86d6969bf37ace8`
