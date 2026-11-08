@@ -130,8 +130,8 @@ _red "Dockerfile ARG defaults are stale:" \
 
 t_case "6/8 check_script_defaults — a -DefaultValue drifting from versions.env"
 # A glob that matches nothing makes this sub-check unreddenable, so its subject count is pinned.
-t_assert_eq "16" "$(find "${REPO}/windows/scripts" -name 'Build-*FromSource.ps1' | wc -l)" \
-  "the sixteen gate subjects the fixed glob must find (Build-LlamaCppHipFromSource.ps1 joined 2026-10-07)"
+t_assert_eq "17" "$(find "${REPO}/windows/scripts" -name 'Build-*FromSource.ps1' | wc -l)" \
+  "the seventeen gate subjects the fixed glob must find (Build-OrtQnnEpFromSource.ps1 joined 2026-11-08)"
 _red "Windows build-script -DefaultValue pins are stale:" \
   windows/scripts/build/Build-TvmFromSource.ps1 "s|-DefaultValue 'v0.27.0'|-DefaultValue 'v0.0.0'|"
 t_assert_contains "$(cat "${REPO}/windows/scripts/build/Build-TvmFromSource.ps1")" \
