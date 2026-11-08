@@ -1056,6 +1056,9 @@ no plugin, with one notice, as before.
   `Copy-OrtQnnEpHeader` lays the fork's `_deps\ort_core-src` public headers flat into
   `ort-home\include`. It loads into the chain's ORT through the plugin ABI. Leave the fork's
   `ort_core` pin alone: Qualcomm validated the plugin against it.
+- The fork inherits ORT's MSVC-only `/experimental:external` and its warnings-as-errors; clang-cl reports the switch as
+  unused and `-WX` makes that fatal. The ORT build's own fix runs on the fork's `build.ninja` too
+  (`Update-NinjaFile -OrtMsvcOnlyFlags`), found by the first arm64 chain of 2026-11-08.
 - The stage ships `C:\runtime\lib\onnxruntime-ep-qnn`: the DLL, the QAIRT backends and
   `hexagon-v*` skels beside it, `licenses\onnxruntime-qnn\` and `licenses\qairt\`, and a
   `provenance\onnxruntime-qnn.json` manifest. `ORT_QNN_EP_ROOT` names the directory; a

@@ -442,11 +442,7 @@ function Get-OrtWebGpuFeatureMarker {
 function Update-OrtNinjaFile {
     param([Parameter(Mandatory)][string]$BuildDir, [Parameter(Mandatory)][string]$SourceDir, [bool]$Cross)
     # Strip MSVC-only flags from build.ninja
-    Update-NinjaFile -NinjaFile "$BuildDir\build.ninja" -StripPatterns @(
-        # [ \t]*, not \s*, which eats a line ending and merges the next ninja statement.
-        '--compiler-options /experimental:external[ \t]*',
-        '(?<=\s)/experimental:external(?=\s)',
-        '(?<=\s)-WX(?=\s)',
+    Update-NinjaFile -NinjaFile "$BuildDir\build.ninja" -OrtMsvcOnlyFlags -StripPatterns @(
         '/arch:\S+',
         '(?<!-Xcompiler\s)/bigobj',
         '--threads \d+'

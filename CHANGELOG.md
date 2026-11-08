@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-08 — the QNN plugin EP compiles under clang-cl
+
+- The first arm64 chain with the QNN plugin stopped in its compile: the fork passes ORT's MSVC-only
+  `/experimental:external` under warnings-as-errors. `Update-NinjaFile -OrtMsvcOnlyFlags` now owns ORT's three MSVC-only
+  strip patterns, and both the ORT build and the fork run it after configure (`lib.qnn-ep-ninja-msvc-only`,
+  `lib.ninja-msvc-only-wx`).
+
 ## 2026-11-08 — every ORT EP with a plugin moves to it, consumers first (owner directive)
 
 - Owner decision: every ONNX Runtime EP that has a plugin moves to the plugin system on both lanes, at its newest

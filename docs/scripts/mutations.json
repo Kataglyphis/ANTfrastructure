@@ -32345,6 +32345,22 @@
   "why": "a configure that dropped the static plugin would pass the WebGPU gate"
  },
  {
+  "id": "lib.qnn-ep-ninja-msvc-only",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "Update-NinjaFile -NinjaFile (Join-Path $buildDir 'build.ninja') -OrtMsvcOnlyFlags\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
+  "why": "the fork's /experimental:external and -WX stop clang-cl on the first TU that names them"
+ },
+ {
+  "id": "lib.ninja-msvc-only-wx",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Patches.psm1",
+  "find": ", '(?<=\\s)-WX(?=\\s)')",
+  "replace": ")",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.PatchQuiet.Tests.ps1 -ResultFile logs/code-quality/ninja-msvc-only-mutation.json",
+  "why": "without the -WX strip every unused-argument warning stops the ORT and QNN fork builds"
+ },
+ {
   "id": "lib.qnn-ep-pin-sha-required",
   "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
   "find": "    if (\"$Sha256\" -notmatch '^[0-9A-Fa-f]{64}$') { throw \"ORT_QNN_EP_SOURCE_SHA256='$Sha256' is not a 64-hex SHA256: refusing to fetch the QNN plugin unverified\" }\n",

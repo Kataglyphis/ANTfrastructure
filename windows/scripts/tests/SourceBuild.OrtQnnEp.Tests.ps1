@@ -140,6 +140,7 @@ Describe 'QNN plugin EP wiring' {
             "-Until 'QNN plugin EP'", 'source=windows/scripts/build/Build-OrtQnnEpFromSource.ps1,target=C:\bkmnt\Build-OrtQnnEpFromSource.ps1',
             'ORT_QNN_EP_VERSION="${ORT_QNN_EP_VERSION}"', 'ORT_QNN_EP_SOURCE_SHA256="${ORT_QNN_EP_SOURCE_SHA256}"')
         Assert-TestScriptContains -ScriptPath 'windows\Dockerfile.media-merge-builder' -ReasonPrefix 'the image names' -Literal @('ORT_QNN_EP_ROOT="C:\runtime\lib\onnxruntime-ep-qnn"')
+        Assert-Match "(?s)Copy-OrtQnnEpHeader [^\r\n]+\r?\n[^\r\n]*\r?\nUpdate-NinjaFile -NinjaFile \(Join-Path \`$buildDir 'build\.ninja'\) -OrtMsvcOnlyFlags\r?\n\r?\nSwitch-BuildPhase '3\. build'" ([IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $script:QnnEpScript))) 'the fork loses ORT''s MSVC-only switches before ninja runs'
     }
 
     It 'the census counts the plugin''s fork tree as a chain root and its directory as a chain reference' {

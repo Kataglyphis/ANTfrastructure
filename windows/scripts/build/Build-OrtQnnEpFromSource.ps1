@@ -187,6 +187,8 @@ $qnnArgs = Get-OrtQnnEpCmakeArgs -QnnHome $sdk.Home -QnnArchAbi (Get-QnnSdkLibDi
 Invoke-CmakeConfigure -SourceDir (Join-Path $forkRoot 'cmake') -BuildDir $buildDir -InstallPrefix $epDir -BuildType $BuildType -ExtraArgs $qnnArgs 2>&1 |
     Tee-Object -FilePath $cfgLog
 Write-Host "QNN plugin EP: $(Copy-OrtQnnEpHeader -OrtHome $ortHome -OrtCoreSource (Join-Path $buildDir '_deps\ort_core-src')) ORT header(s) from the fork's ort_core"
+# The fork inherits ORT's MSVC-only switches and warnings-as-errors, which stop clang-cl as they would the ORT build.
+Update-NinjaFile -NinjaFile (Join-Path $buildDir 'build.ninja') -OrtMsvcOnlyFlags
 
 Switch-BuildPhase '3. build'
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -Targets @('onnxruntime_providers_qnn') -RetryJobs 2
