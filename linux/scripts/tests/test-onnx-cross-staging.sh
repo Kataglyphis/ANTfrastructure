@@ -20,7 +20,7 @@ a=text.index('_GENAI_MODULE_EXT=""')
 b=text.index('\nfi',a)+3
 cross=text[a:b]
 a=text.index('GENAI_LIB_DIR=')
-b=text.index('\n# GenAI inherits',a)
+b=text.index('\nsymlink_output_libraries_into_usr_local',a)
 native=(Path(sys.argv[1])/'linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh').read_text()
 native_start=native.index('if [ "${MEDIA_STRIP:-1}"')
 native_end=native.index('\nfi',native_start)+3

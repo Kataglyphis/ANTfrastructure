@@ -997,7 +997,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       runtime smoke 0 failures, acceptance receipt passed for all six consumers, promoted by the manifest-only
       replay after the chain's own acceptance had refused a dirty hub tree
       ([failure-modes](docs/failure-modes.md#a-chain-passes-every-gate-and-then-stops-at-image-acceptance-commit-the-hub-tooling-before-creating-an-acceptance-receipt)).
-      The six gaps the proof chains found are each held by a suite case and a recipe. **Windows needs no image step:** `:winamd64-rocm` has built `migraphx-ep.dll` into `C:\runtime\lib\onnxruntime-ep-amdgpu`
+      The six gaps the proof chains found are each held by a suite case and a recipe. **On the card 2026-11-08:** the
+      module extracted from that wrapper ran the DEIM detector on the RX 9070 XT through the plugin with `max|cpu-gpu| = 0`
+      on the whole output tensor and detector parity PASS (five detections, identical boxes, scores and classes). **Windows needs no image step:** `:winamd64-rocm` has built `migraphx-ep.dll` into `C:\runtime\lib\onnxruntime-ep-amdgpu`
       (`ORT_AMDGPU_EP_ROOT`, same `ORT_AMDGPU_EP_COMMIT`) since 2026-10-07 ([windows-rocm.md](docs/windows-rocm.md#migraphx-and-the-ort-plugin-ep-rocm-lane-spike)),
       and its ORT never carried the built-in MIGraphX EP, so step 3 is Linux-only; what Windows lacks is the on-card
       proof (the smoke is GPU-less) and the consumer registration below, which reads the same variable on both
