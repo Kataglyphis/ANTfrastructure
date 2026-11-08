@@ -1062,6 +1062,9 @@ no plugin, with one notice, as before.
 - The fork's POST_BUILD copies the DLL into its own wheel tree (`onnxruntime_qnn\`), so the build
   tree holds two. `Get-OrtQnnEpBuiltDll` stages the link output at the build root; a recursive
   search stopped the second arm64 chain of 2026-11-08 on "found 2".
+- Staging recreates the plugin directory after `Reset-SourceBuildDirectory`, which removes it: a
+  copy to a missing directory writes the DLL as a file under its name, and the next step then
+  fails on `...\onnxruntime-ep-qnn\bin` (the third arm64 chain). The TensorRT stage does the same.
 - The stage ships `C:\runtime\lib\onnxruntime-ep-qnn`: the DLL, the QAIRT backends and
   `hexagon-v*` skels beside it, `licenses\onnxruntime-qnn\` and `licenses\qairt\`, and a
   `provenance\onnxruntime-qnn.json` manifest. `ORT_QNN_EP_ROOT` names the directory; a

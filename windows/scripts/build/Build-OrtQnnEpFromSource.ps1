@@ -155,6 +155,8 @@ function Install-OrtQnnEpArtifact {
         [Parameter(Mandatory)][string]$EpDir, [Parameter(Mandatory)]$Pin)
     $built = Get-OrtQnnEpBuiltDll -BuildDir $BuildDir
     Reset-SourceBuildDirectory -Path $EpDir
+    # The reset removes the directory, and a copy to a missing one writes a file under its name.
+    $null = New-Item -ItemType Directory -Force -Path $EpDir
     Copy-Item -LiteralPath $built.FullName -Destination $EpDir -Force
     [void](Copy-QnnRuntime -Sdk $Sdk -OrtInstallDir $EpDir)
     $texts = Copy-OrtQnnEpLicense -EpDir $EpDir -ForkRoot $ForkRoot -QairtRoot $Sdk.Home

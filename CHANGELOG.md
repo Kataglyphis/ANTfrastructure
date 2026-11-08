@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-08 — the plugin EP stages create their directory
+
+- The third arm64 chain stopped in the QNN plugin's staging with `Could not find a part of the path
+  'C:\runtime\lib\onnxruntime-ep-qnn\bin'`: `Reset-SourceBuildDirectory` removes the directory, so the next
+  `Copy-Item` wrote the DLL as a file under the directory's name. Both plugin builders (QNN, TensorRT) recreate it
+  first; install tests over a stale tree and `lib.qnn-ep-stage-dir` / `lib.trt-ep-stage-dir` hold it.
+
 ## 2026-11-08 — Linux: the CUDA EP is the plugin, the TensorRT EP NVIDIA's plugin, the in-tree TensorRT and MIGraphX EPs are gone (CON233, CON231 step 3)
 
 - Owner decision (second of the day): "sofort komplett, inklusive Entfernen" on both lanes. The nvidia ORT GPU build
@@ -36,6 +43,7 @@
   (`# PYTHON_APP_PLUGIN_EP_API=1` replaces the TensorRT marker; `python-ci-linux.yml` checks it and passes `MIGraphX`).
 - Suites: `test-tensorrt-plugin-ep.sh` (new), and the GPU runtime, G2, census, bundle, AppImage, package and self-test
   suites moved with the code; 29 recipes in the `onnx-ep-tensorrt`, `gpu-runtime`, `provenance` and `packaging` families.
+
 ## 2026-11-08 — Windows nvidia: the CUDA and TensorRT EPs are plugins (CON233)
 
 - Owner: "Windows sofort komplett". The nvidia lane builds CUDA as ORT's plugin

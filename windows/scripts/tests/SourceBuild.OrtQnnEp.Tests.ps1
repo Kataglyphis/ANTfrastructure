@@ -3,12 +3,13 @@
 # SPDX-License-Identifier: MIT
 # Fixture trees cover the pins, the --ort_home shim, the header copy and both gates; the fork's compile is proven only by a chain run.
 
-foreach ($leaf in 'WindowsSourceBuild.Common', 'WindowsSmokeTest.Common', 'WindowsOrtProvenance.Common') {
+foreach ($leaf in 'WindowsSourceBuild.Common', 'WindowsSmokeTest.Common', 'WindowsOrtProvenance.Common', 'WindowsNativeProvenance.Common') {
     Import-Module ([IO.Path]::Combine((Get-RepoRoot), 'windows', 'scripts', 'modules', "$leaf.psm1")) -Force -DisableNameChecking
 }
 $script:QnnEpScript = 'windows\scripts\build\Build-OrtQnnEpFromSource.ps1'
 $script:QnnEpFunction = @('Get-OrtQnnEpPin', 'Get-OrtQnnEpCoreVersion', 'Get-OrtQnnEpChainFile', 'New-OrtQnnEpHome', 'Copy-OrtQnnEpHeader',
-    'Get-OrtQnnEpCmakeArgs', 'Get-OrtQnnEpForeignCore', 'Get-OrtQnnEpModuleFinding', 'Get-OrtQnnEpBuiltDll')
+    'Get-OrtQnnEpCmakeArgs', 'Get-OrtQnnEpForeignCore', 'Get-OrtQnnEpModuleFinding', 'Get-OrtQnnEpBuiltDll', 'Copy-OrtQnnEpLicense',
+    'Install-OrtQnnEpArtifact')
 
 function New-QnnEpChainFixture {
     param([Parameter(Mandatory)][string]$Dir)
@@ -100,6 +101,25 @@ Describe 'Build-OrtQnnEpFromSource.ps1' {
             Assert-Throws { Get-OrtQnnEpBuiltDll -BuildDir $dir } 'only the wheel copy' -MessagePattern 'no link output'
             Write-TestFileTree -Root $dir -Files @{ 'onnxruntime_providers_qnn.dll' = 'link output' }
             Assert-Equal 'link output' (Get-Content -LiteralPath (Get-OrtQnnEpBuiltDll -BuildDir $dir).FullName -Raw).Trim() 'the build root wins over the wheel tree'
+        }
+    }
+
+    It 'stages one directory over a stale one: the plugin, its backends and skels, the licence texts and provenance (mutation)' {
+        Invoke-InTestDir { param($dir)
+            $build = Join-Path $dir 'build'; $fork = Join-Path $dir 'fork'; $qairt = Join-Path $dir 'qairt'; $ep = Join-Path $dir 'ep'
+            Write-TestFileTree -Root $build -Files @{ 'onnxruntime_providers_qnn.dll' = 'plugin'; 'onnxruntime_qnn/onnxruntime_providers_qnn.dll' = 'wheel copy' }
+            Write-TestFileTree -Root $fork -Files @{ 'LICENSE' = 'mit'; 'ThirdPartyNotices.txt' = 'tpn' }
+            Write-TestFileTree -Root $qairt -Files @{ 'LICENSE.pdf' = 'qairt'; 'lib/aarch64-windows-msvc/QnnHtp.dll' = 'htp'; 'lib/hexagon-v73/unsigned/libQnnHtpV73Skel.so' = 'skel' }
+            Write-TestFileTree -Root $ep -Files @{ 'stale.dll' = 'old' }
+            $sdk = [pscustomobject]@{ Home = $qairt; LibDir = (Join-Path $qairt 'lib/aarch64-windows-msvc') }
+            $pin = [pscustomobject]@{ Version = '2.7.0'; Sha256 = ('ab' * 32); Url = 'https://github.com/onnxruntime/onnxruntime-qnn/archive/refs/tags/v2.7.0.tar.gz' }
+            $staged = Install-OrtQnnEpArtifact -BuildDir $build -ForkRoot $fork -Sdk $sdk -EpDir $ep -Pin $pin 6>$null
+            Assert-True (Test-Path -LiteralPath $ep -PathType Container) 'a directory, never a file under its name'
+            Assert-Equal 'plugin' (Get-Content -LiteralPath $staged -Raw).Trim() 'the link output'
+            foreach ($rel in 'QnnHtp.dll', 'hexagon-v73/unsigned/libQnnHtpV73Skel.so', 'licenses/onnxruntime-qnn/ThirdPartyNotices.txt', 'licenses/qairt/LICENSE.pdf', 'provenance/onnxruntime-qnn.json') {
+                Assert-True (Test-Path -LiteralPath (Join-Path $ep $rel) -PathType Leaf) "$rel beside the plugin"
+            }
+            Assert-False (Test-Path -LiteralPath (Join-Path $ep 'stale.dll')) 'the previous stage is gone'
         }
     }
 

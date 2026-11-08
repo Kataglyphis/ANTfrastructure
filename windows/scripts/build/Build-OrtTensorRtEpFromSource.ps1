@@ -176,6 +176,8 @@ function Install-OrtTensorRtEpArtifact {
         [Parameter(Mandatory)][string]$EpDir, [Parameter(Mandatory)]$Pin)
     $built = Get-UniqueBuildArtifact -Root $BuildDir -Filter 'onnxruntime_ep_tensorrt.dll' -Context 'TensorRT plugin EP'
     Reset-SourceBuildDirectory -Path $EpDir
+    # The reset removes the directory, and a copy to a missing one writes a file under its name.
+    $null = New-Item -ItemType Directory -Force -Path $EpDir
     Copy-Item -LiteralPath $built.FullName -Destination $EpDir -Force
     $texts = Copy-OrtTensorRtEpLicense -EpDir $EpDir -SourceRoot $SourceRoot
     Write-NativeFileProvenance -Root $EpDir -Owner 'onnxruntime-ep-tensorrt' -File $built.Name -Notice $texts `

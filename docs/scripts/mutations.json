@@ -32345,6 +32345,22 @@
   "why": "an ORT core the fork built itself would ship beside the chain's"
  },
  {
+  "id": "lib.qnn-ep-stage-dir",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "    $null = New-Item -ItemType Directory -Force -Path $EpDir\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
+  "why": "the reset removes the plugin directory, and the copy then writes the DLL as a file named after it"
+ },
+ {
+  "id": "lib.trt-ep-stage-dir",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "    $null = New-Item -ItemType Directory -Force -Path $EpDir\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1 -ResultFile logs/code-quality/trt-ep-mutation.json",
+  "why": "the reset removes the plugin directory, and the copy then writes the DLL as a file named after it"
+ },
+ {
   "id": "lib.qnn-ep-link-output",
   "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
   "find": "    $built = Get-Item -LiteralPath (Join-Path $BuildDir 'onnxruntime_providers_qnn.dll') -ErrorAction SilentlyContinue\n",

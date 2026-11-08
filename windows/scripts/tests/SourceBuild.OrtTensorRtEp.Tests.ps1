@@ -3,13 +3,13 @@
 # SPDX-License-Identifier: MIT
 # Synthetic PEs and fixture trees cover the pins, seeds, shim and gates; compiling and registering the plugins needs a chain run.
 
-foreach ($leaf in 'WindowsScripts.Shared', 'WindowsTargetArch.Common', 'WindowsSourceBuild.Common', 'WindowsSmokeTest.Common', 'WindowsOrtProvenance.Common', 'WindowsBuildDriver.Common') {
+foreach ($leaf in 'WindowsScripts.Shared', 'WindowsTargetArch.Common', 'WindowsSourceBuild.Common', 'WindowsSmokeTest.Common', 'WindowsOrtProvenance.Common', 'WindowsBuildDriver.Common', 'WindowsNativeProvenance.Common') {
     Import-Module ([IO.Path]::Combine((Get-RepoRoot), 'windows', 'scripts', 'modules', "$leaf.psm1")) -Force -DisableNameChecking
 }
 $script:TrtEpScript = 'windows\scripts\build\Build-OrtTensorRtEpFromSource.ps1'
 $script:OnnxScript = 'windows\scripts\build\Build-OnnxFromSource.ps1'
 $script:TrtEpFunction = @('Get-OrtTensorRtEpPin', 'Get-OrtTensorRtEpDeclaration', 'Get-OrtTensorRtEpSeedGap', 'Get-OrtTensorRtMajor',
-    'New-OrtTensorRtEpHome', 'Get-OrtTensorRtEpCmakeArgs', 'Get-OrtTensorRtEpModuleFinding', 'Copy-OrtTensorRtEpLicense')
+    'New-OrtTensorRtEpHome', 'Get-OrtTensorRtEpCmakeArgs', 'Get-OrtTensorRtEpModuleFinding', 'Copy-OrtTensorRtEpLicense', 'Install-OrtTensorRtEpArtifact')
 $script:PluginExports = @('CreateEpFactories', 'ReleaseEpFactory')
 $script:TrtDelay = @('nvinfer_11.dll', 'nvinfer_plugin_11.dll', 'nvonnxparser_11.dll')
 
@@ -157,6 +157,26 @@ Describe 'Build-OrtTensorRtEpFromSource.ps1' {
             Assert-Equal 'utf8 text' (Get-Content -LiteralPath ([IO.Path]::Combine($ep, 'licenses', 'protobuf', 'third_party', 'utf8_range', 'LICENSE')) -Raw).Trim() 'the original text'
             Remove-Item -LiteralPath ([IO.Path]::Combine($roots['protobuf'], 'third_party', 'utf8_range', 'LICENSE'))
             Assert-Throws { Copy-OrtTensorRtEpLicense -EpDir $ep -SourceRoot $roots } 'a moved text' -MessagePattern 'utf8_range'
+        }
+    }
+
+    It 'stages one directory over a stale one: the plugin, its licence texts and provenance, and no TensorRT DLL (mutation)' {
+        Invoke-InTestDir { param($dir)
+            $roots = [ordered]@{}
+            foreach ($n in 'onnxruntime-ep-tensorrt', 'protobuf', 'onnx', 'gsl', 'flatbuffers') {
+                $roots[$n] = Join-Path $dir "$n-src"
+                Write-TestFileTree -Root $roots[$n] -Files @{ 'LICENSE' = "$n text" }
+            }
+            Write-TestFileTree -Root $roots['protobuf'] -Files @{ 'third_party/utf8_range/LICENSE' = 'utf8 text' }
+            $build = Join-Path $dir 'build'; $ep = Join-Path $dir 'ep'
+            Write-TestFileTree -Root $build -Files @{ 'onnxruntime_ep_tensorrt.dll' = 'plugin'; 'nvinfer_11.dll' = 'POST_BUILD copy' }
+            Write-TestFileTree -Root $ep -Files @{ 'stale.dll' = 'old' }
+            $pin = [pscustomobject]@{ Version = ('c' * 40); Sha256 = ('ab' * 32); Url = 'https://github.com/onnxruntime/onnxruntime-ep-tensorrt/archive/x.tar.gz' }
+            $staged = Install-OrtTensorRtEpArtifact -BuildDir $build -SourceRoot $roots -EpDir $ep -Pin $pin
+            Assert-True (Test-Path -LiteralPath $ep -PathType Container) 'a directory, never a file under its name'
+            Assert-Equal 'plugin' (Get-Content -LiteralPath $staged -Raw).Trim() 'the built plugin'
+            Assert-True (Test-Path -LiteralPath (Join-Path $ep 'provenance/onnxruntime-ep-tensorrt.json') -PathType Leaf) 'its provenance manifest'
+            Assert-Equal 'onnxruntime_ep_tensorrt.dll' (@(Get-ChildItem -LiteralPath $ep -Filter '*.dll' -File).Name -join ',') 'no TensorRT DLL and no stale stage beside it'
         }
     }
 }
