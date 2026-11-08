@@ -32587,10 +32587,10 @@
  {
   "id": "lib.iree-twin-cross-soabi",
   "target": "windows/scripts/build/Build-IreeFromSource.ps1",
-  "find": " + @(if ($Soabi) { \"-DPython3_SOABI=$Soabi\", \"-DPython_SOABI=$Soabi\" })",
-  "replace": "",
+  "find": " + @(if ($Soabi) { \"-DSKBUILD_SOABI=$Soabi\" })",
+  "replace": " + @(if ($Soabi) { \"-DPython3_SOABI=$Soabi\", \"-DPython_SOABI=$Soabi\" })",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTwin.Tests.ps1 -ResultFile logs/code-quality/iree-twin-stable-abi.json",
-  "why": "without the SOABI the cross twin's nanobind configures with the GIL and the module re-enables it on import"
+  "why": "CMake 4.4.5's cross FindPython empties Python_SOABI, so only SKBUILD_SOABI reaches nanobind; the 2026-11-08 arm64 chain stopped on the FindPython spelling"
  },
  {
   "id": "lib.iree-twin-nanobind-ft-gated",

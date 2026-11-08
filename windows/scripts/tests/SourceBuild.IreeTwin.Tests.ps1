@@ -35,7 +35,8 @@ Describe 'IREE v3.13.0 twin on clang-cl' {
             $soabi = Get-IreeTwinSoabi -Lib $python.Lib -WheelTag 'win_arm64'
             Assert-Equal 'cp315t-win_arm64' $soabi 'the target import library names the SOABI'
             $cross = @(Get-IreeFreeThreadedCmakeArgs -CmakeExtra @('-DX=1') -Python $python -NumPyIncludeDir 'C:/n' -Soabi $soabi)
-            foreach ($prefix in 'Python3', 'Python') { Assert-True ("-D${prefix}_SOABI=cp315t-win_arm64" -in $cross) "$prefix gets the SOABI, so nanobind configures free-threaded" }
+            Assert-True ('-DSKBUILD_SOABI=cp315t-win_arm64' -in $cross) 'nanobind gets the SOABI, so it configures free-threaded'
+            Assert-Equal 0 @($cross | Where-Object { $_ -match '^-DPython3?_SOABI=' }).Count 'FindPython empties its own SOABI on a cross configure, so a cache value there is dead'
             Assert-Throws { Get-IreeTwinSoabi -Lib (Join-Path $d 'libs/python315.lib') -WheelTag 'win_arm64' } 'a GIL library' -MessagePattern 'is not a python3XYt\.lib'
             $python.Lib = Join-Path $d 'bare/python315t.lib'
             $bare = @(Get-IreeFreeThreadedCmakeArgs -CmakeExtra @('-DX=1') -Python $python -NumPyIncludeDir 'C:/n')

@@ -100,7 +100,7 @@ function Edit-IreeCleanEggInfo {
 # The configure args for the cp3XYt twins: the GIL pass's, Python pointed at the free-threaded venv, and no abi3, which X.Yt cannot load.
 function Get-IreeFreeThreadedCmakeArgs {
     param([Parameter(Mandatory)][string[]]$CmakeExtra, [Parameter(Mandatory)][hashtable]$Python, [Parameter(Mandatory)][string]$NumPyIncludeDir,
-        # The cross lane's: FindPython runs no interpreter there, and nanobind reads free-threading from SOABI's trailing t.
+        # The cross lane's: CMake 4.4.5's FindPython empties Python_SOABI there, and nanobind reads SKBUILD_SOABI before it.
         [string]$Soabi = '')
     # Upstream turns abi3 on unless SOABI starts cpython-NNt, which Windows' cpXYt-win_amd64 never does (CMakeLists.txt:782-791).
     $abi3Off = @('-DIREE_ENABLE_PYTHON_STABLE_ABI=OFF', '-DMLIR_ENABLE_PYTHON_STABLE_ABI=OFF')
@@ -110,7 +110,7 @@ function Get-IreeFreeThreadedCmakeArgs {
     # nanobind caches the GIL pass's .cpXY-win_amd64.pyd suffix, which X.Yt never imports; -U makes it ask the venv again.
     return @($CmakeExtra | Where-Object { $_ -notmatch '^-DPython3?_(EXECUTABLE|INCLUDE_DIR|LIBRARY|NumPy_INCLUDE_DIR)=' }) +
         @(Get-PythonCMakeHintArgs -Python $Python -Prefix @('Python3', 'Python') -ForwardSlash -NumPyIncludeDir $NumPyIncludeDir) +
-        $stableAbi + $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S') + @(if ($Soabi) { "-DPython3_SOABI=$Soabi", "-DPython_SOABI=$Soabi" })
+        $stableAbi + $abi3Off + @('-UNB_SUFFIX', '-UNB_SUFFIX_S') + @(if ($Soabi) { "-DSKBUILD_SOABI=$Soabi" })
 }
 
 # The cp3XYt-<tag> SOABI of the target's free-threaded CPython, from its import library's name.

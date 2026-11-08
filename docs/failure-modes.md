@@ -2804,9 +2804,10 @@ PowerShell's empty result; bound to `Assert-Test -Finding`, that becomes `$null`
 ### `the GIL was re-enabled, first by iree._runtime_libs._runtime` on an ARM64 device
 
 The ARM64 bundle's free-threaded step loads every `cp3XYt` twin with the GIL off. IREE's cross twin
-configured nanobind without free-threading: FindPython runs no interpreter on the cross lane, so
-`Python_SOABI` stayed empty and nanobind's `NB_ABI` had no trailing `t`. The twin now passes
-`Python_SOABI` and fails its configure without a `nanobind-static-*-ft` library
+configured nanobind without free-threading. CMake 4.4.5's FindPython queries no interpreter on the cross
+lane and sets `Python_SOABI` empty, which also hides a `-DPython_SOABI` cache value, so nanobind's
+`NB_ABI` had no trailing `t`. The twin now passes `SKBUILD_SOABI`, which nanobind reads first, and fails
+its configure without a `nanobind-static-*-ft` library
 ([windows-builds.md](windows-builds.md#the-free-threaded-wheels) has the measurements).
 
 ### `onnxinference` exits `0xC0000005` on an ARM64 device

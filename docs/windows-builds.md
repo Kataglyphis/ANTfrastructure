@@ -724,10 +724,15 @@ against the image's ARM64 FFmpeg. The twin pass is the time from the GIL wheel t
   compiler in them; `Add-IreeTwinFreeThreadedDefine` sets it per object, `Assert-NinjaFreeThreadedDefine` still gates it.
   The same missing interpreter query left `Python_SOABI` empty, from which nanobind reads free-threading (a trailing
   `t` in `NB_ABI`): it built its GIL library and a module without `Py_mod_gil`, and the ARM64 device gate of
-  2026-11-08 reported `the GIL was re-enabled, first by iree._runtime_libs._runtime`. The cross twin now passes
-  `Python_SOABI=cp3XYt-<tag>` (`Get-IreeTwinSoabi`, from the target's `python3XYt.lib`), and
-  `Assert-IreeTwinFreeThreadedNanobind` fails a twin configure without a `nanobind-static-*-ft` library; the
-  file `nb_ft.cpp` alone proves nothing, because the abi3 library compiles it too.
+  2026-11-08 reported `the GIL was re-enabled, first by iree._runtime_libs._runtime`. The cause is CMake 4.4.5:
+  under IREE's policy range (CMP0190 unset) a cross configure queries no interpreter, and FindPython sets
+  `Python_SOABI` to an empty normal variable, which hides a `-DPython_SOABI` cache value. 4.4.4 still queried the
+  host interpreter, so an isolated 4.4.4 run looks healthy. A first fix passed `-DPython_SOABI`, and the chain of
+  2026-11-08 stopped on the gate below. The cross twin now passes `SKBUILD_SOABI=cp3XYt-<tag>`
+  (`Get-IreeTwinSoabi`, from the target's `python3XYt.lib`), which nanobind 2.9.0 reads before `Python_SOABI`.
+  A two-pass configure with 4.4.5's FindPython gives `NB_ABI=cp315t-win_arm64` that way, and an empty one with
+  the `Python_SOABI` spelling. `Assert-IreeTwinFreeThreadedNanobind` fails a twin configure without a
+  `nanobind-static-*-ft` library; the file `nb_ft.cpp` alone proves nothing, because the abi3 library compiles it too.
 - **Every member of the four twins is `0xAA64`, and every module imports `python314t.dll`.** The
   merge gates over the resulting tree: the manifest's store check passed with 4 twins for 4
   twin-verdict GIL wheels; the arch gate inspected 1275 binaries with 0 violations and 0 unresolved
