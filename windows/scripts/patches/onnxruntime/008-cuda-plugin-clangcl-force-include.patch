@@ -1,0 +1,19 @@
+diff --git a/cmake/onnxruntime_providers_cuda_plugin.cmake b/cmake/onnxruntime_providers_cuda_plugin.cmake
+index 465799f..aeb3c80 100644
+--- a/cmake/onnxruntime_providers_cuda_plugin.cmake
++++ b/cmake/onnxruntime_providers_cuda_plugin.cmake
+@@ -194,10 +194,10 @@ target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+     "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --diag_suppress=2810>"
+     # Force-include adapters.h and cuda_kernel_adapter.h for CXX sources.
+     # GCC/Clang use -include, MSVC uses /FI.
+-    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-include;${REPO_ROOT}/include/onnxruntime/ep/adapters.h>"
+-    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:SHELL:-include ${CUDA_PLUGIN_EP_DIR}/cuda_kernel_adapter.h>"
+-    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/FI${REPO_ROOT}/include/onnxruntime/ep/adapters.h>"
+-    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/FI${CUDA_PLUGIN_EP_DIR}/cuda_kernel_adapter.h>"
++    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_FRONTEND_VARIANT:MSVC>>>:-include;${REPO_ROOT}/include/onnxruntime/ep/adapters.h>"
++    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_FRONTEND_VARIANT:MSVC>>>:SHELL:-include ${CUDA_PLUGIN_EP_DIR}/cuda_kernel_adapter.h>"
++    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_FRONTEND_VARIANT:MSVC>>:/FI${REPO_ROOT}/include/onnxruntime/ep/adapters.h>"
++    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_FRONTEND_VARIANT:MSVC>>:/FI${CUDA_PLUGIN_EP_DIR}/cuda_kernel_adapter.h>"
+ )
+ 
+ if (MSVC)

@@ -298,7 +298,7 @@ function Assert-OrtRegexFallbackOperation {
         Assert-False (Test-Path $scriptAssetRoot) 'the actual ONNX call sites must take the missing-patch fallback'
         $null = New-Item -ItemType Directory -Path $SourceDir
         Write-TestFileTree -Root $SourceDir -Files @{
-            'cmake/onnxruntime_providers_cuda.cmake' = 'before target_precompile_headers(t PRIVATE foo.h) after'
+            'cmake/onnxruntime_providers_cuda_plugin.cmake' = '"$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-include>" "$<$<CXX_COMPILER_ID:MSVC>:/FI>"'
             'onnxruntime/core/framework/tunable.h' = '#include "core/framework/tuning_context.h"'
             'onnxruntime/contrib_ops/cuda/bert/xqa/xqa_impl_gen.cuh' = '#elif defined(HAS_SM80_OR_LATER) || !defined(__CUDACC__)'
         }
@@ -307,7 +307,8 @@ function Assert-OrtRegexFallbackOperation {
             $calls = @(Get-TestScriptCommandBlock -ScriptPath 'windows/scripts/build/Build-OnnxFromSource.ps1' -Name Invoke-OrtRegexPatchWithFallback -ExpectedCount 3)
             foreach ($call in $calls) { Assert-True (& $call 6>$null) 'a real ONNX fallback reports its replacement' }
         }
-        Assert-Equal 'before  after' ([IO.File]::ReadAllText((Join-Path $SourceDir cmake/onnxruntime_providers_cuda.cmake))) 'the PCH fallback strips only the call'
+        Assert-Equal '"$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_FRONTEND_VARIANT:MSVC>>>:-include>" "$<$<CXX_COMPILER_FRONTEND_VARIANT:MSVC>:/FI>"' `
+            ([IO.File]::ReadAllText((Join-Path $SourceDir cmake/onnxruntime_providers_cuda_plugin.cmake))) 'the real ONNX fallback for the CUDA plugin tests the frontend variant, so clang-cl gets /FI'
         $expected = '#include "core/framework/tuning_context.h"' + "`n`n#ifdef ERROR`n#undef ERROR`n#endif`n#ifdef VERBOSE`n#undef VERBOSE`n#endif"
         Assert-Equal $expected ([IO.File]::ReadAllText((Join-Path $SourceDir onnxruntime/core/framework/tunable.h))) 'the tunable fallback preserves capture text and macro order'
         Assert-Equal '#else' ([IO.File]::ReadAllText((Join-Path $SourceDir onnxruntime/contrib_ops/cuda/bert/xqa/xqa_impl_gen.cuh))) 'the XQA fallback removes the host-pass guard'

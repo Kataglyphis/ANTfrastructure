@@ -2042,6 +2042,24 @@ function Invoke-NinjaBuildWithRetry {
     Invoke-NinjaInstall -Install:$Install -BuildDir $BuildDir -InstallConfig $InstallConfig
 }
 
+function Get-SevenZipSkippedLink {
+    # An exit 2 made only of 7-Zip's in-tree link refusals; any other error fails the extraction.
+    param(
+        # 7-Zip prints blank lines.
+        [Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]]$Output,
+        [Parameter(Mandatory)][int]$ExitCode,
+        [Parameter(Mandatory)][string]$Archive
+    )
+    if ($ExitCode -eq 0) { return }
+    $errors = @($Output -match '^ERROR: ')
+    $links = @($errors -match '^ERROR: Dangerous link path was ignored : ' | ForEach-Object { ($_ -split ' : ')[1] })
+    if ($ExitCode -ne 2 -or $errors.Count -eq 0 -or $links.Count -ne $errors.Count) {
+        $why = if ($errors.Count) { $errors } else { $Output | Select-Object -Last 5 }
+        throw "7z extraction of '$Archive' failed (exit $ExitCode): $($why -join '; ')"
+    }
+    return $links
+}
+
 function Expand-SourceTarball {
     param(
         [Parameter(Mandatory)][string]$Archive,
@@ -2870,6 +2888,7 @@ Export-ModuleMember -Function @(
     'Add-SourceRegexGuard',
     'Edit-SourceRegexText',
     'Invoke-NinjaBuildWithRetry',
+    'Get-SevenZipSkippedLink',
     'Expand-SourceTarball',
     'Initialize-ExtractedGitRepo',
     'Import-CanonicalVersions',

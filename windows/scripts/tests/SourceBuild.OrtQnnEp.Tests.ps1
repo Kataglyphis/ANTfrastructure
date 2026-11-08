@@ -107,12 +107,12 @@ Describe 'Build-OrtQnnEpFromSource.ps1' {
         Invoke-InTestDir { param($dir)
             Write-TestFileTree -Root $dir -Files @{ 'onnxruntime_providers_qnn.dll' = 'x'; 'QnnHtp.dll' = 'x' }
             $dll = Join-Path $dir 'onnxruntime_providers_qnn.dll'
-            function Get-PeExportNames { param($Path) @('CreateEpFactories', 'ReleaseEpFactory') }
+            function Get-OrtPluginEpExportGap { param($Path, [switch]$ForbidProviderBridge) @() }
             function Get-PeImportNames { param($Path, [switch]$IncludeDelayLoad) @('KERNEL32.dll', 'onnxruntime.dll', 'QnnHtp.dll') }
             Assert-Equal 0 @(Get-OrtQnnEpModuleFinding -Dll $dll).Count 'healthy'
-            function Get-PeExportNames { param($Path) @('CreateEpFactories') }
-            Assert-Match 'does not export ReleaseEpFactory' (@(Get-OrtQnnEpModuleFinding -Dll $dll) -join ';') 'a missing export'
-            function Get-PeExportNames { param($Path) @('CreateEpFactories', 'ReleaseEpFactory') }
+            function Get-OrtPluginEpExportGap { param($Path, [switch]$ForbidProviderBridge) @('onnxruntime_providers_qnn.dll does not export ReleaseEpFactory') }
+            Assert-Match 'does not export ReleaseEpFactory' (@(Get-OrtQnnEpModuleFinding -Dll $dll) -join ';') 'the shared export gap reaches the finding'
+            function Get-OrtPluginEpExportGap { param($Path, [switch]$ForbidProviderBridge) @() }
             function Get-PeImportNames { param($Path, [switch]$IncludeDelayLoad) @('onnxruntime_foreign.dll', 'QnnSystem.dll') }
             $f = @(Get-OrtQnnEpModuleFinding -Dll $dll) -join ';'
             Assert-Match 'onnxruntime_foreign\.dll, which is not the chain ORT' $f 'a foreign ORT import'
@@ -129,14 +129,14 @@ Describe 'Get-OrtQnnPluginFinding (smoke)' {
             Assert-Match 'no onnxruntime_providers_qnn\.dll' (@(Get-OrtQnnPluginFinding -EpRoot $ep -OrtRoot $ort) -join ';') 'missing plugin'
             Assert-Match "ORT_QNN_EP_ROOT=''" (@(Get-OrtQnnPluginFinding -EpRoot '' -OrtRoot $ort) -join ';') 'unset root'
             Write-TestFileTree -Root $ep -Files @{ 'onnxruntime_providers_qnn.dll' = 'x' }
-            function global:Get-PeExportNames { param($Path) @('CreateEpFactories', 'ReleaseEpFactory') }
+            function global:Get-OrtPluginEpExportGap { param($Path, [switch]$ForbidProviderBridge) @() }
             try {
                 Assert-Match 'no QAIRT backend DLL' (@(Get-OrtQnnPluginFinding -EpRoot $ep -OrtRoot $ort) -join ';') 'no backend'
                 Write-TestFileTree -Root $ep -Files @{ 'QnnHtp.dll' = 'x' }
                 Assert-Equal 0 @(Get-OrtQnnPluginFinding -EpRoot $ep -OrtRoot $ort).Count 'healthy'
                 Write-TestFileTree -Root $ort -Files @{ 'bin/onnxruntime_providers_qnn.dll' = 'x' }
                 Assert-Match 'in-tree QNN EP in the chain ORT' (@(Get-OrtQnnPluginFinding -EpRoot $ep -OrtRoot $ort) -join ';') 'in-tree EP'
-            } finally { Remove-Item -LiteralPath 'Function:\Get-PeExportNames' -ErrorAction SilentlyContinue }
+            } finally { Remove-Item -LiteralPath 'Function:\Get-OrtPluginEpExportGap' -ErrorAction SilentlyContinue }
         }
     }
 }
@@ -146,7 +146,7 @@ Describe 'QNN plugin EP wiring' {
         $chain = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-MediaCoreAll.ps1'))
         Assert-Match "(?s)'ONNX Runtime'.*'QNN plugin EP'; Script = 'Build-OrtQnnEpFromSource\.ps1'.*'ONNX GenAI'" $chain 'after ORT, before GenAI'
         Assert-TestScriptContains -ScriptPath 'windows\Dockerfile.media-builder' -ReasonPrefix 'the ORT RUN carries' -Literal @(
-            "-Until 'QNN plugin EP'", 'source=windows/scripts/build/Build-OrtQnnEpFromSource.ps1,target=C:\bkmnt\Build-OrtQnnEpFromSource.ps1',
+            'source=windows/scripts/build/Build-OrtQnnEpFromSource.ps1,target=C:\bkmnt\Build-OrtQnnEpFromSource.ps1',
             'ORT_QNN_EP_VERSION="${ORT_QNN_EP_VERSION}"', 'ORT_QNN_EP_SOURCE_SHA256="${ORT_QNN_EP_SOURCE_SHA256}"')
         Assert-TestScriptContains -ScriptPath 'windows\Dockerfile.media-merge-builder' -ReasonPrefix 'the image names' -Literal @('ORT_QNN_EP_ROOT="C:\runtime\lib\onnxruntime-ep-qnn"')
         Assert-Match "(?s)Copy-OrtQnnEpHeader [^\r\n]+\r?\n[^\r\n]*\r?\nUpdate-NinjaFile -NinjaFile \(Join-Path \`$buildDir 'build\.ninja'\) -OrtMsvcOnlyFlags\r?\n\r?\nSwitch-BuildPhase '3\. build'" ([IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $script:QnnEpScript))) 'the fork loses ORT''s MSVC-only switches before ninja runs'

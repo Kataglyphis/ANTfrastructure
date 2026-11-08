@@ -133,7 +133,7 @@ The `.patch` inventory:
 | FFmpeg | `001-allow-msys-builds.patch` | `configure` | Replace `die` with `echo` for MSYS2 build env |
 | GStreamer | `001-ges-commit-rename.patch` | `subprojects/gst-editing-services/ges/ges-validate.c` | `#define _commit ges__commit` to dodge `-FIio.h` macro collision |
 | ONNX Runtime | `001-softmax-clangcl-keywords.patch` | `core/providers/cuda/math/softmax.cc` | Change the one real ISO-646 `or` → `\|\|` on the dispatch `if` (clang-cl in MS-compat mode treats `or` as an identifier); comments left as upstream |
-| ONNX Runtime | `002-disable-cuda-pch.patch` | `cmake/onnxruntime_providers_cuda.cmake` | Disable CUDA EP `target_precompile_headers` (CUDA 13.x CCCL broken with clang-cl) |
+| ONNX Runtime | `008-cuda-plugin-clangcl-force-include.patch` | `cmake/onnxruntime_providers_cuda_plugin.cmake` | Key the CUDA plugin's force-includes on the MSVC frontend variant, so clang-cl gets `/FI` ([windows-cross-builds.md](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps)) |
 | ONNX Runtime | `003-dml-clangcl-compat.patch` | DirectML EP (5 files under `core/providers/dml/`) | [details](#003-dml-clangcl-compatpatch) |
 | ONNX Runtime | `004-tunable-severity-macro-collision.patch` | `core/framework/tunable.h` | [details](#004-tunable-severity-macro-collisionpatch) |
 | ONNX Runtime | `005-xqa-host-stub-sccache.patch` | `contrib_ops/cuda/bert/xqa/xqa_impl_gen.cuh` | [details](#005-xqa-host-stub-sccachepatch) |
@@ -751,8 +751,9 @@ DirectML is **ON** as of backlog #113 ([`windows-cross-builds.md`](windows-cross
   `003-dml-clangcl-compat.patch` (§ Source Patch Policy): DirectMLHelpers incomplete-type
   out-lining, `.##Z` token-paste, `Dispatch<size_t>`. The EOL/context-tolerant inline regex patcher
   `Invoke-OnnxDmlClangClPatch` in `Build-OnnxFromSource.ps1` remains as the drift fallback.
-- **CUDA + TensorRT EPs** when the NVIDIA layer is the parent (CUDA provider at `CUDA_VERSION`,
-  with the crt/ workaround for nvcc).
+- **The CUDA plugin EP** when the NVIDIA layer is the parent (`onnxruntime_BUILD_CUDA_EP_AS_PLUGIN`
+  at `CUDA_VERSION`); TensorRT is its own plugin stage
+  ([windows-cross-builds.md](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps)).
 - Patches build.ninja for the MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM
   (`.asm` files).
 - **AVX-512/AMX: per-TU only.** Global flags stay OFF: they crashed protoc AND ort's own DLL init at
@@ -1131,15 +1132,15 @@ A zip staged in `windows/downloads/` still wins and saves the ~1.9 GB download o
 zip is staged and the download fails, `Set-TensorrtTree.ps1` throws on an absent root, and the
 smoke gate's §7 fails an `-ExpectGpu` image whose `TENSORRT_ROOT` is empty. The graceful skip of
 2026-08-05 existed because nothing could fetch the zip; with the download it only hid a missing
-TensorRT. The ORT build script auto-detects `$env:TENSORRT_ROOT` and enables the TensorRT EP.
+TensorRT. `Build-OrtTensorRtEpFromSource.ps1` builds the TensorRT plugin EP against the SDK mount
+([windows-cross-builds.md](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps)).
 
-**The smoke's TensorRT assertions follow the staged state (2026-09-20).** With a tree staged they
-require the EP (`cuda=1 trt=1`, the provider DLL, the python EP); zip-less they assert its ABSENCE
-(`cuda=1 trt=0`, no provider DLL, python CUDA-EP only), keyed on `Test-TensorRtTreeStaged`, the same
-presence rule `Resolve-TensorRtRoot` applies at build time. A STAGED tree with a silently-disabled
-EP reds; under `-ExpectGpu` an empty tree reds too (2026-11-06). Before this fix the asserts were
-unconditional and turned the documented normal zip-less state into three false reds on the
-2026-09-20 `-Gpu` run.
+**The smoke's TensorRT assertions follow the staged state (2026-09-20, plugins since 2026-11-08).**
+With a tree staged they require the TensorRT plugin under `ORT_TENSORRT_EP_ROOT` and every TensorRT
+DLL it delay-loads; without one they require the plugin's absence. Either way no in-tree
+`onnxruntime_providers_tensorrt.dll` may remain. The key is `Test-TensorRtTreeStaged`, the same
+presence rule `Resolve-TensorRtRoot` applies at build time; under `-ExpectGpu` an empty tree reds
+(2026-11-06).
 
 **A PRESENT zip fails CLOSED.** `Set-TensorrtTree.ps1` (bind-mounted into the `trt-extract` stage)
 renames the extracted `TensorRT-<version>` tree to a stable **`current`** and throws if it carries
@@ -1148,9 +1149,9 @@ prefers `current` and falls back to the versioned glob for older images.
 
 **Only the runtime DLLs ship (owner, 2026-10-21).** TensorRT's SLA names "the runtime files .so
 and .dll" distributable ([`linux-accelerator-images.md` § Redistribution](linux-accelerator-images.md#redistribution)).
-`Copy-TensorrtRuntime.ps1` copies the DLLs ORT's TensorRT EP loads into `C:\tensorrt-runtime\current\bin`:
-`nvinfer_<M>.dll` and `nvonnxparser_<M>.dll` (linked, ORT v1.31.0's
-`onnxruntime_providers_tensorrt.cmake`), `nvinfer_plugin_<M>.dll` (`LoadLibrary`), and every
+`Copy-TensorrtRuntime.ps1` copies the DLLs the TensorRT EP loads into `C:\tensorrt-runtime\current\bin`:
+`nvinfer_<M>.dll`, `nvonnxparser_<M>.dll` and `nvinfer_plugin_<M>.dll` (the plugin delay-loads all
+three), and every
 `nvinfer_builder_resource*_<M>.dll` (`nvinfer` loads them for an engine build), plus the licence
 texts. For 11.4.0.106 that is 11 DLLs, 2.39 GB, the set NVIDIA's own `tensorrt_cu13_libs` win_amd64
 wheel carries. The sdk image COPYs only that; headers, `.lib` import libraries, `trtexec`, the lean,
@@ -1160,10 +1161,10 @@ dispatch and version-compatibility runtimes, samples, Python wheels and docs sta
 read by `Resolve-TensorRtSdkRoot`), so no layer the image inherits holds the SDK. The tag stays in the
 local containerd store: only `-PushRef` pushes, and an nvidia `-ExportCacheRef` in the public package
 is refused. Without the tag the
-mount is an empty dir and ORT builds no TensorRT EP, which the smoke then fails on a staged tree. The
+mount is an empty dir and the TensorRT plugin stage refuses to build. The
 smoke fails every image whose `TENSORRT_ROOT` holds anything but `current\bin\*.dll` and
-`current\licenses\` (`Get-TensorRtShipViolation`), and an EP whose TensorRT DLLs are missing there
-(`Get-TensorRtEpGap` over `Get-PeImportNames`).
+`current\licenses\` (`Get-TensorRtShipViolation`), and a plugin whose TensorRT DLLs are missing there
+(`Get-OrtNvidiaPluginFinding`, `Get-TensorRtEpGap` over its delay imports).
 
 **Why `current` exists: two silent defects, both green for their whole life (fixed 2026-08-14,
 backlog #38).** `Dockerfile.nvidia` used to build the runtime PATH as
@@ -1917,7 +1918,7 @@ and **fails closed** when neither `bin\` nor `lib\` carries runtime DLLs. Why (b
 
 #### `Copy-TensorrtRuntime.ps1`
 
-Bind-mounted into `trt-extract` after `Set-TensorrtTree.ps1`. Copies the DLLs ORT's TensorRT EP
+Bind-mounted into `trt-extract` after `Set-TensorrtTree.ps1`. Copies the DLLs the TensorRT plugin EP
 loads, and the licence texts, into `C:\tensorrt-runtime`, which the sdk image COPYs as `C:\tensorrt`;
 throws when one of the four kinds is missing.
 § TensorRT setup (GPU lane).

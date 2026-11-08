@@ -151,13 +151,6 @@
               "spdx": "MIT"
             },
             {
-              "name": "ONNX Runtime plugin EP for NVIDIA TensorRT (onnxruntime_ep_tensorrt, beside the in-tree TensorRT EP; nvidia lanes)",
-              "var": "ORT_TENSORRT_EP_COMMIT",
-              "url": "https://github.com/onnxruntime/onnxruntime-ep-tensorrt",
-              "license": "MIT",
-              "spdx": "MIT"
-            },
-            {
               "name": "OpenCV",
               "var": "OPENCV_VERSION",
               "url": "https://opencv.org/",
@@ -864,6 +857,41 @@
               "url": "https://developer.nvidia.com/tensorrt",
               "license": "NVIDIA TensorRT EULA",
               "spdx": "LicenseRef-Proprietary-EULA"
+            },
+            {
+              "name": "ONNX Runtime plugin EP for NVIDIA TensorRT (onnxruntime_ep_tensorrt.dll, C:\\runtime\\lib\\onnxruntime-ep-tensorrt; nvidia variant, amd64)",
+              "var": "ORT_TENSORRT_EP_COMMIT",
+              "url": "https://github.com/onnxruntime/onnxruntime-ep-tensorrt",
+              "license": "MIT; the texts of everything linked into it ship in C:\\runtime\\lib\\onnxruntime-ep-tensorrt\\licenses",
+              "spdx": "MIT"
+            },
+            {
+              "name": "Protocol Buffers + utf8_range (static, in onnxruntime_ep_tensorrt.dll)",
+              "var": "ORT_TENSORRT_EP_PROTOBUF_VERSION",
+              "url": "https://github.com/protocolbuffers/protobuf",
+              "license": "BSD 3-Clause + MIT (the bundled utf8_range)",
+              "spdx": "BSD-3-Clause AND MIT"
+            },
+            {
+              "name": "ONNX (static, in onnxruntime_ep_tensorrt.dll)",
+              "var": "ORT_TENSORRT_EP_ONNX_COMMIT",
+              "url": "https://github.com/onnx/onnx",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "Microsoft GSL (header-only, in onnxruntime_ep_tensorrt.dll)",
+              "var": "ORT_TENSORRT_EP_GSL_VERSION",
+              "url": "https://github.com/microsoft/GSL",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "FlatBuffers (static, in onnxruntime_ep_tensorrt.dll)",
+              "var": "ORT_TENSORRT_EP_FLATBUFFERS_VERSION",
+              "url": "https://github.com/google/flatbuffers",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
             },
             {
               "name": "AMD ROCm for Windows (TheRock tarball, C:\\TheRock\\build; rocm variant only)",

@@ -406,6 +406,22 @@ function Get-PeExportNames {
     return $names.ToArray()
 }
 
+<#
+.SYNOPSIS
+    Why a DLL would not load as an ORT plugin EP: a missing CreateEpFactories or ReleaseEpFactory export.
+.PARAMETER ForbidProviderBridge
+    Also report GetProvider, the in-tree provider-bridge entry a plugin build under the same DLL name must not carry.
+#>
+function Get-OrtPluginEpExportGap {
+    param([Parameter(Mandatory)][string]$Path, [switch]$ForbidProviderBridge)
+    $leaf = [IO.Path]::GetFileName($Path)
+    $exports = @(Get-PeExportNames -Path $Path)
+    return @(
+        'CreateEpFactories', 'ReleaseEpFactory' | Where-Object { $exports -notcontains $_ } | ForEach-Object { "$leaf does not export $_" }
+        if ($ForbidProviderBridge -and $exports -contains 'GetProvider') { "$leaf exports GetProvider: the in-tree provider-bridge EP, not the plugin" }
+    )
+}
+
 function Get-DllDependencyEntry {
     param([string]$Path, [object]$Context)
     foreach ($name in @(& $Context.ReadImports $Path)) {
@@ -710,6 +726,7 @@ Export-ModuleMember -Function @(
     'Test-PeRichHeader',
     'Get-PeImportNames',
     'Get-PeExportNames',
+    'Get-OrtPluginEpExportGap',
     'Get-DllDependencyGraph',
     'Assert-PeTargetMachine',
     'Assert-DirectoryTargetArch',

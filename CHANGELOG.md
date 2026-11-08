@@ -13,6 +13,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-08 — Windows nvidia: the CUDA and TensorRT EPs are plugins (CON233)
+
+- Owner: "Windows sofort komplett". The nvidia lane builds CUDA as ORT's plugin
+  (`onnxruntime_BUILD_CUDA_EP_AS_PLUGIN`, same DLL and EP name) and no in-tree TensorRT EP. Patch 008 keys the plugin
+  CMake's force-includes on the MSVC frontend variant, so clang-cl gets `/FI`; the in-tree CUDA CMake and its PCH patch 002
+  are gone. `Assert-OrtCudaPluginEp` fails a staged DLL that still exports the provider bridge's `GetProvider`.
+- `Build-OrtTensorRtEpFromSource.ps1` builds `onnxruntime/onnxruntime-ep-tensorrt` at `ORT_TENSORRT_EP_COMMIT` in the ORT
+  RUN (amd64): an `ORT_HOME` shim over the chain, its protobuf, onnx, GSL and flatbuffers as SHA256-pinned seeds
+  (`ORT_TENSORRT_EP_*`), downloads disconnected, a G2 stamp as consumer `tensorrt-ep`, licence texts and provenance in
+  `C:\runtime\lib\onnxruntime-ep-tensorrt` (`ORT_TENSORRT_EP_ROOT`). `Get-SevenZipSkippedLink` moved beside
+  `Expand-SourceTarball` so both plugin builders share it.
+- The smoke grades both plugins by their file contract (`Get-OrtNvidiaPluginFinding`, the shared
+  `Get-OrtPluginEpExportGap`) and the build info (`cuda-plugin-ep=1`); registration runs only where `nvcuda.dll` loads.
+  `SourceBuild.OrtTensorRtEp.Tests.ps1` and 20 new mutation recipes (`lib.trt-ep-*`, `lib.ort-cuda-plugin-*`,
+  `lib.nvidia-smoke-*`, `lib.plugin-ep-export-gap-bridge`) hold it. Not proven yet: an nvidia chain build, and registration or inference on an NVIDIA host.
+
 ## 2026-11-08 — the QNN plugin EP stages its link output
 
 - The second arm64 chain compiled the QNN plugin and stopped in its staging: the fork's POST_BUILD copies

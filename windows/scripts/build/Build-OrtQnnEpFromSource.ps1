@@ -121,11 +121,7 @@ function Get-OrtQnnEpForeignCore {
 function Get-OrtQnnEpModuleFinding {
     # The plugin entry points, and an import closure of the chain's ORT, QAIRT backends beside it and the OS.
     param([Parameter(Mandatory)][string]$Dll)
-    $found = @()
-    $exports = @(Get-PeExportNames -Path $Dll)
-    foreach ($symbol in 'CreateEpFactories', 'ReleaseEpFactory') {
-        if ($exports -notcontains $symbol) { $found += "$(Split-Path -Leaf $Dll) does not export $symbol" }
-    }
+    $found = @(Get-OrtPluginEpExportGap -Path $Dll)
     $dir = Split-Path -Parent $Dll
     foreach ($import in @(Get-PeImportNames -Path $Dll -IncludeDelayLoad)) {
         if ($import -match '^onnxruntime' -and $import -notin 'onnxruntime.dll', 'onnxruntime_providers_shared.dll') { $found += "imports $import, which is not the chain ORT" }

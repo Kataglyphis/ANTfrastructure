@@ -19,6 +19,8 @@ $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScrip
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
 Import-Module (Resolve-SourceBuildLeafModule -AssetRoot $scriptAssetRoot -Name 'WindowsNativeProvenance.Common.psm1') -DisableNameChecking
+# Get-OrtPluginEpExportGap is not re-exported through WindowsSourceBuild.Common.
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsTargetArch.Common.psm1') -DisableNameChecking
 
 # rocm-lane WebGPU EP spike; see docs/windows-rocm.md § ONNX Runtime WebGPU EP (rocm lane, spike).
 function Get-OrtWebGpuPlan {
@@ -660,16 +662,17 @@ function Get-OrtCudaArgs {
     param($gpuEnv, [bool]$onnxCross, [bool]$cudaUsable, [string]$SourceDir, [string]$scriptAssetRoot)
     $gpuArgs = @()
     if ($cudaUsable) {
-        Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
+        Write-Host 'NVIDIA GPU detected: enabling the CUDA plugin EP + cuDNN'
         $cudaRoot = $gpuEnv.CudaRoot
         $cudnnRoot = $gpuEnv.CudnnRoot
         # Shared cuDNN import-lib finder (prefers cudnn.lib over the 9.x split sub-libs); $null when absent.
         $cudnnLib = Get-CudnnLibrary -CudnnRoot $cudnnRoot
 
-        # CUDA 13.x CCCL breaks clang-cl PCH -- disable via a reviewable .patch (inline regex fallback for context drift).
-        $null = Invoke-OrtRegexPatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\002-disable-cuda-pch.patch') -SourceDir $SourceDir `
-            -RelativePath 'cmake\onnxruntime_providers_cuda.cmake' -Pattern 'target_precompile_headers\([^)]+\)' `
-            -WarnMessage "onnxruntime_providers_cuda.cmake: no target_precompile_headers(...) call found to strip; the CUDA PCH may break the clang-cl build. Verify $SourceDir\cmake\onnxruntime_providers_cuda.cmake."
+        # clang-cl reports CXX_COMPILER_ID Clang, so upstream's MSVC test hands it GCC's -include, which it reads as a second input.
+        $null = Invoke-OrtRegexPatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\008-cuda-plugin-clangcl-force-include.patch') -SourceDir $SourceDir `
+            -RelativePath 'cmake\onnxruntime_providers_cuda_plugin.cmake' -Pattern '\$<CXX_COMPILER_ID:MSVC>' -Replacement '$$<CXX_COMPILER_FRONTEND_VARIANT:MSVC>' `
+            -FallbackNote 'falling back to the inline frontend-variant rewrite' `
+            -WarnMessage "onnxruntime_providers_cuda_plugin.cmake: no `$<CXX_COMPILER_ID:MSVC> force-include test found; clang-cl will receive -include. Verify $SourceDir\cmake\onnxruntime_providers_cuda_plugin.cmake."
         # The CUDA includes define ERROR/VERBOSE despite -DNOGDI, which paste into a nonexistent Severity::k0.
         $null = Invoke-OrtRegexPatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\004-tunable-severity-macro-collision.patch') -SourceDir $SourceDir `
             -RelativePath 'onnxruntime\core\framework\tunable.h' -Pattern '(#include "core/framework/tuning_context\.h")' `
@@ -697,17 +700,8 @@ function Get-OrtCudaArgs {
                 }
 
         # ONNX-specific CMake flags (names like `onnxruntime_USE_CUDA` are ORT-only -- kept local, not in the generic helper).
-        $gpuArgs += '-Donnxruntime_USE_CUDA=ON'
-        # Classic TensorRT is x64-only; see docs/windows-cross-builds.md § CUDA / cuDNN / TensorRT.
-        $trtRoot = if ($onnxCross) { $null } else { $gpuEnv.TensorRtRoot }
-        if ($trtRoot) {
-            Write-Host "TensorRT detected at $trtRoot - enabling TensorRT EP"
-            $gpuArgs += '-Donnxruntime_USE_TENSORRT=ON'
-            $gpuArgs += '-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=ON'
-            $gpuArgs += "-DTENSORRT_ROOT=$trtRoot"
-        } else {
-            $gpuArgs += '-Donnxruntime_USE_TENSORRT=OFF'
-        }
+        # The plugin replaces the in-tree CUDA EP under the same DLL and EP name; TensorRT is its own plugin (Build-OrtTensorRtEpFromSource.ps1).
+        $gpuArgs += '-Donnxruntime_USE_CUDA=ON', '-Donnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON', '-Donnxruntime_USE_TENSORRT=OFF'
         # nvcc's host is MSVC cl.exe, as nvcc rejects clang-cl; /wd4067 is ORT-specific.
         $gpuArgs += Get-NvccCudaCmakeArgs -CudaRoot $cudaRoot -CudaStandard '17' -ExtraCudaFlags '-Xcompiler=/wd4067'
         $cudnnLibDir = Get-CudnnLibraryDir -CudnnRoot $cudnnRoot
@@ -810,6 +804,16 @@ function Install-OrtDirectMlProvenance {
     Write-NativeFileProvenance -Root $OrtInstallDir -Owner 'directml' -File 'bin\DirectML.dll' -Source $source -Notice $notices
 }
 
+function Assert-OrtCudaPluginEp {
+    # The plugin keeps the legacy DLL name, so only its exports tell it from a provider-bridge build.
+    param([Parameter(Mandatory)][string]$OrtInstallDir)
+    $dll = Join-Path $OrtInstallDir 'bin\onnxruntime_providers_cuda.dll'
+    if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) { throw "CUDA plugin EP: $dll was not installed beside onnxruntime.dll" }
+    $gap = @(Get-OrtPluginEpExportGap -Path $dll -ForbidProviderBridge)
+    if ($gap.Count -gt 0) { throw "CUDA plugin EP: $($gap -join '; ')" }
+    Write-Host "CUDA plugin EP: $dll exports the plugin ABI only"
+}
+
 function Install-OrtRuntimeSidecars {
     param([string]$SourceDir, [string]$ortInstallDir, $webgpuPlan, $webgpu, [string]$buildDir)
     # cmake --install skips DirectML.dll (0xC0000135); the filter picks the target's redist dir of the per-platform nuget.
@@ -828,7 +832,7 @@ function Install-OrtRuntimeSidecars {
 
 function Invoke-OrtPythonWheelsAndMarker {
     param([bool]$onnxCross, $tpy, $py, [string]$buildDir, [string]$SourceDir, $webgpuPlan, $webgpu, $webgpuDllSha, $ftPlan, [string[]]$cmakeArgs, [string[]]$pythonArgs, [string]$cmakeSrc, [string]$ortInstallDir, [string]$WebGpuWorkDir)
-    # Plain `onnxruntime` wheel: our CUDA+TensorRT+DML combo matches no upstream name suffix
+    # Plain `onnxruntime` wheel: our CUDA plugin + DML combo matches no upstream name suffix
     Switch-BuildPhase '6. python wheel'
     # A variable: a condition starting with a command name parses in command mode, turning `-and -not` into arguments.
     if ($onnxCross -and -not $tpy.Available) {
@@ -902,7 +906,7 @@ function Invoke-OrtRegexPatchWithFallback {
 
 # CUDA stays bare unless SCCACHE_CUDA_LAUNCHER=1, and Blackwell takes it back from the PTX-only targets; see docs/windows-build-resources.md.
 
-# GPU detection; ONNX_FORCE_CPU=1 is a dev knob that skips the hour of CUDA and TensorRT kernels.
+# GPU detection; ONNX_FORCE_CPU=1 is a dev knob that skips the hour of CUDA kernels.
 $gpuEnv = Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU'
 $cudaUsable = Test-CudaTargetUsable -GpuEnvironment $gpuEnv -CrossTarget $onnxCross
 $gpuArgs = @(Get-OrtCudaArgs -gpuEnv $gpuEnv -onnxCross $onnxCross -cudaUsable $cudaUsable -SourceDir $SourceDir -scriptAssetRoot $scriptAssetRoot)
@@ -958,6 +962,7 @@ Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 2 -Inst
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 
 $webgpuDllSha = Install-OrtRuntimeSidecars -SourceDir $SourceDir -ortInstallDir $ortInstallDir -webgpuPlan $webgpuPlan -webgpu $webgpu -buildDir $buildDir
+if ($cudaUsable) { Assert-OrtCudaPluginEp -OrtInstallDir $ortInstallDir }
 
 Invoke-OrtPythonWheelsAndMarker -onnxCross $onnxCross -tpy $tpy -py $py -buildDir $buildDir -SourceDir $SourceDir -webgpuPlan $webgpuPlan -webgpu $webgpu -webgpuDllSha $webgpuDllSha -ftPlan $ftPlan -cmakeArgs $cmakeArgs -pythonArgs $pythonArgs -cmakeSrc $cmakeSrc -ortInstallDir $ortInstallDir -WebGpuWorkDir $WebGpuWorkDir
 

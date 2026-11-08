@@ -33,8 +33,8 @@ everything layered on it, which includes **DirectML** (the ONNX `DmlExecutionPro
 and onnxruntime-genai's DML path). CUDA/TensorRT cannot be GPU-accelerated in a
 Windows container. On this host that is exactly the point: the machine has an **AMD
 Radeon RX 9070 XT** (+ iGPU) and **no NVIDIA GPU**, so DirectML — being
-vendor-agnostic — is the *only* GPU path. (The CUDA/TensorRT EPs are still built and
-smoke-checked for availability, but they have no device to run on here.)
+vendor-agnostic — is the *only* GPU path. (The CUDA and TensorRT plugin EPs are still built and
+smoke-checked by their file contract, but they have no device to run on here.)
 
 Running DirectML on the physical GPU **inside a container** requires all of:
 
