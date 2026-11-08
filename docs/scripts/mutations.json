@@ -36743,5 +36743,53 @@
   "replace": "",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.ExportArm64Modules.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-export-mutation.json",
   "why": "the device job must receive the receipt checker beside its exported gate"
+ },
+ {
+  "id": "probe.app-venv-plugin-amd-call",
+  "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+  "find": "    verify_ort_plugin_library ORT_AMDGPU_EP_ROOT libmigraphx-ep.so || return $?\n",
+  "replace": "    :\n",
+  "test": "LC_ALL=C bash linux/scripts/tests/test-app-venv-plugin-eps.sh",
+  "why": "the AMD wrapper must fail when its selected plugin is absent even though the chain ORT wheel is CPU-only"
+ },
+ {
+  "id": "probe.app-venv-plugin-tensorrt-call",
+  "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+  "find": "      verify_ort_plugin_library ORT_TENSORRT_EP_ROOT libonnxruntime_ep_tensorrt.so || return $?\n",
+  "replace": "      :\n",
+  "test": "LC_ALL=C bash linux/scripts/tests/test-app-venv-plugin-eps.sh",
+  "why": "TensorRT-enabled NVIDIA wrappers must require the separate plugin rather than an in-tree provider"
+ },
+ {
+  "id": "probe.app-venv-plugin-create-export",
+  "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+  "find": "for export in (\"CreateEpFactories\", \"ReleaseEpFactory\"):\n",
+  "replace": "for export in (\"ReleaseEpFactory\",):\n",
+  "test": "LC_ALL=C bash linux/scripts/tests/test-app-venv-plugin-eps.sh",
+  "why": "native loading alone cannot prove the factory-creation export exists"
+ },
+ {
+  "id": "probe.app-venv-plugin-release-export",
+  "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+  "find": "for export in (\"CreateEpFactories\", \"ReleaseEpFactory\"):\n",
+  "replace": "for export in (\"CreateEpFactories\",):\n",
+  "test": "LC_ALL=C bash linux/scripts/tests/test-app-venv-plugin-eps.sh",
+  "why": "a module without the factory-release export is not a complete plugin"
+ },
+ {
+  "id": "probe.app-venv-plugin-selected-module",
+  "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+  "find": "library = ctypes.CDLL(str(path))\n",
+  "replace": "library = ctypes.CDLL(str(path.with_name(\"libmigraphx-ep.so\")))\n",
+  "test": "LC_ALL=C bash linux/scripts/tests/test-app-venv-plugin-eps.sh",
+  "why": "the build must load the exact selected module, never a successful neighboring plugin as a fallback"
+ },
+ {
+  "id": "probe.app-venv-plugin-cpu-core",
+  "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+  "find": "assert 'CPUExecutionProvider' in providers, 'ERROR: the chain CPU ONNX Runtime has no CPUExecutionProvider!'",
+  "replace": "print('CPU ORT check removed')",
+  "test": "LC_ALL=C bash linux/scripts/tests/test-app-venv-plugin-eps.sh",
+  "why": "the AMD wrapper must still import and verify the chain CPU ORT alongside its separate GPU plugin"
  }
 ]

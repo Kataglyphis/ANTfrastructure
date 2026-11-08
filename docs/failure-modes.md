@@ -2833,6 +2833,23 @@ native exit used to throw before the gate kept the output. `Assert-GstOnnxInfere
 keeps it and, on a failure, reruns the frames without `onnxinference`, the full pipeline with
 `ORC_CODE=backup` and with `GST_DEBUG=onnx*:6`, so the next device run names the failing
 element. The cause is open until that run.
+### The wrapper requires an in-tree GPU provider after the plugin move
+
+**Symptom.** `ONNX Runtime does NOT have MIGraphXExecutionProvider!` in the Torch wrapper after the
+ROCm media and Android stages pass, or a TensorRT availability assertion names `TensorrtExecutionProvider`.
+Seen in ROCm run `20261108-161535-562db2ce`; the concurrent package smoke passed, but no new wrapper existed.
+
+**Cause.** `verify_project_environment` still checked the removed in-tree providers. The AMD venv now uses
+the CPU ORT wheel and a separate plugin. Registering that plugin is not a GPU-less replacement: its factory
+calls `hipGetDeviceCount` and fails with HIP error 100 when the build container has no GPU.
+
+**Fix.** `verify_ort_plugin_library` loads the selected plugin with `ctypes.CDLL` and requires
+`CreateEpFactories` and `ReleaseEpFactory`; the Torch HIP/CUDA checks remain. The fixture suite
+`test-app-venv-plugin-eps.sh` rejects missing or invalid modules, missing exports and invalid roots, and
+exercises both selected call sites with no in-tree provider. This proves loading and exports, not
+registration or inference. After the active chain finishes, rerun ROCm from `runtime`; manifest-only
+promotion cannot repair a run that produced no new wrapper.
+
 ### A plugin module with both exports fails its export check
 
 **Symptom.** `ERROR: …/libonnxruntime_ep_tensorrt.so does not export CreateEpFactories` (and

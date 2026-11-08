@@ -109,6 +109,11 @@
   (`# PYTHON_APP_PLUGIN_EP_API=1` replaces the TensorRT marker; `python-ci-linux.yml` checks it and passes `MIGraphX`).
 - Suites: `test-tensorrt-plugin-ep.sh` (new), and the GPU runtime, G2, census, bundle, AppImage, package and self-test
   suites moved with the code; 29 recipes in the `onnx-ep-tensorrt`, `gpu-runtime`, `provenance` and `packaging` families.
+- Align the ROCm overview, wheel selection and MIGraphX prefix lookup with the plugin-only CPU-prefix build; remove
+  the obsolete native AMD entry point and wheel from the setup instructions.
+- Replace the app-venv's stale in-tree MIGraphX/TensorRT availability assertions with native plugin loading and
+  both factory exports, while retaining the ORT Python import and Torch HIP/CUDA checks. The new fixture suite covers missing modules,
+  exports and roots, both selected call sites and the CPU path; GPU registration and inference remain separate.
 
 ## 2026-11-08 — Windows nvidia: the CUDA and TensorRT EPs are plugins (CON233)
 

@@ -61,7 +61,7 @@ Registry `ghcr.io/kataglyphis/kataglyphis_beschleuniger`, one manifest per tag o
 | --- | --- |
 | `:latest` | Linux **manifest** over amd64, arm64 and riscv64; the Hailo runtime on amd64 and arm64 |
 | `:latest-nvidia` | CUDA, cuDNN and DeepStream 9.1, amd64 |
-| `:latest-rocm` | ROCm and MIGraphX, amd64 |
+| `:latest-rocm` | ROCm and the [plugin MIGraphX EP](docs/linux-accelerator-images.md#amds-plugin-migraphx-ep), amd64 |
 | `:winamd64` | Windows **manifest** (`windows/amd64`), CPU + DirectML; `:winamd64-nvidia`, `:winamd64-rocm` |
 | `:winarm64` | Windows arm64 **artifact bundle**: a `windows/amd64` image, never `--platform windows/arm64` |
 
