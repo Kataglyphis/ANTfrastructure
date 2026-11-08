@@ -54,6 +54,13 @@ t_assert_contains "$(cat "${EP}")" 'build.py" "${args[@]}" --update' "configure 
 t_assert_contains "$(cat "${EP}")" 'build.py" "${args[@]}" --build' "then build, after the headers are in place"
 t_assert_contains "$(qnnep_ort_home "${_T}/nochain" "${_T}/home2" 1.29.0 2>&1)" "no libonnxruntime.so.N.N.N under"
 
+t_case "copies of the chain library in the build dir pass the core check; any other libonnxruntime there fails it (the first arm64 proof chain tripped on the fork's own copies)"
+mkdir -p "${_T}/bd/Release"; cp "${_T}/chain/lib/libonnxruntime.so.1.31.1" "${_T}/bd/Release/libonnxruntime.so.1.29.0"; cp "${_T}/chain/lib/libonnxruntime.so.1.31.1" "${_T}/bd/Release/libonnxruntime.so"
+t_assert_ok qnnep_assert_no_foreign_core "${_T}/bd" "${_T}/chain"
+printf 'other bytes' > "${_T}/bd/Release/libonnxruntime.so.1.29.0"
+t_assert_contains "$(qnnep_assert_no_foreign_core "${_T}/bd" "${_T}/chain" 2>&1)" "libonnxruntime.so.1.29.0 is an ONNX Runtime core library the chain did not build"
+t_assert_contains "$(qnnep_assert_no_foreign_core "${_T}/bd" "${_T}/nochain" 2>&1)" "no libonnxruntime.so.N.N.N under"
+
 t_case "the library verdict: both exports, and every NEEDED name is the chain's, a QAIRT backend beside it or the C/C++ runtime"
 mkdir -p "${_T}/bin" "${_T}/ort/lib" "${_T}/ep/lib"; : > "${_T}/ort/lib/libonnxruntime.so.1"; : > "${_T}/ep/lib/libQnnHtp.so"; printf 'x' > "${_T}/ep/lib/libonnxruntime_providers_qnn.so"
 cat > "${_T}/bin/readelf" <<'READELF'

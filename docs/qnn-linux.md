@@ -80,7 +80,9 @@ would not fit the image's 3.15 anyway).
   the plugin ABI working as designed. Three traps: the fork's `tools/python/util` imports a helper it
   no longer ships whenever `torch` is importable, so build.py runs under `python -S`; a rerun in a dirty
   build dir fails the `ort_core` patch step, so the work dir is fresh every time; and the header set
-  includes a `.inc` file, so every file of the three public dirs is linked, not only `*.h`.
+  includes a `.inc` file, so every file of the three public dirs is linked, not only `*.h`. The fork's prebuilt step
+  also copies `--ort_home`'s library into its build dir, so the "no ORT core of its own" check compares bytes with the
+  chain's library instead of refusing the name (the first arm64 proof chain tripped on those copies).
 - **Output.** `/usr/local/lib/onnxruntime-ep-qnn/lib/libonnxruntime_providers_qnn.so` with the QAIRT
   backends (`libQnn*.so`, the HTP skels) staged beside it by `stage_qnn_runtime`, `licenses/`
   (the fork's MIT text and ThirdPartyNotices, QAIRT's licence) and `provenance.txt` (tag, source

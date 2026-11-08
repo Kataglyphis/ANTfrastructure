@@ -16916,6 +16916,14 @@
   "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh"
  },
  {
+  "id": "onnx-ep-qnn.no-foreign-ort-core",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "    [ \"$(sha256sum \"${f}\" | cut -c1-64)\" = \"${chain_sha}\" ] || {",
+  "replace": "    [ -f \"${f}\" ] || {",
+  "why": "a build that produced or fetched an ONNX Runtime core of its own would ship a second ORT; only byte-identical copies of the chain's library may sit in the build dir",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh"
+ },
+ {
   "id": "onnx-ep-qnn.skip-leaves-placeholder",
   "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
   "find": "then plugin_ep_skip \"${QNNEP_OUTPUT_DIR}\" \"Skipping the QNN plugin EP",

@@ -43,6 +43,17 @@ qnnep_ort_home_headers() {
   printf '%s' "${n}"
 }
 
+# <build dir> <chain prefix>: the fork's prebuilt step copies --ort_home's library into the build dir, so copies of the chain's bytes are fine; any other libonnxruntime there is a core the chain did not build.
+qnnep_assert_no_foreign_core() {
+  local build="$1" chain="$2" real chain_sha f
+  real="$(find "${chain}/lib" -maxdepth 1 -name 'libonnxruntime.so.[0-9]*.[0-9]*' -type f | head -n 1)"
+  [ -n "${real}" ] || { printf 'ERROR: no libonnxruntime.so.N.N.N under %s/lib\n' "${chain}" >&2; return 1; }
+  chain_sha="$(sha256sum "${real}" | cut -c1-64)"
+  while IFS= read -r f; do
+    [ "$(sha256sum "${f}" | cut -c1-64)" = "${chain_sha}" ] || { printf 'ERROR: %s is an ONNX Runtime core library the chain did not build\n' "${f}" >&2; return 1; }
+  done < <(find "${build}" -name 'libonnxruntime.so*' -type f 2>/dev/null)
+}
+
 qnnep_source_url() { printf 'https://github.com/onnxruntime/onnxruntime-qnn/archive/refs/tags/v%s.tar.gz' "$1"; }
 
 # <so>: every NEEDED name is the chain's, a QAIRT backend beside it or the target's C/C++ runtime; ldd cannot run a cross-built module.
@@ -96,8 +107,7 @@ qnnep_compile() {
   "${HOST_PYTHON_BIN}" -S "${QNNEP_SRC}/tools/ci_build/build.py" "${args[@]}" --build 2>&1 | tee -a "${work}/build.log"
   cmake_assert_compiler_cache_pin "${work}/build/Release" "${_ort_launcher:-}"
   QNNEP_SO="$(plugin_ep_built_module "${work}/build/Release/onnxruntime_qnn" libonnxruntime_providers_qnn.so)"
-  # With --ort_home the fork builds no ORT core; one here would be an ONNX Runtime the chain did not build.
-  ! find "${work}/build" -name 'libonnxruntime.so*' -print -quit 2>/dev/null | grep -q . || err "the plugin build produced an ONNX Runtime core library of its own"
+  qnnep_assert_no_foreign_core "${work}/build" "${QNNEP_ORT_DIR}" || err "the plugin build produced an ONNX Runtime core library of its own"
 }
 
 # Install the module with the QAIRT backends and both licence sets beside it, and write the provenance.
