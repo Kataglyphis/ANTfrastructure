@@ -32,8 +32,8 @@ remove it after, the same discipline as the TensorRT zip.
   `onnxruntime_QNN_HOME` via cmake flags — mirroring the Windows lane's #121
   wiring exactly.
 - Enable the QNN target on the **arm64** lane for all five consumers
-  (HTP/NPU on Snapdragon, the actual point of the EP): ONNX Runtime
-  (`onnxruntime_USE_QNN=ON`) and ONNX Runtime GenAI (inherits ORT at runtime).
+  (HTP/NPU on Snapdragon, the actual point of the EP): Qualcomm's plugin QNN EP for ONNX Runtime,
+  built from its pinned fork (`docs/qnn-linux.md#the-plugin-ep`; the in-tree EP left the ORT build on 2026-11-08).
   LiteRT gets `QAIRT_HEADERS_DIR=<root>/include/QNN` — the dir HOLDING
   `Qnn*.h`, not the include root; see `docs/qnn-linux.md` — which auto-enables
   `LITERT_ENABLE_QUALCOMM`. TVM and IREE get NOTHING: they have no Qualcomm path

@@ -42,16 +42,6 @@ def verification_run() -> str:
     return run
 
 
-def verification_mounts() -> dict[str, str]:
-    return {
-        target: source
-        for source, target in re.findall(
-            r"--mount=type=bind,source=([^, ]+),target=([^, ]+),readonly",
-            verification_run(),
-        )
-    }
-
-
 def create(path: Path, kind: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if kind == "regular":
@@ -97,28 +87,6 @@ def stage_fixture(work: Path, kind: str) -> tuple[Path, str]:
     )
 
 
-def verification_fixture(work: Path, companion: str) -> tuple[Path, str]:
-    for destination, source in verification_mounts().items():
-        path = work / destination.lstrip("/")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(SCRIPTS / source.removeprefix("linux/scripts/"), path)
-    leaf = work / "opt/scripts/01-core/qnn-sdk.sh"
-    variants = {
-        "missing": None,
-        "empty": "",
-        "partial": "qnn_has_runtime_libraries() { :; }\nreturn 23\n",
-        "parse": "qnn_has_runtime_libraries() { :; }\nif\n",
-    }
-    if companion in variants:
-        leaf.unlink(missing_ok=True)
-        variant = variants[companion]
-        if variant is not None:
-            leaf.parent.mkdir(parents=True, exist_ok=True)
-            leaf.write_text(variant)
-    script = work / "opt/scripts/03-media/runtime/verify-media-artifacts.sh"
-    return script, 'source "$SCRIPT" onnxruntime-cpu "$PREFIX"\n'
-
-
 def run(
     domain: str,
     kind: str,
@@ -127,16 +95,11 @@ def run(
     strict: bool,
     find_status: int = 0,
     grep_status: int = 0,
-    companion: str = "valid",
 ) -> QueryResult:
     with tempfile.TemporaryDirectory(prefix="ant-qnn-query-") as directory:
         work = Path(directory)
         prefix = prefix_fixture(work, kind, provider)
-        script, body = (
-            stage_fixture(work, kind)
-            if domain == "stage"
-            else verification_fixture(work, companion)
-        )
+        script, body = stage_fixture(work, kind)
         code = (
             DRIVER
             + ("set -e\n" if strict else "set +e\n")
@@ -201,7 +164,7 @@ def stage_tree(work: Path) -> list[list[str]]:
 def capture() -> dict[str, QueryResult]:
     results: dict[str, QueryResult] = {}
     cases = product(
-        ["stage", "verify"],
+        ["stage"],
         ["missing", "regular", "directory", "symlink", "nested"],
         [None, "regular"],
         ["direct", "conditional"],
@@ -219,36 +182,14 @@ class QnnRuntimeQuery(unittest.TestCase):
         expected = json.loads(
             Path(__file__).with_name("qnn-query-receipts.json").read_text()
         )
-        self.assertEqual(240, len(expected))
+        self.assertEqual(120, len(expected))
         self.assertEqual(expected, capture())
 
     def test_independent_shallow_regular_policy(self) -> None:
-        for kind in ["missing", "regular", "directory", "symlink", "nested"]:
-            with self.subTest(kind=kind):
-                got = run("verify", kind, "regular", "direct", True)
-                self.assertEqual(0 if kind == "regular" else 1, got["rc"])
-                self.assertEqual(
-                    kind == "regular",
-                    "QNN EP present, backend libs staged" in got["out"],
-                )
-        fault = run("verify", "regular", "regular", "direct", True, find_status=37)
-        self.assertNotIn("QNN EP present", fault["out"])
         staged = run("stage", "missing", None, "direct", True)
         self.assertEqual(0, staged["rc"])
         self.assertIn(["target/deep/libQnnCpu.so", "backend"], staged["tree"])
         self.assertIn(["target/deep/hexagon-v73/payload", "skel"], staged["tree"])
-
-    def test_cold_companions_are_branch_lazy_and_fail_closed(self) -> None:
-        for companion, status in [
-            ("missing", 1),
-            ("empty", 1),
-            ("partial", 23),
-            ("parse", 2),
-            ("valid", 0),
-        ]:
-            for context in ["direct", "conditional"]:
-                with self.subTest(companion=companion, context=context):
-                    self.assert_import(companion, status, context)
 
     def test_query_retains_inherited_pipeline_status(self) -> None:
         for pipefail, find_status, grep_status in product(
@@ -274,31 +215,6 @@ grep() { cat >/dev/null; return "$3"; }
             self.assertEqual(expected, result.returncode)
             self.assertEqual("", result.stdout)
             self.assertEqual("", result.stderr)
-
-    def assert_import(self, companion: str, status: int, context: str) -> None:
-        selected = run(
-            "verify", "regular", "regular", context, True, companion=companion
-        )
-        self.assertEqual(status, selected["rc"])
-        if companion == "empty":
-            self.assertIn(
-                "requires qnn_has_runtime_libraries from qnn-sdk.sh", selected["err"]
-            )
-        absent = run("verify", "regular", None, context, True, companion=companion)
-        self.assertEqual(0, absent["rc"])
-        self.assertEqual("", absent["out"])
-        self.assertNotIn("qnn-sdk.sh", absent["err"])
-
-    def test_actual_cpu_run_carries_canonical_companion(self) -> None:
-        mounts = verification_mounts()
-        self.assertEqual(
-            "linux/scripts/01-core/qnn-sdk.sh",
-            mounts.get("/opt/scripts/01-core/qnn-sdk.sh"),
-        )
-        self.assertEqual(
-            "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
-            mounts.get("/opt/scripts/03-media/runtime/verify-media-artifacts.sh"),
-        )
 
     def test_single_child_run_retains_original_shell_status(self) -> None:
         verifier = SCRIPTS / "03-media/runtime/verify-media-artifacts.sh"

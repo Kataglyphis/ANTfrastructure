@@ -260,13 +260,6 @@ if [[ -d "${GENAI_LIB_DIR}" ]]; then
     'libonnxruntime-genai*.so*' '*.so' cp -t "${GENAI_OUTPUT_DIR}/lib/"
 fi
 
-# GenAI inherits ORT's QNN EP, so the QNN backend libs must sit beside the GenAI install too.
-_genai_qnn_home="$(resolve_qnn_sdk)"
-if [ -n "$_genai_qnn_home" ]; then
-  info "GenAI: staging QNN backend libs beside the GenAI install (backlog QNN-LINUX)"
-  stage_qnn_runtime "$_genai_qnn_home" "${GENAI_OUTPUT_DIR}"
-fi
-
 symlink_output_libraries_into_usr_local "${GENAI_OUTPUT_DIR}"
 
 report_onnx_build_output "GenAI build complete" "${GENAI_OUTPUT_DIR}"

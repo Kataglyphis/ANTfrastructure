@@ -16876,6 +16876,62 @@
   "why": "an arm64 nvidia build has no TensorRT route, so it must not default to one"
  },
  {
+  "id": "onnx-ep-qnn.merge-copy-present",
+  "target": "linux/Dockerfile.media",
+  "find": "COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-ep-qnn /usr/local/lib/onnxruntime-ep-qnn\n",
+  "replace": "",
+  "why": "the plugin is built and verified in the onnxruntime branch; only this COPY carries it into the merged media image",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh"
+ },
+ {
+  "id": "onnx-ep-qnn.plugin-call-present",
+  "target": "linux/Dockerfile.media",
+  "find": "    bash /opt/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh build; \\\n",
+  "replace": "",
+  "why": "without the call no arch builds the plugin, and only the arm64 verify stage would notice, hours in",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh"
+ },
+ {
+  "id": "onnx-ep-qnn.cpu-prefix-refuses-in-tree-provider",
+  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
+  "find": "the QNN EP ships as the plugin in /usr/local/lib/onnxruntime-ep-qnn\"\n      exit 1",
+  "replace": "the QNN EP ships as the plugin in /usr/local/lib/onnxruntime-ep-qnn\"\n      exit 0",
+  "why": "a second QNN EP in the CPU prefix would be the in-tree one coming back unnoticed",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh"
+ },
+ {
+  "id": "onnx-ep-qnn.verify-needs-chain-lib",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "      libonnxruntime*) [ -e \"${QNNEP_ORT_DIR}/lib/${n}\" ] || {",
+  "replace": "      libonnxruntime*) [ -e \"${QNNEP_ORT_DIR}/lib/${n}\" ] || true || {",
+  "why": "a module needing an ONNX Runtime the chain prefix does not hold would load a foreign ORT at run time",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh"
+ },
+ {
+  "id": "onnx-ep-qnn.ort-home-versioned-name",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  ln -s \"${real}\" \"${dest}/lib/libonnxruntime.so.${ver}\"\n",
+  "replace": "",
+  "why": "the fork's prebuilt step copies libonnxruntime.so.<ort_core version> out of --ort_home; without that name the build dies after configure",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh"
+ },
+ {
+  "id": "onnx-ep-qnn.skip-leaves-placeholder",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "then plugin_ep_skip \"${QNNEP_OUTPUT_DIR}\" \"Skipping the QNN plugin EP",
+  "replace": "then echo \"Skipping the QNN plugin EP",
+  "why": "without the empty tree the media merge's COPY --from=onnxruntime fails on amd64 and riscv64",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh"
+ },
+ {
+  "id": "gpu-runtime.qnn-plugin-root-only-on-arm64",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": "    case \"${root}\" in \"\"|\"<unset>\") ;; *) echo \"BAD a non-arm64 image advertises ORT_QNN_EP_ROOT='${root}'\" ;; esac\n",
+  "replace": "",
+  "why": "an amd64 or riscv64 wrapper advertising a plugin it does not ship sends consumers to a missing library",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh"
+ },
+ {
   "id": "onnx-ep-amdgpu.census-contract-entry",
   "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
   "find": " \\\n    'amdgpu-ep|libmigraphx-ep.so|/usr/local/lib/onnxruntime-ep-amdgpu/ort-provenance/amdgpu-ep.json'\n",
@@ -16894,7 +16950,7 @@
  {
   "id": "onnx-ep-amdgpu.placeholder-tree-kept",
   "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
-  "find": "then mkdir -p \"${MGXEP_OUTPUT_DIR}\"; echo \"Skipping the MIGraphX plugin EP",
+  "find": "then plugin_ep_skip \"${MGXEP_OUTPUT_DIR}\" \"Skipping the MIGraphX plugin EP",
   "replace": "then echo \"Skipping the MIGraphX plugin EP",
   "why": "without the empty tree the media merge's COPY --from=onnxruntime fails on every chain that does not build the plugin",
   "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh"
@@ -16950,8 +17006,8 @@
  {
   "id": "gpu-runtime.plugin-ep-exports-read",
   "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
-  "find": "  if [ \"$(_gpur \"${probe}\" MGXEP_EXPORTS)\" = 2 ]; then echo \"OK libmigraphx-ep.so exports CreateEpFactories and ReleaseEpFactory\"\n",
-  "replace": "  if true; then echo \"OK libmigraphx-ep.so exports CreateEpFactories and ReleaseEpFactory\"\n",
+  "find": "  if [ \"$(_gpur \"${probe}\" \"${k}_EXPORTS\")\" = 2 ]; then echo \"OK ${so} exports CreateEpFactories and ReleaseEpFactory\"\n",
+  "replace": "  if true; then echo \"OK ${so} exports CreateEpFactories and ReleaseEpFactory\"\n",
   "why": "a shipped module that lost an entry point would register nothing; the verdict must count the exports",
   "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh"
  },
@@ -25903,54 +25959,6 @@
   "replace": "    set -o pipefail\n    find \"$1\" -maxdepth 1 -name \"$2\" -type f",
   "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
   "why": "querying libraries must preserve the caller pipeline policy rather than turning it on globally"
- },
- {
-  "id": "lib.qnn-query-backend-pattern",
-  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
-  "find": "qnn_has_runtime_libraries \"${PREFIX}/lib\" 'libQnn*.so'",
-  "replace": "qnn_has_runtime_libraries \"${PREFIX}/lib\" 'libonnxruntime*.so'",
-  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
-  "why": "an ONNX provider cannot stand in for its required sibling QNN backend library"
- },
- {
-  "id": "lib.qnn-query-mandatory-import",
-  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
-  "find": "source \"${BASH_SOURCE[0]%/*}/../../01-core/qnn-sdk.sh\"",
-  "replace": "true",
-  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
-  "why": "the EP-present verifier physically imports the canonical query owner"
- },
- {
-  "id": "lib.qnn-query-source-status",
-  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
-  "find": "[ \"${_qnn_verifier_source_status}\" -eq 0 ] || exit \"${_qnn_verifier_source_status}\"",
-  "replace": ":",
-  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
-  "why": "a companion that defines the API then returns23 must fail the conditional verifier with raw status23"
- },
- {
-  "id": "lib.qnn-query-export",
-  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
-  "find": "if ! declare -F qnn_has_runtime_libraries >/dev/null; then",
-  "replace": "if false; then",
-  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
-  "why": "an empty old companion fails with a named API error before its absent query can become an ordinary backend miss"
- },
- {
-  "id": "lib.qnn-query-lazy-provider",
-  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
-  "find": "if find \"${PREFIX}/lib\" -maxdepth 1 -name 'libonnxruntime_providers_qnn.so*' -type f 2>/dev/null | grep -q .; then",
-  "replace": "if true; then",
-  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
-  "why": "provider-absent builds do not import or require the QNN-specific query owner"
- },
- {
-  "id": "lib.qnn-query-cpu-closure",
-  "target": "linux/Dockerfile.media",
-  "find": "    --mount=type=bind,source=linux/scripts/01-core/qnn-sdk.sh,target=/opt/scripts/01-core/qnn-sdk.sh,readonly \\\n",
-  "replace": "",
-  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
-  "why": "the CPU verification RUN carries a freshly changed query owner, with the physical fixture built from the actual bind map"
  },
  {
   "id": "lib.qnn-query-child-strict",

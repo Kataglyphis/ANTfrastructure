@@ -427,7 +427,7 @@ t_assert_contains "${_gst}" \
 t_assert_contains "${_gen}" '--tree "${src}" --log "${src}/build/genai-build.log" "${g2[@]}"'
 t_assert_contains "${_mgx}" \
   '--chain "${MGXEP_ORT_DIR}" --chain "${MGXEP_ORT_CPU_DIR}" --tree "${work}" --shim "${work}/ort" --record "${work}/build/CMakeCache.txt" --record "${work}/build/build.ninja" --log "${work}/configure.log" || err'
-t_assert_contains "${_mgx}" 'cmake "${cmake_args[@]}" "${defines[@]}" 2>&1 | tee "${work}/configure.log"' "the plugin EP's configure tees into the log G2 reads"
+t_assert_contains "${_mgx}" 'cmake "${cmake_args[@]}" "${MGXEP_DEFINES[@]}" 2>&1 | tee "${work}/configure.log"' "the plugin EP's configure tees into the log G2 reads"
 _gb="${SCRIPTS}/03-media/build/onnxruntime/build/60-build-genai.sh"
 t_assert_contains "$(cat "${_gb}")" 'GENAI_BUILD_LOG="${GENAI_SRC_DIR}/build/genai-build.log"'
 t_assert_eq 2 "$(grep -c -F -e ' 2>&1 | tee -a "${GENAI_BUILD_LOG}"' "${_gb}" || true)" "both GenAI build.py calls tee into the log G2 reads"

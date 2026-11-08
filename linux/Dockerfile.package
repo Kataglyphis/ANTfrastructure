@@ -274,6 +274,10 @@ ENV ROCM_PATH=${ROCM_ON:+/opt/rocm} \
     HIP_PATH=${ROCM_ON:+/opt/rocm}
 # AMD's plugin MIGraphX EP; a consumer registers ${ORT_AMDGPU_EP_ROOT}/lib/libmigraphx-ep.so: docs/consumer-image-contract.md#amds-plugin-migraphx-ep
 ENV ORT_AMDGPU_EP_ROOT=${ROCM_ON:+/usr/local/lib/onnxruntime-ep-amdgpu}
+# arm64 alone builds the plugin QNN EP; the two removals leave QNN_ON non-empty only there.
+ARG QNN_ON1=${TARGETARCH#amd64}
+ARG QNN_ON=${QNN_ON1#riscv64}
+ENV ORT_QNN_EP_ROOT=${QNN_ON:+/usr/local/lib/onnxruntime-ep-qnn}
 # Appended, so a ROCm tool never shadows the image's own of the same name.
 ENV PATH="${PATH}${ROCM_ON:+:/opt/rocm/bin}"
 

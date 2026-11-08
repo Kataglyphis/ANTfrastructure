@@ -20,8 +20,8 @@ ort_census_contract() {
     'amdgpu-ep|libmigraphx-ep.so|/usr/local/lib/onnxruntime-ep-amdgpu/ort-provenance/amdgpu-ep.json'
 }
 
-# The chain ORT of a Linux image: its prefixes and the wheel manifest collect-artifacts.sh writes.
-_ORT_CENSUS_REFS="/usr/local/lib/onnxruntime-cpu /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-web /opt/android/onnxruntime"
+# The chain ORT of a Linux image, onnxruntime-ep-qnn included (the chain's build of Qualcomm's ORT fork, a root, not a consumer): docs/onnxruntime-single-source.md#a-plugin-ep-built-from-an-ort-fork-is-a-chain-root
+_ORT_CENSUS_REFS="/usr/local/lib/onnxruntime-cpu /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-web /opt/android/onnxruntime /usr/local/lib/onnxruntime-ep-qnn"
 _ORT_CENSUS_MANIFESTS="/usr/local/lib/onnxruntime-cpu/ort-provenance.sha256 /usr/local/lib/onnxruntime-gpu/ort-provenance.sha256 /usr/local/lib/onnxruntime-cpu/ort-provenance-free-threaded.sha256 /usr/local/lib/onnxruntime-gpu/ort-provenance-free-threaded.sha256"
 _ORT_CENSUS_CORES="/usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so.1 /usr/local/lib/onnxruntime-gpu/lib/libonnxruntime.so.1"
 # Reviewed image exceptions, '<arch>:<path>:<reason>' (check_ort_census); one that stops matching fails.

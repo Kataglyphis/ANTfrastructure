@@ -208,8 +208,8 @@
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
     },
     {
-      "SPDXID": "SPDXRef-Package-Linux-Images-Qualcomm-AI-Runtime-QAIRT-Community-SDK-arm64-O-2315e032",
-      "name": "Qualcomm AI Runtime (QAIRT) Community SDK (arm64: ORT QNN EP backends)",
+      "SPDXID": "SPDXRef-Package-Linux-Images-Qualcomm-AI-Runtime-QAIRT-Community-SDK-arm64-t-fbe93356",
+      "name": "Qualcomm AI Runtime (QAIRT) Community SDK (arm64: the plugin QNN EP's backends)",
       "versionInfo": "2.51.1.261002",
       "downloadLocation": "https://softwarecenter.qualcomm.com/",
       "filesAnalyzed": false,
@@ -219,6 +219,19 @@
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
       "licenseComments": "Obligations: eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-ONNX-Runtime-plugin-EP-for-Qualcomm-QNN-libonnx-5958d67f",
+      "name": "ONNX Runtime plugin EP for Qualcomm QNN (libonnxruntime_providers_qnn.so, /usr/local/lib/onnxruntime-ep-qnn; arm64)",
+      "versionInfo": "2.7.0",
+      "downloadLocation": "https://github.com/onnxruntime/onnxruntime-qnn",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-OpenCV-e51e1f63",
@@ -2232,7 +2245,12 @@
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
-      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Qualcomm-AI-Runtime-QAIRT-Community-SDK-arm64-O-2315e032"
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Qualcomm-AI-Runtime-QAIRT-Community-SDK-arm64-t-fbe93356"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-ONNX-Runtime-plugin-EP-for-Qualcomm-QNN-libonnx-5958d67f"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

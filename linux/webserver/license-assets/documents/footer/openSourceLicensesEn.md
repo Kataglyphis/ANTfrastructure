@@ -45,7 +45,8 @@ its own license terms.
 | llguidance (static in GenAI) | ONNX Runtime GenAI deps.txt 94fa3912 | [github.com/microsoft/llguidance](https://github.com/microsoft/llguidance) | MIT |
 | ONNX Runtime GenAI | v0.19.0 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | LiteRT (TensorFlow Lite) | v2.3.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
-| Qualcomm AI Runtime (QAIRT) Community SDK (arm64: ORT QNN EP backends) | 2.51.1.261002 | [softwarecenter.qualcomm.com](https://softwarecenter.qualcomm.com/) | Qualcomm AI Runtime Community License (object-code distribution as part of a product only) |
+| Qualcomm AI Runtime (QAIRT) Community SDK (arm64: the plugin QNN EP's backends) | 2.51.1.261002 | [softwarecenter.qualcomm.com](https://softwarecenter.qualcomm.com/) | Qualcomm AI Runtime Community License (object-code distribution as part of a product only) |
+| ONNX Runtime plugin EP for Qualcomm QNN (libonnxruntime_providers_qnn.so, /usr/local/lib/onnxruntime-ep-qnn; arm64) | 2.7.0 | [github.com/onnxruntime/onnxruntime-qnn](https://github.com/onnxruntime/onnxruntime-qnn) | MIT; its ThirdPartyNotices.txt ships in /usr/local/lib/onnxruntime-ep-qnn/licenses |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
 | GStreamer Rust plugins (gst-plugins-rs) | 1.29.2 | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MPL-2.0 |

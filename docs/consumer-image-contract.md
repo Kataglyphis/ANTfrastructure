@@ -1028,6 +1028,25 @@ refuses that case loudly and supports every op MIGraphX parses. Why and how it i
 [linux-accelerator-images.md](linux-accelerator-images.md#amds-plugin-migraphx-ep); the move per consumer is
 BACKLOG CON231.
 
+## Qualcomm's plugin QNN EP
+
+`:latest` on arm64 ships Qualcomm's plugin QNN execution provider, built from its pinned ORT fork
+([qnn-linux.md](qnn-linux.md#the-plugin-ep)); the ORT CPU library carries no in-tree QNN EP since
+2026-11-08.
+
+| Variable | Linux (`linux/Dockerfile.package`, arm64 only) |
+|---|---|
+| `ORT_QNN_EP_ROOT` | `/usr/local/lib/onnxruntime-ep-qnn`; empty on amd64 and riscv64 |
+
+The library is `${ORT_QNN_EP_ROOT}/lib/libonnxruntime_providers_qnn.so`, with the QAIRT backends
+(`libQnnHtp.so`, `libQnnGpu.so`, the HTP skels) beside it. Register it under the name
+`QNNExecutionProvider`, select the device it reports, and pass plain provider options
+(`backend_type`: `htp`, `gpu`; `backend_path` for an explicit backend); run options carry the `qnn.`
+prefix (`qnn.perf_mode`). The Python, C++ and Rust calls are the ones under
+[AMD's plugin MIGraphX EP](#amds-plugin-migraphx-ep), with this name and root. Windows arm64 ships
+the same plugin as `onnxruntime_providers_qnn.dll` under its own `ORT_QNN_EP_ROOT`. The move per
+consumer is BACKLOG CON232; nothing in the fleet has run QNN on a Linux device yet.
+
 ## The ort crate links the chain ONNX Runtime
 
 Both published images set the environment of the Rust `ort` / `ort-sys` crates,

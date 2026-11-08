@@ -4,7 +4,9 @@
 
 arm64-only, and **on by default since 2026-11-05**: the media stage fetches the public
 "Qualcomm AI Runtime Community" zip at `QNN_SDK_VERSION` (`versions.env`) through the asset
-mirror, verified against `QNN_SDK_ZIP_SHA256`. A zip staged in `linux/qnn-sdk/` is used
+mirror, verified against `QNN_SDK_ZIP_SHA256`. **Since 2026-11-08 the EP is Qualcomm's plugin
+EP, built from its pinned fork ([The plugin EP](#the-plugin-ep)); the ORT CPU build carries no
+in-tree QNN EP any more (owner decision, BACKLOG CON232).** A zip staged in `linux/qnn-sdk/` is used
 instead of the download; `QNN_SDK_SOURCE=drop` restores the pre-2026-11-05 contract, where only
 a staged zip turns the lane on. amd64 and riscv64 stay QNN-less on every path. The Windows lane
 follows the same contract with the same zip and pin.
@@ -50,6 +52,57 @@ or failed selected import fails verification. Offline fixtures test path and
 failure behavior, not QNN execution on hardware.
 
 <a id="qairt_headers_dir"></a>
+## The plugin EP
+
+Qualcomm develops the QNN EP in [onnxruntime/onnxruntime-qnn](https://github.com/onnxruntime/onnxruntime-qnn),
+a fork of ONNX Runtime that builds only the plugin library and ships monthly (2.5.0 in August,
+2.7.0 in October 2026: new operators, QDQ fusions, `prepare_and_load`). The in-tree "Provider
+Bridge EP" still ships upstream but gets none of that. We build the fork, never its wheels or
+archives (the single-source rule counts a plugin EP as ORT, and the Python 3.11 to 3.14 wheels
+would not fit the image's 3.15 anyway).
+
+- **Pins.** `ORT_QNN_EP_VERSION` (the fork's tag) and `ORT_QNN_EP_SOURCE_SHA256` (its tag tarball) in
+  `versions.env`, bumped by hand together. The fork's `cmake/deps.txt` keeps upstream's SHA1 pins, as
+  the in-tree ORT build's does; one of them, `ort_core`, is microsoft/onnxruntime's source at the
+  version the fork was developed against (1.29.0 for 2.7.0), fetched for the EP's internal headers.
+  It does not have to match the chain's ORT: compatibility is the plugin ABI (`MIN_ORT_API_VERSION`
+  24, ORT ≥ 1.24.1), and the chain's 1.31 is what loads it.
+- **Build** (`03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh`, the GPU RUN of
+  `Dockerfile.media`, arm64 only; other arches leave the empty tree the merge stage COPYs). The fork's
+  `tools/ci_build/build.py` runs twice, `--update` then `--build`, with `--use_qnn --qnn_home <QAIRT>
+  --ort_home <shim>`: `--ort_home` makes `cmake/external/onnxruntime_prebuilt.cmake` skip building ORT
+  core. The shim (`qnnep_ort_home`) carries the chain's library under the names the fork's copy step
+  expects (`libonnxruntime.so.<ort_core version>` included, links into `/usr/local/lib/onnxruntime-cpu`)
+  and, filled between the two steps, the public headers of the fork's own `ort_core` laid out flat as a
+  release package has them (`qnnep_ort_home_headers`): the EP's source uses types of the ORT it was
+  developed against (`Ort::Experimental::EpContextConfig` in 1.29) and does not compile against 1.31's
+  headers. Compiling against its own version's headers and loading into the chain's newer runtime is
+  the plugin ABI working as designed. Three traps: the fork's `tools/python/util` imports a helper it
+  no longer ships whenever `torch` is importable, so build.py runs under `python -S`; a rerun in a dirty
+  build dir fails the `ort_core` patch step, so the work dir is fresh every time; and the header set
+  includes a `.inc` file, so every file of the three public dirs is linked, not only `*.h`.
+- **Output.** `/usr/local/lib/onnxruntime-ep-qnn/lib/libonnxruntime_providers_qnn.so` with the QAIRT
+  backends (`libQnn*.so`, the HTP skels) staged beside it by `stage_qnn_runtime`, `licenses/`
+  (the fork's MIT text and ThirdPartyNotices, QAIRT's licence) and `provenance.txt` (tag, source
+  sha256, QAIRT version). `ORT_QNN_EP_ROOT` names the root on arm64 and is empty elsewhere
+  (`Dockerfile.package`).
+- **Gates.** `verify-media-artifacts.sh onnxruntime-ep-qnn` (both exports, the HTP backend, the
+  texts; a missing plugin fails arm64 and skips the others); `onnxruntime-cpu` fails a provider in
+  the CPU prefix; the module's NEEDED set must be the chain's, QAIRT's or the C/C++ runtime
+  (`qnnep_verify_library`, `ldd` cannot run a cross-built module); the plugin root is a census REF
+  ([single-source rule](onnxruntime-single-source.md#a-plugin-ep-built-from-an-ort-fork-is-a-chain-root));
+  the wrapper's runtime probe (`check-gpu-runtime.sh`, `accel_qnn_plugin_verdict`) wants the root,
+  the module, its exports and backends on arm64 and none of it elsewhere.
+- **Using it.** Register once per process, select the device, pass plain options:
+  `ort.register_execution_provider_library("QNNExecutionProvider", f"{root}/lib/libonnxruntime_providers_qnn.so")`,
+  `so.add_provider_for_devices([d for d in ort.get_ep_devices() if d.ep_name == "QNNExecutionProvider"], {"backend_type": "htp"})`;
+  run options carry the `qnn.` prefix. The consumer move is CON231 step 2's code path, shared with
+  the MIGraphX plugin ([contract](consumer-image-contract.md#qualcomms-plugin-qnn-ep)).
+- **GenAI** no longer inherits a QNN EP (it loaded ORT's in-tree provider); GenAI on the Hexagon is a
+  separate question, not a regression anyone measured.
+- **Not proven on hardware**, as the in-tree EP never was: there is no Linux Qualcomm device in the
+  fleet. The Windows arm64 bundle makes the same move in `Build-OrtQnnEpFromSource.ps1`.
+
 ## `QAIRT_HEADERS_DIR` — the trap that cost a build
 
 **Pass the directory that directly HOLDS `Qnn*.h`, i.e. `<sdk>/include/QNN` —

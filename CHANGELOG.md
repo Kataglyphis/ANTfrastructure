@@ -13,6 +13,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-08 — the QNN EP is Qualcomm's plugin EP (CON232)
+
+- Owner decision: the QNN execution provider moves to Qualcomm's plugin EP on both lanes. Linux arm64 builds
+  [onnxruntime/onnxruntime-qnn](https://github.com/onnxruntime/onnxruntime-qnn) v2.7.0 from its pinned tag
+  tarball (`ORT_QNN_EP_VERSION`, `ORT_QNN_EP_SOURCE_SHA256`) in the media stage's accelerator RUN
+  (`36-build-qnn-plugin-ep.sh`): the fork's `build.py` with `--ort_home` over a shim of the chain prefix, so it
+  builds no ORT core and links nothing but the chain's library (it compiles against its own `ort_core` headers); the module lands in `/usr/local/lib/onnxruntime-ep-qnn` with
+  the QAIRT backends, licences and provenance beside it, and `ORT_QNN_EP_ROOT` names it on arm64 only. The in-tree
+  QNN EP leaves the ORT CPU build and GenAI's staging; `verify-media-artifacts.sh` fails a provider in the CPU prefix
+  and checks the plugin tree on arm64; the plugin root is a census REF (a chain root, not a G2 consumer, since its
+  source is an ORT fork); the wrapper's runtime probe judges root, exports and backends per arch. Pins, SBOM row,
+  suite (`test-qnn-plugin-ep.sh`), seven recipes and the pages ([qnn-linux.md](docs/qnn-linux.md#the-plugin-ep),
+  [contract](docs/consumer-image-contract.md#qualcomms-plugin-qnn-ep),
+  [single-source rule](docs/onnxruntime-single-source.md#a-plugin-ep-built-from-an-ort-fork-is-a-chain-root)).
+  Proof in the image follows with the next default chain; Windows arm64 follows in the Windows lane.
+
 ## 2026-11-07 — the TensorRT EP smoke check passes a complete runtime
 
 - The first nvidia chain with TensorRT staged failed its smoke gate on

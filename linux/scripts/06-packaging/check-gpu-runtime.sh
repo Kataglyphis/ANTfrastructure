@@ -17,6 +17,14 @@ if [ -f "${mgxep}" ]; then
   echo "GPUR MGXEP_EXPORTS $(readelf --dyn-syms -W "${mgxep}" 2>/dev/null | grep -cE ' (CreateEpFactories|ReleaseEpFactory)(@@[A-Za-z0-9_.]+)?$')"
   echo "GPUR MGXEP_UNRESOLVED $(ldd "${mgxep}" 2>/dev/null | awk '$2 == "=>" && $3 == "not" {print $1}' | tr '\n' ' ')"
 else echo "GPUR MGXEP_SO <absent>"; fi
+printf 'GPUR ARCH %s\n' "$(uname -m)"
+printf 'GPUR QNNEP_ROOT %s\n' "${ORT_QNN_EP_ROOT-<unset>}"
+qnnep="${ORT_QNN_EP_ROOT:-/usr/local/lib/onnxruntime-ep-qnn}/lib/libonnxruntime_providers_qnn.so"
+if [ -f "${qnnep}" ]; then
+  echo "GPUR QNNEP_SO ${qnnep}"
+  echo "GPUR QNNEP_EXPORTS $(readelf --dyn-syms -W "${qnnep}" 2>/dev/null | grep -cE ' (CreateEpFactories|ReleaseEpFactory)(@@[A-Za-z0-9_.]+)?$')"
+  echo "GPUR QNNEP_BACKENDS $(find "${qnnep%/*}" -maxdepth 1 -name 'libQnn*.so' -type f 2>/dev/null | wc -l)"
+else echo "GPUR QNNEP_SO <absent>"; fi
 case ":${PATH}:" in *:/opt/rocm/bin:*) echo "GPUR PATHROCM yes" ;; *) echo "GPUR PATHROCM no" ;; esac
 if [ -d /opt/rocm ]; then echo "GPUR ROCMDIR $(readlink -f /opt/rocm)"; else echo "GPUR ROCMDIR <absent>"; fi
 # The venv's rocm-sdk shims come first on PATH; with ROCM_PATH they hand over to /opt/rocm.
@@ -110,20 +118,41 @@ gpu_rocm_verdict() {
   gpu_plugin_ep_verdict "${probe}"
 }
 
+# <probe> <key> <expected root> <module> <root variable> <label>: the root, the module and its two exports, as every plugin EP verdict reads them; 1 when the module is missing.
+_plugin_ep_verdict() {
+  local probe="$1" k="$2" want="$3" so="$4" var="$5" label="$6" root
+  root="$(_gpur "${probe}" "${k}_ROOT")"
+  if [ "${root}" = "${want}" ]; then echo "OK ${var}=${root}"; else echo "BAD ${var} is '${root}', not ${want}"; fi
+  case "$(_gpur "${probe}" "${k}_SO")" in
+    ""|"<absent>") echo "BAD the plugin ${label} ${so} is missing"; return 1 ;;
+    *) echo "OK ${so} is shipped" ;;
+  esac
+  if [ "$(_gpur "${probe}" "${k}_EXPORTS")" = 2 ]; then echo "OK ${so} exports CreateEpFactories and ReleaseEpFactory"
+  else echo "BAD ${so} exports $(_gpur "${probe}" "${k}_EXPORTS") of the 2 plugin entry points"; fi
+}
+
 # <probe>: the rocm image ships AMD's plugin MIGraphX EP where ORT_AMDGPU_EP_ROOT says, with its two exports and a resolvable closure.
 gpu_plugin_ep_verdict() {
-  local probe="$1" root
-  root="$(_gpur "${probe}" MGXEP_ROOT)"
-  if [ "${root}" = /usr/local/lib/onnxruntime-ep-amdgpu ]; then echo "OK ORT_AMDGPU_EP_ROOT=${root}"
-  else echo "BAD ORT_AMDGPU_EP_ROOT is '${root}', not /usr/local/lib/onnxruntime-ep-amdgpu"; fi
-  case "$(_gpur "${probe}" MGXEP_SO)" in
-    ""|"<absent>") echo "BAD the plugin MIGraphX EP libmigraphx-ep.so is missing"; return 0 ;;
-    *) echo "OK libmigraphx-ep.so is shipped" ;;
-  esac
-  if [ "$(_gpur "${probe}" MGXEP_EXPORTS)" = 2 ]; then echo "OK libmigraphx-ep.so exports CreateEpFactories and ReleaseEpFactory"
-  else echo "BAD libmigraphx-ep.so exports $(_gpur "${probe}" MGXEP_EXPORTS) of the 2 plugin entry points"; fi
+  local probe="$1"
+  _plugin_ep_verdict "${probe}" MGXEP /usr/local/lib/onnxruntime-ep-amdgpu libmigraphx-ep.so ORT_AMDGPU_EP_ROOT "MIGraphX EP" || return 0
   if [ -z "$(_gpur "${probe}" MGXEP_UNRESOLVED | tr -d ' ')" ]; then echo "OK libmigraphx-ep.so resolves every library it needs"
   else echo "BAD libmigraphx-ep.so cannot resolve: $(_gpur "${probe}" MGXEP_UNRESOLVED)"; fi
+}
+
+# <probe>: arm64 ships Qualcomm's plugin QNN EP where ORT_QNN_EP_ROOT says, with its exports and QAIRT backends; every other arch neither advertises nor ships it.
+accel_qnn_plugin_verdict() {
+  local probe="$1" root so
+  root="$(_gpur "${probe}" QNNEP_ROOT)"; so="$(_gpur "${probe}" QNNEP_SO)"
+  if [ "$(_gpur "${probe}" ARCH)" != aarch64 ]; then
+    case "${root}" in ""|"<unset>") ;; *) echo "BAD a non-arm64 image advertises ORT_QNN_EP_ROOT='${root}'" ;; esac
+    case "${so}" in ""|"<absent>") ;; *) echo "BAD a non-arm64 image ships the plugin QNN EP ${so}" ;; esac
+    return 0
+  fi
+  _plugin_ep_verdict "${probe}" QNNEP /usr/local/lib/onnxruntime-ep-qnn libonnxruntime_providers_qnn.so ORT_QNN_EP_ROOT "QNN EP" || return 0
+  case "$(_gpur "${probe}" QNNEP_BACKENDS)" in
+    ""|0) echo "BAD no libQnn*.so beside the plugin QNN EP" ;;
+    *) echo "OK $(_gpur "${probe}" QNNEP_BACKENDS) QAIRT backend libraries sit beside the plugin" ;;
+  esac
 }
 
 # <probe> <TENSORRT_VERSION>: TensorRT's runtime in the default lib dir, nothing else of its SDK, and the EP that loads it.
@@ -174,6 +203,7 @@ gpu_tensorrt_sdk_verdict() {
 gpu_runtime_verdict() {
   _gpur "$1" ENABLE | grep -q . || { echo "BAD the GPU probe printed nothing; the container did not run it"; return 0; }
   gpu_rocm_verdict "$1"
+  accel_qnn_plugin_verdict "$1"
   gpu_tensorrt_verdict "$1" "$2"
   gpu_tensorrt_sdk_verdict "$1"
 }

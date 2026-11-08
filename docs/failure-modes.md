@@ -1246,6 +1246,22 @@ gets because the EP leaves `GridSample` on the CPU.
 built on that image passes `compare_detector_parity.py` on the RX 9070 XT. Before blaming the provider, put `/opt/rocm/core-10.1/lib` and `extras-10/lib`
 on the loader path: a missing `libmigraphx_c.so.3` fails at provider load, not with wrong numbers.
 
+### A chain passes every gate and then stops at `image-acceptance: commit the hub tooling before creating an acceptance receipt`
+
+**Symptom.** The runtime lane's smoke reports `0 failure(s)`, the candidate index is pushed, and the run ends
+with that one line and `runtime stage failed`; the public tag does not move. Seen 2026-11-08 on a rocm chain
+that had run three hours.
+
+**Cause.** The acceptance receipt records the clean hub SHA the image was accepted with, so
+`image-acceptance.py` refuses a dirty working tree. Any edit in the checkout while the chain runs, in the
+chain's closure or not, dirties the tree it will read hours later. The build stages do not care; the receipt
+does.
+
+**Fix.** Commit or stash before the lane reaches acceptance, then promote the pushed candidate without
+rebuilding: `build-runtime-manifest.sh --manifest-only --push` with the run's image and arches reuses the
+wrappers and runs acceptance again ([image-acceptance.md](image-acceptance.md)). Work on the hub in a second
+checkout or worktree while a chain runs here.
+
 ### A media artifact is built and verified, and the merged image does not carry it
 
 **Symptom.** A new output of a `Dockerfile.media` fan-out branch (first seen with the plugin MIGraphX EP,

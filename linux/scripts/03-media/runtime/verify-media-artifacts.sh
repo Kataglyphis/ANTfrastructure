@@ -9,7 +9,7 @@ case "${1:-}" in
     echo "Validate that a media build stage produced actual output (shared libs,"
     echo "binaries, headers) before downstream stages consume it."
     echo ""
-    echo "Stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu, onnxruntime-ep-amdgpu,"
+    echo "Stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu, onnxruntime-ep-amdgpu, onnxruntime-ep-qnn,"
     echo "        onnxruntime-pkgconfig, litert, litert-headers, opencv, opencv-core,"
     echo "        ffmpeg, gstreamer, libcamera, app-wheels, sizes, media-inputs"
     exit 0
@@ -128,6 +128,18 @@ report_prefix_sizes() {
   echo "" >&2
 }
 
+# <prefix> <module> <label>: a plugin EP tree: the module, its provenance and licence texts, and the two exports the loader looks up by name.
+verify_plugin_ep_tree() {
+  local prefix="$1" so="$2" label="$3" sym
+  verify_shared_lib "${prefix}/lib" "${so}" "${label}"
+  verify_file_nonempty "${prefix}/provenance.txt" "${label} provenance"
+  verify_dir_not_empty "${prefix}/licenses" "${label} licence texts"
+  for sym in CreateEpFactories ReleaseEpFactory; do
+    if readelf --dyn-syms -W "${prefix}/lib/${so}" 2>/dev/null | grep -qE " ${sym}(@@[A-Za-z0-9_.]+)?$"; then pass_check "${label} exports ${sym}"
+    else fail_check "${label} does not export ${sym}"; fi
+  done
+}
+
 case "${STAGE}" in
   onnxruntime-cpu)
     PREFIX="${PREFIX:-/usr/local/lib/onnxruntime-cpu}"
@@ -135,22 +147,10 @@ case "${STAGE}" in
     verify_shared_lib "${PREFIX}/lib" "libonnxruntime.so*" "libonnxruntime.so"
     verify_dir_not_empty "${PREFIX}/include" "ONNX Runtime CPU include dir"
     verify_file_exists "${PREFIX}/include/onnxruntime/core/session/onnxruntime_c_api.h" "ONNX Runtime C API header"
-    # A QNN provider needs its backend libs beside it; no provider means QNN is off.
-    if find "${PREFIX}/lib" -maxdepth 1 -name 'libonnxruntime_providers_qnn.so*' -type f 2>/dev/null | grep -q .; then
-      # shellcheck source=linux/scripts/01-core/qnn-sdk.sh
-      source "${BASH_SOURCE[0]%/*}/../../01-core/qnn-sdk.sh"
-      _qnn_verifier_source_status=$?
-      [ "${_qnn_verifier_source_status}" -eq 0 ] || exit "${_qnn_verifier_source_status}"
-      unset _qnn_verifier_source_status
-      if ! declare -F qnn_has_runtime_libraries >/dev/null; then
-        printf 'ERROR: QNN verifier requires qnn_has_runtime_libraries from qnn-sdk.sh\n' >&2
-        exit 1
-      fi
-      if ! qnn_has_runtime_libraries "${PREFIX}/lib" 'libQnn*.so'; then
-        echo "FAIL [${STAGE}]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged — QNN runtime missing"
-        exit 1
-      fi
-      echo "PASS [${STAGE}]: QNN EP present, backend libs staged"
+    # The QNN EP is the plugin under onnxruntime-ep-qnn; an in-tree provider here would be a second one.
+    if find "${PREFIX}/lib" -maxdepth 1 -name 'libonnxruntime_providers_qnn.so*' -print -quit 2>/dev/null | grep -q .; then
+      echo "FAIL [${STAGE}]: libonnxruntime_providers_qnn.so in the CPU prefix: the QNN EP ships as the plugin in /usr/local/lib/onnxruntime-ep-qnn"
+      exit 1
     fi
     ;;
 
@@ -210,14 +210,19 @@ case "${STAGE}" in
       echo "SKIP [${STAGE}]: AMD disabled"
       exit 0
     fi
-    verify_shared_lib "${PREFIX}/lib" 'libmigraphx-ep.so' "MIGraphX plugin EP"
-    verify_file_nonempty "${PREFIX}/provenance.txt" "plugin EP provenance"
-    verify_dir_not_empty "${PREFIX}/licenses" "plugin EP licence texts"
-    # The loader looks these two up by name; a module without them registers nothing.
-    for sym in CreateEpFactories ReleaseEpFactory; do
-      if readelf --dyn-syms -W "${PREFIX}/lib/libmigraphx-ep.so" 2>/dev/null | grep -qE " ${sym}(@@[A-Za-z0-9_.]+)?$"; then pass_check "plugin EP exports ${sym}"
-      else fail_check "plugin EP does not export ${sym}"; fi
-    done
+    verify_plugin_ep_tree "${PREFIX}" libmigraphx-ep.so "MIGraphX plugin EP"
+    ;;
+
+  onnxruntime-ep-qnn)
+    PREFIX="${PREFIX:-/usr/local/lib/onnxruntime-ep-qnn}"
+    if [ ! -f "${PREFIX}/lib/libonnxruntime_providers_qnn.so" ]; then
+      if [ "${TARGET_ARCH:-${TARGETARCH:-}}" = arm64 ]; then fail_check "arm64 builds the plugin QNN EP, but ${PREFIX}/lib/libonnxruntime_providers_qnn.so is missing"; exit 1; fi
+      echo "SKIP [${STAGE}]: no plugin QNN EP (arm64-only)"
+      exit 0
+    fi
+    verify_plugin_ep_tree "${PREFIX}" libonnxruntime_providers_qnn.so "plugin QNN EP"
+    verify_shared_lib "${PREFIX}/lib" 'libQnnHtp.so' "QAIRT HTP backend beside the plugin"
+    verify_dir_not_empty "${PREFIX}/licenses/qairt" "QAIRT licence text"
     ;;
 
   onnxruntime-pkgconfig)
@@ -361,7 +366,7 @@ case "${STAGE}" in
 
   *)
     echo "ERROR: Unknown verification stage: ${STAGE}" >&2
-    echo "Known stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu, onnxruntime-ep-amdgpu, onnxruntime-pkgconfig, litert, litert-headers, opencv, opencv-core, ffmpeg, gstreamer, libcamera, app-wheels, armnn, sizes, media-inputs" >&2
+    echo "Known stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu, onnxruntime-ep-amdgpu, onnxruntime-ep-qnn, onnxruntime-pkgconfig, litert, litert-headers, opencv, opencv-core, ffmpeg, gstreamer, libcamera, app-wheels, armnn, sizes, media-inputs" >&2
     exit 1
     ;;
 esac

@@ -183,6 +183,7 @@ selector and `_deps` pruning. Directory-name sharing does not widen exemptions.
 | GStreamer `onnx` plugin | Windows (merge stage) | the merged `ONNX_ROOT` | G2 reads `build.ninja`, `intro-dependencies.json` and the meson log |
 | GStreamer `onnx` plugin | Linux | the chain `.pc` | `gst_onnx_ort_findings` reads `build.ninja` |
 | AMD GPU plugin EP (`migraphx-ep.dll`) | Windows rocm spike | built against the image's ORT | G2 in phase 5 |
+| Qualcomm plugin QNN EP (`libonnxruntime_providers_qnn.so`) | Linux arm64 | `36-build-qnn-plugin-ep.sh`: Qualcomm's ORT fork built with `--ort_home` over the chain prefix, no ORT core of its own | a chain root in the census, not a G2 consumer ([why](#a-plugin-ep-built-from-an-ort-fork-is-a-chain-root)) |
 | AMD GPU plugin EP (`libmigraphx-ep.so`) | Linux rocm variant | `35-build-migraphx-plugin-ep.sh`: an imported `onnxruntime::onnxruntime` over the chain's GPU library, every FetchContent seeded from a pinned archive, offline | G2 over the work tree, `CMakeCache.txt`, `build.ninja` and the configure log; census entry `amdgpu-ep` |
 | WebGPU EP | Windows rocm spike | built in-tree into the chain `onnxruntime.dll`, not as a plugin | configure and wheel gates in `Build-OnnxFromSource.ps1` ([`windows-rocm.md` § ONNX Runtime WebGPU EP](windows-rocm.md#onnx-runtime-webgpu-ep-rocm-lane-spike)) |
 | App venv (OrchestrANT) | both | purge every ORT distribution the census names, force-install the chain wheels, then the census check | `ort-venv-census.py` |
@@ -441,6 +442,26 @@ a decision on the in-box bytes verdict.
    chain ORT.
 10. **Mutation-test it**: a suite that goes red when its check is removed, and a
     `docs/scripts/mutations.json` entry on Linux.
+
+### A plugin EP built from an ORT fork is a chain root
+
+Qualcomm's QNN plugin ([qnn-linux.md](qnn-linux.md#the-plugin-ep)) is not a consumer of the chain
+ORT in the sense above: its source IS an ONNX Runtime fork, its build fetches microsoft/onnxruntime's
+source for internal headers (`ort_core`), and its output carries an ORT name,
+`libonnxruntime_providers_qnn.so`. G2 over that work tree would report the fork's own files and the
+`ort_core` archive as foreign ORT, and the census would call the module an ORT the chain did not
+build. Both would be right by the letter and wrong in substance: the chain built it, from a pinned
+tarball, with the chain's library as its only ORT binary input (`--ort_home` over the chain prefix;
+the build fails if it produces a `libonnxruntime.so` of its own) and the fork's own `ort_core`
+headers at compile time, which is how a plugin EP is meant to be built.
+
+So the rule for such a plugin is the rule for the ORT build itself, not the consumer checklist:
+pinned source (`ORT_QNN_EP_VERSION`, `ORT_QNN_EP_SOURCE_SHA256`), upstream's `deps.txt` hashes for
+its dependencies, its output root listed in `_ORT_CENSUS_REFS` (`check-ort-provenance.sh`) so the
+census reads it as chain bytes, and no wheel, archive or PyPI package of it anywhere. A module that
+needs an `libonnxruntime*` the chain prefix does not hold fails its build (`qnnep_verify_library`).
+The AMD plugin is different: it is a small consumer of ORT's C API with a non-ORT name, so it takes
+the consumer route (G2 + contract).
 
 ## The shared Windows glue
 

@@ -101,7 +101,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Bound command callbacks retain their original parse phase and source scope; preserve caller-specific raw failure and advisory policies.
    Copied core and dependency preambles carry `cross-active-fallback.sh`; source it at the original registration point to retain alias binding.
    Ordered directory visitors retain the caller's `dir` binding, append policy and unconditional selected calls.
-   QNN artifact verification carries the fresh SDK query owner; import it only when its provider is present and fail on selected import errors.
+   The plugin QNN EP stage checks the module, both exports and the HTP backend beside it on arm64; the CPU prefix refuses an in-tree QNN provider.
    Require child cleanup APIs before starting timers or watchers; advisory cleanup signals then reaps and retains caller PID guards, reset and command status.
    Windows module visibility suites share the cold-import probe; keep child failures and parent-session isolation observable.
    Architecture and UV test suites carry their shared fixture companions; use harness PE and wheel constructors for valid samples.
@@ -1203,6 +1203,9 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
     `onnxruntime/core/` directory: consumers name that directory as data (OxidANT's loader,
     FFmpeg's configure line) and must stay importers. A file that DEFINES `OrtGetApiBase` (ELF
     dynamic symbol, PE export) is ORT under any name.
+  - Qualcomm's plugin QNN EP (`36-build-qnn-plugin-ep.sh`, arm64) is the chain's build of Qualcomm's ORT fork, from
+    the pinned tag tarball with `--ort_home` over the chain prefix, and a census ROOT, never a downloaded wheel or
+    archive; the ORT CPU build carries no in-tree QNN EP ([qnn-linux.md](docs/qnn-linux.md#the-plugin-ep)).
   - The image census (SHIPPED-TRUTH E) and `verify-critical-fixes.sh` fix11 enforce it. Every
     consumer, guard and gap: [`onnxruntime-single-source.md`](docs/onnxruntime-single-source.md);
     the Windows rule:

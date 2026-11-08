@@ -69,7 +69,21 @@ GPUR LDSO libnvinfer.so.10 ${DS}/libnvinfer.so.10
 GPUR TRTVER 10 101601
 GPUR ORTEP CUDAExecutionProvider,CPUExecutionProvider"
 
+# An arm64 CPU image with the plugin QNN EP as the wrapper ships it.
+QNN_ARM64="GPUR ENABLE false false false
+GPUR ROCM_PATH
+GPUR HIP_PATH
+GPUR PATHROCM no
+GPUR ROCMDIR <absent>
+GPUR ARCH aarch64
+GPUR QNNEP_ROOT /usr/local/lib/onnxruntime-ep-qnn
+GPUR QNNEP_SO /usr/local/lib/onnxruntime-ep-qnn/lib/libonnxruntime_providers_qnn.so
+GPUR QNNEP_EXPORTS 2
+GPUR QNNEP_BACKENDS 21
+GPUR ORTEP CPUExecutionProvider"
+
 _bad() { printf '%s\n' "$1" | grep -c '^BAD' || true; }
+_qnn() { accel_qnn_plugin_verdict "$1"; }
 _rocm() { gpu_rocm_verdict "$1"; }
 _trt() { gpu_tensorrt_verdict "$1" "${2:-11.4.0.106}"; }
 _sdk() { gpu_tensorrt_sdk_verdict "$1"; }
@@ -191,9 +205,21 @@ t_assert_contains "$(_hint /dev/dri/renderD128 65534)" "unmapped (rootless engin
   "a rootless engine maps no host group, so --group-add cannot help"
 t_assert_contains "$(cat "${ENTRY}")" 'for _gpu_node in /dev/kfd /dev/dri/renderD*; do' "kfd and every render node"
 
+t_case "the plugin QNN EP: arm64 must ship it where ORT_QNN_EP_ROOT says, every other arch must not even advertise it"
+t_assert_eq 0 "$(_bad "$(_qnn "${QNN_ARM64}")")" "$(_qnn "${QNN_ARM64}")"
+t_assert_contains "$(_qnn "${QNN_ARM64}")" "OK 21 QAIRT backend libraries sit beside the plugin"
+_finds qnn "${QNN_ARM64}" 's|^GPUR QNNEP_SO .*|GPUR QNNEP_SO <absent>|' "BAD the plugin QNN EP libonnxruntime_providers_qnn.so is missing"
+_finds qnn "${QNN_ARM64}" 's|^GPUR QNNEP_EXPORTS 2$|GPUR QNNEP_EXPORTS 1|' "BAD libonnxruntime_providers_qnn.so exports 1 of the 2 plugin entry points"
+_finds qnn "${QNN_ARM64}" 's|^GPUR QNNEP_BACKENDS 21$|GPUR QNNEP_BACKENDS 0|' "BAD no libQnn*.so beside the plugin QNN EP"
+_finds qnn "${QNN_ARM64}" 's|^GPUR QNNEP_ROOT .*|GPUR QNNEP_ROOT <unset>|' "BAD ORT_QNN_EP_ROOT is '<unset>', not /usr/local/lib/onnxruntime-ep-qnn"
+t_assert_eq 0 "$(_bad "$(_qnn "${TRT_GOOD}")")" "an amd64 probe without the QNN facts is clean"
+_finds qnn "${TRT_GOOD}" 's|^GPUR ROCMDIR <absent>|GPUR ROCMDIR <absent>\nGPUR ARCH x86_64\nGPUR QNNEP_ROOT /usr/local/lib/onnxruntime-ep-qnn|' "BAD a non-arm64 image advertises ORT_QNN_EP_ROOT='/usr/local/lib/onnxruntime-ep-qnn'"
+_finds qnn "${TRT_GOOD}" 's|^GPUR ROCMDIR <absent>|GPUR ROCMDIR <absent>\nGPUR ARCH x86_64\nGPUR QNNEP_SO /x/libonnxruntime_providers_qnn.so|' "BAD a non-arm64 image ships the plugin QNN EP /x/libonnxruntime_providers_qnn.so"
+t_assert_contains "$(t_fn_src "${TESTS_DIR}/../06-packaging/check-gpu-runtime.sh" gpu_runtime_verdict)" 'accel_qnn_plugin_verdict "$1"' "the runner judges the plugin on every image"
+
 t_case "the probe emits every fact the verdicts read"
 p="$(gpu_runtime_probe_script)"
-for k in ENABLE ROCM_PATH HIP_PATH PATHROCM ROCMDIR HIPVERSION HIPROCMPATH HIPCLANG HIPCC LDSO TRTVER TRTRES TRTHDR TRTDEV ORTTRT ORTDEP ORTEP; do
+for k in ENABLE ROCM_PATH HIP_PATH PATHROCM ROCMDIR HIPVERSION HIPROCMPATH HIPCLANG HIPCC LDSO TRTVER TRTRES TRTHDR TRTDEV ORTTRT ORTDEP ORTEP ARCH QNNEP_ROOT QNNEP_SO QNNEP_EXPORTS QNNEP_BACKENDS; do
   t_assert_contains "${p}" "GPUR ${k}" "the probe prints GPUR ${k}"
 done
 t_assert_eq 0 "$(printf '%s\n' "${p}" | grep -c 'bash -l' || true)" "no login shell resets PATH inside the probe"

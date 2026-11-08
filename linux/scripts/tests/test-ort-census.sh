@@ -420,7 +420,7 @@ t_assert_contains "${_cc}" 'mapfile -t args < <(ort_census_image_args)' "image a
 t_assert_contains "${_cc}" 'ort_census_verdicts "${probe}" "${armed}" "${target_arch}"' "armed STAMP and arch-scoped exemptions"
 t_assert_contains "${_cc}" '*) bad=$((bad + 1)); fail "ORT census:' "every non-EXEMPT verdict fails"
 _ia="$(ort_census_image_args | tr '\n' ' ')"
-for _want in '--image' '--ref /usr/local/lib/onnxruntime-cpu' '--ref /usr/local/lib/onnxruntime-gpu' '--ref /opt/android/onnxruntime' \
+for _want in '--image' '--ref /usr/local/lib/onnxruntime-cpu' '--ref /usr/local/lib/onnxruntime-gpu' '--ref /opt/android/onnxruntime' '--ref /usr/local/lib/onnxruntime-ep-qnn' \
   '--ref-manifest /usr/local/lib/onnxruntime-cpu/ort-provenance.sha256' '--core /usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so.1' \
   '--chain-root /opt/onnxruntime' '--contract genai|' '--contract amdgpu-ep|libmigraphx-ep.so|'; do
   t_assert_contains "${_ia}" "${_want}" "image args carry ${_want}"

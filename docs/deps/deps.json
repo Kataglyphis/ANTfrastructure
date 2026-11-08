@@ -137,11 +137,18 @@
               "spdx": "Apache-2.0"
             },
             {
-              "name": "Qualcomm AI Runtime (QAIRT) Community SDK (arm64: ORT QNN EP backends)",
+              "name": "Qualcomm AI Runtime (QAIRT) Community SDK (arm64: the plugin QNN EP's backends)",
               "var": "QNN_SDK_VERSION",
               "url": "https://softwarecenter.qualcomm.com/",
               "license": "Qualcomm AI Runtime Community License (object-code distribution as part of a product only)",
               "spdx": "LicenseRef-Proprietary-EULA"
+            },
+            {
+              "name": "ONNX Runtime plugin EP for Qualcomm QNN (libonnxruntime_providers_qnn.so, /usr/local/lib/onnxruntime-ep-qnn; arm64)",
+              "var": "ORT_QNN_EP_VERSION",
+              "url": "https://github.com/onnxruntime/onnxruntime-qnn",
+              "license": "MIT; its ThirdPartyNotices.txt ships in /usr/local/lib/onnxruntime-ep-qnn/licenses",
+              "spdx": "MIT"
             },
             {
               "name": "OpenCV",

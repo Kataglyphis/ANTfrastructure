@@ -197,7 +197,6 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
-    --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly --mount=type=cache,target=/var/cache/qnn-sdk,sharing=locked,id=qnn-sdk-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=secret,id=sccache_s3,required=false \
@@ -210,14 +209,13 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=
 LABEL kataglyphis.step=onnxruntime-cpu-verify
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
-    --mount=type=bind,source=linux/scripts/01-core/qnn-sdk.sh,target=/opt/scripts/01-core/qnn-sdk.sh,readonly \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-cpu
 
 LABEL kataglyphis.step=onnxruntime-gpu
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
-    --mount=type=bind,source=linux/scripts/patches/onnxruntime,target=/opt/scripts/patches/onnxruntime,readonly --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/01-core/path-helpers.sh,readonly \
+    --mount=type=bind,source=linux/scripts/patches/onnxruntime,target=/opt/scripts/patches/onnxruntime,readonly --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/01-core/path-helpers.sh,readonly --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly --mount=type=cache,target=/var/cache/qnn-sdk,sharing=locked,id=qnn-sdk-${TARGET_ARCH} \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-wheels.sh,target=/opt/scripts/03-media/free-threaded-wheels.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=/opt/scripts/03-media/free-threaded-twins.txt,readonly \
     --mount=type=bind,source=linux/scripts/02-toolchain/python/free-threaded-wheel.py,target=/opt/scripts/03-media/free-threaded-wheel.py,readonly \
@@ -234,6 +232,8 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=
     else echo "Skipping ONNX GPU build (ENABLE_NVIDIA=${ENABLE_NVIDIA:-false}, ENABLE_AMD=${ENABLE_AMD:-false})"; fi; \
     bash /opt/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh build; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-ep-amdgpu; \
+    bash /opt/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh build; \
+    bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-ep-qnn; \
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
 # The patches mount carries the riscv64 target_platform patch (docs/gen1-riscv64-genai.md).
@@ -241,7 +241,6 @@ LABEL kataglyphis.step=onnxruntime-genai
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches/onnxruntime-genai,target=/opt/scripts/patches/onnxruntime-genai,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
-    --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly --mount=type=cache,target=/var/cache/qnn-sdk,sharing=locked,id=qnn-sdk-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=secret,id=sccache_s3,required=false \
@@ -885,6 +884,7 @@ ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
 
 COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-gpu /usr/local/lib/onnxruntime-gpu
 COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-ep-amdgpu /usr/local/lib/onnxruntime-ep-amdgpu
+COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-ep-qnn /usr/local/lib/onnxruntime-ep-qnn
 COPY --link --from=litert ${LITERT_OUTPUT_DIR}/wheels /opt/litert-wheels
 COPY --link --from=litert /usr/local/lib/litert-web /usr/local/lib/litert-web
 COPY --link --from=litert /usr/local/lib/litert-lm-web /usr/local/lib/litert-lm-web

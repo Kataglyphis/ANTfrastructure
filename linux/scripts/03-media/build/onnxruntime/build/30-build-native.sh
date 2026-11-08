@@ -66,20 +66,7 @@ fi
 
 # No Arm NN EP: ORT removed it and build.py rejects --use_armnn; Arm NN ships for direct use only.
 
-# The QNN EP is arm64-only and opt-in by staging an SDK zip; see linux/qnn-sdk/README.md.
-_qnn_home="$(resolve_qnn_sdk)"
-if [ -n "$_qnn_home" ]; then
-  info "QNN EP ON (SDK root ${_qnn_home})"
-  # ORT's CMake defaults QNN_ARCH_ABI to aarch64-android, which is not the Linux SDK's lib dir.
-  BUILD_ARGS+=(
-    --cmake_extra_defines
-    "onnxruntime_USE_QNN=ON"
-    "onnxruntime_QNN_HOME=${_qnn_home}"
-    "QNN_ARCH_ABI=aarch64-oe-linux-gcc11.2"
-  )
-else
-  info "QNN EP off (no SDK zip staged — opt-in, see linux/qnn-sdk/README.md)"
-fi
+# No in-tree QNN EP: Qualcomm's plugin EP is built by 36-build-qnn-plugin-ep.sh (docs/qnn-linux.md#the-plugin-ep).
 
 append_onnx_wheel_mode_args BUILD_ARGS
 
@@ -120,10 +107,6 @@ info "Listing copied headers:"
 ls -la "${NATIVE_CPU_OUTPUT_DIR}/include/"*.h 2>/dev/null || warn "No .h files found in include directory"
 
 finalize_onnx_native_output "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_CPU_OUTPUT_DIR}" "${ORT_SRC_DIR}"
-
-if [ -n "$_qnn_home" ]; then
-  stage_qnn_runtime "$_qnn_home" "${NATIVE_CPU_OUTPUT_DIR}" 'libonnxruntime_providers_qnn.so*'
-fi
 
 # ${STRIP} is the target's strip on cross builds, since the host strip skips foreign ELFs.
 if [ "${MEDIA_STRIP:-1}" = "1" ]; then

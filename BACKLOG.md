@@ -1004,21 +1004,16 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `003-migraphx-gridsample.patch` and `004-migraphx-refuse-nonstandard-output.patch`. Done when the four AMD
       packages pass parity on the plugin and the built-in provider is gone from the image.
 
-- [ ] **CON232 — move the QNN EP to Qualcomm's plugin EP (`onnxruntime-qnn`)** [M, ★★]. Same pattern as
-      CON231, one step earlier in the cycle. Qualcomm ships the QNN EP as a plugin library
-      ([onnxruntime/onnxruntime-qnn](https://github.com/onnxruntime/onnxruntime-qnn), 2.x: Linux arm64 wheels and
-      tarballs since 2.1.1, Windows ARM64 wheel/NuGet/ZIP, Android Maven; "plugs into a standard ONNX Runtime
-      installation at runtime", its README says "migrate or get started"). The in-tree "Provider Bridge EP" we build
-      on Linux arm64 (`30-build-native.sh`, `libonnxruntime_providers_qnn.so` with the public QAIRT zip,
-      [qnn-linux.md](docs/qnn-linux.md)) and on the Windows arm64 bundle is still shipped upstream and not marked
-      deprecated (2026-11-08). **Start when** CON231 step 2 is in the consumers (the registration code is the same
-      for every plugin) **and** one of: the in-tree QNN EP gets a deprecation notice or `--use_qnn` a build warning;
-      Qualcomm's plugin wheel for our ORT minor exists for Linux arm64. **Do:** pin the plugin source like
-      `35-build-migraphx-plugin-ep.sh` does (seeds, G2 gate, census contract, `ORT_QNN_EP_ROOT`), keep the QAIRT
-      runtime staging, drop `onnxruntime_QNN_HOME` from the ORT build, prove on a Snapdragon device against the CPU
-      provider (the on-device parity gate, not enumeration). Windows arm64 follows the same move in
-      `Build-OnnxFromSource.ps1`.
-
+- [ ] **CON232 — move the QNN EP to Qualcomm's plugin EP (`onnxruntime-qnn`)** [M, ★★]. Owner decision
+      2026-11-08: now, both lanes. **Linux in source 2026-11-08:** arm64 builds the fork at v2.7.0 from its pinned
+      tarball with `--ort_home` over the chain prefix, ships `/usr/local/lib/onnxruntime-ep-qnn` (module, QAIRT
+      backends, licences, provenance), sets `ORT_QNN_EP_ROOT` on arm64 only, drops the in-tree EP from the ORT CPU
+      build and GenAI, and gates it (verify stage, census root, runtime probe; [qnn-linux.md](docs/qnn-linux.md#the-plugin-ep)).
+      Done when the next default chain publishes `:latest` with the plugin on arm64 (the arm64 ORT CPU build re-keys
+      without `onnxruntime_USE_QNN`), the Windows arm64 bundle ships `onnxruntime_providers_qnn.dll` the same way
+      (Windows session, after its `:winarm64` publish), and the consumers register it through CON231 step 2's code
+      path. **Not proven on hardware** on Linux (no Qualcomm Linux device in the fleet); the Windows side has the
+      Snapdragon X for the on-card parity run.
 - [ ] **CON233 — move CUDA/TensorRT to the plugin EPs when NVIDIA and Microsoft deprecate the in-tree ones** [L, ★★].
       The precedent is complete for TensorRT RTX: NVIDIA's plugin
       ([NVIDIA/TensorRT-RTX-EP-ABI](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI), since ORT 1.23), the ORT docs
