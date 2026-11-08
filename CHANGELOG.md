@@ -84,7 +84,8 @@
 
 - The seventh proof chain (runtime stage, three arches, run 20261108-131033) published `:latest` with arm64 at
   `sha256:19b99d3f4d02…`: the plugin module, 48 QAIRT backends, `ORT_QNN_EP_ROOT`, no in-tree QNN provider, all smokes
-  and the acceptance receipt green. The sixth chain had failed only on GitHub's 503 for the HailoRT tarball, now mirrored.
+  and the acceptance receipt green. That receipt covers the six `linux/amd64` consumers; it does not claim
+  arm64 or riscv64 consumer runs. The sixth chain had failed only on GitHub's 503 for the HailoRT tarball, now mirrored.
 
 ## 2026-11-08 — Linux: the CUDA EP is the plugin, the TensorRT EP NVIDIA's plugin, the in-tree TensorRT and MIGraphX EPs are gone (CON233, CON231 step 3)
 
@@ -114,6 +115,9 @@
 - Replace the app-venv's stale in-tree MIGraphX/TensorRT availability assertions with native plugin loading and
   both factory exports, while retaining the ORT Python import and Torch HIP/CUDA checks. The new fixture suite covers missing modules,
   exports and roots, both selected call sites and the CPU path; GPU registration and inference remain separate.
+- ROCm proof run `20261108-161535-562db2ce` (`rebuild-sequence-36`) passed media and android but stopped at that
+  stale app-venv assertion. No fresh runtime wrapper or acceptance receipt was produced; the successful package
+  smoke alone does not prove the wrapper or the removal from the shipped image.
 
 ## 2026-11-08 — Windows nvidia: the CUDA and TensorRT EPs are plugins (CON233)
 

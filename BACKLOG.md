@@ -1019,8 +1019,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       takes the CPU `onnxruntime` wheel, and the runtime smoke fails an image with `libonnxruntime_providers_migraphx.so`.
       AMD Python bundles carry the plugin beside the chain core (`capi/libmigraphx-ep.so`, proved against the image's
       module) and require `MIGraphX` in the self-test's `registered_plugin_eps`
-      ([python-app-bundles.md](docs/python-app-bundles.md#linux-gpu-bundles)). Proved when the next rocm chain
-      publishes. Done when the four AMD packages pass parity on the plugin (step 2).
+      ([python-app-bundles.md](docs/python-app-bundles.md#linux-gpu-bundles)). **Proof attempt 2026-11-08:**
+      `rebuild-sequence-36`, run `20261108-161535-562db2ce`, passed media and android, then failed the wrapper
+      at its stale in-tree `MIGraphXExecutionProvider` assertion. The app-venv probe now loads the selected plugin
+      and checks both factory exports; registration and inference are separate hardware checks. A fresh runtime
+      wrapper and acceptance receipt remain open; the older plugin-plus-in-tree wrapper above does not prove
+      this removal. Done when the four AMD packages pass parity on the plugin (step 2).
 
 - [ ] **CON232 — move the QNN EP to Qualcomm's plugin EP (`onnxruntime-qnn`)** [M, ★★]. Owner decision
       2026-11-08: now, both lanes. **Linux in source 2026-11-08:** arm64 builds the fork at v2.7.0 from its pinned
@@ -1030,7 +1034,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       **Proved in the published image 2026-11-08:** `:latest` arm64 = `sha256:19b99d3f4d02…` (seventh proof chain, run
       20261108-131033, hub 118c5425) carries `/usr/local/lib/onnxruntime-ep-qnn/lib/libonnxruntime_providers_qnn.so`
       (4.4 MB, fork v2.7.0, QAIRT 2.51.1, 48 backend libraries) with `ORT_QNN_EP_ROOT` set and no in-tree QNN provider in
-      the CPU prefix; runtime smoke and acceptance receipt passed for all six consumers on all three arches. Still done
+      the CPU prefix; runtime smokes passed on all three arches, and the acceptance receipt passed for all six
+      consumers on `linux/amd64` only (the default plan). It does not prove arm64 or riscv64 consumer checks. Still done
       only when the Windows arm64 bundle ships `onnxruntime_providers_qnn.dll` the same way
       (Windows session, after its `:winarm64` publish), and the consumers register it through CON231 step 2's code
       path. **Not proven on hardware** on Linux (no Qualcomm Linux device in the fleet); the Windows side has the
