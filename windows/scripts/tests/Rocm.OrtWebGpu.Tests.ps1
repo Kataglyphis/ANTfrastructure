@@ -277,29 +277,6 @@ Describe 'Build-OnnxFromSource WebGPU: the whole input chain, offline (downloads
 Describe 'Build-OnnxFromSource WebGPU: cmake args, configure/install/wheel gates, marker, wiring' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:OrtBuildScript -FunctionName $script:OrtWebGpuBuildFunction)
 
-    It 'off the spike the configure line gains nothing; on it, the five switches with forward slashes' {
-        Assert-Equal 0 @(Get-OrtWebGpuCmakeArgs -Plan ([pscustomobject]@{ OnLane = $true; WebGpu = $false })).Count 'rocm, spike off'
-        Assert-Equal 0 @(Get-OrtWebGpuCmakeArgs -Plan ([pscustomobject]@{ OnLane = $false; WebGpu = $false })).Count 'cpu/nvidia'
-        $a = @(Get-OrtWebGpuCmakeArgs -Plan ([pscustomobject]@{ OnLane = $true; WebGpu = $true }) -DawnSrc 'C:\w\dawn' -DxcDir 'C:\w\dxc')
-        Assert-Equal ('-Donnxruntime_USE_WEBGPU=ON,-Donnxruntime_ENABLE_DAWN_BACKEND_D3D12=ON,-Donnxruntime_ENABLE_DAWN_BACKEND_VULKAN=OFF,' +
-            '-Donnxruntime_CUSTOM_DAWN_SRC_PATH=C:/w/dawn,-DDAWN_PREBUILT_DXC_DIR:PATH=C:/w/dxc') ($a -join ',') 'spike args'
-    }
-
-    It 'the configure gate: each switch, the prebuilt-DXC branch and no Dawn self-fetch' {
-        $cache = "onnxruntime_USE_WEBGPU:BOOL=ON`r`nDAWN_FETCH_DEPENDENCIES:BOOL=OFF`r`nDAWN_USE_BUILT_DXC:BOOL=ON`r`nDAWN_ENABLE_D3D12:BOOL=ON`r`nDAWN_ENABLE_VULKAN:BOOL=OFF`r`n"
-        $log = "-- Dawn: prebuilt DXC from C:/w/dxc`n"
-        Assert-Equal 0 @(Get-OrtWebGpuConfigureFinding -CacheText $cache -LogText $log).Count 'healthy'
-        Assert-TestSingleFindingCases -Message 'configure gate' -Cases @(
-                @{ C = $cache.Replace('USE_WEBGPU:BOOL=ON', 'USE_WEBGPU:BOOL=OFF'); L = $log; P = 'onnxruntime_USE_WEBGPU=OFF' }
-                @{ C = $cache.Replace("DAWN_FETCH_DEPENDENCIES:BOOL=OFF`r`n", ''); L = $log; P = 'DAWN_FETCH_DEPENDENCIES=<unset>' }
-                @{ C = $cache.Replace('BUILT_DXC:BOOL=ON', 'BUILT_DXC:BOOL=OFF'); L = $log; P = 'DAWN_USE_BUILT_DXC=OFF' }
-                @{ C = $cache.Replace('D3D12:BOOL=ON', 'D3D12:BOOL=OFF'); L = $log; P = 'DAWN_ENABLE_D3D12=OFF' }
-                @{ C = $cache.Replace('VULKAN:BOOL=OFF', 'VULKAN:BOOL=ON'); L = $log; P = 'DAWN_ENABLE_VULKAN=ON' }
-                @{ C = $cache; L = ''; P = 'prebuilt-DXC branch' }
-                @{ C = $cache; L = $log + "-- Running fetch_dawn_dependencies:`n"; P = 'fetch_dawn_dependencies' }
-        ) -Exercise { param($c) Get-OrtWebGpuConfigureFinding -CacheText $c.C -LogText $c.L }
-    }
-
     # A DXC dir as Expand-OrtWebGpuDxc leaves it: dxcompiler.dll and the three licence texts, each holding its own name.
     function New-OrtWebGpuTestDxc([string]$Dir) {
         $dxc = Join-Path $Dir 'dxc'

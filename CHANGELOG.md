@@ -13,6 +13,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-08 — every ORT EP with a plugin moves to it, consumers first (owner directive)
+
+- Owner decision: every ONNX Runtime EP that has a plugin moves to the plugin system on both lanes, at its newest
+  version, and the in-tree paths go. Order: plugins that need no consumer change first, then one registration helper
+  per language and every consumer (CON231 step 2), then the CUDA switch and the in-tree TensorRT/MIGraphX removals.
+  The evidence and links: `logs/reports/` of the 2026-11-08 deep research, summarised in BACKLOG CON233.
+- Windows rocm: the WebGPU EP is the plugin code linked into `onnxruntime.dll` (`onnxruntime_USE_EP_API_ADAPTERS` and
+  `onnxruntime_WEBGPU_STATIC_PLUGIN`, ORT 1.31), still registered as `WebGpuExecutionProvider` with no consumer call.
+  The configure gate fails a build without both switches; `Ort.WebGpuStaticPlugin.Tests.ps1` holds it on both hosts.
+- `ORT_TENSORRT_EP_COMMIT` / `ORT_TENSORRT_EP_SOURCE_SHA256` pin onnxruntime/onnxruntime-ep-tensorrt at its newest commit
+  (6403f3c; the repo has no release yet) for the TensorRT plugin, built beside the in-tree EP on the nvidia lanes.
+
 ## 2026-11-08 — the ARM64 device gate's two red steps (issue 236)
 
 - IREE's cross `cp3XYt` twin re-enabled the GIL on the device (`first by iree._runtime_libs._runtime`):

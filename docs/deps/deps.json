@@ -151,6 +151,13 @@
               "spdx": "MIT"
             },
             {
+              "name": "ONNX Runtime plugin EP for NVIDIA TensorRT (onnxruntime_ep_tensorrt, beside the in-tree TensorRT EP; nvidia lanes)",
+              "var": "ORT_TENSORRT_EP_COMMIT",
+              "url": "https://github.com/onnxruntime/onnxruntime-ep-tensorrt",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
               "name": "OpenCV",
               "var": "OPENCV_VERSION",
               "url": "https://opencv.org/",

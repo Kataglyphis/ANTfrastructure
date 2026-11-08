@@ -334,14 +334,17 @@ function Initialize-OrtWebGpuInput {
 function Get-OrtWebGpuCmakeArgs {
     param([Parameter(Mandatory)]$Plan, [string]$DawnSrc = '', [string]$DxcDir = '')
     if (-not $Plan.WebGpu) { return @() }
-    return @('-Donnxruntime_USE_WEBGPU=ON', '-Donnxruntime_ENABLE_DAWN_BACKEND_D3D12=ON', '-Donnxruntime_ENABLE_DAWN_BACKEND_VULKAN=OFF',
+    # The plugin EP linked into onnxruntime.dll: it registers itself as WebGpuExecutionProvider, so GenAI needs no registration call.
+    return @('-Donnxruntime_USE_WEBGPU=ON', '-Donnxruntime_USE_EP_API_ADAPTERS=ON', '-Donnxruntime_WEBGPU_STATIC_PLUGIN=ON',
+        '-Donnxruntime_ENABLE_DAWN_BACKEND_D3D12=ON', '-Donnxruntime_ENABLE_DAWN_BACKEND_VULKAN=OFF',
         "-Donnxruntime_CUSTOM_DAWN_SRC_PATH=$($DawnSrc -replace '\\', '/')", "-DDAWN_PREBUILT_DXC_DIR:PATH=$($DxcDir -replace '\\', '/')")
 }
 
 # After configure: the spike's switches took, the prebuilt-DXC branch ran, and Dawn fetched nothing itself.
 function Get-OrtWebGpuConfigureFinding {
     param([Parameter(Mandatory)][AllowEmptyString()][string]$CacheText, [Parameter(Mandatory)][AllowEmptyString()][string]$LogText)
-    $want = [ordered]@{ onnxruntime_USE_WEBGPU = 'ON'; DAWN_FETCH_DEPENDENCIES = 'OFF'; DAWN_USE_BUILT_DXC = 'ON'; DAWN_ENABLE_D3D12 = 'ON'; DAWN_ENABLE_VULKAN = 'OFF' }
+    $want = [ordered]@{ onnxruntime_USE_WEBGPU = 'ON'; onnxruntime_USE_EP_API_ADAPTERS = 'ON'; onnxruntime_WEBGPU_STATIC_PLUGIN = 'ON'
+        DAWN_FETCH_DEPENDENCIES = 'OFF'; DAWN_USE_BUILT_DXC = 'ON'; DAWN_ENABLE_D3D12 = 'ON'; DAWN_ENABLE_VULKAN = 'OFF' }
     foreach ($k in $want.Keys) {
         $m = [regex]::Match($CacheText, "(?m)^$k(?::[A-Z]+)?=(.*?)\r?$")
         $got = if ($m.Success) { $m.Groups[1].Value.Trim() } else { '<unset>' }

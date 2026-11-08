@@ -351,7 +351,7 @@ the clash back, it fails with the same 20 errors, and the overlay comes back fro
 ## ONNX Runtime WebGPU EP (rocm lane, spike)
 
 The rocm lane's chain ORT (built from source by `Build-OnnxFromSource.ps1`) is built **with
-ORT's in-tree WebGPU execution provider**, over Dawn's D3D12 backend. It replaced the PyPI
+ORT's WebGPU execution provider as a static plugin**, over Dawn's D3D12 backend. It replaced the PyPI
 `onnxruntime-ep-webgpu` 0.4.0 plugin the app venv carried for part of 2026-09-23: that
 plugin was ORT code built by Microsoft, which the ORT single-source rule forbids
 ([`onnxruntime-single-source.md`](onnxruntime-single-source.md)).
@@ -364,12 +364,14 @@ plugin was ORT code built by Microsoft, which the ORT single-source rule forbids
 - `ORT_WEBGPU=1` anywhere but the native rocm lane is a build error.
 - `ORT_ENABLE_WEBGPU` is the unrelated Linux knob; the Windows spike does not read it.
 
-**Why in-tree (`onnxruntime_USE_WEBGPU=ON`) and not the plugin build.**
-- The in-tree EP registers inside `onnxruntime.dll`, so `get_available_providers()` lists
-  `WebGpuExecutionProvider` in every interpreter and GenAI sees it with no extra call.
-- The plugin build (`onnxruntime_USE_EP_API_ADAPTERS`) makes a separate provider DLL that
-  each consumer must register with `register_execution_provider_library`, and GenAI
-  would not see it without its own registration. The in-tree build needs none of that.
+**Why the static plugin (`onnxruntime_WEBGPU_STATIC_PLUGIN=ON`) and not the separate plugin DLL.**
+- Since 2026-11-08 the EP is the plugin code (`onnxruntime_USE_EP_API_ADAPTERS=ON`), the
+  plugin EP system's form, linked into `onnxruntime.dll` (new in ORT 1.31.0). ORT registers it
+  at environment creation, so `get_available_providers()` lists `WebGpuExecutionProvider` in
+  every interpreter and GenAI sees it with no extra call, as with the in-tree EP before it.
+- The separate plugin DLL (`--use_webgpu shared_lib`) would need a
+  `register_execution_provider_library` call in each consumer and in GenAI. The configure gate
+  (`Get-OrtWebGpuConfigureFinding`) fails a build without both switches.
 - ORT's `onnxruntime_CUSTOM_DAWN_SRC_PATH` takes a pinned, pre-patched Dawn tree and turns
   Dawn's own dependency fetch off.
 

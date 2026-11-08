@@ -1026,7 +1026,14 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the in-tree EP from ORT and GenAI, and gate it (foreign-core and export checks, census root and reference dir,
       smoke file contract; [windows-cross-builds.md](docs/windows-cross-builds.md#the-qnn-plugin-ep)). Proven when a
       Windows chain builds it and `:winarm64` republishes; a Snapdragon run of a registered session is still open.
-- [ ] **CON233 — move CUDA/TensorRT to the plugin EPs when NVIDIA and Microsoft deprecate the in-tree ones** [L, ★★].
+- [ ] **CON233 — move every EP with a plugin to it, CUDA and TensorRT included** [L, ★★].
+      **Owner decision 2026-11-08, superseding the triggers below:** every EP that has a plugin moves, at its newest
+      version, and the in-tree paths go, in this order: (1) plugins no consumer must register (WebGPU as
+      `onnxruntime_WEBGPU_STATIC_PLUGIN`; Windows rocm done in source); (2) the TensorRT plugin beside the in-tree EP,
+      pinned at `ORT_TENSORRT_EP_COMMIT` (newest commit, no release yet); (3) CON231 step 2's registration helper per language
+      and every consumer; (4) CUDA as `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN` (it replaces the legacy EP, so only after 3) and the
+      in-tree TensorRT and Linux `--use_migraphx` removals. Windows is this hub's Windows session, Linux the Linux session's.
+      DirectML has no plugin and stays. The evidence, with links to every plugin: the 2026-11-08 deep research.
       The precedent is complete for TensorRT RTX: NVIDIA's plugin
       ([NVIDIA/TensorRT-RTX-EP-ABI](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI), since ORT 1.23), the ORT docs
       deprecate the built-in EP, and microsoft/onnxruntime#32276 (merged 2026-10-28) removed it from `main`; eight

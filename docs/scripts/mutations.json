@@ -32329,6 +32329,22 @@
   "why": "an empty if/else result binds -Finding as $null, so the healthy TensorRT EP check failed with no finding named"
  },
  {
+  "id": "lib.webgpu-static-plugin-args",
+  "target": "windows/scripts/build/Build-OnnxFromSource.ps1",
+  "find": "'-Donnxruntime_USE_EP_API_ADAPTERS=ON', '-Donnxruntime_WEBGPU_STATIC_PLUGIN=ON',",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.WebGpuStaticPlugin.Tests.ps1 -ResultFile logs/code-quality/webgpu-static-plugin-mutation.json",
+  "why": "without both switches the rocm ORT builds the legacy in-tree WebGPU EP again"
+ },
+ {
+  "id": "lib.webgpu-static-plugin-gated",
+  "target": "windows/scripts/build/Build-OnnxFromSource.ps1",
+  "find": "; onnxruntime_WEBGPU_STATIC_PLUGIN = 'ON'",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Ort.WebGpuStaticPlugin.Tests.ps1 -ResultFile logs/code-quality/webgpu-static-plugin-mutation.json",
+  "why": "a configure that dropped the static plugin would pass the WebGPU gate"
+ },
+ {
   "id": "lib.qnn-ep-pin-sha-required",
   "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
   "find": "    if (\"$Sha256\" -notmatch '^[0-9A-Fa-f]{64}$') { throw \"ORT_QNN_EP_SOURCE_SHA256='$Sha256' is not a 64-hex SHA256: refusing to fetch the QNN plugin unverified\" }\n",

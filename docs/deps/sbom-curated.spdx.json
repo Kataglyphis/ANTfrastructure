@@ -234,6 +234,19 @@
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
+      "SPDXID": "SPDXRef-Package-Linux-Images-ONNX-Runtime-plugin-EP-for-NVIDIA-TensorRT-onnx-8f9fdeea",
+      "name": "ONNX Runtime plugin EP for NVIDIA TensorRT (onnxruntime_ep_tensorrt, beside the in-tree TensorRT EP; nvidia lanes)",
+      "versionInfo": "6403f3cefe22c78313df90eca6b01fde54afa1ed",
+      "downloadLocation": "https://github.com/onnxruntime/onnxruntime-ep-tensorrt",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
       "SPDXID": "SPDXRef-Package-Linux-Images-OpenCV-e51e1f63",
       "name": "OpenCV",
       "versionInfo": "5.0.0",
@@ -2251,6 +2264,11 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Linux-Images-ONNX-Runtime-plugin-EP-for-Qualcomm-QNN-libonnx-5958d67f"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-ONNX-Runtime-plugin-EP-for-NVIDIA-TensorRT-onnx-8f9fdeea"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",
