@@ -145,11 +145,19 @@ function Copy-OrtQnnEpLicense {
     return @('licenses\onnxruntime-qnn\LICENSE', 'licenses\onnxruntime-qnn\ThirdPartyNotices.txt')
 }
 
+function Get-OrtQnnEpBuiltDll {
+    # The fork's POST_BUILD copies the DLL into its wheel tree too; the link output at the build root is the one ninja built.
+    param([Parameter(Mandatory)][string]$BuildDir)
+    $built = Get-Item -LiteralPath (Join-Path $BuildDir 'onnxruntime_providers_qnn.dll') -ErrorAction SilentlyContinue
+    if (-not $built) { throw "QNN plugin EP: no link output onnxruntime_providers_qnn.dll at the build root $BuildDir" }
+    return $built
+}
+
 function Install-OrtQnnEpArtifact {
     # One directory: the DLL, its QAIRT backends, the licence texts and a provenance manifest that proves them.
     param([Parameter(Mandatory)][string]$BuildDir, [Parameter(Mandatory)][string]$ForkRoot, [Parameter(Mandatory)]$Sdk,
         [Parameter(Mandatory)][string]$EpDir, [Parameter(Mandatory)]$Pin)
-    $built = Get-UniqueBuildArtifact -Root $BuildDir -Filter 'onnxruntime_providers_qnn.dll' -Context 'QNN plugin EP'
+    $built = Get-OrtQnnEpBuiltDll -BuildDir $BuildDir
     Reset-SourceBuildDirectory -Path $EpDir
     Copy-Item -LiteralPath $built.FullName -Destination $EpDir -Force
     [void](Copy-QnnRuntime -Sdk $Sdk -OrtInstallDir $EpDir)

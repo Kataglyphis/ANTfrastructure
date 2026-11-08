@@ -8,7 +8,7 @@ foreach ($leaf in 'WindowsSourceBuild.Common', 'WindowsSmokeTest.Common', 'Windo
 }
 $script:QnnEpScript = 'windows\scripts\build\Build-OrtQnnEpFromSource.ps1'
 $script:QnnEpFunction = @('Get-OrtQnnEpPin', 'Get-OrtQnnEpCoreVersion', 'Get-OrtQnnEpChainFile', 'New-OrtQnnEpHome', 'Copy-OrtQnnEpHeader',
-    'Get-OrtQnnEpCmakeArgs', 'Get-OrtQnnEpForeignCore', 'Get-OrtQnnEpModuleFinding')
+    'Get-OrtQnnEpCmakeArgs', 'Get-OrtQnnEpForeignCore', 'Get-OrtQnnEpModuleFinding', 'Get-OrtQnnEpBuiltDll')
 
 function New-QnnEpChainFixture {
     param([Parameter(Mandatory)][string]$Dir)
@@ -91,6 +91,15 @@ Describe 'Build-OrtQnnEpFromSource.ps1' {
             $foreign = @(Get-OrtQnnEpForeignCore -BuildDir $build -OrtPrefix $chain)
             Assert-Equal 1 $foreign.Count 'one foreign core'
             Assert-Match 'ort_core-build' $foreign[0] 'names the foreign file'
+        }
+    }
+
+    It 'stages the link output at the build root, not the copy the fork puts in its wheel tree (mutation)' {
+        Invoke-InTestDir { param($dir)
+            Write-TestFileTree -Root $dir -Files @{ 'onnxruntime_qnn/onnxruntime_providers_qnn.dll' = 'wheel copy' }
+            Assert-Throws { Get-OrtQnnEpBuiltDll -BuildDir $dir } 'only the wheel copy' -MessagePattern 'no link output'
+            Write-TestFileTree -Root $dir -Files @{ 'onnxruntime_providers_qnn.dll' = 'link output' }
+            Assert-Equal 'link output' (Get-Content -LiteralPath (Get-OrtQnnEpBuiltDll -BuildDir $dir).FullName -Raw).Trim() 'the build root wins over the wheel tree'
         }
     }
 

@@ -32385,6 +32385,14 @@
   "why": "an ORT core the fork built itself would ship beside the chain's"
  },
  {
+  "id": "lib.qnn-ep-link-output",
+  "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
+  "find": "    $built = Get-Item -LiteralPath (Join-Path $BuildDir 'onnxruntime_providers_qnn.dll') -ErrorAction SilentlyContinue\n",
+  "replace": "    $built = Get-ChildItem -LiteralPath $BuildDir -Recurse -Filter 'onnxruntime_providers_qnn.dll' | Select-Object -Last 1\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtQnnEp.Tests.ps1 -ResultFile logs/code-quality/qnn-ep-mutation.json",
+  "why": "a recursive pick finds the fork's wheel-tree copy as well, and staging stops on two DLLs or takes the wrong one"
+ },
+ {
   "id": "lib.qnn-ep-module-exports",
   "target": "windows/scripts/build/Build-OrtQnnEpFromSource.ps1",
   "find": "        if ($exports -notcontains $symbol) { $found += \"$(Split-Path -Leaf $Dll) does not export $symbol\" }\n",

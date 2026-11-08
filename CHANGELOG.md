@@ -13,6 +13,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-08 — the QNN plugin EP stages its link output
+
+- The second arm64 chain compiled the QNN plugin and stopped in its staging: the fork's POST_BUILD copies
+  `onnxruntime_providers_qnn.dll` into its wheel tree, so a recursive search found two. `Get-OrtQnnEpBuiltDll` takes the
+  link output at the build root (`lib.qnn-ep-link-output`).
+
 ## 2026-11-08 — the QNN plugin EP compiles under clang-cl
 
 - The first arm64 chain with the QNN plugin stopped in its compile: the fork passes ORT's MSVC-only

@@ -1059,6 +1059,9 @@ no plugin, with one notice, as before.
 - The fork inherits ORT's MSVC-only `/experimental:external` and its warnings-as-errors; clang-cl reports the switch as
   unused and `-WX` makes that fatal. The ORT build's own fix runs on the fork's `build.ninja` too
   (`Update-NinjaFile -OrtMsvcOnlyFlags`), found by the first arm64 chain of 2026-11-08.
+- The fork's POST_BUILD copies the DLL into its own wheel tree (`onnxruntime_qnn\`), so the build
+  tree holds two. `Get-OrtQnnEpBuiltDll` stages the link output at the build root; a recursive
+  search stopped the second arm64 chain of 2026-11-08 on "found 2".
 - The stage ships `C:\runtime\lib\onnxruntime-ep-qnn`: the DLL, the QAIRT backends and
   `hexagon-v*` skels beside it, `licenses\onnxruntime-qnn\` and `licenses\qairt\`, and a
   `provenance\onnxruntime-qnn.json` manifest. `ORT_QNN_EP_ROOT` names the directory; a
