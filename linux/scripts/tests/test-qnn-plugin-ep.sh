@@ -107,6 +107,8 @@ t_case "the plugin tree is a census root, the in-tree EP is gone from the ORT an
 # shellcheck source=../06-packaging/check-ort-provenance.sh
 source "${TESTS_DIR}/../06-packaging/check-ort-provenance.sh"
 t_assert_contains "$(ort_census_image_args | tr '\n' ' ')" "--ref /usr/local/lib/onnxruntime-ep-qnn --allow /usr/local/lib/onnxruntime-ep-qnn"
+t_assert_contains "$(ort_census_chain_roots)" "${QNNEP_WORK_DIR}/seeds/onnxruntime-qnn" "the census knows where the fork source is built"
+t_assert_contains "$(ort_census_chain_roots)" "${QNNEP_WORK_DIR}/build/Release/_deps/ort_core-src" "and where its ort_core headers come from"
 t_assert_eq 0 "$(grep -cE 'onnxruntime_USE_QNN|QNN_HOME|stage_qnn_runtime' "${BUILD}/30-build-native.sh" || true)" "no in-tree QNN in the ORT CPU build"
 t_assert_eq 0 "$(grep -cE 'stage_qnn_runtime|resolve_qnn_sdk' "${BUILD}/60-build-genai.sh" || true)" "GenAI stages no QNN of its own"
 t_assert_eq 1 "$(grep -cE '^COPY --link --from=onnxruntime /usr/local/lib/onnxruntime-ep-qnn /usr/local/lib/onnxruntime-ep-qnn$' "${DF}")" "the merge stage copies the plugin tree"

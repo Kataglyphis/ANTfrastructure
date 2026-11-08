@@ -16924,6 +16924,14 @@
   "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh"
  },
  {
+  "id": "onnx-ep-qnn.census-knows-the-fork-root",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": " /tmp/onnxruntime-ep-qnn/seeds/onnxruntime-qnn /tmp/onnxruntime-ep-qnn/build/Release/_deps/ort_core-src\n",
+  "replace": "\n",
+  "why": "the census reads the build root out of the module; without the fork's work dir among the chain roots the plugin is FOREIGN and the runtime smoke fails on arm64",
+  "test": "bash linux/scripts/tests/test-ort-census.sh"
+ },
+ {
   "id": "onnx-ep-qnn.skip-leaves-placeholder",
   "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
   "find": "then plugin_ep_skip \"${QNNEP_OUTPUT_DIR}\" \"Skipping the QNN plugin EP",

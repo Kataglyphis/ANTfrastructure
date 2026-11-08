@@ -19,8 +19,8 @@ FOREIGN_SHA="$(printf 'f%.0s' {1..64})"
 _fact() { local IFS=$'\t'; printf '%s\n' "$*"; }
 # A healthy image's facts: chain roots, one prefix, its core lib, a capi copy, a registered consumer.
 _base() {
-  _fact CHAIN /opt/onnxruntime
-  _fact CHAIN /opt/onnxruntime-android
+  local _r
+  while IFS= read -r _r; do _fact CHAIN "${_r}"; done < <(ort_census_chain_roots)
   _fact ALLOW /usr/local/lib/onnxruntime-cpu
   _fact REF "${CHAIN_SHA}" /usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so.1.30.0 '/opt/onnxruntime|/opt/onnxruntime/include'
   _fact CORE "${CHAIN_SHA}" /usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so.1.30.0
@@ -425,6 +425,12 @@ for _want in '--image' '--ref /usr/local/lib/onnxruntime-cpu' '--ref /usr/local/
   '--chain-root /opt/onnxruntime' '--contract genai|' '--contract amdgpu-ep|libmigraphx-ep.so|'; do
   t_assert_contains "${_ia}" "${_want}" "image args carry ${_want}"
 done
+
+t_case "the plugin QNN EP, built from the fork under its work dir, is chain bytes, not FOREIGN (the second arm64 proof chain failed here)"
+_qnn_ref="$(_v "$(_base; _fact REF "${FOREIGN_SHA}" /usr/local/lib/onnxruntime-ep-qnn/lib/libonnxruntime_providers_qnn.so '/tmp/onnxruntime-ep-qnn/seeds/onnxruntime-qnn|/tmp/onnxruntime-ep-qnn/build/Release/_deps/ort_core-src'; _done)")"
+t_assert_eq 0 "$(printf '%s\n' "${_qnn_ref}" | grep -c 'FOREIGN' || true)" "${_qnn_ref}"
+t_assert_contains "$(_v "$(_base; _fact REF "${FOREIGN_SHA}" /usr/local/lib/onnxruntime-ep-qnn/lib/libonnxruntime_providers_qnn.so '/tmp/somewhere-else/onnxruntime-qnn'; _done)")" \
+  "FOREIGN	/usr/local/lib/onnxruntime-ep-qnn/lib/libonnxruntime_providers_qnn.so	the chain reference itself was built under /tmp/somewhere-else/onnxruntime-qnn" "another work dir is not the chain"
 
 t_case "the declared chain roots are where the chain builds ORT"
 _common="$(cat "${TESTS_DIR}/../03-media/build/onnxruntime/build/lib/common.sh")"

@@ -91,7 +91,8 @@ would not fit the image's 3.15 anyway).
 - **Gates.** `verify-media-artifacts.sh onnxruntime-ep-qnn` (both exports, the HTP backend, the
   texts; a missing plugin fails arm64 and skips the others); `onnxruntime-cpu` fails a provider in
   the CPU prefix; the module's NEEDED set must be the chain's, QAIRT's or the C/C++ runtime
-  (`qnnep_verify_library`, `ldd` cannot run a cross-built module); the plugin root is a census REF
+  (`qnnep_verify_library`, `ldd` cannot run a cross-built module); the plugin root is a census REF and its two build roots (the fork source under the work dir, the fetched
+  `ort_core`) are census chain roots, since the census reads the build root out of the module's own strings
   ([single-source rule](onnxruntime-single-source.md#a-plugin-ep-built-from-an-ort-fork-is-a-chain-root));
   the wrapper's runtime probe (`check-gpu-runtime.sh`, `accel_qnn_plugin_verdict`) wants the root,
   the module, its exports and backends on arm64 and none of it elsewhere.

@@ -5,9 +5,9 @@
 
 _ORT_CENSUS_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Where the Linux chain builds ORT (onnxruntime/build/lib/common.sh ORT_SRC_DIR, the android clone).
+# Where the Linux chain builds ORT: ORT_SRC_DIR, the android clone, and the plugin QNN EP's fork source and ort_core under 36-build-qnn-plugin-ep.sh's QNNEP_WORK_DIR.
 ort_census_chain_roots() {
-  printf '%s\n' /opt/onnxruntime /opt/onnxruntime-android
+  printf '%s\n' /opt/onnxruntime /opt/onnxruntime-android /tmp/onnxruntime-ep-qnn/seeds/onnxruntime-qnn /tmp/onnxruntime-ep-qnn/build/Release/_deps/ort_core-src
 }
 
 # The image components allowed to use ORT: name|file globs|G2 stamp. Anything else is UNREGISTERED.
