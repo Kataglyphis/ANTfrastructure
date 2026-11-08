@@ -35,7 +35,7 @@ Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
         $helper = Join-Path (Get-RepoRoot) 'linux\scripts\02-toolchain\python\free-threaded-wheel.py'
         Assert-Equal (Get-FileHash $helper).Hash (Get-FileHash (Join-Path $script:out 'free-threaded-wheel.py')).Hash 'and the helper the gate proves the cp3XYt twins with'
         foreach ($module in 'WindowsGstPlugins.Common.psm1', 'WindowsTargetArch.Common.psm1',
-            'WindowsScripts.Shared.psm1', 'WindowsPythonWheel.Common.psm1', 'WindowsOrtDmlCheck.Common.psm1') {
+            'WindowsScripts.Shared.psm1', 'WindowsArm64Acceptance.Common.psm1', 'WindowsPythonWheel.Common.psm1', 'WindowsOrtDmlCheck.Common.psm1') {
             $src = Join-Path (Get-RepoRoot) "windows\scripts\modules\$module"
             Assert-Equal (Get-FileHash $src).Hash (Get-FileHash (Join-Path $script:out $module)).Hash "and $module, which a gate step imports"
         }

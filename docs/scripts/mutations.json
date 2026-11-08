@@ -36611,8 +36611,8 @@
  {
   "id": "lib.arm64-export-shared-module",
   "target": "windows/scripts/build/Export-Arm64Bundle.ps1",
-  "find": "'WindowsScripts.Shared.psm1', ",
-  "replace": "",
+  "find": "'WindowsScripts.Shared.psm1', 'WindowsArm64Acceptance.Common.psm1', ",
+  "replace": "'WindowsArm64Acceptance.Common.psm1', ",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.ExportArm64Modules.Tests.ps1 -ResultFile logs/code-quality/export-arm64-mutation.json",
   "why": "the device gate cannot import its GStreamer probes when their required shared sibling is omitted"
  },
@@ -36631,5 +36631,117 @@
   "replace": "if ($false) {",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.ExportArm64Runtime.Tests.ps1 -ResultFile logs/code-quality/export-arm64-ort-mutation.json",
   "why": "two archive members with the same runtime DLL path leave extraction precedence ambiguous"
+ },
+ {
+  "id": "lib.arm64-acceptance-digest",
+  "target": "windows/scripts/modules/WindowsArm64Acceptance.Common.psm1",
+  "find": "if ($Digest -cnotmatch '\\Asha256:[0-9a-f]{64}\\z')",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.Arm64Acceptance.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-mutation.json",
+  "why": "malformed candidate input must fail before a pull"
+ },
+ {
+  "id": "lib.arm64-acceptance-platform",
+  "target": "windows/scripts/modules/WindowsArm64Acceptance.Common.psm1",
+  "find": "if ($Metadata.Os -cne 'windows' -or $Metadata.Architecture -cne 'amd64')",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.Arm64Acceptance.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-mutation.json",
+  "why": "the cross payload runs in a Windows amd64 container, not a native arm64 container"
+ },
+ {
+  "id": "lib.arm64-acceptance-config",
+  "target": "windows/scripts/modules/WindowsArm64Acceptance.Common.psm1",
+  "find": "if ($Metadata.Id -cnotmatch '\\Asha256:[0-9a-f]{64}\\z')",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.Arm64Acceptance.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-mutation.json",
+  "why": "an export receipt must name a real image config digest"
+ },
+ {
+  "id": "lib.arm64-acceptance-repository",
+  "target": "windows/scripts/modules/WindowsArm64Acceptance.Common.psm1",
+  "find": "if ($digests.Count -ne 1)",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.Arm64Acceptance.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-mutation.json",
+  "why": "ambiguous pulled repository digests cannot prove one exported image"
+ },
+ {
+  "id": "lib.arm64-acceptance-candidate",
+  "target": "windows/scripts/modules/WindowsArm64Acceptance.Common.psm1",
+  "find": "if ($Image.Contains('@') -and $Image -cne $digests[0])",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.Arm64Acceptance.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-mutation.json",
+  "why": "the pulled image must match the requested immutable candidate"
+ },
+ {
+  "id": "lib.arm64-acceptance-revision",
+  "target": "windows/scripts/modules/WindowsArm64Acceptance.Common.psm1",
+  "find": "if ($revision -cnotmatch '\\A[0-9a-f]{7,40}\\z')",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.Arm64Acceptance.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-mutation.json",
+  "why": "an image without a source revision cannot supply the required provenance"
+ },
+ {
+  "id": "lib.arm64-acceptance-ci",
+  "target": "windows/scripts/modules/WindowsArm64Acceptance.Common.psm1",
+  "find": "if ($receipt.SchemaVersion -ne 1 -or $receipt.HubCommit -cne $HubCommit -or $receipt.RunId -cne $RunId -or $receipt.RunAttempt -cne $RunAttempt)",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.Arm64Acceptance.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-mutation.json",
+  "why": "another CI source, run or attempt must not accept this bundle"
+ },
+ {
+  "id": "lib.arm64-acceptance-image",
+  "target": "windows/scripts/modules/WindowsArm64Acceptance.Common.psm1",
+  "find": "if ($receipt.RequestedImage -cne $Image -or ($Image.Contains('@') -and $receipt.Image -cne $Image))",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.Arm64Acceptance.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-mutation.json",
+  "why": "the device job must grade the image selected by its export job"
+ },
+ {
+  "id": "lib.arm64-acceptance-zip",
+  "target": "windows/scripts/modules/WindowsArm64Acceptance.Common.psm1",
+  "find": "if ($receipt.BundleSha256 -cne $hash)",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.Arm64Acceptance.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-mutation.json",
+  "why": "changed ZIP bytes must fail before device execution"
+ },
+ {
+  "id": "lib.arm64-acceptance-status",
+  "target": "windows/scripts/modules/WindowsArm64Acceptance.Common.psm1",
+  "find": "if ($code -ne 0) { throw \"the ARM64 bundle gate exited $code\" }",
+  "replace": "if ($false) { throw \"the ARM64 bundle gate exited $code\" }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.Arm64Acceptance.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-mutation.json",
+  "why": "a nonzero device status must keep the enclosing CI step red"
+ },
+ {
+  "id": "lib.arm64-acceptance-verdict",
+  "target": "windows/scripts/modules/WindowsArm64Acceptance.Common.psm1",
+  "find": "Passed = ($code -eq 0)",
+  "replace": "Passed = $true",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.Arm64Acceptance.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-mutation.json",
+  "why": "a failed or throwing device gate must never emit a passed receipt"
+ },
+ {
+  "id": "lib.arm64-acceptance-workflow-image",
+  "target": ".github/workflows/windows-arm64.yml",
+  "find": "          checkout: 'false'\n          submodules: 'false'\n          image-arm64: ${{ steps.image.outputs.ref }}",
+  "replace": "          checkout: 'false'\n          submodules: 'false'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.Arm64AcceptanceWiring.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-wiring-mutation.json",
+  "why": "the pull and export actions must consume the same selected candidate image"
+ },
+ {
+  "id": "lib.arm64-acceptance-workflow-gate",
+  "target": ".github/workflows/windows-arm64.yml",
+  "find": "-Gate { & ./Test-Arm64Bundle.ps1 -ZipPath ./bundle.zip }",
+  "replace": "-Gate { }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.Arm64AcceptanceWiring.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-wiring-mutation.json",
+  "why": "an empty callback must not replace the actual device gate and its default assertion floor"
+ },
+ {
+  "id": "lib.arm64-acceptance-export",
+  "target": "windows/scripts/build/Export-Arm64Bundle.ps1",
+  "find": "'WindowsArm64Acceptance.Common.psm1', ",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.ExportArm64Modules.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-export-mutation.json",
+  "why": "the device job must receive the receipt checker beside its exported gate"
  }
 ]

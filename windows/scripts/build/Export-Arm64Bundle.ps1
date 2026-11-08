@@ -23,8 +23,8 @@ Set-StrictMode -Version Latest
 if (-not (Test-Path (Join-Path $BundleRoot 'BUNDLE-ENV.ps1'))) { throw "no bundle at $BundleRoot (BUNDLE-ENV.ps1 missing)" }
 if (-not (Test-Path (Join-Path $BundleRoot 'python\python.exe'))) { throw "no bundle python under $BundleRoot" }
 
-foreach ($sibling in 'WindowsScripts.Shared', 'WindowsOrtPayload.Common') {
-    Import-Module (Join-Path $PSScriptRoot "../modules/$sibling.psm1") -DisableNameChecking -ErrorAction Stop
+foreach ($sibling in 'WindowsScripts.Shared.psm1', 'WindowsOrtPayload.Common.psm1') {
+    Import-Module (Join-Path $PSScriptRoot "../modules/$sibling") -DisableNameChecking -ErrorAction Stop
 }
 
 function Get-Arm64BundleOrtOverlay {
@@ -65,7 +65,7 @@ if (-not (Test-Path -LiteralPath $helper)) { throw "no free-threaded-wheel.py at
 Copy-Item -LiteralPath $helper -Destination $OutDir
 # The gate's modules import their required siblings from beside themselves.
 foreach ($module in 'WindowsGstPlugins.Common.psm1', 'WindowsTargetArch.Common.psm1',
-    'WindowsScripts.Shared.psm1', 'WindowsPythonWheel.Common.psm1', 'WindowsOrtDmlCheck.Common.psm1') {
+    'WindowsScripts.Shared.psm1', 'WindowsArm64Acceptance.Common.psm1', 'WindowsPythonWheel.Common.psm1', 'WindowsOrtDmlCheck.Common.psm1') {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "..\modules\$module") -Destination $OutDir
 }
 Write-Host ("bundle zip: {0} ({1:N2} GB), gate script, free-threaded-wheel.py and the GStreamer test modules beside it" -f $zip, ((Get-Item $zip).Length / 1GB))

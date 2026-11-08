@@ -862,7 +862,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ARM64 device run42521429496 at d63c982d still crashed: gstonnx requested API31,
       but loaded ORT1.17.1/API17. The export now stages the chain DLLs beside its
       executables; native ZIP hashes and portable PE/mutation checks cover transport.
-      A passing ARM64 device run remains required; this entry stays open.
+      The later cb2b8db6 device run42525202720 passes onnxinference;21/22 steps pass,
+      with only the older published IREE twin failing. The digest acceptance workflow
+      can grade the new image before tag promotion. Full device acceptance remains open.
       Cached `:winamd64-nvidia` image digest
       `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777` reports no
       `tensor_transform`, `onnxruntime`, or `tensor_decoder` via `gst-inspect-1.0`.

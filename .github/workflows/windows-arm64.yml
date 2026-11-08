@@ -6,6 +6,7 @@ on:
     paths:
       - 'windows/scripts/build/Test-Arm64Bundle.ps1'
       - 'windows/scripts/build/Export-Arm64Bundle.ps1'
+      - 'windows/scripts/modules/WindowsArm64Acceptance.Common.psm1'
       - 'windows/scripts/modules/WindowsGstPlugins.Common.psm1'
       - 'windows/scripts/modules/WindowsTargetArch.Common.psm1'
       - 'windows/scripts/modules/WindowsPythonWheel.Common.psm1'
@@ -16,13 +17,19 @@ on:
   schedule:
     - cron: '17 4 * * *'
   workflow_dispatch:
+    inputs:
+      candidate-digest:
+        description: 'Optional SHA256 of the ARM64 bundle image to accept before tag promotion'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
 
-# One run per ref: a newer push supersedes the in-flight run.
+# A candidate must not cancel acceptance of another image before validation.
 concurrency:
-  group: windows-arm64-${{ github.ref }}
+  group: windows-arm64-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -31,22 +38,57 @@ jobs:
     name: export the bundle (windows-2025)
     runs-on: windows-2025
     timeout-minutes: 90
+    outputs:
+      image: ${{ steps.image.outputs.ref }}
     steps:
+      - name: Check out the gate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: 'false'
+
+      - name: Resolve the ARM64 image
+        id: image
+        shell: pwsh
+        env:
+          CANDIDATE_DIGEST: ${{ inputs.candidate-digest }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module ./windows/scripts/modules/WindowsContainerImage.Common.psm1 -ErrorAction Stop
+          Import-Module ./windows/scripts/modules/WindowsArm64Acceptance.Common.psm1 -ErrorAction Stop
+          $image = Resolve-Arm64AcceptanceImage -Digest $env:CANDIDATE_DIGEST -DefaultImage (Get-CiImageReference -Windows -TargetArch arm64)
+          "ref=$image" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Prepare the Windows container host
         id: prep
         uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-windows-container-host@develop
         with:
           target-arch: arm64
+          checkout: 'false'
           submodules: 'false'
+          image-arm64: ${{ steps.image.outputs.ref }}
 
       - name: Export the arm64 bundle
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-windows-container@develop
         with:
           target-arch: arm64
+          image-arm64: ${{ steps.image.outputs.ref }}
           file: C:\ws\windows\scripts\build\Export-Arm64Bundle.ps1
           file-args: |
             -OutDir
             C:\ws\dist\windows-arm64-bundle
+
+      - name: Bind the exported ZIP to its image and CI run
+        shell: pwsh
+        env:
+          ARM64_IMAGE: ${{ steps.image.outputs.ref }}
+          EXPORT_WORKSPACE: ${{ steps.prep.outputs.workspace }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          Import-Module (Join-Path $env:EXPORT_WORKSPACE 'windows/scripts/modules/WindowsArm64Acceptance.Common.psm1') -ErrorAction Stop
+          $metadata = @(& docker image inspect $env:ARM64_IMAGE | ConvertFrom-Json)
+          $root = Join-Path $env:EXPORT_WORKSPACE 'dist/windows-arm64-bundle'
+          Write-Arm64ImageReceipt -ZipPath (Join-Path $root 'bundle.zip') -OutputPath (Join-Path $root 'image-receipt.json') -Image $env:ARM64_IMAGE -Metadata $metadata[0] -HubCommit $env:GITHUB_SHA -RunId $env:GITHUB_RUN_ID -RunAttempt $env:GITHUB_RUN_ATTEMPT
 
       - name: Upload the bundle
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -72,6 +114,8 @@ jobs:
       - name: Run the gate on the device
         shell: pwsh
         working-directory: bundle
+        env:
+          ARM64_IMAGE: ${{ needs.export.outputs.image }}
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
@@ -80,8 +124,17 @@ jobs:
           $logs = New-Item -ItemType Directory -Force -Path (Join-Path $env:RUNNER_TEMP 'bundle-webrtc')
           Set-Content -LiteralPath (Join-Path $logs 'README.txt') -Value "Test-Arm64Bundle.ps1's WebRTC loopback logs, $(Get-Date -Format s)"
           # C:\runtime, the bundle's baked root: BUNDLE-ENV.ps1 and cv2's config.py carry absolute paths into it.
-          & ./Test-Arm64Bundle.ps1 -ZipPath ./bundle.zip
-          if ($LASTEXITCODE) { throw "the bundle gate exited $LASTEXITCODE" }
+          Import-Module ./WindowsArm64Acceptance.Common.psm1 -ErrorAction Stop
+          $receipt = Read-Arm64AcceptanceBundle -ZipPath ./bundle.zip -ReceiptPath ./image-receipt.json -Image $env:ARM64_IMAGE -HubCommit $env:GITHUB_SHA -RunId $env:GITHUB_RUN_ID -RunAttempt $env:GITHUB_RUN_ATTEMPT
+          Invoke-Arm64AcceptanceGate -Receipt $receipt -OutputPath ./device-acceptance.json -Architecture $env:PROCESSOR_ARCHITECTURE -Gate { & ./Test-Arm64Bundle.ps1 -ZipPath ./bundle.zip }
+
+      - name: Upload the device acceptance receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: winarm64-device-acceptance
+          path: bundle/device-acceptance.json
+          if-no-files-found: error
 
       # The WebRTC step's four process logs, whose tails alone do not say why a pair never connected (CON63).
       - name: Upload the gate's WebRTC logs

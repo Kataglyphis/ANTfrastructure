@@ -33,6 +33,9 @@ the shared chain-staging helper to put the core, bridge and DirectML beside the
 executables in the ZIP, without changing the source image. Existing paths refuse
 duplicate archive members. See [device verification](windows-cross-builds.md#verification).
 ZIP/PE fixtures prove transport; the real device run must still prove execution.
+The later cb2b8db6 device run42525202720 passes onnxinference; its sole remaining
+failure is the older published IREE twin. Use the digest acceptance input in
+`windows-arm64.yml` to grade a newly built image before changing the public tag.
 
 ## Contents
 

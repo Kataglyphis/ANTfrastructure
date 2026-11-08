@@ -19,6 +19,13 @@ lives in [`failure-modes.md`](failure-modes.md).
 > change a mechanism, update the entry in the same commit — a rule whose
 > evidence no longer matches the code is worse than no rule.
 
+Required entry-script import loops list concrete `.psm1` filenames, then join
+those filenames to their module directory. The cold script-call closure gate
+recognises those declarations; basename interpolation hid OrtPayload in
+run42525202620 (#250), even though a warm runtime could import it. Keep required
+imports unforced and fail on missing companions. Cold closure failure details
+stay on one line so the CI renderer cannot drop the missing function names.
+
 ## Contents
 
 **Shell and PowerShell discipline**

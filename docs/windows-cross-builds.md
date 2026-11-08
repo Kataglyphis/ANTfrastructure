@@ -349,6 +349,50 @@ before archive creation, avoiding duplicate-member precedence. Native ZIP tests 
 the exact DLL bytes; portable staging tests and two mutations cover both target
 machines, missing/wrong-machine cores and duplicate paths. None proves inference;
 the ARM64 device gate must still pass against the exported result.
+Run [42525202720](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/42525202720)
+at `cb2b8db6` subsequently passed the ONNX frame probe and21/22 total steps; only
+the older published IREE free-threaded twin still re-enabled the GIL.
+
+### Accept an ARM64 image before moving its tag
+
+Keep the public tag unchanged while preparing the candidate. BuildKit supports
+an unnamed registry export with `push=true,push-by-digest=true`
+([upstream exporter contract](https://github.com/moby/buildkit#imageregistry));
+export only the already graded ARM64 candidate and retain its exact manifest/config
+digests and clean source proof. This is the ARM64 publication's acceptance stage,
+not approval for other image variants or public tags.
+
+Run the device workflow against that immutable image:
+
+```powershell
+gh workflow run windows-arm64.yml --ref develop -f candidate-digest=sha256:<64-lowercase-hex-digits>
+```
+
+Omitting the input retains `Get-CiImageReference -Windows -TargetArch arm64`.
+Invalid digests fail before the pull; both the host preparation and container export
+receive the same resolved reference. A manual run uses its run ID for concurrency,
+so another candidate cannot cancel a default acceptance run before validation.
+
+The export's `image-receipt.json` records the actual pulled immutable digest,
+config digest, image revision, ZIP SHA256 and gate source/run/attempt. The image
+platform remains `windows/amd64` carrying an ARM64 bundle. The device checks the
+receipt's image, source, run, attempt and ZIP bytes before the existing gate, with
+its22-step default floor unchanged. Export carries
+`WindowsArm64Acceptance.Common.psm1` beside the gate. The always-uploaded
+`winarm64-device-acceptance` artifact contains `device-acceptance.json`, including
+the export identity, ARM64 device architecture, raw exit status and passed verdict.
+A failure remains a failed CI step; receipt-write failure is fatal too.
+
+Before moving `:winarm64`, verify the receipt's trusted producer run and successful
+device job, the artifact's immutable ID/upload digest, its exact candidate image
+and ZIP hashes, and the image's source revision. Promote those exact manifest
+bytes while preserving the target's platform. This workflow records acceptance;
+it does not promote the tag. A receipt does not authenticate itself, and static
+or synthetic fixture checks do not replace the real device run. The device gate
+does not prove GPU execution when it reports no adapter; separate GPU proofs remain
+required. Fourteen mutations exercise input/metadata/CI/ZIP refusal, raw failures,
+passed verdicts, action image parity, the real callback and exported module.
+
 
 Consumer lanes hosted it
 from 2026-10-03 to 2026-10-11, until a WebRTC defect turned BeschleunigerBallett's renderer lane red

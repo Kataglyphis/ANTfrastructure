@@ -64,6 +64,6 @@ Describe 'build scripts can resolve every module function they call (cold import
         Assert-True ($bad.Count -eq 0) ("a build script calls a module function that no module it imports EXPORTS. " +
             "Module-internal use never needs the export list; a direct script call does. Add the name to the owning " +
             "module's Export-ModuleMember, and — if it reaches the script through WindowsSourceBuild.Common — to that " +
-            "module's re-export list too:`n  " + ($bad -join "`n  "))
+            "module's re-export list too: " + ($bad -join ' | '))
     }
 }

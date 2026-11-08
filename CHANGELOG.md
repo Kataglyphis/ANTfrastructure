@@ -13,6 +13,25 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-08 — accept a Windows ARM64 image by digest before changing its tag
+
+- The ARM64 workflow accepts an optional lowercase SHA256 digest. Both container
+  actions use the same image, while default runs keep the shared image selector.
+  Export records the actual image/config/revision, ZIP hash and CI source/run/attempt;
+  the device checks that binding before its full existing gate and uploads a
+  passed or failed receipt with the raw status. Manual runs have isolated concurrency.
+  Fourteen mutations cover input, platform, identity, byte and status refusals plus
+  actual workflow/module transport. Fixtures do not authenticate receipts or prove
+  hardware execution. No image tag is promoted by this workflow.
+- Device run42525202720 at cb2b8db6 now passes onnxinference:21/22 device steps pass;
+  only the older published IREE free-threaded twin still fails. Image acceptance
+  and the new workflow's CI remain separate required evidence.
+- Windows run42525202620 exposed a cold module-call failure (#250): the export's
+  required import loop omitted filename suffixes, so the existing closure scan
+  could not discover OrtPayload. The loop now lists concrete module filenames;
+  the same complete cold suite fails before and passes after the correction.
+  Failure details remain on one line so the CI report retains the missing names.
+
 ## 2026-11-08 — the ARM64 export carries app-local chain ORT DLLs
 
 - Device run42521429496 at d63c982d reached the real ONNX frame probe but loaded
