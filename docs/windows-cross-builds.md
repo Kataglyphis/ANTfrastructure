@@ -406,7 +406,10 @@ Its config is
 `sha256:c855b4b4946862b31555b732099fcfdda11dea445d1ad07a41a14ef18d549485`;
 Windows/amd64/OS10.0.26100.33674 stayed unchanged. This proves the accepted ARM64
 bundle at that source; it adds no GPU execution proof. The subsequent default
-public-tag run 42583681115 was started separately and is not yet recorded as PASS.
+public-tag [run 42583681115](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/42583681115)
+also passed 22/22 at the same source, resolving the tag to that exact manifest and
+config. Its verified receipt artifact is `13659636973`, upload digest
+`sha256:bf5221b75606f5d71c69d35210a25af3f0a37bc7a13bf0a19452d71377b01d1e`.
 
 
 Consumer lanes hosted it

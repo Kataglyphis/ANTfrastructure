@@ -414,6 +414,10 @@ image layer supplies no such measurement. Subsequent candidate device run 425799
 passed 22/22, and its exact ARM64 image was promoted to `:winarm64`; the
 [cross-build guide](windows-cross-builds.md) records that digest and receipt.
 This native ARM64 result does not supply the missing GPU-provider measurement.
+In the subsequent local NVIDIA chain at the same source, the patched LLVM 23.1.5
+RUN reported 4,233 compiler requests served by 4,233 WebDAV hits, zero misses,
+zero cache errors and zero compilation failures. That is one observed stats
+block, recorded separately from the still-required CUDA-plugin repeat proof.
 
 Historical fixes and the canary bar before changing the pin:
 

@@ -29,7 +29,11 @@
   frames and the cp315t IREE twin. The owner-approved `:winarm64` tag now points to
   `sha256:9ee61e2f49b5e59624d4ed4a4de3ec86c985f9f71567d175b5e320d85bbac137`,
   preserving its runtime platform; the cross-build guide records the receipt.
+  The normal public-tag follow-up run 42583681115 also passed 22/22.
   CUDA-plugin cache and GPU execution measurements remain separate requirements.
+- The NVIDIA patched-LLVM RUN records 4,233 compiler requests and WebDAV hits,
+  without misses or cache errors. This is compiler-cache coverage for that stage;
+  CUDA-plugin initial/repeat and hardware inference remain open.
 
 ## 2026-11-08 — accept a Windows ARM64 image by digest before changing its tag
 
