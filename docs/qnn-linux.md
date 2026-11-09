@@ -88,6 +88,8 @@ would not fit the image's 3.15 anyway).
   after successful configuration. This handles the observed GitHub HTTP 504 while fetching the fork's
   pinned `protoc` 21.12; it does not substitute the host's unrelated compiler. Offline fixtures prove
   argument boundaries, attempt limits, logs and raw failures, without executing CMake or the network.
+  The suite carries its tracked Bash worker, `linux/scripts/tests/fixtures/qnn-build-driver.sh`,
+  into isolated mutation mirrors so shell checks cover the worker's actual language.
 - **Output.** `/usr/local/lib/onnxruntime-ep-qnn/lib/libonnxruntime_providers_qnn.so` with the QAIRT
   backends (`libQnn*.so`, the HTP skels) staged beside it by `stage_qnn_runtime`, `licenses/`
   (the fork's MIT text and ThirdPartyNotices, QAIRT's licence) and `provenance.txt` (tag, source

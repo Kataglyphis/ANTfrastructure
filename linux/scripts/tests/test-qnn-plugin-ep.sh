@@ -15,28 +15,7 @@ t_assert_eq 0 "$(grep -cE 'releases/download|\.whl|\.tgz|pypi' "${EP}" || true)"
 t_assert_contains "$(cat "${EP}")" 'HOST_PYTHON_BIN}" -S "${QNNEP_SRC}/tools/ci_build/build.py"' "a site-less Python keeps the fork's torch-gated import off"
 
 t_case "configure retries preserve argv, every attempt and raw exhaustion; compilation itself runs once"
-cat > "${_T}/qnn fake python" <<'PYTHON'
-#!/usr/bin/env bash
-set -euo pipefail
-case "${!#}" in
-  --update)
-    printf 'update\n' >> "${QNN_FIXTURE_RUN}/updates"
-    attempt="$(wc -l < "${QNN_FIXTURE_RUN}/updates")"
-    printf '%s\0' "$@" > "${QNN_FIXTURE_RUN}/update-argv"
-    printf 'configure attempt %s\n' "${attempt}"
-    printf 'fetch diagnostic %s\n' "${attempt}" >&2
-    if [ "${attempt}" -le "${QNN_FIXTURE_FAIL_UNTIL}" ]; then exit "${QNN_FIXTURE_STATUS}"; fi
-    ;;
-  --build)
-    printf 'build\n' >> "${QNN_FIXTURE_RUN}/builds"
-    printf 'build invocation\n'
-    exit "${QNN_FIXTURE_BUILD_STATUS}"
-    ;;
-  *) exit 99 ;;
-esac
-exit 0
-PYTHON
-chmod +x "${_T}/qnn fake python"
+install -m 0755 "${TESTS_DIR}/fixtures/qnn-build-driver.sh" "${_T}/qnn fake python"
 _qnnep_compile_fixture() (
   set -euo pipefail
   source "${TESTS_DIR}/../01-core/logging.sh"

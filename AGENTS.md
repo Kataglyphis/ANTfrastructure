@@ -1093,6 +1093,7 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
 - QNN plugin configure retries use the shared retry helper, retain every attempt in `build.log`
   and return the last raw configure failure after exhaustion. Keep compilation outside that retry;
   fixtures prove transport and verdicts, not network recovery or hardware inference.
+  Copied QNN configure suites carry `fixtures/qnn-build-driver.sh`; keep the worker in Bash scope.
 - `build-cross-compiler.sh` builds one `linux/amd64` compiler image with cross toolchains for all
   arches, not a multi-arch compiler manifest.
 - Never remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images

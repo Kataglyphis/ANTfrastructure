@@ -23,6 +23,7 @@
   stdout/stderr in `build.log` and returns the last raw failure after exhaustion. Compilation stays
   outside the retry. The 100-assertion offline QNN suite and eight biting mutations prove transport,
   limits, logs and failure propagation; an actual corrected rebuild and acceptance remain pending.
+  Its fake build driver is a tracked Bash fixture, carried into mutation mirrors and checked as shell.
   [Failure and scope](docs/failure-modes.md#qnn-configure-loses-a-completed-cuda-build-to-a-transient-protoc-download).
 
 ## 2026-11-09 — keep perf transport and interrupted proof records accurate
