@@ -1059,6 +1059,13 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       chain), the nvidia and rocm proof chains, and detector parity on `TensorRTPluginExecutionProvider` on a card.
       Windows is this hub's Windows session. DirectML has no plugin and stays. The evidence, with links to every
       plugin: the 2026-11-08 deep research.
+      **Linux proof 2026-11-09:** Sequence37 passed NVIDIA amd64 media/android in run
+      `20261108-180128-c3904567` (media manifest
+      `sha256:486a9558b93caedc465460cc2d50ed9d103e6058ed2a4b7c2d37775575b490a3`).
+      ARM64 run `20261109-002505-d3b3c0b7` then failed QNN configure on GitHub HTTP 504 for the
+      fork's pinned protoc archive after CUDA compilation. The bounded configure retry has 100 fixture
+      assertions and eight mutations; the corrected ARM64 media/android build, both NVIDIA runtime
+      wrappers, exact receipts and GPU inference remain open. No ARM64 TensorRT build is claimed.
       **Windows, owner 2026-11-08 ("Windows sofort komplett"): steps 2 and 4 landed in source together.** CUDA is the
       plugin build, the in-tree TensorRT EP is gone, and `Build-OrtTensorRtEpFromSource.ps1` builds the TensorRT plugin
       with SHA256-pinned seeds ([windows-cross-builds.md](docs/windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps)).

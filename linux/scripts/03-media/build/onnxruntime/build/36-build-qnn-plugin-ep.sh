@@ -83,6 +83,22 @@ qnnep_sources() {
   QNNEP_ORT_HOME="$(qnnep_ort_home "${QNNEP_ORT_DIR}" "${work}/ort-home" "$(qnnep_ort_core_version "${QNNEP_SRC}")")"
 }
 
+# The shared retry helper normalizes exhaustion; retain the configure command's last raw status.
+qnnep_configure_attempt() {
+  qnnep_configure_status=0
+  "$@" || qnnep_configure_status=$?
+  return "${qnnep_configure_status}"
+}
+
+# Configure downloads pinned dependencies; one transient fetch failure must not discard the preceding GPU build.
+qnnep_configure() {
+  local qnnep_configure_status=0
+  if retry 3 10 "QNN plugin EP configure" qnnep_configure_attempt "$@"; then
+    return 0
+  fi
+  return "${qnnep_configure_status}"
+}
+
 # The fork's build.py, configure then build, with the fork's own headers in --ort_home between the two; names the module in QNNEP_SO.
 qnnep_compile() {
   local work="${QNNEP_WORK_DIR}"
@@ -101,7 +117,7 @@ qnnep_compile() {
   append_onnx_ccache_build_args args
   info ">>> QNN plugin EP v${QNNEP_VERSION}: ${JOBS} jobs, QAIRT at ${QNNEP_QAIRT}, chain ORT at ${QNNEP_ORT_DIR}"
   # -S: the fork's tools/python/util imports a helper it no longer ships whenever torch is importable; build.py needs only the stdlib.
-  "${HOST_PYTHON_BIN}" -S "${QNNEP_SRC}/tools/ci_build/build.py" "${args[@]}" --update 2>&1 | tee "${work}/build.log"
+  qnnep_configure "${HOST_PYTHON_BIN}" -S "${QNNEP_SRC}/tools/ci_build/build.py" "${args[@]}" --update 2>&1 | tee "${work}/build.log"
   # Configure fetches ort_core; the headers go into --ort_home before the compile reads them.
   info "ORT headers for the plugin: $(qnnep_ort_home_headers "${QNNEP_ORT_HOME}" "${work}/build/Release/_deps/ort_core-src") files from the fork's ort_core"
   "${HOST_PYTHON_BIN}" -S "${QNNEP_SRC}/tools/ci_build/build.py" "${args[@]}" --build 2>&1 | tee -a "${work}/build.log"

@@ -13,6 +13,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-09 — retry QNN configuration without losing raw failures or diagnostics
+
+- NVIDIA ARM64 media run `20261109-002505-d3b3c0b7` reached QNN configuration after the CUDA
+  build, then GitHub returned HTTP 504 for the fork's pinned protoc archive. Its QAIRT SDK hash
+  check passed. The failed shared RUN produced no final media image, wrapper or consumer receipt.
+  NVIDIA amd64 media/android had already passed in run `20261108-180128-c3904567`.
+- QNN configuration now uses the existing three-attempt retry with ten-second delays, retains all
+  stdout/stderr in `build.log` and returns the last raw failure after exhaustion. Compilation stays
+  outside the retry. The 100-assertion offline QNN suite and eight biting mutations prove transport,
+  limits, logs and failure propagation; an actual corrected rebuild and acceptance remain pending.
+  [Failure and scope](docs/failure-modes.md#qnn-configure-loses-a-completed-cuda-build-to-a-transient-protoc-download).
+
 ## 2026-11-09 — keep perf transport and interrupted proof records accurate
 
 - The first full preflight of the permanent runner reached the complete script suite, where the

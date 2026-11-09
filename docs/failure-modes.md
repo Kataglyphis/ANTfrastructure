@@ -2842,6 +2842,22 @@ native exit used to throw before the gate kept the output. `Assert-GstOnnxInfere
 keeps it and, on a failure, reruns the frames without `onnxinference`, the full pipeline with
 `ORC_CODE=backup` and with `GST_DEBUG=onnx*:6`, so the next device run names the failing
 element. The cause is open until that run.
+### QNN configure loses a completed CUDA build to a transient protoc download
+
+**Symptom.** NVIDIA ARM64 media run `20261109-002505-d3b3c0b7` completed the preceding CUDA
+compilation, then QNN `--update` failed downloading `protoc-21.12-linux-x86_64.zip` with GitHub
+HTTP 504. The QAIRT zip had passed its SHA256 check. The shared GPU RUN failed, so this produced
+no final ARM64 media image, runtime wrapper or acceptance receipt.
+
+**Fix.** `qnnep_configure` uses the existing retry helper for three attempts with ten-second delays.
+It preserves every attempt in the tee log and returns the last raw configure status after exhaustion;
+headers and compilation remain unreachable on failure. The compile command runs once. The fork's
+dependency hashes remain authoritative; an unrelated host `protoc` cannot replace its pinned version.
+`test-qnn-plugin-ep.sh` and eight mutations prove the command boundaries, logs, limits and failures.
+These fixtures execute fake tools, with no CMake, download, image rebuild or device inference.
+The canonical failed-build cache salvage runs before a new chain; its completion does not repair
+the failed RUN. See [the QNN build](qnn-linux.md#the-plugin-ep) for its fresh-worktree requirement.
+
 ### The wrapper requires an in-tree GPU provider after the plugin move
 
 **Symptom.** `ONNX Runtime does NOT have MIGraphXExecutionProvider!` in the Torch wrapper after the

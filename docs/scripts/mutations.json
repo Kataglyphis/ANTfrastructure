@@ -36951,5 +36951,69 @@
   "replace": "        interrupted_status = None\n",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "The original interruption code must remain visible after owned-container cleanup and report-mode restoration."
+ },
+ {
+  "id": "onnx-ep-qnn.configure-retry-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  qnnep_configure \"${HOST_PYTHON_BIN}\" -S \"${QNNEP_SRC}/tools/ci_build/build.py\" \"${args[@]}\" --update",
+  "replace": "  \"${HOST_PYTHON_BIN}\" -S \"${QNNEP_SRC}/tools/ci_build/build.py\" \"${args[@]}\" --update",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "a transient configure fetch must be retried before compilation"
+ },
+ {
+  "id": "onnx-ep-qnn.configure-attempt-bound",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "if retry 3 10 \"QNN plugin EP configure\"",
+  "replace": "if retry 1 10 \"QNN plugin EP configure\"",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "the final allowed successful configure attempt must be reached"
+ },
+ {
+  "id": "onnx-ep-qnn.configure-raw-exhaustion",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  fi\n  return \"${qnnep_configure_status}\"\n}\n\n# The fork",
+  "replace": "  fi\n  return 1\n}\n\n# The fork",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "exhausted retries retain the external configure command's raw status"
+ },
+ {
+  "id": "onnx-ep-qnn.configure-fatal-exhaustion",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  fi\n  return \"${qnnep_configure_status}\"\n}\n\n# The fork",
+  "replace": "  fi\n  return 0\n}\n\n# The fork",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "failed configuration cannot continue to headers or compilation"
+ },
+ {
+  "id": "onnx-ep-qnn.configure-argv-boundaries",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  \"$@\" || qnnep_configure_status=$?\n",
+  "replace": "  $@ || qnnep_configure_status=$?\n",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "retry dispatch preserves script and SDK paths containing spaces"
+ },
+ {
+  "id": "onnx-ep-qnn.configure-log-retention",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  \"${HOST_PYTHON_BIN}\" -S \"${QNNEP_SRC}/tools/ci_build/build.py\" \"${args[@]}\" --build 2>&1 | tee -a \"${work}/build.log\"\n",
+  "replace": "  \"${HOST_PYTHON_BIN}\" -S \"${QNNEP_SRC}/tools/ci_build/build.py\" \"${args[@]}\" --build 2>&1 | tee \"${work}/build.log\"\n",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "the compile append must preserve all configure attempts and stderr"
+ },
+ {
+  "id": "onnx-ep-qnn.compile-not-retried",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  \"${HOST_PYTHON_BIN}\" -S \"${QNNEP_SRC}/tools/ci_build/build.py\" \"${args[@]}\" --build 2>&1 | tee -a \"${work}/build.log\"\n",
+  "replace": "  qnnep_configure \"${HOST_PYTHON_BIN}\" -S \"${QNNEP_SRC}/tools/ci_build/build.py\" \"${args[@]}\" --build 2>&1 | tee -a \"${work}/build.log\"\n",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "only configuration retries; a compiler failure retains its single raw verdict"
+ },
+ {
+  "id": "onnx-ep-qnn.configure-retry-delay",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "if retry 3 10 \"QNN plugin EP configure\"",
+  "replace": "if retry 3 0 \"QNN plugin EP configure\"",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "bounded configure retries retain the shared ten-second delay"
  }
 ]
