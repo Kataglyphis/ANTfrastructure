@@ -1164,7 +1164,7 @@ the image check locally.
 bash third_party/ANTfrastructure/linux/scripts/run-in-ci-image.sh . -- bash scripts/linux/build.sh
 ```
 
-`<repo-root> [--engine docker|nerdctl] [--platform ...] [--workdir ...]
+`<repo-root> [--engine docker|nerdctl] [--image REF] [--platform ...] [--workdir ...]
 [--mount-hub-scripts] [--name N] [--user U[:G]] [--keep] -- <command...>`.
 
 Every consumer README, every "reproducing CI locally" section and half the agent
@@ -1176,7 +1176,10 @@ safe.directory before the command runs (without it every `git ls-files` inside
 fails as "dubious ownership", which breaks a format gate long before anything
 builds), and the engine defaults to `nerdctl` when present, else `docker` — the
 local box runs Rancher Desktop and CI runs docker, and neither should have to
-say so.
+say so. `--image REF` selects an explicit image for replay; use an immutable digest when
+recording proof. Manual nerdctl runs include `--security-opt apparmor=unconfined`, matching the
+host's container policy. Command arguments retain their boundaries through the container shell. Copied runners carry
+`lib/cli-value-options.sh` with its logging companions; value options use that shared parser.
 
 `MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'` are exported by the script rather
 than documented for the reader: from Git Bash, MSYS rewrites anything that looks

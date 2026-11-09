@@ -1138,6 +1138,24 @@ advertised root must be absolute, `ctypes.CDLL` must load the module and its dep
 exports must resolve. AMD also requires the CPU ORT provider; the HIP/CUDA Torch checks remain required. This does not register a factory or run
 inference: MIGraphX registration itself enumerates GPUs and fails with HIP error 100 without a device.
 
+### Repeat a native plugin probe
+
+Use the versioned driver with a selected immutable image and preserve its output directory:
+
+```bash
+bash linux/scripts/run-in-ci-image.sh . --engine nerdctl --image "$image" --workdir /tmp -- \
+  bash /workspace/linux/scripts/probe-ort-plugin.sh tensorrt /workspace/logs/test-results/native-probe-001
+```
+
+The provider is `migraphx`, `tensorrt` or `qnn`; its image root variable selects the module.
+`probe-ort-plugin.sh` requires the family image's pinned Python, creates an isolated uv venv and
+extracts the actual `verify_ort_plugin_library` implementation from `assemble-torch-app.sh`.
+The extracted function, source and module hashes, raw exit status and coverage limits remain in
+its evidence directory. The extraction runs the test harness in a child shell so its EXIT trap
+cannot replace probe cleanup. The final report passes only after its temporary venv is removed.
+This proves native loading and both factory exports, not registration, inference, a rebuilt wrapper
+or consumer acceptance. Hardware and published-image checks remain separate required evidence.
+
 ### Running it on an AMD GPU
 
 The image runs as uid 1001, and `--device` keeps each node's host owner and mode: on Ubuntu

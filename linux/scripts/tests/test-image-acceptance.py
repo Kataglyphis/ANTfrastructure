@@ -70,6 +70,24 @@ class ReceiptTests(unittest.TestCase):
              "command": ["true"], "exit_code": 0, "log_sha256": "d" * 64,
              "submodules": "", "data_locks": {}, "resolved_locks": {}} for name in ("first", "second")]}
 
+    def test_platform_plan_keeps_every_consumer_and_preserves_existing_artifacts(self) -> None:
+        original = self.plan.read_bytes()
+        baseline = json.loads(original)
+        for platform in ("linux/amd64", "linux/arm64", "linux/riscv64"):
+            output = self.plan.parent / platform.replace("/", "-") / "plan.json"
+            module.materialize_plan(str(self.plan), str(output), platform)
+            self.assertEqual(json.loads(output.read_text()), {**baseline, "platform": platform})
+            with self.assertRaises(FileExistsError):
+                module.materialize_plan(str(self.plan), str(output), platform)
+        self.assertEqual(self.plan.read_bytes(), original)
+
+    def test_invalid_platform_cannot_create_a_plan(self) -> None:
+        output = self.plan.parent / "invalid/plan.json"
+        for platform in ("windows/arm64", "linux/s390x", ""):
+            with self.assertRaises(ValueError):
+                module.materialize_plan(str(self.plan), str(output), platform)
+        self.assertFalse(output.parent.exists())
+
     def test_complete_receipt_passes(self) -> None:
         self.assertIs(module.validate_receipt(self.receipt, IMAGE, self.plan), self.receipt)
 

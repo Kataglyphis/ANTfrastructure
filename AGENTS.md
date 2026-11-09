@@ -391,6 +391,15 @@ Five of them are RULES and stay here:
 - **`--log-dir` is not universal.** `build-cross-chain.sh` and `build-cross-stage.sh` tee each
   stage; the other three orchestrators do not take the flag, so pipe them through `tee` yourself.
 
+- **Preserve recurring operational scripts in the repo.** Reuse and extend the canonical helper;
+  do not regenerate regular preflight, monitoring or probe drivers in scratch space. Keep run-specific
+  inputs, extracted code and reports under `logs/`. The permanent isolated preflight, unit watcher
+  and native plugin probe are documented in [quality tooling](docs/code-quality-tooling.md#preserved-local-proof-workflows).
+  Copied host proof tools carry `host_commands.py`; the watcher also carries `preflight-status.py`,
+  and isolated preflight carries both scripts under `isolated-preflight/`.
+  Copied `run-in-ci-image.sh` carries the shared `lib/cli-value-options.sh` and logging companions;
+  the mutation recipe contract lives in `mutation_parse.py` beside its runner.
+
 - **Generated run artifacts belong under `logs/`.** Use `logs/build-logs/` for Linux stage logs
   and resource metrics, `logs/windows-build-logs/` for Windows BuildKit runs, and
   `logs/test-results/` for Python test reports and `logs/code-quality/` for ty and annotation
@@ -1337,7 +1346,9 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   cost lines ([the shard plan](docs/code-quality-tooling.md#the-shard-plan)). A recipe whose
   mutant no longer parses is refused before its test runs (`--parse-check` alone): its bite would
   prove a syntax error ([mutants must parse](docs/code-quality-tooling.md#mutants-must-parse)). When the gate gets slow, fix the suite that got slow; never raise a timeout or
-  sample in CI. Mutation test children get closed stdin so caller input cannot stall a proof. The
+  sample in CI. Unix mutation test commands get private `XDG_CACHE_HOME` directories, removed only
+  after child reaping; preserve caller `HOME`, raw statuses and the Windows environment policy.
+  Mutation test children get closed stdin so caller input cannot stall a proof. The
   2026-09-23 timeout and the layout:
   [`code-quality-tooling.md` § The mutation gate in CI, sharded](docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded).
 

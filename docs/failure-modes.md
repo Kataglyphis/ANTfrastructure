@@ -222,6 +222,15 @@ the store · Stevedore and the docker service · build content and toolchain.
 
 ## Linux and cross-lane
 
+### PowerShell mutation baseline aborts with a truncated assembly identity
+
+A previously green, unmodified suite may exit 134 at PowerShell startup with
+`System.IO.FileLoadException`, while the same direct command passes. Parallel Unix processes can
+share a corrupt .NET startup profile; see [the evidence, scope and permanent cache guard](code-quality-tooling.md#preserved-local-proof-workflows).
+Preserve the failed output and profile if present. Use the versioned mutation runner's per-command
+XDG cache isolation and repeat the complete proof from a new committed snapshot. A direct replay
+or targeted pass does not convert the failed full run into a pass.
+
 ### Interrupted test run leaves a child alive
 
 **Symptom.** `an interrupted run left its suite's child running`, or the

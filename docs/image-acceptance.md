@@ -76,6 +76,24 @@ attestations bound to an included runtime manifest are excluded from platform co
 Only a registry HTTP 404 permits creating an absent tag; authentication and network
 failures stop promotion.
 
+## Preserve a platform-specific plan
+
+The default consumer plan selects `linux/amd64`. Generate a retained plan for another supported
+Linux platform without rewriting the consumer list, arguments, branches or timeouts:
+
+```bash
+python3 linux/scripts/image-acceptance.py plan --platform linux/arm64 \
+  --output logs/image-acceptance/plans/linux-arm64.json
+python3 linux/scripts/image-acceptance.py check --image "$image" \
+  --plan logs/image-acceptance/plans/linux-arm64.json \
+  --workspace out/acceptance/arm64/consumers --receipt logs/image-acceptance/arm64/receipt.json
+```
+
+`plan` accepts an optional `--plan` source and validates it before changing only `platform`.
+It refuses unsupported targets and existing output files. Preserve the generated plan with its
+receipt and supply it again for replay. Generating a plan executes no consumer and proves no
+platform support; only an actual successful check produces that platform's acceptance evidence.
+
 ## Repeat an older acceptance run
 
 Check out the receipt's `hub_revision`, keep that revision's plan, and use a fresh

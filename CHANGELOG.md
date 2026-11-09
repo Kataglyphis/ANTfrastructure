@@ -13,6 +13,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-09 — preserve recurring proof tools and isolate mutation startup caches
+
+- Regular isolated-preflight, unit-monitoring and native-plugin drivers now live in the repo,
+  with retained source snapshots and run inputs under `logs/`. Existing scratch drivers were
+  archived with their paths and hashes. The preflight runner binds frozen source read-only,
+  removes only its own containers and retains raw failure and cleanup evidence. Observer timeouts
+  leave builds running. Native probes reuse the production loader and preserve its extracted body;
+  a real TensorRT probe passed loading and both exports, without registration or inference.
+- Consumer acceptance can materialize a no-replace platform plan while retaining the entire
+  validated consumer contract. Plan creation alone proves no consumer execution.
+- Full local preflight at `0f77ee06` passed the other 41 jobs and 545 script suites, but failed two
+  mutation baselines after one PowerShell startup abort: 4597/4599 mutations were proved. Unix
+  mutation commands now get private XDG caches until child reaping, matching the upstream shared
+  startup-profile failure. The failed run remains failed; a new full proof is still required.
+  Regression fixtures and mutations cover cache lifetime and the new operational refusal paths.
+
 ## 2026-11-08 — runner-default fixtures isolate the outer worker cap
 
 - The full local mutation run exposed `ordered-jobs.default-one-per-cpu` surviving when the outer

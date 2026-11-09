@@ -36807,5 +36807,125 @@
   "replace": "out=\"$(env MEET=",
   "test": "bash linux/scripts/tests/test-run-tests.sh",
   "why": "an inherited worker cap must not select the copied fixture runner default or hide its scheduling mutation"
+ },
+ {
+  "id": "mutations.private-test-cache",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "        env[\"XDG_CACHE_HOME\"] = cache\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-mutation-cache.sh",
+  "why": "concurrent Unix test commands must not write the same PowerShell startup cache"
+ },
+ {
+  "id": "mutations.test-cache-forwarded",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "stdout=subprocess.PIPE, env=env,",
+  "replace": "stdout=subprocess.PIPE, env=None,",
+  "test": "bash linux/scripts/tests/test-mutation-cache.sh",
+  "why": "the subprocess must receive its private cache environment while caller HOME and raw statuses survive"
+ },
+ {
+  "id": "host.proof-owned-cleanup",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "f\"label={OWNER_LABEL}={run_id}\"",
+  "replace": "\"status=exited\"",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Only the unique run label may select containers for cleanup; a name collision must preserve foreign containers."
+ },
+ {
+  "id": "host.proof-readonly-source",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "f\"{source}:/source:ro\"",
+  "replace": "f\"{source}:/source:rw\"",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A writable report bind must not expose the preserved source through a writable alias."
+ },
+ {
+  "id": "host.proof-raw-worker-status",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "return status if status else int(cleaned != 0)",
+  "replace": "return 0",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Worker failure statuses and failed cleanup must reach the caller."
+ },
+ {
+  "id": "host.proof-cleanup-verdict",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "\"passed\" if status == 0 and cleaned == 0 else \"failed\"",
+  "replace": "\"passed\" if status == 0 else \"failed\"",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A failed container cleanup cannot be recorded as a passed preflight."
+ },
+ {
+  "id": "host.proof-created-container",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "if status == 0 and not (args.output / \"container.cid\").is_file():",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "An engine success without created-container evidence cannot prove a preflight."
+ },
+ {
+  "id": "host.proof-explicit-image",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "if [ -z \"${IMAGE}\" ]; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "An explicitly selected immutable image must reach the existing runner without falling back to the CI default."
+ },
+ {
+  "id": "host.proof-nerdctl-apparmor",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "if [ \"${ENGINE##*/}\" = nerdctl ]; then ARGS+=(--security-opt apparmor=unconfined); fi",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Manual nerdctl probes retain the host AppArmor setting used by the build lane."
+ },
+ {
+  "id": "host.proof-native-cleanup",
+  "target": "linux/scripts/probe-ort-plugin.sh",
+  "find": "trap cleanup EXIT",
+  "replace": "trap : EXIT",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Extracting the production verifier must preserve the native probe cleanup trap and final raw status."
+ },
+ {
+  "id": "host.proof-running-unit",
+  "target": "linux/scripts/watch-build-units.py",
+  "find": "return unit.get(\"ActiveState\") in (\"inactive\", \"failed\") and (ended or failed)",
+  "replace": "return unit.get(\"Result\") == \"success\" or ended or failed",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "An active unit's initial Result=success is not a completed build."
+ },
+ {
+  "id": "runtime-push.plan-platform",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "plan[\"platform\"] = platform",
+  "replace": "plan[\"platform\"] = \"linux/amd64\"",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "Platform plans retain every consumer while selecting the requested target."
+ },
+ {
+  "id": "runtime-push.plan-platform-validation",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "if not supported_platform(platform):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "Unsupported platform selection must fail before creating a destination."
+ },
+ {
+  "id": "runtime-push.plan-no-replace",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "destination.open(\"x\", encoding=\"utf-8\")",
+  "replace": "destination.open(\"w\", encoding=\"utf-8\")",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "A replay plan is evidence and must not overwrite an existing artifact."
+ },
+ {
+  "id": "host.proof-shared-value-options",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "if [ -n \"${CI_IMAGE_VALUE_OPTIONS[$1]:-}\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The existing runner must retain all value-option boundaries and refuse missing or empty inputs before invoking the engine."
  }
 ]

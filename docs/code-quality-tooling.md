@@ -16,6 +16,64 @@ suite can fail, a `preflight.sh` slug, and a section below. The table of all
 slugs with their proof status is generated, not hand-written — see
 `docs/code-quality-gates.md`.
 
+## Preserved local proof workflows
+
+Regular operational drivers live under `linux/scripts/` and are versioned with their tests.
+Reuse these tools instead of reconstructing a scratch script on each session. Keep each run's
+inputs and evidence under ignored `logs/`; choose a new directory for a new attempt.
+
+```bash
+python3 linux/scripts/run-isolated-preflight.py --revision HEAD \
+  --output logs/test-results/preflight-001 --name ant-preflight-001 --engine nerdctl --jobs 4 --memory 12g
+```
+
+The runner preserves a complete Git clone at the selected commit in `source/`, even when the
+working tree has later edits. It uses that commit's pinned Ubuntu base and versioned
+`isolated-preflight/bootstrap.sh` and `worker.sh`, then runs every `make preflight` slug as a
+nonroot user. Setup reuses the canonical uv, PowerShell, PE-tool and locked quality-tool installers;
+`en_US.UTF-8`, Python headers, pip and Chromium are checked prerequisites. No selection or shard
+knob is inherited. `preflight.log` preserves raw output; `run.json`, `container.cid` and `reports/`
+retain source, base digest, bootstrap hash, tool versions and results. This is a local gate proof,
+not image acceptance or a hardware test. An apt repository or tool download must remain available.
+
+The source bind is read-only and separate from writable reports. Rootless uid mapping requires a
+temporarily writable report directory; cleanup restores mode 0755 and never changes bind ownership.
+Only containers bearing this invocation's random ownership label can be removed. Worker failures
+keep their raw status; missing container evidence or failed cleanup cannot pass. For a user unit,
+wrap the same command with `systemd-run --user --unit=ant-preflight-001
+--property=RuntimeMaxSec=14400 --property=TimeoutStopSec=120`; the latter allows bounded cleanup.
+
+```bash
+python3 linux/scripts/watch-build-units.py --unit rebuild-sequence-37.service \
+  --chain-status chain-status-nvidia.json --log logs/build-logs/rebuild-sequence.log \
+  --output logs/test-results/build-watch.jsonl --timeout 7200
+```
+
+The watcher only observes existing user units. `Result=success` on a running unit is not terminal.
+Its own timeout leaves producers running. Optional `--preflight-container ant-preflight-001`
+executes the versioned `preflight-status.py`; that probe locates mutation and script-test outputs by
+content, so a changed job order does not silently select another gate. Observations do not create
+acceptance receipts. Both Python host drivers require their sibling `host_commands.py`; the watcher
+also needs `preflight-status.py`. Preserve these companions when copying a tool.
+
+For a native ORT plugin load/export check, use [the permanent probe](linux-accelerator-images.md#repeat-a-native-plugin-probe).
+For another consumer platform, preserve the full contract with [the plan command](image-acceptance.md#preserve-a-platform-specific-plan).
+`test-proof-workflows.sh` uses an isolated Git fixture and a fake engine to prove source preservation,
+raw statuses, container ownership, report permissions and native-probe cleanup; it does not build
+images, load a real native module or run a GPU. The corresponding mutations must fail assertions.
+
+Unix mutation commands each receive a fresh `XDG_CACHE_HOME`, retained until their children have
+been reaped. Parallel PowerShell processes otherwise share a .NET startup profile; a corrupt profile
+can fail an unmodified baseline with exit 134 and a truncated assembly identity. This matches
+[PowerShell issue 26528](https://github.com/PowerShell/PowerShell/issues/26528) and
+[.NET runtime issue 121977](https://github.com/dotnet/runtime/issues/121977). The observed local
+profile was removed with its disposable container, so its bytes do not independently prove that
+cause. The guard leaves `HOME`, explicit caches such as `UV_CACHE_DIR`, raw exit statuses and
+Windows environment policy intact. It isolates separate commands on Unix; it does not serialize
+PowerShell children inside one command or fix the .NET implementation. `test-mutation-cache.sh`
+checks overlap, timeouts, output and cache lifetime; both cache mutations must bite. No automatic
+retry turns a failed baseline green.
+
 ## C++ formatters and linters (clang-format, clang-tidy, cmake-format)
 
 The commands, the traps and the cadence — everything that is true for any
@@ -997,7 +1055,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4599 entries** over **619 distinct test commands**; both digits are
+manifest holds **4614 entries** over **621 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1340,7 +1398,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 102 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 104 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
@@ -1809,7 +1867,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 102 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 104 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
