@@ -34,10 +34,16 @@ closure_fixture() (
     [ "${mode}" != missing-soname ] || printf '\tlibz.so.1 => not found\n'
   }
   ldd() { printf 'native-ldd <%s>\n' "$1"; }
-  readelf() { printf '0x1 (NEEDED) Shared library: [libnvinfer.so.11]\n'; }
+  readelf() {
+    local major=11
+    case "${mode}" in wrong-major | unknown-major) major=10 ;; esac
+    printf '0x1 (NEEDED) Shared library: [libnvinfer.so.%s]\n' "${major}"
+  }
   case "${mode}" in foreign) CUDA_CROSS_TARGET_ARCH=riscv64 ;; esac
   if [ "${2:-report}" = closure ]; then
-    TENSORRT_VERSION=11.4.0 trtep_closure_ok /plugin.so
+    version=11.4.0
+    [ "${mode}" != unknown-major ] || version=''
+    TENSORRT_VERSION="${version}" trtep_closure_ok /plugin.so
   else
     trtep_closure_report /plugin.so
   fi
@@ -73,5 +79,11 @@ for mode in loader-fail missing-soname; do
   t_assert_eq 1 "${rc}"
 done
 t_assert_contains "${out}" 'cannot resolve: libz.so.1'
+
+t_case 'a resolved closure must still link the requested TensorRT major; an unspecified major accepts either'
+out="$(closure_fixture wrong-major closure 2>&1)"; rc=$?
+t_assert_eq 1 "${rc}" 'a resolved module linked to TensorRT 10 cannot satisfy the required TensorRT 11'
+t_assert_contains "${out}" 'does not link libnvinfer.so.11'
+t_assert_eq 0 "$(t_rc closure_fixture unknown-major closure)"
 
 t_summary

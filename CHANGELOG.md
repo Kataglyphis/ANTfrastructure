@@ -29,7 +29,9 @@
   licence texts and G2. Its repeat records 329 cache hits (317 C/C++, 12 CUDA
   subcompilations), zero misses/errors and one uncached internal compilation.
   This uses the target CPU ORT core; final GPU media/runtime and inference
-  remain separate required proofs.
+  remain separate required proofs. The existing TensorRT-major mutation now
+  targets the revised guard and tests a resolved closure linked to the wrong
+  major, preserving its rejection independently of inspector failure.
 - Linux ORT applies `003-cuda-standard-sccache.patch` through the existing patch
   driver to both CUDA source branches, then rejects partial or drifted options
   before configuration. Tarball and Git fixtures prove repeatable byte changes.

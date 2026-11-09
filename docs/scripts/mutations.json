@@ -36387,9 +36387,9 @@
  {
   "id": "onnx-ep-tensorrt.verify-needs-tensorrt-link",
   "target": "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
-  "find": "  readelf -d -W \"$1\" 2>/dev/null | grep -qE \"NEEDED.*\\[libnvinfer\\.so\\.${major:-[0-9]+}\\]\" \\\n    || { printf 'ERROR: %s does not link libnvinfer.so.%s\\n' \"$1\" \"${major:-N}\" >&2; return 1; }\n",
-  "replace": "  return 0\n",
-  "test": "bash linux/scripts/tests/test-tensorrt-plugin-ep.sh",
+  "find": "  readelf -d -W \"$1\" 2>/dev/null | grep -E \"NEEDED.*\\[libnvinfer\\.so\\.${major:-[0-9]+}\\]\" >/dev/null \\\n    || { printf 'ERROR: %s does not link libnvinfer.so.%s\\n' \"$1\" \"${major:-N}\" >&2; rc=1; }\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-tensorrt-closure.sh",
   "why": "a module that does not link TensorRT is not the TensorRT EP, whatever it exports"
  },
  {
