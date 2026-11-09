@@ -1180,6 +1180,8 @@ say so. `--image REF` selects an explicit image for replay; use an immutable dig
 recording proof. Manual nerdctl runs include `--security-opt apparmor=unconfined`, matching the
 host's container policy. Command arguments retain their boundaries through the container shell. Copied runners carry
 `lib/cli-value-options.sh` with its logging companions; value options use that shared parser.
+The perf-report fake engine also consumes the security-option pair before the image, retaining
+its argument mapping and uid assertions; it still executes no real container.
 
 `MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'` are exported by the script rather
 than documented for the reader: from Git Bash, MSYS rewrites anything that looks

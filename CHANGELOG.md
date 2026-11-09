@@ -13,6 +13,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-09 — keep perf transport and interrupted proof records accurate
+
+- The first full preflight of the permanent runner reached the complete script suite, where the
+  perf-report fake engine misread the required nerdctl AppArmor option as its image. The fixture
+  now consumes that option pair; production security, uid assertions and grading checks remain.
+  A mutation removes this parsing to prove the existing perf-report tests fail. The failed full
+  run and its partial mutation results remain preserved; they are not a complete preflight proof.
+- Interrupted isolated preflights leave an unobserved command exit null and record the interruption
+  exit separately, while still cleaning only their own containers. A transport fixture proves the
+  raw interruption, failed verdict and restored report mode without starting a real container.
+
 ## 2026-11-09 — preserve recurring proof tools and isolate mutation startup caches
 
 - Regular isolated-preflight, unit-monitoring and native-plugin drivers now live in the repo,

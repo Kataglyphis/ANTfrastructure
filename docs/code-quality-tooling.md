@@ -39,7 +39,8 @@ not image acceptance or a hardware test. An apt repository or tool download must
 The source bind is read-only and separate from writable reports. Rootless uid mapping requires a
 temporarily writable report directory; cleanup restores mode 0755 and never changes bind ownership.
 Only containers bearing this invocation's random ownership label can be removed. Worker failures
-keep their raw status; missing container evidence or failed cleanup cannot pass. For a user unit,
+keep their raw status; an interruption leaves an unobserved command status null and records its
+signal exit separately. Missing container evidence or failed cleanup cannot pass. For a user unit,
 wrap the same command with `systemd-run --user --unit=ant-preflight-001
 --property=RuntimeMaxSec=14400 --property=TimeoutStopSec=120`; the latter allows bounded cleanup.
 
@@ -1055,7 +1056,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4614 entries** over **621 distinct test commands**; both digits are
+manifest holds **4617 entries** over **622 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

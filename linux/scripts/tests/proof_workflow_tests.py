@@ -55,9 +55,12 @@ class RunnerTests(unittest.TestCase):
         self.origin.start()
         self.addCleanup(self.origin.stop)
 
-    def run_fixture(self, mode: str) -> tuple[int, dict[str, object], list[list[str]]]:
-        args = argparse.Namespace(revision=REVISION, output=self.output, name="a-retained-run",
+    def runner_args(self) -> argparse.Namespace:
+        return argparse.Namespace(revision=REVISION, output=self.output, name="a-retained-run",
                                   jobs=4, memory="12g", engine=str(self.engine))
+
+    def run_fixture(self, mode: str) -> tuple[int, dict[str, object], list[list[str]]]:
+        args = self.runner_args()
         with patch.dict(os.environ, {"PROOF_ENGINE_MODE": mode}):
             status = RUNNER.run(args)
         record = json.loads((self.output / "run.json").read_text())
@@ -102,6 +105,17 @@ class RunnerTests(unittest.TestCase):
         status, record, _ = self.run_fixture("no-cid")
         self.assertEqual(status, 1)
         self.assertEqual(record["status"], "failed")
+
+    def test_interrupted_worker_does_not_invent_a_command_exit_status(self) -> None:
+        with patch.object(RUNNER, "run_logged", side_effect=SystemExit(143)), self.assertRaises(SystemExit) as interrupted:
+            RUNNER.run(self.runner_args())
+        self.assertEqual(interrupted.exception.code, 143)
+        record = json.loads((self.output / "run.json").read_text())
+        self.assertIsNone(record["command_exit_status"])
+        self.assertEqual(record["interrupted_exit_status"], 143)
+        self.assertEqual(record["status"], "failed")
+        self.assertEqual(record["cleanup_exit_status"], 0)
+        self.assertEqual((self.output / "reports").stat().st_mode & 0o777, 0o755)
 
     def test_native_probe_keeps_its_cleanup_trap_and_raw_failure_status(self) -> None:
         tree = self.root / "probe-tree"

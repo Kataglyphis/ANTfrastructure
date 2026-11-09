@@ -36927,5 +36927,29 @@
   "replace": "if false; then",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "The existing runner must retain all value-option boundaries and refuse missing or empty inputs before invoking the engine."
+ },
+ {
+  "id": "quality-report.perf-engine-security-option",
+  "target": "linux/scripts/tests/quality_report_perf_tests.py",
+  "find": "    --name|--platform|--security-opt) shift 2 ;;",
+  "replace": "    --name|--platform) shift 2 ;;",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh",
+  "why": "The perf fixture must parse the real shared runner security pair before mapping its image command, without changing production AppArmor or uid behavior."
+ },
+ {
+  "id": "host.proof-unobserved-command-status",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "    status: int | None = None\n",
+  "replace": "    status: int | None = 1\n",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "An interrupted proof must not invent a raw exit status for a command whose result was never observed."
+ },
+ {
+  "id": "host.proof-interruption-status",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "        interrupted_status = error.code if isinstance(error.code, int) else 1\n",
+  "replace": "        interrupted_status = None\n",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The original interruption code must remain visible after owned-container cleanup and report-mode restoration."
  }
 ]

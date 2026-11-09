@@ -45,7 +45,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --rm) shift ;;
     --user) printf '%s\n' "$2" >> "${FIXTURE_USERS}"; shift 2 ;;
-    --name|--platform) shift 2 ;;
+    --name|--platform|--security-opt) shift 2 ;;
     -v) maps+=("$2"); shift 2 ;;
     -w) workdir="$2"; shift 2 ;;
     *) break ;;

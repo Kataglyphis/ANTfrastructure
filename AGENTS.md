@@ -399,6 +399,8 @@ Five of them are RULES and stay here:
   and isolated preflight carries both scripts under `isolated-preflight/`.
   Copied `run-in-ci-image.sh` carries the shared `lib/cli-value-options.sh` and logging companions;
   the mutation recipe contract lives in `mutation_parse.py` beside its runner.
+  Container transport fixtures accept the shared runner security and value flags before parsing
+  the image and command; preserve the production AppArmor setting.
 
 - **Generated run artifacts belong under `logs/`.** Use `logs/build-logs/` for Linux stage logs
   and resource metrics, `logs/windows-build-logs/` for Windows BuildKit runs, and

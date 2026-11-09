@@ -108,13 +108,17 @@ def run(args: argparse.Namespace) -> int:
               "bootstrap_sha256": hashlib.sha256((source / BOOTSTRAP).read_bytes()).hexdigest()}
     metadata = args.output / "run.json"
     metadata.write_text(json.dumps(record, indent=2) + "\n")
-    status = 1
+    status: int | None = None
+    interrupted_status: int | None = None
     cleaned = 1
     try:
         inspect = subprocess.run([args.engine, "image", "inspect", image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=30)
         if inspect.returncode:
             checked_output([args.engine, "pull", image], timeout=1800)
         status = run_logged(container_args(args, source, reports, sha, image, run_id), args.output / "preflight.log")
+    except SystemExit as error:
+        interrupted_status = error.code if isinstance(error.code, int) else 1
+        raise
     finally:
         try:
             cleaned = cleanup(args.engine, run_id, reports)
@@ -122,7 +126,8 @@ def run(args: argparse.Namespace) -> int:
                 cleaned = 1
         finally:
             record.update({"status": "passed" if status == 0 and cleaned == 0 else "failed",
-                           "command_exit_status": status, "cleanup_exit_status": cleaned,
+                           "command_exit_status": status, "interrupted_exit_status": interrupted_status,
+                           "cleanup_exit_status": cleaned,
                            "finished_at": datetime.datetime.now(datetime.UTC).isoformat()})
             metadata.write_text(json.dumps(record, indent=2) + "\n")
     return status if status else int(cleaned != 0)
