@@ -24,6 +24,8 @@
   harness, preserving the IREE scratch lifecycle checks without copied logic.
   The existing harness byte-verdict mutation now uses a shell-neutral Python
   subprocess transport while retaining all 45 required results and failure checks.
+  The three lifted-fixture recipes use the same portable transport and retain
+  their original minimum, equal passed/total, and empty failure/skip requirements.
 
 ## 2026-11-08 — accept a Windows ARM64 image by digest before changing its tag
 

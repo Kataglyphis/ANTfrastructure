@@ -19376,7 +19376,7 @@
   "target": "windows/scripts/tests/TestHarness.psm1",
   "find": "-ArgumentList $ArgumentList\n        try",
   "replace": "-ArgumentList @()\n        try",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/code-quality/harness-lifted-module-arguments.json && python3 -c 'import json; d=json.load(open(\"logs/code-quality/harness-lifted-module-arguments.json\")); assert d[\"Total\"] >= 9 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "test": "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','Harness.Fixtures.Tests.ps1','-ResultFile','logs/code-quality/harness-lifted-module-arguments.json'],check=True); d=json.load(open('logs/code-quality/harness-lifted-module-arguments.json',encoding='utf-8-sig')); assert d['Total']>=9 and d['Total']==d['Passed'] and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"",
   "why": "Lifted module fixtures preserve constructor arguments, body arguments and module cleanup."
  },
  {
@@ -19384,7 +19384,7 @@
   "target": "windows/scripts/tests/TestHarness.psm1",
   "find": "& $mutantBody @BodyArgumentList",
   "replace": "& $mutantBody",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/code-quality/harness-lifted-body-arguments.json && python3 -c 'import json; d=json.load(open(\"logs/code-quality/harness-lifted-body-arguments.json\")); assert d[\"Total\"] >= 9 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "test": "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','Harness.Fixtures.Tests.ps1','-ResultFile','logs/code-quality/harness-lifted-body-arguments.json'],check=True); d=json.load(open('logs/code-quality/harness-lifted-body-arguments.json',encoding='utf-8-sig')); assert d['Total']>=9 and d['Total']==d['Passed'] and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"",
   "why": "Lifted module fixtures preserve constructor arguments, body arguments and module cleanup."
  },
  {
@@ -19392,7 +19392,7 @@
   "target": "windows/scripts/tests/TestHarness.psm1",
   "find": "finally { Remove-Module $m -Force }",
   "replace": "finally { }",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/code-quality/harness-lifted-cleanup.json && python3 -c 'import json; d=json.load(open(\"logs/code-quality/harness-lifted-cleanup.json\")); assert d[\"Total\"] >= 9 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "test": "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','Harness.Fixtures.Tests.ps1','-ResultFile','logs/code-quality/harness-lifted-cleanup.json'],check=True); d=json.load(open('logs/code-quality/harness-lifted-cleanup.json',encoding='utf-8-sig')); assert d['Total']>=9 and d['Total']==d['Passed'] and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"",
   "why": "Lifted module fixtures preserve constructor arguments, body arguments and module cleanup."
  },
  {
