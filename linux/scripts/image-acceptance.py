@@ -263,27 +263,46 @@ def validate_receipt(receipt: dict[str, Any], image: str, plan_path: str | os.Pa
     return receipt
 
 
+def remove_container(args: EngineArgs, name: str, log: Path) -> None:
+    """Check engine-reported absence; this does not independently prove host-process reaping."""
+    removed = subprocess.run([args.engine, "rm", "--force", name], capture_output=True,
+                             text=True, timeout=60, check=False)
+    probe = subprocess.run([args.engine, "ps", "--all", "--filter", f"name={name}",
+                            "--format", "{{.Names}}"], capture_output=True, text=True, timeout=60, check=False)
+    evidence = {"container": name, "remove_exit_status": removed.returncode,
+                "probe_exit_status": probe.returncode}
+    with log.open("a", encoding="utf-8") as stream:
+        stream.write("\nacceptance cleanup: " + json.dumps(evidence, sort_keys=True) + "\n")
+        stream.write((removed.stdout or "") + (removed.stderr or ""))
+        stream.write((probe.stdout or "") + (probe.stderr or ""))
+    probe.check_returncode()
+    if name in (probe.stdout or "").splitlines():
+        raise ValueError(f"container {name} remains after removal exit {removed.returncode}")
+
+
 def restore_ownership(args: EngineArgs, platform: str, checkout: Path, owner: str, name: str, log: Path) -> None:
     command = [args.engine, "run", "--rm", "--pull", "never", "--name", name,
                "--platform", platform, "--user", "0:0", "-v", f"{checkout}:/workspace",
                "--entrypoint", "chown", args.image, "-hR", "--", owner, "/workspace"]
     try:
         with log.open("ab") as stream:
-            subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT, timeout=120, check=True)
+            result = subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT, timeout=120, check=False)
+            stream.write(f"\nacceptance ownership exit: {result.returncode}\n".encode())
+            result.check_returncode()
     finally:
-        subprocess.run([args.engine, "rm", "--force", name], capture_output=True, timeout=60, check=False)
+        remove_container(args, name, log)
 
 
 def cleanup_consumer(args: EngineArgs, platform: str, checkout: Path, owner: str | None,
                      name: str, log: Path, row: dict[str, Any]) -> None:
     try:
-        subprocess.run([args.engine, "rm", "--force", name], capture_output=True, timeout=60, check=False)
-    except (OSError, subprocess.SubprocessError) as error:
+        remove_container(args, name, log)
+    except (OSError, subprocess.SubprocessError, ValueError) as error:
         row["container_cleanup_error"] = str(error)
     if owner is not None:
         try:
             restore_ownership(args, platform, checkout, owner, name + "-owner", log)
-        except (OSError, subprocess.SubprocessError) as error:
+        except (OSError, subprocess.SubprocessError, ValueError) as error:
             row["ownership_error"] = str(error)
 
 

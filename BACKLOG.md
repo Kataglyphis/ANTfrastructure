@@ -1022,9 +1022,17 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ([python-app-bundles.md](docs/python-app-bundles.md#linux-gpu-bundles)). **Proof attempt 2026-11-08:**
       `rebuild-sequence-36`, run `20261108-161535-562db2ce`, passed media and android, then failed the wrapper
       at its stale in-tree `MIGraphXExecutionProvider` assertion. The app-venv probe now loads the selected plugin
-      and checks both factory exports; registration and inference are separate hardware checks. A fresh runtime
-      wrapper and acceptance receipt remain open; the older plugin-plus-in-tree wrapper above does not prove
-      this removal. Done when the four AMD packages pass parity on the plugin (step 2).
+      and checks both factory exports; registration and inference are separate hardware checks. **Removal proved
+      2026-11-09:** runtime run `20261109-081137-973f29cc`, clean hub
+      `7f97f31c122241a6eea8ba62229bbbc56c00444c`, built amd64 wrapper
+      `sha256:e9fc824e6129670a06a4e81980676e4d7a1effb3013726f844cd12d5d097c55f`.
+      Its index `sha256:4e76aa2a75e104570794be965034bcc3276bb5ba78c98ab863659ed6630ca8de`
+      passed all six default consumers (`linux/amd64`), receipt
+      `logs/image-acceptance/20261109-081137-973f29cc/receipt.json`; all log hashes match and an independent
+      post-run engine query found none of its acceptance containers. The exact index is now `:latest-rocm`,
+      with its amd64 platform retained. This fresh proof supersedes the older plugin-plus-in-tree wrapper
+      for the removal; it does not prove new hardware inference. Done when the four AMD packages pass
+      parity on the plugin (step 2).
 
 - [ ] **CON232 — move the QNN EP to Qualcomm's plugin EP (`onnxruntime-qnn`)** [M, ★★]. Owner decision
       2026-11-08: now, both lanes. **Linux in source 2026-11-08:** arm64 builds the fork at v2.7.0 from its pinned
@@ -1056,7 +1064,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ([accelerator page](docs/linux-accelerator-images.md#the-cuda-plugin-ep),
       [contract](docs/consumer-image-contract.md#nvidias-plugin-tensorrt-ep)). **Open on Linux:** the WebGPU EP as
       `onnxruntime_WEBGPU_STATIC_PLUGIN` (re-keys every CPU ORT build, so every media stage on three arches: its own
-      chain), the nvidia and rocm proof chains, and detector parity on `TensorRTPluginExecutionProvider` on a card.
+      chain), the nvidia proof chain, and detector parity on `TensorRTPluginExecutionProvider` on a card.
       Windows is this hub's Windows session. DirectML has no plugin and stays. The evidence, with links to every
       plugin: the 2026-11-08 deep research.
       **Linux proof 2026-11-09:** Sequence37 passed NVIDIA amd64 media/android in run
@@ -1066,6 +1074,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       fork's pinned protoc archive after CUDA compilation. The bounded configure retry has 100 fixture
       assertions and eight mutations; the corrected ARM64 media/android build, both NVIDIA runtime
       wrappers, exact receipts and GPU inference remain open. No ARM64 TensorRT build is claimed.
+      The corrected ARM64 media/android recovery started as run `20261109-102131-e69f48d7` from fully
+      preflight-proved `bf4c7d47`; its ordinary disk and ancestry gates passed. This is a started build.
       **Windows, owner 2026-11-08 ("Windows sofort komplett"): steps 2 and 4 landed in source together.** CUDA is the
       plugin build, the in-tree TensorRT EP is gone, and `Build-OrtTensorRtEpFromSource.ps1` builds the TensorRT plugin
       with SHA256-pinned seeds ([windows-cross-builds.md](docs/windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps)).

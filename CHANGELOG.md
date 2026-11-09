@@ -13,6 +13,26 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-09 — verify acceptance cleanup and publish the plugin-only ROCm wrapper
+
+- Acceptance checks each consumer and ownership-helper container through a successful engine query
+  after removal. A remaining exact name or failed query refuses a passed receipt. Already-auto-removed
+  containers remain idempotent; logs retain both raw command statuses and diagnostics. Ownership
+  restoration still runs after consumer-removal failure, and original consumer statuses remain intact.
+  The offline suite passes 29 tests and all 11 new mutations bite; no host-process or GPU proof is added.
+- ROCm runtime run `20261109-081137-973f29cc` from clean hub
+  `7f97f31c122241a6eea8ba62229bbbc56c00444c` completed with amd64 wrapper
+  `sha256:e9fc824e6129670a06a4e81980676e4d7a1effb3013726f844cd12d5d097c55f` and index
+  `sha256:4e76aa2a75e104570794be965034bcc3276bb5ba78c98ab863659ed6630ca8de`.
+  All six default consumers passed on `linux/amd64`; the exact receipt is
+  `logs/image-acceptance/20261109-081137-973f29cc/receipt.json`. Every recorded log hash matches,
+  and an independent post-run engine query confirms all of this run's named containers absent.
+  The accepted index was promoted to `:latest-rocm` with its runtime platform preserved. This run
+  preceded the stricter removal helper above; it proves the plugin-only image, not fresh GPU inference.
+- NVIDIA ARM64 media/android recovery run `20261109-102131-e69f48d7` started from fully proved
+  `bf4c7d47` after ROCm actually ended. Main remains frozen during that chain; the additional
+  acceptance fix is isolated in the worktree and requires its own complete source preflight.
+
 ## 2026-11-09 — retry QNN configuration without losing raw failures or diagnostics
 
 - NVIDIA ARM64 media run `20261109-002505-d3b3c0b7` reached QNN configuration after the CUDA

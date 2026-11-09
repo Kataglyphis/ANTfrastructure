@@ -32,6 +32,12 @@ ownership during cleanup. Rootless runs follow the documented uid/tar policy in
 [linux-build-basics.md](linux-build-basics.md#a-lane-under-a-rootless-engine-on-a-linux-host-runs-as-root).
 Ownership restoration still runs if removing the consumer container times out.
 A container-removal or ownership-restoration error keeps the receipt failed.
+After each removal attempt, a checked engine query must show the exact name absent. A nonzero
+removal result is harmless only when that successful query proves automatic removal already
+completed. Partial name matches do not count as the removed container. The same check covers
+the temporary ownership container. Both raw statuses and stdout/stderr are appended to the
+consumer log before its receipt hash is computed. This proves the engine's reported state;
+it does not independently prove host-process reaping.
 
 The receipt lands at `logs/image-acceptance/<run-id>/receipt.json`, beside consumer logs.
 It records the image digest, platform, clean hub SHA, exact plan hash, consumer SHAs,
@@ -114,6 +120,16 @@ commit alone cannot be fetched by a fresh acceptance run.
 
 ## Evidence and limits
 
+The plugin-only ROCm proof run `20261109-081137-973f29cc` completed on 2026-11-09 from hub
+`7f97f31c122241a6eea8ba62229bbbc56c00444c`. Its amd64 wrapper is
+`sha256:e9fc824e6129670a06a4e81980676e4d7a1effb3013726f844cd12d5d097c55f`; the accepted index is
+`sha256:4e76aa2a75e104570794be965034bcc3276bb5ba78c98ab863659ed6630ca8de`, now at `:latest-rocm`.
+All six default consumers passed on `linux/amd64`, recorded in
+`logs/image-acceptance/20261109-081137-973f29cc/receipt.json`; the recorded log hashes were
+independently matched and a post-run engine query found no container under this run's exact
+name prefix. This run used the earlier helper, before the checked-removal fix described above.
+No fresh hardware inference, NVIDIA wrapper or ARM64 consumer receipt is inferred from it.
+
 The default plan tests `linux/amd64`. The existing multi-architecture image gates still
 own the other architectures; this receipt does not claim new consumer coverage there.
 The scripts run consumer code, without executing GitHub's workflow/action runners, so
@@ -122,7 +138,10 @@ artifact, not a signed attestation or proof of physical camera/GPU behavior.
 
 `tests/test-image-acceptance.sh` exercises incomplete, failed and mismatched receipts,
 timeouts, exact index promotion and replay lock validation. Its registry calls are
-doubles; the suite performs no publication. `tests/test-manifest-acceptance.sh` checks
+doubles; the suite performs no publication.
+The cleanup cases also cover ordinary nonzero removal, zero exit with a remaining container,
+failed queries, exact names and both ownership/removal failures; eleven mutations prove them.
+`tests/test-manifest-acceptance.sh` checks
 the actual manifest path refuses promotion after a failed consumer gate.
 `tests/test-image-consumer-bootstrap.sh` executes the plan's Flutter commands against
 the existing prologue/check drivers, checking Git registration and every package's

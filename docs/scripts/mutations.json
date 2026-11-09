@@ -37015,5 +37015,93 @@
   "replace": "if retry 3 0 \"QNN plugin EP configure\"",
   "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
   "why": "bounded configure retries retain the shared ten-second delay"
+ },
+ {
+  "id": "image-acceptance.cleanup-presence-verdict",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    if name in (probe.stdout or \"\").splitlines():\n",
+  "replace": "    if False and name in (probe.stdout or \"\").splitlines():\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "A successful removal exit cannot pass while the engine still reports the exact acceptance container."
+ },
+ {
+  "id": "image-acceptance.cleanup-probe-required",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    probe.check_returncode()\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "A failed container-list query cannot prove absence, even after a successful consumer command."
+ },
+ {
+  "id": "image-acceptance.cleanup-name-boundary",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    if name in (probe.stdout or \"\").splitlines():\n",
+  "replace": "    if name in (probe.stdout or \"\"):\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "A neighboring container with a longer name must not turn an already completed removal into failure."
+ },
+ {
+  "id": "image-acceptance.cleanup-owner-wiring",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    finally:\n        remove_container(args, name, log)\n",
+  "replace": "    finally:\n        pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "The ownership helper container requires the same verified removal as its consumer."
+ },
+ {
+  "id": "image-acceptance.cleanup-remove-raw-log",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "\"remove_exit_status\": removed.returncode",
+  "replace": "\"remove_exit_status\": 0",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "Preserve the actual removal status when auto-removal makes its nonzero result harmless."
+ },
+ {
+  "id": "image-acceptance.cleanup-probe-raw-log",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "\"probe_exit_status\": probe.returncode",
+  "replace": "\"probe_exit_status\": 0",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "Retain the failed absence probe's raw status alongside the removal result."
+ },
+ {
+  "id": "image-acceptance.ownership-raw-log",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "f\"\\nacceptance ownership exit: {result.returncode}\\n\"",
+  "replace": "\"\\nacceptance ownership exit: 0\\n\"",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "A second cleanup failure must not erase the ownership command's actual failure from its log."
+ },
+ {
+  "id": "image-acceptance.cleanup-consumer-catches-verdict",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    except (OSError, subprocess.SubprocessError, ValueError) as error:\n        row[\"container_cleanup_error\"]",
+  "replace": "    except (OSError, subprocess.SubprocessError) as error:\n        row[\"container_cleanup_error\"]",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "A failed absence assertion must retain consumer status and evidence while ownership cleanup still runs."
+ },
+ {
+  "id": "image-acceptance.cleanup-owner-catches-verdict",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        except (OSError, subprocess.SubprocessError, ValueError) as error:\n            row[\"ownership_error\"]",
+  "replace": "        except (OSError, subprocess.SubprocessError) as error:\n            row[\"ownership_error\"]",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "An ownership-container absence failure must remain recorded in the failed receipt."
+ },
+ {
+  "id": "image-acceptance.cleanup-removal-diagnostics",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        stream.write((removed.stdout or \"\") + (removed.stderr or \"\"))\n",
+  "replace": "        stream.write(removed.stdout or \"\")\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "Preserve removal stderr as well as its status before reporting the final cleanup verdict."
+ },
+ {
+  "id": "image-acceptance.cleanup-probe-diagnostics",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        stream.write((probe.stdout or \"\") + (probe.stderr or \"\"))\n",
+  "replace": "        stream.write(probe.stdout or \"\")\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "A failed engine query needs its original stderr in the retained consumer log."
  }
 ]

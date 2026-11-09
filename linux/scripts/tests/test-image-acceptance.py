@@ -54,6 +54,11 @@ INDEX = index_bytes(("linux/amd64", "linux/arm64", "linux/riscv64"), attestation
 IMAGE = "ghcr.io/kataglyphis/test@sha256:" + hashlib.sha256(INDEX).hexdigest()
 
 
+def cleanup_events(log: Path) -> list[dict[str, Any]]:
+    return [json.loads(line.removeprefix("acceptance cleanup: ")) for line in log.read_text().splitlines()
+            if line.startswith("acceptance cleanup: ")]
+
+
 class ReceiptTests(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = tempfile.TemporaryDirectory()
@@ -213,6 +218,7 @@ class ReceiptTests(unittest.TestCase):
     def run_check(
         self, exit_code: int = 0, timeout: bool = False, dirty_after: bool = False,
         cleanup_error: bool = False,
+        cleanup_result: tuple[int, bool] | None = None,
     ) -> tuple[dict[str, Any], list[Any]]:
         root = Path(self.directory.name)
         args = types.SimpleNamespace(image=IMAGE, plan=self.plan, workspace=root / "sources",
@@ -228,6 +234,13 @@ class ReceiptTests(unittest.TestCase):
             if command[1] == "rm" and cleanup_error and not cleanup_failed:
                 cleanup_failed = True
                 raise subprocess.TimeoutExpired(command, 60)
+            if command[1] == "rm" and cleanup_result is not None:
+                return subprocess.CompletedProcess(command, cleanup_result[0], stdout="", stderr="removal diagnostic")
+            if command[1] == "ps":
+                selected = command[command.index("--filter") + 1].removeprefix("name=")
+                present = bool(cleanup_result and cleanup_result[1])
+                names = selected if present else selected + "-neighbor"
+                return subprocess.CompletedProcess(command, 0, stdout=names + "\n", stderr="")
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
         def fake_snapshot(checkout: Path, spec: dict[str, Any], expected: object) -> dict[str, object]:
             checkout.mkdir(parents=True, exist_ok=True)
@@ -240,7 +253,8 @@ class ReceiptTests(unittest.TestCase):
              patch.object(module, "source_snapshot", side_effect=fake_snapshot), \
              patch.object(module, "collect_locks", return_value={}), \
              patch.object(module.subprocess, "run", side_effect=fake_run) as run:
-            if exit_code or timeout or dirty_after or cleanup_error:
+            cleanup_present = bool(cleanup_result and cleanup_result[1])
+            if exit_code or timeout or dirty_after or cleanup_error or cleanup_present:
                 with self.assertRaises(ValueError):
                     module.check(args)
             else:
@@ -342,6 +356,82 @@ class ReceiptTests(unittest.TestCase):
         self.assertIn("container_cleanup_error", receipt["consumers"][0])
         self.assertIn("log_sha256", receipt["consumers"][0])
         self.assertIn("removing acceptance container failed", receipt["error"])
+        self.assertTrue(any("chown" in call.args[0] for call in calls))
+
+    def test_nonzero_removal_cannot_pass_without_proving_the_container_is_gone(self) -> None:
+        with patch.object(module.sys, "platform", "linux"):
+            receipt, calls = self.run_check(cleanup_result=(37, True))
+        self.assertEqual(receipt["status"], "failed")
+        self.assertEqual(receipt["consumers"][0]["exit_code"], 0)
+        self.assertIn("container_cleanup_error", receipt["consumers"][0])
+        self.assertIn("37", receipt["consumers"][0]["container_cleanup_error"])
+        self.assertTrue(any("chown" in call.args[0] for call in calls))
+
+    def test_removal_verdict_uses_exact_absence_and_keeps_raw_statuses(self) -> None:
+        for code, present in ((0, True), (37, False), (0, False)):
+            with self.subTest(code=code, present=present), patch.object(module.sys, "platform", "linux"):
+                receipt, _ = self.run_check(cleanup_result=(code, present))
+                row = receipt["consumers"][0]
+                self.assertEqual(receipt["status"], "failed" if present else "passed")
+                self.assertIn("log_sha256", row)
+                events = cleanup_events(Path(row["log"]))
+                self.assertTrue(events)
+                self.assertTrue(all(event["remove_exit_status"] == code for event in events))
+                self.assertTrue(all(event["probe_exit_status"] == 0 for event in events))
+                self.assertTrue(any(event["container"].endswith("-owner") for event in events))
+
+    def test_removal_probe_failure_is_fatal_and_keeps_diagnostics(self) -> None:
+        log = Path(self.directory.name) / "cleanup.log"
+        args = types.SimpleNamespace(engine="engine")
+        results = [subprocess.CompletedProcess(["engine", "rm"], 37, stdout="", stderr="removal diagnostic\n"),
+                   subprocess.CompletedProcess(["engine", "ps"], 73, stdout="", stderr="probe diagnostic\n")]
+        with patch.object(module.subprocess, "run", side_effect=results), \
+             self.assertRaises(subprocess.CalledProcessError) as failure:
+            module.remove_container(args, "acceptance-fixture", log)
+        self.assertEqual(failure.exception.returncode, 73)
+        self.assertEqual(cleanup_events(log)[0]["remove_exit_status"], 37)
+        self.assertEqual(cleanup_events(log)[0]["probe_exit_status"], 73)
+        self.assertIn("removal diagnostic", log.read_text())
+        self.assertIn("probe diagnostic", log.read_text())
+
+    def test_ownership_container_uses_the_same_removal_verdict(self) -> None:
+        def reject_owner(args: object, name: str, log: Path) -> None:
+            if name.endswith("-owner"):
+                raise ValueError("owner container remains")
+        with patch.object(module.sys, "platform", "linux"), \
+             patch.object(module, "remove_container", side_effect=reject_owner), \
+             self.assertRaises(ValueError):
+            self.run_check()
+        receipt = json.loads((Path(self.directory.name) / "result.json").read_text())
+        self.assertEqual(receipt["status"], "failed")
+        self.assertIn("ownership_error", receipt["consumers"][0])
+        self.assertIn("owner container remains", receipt["consumers"][0]["ownership_error"])
+        self.assertIn("log_sha256", receipt["consumers"][0])
+
+    def test_ownership_and_removal_failures_keep_both_raw_results(self) -> None:
+        root = Path(self.directory.name)
+        log = root / "ownership.log"
+        name = "acceptance-fixture-owner"
+        results = [subprocess.CompletedProcess(["engine", "run"], 31),
+                   subprocess.CompletedProcess(["engine", "rm"], 37, stdout="", stderr="removal diagnostic\n"),
+                   subprocess.CompletedProcess(["engine", "ps"], 0, stdout=name + "\n", stderr="")]
+        with patch.object(module.subprocess, "run", side_effect=results), self.assertRaises(ValueError) as failure:
+            module.restore_ownership(types.SimpleNamespace(engine="engine", image=IMAGE),
+                                     "linux/amd64", root, "1000:1000", name, log)
+        self.assertEqual(getattr(failure.exception.__context__, "returncode", None), 31)
+        self.assertIn("37", str(failure.exception))
+        self.assertIn("acceptance ownership exit: 31", log.read_text())
+        self.assertEqual(cleanup_events(log)[0]["remove_exit_status"], 37)
+
+    def test_failed_removal_preserves_the_consumer_timeout_and_its_evidence(self) -> None:
+        with patch.object(module.sys, "platform", "linux"):
+            receipt, calls = self.run_check(timeout=True, cleanup_result=(37, True))
+        self.assertEqual(receipt["status"], "failed")
+        self.assertEqual(len(receipt["consumers"]), 1)
+        row = receipt["consumers"][0]
+        self.assertEqual(row["exit_code"], 124)
+        self.assertIn("container_cleanup_error", row)
+        self.assertIn("log_sha256", row)
         self.assertTrue(any("chown" in call.args[0] for call in calls))
 
     def test_failure_and_timeout_keep_failed_receipts_and_stop_the_gate(self) -> None:

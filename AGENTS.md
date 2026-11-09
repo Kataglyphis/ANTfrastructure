@@ -66,6 +66,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    combined with push flags; it provides no consumer acceptance receipt.
    Linux acceptance restores disposable rootful checkout ownership on every exit;
    failed container cleanup or ownership restoration cannot produce a passed receipt.
+   Require a successful engine query to prove every consumer and ownership-helper container absent;
+   retain both removal and query statuses and diagnostics, including already-auto-removed containers.
    Windows vendor-specific DirectML defaults use the shared DXGI selector only when no explicit adapter is set; enumeration does not prove inference.
    Windows GPU MSI/MSIX payload checks share the installer extraction and process cleanup helpers; extraction does not prove installation.
 5. **Our build always wins over the distro copy** (owner directive 2026-09-01). Where a `/opt`
