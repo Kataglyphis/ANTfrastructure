@@ -150,6 +150,10 @@ def validate_consumer(row: ConsumerSpec) -> None:
         raise ValueError("consumer ref must identify a branch")
 
 
+def supported_platform(platform: object) -> bool:
+    return isinstance(platform, str) and re.fullmatch(r"linux/(amd64|arm64|riscv64)", platform) is not None
+
+
 def read_plan(path: str | os.PathLike[str]) -> AcceptancePlan:
     plan = json.loads(Path(path).read_text(encoding="utf-8"))
     consumers = plan.get("consumers", [])
@@ -158,7 +162,7 @@ def read_plan(path: str | os.PathLike[str]) -> AcceptancePlan:
         raise ValueError("acceptance plan must contain unique, nonempty consumers")
     for row in consumers:
         validate_consumer(row)
-    if not re.fullmatch(r"linux/(amd64|arm64|riscv64)", plan.get("platform", "")):
+    if not supported_platform(plan.get("platform", "")):
         raise ValueError("acceptance platform must be a supported Linux architecture")
     if not 1 <= plan.get("timeout_seconds", 0) <= 7200:
         raise ValueError("acceptance timeout must be between 1 and 7200 seconds")
@@ -259,27 +263,46 @@ def validate_receipt(receipt: dict[str, Any], image: str, plan_path: str | os.Pa
     return receipt
 
 
+def remove_container(args: EngineArgs, name: str, log: Path) -> None:
+    """Check engine-reported absence; this does not independently prove host-process reaping."""
+    removed = subprocess.run([args.engine, "rm", "--force", name], capture_output=True,
+                             text=True, timeout=60, check=False)
+    probe = subprocess.run([args.engine, "ps", "--all", "--filter", f"name={name}",
+                            "--format", "{{.Names}}"], capture_output=True, text=True, timeout=60, check=False)
+    evidence = {"container": name, "remove_exit_status": removed.returncode,
+                "probe_exit_status": probe.returncode}
+    with log.open("a", encoding="utf-8") as stream:
+        stream.write("\nacceptance cleanup: " + json.dumps(evidence, sort_keys=True) + "\n")
+        stream.write((removed.stdout or "") + (removed.stderr or ""))
+        stream.write((probe.stdout or "") + (probe.stderr or ""))
+    probe.check_returncode()
+    if name in (probe.stdout or "").splitlines():
+        raise ValueError(f"container {name} remains after removal exit {removed.returncode}")
+
+
 def restore_ownership(args: EngineArgs, platform: str, checkout: Path, owner: str, name: str, log: Path) -> None:
     command = [args.engine, "run", "--rm", "--pull", "never", "--name", name,
                "--platform", platform, "--user", "0:0", "-v", f"{checkout}:/workspace",
                "--entrypoint", "chown", args.image, "-hR", "--", owner, "/workspace"]
     try:
         with log.open("ab") as stream:
-            subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT, timeout=120, check=True)
+            result = subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT, timeout=120, check=False)
+            stream.write(f"\nacceptance ownership exit: {result.returncode}\n".encode())
+            result.check_returncode()
     finally:
-        subprocess.run([args.engine, "rm", "--force", name], capture_output=True, timeout=60, check=False)
+        remove_container(args, name, log)
 
 
 def cleanup_consumer(args: EngineArgs, platform: str, checkout: Path, owner: str | None,
                      name: str, log: Path, row: dict[str, Any]) -> None:
     try:
-        subprocess.run([args.engine, "rm", "--force", name], capture_output=True, timeout=60, check=False)
-    except (OSError, subprocess.SubprocessError) as error:
+        remove_container(args, name, log)
+    except (OSError, subprocess.SubprocessError, ValueError) as error:
         row["container_cleanup_error"] = str(error)
     if owner is not None:
         try:
             restore_ownership(args, platform, checkout, owner, name + "-owner", log)
-        except (OSError, subprocess.SubprocessError) as error:
+        except (OSError, subprocess.SubprocessError, ValueError) as error:
             row["ownership_error"] = str(error)
 
 
@@ -378,6 +401,19 @@ def check(args: CheckArgs) -> None:
     validate_receipt(receipt, args.image, args.plan)
 
 
+
+def materialize_plan(source: str, output: str, platform: str) -> None:
+    """Keep the full consumer contract and preserve each platform plan as a no-replace run artifact."""
+    plan = read_plan(source)
+    if not supported_platform(platform):
+        raise ValueError("unsupported consumer platform")
+    plan["platform"] = platform
+    destination = Path(output)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.open("x", encoding="utf-8") as stream:
+        stream.write(json.dumps(plan, indent=2) + "\n")
+
+
 def manifest_descriptor(entry: object) -> tuple[dict[str, Any], dict[str, Any]]:
     if not isinstance(entry, dict) or entry.get("mediaType") not in MANIFEST_MEDIA or not isinstance(entry.get("digest"), str) or not DIGEST.fullmatch(entry["digest"]) or type(entry.get("size")) is not int or entry["size"] <= 0:
         raise ValueError("index contains an invalid manifest descriptor")
@@ -449,6 +485,10 @@ def promote(args: PromoteArgs) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="action", required=True)
+    plan = commands.add_parser("plan", help="preserve the complete consumer plan for another platform")
+    plan.add_argument("--plan", default=str(DEFAULT_PLAN))
+    plan.add_argument("--platform", required=True)
+    plan.add_argument("--output", required=True)
     resolve = commands.add_parser("resolve")
     resolve.add_argument("image")
     test = commands.add_parser("check")
@@ -463,7 +503,9 @@ def main() -> None:
     publish.add_argument("--plan", default=str(DEFAULT_PLAN))
     publish.add_argument("--target", required=True)
     args = parser.parse_args()
-    if args.action == "resolve":
+    if args.action == "plan":
+        materialize_plan(args.plan, args.output, args.platform)
+    elif args.action == "resolve":
         repository, tag = image_parts(args.image, pinned=False)
         digest = Registry(repository).manifest(tag)[2]
         print(f"ghcr.io/{repository}@{digest}")

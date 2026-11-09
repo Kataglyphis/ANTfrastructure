@@ -4,10 +4,14 @@ set -euo pipefail
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# shellcheck source=linux/scripts/lib/cli-value-options.sh
+source "${_SCRIPT_DIR}/lib/cli-value-options.sh"
+
 die() { printf 'run-in-ci-image.sh: %s\n' "$*" >&2; exit 2; }
 
 REPO_ROOT=""
 ENGINE=""
+IMAGE=""
 PLATFORM=""
 WORKDIR="/workspace"
 NAME=""
@@ -20,13 +24,18 @@ CMD=()
 REPO_ROOT="$(cd "$1" 2>/dev/null && pwd)" || die "repo root not found: $1"
 shift
 
+declare -A CI_IMAGE_VALUE_OPTIONS=(
+  [--image]=IMAGE [--engine]=ENGINE [--platform]=PLATFORM
+  [--workdir]=WORKDIR [--name]=NAME [--user]=USER_SPEC
+)
 while [ "$#" -gt 0 ]; do
+  if [ -n "${CI_IMAGE_VALUE_OPTIONS[$1]:-}" ]; then
+    [ -n "${2-}" ] || die "$1 needs a nonempty value"
+    assign_cli_value_option CI_IMAGE_VALUE_OPTIONS "$1" "${2-}" "$#"
+    shift 2
+    continue
+  fi
   case "$1" in
-    --engine)   ENGINE="${2:?--engine needs a value}"; shift 2 ;;
-    --platform) PLATFORM="${2:?--platform needs a value}"; shift 2 ;;
-    --workdir)  WORKDIR="${2:?--workdir needs a value}"; shift 2 ;;
-    --name)     NAME="${2:?--name needs a value}"; shift 2 ;;
-    --user)     USER_SPEC="${2:?--user needs a value}"; shift 2 ;;
     --keep|--keep-container) KEEP=1; shift ;;
     --mount-hub-scripts) MOUNT_HUB=1; shift ;;
     --) shift; CMD=("$@"); break ;;
@@ -41,10 +50,13 @@ if [ -z "${ENGINE}" ]; then
 fi
 command -v "${ENGINE}" >/dev/null 2>&1 || die "${ENGINE} is not on PATH"
 
-IMAGE="$(bash "${_SCRIPT_DIR}/ci-image-ref.sh")" || die "could not resolve the CI image reference"
+if [ -z "${IMAGE}" ]; then
+  IMAGE="$(bash "${_SCRIPT_DIR}/ci-image-ref.sh")" || die "could not resolve the CI image reference"
+fi
 
 ARGS=(run --rm)
 [ "${KEEP}" -eq 0 ] || ARGS=(run)
+if [ "${ENGINE##*/}" = nerdctl ]; then ARGS+=(--security-opt apparmor=unconfined); fi
 [ -z "${NAME}" ] || ARGS+=(--name "${NAME}")
 [ -z "${PLATFORM}" ] || ARGS+=(--platform "${PLATFORM}")
 [ -z "${USER_SPEC}" ] || ARGS+=(--user "${USER_SPEC}")

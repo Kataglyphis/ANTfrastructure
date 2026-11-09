@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 36-build-qnn-plugin-ep.sh's pins, skip tree, ORT home shim, library verdict, the verify stages, the census root and the Dockerfile wiring; no download, no compiler, no device.
+# 36-build-qnn-plugin-ep.sh's pins, configure retries, skip tree, ORT home shim, library verdict, the verify stages, the census root and the Dockerfile wiring; no download, no compiler, no device.
 set -u
 EP_SCRIPT=36-build-qnn-plugin-ep.sh
 # shellcheck source=linux/scripts/tests/plugin-ep-fixture.sh
@@ -13,6 +13,74 @@ t_assert_ok test -n "${ORT_QNN_EP_VERSION:-}"
 t_assert_ok grep -qE '^[0-9a-f]{64}$' <<< "${ORT_QNN_EP_SOURCE_SHA256:-}"
 t_assert_eq 0 "$(grep -cE 'releases/download|\.whl|\.tgz|pypi' "${EP}" || true)" "no release asset, wheel or tarball download in the build script"
 t_assert_contains "$(cat "${EP}")" 'HOST_PYTHON_BIN}" -S "${QNNEP_SRC}/tools/ci_build/build.py"' "a site-less Python keeps the fork's torch-gated import off"
+
+t_case "configure retries preserve argv, every attempt and raw exhaustion; compilation itself runs once"
+install -m 0755 "${TESTS_DIR}/fixtures/qnn-build-driver.sh" "${_T}/qnn fake python"
+_qnnep_compile_fixture() (
+  set -euo pipefail
+  source "${TESTS_DIR}/../01-core/logging.sh"
+  export QNN_FIXTURE_RUN="$1" QNN_FIXTURE_FAIL_UNTIL="$2" QNN_FIXTURE_STATUS=37 QNN_FIXTURE_BUILD_STATUS="$3"
+  sleep() { printf '%s\n' "$1" >> "${QNN_FIXTURE_RUN}/sleeps"; }
+  setup_linux_cross_env() { :; }
+  setup_host_python_environment() { :; }
+  cross_build_is_active() { return 1; }
+  append_onnx_ccache_build_args() { :; }
+  qnnep_ort_home_headers() { printf 'headers\n' >> "${QNN_FIXTURE_RUN}/headers"; printf '3'; }
+  cmake_assert_compiler_cache_pin() { printf 'checked\n' >> "${QNN_FIXTURE_RUN}/finalized"; }
+  plugin_ep_built_module() { printf 'module.so'; }
+  qnnep_assert_no_foreign_core() { :; }
+  export HOST_PYTHON_BIN="${_T}/qnn fake python"
+  export QNNEP_WORK_DIR="$1" QNNEP_SRC="$1/source path" QNNEP_QAIRT="$1/qairt path"
+  export QNNEP_ORT_HOME="$1/ort home" QNNEP_ORT_DIR="$1/ort prefix"
+  export QNNEP_VERSION=2.7.0 JOBS=2 QNN_SDK_LINUX_LIBDIR=aarch64-oe-linux-gcc11.2
+  mkdir -p "${QNNEP_WORK_DIR}"
+  qnnep_compile
+)
+while read -r _fail_until _expected_updates _expected_sleeps; do
+  _run="${_T}/configure ${_fail_until}"
+  _out="$(_qnnep_compile_fixture "${_run}" "${_fail_until}" 0 2>&1)"; _rc=$?
+  t_assert_eq 0 "${_rc}" "${_out}"
+  t_assert_eq "${_expected_updates}" "$(wc -l < "${_run}/updates")"
+  t_assert_eq 1 "$(wc -l < "${_run}/builds")" "compile runs once after successful configure"
+  t_assert_ok test -f "${_run}/finalized"
+  _sleep_count=0
+  [ ! -f "${_run}/sleeps" ] || _sleep_count="$(wc -l < "${_run}/sleeps")"
+  t_assert_eq "${_expected_sleeps}" "${_sleep_count}"
+  t_assert_contains "$(cat "${_run}/build.log")" 'configure attempt 1' "first attempt survives successful compile"
+  t_assert_contains "$(cat "${_run}/build.log")" "fetch diagnostic ${_expected_updates}" "stderr survives tee"
+  t_assert_contains "$(cat "${_run}/build.log")" 'build invocation'
+  mapfile -d '' -t _qnn_argv < "${_run}/update-argv"
+  t_assert_eq '-S' "${_qnn_argv[0]}"
+  t_assert_eq "${_run}/source path/tools/ci_build/build.py" "${_qnn_argv[1]}"
+  _qnn_home_arg='not found'
+  for ((_i = 0; _i < ${#_qnn_argv[@]} - 1; _i++)); do
+    [ "${_qnn_argv[_i]}" != --qnn_home ] || _qnn_home_arg="${_qnn_argv[_i + 1]}"
+  done
+  t_assert_eq "${_run}/qairt path" "${_qnn_home_arg}" "retry preserves argument boundaries"
+done <<'CASES'
+0 1 0
+1 2 1
+2 3 2
+CASES
+_run="${_T}/configure exhausted"
+_out="$(_qnnep_compile_fixture "${_run}" 99 0 2>&1)"; _rc=$?
+t_assert_eq 37 "${_rc}" "exhaustion retains the configure command's raw failure"
+t_assert_eq 3 "$(wc -l < "${_run}/updates")"
+t_assert_eq $'10\n10' "$(cat "${_run}/sleeps")" "bounded attempts retain the shared delay"
+t_assert_fails test -e "${_run}/headers"
+t_assert_fails test -e "${_run}/builds"
+t_assert_fails test -e "${_run}/finalized"
+t_assert_contains "$(cat "${_run}/build.log")" 'fetch diagnostic 1'
+t_assert_contains "$(cat "${_run}/build.log")" 'fetch diagnostic 3'
+_run="${_T}/compile failure"
+_out="$(_qnnep_compile_fixture "${_run}" 0 29 2>&1)"; _rc=$?
+t_assert_eq 29 "${_rc}" "a compile failure remains raw and is not retried"
+t_assert_eq 1 "$(wc -l < "${_run}/updates")"
+t_assert_eq 1 "$(wc -l < "${_run}/builds")"
+t_assert_fails test -e "${_run}/sleeps"
+t_assert_fails test -e "${_run}/finalized"
+t_assert_contains "$(cat "${_run}/build.log")" 'configure attempt 1'
+t_assert_contains "$(cat "${_run}/build.log")" 'build invocation'
 
 t_case "off arm64 the build step only leaves the empty output tree the media merge COPYs"
 t_assert_eq "Skipping the QNN plugin EP (arm64-only, target amd64)" "$(TARGET_ARCH=amd64 QNNEP_OUTPUT_DIR="${_T}/ph" qnnep_build 2>&1)"

@@ -37,12 +37,89 @@
   preserved line endings; all four new mutations bite. File I/O uses the
   canonical patch API, and source fixtures share the harness regex counter
   and directory staging instead of copying those operations.
+  Git Bash gate instructions require native symlinks; default file copies
+  fail the unchanged QNN fixture instead of proving its library links.
   Structural tests share unconditional-call and source-order assertions in the
   harness, preserving the IREE scratch lifecycle checks without copied logic.
   The existing harness byte-verdict mutation now uses a shell-neutral Python
   subprocess transport while retaining all 45 required results and failure checks.
   The three lifted-fixture recipes use the same portable transport and retain
   their original minimum, equal passed/total, and empty failure/skip requirements.
+
+## 2026-11-09 — verify acceptance cleanup and publish the plugin-only ROCm wrapper
+
+- Acceptance checks each consumer and ownership-helper container through a successful engine query
+  after removal. A remaining exact name or failed query refuses a passed receipt. Already-auto-removed
+  containers remain idempotent; logs retain both raw command statuses and diagnostics. Ownership
+  restoration still runs after consumer-removal failure, and original consumer statuses remain intact.
+  The offline suite passes 29 tests and all 11 new mutations bite; no host-process or GPU proof is added.
+- ROCm runtime run `20261109-081137-973f29cc` from clean hub
+  `7f97f31c122241a6eea8ba62229bbbc56c00444c` completed with amd64 wrapper
+  `sha256:e9fc824e6129670a06a4e81980676e4d7a1effb3013726f844cd12d5d097c55f` and index
+  `sha256:4e76aa2a75e104570794be965034bcc3276bb5ba78c98ab863659ed6630ca8de`.
+  All six default consumers passed on `linux/amd64`; the exact receipt is
+  `logs/image-acceptance/20261109-081137-973f29cc/receipt.json`. Every recorded log hash matches,
+  and an independent post-run engine query confirms all of this run's named containers absent.
+  The accepted index was promoted to `:latest-rocm` with its runtime platform preserved. This run
+  preceded the stricter removal helper above; it proves the plugin-only image, not fresh GPU inference.
+- NVIDIA ARM64 media/android recovery run `20261109-102131-e69f48d7` started from fully proved
+  `bf4c7d47` after ROCm actually ended. Main remains frozen during that chain; the additional
+  acceptance fix is isolated in the worktree and requires its own complete source preflight.
+
+## 2026-11-09 — retry QNN configuration without losing raw failures or diagnostics
+
+- NVIDIA ARM64 media run `20261109-002505-d3b3c0b7` reached QNN configuration after the CUDA
+  build, then GitHub returned HTTP 504 for the fork's pinned protoc archive. Its QAIRT SDK hash
+  check passed. The failed shared RUN produced no final media image, wrapper or consumer receipt.
+  NVIDIA amd64 media/android had already passed in run `20261108-180128-c3904567`.
+- QNN configuration now uses the existing three-attempt retry with ten-second delays, retains all
+  stdout/stderr in `build.log` and returns the last raw failure after exhaustion. Compilation stays
+  outside the retry. The 100-assertion offline QNN suite and eight biting mutations prove transport,
+  limits, logs and failure propagation; an actual corrected rebuild and acceptance remain pending.
+  Its fake build driver is a tracked Bash fixture, carried into mutation mirrors and checked as shell.
+  [Failure and scope](docs/failure-modes.md#qnn-configure-loses-a-completed-cuda-build-to-a-transient-protoc-download).
+
+## 2026-11-09 — keep perf transport and interrupted proof records accurate
+
+- The first full preflight of the permanent runner reached the complete script suite, where the
+  perf-report fake engine misread the required nerdctl AppArmor option as its image. The fixture
+  now consumes that option pair; production security, uid assertions and grading checks remain.
+  A mutation removes this parsing to prove the existing perf-report tests fail. The failed full
+  run and its partial mutation results remain preserved; they are not a complete preflight proof.
+- Interrupted isolated preflights leave an unobserved command exit null and record the interruption
+  exit separately, while still cleaning only their own containers. A transport fixture proves the
+  raw interruption, failed verdict and restored report mode without starting a real container.
+
+## 2026-11-09 — preserve recurring proof tools and isolate mutation startup caches
+
+- Regular isolated-preflight, unit-monitoring and native-plugin drivers now live in the repo,
+  with retained source snapshots and run inputs under `logs/`. Existing scratch drivers were
+  archived with their paths and hashes. The preflight runner binds frozen source read-only,
+  removes only its own containers and retains raw failure and cleanup evidence. Observer timeouts
+  leave builds running. Native probes reuse the production loader and preserve its extracted body;
+  a real TensorRT probe passed loading and both exports, without registration or inference.
+- Consumer acceptance can materialize a no-replace platform plan while retaining the entire
+  validated consumer contract. Plan creation alone proves no consumer execution.
+- Full local preflight at `0f77ee06` passed the other 41 jobs and 545 script suites, but failed two
+  mutation baselines after one PowerShell startup abort: 4597/4599 mutations were proved. Unix
+  mutation commands now get private XDG caches until child reaping, matching the upstream shared
+  startup-profile failure. The failed run remains failed; a new full proof is still required.
+  Regression fixtures and mutations cover cache lifetime and the new operational refusal paths.
+
+## 2026-11-08 — runner-default fixtures isolate the outer worker cap
+
+- The full local mutation run exposed `ordered-jobs.default-one-per-cpu` surviving when the outer
+  preflight exported `RUN_TESTS_JOBS=4`. The copied runner fixture now clears that inherited value
+  before applying explicit case arguments; serial and invalid inherited caps exercise its default.
+  The existing default mutation and a new fixture-isolation mutation prove the rendezvous controls.
+  These fixtures check scheduling and verdicts, not the coverage of the suites they invoke.
+
+## 2026-11-08 — wheelhouse receipt probes keep their recorded diagnostic locale
+
+- A full Linux preflight under `LC_ALL=C` exposed locale-dependent GNU find quotes in the wheelhouse
+  failure fixture. Its child probes now use `C.UTF-8` and compare the original receipts under both parent
+  locales. The original bytes and statuses stay checked; `lib.wheelhouse-receipt-locale` restores inherited
+  locale selection to prove the regression. These are offline fixture checks, with no wheel or image build.
 
 ## 2026-11-08 — accept a Windows ARM64 image by digest before changing its tag
 
@@ -115,7 +192,8 @@
 
 - The seventh proof chain (runtime stage, three arches, run 20261108-131033) published `:latest` with arm64 at
   `sha256:19b99d3f4d02…`: the plugin module, 48 QAIRT backends, `ORT_QNN_EP_ROOT`, no in-tree QNN provider, all smokes
-  and the acceptance receipt green. The sixth chain had failed only on GitHub's 503 for the HailoRT tarball, now mirrored.
+  and the acceptance receipt green. That receipt covers the six `linux/amd64` consumers; it does not claim
+  arm64 or riscv64 consumer runs. The sixth chain had failed only on GitHub's 503 for the HailoRT tarball, now mirrored.
 
 ## 2026-11-08 — Linux: the CUDA EP is the plugin, the TensorRT EP NVIDIA's plugin, the in-tree TensorRT and MIGraphX EPs are gone (CON233, CON231 step 3)
 
@@ -140,6 +218,14 @@
   (`# PYTHON_APP_PLUGIN_EP_API=1` replaces the TensorRT marker; `python-ci-linux.yml` checks it and passes `MIGraphX`).
 - Suites: `test-tensorrt-plugin-ep.sh` (new), and the GPU runtime, G2, census, bundle, AppImage, package and self-test
   suites moved with the code; 29 recipes in the `onnx-ep-tensorrt`, `gpu-runtime`, `provenance` and `packaging` families.
+- Align the ROCm overview, wheel selection and MIGraphX prefix lookup with the plugin-only CPU-prefix build; remove
+  the obsolete native AMD entry point and wheel from the setup instructions.
+- Replace the app-venv's stale in-tree MIGraphX/TensorRT availability assertions with native plugin loading and
+  both factory exports, while retaining the ORT Python import and Torch HIP/CUDA checks. The new fixture suite covers missing modules,
+  exports and roots, both selected call sites and the CPU path; GPU registration and inference remain separate.
+- ROCm proof run `20261108-161535-562db2ce` (`rebuild-sequence-36`) passed media and android but stopped at that
+  stale app-venv assertion. No fresh runtime wrapper or acceptance receipt was produced; the successful package
+  smoke alone does not prove the wrapper or the removal from the shipped image.
 
 ## 2026-11-08 — Windows nvidia: the CUDA and TensorRT EPs are plugins (CON233)
 

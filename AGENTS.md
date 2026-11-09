@@ -66,6 +66,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    combined with push flags; it provides no consumer acceptance receipt.
    Linux acceptance restores disposable rootful checkout ownership on every exit;
    failed container cleanup or ownership restoration cannot produce a passed receipt.
+   Require a successful engine query to prove every consumer and ownership-helper container absent;
+   retain both removal and query statuses and diagnostics, including already-auto-removed containers.
    Windows vendor-specific DirectML defaults use the shared DXGI selector only when no explicit adapter is set; enumeration does not prove inference.
    Windows GPU MSI/MSIX payload checks share the installer extraction and process cleanup helpers; extraction does not prove installation.
 5. **Our build always wins over the distro copy** (owner directive 2026-09-01). Where a `/opt`
@@ -109,7 +111,9 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied `35-build-migraphx-plugin-ep.sh` and `37-build-tensorrt-plugin-ep.sh` carry `plugin-ep-exports.sh` and `plugin-ep-seeds.txt` beside them; the media verify stage reads the export probe from the mounted ORT build directory, so keep that directory mount on the GPU RUN.
    G2 reads `onnxruntime_ep_*` modules and `Microsoft.ML.OnnxRuntime.EP.*` directories as ORT consumers, never as ORT.
    AMD Python bundles carry the plugin MIGraphX EP beside the chain core and prove it against the image's module; their self-test proves registration, not availability.
+   GPU-less app-venv checks load the selected MIGraphX/TensorRT plugin and require both factory exports; registration and inference need separate evidence.
    Require child cleanup APIs before starting timers or watchers; advisory cleanup signals then reaps and retains caller PID guards, reset and command status.
+   Runner fixtures clear inherited RUN_TESTS_JOBS before applying explicit case values; default scheduling controls must exercise the default.
    Windows module visibility suites share the cold-import probe; keep child failures and parent-session isolation observable.
    ARM64 device-gate exports carry required module siblings; prove cold imports from the exported directory before device execution.
    Exported ARM64 bundles stage chain ORT DLLs beside their executables; reject duplicate ZIP paths and preserve the source image tree.
@@ -203,6 +207,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Core disk probes share validation without merging zero-disabled and nonnegative-free-space policies.
    Test workers use the harness optional-function emitter; keep required definitions mandatory.
    Stream receipt suites carry `stream-receipt-fixture.sh`; keep their expected results independent of production code.
+   Wheelhouse stderr fixtures pin child locale to C.UTF-8; retain both parent-locale controls and original receipt bytes.
    Named mutation-check suites carry their case-executor companion; failed controls and invalid recipes remain failed results.
    Shared mirror enumeration preserves source-file order and original shell-option behavior; artifact and image probes retain caller failure policies.
    ORT and GenAI provenance checks share hashing and chain-byte membership; keep their distinct archive and exemption policies.
@@ -392,6 +397,17 @@ Five of them are RULES and stay here:
 
 - **`--log-dir` is not universal.** `build-cross-chain.sh` and `build-cross-stage.sh` tee each
   stage; the other three orchestrators do not take the flag, so pipe them through `tee` yourself.
+
+- **Preserve recurring operational scripts in the repo.** Reuse and extend the canonical helper;
+  do not regenerate regular preflight, monitoring or probe drivers in scratch space. Keep run-specific
+  inputs, extracted code and reports under `logs/`. The permanent isolated preflight, unit watcher
+  and native plugin probe are documented in [quality tooling](docs/code-quality-tooling.md#preserved-local-proof-workflows).
+  Copied host proof tools carry `host_commands.py`; the watcher also carries `preflight-status.py`,
+  and isolated preflight carries both scripts under `isolated-preflight/`.
+  Copied `run-in-ci-image.sh` carries the shared `lib/cli-value-options.sh` and logging companions;
+  the mutation recipe contract lives in `mutation_parse.py` beside its runner.
+  Container transport fixtures accept the shared runner security and value flags before parsing
+  the image and command; preserve the production AppArmor setting.
 
 - **Generated run artifacts belong under `logs/`.** Use `logs/build-logs/` for Linux stage logs
   and resource metrics, `logs/windows-build-logs/` for Windows BuildKit runs, and
@@ -1081,6 +1097,10 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
 
 - Use `nerdctl` first on this host; `buildctl`/`ctr` commonly fail with permission errors.
 - Keep both the QEMU/binfmt multi-platform lane and the cross-build lane working.
+- QNN plugin configure retries use the shared retry helper, retain every attempt in `build.log`
+  and return the last raw configure failure after exhaustion. Keep compilation outside that retry;
+  fixtures prove transport and verdicts, not network recovery or hardware inference.
+  Copied QNN configure suites carry `fixtures/qnn-build-driver.sh`; keep the worker in Bash scope.
 - `build-cross-compiler.sh` builds one `linux/amd64` compiler image with cross toolchains for all
   arches, not a multi-arch compiler manifest.
 - Never remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images
@@ -1339,7 +1359,9 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   cost lines ([the shard plan](docs/code-quality-tooling.md#the-shard-plan)). A recipe whose
   mutant no longer parses is refused before its test runs (`--parse-check` alone): its bite would
   prove a syntax error ([mutants must parse](docs/code-quality-tooling.md#mutants-must-parse)). When the gate gets slow, fix the suite that got slow; never raise a timeout or
-  sample in CI. Mutation test children get closed stdin so caller input cannot stall a proof. The
+  sample in CI. Unix mutation test commands get private `XDG_CACHE_HOME` directories, removed only
+  after child reaping; preserve caller `HOME`, raw statuses and the Windows environment policy.
+  Mutation test children get closed stdin so caller input cannot stall a proof. The
   2026-09-23 timeout and the layout:
   [`code-quality-tooling.md` § The mutation gate in CI, sharded](docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded).
 
@@ -1359,7 +1381,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   by three slugs). `tests/test-preflight-slugs.sh` enforces that every slug has a registered check
   and vice versa. The commit hook runs a subset through `PREFLIGHT_ONLY` / `PREFLIGHT_SKIP`; never
   copy the check list into a new caller. On a Windows host:
-  `PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh`. What each gate
+  `MSYS=winsymlinks:nativestrict PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh`. Git Bash fixtures need real symlinks; denied creation remains a missing prerequisite. What each gate
   proves, and its allowlist: [`code-quality-gates.md`](docs/code-quality-gates.md) (generated) and
   [`code-quality-tooling.md`](docs/code-quality-tooling.md). Slugs, suites and shellcheck runs go
   side by side; `PREFLIGHT_JOBS=1`, `RUN_TESTS_JOBS=1` and `LINT_SHELL_JOBS=1` run them in turn

@@ -15,7 +15,7 @@ import tempfile
 import warnings
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
-from typing import NamedTuple
+from typing import NamedTuple, NotRequired, TypedDict
 
 _SHELL_SHEBANG = re.compile(r"#![ \t]*(?:/usr/bin/env[ \t]+(?:-S[ \t]+)?)?(?:/\S*/)?(?:ba)?sh(?:[ \t]|$)")
 _PWSH_PARSE = r"""
@@ -32,6 +32,16 @@ ConvertTo-Json -InputObject @($answers) -Compress
 
 class MissingParser(Exception):
     """A parser the selection needs is absent: the check fails rather than skip what it cannot read."""
+
+
+class MutationEntry(TypedDict):
+    id: str
+    target: str
+    find: str
+    replace: str
+    test: str
+    why: str
+    timeout: NotRequired[int]
 
 
 class Edit(NamedTuple):

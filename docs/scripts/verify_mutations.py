@@ -26,9 +26,9 @@ from _thread import LockType
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from types import FrameType
-from typing import Never, NotRequired, TextIO, TypedDict
+from typing import Never, TextIO
 
-from mutation_parse import Edit, MissingParser, refusals
+from mutation_parse import Edit, MissingParser, MutationEntry, refusals
 from mutation_push import (
     changed_files,
     coverage_line,
@@ -38,16 +38,6 @@ from mutation_push import (
     touches,
 )
 from mutation_shards import describe, load_costs, plan
-
-
-class MutationEntry(TypedDict):
-    id: str
-    target: str
-    find: str
-    replace: str
-    test: str
-    why: str
-    timeout: NotRequired[int]
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mutations.json")
@@ -217,9 +207,21 @@ def _timeout_result(
 
 
 def _run_test(cmd: str, root: str, timeout: float) -> tuple[int | None, bool, str]:
-    """Run one test command, killing its whole process tree when it ends or times out; returns (returncode, timed_out, output)."""
+    """Unix test jobs need separate XDG roots so parallel PowerShell cannot corrupt shared startup profiles."""
+    if os.name == "nt":
+        return _run_test_process(cmd, root, timeout, None)
+    with tempfile.TemporaryDirectory(prefix="mutation-test-cache-") as cache:
+        env = os.environ.copy()
+        env["XDG_CACHE_HOME"] = cache
+        return _run_test_process(cmd, root, timeout, env)
+
+
+def _run_test_process(
+    cmd: str, root: str, timeout: float, env: dict[str, str] | None,
+) -> tuple[int | None, bool, str]:
+    """Keep raw results and reap every test child before its private cache is removed."""
     proc = subprocess.Popen(cmd, shell=True, cwd=root, stdin=subprocess.DEVNULL,
-                            stdout=subprocess.PIPE,
+                            stdout=subprocess.PIPE, env=env,
                             stderr=subprocess.PIPE, text=True, start_new_session=True)
     with _LIVE_LOCK:
         _LIVE_GROUPS.add(proc.pid)

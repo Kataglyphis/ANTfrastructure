@@ -36745,6 +36745,366 @@
   "why": "the device job must receive the receipt checker beside its exported gate"
  },
  {
+  "id": "probe.app-venv-plugin-amd-call",
+  "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+  "find": "    verify_ort_plugin_library ORT_AMDGPU_EP_ROOT libmigraphx-ep.so || return $?\n",
+  "replace": "    :\n",
+  "test": "LC_ALL=C bash linux/scripts/tests/test-app-venv-plugin-eps.sh",
+  "why": "the AMD wrapper must fail when its selected plugin is absent even though the chain ORT wheel is CPU-only"
+ },
+ {
+  "id": "probe.app-venv-plugin-tensorrt-call",
+  "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+  "find": "      verify_ort_plugin_library ORT_TENSORRT_EP_ROOT libonnxruntime_ep_tensorrt.so || return $?\n",
+  "replace": "      :\n",
+  "test": "LC_ALL=C bash linux/scripts/tests/test-app-venv-plugin-eps.sh",
+  "why": "TensorRT-enabled NVIDIA wrappers must require the separate plugin rather than an in-tree provider"
+ },
+ {
+  "id": "probe.app-venv-plugin-create-export",
+  "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+  "find": "for export in (\"CreateEpFactories\", \"ReleaseEpFactory\"):\n",
+  "replace": "for export in (\"ReleaseEpFactory\",):\n",
+  "test": "LC_ALL=C bash linux/scripts/tests/test-app-venv-plugin-eps.sh",
+  "why": "native loading alone cannot prove the factory-creation export exists"
+ },
+ {
+  "id": "probe.app-venv-plugin-release-export",
+  "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+  "find": "for export in (\"CreateEpFactories\", \"ReleaseEpFactory\"):\n",
+  "replace": "for export in (\"CreateEpFactories\",):\n",
+  "test": "LC_ALL=C bash linux/scripts/tests/test-app-venv-plugin-eps.sh",
+  "why": "a module without the factory-release export is not a complete plugin"
+ },
+ {
+  "id": "probe.app-venv-plugin-selected-module",
+  "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+  "find": "library = ctypes.CDLL(str(path))\n",
+  "replace": "library = ctypes.CDLL(str(path.with_name(\"libmigraphx-ep.so\")))\n",
+  "test": "LC_ALL=C bash linux/scripts/tests/test-app-venv-plugin-eps.sh",
+  "why": "the build must load the exact selected module, never a successful neighboring plugin as a fallback"
+ },
+ {
+  "id": "probe.app-venv-plugin-cpu-core",
+  "target": "linux/scripts/03-media/runtime/assemble-torch-app.sh",
+  "find": "assert 'CPUExecutionProvider' in providers, 'ERROR: the chain CPU ONNX Runtime has no CPUExecutionProvider!'",
+  "replace": "print('CPU ORT check removed')",
+  "test": "LC_ALL=C bash linux/scripts/tests/test-app-venv-plugin-eps.sh",
+  "why": "the AMD wrapper must still import and verify the chain CPU ORT alongside its separate GPU plugin"
+ },
+ {
+  "id": "lib.wheelhouse-receipt-locale",
+  "target": "linux/scripts/tests/wheelhouse_manifest_tests.py",
+  "find": "                        LC_ALL=\"C.UTF-8\",",
+  "replace": "                        LC_ALL=os.environ[\"LC_ALL\"],",
+  "test": "bash linux/scripts/tests/test-wheelhouse-manifest.sh",
+  "why": "raw diagnostic receipts must remain identical under C and UTF-8 parent locales without normalizing the recorded bytes"
+ },
+ {
+  "id": "ordered-jobs.fixture-clears-parent-jobs",
+  "target": "linux/scripts/tests/test-run-tests.sh",
+  "find": "out=\"$(env -u RUN_TESTS_JOBS MEET=",
+  "replace": "out=\"$(env MEET=",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "an inherited worker cap must not select the copied fixture runner default or hide its scheduling mutation"
+ },
+ {
+  "id": "mutations.private-test-cache",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "        env[\"XDG_CACHE_HOME\"] = cache\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-mutation-cache.sh",
+  "why": "concurrent Unix test commands must not write the same PowerShell startup cache"
+ },
+ {
+  "id": "mutations.test-cache-forwarded",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "stdout=subprocess.PIPE, env=env,",
+  "replace": "stdout=subprocess.PIPE, env=None,",
+  "test": "bash linux/scripts/tests/test-mutation-cache.sh",
+  "why": "the subprocess must receive its private cache environment while caller HOME and raw statuses survive"
+ },
+ {
+  "id": "host.proof-owned-cleanup",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "f\"label={OWNER_LABEL}={run_id}\"",
+  "replace": "\"status=exited\"",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Only the unique run label may select containers for cleanup; a name collision must preserve foreign containers."
+ },
+ {
+  "id": "host.proof-readonly-source",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "f\"{source}:/source:ro\"",
+  "replace": "f\"{source}:/source:rw\"",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A writable report bind must not expose the preserved source through a writable alias."
+ },
+ {
+  "id": "host.proof-raw-worker-status",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "return status if status else int(cleaned != 0)",
+  "replace": "return 0",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Worker failure statuses and failed cleanup must reach the caller."
+ },
+ {
+  "id": "host.proof-cleanup-verdict",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "\"passed\" if status == 0 and cleaned == 0 else \"failed\"",
+  "replace": "\"passed\" if status == 0 else \"failed\"",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A failed container cleanup cannot be recorded as a passed preflight."
+ },
+ {
+  "id": "host.proof-created-container",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "if status == 0 and not (args.output / \"container.cid\").is_file():",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "An engine success without created-container evidence cannot prove a preflight."
+ },
+ {
+  "id": "host.proof-explicit-image",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "if [ -z \"${IMAGE}\" ]; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "An explicitly selected immutable image must reach the existing runner without falling back to the CI default."
+ },
+ {
+  "id": "host.proof-nerdctl-apparmor",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "if [ \"${ENGINE##*/}\" = nerdctl ]; then ARGS+=(--security-opt apparmor=unconfined); fi",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Manual nerdctl probes retain the host AppArmor setting used by the build lane."
+ },
+ {
+  "id": "host.proof-native-cleanup",
+  "target": "linux/scripts/probe-ort-plugin.sh",
+  "find": "trap cleanup EXIT",
+  "replace": "trap : EXIT",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Extracting the production verifier must preserve the native probe cleanup trap and final raw status."
+ },
+ {
+  "id": "host.proof-running-unit",
+  "target": "linux/scripts/watch-build-units.py",
+  "find": "return unit.get(\"ActiveState\") in (\"inactive\", \"failed\") and (ended or failed)",
+  "replace": "return unit.get(\"Result\") == \"success\" or ended or failed",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "An active unit's initial Result=success is not a completed build."
+ },
+ {
+  "id": "runtime-push.plan-platform",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "plan[\"platform\"] = platform",
+  "replace": "plan[\"platform\"] = \"linux/amd64\"",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "Platform plans retain every consumer while selecting the requested target."
+ },
+ {
+  "id": "runtime-push.plan-platform-validation",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "if not supported_platform(platform):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "Unsupported platform selection must fail before creating a destination."
+ },
+ {
+  "id": "runtime-push.plan-no-replace",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "destination.open(\"x\", encoding=\"utf-8\")",
+  "replace": "destination.open(\"w\", encoding=\"utf-8\")",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "A replay plan is evidence and must not overwrite an existing artifact."
+ },
+ {
+  "id": "host.proof-shared-value-options",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "if [ -n \"${CI_IMAGE_VALUE_OPTIONS[$1]:-}\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The existing runner must retain all value-option boundaries and refuse missing or empty inputs before invoking the engine."
+ },
+ {
+  "id": "quality-report.perf-engine-security-option",
+  "target": "linux/scripts/tests/quality_report_perf_tests.py",
+  "find": "    --name|--platform|--security-opt) shift 2 ;;",
+  "replace": "    --name|--platform) shift 2 ;;",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh",
+  "why": "The perf fixture must parse the real shared runner security pair before mapping its image command, without changing production AppArmor or uid behavior."
+ },
+ {
+  "id": "host.proof-unobserved-command-status",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "    status: int | None = None\n",
+  "replace": "    status: int | None = 1\n",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "An interrupted proof must not invent a raw exit status for a command whose result was never observed."
+ },
+ {
+  "id": "host.proof-interruption-status",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "        interrupted_status = error.code if isinstance(error.code, int) else 1\n",
+  "replace": "        interrupted_status = None\n",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The original interruption code must remain visible after owned-container cleanup and report-mode restoration."
+ },
+ {
+  "id": "onnx-ep-qnn.configure-retry-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  qnnep_configure \"${HOST_PYTHON_BIN}\" -S \"${QNNEP_SRC}/tools/ci_build/build.py\" \"${args[@]}\" --update",
+  "replace": "  \"${HOST_PYTHON_BIN}\" -S \"${QNNEP_SRC}/tools/ci_build/build.py\" \"${args[@]}\" --update",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "a transient configure fetch must be retried before compilation"
+ },
+ {
+  "id": "onnx-ep-qnn.configure-attempt-bound",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "if retry 3 10 \"QNN plugin EP configure\"",
+  "replace": "if retry 1 10 \"QNN plugin EP configure\"",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "the final allowed successful configure attempt must be reached"
+ },
+ {
+  "id": "onnx-ep-qnn.configure-raw-exhaustion",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  fi\n  return \"${qnnep_configure_status}\"\n}\n\n# The fork",
+  "replace": "  fi\n  return 1\n}\n\n# The fork",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "exhausted retries retain the external configure command's raw status"
+ },
+ {
+  "id": "onnx-ep-qnn.configure-fatal-exhaustion",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  fi\n  return \"${qnnep_configure_status}\"\n}\n\n# The fork",
+  "replace": "  fi\n  return 0\n}\n\n# The fork",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "failed configuration cannot continue to headers or compilation"
+ },
+ {
+  "id": "onnx-ep-qnn.configure-argv-boundaries",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  \"$@\" || qnnep_configure_status=$?\n",
+  "replace": "  $@ || qnnep_configure_status=$?\n",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "retry dispatch preserves script and SDK paths containing spaces"
+ },
+ {
+  "id": "onnx-ep-qnn.configure-log-retention",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  \"${HOST_PYTHON_BIN}\" -S \"${QNNEP_SRC}/tools/ci_build/build.py\" \"${args[@]}\" --build 2>&1 | tee -a \"${work}/build.log\"\n",
+  "replace": "  \"${HOST_PYTHON_BIN}\" -S \"${QNNEP_SRC}/tools/ci_build/build.py\" \"${args[@]}\" --build 2>&1 | tee \"${work}/build.log\"\n",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "the compile append must preserve all configure attempts and stderr"
+ },
+ {
+  "id": "onnx-ep-qnn.compile-not-retried",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "  \"${HOST_PYTHON_BIN}\" -S \"${QNNEP_SRC}/tools/ci_build/build.py\" \"${args[@]}\" --build 2>&1 | tee -a \"${work}/build.log\"\n",
+  "replace": "  qnnep_configure \"${HOST_PYTHON_BIN}\" -S \"${QNNEP_SRC}/tools/ci_build/build.py\" \"${args[@]}\" --build 2>&1 | tee -a \"${work}/build.log\"\n",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "only configuration retries; a compiler failure retains its single raw verdict"
+ },
+ {
+  "id": "onnx-ep-qnn.configure-retry-delay",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/36-build-qnn-plugin-ep.sh",
+  "find": "if retry 3 10 \"QNN plugin EP configure\"",
+  "replace": "if retry 3 0 \"QNN plugin EP configure\"",
+  "test": "bash linux/scripts/tests/test-qnn-plugin-ep.sh",
+  "why": "bounded configure retries retain the shared ten-second delay"
+ },
+ {
+  "id": "image-acceptance.cleanup-presence-verdict",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    if name in (probe.stdout or \"\").splitlines():\n",
+  "replace": "    if False and name in (probe.stdout or \"\").splitlines():\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "A successful removal exit cannot pass while the engine still reports the exact acceptance container."
+ },
+ {
+  "id": "image-acceptance.cleanup-probe-required",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    probe.check_returncode()\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "A failed container-list query cannot prove absence, even after a successful consumer command."
+ },
+ {
+  "id": "image-acceptance.cleanup-name-boundary",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    if name in (probe.stdout or \"\").splitlines():\n",
+  "replace": "    if name in (probe.stdout or \"\"):\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "A neighboring container with a longer name must not turn an already completed removal into failure."
+ },
+ {
+  "id": "image-acceptance.cleanup-owner-wiring",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    finally:\n        remove_container(args, name, log)\n",
+  "replace": "    finally:\n        pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "The ownership helper container requires the same verified removal as its consumer."
+ },
+ {
+  "id": "image-acceptance.cleanup-remove-raw-log",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "\"remove_exit_status\": removed.returncode",
+  "replace": "\"remove_exit_status\": 0",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "Preserve the actual removal status when auto-removal makes its nonzero result harmless."
+ },
+ {
+  "id": "image-acceptance.cleanup-probe-raw-log",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "\"probe_exit_status\": probe.returncode",
+  "replace": "\"probe_exit_status\": 0",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "Retain the failed absence probe's raw status alongside the removal result."
+ },
+ {
+  "id": "image-acceptance.ownership-raw-log",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "f\"\\nacceptance ownership exit: {result.returncode}\\n\"",
+  "replace": "\"\\nacceptance ownership exit: 0\\n\"",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "A second cleanup failure must not erase the ownership command's actual failure from its log."
+ },
+ {
+  "id": "image-acceptance.cleanup-consumer-catches-verdict",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    except (OSError, subprocess.SubprocessError, ValueError) as error:\n        row[\"container_cleanup_error\"]",
+  "replace": "    except (OSError, subprocess.SubprocessError) as error:\n        row[\"container_cleanup_error\"]",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "A failed absence assertion must retain consumer status and evidence while ownership cleanup still runs."
+ },
+ {
+  "id": "image-acceptance.cleanup-owner-catches-verdict",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        except (OSError, subprocess.SubprocessError, ValueError) as error:\n            row[\"ownership_error\"]",
+  "replace": "        except (OSError, subprocess.SubprocessError) as error:\n            row[\"ownership_error\"]",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "An ownership-container absence failure must remain recorded in the failed receipt."
+ },
+ {
+  "id": "image-acceptance.cleanup-removal-diagnostics",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        stream.write((removed.stdout or \"\") + (removed.stderr or \"\"))\n",
+  "replace": "        stream.write(removed.stdout or \"\")\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "Preserve removal stderr as well as its status before reporting the final cleanup verdict."
+ },
+ {
+  "id": "image-acceptance.cleanup-probe-diagnostics",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        stream.write((probe.stdout or \"\") + (probe.stderr or \"\"))\n",
+  "replace": "        stream.write(probe.stdout or \"\")\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "A failed engine query needs its original stderr in the retained consumer log."
+ },
+ {
   "id": "lib.trt-ep-protobuf-rc-frontend",
   "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
   "find": "                '\"$<$<COMPILE_LANGUAGE:C,CXX>:' + $option.Value + '>\"'",

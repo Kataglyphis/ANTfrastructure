@@ -23,7 +23,7 @@ _runner() {
   if [ "${1:-}" = --timeout ]; then bound="$2"; shift 2; fi
   rm -rf "${_WORK}/meet"; mkdir -p "${_WORK}/meet"; : > "${_WORK}/meet/said"
   # A runner that never ends is a verdict too: rc 124.
-  out="$(env MEET="${_WORK}/meet" MEET_SECS=20 "$@" timeout "$bound" bash "${_WORK}/tests/run-tests.sh" 2>&1)"; rc=$?
+  out="$(env -u RUN_TESTS_JOBS MEET="${_WORK}/meet" MEET_SECS=20 "$@" timeout "$bound" bash "${_WORK}/tests/run-tests.sh" 2>&1)"; rc=$?
   printf 'RC=%s\nSAID=%s\n%s\n' "${rc}" "$(sort "${_WORK}/meet/said" | tr '\n' ' ' | sed 's/ $//')" "${out}"
 }
 _blocks() { printf '%s\n' "$1" | sed -n 's/^== \(.*\) ==$/\1/p' | tr '\n' ' ' | sed 's/ $//'; }
@@ -77,9 +77,11 @@ t_assert_contains "${par}" "1 suite(s) failed: test-b.sh"
 t_assert_eq "met met" "$(_said "${par}")"
 t_assert_eq "$(printf '%s\n' "${ser}" | sed 1,2d)" "$(printf '%s\n' "${par}" | sed 1,2d)" "the report must not depend on the job count"
 
-t_case "the default runs one suite per CPU, not one at a time"
+t_case "the default runs one suite per CPU despite the outer runner cap"
 t_needs "a second CPU" test "$(nproc 2>/dev/null || echo 1)" -ge 2
-t_assert_eq "met met" "$(_said "$(_runner)")"
+for _inherited_jobs in 1 invalid; do
+  t_assert_eq "met met" "$(_said "$(RUN_TESTS_JOBS="${_inherited_jobs}" _runner)")" "outer cap ${_inherited_jobs} must not select the fixture default"
+done
 
 t_case "the totals add up across suites that finished out of order"
 _suite test-b.sh 0 't_assert_ok true'
