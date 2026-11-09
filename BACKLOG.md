@@ -1076,10 +1076,20 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `sha256:486a9558b93caedc465460cc2d50ed9d103e6058ed2a4b7c2d37775575b490a3`).
       ARM64 run `20261109-002505-d3b3c0b7` then failed QNN configure on GitHub HTTP 504 for the
       fork's pinned protoc archive after CUDA compilation. The bounded configure retry has 100 fixture
-      assertions and eight mutations; the corrected ARM64 media/android build, both NVIDIA runtime
-      wrappers, exact receipts and GPU inference remain open. No ARM64 TensorRT build is claimed.
-      The corrected ARM64 media/android recovery started as run `20261109-102131-e69f48d7` from fully
-      preflight-proved `bf4c7d47`; its ordinary disk and ancestry gates passed. This is a started build.
+      assertions and eight mutations. Recovery `20261109-102131-e69f48d7` from fully proved `bf4c7d47`
+      passed ordinary disk/ancestry gates, both CUDA Python modes and QNN's module/export/HTP checks,
+      then failed TensorRT's nvcc host-compiler check; actual unit exit 1 was 2026-11-09T17:02:20Z.
+      Target CXX must be selected before CUDAHOSTCXX; the old real compiler control fails and the
+      fixed one compiles AArch64. A complete isolated TensorRT build over the target CPU core now
+      passes exports, original licences, G2 and target-loader resolution under QEMU. Native ldd's
+      failed ARM inspection had incorrectly passed, so closure checks now preserve that failure.
+      Linux also patches both separated CUDA standard options; a private NVCC repeat records
+      12 cache hits, zero cache errors and one uncached internal compilation. The TensorRT repeat
+      records 329 hits (317 C/C++, 12 CUDA), zero misses/errors and one uncached internal step.
+      Raw controls remain under `logs/test-results/plugin-proof-nvidia-arm64-media-1/`.
+      Full new-source preflight/CI, corrected ARM64 media/android recovery, both NVIDIA runtime
+      wrappers and their six-consumer receipts on one final index remain open, as does GPU inference.
+      These isolated controls do not prove a rebuilt media image, final wrapper or remote cache.
       **Windows, owner 2026-11-08 ("Windows sofort komplett"): steps 2 and 4 landed in source together.** CUDA is the
       plugin build, the in-tree TensorRT EP is gone, and `Build-OrtTensorRtEpFromSource.ps1` builds the TensorRT plugin
       with SHA256-pinned seeds ([windows-cross-builds.md](docs/windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps)).

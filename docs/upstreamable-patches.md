@@ -42,6 +42,7 @@ the branch you intend to target before filing.
 | 3 | [onnxruntime-genai: riscv64 target](#3-onnxruntime-genai-riscv64-is-not-a-known-target-platform) | onnxruntime-genai | **A** | ★★★ |
 | 24 | [onnxruntime: MIGraphX takes GridSample](#24-onnxruntime-the-migraphx-provider-leaves-gridsample-on-the-cpu) | onnxruntime | **A** | ★★★ |
 | 25 | [onnxruntime: MIGraphX refuses a strided output](#25-onnxruntime-the-migraphx-provider-binds-a-strided-output-onto-a-dense-buffer) | onnxruntime | **A** (issue + guard) | ★★★ |
+| 26 | [onnxruntime: joined CUDA standard options](#26-onnxruntime-joined-cuda-standard-options-for-sccache) | onnxruntime / sccache | **B** (parser compatibility) | ★★ |
 | 23 | [~~onnxruntime-genai: ORT v1.31.0's model-package table~~](#23-onnxruntime-genai-ort-v1310-moved-the-model-package-entries-out-of-the-experimental-api--already-fixed-upstream) | onnxruntime-genai | **✔** | ★★★ |
 | 4 | [libcamera: missing libtiff dependency](#4-libcamera-apps_lib-uses-libtiff-but-does-not-depend-on-it) | libcamera | **A** | ★★ |
 | 5 | [GStreamer: lame probe ignores the library](#5-gstreamer-the-lame-probe-checks-the-header-and-ignores-the-library) | gst-plugins-good | **A** | ★★ |
@@ -910,6 +911,27 @@ compile the subgraph with standard outputs.
 
 **File as an issue with the guard as the first PR.** The report carries the model, the
 partition's `.mxr` and the emulation.
+
+---
+
+## 26. onnxruntime: joined CUDA standard options for sccache
+
+`linux/scripts/patches/onnxruntime/003-cuda-standard-sccache.patch` applies through
+`apply_ort_gpu_source_patches` to **v1.31.1**. Both branches of
+`cmake/onnxruntime_providers_cuda_plugin.cmake` use `SHELL:--std c++20`; the pinned
+sccache parser treats the value as another input. The patch changes only those
+two options to `SHELL:-std=c++20`, retaining warnings and architecture selection.
+A postcondition refuses missing, extra or remaining separated forms before
+configuration. The Windows builder normalizes the same source through its patch API.
+
+**B:** a cache-parser compatibility fix, not an nvcc compilation defect. The
+bounded real control reproduces uncached `multiple input files`; its patched
+repeat hits 12 CUDA/PTX/CUBIN/device-code subcompilations with zero cache errors
+and one uncached internal step. Git and tarball fixtures prove source bytes and
+idempotence. Full CUDA-core/remote repeats and GPU execution remain separate.
+See [the measured limits](build-cache-tiers.md#nvcc--hipcc). Before filing, check
+both upstreams for equivalent work and decide whether to teach sccache the long
+alias or submit the simpler ORT argument form; no upstream submission is implied.
 
 ---
 

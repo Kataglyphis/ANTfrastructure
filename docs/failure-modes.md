@@ -54,6 +54,31 @@ SHA-pinned protobuf 21.12 input plus a native RC/C++ control pass. These control
 do not prove the complete TensorRT plugin, the CUDA repeat or GPU inference.
 See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
 
+## ARM64 TensorRT nvcc rejects `--target=aarch64-linux-gnu`
+
+Linux run `20261109-102131-e69f48d7` selected target CXX but published CUDAHOSTCXX
+from native g++ first. CMake 4.4.5 prefers that environment setting over the later
+host-compiler define. Call target setup before `cuda_cross_load`, and stop on
+setup failure. Real compiler controls reproduce the old failure and fixed
+AArch64 output; the [plugin build](linux-accelerator-images.md#the-plugin-tensorrt-ep)
+still needs its full image and consumer proofs.
+
+## CUDA sccache repeats report `multiple input files`
+
+ORT's separated `SHELL:--std c++20` reaches the pinned parser as another input.
+Keep both source branches joined through `003-cuda-standard-sccache.patch` and
+retain the source-drift postcondition. A private real replay proves the old
+refusal and 12 corrected subcompilation hits; one internal step stays uncached.
+See [cache measurements and limits](build-cache-tiers.md#nvcc--hipcc).
+
+## A cross-built plugin passes closure despite `ldd: not a dynamic executable`
+
+The old helper only searched stdout for `not found`, discarding ldd's failed
+status and stderr. A native ldd cannot grade the ARM64 TensorRT module.
+Retain inspector failures and use the target loader under bounded QEMU with
+the explicit chain and SDK search paths. This lists dependencies without
+initializing the plugin; see [the closure scope](linux-accelerator-images.md#the-plugin-tensorrt-ep).
+
 ## TensorRT plugin reports throws with exceptions disabled
 
 The full Windows NVIDIA run at `93019e36` compiled protobuf's resources, then

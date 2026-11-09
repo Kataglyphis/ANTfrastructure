@@ -108,6 +108,9 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Its protobuf seed validates every C/C++ option argument, including mixed scoped inputs; none may reach rc.exe or its cmcldeps preprocessor.
    Shared plugin C++ flags retain /EHsc because the ORT C++ API throws.
    CUDA standard options stay joined so sccache does not parse the value as another input.
+   Linux ORT patches both CUDA option branches and refuses source drift before configuration.
+   TensorRT cross builds select target CXX before CUDAHOSTCXX is published; failed setup stops the build.
+   Plugin closure checks retain inspector failures; SBSA TensorRT uses the target loader under bounded QEMU, not native ldd.
    Copied `35-build-migraphx-plugin-ep.sh` and `37-build-tensorrt-plugin-ep.sh` carry `plugin-ep-exports.sh` and `plugin-ep-seeds.txt` beside them; the media verify stage reads the export probe from the mounted ORT build directory, so keep that directory mount on the GPU RUN.
    G2 reads `onnxruntime_ep_*` modules and `Microsoft.ML.OnnxRuntime.EP.*` directories as ORT consumers, never as ORT.
    AMD Python bundles carry the plugin MIGraphX EP beside the chain core and prove it against the image's module; their self-test proves registration, not availability.

@@ -14,6 +14,33 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-09 — repair Linux TensorRT cross builds and CUDA cache parsing
+
+- NVIDIA ARM64 run `20261109-102131-e69f48d7` ended with exit 1 at 17:02:20Z.
+  Both CUDA Python variants and QNN's module/export/HTP checks passed; TensorRT
+  then configured nvcc with native g++ because CUDAHOSTCXX captured CXX before
+  target setup. Select target CXX first and retain setup failures. The real old
+  CMake/NVCC control fails; the fixed control compiles an AArch64 object with all
+  five production GPU architectures.
+- Native ldd returned 1 for the ARM module while the old closure gate passed.
+  Closure checks now retain transport errors; TensorRT's SBSA check runs the
+  target loader under bounded QEMU with explicit chain and target SDK paths.
+  The complete isolated TensorRT build passes with both exports, five original
+  licence texts and G2. Its repeat records 329 cache hits (317 C/C++, 12 CUDA
+  subcompilations), zero misses/errors and one uncached internal compilation.
+  This uses the target CPU ORT core; final GPU media/runtime and inference
+  remain separate required proofs. The existing TensorRT-major mutation now
+  targets the revised guard and tests a resolved closure linked to the wrong
+  major, preserving its rejection independently of inspector failure.
+- Linux ORT applies `003-cuda-standard-sccache.patch` through the existing patch
+  driver to both CUDA source branches, then rejects partial or drifted options
+  before configuration. Tarball/Git controls keep raw bytes and isolated newline policy.
+  A private-cache NVCC replay reproduces `multiple input files` with the old
+  separated option; the joined option yields 12 repeat hits across CUDA,
+  device code, PTX and CUBIN, zero cache errors and one uncached internal step.
+  The new guards have 17 biting mutations; no full CUDA-core or remote-cache
+  repeat, final image or consumer receipt is inferred from these controls.
+
 ## 2026-11-09 — keep TensorRT protobuf C++ flags out of rc.exe
 
 - The TensorRT plugin build now scopes protobuf 21.12's compiler options to
