@@ -23,6 +23,15 @@
   unconditional ordering; native compilation remains a separate chain result.
   Mixed already-scoped blocks now reject appended bare, quoted or unknown
   arguments, and unknown original options fail before rewriting input bytes.
+  The real protobuf warning block exposed closing parentheses inside comments
+  that truncated the old matcher. Comments are now preserved as text, and all
+  result checks run before writing. LF/CRLF, commented-command and atomic
+  refusal controls pass; all twelve affected patch mutations bite. File-byte
+  assertions share `Assert-FileUnchanged`, with separate callback, changed-byte
+  and literal-path fault controls. The actual pinned
+  input and native RC/C++ before/after controls pass; full plugin acceptance
+  remains separate. ROCm guidance also reflects independent NVIDIA tags and
+  supported-base GPU limits instead of treating old build skew as current.
 - Shared Windows plugin C++ flags retain `/EHsc`. Replacing the CMake flag
   string had dropped the platform exception default and made TensorRT plugin
   sources fail with `cannot use throw with exceptions disabled`. The policy
@@ -34,6 +43,9 @@
   every warning and all five GPU targets, reproduces that refusal and then
   records CUDA, PTX, CUBIN and device-code hits with the joined option. This
   local one-kernel control does not replace the full plugin/remote repeat.
+  The later whole-plugin pass at `6737933a` records real CUDA/CUBIN hits and
+  zero rejected cache calls; its product run then stops at the protobuf
+  comment defect above. This supplies no final image or forced-repeat receipt.
   Source fixtures check both branches, exact tokens, atomic drift refusal and
   preserved line endings; all four new mutations bite. File I/O uses the
   canonical patch API, and source fixtures share the harness regex counter

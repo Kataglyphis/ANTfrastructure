@@ -81,6 +81,19 @@ function Assert-MatchCount {
     Assert-Equal $Expected ([regex]::Matches($Actual, $Pattern).Count) $Message
 }
 
+function Assert-FileUnchanged {
+    # Distinct local names preserve the callback's caller-visible bindings.
+    param(
+        [Parameter(Mandatory)][Alias('Path')][string]$FileUnchangedPath,
+        [Parameter(Mandatory)][Alias('Action')][scriptblock]$FileUnchangedAction,
+        [Alias('Reason')][string]$FileUnchangedReason = ''
+    )
+    $fileUnchangedBeforeHash = (Get-FileHash -LiteralPath $FileUnchangedPath -Algorithm SHA256 -ErrorAction Stop).Hash
+    $null = & $FileUnchangedAction
+    Assert-Equal $fileUnchangedBeforeHash (Get-FileHash -LiteralPath $FileUnchangedPath -Algorithm SHA256 -ErrorAction Stop).Hash $FileUnchangedReason
+}
+Export-ModuleMember -Function Assert-FileUnchanged
+
 function Assert-TestSingleFindingCases {
     param([Parameter(Mandatory)][object[]]$Cases, [Parameter(Mandatory)][scriptblock]$Exercise, [string]$Message = 'finding')
     foreach ($case in $Cases) {

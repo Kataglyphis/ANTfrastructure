@@ -6,11 +6,13 @@
 turn on ROCm and AMD-GPU features. Every one of them is gated on
 `(Get-GpuEnvironment).HasRocm`: the cpu and nvidia lanes keep their flags and outputs.
 
-**Nothing on this page has been seen executing on a GPU.** Windows containers get
-DirectX only, and on this host GPU passthrough is additionally blocked by the
-26100/26200 build skew ([windows-build-resources.md](windows-build-resources.md)). Every
-image check below is GPU-less: presence, linkage, listings, compile-only. GPU proof
-belongs on the bare host.
+**Nothing on this page has been seen executing on a GPU.** Microsoft supports
+DirectX acceleration only on supported Windows container bases; Server Core and
+Nano Server are excluded. Matching host/image builds alone do not establish GPU
+support. The earlier 26100/26200 experiment is historical, not a current host probe
+([windows-build-resources.md](windows-build-resources.md)). Every image check below
+is GPU-less: presence, linkage, listings, compile-only. HIP execution and the GPU
+checks described here still need the bare host.
 
 ## What the rocm lane enables
 
@@ -65,9 +67,9 @@ same configure/build flags as before.
 - `bk-windows-torch-rocm`
 - `bk-winamd64-rocm`
 
-A rocm run therefore never overwrites a default image. The cpu and nvidia tags have not moved;
-nvidia still shares the default names. A golden table in `Driver.Variant.Tests.ps1` locks both
-lanes on amd64 and arm64.
+ROCm and NVIDIA use separate `-rocm` and `-nvidia` tags; the CPU lane retains the
+default names. A golden table in `Driver.Variant.Tests.ps1` locks the mappings and
+supported architecture combinations. ROCm remains amd64-only.
 
 The old `bk-windows-rocm` tag is orphaned: remove it by hand (admin `nerdctl --namespace
 buildkit rmi`). Rocm runs from before this change wrote CPU-identical toolchain and media under
@@ -310,8 +312,8 @@ the missing registration.
 **Licences.** See [Redistribution](#redistribution) below.
 
 **Not proven by anything here:** that HIP code runs. Windows containers get DirectX/DirectML
-only, so a GPU check needs the bare host (Windows 11 25H2, with the RX 9070 XT re-enabled
-outside any build window):
+only on supported container bases, so the HIP checks below need a native Windows
+boot with the RX 9070 XT enabled after the live Linux build window:
 - `hipInfo`;
 - the family's `-tests` tarball;
 - a torch matmul compared against the CPU. This one is required, because upstream TheRock#8379
@@ -520,7 +522,7 @@ The cpu and nvidia lanes are configured exactly as before.
 - **Runtime comes from the host driver.** `amfrt64.dll` belongs to the AMD Adrenalin driver and is never shipped. FFmpeg's Windows `dlopen` searches only the exe directory and System32 (`compat/w32dlfcn.h:134-138`), so PATH does not help.
 - **Inside a container: UNVERIFIED.**
   - Microsoft supports only DirectX in Windows containers and lists Server Core images as not supported for GPU acceleration.
-  - On this host, container GPU passthrough is blocked by the 26100 image vs 26200 host build skew (docs/windows-build-resources.md).
+  - The earlier 26100/26200 experiment exposed no hardware adapter; matching builds would not make this Server Core base supported ([windows-build-resources.md](windows-build-resources.md)).
   - The only community recipe copies the AMF DLLs from `HostDriverStore` into System32, and reports no encode test.
   - Verify on the bare host with the exported `C:\runtime\ffmpeg` instead: `ffmpeg -f lavfi -i testsrc2 -c:v hevc_amf -f null -`.
 - **Driver floors:** 10-bit encode needs AMF runtime 1.4.32 or newer (driver 23.30); the decoder's bit-depth detection expects 1.4.36. Per-codec coverage on RX 9070 XT (gfx1201) is UNVERIFIED.
@@ -612,7 +614,7 @@ OpenCL builds against OpenCV's bundled `3rdparty/include/opencl/1.2` headers wit
 - **HIP for `cv::cuda`/`cudev` and HIP-in-UMat.** Only unmerged upstream PRs exist, validated on Linux only: opencv#29285/#29527 with contrib #4147/#4178, and opencv#29372.
 - **MIGraphX dnn backend** (opencv#29726). It is `NOT UNIX`-guarded, and no Windows MIGraphX exists.
 - **RPP HAL** (opencv#29505). Closed unmerged.
-- **GPU inside the container.** Microsoft supports only DirectX in Windows containers, and on this host the 26100/26200 build skew blocks GPU passthrough. Measure the OpenCL T-API on the bare host or on a 26100 host. See [windows-build-resources.md](windows-build-resources.md).
+- **GPU inside the container.** Microsoft supports DirectX acceleration on supported bases and excludes Server Core and Nano Server. The historical 26100/26200 experiment does not prove current GPU access. Measure the OpenCL T-API on the bare host; see [windows-build-resources.md](windows-build-resources.md).
 
 Upstream references, all at the 5.0.0 tag: `cmake/OpenCVDetectOpenCL.cmake`, `modules/core/src/opencl/runtime/opencl_core.cpp`, `CMakeLists.txt:333-344`, and TheRock's `win-tarball-list` (`bin/OpenCL.dll`, `bin/amdocl64.dll`; no `clAmd*`).
 
@@ -709,7 +711,7 @@ On cpu and nvidia, the Bazel command stays `build //runtime/engine:litert_lm_mai
 - `--help` lists `--backend`.
 
 **Limits.**
-- **No GPU run has been proven.** GPU in a Windows container needs process isolation plus `--device class/5B45201D-F2F2-4F3B-85BB-30FF1F953599`. That passthrough is blocked on this host by the build skew (`docs/windows-build-resources.md`). Microsoft also lists Server Core base images as unsupported for GPU acceleration.
+- **No GPU run has been proven.** Microsoft requires a supported base, process isolation and the DirectX device class; Server Core and Nano Server are excluded. Those flags and matching build numbers do not prove this image can use a GPU ([windows-build-resources.md](windows-build-resources.md)).
 - On the bare host, any D3D12 driver (AMD, NVIDIA or Intel) should work; upstream supports that path.
 - It is unverified whether Dawn accepts the WARP adapter a container can see.
 - Upstream `--backend` defaults to `gpu`. On the cpu and nvidia images, pass `--backend=cpu`.
@@ -877,7 +879,7 @@ Measured 2026-10-07 at b11472 in a `:winamd64` container with TheRock 10.1.0 ins
 - `llama-cli --list-devices` exits 0 in 0.2 s with `ggml_cuda_init: failed to initialize ROCm: no ROCm-capable device is detected` and `Available devices: (none)`.
 
 **Limits.**
-- **Nothing proves a kernel runs.** Microsoft accelerates only DirectX inside Windows containers, and GPU passthrough on this host is blocked by the 26100/26200 build skew (see [windows-build-resources.md](windows-build-resources.md)).
+- **Nothing proves a kernel runs.** Microsoft documents DirectX acceleration on supported Windows container bases and excludes Server Core and Nano Server. HIP execution needs the bare host; the earlier 26100/26200 experiment is historical ([windows-build-resources.md](windows-build-resources.md)).
 - **RDNA4 only.** `ggml-hip.dll` carries device code for gfx1200 and gfx1201 alone, the GPUs the gfx120X-all tarball's rocBLAS/hipBLASLt serve. Any other AMD GPU (for example a gfx1036 iGPU) takes the Vulkan build.
 - **On a bare host the driver's runtime wins.** With no bundled copy, the loader takes Adrenalin's System32 `amdhip64_7.dll` before TheRock's on PATH (llama.cpp#26929). The image has no System32 copy. Whether a given driver's runtime serves TheRock 10.1's hipBLAS is unproven.
 - **Driver floor unknown.** The minimum Adrenalin driver for TheRock 10.1.0's HIP 7.16 runtime is not known.

@@ -145,6 +145,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows source-copy mutation suites share AST loop selection and fixture execution; callers keep their source lists and assertions.
    Windows Slang consumers snapshot pinned WGSL before compilation and use the shared parity assertion for every fresh manifest output after CRLF/LF normalization.
    Windows suites share `New-TestDir -Prefix` and `Assert-Throws -MessagePattern`; suite-scoped directories retain their `AfterAll` cleanup.
+   Fixture byte-preservation checks share `Assert-FileUnchanged`; retain caller bindings and propagate operation exceptions.
    Fixture cleanup uses `Remove-TestDir` with literal paths; bracketed diagnostic prefixes must leave no temporary roots.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
    CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.
@@ -652,6 +653,8 @@ The Windows `-Gpu` lane downloads the pinned TensorRT zip and checks its SHA256;
 skip. Layout and rules: [`windows-cross-builds.md`](docs/windows-cross-builds.md).
 ORT's CUDA and TensorRT EPs are plugins on that lane (CON233); never restore `USE_TENSORRT` or the
 provider-bridge CUDA EP: [the plugin EPs](docs/windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
+TensorRT's protobuf repair preserves comments and treats their parentheses as text.
+Validate all four scoped blocks and every option before writing; unsupported input remains fatal.
 
 ### QNN / Qualcomm AI Engine Direct Setup (Optional, #121)
 

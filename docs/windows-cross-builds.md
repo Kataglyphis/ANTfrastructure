@@ -1192,11 +1192,16 @@ Owner decision 2026-11-08 (BACKLOG CON233): the nvidia lane builds no in-tree CU
   Before configuration, the pinned protobuf seed's compiler options are scoped to
   C/C++, preserving `/bigobj`, UTF-8 and warning flags while keeping them out of
   `rc.exe` and its `cmcldeps` preprocessor. The required patch verifies all four
-  option blocks, rejects remaining arguments in already-scoped blocks and fails
-  on missing or changed inputs. Definitions and the
+  option blocks and rejects remaining arguments in already-scoped blocks. Parentheses
+  and example commands inside line comments remain text; comments are preserved and
+  the complete result is checked before writing. Missing or changed inputs fail
+  without modifying the original bytes. Definitions and the
   original MSVC-only resource rule remain unchanged. Shared plugin C++ flags
   also retain `/EHsc`, required by the throwing ORT C++ API when the warning
-  policy replaces CMake's platform flag defaults.
+  policy replaces CMake's platform flag defaults. The actual pinned protobuf input
+  passes LF/CRLF and idempotence checks. A small native CMake/clang-cl/rc.exe control
+  reproduces RC1106 before repair and builds an x64 DLL afterward; it does not
+  establish the complete TensorRT plugin or GPU execution.
 - The stage ships `C:\runtime\lib\onnxruntime-ep-tensorrt` (`ORT_TENSORRT_EP_ROOT`): the DLL,
   `licenses\` with the plugin's and each statically linked seed's texts, and
   `provenance\onnxruntime-ep-tensorrt.json`. No TensorRT DLL is copied beside it: the plugin's

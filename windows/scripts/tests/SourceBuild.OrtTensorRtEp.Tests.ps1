@@ -74,9 +74,11 @@ function Get-TrtProtobufRcFixture {
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   add_definitions(/MP)
 endif()
+# add_definitions(/comment-only-option) is not a command
 add_definitions(/utf-8)
 add_definitions(
-  /wd4065 # /bigobj in a comment is not a compiler argument
+  /wd4065 # /bigobj in a comment (not a compiler argument)
+  /wd4355 # compiler option after the comment closing parenthesis
 )
 add_definitions(/bigobj)
 add_definitions(-DPROTOBUF_FIXTURE)
@@ -157,18 +159,22 @@ Describe 'Build-OrtTensorRtEpFromSource.ps1' {
 
     It 'scopes every protobuf compiler option to C/C++ and preserves definitions and the MSVC-only RC block (mutation)' {
         Invoke-InTestDir { param($dir)
-            Write-TestFileTree -Root $dir -Files @{ 'CMakeLists.txt' = (Get-TrtProtobufRcFixture) }
-            Repair-OrtTensorRtProtobufRc -SeedRoot $dir
-            $fixed = [IO.File]::ReadAllText((Join-Path $dir 'CMakeLists.txt'))
-            $literals = @(foreach ($option in 'MP', 'utf-8', 'wd4065', 'bigobj') { '"$<$<COMPILE_LANGUAGE:C,CXX>:/{0}>"' -f $option })
-            Assert-TestScriptContains -ScriptPath (Join-Path $dir 'CMakeLists.txt') -Literal ($literals + @(
-                'add_definitions(-DPROTOBUF_FIXTURE)', 'if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")',
-                'set(CMAKE_RC_COMPILE_OBJECT "<CMAKE_RC_COMPILER> ${rc_flags} <DEFINES> /fo<OBJECT> <SOURCE>")'
-            )) -ReasonPrefix 'retained protobuf compiler/resource contract'
-            Assert-False ($fixed -match 'add_definitions\(\s*/') 'no compiler flag reaches the resource language'
-            $before = (Get-FileHash -LiteralPath (Join-Path $dir 'CMakeLists.txt')).Hash
-            Repair-OrtTensorRtProtobufRc -SeedRoot $dir
-            Assert-Equal $before (Get-FileHash -LiteralPath (Join-Path $dir 'CMakeLists.txt')).Hash 'already-fixed source is byte-stable'
+            foreach ($lineEnding in @("`n", "`r`n")) {
+                Write-TestFileTree -Root $dir -Files @{ 'CMakeLists.txt' = (Get-TrtProtobufRcFixture).Replace("`r`n", "`n").Replace("`n", $lineEnding) }
+                Repair-OrtTensorRtProtobufRc -SeedRoot $dir
+                $fixed = [IO.File]::ReadAllText((Join-Path $dir 'CMakeLists.txt'))
+                $literals = @(foreach ($option in 'MP', 'utf-8', 'wd4065', 'wd4355', 'bigobj') { '"$<$<COMPILE_LANGUAGE:C,CXX>:/{0}>"' -f $option })
+                Assert-TestScriptContains -ScriptPath (Join-Path $dir 'CMakeLists.txt') -Literal ($literals + @(
+                    'add_definitions(-DPROTOBUF_FIXTURE)', 'if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")',
+                    '# /bigobj in a comment (not a compiler argument)',
+                    '# add_definitions(/comment-only-option) is not a command',
+                    'set(CMAKE_RC_COMPILE_OBJECT "<CMAKE_RC_COMPILER> ${rc_flags} <DEFINES> /fo<OBJECT> <SOURCE>")'
+                )) -ReasonPrefix 'retained protobuf compiler/resource contract'
+                Assert-False (($fixed -replace '(?m)#.*$', '') -match 'add_definitions\(\s*/') 'no compiler flag reaches the resource language'
+                Assert-FileUnchanged -Path (Join-Path $dir 'CMakeLists.txt') -Action {
+                    Repair-OrtTensorRtProtobufRc -SeedRoot $dir
+                } -Reason 'already-fixed source is byte-stable'
+            }
         }
     }
 
@@ -179,14 +185,14 @@ Describe 'Build-OrtTensorRtEpFromSource.ps1' {
                 'add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>")',
                 (Get-TrtProtobufRcFixture).Replace('/bigobj', '/unexpected-option'),
                 (Get-TrtProtobufRcFixture).Replace('/wd4065', '/wd4065 /unexpected-option'),
+                (Get-TrtProtobufRcFixture).Replace('/wd4355', '/wd4355 /unexpected-option'),
                 (Get-TrtProtobufRcFixture).Replace('add_definitions(/bigobj)', '')
             )) {
                 Write-TestFileTree -Root $dir -Files @{ 'CMakeLists.txt' = $text }
-                $before = (Get-FileHash -LiteralPath (Join-Path $dir 'CMakeLists.txt')).Hash
-                Assert-Throws { Repair-OrtTensorRtProtobufRc -SeedRoot $dir } -MessagePattern 'protobuf.*(option|scope)'
-                if ($text.Contains('/unexpected-option')) {
-                    Assert-Equal $before (Get-FileHash -LiteralPath (Join-Path $dir 'CMakeLists.txt')).Hash 'unknown options fail before rewriting the input'
-                }
+                $pattern = if ($text.Contains('/unexpected-option')) { 'Unexpected protobuf compiler option: /unexpected-option' } else { 'protobuf.*scope' }
+                Assert-FileUnchanged -Path (Join-Path $dir 'CMakeLists.txt') -Action {
+                    Assert-Throws { Repair-OrtTensorRtProtobufRc -SeedRoot $dir } -MessagePattern $pattern
+                } -Reason 'drift fails before rewriting the input'
             }
         }
     }

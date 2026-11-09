@@ -37,6 +37,23 @@ The later cb2b8db6 device run42525202720 passes onnxinference; its sole remainin
 failure is the older published IREE twin. Use the digest acceptance input in
 `windows-arm64.yml` to grade a newly built image before changing the public tag.
 
+## TensorRT protobuf compiler-option scope is not verified
+
+The full NVIDIA run at `6737933a` completed ONNX CUDA compilation, both wheels
+and QNN staging, then stopped before TensorRT configuration. The scope gate
+correctly found unprotected protobuf warning arguments. The old `[^)]*` block
+matcher ended at the closing parenthesis in the `/wd4334` comment, leaving later
+options outside the rewrite. Simplified fixtures had missed that input shape.
+
+The repair consumes complete line comments before matching a command's closing
+parenthesis, preserves their text and ignores commented command examples. It
+validates all four blocks and every argument before the shared patch API writes
+the file; rejected input remains unchanged. Fixtures cover LF/CRLF, later flags,
+mixed arguments and comments. Twelve affected mutations bite, and the actual
+SHA-pinned protobuf 21.12 input plus a native RC/C++ control pass. These controls
+do not prove the complete TensorRT plugin, the CUDA repeat or GPU inference.
+See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
+
 ## TensorRT plugin reports throws with exceptions disabled
 
 The full Windows NVIDIA run at `93019e36` compiled protobuf's resources, then

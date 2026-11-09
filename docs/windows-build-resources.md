@@ -421,6 +421,45 @@ RUN reported 4,233 compiler requests served by 4,233 WebDAV hits, zero misses,
 zero cache errors and zero compilation failures. That is one observed stats
 block, recorded separately from the still-required CUDA-plugin repeat proof.
 
+**Measured NVIDIA attempt at `6737933a`, 2026-11-09.** The ONNX CUDA-plugin
+compile/install and both wheels complete, then QNN builds and stages. TensorRT
+stops before configuration because the old protobuf patch truncates a warning
+block at a comment parenthesis. The required scope gate refuses the result.
+The later text repair and native RC control do not turn that product attempt
+into a pass; the complete chain, forced CUDA repeat and native GPU checks keep
+their separate acceptance requirements.
+
+| Stage | Cache evidence in this attempt | Coverage limit |
+| --- | --- | --- |
+| base | Reused layer; no fresh compiler counters | Cargo/tool acquisition gaps stay in CON229 |
+| NVIDIA SDK | Reused installer/runtime layers | Acquisition is not compiler-cache proof |
+| toolchain CPython | GIL 143 s, free-threaded 102 s; whole step 257 s | No direct sccache mounts or measured hit rate |
+| patched LLVM | One block: 4,233 C/C++ hits, 0 misses/errors | This does not prove CUDA coverage |
+| media-core ONNX | One block: 1,656 C/C++, 299 CUDA/nvcc and 616 CUBIN/ptxas hits; 3,733 misses | Initial PTX/cudafe++ hits are not reported |
+| media-core QNN | Build and staging pass | Later RUN counters are cumulative, not independent QNN totals |
+| media-core TensorRT | Refused before configuration | No full plugin compile or cache result |
+| media-core FFmpeg/PyAV | Not reached | Codec/PyAV bypasses remain dated CON229 gaps |
+| media-core OpenCV | Not reached | CUDA launcher wiring alone is not a measurement |
+| media-core HailoRT | Not reached | No fresh compiler counters |
+| media-core GenAI | Not reached | Its CUDA/Rust coverage gaps remain open |
+| media-litert | Not reached | No fresh Bazel/sccache result |
+| media-tvm | Not reached | No fresh TVM/IREE/wheel measurement |
+| merge | Not reached | Configure probes and Rust cdylibs keep their own limits |
+| torch | Not reached | App/sdist and ROCm source builds need separate accounting |
+| final/smoke | Not reached | No final image or runtime acceptance |
+| ROCm SDK/MIGraphX/llama | Outside this NVIDIA attempt | No ROCm compiler or hardware result is inferred |
+
+The ONNX block reports 2,261 top-level requests and 6,909 executed inner requests;
+these are different counters and must not be added. It contains 2,571 hits, 3,733
+misses, 605 non-cacheable compilations and 0 non-cacheable calls, compilation
+failures, forced recaches or cache/read/write errors. Retain the 605 raw
+compilations without assigning a cause. L0 supplies the 2,571 hits; L0 and L1
+each report 3,733 writes with 0 write failures. A configured second level or a
+successful write is not an independently observed second-level read hit.
+The free-threaded wheel loads with GIL disabled and carries the GIL wheel's
+DLL bytes; neither import nor byte equality is GPU inference.
+
+
 Historical fixes and the canary bar before changing the pin:
 
 - **CUDA 13.3's `--simt-only` dryrun mis-parse.** Released sccache decomposes

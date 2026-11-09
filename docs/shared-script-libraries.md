@@ -1559,6 +1559,12 @@ prefix and creates a unique directory. A suite-scoped fixture keeps its existing
 failures. `Assert-Throws -MessagePattern` checks both the exception and the
 expected diagnostic instead of copying a Boolean and catch block.
 
+`Assert-FileUnchanged -Path -Action` compares exact SHA256 file bytes around an
+operation. It uses literal paths, retains callback context and propagates
+exceptions from the operation. It neither restores modified files nor proves that their
+contents are correct; local controls cover callback execution, changed bytes
+and bracketed paths.
+
 The harness fixtures exercise directory creation, prefixes, cleanup and exception
 matching, with mutation proofs for allocation.
 

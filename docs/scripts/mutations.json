@@ -37115,8 +37115,8 @@
  {
   "id": "lib.trt-ep-protobuf-rc-postcondition",
   "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
-  "find": "        [regex]::Matches($text, 'add_compile_options\\(\\s*\"\\$<\\$<COMPILE_LANGUAGE:C,CXX>:/').Count -eq 4 -and\n            $remaining -notmatch 'add_compile_options\\(\\s*[^)\\s]' -and\n            $text -notmatch 'add_definitions\\(\\s*/' -and\n            $text.Contains('add_compile_options(\"$<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>\")')",
-  "replace": "        $true",
+  "find": "        $scoped = [regex]::Matches($uncommented, 'add_compile_options\\(\\s*\"\\$<\\$<COMPILE_LANGUAGE:C,CXX>:/').Count -eq 4 -and\n            $remaining -notmatch 'add_compile_options\\(\\s*[^)\\s]' -and\n            $uncommented -notmatch 'add_definitions\\(\\s*/' -and\n            $uncommented.Contains('add_compile_options(\"$<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>\")')",
+  "replace": "        $scoped = $true",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
   "why": "missing or partial compiler-option scope must fail before TensorRT configuration"
  },
@@ -37223,5 +37223,61 @@
   "replace": "[regex]::Matches($Actual, [regex]::Escape($Pattern)).Count",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.TextFixtures.Tests.ps1",
   "why": "Callers select regular expressions, so the shared counter must not silently treat them as literals."
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-comment-parenthesis",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "        $pattern = '(?m)^(?<indent>[ \\t]*)add_definitions\\((?<options>\\s*/(?:(?>#[^\\r\\n]*)|[^#)])*)\\)'",
+  "replace": "        $pattern = '(?m)^(?<indent>[ \\t]*)add_definitions\\((?<options>\\s*/[^)]*)\\)'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "A closing parenthesis inside a protobuf warning comment cannot terminate the real compiler-option block."
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-comment-bytes",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "                if ($option.Groups['comment'].Success) { return $option.Value }",
+  "replace": "                if ($option.Groups['comment'].Success) { return $option.Value.Replace('/bigobj', '/lost-comment') }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "Compiler-like text inside comments remains unchanged while the real options are language-scoped."
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-comment-command",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "^(?<indent>[ \\t]*)add_definitions",
+  "replace": "(?<indent>[ \\t]*)add_definitions",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "A commented add_definitions example is not a compiler command and must not be rewritten or rejected as an option."
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-atomic-refusal",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "        if (-not $scoped) { throw 'TensorRT protobuf compiler-option scope is not verified.' }",
+  "replace": "        if (-not $scoped) { [IO.File]::WriteAllText($path, $text); throw 'TensorRT protobuf compiler-option scope is not verified.' }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "A rejected partial option layout leaves the original bytes unchanged, including when some valid blocks could be transformed."
+ },
+ {
+  "id": "lib.harness-file-unchanged-comparison",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "    Assert-Equal $fileUnchangedBeforeHash (Get-FileHash -LiteralPath $FileUnchangedPath -Algorithm SHA256 -ErrorAction Stop).Hash $FileUnchangedReason",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.FileUnchanged.Tests.ps1",
+  "why": "Changed source bytes must fail even when the operation itself succeeds."
+ },
+ {
+  "id": "lib.harness-file-unchanged-operation",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "    $null = & $FileUnchangedAction",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.FileUnchanged.Tests.ps1",
+  "why": "The shared byte assertion executes its operation exactly once and preserves operation failures."
+ },
+ {
+  "id": "lib.harness-file-unchanged-literal-path",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "function Assert-FileUnchanged {\n    # Distinct local names preserve the callback's caller-visible bindings.\n    param(\n        [Parameter(Mandatory)][Alias('Path')][string]$FileUnchangedPath,\n        [Parameter(Mandatory)][Alias('Action')][scriptblock]$FileUnchangedAction,\n        [Alias('Reason')][string]$FileUnchangedReason = ''\n    )\n    $fileUnchangedBeforeHash = (Get-FileHash -LiteralPath $FileUnchangedPath -Algorithm SHA256 -ErrorAction Stop).Hash\n    $null = & $FileUnchangedAction\n    Assert-Equal $fileUnchangedBeforeHash (Get-FileHash -LiteralPath $FileUnchangedPath -Algorithm SHA256 -ErrorAction Stop).Hash $FileUnchangedReason\n}",
+  "replace": "function Assert-FileUnchanged {\n    # Distinct local names preserve the callback's caller-visible bindings.\n    param(\n        [Parameter(Mandatory)][Alias('Path')][string]$FileUnchangedPath,\n        [Parameter(Mandatory)][Alias('Action')][scriptblock]$FileUnchangedAction,\n        [Alias('Reason')][string]$FileUnchangedReason = ''\n    )\n    $fileUnchangedBeforeHash = (Get-FileHash -Path $FileUnchangedPath -Algorithm SHA256 -ErrorAction Stop).Hash\n    $null = & $FileUnchangedAction\n    Assert-Equal $fileUnchangedBeforeHash (Get-FileHash -Path $FileUnchangedPath -Algorithm SHA256 -ErrorAction Stop).Hash $FileUnchangedReason\n}",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.FileUnchanged.Tests.ps1",
+  "why": "Bracketed fixture names identify literal files; an unchanged wildcard sibling cannot mask changed bytes."
  }
 ]
