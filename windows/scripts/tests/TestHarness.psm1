@@ -926,14 +926,21 @@ function Get-TestAstAncestor {
 
 function Assert-TestAstCommand {
     param([Parameter(Mandatory)][AllowEmptyCollection()][Management.Automation.Language.CommandAst[]]$Command,
-        [Parameter(Mandatory)][string]$Text, [string]$Assignment = '')
+        [Parameter(Mandatory)][string]$Text, [string]$Assignment = '', [switch]$Unconditional)
     Assert-Equal 1 $Command.Count "one call matching $Text"
+    if ($Unconditional) { Assert-True (Test-TestAstUnconditional -Node $Command[0]) "unconditional call matching $Text" }
     Assert-Equal $Text ($Command[0].Extent.Text -replace '\s*`\r?\n\s*', ' ') 'literal command wiring'
     if ($Assignment) {
         $parent = Get-TestAstAncestor -Node $Command[0] -Type ([Management.Automation.Language.AssignmentStatementAst]) -First
         Assert-NotNull $parent 'the call result must be assigned'
         Assert-Equal $Assignment $parent.Left.Extent.Text 'assignment destination'
     }
+}
+
+function Assert-TestAstOrder {
+    param([Parameter(Mandatory)][Management.Automation.Language.Ast]$Before,
+        [Parameter(Mandatory)][Management.Automation.Language.Ast]$After)
+    Assert-True ($Before.Extent.StartOffset -lt $After.Extent.StartOffset) "source order: $($Before.Extent.Text) before $($After.Extent.Text)"
 }
 
 function Test-TestAstUnconditional {
@@ -960,7 +967,7 @@ function Assert-TestPathState {
 }
 
 Export-ModuleMember -Function Test-TestAstUnconditional, Get-TestRepoText, Assert-TestPathState
-Export-ModuleMember -Function Get-TestAstAncestor, Assert-TestAstCommand, ConvertTo-TestScriptParseResult
+Export-ModuleMember -Function Get-TestAstAncestor, Assert-TestAstCommand, Assert-TestAstOrder, ConvertTo-TestScriptParseResult
 
 function New-TestZipFile {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][Collections.IDictionary]$Member,

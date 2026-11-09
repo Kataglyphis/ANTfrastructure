@@ -21112,7 +21112,7 @@
   "target": "windows/scripts/tests/TestHarness.psm1",
   "find": "    Assert-Equal ([Convert]::ToHexString([Text.Encoding]::ASCII.GetBytes($Expected))) ([Convert]::ToHexString([IO.File]::ReadAllBytes($Path)))",
   "replace": "    $null = $Path",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile logs/code-quality/harness-batch-byte-verdict.json && python3 -c 'import json; d=json.load(open(\"logs/code-quality/harness-batch-byte-verdict.json\")); assert d[\"Total\"] == 45 and d[\"Passed\"] == 45 and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "test": "python3 -c \"import json,subprocess; subprocess.run(['pwsh','-NoProfile','-File','windows/scripts/tests/Invoke-Tests.ps1','-Only','Harness.Fixtures.Tests.ps1','-ResultFile','logs/code-quality/harness-batch-byte-verdict.json'],check=True); d=json.load(open('logs/code-quality/harness-batch-byte-verdict.json',encoding='utf-8-sig')); assert d['Total']==45 and d['Passed']==45 and not d['Failed'] and not d['PesterFailures'] and not d['Skipped']\"",
   "why": "The byte verdict must reject changed caller lines and requested exit codes rather than let writer mutants survive."
  },
  {
@@ -36743,5 +36743,61 @@
   "replace": "",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Build.ExportArm64Modules.Tests.ps1 -ResultFile logs/code-quality/arm64-acceptance-export-mutation.json",
   "why": "the device job must receive the receipt checker beside its exported gate"
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-frontend",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "                '\"$<$<COMPILE_LANGUAGE:C,CXX>:' + $option.Value + '>\"'",
+  "replace": "                '\"' + $option.Value + '\"'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "resource compilation must not inherit protobuf's C/C++ options, while C and C++ retain them"
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-postcondition",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "        [regex]::Matches($text, 'add_compile_options\\(\\s*\"\\$<\\$<COMPILE_LANGUAGE:C,CXX>:/').Count -eq 4 -and\n            $text -notmatch 'add_definitions\\(\\s*/' -and\n            $text.Contains('add_compile_options(\"$<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>\")')",
+  "replace": "        $true",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "missing or partial compiler-option scope must fail before TensorRT configuration"
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-call",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "Repair-OrtTensorRtProtobufRc -SeedRoot $roots['protobuf']\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "the repair must execute against the selected seed before the TensorRT CMake configure"
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-seed",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "Repair-OrtTensorRtProtobufRc -SeedRoot $roots['protobuf']\n",
+  "replace": "Repair-OrtTensorRtProtobufRc -SeedRoot $roots['onnx']\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "patching another FetchContent seed leaves protobuf's resource command broken"
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-unknown-option",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "                if ($option.Value -notmatch '^/(MP|utf-8|wd\\d+|bigobj)$') { throw \"Unexpected protobuf compiler option: $($option.Value)\" }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "a new upstream compiler option requires explicit review while the existing bigobj contract still passes"
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-unconditional",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "Repair-OrtTensorRtProtobufRc -SeedRoot $roots['protobuf']\n",
+  "replace": "if ($true) { Repair-OrtTensorRtProtobufRc -SeedRoot $roots['protobuf'] }\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "the protobuf repair is required, so an enclosing conditional must fail the shared AST assertion"
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-order",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "Repair-OrtTensorRtProtobufRc -SeedRoot $roots['protobuf']\n$epSource = $roots['onnxruntime-ep-tensorrt']\n$declared = Get-OrtTensorRtEpDeclaration -CMakeText ([IO.File]::ReadAllText((Join-Path $epSource 'CMakeLists.txt')))\n$seedGap = @(Get-OrtTensorRtEpSeedGap -Declared $declared -Pin $pins)\nif ($seedGap.Count -gt 0) { throw \"TensorRT plugin EP: FetchContent would download unpinned: $($seedGap -join '; ')\" }\n$ortHome = New-OrtTensorRtEpHome -OrtPrefix $ortPrefix -Path (Join-Path $SourceDir 'ort-home')\nWrite-Host \"TensorRT plugin EP $($pins[0].Version.Substring(0, 12)): TensorRT $trtMajor SDK $trtSdk, chain ORT $ortPrefix\"\n\nSwitch-BuildPhase '2. configure (ORT_HOME over the chain ORT, every FetchContent seeded)'\n$py = Initialize-ToolchainPythonEnvironment\n$buildDir = Join-Path $SourceDir 'build'\n$seedRoots = [ordered]@{}\nforeach ($name in @($roots.Keys | Where-Object { $_ -ne 'onnxruntime-ep-tensorrt' })) { $seedRoots[$name] = $roots[$name] }\n$trtArgs = Get-OrtTensorRtEpCmakeArgs -OrtHome $ortHome -TensorRtSdk $trtSdk -TrtMajor $trtMajor -CudaRoot $gpuEnv.CudaRoot -Python $py.Exe -SeedRoot $seedRoots\n$cfgLog = Invoke-CmakeConfigureLogged -LogName 'ort-trt-ep-configure.log' -SourceDir $epSource -BuildDir $buildDir -InstallPrefix $epDir -BuildType $BuildType -ExtraArgs $trtArgs\n",
+  "replace": "$epSource = $roots['onnxruntime-ep-tensorrt']\n$declared = Get-OrtTensorRtEpDeclaration -CMakeText ([IO.File]::ReadAllText((Join-Path $epSource 'CMakeLists.txt')))\n$seedGap = @(Get-OrtTensorRtEpSeedGap -Declared $declared -Pin $pins)\nif ($seedGap.Count -gt 0) { throw \"TensorRT plugin EP: FetchContent would download unpinned: $($seedGap -join '; ')\" }\n$ortHome = New-OrtTensorRtEpHome -OrtPrefix $ortPrefix -Path (Join-Path $SourceDir 'ort-home')\nWrite-Host \"TensorRT plugin EP $($pins[0].Version.Substring(0, 12)): TensorRT $trtMajor SDK $trtSdk, chain ORT $ortPrefix\"\n\nSwitch-BuildPhase '2. configure (ORT_HOME over the chain ORT, every FetchContent seeded)'\n$py = Initialize-ToolchainPythonEnvironment\n$buildDir = Join-Path $SourceDir 'build'\n$seedRoots = [ordered]@{}\nforeach ($name in @($roots.Keys | Where-Object { $_ -ne 'onnxruntime-ep-tensorrt' })) { $seedRoots[$name] = $roots[$name] }\n$trtArgs = Get-OrtTensorRtEpCmakeArgs -OrtHome $ortHome -TensorRtSdk $trtSdk -TrtMajor $trtMajor -CudaRoot $gpuEnv.CudaRoot -Python $py.Exe -SeedRoot $seedRoots\n$cfgLog = Invoke-CmakeConfigureLogged -LogName 'ort-trt-ep-configure.log' -SourceDir $epSource -BuildDir $buildDir -InstallPrefix $epDir -BuildType $BuildType -ExtraArgs $trtArgs\nRepair-OrtTensorRtProtobufRc -SeedRoot $roots['protobuf']\n",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "the repair must precede the actual TensorRT configure; running it afterward cannot repair emitted RC commands"
  }
 ]

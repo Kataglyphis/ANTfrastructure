@@ -1166,6 +1166,11 @@ Owner decision 2026-11-08 (BACKLOG CON233): the nvidia lane builds no in-tree CU
   refuses a declaration that is not a seed of the same repository and tag, and
   `FETCHCONTENT_FULLY_DISCONNECTED` with CMP0170 makes any other download fatal. 7-Zip leaves
   flatbuffers' in-tree doc and Java-test links unextracted (`Get-SevenZipSkippedLink`).
+  Before configuration, the pinned protobuf seed's compiler options are scoped to
+  C/C++, preserving `/bigobj`, UTF-8 and warning flags while keeping them out of
+  `rc.exe` and its `cmcldeps` preprocessor. The required patch verifies all four
+  option blocks and fails on missing or changed inputs. Definitions and the
+  original MSVC-only resource rule remain unchanged.
 - The stage ships `C:\runtime\lib\onnxruntime-ep-tensorrt` (`ORT_TENSORRT_EP_ROOT`): the DLL,
   `licenses\` with the plugin's and each statically linked seed's texts, and
   `provenance\onnxruntime-ep-tensorrt.json`. No TensorRT DLL is copied beside it: the plugin's

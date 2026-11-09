@@ -2517,6 +2517,9 @@ including quotes, rather than evaluating it. `ConvertTo-TestScriptParseResult`
 returns the validated AST and lexer tokens from one parse, so comment-aware scans
 cannot inspect declarations after a parse error. The parser helpers never execute
 the inspected script.
+`Assert-TestAstCommand -Unconditional` also requires the parsed call to have no
+enclosing function, conditional or loop. `Assert-TestAstOrder -Before ... -After ...`
+compares parsed source offsets; it proves source order, not runtime execution.
 
 `Get-TestSourceCopyLoopText` selects exactly one parsed `foreach` loop by its
 variable, optional condition marker and required copy command.

@@ -13,6 +13,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-09 — keep TensorRT protobuf C++ flags out of rc.exe
+
+- The TensorRT plugin build now scopes protobuf 21.12's compiler options to
+  C/C++ before configuration. This keeps `/bigobj` and other compiler flags out
+  of `rc.exe` and its `cmcldeps` preprocessor without dropping C/C++ options or
+  the resource. Regression controls cover drift, missing inputs, idempotence and
+  unconditional ordering; native compilation remains a separate chain result.
+  Structural tests share unconditional-call and source-order assertions in the
+  harness, preserving the IREE scratch lifecycle checks without copied logic.
+  The existing harness byte-verdict mutation now uses a shell-neutral Python
+  subprocess transport while retaining all 45 required results and failure checks.
+
 ## 2026-11-08 — accept a Windows ARM64 image by digest before changing its tag
 
 - The ARM64 workflow accepts an optional lowercase SHA256 digest. Both container
