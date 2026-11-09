@@ -393,6 +393,24 @@ does not prove GPU execution when it reports no adapter; separate GPU proofs rem
 required. Fourteen mutations exercise input/metadata/CI/ZIP refusal, raw failures,
 passed verdicts, action image parity, the real callback and exported module.
 
+**Accepted publication, 2026-11-09:** candidate run
+[42579941215](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/42579941215)
+at `7c575e34baf4c06843982f813c313d1b1e4713b1` passed all 22 device steps, including
+real ONNX frames and the cp315t IREE wheel with GIL disabled. Receipt artifact
+`13658265211` has upload digest
+`sha256:e1e8254ab43a12ccfe2483f66e757bcb0a78bfad0f617ec02009cf0e78f5c03f`.
+After that acceptance and all five successful same-source quality runs, the
+approved `:winarm64` tag was promoted to the exact candidate manifest:
+`sha256:9ee61e2f49b5e59624d4ed4a4de3ec86c985f9f71567d175b5e320d85bbac137`.
+Its config is
+`sha256:c855b4b4946862b31555b732099fcfdda11dea445d1ad07a41a14ef18d549485`;
+Windows/amd64/OS10.0.26100.33674 stayed unchanged. This proves the accepted ARM64
+bundle at that source; it adds no GPU execution proof. The subsequent default
+public-tag [run 42583681115](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/42583681115)
+also passed 22/22 at the same source, resolving the tag to that exact manifest and
+config. Its verified receipt artifact is `13659636973`, upload digest
+`sha256:bf5221b75606f5d71c69d35210a25af3f0a37bc7a13bf0a19452d71377b01d1e`.
+
 
 Consumer lanes hosted it
 from 2026-10-03 to 2026-10-11, until a WebRTC defect turned BeschleunigerBallett's renderer lane red
