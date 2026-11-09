@@ -37223,5 +37223,141 @@
   "replace": "[regex]::Matches($Actual, [regex]::Escape($Pattern)).Count",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.TextFixtures.Tests.ps1",
   "why": "Callers select regular expressions, so the shared counter must not silently treat them as literals."
+ },
+ {
+  "id": "lib.trt-ep-cross-cxx-before-cuda",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
+  "find": "  setup_linux_cross_env || return $?\n  cuda_cross_load || err \"cuda_cross_load failed\"",
+  "replace": "  cuda_cross_load || err \"cuda_cross_load failed\"\n  setup_linux_cross_env || return $?",
+  "test": "bash linux/scripts/tests/test-tensorrt-plugin-ep.sh",
+  "why": "CUDAHOSTCXX must capture the selected target CXX before CMake reads its higher-priority environment setting"
+ },
+ {
+  "id": "lib.trt-ep-cross-setup-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
+  "find": "  setup_linux_cross_env || return $?",
+  "replace": "  setup_linux_cross_env || true",
+  "test": "bash linux/scripts/tests/test-tensorrt-plugin-ep.sh",
+  "why": "a failed target compiler setup must retain its raw status and stop before publishing a native CUDA host compiler"
+ },
+ {
+  "id": "lib.trt-ep-native-cross-guard",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
+  "find": "trtep_enter_cross_env() {\n  cuda_cross_active || return 0",
+  "replace": "trtep_enter_cross_env() {\n  cuda_cross_active || return 1",
+  "test": "bash linux/scripts/tests/test-tensorrt-plugin-ep.sh",
+  "why": "native TensorRT builds must retain their compiler environment and return success without entering cross setup"
+ },
+ {
+  "id": "lib.ort-cuda-standard-linux-patch",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "002-cuda-dynamic-sparse-attention-cstdint.patch 003-cuda-standard-sccache.patch",
+  "replace": "002-cuda-dynamic-sparse-attention-cstdint.patch",
+  "test": "bash linux/scripts/tests/test-onnx-cuda-standard.sh",
+  "why": "Both pinned CUDA source branches must be patched through the actual GPU policy."
+ },
+ {
+  "id": "lib.ort-cuda-standard-linux-count",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "[ \"$(grep -cF 'SHELL:-std=c++20>' \"$1\")\" = 2 ]",
+  "replace": "[ \"$(grep -cF 'SHELL:-std=c++20>' \"$1\")\" = 1 ]",
+  "test": "bash linux/scripts/tests/test-onnx-cuda-standard.sh",
+  "why": "The gate requires exactly the two upstream branches."
+ },
+ {
+  "id": "lib.ort-cuda-standard-linux-remainder",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "! grep -F 'SHELL:--std' \"$1\" >/dev/null || return 1",
+  "replace": "return 0",
+  "test": "bash linux/scripts/tests/test-onnx-cuda-standard.sh",
+  "why": "A remaining separated or equal long option must fail even beside two joined options."
+ },
+ {
+  "id": "lib.ort-cuda-standard-linux-postcondition",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "ort_cuda_standard_options_ok \"${ORT_SRC_DIR}/cmake/onnxruntime_providers_cuda_plugin.cmake\"",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-onnx-cuda-standard.sh",
+  "why": "The real patch pipeline must invoke its drift postcondition before configuration."
+ },
+ {
+  "id": "lib.plugin-closure-inspector-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
+  "find": "  if [ \"${rc}\" -ne 0 ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh",
+  "why": "A failed native inspector cannot produce a resolved closure verdict."
+ },
+ {
+  "id": "lib.trt-closure-callback",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
+  "find": "mgxep_closure_ok \"$1\" trtep_closure_report",
+  "replace": "mgxep_closure_ok \"$1\"",
+  "test": "bash linux/scripts/tests/test-tensorrt-closure.sh",
+  "why": "The actual TensorRT gate must select its target-loader callback."
+ },
+ {
+  "id": "lib.trt-closure-cross-selection",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
+  "find": "|| ! cuda_cross_active; then",
+  "replace": "|| true; then",
+  "test": "bash linux/scripts/tests/test-tensorrt-closure.sh",
+  "why": "A foreign module cannot be graded by native ldd."
+ },
+ {
+  "id": "lib.trt-closure-descriptor-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
+  "find": "  cuda_cross_load || return $?",
+  "replace": "  cuda_cross_load || true",
+  "test": "bash linux/scripts/tests/test-tensorrt-closure.sh",
+  "why": "Descriptor failure stops before loader execution and retains its status."
+ },
+ {
+  "id": "lib.trt-closure-runner-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
+  "find": "runner=\"$(cross_target_qemu_runner)\" || return $?",
+  "replace": "runner=\"$(cross_target_qemu_runner)\" || true",
+  "test": "bash linux/scripts/tests/test-tensorrt-closure.sh",
+  "why": "A failed target-runner lookup remains fatal with its raw status."
+ },
+ {
+  "id": "lib.trt-closure-c-runtime-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
+  "find": "loader=\"$(\"${CC}\" -print-file-name=ld-linux-aarch64.so.1)\" || return $?",
+  "replace": "loader=\"$(\"${CC}\" -print-file-name=ld-linux-aarch64.so.1)\" || true",
+  "test": "bash linux/scripts/tests/test-tensorrt-closure.sh",
+  "why": "Failed target-loader discovery cannot turn into a later unrelated verdict."
+ },
+ {
+  "id": "lib.trt-closure-cxx-runtime-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
+  "find": "cxxrt=\"$(\"${CXX}\" -print-file-name=libstdc++.so.6)\" || return $?",
+  "replace": "cxxrt=\"$(\"${CXX}\" -print-file-name=libstdc++.so.6)\" || true",
+  "test": "bash linux/scripts/tests/test-tensorrt-closure.sh",
+  "why": "Failed target C++ runtime discovery preserves its raw failure."
+ },
+ {
+  "id": "lib.trt-closure-runtime-file",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
+  "find": "case \"${file}\" in /*) [ -f \"${file}\" ] && continue ;; esac",
+  "replace": "continue",
+  "test": "bash linux/scripts/tests/test-tensorrt-closure.sh",
+  "why": "An unresolved compiler filename is not a target runtime file."
+ },
+ {
+  "id": "lib.trt-closure-target",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
+  "find": "[ \"${CUDA_CROSS_TARGET_ARCH}\" = arm64 ] ||",
+  "replace": "true ||",
+  "test": "bash linux/scripts/tests/test-tensorrt-closure.sh",
+  "why": "The SBSA loader selection must refuse unsupported target architectures."
+ },
+ {
+  "id": "lib.trt-closure-bound",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/37-build-tensorrt-plugin-ep.sh",
+  "find": "timeout --kill-after=5s 60s \"${runner}\"",
+  "replace": "\"${runner}\"",
+  "test": "bash linux/scripts/tests/test-tensorrt-closure.sh",
+  "why": "Target-loader inspection remains bounded and preserves every argument boundary."
  }
 ]

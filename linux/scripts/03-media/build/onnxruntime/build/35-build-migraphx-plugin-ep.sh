@@ -127,10 +127,15 @@ plugin_ep_verify_library() {
   return "${rc}"
 }
 
-# <so>: ldd resolves every library the module needs (a native build; a cross-built module takes the QNN plugin's NEEDED walk instead).
+# A failed inspector cannot prove a closure; the optional callback uses the target loader without initializing the plugin.
 mgxep_closure_ok() {
-  local missing
-  missing="$(ldd "$1" 2>/dev/null | awk '$2 == "=>" && $3 == "not" {print $1}' | tr '\n' ' ')"
+  local report missing rc=0
+  report="$("${2:-ldd}" "$1" 2>&1)" || rc=$?
+  if [ "${rc}" -ne 0 ]; then
+    printf 'ERROR: %s closure inspection failed (status %s)\n%s\n' "$1" "${rc}" "${report}" >&2
+    return 1
+  fi
+  missing="$(printf '%s\n' "${report}" | awk '$2 == "=>" && $3 == "not" {print $1}' | tr '\n' ' ')"
   [ -z "${missing}" ] || { printf 'ERROR: %s cannot resolve: %s\n' "$1" "${missing}" >&2; return 1; }
 }
 

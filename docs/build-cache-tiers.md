@@ -997,6 +997,29 @@ it compiles an arch- and define-guarded kernel bare, cold and warm through sccac
 identical host symbols, SASS and PTX, and correct results on a GPU, and it passed. The bar still
 stands for every new sccache: that canary, then a real `onnxruntime_providers_cuda` link from hits.
 
+**Joined CUDA standard options are required by the pinned parser.** ORT v1.31.1
+emits `SHELL:--std c++20` for its main CUDA target and shared object libraries.
+sccache `0.19.0+965c019.pr2809` treats the separated value as another input, so even
+a forced repeat bypasses caching with `multiple input files`. Linux's
+`003-cuda-standard-sccache.patch` changes both to `SHELL:-std=c++20` through the
+canonical patch driver. A postcondition requires exactly both joined branches
+and no remaining long form before configuration; a newer source layout must be
+reviewed rather than partially accepted. Git and tarball fixtures cover repeatability.
+The Windows lane normalizes the same source through its existing patch API.
+
+Measured 2026-11-09 against the pinned NVIDIA SDK, target AArch64 compiler and all
+five production architectures, with a private cache/server: the old option's cold
+and forced-repeat builds each report one noncacheable call and no cache hits.
+After the actual source patch, the cold build writes 12 entries; the forced repeat
+hits CUDA (1), device code (1), PTX (5) and CUBIN (5), with zero misses, cache errors
+or forced recaches. One internal compilation remains noncacheable. Raw inputs,
+commands and JSON counters are retained under
+`logs/test-results/plugin-proof-nvidia-arm64-media-1/cuda-standard-cache/`.
+This proves one kernel's local-cache behavior; the full CUDA-core rebuild, its
+remote tier and GPU inference remain unproved. The separate complete TensorRT
+rehearsal records 329 hits, zero misses/errors and one uncached internal step
+against the target CPU core; see [plugin scope](linux-accelerator-images.md#the-plugin-tensorrt-ep).
+
 **hipcc is on too, under its own switch (`ENABLE_SCCACHE_HIP`).** sccache treats HIP as a
 clang compile, and `clang -x hip -E` emits every device pass beside the host pass, so a header
 only a device pass includes (under `#if __HIP_DEVICE_COMPILE__`) is part of the cache key.
@@ -1023,9 +1046,9 @@ No — but the *gates* still lie about who is on. The honest summary is: C/C++
 runs through the guarded sccache launcher everywhere, with ccache as the
 automatic fallback for a server that will not answer; Rust runs through that
 same guarded launcher since 2026-08-27, which `ENABLE_SCCACHE_RUST=0` does not
-stop (§ 5.3 item 1); only the GPU compilers are uncached, and that is a
-correctness verdict, not an oversight. Any change to that should be a
-measurement, not a default flip.
+stop (§ 5.3 item 1). CUDA and HIP have their own enabled switches and measured
+limits (§ 5.4); launcher selection alone does not prove cache hits. Read actual
+per-language hit, noncacheable and error counters before claiming a useful cache.
 
 ---
 

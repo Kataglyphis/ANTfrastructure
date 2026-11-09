@@ -98,6 +98,7 @@ cat > "${_T}/bin/ldd" <<'EOF'
 #!/usr/bin/env bash
 printf '\tlibmigraphx_c.so.3 => /opt/rocm/lib/libmigraphx_c.so.3 (0x1)\n'
 [ -z "${FAKE_MISSING:-}" ] || printf '\t%s => not found\n' "${FAKE_MISSING}"
+exit "${FAKE_LDD_RC:-0}"
 EOF
 chmod +x "${_T}/bin/readelf" "${_T}/bin/ldd"
 _v() { PATH="${_T}/bin:${PATH}" FAKE_EXPORTS="$1" FAKE_MISSING="$2" mgxep_verify_library "${_T}/libmigraphx-ep.so" 2>&1; }
@@ -106,6 +107,9 @@ t_assert_eq "" "$(_v 'CreateEpFactories@@VERS_1.0 ReleaseEpFactory@@VERS_1.0 Get
 t_assert_contains "$(_v 'CreateEpFactoriesX@@VERS_1.0 ReleaseEpFactory@@VERS_1.0' '')" "does not export CreateEpFactories"
 t_assert_contains "$(_v 'CreateEpFactories' '')" "does not export ReleaseEpFactory"
 t_assert_contains "$(_v 'CreateEpFactories ReleaseEpFactory' 'libonnxruntime.so.1')" "cannot resolve: libonnxruntime.so.1"
+out="$(FAKE_LDD_RC=42 _v 'CreateEpFactories ReleaseEpFactory' '')"; rc=$?
+t_assert_eq 1 "${rc}" "a failed ldd cannot prove a resolved closure"
+t_assert_contains "${out}" 'closure inspection failed (status 42)'
 t_assert_contains "$(mgxep_verify_library "${_T}/absent.so" 2>&1)" "is missing"
 
 t_case "outside the rocm variant the build step only leaves the empty output tree the media merge COPYs"
