@@ -22,6 +22,9 @@
 - GPU notes distinguish the earlier AMD reference-host result from the native
   RTX 2080 driver probe of 2026-11-08. Driver discovery, container file checks and
   actual plugin inference retain separate evidence requirements.
+  They also retain Microsoft's supported-base requirement: Server Core and Nano
+  Server are excluded, and matching host/image builds alone cannot prove GPU
+  support or execution.
 - The dated ARM64 media/cache result records the initial disk refusal and the
   successful full retry after selected cleanup: 152 smoke assertions, zero
   failures, 17 cross-lane skips and a passing publish gate at `7c575e34`.

@@ -49,12 +49,12 @@ Running DirectML on the physical GPU **inside a container** requires all of:
    `--device class/5B45201D-F2F2-4F3B-85BB-30FF1F953599`. A wrong variant is *silently
    accepted* by `docker run` but matches no device, so the container falls back to the
    WARP software renderer with no error.
-3. **A base-image OS build that matches the host build.** Basic process isolation
-   tolerates skew (a `26100` image runs on a `26200` host), but GPU **driver-store
-   injection does not** — `hcs::CreateComputeSystem` fails with *"The system cannot
-   find the path specified"* when the builds differ. This is the **same** client-host
-   (`26200` / 25H2) vs Server base image (`servercore:ltsc2025` = `26100`) skew that
-   breaks `docker build --isolation process` layer commits.
+3. **A supported base image and compatible host/image builds.** Microsoft's linked
+   prerequisites require `mcr.microsoft.com/windows:1809` or newer and exclude
+   Server Core and Nano Server. Matching build numbers alone do not establish GPU
+   support. In the earlier `26200` host / `26100` Server Core experiment, basic
+   process isolation worked, but GPU driver-store injection failed at
+   `hcs::CreateComputeSystem` with *"The system cannot find the path specified"*.
 
 **Earlier AMD reference-host result: BLOCKED by the build skew.** The GPUs were GPU-PV
 partitionable (`Get-VMHostPartitionableGpu` lists both AMD adapters), process
@@ -65,11 +65,13 @@ DXGI enumeration inside the container saw only `Microsoft Basic Render Driver`
 (WARP), zero hardware adapters. This historical result is not a current passthrough
 test on the RTX host.
 
-To retire the block: rebuild the base on a `servercore`/`nanoserver` tag whose build
-equals the host, **or** run the image on a host whose build equals the image
-(`26100`, e.g. a Windows Server 2025 host). Native Windows execution is the separate
-path for checking the source-built ORT / GenAI binaries on the physical adapter;
-require actual inference on the selected provider before claiming hardware use.
+To investigate the block, use a supported Windows base and a compatible host/image
+pair, then repeat the actual device-assignment and adapter probe. A custom-base
+experiment still needs those observations and inference on the selected hardware
+provider; an OS-build match alone proves neither support nor GPU execution.
+Native Windows execution is the separate path for checking the source-built
+ORT / GenAI binaries on the physical adapter; require actual inference on the
+selected provider before claiming hardware use.
 
 Re-check after any Docker / containerd / hcsshim / Windows / base-image / GPU-driver
 upgrade with the self-contained probe under `windows/scripts/diagnostics/`:
