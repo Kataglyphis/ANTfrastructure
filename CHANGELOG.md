@@ -46,6 +46,8 @@
   subprocess transport while retaining all 45 required results and failure checks.
   The three lifted-fixture recipes use the same portable transport and retain
   their original minimum, equal passed/total, and empty failure/skip requirements.
+  Four older cache, text, pip and QNN mutations call the result-writing runner
+  directly, avoiding Unix-only directory setup before a native Windows test.
 
 ## 2026-11-09 — verify acceptance cleanup and publish the plugin-only ROCm wrapper
 

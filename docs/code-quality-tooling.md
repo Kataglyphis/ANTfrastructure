@@ -2638,6 +2638,8 @@ The Windows test runner writes a JSON summary for each parent run to
 `logs/windows-tests/summary-<timestamp>-<pid>.json`; child runs do not write durable copies.
 An explicit child `-ResultFile` creates its parent and fails on a write error, so a
 fresh mutation mirror can run the actual PowerShell baseline before testing a mutant.
+Recipes invoke that runner directly: a Unix `mkdir -p ... &&` prefix fails under
+Windows command parsing before any baseline assertion runs.
 
 ## Measurements as JSON
 
