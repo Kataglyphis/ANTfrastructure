@@ -1754,7 +1754,8 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 - [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
       Done 2026-11-06: the `cuda_llm` exemption is gone (CHANGELOG). The nvidia chain of 2026-11-06 compiled ORT's CUDA RUN through sccache, MoE kernels included: 4937 compilations, 0 failures, 4330 WebDAV writes; 1663 hits (25 %) on a freshly rebuilt toolchain. `Test-CudaCache.ps1` passed on that toolchain (4 misses, then 4 hits). The warm reruns of 2026-11-07 hit: ORT's CUDA RUN 5993 hits, 0 misses (PTX, CUBIN and nvcc 100 %, 30:26 against 2:00:39 cold), OpenCV's 3355 hits, 1 miss. Still open: 289 failed S3 writes in the cold RUN.
       Checked 2026-11-09: #2862 remains open and #2809 is merged; the pin is unchanged. The ARM64 goal at `7c575e34`
-      rebuilt GStreamer with real compiler hits, but its final step stopped at the unchanged disk floor. The
+      rebuilt GStreamer with real compiler hits; after the disk refusal and selected cleanup, the full retry
+      passed local smoke and publish gates. Native ARM64 device acceptance remains separate. The
       [resource page](docs/windows-build-resources.md#persistent-compile-cache-sccache) records the counters and limits.
       The new CUDA-plugin configuration still needs its own initial/repeat compilation proof; the older in-tree
       NVIDIA runs and cached image layers do not supply it.

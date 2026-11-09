@@ -22,9 +22,11 @@
 - GPU notes distinguish the earlier AMD reference-host result from the native
   RTX 2080 driver probe of 2026-11-08. Driver discovery, container file checks and
   actual plugin inference retain separate evidence requirements.
-- The dated ARM64 media/cache result records the final disk-guard refusal; it
-  does not claim final smoke, device acceptance or image publication. README and
-  backlog pointers now lead to the corrected evidence and its limits.
+- The dated ARM64 media/cache result records the initial disk refusal and the
+  successful full retry after selected cleanup: 152 smoke assertions, zero
+  failures, 17 cross-lane skips and a passing publish gate at `7c575e34`.
+  Device acceptance, image publication and CUDA-plugin cache measurements remain
+  separate requirements. README and backlog pointers lead to these limits.
 
 ## 2026-11-08 — accept a Windows ARM64 image by digest before changing its tag
 

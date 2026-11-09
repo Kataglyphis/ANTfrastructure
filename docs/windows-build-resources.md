@@ -405,9 +405,12 @@ actually rebuilt GStreamer: one reported block contains 5,198 compiler-cache hit
 probes; its aggregate counters do not identify every error's cause and must not be
 summed with their duplicate log rendering. GStreamer and the 1,508-binary media
 architecture gate passed, then the final-stage disk guard refused 24.6 GiB versus
-40 GiB. This is media evidence; final smoke and device acceptance did not run.
-The CUDA-plugin repeat build remains required, including real compiler requests
-and hits. A cached image layer supplies no such measurement.
+40 GiB. After selected host cleanup, full retry `bk-20261109-081421` at the same
+source passed in 3:08 with 152 smoke assertions, zero failures and 17 cross-lane
+skips; its publish gate also passed. This reuse does not add compiler-cache
+measurements or prove native ARM64 device acceptance. The CUDA-plugin repeat
+build remains required, including real compiler requests and hits. A cached
+image layer supplies no such measurement.
 
 Historical fixes and the canary bar before changing the pin:
 
