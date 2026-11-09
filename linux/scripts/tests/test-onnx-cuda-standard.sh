@@ -40,6 +40,7 @@ file="${WORK}/valid/cmake/onnxruntime_providers_cuda_plugin.cmake"
 python3 - "${file}" "${WORK}/expected.txt" <<'PYTHON'
 import sys
 from pathlib import Path
+
 text = Path(sys.argv[1]).read_text()
 Path(sys.argv[2]).write_text(text.replace("SHELL:--std c++20", "SHELL:-std=c++20"))
 PYTHON
