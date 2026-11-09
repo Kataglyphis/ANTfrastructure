@@ -36755,7 +36755,7 @@
  {
   "id": "lib.trt-ep-protobuf-rc-postcondition",
   "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
-  "find": "        [regex]::Matches($text, 'add_compile_options\\(\\s*\"\\$<\\$<COMPILE_LANGUAGE:C,CXX>:/').Count -eq 4 -and\n            $text -notmatch 'add_definitions\\(\\s*/' -and\n            $text.Contains('add_compile_options(\"$<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>\")')",
+  "find": "        [regex]::Matches($text, 'add_compile_options\\(\\s*\"\\$<\\$<COMPILE_LANGUAGE:C,CXX>:/').Count -eq 4 -and\n            $remaining -notmatch 'add_compile_options\\(\\s*[^)\\s]' -and\n            $text -notmatch 'add_definitions\\(\\s*/' -and\n            $text.Contains('add_compile_options(\"$<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>\")')",
   "replace": "        $true",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
   "why": "missing or partial compiler-option scope must fail before TensorRT configuration"
@@ -36799,5 +36799,69 @@
   "replace": "$epSource = $roots['onnxruntime-ep-tensorrt']\n$declared = Get-OrtTensorRtEpDeclaration -CMakeText ([IO.File]::ReadAllText((Join-Path $epSource 'CMakeLists.txt')))\n$seedGap = @(Get-OrtTensorRtEpSeedGap -Declared $declared -Pin $pins)\nif ($seedGap.Count -gt 0) { throw \"TensorRT plugin EP: FetchContent would download unpinned: $($seedGap -join '; ')\" }\n$ortHome = New-OrtTensorRtEpHome -OrtPrefix $ortPrefix -Path (Join-Path $SourceDir 'ort-home')\nWrite-Host \"TensorRT plugin EP $($pins[0].Version.Substring(0, 12)): TensorRT $trtMajor SDK $trtSdk, chain ORT $ortPrefix\"\n\nSwitch-BuildPhase '2. configure (ORT_HOME over the chain ORT, every FetchContent seeded)'\n$py = Initialize-ToolchainPythonEnvironment\n$buildDir = Join-Path $SourceDir 'build'\n$seedRoots = [ordered]@{}\nforeach ($name in @($roots.Keys | Where-Object { $_ -ne 'onnxruntime-ep-tensorrt' })) { $seedRoots[$name] = $roots[$name] }\n$trtArgs = Get-OrtTensorRtEpCmakeArgs -OrtHome $ortHome -TensorRtSdk $trtSdk -TrtMajor $trtMajor -CudaRoot $gpuEnv.CudaRoot -Python $py.Exe -SeedRoot $seedRoots\n$cfgLog = Invoke-CmakeConfigureLogged -LogName 'ort-trt-ep-configure.log' -SourceDir $epSource -BuildDir $buildDir -InstallPrefix $epDir -BuildType $BuildType -ExtraArgs $trtArgs\nRepair-OrtTensorRtProtobufRc -SeedRoot $roots['protobuf']\n",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
   "why": "the repair must precede the actual TensorRT configure; running it afterward cannot repair emitted RC commands"
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-mixed-options",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "            $remaining -notmatch 'add_compile_options\\(\\s*[^)\\s]' -and\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "Every argument in an already-scoped compiler-option block must be validated; four valid prefixes do not exclude an appended bare option."
+ },
+ {
+  "id": "lib.ort-plugin-ep-cxx-exceptions",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "    $cxx = (@('/EHsc', '/WX-',",
+  "replace": "    $cxx = (@('/WX-',",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "The shared plugin CMake policy replaces the platform flags, so it must retain exception handling required by the ORT C++ API."
+ },
+ {
+  "id": "lib.ort-cuda-standard-joined",
+  "target": "windows/scripts/build/Build-OnnxFromSource.ps1",
+  "find": "    $fixed = $Text.Replace('SHELL:--std c++20', 'SHELL:-std=c++20')",
+  "replace": "    $fixed = $Text.Replace('SHELL:--std c++20', 'SHELL:--std c++20')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtCudaStandard.Tests.ps1",
+  "why": "Both selected CUDA generator branches need a joined standard option while keeping C++20 and the warning/architecture policy."
+ },
+ {
+  "id": "lib.ort-cuda-standard-postcondition",
+  "target": "windows/scripts/build/Build-OnnxFromSource.ps1",
+  "find": "if ([regex]::Matches($fixed, 'SHELL:-std=c\\+\\+20>').Count -ne 2 -or $fixed -match 'SHELL:--std\\b')",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtCudaStandard.Tests.ps1",
+  "why": "Missing or changed upstream standard blocks must fail before an incomplete source rewrite is written."
+ },
+ {
+  "id": "lib.ort-cuda-standard-call",
+  "target": "windows/scripts/build/Build-OnnxFromSource.ps1",
+  "find": "        $null = Edit-SourceFile -Path (Join-Path $SourceDir 'cmake/onnxruntime_providers_cuda_plugin.cmake') -Require -Quiet -Description 'ORT CUDA standard option' -Transform ${function:ConvertTo-OrtCudaStandardText}\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtCudaStandard.Tests.ps1",
+  "why": "A standalone repair that never runs for the selected ONNX source does not fix the actual CUDA compiler command."
+ },
+ {
+  "id": "lib.ort-cuda-standard-remainder",
+  "target": "windows/scripts/build/Build-OnnxFromSource.ps1",
+  "find": " -or $fixed -match 'SHELL:--std\\b'",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtCudaStandard.Tests.ps1",
+  "why": "Two valid normalized options do not excuse an additional separated long option; whitespace variants must fail atomically."
+ },
+ {
+  "id": "lib.harness-match-count-verdict",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "    Assert-Equal $Expected ([regex]::Matches($Actual, $Pattern).Count) $Message\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.TextFixtures.Tests.ps1",
+  "why": "A wrong expected count must fail; an assertion-free regex counter cannot pass."
+ },
+ {
+  "id": "lib.harness-match-count-pattern",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "[regex]::Matches($Actual, $Pattern).Count",
+  "replace": "[regex]::Matches($Actual, [regex]::Escape($Pattern)).Count",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.TextFixtures.Tests.ps1",
+  "why": "Callers select regular expressions, so the shared counter must not silently treat them as literals."
  }
 ]

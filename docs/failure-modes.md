@@ -37,6 +37,17 @@ The later cb2b8db6 device run42525202720 passes onnxinference; its sole remainin
 failure is the older published IREE twin. Use the digest acceptance input in
 `windows-arm64.yml` to grade a newly built image before changing the public tag.
 
+## TensorRT plugin reports throws with exceptions disabled
+
+The full Windows NVIDIA run at `93019e36` compiled protobuf's resources, then
+clang-cl rejected the TensorRT plugin's C++ sources with `cannot use 'throw'
+with exceptions disabled`. Its actual compile command had no `/EHsc`.
+`Get-OrtPluginEpCmakeArgs` replaced `CMAKE_CXX_FLAGS` with warning options and
+dropped the platform exception default. Keep `/EHsc` in the shared C++ policy
+so the ORT C++ API retains its throwing semantics. Argument fixtures cover the
+forwarded policy; a complete plugin build and GPU execution need separate proof.
+See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
+
 ## Contents
 
 **Linux and cross-lane**

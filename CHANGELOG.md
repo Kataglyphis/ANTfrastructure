@@ -20,6 +20,23 @@
   of `rc.exe` and its `cmcldeps` preprocessor without dropping C/C++ options or
   the resource. Regression controls cover drift, missing inputs, idempotence and
   unconditional ordering; native compilation remains a separate chain result.
+  Mixed already-scoped blocks now reject appended bare, quoted or unknown
+  arguments, and unknown original options fail before rewriting input bytes.
+- Shared Windows plugin C++ flags retain `/EHsc`. Replacing the CMake flag
+  string had dropped the platform exception default and made TensorRT plugin
+  sources fail with `cannot use throw with exceptions disabled`. The policy
+  keeps the ORT C++ API's throwing semantics and existing warning flags.
+  A later full lane and GPU execution remain separate acceptance requirements.
+- ONNX CUDA generator options now use `SHELL:-std=c++20` in both branches.
+  The separated long option made the pinned cache parser reject all 605 CUDA
+  commands in the measured run. A replay of the actual argument policy keeps
+  every warning and all five GPU targets, reproduces that refusal and then
+  records CUDA, PTX, CUBIN and device-code hits with the joined option. This
+  local one-kernel control does not replace the full plugin/remote repeat.
+  Source fixtures check both branches, exact tokens, atomic drift refusal and
+  preserved line endings; all four new mutations bite. File I/O uses the
+  canonical patch API, and source fixtures share the harness regex counter
+  and directory staging instead of copying those operations.
   Structural tests share unconditional-call and source-order assertions in the
   harness, preserving the IREE scratch lifecycle checks without copied logic.
   The existing harness byte-verdict mutation now uses a shell-neutral Python

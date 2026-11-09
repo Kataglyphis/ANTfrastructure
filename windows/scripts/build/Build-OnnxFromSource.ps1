@@ -658,11 +658,20 @@ class ScopedHandle {
     }
 }
 
+function ConvertTo-OrtCudaStandardText {
+    # The pinned cache parser treats nvcc's separated long-standard value as another input.
+    param([Parameter(Mandatory)][string]$Text)
+    $fixed = $Text.Replace('SHELL:--std c++20', 'SHELL:-std=c++20')
+    if ([regex]::Matches($fixed, 'SHELL:-std=c\+\+20>').Count -ne 2 -or $fixed -match 'SHELL:--std\b') { throw 'ORT CUDA C++20 standard options are not verified.' }
+    return $fixed
+}
+
 function Get-OrtCudaArgs {
     param($gpuEnv, [bool]$onnxCross, [bool]$cudaUsable, [string]$SourceDir, [string]$scriptAssetRoot)
     $gpuArgs = @()
     if ($cudaUsable) {
         Write-Host 'NVIDIA GPU detected: enabling the CUDA plugin EP + cuDNN'
+        $null = Edit-SourceFile -Path (Join-Path $SourceDir 'cmake/onnxruntime_providers_cuda_plugin.cmake') -Require -Quiet -Description 'ORT CUDA standard option' -Transform ${function:ConvertTo-OrtCudaStandardText}
         $cudaRoot = $gpuEnv.CudaRoot
         $cudnnRoot = $gpuEnv.CudnnRoot
         # Shared cuDNN import-lib finder (prefers cudnn.lib over the 9.x split sub-libs); $null when absent.

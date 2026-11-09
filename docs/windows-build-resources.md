@@ -914,3 +914,16 @@ yourself. Tests: `WindowsContainerBuild.Reuse.Tests.ps1` (`Add-HostSccacheRemote
 and `Modules.Orchestrators.Tests.ps1` (the build run carries the `-e`).
 
 > **Note (.dockerignore):** The repo `.dockerignore` must NOT contain a `windows/` exclusion — the Windows Dockerfiles COPY from the `windows/scripts/` directory within the build context. If `windows/` is added to `.dockerignore`, the COPY steps will fail with "file not found in build context". This exclusion is safe for Linux builds (they read only `linux/` from the same root context) but breaks Windows builds.
+
+### ONNX CUDA standard-option boundary — 2026-11-09
+
+The full NVIDIA run at `93019e36` reports 2,261 compiler requests: 1,656 C/C++
+cache hits and 605 CUDA calls rejected as `multiple input files`. The retained
+server trace identifies the separated `--std c++20` option in each CUDA call.
+Both selected generator branches now use the equivalent `-std=c++20` form.
+A replay of the captured argument policy with one kernel retains all warnings
+and five real GPU targets (75, 86, 87, 89, 120a): the original form remains
+uncacheable; the joined form records one CUDA, five PTX, five CUBIN and one
+device-code hit on repetition, with no forced recache or cache errors.
+This isolated local-cache result does not prove a full plugin or remote-cache
+repeat, nor GPU inference. Those measurements remain open in CON229.

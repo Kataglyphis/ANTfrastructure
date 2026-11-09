@@ -1153,6 +1153,11 @@ Owner decision 2026-11-08 (BACKLOG CON233): the nvidia lane builds no in-tree CU
   on `CXX_COMPILER_ID`, which is `Clang` under clang-cl, so clang-cl got GCC's `-include` and
   would read the header as a second input; patch 008 tests the frontend variant instead. The
   in-tree CUDA CMake is no longer configured, so its PCH patch 002 is gone.
+  The two CUDA C++20 options use `SHELL:-std=c++20`: the pinned sccache parser
+  treats the separated value in `SHELL:--std c++20` as another input. The repair
+  validates both complete tokens before configuration and preserves warning
+  and architecture arguments. A local replay proves this parser boundary; the
+  full plugin repeat and GPU execution remain separate checks.
 - **Consumers register it.** The Python wheel registers its bundled copy at import
   (`cuda-plugin-ep=1` in `get_build_info()`); GenAI 0.19 takes a registered
   `CUDAExecutionProvider` before its provider-bridge path; C and C++ call
@@ -1169,8 +1174,11 @@ Owner decision 2026-11-08 (BACKLOG CON233): the nvidia lane builds no in-tree CU
   Before configuration, the pinned protobuf seed's compiler options are scoped to
   C/C++, preserving `/bigobj`, UTF-8 and warning flags while keeping them out of
   `rc.exe` and its `cmcldeps` preprocessor. The required patch verifies all four
-  option blocks and fails on missing or changed inputs. Definitions and the
-  original MSVC-only resource rule remain unchanged.
+  option blocks, rejects remaining arguments in already-scoped blocks and fails
+  on missing or changed inputs. Definitions and the
+  original MSVC-only resource rule remain unchanged. Shared plugin C++ flags
+  also retain `/EHsc`, required by the throwing ORT C++ API when the warning
+  policy replaces CMake's platform flag defaults.
 - The stage ships `C:\runtime\lib\onnxruntime-ep-tensorrt` (`ORT_TENSORRT_EP_ROOT`): the DLL,
   `licenses\` with the plugin's and each statically linked seed's texts, and
   `provenance\onnxruntime-ep-tensorrt.json`. No TensorRT DLL is copied beside it: the plugin's

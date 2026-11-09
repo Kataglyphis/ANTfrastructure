@@ -76,7 +76,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 endif()
 add_definitions(/utf-8)
 add_definitions(
-  /wd4065 # keep this warning option
+  /wd4065 # /bigobj in a comment is not a compiler argument
 )
 add_definitions(/bigobj)
 add_definitions(-DPROTOBUF_FIXTURE)
@@ -182,7 +182,23 @@ Describe 'Build-OrtTensorRtEpFromSource.ps1' {
                 (Get-TrtProtobufRcFixture).Replace('add_definitions(/bigobj)', '')
             )) {
                 Write-TestFileTree -Root $dir -Files @{ 'CMakeLists.txt' = $text }
+                $before = (Get-FileHash -LiteralPath (Join-Path $dir 'CMakeLists.txt')).Hash
                 Assert-Throws { Repair-OrtTensorRtProtobufRc -SeedRoot $dir } -MessagePattern 'protobuf.*(option|scope)'
+                if ($text.Contains('/unexpected-option')) {
+                    Assert-Equal $before (Get-FileHash -LiteralPath (Join-Path $dir 'CMakeLists.txt')).Hash 'unknown options fail before rewriting the input'
+                }
+            }
+        }
+    }
+
+    It 'refuses unscoped arguments inside already-scoped protobuf option blocks (mutation)' {
+        Invoke-InTestDir -Files @{ 'CMakeLists.txt' = (Get-TrtProtobufRcFixture) } -Body { param($dir)
+            Repair-OrtTensorRtProtobufRc -SeedRoot $dir
+            $fixed = [IO.File]::ReadAllText((Join-Path $dir 'CMakeLists.txt'))
+            $warning = '"$<$<COMPILE_LANGUAGE:C,CXX>:/wd4065>"'
+            foreach ($extra in '/bigobj', '"/bigobj"', '-DUNSCOPED', '"$<$<COMPILE_LANGUAGE:C,CXX>:/unexpected-option>"') {
+                Write-TestFileTree -Root $dir -Files @{ 'CMakeLists.txt' = $fixed.Replace($warning, "$warning $extra") }
+                Assert-Throws { Repair-OrtTensorRtProtobufRc -SeedRoot $dir } -MessagePattern 'protobuf.*scope'
             }
         }
     }
@@ -198,6 +214,9 @@ Describe 'Build-OrtTensorRtEpFromSource.ps1' {
         function Get-NvccCudaCmakeArgs { param($CudaRoot, $CudaStandard) @("-DCMAKE_CUDA_COMPILER:FILEPATH=$CudaRoot/bin/nvcc.exe", "-DCMAKE_CUDA_STANDARD:STRING=$CudaStandard") }
         $seeds = [ordered]@{ protobuf = 'C:\t\protobuf-src\protobuf-21.12'; gsl = 'C:\t\gsl-src\GSL-4.0.0' }
         $a = @(Get-OrtTensorRtEpCmakeArgs -OrtHome 'C:\t\ort-home' -TensorRtSdk 'C:\tensorrt-sdk\current' -TrtMajor '11' -CudaRoot 'C:\cuda' -Python 'C:\py\python.exe' -SeedRoot $seeds)
+        $cxx = @($a | Where-Object { $_.StartsWith('-DCMAKE_CXX_FLAGS:STRING=') })
+        Assert-Equal 1 $cxx.Count 'one complete C++ flag argument reaches CMake'
+        Assert-Match '(?:=|\s)/EHsc(?:\s|$)' $cxx[0] 'the ORT C++ API throws, so plugin flags must retain exceptions'
         foreach ($want in '-DORT_HOME:PATH=C:/t/ort-home', '-DTENSORRT_HOME:PATH=C:/tensorrt-sdk/current', '-DTRT_MAJOR_VERSION:STRING=11',
             '-Donnxruntime_ep_tensorrt_OBJECT_CACHE=OFF', '-Donnxruntime_ep_tensorrt_INSTALL=OFF', '-DFETCHCONTENT_FULLY_DISCONNECTED:BOOL=ON',
             '-DCMAKE_POLICY_DEFAULT_CMP0170:STRING=NEW', '-DFETCHCONTENT_SOURCE_DIR_PROTOBUF:PATH=C:/t/protobuf-src/protobuf-21.12',

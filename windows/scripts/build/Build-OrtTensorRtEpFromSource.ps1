@@ -122,7 +122,9 @@ function Repair-OrtTensorRtProtobufRc {
     }
     Assert-SourceFileContent -Path $path -FailureMessage 'TensorRT protobuf compiler-option scope is not verified.' -Condition {
         param($text)
+        $remaining = $text -replace '(?m)#.*$', '' -replace '"\$<\$<COMPILE_LANGUAGE:C,CXX>:/(MP|utf-8|wd\d+|bigobj)>"', ''
         [regex]::Matches($text, 'add_compile_options\(\s*"\$<\$<COMPILE_LANGUAGE:C,CXX>:/').Count -eq 4 -and
+            $remaining -notmatch 'add_compile_options\(\s*[^)\s]' -and
             $text -notmatch 'add_definitions\(\s*/' -and
             $text.Contains('add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>")')
     }

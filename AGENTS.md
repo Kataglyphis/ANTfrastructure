@@ -103,7 +103,9 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Ordered directory visitors retain the caller's `dir` binding, append policy and unconditional selected calls.
    The plugin QNN EP stage checks the module, both exports and the HTP backend beside it on arm64; the CPU prefix refuses an in-tree QNN provider.
    The GPU prefix refuses an in-tree TensorRT provider and requires the CUDA module's plugin exports; the TensorRT plugin stage runs on nvidia images with TensorRT.
-   Its protobuf seed scopes compiler options to C/C++; those options must not reach rc.exe or its cmcldeps preprocessor.
+   Its protobuf seed validates every C/C++ option argument, including mixed scoped inputs; none may reach rc.exe or its cmcldeps preprocessor.
+   Shared plugin C++ flags retain /EHsc because the ORT C++ API throws.
+   CUDA standard options stay joined so sccache does not parse the value as another input.
    Copied `35-build-migraphx-plugin-ep.sh` and `37-build-tensorrt-plugin-ep.sh` carry `plugin-ep-exports.sh` and `plugin-ep-seeds.txt` beside them; the media verify stage reads the export probe from the mounted ORT build directory, so keep that directory mount on the GPU RUN.
    G2 reads `onnxruntime_ep_*` modules and `Microsoft.ML.OnnxRuntime.EP.*` directories as ORT consumers, never as ORT.
    AMD Python bundles carry the plugin MIGraphX EP beside the chain core and prove it against the image's module; their self-test proves registration, not availability.
@@ -114,6 +116,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    ARM64 candidate acceptance validates a digest before pulling, binds the ZIP and CI attempt to the actual image, and preserves failing device statuses and receipts before tag promotion.
    Required entry-script import loops list concrete .psm1 filenames so the cold script-call gate can discover the complete closure.
    Architecture and UV test suites carry their shared fixture companions; use harness PE and wheel constructors for valid samples.
+   Regex cardinality assertions use the shared harness counter and retain caller-selected patterns and text.
    Windows structural tests use the harness AST readers, command binder and Dockerfile stage parser; parse errors must fail before inspecting declarations. Copy `WindowsAst.Common.psm1` beside any copied harness module tree.
    Share unconditional and source-order wiring checks through `Assert-TestAstCommand -Unconditional` and `Assert-TestAstOrder`.
    Windows probe transports share child cleanup and report parsing; retain stderr, timeout, exit and assertion accounting policies.
