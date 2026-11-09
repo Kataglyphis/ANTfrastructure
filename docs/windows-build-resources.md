@@ -410,7 +410,10 @@ source passed in 3:08 with 152 smoke assertions, zero failures and 17 cross-lane
 skips; its publish gate also passed. This reuse does not add compiler-cache
 measurements or prove native ARM64 device acceptance. The CUDA-plugin repeat
 build remains required, including real compiler requests and hits. A cached
-image layer supplies no such measurement.
+image layer supplies no such measurement. Subsequent candidate device run 42579941215
+passed 22/22, and its exact ARM64 image was promoted to `:winarm64`; the
+[cross-build guide](windows-cross-builds.md) records that digest and receipt.
+This native ARM64 result does not supply the missing GPU-provider measurement.
 
 Historical fixes and the canary bar before changing the pin:
 

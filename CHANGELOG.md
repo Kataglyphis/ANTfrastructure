@@ -13,7 +13,7 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
-## 2026-11-09 — correct the Windows cache pin and dated GPU evidence
+## 2026-11-09 — record Windows cache evidence and accepted ARM64 publication
 
 - The resource guide now describes the pinned hub sccache binary and its source,
   patch and checksum path, replacing stale instructions for upstream 0.18.0.
@@ -25,8 +25,11 @@
 - The dated ARM64 media/cache result records the initial disk refusal and the
   successful full retry after selected cleanup: 152 smoke assertions, zero
   failures, 17 cross-lane skips and a passing publish gate at `7c575e34`.
-  Device acceptance, image publication and CUDA-plugin cache measurements remain
-  separate requirements. README and backlog pointers lead to these limits.
+  Its subsequent candidate device run 42579941215 passed 22/22, including real ONNX
+  frames and the cp315t IREE twin. The owner-approved `:winarm64` tag now points to
+  `sha256:9ee61e2f49b5e59624d4ed4a4de3ec86c985f9f71567d175b5e320d85bbac137`,
+  preserving its runtime platform; the cross-build guide records the receipt.
+  CUDA-plugin cache and GPU execution measurements remain separate requirements.
 
 ## 2026-11-08 — accept a Windows ARM64 image by digest before changing its tag
 

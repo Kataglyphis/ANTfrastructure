@@ -864,7 +864,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       executables; native ZIP hashes and portable PE/mutation checks cover transport.
       The later cb2b8db6 device run42525202720 passes onnxinference;21/22 steps pass,
       with only the older published IREE twin failing. The digest acceptance workflow
-      can grade the new image before tag promotion. Full device acceptance remains open.
+      graded the new image before tag promotion: run 42579941215 at `7c575e34` passed 22/22,
+      including real ONNX frames and the cp315t IREE twin. The approved `:winarm64`
+      publication now uses digest `9ee61e2f...ac137`; the complete identity and acceptance
+      receipt are recorded in [windows-cross-builds.md](docs/windows-cross-builds.md).
+      Consumer model outputs and actual GPU execution remain separate open work.
       Cached `:winamd64-nvidia` image digest
       `b472f91ba9553937a1c62f476ef6d01a878db4d44c754091ece08fb21ba11777` reports no
       `tensor_transform`, `onnxruntime`, or `tensor_decoder` via `gst-inspect-1.0`.
