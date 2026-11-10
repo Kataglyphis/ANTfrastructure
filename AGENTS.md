@@ -115,6 +115,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Build receipts retain pre-repair bytes; wheel repair checks their source/mode and records validated final hashes before runtime registration proof.
    Carry `ort_webgpu_delivery.py`, the canonical build-proof module and `python-app-deb-depends.py` with `python_app_deb_symbols.py` through media/runtime copies.
    WebGPU delivery requires a matching precheck and unchanged loaded code/data; loader metadata normalization does not prove loader safety or inference.
+   Native WebGPU probes load each checked core directly, reject the legacy compiled provider and retain exact API failure and cleanup controls.
+   Compile each shipped probe through shared cache/CMake helpers using its core's configured target compiler, flags and absolute C API header.
    Python WebGPU factory checks require a completed delivery and the loaded extension's own hash; native core hashes do not prove Python modes.
    Keep factory unregistration isolated, its precise missing-registration control and FT GIL checks before and after loading and execution.
    Copied runtime smoke drivers carry `check-ort-runtime.sh`; the FT store runs the same Python gate in its installed FT environment.

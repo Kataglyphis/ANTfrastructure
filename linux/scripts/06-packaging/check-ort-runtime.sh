@@ -60,17 +60,24 @@ check_genai_binding() {
     echo ""
 }
 
-check_webgpu_python_factory() {
+check_webgpu_factory_phase() {
   # shellcheck disable=SC2034  # _rt_run reads image_tag and target_arch by dynamic scope.
-  local image_tag="$1" target_arch="$2" output status expected sentinels
+  local image_tag="$1" target_arch="$2" phase="$3" output status expected sentinels
   expected="$(_rt_versions_env_pin ONNXRUNTIME_VERSION)"
   output="$(_rt_run /opt/venv/bin/python -I /opt/scripts/03-media/final/ort_webgpu_runtime.py \
-    --phase gil --source-ref "${expected}" 2>&1)" && status=0 || status=$?
+    --phase "${phase}" --source-ref "${expected}" 2>&1)" && status=0 || status=$?
   printf '%s\n' "${output}"
   sentinels="$(printf '%s\n' "${output}" | grep -c -e '^WEBGPU-FACTORY OK: ' || true)"
   if [ "${status}" = 0 ] && [ "${sentinels}" = 1 ]; then
-    pass "WebGPU Python factory and negative control passed (${target_arch})"
+    pass "WebGPU ${phase} factory and negative control passed (${target_arch})"
   else
-    fail "WebGPU Python factory failed (${target_arch}, rc=${status}): ${output}"
+    fail "WebGPU ${phase} factory failed (${target_arch}, rc=${status}): ${output}"
   fi
+}
+
+check_webgpu_factories() {
+  local phase
+  for phase in native gil; do
+    check_webgpu_factory_phase "$1" "$2" "${phase}"
+  done
 }

@@ -2352,7 +2352,7 @@ main() {
     check_torchless_sentinel "${image_tag}" "${target_arch}"
     check_app_wheel_smoke "${image_tag}" "${target_arch}"
     check_onnx_execution_provider "${image_tag}" "${target_arch}"
-    check_webgpu_python_factory "${image_tag}" "${target_arch}"
+    check_webgpu_factories "${image_tag}" "${target_arch}"
     check_ml_version_pins "${image_tag}" "${target_arch}"
     check_genai_binding "${image_tag}" "${target_arch}"
     check_iree_native "${image_tag}" "${target_arch}"

@@ -15,6 +15,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-10 — ship and check a native WebGPU C API registration probe
+
+- CPU and NVIDIA build a versioned executable using their core's configured compiler, toolchain,
+  flags and absolute C API header, with the shared compiler-cache resolver and configured-cache gate.
+  Required-helper, configure, build or installation failures stop the producer before its receipt.
+- Runtime checks every selected native core in its own process: legacy compiled WebGPU is refused,
+  the CPU baseline is required, and environment registration needs the first unregister plus the exact
+  missing-key control. Raw API errors and failed resource/loader cleanup cannot produce success.
+- The native phase binds the core/probe bytes and source/mode before and after execution; the image
+  smoke runs it alongside the separate GIL check. Fake-ABI executable tests and a compile against
+  verified official headers do not complete actual ORT factories, target-image acceptance or inference.
+- Callback fixtures retain absent, empty and existing cache-pin bindings; TensorRT's default case
+  clears an inherited opt-out inside its child so image build flags cannot change the fixture's inputs.
+
 ## 2026-11-10 — check WebGPU factories in each delivered Python environment
 
 - The runtime gate binds the imported native extension to one completed GIL/FT delivery, its actual

@@ -511,6 +511,25 @@ onnx_build_free_threaded_wheel() {
   rm -rf "${ftpy%/bin/python}"
 }
 
+# Build once against the native headers before the warm ORT tree becomes free-threaded.
+build_onnx_webgpu_factory_probe() {
+  local config_dir="${1:?configured ORT build required}" output_dir="${2:?ORT output prefix required}" required CMAKE_COMPILER_CACHE_PIN=''
+  local probe_build="${config_dir}/webgpu-factory-probe"
+  local -a probe_args=(-S "${_ONNX_LIB_DIR}/webgpu-factory-probe" -B "${probe_build}"
+    "-DORT_CONFIG_DIR=${config_dir}" "-DORT_INCLUDE_DIR=${output_dir}/include")
+  for required in append_cmake_cache_linker_args cmake_assert_compiler_cache_pin run_cmake_build_with_fallback; do
+    if ! declare -F "${required}" >/dev/null; then
+      printf 'ERROR: native WebGPU probe requires %s\n' "${required}" >&2
+      return 1
+    fi
+  done
+  append_cmake_cache_linker_args probe_args || return $?
+  cmake "${probe_args[@]}" || return $?
+  cmake_assert_compiler_cache_pin "${probe_build}" "${CMAKE_COMPILER_CACHE_PIN}" || return $?
+  run_cmake_build_with_fallback "${probe_build}" 1 || return $?
+  cmake --install "${probe_build}" --prefix "${output_dir}" || return $?
+}
+
 # Wheel repair changes bytes later; this receipt preserves each product at its checked build boundary.
 record_onnx_webgpu_build_products() {
   local config_dir="$1" output_dir="$2" phase="$3" expected=OFF revision option has_wheel=0

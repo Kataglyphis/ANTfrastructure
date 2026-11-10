@@ -10,12 +10,12 @@ trap 'command rm -r -- "${work}"' EXIT
 pass() { printf 'PASS %s\n' "$*"; }
 fail() { FAILURES=$((FAILURES + 1)); printf 'FAIL %s\n' "$*"; }
 _rt_versions_env_pin() { printf '%s' 'v1.31.1'; }
-_rt_run() { printf '%s\n' "$@" > "${work}/gil-argv"; echo 'WEBGPU-FACTORY OK: fixture'; }
+_rt_run() { printf '%s\n' "$@" >> "${work}/gil-argv"; echo 'WEBGPU-FACTORY OK: fixture'; }
 FAILURES=0
-check_webgpu_python_factory image arm64 > "${work}/gil-output"
+check_webgpu_factories image arm64 > "${work}/gil-output"
 t_assert_eq 0 "${FAILURES}"
-t_assert_eq $'/opt/venv/bin/python\n-I\n/opt/scripts/03-media/final/ort_webgpu_runtime.py\n--phase\ngil\n--source-ref\nv1.31.1' "$(cat "${work}/gil-argv")"
-t_assert_contains "$(t_fn_src "${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh" main)" 'check_webgpu_python_factory "${image_tag}" "${target_arch}"'
+t_assert_eq $'/opt/venv/bin/python\n-I\n/opt/scripts/03-media/final/ort_webgpu_runtime.py\n--phase\nnative\n--source-ref\nv1.31.1\n/opt/venv/bin/python\n-I\n/opt/scripts/03-media/final/ort_webgpu_runtime.py\n--phase\ngil\n--source-ref\nv1.31.1' "$(cat "${work}/gil-argv")"
+t_assert_contains "$(t_fn_src "${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh" main)" 'check_webgpu_factories "${image_tag}" "${target_arch}"'
 mkdir -p "${work}/bin" "${work}/opt/wheels-free-threaded" "${work}/opt/scripts/03-media"
 cp "${TESTS_DIR}/../03-media/free-threaded-wheels.sh" "${TESTS_DIR}/../03-media/free-threaded-twins.txt" "${work}/opt/scripts/03-media/"
 cat > "${work}/bin/uv" <<'UV'

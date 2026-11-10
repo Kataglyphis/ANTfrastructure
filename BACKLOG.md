@@ -1079,8 +1079,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       mappings while preserving compiled code/data and dynamic symbol identity. These are source/fixture
       proofs. A preserved Python gate now checks the imported GIL/FT extension against a completed delivery
       and probes factory unregistration with its precise negative control; the image smoke and actual FT-store
-      interpreter invoke it. Its fixtures use stub bindings: actual native/Python factory registration in
-      the image matrix and image delivery remain open. Both enabled WASM flavors need real artifact proof. Before that
+      interpreter invoke it. The native C API probe is now compiled per CPU/NVIDIA prefix with the core's
+      configured target compiler and shared cache helpers; its runtime phase checks each core directly,
+      rejects legacy WebGPU and retains registration/negative/cleanup controls. Fixtures use stub Python
+      bindings and a fake C ABI; actual native/Python factory registration in the image matrix and image
+      delivery remain open. Both enabled WASM flavors need real artifact proof. Before that
       media rebuild, preserve the
       OpenCV FindCUDA cache repair: its bounded SBSA replay records twelve forced-repeat hits and no misses;
       the complete stage, non-x86 Torch wrapper policy and consumer Rust cache wiring remain follow-ups

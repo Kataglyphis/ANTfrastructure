@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove a delivered Python factory in its owning process; no device or inference is tested."""
+"""Prove native/Python factories in isolated owning processes, without device or inference claims."""
 from __future__ import annotations
 
 import argparse
@@ -7,6 +7,7 @@ import hashlib
 import importlib
 import importlib.machinery
 import json
+import subprocess
 import sys
 import sysconfig
 from itertools import pairwise
@@ -41,11 +42,15 @@ def loaded_product(binding: ModuleType) -> tuple[Path, str]:
     path = Path(filename).resolve(strict=True)
     if Path(origin).resolve(strict=True) != path:
         raise ValueError("loaded binding origin differs from its module file")
+    return path, linker_digest(path)
+
+
+def linker_digest(path: Path) -> str:
+    """Bounded ELF hashing covers either an extension or the shipped native probe."""
     if not 0 < path.stat().st_size <= delivery.build_api().MAX_PRODUCT_BYTES:
-        raise ValueError("invalid loaded Python linker product size")
+        raise ValueError("invalid loaded linker product size")
     with path.open("rb") as stream:
-        digest = delivery.build_api().elf_digest(stream, str(path))
-    return path, digest
+        return delivery.build_api().elf_digest(stream, str(path))
 
 
 def completed_product(prefix: Path, receipt: dict, phase: str) -> dict | None:
@@ -81,9 +86,7 @@ def owning_receipt(prefixes: list[Path], phase: str, source_ref: str, path: Path
     """A loaded extension must match exactly one checked prefix, never just its native core."""
     matches = []
     for prefix in prefixes:
-        receipt = delivery.load_receipt(prefix)
-        if receipt["source"]["ref"] != source_ref:
-            raise ValueError("WebGPU receipt does not match the expected source ref")
+        receipt = sourced_receipt(prefix, source_ref)
         product = completed_product(prefix, receipt, phase)
         if product is not None and product["sha256"] == digest:
             if tuple(path.parts[-3:]) != tuple(Path(product["member"]).parts):
@@ -111,8 +114,7 @@ def require_missing(binding: ModuleType) -> None:
 
 def prove(prefixes: list[Path], phase: str, source_ref: str) -> dict:
     """Both modes require a negative control; static mode first requires a registered factory."""
-    if not prefixes or len({p.resolve() for p in prefixes}) != len(prefixes):
-        raise ValueError("at least one distinct owning ORT prefix is required")
+    require_prefixes(prefixes)
     interpreter_mode(phase)
     binding = importlib.import_module("onnxruntime.capi.onnxruntime_pybind11_state")
     interpreter_mode(phase)
@@ -130,17 +132,57 @@ def prove(prefixes: list[Path], phase: str, source_ref: str) -> dict:
             "registered": result["mode"] == "ON", "negative_control": "missing-registration"}
 
 
+def require_prefixes(prefixes: list[Path]) -> None:
+    if not prefixes or len({p.resolve() for p in prefixes}) != len(prefixes):
+        raise ValueError("at least one distinct owning ORT prefix is required")
+
+
+def sourced_receipt(prefix: Path, source_ref: str) -> dict:
+    receipt = delivery.load_receipt(prefix)
+    delivery.original_product(receipt, "gil")
+    if receipt["source"]["ref"] != source_ref:
+        raise ValueError("WebGPU receipt does not match the expected source ref")
+    return receipt
+
+
+def native_core(prefix: Path, source_ref: str) -> dict:
+    """The explicit core and target-native probe must retain their checked bytes through execution."""
+    receipt = sourced_receipt(prefix, source_ref)
+    product = delivery.build_api().native_product(prefix)
+    core = (prefix / product["path"]).resolve(strict=True)
+    probe = (prefix / "bin/ort-webgpu-factory-probe").resolve(strict=True)
+    probe.relative_to(prefix.resolve())
+    digest = linker_digest(probe)
+    mode = receipt["phases"]["gil"]["configured_flags"][delivery.build_api().FLAGS[0]]
+    result = subprocess.run([str(probe), str(core), mode], capture_output=True, text=True, check=False, timeout=60)
+    sentinels = [line for line in result.stdout.splitlines() if line.startswith(f"WEBGPU-NATIVE OK: mode={mode} ")]
+    failure = any(line.startswith("WEBGPU-NATIVE FAIL:") for line in (result.stdout + "\n" + result.stderr).splitlines())
+    if result.returncode != 0 or len(sentinels) != 1 or failure:
+        raise ValueError(f"native WebGPU factory probe failed ({result.returncode}): {result.stdout}{result.stderr}")
+    if delivery.build_api().native_product(prefix) != product or linker_digest(probe) != digest:
+        raise ValueError("native WebGPU core or probe changed during execution")
+    return {"prefix": str(prefix.resolve()), "source": receipt["source"], "mode": mode,
+            "core": product, "probe_sha256": digest, "verdict": sentinels[0]}
+
+
+def prove_native(prefixes: list[Path], source_ref: str) -> dict:
+    """Every requested native core needs its own isolated C API proof."""
+    require_prefixes(prefixes)
+    return {"phase": "native", "cores": [native_core(prefix, source_ref) for prefix in prefixes]}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prefix", action="append", type=Path)
-    parser.add_argument("--phase", choices=("gil", "free-threaded"), required=True)
+    parser.add_argument("--phase", choices=("native", "gil", "free-threaded"), required=True)
     parser.add_argument("--source-ref", required=True)
     args = parser.parse_args()
     prefixes = args.prefix if args.prefix is not None else [p for p in DEFAULT_PREFIXES if p.is_dir()]
     try:
         if not args.source_ref:
             raise ValueError("the expected ORT source ref is required")
-        result = prove(prefixes, args.phase, args.source_ref)
+        result = (prove_native(prefixes, args.source_ref) if args.phase == "native"
+                  else prove(prefixes, args.phase, args.source_ref))
     except (OSError, ValueError, KeyError, TypeError, ImportError) as error:
         print(f"WEBGPU-FACTORY FAIL: {error}", file=sys.stderr)
         return 1

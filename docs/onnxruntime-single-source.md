@@ -630,7 +630,14 @@ negative control in its isolated process. Disabled mode requires absence twice;
 FT checks require its own extension and keep the GIL disabled throughout. The
 GIL image smoke and installed FT store call the same preserved gate. Stub-binding
 regressions do not prove real ORT registration or replace the pending native-core
-and image-matrix proofs.
+and image-matrix proofs. The native runtime phase now checks every selected
+prefix's exact core and invokes its target-native C API executable. That probe
+rejects the legacy compiled WebGPU provider, requires the CPU baseline, creates
+the owning environment and checks registration plus the exact missing-key
+negative control. The producer compiles it with the core's configured compiler,
+flags and absolute header through shared cache/CMake helpers. API, build,
+installation and resource-cleanup failures remain fatal. Executable fake-ABI
+fixtures and an official-header compile do not prove actual target ORT factories.
 
 
 Pinned Python `get_available_providers()` also enumerates environment devices

@@ -38395,7 +38395,7 @@
  {
   "id": "probe.webgpu-main-call",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "    check_webgpu_python_factory \"${image_tag}\" \"${target_arch}\"\n",
+  "find": "    check_webgpu_factories \"${image_tag}\" \"${target_arch}\"\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-webgpu-runtime-transport.sh",
   "why": "The image smoke must execute the factory gate."
@@ -38471,5 +38471,293 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
   "why": "Duplicated FT factory proofs cannot satisfy the gate."
+ },
+ {
+  "id": "probe.native-webgpu-legacy",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (strcmp(providers[index], PROVIDER) == 0)",
+  "replace": "if (0 && strcmp(providers[index], PROVIDER) == 0)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "A legacy compiled WebGPU provider cannot masquerade as a static plugin."
+ },
+ {
+  "id": "probe.native-webgpu-cpu-baseline",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (cpu != 1)",
+  "replace": "if (cpu < 0)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The compiled-provider baseline must contain exactly one CPU provider."
+ },
+ {
+  "id": "probe.native-webgpu-negative-success",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (!status) return error(\"negative control unexpectedly unregistered a factory\");",
+  "replace": "if (!status) return 0;",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "A repeat success cannot prove factory removal."
+ },
+ {
+  "id": "probe.native-webgpu-negative-code",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "probe->api->GetErrorCode(status) != ORT_FAIL",
+  "replace": "0",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The negative control requires ORT_FAIL, not another error with the same text."
+ },
+ {
+  "id": "probe.native-webgpu-negative-message",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "strcmp(message, MISSING) != 0",
+  "replace": "0",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Only the exact pinned missing-key text proves absence."
+ },
+ {
+  "id": "probe.native-webgpu-first-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (status_error(probe, status, \"first UnregisterExecutionProviderLibrary\")) return 1;",
+  "replace": "(void)status_error(probe, status, \"first UnregisterExecutionProviderLibrary\");",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Enabled mode requires a successful first unregistration."
+ },
+ {
+  "id": "probe.native-webgpu-registration-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (!failed) failed = registration(&probe, strcmp(argv[2], \"ON\") == 0);",
+  "replace": "if (!failed && argc > 100) failed = registration(&probe, strcmp(argv[2], \"ON\") == 0);",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The real native executable must create an owning environment and check its factory."
+ },
+ {
+  "id": "probe.native-webgpu-provider-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (!failed) failed = compiled_providers(&probe);",
+  "replace": "if (!failed && argc > 100) failed = compiled_providers(&probe);",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The compiled-provider legacy gate must run before environment creation."
+ },
+ {
+  "id": "probe.native-webgpu-status-release",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "  probe->api->ReleaseStatus(status);\n  return failed;",
+  "replace": "  (void)status;\n  return failed;",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Negative-control statuses must be released."
+ },
+ {
+  "id": "probe.native-webgpu-env-release",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (probe->env) probe->api->ReleaseEnv(probe->env);",
+  "replace": "if (probe->env) (void)probe->env;",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "A successful or failed factory probe must release its environment."
+ },
+ {
+  "id": "probe.native-webgpu-close-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (probe->library && dlclose(probe->library) != 0) { error(\"dlclose failed\"); failed = 1; }",
+  "replace": "if (probe->library && dlclose(probe->library) != 0) { error(\"dlclose failed\"); }",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Loader cleanup failure must prevent the success sentinel."
+ },
+ {
+  "id": "probe.native-webgpu-provider-release-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (providers && status_error(probe, probe->api->ReleaseAvailableProviders(providers, count), \"ReleaseAvailableProviders\")) failed = 1;",
+  "replace": "if (providers) (void)status_error(probe, probe->api->ReleaseAvailableProviders(providers, count), \"ReleaseAvailableProviders\");",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Provider-list cleanup failure cannot be hidden by later registration success."
+ },
+ {
+  "id": "probe.native-webgpu-core-status",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if result.returncode != 0 or len(sentinels) != 1 or failure:",
+  "replace": "if len(sentinels) != 1 or failure:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The native wrapper retains the child's raw failure status."
+ },
+ {
+  "id": "probe.native-webgpu-core-sentinel",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if result.returncode != 0 or len(sentinels) != 1 or failure:",
+  "replace": "if result.returncode != 0 or failure:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "An empty, duplicate or wrong-mode native verdict is not a PASS."
+ },
+ {
+  "id": "probe.native-webgpu-core-failure-marker",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if result.returncode != 0 or len(sentinels) != 1 or failure:",
+  "replace": "if result.returncode != 0 or len(sentinels) != 1:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "A zero status and OK sentinel cannot hide an explicit native failure."
+ },
+ {
+  "id": "probe.native-webgpu-core-stream-boundary",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "(result.stdout + \"\\n\" + result.stderr).splitlines()",
+  "replace": "(result.stdout + result.stderr).splitlines()",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The two output streams remain distinct even without a trailing newline."
+ },
+ {
+  "id": "probe.native-webgpu-core-after",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if delivery.build_api().native_product(prefix) != product or linker_digest(probe) != digest:",
+  "replace": "if linker_digest(probe) != digest:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The loaded core's checked bytes must remain unchanged after execution."
+ },
+ {
+  "id": "probe.native-webgpu-probe-after",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if delivery.build_api().native_product(prefix) != product or linker_digest(probe) != digest:",
+  "replace": "if delivery.build_api().native_product(prefix) != product:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The native executable must retain its checked bytes through execution."
+ },
+ {
+  "id": "probe.native-webgpu-all-prefixes",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "[native_core(prefix, source_ref) for prefix in prefixes]",
+  "replace": "[native_core(prefix, source_ref) for prefix in prefixes[:1]]",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Every selected native core needs its own proof."
+ },
+ {
+  "id": "probe.native-webgpu-native-dispatch",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "prove_native(prefixes, args.source_ref) if args.phase == \"native\"",
+  "replace": "prove_native(prefixes, args.source_ref) if False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Native CLI execution must not import Python bindings instead."
+ },
+ {
+  "id": "probe.native-webgpu-required-helper",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "printf 'ERROR: native WebGPU probe requires %s\\n' \"${required}\" >&2\n      return 1",
+  "replace": "printf 'ERROR: native WebGPU probe requires %s\\n' \"${required}\" >&2\n      return 0",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "A missing required helper is fatal before selected tools run."
+ },
+ {
+  "id": "probe.native-webgpu-cache-resolver",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "append_cmake_cache_linker_args probe_args || return $?",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "Native probe compilation must resolve its compiler cache through the canonical helper."
+ },
+ {
+  "id": "probe.native-webgpu-configure-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "cmake \"${probe_args[@]}\" || return $?",
+  "replace": "cmake \"${probe_args[@]}\" || true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "A failed configure cannot advance to build or installation under conditional callers."
+ },
+ {
+  "id": "probe.native-webgpu-cache-gate",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "cmake_assert_compiler_cache_pin \"${probe_build}\" \"${CMAKE_COMPILER_CACHE_PIN}\" || return $?",
+  "replace": "cmake_assert_compiler_cache_pin \"${probe_build}\" \"${CMAKE_COMPILER_CACHE_PIN}\" || true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "A replaced or missing configured compiler launcher stops the producer."
+ },
+ {
+  "id": "probe.native-webgpu-build-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "run_cmake_build_with_fallback \"${probe_build}\" 1 || return $?",
+  "replace": "run_cmake_build_with_fallback \"${probe_build}\" 1 || true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "A failed native probe compilation must not publish a prefix."
+ },
+ {
+  "id": "probe.native-webgpu-install-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "cmake --install \"${probe_build}\" --prefix \"${output_dir}\" || return $?",
+  "replace": "cmake --install \"${probe_build}\" --prefix \"${output_dir}\" || true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "A failed native executable installation cannot reach the build receipt."
+ },
+ {
+  "id": "probe.native-webgpu-cpu-producer",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh",
+  "find": "build_onnx_webgpu_factory_probe \"${NATIVE_CPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}\" \"${NATIVE_CPU_OUTPUT_DIR}\" \\\n  || err \"ONNX Runtime: the target-native WebGPU factory probe build failed\"",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "The CPU producer must build its native probe before receipt publication and FT reconfiguration."
+ },
+ {
+  "id": "probe.native-webgpu-gpu-producer",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
+  "find": "build_onnx_webgpu_factory_probe \"${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}\" \"${NATIVE_GPU_OUTPUT_DIR}\" \\\n  || err \"ONNX Runtime: the target-native WebGPU factory probe build failed\"",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "The GPU producer must build its native probe before receipt publication and FT reconfiguration."
+ },
+ {
+  "id": "probe.native-webgpu-configured-compiler",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/CMakeLists.txt",
+  "find": "set(${setting} \"${CORE_${setting}}\" CACHE STRING \"Owning ORT compiler configuration\" FORCE)",
+  "replace": "set(${setting} \"${CORE_${setting}}\" CACHE STRING \"Owning ORT compiler configuration\")",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The core compiler wins over a conflicting explicit host compiler."
+ },
+ {
+  "id": "probe.native-webgpu-missing-compiler",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/CMakeLists.txt",
+  "find": "if(NOT CORE_CMAKE_C_COMPILER)\n  message(FATAL_ERROR \"The owning ORT C compiler is required\")\nendif()",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "A readable cache without its owning C compiler cannot fall back to the host."
+ },
+ {
+  "id": "probe.native-webgpu-missing-header",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/CMakeLists.txt",
+  "find": "if(NOT EXISTS \"${ORT_INCLUDE_DIR}/onnxruntime_c_api.h\")\n  message(FATAL_ERROR \"The owning ORT C API header is required\")\nendif()",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Missing owning headers fail configuration before build/install."
+ },
+ {
+  "id": "probe.native-webgpu-native-smoke-phase",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
+  "find": "for phase in native gil; do",
+  "replace": "for phase in gil gil; do",
+  "test": "bash linux/scripts/tests/test-webgpu-runtime-transport.sh",
+  "why": "Image smoke must execute the native and GIL phases separately."
+ },
+ {
+  "id": "probe.native-webgpu-config-path",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "${1:?configured ORT build required}",
+  "replace": "${1-}",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "An empty config-path must fail before creating a build or installation path."
+ },
+ {
+  "id": "probe.native-webgpu-prefix-path",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "${2:?ORT output prefix required}",
+  "replace": "${2-}",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "An empty prefix-path must fail before creating a build or installation path."
+ },
+ {
+  "id": "probe.native-webgpu-provider-bound",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "count > 1024",
+  "replace": "count > 2048",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "An invalid oversized provider list must be refused before walking or initializing an environment."
+ },
+ {
+  "id": "probe.native-webgpu-cache-pin-scope",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "required CMAKE_COMPILER_CACHE_PIN=''",
+  "replace": "required; CMAKE_COMPILER_CACHE_PIN=''",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "The canonical cache callback must write the producer helper's local output slot without changing the caller's absent, empty or existing binding."
  }
 ]

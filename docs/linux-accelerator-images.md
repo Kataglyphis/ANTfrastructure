@@ -1692,8 +1692,30 @@ venv and checks the GIL before import, after import and after the factory calls.
 The runtime smoke requires a successful child and exactly one OK sentinel.
 Existing ONNX/GenAI transports move unchanged into `check-ort-runtime.sh`, reducing
 the smoke driver's frozen size. Fixtures use stub bindings, not real ORT; actual
-native-core registration and the image matrix remain open, including executing
-these new Python gates against each actual GIL/FT product.
+image matrix remains open, including executing these probes against each actual
+native/GIL/FT product.
+
+The preserved C API probe is built in both native CPU/NVIDIA producers before the
+GIL receipt and FT reconfiguration. Its CMake project reads the core's configured
+compiler, toolchain and C flags; command-line compiler overrides cannot substitute
+a host compiler. The shared cache/linker resolver and configured-cache assertion
+remain in the path. Required helper exports, configure, build and installation
+failures stop the producer before receipt publication. Each prefix ships its
+own `bin/ort-webgpu-factory-probe`, using an absolute include of its own C API
+header. Compilation keeps `-Wall -Wextra -Werror`; the pinned upstream header uses
+an enum expression outside ISO-pedantic C, so the project retains GNU C extensions.
+
+The native runtime phase checks source/mode and exact core bytes, then runs that
+prefix's executable against the explicit core path in a separate process. Native
+`GetAvailableProviders` lists compiled providers without device enumeration: the
+probe rejects legacy internal WebGPU and requires the CPU baseline. It creates
+the owning environment and checks the first unregistration and exact missing-key
+control, including error code. Providers, statuses, environment and loader handle
+are released; a cleanup failure cannot print a successful verdict. Runtime also
+requires raw success, one matching mode sentinel and unchanged core/probe bytes.
+Every selected native prefix must pass. Real executable fixtures use a deliberately
+small fake C ABI, while a separate compile uses byte-verified official headers;
+neither completes real ORT registration or the target image matrix.
 
 The C++ WASM WebGPU Asyncify and JSPI flavors also select `static_plugin` and
 check the first three flags ON, with external Dawn OFF for Emscripten's integrated
