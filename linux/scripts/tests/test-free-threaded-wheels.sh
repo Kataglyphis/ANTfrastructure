@@ -431,7 +431,7 @@ t_assert_contains "${_out}" 'ERR ONNX Runtime: the free-threaded WebGPU build pr
 t_assert_contains "${_out}" 'RC=1'
 
 t_case "wiring: the GIL store is verified before the twins are touched, and only it is installed"
-_line() { grep -n -e "$1" "${MEDIA}" | cut -d: -f1 | head -n 1; }
+_line() { grep -n -e "$1" "${SCRIPTS}/03-media/runtime/finalize-media.sh" | cut -d: -f1 | head -n 1; }
 t_assert_ok test "$(_line 'runtime/verify-wheels.sh &&')" -lt "$(_line 'runtime/repair-wheels.sh --free-threaded &&')"
 t_assert_ok test "$(_line 'runtime/repair-wheels.sh --free-threaded &&')" -lt "$(_line 'runtime/verify-wheels.sh --free-threaded &&')"
 t_assert_ok test "$(_line 'runtime/verify-wheels.sh --free-threaded &&')" -lt "$(_line 'runtime/free-threaded-store.sh &&')"

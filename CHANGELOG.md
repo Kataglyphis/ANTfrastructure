@@ -15,6 +15,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-10 — retain WebGPU product identity through wheel repair
+
+- The existing ORT manifest check/follow transport now binds WebGPU build receipts before rewriting and
+  records final wheel hashes only after source/mode, native core, manifest and wheelhouse checks agree.
+  Original hashes and continuous checked delivery history remain preserved.
+- The shared bounded ELF reader proves loaded code/data continuity, normalizing measured patchelf metadata
+  relocation and dynamic symbol indices. Real stripping, RPATH and needed-library rewrites remain supported;
+  foreign code/data, changed symbol names and section-only copies of the original data fail.
+- The complete media finalization sequence moves into a preserved driver, shrinking the Dockerfile's
+  frozen budget while retaining narrow mounts, phase ordering and native-fatal/cross-advisory install policy.
+- Media and package closures carry the canonical build/ELF companions. Fingerprints do not prove loader
+  metadata safety, actual factory registration or inference; the real media/acceptance and consumer matrix remains open.
+
 ## 2026-11-10 — bind WebGPU build modes to each native and Python product
 
 - CPU and NVIDIA record native core/GIL bytes before free-threaded reconfiguration; the FT pass records

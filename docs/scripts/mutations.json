@@ -14101,7 +14101,7 @@
  },
  {
   "id": "wheels.ft-store-proved-again",
-  "target": "linux/Dockerfile.media",
+  "target": "linux/scripts/03-media/runtime/finalize-media.sh",
   "find": "    bash /opt/scripts/03-media/runtime/free-threaded-store.sh && \\\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
@@ -38007,5 +38007,237 @@
   "replace": "\"${_owbp_options[@]}\" || return 0\n",
   "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
   "why": "A missing recorder or failed publication cannot fall back to success."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-required-api",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if not all(callable(getattr(module, name, None)) for name in exports):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "A present file with the wrong API cannot satisfy a canonical companion."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-loader-bytes",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if data != elf.loader_bytes(address + position, length):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Section-only original bytes cannot conceal changed data used by the loader."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-allocated-bytes",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "digest.update(data)",
+  "replace": "digest.update(b\"\")",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Rewritten code or data must retain their actual compiled bytes."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-symbol-name",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "table_string(strings, name).hex()",
+  "replace": "\"\"",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Dynamic symbol names remain protected while string offsets and section indices normalize."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-elf-identity",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "body = [identity, [(name.hex(), value) for name, value in sorted(sections.items())]]",
+  "replace": "body = [None, [(name.hex(), value) for name, value in sorted(sections.items())]]",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Identical section bytes from another ELF machine cannot become this product."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-source-identity",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "not re.fullmatch(r\"[a-f0-9]{40}\", source.get(\"revision\", \"\"))",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Delivery requires the full source identity already bound at build time."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-native-core",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if build_api().native_product(prefix) not in receipt[\"phases\"][\"gil\"][\"products\"]:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "The native core must retain its proved bytes while Python wheels are rewritten."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-configured-mode",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if flags not in (dict.fromkeys(build_api().FLAGS, \"ON\"), dict.fromkeys(build_api().FLAGS, \"OFF\")):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Mixed or untyped flag sets cannot bind a native static-plugin mode."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-delivery-history",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if hop[\"from\"] != current or hop[\"build_binding_sha256\"] != build_binding(receipt):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Every delivered hash must retain a continuous path from its original build product."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-native-only",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if rows or lines:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "A native-only build cannot acquire a Python delivery proof from an unrelated wheel."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-unique-binding",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if len(matches) != 1 or len(rows) != len(lines):",
+  "replace": "if not matches or len(rows) != len(lines):",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Duplicate manifest bindings cannot select an arbitrary original row."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-pending-manifest",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "pending[\"manifest_sha256\"] != manifest_sha",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "A pending check binds the original manifest bytes before follow can publish."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-pending-product",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "pending[\"product\"] != before",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "The original product authorized by precheck cannot be replaced during rewriting."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-pending-mode",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "pending[\"build_binding_sha256\"] != binding",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Changing mode or source after precheck cannot inherit its authorization."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-pending-directory",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "pending[\"directory\"] != str(wheels.resolve())",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Follow cannot switch to another wheelhouse after precheck."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-content-continuity",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if allocated != pending[\"allocated_sha256\"]:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Allowed metadata rewrites cannot silently replace compiled ORT code, data or symbols."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-prepare-call",
+  "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+  "find": "        prepare_delivery(mode, Path(manifest), rows, out[manifest], Path(wheels), stem, proof_updates)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "The real check/follow transport must execute WebGPU delivery validation."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-publication-call",
+  "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+  "find": "publish_deliveries(proof_updates)\n",
+  "replace": "pass\n",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "A raw manifest update cannot replace the associated checked delivery receipt."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-mount-build",
+  "target": "linux/Dockerfile.media",
+  "find": "    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py,target=/opt/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py,readonly \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Every required canonical companion must reach the media rewrite RUN."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-mount-elf",
+  "target": "linux/Dockerfile.media",
+  "find": "    --mount=type=bind,source=linux/scripts/06-packaging/python-app-deb-depends.py,target=/opt/scripts/06-packaging/python-app-deb-depends.py,readonly \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Every required canonical companion must reach the media rewrite RUN."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-mount-symbols",
+  "target": "linux/Dockerfile.media",
+  "find": "    --mount=type=bind,source=linux/scripts/06-packaging/python_app_deb_symbols.py,target=/opt/scripts/06-packaging/python_app_deb_symbols.py,readonly \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Every required canonical companion must reach the media rewrite RUN."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-copy-build",
+  "target": "linux/Dockerfile.package",
+  "find": "COPY --chmod=755 linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py /opt/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "The shipped proof module must retain its required source APIs in the package layout."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-copy-elf",
+  "target": "linux/Dockerfile.package",
+  "find": "COPY --chmod=644 linux/scripts/06-packaging/python-app-deb-depends.py linux/scripts/06-packaging/python_app_deb_symbols.py /opt/scripts/06-packaging/\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "The shipped proof module must retain its required source APIs in the package layout."
+ },
+ {
+  "id": "wheels.media-finalize-driver",
+  "target": "linux/Dockerfile.media",
+  "find": "    bash /opt/scripts/03-media/runtime/finalize-media.sh\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-media-finalize.sh",
+  "why": "The media RUN must execute the preserved complete finalization pipeline."
+ },
+ {
+  "id": "wheels.media-finalize-raw-status",
+  "target": "linux/scripts/03-media/runtime/finalize-media.sh",
+  "find": "    bash /opt/scripts/03-media/runtime/collect-artifacts.sh && \\\n",
+  "replace": "    { bash /opt/scripts/03-media/runtime/collect-artifacts.sh || true; } && \\\n",
+  "test": "bash linux/scripts/tests/test-media-finalize.sh",
+  "why": "A failed phase keeps its raw status and cannot reach later phases."
+ },
+ {
+  "id": "wheels.media-finalize-env-failure",
+  "target": "linux/scripts/03-media/runtime/finalize-media.sh",
+  "find": "    source /opt/scripts/03-media/runtime/media-env.sh\n",
+  "replace": "    source /opt/scripts/03-media/runtime/media-env.sh || true\n",
+  "test": "bash linux/scripts/tests/test-media-finalize.sh",
+  "why": "Failed environment setup must stop before collection."
+ },
+ {
+  "id": "wheels.media-finalize-native-install",
+  "target": "linux/scripts/03-media/runtime/finalize-media.sh",
+  "find": "[ \"${TARGET_ARCH:-amd64}\" != \"amd64\" ]",
+  "replace": "[ 1 = 1 ]",
+  "test": "bash linux/scripts/tests/test-media-finalize.sh",
+  "why": "Default/amd64 installation failures remain fatal."
+ },
+ {
+  "id": "wheels.media-finalize-cross-install",
+  "target": "linux/scripts/03-media/runtime/finalize-media.sh",
+  "find": "[ \"${TARGET_ARCH:-amd64}\" != \"amd64\" ]",
+  "replace": "[ \"${TARGET_ARCH:-amd64}\" = \"amd64\" ]",
+  "test": "bash linux/scripts/tests/test-media-finalize.sh",
+  "why": "Foreign wheel installation retains its advisory policy and reaches final validation."
+ },
+ {
+  "id": "wheels.media-finalize-python-path",
+  "target": "linux/scripts/03-media/runtime/finalize-media.sh",
+  "find": "    PYTHONPATH=\"$(echo /opt/opencv5/lib/python*/site-packages 2>/dev/null):${PYTHONPATH:-}\" \\\n",
+  "replace": "    PYTHONPATH=\"${PYTHONPATH:-}\" \\\n",
+  "test": "bash linux/scripts/tests/test-media-finalize.sh",
+  "why": "The final smoke prepends the image OpenCV path while retaining caller Python paths."
  }
 ]

@@ -1652,11 +1652,34 @@ wheel's Python extension. Missing, duplicate, linked or non-ELF products fail;
 an FT phase must match its GIL source/mode and retain its earlier product bytes.
 An explicit build without a Python wheel records the native core alone.
 
-These are **pre-repair build receipts**. Cross-wheel stripping and native
-`auditwheel` repair can change Python bytes, so final delivery must retain a
-checked mapping through those rewrites before using a receipt at runtime.
-The new receipts do not yet supply that mapping or prove factory registration.
-Atomic publication failures retain the prior receipt and fail the build.
+The build records retain their **pre-repair hashes**. The canonical
+`repair-wheels.sh` check/follow transport now adds `wheel_delivery` mappings:
+precheck proves the current wheel against its source/mode record, preserves its
+allocated ELF fingerprint and arms a pending check; follow requires that exact
+manifest, wheelhouse, product and build binding before publishing final hashes.
+Repeated checked repairs retain a continuous history. The native core is checked
+again, and a native-only OFF build cannot become a Python delivery proof.
+
+`runtime/ort_webgpu_delivery.py` uses the canonical build-proof API and the shared
+bounded `ElfSections` parser, carried with `python_app_deb_symbols.py` in every
+mounted/copied closure. Code, data, architecture, symbol names/types/values and
+section-to-loader correspondence remain protected. Stripping removes unallocated
+metadata; patchelf may relocate typed note/hash/symbol tables and rewrite dynamic
+string offsets, so fingerprints normalize those addresses and symbol section
+indices. Only `.dynamic`, `.dynstr` and `.gnu.version_r` content is excluded.
+This does not verify loader metadata semantics, dependency lookup or inference.
+
+Missing prechecks, changed build bindings, code/data/symbol changes and section-only
+copies that conceal changed loaded data fail without publishing the new manifest.
+Atomic receipt-write failures stay fatal. The preserved `finalize-media.sh` owns
+collection, GIL repair/verify, FT repair/verify/store, installation and final smokes.
+It preserves raw phase failures, fatal native installs, advisory foreign installs
+and the smoke's OpenCV/caller Python paths; its extraction shrinks the frozen
+Dockerfile budget while retaining every narrow dependency mount.
+Real strip/patchelf fixtures exercise
+these boundaries, including GIL and FT, while the raw census fixture retains its
+separate transport scope. Actual native/Python factory registration and the full
+image proof remain open.
 
 The C++ WASM WebGPU Asyncify and JSPI flavors also select `static_plugin` and
 check the first three flags ON, with external Dawn OFF for Emscripten's integrated

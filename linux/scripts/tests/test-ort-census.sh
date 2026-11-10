@@ -337,13 +337,16 @@ t_assert_ok test "${_l_gpu:-99999}" -lt "${_l_mv:-0}"
 
 t_case "the manifest follows the chain wheel through repair-wheels.sh: stripped and retagged it verifies, a foreign one never"
 _rw="$(t_fn_src "${TESTS_DIR}/../03-media/runtime/repair-wheels.sh" ort_manifest_rows)" || exit 1
+# The raw census fixture isolates the WebGPU layer; test-onnx-webgpu-delivery.sh exercises its real callbacks.
+_delivery_stub="${_work}/delivery-stub"; mkdir -p "${_delivery_stub}"
+printf '%s\n' 'def prepare_delivery(*args): pass' 'def publish_deliveries(*args): pass' > "${_delivery_stub}/ort_webgpu_delivery.py"
 _fw="${_work}/follow"
 _fwh="${_fw}/opt/wheels"
 _fpfx="${_fw}/usr/local/lib/onnxruntime-cpu"
 _fman="${_fpfx}/ort-provenance.sha256"
 mkdir -p "${_fwh}" "${_fpfx}/wheels"
 # _rows <check|follow>: the extracted rewriter over the fixture wheelhouse and manifest (host paths for a Windows python).
-_rows() { bash -c "${_rw}"$'\n'"python3() { command ${PY} \"\$@\"; }; ort_manifest_rows $1 '$(_ort_host_dir "${_fwh}")' '$(_ort_host_dir "${_fpfx}")/ort-provenance.sha256'"; }
+_rows() { bash -c "${_rw}"$'\n'"python3() { command ${PY} \"\$@\"; }; _SCRIPT_DIR='${_delivery_stub}'; ort_manifest_rows $1 '$(_ort_host_dir "${_fwh}")' '$(_ort_host_dir "${_fpfx}")/ort-provenance.sha256'"; }
 # _whl <dir under the fixture> <wheel name> <member file>: a wheel whose pybind module holds that file's bytes.
 _whl() {
   (cd "${_fw}" && "${PY}" -c 'import sys, zipfile
@@ -402,10 +405,10 @@ t_assert_eq 'ort_manifest_rows check|strip_cross_wheels|ort_manifest_rows follow
 t_assert_contains "$(cat "${_rwf}")" '_ORT_MANIFESTS=(/usr/local/lib/onnxruntime-*/ort-provenance.sha256)'
 t_assert_ok bash -c 'for m in $1; do case "${m}" in /usr/local/lib/onnxruntime-*/ort-provenance.sha256 | /usr/local/lib/onnxruntime-*/ort-provenance-free-threaded.sha256) ;; *) exit 1 ;; esac; done' _ \
   "${_ORT_CENSUS_MANIFESTS}"
-_l_rep="$(grep -n -e 'runtime/repair-wheels.sh &&' "${TESTS_DIR}/../../Dockerfile.media" | cut -d: -f1 || true)"
-_l_ver="$(grep -n -e 'runtime/verify-wheels.sh &&' "${TESTS_DIR}/../../Dockerfile.media" | cut -d: -f1 || true)"
-_l_col="$(grep -n -e 'runtime/collect-artifacts.sh &&' "${TESTS_DIR}/../../Dockerfile.media" | cut -d: -f1 || true)"
-_l_ins="$(grep -n -e 'uv pip install --no-deps /opt/wheels/\*\.whl' "${TESTS_DIR}/../../Dockerfile.media" | cut -d: -f1 || true)"
+_l_rep="$(grep -n -e 'runtime/repair-wheels.sh &&' "${TESTS_DIR}/../03-media/runtime/finalize-media.sh" | cut -d: -f1 || true)"
+_l_ver="$(grep -n -e 'runtime/verify-wheels.sh &&' "${TESTS_DIR}/../03-media/runtime/finalize-media.sh" | cut -d: -f1 || true)"
+_l_col="$(grep -n -e 'runtime/collect-artifacts.sh &&' "${TESTS_DIR}/../03-media/runtime/finalize-media.sh" | cut -d: -f1 || true)"
+_l_ins="$(grep -n -e 'uv pip install --no-deps /opt/wheels/\*\.whl' "${TESTS_DIR}/../03-media/runtime/finalize-media.sh" | cut -d: -f1 || true)"
 t_assert_ok test "${_l_col:-0}" -gt 0
 t_assert_ok test "${_l_col:-0}" -lt "${_l_rep:-0}"
 t_assert_ok test "${_l_rep:-99999}" -lt "${_l_ver:-0}"

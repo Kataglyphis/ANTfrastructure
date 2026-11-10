@@ -615,10 +615,15 @@ the corresponding runtime/product proofs remain open under CON233.
 
 Native build prefixes now preserve `ort-webgpu-build.json` with separate native,
 GIL and FT product hashes taken against each phase's checked configuration.
-The FT receipt refuses changed GIL products or another source/mode. These records
-precede wheel repair: stripping/auditwheel delivery mapping, actual factory
-registration and the complete image matrix remain open. Do not treat their
-presence as a runtime PASS.
+The FT receipt refuses changed GIL products or another source/mode. Wheel repair
+now retains those original hashes and adds checked `wheel_delivery` mappings to
+final Python hashes. A successful precheck binds source/mode, manifest and
+wheelhouse; follow requires unchanged allocated code/data and normalized dynamic
+symbol identity against the real loader mappings. Foreign code, changed symbol
+names and section-only copies fail. Typed dynamic metadata changes remain outside
+this fingerprint's loader-safety scope; the census and runtime checks remain
+required. These source/fixture proofs do not complete actual factory registration
+or the image matrix. A receipt's presence alone is no runtime PASS.
 
 Pinned Python `get_available_providers()` also enumerates environment devices
 ([the pinned binding](https://github.com/microsoft/onnxruntime/blob/v1.31.1/onnxruntime/python/onnxruntime_pybind_module.cc)).
