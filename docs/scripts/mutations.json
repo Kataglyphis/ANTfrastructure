@@ -38927,5 +38927,181 @@
   "replace": "    with threading.RLock():\n        previous = _REGISTERED.get(binding, {}).get(plugin.name)",
   "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
   "why": "Concurrent native calls release the GIL, so all callers must share one registration lock."
+ },
+ {
+  "id": "lib.ort-plugin-native-image-root-precedence",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "    if (!advertised) {",
+  "replace": "    if (true) {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "An explicit image root wins and cannot silently fall back to a separately bundled module."
+ },
+ {
+  "id": "lib.ort-plugin-native-absolute-root",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "    if (!root.is_absolute()) {",
+  "replace": "    if (false) {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "A relative advertised root fails before any native registration."
+ },
+ {
+  "id": "lib.ort-plugin-native-absolute-bundle",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        if (!bundled_directory.is_absolute()) {",
+  "replace": "        if (false) {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Bundled lookup never depends on the current working directory."
+ },
+ {
+  "id": "lib.ort-plugin-native-root-directory",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "    if (!std::filesystem::is_directory(root, status) || status) {",
+  "replace": "    if (false) {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "A file advertised as the image root retains its explicit configuration failure."
+ },
+ {
+  "id": "lib.ort-plugin-native-module-file",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        if (!std::filesystem::is_regular_file(resolved, status) || status) {",
+  "replace": "        if (false) {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "A directory cannot be accepted as a plugin module."
+ },
+ {
+  "id": "lib.ort-plugin-native-broken-bundle-link",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "!std::filesystem::is_symlink(entry)",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "A broken advertised bundle link is an error rather than optional absence."
+ },
+ {
+  "id": "lib.ort-plugin-native-native-registration-call",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "api_.RegisterExecutionProviderLibrary(environment_, name.c_str(), path->c_str())",
+  "replace": "nullptr",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Successful registration requires the supplied owning native API call."
+ },
+ {
+  "id": "lib.ort-plugin-native-retry-failed-registration",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        if (!accept_status(api_.RegisterExecutionProviderLibrary(environment_, name.c_str(), path->c_str()), error)) {\n            return false;\n        }\n        registered_.emplace(name, *path);",
+  "replace": "        registered_.emplace(name, *path);\n        if (!accept_status(api_.RegisterExecutionProviderLibrary(environment_, name.c_str(), path->c_str()), error)) {\n            return false;\n        }",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Only successful native calls enter the cache; a failed call remains retryable."
+ },
+ {
+  "id": "lib.ort-plugin-native-per-environment-cache",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "    std::map<std::string, std::filesystem::path> registered_;",
+  "replace": "    inline static std::map<std::string, std::filesystem::path> registered_;",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Separate owning environments cannot reuse each other's registration verdict."
+ },
+ {
+  "id": "lib.ort-plugin-native-path-conflict",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "            if (previous->second == *path) { return true; }",
+  "replace": "            return true;",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "An existing registration name cannot silently change its module path."
+ },
+ {
+  "id": "lib.ort-plugin-native-shared-lock",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        std::lock_guard<std::mutex> lock(mutex_);\n        return ensure_registered(plugin, bundled_directory, error);",
+  "replace": "        std::mutex per_call;\n        std::lock_guard<std::mutex> lock(per_call);\n        return ensure_registered(plugin, bundled_directory, error);",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Parallel first callers must share one lock rather than each creating an independent lock."
+ },
+ {
+  "id": "lib.ort-plugin-native-native-error-text",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        error = message == nullptr ? \"ONNX Runtime returned an error without a message\" : message;",
+  "replace": "        error = std::string(\"masked native failure\") + (message == nullptr ? \"\" : \"\");",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Raw native registration, enumeration and append diagnostics remain observable."
+ },
+ {
+  "id": "lib.ort-plugin-native-status-release",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        const std::unique_ptr<OrtStatus, decltype(release)> owned(status, release);",
+  "replace": "        const std::unique_ptr<OrtStatus, decltype(release)> owned(nullptr, release);",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Every failed native status is released even though its copied error remains visible."
+ },
+ {
+  "id": "lib.ort-plugin-native-negative-index",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        if (device_index < 0) {",
+  "replace": "        if (false) {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "A negative device index fails before registration or enumeration."
+ },
+ {
+  "id": "lib.ort-plugin-native-fresh-device-query",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "api_.GetEpDevices(environment_, &devices, &count)",
+  "replace": "nullptr",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Each attachment obtains a fresh matching device list from the owning environment."
+ },
+ {
+  "id": "lib.ort-plugin-native-matching-device-name",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "name == ep_name && matching++ == index",
+  "replace": "name == \"MIGraphXExecutionProvider\" && matching++ == index",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Device selection uses the plugin factory name, not the removed built-in name."
+ },
+ {
+  "id": "lib.ort-plugin-native-requested-device-index",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "matching++ == index",
+  "replace": "matching++ == 0",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "The explicitly requested second matching GPU is not replaced by the first one."
+ },
+ {
+  "id": "lib.ort-plugin-native-v2-attachment",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "api_.SessionOptionsAppendExecutionProvider_V2(\n                               options, environment_, &device, 1, keys.data(), values.data(), keys.size())",
+  "replace": "nullptr",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "A successful return requires actually attaching the selected device through V2."
+ },
+ {
+  "id": "lib.ort-plugin-native-provider-options",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "            values.push_back(option.second.c_str());",
+  "replace": "            values.push_back(option.first.c_str());",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Device and memory options retain their caller-provided values."
+ },
+ {
+  "id": "lib.ort-plugin-native-registered-report",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        for (const auto &entry : registered_) { names.push_back(entry.first); }",
+  "replace": "        for (const auto &entry : registered_) { (void)entry; }",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "The public report names successful registrations in this registry."
+ },
+ {
+  "id": "lib.ort-plugin-native-owning-core-directory",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "    return resolved.parent_path();",
+  "replace": "    return resolved;",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Automatic bundled fallback uses the directory of the actual supplied API's loaded core."
+ },
+ {
+  "id": "lib.ort-plugin-native-exact-native-asset",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "ort-plugin-registration-native | shared/native/ort_plugin_eps.hpp | runtime_support/ort_plugin_eps.hpp | exact |",
+  "replace": "ort-plugin-registration-native | shared/native/ort_plugin_eps.hpp | runtime_support/ort_plugin_eps.hpp | body |",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "A consumer native header remains byte-identical to its canonical source, including its directives."
  }
 ]

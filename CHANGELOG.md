@@ -15,6 +15,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-10 — share native ORT plugin registration policy
+
+- `shared/native/ort_plugin_eps.hpp` registers through the supplied owning C API/environment,
+  caches only successful calls, refuses name/path conflicts and selects fresh V2 devices while
+  retaining provider options and native failure text. Callers share its registry for that environment's lifetime.
+- The exact native asset and compiled fake-callback suite cover path precedence, retries, separate
+  environments, concurrency and status cleanup, with a mandatory failing assertion control.
+  Real SDK object compilation checks API shape; consumer builds, packages and hardware profiles remain separate.
+
 ## 2026-11-10 — share Python ORT plugin registration and device selection
 
 - `shared/python/ort_plugin_eps.py` resolves advertised plugin roots before a bundled fallback,

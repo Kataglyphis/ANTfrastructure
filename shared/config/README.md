@@ -341,3 +341,8 @@ that could not report on the platform it gates. `linux/scripts/tests/`
 `test-shared-config-sync.sh` pins the bash half to the verdicts, exit codes and
 modes the two share. No hub suite runs the PowerShell half; OmniAccelerANT's
 `linux-x64.yml` runs both halves over its own tree.
+
+`ort-plugin-registration-native` copies the single native header into a consumer's
+compile include tree. Keep it exact and use the API table/environment that own the
+sessions; the lifecycle and error contract is in
+[the consumer image contract](../../docs/consumer-image-contract.md#amds-plugin-migraphx-ep).

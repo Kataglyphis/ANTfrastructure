@@ -1076,6 +1076,20 @@ provider list overrides providers already attached through session options. The
 warns about this precedence. MIGraphX registration itself queries HIP devices, so a
 GPU-less CPU path must not claim successful registration merely from module presence.
 
+The native owner is `shared/native/ort_plugin_eps.hpp`, the exact
+`ort-plugin-registration-native` asset. Include the owning runtime's C API header and
+instantiate `PluginRegistry<OrtApi>` with that API table and its `OrtEnv`. Every caller
+of the same environment shares one registry; retain both API and environment for its
+whole lifetime. Keep session ownership alive until before that environment is released.
+It returns failure text and consumes failed statuses instead of entering aborting
+`ORT_NO_EXCEPTIONS` C++ wrappers. Without an advertised root it resolves the loaded
+core from an address in that supplied API, then finds a bundled module beside it;
+callers may supply an explicit absolute bundle directory. An advertised image root
+still wins. Registration and V2 attachment
+are separate from session creation and real operator placement. The compiled fake API
+suite proves policy, and a real-header object checks signatures; neither proves a new
+runtime image, packaged inference or Windows loading.
+
 Repeated registration never silently changes the path behind a name. The helper
 coordinates its own calls only; it does not coordinate external unregistration.
 Fake-binding and shared-copy tests prove these policies, not native ABI compatibility,
