@@ -1069,6 +1069,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       [contract](docs/consumer-image-contract.md#nvidias-plugin-tensorrt-ep)). **Open on Linux:** the WebGPU EP as
       `onnxruntime_WEBGPU_STATIC_PLUGIN` (re-keys every CPU ORT build, so every media stage on three arches: its own
       chain), and detector parity on `TensorRTPluginExecutionProvider` on a card.
+      **Source preparation 2026-11-10:** native CPU/NVIDIA and their free-threaded wheels select the pinned
+      `--use_webgpu static_plugin` mode with external Dawn; configured flags, runtime registration and the
+      separate three-architecture chain/acceptance are still open. Before that media rebuild, preserve the
+      OpenCV FindCUDA cache repair: its bounded SBSA replay records twelve forced-repeat hits and no misses;
+      the complete stage, non-x86 Torch wrapper policy and consumer Rust cache wiring remain follow-ups
+      ([cache scope](docs/build-cache-tiers.md#nvcc--hipcc)).
       Windows is this hub's Windows session. DirectML has no plugin and stays. The evidence, with links to every
       plugin: the 2026-11-08 deep research.
       **Original handoff:** `rebuild-sequence-37` passed amd64 media/android, then exited 1 on

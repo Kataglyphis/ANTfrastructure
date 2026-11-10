@@ -15,6 +15,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-10 — repair classic FindCUDA cache wiring and prepare native WebGPU
+
+- OpenCV's legacy CUDA rules use a preserved executable wrapper and the pinned CMake environment API;
+  configuration fails when its cache or any generated CUDA object rule bypasses that wrapper. Toolkit-root
+  invalidation, target compiler, architecture selection and explicit cache opt-outs remain intact.
+- The reusable `probe-opencv-cuda-cache.sh` and its source fixture retain a private-cache cold/repeat proof.
+  The real SBSA replay records twelve cold misses then twelve CUDA/device/PTX/CUBIN hits, zero repeat misses
+  and no errors. One dependency-only `-M` scan and one outer nvcc driver remain explicitly uncached.
+  This does not prove a full OpenCV rebuild, remote-cache reuse or GPU inference.
+- Native ORT selects `--use_webgpu static_plugin` with external Dawn, including free-threaded replay.
+  Its argument fixtures pass on amd64, arm64 and riscv64 with opt-outs retained; configured/runtime proof,
+  the separate media chain and consumer acceptance remain open under CON233.
+
 ## 2026-11-10 — publish NVIDIA plugin images after amd64 and native arm64 acceptance
 
 - Runtime run `20261110-013045-b0a6f8cb` completed from hub

@@ -1623,3 +1623,16 @@ python3 setup.py install
 
 If the board cannot reach any host, its resolver is the usual cause — see
 [TLS handshake failures](linux-host-setup.md#b5-tls-handshake-failures-inside-containers).
+
+## Native WebGPU static plugin
+
+The Linux native CPU and NVIDIA ORT builds request
+`--use_webgpu static_plugin --use_external_dawn` from pinned ORT v1.31.1;
+the free-threaded wheel replays those arguments. Keep `ORT_ENABLE_WEBGPU` and
+`ORT_WEBGPU_ALLOW_CROSS` opt-outs. The pinned mode enables EP API adapters and
+a statically linked plugin factory, registered when ORT creates its environment;
+it does not require a separate WebGPU shared module.
+
+This is source preparation for CON233. Configured-cache and runtime registration
+proofs, a separate media rebuild on all three CPU architectures and new consumer
+acceptance remain open. Existing published-image receipts do not prove this change.

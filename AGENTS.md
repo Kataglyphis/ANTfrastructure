@@ -109,6 +109,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Ordered directory visitors retain the caller's `dir` binding, append policy and unconditional selected calls.
    The plugin QNN EP stage checks the module, both exports and the HTP backend beside it on arm64; the CPU prefix refuses an in-tree QNN provider.
    The GPU prefix refuses an in-tree TensorRT provider and requires the CUDA module's plugin exports; the TensorRT plugin stage runs on nvidia images with TensorRT.
+   Native WebGPU requests `--use_webgpu static_plugin` with external Dawn; keep cross opt-outs and free-threaded argument replay.
    Its protobuf seed validates every C/C++ option argument, including mixed scoped inputs; none may reach rc.exe or its cmcldeps preprocessor.
    Shared plugin C++ flags retain /EHsc because the ORT C++ API throws.
    CUDA standard options stay joined so sccache does not parse the value as another input.
@@ -1018,6 +1019,9 @@ The rules:
      `cmake_assert_compiler_cache_pin`: pthreadpool and XNNPACK FORCE `CCACHE_BINARY` into the
      launchers, which beats the environment and a `-D` launcher alike
      ([`build-cache-tiers.md`](docs/build-cache-tiers.md#a-subproject-that-forces-its-own-launcher)).
+   - OpenCV's classic FindCUDA uses `opencv-cuda-cache.sh` through its executable and environment APIs;
+     keep the companion and reject a configured cache or generated CUDA object rule that bypasses it.
+     Preserve toolkit-root invalidation, the target host compiler and the architecture list.
    - Every RUN that compiles carries both cache mounts; its closing drain prints
      `sccache-stats|`, the number to read before calling a step cached.
    - The launcher's compile governor caps host-wide compiles by `flock` slots in the sccache mount;

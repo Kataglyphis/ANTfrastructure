@@ -37519,5 +37519,141 @@
   "replace": "    if False:\n",
   "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
   "why": "recursive submodule state and data-lock maps must retain their required types before any work"
+ },
+ {
+  "id": "probe.opencv-cuda-cache-wrapper-argument",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "\"-DCUDA_NVCC_EXECUTABLE=${BASH_SOURCE[0]}\"",
+  "replace": "\"-DCUDA_NVCC_EXECUTABLE=/bare/nvcc\"",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "The classic FindCUDA executable must use the preserved wrapper; the modern launcher alone does not intercept it."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-rule-verdict",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "            rc=1",
+  "replace": "            rc=0",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "One bare nvcc rule must fail the complete configure gate even when another generated rule is correct."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-empty-rules",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "if [ \"${count}\" -eq 0 ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "An enabled CUDA cache cannot be verified from an empty generated-rule tree."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-argv",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "\"${OPENCV_CUDA_CACHE_NVCC:?missing real OpenCV nvcc}\" \"$@\"",
+  "replace": "\"${OPENCV_CUDA_CACHE_NVCC:?missing real OpenCV nvcc}\" \"$*\"",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "The legacy compiler wrapper preserves every argument boundary, including compiler paths with spaces."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-selected-call",
+  "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+  "find": "opencv_cuda_cache_args _ocmcd_out \"${_cuda_launcher}\"",
+  "replace": " : _ocmcd_out \"${_cuda_launcher}\"",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "The selected sccache-class launcher must reach the classic FindCUDA arguments and child environment."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-configure-call",
+  "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+  "find": "    opencv_cuda_cache_assert \"${build_dir}\"",
+  "replace": "    : \"${build_dir}\"",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "OpenCV must run the cache wiring verdict after configuration; a detached helper proves nothing."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-repeat-hits",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "    assert repeat[\"cache_hits\"][\"counts\"].get(name, 0) >= minimum, (\"repeat\", name, repeat)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "A forced repeat needs CUDA, device, PTX and CUBIN cache hits for every requested architecture."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-cold-misses",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "    assert cold[\"cache_misses\"][\"counts\"].get(name, 0) >= minimum, (\"cold\", name, cold)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "The private cold pass must actually fill each compilation category before reuse is claimed."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-repeat-misses",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "assert sum(repeat[\"cache_misses\"][\"counts\"].values()) == 0, repeat",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "A repeat containing a cache miss does not satisfy the local complete-reuse proof."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-errors",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "    assert sum(phase[\"cache_errors\"][\"counts\"].values()) == 0, phase",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "Cache errors cannot be hidden by positive CUDA hit counts."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-refusals",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "        assert phase[name] == 0, (name, phase)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "Compiler failures, write errors, parser refusals and forced recaches remain fatal in either phase."
+ },
+ {
+  "id": "lib.onnx-webgpu-static-plugin-mode",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "build_args_ref+=(--use_webgpu static_plugin --use_external_dawn)",
+  "replace": "build_args_ref+=(--use_webgpu --use_external_dawn)",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "The native build must select the pinned CLI static_plugin mode, which enables EP API adapters as well as static plugin compilation."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-environment",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "    export CUDA_NVCC_EXECUTABLE=\"${BASH_SOURCE[0]}\"",
+  "replace": "    : \"${BASH_SOURCE[0]}\"",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "Pinned FindCUDA must recover the wrapper from the environment after its legitimate toolkit-root cache invalidation."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-no-optimized-gate",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "    python3 -I - \"$@\"",
+  "replace": "    python3 - \"$@\"",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "PYTHONOPTIMIZE must not turn the counter gate into an assertion-free pass."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-dependency-reason",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "    assert phase[\"requests_not_cacheable\"] == 1 and phase[\"not_cached\"] == {\"-M\": 1}, phase",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "Only the actual single dependency-only -M scan is expected; another count or refusal reason must fail."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-internal-driver",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "    assert phase[\"non_cacheable_compilations\"] == 1, phase",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "The one intentional outer nvcc driver must stay separately counted; extra internal bypasses fail."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-configured-path",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "        printf 'ERROR: OpenCV FindCUDA did not retain its nvcc cache wrapper\\n' >&2\n        return 1",
+  "replace": "        printf 'ERROR: OpenCV FindCUDA did not retain its nvcc cache wrapper\\n' >&2\n        return 0",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "A wrong configured nvcc must fail even when generated fixture rules contain the correct wrapper."
  }
 ]

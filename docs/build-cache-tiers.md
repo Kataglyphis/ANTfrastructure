@@ -1026,7 +1026,7 @@ cache work while retaining the selected target compiler and header preflight.
 The source blob and phase-scoped log markers are retained in
 `logs/test-results/plugin-proof-nvidia-runtime-9f4e6bd2/wrapper-cache-scope-observation.json`.
 
-**OpenCV classic FindCUDA still bypasses this launcher (measured 2026-11-09).**
+**OpenCV classic FindCUDA bypass: observed 2026-11-09, repaired in source 2026-11-10.**
 The build sets `CMAKE_CUDA_COMPILER_LAUNCHER`, but its generated FindCUDA rules
 execute `/usr/local/cuda/bin/nvcc` directly. A live `nvcc → cmake → sh → ninja`
 ancestry confirms that route; the stage reported 1,720 C/C++ hits, two C/C++ misses
@@ -1036,6 +1036,35 @@ host compiler when wiring the legacy nvcc entry, then prove that actual route wi
 a cold/repeat build; setting the modern launcher alone is insufficient. The saved
 rule, process sample and counters are under
 `logs/test-results/plugin-proof-nvidia-arm64-media-2/` as `opencv-findcuda-*`.
+
+The selected resolver result now reaches the versioned `opencv-cuda-cache.sh`
+executable as well as the modern launcher. It exports `CUDA_NVCC_EXECUTABLE`:
+[pinned FindCUDA](https://github.com/Kitware/CMake/blob/v4.4.5/Modules/FindCUDA.cmake)
+legitimately clears the CLI cache entry when the toolkit root changes, then
+repopulates it from that environment API. Keep that invalidation; preloading its
+internal root marker would retain stale SDK libraries. The configure verdict checks
+both the resulting cache and every generated CUDA object rule, refusing an empty
+rule tree. Its fixtures cover wiring and failures, without proving cache hits.
+
+Repeat the bounded real probe inside the NVIDIA compiler image:
+
+```bash
+bash linux/scripts/02-toolchain/probe-opencv-cuda-cache.sh /new-proof-output
+```
+
+It requires the OpenCV companion, `03-media/core`, `01-core` and the adjacent
+`probes/opencv-cuda-cache` fixture. Set the normal cross-build environment for an
+SBSA replay. It preserves inputs, generated rules, selected compilers, cold and
+forced-repeat JSON counters and server cleanup; its private cache never touches
+the chain's shared mounts. With the pinned NVIDIA SDK and AArch64 host compiler,
+the 2026-11-10 replay recorded twelve cold misses followed by twelve hits: CUDA
+and device code one each, PTX and CUBIN five each, with no repeat misses, errors
+or forced recaches. Both phases retain exactly one noncacheable `-M` dependency
+scan and one internal outer-driver execution; another reason or count fails.
+Raw proof is under `logs/test-results/webgpu-registration-20261110/opencv-cache-replay-output-6/`.
+This is one legacy FindCUDA kernel, not the complete OpenCV stage, remote-cache
+reuse or GPU inference. The next media rebuild must still prove that full stage;
+the non-x86 Torch follow-up above and consumer Rust cache wiring remain open.
 
 **CUDA cache counters describe subcommands.** The pinned implementation leaves the
 outer nvcc driver uncached and expands its dry run on every invocation so host-only

@@ -6,6 +6,33 @@ source "${TESTS_DIR}/test-harness.sh"
 ORT="${TESTS_DIR}/../03-media/build/onnxruntime/build"
 COMMON="${ORT}/lib/common.sh"
 
+# Argument fixtures cannot prove a compiled static plugin or device inference.
+t_source_functions "${COMMON}" onnx_webgpu_enabled_for_target append_onnx_optional_lto_webgpu_args || exit 1
+_webgpu_args() {
+  local -a _owgp_args=(--config Release 'CALLER=value with spaces')
+  ORT_ENABLE_WEBGPU="$1" TARGET_ARCH="$2" ORT_WEBGPU_ALLOW_CROSS="$3" ORT_ENABLE_LTO="$4" \
+    append_onnx_optional_lto_webgpu_args _owgp_args
+  printf '<%s>' "${_owgp_args[@]}"
+}
+_wgp_base='<--config><Release><CALLER=value with spaces>'
+_wgp_flags='<--use_webgpu><static_plugin><--use_external_dawn><--cmake_extra_defines><CMAKE_CXX_FLAGS=-Wno-error=invalid-constexpr -Wno-invalid-constexpr>'
+for _wgp_arch in amd64 x86_64 arm64 riscv64; do
+  t_case "${_wgp_arch}: native WebGPU uses the static plugin ABI with external Dawn"
+  t_assert_eq "${_wgp_base}${_wgp_flags}" "$(_webgpu_args true "${_wgp_arch}" true false)"
+  t_case "${_wgp_arch}: LTO preserves the static plugin argument and caller boundaries"
+  t_assert_eq "${_wgp_base}<--enable_lto>${_wgp_flags}" "$(_webgpu_args true "${_wgp_arch}" true true)"
+  t_case "${_wgp_arch}: the WebGPU opt-out leaves independent LTO enabled"
+  t_assert_eq "${_wgp_base}<--enable_lto>" "$(_webgpu_args false "${_wgp_arch}" true true)"
+done
+for _wgp_arch in arm64 riscv64; do
+  t_case "${_wgp_arch}: an explicit cross opt-out keeps WebGPU disabled"
+  t_assert_eq "${_wgp_base}" "$(_webgpu_args true "${_wgp_arch}" false false)"
+done
+for _wgp_arch in amd64 x86_64; do
+  t_case "${_wgp_arch}: the cross guard does not disable native WebGPU"
+  t_assert_eq "${_wgp_base}${_wgp_flags}" "$(_webgpu_args true "${_wgp_arch}" false false)"
+done
+
 _fn="$(t_fn_src "${COMMON}" report_onnx_build_output)" || exit 1
 
 _work="$(mktemp -d)"

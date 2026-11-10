@@ -13,6 +13,8 @@ install_warn_trap
 source_module cross-cuda.sh
 # shellcheck source=opencv-ort.sh
 source "${SCRIPT_DIR}/opencv-ort.sh"
+# shellcheck source=opencv-cuda-cache.sh
+source "${SCRIPT_DIR}/opencv-cuda-cache.sh"
 # shellcheck source=../../ort-provenance.sh
 source "${SCRIPT_DIR}/../../ort-provenance.sh"
 
@@ -532,8 +534,8 @@ _opencv_cmake_cuda_opts() {
             _cuda_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
             case "${_cuda_launcher}" in
                 *sccache*)
-                    echo "sccache: wrapping nvcc via CMAKE_CUDA_COMPILER_LAUNCHER (${_cuda_launcher})"
-                    _ocmcd_out+=("-DCMAKE_CUDA_COMPILER_LAUNCHER=${_cuda_launcher}")
+                    echo "sccache: wrapping classic FindCUDA nvcc (${_cuda_launcher})"
+                    opencv_cuda_cache_args _ocmcd_out "${_cuda_launcher}" "${CUDA_HOME:-/usr/local/cuda}"
                     ;;
                 *)
                     echo "WARN: sccache unavailable for CUDA caching — building uncached"
@@ -631,6 +633,7 @@ configure_opencv() {
         || die "OpenCV configure failed"
     opencv_ort_assert_configure "${build_dir}" "${ort_compat}" "${ort_ver}" \
         || die "OpenCV configure resolved an ONNX Runtime other than the chain"
+    opencv_cuda_cache_assert "${build_dir}" || die "OpenCV CUDA compiler cache wiring is unverified"
 }
 
 # Build OpenCV

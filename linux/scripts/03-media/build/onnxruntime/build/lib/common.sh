@@ -585,7 +585,7 @@ append_onnx_optional_lto_webgpu_args() {
     build_args_ref+=(--enable_lto)
   fi
   if onnx_webgpu_enabled_for_target; then
-    build_args_ref+=(--use_webgpu --use_external_dawn)
+    build_args_ref+=(--use_webgpu static_plugin --use_external_dawn)
     # GCC 16 errors on the constexpr matchers Dawn's tint generates; Dawn only silences them with clang flags.
     build_args_ref+=(--cmake_extra_defines "CMAKE_CXX_FLAGS=-Wno-error=invalid-constexpr -Wno-invalid-constexpr")
   fi

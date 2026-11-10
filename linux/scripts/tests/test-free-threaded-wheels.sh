@@ -393,7 +393,7 @@ _oft_run() {
 _ftpy="${_oft}/tmp/onnxruntime-ft-venv/bin/python"
 _nv=(--build_dir /ort/build_native_gpu --config Release --build_shared_lib --skip_tests --build_wheel --use_cuda --cuda_home /usr/local/cuda
   --cudnn_home /usr --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75;86;87;89;120" --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON --no_telemetry)
-_wg=(--build_dir /ort/build_native --config Release --build_shared_lib --skip_tests --use_webgpu --use_external_dawn
+_wg=(--build_dir /ort/build_native --config Release --build_shared_lib --skip_tests --use_webgpu static_plugin --use_external_dawn
   --cmake_extra_defines "CMAKE_CXX_FLAGS=-Wno-error=invalid-constexpr -Wno-invalid-constexpr" --no_telemetry --build_wheel)
 for _fl in nv wg; do
   declare -n _ga="_${_fl}"
