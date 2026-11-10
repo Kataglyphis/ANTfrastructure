@@ -15,6 +15,119 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-10 — preserve MIGraphX node and registry ownership
+
+- The pinned plugin's C ABI node pointer now reaches an owning virtual base at release; both ordinary and cached nodes retain correct pointer adjustment in all six callbacks.
+- Seven compiled ASan cases cover both node types and callbacks, registry lifetime, failed creation/retry, twelve concurrent callers and stale-patch refusal. Original type-mismatch and registry-leak controls must fail.
+- The factory now owns its cached kernel registry and serializes initialization; release precedes data-transfer destruction. The source phase stops on either ownership-patch failure before seeding.
+- Existing images retain their old module until rebuilt; standalone module, full consumer and package acceptance remain separately required.
+
+## 2026-11-10 — share native ORT plugin registration policy
+
+- `shared/native/ort_plugin_eps.hpp` registers through the supplied owning C API/environment,
+  caches only successful calls, refuses name/path conflicts and selects fresh V2 devices while
+  retaining provider options and native failure text. Callers share its registry for that environment's lifetime.
+- The exact native asset and compiled fake-callback suite cover path precedence, retries, separate
+  environments, concurrency and status cleanup, with a mandatory failing assertion control.
+  Real SDK object compilation checks API shape; consumer builds, packages and hardware profiles remain separate.
+
+## 2026-11-10 — share Python ORT plugin registration and device selection
+
+- `shared/python/ort_plugin_eps.py` resolves advertised plugin roots before a bundled fallback,
+  caches only successful native registrations per owning binding, serializes concurrent callers
+  and rejects a changed module behind an already registered name. Availability is enumerated fresh.
+- The exact shared asset can live inside an installed consumer package; reports name only successful
+  registrations. Fake-binding and shared-copy controls do not prove real ORT loading or GPU inference;
+  consumer integration and hardware profiles remain required.
+- Keep the canonical module compatible with strict consumer lint without adding suppressions.
+  A delayed native-call mutation requires the shared lock. Python sessions attach devices through
+  options and omit constructor provider overrides; registration itself needs GPU visibility.
+
+## 2026-11-10 — keep compiler argument fixtures portable across temporary roots
+
+- The optional compiler-tool fixture now normalizes probe filenames independently of `/tmp`,
+  so ordinary pre-push checks also work under a task-owned `/var/tmp` root. A synthetic
+  path containing spaces and its mutation preserve this without depending on the host layout.
+- The two previously blocked ORT-cache mutations still test the same producer behavior;
+  no cache policy, quality threshold or build behavior changes.
+
+## 2026-11-10 — ship and check a native WebGPU C API registration probe
+
+- CPU and NVIDIA build a versioned executable using their core's configured compiler, toolchain,
+  flags and absolute C API header, with the shared compiler-cache resolver and configured-cache gate.
+  Required-helper, configure, build or installation failures stop the producer before its receipt.
+- Runtime checks every selected native core in its own process: legacy compiled WebGPU is refused,
+  the CPU baseline is required, and environment registration needs the first unregister plus the exact
+  missing-key control. Raw API errors and failed resource/loader cleanup cannot produce success.
+- The native phase binds the core/probe bytes and source/mode before and after execution; the image
+  smoke runs it alongside the separate GIL check. Fake-ABI executable tests and a compile against
+  verified official headers do not complete actual ORT factories, target-image acceptance or inference.
+- Callback fixtures retain absent, empty and existing cache-pin bindings; TensorRT's default case
+  clears an inherited opt-out inside its child so image build flags cannot change the fixture's inputs.
+
+## 2026-11-10 — check WebGPU factories in each delivered Python environment
+
+- The runtime gate binds the imported native extension to one completed GIL/FT delivery, its actual
+  source/mode and final manifest. Pending repairs, ambiguous prefixes and matching native cores without
+  the matching Python bytes fail before any factory call.
+- Enabled mode requires successful factory unregistration followed by ORT's precise missing-library
+  control; disabled mode requires absence twice. The FT interpreter must keep the GIL disabled before
+  and after import and execution. The GIL smoke and actual installed FT store invoke the shared gate.
+- ONNX/GenAI probe transport moves into a shared companion without changing its failure policy, shrinking
+  the runtime driver's frozen size. Stub-binding fixtures do not prove real ORT, native-core registration,
+  adapter availability or inference; actual image and consumer acceptance remain open.
+
+## 2026-11-10 — retain WebGPU product identity through wheel repair
+
+- The existing ORT manifest check/follow transport now binds WebGPU build receipts before rewriting and
+  records final wheel hashes only after source/mode, native core, manifest and wheelhouse checks agree.
+  Original hashes and continuous checked delivery history remain preserved.
+- The shared bounded ELF reader proves loaded code/data continuity, normalizing measured patchelf metadata
+  relocation and dynamic symbol indices. Real stripping, RPATH and needed-library rewrites remain supported;
+  foreign code/data, changed symbol names and section-only copies of the original data fail.
+- The complete media finalization sequence moves into a preserved driver, shrinking the Dockerfile's
+  frozen budget while retaining narrow mounts, phase ordering and native-fatal/cross-advisory install policy.
+- Media and package closures carry the canonical build/ELF companions. Fingerprints do not prove loader
+  metadata safety, actual factory registration or inference; the real media/acceptance and consumer matrix remains open.
+
+## 2026-11-10 — bind WebGPU build modes to each native and Python product
+
+- CPU and NVIDIA record native core/GIL bytes before free-threaded reconfiguration; the FT pass records
+  its own wheel extension after the configured verdict and successful store. The preserved Python tool
+  writes `ort-webgpu-build.json` with source identity, mode flags, configuration digest and product hashes.
+- Missing/ambiguous/non-ELF products, duplicate or mistyped flags, another FT source/mode and changed
+  earlier GIL products fail the build. Explicit no-wheel builds retain their native-only path; publication
+  is atomic and failures stay fatal. Functional fixtures exercise both producer tails and the shared recorder.
+- These records precede stripping/auditwheel repair. Checked delivery mappings and actual factory
+  registration remain open, together with the media/acceptance matrix and CON231 consumer parity.
+
+## 2026-11-10 — gate configured WebGPU modes on native and WASM builds
+
+- CPU, NVIDIA and free-threaded ORT builds require the actual WebGPU/static-plugin/EP-adapter/Dawn flags;
+  explicit native and cross opt-outs prove OFF. The free-threaded gate retains the original build failure
+  before its verdict can run, and configured mismatches stop output collection.
+- Both C++ WASM WebGPU flavors select `static_plugin` with integrated Dawn and check their configured
+  flags under the existing optional/required failure policy. Shared completed assets move to `-wgpu3`
+  so the new build cannot reuse legacy in-tree EP binaries from the old cache.
+  The artifact-cache key also separates build configurations. One shared flavor driver retains each
+  pass's argument order; shared CMake entry checks retain first-value launcher and strict Boolean policies.
+- The full isolated c238a510 check found an embedded-Python resource warning and a noncanonical cache
+  launcher environment call in the new OpenCV probe. Both are corrected without gate exceptions.
+  Actual image/runtime registration and consumer parity proofs remain open under CON233/CON231.
+
+## 2026-11-10 — repair classic FindCUDA cache wiring and prepare native WebGPU
+
+- OpenCV's legacy CUDA rules use a preserved executable wrapper and the pinned CMake environment API;
+  configuration fails when its cache or any generated CUDA object rule bypasses that wrapper. Toolkit-root
+  invalidation, target compiler, architecture selection and explicit cache opt-outs remain intact.
+- The reusable `probe-opencv-cuda-cache.sh` and its source fixture retain a private-cache cold/repeat proof.
+  The real SBSA replay records twelve cold misses then twelve CUDA/device/PTX/CUBIN hits, zero repeat misses
+  and no errors. One dependency-only `-M` scan and one outer nvcc driver remain explicitly uncached.
+  This does not prove a full OpenCV rebuild, remote-cache reuse or GPU inference.
+- Native ORT selects `--use_webgpu static_plugin` with external Dawn, including free-threaded replay.
+  Its argument fixtures pass on amd64, arm64 and riscv64 with opt-outs retained; configured/runtime proof,
+  the separate media chain and consumer acceptance remain open under CON233.
+
 ## 2026-11-10 — publish NVIDIA plugin images after amd64 and native arm64 acceptance
 
 - Runtime run `20261110-013045-b0a6f8cb` completed from hub

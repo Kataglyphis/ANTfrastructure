@@ -112,6 +112,54 @@ t_assert_eq 1 "${rc}" "a failed ldd cannot prove a resolved closure"
 t_assert_contains "${out}" 'closure inspection failed (status 42)'
 t_assert_contains "$(mgxep_verify_library "${_T}/absent.so" 2>&1)" "is missing"
 
+t_case "the real source phase applies node ownership before seeding and retains patch failures under conditionals"
+_mgx_sources_fixture() (
+  local node_tree="${_T}/node-${1:-ok}" seed_calls=0 code fixture_source
+  mkdir -p "${node_tree}/src/migraphx" "${node_tree}/work"
+  for fixture_source in mgx_ep.h mgx_ep.cc mgx_factory.h mgx_factory.cc; do
+    cp "${TESTS_DIR}/fixtures/migraphx-node-compute-info/${fixture_source}.txt" "${node_tree}/src/migraphx/${fixture_source}"
+  done
+  export MGXEP_WORK_DIR="${node_tree}/work" PLUGIN_EP_CORE="${TESTS_DIR}/../01-core"
+  plugin_ep_source() { printf '%s' "${node_tree}"; }
+  mgxep_declared_urls() { :; }
+  mgxep_seed_all() { seed_calls=$((seed_calls + 1)); }
+  mgxep_assert_seeded() { return 0; }
+  if [ "${1:-ok}" = failed-patch ]; then
+    mgxep_apply_source_patch() { return 42; }
+    if mgxep_sources; then return 99; else code=$?; fi
+    [ "${code}" -eq 42 ] && [ "${seed_calls}" -eq 0 ]
+    return
+  fi
+  mgxep_sources || return
+  [ "${seed_calls}" -eq 1 ] || return 1
+  grep -Fq 'virtual ~NodeComputeInfoBase() = default;' "${node_tree}/src/migraphx/mgx_ep.h" || return
+  grep -Fq 'delete static_cast<NodeComputeInfoBase*>(info);' "${node_tree}/src/migraphx/mgx_ep.cc" || return
+  grep -Fq 'mutable Ort::KernelRegistry kernel_registry_{nullptr};' "${node_tree}/src/migraphx/mgx_factory.h" || return
+  grep -Fq 'const std::lock_guard lock{kernel_registry_mutex_};' "${node_tree}/src/migraphx/mgx_factory.cc"
+)
+t_assert_ok _mgx_sources_fixture
+t_assert_ok _mgx_sources_fixture failed-patch
+
+t_case "patch order preserves an earlier failure even when a later patch would succeed"
+_mgx_patch_order_fixture() (
+  local fake_core="${_T}/patch-order-${1}" code expected_calls=2
+  mkdir -p "${fake_core}"
+  cat > "${fake_core}/apply-patch.sh" <<'PATCH_HELPER'
+#!/usr/bin/env bash
+printf '%s\n' "${1##*/}" >> "${PATCH_CALL_LOG:?}"
+if [[ "${1##*/}" == "${PATCH_FAIL_NAME:?}" ]]; then exit 42; fi
+PATCH_HELPER
+  export PLUGIN_EP_CORE="${fake_core}" MGXEP_SRC="${fake_core}"
+  export PATCH_CALL_LOG="${fake_core}/calls" PATCH_FAIL_NAME="$1"
+  if mgxep_apply_source_patch; then code=0; else code=$?; fi
+  [[ "${code}" == 42 ]] || return 1
+  if [[ "$1" == 001-* ]]; then expected_calls=1; fi
+  [[ "$(wc -l < "${PATCH_CALL_LOG}")" == "${expected_calls}" ]] || return 1
+  return 0
+)
+t_assert_ok _mgx_patch_order_fixture 001-node-compute-info-lifetime.patch
+t_assert_ok _mgx_patch_order_fixture 002-kernel-registry-lifetime.patch
+
 t_case "outside the rocm variant the build step only leaves the empty output tree the media merge COPYs"
 t_assert_eq "Skipping the MIGraphX plugin EP (ENABLE_AMD=false)" "$(MGXEP_OUTPUT_DIR="${_T}/placeholder" ENABLE_AMD=false mgxep_build 2>&1)"
 t_assert_ok test -d "${_T}/placeholder"

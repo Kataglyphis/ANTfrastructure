@@ -1156,6 +1156,40 @@ advertised root must be absolute, `ctypes.CDLL` must load the module and its dep
 exports must resolve. AMD also requires the CPU ORT provider; the HIP/CUDA Torch checks remain required. This does not register a factory or run
 inference: MIGraphX registration itself enumerates GPUs and fails with HIP error 100 without a device.
 
+#### Node compute info ownership
+
+The pinned `58afd43b` source allocates both `NodeComputeInfo` and `EpContextNodeComputeInfo`, then
+releases them through `OrtNodeComputeInfo`, whose C ABI has no virtual destructor. A real Clang
+ASan consumer caught its 40-byte allocation being deleted as the 32-byte C base. The build now
+applies `build/patches/001-node-compute-info-lifetime.patch` through the canonical `apply-patch.sh`
+before seeding. Both derived nodes share a private polymorphic owner. Its C base may have a
+nonzero offset, so each of the six callbacks adjusts the pointer before the upstream macros
+reinterpret it. The shared macros and external C API stay unchanged.
+
+`test-ort-migraphx-nodes.sh` compiles the actual patched class and cleanup definitions from
+pinned upstream slices against a minimal C ABI fixture. ASan must reject the unpatched control
+and accept both patched node types, their callbacks and mixed/null cleanup. This is a source
+regression, not an SDK, GPU or rebuilt-image proof. Standalone real-SDK/GPU checks and the next
+media/acceptance chain must prove the delivered module; accepted older receipts retain their
+original coverage. Keep sanitizer checks enabled.
+
+#### Kernel registry ownership
+
+After the node cleanup fix, a real CPU/two-GPU ASan probe exposed a further 1470-byte leak.
+`ProviderFactory` caches the raw registry returned by `CreateKernelRegistry` without freeing it.
+`build/patches/002-kernel-registry-lifetime.patch` replaces that cache with `Ort::KernelRegistry`
+and locks lazy creation. The owned member is declared after the data transfer, so its kernel
+state remains valid while the registry is released. The factory retains its nonvirtual C ABI.
+Both ownership patches run before seeding and retain the first failed patch's raw status.
+
+`test-ort-migraphx-factory.sh` compiles the actual factory members in source order and its
+registry callback against a minimal owning SDK fixture. The original raw cache must fail
+LeakSanitizer; the fixed source checks empty registries, a failed creation followed by a retry,
+reuse, twelve concurrent callers and release order. Both source suites carry
+`ort_migraphx_patch_fixture.py` and the pinned node/factory slices. These fixtures prove local
+ownership behavior; the real module, consumer build and finished packages need their own
+sanitizer and inference results. Leak detection remains enabled.
+
 ### Repeat a native plugin probe
 
 Use the versioned driver with a selected immutable image and preserve its output directory:
@@ -1623,3 +1657,114 @@ python3 setup.py install
 
 If the board cannot reach any host, its resolver is the usual cause — see
 [TLS handshake failures](linux-host-setup.md#b5-tls-handshake-failures-inside-containers).
+
+## Native WebGPU static plugin
+
+The Linux native CPU and NVIDIA ORT builds request
+`--use_webgpu static_plugin --use_external_dawn` from pinned ORT v1.31.1;
+the free-threaded wheel replays those arguments. Keep `ORT_ENABLE_WEBGPU` and
+`ORT_WEBGPU_ALLOW_CROSS` opt-outs. The pinned mode enables EP API adapters and
+a statically linked plugin factory, registered when ORT creates its environment;
+it does not require a separate WebGPU shared module.
+
+The configured-cache verdict requires `onnxruntime_USE_WEBGPU`,
+`onnxruntime_USE_EP_API_ADAPTERS`, `onnxruntime_WEBGPU_STATIC_PLUGIN` and
+`onnxruntime_USE_EXTERNAL_DAWN` to match the native selection after CPU, NVIDIA
+and free-threaded builds; disabled native selections require all four OFF.
+A failed build cannot be hidden by a subsequent successful verdict.
+The shared CMake reader keeps the launcher's existing first-value policy, while
+Boolean feature checks require BOOL entries and reject duplicate values. A missing
+reader export fails during ORT bootstrap before compilation.
+
+`record_onnx_webgpu_build_products` invokes the preserved
+`build/onnxruntime/build/lib/ort-webgpu-build-proof.py` after native/GIL output is
+final, before the warm tree is reconfigured for free-threading. The FT pass records
+its own extension after its configured verdict and wheel store succeed. Each
+prefix carries `ort-webgpu-build.json`: source ref/revision, per-phase configured
+flags and cache digest, plus separate SHA256 values for the native core and each
+wheel's Python extension. Missing, duplicate, linked or non-ELF products fail;
+an FT phase must match its GIL source/mode and retain its earlier product bytes.
+An explicit build without a Python wheel records the native core alone.
+
+The build records retain their **pre-repair hashes**. The canonical
+`repair-wheels.sh` check/follow transport now adds `wheel_delivery` mappings:
+precheck proves the current wheel against its source/mode record, preserves its
+allocated ELF fingerprint and arms a pending check; follow requires that exact
+manifest, wheelhouse, product and build binding before publishing final hashes.
+Repeated checked repairs retain a continuous history. The native core is checked
+again, and a native-only OFF build cannot become a Python delivery proof.
+
+`runtime/ort_webgpu_delivery.py` uses the canonical build-proof API and the shared
+bounded `ElfSections` parser, carried with `python_app_deb_symbols.py` in every
+mounted/copied closure. Code, data, architecture, symbol names/types/values and
+section-to-loader correspondence remain protected. Stripping removes unallocated
+metadata; patchelf may relocate typed note/hash/symbol tables and rewrite dynamic
+string offsets, so fingerprints normalize those addresses and symbol section
+indices. Only `.dynamic`, `.dynstr` and `.gnu.version_r` content is excluded.
+This does not verify loader metadata semantics, dependency lookup or inference.
+
+Missing prechecks, changed build bindings, code/data/symbol changes and section-only
+copies that conceal changed loaded data fail without publishing the new manifest.
+Atomic receipt-write failures stay fatal. The preserved `finalize-media.sh` owns
+collection, GIL repair/verify, FT repair/verify/store, installation and final smokes.
+It preserves raw phase failures, fatal native installs, advisory foreign installs
+and the smoke's OpenCV/caller Python paths; its extraction shrinks the frozen
+Dockerfile budget while retaining every narrow dependency mount.
+Real strip/patchelf fixtures exercise
+these boundaries, including GIL and FT, while the raw census fixture retains its
+separate transport scope.
+
+`runtime/ort_webgpu_runtime.py` checks the actual imported Python extension in a
+separate interpreter process. It requires exactly one owning prefix, its unchanged
+native core, the expected source ref, compatible phase flags and continuous,
+completed wheel delivery with the exact final manifest and extension bytes.
+Pending repairs, ambiguous owners and native-only receipts cannot prove Python.
+Enabled mode first unregisters the static factory successfully; both modes then
+require ORT's precise missing-registration error as a negative control. It does
+not enumerate devices. The FT store runs the same gate using its installed FT
+venv and checks the GIL before import, after import and after the factory calls.
+The runtime smoke requires a successful child and exactly one OK sentinel.
+Existing ONNX/GenAI transports move unchanged into `check-ort-runtime.sh`, reducing
+the smoke driver's frozen size. Fixtures use stub bindings, not real ORT; actual
+image matrix remains open, including executing these probes against each actual
+native/GIL/FT product.
+
+The preserved C API probe is built in both native CPU/NVIDIA producers before the
+GIL receipt and FT reconfiguration. Its CMake project reads the core's configured
+compiler, toolchain and C flags; command-line compiler overrides cannot substitute
+a host compiler. The shared cache/linker resolver and configured-cache assertion
+remain in the path. Required helper exports, configure, build and installation
+failures stop the producer before receipt publication. Each prefix ships its
+own `bin/ort-webgpu-factory-probe`, using an absolute include of its own C API
+header. Compilation keeps `-Wall -Wextra -Werror`; the pinned upstream header uses
+an enum expression outside ISO-pedantic C, so the project retains GNU C extensions.
+
+The native runtime phase checks source/mode and exact core bytes, then runs that
+prefix's executable against the explicit core path in a separate process. Native
+`GetAvailableProviders` lists compiled providers without device enumeration: the
+probe rejects legacy internal WebGPU and requires the CPU baseline. It creates
+the owning environment and checks the first unregistration and exact missing-key
+control, including error code. Providers, statuses, environment and loader handle
+are released; a cleanup failure cannot print a successful verdict. Runtime also
+requires raw success, one matching mode sentinel and unchanged core/probe bytes.
+Every selected native prefix must pass. Real executable fixtures use a deliberately
+small fake C ABI, while a separate compile uses byte-verified official headers;
+neither completes real ORT registration or the target image matrix.
+
+The C++ WASM WebGPU Asyncify and JSPI flavors also select `static_plugin` and
+check the first three flags ON, with external Dawn OFF for Emscripten's integrated
+Dawn. They use reduced operators rather than the minimal build that pinned ORT
+forbids with static plugins. The JSEP JavaScript backend retains its own path.
+A failed configuration follows the existing optional-flavor policy or fails under
+`ORT_WEB_REQUIRED=1`. Shared completed WASM assets use cache epoch `-wgpu3`, so
+this migration cannot reuse the legacy in-tree EP binaries from `-wgpu2`.
+The cache identity also includes `ONNXRUNTIME_WASM_BUILD_TYPE`; completed Debug
+and Release assets cannot shadow each other. Both flavors use one shared driver
+that preserves their original argument order and JSPI-only exception behavior.
+
+These are source gates and fixture proofs for CON233. Actual build/runtime
+registration proofs, separate media rebuilds for default amd64/arm64/riscv64,
+ROCm amd64 and NVIDIA amd64/arm64, and new consumer acceptance remain open.
+The goal's WASM artifact proof must check both enabled WebGPU flavors; an optional
+flavor dropped by the generic build policy does not complete that proof.
+Existing published-image receipts do not prove this change.

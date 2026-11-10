@@ -60,6 +60,36 @@ setup failure. Real compiler controls reproduce the old failure and fixed
 AArch64 output; the [plugin build](linux-accelerator-images.md#the-plugin-tensorrt-ep)
 still needs its full image and consumer proofs.
 
+## MIGraphX sessions fail ASan with `new-delete-type-mismatch`
+
+**Symptom.** Session destruction reports `ReleaseNodeComputeInfos` deleting a 40-byte allocation
+as the 32-byte `OrtNodeComputeInfo` C base. A normal, unsanitized inference can appear successful.
+
+**Cause.** The pinned plugin allocates two derived node types and deletes their nonvirtual C
+base. A private virtual owner fixes typed destruction, but its C base moves: callbacks must
+adjust that base pointer before entering the upstream reinterpret-cast macros.
+
+**Fix.** Rebuild the plugin with `001-node-compute-info-lifetime.patch`; keep all six adjusting
+callback casts and ASan's allocation/type checks. The source patch suite includes the original
+failure as a mandatory control. Existing modules and accepted image receipts do not acquire
+this fix from a source edit; verify the newly built module and later media/consumer artifacts.
+See [node ownership](linux-accelerator-images.md#node-compute-info-ownership).
+
+## MIGraphX factory teardown leaks its kernel registry
+
+**Symptom.** The rebuilt node cleanup passes, but a real ASan probe still reports 1470 bytes
+in 15 allocations associated with the registry and its two copy kernels.
+
+**Cause.** The pinned factory retains a raw `OrtKernelRegistry*` after successful creation,
+without releasing its ownership when the factory dies.
+
+**Fix.** Apply `002-kernel-registry-lifetime.patch` after the node patch. Keep the owned registry
+after the data-transfer member and protect creation with the same mutex on every caller.
+The compiled source fixture requires an original LeakSanitizer failure, clean fixed teardown,
+a successful retry after a failed creation and one registry for concurrent callers. Real
+module/consumer execution must pass separately, with leak detection enabled.
+See [registry ownership](linux-accelerator-images.md#kernel-registry-ownership).
+
 ## CUDA sccache repeats report `multiple input files`
 
 ORT's separated `SHELL:--std c++20` reaches the pinned parser as another input.

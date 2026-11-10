@@ -1052,13 +1052,49 @@ device it reports; the EP's name is the registration name you choose:
 upstream and bound a strided partition output onto ORT's dense buffer on MIGraphX ≤ 2.18
 ([failure-modes](failure-modes.md#a-linux-amd-package-returns-fewer-drifting-detections-on-migraphx)); the plugin
 refuses that case loudly and supports every op MIGraphX parses. The rocm image's ORT is the CPU build
-(`onnxruntime`, not `onnxruntime-migraphx`), so `get_available_providers()` never names MIGraphX; the
-plugin is reached by registration alone. A Python app bundle built from the image carries the module
+(`onnxruntime`, not `onnxruntime-migraphx`). Do not use `get_available_providers()` to discover an
+unregistered plugin; register its module and select a matching device. The reported available list
+may also include a plugin after registration, so it is not a proof of session activation. A Python app bundle built from the image carries the module
 beside the chain ORT as `onnxruntime/capi/libmigraphx-ep.so`, and its self-test reports it under
 `registered_plugin_eps` ([python-app-bundles.md](python-app-bundles.md#linux-gpu-bundles)): resolve
 `ORT_AMDGPU_EP_ROOT` first, then that path. Why and how it is built:
 [linux-accelerator-images.md](linux-accelerator-images.md#amds-plugin-migraphx-ep); the move per consumer is
 BACKLOG CON231 step 2.
+
+The shared Python owner is `shared/python/ort_plugin_eps.py`, declared as the exact
+`ort-plugin-registration-python` asset. Give its consumer-manifest row a path inside
+the installed application package, then import that copy. `register_plugin_library`
+uses the supplied ORT binding, not an implicit import; only a successful native call
+enters its locked per-binding cache. A missing advertised root or module is fatal,
+while an absent advertisement and absent bundled module leave CPU use untouched.
+`registered_plugin_names` reports those successful calls. `select_plugin_device`
+registers first and selects the requested matching device from fresh `get_ep_devices()`
+results; pass that device to `SessionOptions.add_provider_for_devices`. Omit the
+`providers` argument of `InferenceSession` (or pass `None`): a nonempty constructor
+provider list overrides providers already attached through session options. The
+[Python session implementation](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/onnxruntime_inference_collection.py)
+warns about this precedence. MIGraphX registration itself queries HIP devices, so a
+GPU-less CPU path must not claim successful registration merely from module presence.
+
+The native owner is `shared/native/ort_plugin_eps.hpp`, the exact
+`ort-plugin-registration-native` asset. Include the owning runtime's C API header and
+instantiate `PluginRegistry<OrtApi>` with that API table and its `OrtEnv`. Every caller
+of the same environment shares one registry; retain both API and environment for its
+whole lifetime. Keep session ownership alive until before that environment is released.
+It returns failure text and consumes failed statuses instead of entering aborting
+`ORT_NO_EXCEPTIONS` C++ wrappers. Without an advertised root it resolves the loaded
+core from an address in that supplied API, then finds a bundled module beside it;
+callers may supply an explicit absolute bundle directory. An advertised image root
+still wins. Registration and V2 attachment
+are separate from session creation and real operator placement. The compiled fake API
+suite proves policy, and a real-header object checks signatures; neither proves a new
+runtime image, packaged inference or Windows loading.
+
+Repeated registration never silently changes the path behind a name. The helper
+coordinates its own calls only; it does not coordinate external unregistration.
+Fake-binding and shared-copy tests prove these policies, not native ABI compatibility,
+a working driver, operator placement or packaged inference. The consumer integrations
+and hardware profile criteria above remain required.
 
 ## Qualcomm's plugin QNN EP
 

@@ -1017,7 +1017,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       OrchestrANT (Python, `register_execution_provider_library`), AccelerANTgine (C++,
       `Env::RegisterExecutionProviderLibrary`), OxidANT (Rust, `ort` rc.13 `register_execution_provider_library`),
       OmniAccelerANT (Dart over the native bridge); each change passes CON224 item 1's parity run with the plugin's
-      operators in the profile. **Step 3 (in source 2026-11-08, owner: "sofort komplett, inklusive Entfernen"):**
+      operators in the profile. **Linux step 2 progress 2026-11-10:** shared Python/native helpers are in source.
+      The standalone SDK rebuild with [node and registry ownership fixes](docs/linux-accelerator-images.md#node-compute-info-ownership)
+      passes G2 and ASan/LSan on CPU plus two real plugin GPU tiny-model sessions. Full consumer builds,
+      finished packages and their detector parity/operator profiles remain open; this is not image promotion.
+      **Step 3 (in source 2026-11-08, owner: "sofort komplett, inklusive Entfernen"):**
       `30-build-native-amd.sh`, `--use_migraphx`, the `onnxruntime-migraphx` wheel and the two MIGraphX patches are
       gone; the rocm variant has no ORT GPU build, the plugin builds over the CPU prefix, the wrapper's app venv
       takes the CPU `onnxruntime` wheel, and the runtime smoke fails an image with `libonnxruntime_providers_migraphx.so`.
@@ -1069,6 +1073,25 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       [contract](docs/consumer-image-contract.md#nvidias-plugin-tensorrt-ep)). **Open on Linux:** the WebGPU EP as
       `onnxruntime_WEBGPU_STATIC_PLUGIN` (re-keys every CPU ORT build, so every media stage on three arches: its own
       chain), and detector parity on `TensorRTPluginExecutionProvider` on a card.
+      **Source preparation 2026-11-10:** native CPU/NVIDIA and their free-threaded wheels select the pinned
+      `--use_webgpu static_plugin` mode with external Dawn and require the actual configured flags. Asyncify
+      and JSPI select the same plugin ABI with Emscripten's integrated Dawn, check their configured modes
+      and use shared artifact cache epoch `-wgpu3`. These are source/fixture gates; actual builds and runtime
+      registration for native and Python linker products, all affected default/ROCm/NVIDIA media stages
+      and new acceptance are still open. Native/GIL and FT build boundaries now preserve separate
+      configured-mode/product hashes in `ort-webgpu-build.json`; canonical wheel repair adds checked delivery
+      mappings while preserving compiled code/data and dynamic symbol identity. These are source/fixture
+      proofs. A preserved Python gate now checks the imported GIL/FT extension against a completed delivery
+      and probes factory unregistration with its precise negative control; the image smoke and actual FT-store
+      interpreter invoke it. The native C API probe is now compiled per CPU/NVIDIA prefix with the core's
+      configured target compiler and shared cache helpers; its runtime phase checks each core directly,
+      rejects legacy WebGPU and retains registration/negative/cleanup controls. Fixtures use stub Python
+      bindings and a fake C ABI; actual native/Python factory registration in the image matrix and image
+      delivery remain open. Both enabled WASM flavors need real artifact proof. Before that
+      media rebuild, preserve the
+      OpenCV FindCUDA cache repair: its bounded SBSA replay records twelve forced-repeat hits and no misses;
+      the complete stage, non-x86 Torch wrapper policy and consumer Rust cache wiring remain follow-ups
+      ([cache scope](docs/build-cache-tiers.md#nvcc--hipcc)).
       Windows is this hub's Windows session. DirectML has no plugin and stays. The evidence, with links to every
       plugin: the 2026-11-08 deep research.
       **Original handoff:** `rebuild-sequence-37` passed amd64 media/android, then exited 1 on

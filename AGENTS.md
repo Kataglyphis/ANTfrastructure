@@ -109,6 +109,20 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Ordered directory visitors retain the caller's `dir` binding, append policy and unconditional selected calls.
    The plugin QNN EP stage checks the module, both exports and the HTP backend beside it on arm64; the CPU prefix refuses an in-tree QNN provider.
    The GPU prefix refuses an in-tree TensorRT provider and requires the CUDA module's plugin exports; the TensorRT plugin stage runs on nvidia images with TensorRT.
+   Native and C++ WASM WebGPU select `--use_webgpu static_plugin`; retain native external Dawn and Emscripten's integrated Dawn.
+   Check the configured flags on CPU, NVIDIA, free-threaded, Asyncify and JSPI builds; explicit opt-outs prove OFF.
+   Native/GIL and free-threaded builds carry `ort-webgpu-build-proof.py`; record each linker product before its configured tree changes.
+   Build receipts retain pre-repair bytes; wheel repair checks their source/mode and records validated final hashes before runtime registration proof.
+   Carry `ort_webgpu_delivery.py`, the canonical build-proof module and `python-app-deb-depends.py` with `python_app_deb_symbols.py` through media/runtime copies.
+   WebGPU delivery requires a matching precheck and unchanged loaded code/data; loader metadata normalization does not prove loader safety or inference.
+   Native WebGPU probes load each checked core directly, reject the legacy compiled provider and retain exact API failure and cleanup controls.
+   Compile each shipped probe through shared cache/CMake helpers using its core's configured target compiler, flags and absolute C API header.
+   Python WebGPU factory checks require a completed delivery and the loaded extension's own hash; native core hashes do not prove Python modes.
+   Keep factory unregistration isolated, its precise missing-registration control and FT GIL checks before and after loading and execution.
+   Copied runtime smoke drivers carry `check-ort-runtime.sh`; the FT store runs the same Python gate in its installed FT environment.
+   `finalize-media.sh` retains collection, both Python-mode repairs/verdicts and final smoke ordering; native install failures stay fatal and foreign failures stay advisory.
+   Shared CMake entry checks retain first-value launcher reads and strict typed, duplicate-refusing Boolean reads.
+   Static-plugin WASM assets key the shared cache by build type and `-wgpu3`; an old completed artifact cache is not a rebuild.
    Its protobuf seed validates every C/C++ option argument, including mixed scoped inputs; none may reach rc.exe or its cmcldeps preprocessor.
    Shared plugin C++ flags retain /EHsc because the ORT C++ API throws.
    CUDA standard options stay joined so sccache does not parse the value as another input.
@@ -118,6 +132,9 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied `35-build-migraphx-plugin-ep.sh` and `37-build-tensorrt-plugin-ep.sh` carry `plugin-ep-exports.sh` and `plugin-ep-seeds.txt` beside them; the media verify stage reads the export probe from the mounted ORT build directory, so keep that directory mount on the GPU RUN.
    G2 reads `onnxruntime_ep_*` modules and `Microsoft.ML.OnnxRuntime.EP.*` directories as ORT consumers, never as ORT.
    AMD Python bundles carry the plugin MIGraphX EP beside the chain core and prove it against the image's module; their self-test proves registration, not availability.
+   MIGraphX node cleanup retains its ownership patch and adjusting casts in all six C ABI callbacks; the SDK C base has no virtual destructor.
+   Copied MIGraphX build scripts carry both ownership patches and the core `apply-patch.sh` entry; a failed patch stops before the next patch or seeds.
+   The factory owns its cached kernel registry, serializes creation and releases it before its data transfer; preserve the nonvirtual factory C ABI.
    GPU-less app-venv checks load the selected MIGraphX/TensorRT plugin and require both factory exports; registration and inference need separate evidence.
    Require child cleanup APIs before starting timers or watchers; advisory cleanup signals then reaps and retains caller PID guards, reset and command status.
    Runner fixtures clear inherited RUN_TESTS_JOBS before applying explicit case values; default scheduling controls must exercise the default.
@@ -147,6 +164,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    MIGraphX licence copying uses its existing file-gap helper; keep empty-list behavior and missing-file failures visible.
    Windows mutation fixtures share module lifetime; import or parse failures cannot satisfy an expected assertion failure.
    Synthetic ELF and gst-inspect test fixtures share their writers; retain caller-specific `DT_STRSZ`, symbol-table and `Name` options.
+   Compiler argv fixtures normalize generated probe basenames under arbitrary temporary roots; retain the independent path-with-spaces control.
+   Copied Python ORT registration helpers stay exact shared assets; cache successful registrations per owning binding and preserve explicit-root precedence, retryable failures and fresh device selection. Python plugin sessions attach devices through SessionOptions without a legacy constructor provider override. Native callers share one registry per live owning API/environment, preserve its lifetime and return raw C-API failures instead of aborting wrappers.
    Windows script workspaces share AST validation before allocation and cleanup; log and Cargo paths use the canonical rooted-path resolver.
    Windows build drivers share config-file and workspace-root selection; callers still validate the resolved path.
    Windows source-copy mutation suites share AST loop selection and fixture execution; callers keep their source lists and assertions.
@@ -1018,6 +1037,9 @@ The rules:
      `cmake_assert_compiler_cache_pin`: pthreadpool and XNNPACK FORCE `CCACHE_BINARY` into the
      launchers, which beats the environment and a `-D` launcher alike
      ([`build-cache-tiers.md`](docs/build-cache-tiers.md#a-subproject-that-forces-its-own-launcher)).
+   - OpenCV's classic FindCUDA uses `opencv-cuda-cache.sh` through its executable and environment APIs;
+     keep the companion and reject a configured cache or generated CUDA object rule that bypasses it.
+     Preserve toolkit-root invalidation, the target host compiler and the architecture list.
    - Every RUN that compiles carries both cache mounts; its closing drain prints
      `sccache-stats|`, the number to read before calling a step cached.
    - The launcher's compile governor caps host-wide compiles by `flock` slots in the sccache mount;

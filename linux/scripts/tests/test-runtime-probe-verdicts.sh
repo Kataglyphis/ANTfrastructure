@@ -57,4 +57,13 @@ mkdir -p "${WORK}/no-lib/06-packaging"
 _out="$(_probe check_genai_binding "GENAI-BIND OK: fixture" 0 "${WORK}/no-lib/06-packaging")"
 t_assert_contains "${_out}" "no tiny GenAI model generator at ${WORK}/no-lib/06-packaging/../lib/tiny-genai-model.py"
 t_assert_contains "${_out}" 'FAILURES=1'
+t_case 'WebGPU factory smoke requires its own unique OK sentinel and raw success status'
+t_assert_contains "$(_probe check_webgpu_factories 'WEBGPU-FACTORY OK: fixture' 0)" 'FAILURES=0'
+for _status in 0 1; do
+  for _output in unrelated 'WEBGPU-FACTORY FAIL: fixture' 'warning WEBGPU-FACTORY OK: forged'; do
+    t_assert_contains "$(_probe check_webgpu_factories "${_output}" "${_status}")" 'FAILURES=2'
+  done
+done
+t_assert_contains "$(_probe check_webgpu_factories 'WEBGPU-FACTORY OK: fixture' 1)" 'FAILURES=2'
+t_assert_contains "$(_probe check_webgpu_factories $'WEBGPU-FACTORY OK: one\nWEBGPU-FACTORY OK: two' 0)" 'FAILURES=2'
 t_summary

@@ -14101,7 +14101,7 @@
  },
  {
   "id": "wheels.ft-store-proved-again",
-  "target": "linux/Dockerfile.media",
+  "target": "linux/scripts/03-media/runtime/finalize-media.sh",
   "find": "    bash /opt/scripts/03-media/runtime/free-threaded-store.sh && \\\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
@@ -18253,7 +18253,7 @@
  },
  {
   "id": "probe.native-nonok-zero-fails",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
   "find": "\"${tag} OK:\"*) pass",
   "replace": "\"${tag} \"*) pass",
   "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
@@ -18277,7 +18277,7 @@
  },
  {
   "id": "probe.native-absence-policy",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
   "find": "genai) echo \"  SKIP: onnxruntime_genai",
   "replace": "genai) fail \"  SKIP: onnxruntime_genai",
   "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
@@ -20725,7 +20725,7 @@
  },
  {
   "id": "lib.genai-smoke-tiny-handed-in",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
   "find": "\"$(smoke_genai_py)\" -e \"GENAI_TINY_MODEL_PY=${tiny_src}\" \\",
   "replace": "\"$(smoke_genai_py)\" \\",
   "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
@@ -20733,7 +20733,7 @@
  },
  {
   "id": "lib.genai-smoke-tiny-missing-fails",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
   "find": "else fail \"no tiny GenAI model generator at ${tiny_py}\"; fi\n    out=\"$(",
   "replace": "else :; fi\n    out=\"$(",
   "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
@@ -21550,8 +21550,8 @@
  {
   "id": "lib.onnx-library-companion-required",
   "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
-  "find": "stage_qnn_runtime apply_shared_library_action;",
-  "replace": "stage_qnn_runtime;",
+  "find": "stage_qnn_runtime apply_shared_library_action cmake_assert_configured_entries;",
+  "replace": "stage_qnn_runtime cmake_assert_configured_entries;",
   "test": "bash linux/scripts/tests/test-onnx-library-companion.sh",
   "why": "ORT bootstrap must reject a missing shared library traversal helper before a step can execute."
  },
@@ -30131,7 +30131,7 @@
  {
   "id": "lib.cmake-pin-gate-compares-launchers",
   "target": "linux/scripts/01-core/cmake-cache-linker.sh",
-  "find": "if [ \"${got}\" != \"${want}\" ]; then",
+  "find": "if [ \"${_cce_got}\" != \"${_cce_want}\" ]; then",
   "replace": "if false; then",
   "test": "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh",
   "why": "a gate that never compares passes a build whose launcher a subproject replaced"
@@ -37519,5 +37519,1733 @@
   "replace": "    if False:\n",
   "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
   "why": "recursive submodule state and data-lock maps must retain their required types before any work"
+ },
+ {
+  "id": "probe.opencv-cuda-cache-wrapper-argument",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "\"-DCUDA_NVCC_EXECUTABLE=${BASH_SOURCE[0]}\"",
+  "replace": "\"-DCUDA_NVCC_EXECUTABLE=/bare/nvcc\"",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "The classic FindCUDA executable must use the preserved wrapper; the modern launcher alone does not intercept it."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-rule-verdict",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "            rc=1",
+  "replace": "            rc=0",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "One bare nvcc rule must fail the complete configure gate even when another generated rule is correct."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-empty-rules",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "if [ \"${count}\" -eq 0 ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "An enabled CUDA cache cannot be verified from an empty generated-rule tree."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-argv",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "\"${OPENCV_CUDA_CACHE_NVCC:?missing real OpenCV nvcc}\" \"$@\"",
+  "replace": "\"${OPENCV_CUDA_CACHE_NVCC:?missing real OpenCV nvcc}\" \"$*\"",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "The legacy compiler wrapper preserves every argument boundary, including compiler paths with spaces."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-selected-call",
+  "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+  "find": "opencv_cuda_cache_args _ocmcd_out \"${_cuda_launcher}\"",
+  "replace": " : _ocmcd_out \"${_cuda_launcher}\"",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "The selected sccache-class launcher must reach the classic FindCUDA arguments and child environment."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-configure-call",
+  "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+  "find": "    opencv_cuda_cache_assert \"${build_dir}\"",
+  "replace": "    : \"${build_dir}\"",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "OpenCV must run the cache wiring verdict after configuration; a detached helper proves nothing."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-repeat-hits",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "    assert repeat[\"cache_hits\"][\"counts\"].get(name, 0) >= minimum, (\"repeat\", name, repeat)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "A forced repeat needs CUDA, device, PTX and CUBIN cache hits for every requested architecture."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-cold-misses",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "    assert cold[\"cache_misses\"][\"counts\"].get(name, 0) >= minimum, (\"cold\", name, cold)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "The private cold pass must actually fill each compilation category before reuse is claimed."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-repeat-misses",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "assert sum(repeat[\"cache_misses\"][\"counts\"].values()) == 0, repeat",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "A repeat containing a cache miss does not satisfy the local complete-reuse proof."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-errors",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "    assert sum(phase[\"cache_errors\"][\"counts\"].values()) == 0, phase",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "Cache errors cannot be hidden by positive CUDA hit counts."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-refusals",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "        assert phase[name] == 0, (name, phase)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "Compiler failures, write errors, parser refusals and forced recaches remain fatal in either phase."
+ },
+ {
+  "id": "lib.onnx-webgpu-static-plugin-mode",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "build_args_ref+=(--use_webgpu static_plugin --use_external_dawn)",
+  "replace": "build_args_ref+=(--use_webgpu --use_external_dawn)",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "The native build must select the pinned CLI static_plugin mode, which enables EP API adapters as well as static plugin compilation."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-environment",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "    export CUDA_NVCC_EXECUTABLE=\"${BASH_SOURCE[0]}\"",
+  "replace": "    : \"${BASH_SOURCE[0]}\"",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "Pinned FindCUDA must recover the wrapper from the environment after its legitimate toolkit-root cache invalidation."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-no-optimized-gate",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "    python3 -I - \"$@\"",
+  "replace": "    python3 - \"$@\"",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "PYTHONOPTIMIZE must not turn the counter gate into an assertion-free pass."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-dependency-reason",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "    assert phase[\"requests_not_cacheable\"] == 1 and phase[\"not_cached\"] == {\"-M\": 1}, phase",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "Only the actual single dependency-only -M scan is expected; another count or refusal reason must fail."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-internal-driver",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "    assert phase[\"non_cacheable_compilations\"] == 1, phase",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "The one intentional outer nvcc driver must stay separately counted; extra internal bypasses fail."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-configured-path",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh",
+  "find": "        printf 'ERROR: OpenCV FindCUDA did not retain its nvcc cache wrapper\\n' >&2\n        return 1",
+  "replace": "        printf 'ERROR: OpenCV FindCUDA did not retain its nvcc cache wrapper\\n' >&2\n        return 0",
+  "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
+  "why": "A wrong configured nvcc must fail even when generated fixture rules contain the correct wrapper."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-use-webgpu",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "\"onnxruntime_USE_WEBGPU=${want}\"",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "Each actual configured Boolean is mandatory; legacy in-tree WebGPU, missing adapters or a wrong Dawn mode must fail."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-use-ep-api-adapters",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "\"onnxruntime_USE_EP_API_ADAPTERS=${want}\"",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "Each actual configured Boolean is mandatory; legacy in-tree WebGPU, missing adapters or a wrong Dawn mode must fail."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-webgpu-static-plugin",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "\"onnxruntime_WEBGPU_STATIC_PLUGIN=${want}\"",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "Each actual configured Boolean is mandatory; legacy in-tree WebGPU, missing adapters or a wrong Dawn mode must fail."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-use-external-dawn",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "\"onnxruntime_USE_EXTERNAL_DAWN=${dawn}\"",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "Each actual configured Boolean is mandatory; legacy in-tree WebGPU, missing adapters or a wrong Dawn mode must fail."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-verdict",
+  "target": "linux/scripts/01-core/cmake-cache-linker.sh",
+  "find": "      _cce_rc=1",
+  "replace": "      _cce_rc=0",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "A mismatched configured option must propagate failure even when all remaining options are correct."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-optout",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "    want=OFF\n    if onnx_webgpu_enabled_for_target; then want=ON; fi",
+  "replace": "    want=ON\n    if onnx_webgpu_enabled_for_target; then want=ON; fi",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "Native and cross opt-outs prove every configured switch is OFF rather than silently retaining a previous enabled build."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-missing-cache",
+  "target": "linux/scripts/01-core/cmake-cache-linker.sh",
+  "find": "    printf 'ERROR: [CMAKE] %s has no CMakeCache.txt; configured entries are unverified\\n' \"${_cce_cache%/*}\" >&2\n    return 1",
+  "replace": "    printf 'ERROR: [CMAKE] %s has no CMakeCache.txt; configured entries are unverified\\n' \"${_cce_cache%/*}\" >&2\n    return 0",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "No configure cache is no proof; absence must fail instead of reporting an assertion-free pass."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-cpu-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "  assert_onnx_webgpu_static_plugin \"${build_dir}/${config}\" || exit 1",
+  "replace": "  : \"${build_dir}/${config}\" || exit 1",
+  "test": "bash linux/scripts/tests/test-onnx-native-lifecycle.sh",
+  "why": "The CPU build must reject a configured mismatch before collecting or publishing output."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-nvidia-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
+  "find": "assert_onnx_webgpu_static_plugin \"${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}\" || exit 1",
+  "replace": ": \"${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}\" || exit 1",
+  "test": "bash linux/scripts/tests/test-onnx-native-lifecycle.sh",
+  "why": "The actual NVIDIA script tail must reject a configured mismatch while retaining its raw build failure status."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-free-threaded-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "    assert_onnx_webgpu_static_plugin \"${build_dir}/${config}\"",
+  "replace": "    : \"${build_dir}/${config}\"",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "A free-threaded reconfiguration gets its own verdict before a wheel can be retagged or stored."
+ },
+ {
+  "id": "lib.onnx-webgpu-free-threaded-build-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "    \"${ORT_SRC_DIR}/build.sh\" \"${_oft_args[@]}\" --cmake_extra_defines \"${ft_defines[@]}\" || exit $?",
+  "replace": "    \"${ORT_SRC_DIR}/build.sh\" \"${_oft_args[@]}\" --cmake_extra_defines \"${ft_defines[@]}\"",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "The added verdict must not mask a failed build inside a conditionally invoked subshell."
+ },
+ {
+  "id": "lib.onnx-webgpu-wasm-asyncify-plugin",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh",
+  "find": "--use_webgpu static_plugin --use_webnn \"$@\" --target onnxruntime_webassembly",
+  "replace": "--use_webgpu --use_webnn \"$@\" --target onnxruntime_webassembly",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "The common C++ WebGPU flavor driver must retain static_plugin for both Asyncify and JSPI."
+ },
+ {
+  "id": "lib.onnx-webgpu-wasm-jspi-plugin",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh",
+  "find": "  run_webgpu_flavor_pass \"Pass 4: WebGPU (JSPI)\" jspi JSPI_COMMON_ARGS --enable_wasm_jspi",
+  "replace": "  run_webgpu_flavor_pass \"Pass 4: WebGPU (JSPI)\" jspi JSPI_COMMON_ARGS",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "The JSPI flavor must retain its JSPI flag while reusing the common static-plugin build and its own exception policy."
+ },
+ {
+  "id": "lib.onnx-webgpu-wasm-config-verdict",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh",
+  "find": "  if \"$@\" && assert_onnx_webgpu_static_plugin \"${BUILD_DIR}/${WASM_CONFIG}\" ON OFF; then",
+  "replace": "  if \"$@\"; then",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "A successful builder with legacy WebGPU flags cannot be collected as a passing plugin flavor; preserve ORT_WEB_REQUIRED and optional failure policy."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-launcher-env",
+  "target": "linux/scripts/02-toolchain/probe-opencv-cuda-cache.sh",
+  "find": "compiler_cache_launcher_env 2>/dev/null || true",
+  "replace": "compiler_cache_launcher_env",
+  "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+  "why": "The real compiler probe carries the canonical guarded environment setup immediately before resolving the launcher."
+ },
+ {
+  "id": "lib.onnx-webgpu-wasm-cache-epoch",
+  "target": "linux/Dockerfile.media",
+  "find": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-wgpu3,sharing=locked",
+  "replace": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-wgpu2,sharing=locked",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "Changing the compiled WebGPU ABI must not reuse already completed WASM assets from the legacy in-tree EP cache."
+ },
+ {
+  "id": "lib.onnx-webgpu-wasm-build-type-key",
+  "target": "linux/Dockerfile.media",
+  "find": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-wgpu3,sharing=locked",
+  "replace": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-wgpu3,sharing=locked",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "Completed Debug and Release WASM assets must not share an artifact-cache identity."
+ },
+ {
+  "id": "lib.cmake-configured-bool-type",
+  "target": "linux/scripts/01-core/cmake-cache-linker.sh",
+  "find": "bool) _cce_pattern=BOOL",
+  "replace": "bool) _cce_pattern='[A-Z]*'",
+  "test": "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh",
+  "why": "Boolean feature checks require the declared BOOL type; launcher checks keep their broader legacy types."
+ },
+ {
+  "id": "lib.onnx-webgpu-requires-cmake-reader",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "stage_qnn_runtime apply_shared_library_action cmake_assert_configured_entries; do",
+  "replace": "stage_qnn_runtime apply_shared_library_action; do",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "A missing shared CMake-reader API must fail at bootstrap before compilation begins."
+ },
+ {
+  "id": "lib.cmake-configured-first-value-policy",
+  "target": "linux/scripts/01-core/cmake-cache-linker.sh",
+  "find": "_cce_got=\"${_cce_got%%$'\\n'*}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh",
+  "why": "The shared reader must retain the existing first-value launcher policy while Boolean consumers reject duplicate values."
+ },
+ {
+  "id": "lib.cmake-configured-keeps-wrapper-scope",
+  "target": "linux/scripts/01-core/cmake-cache-linker.sh",
+  "find": "  case \"${_cce_mode}\" in first) _cce_pattern='[A-Z]*' ;; bool) _cce_pattern=BOOL ;; *) return 2 ;; esac",
+  "replace": "  local mode=\"${_cce_mode}\"\n  case \"${_cce_mode}\" in first) _cce_pattern='[A-Z]*' ;; bool) _cce_pattern=BOOL ;; *) return 2 ;; esac",
+  "test": "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh",
+  "why": "A shared CMake reader must not hide caller configuration observed by a supplied shell tool wrapper."
+ },
+ {
+  "id": "lib.webgpu-build-proof-typed-mode",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "if entries != [f\"{name}:BOOL={expected}\"]:",
+  "replace": "if not entries:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Missing, duplicate, mistyped or disabled entries cannot bind a selected native mode."
+ },
+ {
+  "id": "lib.webgpu-build-proof-all-flags",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "\"onnxruntime_USE_EP_API_ADAPTERS\",",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "The adapter flag belongs to the mode proof independently of the WebGPU enable flag."
+ },
+ {
+  "id": "lib.webgpu-build-proof-elf-products",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "if header != b\"\\x7fELF\":",
+  "replace": "if False and header != b\"\\x7fELF\":",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Text or empty products cannot become valid native or Python build receipts."
+ },
+ {
+  "id": "lib.webgpu-build-proof-prefix-boundary",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "relative = library.relative_to(prefix.resolve())",
+  "replace": "relative = Path(library.name)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "A symlink to a foreign core must not bind that file to this prefix."
+ },
+ {
+  "id": "lib.webgpu-build-proof-native-hash",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "return {\"kind\": \"native-core\", \"path\": relative.as_posix(), \"sha256\": digest}",
+  "replace": "return {\"kind\": \"native-core\", \"path\": relative.as_posix(), \"sha256\": \"0\" * 64}",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "The core digest must describe its actual bytes."
+ },
+ {
+  "id": "lib.webgpu-build-proof-python-hash",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "\"member\": entry.filename, \"sha256\": digest}]",
+  "replace": "\"member\": entry.filename, \"sha256\": \"0\" * 64}]",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Native core hashes cannot stand in for separately linked Python extensions."
+ },
+ {
+  "id": "lib.webgpu-build-proof-unique-wheel",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "if len(wheels) != 1:",
+  "replace": "if len(wheels) == 0:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Ambiguous staged ORT wheels cannot select an arbitrary product."
+ },
+ {
+  "id": "lib.webgpu-build-proof-unique-extension",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "if len(entries) != 1:",
+  "replace": "if len(entries) == 0:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Duplicate wheel members cannot choose arbitrary extension bytes."
+ },
+ {
+  "id": "lib.webgpu-build-proof-wheel-abi",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "if free_threaded != (phase == \"free-threaded\"):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "A GIL wheel cannot be recorded as the FT linker product or the reverse."
+ },
+ {
+  "id": "lib.webgpu-build-proof-explicit-no-wheel",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "if phase != \"gil\" or wheels:",
+  "replace": "if phase != \"gil\":",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "An explicit no-wheel build cannot silently discard a staged Python product."
+ },
+ {
+  "id": "lib.webgpu-build-proof-ft-source",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "previous.get(\"source\") != source",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "FT must extend the same source revision and ref as the native/GIL build."
+ },
+ {
+  "id": "lib.webgpu-build-proof-ft-mode",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "phases[\"gil\"].get(\"configured_flags\") != flags",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "FT must not silently change the GIL WebGPU selection."
+ },
+ {
+  "id": "lib.webgpu-build-proof-ft-once",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "set(phases) != {\"gil\"}",
+  "replace": "\"gil\" not in phases",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "A repeated FT phase cannot overwrite an earlier bound product."
+ },
+ {
+  "id": "lib.webgpu-build-proof-retained-gil-bytes",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "if phases[\"gil\"].get(\"products\") != expected_products:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Native/GIL products must retain the bytes recorded before FT reconfiguration."
+ },
+ {
+  "id": "lib.webgpu-build-proof-source-identity",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "not re.fullmatch(r\"[a-f0-9]{40}\", args.source_revision)",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "A short or malformed Git identity cannot become a source receipt."
+ },
+ {
+  "id": "lib.webgpu-build-proof-native-product-required",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "products.insert(0, native_product(args.prefix))",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "A GIL build receipt also binds the separately shipped native core."
+ },
+ {
+  "id": "lib.webgpu-build-proof-cpu-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh",
+  "find": "record_onnx_webgpu_build_products \"${NATIVE_CPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}\" \"${NATIVE_CPU_OUTPUT_DIR}\" gil BUILD_ARGS \\\n  || err \"ONNX Runtime: the native/GIL WebGPU build proof failed\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Both production tails must bind GIL outputs before the FT pass changes their configured tree."
+ },
+ {
+  "id": "lib.webgpu-build-proof-nvidia-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
+  "find": "record_onnx_webgpu_build_products \"${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}\" \"${NATIVE_GPU_OUTPUT_DIR}\" gil BUILD_ARGS \\\n  || err \"ONNX Runtime: the native/GIL WebGPU build proof failed\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Both production tails must bind GIL outputs before the FT pass changes their configured tree."
+ },
+ {
+  "id": "lib.webgpu-build-proof-ft-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "  record_onnx_webgpu_build_products \"${build_dir}/${config}\" \"${output_dir}\" free-threaded \"$4\" \\\n    || err \"ONNX Runtime: the free-threaded WebGPU build proof failed\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "The real FT pass must record its own final wheel."
+ },
+ {
+  "id": "lib.webgpu-build-proof-ft-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "|| err \"ONNX Runtime: the free-threaded WebGPU build proof failed\"",
+  "replace": "|| true",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "An unsuccessful FT receipt cannot report a successful build."
+ },
+ {
+  "id": "lib.webgpu-build-proof-wrapper-mode-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "assert_onnx_webgpu_static_plugin \"${config_dir}\" || return $?",
+  "replace": "assert_onnx_webgpu_static_plugin \"${config_dir}\" || true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "The shared recorder must retain the configured gate failure before writing any receipt."
+ },
+ {
+  "id": "lib.webgpu-build-proof-wrapper-git-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "revision=\"$(git -C \"${ORT_SRC_DIR}\" rev-parse --verify HEAD)\" || return $?",
+  "replace": "revision=\"$(git -C \"${ORT_SRC_DIR}\" rev-parse --verify HEAD)\" || true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "A failed source lookup retains its raw status instead of becoming another command result."
+ },
+ {
+  "id": "lib.webgpu-build-proof-required-companion",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "\"${_owbp_options[@]}\"\n",
+  "replace": "\"${_owbp_options[@]}\" || return 0\n",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "A missing recorder or failed publication cannot fall back to success."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-required-api",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if not all(callable(getattr(module, name, None)) for name in exports):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "A present file with the wrong API cannot satisfy a canonical companion."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-loader-bytes",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if data != elf.loader_bytes(address + position, length):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Section-only original bytes cannot conceal changed data used by the loader."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-allocated-bytes",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "digest.update(data)",
+  "replace": "digest.update(b\"\")",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Rewritten code or data must retain their actual compiled bytes."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-symbol-name",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "table_string(strings, name).hex()",
+  "replace": "\"\"",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Dynamic symbol names remain protected while string offsets and section indices normalize."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-elf-identity",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "body = [identity, [(name.hex(), value) for name, value in sorted(sections.items())]]",
+  "replace": "body = [None, [(name.hex(), value) for name, value in sorted(sections.items())]]",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Identical section bytes from another ELF machine cannot become this product."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-source-identity",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "not re.fullmatch(r\"[a-f0-9]{40}\", source.get(\"revision\", \"\"))",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Delivery requires the full source identity already bound at build time."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-native-core",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if build_api().native_product(prefix) not in receipt[\"phases\"][\"gil\"][\"products\"]:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "The native core must retain its proved bytes while Python wheels are rewritten."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-configured-mode",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if flags not in (dict.fromkeys(build_api().FLAGS, \"ON\"), dict.fromkeys(build_api().FLAGS, \"OFF\")):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Mixed or untyped flag sets cannot bind a native static-plugin mode."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-delivery-history",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if hop[\"from\"] != current or hop[\"build_binding_sha256\"] != build_binding(receipt):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Every delivered hash must retain a continuous path from its original build product."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-native-only",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if rows or lines:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "A native-only build cannot acquire a Python delivery proof from an unrelated wheel."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-unique-binding",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if len(matches) != 1 or len(rows) != len(lines):",
+  "replace": "if not matches or len(rows) != len(lines):",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Duplicate manifest bindings cannot select an arbitrary original row."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-pending-manifest",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "pending[\"manifest_sha256\"] != manifest_sha",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "A pending check binds the original manifest bytes before follow can publish."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-pending-product",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "pending[\"product\"] != before",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "The original product authorized by precheck cannot be replaced during rewriting."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-pending-mode",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "pending[\"build_binding_sha256\"] != binding",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Changing mode or source after precheck cannot inherit its authorization."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-pending-directory",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "pending[\"directory\"] != str(wheels.resolve())",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Follow cannot switch to another wheelhouse after precheck."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-content-continuity",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "if allocated != pending[\"allocated_sha256\"]:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Allowed metadata rewrites cannot silently replace compiled ORT code, data or symbols."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-prepare-call",
+  "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+  "find": "        prepare_delivery(mode, Path(manifest), rows, out[manifest], Path(wheels), stem, proof_updates)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "The real check/follow transport must execute WebGPU delivery validation."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-publication-call",
+  "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+  "find": "publish_deliveries(proof_updates)\n",
+  "replace": "pass\n",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "A raw manifest update cannot replace the associated checked delivery receipt."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-mount-build",
+  "target": "linux/Dockerfile.media",
+  "find": "    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py,target=/opt/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py,readonly \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Every required canonical companion must reach the media rewrite RUN."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-mount-elf",
+  "target": "linux/Dockerfile.media",
+  "find": "    --mount=type=bind,source=linux/scripts/06-packaging/python-app-deb-depends.py,target=/opt/scripts/06-packaging/python-app-deb-depends.py,readonly \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Every required canonical companion must reach the media rewrite RUN."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-mount-symbols",
+  "target": "linux/Dockerfile.media",
+  "find": "    --mount=type=bind,source=linux/scripts/06-packaging/python_app_deb_symbols.py,target=/opt/scripts/06-packaging/python_app_deb_symbols.py,readonly \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Every required canonical companion must reach the media rewrite RUN."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-copy-build",
+  "target": "linux/Dockerfile.package",
+  "find": "COPY --chmod=755 linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py /opt/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "The shipped proof module must retain its required source APIs in the package layout."
+ },
+ {
+  "id": "ort-census.webgpu-delivery-copy-elf",
+  "target": "linux/Dockerfile.package",
+  "find": "COPY --chmod=644 linux/scripts/06-packaging/python-app-deb-depends.py linux/scripts/06-packaging/python_app_deb_symbols.py /opt/scripts/06-packaging/\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "The shipped proof module must retain its required source APIs in the package layout."
+ },
+ {
+  "id": "wheels.media-finalize-driver",
+  "target": "linux/Dockerfile.media",
+  "find": "    bash /opt/scripts/03-media/runtime/finalize-media.sh\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-media-finalize.sh",
+  "why": "The media RUN must execute the preserved complete finalization pipeline."
+ },
+ {
+  "id": "wheels.media-finalize-raw-status",
+  "target": "linux/scripts/03-media/runtime/finalize-media.sh",
+  "find": "    bash /opt/scripts/03-media/runtime/collect-artifacts.sh && \\\n",
+  "replace": "    { bash /opt/scripts/03-media/runtime/collect-artifacts.sh || true; } && \\\n",
+  "test": "bash linux/scripts/tests/test-media-finalize.sh",
+  "why": "A failed phase keeps its raw status and cannot reach later phases."
+ },
+ {
+  "id": "wheels.media-finalize-env-failure",
+  "target": "linux/scripts/03-media/runtime/finalize-media.sh",
+  "find": "    source /opt/scripts/03-media/runtime/media-env.sh\n",
+  "replace": "    source /opt/scripts/03-media/runtime/media-env.sh || true\n",
+  "test": "bash linux/scripts/tests/test-media-finalize.sh",
+  "why": "Failed environment setup must stop before collection."
+ },
+ {
+  "id": "wheels.media-finalize-native-install",
+  "target": "linux/scripts/03-media/runtime/finalize-media.sh",
+  "find": "[ \"${TARGET_ARCH:-amd64}\" != \"amd64\" ]",
+  "replace": "[ 1 = 1 ]",
+  "test": "bash linux/scripts/tests/test-media-finalize.sh",
+  "why": "Default/amd64 installation failures remain fatal."
+ },
+ {
+  "id": "wheels.media-finalize-cross-install",
+  "target": "linux/scripts/03-media/runtime/finalize-media.sh",
+  "find": "[ \"${TARGET_ARCH:-amd64}\" != \"amd64\" ]",
+  "replace": "[ \"${TARGET_ARCH:-amd64}\" = \"amd64\" ]",
+  "test": "bash linux/scripts/tests/test-media-finalize.sh",
+  "why": "Foreign wheel installation retains its advisory policy and reaches final validation."
+ },
+ {
+  "id": "wheels.media-finalize-python-path",
+  "target": "linux/scripts/03-media/runtime/finalize-media.sh",
+  "find": "    PYTHONPATH=\"$(echo /opt/opencv5/lib/python*/site-packages 2>/dev/null):${PYTHONPATH:-}\" \\\n",
+  "replace": "    PYTHONPATH=\"${PYTHONPATH:-}\" \\\n",
+  "test": "bash linux/scripts/tests/test-media-finalize.sh",
+  "why": "The final smoke prepends the image OpenCV path while retaining caller Python paths."
+ },
+ {
+  "id": "probe.webgpu-abi",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if free_threaded != (phase == \"free-threaded\"):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "The actual interpreter ABI must own the selected delivery phase."
+ },
+ {
+  "id": "probe.webgpu-gil",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if free_threaded and (not callable(getattr(sys, \"_is_gil_enabled\", None)) or sys._is_gil_enabled()):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "The FT process must keep its GIL disabled."
+ },
+ {
+  "id": "probe.webgpu-native-loader",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if spec is None or not isinstance(spec.loader, importlib.machinery.ExtensionFileLoader):",
+  "replace": "if spec is None:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "A Python source shim cannot stand in for the delivered native extension."
+ },
+ {
+  "id": "probe.webgpu-pending",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if any(\"delivery_pending\" in record for record in receipt[\"phases\"].values()):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Runtime cannot accept unfinished wheel repair."
+ },
+ {
+  "id": "probe.webgpu-no-history",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "    if not history or any(a[\"after_manifest_sha256\"] != b[\"before_manifest_sha256\"]\n                          for a, b in pairwise(history)):\n        raise ValueError(\"WebGPU delivery has no completed manifest history\")",
+  "replace": "    if not history:\n        return product\n    if any(a[\"after_manifest_sha256\"] != b[\"before_manifest_sha256\"] for a, b in pairwise(history)):\n        raise ValueError(\"WebGPU delivery has no completed manifest history\")",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Original build hashes are not final wheel delivery."
+ },
+ {
+  "id": "probe.webgpu-history-continuity",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "    if not history or any(a[\"after_manifest_sha256\"] != b[\"before_manifest_sha256\"]\n                          for a, b in pairwise(history)):\n        raise ValueError(\"WebGPU delivery has no completed manifest history\")",
+  "replace": "    if not history:\n        raise ValueError(\"WebGPU delivery has no completed manifest history\")",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Every repair hop retains manifest continuity."
+ },
+ {
+  "id": "probe.webgpu-manifest-sha",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if hashlib.sha256(body).hexdigest() != history[-1][\"after_manifest_sha256\"]:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "A changed final manifest cannot prove delivery."
+ },
+ {
+  "id": "probe.webgpu-manifest-unique",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if matching != [[product[\"sha256\"], label]]:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "A duplicate or wrong final row cannot prove one product."
+ },
+ {
+  "id": "probe.webgpu-phase-mode",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if record[\"configured_flags\"] != receipt[\"phases\"][\"gil\"][\"configured_flags\"]:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "The FT product must retain its native build mode."
+ },
+ {
+  "id": "probe.webgpu-source-ref",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if receipt[\"source\"][\"ref\"] != source_ref:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "The proof must use the requested pinned source ref."
+ },
+ {
+  "id": "probe.webgpu-python-sha",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "product is not None and product[\"sha256\"] == digest:",
+  "replace": "product is not None:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "The loaded extension needs its own final-byte match."
+ },
+ {
+  "id": "probe.webgpu-member-path",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if tuple(path.parts[-3:]) != tuple(Path(product[\"member\"]).parts):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "The matching extension must keep its delivered member identity."
+ },
+ {
+  "id": "probe.webgpu-owner-count",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if len(matches) != 1:",
+  "replace": "if not matches:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Ambiguous owning prefixes are not a valid runtime proof."
+ },
+ {
+  "id": "probe.webgpu-precise-error",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if str(error) != MISSING:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Only the exact pinned ORT missing-registration error is a negative control."
+ },
+ {
+  "id": "probe.webgpu-error-type",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "except error_type as error:",
+  "replace": "except Exception as error:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "A non-ORT exception cannot masquerade as the known ORT failure."
+ },
+ {
+  "id": "probe.webgpu-first-unregister",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "        binding.unregister_execution_provider_library(PROVIDER)\n    else:\n        require_missing(binding)",
+  "replace": "        pass\n    else:\n        require_missing(binding)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Enabled mode must first prove a registered factory."
+ },
+ {
+  "id": "probe.webgpu-repeat-negative",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "    require_missing(binding)\n    interpreter_mode(phase)",
+  "replace": "    interpreter_mode(phase)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "A repeat must independently prove the factory was removed."
+ },
+ {
+  "id": "probe.webgpu-off-absence",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "    else:\n        require_missing(binding)\n    require_missing(binding)",
+  "replace": "    else:\n        pass\n    require_missing(binding)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Disabled mode must prove absence on both calls."
+ },
+ {
+  "id": "probe.webgpu-post-gil",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "    require_missing(binding)\n    interpreter_mode(phase)",
+  "replace": "    require_missing(binding)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Factory calls must not turn the FT GIL back on."
+ },
+ {
+  "id": "probe.webgpu-main-call",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "    check_webgpu_factories \"${image_tag}\" \"${target_arch}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-webgpu-runtime-transport.sh",
+  "why": "The image smoke must execute the factory gate."
+ },
+ {
+  "id": "probe.webgpu-gil-child",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
+  "find": "/opt/venv/bin/python -I /opt/scripts/03-media/final/ort_webgpu_runtime.py",
+  "replace": "python3 /opt/scripts/03-media/final/ort_webgpu_runtime.py",
+  "test": "bash linux/scripts/tests/test-webgpu-runtime-transport.sh",
+  "why": "The GIL gate uses the isolated owning interpreter."
+ },
+ {
+  "id": "probe.webgpu-gil-status",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
+  "find": "[ \"${status}\" = 0 ] && [ \"${sentinels}\" = 1 ]",
+  "replace": "[ \"${sentinels}\" = 1 ]",
+  "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
+  "why": "An OK sentinel cannot hide a failed process."
+ },
+ {
+  "id": "probe.webgpu-gil-sentinel",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
+  "find": "[ \"${status}\" = 0 ] && [ \"${sentinels}\" = 1 ]",
+  "replace": "[ \"${status}\" = 0 ]",
+  "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
+  "why": "An empty or misleading successful child cannot pass."
+ },
+ {
+  "id": "probe.webgpu-gil-unique",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
+  "find": "[ \"${sentinels}\" = 1 ]",
+  "replace": "[ \"${sentinels}\" -ge 1 ]",
+  "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
+  "why": "Two success sentinels are not one completed proof."
+ },
+ {
+  "id": "wheels.ft-webgpu-phase",
+  "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
+  "find": "--phase free-threaded --source-ref",
+  "replace": "--phase gil --source-ref",
+  "test": "bash linux/scripts/tests/test-webgpu-runtime-transport.sh",
+  "why": "The installed FT interpreter must prove its own phase."
+ },
+ {
+  "id": "wheels.ft-webgpu-child",
+  "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
+  "find": "\"${work}/venv/bin/python\" -I /opt/scripts/03-media/final/ort_webgpu_runtime.py",
+  "replace": "python3 /opt/scripts/03-media/final/ort_webgpu_runtime.py",
+  "test": "bash linux/scripts/tests/test-webgpu-runtime-transport.sh",
+  "why": "The FT factory probe must execute in the freshly installed FT venv."
+ },
+ {
+  "id": "wheels.ft-webgpu-row",
+  "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
+  "find": "    _ft_store_webgpu_verdict \"${probe}\" \"${w%%-*}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "Generic module-import proof cannot replace the FT factory verdict."
+ },
+ {
+  "id": "wheels.ft-webgpu-proof",
+  "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
+  "find": "if [[ \"${rows}\" == \"FTS WEBGPU ${distribution} WEBGPU-FACTORY OK: \"* ]] && [[ \"${rows}\" != *$'\\n'* ]]; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "Missing and failed factory children must remain visible."
+ },
+ {
+  "id": "wheels.ft-webgpu-unique",
+  "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
+  "find": " && [[ \"${rows}\" != *$'\\n'* ]]",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "Duplicated FT factory proofs cannot satisfy the gate."
+ },
+ {
+  "id": "probe.native-webgpu-legacy",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (strcmp(providers[index], PROVIDER) == 0)",
+  "replace": "if (0 && strcmp(providers[index], PROVIDER) == 0)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "A legacy compiled WebGPU provider cannot masquerade as a static plugin."
+ },
+ {
+  "id": "probe.native-webgpu-cpu-baseline",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (cpu != 1)",
+  "replace": "if (cpu < 0)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The compiled-provider baseline must contain exactly one CPU provider."
+ },
+ {
+  "id": "probe.native-webgpu-negative-success",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (!status) return error(\"negative control unexpectedly unregistered a factory\");",
+  "replace": "if (!status) return 0;",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "A repeat success cannot prove factory removal."
+ },
+ {
+  "id": "probe.native-webgpu-negative-code",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "probe->api->GetErrorCode(status) != ORT_FAIL",
+  "replace": "0",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The negative control requires ORT_FAIL, not another error with the same text."
+ },
+ {
+  "id": "probe.native-webgpu-negative-message",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "strcmp(message, MISSING) != 0",
+  "replace": "0",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Only the exact pinned missing-key text proves absence."
+ },
+ {
+  "id": "probe.native-webgpu-first-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (status_error(probe, status, \"first UnregisterExecutionProviderLibrary\")) return 1;",
+  "replace": "(void)status_error(probe, status, \"first UnregisterExecutionProviderLibrary\");",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Enabled mode requires a successful first unregistration."
+ },
+ {
+  "id": "probe.native-webgpu-registration-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (!failed) failed = registration(&probe, strcmp(argv[2], \"ON\") == 0);",
+  "replace": "if (!failed && argc > 100) failed = registration(&probe, strcmp(argv[2], \"ON\") == 0);",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The real native executable must create an owning environment and check its factory."
+ },
+ {
+  "id": "probe.native-webgpu-provider-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (!failed) failed = compiled_providers(&probe);",
+  "replace": "if (!failed && argc > 100) failed = compiled_providers(&probe);",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The compiled-provider legacy gate must run before environment creation."
+ },
+ {
+  "id": "probe.native-webgpu-status-release",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "  probe->api->ReleaseStatus(status);\n  return failed;",
+  "replace": "  (void)status;\n  return failed;",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Negative-control statuses must be released."
+ },
+ {
+  "id": "probe.native-webgpu-env-release",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (probe->env) probe->api->ReleaseEnv(probe->env);",
+  "replace": "if (probe->env) (void)probe->env;",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "A successful or failed factory probe must release its environment."
+ },
+ {
+  "id": "probe.native-webgpu-close-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (probe->library && dlclose(probe->library) != 0) { error(\"dlclose failed\"); failed = 1; }",
+  "replace": "if (probe->library && dlclose(probe->library) != 0) { error(\"dlclose failed\"); }",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Loader cleanup failure must prevent the success sentinel."
+ },
+ {
+  "id": "probe.native-webgpu-provider-release-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (providers && status_error(probe, probe->api->ReleaseAvailableProviders(providers, count), \"ReleaseAvailableProviders\")) failed = 1;",
+  "replace": "if (providers) (void)status_error(probe, probe->api->ReleaseAvailableProviders(providers, count), \"ReleaseAvailableProviders\");",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Provider-list cleanup failure cannot be hidden by later registration success."
+ },
+ {
+  "id": "probe.native-webgpu-core-status",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if result.returncode != 0 or len(sentinels) != 1 or failure:",
+  "replace": "if len(sentinels) != 1 or failure:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The native wrapper retains the child's raw failure status."
+ },
+ {
+  "id": "probe.native-webgpu-core-sentinel",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if result.returncode != 0 or len(sentinels) != 1 or failure:",
+  "replace": "if result.returncode != 0 or failure:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "An empty, duplicate or wrong-mode native verdict is not a PASS."
+ },
+ {
+  "id": "probe.native-webgpu-core-failure-marker",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if result.returncode != 0 or len(sentinels) != 1 or failure:",
+  "replace": "if result.returncode != 0 or len(sentinels) != 1:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "A zero status and OK sentinel cannot hide an explicit native failure."
+ },
+ {
+  "id": "probe.native-webgpu-core-stream-boundary",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "(result.stdout + \"\\n\" + result.stderr).splitlines()",
+  "replace": "(result.stdout + result.stderr).splitlines()",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The two output streams remain distinct even without a trailing newline."
+ },
+ {
+  "id": "probe.native-webgpu-core-after",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if delivery.build_api().native_product(prefix) != product or linker_digest(probe) != digest:",
+  "replace": "if linker_digest(probe) != digest:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The loaded core's checked bytes must remain unchanged after execution."
+ },
+ {
+  "id": "probe.native-webgpu-probe-after",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if delivery.build_api().native_product(prefix) != product or linker_digest(probe) != digest:",
+  "replace": "if delivery.build_api().native_product(prefix) != product:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The native executable must retain its checked bytes through execution."
+ },
+ {
+  "id": "probe.native-webgpu-all-prefixes",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "[native_core(prefix, source_ref) for prefix in prefixes]",
+  "replace": "[native_core(prefix, source_ref) for prefix in prefixes[:1]]",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Every selected native core needs its own proof."
+ },
+ {
+  "id": "probe.native-webgpu-native-dispatch",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "prove_native(prefixes, args.source_ref) if args.phase == \"native\"",
+  "replace": "prove_native(prefixes, args.source_ref) if False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Native CLI execution must not import Python bindings instead."
+ },
+ {
+  "id": "probe.native-webgpu-required-helper",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "printf 'ERROR: native WebGPU probe requires %s\\n' \"${required}\" >&2\n      return 1",
+  "replace": "printf 'ERROR: native WebGPU probe requires %s\\n' \"${required}\" >&2\n      return 0",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "A missing required helper is fatal before selected tools run."
+ },
+ {
+  "id": "probe.native-webgpu-cache-resolver",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "append_cmake_cache_linker_args probe_args || return $?",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "Native probe compilation must resolve its compiler cache through the canonical helper."
+ },
+ {
+  "id": "probe.native-webgpu-configure-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "cmake \"${probe_args[@]}\" || return $?",
+  "replace": "cmake \"${probe_args[@]}\" || true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "A failed configure cannot advance to build or installation under conditional callers."
+ },
+ {
+  "id": "probe.native-webgpu-cache-gate",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "cmake_assert_compiler_cache_pin \"${probe_build}\" \"${CMAKE_COMPILER_CACHE_PIN}\" || return $?",
+  "replace": "cmake_assert_compiler_cache_pin \"${probe_build}\" \"${CMAKE_COMPILER_CACHE_PIN}\" || true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "A replaced or missing configured compiler launcher stops the producer."
+ },
+ {
+  "id": "probe.native-webgpu-build-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "run_cmake_build_with_fallback \"${probe_build}\" 1 || return $?",
+  "replace": "run_cmake_build_with_fallback \"${probe_build}\" 1 || true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "A failed native probe compilation must not publish a prefix."
+ },
+ {
+  "id": "probe.native-webgpu-install-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "cmake --install \"${probe_build}\" --prefix \"${output_dir}\" || return $?",
+  "replace": "cmake --install \"${probe_build}\" --prefix \"${output_dir}\" || true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "A failed native executable installation cannot reach the build receipt."
+ },
+ {
+  "id": "probe.native-webgpu-cpu-producer",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh",
+  "find": "build_onnx_webgpu_factory_probe \"${NATIVE_CPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}\" \"${NATIVE_CPU_OUTPUT_DIR}\" \\\n  || err \"ONNX Runtime: the target-native WebGPU factory probe build failed\"",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "The CPU producer must build its native probe before receipt publication and FT reconfiguration."
+ },
+ {
+  "id": "probe.native-webgpu-gpu-producer",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
+  "find": "build_onnx_webgpu_factory_probe \"${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}\" \"${NATIVE_GPU_OUTPUT_DIR}\" \\\n  || err \"ONNX Runtime: the target-native WebGPU factory probe build failed\"",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "The GPU producer must build its native probe before receipt publication and FT reconfiguration."
+ },
+ {
+  "id": "probe.native-webgpu-configured-compiler",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/CMakeLists.txt",
+  "find": "    set(${setting}\n        \"${CORE_${setting}}\"\n        CACHE STRING \"Owning ORT compiler configuration\" FORCE)",
+  "replace": "    set(${setting}\n        \"${CORE_${setting}}\"\n        CACHE STRING \"Owning ORT compiler configuration\")",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The core compiler wins over a conflicting explicit host compiler."
+ },
+ {
+  "id": "probe.native-webgpu-missing-compiler",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/CMakeLists.txt",
+  "find": "if(NOT CORE_CMAKE_C_COMPILER)\n  message(FATAL_ERROR \"The owning ORT C compiler is required\")\nendif()",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "A readable cache without its owning C compiler cannot fall back to the host."
+ },
+ {
+  "id": "probe.native-webgpu-missing-header",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/CMakeLists.txt",
+  "find": "if(NOT EXISTS \"${ORT_INCLUDE_DIR}/onnxruntime_c_api.h\")\n  message(FATAL_ERROR \"The owning ORT C API header is required\")\nendif()",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "Missing owning headers fail configuration before build/install."
+ },
+ {
+  "id": "probe.native-webgpu-native-smoke-phase",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
+  "find": "for phase in native gil; do",
+  "replace": "for phase in gil gil; do",
+  "test": "bash linux/scripts/tests/test-webgpu-runtime-transport.sh",
+  "why": "Image smoke must execute the native and GIL phases separately."
+ },
+ {
+  "id": "probe.native-webgpu-config-path",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "${1:?configured ORT build required}",
+  "replace": "${1-}",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "An empty config-path must fail before creating a build or installation path."
+ },
+ {
+  "id": "probe.native-webgpu-prefix-path",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "${2:?ORT output prefix required}",
+  "replace": "${2-}",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "An empty prefix-path must fail before creating a build or installation path."
+ },
+ {
+  "id": "probe.native-webgpu-provider-bound",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "count > 1024",
+  "replace": "count > 2048",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "An invalid oversized provider list must be refused before walking or initializing an environment."
+ },
+ {
+  "id": "probe.native-webgpu-cache-pin-scope",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "required CMAKE_COMPILER_CACHE_PIN=''",
+  "replace": "required; CMAKE_COMPILER_CACHE_PIN=''",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
+  "why": "The canonical cache callback must write the producer helper's local output slot without changing the caller's absent, empty or existing binding."
+ },
+ {
+  "id": "lib.compiler-tool-fixture-custom-temp-root",
+  "target": "linux/scripts/tests/test-compiler-tool-toggles.sh",
+  "find": "case \"$arg\" in */probe.c) arg=SOURCE ;; */probe) arg=OUTPUT ;; esac",
+  "replace": "case \"$arg\" in /tmp/*/probe.c) arg=SOURCE ;; /tmp/*/probe) arg=OUTPUT ;; esac",
+  "test": "bash linux/scripts/tests/test-compiler-tool-toggles.sh",
+  "why": "The compiler spy must normalize generated source and output argv under arbitrary temporary roots, including paths containing spaces."
+ },
+ {
+  "id": "lib.ort-plugin-registration-image-root-precedence",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "    if root_value:\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "An advertised image root wins over a separately present bundled module; a missing advertised root cannot silently fall back."
+ },
+ {
+  "id": "lib.ort-plugin-registration-absolute-image-root",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        if not root.is_absolute():",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "Relative image roots fail before native registration."
+ },
+ {
+  "id": "lib.ort-plugin-registration-image-root-directory",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        if not root.is_dir():",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "A file advertised as an image root keeps the explicit configuration diagnostic."
+ },
+ {
+  "id": "lib.ort-plugin-registration-windows-layout",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        path = root / filename if windows else root / \"lib\" / filename",
+  "replace": "        path = root / \"lib\" / filename if windows else root / filename",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "The Windows root and Linux lib layout remain distinct, including paths with spaces."
+ },
+ {
+  "id": "lib.ort-plugin-registration-absolute-binding-path",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "    if not module.is_absolute():",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "Relative binding paths cannot discover a plugin through the current working directory."
+ },
+ {
+  "id": "lib.ort-plugin-registration-optional-bundle-absence",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "    if not path.exists() and not path.is_symlink():",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "A CPU binding without an advertised or bundled plugin does not attempt native registration."
+ },
+ {
+  "id": "lib.ort-plugin-registration-registered-module-is-file",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        if not path.is_file():\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "A directory cannot be reported as a successfully registered native library."
+ },
+ {
+  "id": "lib.ort-plugin-registration-native-call-required",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        register(plugin.name, str(path))",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "A success report requires the owning binding to receive the native registration call."
+ },
+ {
+  "id": "lib.ort-plugin-registration-registration-name",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        register(plugin.name, str(path))",
+  "replace": "        register(\"MIGraphXExecutionProvider\", str(path))",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "The plugin is registered with its actual chosen factory name, not the removed built-in name."
+ },
+ {
+  "id": "lib.ort-plugin-registration-failed-call-retry",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        register(plugin.name, str(path))\n        _REGISTERED.setdefault(binding, {})[plugin.name] = path",
+  "replace": "        _REGISTERED.setdefault(binding, {})[plugin.name] = path\n        register(plugin.name, str(path))",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "A failed native call cannot enter the successful-registration cache or prevent a retry."
+ },
+ {
+  "id": "lib.ort-plugin-registration-owning-binding-cache",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        previous = _REGISTERED.get(binding, {}).get(plugin.name)",
+  "replace": "        previous = next(iter(_REGISTERED.values()), {}).get(plugin.name)",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "Two owning bindings each require their own native registration even for the same module path."
+ },
+ {
+  "id": "lib.ort-plugin-registration-register-once",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        if previous is not None:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "Repeated sessions and concurrent callers do not register the same factory twice."
+ },
+ {
+  "id": "lib.ort-plugin-registration-path-conflict",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "            if previous != path:",
+  "replace": "            if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "An existing name cannot silently change its native module after an environment change."
+ },
+ {
+  "id": "lib.ort-plugin-registration-report-success-only",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        return tuple(sorted(_REGISTERED.get(binding, {})))",
+  "replace": "        return ()",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "The self-test can report the actual successful registrations for its own binding."
+ },
+ {
+  "id": "lib.ort-plugin-registration-negative-device-index",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "    if device_index < 0:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "Negative indices fail before native registration and cannot select the last enumerated device."
+ },
+ {
+  "id": "lib.ort-plugin-registration-device-name-selection",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        device for device in binding.get_ep_devices() if device.ep_name == plugin.name",
+  "replace": "        device for device in binding.get_ep_devices() if device.ep_name == \"MIGraphXExecutionProvider\"",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "Runtime device discovery matches the registered plugin name, not the legacy compile-time provider."
+ },
+ {
+  "id": "lib.ort-plugin-registration-device-index-bounds",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "    if device_index >= len(devices):",
+  "replace": "    if device_index > len(devices):",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "An index exactly past the matching devices retains the explicit unavailable-device failure."
+ },
+ {
+  "id": "lib.ort-plugin-registration-requested-device-index",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "    return devices[device_index]",
+  "replace": "    return devices[0]",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "An explicitly requested second GPU cannot silently select the first matching device."
+ },
+ {
+  "id": "lib.ort-plugin-registration-exact-shared-asset",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "ort-plugin-registration-python | shared/python/ort_plugin_eps.py | runtime_support/ort_plugin_eps.py | exact |",
+  "replace": "ort-plugin-registration-python | shared/python/ort_plugin_eps.py | runtime_support/ort_plugin_eps.py | body |",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "A packaged runtime helper remains byte-identical to its owning source, including header content."
+ },
+ {
+  "id": "lib.ort-plugin-registration-shared-lock",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "    with _LOCK:\n        previous = _REGISTERED.get(binding, {}).get(plugin.name)",
+  "replace": "    with threading.RLock():\n        previous = _REGISTERED.get(binding, {}).get(plugin.name)",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "Concurrent native calls release the GIL, so all callers must share one registration lock."
+ },
+ {
+  "id": "lib.ort-plugin-native-image-root-precedence",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "    if (!advertised) {",
+  "replace": "    if (true) {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "An explicit image root wins and cannot silently fall back to a separately bundled module."
+ },
+ {
+  "id": "lib.ort-plugin-native-absolute-root",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "    if (!root.is_absolute()) {",
+  "replace": "    if (false) {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "A relative advertised root fails before any native registration."
+ },
+ {
+  "id": "lib.ort-plugin-native-absolute-bundle",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        if (!bundled_directory.is_absolute()) {",
+  "replace": "        if (false) {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Bundled lookup never depends on the current working directory."
+ },
+ {
+  "id": "lib.ort-plugin-native-root-directory",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "    if (!std::filesystem::is_directory(root, status) || status) {",
+  "replace": "    if (false) {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "A file advertised as the image root retains its explicit configuration failure."
+ },
+ {
+  "id": "lib.ort-plugin-native-module-file",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        if (!std::filesystem::is_regular_file(resolved, status) || status) {",
+  "replace": "        if (false) {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "A directory cannot be accepted as a plugin module."
+ },
+ {
+  "id": "lib.ort-plugin-native-broken-bundle-link",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "!std::filesystem::is_symlink(entry)",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "A broken advertised bundle link is an error rather than optional absence."
+ },
+ {
+  "id": "lib.ort-plugin-native-native-registration-call",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "api_.RegisterExecutionProviderLibrary(environment_, name.c_str(), path->c_str())",
+  "replace": "nullptr",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Successful registration requires the supplied owning native API call."
+ },
+ {
+  "id": "lib.ort-plugin-native-retry-failed-registration",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        if (!accept_status(api_.RegisterExecutionProviderLibrary(environment_, name.c_str(), path->c_str()), error)) {\n            return false;\n        }\n        registered_.emplace(name, *path);",
+  "replace": "        registered_.emplace(name, *path);\n        if (!accept_status(api_.RegisterExecutionProviderLibrary(environment_, name.c_str(), path->c_str()), error)) {\n            return false;\n        }",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Only successful native calls enter the cache; a failed call remains retryable."
+ },
+ {
+  "id": "lib.ort-plugin-native-per-environment-cache",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "    std::map<std::string, std::filesystem::path> registered_;",
+  "replace": "    inline static std::map<std::string, std::filesystem::path> registered_;",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Separate owning environments cannot reuse each other's registration verdict."
+ },
+ {
+  "id": "lib.ort-plugin-native-path-conflict",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "            if (previous->second == *path) { return true; }",
+  "replace": "            return true;",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "An existing registration name cannot silently change its module path."
+ },
+ {
+  "id": "lib.ort-plugin-native-shared-lock",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        std::lock_guard<std::mutex> lock(mutex_);\n        return ensure_registered(plugin, bundled_directory, error);",
+  "replace": "        std::mutex per_call;\n        std::lock_guard<std::mutex> lock(per_call);\n        return ensure_registered(plugin, bundled_directory, error);",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Parallel first callers must share one lock rather than each creating an independent lock."
+ },
+ {
+  "id": "lib.ort-plugin-native-native-error-text",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        error = message == nullptr ? \"ONNX Runtime returned an error without a message\" : message;",
+  "replace": "        error = std::string(\"masked native failure\") + (message == nullptr ? \"\" : \"\");",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Raw native registration, enumeration and append diagnostics remain observable."
+ },
+ {
+  "id": "lib.ort-plugin-native-status-release",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        const std::unique_ptr<OrtStatus, decltype(release)> owned(status, release);",
+  "replace": "        const std::unique_ptr<OrtStatus, decltype(release)> owned(nullptr, release);",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Every failed native status is released even though its copied error remains visible."
+ },
+ {
+  "id": "lib.ort-plugin-native-negative-index",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        if (device_index < 0) {",
+  "replace": "        if (false) {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "A negative device index fails before registration or enumeration."
+ },
+ {
+  "id": "lib.ort-plugin-native-fresh-device-query",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "api_.GetEpDevices(environment_, &devices, &count)",
+  "replace": "nullptr",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Each attachment obtains a fresh matching device list from the owning environment."
+ },
+ {
+  "id": "lib.ort-plugin-native-matching-device-name",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "name == ep_name && matching++ == index",
+  "replace": "name == \"MIGraphXExecutionProvider\" && matching++ == index",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Device selection uses the plugin factory name, not the removed built-in name."
+ },
+ {
+  "id": "lib.ort-plugin-native-requested-device-index",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "matching++ == index",
+  "replace": "matching++ == 0",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "The explicitly requested second matching GPU is not replaced by the first one."
+ },
+ {
+  "id": "lib.ort-plugin-native-v2-attachment",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "api_.SessionOptionsAppendExecutionProvider_V2(\n                               options, environment_, &device, 1, keys.data(), values.data(), keys.size())",
+  "replace": "nullptr",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "A successful return requires actually attaching the selected device through V2."
+ },
+ {
+  "id": "lib.ort-plugin-native-provider-options",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "            values.push_back(option.second.c_str());",
+  "replace": "            values.push_back(option.first.c_str());",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Device and memory options retain their caller-provided values."
+ },
+ {
+  "id": "lib.ort-plugin-native-registered-report",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "        for (const auto &entry : registered_) { names.push_back(entry.first); }",
+  "replace": "        for (const auto &entry : registered_) { (void)entry; }",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "The public report names successful registrations in this registry."
+ },
+ {
+  "id": "lib.ort-plugin-native-owning-core-directory",
+  "target": "shared/native/ort_plugin_eps.hpp",
+  "find": "    return resolved.parent_path();",
+  "replace": "    return resolved;",
+  "test": "bash linux/scripts/tests/test-ort-plugin-native.sh",
+  "why": "Automatic bundled fallback uses the directory of the actual supplied API's loaded core."
+ },
+ {
+  "id": "lib.ort-plugin-native-exact-native-asset",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "ort-plugin-registration-native | shared/native/ort_plugin_eps.hpp | runtime_support/ort_plugin_eps.hpp | exact |",
+  "replace": "ort-plugin-registration-native | shared/native/ort_plugin_eps.hpp | runtime_support/ort_plugin_eps.hpp | body |",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "A consumer native header remains byte-identical to its canonical source, including its directives."
+ },
+ {
+  "id": "lib.migraphx-node-source-patch-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
+  "find": "  mgxep_apply_source_patch || return\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh",
+  "why": "The source phase must apply the cleanup fix before compilation."
+ },
+ {
+  "id": "lib.migraphx-node-source-patch-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
+  "find": "  mgxep_apply_source_patch || return\n",
+  "replace": "  mgxep_apply_source_patch\n",
+  "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh",
+  "why": "A patch failure under a conditional caller must retain its raw status and skip seeding."
+ },
+ {
+  "id": "lib.migraphx-node-typed-delete",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+        delete static_cast<NodeComputeInfoBase*>(info);",
+  "replace": "+        delete info;",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "The C ABI pointer must reach the actual owning type at destruction."
+ },
+ {
+  "id": "lib.migraphx-node-virtual-owner",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+    virtual ~NodeComputeInfoBase() = default;",
+  "replace": "+    ~NodeComputeInfoBase() = default;",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "Both derived node types need dynamic typed destruction."
+ },
+ {
+  "id": "lib.migraphx-node-nodecomputeinfo-createstate-adjustment",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+            API_CALL_S(NodeComputeInfo, static_cast<NodeComputeInfo*>(this_), CreateState, compute_context, *compute_state);",
+  "replace": "+            API_CALL_S(NodeComputeInfo, this_, CreateState, compute_context, *compute_state);",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "NodeComputeInfo CreateState must adjust the C base before the reinterpret-cast dispatch."
+ },
+ {
+  "id": "lib.migraphx-node-nodecomputeinfo-compute-adjustment",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+            API_CALL_S(NodeComputeInfo, static_cast<NodeComputeInfo*>(this_), Compute, *static_cast<ComputeState*>(compute_state),",
+  "replace": "+            API_CALL_S(NodeComputeInfo, this_, Compute, *static_cast<ComputeState*>(compute_state),",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "NodeComputeInfo Compute must adjust the C base before the reinterpret-cast dispatch."
+ },
+ {
+  "id": "lib.migraphx-node-nodecomputeinfo-releasestate-adjustment",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+            API_CALL_V(NodeComputeInfo, static_cast<NodeComputeInfo*>(this_), ReleaseState, compute_state);",
+  "replace": "+            API_CALL_V(NodeComputeInfo, this_, ReleaseState, compute_state);",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "NodeComputeInfo ReleaseState must adjust the C base before the reinterpret-cast dispatch."
+ },
+ {
+  "id": "lib.migraphx-node-epcontextnodecomputeinfo-createstate-adjustment",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+            API_CALL_S(EpContextNodeComputeInfo, static_cast<EpContextNodeComputeInfo*>(this_), CreateState, compute_context, *compute_state);",
+  "replace": "+            API_CALL_S(EpContextNodeComputeInfo, this_, CreateState, compute_context, *compute_state);",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "EpContextNodeComputeInfo CreateState must adjust the C base before the reinterpret-cast dispatch."
+ },
+ {
+  "id": "lib.migraphx-node-epcontextnodecomputeinfo-compute-adjustment",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+            API_CALL_S(EpContextNodeComputeInfo, static_cast<EpContextNodeComputeInfo*>(this_), Compute, *static_cast<EpContextComputeState*>(compute_state),",
+  "replace": "+            API_CALL_S(EpContextNodeComputeInfo, this_, Compute, *static_cast<EpContextComputeState*>(compute_state),",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "EpContextNodeComputeInfo Compute must adjust the C base before the reinterpret-cast dispatch."
+ },
+ {
+  "id": "lib.migraphx-node-epcontextnodecomputeinfo-releasestate-adjustment",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+            API_CALL_V(EpContextNodeComputeInfo, static_cast<EpContextNodeComputeInfo*>(this_), ReleaseState, compute_state);",
+  "replace": "+            API_CALL_V(EpContextNodeComputeInfo, this_, ReleaseState, compute_state);",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "EpContextNodeComputeInfo ReleaseState must adjust the C base before the reinterpret-cast dispatch."
+ },
+ {
+  "id": "lib.migraphx-node-sanitizer-control",
+  "target": "linux/scripts/tests/ort_migraphx_patch_fixture.py",
+  "find": "\"-fsanitize=address\", ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "The mandatory unpatched control must prove the sanitizer is active."
+ },
+ {
+  "id": "lib.migraphx-registry-source-patch",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
+  "find": "for source_patch in 001-node-compute-info-lifetime.patch 002-kernel-registry-lifetime.patch; do",
+  "replace": "for source_patch in 001-node-compute-info-lifetime.patch; do",
+  "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh",
+  "why": "The source phase must patch registry ownership before seeding."
+ },
+ {
+  "id": "lib.migraphx-registry-first-patch-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
+  "find": "\"MIGraphX ownership ${source_patch}\" || return",
+  "replace": "\"MIGraphX ownership ${source_patch}\"",
+  "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh",
+  "why": "A failed earlier patch cannot be hidden by a successful later patch."
+ },
+ {
+  "id": "lib.migraphx-registry-owned-cache",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/002-kernel-registry-lifetime.patch",
+  "find": "+    mutable Ort::KernelRegistry kernel_registry_{nullptr};",
+  "replace": "+    mutable OrtKernelRegistry* kernel_registry_{nullptr};",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-factory.sh",
+  "why": "The registry must remain owned while its returned pointer is used and release at factory teardown."
+ },
+ {
+  "id": "lib.migraphx-registry-creation-lock",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/002-kernel-registry-lifetime.patch",
+  "find": "+        const std::lock_guard lock{kernel_registry_mutex_};",
+  "replace": "+        (void)kernel_registry_mutex_;",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-factory.sh",
+  "why": "Concurrent session creation must create exactly one cached registry."
+ },
+ {
+  "id": "lib.migraphx-registry-creation-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/002-kernel-registry-lifetime.patch",
+  "find": "+            RETURN_IF_ERROR(CreateKernelRegistry(ep_name, data_transfer_.get(), created));",
+  "replace": "+            (void)CreateKernelRegistry(ep_name, data_transfer_.get(), created);",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-factory.sh",
+  "why": "A failed creation retains its status and leaves the cache available for retry."
+ },
+ {
+  "id": "lib.migraphx-registry-destruction-order",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/002-kernel-registry-lifetime.patch",
+  "find": "     std::unique_ptr<hip::DataTransfer> data_transfer_;\n+    mutable std::mutex kernel_registry_mutex_;\n+    mutable Ort::KernelRegistry kernel_registry_{nullptr};",
+  "replace": "+    mutable Ort::KernelRegistry kernel_registry_{nullptr};\n     std::unique_ptr<hip::DataTransfer> data_transfer_;\n+    mutable std::mutex kernel_registry_mutex_;",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-factory.sh",
+  "why": "Kernel state remains alive while its registry is released."
+ },
+ {
+  "id": "lib.migraphx-registry-leak-control",
+  "target": "linux/scripts/tests/ort_migraphx_patch_fixture.py",
+  "find": "detect_leaks=1:alloc_dealloc_mismatch=1:new_delete_type_mismatch=1",
+  "replace": "detect_leaks=0:alloc_dealloc_mismatch=1:new_delete_type_mismatch=1",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-factory.sh",
+  "why": "The original raw registry must prove leak detection is active."
  }
 ]
