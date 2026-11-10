@@ -38819,8 +38819,8 @@
  {
   "id": "lib.ort-plugin-registration-registered-module-is-file",
   "target": "shared/python/ort_plugin_eps.py",
-  "find": "        if not path.is_file():\n            raise FileNotFoundError(f\"{plugin.name} plugin is not a file: {path}\")",
-  "replace": "        if False:\n            raise FileNotFoundError(f\"{plugin.name} plugin is not a file: {path}\")",
+  "find": "        if not path.is_file():\n",
+  "replace": "        if False:\n",
   "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
   "why": "A directory cannot be reported as a successfully registered native library."
  },
@@ -38919,5 +38919,13 @@
   "replace": "ort-plugin-registration-python | shared/python/ort_plugin_eps.py | runtime_support/ort_plugin_eps.py | body |",
   "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
   "why": "A packaged runtime helper remains byte-identical to its owning source, including header content."
+ },
+ {
+  "id": "lib.ort-plugin-registration-shared-lock",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "    with _LOCK:\n        previous = _REGISTERED.get(binding, {}).get(plugin.name)",
+  "replace": "    with threading.RLock():\n        previous = _REGISTERED.get(binding, {}).get(plugin.name)",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "Concurrent native calls release the GIL, so all callers must share one registration lock."
  }
 ]

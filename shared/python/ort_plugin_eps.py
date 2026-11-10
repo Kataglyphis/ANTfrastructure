@@ -6,10 +6,13 @@ import os
 import sys
 import threading
 import weakref
-from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 
 class PluginDevice(Protocol):
@@ -70,33 +73,32 @@ def plugin_library_path(
     if root_value:
         root = Path(root_value)
         if not root.is_absolute():
-            raise ValueError(
-                f"{plugin.root_variable} must be an absolute directory: {root}"
-            )
+            message = f"{plugin.root_variable} must be an absolute directory: {root}"
+            raise ValueError(message)
         root = root.resolve(strict=True)
         if not root.is_dir():
-            raise NotADirectoryError(
-                f"{plugin.root_variable} is not a directory: {root}"
-            )
+            message = f"{plugin.root_variable} is not a directory: {root}"
+            raise NotADirectoryError(message)
         path = root / filename if windows else root / "lib" / filename
         path = path.resolve(strict=True)
         if not path.is_file():
-            raise FileNotFoundError(f"{plugin.name} plugin is not a file: {path}")
+            message = f"{plugin.name} plugin is not a file: {path}"
+            raise FileNotFoundError(message)
         return path
     module_file = getattr(binding, "__file__", None)
     if not module_file:
         return None
     module = Path(module_file)
     if not module.is_absolute():
-        raise ValueError(
-            f"The owning ONNX Runtime module path must be absolute: {module}"
-        )
+        message = f"The owning ONNX Runtime module path must be absolute: {module}"
+        raise ValueError(message)
     path = module.resolve().parent / "capi" / filename
     if not path.exists() and not path.is_symlink():
         return None
     path = path.resolve(strict=True)
     if not path.is_file():
-        raise FileNotFoundError(f"{plugin.name} bundled plugin is not a file: {path}")
+        message = f"{plugin.name} bundled plugin is not a file: {path}"
+        raise FileNotFoundError(message)
     return path
 
 
@@ -114,15 +116,13 @@ def register_plugin_library(
         previous = _REGISTERED.get(binding, {}).get(plugin.name)
         if previous is not None:
             if previous != path:
-                raise RuntimeError(
-                    f"{plugin.name} is already registered from {previous}, refusing {path}"
-                )
+                message = f"{plugin.name} is already registered from {previous}, refusing {path}"
+                raise RuntimeError(message)
             return previous
         register = getattr(binding, "register_execution_provider_library", None)
         if not callable(register):
-            raise TypeError(
-                f"The owning ONNX Runtime binding cannot register {plugin.name}"
-            )
+            message = f"The owning ONNX Runtime binding cannot register {plugin.name}"
+            raise TypeError(message)
         register(plugin.name, str(path))
         _REGISTERED.setdefault(binding, {})[plugin.name] = path
     return path
@@ -143,14 +143,14 @@ def select_plugin_device(
 ) -> PluginDevice | None:
     """Select one matching runtime-enumerated device, without caching availability."""
     if device_index < 0:
-        raise ValueError(f"GPU device index must be non-negative: {device_index}")
+        message = f"GPU device index must be non-negative: {device_index}"
+        raise ValueError(message)
     if register_plugin_library(binding, plugin, environ=environ) is None:
         return None
     devices = [
         device for device in binding.get_ep_devices() if device.ep_name == plugin.name
     ]
     if device_index >= len(devices):
-        raise RuntimeError(
-            f"{plugin.name} device index {device_index} is unavailable; found {len(devices)}"
-        )
+        message = f"{plugin.name} device index {device_index} is unavailable; found {len(devices)}"
+        raise RuntimeError(message)
     return devices[device_index]

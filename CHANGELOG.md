@@ -23,6 +23,9 @@
 - The exact shared asset can live inside an installed consumer package; reports name only successful
   registrations. Fake-binding and shared-copy controls do not prove real ORT loading or GPU inference;
   consumer integration and hardware profiles remain required.
+- Keep the canonical module compatible with strict consumer lint without adding suppressions.
+  A delayed native-call mutation requires the shared lock. Python sessions attach devices through
+  options and omit constructor provider overrides; registration itself needs GPU visibility.
 
 ## 2026-11-10 — keep compiler argument fixtures portable across temporary roots
 

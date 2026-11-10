@@ -162,7 +162,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows mutation fixtures share module lifetime; import or parse failures cannot satisfy an expected assertion failure.
    Synthetic ELF and gst-inspect test fixtures share their writers; retain caller-specific `DT_STRSZ`, symbol-table and `Name` options.
    Compiler argv fixtures normalize generated probe basenames under arbitrary temporary roots; retain the independent path-with-spaces control.
-   Copied Python ORT registration helpers stay exact shared assets; cache successful registrations per owning binding and preserve explicit-root precedence, retryable failures and fresh device selection.
+   Copied Python ORT registration helpers stay exact shared assets; cache successful registrations per owning binding and preserve explicit-root precedence, retryable failures and fresh device selection. Python plugin sessions attach devices through SessionOptions without a legacy constructor provider override.
    Windows script workspaces share AST validation before allocation and cleanup; log and Cargo paths use the canonical rooted-path resolver.
    Windows build drivers share config-file and workspace-root selection; callers still validate the resolved path.
    Windows source-copy mutation suites share AST loop selection and fixture execution; callers keep their source lists and assertions.

@@ -1052,8 +1052,9 @@ device it reports; the EP's name is the registration name you choose:
 upstream and bound a strided partition output onto ORT's dense buffer on MIGraphX ≤ 2.18
 ([failure-modes](failure-modes.md#a-linux-amd-package-returns-fewer-drifting-detections-on-migraphx)); the plugin
 refuses that case loudly and supports every op MIGraphX parses. The rocm image's ORT is the CPU build
-(`onnxruntime`, not `onnxruntime-migraphx`), so `get_available_providers()` never names MIGraphX; the
-plugin is reached by registration alone. A Python app bundle built from the image carries the module
+(`onnxruntime`, not `onnxruntime-migraphx`). Do not use `get_available_providers()` to discover an
+unregistered plugin; register its module and select a matching device. The reported available list
+may also include a plugin after registration, so it is not a proof of session activation. A Python app bundle built from the image carries the module
 beside the chain ORT as `onnxruntime/capi/libmigraphx-ep.so`, and its self-test reports it under
 `registered_plugin_eps` ([python-app-bundles.md](python-app-bundles.md#linux-gpu-bundles)): resolve
 `ORT_AMDGPU_EP_ROOT` first, then that path. Why and how it is built:
@@ -1068,7 +1069,12 @@ enters its locked per-binding cache. A missing advertised root or module is fata
 while an absent advertisement and absent bundled module leave CPU use untouched.
 `registered_plugin_names` reports those successful calls. `select_plugin_device`
 registers first and selects the requested matching device from fresh `get_ep_devices()`
-results; pass that device to `SessionOptions.add_provider_for_devices`.
+results; pass that device to `SessionOptions.add_provider_for_devices`. Omit the
+`providers` argument of `InferenceSession` (or pass `None`): a nonempty constructor
+provider list overrides providers already attached through session options. The
+[Python session implementation](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/onnxruntime_inference_collection.py)
+warns about this precedence. MIGraphX registration itself queries HIP devices, so a
+GPU-less CPU path must not claim successful registration merely from module presence.
 
 Repeated registration never silently changes the path behind a name. The helper
 coordinates its own calls only; it does not coordinate external unregistration.
