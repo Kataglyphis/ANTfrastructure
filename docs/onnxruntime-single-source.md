@@ -624,6 +624,14 @@ names and section-only copies fail. Typed dynamic metadata changes remain outsid
 this fingerprint's loader-safety scope; the census and runtime checks remain
 required. These source/fixture proofs do not complete actual factory registration
 or the image matrix. A receipt's presence alone is no runtime PASS.
+The Python runtime gate now checks the imported extension against one complete
+delivery, then unregisters the factory and requires the exact ORT missing-library
+negative control in its isolated process. Disabled mode requires absence twice;
+FT checks require its own extension and keep the GIL disabled throughout. The
+GIL image smoke and installed FT store call the same preserved gate. Stub-binding
+regressions do not prove real ORT registration or replace the pending native-core
+and image-matrix proofs.
+
 
 Pinned Python `get_available_providers()` also enumerates environment devices
 ([the pinned binding](https://github.com/microsoft/onnxruntime/blob/v1.31.1/onnxruntime/python/onnxruntime_pybind_module.cc)).

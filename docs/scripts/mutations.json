@@ -18253,7 +18253,7 @@
  },
  {
   "id": "probe.native-nonok-zero-fails",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
   "find": "\"${tag} OK:\"*) pass",
   "replace": "\"${tag} \"*) pass",
   "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
@@ -18277,7 +18277,7 @@
  },
  {
   "id": "probe.native-absence-policy",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
   "find": "genai) echo \"  SKIP: onnxruntime_genai",
   "replace": "genai) fail \"  SKIP: onnxruntime_genai",
   "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
@@ -20725,7 +20725,7 @@
  },
  {
   "id": "lib.genai-smoke-tiny-handed-in",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
   "find": "\"$(smoke_genai_py)\" -e \"GENAI_TINY_MODEL_PY=${tiny_src}\" \\",
   "replace": "\"$(smoke_genai_py)\" \\",
   "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
@@ -20733,7 +20733,7 @@
  },
  {
   "id": "lib.genai-smoke-tiny-missing-fails",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
   "find": "else fail \"no tiny GenAI model generator at ${tiny_py}\"; fi\n    out=\"$(",
   "replace": "else :; fi\n    out=\"$(",
   "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
@@ -38239,5 +38239,237 @@
   "replace": "    PYTHONPATH=\"${PYTHONPATH:-}\" \\\n",
   "test": "bash linux/scripts/tests/test-media-finalize.sh",
   "why": "The final smoke prepends the image OpenCV path while retaining caller Python paths."
+ },
+ {
+  "id": "probe.webgpu-abi",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if free_threaded != (phase == \"free-threaded\"):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "The actual interpreter ABI must own the selected delivery phase."
+ },
+ {
+  "id": "probe.webgpu-gil",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if free_threaded and (not callable(getattr(sys, \"_is_gil_enabled\", None)) or sys._is_gil_enabled()):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "The FT process must keep its GIL disabled."
+ },
+ {
+  "id": "probe.webgpu-native-loader",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if spec is None or not isinstance(spec.loader, importlib.machinery.ExtensionFileLoader):",
+  "replace": "if spec is None:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "A Python source shim cannot stand in for the delivered native extension."
+ },
+ {
+  "id": "probe.webgpu-pending",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if any(\"delivery_pending\" in record for record in receipt[\"phases\"].values()):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Runtime cannot accept unfinished wheel repair."
+ },
+ {
+  "id": "probe.webgpu-no-history",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "    if not history or any(a[\"after_manifest_sha256\"] != b[\"before_manifest_sha256\"]\n                          for a, b in pairwise(history)):\n        raise ValueError(\"WebGPU delivery has no completed manifest history\")",
+  "replace": "    if not history:\n        return product\n    if any(a[\"after_manifest_sha256\"] != b[\"before_manifest_sha256\"] for a, b in pairwise(history)):\n        raise ValueError(\"WebGPU delivery has no completed manifest history\")",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Original build hashes are not final wheel delivery."
+ },
+ {
+  "id": "probe.webgpu-history-continuity",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "    if not history or any(a[\"after_manifest_sha256\"] != b[\"before_manifest_sha256\"]\n                          for a, b in pairwise(history)):\n        raise ValueError(\"WebGPU delivery has no completed manifest history\")",
+  "replace": "    if not history:\n        raise ValueError(\"WebGPU delivery has no completed manifest history\")",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Every repair hop retains manifest continuity."
+ },
+ {
+  "id": "probe.webgpu-manifest-sha",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if hashlib.sha256(body).hexdigest() != history[-1][\"after_manifest_sha256\"]:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "A changed final manifest cannot prove delivery."
+ },
+ {
+  "id": "probe.webgpu-manifest-unique",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if matching != [[product[\"sha256\"], label]]:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "A duplicate or wrong final row cannot prove one product."
+ },
+ {
+  "id": "probe.webgpu-phase-mode",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if record[\"configured_flags\"] != receipt[\"phases\"][\"gil\"][\"configured_flags\"]:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "The FT product must retain its native build mode."
+ },
+ {
+  "id": "probe.webgpu-source-ref",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if receipt[\"source\"][\"ref\"] != source_ref:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "The proof must use the requested pinned source ref."
+ },
+ {
+  "id": "probe.webgpu-python-sha",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "product is not None and product[\"sha256\"] == digest:",
+  "replace": "product is not None:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "The loaded extension needs its own final-byte match."
+ },
+ {
+  "id": "probe.webgpu-member-path",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if tuple(path.parts[-3:]) != tuple(Path(product[\"member\"]).parts):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "The matching extension must keep its delivered member identity."
+ },
+ {
+  "id": "probe.webgpu-owner-count",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if len(matches) != 1:",
+  "replace": "if not matches:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Ambiguous owning prefixes are not a valid runtime proof."
+ },
+ {
+  "id": "probe.webgpu-precise-error",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "if str(error) != MISSING:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Only the exact pinned ORT missing-registration error is a negative control."
+ },
+ {
+  "id": "probe.webgpu-error-type",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "except error_type as error:",
+  "replace": "except Exception as error:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "A non-ORT exception cannot masquerade as the known ORT failure."
+ },
+ {
+  "id": "probe.webgpu-first-unregister",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "        binding.unregister_execution_provider_library(PROVIDER)\n    else:\n        require_missing(binding)",
+  "replace": "        pass\n    else:\n        require_missing(binding)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Enabled mode must first prove a registered factory."
+ },
+ {
+  "id": "probe.webgpu-repeat-negative",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "    require_missing(binding)\n    interpreter_mode(phase)",
+  "replace": "    interpreter_mode(phase)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "A repeat must independently prove the factory was removed."
+ },
+ {
+  "id": "probe.webgpu-off-absence",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "    else:\n        require_missing(binding)\n    require_missing(binding)",
+  "replace": "    else:\n        pass\n    require_missing(binding)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Disabled mode must prove absence on both calls."
+ },
+ {
+  "id": "probe.webgpu-post-gil",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_runtime.py",
+  "find": "    require_missing(binding)\n    interpreter_mode(phase)",
+  "replace": "    require_missing(binding)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-runtime.sh",
+  "why": "Factory calls must not turn the FT GIL back on."
+ },
+ {
+  "id": "probe.webgpu-main-call",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "    check_webgpu_python_factory \"${image_tag}\" \"${target_arch}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-webgpu-runtime-transport.sh",
+  "why": "The image smoke must execute the factory gate."
+ },
+ {
+  "id": "probe.webgpu-gil-child",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
+  "find": "/opt/venv/bin/python -I /opt/scripts/03-media/final/ort_webgpu_runtime.py",
+  "replace": "python3 /opt/scripts/03-media/final/ort_webgpu_runtime.py",
+  "test": "bash linux/scripts/tests/test-webgpu-runtime-transport.sh",
+  "why": "The GIL gate uses the isolated owning interpreter."
+ },
+ {
+  "id": "probe.webgpu-gil-status",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
+  "find": "[ \"${status}\" = 0 ] && [ \"${sentinels}\" = 1 ]",
+  "replace": "[ \"${sentinels}\" = 1 ]",
+  "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
+  "why": "An OK sentinel cannot hide a failed process."
+ },
+ {
+  "id": "probe.webgpu-gil-sentinel",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
+  "find": "[ \"${status}\" = 0 ] && [ \"${sentinels}\" = 1 ]",
+  "replace": "[ \"${status}\" = 0 ]",
+  "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
+  "why": "An empty or misleading successful child cannot pass."
+ },
+ {
+  "id": "probe.webgpu-gil-unique",
+  "target": "linux/scripts/06-packaging/check-ort-runtime.sh",
+  "find": "[ \"${sentinels}\" = 1 ]",
+  "replace": "[ \"${sentinels}\" -ge 1 ]",
+  "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
+  "why": "Two success sentinels are not one completed proof."
+ },
+ {
+  "id": "wheels.ft-webgpu-phase",
+  "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
+  "find": "--phase free-threaded --source-ref",
+  "replace": "--phase gil --source-ref",
+  "test": "bash linux/scripts/tests/test-webgpu-runtime-transport.sh",
+  "why": "The installed FT interpreter must prove its own phase."
+ },
+ {
+  "id": "wheels.ft-webgpu-child",
+  "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
+  "find": "\"${work}/venv/bin/python\" -I /opt/scripts/03-media/final/ort_webgpu_runtime.py",
+  "replace": "python3 /opt/scripts/03-media/final/ort_webgpu_runtime.py",
+  "test": "bash linux/scripts/tests/test-webgpu-runtime-transport.sh",
+  "why": "The FT factory probe must execute in the freshly installed FT venv."
+ },
+ {
+  "id": "wheels.ft-webgpu-row",
+  "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
+  "find": "    _ft_store_webgpu_verdict \"${probe}\" \"${w%%-*}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "Generic module-import proof cannot replace the FT factory verdict."
+ },
+ {
+  "id": "wheels.ft-webgpu-proof",
+  "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
+  "find": "if [[ \"${rows}\" == \"FTS WEBGPU ${distribution} WEBGPU-FACTORY OK: \"* ]] && [[ \"${rows}\" != *$'\\n'* ]]; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "Missing and failed factory children must remain visible."
+ },
+ {
+  "id": "wheels.ft-webgpu-unique",
+  "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
+  "find": " && [[ \"${rows}\" != *$'\\n'* ]]",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-free-threaded-store.sh",
+  "why": "Duplicated FT factory proofs cannot satisfy the gate."
  }
 ]

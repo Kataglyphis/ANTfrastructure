@@ -15,6 +15,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-10 — check WebGPU factories in each delivered Python environment
+
+- The runtime gate binds the imported native extension to one completed GIL/FT delivery, its actual
+  source/mode and final manifest. Pending repairs, ambiguous prefixes and matching native cores without
+  the matching Python bytes fail before any factory call.
+- Enabled mode requires successful factory unregistration followed by ORT's precise missing-library
+  control; disabled mode requires absence twice. The FT interpreter must keep the GIL disabled before
+  and after import and execution. The GIL smoke and actual installed FT store invoke the shared gate.
+- ONNX/GenAI probe transport moves into a shared companion without changing its failure policy, shrinking
+  the runtime driver's frozen size. Stub-binding fixtures do not prove real ORT, native-core registration,
+  adapter availability or inference; actual image and consumer acceptance remain open.
+
 ## 2026-11-10 — retain WebGPU product identity through wheel repair
 
 - The existing ORT manifest check/follow transport now binds WebGPU build receipts before rewriting and

@@ -49,7 +49,7 @@ def source_api(relative: str, exports: tuple[str, ...]) -> ModuleType:
 
 def build_api() -> ModuleType:
     return source_api("03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
-                      ("native_product", "write_receipt"))
+                      ("native_product", "write_receipt", "elf_digest"))
 
 
 def elf_api() -> ModuleType:

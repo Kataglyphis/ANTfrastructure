@@ -1678,8 +1678,22 @@ and the smoke's OpenCV/caller Python paths; its extraction shrinks the frozen
 Dockerfile budget while retaining every narrow dependency mount.
 Real strip/patchelf fixtures exercise
 these boundaries, including GIL and FT, while the raw census fixture retains its
-separate transport scope. Actual native/Python factory registration and the full
-image proof remain open.
+separate transport scope.
+
+`runtime/ort_webgpu_runtime.py` checks the actual imported Python extension in a
+separate interpreter process. It requires exactly one owning prefix, its unchanged
+native core, the expected source ref, compatible phase flags and continuous,
+completed wheel delivery with the exact final manifest and extension bytes.
+Pending repairs, ambiguous owners and native-only receipts cannot prove Python.
+Enabled mode first unregisters the static factory successfully; both modes then
+require ORT's precise missing-registration error as a negative control. It does
+not enumerate devices. The FT store runs the same gate using its installed FT
+venv and checks the GIL before import, after import and after the factory calls.
+The runtime smoke requires a successful child and exactly one OK sentinel.
+Existing ONNX/GenAI transports move unchanged into `check-ort-runtime.sh`, reducing
+the smoke driver's frozen size. Fixtures use stub bindings, not real ORT; actual
+native-core registration and the image matrix remain open, including executing
+these new Python gates against each actual GIL/FT product.
 
 The C++ WASM WebGPU Asyncify and JSPI flavors also select `static_plugin` and
 check the first three flags ON, with external Dawn OFF for Emscripten's integrated
