@@ -1156,6 +1156,40 @@ advertised root must be absolute, `ctypes.CDLL` must load the module and its dep
 exports must resolve. AMD also requires the CPU ORT provider; the HIP/CUDA Torch checks remain required. This does not register a factory or run
 inference: MIGraphX registration itself enumerates GPUs and fails with HIP error 100 without a device.
 
+#### Node compute info ownership
+
+The pinned `58afd43b` source allocates both `NodeComputeInfo` and `EpContextNodeComputeInfo`, then
+releases them through `OrtNodeComputeInfo`, whose C ABI has no virtual destructor. A real Clang
+ASan consumer caught its 40-byte allocation being deleted as the 32-byte C base. The build now
+applies `build/patches/001-node-compute-info-lifetime.patch` through the canonical `apply-patch.sh`
+before seeding. Both derived nodes share a private polymorphic owner. Its C base may have a
+nonzero offset, so each of the six callbacks adjusts the pointer before the upstream macros
+reinterpret it. The shared macros and external C API stay unchanged.
+
+`test-ort-migraphx-nodes.sh` compiles the actual patched class and cleanup definitions from
+pinned upstream slices against a minimal C ABI fixture. ASan must reject the unpatched control
+and accept both patched node types, their callbacks and mixed/null cleanup. This is a source
+regression, not an SDK, GPU or rebuilt-image proof. Standalone real-SDK/GPU checks and the next
+media/acceptance chain must prove the delivered module; accepted older receipts retain their
+original coverage. Keep sanitizer checks enabled.
+
+#### Kernel registry ownership
+
+After the node cleanup fix, a real CPU/two-GPU ASan probe exposed a further 1470-byte leak.
+`ProviderFactory` caches the raw registry returned by `CreateKernelRegistry` without freeing it.
+`build/patches/002-kernel-registry-lifetime.patch` replaces that cache with `Ort::KernelRegistry`
+and locks lazy creation. The owned member is declared after the data transfer, so its kernel
+state remains valid while the registry is released. The factory retains its nonvirtual C ABI.
+Both ownership patches run before seeding and retain the first failed patch's raw status.
+
+`test-ort-migraphx-factory.sh` compiles the actual factory members in source order and its
+registry callback against a minimal owning SDK fixture. The original raw cache must fail
+LeakSanitizer; the fixed source checks empty registries, a failed creation followed by a retry,
+reuse, twelve concurrent callers and release order. Both source suites carry
+`ort_migraphx_patch_fixture.py` and the pinned node/factory slices. These fixtures prove local
+ownership behavior; the real module, consumer build and finished packages need their own
+sanitizer and inference results. Leak detection remains enabled.
+
 ### Repeat a native plugin probe
 
 Use the versioned driver with a selected immutable image and preserve its output directory:

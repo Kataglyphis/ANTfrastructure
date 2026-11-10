@@ -132,6 +132,9 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied `35-build-migraphx-plugin-ep.sh` and `37-build-tensorrt-plugin-ep.sh` carry `plugin-ep-exports.sh` and `plugin-ep-seeds.txt` beside them; the media verify stage reads the export probe from the mounted ORT build directory, so keep that directory mount on the GPU RUN.
    G2 reads `onnxruntime_ep_*` modules and `Microsoft.ML.OnnxRuntime.EP.*` directories as ORT consumers, never as ORT.
    AMD Python bundles carry the plugin MIGraphX EP beside the chain core and prove it against the image's module; their self-test proves registration, not availability.
+   MIGraphX node cleanup retains its ownership patch and adjusting casts in all six C ABI callbacks; the SDK C base has no virtual destructor.
+   Copied MIGraphX build scripts carry both ownership patches and the core `apply-patch.sh` entry; a failed patch stops before the next patch or seeds.
+   The factory owns its cached kernel registry, serializes creation and releases it before its data transfer; preserve the nonvirtual factory C ABI.
    GPU-less app-venv checks load the selected MIGraphX/TensorRT plugin and require both factory exports; registration and inference need separate evidence.
    Require child cleanup APIs before starting timers or watchers; advisory cleanup signals then reaps and retains caller PID guards, reset and command status.
    Runner fixtures clear inherited RUN_TESTS_JOBS before applying explicit case values; default scheduling controls must exercise the default.

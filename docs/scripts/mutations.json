@@ -39103,5 +39103,149 @@
   "replace": "ort-plugin-registration-native | shared/native/ort_plugin_eps.hpp | runtime_support/ort_plugin_eps.hpp | body |",
   "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
   "why": "A consumer native header remains byte-identical to its canonical source, including its directives."
+ },
+ {
+  "id": "lib.migraphx-node-source-patch-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
+  "find": "  mgxep_apply_source_patch || return\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh",
+  "why": "The source phase must apply the cleanup fix before compilation."
+ },
+ {
+  "id": "lib.migraphx-node-source-patch-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
+  "find": "  mgxep_apply_source_patch || return\n",
+  "replace": "  mgxep_apply_source_patch\n",
+  "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh",
+  "why": "A patch failure under a conditional caller must retain its raw status and skip seeding."
+ },
+ {
+  "id": "lib.migraphx-node-typed-delete",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+        delete static_cast<NodeComputeInfoBase*>(info);",
+  "replace": "+        delete info;",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "The C ABI pointer must reach the actual owning type at destruction."
+ },
+ {
+  "id": "lib.migraphx-node-virtual-owner",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+    virtual ~NodeComputeInfoBase() = default;",
+  "replace": "+    ~NodeComputeInfoBase() = default;",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "Both derived node types need dynamic typed destruction."
+ },
+ {
+  "id": "lib.migraphx-node-nodecomputeinfo-createstate-adjustment",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+            API_CALL_S(NodeComputeInfo, static_cast<NodeComputeInfo*>(this_), CreateState, compute_context, *compute_state);",
+  "replace": "+            API_CALL_S(NodeComputeInfo, this_, CreateState, compute_context, *compute_state);",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "NodeComputeInfo CreateState must adjust the C base before the reinterpret-cast dispatch."
+ },
+ {
+  "id": "lib.migraphx-node-nodecomputeinfo-compute-adjustment",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+            API_CALL_S(NodeComputeInfo, static_cast<NodeComputeInfo*>(this_), Compute, *static_cast<ComputeState*>(compute_state),",
+  "replace": "+            API_CALL_S(NodeComputeInfo, this_, Compute, *static_cast<ComputeState*>(compute_state),",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "NodeComputeInfo Compute must adjust the C base before the reinterpret-cast dispatch."
+ },
+ {
+  "id": "lib.migraphx-node-nodecomputeinfo-releasestate-adjustment",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+            API_CALL_V(NodeComputeInfo, static_cast<NodeComputeInfo*>(this_), ReleaseState, compute_state);",
+  "replace": "+            API_CALL_V(NodeComputeInfo, this_, ReleaseState, compute_state);",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "NodeComputeInfo ReleaseState must adjust the C base before the reinterpret-cast dispatch."
+ },
+ {
+  "id": "lib.migraphx-node-epcontextnodecomputeinfo-createstate-adjustment",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+            API_CALL_S(EpContextNodeComputeInfo, static_cast<EpContextNodeComputeInfo*>(this_), CreateState, compute_context, *compute_state);",
+  "replace": "+            API_CALL_S(EpContextNodeComputeInfo, this_, CreateState, compute_context, *compute_state);",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "EpContextNodeComputeInfo CreateState must adjust the C base before the reinterpret-cast dispatch."
+ },
+ {
+  "id": "lib.migraphx-node-epcontextnodecomputeinfo-compute-adjustment",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+            API_CALL_S(EpContextNodeComputeInfo, static_cast<EpContextNodeComputeInfo*>(this_), Compute, *static_cast<EpContextComputeState*>(compute_state),",
+  "replace": "+            API_CALL_S(EpContextNodeComputeInfo, this_, Compute, *static_cast<EpContextComputeState*>(compute_state),",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "EpContextNodeComputeInfo Compute must adjust the C base before the reinterpret-cast dispatch."
+ },
+ {
+  "id": "lib.migraphx-node-epcontextnodecomputeinfo-releasestate-adjustment",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+            API_CALL_V(EpContextNodeComputeInfo, static_cast<EpContextNodeComputeInfo*>(this_), ReleaseState, compute_state);",
+  "replace": "+            API_CALL_V(EpContextNodeComputeInfo, this_, ReleaseState, compute_state);",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "EpContextNodeComputeInfo ReleaseState must adjust the C base before the reinterpret-cast dispatch."
+ },
+ {
+  "id": "lib.migraphx-node-sanitizer-control",
+  "target": "linux/scripts/tests/ort_migraphx_patch_fixture.py",
+  "find": "\"-fsanitize=address\", ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-nodes.sh",
+  "why": "The mandatory unpatched control must prove the sanitizer is active."
+ },
+ {
+  "id": "lib.migraphx-registry-source-patch",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
+  "find": "for source_patch in 001-node-compute-info-lifetime.patch 002-kernel-registry-lifetime.patch; do",
+  "replace": "for source_patch in 001-node-compute-info-lifetime.patch; do",
+  "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh",
+  "why": "The source phase must patch registry ownership before seeding."
+ },
+ {
+  "id": "lib.migraphx-registry-first-patch-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh",
+  "find": "\"MIGraphX ownership ${source_patch}\" || return",
+  "replace": "\"MIGraphX ownership ${source_patch}\"",
+  "test": "bash linux/scripts/tests/test-migraphx-plugin-ep.sh",
+  "why": "A failed earlier patch cannot be hidden by a successful later patch."
+ },
+ {
+  "id": "lib.migraphx-registry-owned-cache",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/002-kernel-registry-lifetime.patch",
+  "find": "+    mutable Ort::KernelRegistry kernel_registry_{nullptr};",
+  "replace": "+    mutable OrtKernelRegistry* kernel_registry_{nullptr};",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-factory.sh",
+  "why": "The registry must remain owned while its returned pointer is used and release at factory teardown."
+ },
+ {
+  "id": "lib.migraphx-registry-creation-lock",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/002-kernel-registry-lifetime.patch",
+  "find": "+        const std::lock_guard lock{kernel_registry_mutex_};",
+  "replace": "+        (void)kernel_registry_mutex_;",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-factory.sh",
+  "why": "Concurrent session creation must create exactly one cached registry."
+ },
+ {
+  "id": "lib.migraphx-registry-creation-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/002-kernel-registry-lifetime.patch",
+  "find": "+            RETURN_IF_ERROR(CreateKernelRegistry(ep_name, data_transfer_.get(), created));",
+  "replace": "+            (void)CreateKernelRegistry(ep_name, data_transfer_.get(), created);",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-factory.sh",
+  "why": "A failed creation retains its status and leaves the cache available for retry."
+ },
+ {
+  "id": "lib.migraphx-registry-destruction-order",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/002-kernel-registry-lifetime.patch",
+  "find": "     std::unique_ptr<hip::DataTransfer> data_transfer_;\n+    mutable std::mutex kernel_registry_mutex_;\n+    mutable Ort::KernelRegistry kernel_registry_{nullptr};",
+  "replace": "+    mutable Ort::KernelRegistry kernel_registry_{nullptr};\n     std::unique_ptr<hip::DataTransfer> data_transfer_;\n+    mutable std::mutex kernel_registry_mutex_;",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-factory.sh",
+  "why": "Kernel state remains alive while its registry is released."
+ },
+ {
+  "id": "lib.migraphx-registry-leak-control",
+  "target": "linux/scripts/tests/ort_migraphx_patch_fixture.py",
+  "find": "detect_leaks=1:alloc_dealloc_mismatch=1:new_delete_type_mismatch=1",
+  "replace": "detect_leaks=0:alloc_dealloc_mismatch=1:new_delete_type_mismatch=1",
+  "test": "bash linux/scripts/tests/test-ort-migraphx-factory.sh",
+  "why": "The original raw registry must prove leak detection is active."
  }
 ]

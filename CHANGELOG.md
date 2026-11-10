@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-10 — preserve MIGraphX node and registry ownership
+
+- The pinned plugin's C ABI node pointer now reaches an owning virtual base at release; both ordinary and cached nodes retain correct pointer adjustment in all six callbacks.
+- Seven compiled ASan cases cover both node types and callbacks, registry lifetime, failed creation/retry, twelve concurrent callers and stale-patch refusal. Original type-mismatch and registry-leak controls must fail.
+- The factory now owns its cached kernel registry and serializes initialization; release precedes data-transfer destruction. The source phase stops on either ownership-patch failure before seeding.
+- Existing images retain their old module until rebuilt; standalone module, full consumer and package acceptance remain separately required.
+
 ## 2026-11-10 — share native ORT plugin registration policy
 
 - `shared/native/ort_plugin_eps.hpp` registers through the supplied owning C API/environment,

@@ -1017,7 +1017,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       OrchestrANT (Python, `register_execution_provider_library`), AccelerANTgine (C++,
       `Env::RegisterExecutionProviderLibrary`), OxidANT (Rust, `ort` rc.13 `register_execution_provider_library`),
       OmniAccelerANT (Dart over the native bridge); each change passes CON224 item 1's parity run with the plugin's
-      operators in the profile. **Step 3 (in source 2026-11-08, owner: "sofort komplett, inklusive Entfernen"):**
+      operators in the profile. **Linux step 2 progress 2026-11-10:** shared Python/native helpers are in source.
+      The standalone SDK rebuild with [node and registry ownership fixes](docs/linux-accelerator-images.md#node-compute-info-ownership)
+      passes G2 and ASan/LSan on CPU plus two real plugin GPU tiny-model sessions. Full consumer builds,
+      finished packages and their detector parity/operator profiles remain open; this is not image promotion.
+      **Step 3 (in source 2026-11-08, owner: "sofort komplett, inklusive Entfernen"):**
       `30-build-native-amd.sh`, `--use_migraphx`, the `onnxruntime-migraphx` wheel and the two MIGraphX patches are
       gone; the rocm variant has no ORT GPU build, the plugin builds over the CPU prefix, the wrapper's app venv
       takes the CPU `onnxruntime` wheel, and the runtime smoke fails an image with `libonnxruntime_providers_migraphx.so`.
