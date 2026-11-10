@@ -22,6 +22,16 @@ Two neighbours, so you land on the right page:
 > the triage index: enough to recognise the failure and act, with a link when
 > the full history matters.
 
+## cuDNN link/run skips despite installed SDK files
+
+The NVIDIA smoke at `adea396e` printed three unset-variable errors for
+`$cudnnHeaders`, `$cudnnLibs` and `$cudnnDlls`, then skipped the host API
+control while reporting 318 passed/0 failed/3 skipped. The broad artifact
+checks passed, but their helper returns assertions, not file lists. Resolve
+the exact main files directly with `Find-FirstTreeFile` and fail on missing
+inputs. `cudnnGetVersion` needs no GPU, so absent container GPU access does
+not justify this skip. See [the smoke contract](windows-builds.md#smoke-testing).
+
 ## ARM64 onnxinference crashes after requesting an unavailable ORT API
 
 Device run42521429496 at d63c982d reported API31 requested, ORT1.17.1/API17 loaded

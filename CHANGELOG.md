@@ -14,6 +14,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-10 — require the cuDNN host API smoke control
+
+- NVIDIA smoke now resolves the exact main cuDNN header, import library and
+  versioned runtime with the shared recursive finder. Missing inputs fail
+  instead of skipping after unset-variable errors. Native host-API execution
+  and cross-target link/PE checks retain their existing policies.
+- Four regression cases and six biting mutations cover discovery, required
+  inputs and dispatch. These fixtures use fake compilation; real image SDK
+  linkage, final-source CI and physical GPU acceptance remain separate checks.
+  The corrected full live-script replay against the immutable NVIDIA image
+  passes 319/0/2, including real cuDNN compilation, linkage and host API execution.
+
+- Six existing smoke mutation commands now let the canonical test runner create
+  result directories. This removes a Unix-only mkdir prefix that failed under
+  Windows cmd before the unchanged test or mutant could run.
+
 ## 2026-11-09 — repair Linux TensorRT cross builds and CUDA cache parsing
 
 - NVIDIA ARM64 run `20261109-102131-e69f48d7` ended with exit 1 at 17:02:20Z.

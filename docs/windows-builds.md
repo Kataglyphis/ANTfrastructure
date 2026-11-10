@@ -1536,6 +1536,14 @@ bare-`RUN` bypass to compensate for). The gate worked, and it proved the lane co
 (`cv2.CAP_GSTREAMER`, [windows-build-lanes.md](windows-build-lanes.md)
 § The classic lane was retired).
 
+The NVIDIA cuDNN control recursively resolves `cudnn.h`, `cudnn.lib` and
+`cudnn64_*.dll` with the shared `Find-FirstTreeFile` helper. Missing main
+files, scan errors or `CUDA_ROOT` fail; auxiliary SDK files cannot excuse
+a skip. The native lane compiles, links and calls `cudnnGetVersion`, which
+needs no GPU. The cross lane links and checks the target PE machine.
+`Smoke.Cudnn.Tests.ps1` covers discovery and dispatch with fake compilation;
+the actual image smoke must still prove SDK linkage and execution.
+
 Three things about the gate are load-bearing:
 
 - **It runs through `entrypoint.cmd`, not as a bare `RUN`.** A bare RUN bypasses `ENTRYPOINT`,

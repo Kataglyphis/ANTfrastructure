@@ -590,9 +590,9 @@ function Invoke-CudnnSmoke {
     }.GetNewClosure() -FailMessage 'nvcc could not compile a trivial kernel to PTX (host_config/nv-target/cl.exe integration?)'
 
     # A host-only cuDNN call needs no GPU; on cross the run half becomes a PE-machine assert, as in §14.
-    $cudnnHdr = $cudnnHeaders | Where-Object { $_.Name -eq 'cudnn.h' } | Select-Object -First 1
-    $cudnnMainLib = $cudnnLibs | Where-Object { $_.Name -eq 'cudnn.lib' } | Select-Object -First 1
-    $cudnnMainDll = $cudnnDlls | Where-Object { $_.Name -like 'cudnn64_*.dll' } | Select-Object -First 1
+    $cudnnHdr = Find-FirstTreeFile -Root $cudnnRoot -Filter 'cudnn.h' -ScanErrorAction Stop
+    $cudnnMainLib = Find-FirstTreeFile -Root $cudnnRoot -Filter 'cudnn.lib' -ScanErrorAction Stop
+    $cudnnMainDll = Find-FirstTreeFile -Root $cudnnRoot -Filter 'cudnn64_*.dll' -ScanErrorAction Stop
     if ($cudnnHdr -and $cudnnMainLib -and $cudnnMainDll -and $env:CUDA_ROOT) {
         $cudnnProbe = @{
             WorkName    = 'cudnn'
@@ -612,7 +612,7 @@ int main() { std::printf("cudnn %zu\n", (size_t)cudnnGetVersion()); return 0; }
             Assert-NativeLinkRun @cudnnProbe -Name 'cuDNN links + host API works (cudnnGetVersion)' -ExpectMatch 'cudnn' -FailMessage 'cuDNN did not compile/link/run (cudnnGetVersion) -- header/lib/DLL mismatch or missing dependent DLL'
         }
     } else {
-        Skip-Test 'cuDNN link+run (cudnn.h/.lib/cudnn64_*.dll not all found)'
+        throw 'cuDNN link+run requires cudnn.h, cudnn.lib, cudnn64_*.dll and CUDA_ROOT.'
     }
 }
 

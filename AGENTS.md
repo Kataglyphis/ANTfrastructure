@@ -128,6 +128,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Share unconditional and source-order wiring checks through `Assert-TestAstCommand -Unconditional` and `Assert-TestAstOrder`.
    Windows probe transports share child cleanup and report parsing; retain stderr, timeout, exit and assertion accounting policies.
    Windows diagnostic and host scripts carry their shared module companions; keep required failures fatal and advisory failures visible.
+   NVIDIA cuDNN smoke resolves exact main SDK files through the shared recursive finder and fails on missing inputs; preserve native host-API execution and cross-target link/PE checks.
    Windows disk probes distinguish zero from unknown; shared lavapipe acquisition retains caller PE, registry and environment verdicts.
    Host lavapipe setup imports WindowsScripts.Shared directly and unforced for Test-Elevated; a private image-module import cannot satisfy the entry script. Keep ICD registration elevated-only.
    Source file-tree staging and patch sweeps share transport and accounting; keep caller selection, ordering and fatal minimums.

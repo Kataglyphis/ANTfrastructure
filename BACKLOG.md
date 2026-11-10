@@ -32,6 +32,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Next image build — GPU consumer findings
 
+Windows NVIDIA local continuation at `adea396e` produced final manifest
+`bac3305600ea01033618995b4d60bac4da6daef05d2c61ce77e116635a630726`
+without publication. Its 318/0/3 smoke result concealed an unexecuted cuDNN
+host API control; [the regression and fix](docs/failure-modes.md#cudnn-linkrun-skips-despite-installed-sdk-files)
+now has a corrected live-script replay (319 passed/0 failed/2 hardware skips); new final-source validation is still required. CUDA/TRT
+and DirectML hardware acceptance, the whole CUDA cache repeat and the other
+final-source Windows lanes remain open. CON228 stays open and its text draft.
+
 The application-build investigation is tracked in the items below. Recheck the cited
 image digests before implementing fixes and retain CPU-only support. The requested GPU
 targets are Linux NVIDIA x64/arm64, Linux AMD x64, and Windows NVIDIA/AMD x64; Linux ARM

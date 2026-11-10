@@ -32061,7 +32061,7 @@
   "target": "windows/scripts/build/Test-Container.ps1",
   "find": " -OrtCensusPath \"$torchAppCensus\" -Mode verify",
   "replace": " -Mode verify",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-passed.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-passed.json",
   "why": "the gate mounts windows/scripts alone, so the verifier looked for the census beside itself and the amd64 smoke gate failed"
  },
  {
@@ -32069,7 +32069,7 @@
   "target": "windows/scripts/build/Test-Container.ps1",
   "find": "$torchAppCensus = Resolve-SmokeCompanion -ScriptRoot $PSScriptRoot -Name 'ort-venv-census.py'",
   "replace": "$torchAppCensus = Join-Path $PSScriptRoot 'ort-venv-census.py'",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-image-copy.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-image-copy.json",
   "why": "only the image's C:\\temp\\scripts copy exists in the gate, so a mount-only path fails every amd64 smoke run"
  },
  {
@@ -32077,7 +32077,7 @@
   "target": "windows/scripts/build/Test-Container.ps1",
   "find": "Where-Object { $_.Trim() } | Select-Object -Last 3) }",
   "replace": "Where-Object { $_.Trim() } | Select-Object -First 3) }",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-verify-evidence.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-verify-evidence.json",
   "why": "the verifier's error is its last output, and a message without it hid a missing census behind a bare failed"
  },
  {
@@ -32085,7 +32085,7 @@
   "target": "windows/scripts/build/Test-Container.ps1",
   "find": "Assert-CmakeSmokeBuild -tmpDir2 $tmpDir2",
   "replace": "Assert-CmakeSmokeBuild -Directory $tmpDir2",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-cmake-build-binds.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-cmake-build-binds.json",
   "why": "an undeclared name left the CMake smoke's directory empty, so section 15 ran no assertion and the amd64 smoke gate failed its floor"
  },
  {
@@ -32093,7 +32093,7 @@
   "target": "windows/scripts/build/Test-Container.ps1",
   "find": "function Invoke-SmokeSection10 {",
   "replace": "function Invoke-SmokeSection10 { function Get-NestedSmokeProbe { }",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-functions-at-script-level.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-functions-at-script-level.json",
   "why": "a missing brace nested the OpenCV link smoke inside the CUDA helper, so section 10 called a function that did not exist"
  },
  {
@@ -36077,7 +36077,7 @@
   "target": "windows/scripts/build/Test-Container.ps1",
   "find": "-Filter 'nvfatbin*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object Name)",
   "replace": "-Filter 'nvfatbin*.dll' -File -ErrorAction SilentlyContinue).Name",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/smoke-empty-finding-list.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/smoke-empty-finding-list.json",
   "why": "the healthy empty list throws under strict mode and fails the smoke gate at the end of a chain"
  },
  {
@@ -37415,5 +37415,53 @@
   "replace": "\"${runner}\"",
   "test": "bash linux/scripts/tests/test-tensorrt-closure.sh",
   "why": "Target-loader inspection remains bounded and preserves every argument boundary."
+ },
+ {
+  "id": "lib.smoke-cudnn-header",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "-Filter 'cudnn.h'",
+  "replace": "-Filter 'cudnn*.h'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Smoke.Cudnn.Tests.ps1",
+  "why": "An auxiliary header cannot replace the required cuDNN public header."
+ },
+ {
+  "id": "lib.smoke-cudnn-library",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "-Filter 'cudnn.lib'",
+  "replace": "-Filter 'cudnn*.lib'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Smoke.Cudnn.Tests.ps1",
+  "why": "An auxiliary import library cannot replace the required cuDNN main library."
+ },
+ {
+  "id": "lib.smoke-cudnn-dll",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "-Filter 'cudnn64_*.dll'",
+  "replace": "-Filter 'cudnn*.dll'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Smoke.Cudnn.Tests.ps1",
+  "why": "An auxiliary runtime cannot replace the required versioned cuDNN main DLL."
+ },
+ {
+  "id": "lib.smoke-cudnn-required",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "throw 'cuDNN link+run requires cudnn.h, cudnn.lib, cudnn64_*.dll and CUDA_ROOT.'",
+  "replace": "Skip-Test 'cuDNN link+run requires cudnn.h, cudnn.lib, cudnn64_*.dll and CUDA_ROOT.'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Smoke.Cudnn.Tests.ps1",
+  "why": "Missing cuDNN development inputs must fail rather than become an allowed skip."
+ },
+ {
+  "id": "lib.smoke-cudnn-cross",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "Assert-NativeLinkRun @cudnnProbe -CrossLinkOnly",
+  "replace": "Assert-NativeLinkRun @cudnnProbe",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Smoke.Cudnn.Tests.ps1",
+  "why": "The cross lane must retain its link-only and PE-machine assertion policy."
+ },
+ {
+  "id": "lib.smoke-cudnn-native-call",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "Assert-NativeLinkRun @cudnnProbe -Name 'cuDNN links + host API works (cudnnGetVersion)' -ExpectMatch 'cudnn' -FailMessage 'cuDNN did not compile/link/run (cudnnGetVersion) -- header/lib/DLL mismatch or missing dependent DLL'",
+  "replace": "if ($false) { Assert-NativeLinkRun @cudnnProbe -Name 'cuDNN links + host API works (cudnnGetVersion)' -ExpectMatch 'cudnn' -FailMessage 'cuDNN did not compile/link/run (cudnnGetVersion) -- header/lib/DLL mismatch or missing dependent DLL' }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Smoke.Cudnn.Tests.ps1",
+  "why": "A healthy SDK must execute the native cuDNN host API control."
  }
 ]
