@@ -38699,8 +38699,8 @@
  {
   "id": "probe.native-webgpu-configured-compiler",
   "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/CMakeLists.txt",
-  "find": "set(${setting} \"${CORE_${setting}}\" CACHE STRING \"Owning ORT compiler configuration\" FORCE)",
-  "replace": "set(${setting} \"${CORE_${setting}}\" CACHE STRING \"Owning ORT compiler configuration\")",
+  "find": "    set(${setting}\n        \"${CORE_${setting}}\"\n        CACHE STRING \"Owning ORT compiler configuration\" FORCE)",
+  "replace": "    set(${setting}\n        \"${CORE_${setting}}\"\n        CACHE STRING \"Owning ORT compiler configuration\")",
   "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
   "why": "The core compiler wins over a conflicting explicit host compiler."
  },
