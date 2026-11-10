@@ -38767,5 +38767,157 @@
   "replace": "case \"$arg\" in /tmp/*/probe.c) arg=SOURCE ;; /tmp/*/probe) arg=OUTPUT ;; esac",
   "test": "bash linux/scripts/tests/test-compiler-tool-toggles.sh",
   "why": "The compiler spy must normalize generated source and output argv under arbitrary temporary roots, including paths containing spaces."
+ },
+ {
+  "id": "lib.ort-plugin-registration-image-root-precedence",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "    if root_value:\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "An advertised image root wins over a separately present bundled module; a missing advertised root cannot silently fall back."
+ },
+ {
+  "id": "lib.ort-plugin-registration-absolute-image-root",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        if not root.is_absolute():",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "Relative image roots fail before native registration."
+ },
+ {
+  "id": "lib.ort-plugin-registration-image-root-directory",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        if not root.is_dir():",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "A file advertised as an image root keeps the explicit configuration diagnostic."
+ },
+ {
+  "id": "lib.ort-plugin-registration-windows-layout",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        path = root / filename if windows else root / \"lib\" / filename",
+  "replace": "        path = root / \"lib\" / filename if windows else root / filename",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "The Windows root and Linux lib layout remain distinct, including paths with spaces."
+ },
+ {
+  "id": "lib.ort-plugin-registration-absolute-binding-path",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "    if not module.is_absolute():",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "Relative binding paths cannot discover a plugin through the current working directory."
+ },
+ {
+  "id": "lib.ort-plugin-registration-optional-bundle-absence",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "    if not path.exists() and not path.is_symlink():",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "A CPU binding without an advertised or bundled plugin does not attempt native registration."
+ },
+ {
+  "id": "lib.ort-plugin-registration-registered-module-is-file",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        if not path.is_file():\n            raise FileNotFoundError(f\"{plugin.name} plugin is not a file: {path}\")",
+  "replace": "        if False:\n            raise FileNotFoundError(f\"{plugin.name} plugin is not a file: {path}\")",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "A directory cannot be reported as a successfully registered native library."
+ },
+ {
+  "id": "lib.ort-plugin-registration-native-call-required",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        register(plugin.name, str(path))",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "A success report requires the owning binding to receive the native registration call."
+ },
+ {
+  "id": "lib.ort-plugin-registration-registration-name",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        register(plugin.name, str(path))",
+  "replace": "        register(\"MIGraphXExecutionProvider\", str(path))",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "The plugin is registered with its actual chosen factory name, not the removed built-in name."
+ },
+ {
+  "id": "lib.ort-plugin-registration-failed-call-retry",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        register(plugin.name, str(path))\n        _REGISTERED.setdefault(binding, {})[plugin.name] = path",
+  "replace": "        _REGISTERED.setdefault(binding, {})[plugin.name] = path\n        register(plugin.name, str(path))",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "A failed native call cannot enter the successful-registration cache or prevent a retry."
+ },
+ {
+  "id": "lib.ort-plugin-registration-owning-binding-cache",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        previous = _REGISTERED.get(binding, {}).get(plugin.name)",
+  "replace": "        previous = next(iter(_REGISTERED.values()), {}).get(plugin.name)",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "Two owning bindings each require their own native registration even for the same module path."
+ },
+ {
+  "id": "lib.ort-plugin-registration-register-once",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        if previous is not None:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "Repeated sessions and concurrent callers do not register the same factory twice."
+ },
+ {
+  "id": "lib.ort-plugin-registration-path-conflict",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "            if previous != path:",
+  "replace": "            if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "An existing name cannot silently change its native module after an environment change."
+ },
+ {
+  "id": "lib.ort-plugin-registration-report-success-only",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        return tuple(sorted(_REGISTERED.get(binding, {})))",
+  "replace": "        return ()",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "The self-test can report the actual successful registrations for its own binding."
+ },
+ {
+  "id": "lib.ort-plugin-registration-negative-device-index",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "    if device_index < 0:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "Negative indices fail before native registration and cannot select the last enumerated device."
+ },
+ {
+  "id": "lib.ort-plugin-registration-device-name-selection",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "        device for device in binding.get_ep_devices() if device.ep_name == plugin.name",
+  "replace": "        device for device in binding.get_ep_devices() if device.ep_name == \"MIGraphXExecutionProvider\"",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "Runtime device discovery matches the registered plugin name, not the legacy compile-time provider."
+ },
+ {
+  "id": "lib.ort-plugin-registration-device-index-bounds",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "    if device_index >= len(devices):",
+  "replace": "    if device_index > len(devices):",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "An index exactly past the matching devices retains the explicit unavailable-device failure."
+ },
+ {
+  "id": "lib.ort-plugin-registration-requested-device-index",
+  "target": "shared/python/ort_plugin_eps.py",
+  "find": "    return devices[device_index]",
+  "replace": "    return devices[0]",
+  "test": "bash linux/scripts/tests/test-ort-plugin-registration.sh",
+  "why": "An explicitly requested second GPU cannot silently select the first matching device."
+ },
+ {
+  "id": "lib.ort-plugin-registration-exact-shared-asset",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "ort-plugin-registration-python | shared/python/ort_plugin_eps.py | runtime_support/ort_plugin_eps.py | exact |",
+  "replace": "ort-plugin-registration-python | shared/python/ort_plugin_eps.py | runtime_support/ort_plugin_eps.py | body |",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "A packaged runtime helper remains byte-identical to its owning source, including header content."
  }
 ]

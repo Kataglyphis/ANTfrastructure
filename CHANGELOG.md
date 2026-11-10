@@ -15,6 +15,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-10 — share Python ORT plugin registration and device selection
+
+- `shared/python/ort_plugin_eps.py` resolves advertised plugin roots before a bundled fallback,
+  caches only successful native registrations per owning binding, serializes concurrent callers
+  and rejects a changed module behind an already registered name. Availability is enumerated fresh.
+- The exact shared asset can live inside an installed consumer package; reports name only successful
+  registrations. Fake-binding and shared-copy controls do not prove real ORT loading or GPU inference;
+  consumer integration and hardware profiles remain required.
+
 ## 2026-11-10 — keep compiler argument fixtures portable across temporary roots
 
 - The optional compiler-tool fixture now normalizes probe filenames independently of `/tmp`,

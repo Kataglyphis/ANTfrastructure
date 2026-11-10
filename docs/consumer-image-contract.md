@@ -1060,6 +1060,22 @@ beside the chain ORT as `onnxruntime/capi/libmigraphx-ep.so`, and its self-test 
 [linux-accelerator-images.md](linux-accelerator-images.md#amds-plugin-migraphx-ep); the move per consumer is
 BACKLOG CON231 step 2.
 
+The shared Python owner is `shared/python/ort_plugin_eps.py`, declared as the exact
+`ort-plugin-registration-python` asset. Give its consumer-manifest row a path inside
+the installed application package, then import that copy. `register_plugin_library`
+uses the supplied ORT binding, not an implicit import; only a successful native call
+enters its locked per-binding cache. A missing advertised root or module is fatal,
+while an absent advertisement and absent bundled module leave CPU use untouched.
+`registered_plugin_names` reports those successful calls. `select_plugin_device`
+registers first and selects the requested matching device from fresh `get_ep_devices()`
+results; pass that device to `SessionOptions.add_provider_for_devices`.
+
+Repeated registration never silently changes the path behind a name. The helper
+coordinates its own calls only; it does not coordinate external unregistration.
+Fake-binding and shared-copy tests prove these policies, not native ABI compatibility,
+a working driver, operator placement or packaged inference. The consumer integrations
+and hardware profile criteria above remain required.
+
 ## Qualcomm's plugin QNN EP
 
 `:latest` on arm64 ships Qualcomm's plugin QNN execution provider, built from its pinned ORT fork

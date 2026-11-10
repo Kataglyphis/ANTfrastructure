@@ -43,6 +43,18 @@ t_assert_eq "0" "${rc}" "a correct copy of both assets must pass; output was: ${
 t_assert_contains "${OUT}" "Shared config in sync." \
   "the pass must be the script's verdict, not silence"
 
+t_case "the runtime plugin helper is an exact shared asset inside the consumer package"
+_d="$(_consumer)"
+printf '\nort-plugin-registration-python app/ort_plugin_eps.py\n' >> "${_d}/.antfrastructure-shared.manifest"
+mkdir -p "${_d}/app"
+cp "${HUB}/shared/python/ort_plugin_eps.py" "${_d}/app/ort_plugin_eps.py"
+_check "${_d}"
+t_assert_eq "0" "${rc}" "${OUT}"
+{ printf '# consumer header change\n'; cat "${HUB}/shared/python/ort_plugin_eps.py"; } > "${_d}/app/ort_plugin_eps.py"
+_check "${_d}"
+t_assert_eq "1" "${rc}" "${OUT}"
+t_assert_contains "${OUT}" "DRIFTED app/ort_plugin_eps.py"
+
 t_case "an 'exact' asset is byte for byte: even an added HEADER COMMENT is DRIFTED"
 # 'body' mode would forgive this, so it also pins .clang-format's manifest row as exact.
 _d="$(_consumer)"
