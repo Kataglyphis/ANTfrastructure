@@ -37359,5 +37359,165 @@
   "replace": "\"${runner}\"",
   "test": "bash linux/scripts/tests/test-tensorrt-closure.sh",
   "why": "Target-loader inspection remains bounded and preserves every argument boundary."
+ },
+ {
+  "id": "image-acceptance.ci-native-host",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    if sys.platform != \"linux\" or native != target:\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "a foreign or unknown host must not claim native sanitizer coverage"
+ },
+ {
+  "id": "image-acceptance.ci-complete-sources",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    if not isinstance(proof[\"sources\"], list) or len(proof[\"sources\"]) != len(plan[\"consumers\"]):\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "all consumer sources are required before any acceptance work begins"
+ },
+ {
+  "id": "image-acceptance.ci-clean-hub",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    if api[\"git\"](hub, \"rev-parse\", \"HEAD\") != revision or api[\"git\"](hub, \"status\", \"--porcelain\"):\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "the frozen tooling checkout must be exact and clean both before and after consumers"
+ },
+ {
+  "id": "image-acceptance.ci-immutable-image",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    api[\"image_parts\"](proof[\"image\"])\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "moving image tags must refuse before running or exporting bindings"
+ },
+ {
+  "id": "image-acceptance.ci-immutable-hub",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    if not isinstance(proof[\"hub_revision\"], str) or not api[\"SHA\"].fullmatch(proof[\"hub_revision\"]):\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "moving tooling refs must never reach GitHub outputs"
+ },
+ {
+  "id": "image-acceptance.ci-immutable-consumer",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    if not isinstance(source[\"revision\"], str) or not api[\"SHA\"].fullmatch(source[\"revision\"]):\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "consumer source revisions must be immutable before cloning or testing"
+ },
+ {
+  "id": "image-acceptance.ci-source-order",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    if (source[\"name\"], source[\"repository\"]) != (spec[\"name\"], spec[\"repository\"]):\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "source identities must bind to the complete original consumer order"
+ },
+ {
+  "id": "image-acceptance.ci-proof-schema",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    if not isinstance(proof, dict) or set(proof) != {\"schema_version\", \"hub_revision\", \"image\", \"platform\", \"sources\"} or proof[\"schema_version\"] != 1:\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "unreviewed command or timeout fields cannot enter the proof contract"
+ },
+ {
+  "id": "image-acceptance.ci-source-schema",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    if not isinstance(source, dict) or set(source) != {\"name\", \"repository\", \"revision\", \"submodules\", \"data_locks\"}:\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "source snapshots cannot carry replacement consumer commands"
+ },
+ {
+  "id": "image-acceptance.ci-complete-plan",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    if selected != {**api[\"read_plan\"](api[\"DEFAULT_PLAN\"]), \"platform\": proof[\"platform\"]}:\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "the generated plan may change only platform, never commands or timeouts"
+ },
+ {
+  "id": "image-acceptance.ci-receipt-validation",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    api[\"validate_receipt\"](receipt, proof[\"image\"], plan)\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "a failed or incomplete real receipt cannot become passed job metadata"
+ },
+ {
+  "id": "image-acceptance.ci-receipt-hub",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    if receipt[\"hub_revision\"] != proof[\"hub_revision\"]:\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "a valid receipt for another tooling commit must still refuse"
+ },
+ {
+  "id": "image-acceptance.ci-receipt-sources",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    if actual != expected:\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "a complete receipt must still match every frozen consumer revision"
+ },
+ {
+  "id": "image-acceptance.ci-checked-engine-query",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    clean = probe[\"exit_code\"] == 0 and not probe[\"stdout\"].strip()\n",
+  "replace": "    clean = True\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "failed queries and reported leftover containers cannot produce a passed native job"
+ },
+ {
+  "id": "image-acceptance.ci-engine-transport",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "        return {\"exit_code\": None, \"stdout\": \"\", \"stderr\": str(error)}\n",
+  "replace": "        return {\"exit_code\": 0, \"stdout\": \"\", \"stderr\": \"\"}\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "engine transport errors retain failed metadata instead of inventing an empty successful query"
+ },
+ {
+  "id": "image-acceptance.ci-no-overwrite",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    output.mkdir(parents=True, exist_ok=False)\n",
+  "replace": "    output.mkdir(parents=True, exist_ok=True)\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "a new native proof must not overwrite an existing receipt or evidence directory"
+ },
+ {
+  "id": "image-acceptance.ci-frozen-snapshot",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "            snapshot = api[\"source_snapshot\"](output / \"consumers\" / spec[\"name\"], spec, source)\n",
+  "replace": "            snapshot = api[\"source_snapshot\"](output / \"consumers\" / spec[\"name\"], spec, {**source, \"revision\": \"d\" * 40})\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "prepared source snapshots must use the requested immutable revisions"
+ },
+ {
+  "id": "python-types.native-image-proof-strict-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "the isolated type fixture must detect removing the native proof driver from mandatory checks"
+ },
+ {
+  "id": "python-types.native-image-proof-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "the isolated type fixture must detect removing the native proof driver from mandatory checks"
+ },
+ {
+  "id": "image-acceptance.ci-source-lock-structure",
+  "target": "linux/scripts/image-acceptance-ci.py",
+  "find": "    if not isinstance(source[\"submodules\"], str) or not isinstance(source[\"data_locks\"], dict):\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-ci.sh",
+  "why": "recursive submodule state and data-lock maps must retain their required types before any work"
  }
 ]

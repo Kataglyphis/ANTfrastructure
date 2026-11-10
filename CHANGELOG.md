@@ -34,6 +34,11 @@
   `:latest-nvidia` promotion/readback. Full raw
   stdout, terminal/idle proof and actual test summaries are retained under
   `logs/test-results/plugin-proof-nvidia-runtime-9f4e6bd2/`.
+- Added an opt-in native ARM consumer CI lane with a versioned proof configuration.
+  It uses the same immutable image and frozen source snapshots with the exact clean
+  tooling commit, preserves every original command and timeout, and retains failed
+  receipts and cleanup evidence. Local controls guard those bindings; an actual
+  passed native receipt is still required before promotion.
 - Cache documentation separates proved ORT CUDA subcommand hits from the uncached
   outer nvcc driver, OpenCV classic FindCUDA's direct nvcc route, non-x86 Torch's
   direct compiler selection and the shipped image's empty Rust wrapper. The latter

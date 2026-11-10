@@ -82,6 +82,35 @@ attestations bound to an included runtime manifest are excluded from platform co
 Only a registry HTTP 404 permits creating an absent tag; authentication and network
 failures stop promotion.
 
+## Native CI proofs
+
+[`linux-arm64-image-acceptance.yml`](../.github/workflows/linux-arm64-image-acceptance.yml)
+runs the complete contract on `ubuntu-26.04-arm`. Apply `native-image-proof` to a
+same-repository pull request that changes this lane, its driver or its proof configuration.
+After the workflow is on the default branch, `workflow_dispatch` runs that branch's
+versioned configuration too. The workflow has read-only repository permissions and
+publishes evidence; tag promotion remains the separate receipt-gated command above.
+
+[`shared/config/native-image-proof.json`](../shared/config/native-image-proof.json) pins
+the immutable image index, a full hub commit, the test platform and every consumer's
+revision, recursive submodule state and data-lock hashes. The driver rejects a different
+host architecture before preparation, checks out the exact clean tooling separately and
+uses that tooling's full plan with only `platform` changed. It verifies the source bindings
+and checks that the generated commands and timeout are unchanged before consumer work.
+The normal host prologue retains its disk admission and cleanup policy.
+
+The native runner must still execute all six consumers successfully. Unit fixtures and
+mutation controls exercise input, receipt and cleanup refusal; they do not prove real ARM
+execution, model inference or a working container image. The failed qemu-user attempt
+below remains failed until a compatible execution environment supplies a new passed receipt.
+
+Each attempt's `native-image-proof-candidate-<run>-<attempt>` artifact preserves the
+original receipt, platform plan, actual consumer logs and `native-job.json` with host/source bindings, log hashes and a checked final engine query.
+The metadata includes artifact-relative log paths without rewriting paths in the original
+receipt. Review both the receipt and job verdict, verify downloaded log hashes and inspect
+real tests before promotion. Neither an outer green step nor metadata replaces the receipt.
+A failed engine query or a reported remaining container keeps the native job failed.
+
 ## Preserve a platform-specific plan
 
 The default consumer plan selects `linux/amd64`. Generate a retained plan for another supported
