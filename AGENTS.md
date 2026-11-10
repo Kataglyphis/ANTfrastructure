@@ -62,6 +62,10 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    moves; see [image-acceptance.md](docs/image-acceptance.md) for replay and its coverage limits.
    Successful consumers must preserve versioned sources. Manual promotion also preserves
    the target's runtime platforms; an early shell-gate override cannot bypass acceptance.
+   Native consumer CI pins the image, exact clean tooling and all recursive source snapshots;
+   its plan changes only platform. Require a matching host and checked cleanup; job metadata
+   never replaces the original receipt or proves physical GPU inference. Keep transported receipts
+   byte-identical and map downloaded logs through their artifact-relative metadata paths.
    `--gates-only` exits before builds, candidate creation and promotion, including when
    combined with push flags; it provides no consumer acceptance receipt.
    Linux acceptance restores disposable rootful checkout ownership on every exit;
@@ -105,6 +109,12 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Ordered directory visitors retain the caller's `dir` binding, append policy and unconditional selected calls.
    The plugin QNN EP stage checks the module, both exports and the HTP backend beside it on arm64; the CPU prefix refuses an in-tree QNN provider.
    The GPU prefix refuses an in-tree TensorRT provider and requires the CUDA module's plugin exports; the TensorRT plugin stage runs on nvidia images with TensorRT.
+   Its protobuf seed validates every C/C++ option argument, including mixed scoped inputs; none may reach rc.exe or its cmcldeps preprocessor.
+   Shared plugin C++ flags retain /EHsc because the ORT C++ API throws.
+   CUDA standard options stay joined so sccache does not parse the value as another input.
+   Linux ORT patches both CUDA option branches and refuses source drift before configuration.
+   TensorRT cross builds select target CXX before CUDAHOSTCXX is published; failed setup stops the build.
+   Plugin closure checks retain inspector failures; SBSA TensorRT uses the target loader under bounded QEMU, not native ldd.
    Copied `35-build-migraphx-plugin-ep.sh` and `37-build-tensorrt-plugin-ep.sh` carry `plugin-ep-exports.sh` and `plugin-ep-seeds.txt` beside them; the media verify stage reads the export probe from the mounted ORT build directory, so keep that directory mount on the GPU RUN.
    G2 reads `onnxruntime_ep_*` modules and `Microsoft.ML.OnnxRuntime.EP.*` directories as ORT consumers, never as ORT.
    AMD Python bundles carry the plugin MIGraphX EP beside the chain core and prove it against the image's module; their self-test proves registration, not availability.
@@ -117,7 +127,9 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    ARM64 candidate acceptance validates a digest before pulling, binds the ZIP and CI attempt to the actual image, and preserves failing device statuses and receipts before tag promotion.
    Required entry-script import loops list concrete .psm1 filenames so the cold script-call gate can discover the complete closure.
    Architecture and UV test suites carry their shared fixture companions; use harness PE and wheel constructors for valid samples.
+   Regex cardinality assertions use the shared harness counter and retain caller-selected patterns and text.
    Windows structural tests use the harness AST readers, command binder and Dockerfile stage parser; parse errors must fail before inspecting declarations. Copy `WindowsAst.Common.psm1` beside any copied harness module tree.
+   Share unconditional and source-order wiring checks through `Assert-TestAstCommand -Unconditional` and `Assert-TestAstOrder`.
    Windows probe transports share child cleanup and report parsing; retain stderr, timeout, exit and assertion accounting policies.
    Windows diagnostic and host scripts carry their shared module companions; keep required failures fatal and advisory failures visible.
    Windows disk probes distinguish zero from unknown; shared lavapipe acquisition retains caller PE, registry and environment verdicts.
@@ -176,7 +188,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    The native ONNX finalizer stages the checked-out LICENSE and ThirdPartyNotices before deleting its source; consumers must carry those files with the corresponding native output.
    Cargo license collection retains original files and source provenance; absent or unreviewed sources fail rather than fabricating notices, and the dependency graph is not proof of linkage.
    Copied `stage-cargo-licenses.py` carries `cargo_license_tree.py`; live tree selection preserves the build's target and feature flags and records both tree and metadata scopes.
-   Child Windows test reports create the requested result directory, including in isolated mutation mirrors, and failures to write remain fatal.
+   Child Windows test reports create the requested result directory, including in isolated mutation mirrors, and failures to write remain fatal. Mutation recipes call that runner directly without shell-specific directory setup.
    Copied `WindowsPythonApp.Common.psm1` carries `WindowsIcon.Common.psm1` and `WindowsMsix.Common.psm1`; unforced imports and re-exports keep their icon and license APIs visible.
    Windows packages that carry the VC++ runtime ship its notice; copied `WindowsCrossBundle.Common.psm1` carries `WindowsMsvcRuntimeNotice.Common.psm1`, `WindowsMsiLicense.Common.psm1` and `cmake/msvc-runtime-notice.txt` in the hub layout.
    Standalone `WindowsIcon.Common.psm1` carries `WindowsMsix.Common.psm1` and `WindowsScripts.Shared.psm1`; its PNG decoder rejects corrupt or invisible inputs.
@@ -1376,7 +1388,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   by three slugs). `tests/test-preflight-slugs.sh` enforces that every slug has a registered check
   and vice versa. The commit hook runs a subset through `PREFLIGHT_ONLY` / `PREFLIGHT_SKIP`; never
   copy the check list into a new caller. On a Windows host:
-  `PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh`. What each gate
+  `MSYS=winsymlinks:nativestrict PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh`. Git Bash fixtures need real symlinks; denied creation remains a missing prerequisite. What each gate
   proves, and its allowlist: [`code-quality-gates.md`](docs/code-quality-gates.md) (generated) and
   [`code-quality-tooling.md`](docs/code-quality-tooling.md). Slugs, suites and shellcheck runs go
   side by side; `PREFLIGHT_JOBS=1`, `RUN_TESTS_JOBS=1` and `LINT_SHELL_JOBS=1` run them in turn

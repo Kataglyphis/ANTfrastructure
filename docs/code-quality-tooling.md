@@ -16,6 +16,15 @@ suite can fail, a `preflight.sh` slug, and a section below. The table of all
 slugs with their proof status is generated, not hand-written — see
 `docs/code-quality-gates.md`.
 
+## Git Bash symlink prerequisites
+
+Start Git and Bash with `MSYS=winsymlinks:nativestrict` when running the Hub's
+Linux fixtures on Windows. The default copy behavior does not satisfy tests
+that inspect `readlink`, including the QNN ORT-home shim. Native symlink creation
+must actually succeed; a missing privilege is a prerequisite failure, not a
+skipped assertion. This does not make Windows a substitute for Linux-only gates.
+See [MSYS2's symlink modes](https://www.msys2.org/docs/symlinks/).
+
 ## Preserved local proof workflows
 
 Regular operational drivers live under `linux/scripts/` and are versioned with their tests.
@@ -1056,7 +1065,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4636 entries** over **622 distinct test commands**; both digits are
+manifest holds **4688 entries** over **628 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2629,6 +2638,8 @@ The Windows test runner writes a JSON summary for each parent run to
 `logs/windows-tests/summary-<timestamp>-<pid>.json`; child runs do not write durable copies.
 An explicit child `-ResultFile` creates its parent and fails on a write error, so a
 fresh mutation mirror can run the actual PowerShell baseline before testing a mutant.
+Recipes invoke that runner directly: a Unix `mkdir -p ... &&` prefix fails under
+Windows command parsing before any baseline assertion runs.
 
 ## Measurements as JSON
 

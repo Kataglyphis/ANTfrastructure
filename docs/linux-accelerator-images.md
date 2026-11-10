@@ -221,6 +221,24 @@ project's own `find_program(sccache)` does not decide). Measured in the nvidia a
 census knows it as the consumer `tensorrt-ep`, and the runtime smoke's `gpu_tensorrt_plugin_verdict`
 wants the root, both exports, a resolved closure and TensorRT 11 from the default lib dir.
 
+On the ARM64 SBSA cross lane, select target CXX before loading the CUDA descriptor:
+CMake 4.4.5 reads CUDAHOSTCXX before its host-compiler define. Run
+`20261109-102131-e69f48d7` reached TensorRT after both CUDA wheel variants and QNN
+passed, then nvcc used native g++ and rejected `--target=aarch64-linux-gnu`.
+The regression retains failed setup status, and real before/fixed compiler controls
+reproduce the failure and compile an AArch64 object respectively.
+
+Closure inspection must itself succeed. Native ldd returned 1 with `not a dynamic
+executable` for the ARM module while the former gate passed. Native plugins now
+retain ldd failures; TensorRT's SBSA check uses `cross_target_qemu_runner`, the
+compiler's target loader and C++ runtime, explicit chain/TensorRT/CUDA/target-runtime
+paths and a 60-second timeout. The loader lists dependencies without initializing
+a factory. A full isolated TensorRT repeat against the target CPU core passed both
+exports, five original licence texts, G2 and this loader check; it recorded 317 C/C++
+and 12 CUDA subcompilation hits, no misses/errors and one uncached internal step.
+Final GPU media/runtime builds, remote cache, registration and inference remain
+separate proofs. See [CUDA option parsing](build-cache-tiers.md#nvcc--hipcc).
+
 Two traps the first in-image runs found, both now gates: the module's export check must not use
 `grep -q`, which closes the pipe at the first of its ~4000 dynamic symbols and lets `pipefail`
 fail `readelf` ([failure-modes](failure-modes.md#a-plugin-module-with-both-exports-fails-its-export-check)); and

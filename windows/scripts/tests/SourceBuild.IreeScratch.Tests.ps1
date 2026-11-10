@@ -65,7 +65,7 @@ Describe 'IREE build tree on the media-tvm cache mount' {
         Assert-Equal 1 $clear.Count 'one clear'
         $configure = @(Get-TopLevelCommand -Ast $ast -Name 'Invoke-CmakeConfigure')[0]
         $cleanup = @(Get-TopLevelCommand -Ast $ast -Name 'Remove-SourceBuildTree')[-1]
-        Assert-True ($resolve[0].Extent.StartOffset -lt $configure.Extent.StartOffset) 'configure runs in the resolved tree'
-        Assert-True ($clear[0].Extent.StartOffset -gt $cleanup.Extent.StartOffset) 'the clear follows the twins and the source cleanup'
+        Assert-TestAstOrder -Before $resolve[0] -After $configure
+        Assert-TestAstOrder -Before $cleanup -After $clear[0]
     }
 }

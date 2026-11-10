@@ -2071,9 +2071,9 @@ function Get-SevenZipSkippedLink {
 }
 
 function Get-OrtPluginEpCmakeArgs {
-    # ORT-derived trees turn warnings into errors that clang-cl raises and MSVC does not, so a plugin EP builds as the chain ORT does.
+    # The ORT C++ API throws, so retain exceptions while aligning warning policy with the chain.
     param([Parameter(Mandatory)][string]$Python)
-    $cxx = (@('/WX-', '/clang:-Wno-invalid-specialization', '/clang:-Wno-unused-value', (Get-WarningNoiseSuppressionFlags)) | Where-Object { $_ }) -join ' '
+    $cxx = (@('/EHsc', '/WX-', '/clang:-Wno-invalid-specialization', '/clang:-Wno-unused-value', (Get-WarningNoiseSuppressionFlags)) | Where-Object { $_ }) -join ' '
     $py = $Python -replace '\\', '/'
     return @("-DCMAKE_CXX_FLAGS:STRING=$cxx", '-DCMAKE_COMPILE_WARNING_AS_ERROR=OFF', '-DCMAKE_POLICY_VERSION_MINIMUM:STRING=3.5',
         "-DPython_EXECUTABLE:FILEPATH=$py", "-DPython3_EXECUTABLE:FILEPATH=$py")

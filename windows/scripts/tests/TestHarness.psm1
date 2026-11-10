@@ -75,6 +75,12 @@ function Assert-Match {
     if ("$Actual" -notmatch $Pattern) { throw "Assert-Match: [$Actual] does not match /$Pattern/. $Message" }
 }
 
+function Assert-MatchCount {
+    # Exact cardinality is shared; callers still choose their own pattern and text.
+    param([int]$Expected, [string]$Pattern, [string]$Actual, [string]$Message = '')
+    Assert-Equal $Expected ([regex]::Matches($Actual, $Pattern).Count) $Message
+}
+
 function Assert-TestSingleFindingCases {
     param([Parameter(Mandatory)][object[]]$Cases, [Parameter(Mandatory)][scriptblock]$Exercise, [string]$Message = 'finding')
     foreach ($case in $Cases) {
@@ -842,7 +848,7 @@ function Start-LoopbackListener {
 }
 
 Export-ModuleMember -Function Start-LoopbackListener, Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-IdentityOnnxHex, Get-ModuleImportClosure, Get-ScriptFunctionDefinition, Get-TestScriptAst, ConvertTo-TestScriptAst, Get-TestAstCommands, Get-TestCommandArguments, Get-TestScriptCommands, `
-    Import-FunctionModule, Invoke-WithFunctionModule, Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
+    Import-FunctionModule, Invoke-WithFunctionModule, Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-MatchCount, Assert-Throws, `
     Invoke-WithEnv, Remove-TestDir, New-TestDir, Invoke-InTestDir, New-TestPeFile, New-OrtTestExportTable, New-OrtTestPe, New-TestWheel, New-FakeToolShim
 
 function Invoke-SourceFileDiagnosticCase {
@@ -926,14 +932,21 @@ function Get-TestAstAncestor {
 
 function Assert-TestAstCommand {
     param([Parameter(Mandatory)][AllowEmptyCollection()][Management.Automation.Language.CommandAst[]]$Command,
-        [Parameter(Mandatory)][string]$Text, [string]$Assignment = '')
+        [Parameter(Mandatory)][string]$Text, [string]$Assignment = '', [switch]$Unconditional)
     Assert-Equal 1 $Command.Count "one call matching $Text"
+    if ($Unconditional) { Assert-True (Test-TestAstUnconditional -Node $Command[0]) "unconditional call matching $Text" }
     Assert-Equal $Text ($Command[0].Extent.Text -replace '\s*`\r?\n\s*', ' ') 'literal command wiring'
     if ($Assignment) {
         $parent = Get-TestAstAncestor -Node $Command[0] -Type ([Management.Automation.Language.AssignmentStatementAst]) -First
         Assert-NotNull $parent 'the call result must be assigned'
         Assert-Equal $Assignment $parent.Left.Extent.Text 'assignment destination'
     }
+}
+
+function Assert-TestAstOrder {
+    param([Parameter(Mandatory)][Management.Automation.Language.Ast]$Before,
+        [Parameter(Mandatory)][Management.Automation.Language.Ast]$After)
+    Assert-True ($Before.Extent.StartOffset -lt $After.Extent.StartOffset) "source order: $($Before.Extent.Text) before $($After.Extent.Text)"
 }
 
 function Test-TestAstUnconditional {
@@ -960,7 +973,7 @@ function Assert-TestPathState {
 }
 
 Export-ModuleMember -Function Test-TestAstUnconditional, Get-TestRepoText, Assert-TestPathState
-Export-ModuleMember -Function Get-TestAstAncestor, Assert-TestAstCommand, ConvertTo-TestScriptParseResult
+Export-ModuleMember -Function Get-TestAstAncestor, Assert-TestAstCommand, Assert-TestAstOrder, ConvertTo-TestScriptParseResult
 
 function New-TestZipFile {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][Collections.IDictionary]$Member,

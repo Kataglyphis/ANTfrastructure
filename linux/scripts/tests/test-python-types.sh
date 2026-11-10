@@ -38,9 +38,9 @@ _set_answer() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (135 files)"
+  t_assert_contains "$1" "ty quality gate: clean (136 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
-  t_assert_contains "$1" "Linux Python report: clean (135 files)"
+  t_assert_contains "$1" "Linux Python report: clean (136 files)"
   t_assert_contains "$1" "Windows Python report: clean (2 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -73,6 +73,7 @@ _set_answer "${ROOT}/linux/llm-stack/tests/gateway_e2e/test_e2e_ops.py" 42
 _set_answer "${ROOT}/linux/scripts/tests/apt-update-selection-tests.py" 42
 _set_answer "${ROOT}/linux/scripts/tests/guarded_link_tests.py" 42
 _set_answer "${ROOT}/linux/scripts/tests/test-image-acceptance.py" 42
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/image-acceptance-ci.py"
 _set_answer "${ROOT}/docs/scripts/bump_versions.py" 42
 _set_answer "${ROOT}/linux/scripts/tests/header_discovery_tests.py" 42
 _set_answer "${ROOT}/linux/scripts/tests/qnn_query_tests.py" 42
@@ -195,9 +196,9 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-  t_assert_contains "${out}" "Ruff signature annotation gate: clean (142 files)"
-  t_assert_contains "${out}" "Ruff private return gate: clean (142 files)"
-  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (132 files)"
+  t_assert_contains "${out}" "Ruff signature annotation gate: clean (143 files)"
+  t_assert_contains "${out}" "Ruff private return gate: clean (143 files)"
+  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (133 files)"
 
 t_case "ambient checker versions cannot replace the repository pins"
 out="$(TY_VERSION=bogus RUFF_VERSION=bogus _run)"
@@ -325,6 +326,18 @@ t_assert_contains "${out}" "ty quality gate failed (exit 1)"
 t_assert_contains "${out}" "renovate_uv_exports.py"
 t_assert_contains "${out}" "invalid-return-type"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/renovate_uv_exports.py"
+
+t_case "the native acceptance driver remains in strict types and public annotations"
+printf 'def answer(value: int) -> int:\n    return "wrong"\n' > "${ROOT}/linux/scripts/image-acceptance-ci.py"
+out="$(_run)"
+t_assert_contains "${out}" "image-acceptance-ci.py"
+t_assert_contains "${out}" "rc=1"
+printf 'def answer(value):\n    return value\n' > "${ROOT}/linux/scripts/image-acceptance-ci.py"
+out="$(_run)"
+t_assert_contains "${out}" "ANN001"
+t_assert_contains "${out}" "ANN201"
+t_assert_contains "${out}" "rc=1"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/image-acceptance-ci.py"
 
 t_case "a missing private Windows return fails the tracked-tree Ruff gate"
 printf 'def _answer():\n    return 42\n' > "${ROOT}/windows/scripts/subject.py"

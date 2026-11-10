@@ -93,12 +93,35 @@ trtep_tensorrt_home() {
   printf '%s' "${dir}"
 }
 
-# <so>: ldd resolves everything and the module links the image's TensorRT major (any major when TENSORRT_VERSION is unknown to a bare verify call).
+# Native ldd cannot inspect an SBSA module, so ask the target loader under the existing QEMU runner.
+trtep_closure_report() {
+  if ! command -v cuda_cross_active >/dev/null 2>&1 || ! cuda_cross_active; then
+    ldd "$1"
+    return $?
+  fi
+  local runner loader cxxrt file search
+  cuda_cross_load || return $?
+  [ "${CUDA_CROSS_TARGET_ARCH}" = arm64 ] || { printf 'ERROR: unsupported TensorRT closure target %s\n' "${CUDA_CROSS_TARGET_ARCH}" >&2; return 1; }
+  runner="$(cross_target_qemu_runner)" || return $?
+  loader="$("${CC}" -print-file-name=ld-linux-aarch64.so.1)" || return $?
+  cxxrt="$("${CXX}" -print-file-name=libstdc++.so.6)" || return $?
+  for file in "${loader}" "${cxxrt}"; do
+    case "${file}" in /*) [ -f "${file}" ] && continue ;; esac
+    printf 'ERROR: target runtime file is missing: %s\n' "${file}" >&2
+    return 1
+  done
+  cxxrt="$(readlink -f "${cxxrt}")" || return $?
+  search="${TRTEP_ORT_DIR}/lib:${CUDA_CROSS_TENSORRT_HOME}/lib:${CUDA_CROSS_TARGET_ROOT}/lib:${cxxrt%/*}:/usr/${CUDA_CROSS_TARGET_TRIPLET}/lib:/usr/lib/${CUDA_CROSS_TARGET_TRIPLET}:/lib/${CUDA_CROSS_TARGET_TRIPLET}"
+  timeout --kill-after=5s 60s "${runner}" "${loader}" --inhibit-cache --library-path "${search}" --list "$1"
+}
+
+# Both closure resolution and TensorRT's declared major must pass; neither initializes a factory or proves inference.
 trtep_closure_ok() {
-  local major="${TENSORRT_VERSION:-}"; major="${major%%.*}"
-  mgxep_closure_ok "$1" || return 1
-  readelf -d -W "$1" 2>/dev/null | grep -qE "NEEDED.*\[libnvinfer\.so\.${major:-[0-9]+}\]" \
-    || { printf 'ERROR: %s does not link libnvinfer.so.%s\n' "$1" "${major:-N}" >&2; return 1; }
+  local major="${TENSORRT_VERSION:-}" rc=0; major="${major%%.*}"
+  mgxep_closure_ok "$1" trtep_closure_report || rc=1
+  readelf -d -W "$1" 2>/dev/null | grep -E "NEEDED.*\[libnvinfer\.so\.${major:-[0-9]+}\]" >/dev/null \
+    || { printf 'ERROR: %s does not link libnvinfer.so.%s\n' "$1" "${major:-N}" >&2; rc=1; }
+  return "${rc}"
 }
 
 trtep_verify_library() { plugin_ep_verify_library "$1" trtep_closure_ok; }
@@ -127,6 +150,8 @@ trtep_cuda_cache_args() {
 # A CUDA cross target (gpu stage, CROSS_NVIDIA_SBSA=1): the target's TensorRT root, as the in-tree build took it, so the shim links the target's libraries and not the host's.
 trtep_enter_cross_env() {
   cuda_cross_active || return 0
+  # CUDAHOSTCXX wins over CMake's host-compiler define, so select the target CXX before publishing it.
+  setup_linux_cross_env || return $?
   cuda_cross_load || err "cuda_cross_load failed"
   TENSORRT_HOME="${CUDA_CROSS_TENSORRT_HOME}"
 }

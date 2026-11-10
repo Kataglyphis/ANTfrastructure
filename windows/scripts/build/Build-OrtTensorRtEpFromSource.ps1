@@ -103,6 +103,33 @@ function New-OrtTensorRtEpHome {
     return $Path
 }
 
+function Repair-OrtTensorRtProtobufRc {
+    # Language-scoped options keep rc.exe and its cmcldeps preprocessor free of C/C++-only flags.
+    param([Parameter(Mandatory)][string]$SeedRoot)
+    $path = Join-Path $SeedRoot 'CMakeLists.txt'
+    $null = Edit-SourceFile -Path $path -Require -Quiet -Description 'TensorRT protobuf compiler options' -Transform {
+        param($text)
+        $pattern = '(?ms)add_definitions\((\s*/[^)]*)\)'
+        [regex]::Replace($text, $pattern, {
+            param($block)
+            $options = [regex]::Replace($block.Groups[1].Value, '(?m)(?<!\S)/[A-Za-z0-9-]+', {
+                param($option)
+                if ($option.Value -notmatch '^/(MP|utf-8|wd\d+|bigobj)$') { throw "Unexpected protobuf compiler option: $($option.Value)" }
+                '"$<$<COMPILE_LANGUAGE:C,CXX>:' + $option.Value + '>"'
+            })
+            'add_compile_options(' + $options + ')'
+        })
+    }
+    Assert-SourceFileContent -Path $path -FailureMessage 'TensorRT protobuf compiler-option scope is not verified.' -Condition {
+        param($text)
+        $remaining = $text -replace '(?m)#.*$', '' -replace '"\$<\$<COMPILE_LANGUAGE:C,CXX>:/(MP|utf-8|wd\d+|bigobj)>"', ''
+        [regex]::Matches($text, 'add_compile_options\(\s*"\$<\$<COMPILE_LANGUAGE:C,CXX>:/').Count -eq 4 -and
+            $remaining -notmatch 'add_compile_options\(\s*[^)\s]' -and
+            $text -notmatch 'add_definitions\(\s*/' -and
+            $text.Contains('add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>")')
+    }
+}
+
 function Get-OrtTensorRtEpCmakeArgs {
     param(
         [Parameter(Mandatory)][string]$OrtHome,
@@ -190,6 +217,7 @@ $pins = @(Get-OrtTensorRtEpPin)
 Reset-SourceBuildDirectory -Path $SourceDir
 $roots = [ordered]@{}
 foreach ($pin in $pins) { $roots[$pin.Name] = Save-OrtTensorRtEpSource -Pin $pin -WorkDir $SourceDir }
+Repair-OrtTensorRtProtobufRc -SeedRoot $roots['protobuf']
 $epSource = $roots['onnxruntime-ep-tensorrt']
 $declared = Get-OrtTensorRtEpDeclaration -CMakeText ([IO.File]::ReadAllText((Join-Path $epSource 'CMakeLists.txt')))
 $seedGap = @(Get-OrtTensorRtEpSeedGap -Declared $declared -Pin $pins)

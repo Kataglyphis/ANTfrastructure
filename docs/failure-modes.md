@@ -37,6 +37,56 @@ The later cb2b8db6 device run42525202720 passes onnxinference; its sole remainin
 failure is the older published IREE twin. Use the digest acceptance input in
 `windows-arm64.yml` to grade a newly built image before changing the public tag.
 
+## ARM64 CTest discovery ends with `LeakSanitizer has encountered a fatal error`
+
+The 2026-11-10 NVIDIA ARM consumer attempt finished its C++ build, then
+`commitTestSuite --gtest_list_tests` listed tests and exited 1 under qemu-user.
+CTest returned 8 before executing tests; its 300-second discovery timeout did not
+expire. The failed receipt and log are retained under
+`logs/image-acceptance/20261110-013045-b0a6f8cb-arm64/`.
+LSan needs ptrace, which this emulation route cannot provide; see the
+[sanitizer scope](cross-build-verification.md#the-native-gcc-ships-libsanitizer) and
+[upstream report](https://github.com/google/sanitizers/issues/1413).
+Run the unchanged consumer plan on a compatible ARM execution host.
+Disabling leak detection changes coverage and cannot establish the original acceptance.
+The image compiler battery's explicit emulation skip does not excuse a failed consumer.
+
+## ARM64 TensorRT nvcc rejects `--target=aarch64-linux-gnu`
+
+Linux run `20261109-102131-e69f48d7` selected target CXX but published CUDAHOSTCXX
+from native g++ first. CMake 4.4.5 prefers that environment setting over the later
+host-compiler define. Call target setup before `cuda_cross_load`, and stop on
+setup failure. Real compiler controls reproduce the old failure and fixed
+AArch64 output; the [plugin build](linux-accelerator-images.md#the-plugin-tensorrt-ep)
+still needs its full image and consumer proofs.
+
+## CUDA sccache repeats report `multiple input files`
+
+ORT's separated `SHELL:--std c++20` reaches the pinned parser as another input.
+Keep both source branches joined through `003-cuda-standard-sccache.patch` and
+retain the source-drift postcondition. A private real replay proves the old
+refusal and 12 corrected subcompilation hits; one internal step stays uncached.
+See [cache measurements and limits](build-cache-tiers.md#nvcc--hipcc).
+
+## A cross-built plugin passes closure despite `ldd: not a dynamic executable`
+
+The old helper only searched stdout for `not found`, discarding ldd's failed
+status and stderr. A native ldd cannot grade the ARM64 TensorRT module.
+Retain inspector failures and use the target loader under bounded QEMU with
+the explicit chain and SDK search paths. This lists dependencies without
+initializing the plugin; see [the closure scope](linux-accelerator-images.md#the-plugin-tensorrt-ep).
+
+## TensorRT plugin reports throws with exceptions disabled
+
+The full Windows NVIDIA run at `93019e36` compiled protobuf's resources, then
+clang-cl rejected the TensorRT plugin's C++ sources with `cannot use 'throw'
+with exceptions disabled`. Its actual compile command had no `/EHsc`.
+`Get-OrtPluginEpCmakeArgs` replaced `CMAKE_CXX_FLAGS` with warning options and
+dropped the platform exception default. Keep `/EHsc` in the shared C++ policy
+so the ORT C++ API retains its throwing semantics. Argument fixtures cover the
+forwarded policy; a complete plugin build and GPU execution need separate proof.
+See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
+
 ## Contents
 
 **Linux and cross-lane**

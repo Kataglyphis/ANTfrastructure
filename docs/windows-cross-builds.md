@@ -393,6 +393,24 @@ does not prove GPU execution when it reports no adapter; separate GPU proofs rem
 required. Fourteen mutations exercise input/metadata/CI/ZIP refusal, raw failures,
 passed verdicts, action image parity, the real callback and exported module.
 
+**Accepted publication, 2026-11-09:** candidate run
+[42579941215](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/42579941215)
+at `7c575e34baf4c06843982f813c313d1b1e4713b1` passed all 22 device steps, including
+real ONNX frames and the cp315t IREE wheel with GIL disabled. Receipt artifact
+`13658265211` has upload digest
+`sha256:e1e8254ab43a12ccfe2483f66e757bcb0a78bfad0f617ec02009cf0e78f5c03f`.
+After that acceptance and all five successful same-source quality runs, the
+approved `:winarm64` tag was promoted to the exact candidate manifest:
+`sha256:9ee61e2f49b5e59624d4ed4a4de3ec86c985f9f71567d175b5e320d85bbac137`.
+Its config is
+`sha256:c855b4b4946862b31555b732099fcfdda11dea445d1ad07a41a14ef18d549485`;
+Windows/amd64/OS10.0.26100.33674 stayed unchanged. This proves the accepted ARM64
+bundle at that source; it adds no GPU execution proof. The subsequent default
+public-tag [run 42583681115](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/42583681115)
+also passed 22/22 at the same source, resolving the tag to that exact manifest and
+config. Its verified receipt artifact is `13659636973`, upload digest
+`sha256:bf5221b75606f5d71c69d35210a25af3f0a37bc7a13bf0a19452d71377b01d1e`.
+
 
 Consumer lanes hosted it
 from 2026-10-03 to 2026-10-11, until a WebRTC defect turned BeschleunigerBallett's renderer lane red
@@ -1153,6 +1171,11 @@ Owner decision 2026-11-08 (BACKLOG CON233): the nvidia lane builds no in-tree CU
   on `CXX_COMPILER_ID`, which is `Clang` under clang-cl, so clang-cl got GCC's `-include` and
   would read the header as a second input; patch 008 tests the frontend variant instead. The
   in-tree CUDA CMake is no longer configured, so its PCH patch 002 is gone.
+  The two CUDA C++20 options use `SHELL:-std=c++20`: the pinned sccache parser
+  treats the separated value in `SHELL:--std c++20` as another input. The repair
+  validates both complete tokens before configuration and preserves warning
+  and architecture arguments. A local replay proves this parser boundary; the
+  full plugin repeat and GPU execution remain separate checks.
 - **Consumers register it.** The Python wheel registers its bundled copy at import
   (`cuda-plugin-ep=1` in `get_build_info()`); GenAI 0.19 takes a registered
   `CUDAExecutionProvider` before its provider-bridge path; C and C++ call
@@ -1166,6 +1189,14 @@ Owner decision 2026-11-08 (BACKLOG CON233): the nvidia lane builds no in-tree CU
   refuses a declaration that is not a seed of the same repository and tag, and
   `FETCHCONTENT_FULLY_DISCONNECTED` with CMP0170 makes any other download fatal. 7-Zip leaves
   flatbuffers' in-tree doc and Java-test links unextracted (`Get-SevenZipSkippedLink`).
+  Before configuration, the pinned protobuf seed's compiler options are scoped to
+  C/C++, preserving `/bigobj`, UTF-8 and warning flags while keeping them out of
+  `rc.exe` and its `cmcldeps` preprocessor. The required patch verifies all four
+  option blocks, rejects remaining arguments in already-scoped blocks and fails
+  on missing or changed inputs. Definitions and the
+  original MSVC-only resource rule remain unchanged. Shared plugin C++ flags
+  also retain `/EHsc`, required by the throwing ORT C++ API when the warning
+  policy replaces CMake's platform flag defaults.
 - The stage ships `C:\runtime\lib\onnxruntime-ep-tensorrt` (`ORT_TENSORRT_EP_ROOT`): the DLL,
   `licenses\` with the plugin's and each statically linked seed's texts, and
   `provenance\onnxruntime-ep-tensorrt.json`. No TensorRT DLL is copied beside it: the plugin's

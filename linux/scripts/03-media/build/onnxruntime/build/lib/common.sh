@@ -58,15 +58,25 @@ Notes:
 EOF
 }
 
+# A separated nvcc standard value is another input to the pinned sccache parser.
+ort_cuda_standard_options_ok() {
+  [ "$(grep -cF 'SHELL:-std=c++20>' "$1")" = 2 ] || return 1
+  ! grep -F 'SHELL:--std' "$1" >/dev/null || return 1
+  return 0
+}
+
 # ORT's CUDA source fixes; the MIGraphX patches left with the in-tree EP (docs/upstreamable-patches.md entries 24 and 25).
 apply_ort_gpu_source_patches() {
-  local dir=/opt/scripts/patches/onnxruntime patch
-  local -a patches=(002-cuda-dynamic-sparse-attention-cstdint.patch)
+  local dir="${1:-/opt/scripts/patches/onnxruntime}" patch
+  local applier="${2:-/opt/scripts/core/apply-patch.sh}"
+  local -a patches=(002-cuda-dynamic-sparse-attention-cstdint.patch 003-cuda-standard-sccache.patch)
   for patch in "${patches[@]}"; do
     [ -f "${dir}/${patch}" ] || err "ORT patch ${dir}/${patch} not found -- is linux/scripts/patches/onnxruntime bind-mounted into the GPU RUN (Dockerfile.media)?"
-    bash /opt/scripts/core/apply-patch.sh "${dir}/${patch}" "${ORT_SRC_DIR}" "ORT ${patch}" \
+    bash "${applier}" "${dir}/${patch}" "${ORT_SRC_DIR}" "ORT ${patch}" \
       || err "ORT patch ${patch} does not apply to ${ORT_SRC_DIR}"
   done
+  ort_cuda_standard_options_ok "${ORT_SRC_DIR}/cmake/onnxruntime_providers_cuda_plugin.cmake" \
+    || err "ORT CUDA plugin standard options are not verified"
 }
 
 init_defaults() {
