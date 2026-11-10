@@ -384,6 +384,7 @@ _oft_run() {
     info() { :; }; err() { echo "ERR $*" >> "${OFT_LOG}"; exit 1; }
     host_python_bin() { echo /opt/python/.venv/bin/python; }
     retag_directory_wheels() { echo "RETAG $*" >> "${OFT_LOG}"; }
+    assert_onnx_webgpu_static_plugin() { printf "WEBGPU-GATE <%s>\n" "$1" >> "${OFT_LOG}"; return "${OFT_GATE_RC:-0}"; }
     eval "${FN}"
     _ONNX_LIB_DIR="${ROOT}/a/b/c/lib" ORT_SRC_DIR="${ROOT}/ort"
     b="$1" o="$2"; shift 2; GIL_ARGS=("$@")
@@ -409,9 +410,15 @@ for _fl in nv wg; do
   t_assert_fails test -e "${_ftpy%/bin/python}"
   unset -n _ga
 done
+t_case "the free-threaded pass cannot store a wheel after a failed configured-cache verdict"
+_out="$(OFT_GATE_RC=17 _oft_run /ort/build_native_gpu /out/gpu "${_nv[@]}")"
+t_assert_contains "${_out}" 'WEBGPU-GATE </ort/build_native_gpu/Release>'
+t_assert_contains "${_out}" 'ERR ONNX Runtime: the free-threaded pass over /ort/build_native_gpu failed'
+t_assert_eq "" "$(grep '^STORE\|^RETAG' <<<"${_out}" || true)"
 _out="$(OFT_RC=1 _oft_run /ort/build_native_gpu /out/gpu "${_nv[@]}")"
 t_assert_contains "${_out}" "ERR ONNX Runtime: the free-threaded pass over /ort/build_native_gpu failed"
 t_assert_eq "" "$(grep '^STORE' <<<"${_out}" || true)" "a failed pass stores nothing"
+t_assert_eq "" "$(grep '^WEBGPU-GATE' <<<"${_out}" || true)" "a failed build must not be replaced by a successful cache verdict"
 _out="$(_oft_run /ort/build_native /out/gpu "${_wg[@]:0:${#_wg[@]}-1}")"
 t_assert_eq "RC=0" "${_out}" "a cross build without --build_wheel has no GIL wheel to twin, and runs no pass"
 

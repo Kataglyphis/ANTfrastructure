@@ -1633,6 +1633,29 @@ the free-threaded wheel replays those arguments. Keep `ORT_ENABLE_WEBGPU` and
 a statically linked plugin factory, registered when ORT creates its environment;
 it does not require a separate WebGPU shared module.
 
-This is source preparation for CON233. Configured-cache and runtime registration
-proofs, a separate media rebuild on all three CPU architectures and new consumer
-acceptance remain open. Existing published-image receipts do not prove this change.
+The configured-cache verdict requires `onnxruntime_USE_WEBGPU`,
+`onnxruntime_USE_EP_API_ADAPTERS`, `onnxruntime_WEBGPU_STATIC_PLUGIN` and
+`onnxruntime_USE_EXTERNAL_DAWN` to match the native selection after CPU, NVIDIA
+and free-threaded builds; disabled native selections require all four OFF.
+A failed build cannot be hidden by a subsequent successful verdict.
+The shared CMake reader keeps the launcher's existing first-value policy, while
+Boolean feature checks require BOOL entries and reject duplicate values. A missing
+reader export fails during ORT bootstrap before compilation.
+
+The C++ WASM WebGPU Asyncify and JSPI flavors also select `static_plugin` and
+check the first three flags ON, with external Dawn OFF for Emscripten's integrated
+Dawn. They use reduced operators rather than the minimal build that pinned ORT
+forbids with static plugins. The JSEP JavaScript backend retains its own path.
+A failed configuration follows the existing optional-flavor policy or fails under
+`ORT_WEB_REQUIRED=1`. Shared completed WASM assets use cache epoch `-wgpu3`, so
+this migration cannot reuse the legacy in-tree EP binaries from `-wgpu2`.
+The cache identity also includes `ONNXRUNTIME_WASM_BUILD_TYPE`; completed Debug
+and Release assets cannot shadow each other. Both flavors use one shared driver
+that preserves their original argument order and JSPI-only exception behavior.
+
+These are source gates and fixture proofs for CON233. Actual build/runtime
+registration proofs, separate media rebuilds for default amd64/arm64/riscv64,
+ROCm amd64 and NVIDIA amd64/arm64, and new consumer acceptance remain open.
+The goal's WASM artifact proof must check both enabled WebGPU flavors; an optional
+flavor dropped by the generic build policy does not complete that proof.
+Existing published-image receipts do not prove this change.

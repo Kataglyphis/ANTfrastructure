@@ -16,7 +16,7 @@ ln -s "${python}" "${work}/bin/python3"
 t_case "the fixture PATH genuinely has no ripgrep"
 t_assert_fails env PATH="${work}/bin" bash -c 'command -v rg'
 
-for spec in 'compiler-target-verdicts 48' 'runtime-probe-transport 43' 'onnx-native-lifecycle 27' \
+for spec in 'compiler-target-verdicts 48' 'runtime-probe-transport 43' 'onnx-native-lifecycle 55' \
             'compiler-smoke-command 26' 'media-platform-bootstrap 51' 'ffmpeg-probes 26'; do
   read -r suite count <<< "${spec}"
   t_case "${suite}: every assertion still runs without ripgrep"

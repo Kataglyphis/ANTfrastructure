@@ -144,6 +144,7 @@ append_onnx_lld_build_args BUILD_ARGS
 append_onnx_ccache_build_args BUILD_ARGS
 
 "${BUILD_SH}" "${BUILD_ARGS[@]}"
+assert_onnx_webgpu_static_plugin "${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" || exit 1
 
 collect_wheels_from_tree "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_GPU_OUTPUT_DIR}" "GPU wheel"
 copy_onnx_headers_to_output "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIVE_GPU_BUILD_DIR}"

@@ -21,7 +21,7 @@ fi
 source_module cross-cuda.sh
 
 # A broken 01-core bootstrap must fail here, not later as a confusing "command not found".
-for _req_fn in info warn err arch_oci cross_build_enabled host_python_bin host_python_major_minor resolve_qnn_sdk stage_qnn_runtime apply_shared_library_action; do
+for _req_fn in info warn err arch_oci cross_build_enabled host_python_bin host_python_major_minor resolve_qnn_sdk stage_qnn_runtime apply_shared_library_action cmake_assert_configured_entries; do
   if ! command -v "${_req_fn}" >/dev/null 2>&1; then
     printf '[ERROR] onnxruntime lib/common.sh: required helper %s is undefined after media_common_init (01-core framework not loaded)\n' "${_req_fn}" >&2
     exit 1
@@ -305,6 +305,7 @@ run_onnx_native_build() {
     exit 1
   fi
   cmake_assert_compiler_cache_pin "${build_dir}/${config}" "${_ort_launcher:-}" || exit 1
+  assert_onnx_webgpu_static_plugin "${build_dir}/${config}" || exit 1
 }
 
 collect_onnx_native_wheels() {
@@ -497,7 +498,8 @@ onnx_build_free_threaded_wheel() {
   (
     eval "$(ft_target_env)"
     export PATH="${ftpy%/python}:${PATH}" Python_EXECUTABLE="${ftpy}" Python3_EXECUTABLE="${ftpy}" PYTHON_EXECUTABLE="${ftpy}"
-    "${ORT_SRC_DIR}/build.sh" "${_oft_args[@]}" --cmake_extra_defines "${ft_defines[@]}"
+    "${ORT_SRC_DIR}/build.sh" "${_oft_args[@]}" --cmake_extra_defines "${ft_defines[@]}" || exit $?
+    assert_onnx_webgpu_static_plugin "${build_dir}/${config}"
   ) || err "ONNX Runtime: the free-threaded pass over ${build_dir} failed"
   info "ONNX Runtime: ${build_dir} rebuilt for ${ftpy} in $(( SECONDS - started ))s"
   if [ -n "${FT_TARGET_PLATFORM_TAG:-}" ]; then
@@ -573,6 +575,21 @@ append_onnx_cross_cmake_build_args() {
   if [ "$(cross_target_arch)" = "riscv64" ]; then
     build_args_ref+=(--cmake_extra_defines onnxruntime_USE_RVV=ON)
   fi
+}
+
+# Configured booleans distinguish the static plugin from the old in-tree EP; they do not prove registration or inference.
+assert_onnx_webgpu_static_plugin() {
+  local dir="$1" want="${2:-}" dawn="${3:-}"
+  if [ -z "${want}" ]; then
+    want=OFF
+    if onnx_webgpu_enabled_for_target; then want=ON; fi
+  fi
+  dawn="${dawn:-${want}}"
+  case "${want}:${dawn}" in ON:ON|ON:OFF|OFF:OFF) ;; *) return 2 ;; esac
+  cmake_assert_configured_entries "${dir}" bool \
+    "onnxruntime_USE_WEBGPU=${want}" "onnxruntime_USE_EP_API_ADAPTERS=${want}" \
+    "onnxruntime_WEBGPU_STATIC_PLUGIN=${want}" "onnxruntime_USE_EXTERNAL_DAWN=${dawn}" || return $?
+  printf '[WebGPU] %s: static_plugin=%s, EP adapters=%s, external Dawn=%s\n' "${dir}/CMakeCache.txt" "${want}" "${want}" "${dawn}" >&2
 }
 
 # LTO and WebGPU stay off unless their ORT_ENABLE_* toggles say otherwise.

@@ -1549,6 +1549,14 @@ the configure and fails the build when either launcher differs. ONNX Runtime's
 `PATH`: without `CCACHE_BINARY` the gate fails, with it the gate passes. The suite does not
 compile, so it does not prove that sccache serves the objects; the drain's totals do.
 
+`cmake_assert_configured_entries <build-dir> <first|bool> <name=value>...` is the
+shared reader behind that pin and the WebGPU mode gate. Current callers supply
+nonempty launcher paths or ON/OFF expectations. `first` keeps the launcher's
+existing first-match/type policy; `bool` requires BOOL entries, accepts CRLF and
+rejects duplicate values. Quoted argument boundaries and caller configuration
+used by shell tool wrappers survive dispatch. These are configure checks, not
+compiler-cache hit measurements or runtime registration proof.
+
 **The Vulkan SDK had a second gap.** The `sdk-dependencies` RUN of `Dockerfile.sdk` had no cache
 mount at all, and `vulkan.sh` gave its cmake runs no launcher, so `sdk-arm64` and `sdk-riscv64`
 compiled 7768 objects in 79 minutes each, every chain. The RUN now carries both cache mounts,

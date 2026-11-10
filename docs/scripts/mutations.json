@@ -21550,8 +21550,8 @@
  {
   "id": "lib.onnx-library-companion-required",
   "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
-  "find": "stage_qnn_runtime apply_shared_library_action;",
-  "replace": "stage_qnn_runtime;",
+  "find": "stage_qnn_runtime apply_shared_library_action cmake_assert_configured_entries;",
+  "replace": "stage_qnn_runtime cmake_assert_configured_entries;",
   "test": "bash linux/scripts/tests/test-onnx-library-companion.sh",
   "why": "ORT bootstrap must reject a missing shared library traversal helper before a step can execute."
  },
@@ -30131,7 +30131,7 @@
  {
   "id": "lib.cmake-pin-gate-compares-launchers",
   "target": "linux/scripts/01-core/cmake-cache-linker.sh",
-  "find": "if [ \"${got}\" != \"${want}\" ]; then",
+  "find": "if [ \"${_cce_got}\" != \"${_cce_want}\" ]; then",
   "replace": "if false; then",
   "test": "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh",
   "why": "a gate that never compares passes a build whose launcher a subproject replaced"
@@ -37655,5 +37655,173 @@
   "replace": "        printf 'ERROR: OpenCV FindCUDA did not retain its nvcc cache wrapper\\n' >&2\n        return 0",
   "test": "bash linux/scripts/tests/test-opencv-cuda-cache.sh",
   "why": "A wrong configured nvcc must fail even when generated fixture rules contain the correct wrapper."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-use-webgpu",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "\"onnxruntime_USE_WEBGPU=${want}\"",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "Each actual configured Boolean is mandatory; legacy in-tree WebGPU, missing adapters or a wrong Dawn mode must fail."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-use-ep-api-adapters",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "\"onnxruntime_USE_EP_API_ADAPTERS=${want}\"",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "Each actual configured Boolean is mandatory; legacy in-tree WebGPU, missing adapters or a wrong Dawn mode must fail."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-webgpu-static-plugin",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "\"onnxruntime_WEBGPU_STATIC_PLUGIN=${want}\"",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "Each actual configured Boolean is mandatory; legacy in-tree WebGPU, missing adapters or a wrong Dawn mode must fail."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-use-external-dawn",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "\"onnxruntime_USE_EXTERNAL_DAWN=${dawn}\"",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "Each actual configured Boolean is mandatory; legacy in-tree WebGPU, missing adapters or a wrong Dawn mode must fail."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-verdict",
+  "target": "linux/scripts/01-core/cmake-cache-linker.sh",
+  "find": "      _cce_rc=1",
+  "replace": "      _cce_rc=0",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "A mismatched configured option must propagate failure even when all remaining options are correct."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-optout",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "    want=OFF\n    if onnx_webgpu_enabled_for_target; then want=ON; fi",
+  "replace": "    want=ON\n    if onnx_webgpu_enabled_for_target; then want=ON; fi",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "Native and cross opt-outs prove every configured switch is OFF rather than silently retaining a previous enabled build."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-missing-cache",
+  "target": "linux/scripts/01-core/cmake-cache-linker.sh",
+  "find": "    printf 'ERROR: [CMAKE] %s has no CMakeCache.txt; configured entries are unverified\\n' \"${_cce_cache%/*}\" >&2\n    return 1",
+  "replace": "    printf 'ERROR: [CMAKE] %s has no CMakeCache.txt; configured entries are unverified\\n' \"${_cce_cache%/*}\" >&2\n    return 0",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "No configure cache is no proof; absence must fail instead of reporting an assertion-free pass."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-cpu-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "  assert_onnx_webgpu_static_plugin \"${build_dir}/${config}\" || exit 1",
+  "replace": "  : \"${build_dir}/${config}\" || exit 1",
+  "test": "bash linux/scripts/tests/test-onnx-native-lifecycle.sh",
+  "why": "The CPU build must reject a configured mismatch before collecting or publishing output."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-nvidia-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
+  "find": "assert_onnx_webgpu_static_plugin \"${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}\" || exit 1",
+  "replace": ": \"${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}\" || exit 1",
+  "test": "bash linux/scripts/tests/test-onnx-native-lifecycle.sh",
+  "why": "The actual NVIDIA script tail must reject a configured mismatch while retaining its raw build failure status."
+ },
+ {
+  "id": "lib.onnx-webgpu-config-free-threaded-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "    assert_onnx_webgpu_static_plugin \"${build_dir}/${config}\"",
+  "replace": "    : \"${build_dir}/${config}\"",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "A free-threaded reconfiguration gets its own verdict before a wheel can be retagged or stored."
+ },
+ {
+  "id": "lib.onnx-webgpu-free-threaded-build-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "    \"${ORT_SRC_DIR}/build.sh\" \"${_oft_args[@]}\" --cmake_extra_defines \"${ft_defines[@]}\" || exit $?",
+  "replace": "    \"${ORT_SRC_DIR}/build.sh\" \"${_oft_args[@]}\" --cmake_extra_defines \"${ft_defines[@]}\"",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "The added verdict must not mask a failed build inside a conditionally invoked subshell."
+ },
+ {
+  "id": "lib.onnx-webgpu-wasm-asyncify-plugin",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh",
+  "find": "--use_webgpu static_plugin --use_webnn \"$@\" --target onnxruntime_webassembly",
+  "replace": "--use_webgpu --use_webnn \"$@\" --target onnxruntime_webassembly",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "The common C++ WebGPU flavor driver must retain static_plugin for both Asyncify and JSPI."
+ },
+ {
+  "id": "lib.onnx-webgpu-wasm-jspi-plugin",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh",
+  "find": "  run_webgpu_flavor_pass \"Pass 4: WebGPU (JSPI)\" jspi JSPI_COMMON_ARGS --enable_wasm_jspi",
+  "replace": "  run_webgpu_flavor_pass \"Pass 4: WebGPU (JSPI)\" jspi JSPI_COMMON_ARGS",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "The JSPI flavor must retain its JSPI flag while reusing the common static-plugin build and its own exception policy."
+ },
+ {
+  "id": "lib.onnx-webgpu-wasm-config-verdict",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh",
+  "find": "  if \"$@\" && assert_onnx_webgpu_static_plugin \"${BUILD_DIR}/${WASM_CONFIG}\" ON OFF; then",
+  "replace": "  if \"$@\"; then",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "A successful builder with legacy WebGPU flags cannot be collected as a passing plugin flavor; preserve ORT_WEB_REQUIRED and optional failure policy."
+ },
+ {
+  "id": "probe.opencv-cuda-cache-launcher-env",
+  "target": "linux/scripts/02-toolchain/probe-opencv-cuda-cache.sh",
+  "find": "compiler_cache_launcher_env 2>/dev/null || true",
+  "replace": "compiler_cache_launcher_env",
+  "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+  "why": "The real compiler probe carries the canonical guarded environment setup immediately before resolving the launcher."
+ },
+ {
+  "id": "lib.onnx-webgpu-wasm-cache-epoch",
+  "target": "linux/Dockerfile.media",
+  "find": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-wgpu3,sharing=locked",
+  "replace": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-wgpu2,sharing=locked",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "Changing the compiled WebGPU ABI must not reuse already completed WASM assets from the legacy in-tree EP cache."
+ },
+ {
+  "id": "lib.onnx-webgpu-wasm-build-type-key",
+  "target": "linux/Dockerfile.media",
+  "find": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-wgpu3,sharing=locked",
+  "replace": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-wgpu3,sharing=locked",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "Completed Debug and Release WASM assets must not share an artifact-cache identity."
+ },
+ {
+  "id": "lib.cmake-configured-bool-type",
+  "target": "linux/scripts/01-core/cmake-cache-linker.sh",
+  "find": "bool) _cce_pattern=BOOL",
+  "replace": "bool) _cce_pattern='[A-Z]*'",
+  "test": "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh",
+  "why": "Boolean feature checks require the declared BOOL type; launcher checks keep their broader legacy types."
+ },
+ {
+  "id": "lib.onnx-webgpu-requires-cmake-reader",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "stage_qnn_runtime apply_shared_library_action cmake_assert_configured_entries; do",
+  "replace": "stage_qnn_runtime apply_shared_library_action; do",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "A missing shared CMake-reader API must fail at bootstrap before compilation begins."
+ },
+ {
+  "id": "lib.cmake-configured-first-value-policy",
+  "target": "linux/scripts/01-core/cmake-cache-linker.sh",
+  "find": "_cce_got=\"${_cce_got%%$'\\n'*}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh",
+  "why": "The shared reader must retain the existing first-value launcher policy while Boolean consumers reject duplicate values."
+ },
+ {
+  "id": "lib.cmake-configured-keeps-wrapper-scope",
+  "target": "linux/scripts/01-core/cmake-cache-linker.sh",
+  "find": "  case \"${_cce_mode}\" in first) _cce_pattern='[A-Z]*' ;; bool) _cce_pattern=BOOL ;; *) return 2 ;; esac",
+  "replace": "  local mode=\"${_cce_mode}\"\n  case \"${_cce_mode}\" in first) _cce_pattern='[A-Z]*' ;; bool) _cce_pattern=BOOL ;; *) return 2 ;; esac",
+  "test": "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh",
+  "why": "A shared CMake reader must not hide caller configuration observed by a supplied shell tool wrapper."
  }
 ]

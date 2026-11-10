@@ -23,7 +23,7 @@ trap probe_opencv_cache_cleanup EXIT
 # shellcheck source=linux/scripts/03-media/build/opencv/opencv-cuda-cache.sh
 source "${PROBE_SCRIPT_DIR}/../03-media/build/opencv/opencv-cuda-cache.sh"
 source_module cross-cuda.sh
-compiler_cache_launcher_env
+compiler_cache_launcher_env 2>/dev/null || true
 launcher="$(compiler_cache_launcher)"
 case "${launcher}" in *sccache*) ;; *) printf 'ERROR: probe needs the sccache-class resolver result\n' >&2; exit 1 ;; esac
 export CXX="/opt/gcc-${GCC_VERSION}/bin/g++"

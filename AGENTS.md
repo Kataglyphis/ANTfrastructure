@@ -109,7 +109,10 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Ordered directory visitors retain the caller's `dir` binding, append policy and unconditional selected calls.
    The plugin QNN EP stage checks the module, both exports and the HTP backend beside it on arm64; the CPU prefix refuses an in-tree QNN provider.
    The GPU prefix refuses an in-tree TensorRT provider and requires the CUDA module's plugin exports; the TensorRT plugin stage runs on nvidia images with TensorRT.
-   Native WebGPU requests `--use_webgpu static_plugin` with external Dawn; keep cross opt-outs and free-threaded argument replay.
+   Native and C++ WASM WebGPU select `--use_webgpu static_plugin`; retain native external Dawn and Emscripten's integrated Dawn.
+   Check the configured flags on CPU, NVIDIA, free-threaded, Asyncify and JSPI builds; explicit opt-outs prove OFF.
+   Shared CMake entry checks retain first-value launcher reads and strict typed, duplicate-refusing Boolean reads.
+   Static-plugin WASM assets key the shared cache by build type and `-wgpu3`; an old completed artifact cache is not a rebuild.
    Its protobuf seed validates every C/C++ option argument, including mixed scoped inputs; none may reach rc.exe or its cmcldeps preprocessor.
    Shared plugin C++ flags retain /EHsc because the ORT C++ API throws.
    CUDA standard options stay joined so sccache does not parse the value as another input.

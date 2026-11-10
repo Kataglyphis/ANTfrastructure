@@ -15,6 +15,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-10 — gate configured WebGPU modes on native and WASM builds
+
+- CPU, NVIDIA and free-threaded ORT builds require the actual WebGPU/static-plugin/EP-adapter/Dawn flags;
+  explicit native and cross opt-outs prove OFF. The free-threaded gate retains the original build failure
+  before its verdict can run, and configured mismatches stop output collection.
+- Both C++ WASM WebGPU flavors select `static_plugin` with integrated Dawn and check their configured
+  flags under the existing optional/required failure policy. Shared completed assets move to `-wgpu3`
+  so the new build cannot reuse legacy in-tree EP binaries from the old cache.
+  The artifact-cache key also separates build configurations. One shared flavor driver retains each
+  pass's argument order; shared CMake entry checks retain first-value launcher and strict Boolean policies.
+- The full isolated c238a510 check found an embedded-Python resource warning and a noncanonical cache
+  launcher environment call in the new OpenCV probe. Both are corrected without gate exceptions.
+  Actual image/runtime registration and consumer parity proofs remain open under CON233/CON231.
+
 ## 2026-11-10 — repair classic FindCUDA cache wiring and prepare native WebGPU
 
 - OpenCV's legacy CUDA rules use a preserved executable wrapper and the pinned CMake environment API;

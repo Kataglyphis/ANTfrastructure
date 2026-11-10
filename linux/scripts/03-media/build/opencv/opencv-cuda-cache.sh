@@ -44,8 +44,9 @@ opencv_cuda_cache_stats_assert() {
     python3 -I - "$@" <<'PYTHON'
 import json
 import sys
+from pathlib import Path
 
-cold, repeat = [json.load(open(path, encoding="utf-8"))["stats"] for path in sys.argv[1:3]]
+cold, repeat = [json.loads(Path(path).read_text(encoding="utf-8"))["stats"] for path in sys.argv[1:3]]
 arches = int(sys.argv[3])
 for name in ("CUDA", "CUDA (Device code)", "PTX", "CUBIN"):
     minimum = arches if name in ("PTX", "CUBIN") else 1

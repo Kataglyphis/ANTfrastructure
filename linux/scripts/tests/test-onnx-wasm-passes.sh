@@ -16,6 +16,9 @@ sccache_s3_store() { printf 'store:%s\n' "$1" >> "$FIXTURE_ROOT/events"; cp "$2"
 source "$(dirname "${BASH_SOURCE[0]}")/logging.sh"
 err() { _log_emit ERROR 2 "$@"; exit 87; }
 STUB
+t_source_functions "${TESTS_DIR}/../01-core/cmake-cache-linker.sh" cmake_assert_configured_entries || exit 1
+t_source_functions "${TESTS_DIR}/../03-media/build/onnxruntime/build/lib/common.sh" assert_onnx_webgpu_static_plugin onnx_webgpu_enabled_for_target || exit 1
+t_emit_optional_functions cmake_assert_configured_entries assert_onnx_webgpu_static_plugin onnx_webgpu_enabled_for_target >> "${work}/lib/common.sh"
 cat > "${work}/source tree/build.sh" <<'STUB'
 #!/usr/bin/env bash
 pass=simd
@@ -29,6 +32,12 @@ printf 'ccache_dir:%s\n' "${CCACHE_DIR:-unset}" >> "$FIXTURE_ROOT/events"
 printf '<%s>' "$@" > "$FIXTURE_ROOT/args.$pass"
 [ "$FIXTURE_FAIL_PASS" != "$pass" ] || exit 9
 mkdir -p "$BUILD_DIR/$WASM_CONFIG/nested space"
+if [ "$pass" = asyncify ] || [ "$pass" = jspi ]; then
+  printf 'onnxruntime_USE_WEBGPU:BOOL=ON\nonnxruntime_USE_EP_API_ADAPTERS:BOOL=ON\nonnxruntime_WEBGPU_STATIC_PLUGIN:BOOL=ON\nonnxruntime_USE_EXTERNAL_DAWN:BOOL=OFF\n' > "$BUILD_DIR/$WASM_CONFIG/CMakeCache.txt"
+  if [ "${FIXTURE_BAD_PLUGIN_PASS:-}" = "$pass" ]; then
+    sed -i 's/onnxruntime_USE_EP_API_ADAPTERS:BOOL=ON/onnxruntime_USE_EP_API_ADAPTERS:BOOL=OFF/' "$BUILD_DIR/$WASM_CONFIG/CMakeCache.txt"
+  fi
+fi
 [ "$FIXTURE_ARTIFACTS" != none ] || exit 0
 stem=ort-wasm-simd-threaded
 case "$pass" in
@@ -76,8 +85,8 @@ simd='<--enable_wasm_simd><--enable_wasm_threads>'
 reduced="<--disable_ml_ops><--disable_generation_ops><--disable_types><string><float4><float8><optional><sparsetensor><--include_ops_by_config><${work}/source tree/onnxruntime/wasm/reduced_types.config><--enable_reduced_operator_type_support>"
 t_assert_eq "${common}${simd}" "$(cat "${work}/args.simd")"
 t_assert_eq "${common}${simd}<--use_jsep><--use_webnn>" "$(cat "${work}/args.jsep")"
-t_assert_eq "${common}${simd}<--use_webgpu><--use_webnn><--target><onnxruntime_webassembly>${reduced}" "$(cat "${work}/args.asyncify")"
-t_assert_eq "${common/<--disable_wasm_exception_catching>/}${simd}<--use_webgpu><--use_webnn><--enable_wasm_jspi><--target><onnxruntime_webassembly>${reduced}" "$(cat "${work}/args.jspi")"
+t_assert_eq "${common}${simd}<--use_webgpu><static_plugin><--use_webnn><--target><onnxruntime_webassembly>${reduced}" "$(cat "${work}/args.asyncify")"
+t_assert_eq "${common/<--disable_wasm_exception_catching>/}${simd}<--use_webgpu><static_plugin><--use_webnn><--enable_wasm_jspi><--target><onnxruntime_webassembly>${reduced}" "$(cat "${work}/args.jspi")"
 t_assert_eq $'ort-wasm-simd-threaded.asyncify.mjs\nort-wasm-simd-threaded.asyncify.wasm\nort-wasm-simd-threaded.jsep.extra file\nort-wasm-simd-threaded.jsep.wasm\nort-wasm-simd-threaded.jspi.mjs\nort-wasm-simd-threaded.jspi.wasm\nort-wasm-simd-threaded.wasm\nort-wasm-simd-threaded.webnn.mjs' "$(find "${work}/output" -type f -printf '%f\n' | LC_ALL=C sort)"
 t_case "the wasm ccache dir rides S3 as one archive per ORT version: restored when empty, stored when it grew"
 _wasm_case '' false 0 0; FIXTURE_CCACHE_WRITES=1 _wasm_case '' false 0 0
@@ -127,4 +136,19 @@ for policy in copy-fails no-artifacts; do
   t_assert_eq 4 "$(grep -c '^build:' "${work}/events")"
   t_assert_eq '' "$(find "${work}/output" -type f -print)"
 done
+t_case "a successful WebGPU builder with a legacy configuration remains an optional flavor failure"
+FIXTURE_BAD_PLUGIN_PASS=asyncify _wasm_case '' true 0 0
+t_assert_eq 0 "${status}"
+t_assert_contains "${output}" 'onnxruntime_USE_EP_API_ADAPTERS=OFF'
+t_assert_fails test -f "${work}/output/ort-wasm-simd-threaded.asyncify.wasm"
+t_assert_ok test -f "${work}/output/ort-wasm-simd-threaded.jspi.wasm"
+for pass in asyncify jspi; do
+  t_case "${pass}: ORT_WEB_REQUIRED rejects a legacy WebGPU configuration before collecting it"
+  FIXTURE_BAD_PLUGIN_PASS="${pass}" _wasm_case '' true 1 0
+  t_assert_eq 87 "${status}"
+  t_assert_contains "${output}" 'failed and ORT_WEB_REQUIRED=1'
+  t_assert_fails test -f "${work}/output/ort-wasm-simd-threaded.${pass}.wasm"
+done
+t_case "the shared WASM cache cannot reuse the old in-tree WebGPU binaries"
+t_assert_contains "$(cat "${TESTS_DIR}/../../Dockerfile.media")" 'id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-wgpu3,sharing=locked'
 t_summary

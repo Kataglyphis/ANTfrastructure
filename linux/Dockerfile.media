@@ -268,13 +268,13 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=tmpfs,target
       echo "Skipping onnxruntime-genai verification (BUILD_GENAI=${BUILD_GENAI:-true})"; \
     fi
 
-# Arch-independent wasm, compiled once per ORT version and shared; bump -wgpu1 whenever the built flavor set changes.
+# The static-plugin WASM ABI must not reuse the old in-tree WebGPU assets; keep the shared cache on -wgpu3.
 LABEL kataglyphis.step=onnxruntime-web
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/cache/onnxruntime-web-shared,id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-wgpu2,sharing=locked \
+    --mount=type=cache,target=/var/cache/onnxruntime-web-shared,id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-wgpu3,sharing=locked \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=secret,id=sccache_s3,required=false \

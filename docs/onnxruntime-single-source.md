@@ -600,3 +600,15 @@ the first run is still the real test. The likeliest first reds, all fail-closed:
 | `ERROR: chain ORT: ...` | a consumer's `uv sync` | [`python-ci.md` § Trap 3](python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi) |
 | `FAIL fix11: ...` | preflight `critical-fixes` | G4 found a re-armed download or a lost wiring row |
 | `<id> is an ONNX Runtime package and is refused` | `Install-OptionalNuGetPackage` | the NuGet facility is chain-only |
+
+## WebGPU static-plugin proof covers every linker product
+
+Pinned ORT v1.31.1 links its internal session/provider libraries, including the
+linked-in WebGPU provider, into the Python extension as well as the native core
+([the pinned Python target](https://github.com/microsoft/onnxruntime/blob/v1.31.1/cmake/onnxruntime_python.cmake)).
+A hash or successful load of `libonnxruntime.so` alone therefore cannot establish
+the mode of the Python GIL or free-threaded extension. Bind configured mode to the
+actual native core and each Python extension, then prove factory registration
+through the environment that owns that product. Provider advertisement alone is
+not adapter availability or inference. Linux configured gates are implemented;
+the corresponding runtime/product proofs remain open under CON233.

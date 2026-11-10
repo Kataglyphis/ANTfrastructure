@@ -39,7 +39,8 @@ _configure() {
   printf '%s' "${proj}/b"
 }
 
-_gate() { bash -c 'source "$1"; cmake_assert_compiler_cache_pin "$2" "$3"' _ "${LIB}" "$@"; }
+_cache_check() { bash -c 'source "$1"; "${@:2}"' _ "${LIB}" "$@"; }
+_gate() { _cache_check cmake_assert_compiler_cache_pin "$@"; }
 
 t_case "the pin keeps the launcher through a subproject that FORCEs ccache"
 pin="$(bash -c 'source "$1"; a=(); append_cmake_compiler_cache_pin a "$2"; printf "%s\n" "${a[@]}"' _ "${LIB}" "${LAUNCHER}")"
@@ -53,7 +54,7 @@ t_assert_rc 0 _gate "${b}" "${LAUNCHER}"
 t_case "the launchers alone lose to the FORCE, and the gate says so"
 b="$(_configure "$(_forcing_project)" "-DCMAKE_C_COMPILER_LAUNCHER=${LAUNCHER}" "-DCMAKE_CXX_COMPILER_LAUNCHER=${LAUNCHER}")"
 t_assert_rc 1 _gate "${b}" "${LAUNCHER}"
-t_assert_contains "$(_gate "${b}" "${LAUNCHER}" 2>&1)" "CMAKE_CXX_COMPILER_LAUNCHER is ${_w}/bin/ccache, not ${LAUNCHER}"
+t_assert_contains "$(_gate "${b}" "${LAUNCHER}" 2>&1)" "CMAKE_CXX_COMPILER_LAUNCHER=${_w}/bin/ccache, expected ${LAUNCHER}"
 
 t_case "the environment alone loses too"
 proj="$(_forcing_project)"
@@ -81,7 +82,7 @@ _ort_run() {
   mkdir -p "${dir}/Release"
   printf 'CMAKE_C_COMPILER_LAUNCHER:STRING=%s\nCMAKE_CXX_COMPILER_LAUNCHER:STRING=%s\n' "${recorded}" "${recorded}" > "${dir}/Release/CMakeCache.txt"
   bash -c 'source "$1"; cross_build_is_active() { return 1; }; _ort_launcher="$3"
-    eval "$4"; run_onnx_native_build "$2" Release "ORT failed" true && printf "PASSED\n"' \
+    assert_onnx_webgpu_static_plugin() { return 0; }; eval "$4"; run_onnx_native_build "$2" Release "ORT failed" true && printf "PASSED\n"' \
     _ "${LIB}" "${dir}" "${LAUNCHER}" "$(t_fn_src "${ORT_LIB}" run_onnx_native_build)" 2>&1
 }
 t_assert_contains "$(_ort_run "${_w}/ort-ok" "${LAUNCHER}")" "PASSED"
@@ -95,4 +96,23 @@ t_assert_contains "$(cat "${LITERT}")" 'cmake --preset "${preset}" "${cmake_args
     cmake_assert_compiler_cache_pin "${LITERT_SRC}/litert/$(litert_build_subdir)" "${CMAKE_COMPILER_CACHE_PIN:-}"'
 t_assert_contains "$(cat "${LITERT}")" 'cmake_assert_compiler_cache_pin "${c_api_build}" "${CMAKE_COMPILER_CACHE_PIN:-}"'
 
+t_case "shared cache checks preserve first-value launcher and strict typed Boolean policies"
+_entries="${_w}/entry policies"
+mkdir -p "${_entries}"
+printf 'A:STRING=first\nA:BOOL=second\nB:BOOL=ON\r\nLAUNCHER:STRING=/cache tool/runner=42\n' > "${_entries}/CMakeCache.txt"
+t_assert_ok _cache_check cmake_assert_configured_entries "${_entries}" first A=first 'LAUNCHER=/cache tool/runner=42'
+t_assert_ok _cache_check cmake_assert_configured_entries "${_entries}" bool A=second B=ON
+printf 'A:BOOL=second\n' >> "${_entries}/CMakeCache.txt"
+t_assert_fails _cache_check cmake_assert_configured_entries "${_entries}" bool A=second
+t_assert_ok _cache_check cmake_assert_configured_entries "${_entries}" first A=first
+t_assert_rc 2 _cache_check cmake_assert_configured_entries "${_entries}" unknown A=first
+t_assert_rc 2 _cache_check cmake_assert_configured_entries "${_entries}" bool
+t_case "the shared reader retains caller configuration used by shell tool wrappers"
+_scope_log="${_w}/wrapper-scope"
+t_assert_ok env LIB="${LIB}" ENTRIES="${_entries}" SCOPE_LOG="${_scope_log}" bash -c '
+  source "$LIB"
+  mode=caller-mode
+  sed() { printf "%s\n" "$mode" >> "$SCOPE_LOG"; command sed "$@"; }
+  cmake_assert_configured_entries "$ENTRIES" first A=first'
+t_assert_eq caller-mode "$(cat "${_scope_log}")"
 t_summary

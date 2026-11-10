@@ -6,8 +6,10 @@ source "${TESTS_DIR}/test-harness.sh"
 ORT="${TESTS_DIR}/../03-media/build/onnxruntime/build"
 COMMON="${ORT}/lib/common.sh"
 
+t_source_functions "${TESTS_DIR}/../01-core/cmake-cache-linker.sh" cmake_assert_configured_entries || exit 1
+
 # Argument fixtures cannot prove a compiled static plugin or device inference.
-t_source_functions "${COMMON}" onnx_webgpu_enabled_for_target append_onnx_optional_lto_webgpu_args || exit 1
+t_source_functions "${COMMON}" onnx_webgpu_enabled_for_target append_onnx_optional_lto_webgpu_args assert_onnx_webgpu_static_plugin || exit 1
 _webgpu_args() {
   local -a _owgp_args=(--config Release 'CALLER=value with spaces')
   ORT_ENABLE_WEBGPU="$1" TARGET_ARCH="$2" ORT_WEBGPU_ALLOW_CROSS="$3" ORT_ENABLE_LTO="$4" \
@@ -136,4 +138,64 @@ t_assert_eq "" "$(_isoargs "${_work}/no-rocm")" "no ROCm root, no argument"
 t_assert_ok grep -q "^append_onnx_rocm_isolation_args BUILD_ARGS" "${ORT}/30-build-native.sh"
 t_assert_eq "" "$(ls "${ORT}"/30-build-native-amd.sh 2>/dev/null)" "the in-tree MIGraphX build is gone; the rocm image's GPU EP is the plugin (35)"
 
+# Synthetic caches prove flags and opt-outs, not compiled factories or device availability.
+_wgp_build="${_work}/WebGPU build"
+mkdir -p "${_wgp_build}"
+_webgpu_cache_fixture() {
+  printf 'onnxruntime_USE_WEBGPU:BOOL=%s\nonnxruntime_USE_EP_API_ADAPTERS:BOOL=%s\nonnxruntime_WEBGPU_STATIC_PLUGIN:BOOL=%s\nonnxruntime_USE_EXTERNAL_DAWN:BOOL=%s\n' "$1" "$1" "$1" "$1" > "${_wgp_build}/CMakeCache.txt"
+}
+_webgpu_cache_gate() {
+  ORT_ENABLE_WEBGPU="$1" TARGET_ARCH="$2" ORT_WEBGPU_ALLOW_CROSS="$3" assert_onnx_webgpu_static_plugin "${4:-${_wgp_build}}"
+}
+_webgpu_cache_fixture ON
+cp "${_wgp_build}/CMakeCache.txt" "${_wgp_build}/good.txt"
+for _arch in amd64 x86_64 arm64 riscv64; do
+  t_case "${_arch}: configured native WebGPU requires all static-plugin switches"
+  t_assert_ok _webgpu_cache_gate true "${_arch}" true
+done
+for _key in onnxruntime_USE_WEBGPU onnxruntime_USE_EP_API_ADAPTERS onnxruntime_WEBGPU_STATIC_PLUGIN onnxruntime_USE_EXTERNAL_DAWN; do
+  t_case "${_key}: missing, off, mistyped and duplicated options cannot pass"
+  for _edit in "/^${_key}:/d" "s/^${_key}:BOOL=ON$/${_key}:BOOL=OFF/" "s/^${_key}:BOOL=/${_key}:STRING=/"; do
+    sed "${_edit}" "${_wgp_build}/good.txt" > "${_wgp_build}/CMakeCache.txt"
+    t_assert_fails _webgpu_cache_gate true amd64 true
+  done
+  cat "${_wgp_build}/good.txt" > "${_wgp_build}/CMakeCache.txt"
+  printf '%s:BOOL=ON\n' "${_key}" >> "${_wgp_build}/CMakeCache.txt"
+  t_assert_fails _webgpu_cache_gate true amd64 true
+done
+t_case "a missing configure cache is not a pass"
+t_assert_fails _webgpu_cache_gate true amd64 true "${_wgp_build}/absent"
+t_case "CRLF cache values retain their exact boolean meaning"
+sed 's/$/\r/' "${_wgp_build}/good.txt" > "${_wgp_build}/CMakeCache.txt"
+t_assert_ok _webgpu_cache_gate true amd64 true
+t_case "an opt-out refuses a stale enabled plugin"
+t_assert_fails _webgpu_cache_gate false amd64 true
+_webgpu_cache_fixture OFF
+for _arch in amd64 arm64 riscv64; do
+  t_case "${_arch}: the explicit WebGPU opt-out proves every switch is off"
+  t_assert_ok _webgpu_cache_gate false "${_arch}" true
+done
+for _arch in arm64 riscv64; do
+  t_case "${_arch}: the cross opt-out proves every switch is off"
+  t_assert_ok _webgpu_cache_gate true "${_arch}" false
+done
+t_case "Emscripten keeps its integrated Dawn while selecting the same static-plugin ABI"
+_webgpu_cache_fixture ON
+sed -i 's/onnxruntime_USE_EXTERNAL_DAWN:BOOL=ON/onnxruntime_USE_EXTERNAL_DAWN:BOOL=OFF/' "${_wgp_build}/CMakeCache.txt"
+t_assert_ok assert_onnx_webgpu_static_plugin "${_wgp_build}" ON OFF
+t_assert_fails assert_onnx_webgpu_static_plugin "${_wgp_build}" ON ON
+t_assert_rc 2 assert_onnx_webgpu_static_plugin "${_wgp_build}" OFF ON
+t_case "the NVIDIA build runs the configured-cache verdict"
+t_assert_contains "$(cat "${ORT}/30-build-native-nvidia.sh")" 'assert_onnx_webgpu_static_plugin "${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" || exit 1'
+t_case "the ORT bootstrap requires the shared configured-entry reader before build work"
+_wgp_preamble="$(sed -n '/^for _req_fn in /,/^unset _req_fn$/p' "${COMMON}")"
+t_assert_contains "${_wgp_preamble}" 'cmake_assert_configured_entries'
+_webgpu_bootstrap_probe() {
+  MISSING_HELPER="$1" bash -c '
+    command() { if [ "${2:-}" = "${MISSING_HELPER}" ]; then return 1; fi; return 0; }
+    eval "$1"
+    printf "bootstrap-complete\n"' _ "${_wgp_preamble}"
+}
+t_assert_ok _webgpu_bootstrap_probe none
+t_assert_fails _webgpu_bootstrap_probe cmake_assert_configured_entries
 t_summary

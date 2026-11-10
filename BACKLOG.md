@@ -1070,8 +1070,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `onnxruntime_WEBGPU_STATIC_PLUGIN` (re-keys every CPU ORT build, so every media stage on three arches: its own
       chain), and detector parity on `TensorRTPluginExecutionProvider` on a card.
       **Source preparation 2026-11-10:** native CPU/NVIDIA and their free-threaded wheels select the pinned
-      `--use_webgpu static_plugin` mode with external Dawn; configured flags, runtime registration and the
-      separate three-architecture chain/acceptance are still open. Before that media rebuild, preserve the
+      `--use_webgpu static_plugin` mode with external Dawn and require the actual configured flags. Asyncify
+      and JSPI select the same plugin ABI with Emscripten's integrated Dawn, check their configured modes
+      and use shared artifact cache epoch `-wgpu3`. These are source/fixture gates; actual builds and runtime
+      registration for native and Python linker products, all affected default/ROCm/NVIDIA media stages
+      and new acceptance are still open. Both enabled WASM flavors need real artifact proof. Before that
+      media rebuild, preserve the
       OpenCV FindCUDA cache repair: its bounded SBSA replay records twelve forced-repeat hits and no misses;
       the complete stage, non-x86 Torch wrapper policy and consumer Rust cache wiring remain follow-ups
       ([cache scope](docs/build-cache-tiers.md#nvcc--hipcc)).

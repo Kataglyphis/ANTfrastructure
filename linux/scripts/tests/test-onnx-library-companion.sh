@@ -8,14 +8,16 @@ t_case 'ORT bootstrap refuses a missing shared library action'
 output=''; status=0
 t_capture_command output status bash -eu -c '
   for name in info warn err arch_oci cross_build_enabled host_python_bin host_python_major_minor resolve_qnn_sdk stage_qnn_runtime; do eval "$name() { :; }"; done
+  source "${!#}"
   eval "$1"
-' _ "$guard"
+' _ "$guard" "${_T_SCRIPTS}/01-core/cmake-cache-linker.sh"
 t_assert_eq 1 "$status"
 t_assert_contains "$output" 'required helper apply_shared_library_action is undefined'
 t_case 'ORT bootstrap accepts the actual copied companion'
 t_assert_eq 0 "$(t_rc bash -eu -c '
   for name in info warn err arch_oci cross_build_enabled host_python_bin host_python_major_minor resolve_qnn_sdk stage_qnn_runtime; do eval "$name() { :; }"; done
   source "$2"
+  source "${!#}"
   eval "$1"
-' _ "$guard" "${_T_SCRIPTS}/01-core/elf-strip.sh")"
+' _ "$guard" "${_T_SCRIPTS}/01-core/elf-strip.sh" "${_T_SCRIPTS}/01-core/cmake-cache-linker.sh")"
 t_summary
