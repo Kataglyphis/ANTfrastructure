@@ -87,6 +87,8 @@ failures stop promotion.
 [`linux-arm64-image-acceptance.yml`](../.github/workflows/linux-arm64-image-acceptance.yml)
 runs the complete contract on `ubuntu-26.04-arm`. Apply `native-image-proof` to a
 same-repository pull request that changes this lane, its driver or its proof configuration.
+Remove the label after the job starts when later PR updates should not queue another complete
+proof; removing it leaves the running attempt active.
 After the workflow is on the default branch, `workflow_dispatch` runs that branch's
 versioned configuration too. The workflow has read-only repository permissions and
 publishes evidence; tag promotion remains the separate receipt-gated command above.
@@ -102,7 +104,7 @@ The normal host prologue retains its disk admission and cleanup policy.
 The native runner must still execute all six consumers successfully. Unit fixtures and
 mutation controls exercise input, receipt and cleanup refusal; they do not prove real ARM
 execution, model inference or a working container image. The failed qemu-user attempt
-below remains failed until a compatible execution environment supplies a new passed receipt.
+below remains preserved as failed; each native attempt supplies its own original receipt.
 
 Each attempt's `native-image-proof-candidate-<run>-<attempt>` artifact preserves the
 original receipt, platform plan, actual consumer logs and `native-job.json` with host/source bindings, log hashes and a checked final engine query.
@@ -172,21 +174,43 @@ Its independently matched remote wrapper children are:
 All six amd64 consumers passed, with the receipt at
 `logs/image-acceptance/20261110-013045-b0a6f8cb/receipt.json`.
 An independent audit matched its log and lock hashes, checked cleanup records and remote
-index children, then found every exact test container name absent. The unchanged ARM attempt
+index children, then found every exact test container name absent. The initial ARM attempt
 on this same immutable index compiled its first consumer, then failed GoogleTest discovery
-with LeakSanitizer's QEMU fatal error at 2026-11-10T05:58Z. The failed receipt is
-`logs/image-acceptance/20261110-013045-b0a6f8cb-arm64/receipt.json`; no consumer tests ran.
-A compatible ARM execution host and a passed ARM receipt are still required before public
-`:latest-nvidia` promotion; [diagnosis](failure-modes.md#arm64-ctest-discovery-ends-with-leaksanitizer-has-encountered-a-fatal-error).
-These image and consumer checks establish no
-physical NVIDIA inference. Raw proof, full stdout and actual test summaries are retained in
-`logs/test-results/plugin-proof-nvidia-runtime-9f4e6bd2/`.
+with LeakSanitizer's QEMU fatal error at 2026-11-10T05:58Z. Its failed receipt remains
+`logs/image-acceptance/20261110-013045-b0a6f8cb-arm64/receipt.json`;
+[diagnosis](failure-modes.md#arm64-ctest-discovery-ends-with-leaksanitizer-has-encountered-a-fatal-error).
 
-The default plan tests `linux/amd64`. The existing multi-architecture image gates still
-own the other architectures; this receipt does not claim new consumer coverage there.
-The scripts run consumer code, without executing GitHub's workflow/action runners, so
-the receipt identifies the pinned scripts actually used. It is a local release
-artifact, not a signed attestation or proof of physical camera/GPU behavior.
+[Native ARM run 42781812889, attempt 1](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/42781812889/job/129713397881) then passed all six consumers
+on `ubuntu-26.04-arm` with the same image, clean producer hub and frozen source snapshots.
+The platform plan preserves every original command and timeout. Its original receipt is
+`logs/image-acceptance/20261110-013045-b0a6f8cb-arm64-native-42781812889-1/receipt.json`,
+SHA-256 `273d04ddb2ad00c0aeada936a969682cb85c14dcaaa002be5b520a08b6469359`. The downloaded artifact
+`native-image-proof-candidate-42781812889-1` (ID 13747964666) matches
+`sha256:065c3aee5798015d690ff29cbe69215515a585c0af45ca690484bf90dc6ecf1d`. The local receipt copy and logs retain
+their original bytes; use `native-job.json` for artifact-relative paths.
+
+The native logs prove 215 C++ tests with no skips and observed AddressSanitizer compile flags,
+875 Rust tests with none ignored or filtered, and detector parity checks in both consumers.
+DNNL is explicitly classified as unavailable on ARM. Flutter reports 164 ANThology tests,
+267 OmniAccelerANT tests plus four native-plugin tests, and 122 jotrockenmitlocken tests.
+WebDavClient's stable Python has 49 passed / two skipped and a passed benchmark; its advisory
+free-threaded mode has 50 passed / one skipped and a passed benchmark. These retain the
+original contract, including advisory profiling. Source/lock/log bindings, twelve checked
+cleanup records and the final successful empty remote engine query were audited. That
+recorded query does not establish independent host-process reaping.
+
+After both platform receipts passed, the canonical promotion moved `:latest-nvidia` at
+2026-11-10T09:09:51Z. Independent public readback matched the exact index and both wrapper
+children with amd64 and arm64 preserved. Physical NVIDIA inference remains open.
+Raw producer evidence stays in `logs/test-results/plugin-proof-nvidia-runtime-9f4e6bd2/`;
+native archive, original logs, receipt audits and publication evidence are retained in
+`logs/test-results/plugin-proof-nvidia-native-ci-route-20261110/`.
+
+The default plan tests `linux/amd64`; native CI preserves that contract for `linux/arm64`.
+The existing image gates own other architectures; these receipts add no riscv64 consumer claim.
+Each receipt identifies the tested platform and pinned consumer scripts. Coverage of each
+consumer's full CI workflow, packaging, camera behavior and physical GPU inference requires
+separate checks. The receipts remain unsigned local release evidence.
 
 `tests/test-image-acceptance.sh` exercises incomplete, failed and mismatched receipts,
 timeouts, exact index promotion and replay lock validation. Its registry calls are

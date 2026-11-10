@@ -1068,9 +1068,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ([accelerator page](docs/linux-accelerator-images.md#the-cuda-plugin-ep),
       [contract](docs/consumer-image-contract.md#nvidias-plugin-tensorrt-ep)). **Open on Linux:** the WebGPU EP as
       `onnxruntime_WEBGPU_STATIC_PLUGIN` (re-keys every CPU ORT build, so every media stage on three arches: its own
-      chain), the nvidia proof chain, and detector parity on `TensorRTPluginExecutionProvider` on a card.
+      chain), and detector parity on `TensorRTPluginExecutionProvider` on a card.
       Windows is this hub's Windows session. DirectML has no plugin and stays. The evidence, with links to every
       plugin: the 2026-11-08 deep research.
+      **Original handoff:** `rebuild-sequence-37` passed amd64 media/android, then exited 1 on
+      arm64 at 2026-11-09T08:04:35Z; the repaired recovery below supersedes that failed run.
       **Linux proof 2026-11-10 (hub `9f4e6bd2`):** the complete isolated preflight and all
       required exact-source CI passed; source and cleanup evidence is retained in
       `logs/test-results/plugin-proof-nvidia-arm64-media-2/source-proof.json`.
@@ -1079,7 +1081,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       QNN's module/export/HTP checks and the TensorRT plugin checks passed; the compiled
       free-threaded module also loaded under QEMU with the GIL disabled.
       Both local runtime wrappers, shipped-content gates and runtime-image smokes passed
-      in `20261110-013045-b0a6f8cb`. The published candidate index is
+      in `20261110-013045-b0a6f8cb`. The accepted index, now `:latest-nvidia`, is
       `sha256:d2df9e170fadc7f2abbc22e004b615a7f8a4f41ee9c810c4f06ad7229ecace70`;
       its remote wrappers are amd64
       `sha256:3b9cf1c6a211d5b6b9e317da4081e3510b963fd1fb94cd33326716b307b73268`
@@ -1089,8 +1091,17 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       The unchanged ARM check compiled its first consumer, then failed GoogleTest discovery
       at 05:58Z with LeakSanitizer's fatal QEMU error; no consumer tests ran. Its failed receipt
       is `logs/image-acceptance/20261110-013045-b0a6f8cb-arm64/receipt.json`.
-      **Still required:** unchanged ARM tests on a compatible execution host, the passed arm64
-      receipt and normal public promotion/readback; [diagnosis](docs/failure-modes.md#arm64-ctest-discovery-ends-with-leaksanitizer-has-encountered-a-fatal-error).
+      **Native ARM proof:** [run 42781812889, attempt 1](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/42781812889/job/129713397881) passed all six consumers
+      on `ubuntu-26.04-arm` using the same immutable image, producer hub and complete original plan.
+      The preserved original receipt is
+      `logs/image-acceptance/20261110-013045-b0a6f8cb-arm64-native-42781812889-1/receipt.json`
+      (SHA-256 `273d04ddb2ad00c0aeada936a969682cb85c14dcaaa002be5b520a08b6469359`). Artifact 13747964666
+      matches `sha256:065c3aee5798015d690ff29cbe69215515a585c0af45ca690484bf90dc6ecf1d`; source snapshots, log/lock hashes,
+      all twelve checked cleanup records and the final empty remote engine query were audited.
+      Actual logs prove 215 C++ tests with no skips, 875 Rust tests with none ignored/filtered,
+      all three Flutter consumers and the WebDavClient contract. Canonical promotion and
+      independent public readback at 2026-11-10T09:09:51Z preserve amd64 and arm64.
+      The failed QEMU receipt remains diagnostic evidence; [diagnosis](docs/failure-modes.md#arm64-ctest-discovery-ends-with-leaksanitizer-has-encountered-a-fatal-error).
       No physical GPU inference is established. The earlier failures and compiler/cache
       regression controls remain in CHANGELOG and `logs/test-results/plugin-proof-nvidia-arm64-media-1/`.
       **Windows, owner 2026-11-08 ("Windows sofort komplett"): steps 2 and 4 landed in source together.** CUDA is the

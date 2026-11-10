@@ -64,7 +64,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    the target's runtime platforms; an early shell-gate override cannot bypass acceptance.
    Native consumer CI pins the image, exact clean tooling and all recursive source snapshots;
    its plan changes only platform. Require a matching host and checked cleanup; job metadata
-   never replaces the original receipt or proves physical GPU inference.
+   never replaces the original receipt or proves physical GPU inference. Keep transported receipts
+   byte-identical and map downloaded logs through their artifact-relative metadata paths.
    `--gates-only` exits before builds, candidate creation and promotion, including when
    combined with push flags; it provides no consumer acceptance receipt.
    Linux acceptance restores disposable rootful checkout ownership on every exit;

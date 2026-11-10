@@ -15,30 +15,39 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
-## 2026-11-10 — publish NVIDIA candidates and verify amd64 consumers
+## 2026-11-10 — publish NVIDIA plugin images after amd64 and native arm64 acceptance
 
 - Runtime run `20261110-013045-b0a6f8cb` completed from hub
   `9f4e6bd2c0d416057224c585d5a34b7abbdb813d` after both wrapper, content and
-  runtime-image gates passed. The published index is
+  runtime-image gates passed. The accepted index, now `:latest-nvidia`, is
   `sha256:d2df9e170fadc7f2abbc22e004b615a7f8a4f41ee9c810c4f06ad7229ecace70`;
   exact remote wrapper children are amd64
   `sha256:3b9cf1c6a211d5b6b9e317da4081e3510b963fd1fb94cd33326716b307b73268`
   and arm64 `sha256:33b92fa2e4e1f926fbdbd09e446ed4449f51b41376daf9ad2cf815c036565af7`.
 - All six amd64 consumers passed in
   `logs/image-acceptance/20261110-013045-b0a6f8cb/receipt.json`; independent checks
-  matched log/lock hashes, cleanup records and index children. The unchanged ARM
-  attempt on that same immutable index compiled its first consumer, then failed
-  GoogleTest discovery with LeakSanitizer's QEMU fatal error at 05:58Z. The failed
-  receipt is `logs/image-acceptance/20261110-013045-b0a6f8cb-arm64/receipt.json`;
-  a compatible ARM host and passed receipt remain required before normal public
-  `:latest-nvidia` promotion/readback. Full raw
-  stdout, terminal/idle proof and actual test summaries are retained under
-  `logs/test-results/plugin-proof-nvidia-runtime-9f4e6bd2/`.
-- Added an opt-in native ARM consumer CI lane with a versioned proof configuration.
-  It uses the same immutable image and frozen source snapshots with the exact clean
-  tooling commit, preserves every original command and timeout, and retains failed
-  receipts and cleanup evidence. Local controls guard those bindings; an actual
-  passed native receipt is still required before promotion.
+  matched log/lock hashes, cleanup records and both wrapper children. The first ARM
+  attempt failed GoogleTest discovery under QEMU at 05:58Z; its original failed receipt
+  `logs/image-acceptance/20261110-013045-b0a6f8cb-arm64/receipt.json` stays preserved.
+- Native ARM [run 42781812889, attempt 1](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/42781812889/job/129713397881) passed the complete six-consumer
+  contract on the same immutable image and frozen source snapshots, with every command,
+  timeout and sanitizer policy retained. The original receipt is
+  `logs/image-acceptance/20261110-013045-b0a6f8cb-arm64-native-42781812889-1/receipt.json`;
+  SHA-256 `273d04ddb2ad00c0aeada936a969682cb85c14dcaaa002be5b520a08b6469359`. The downloaded artifact
+  13747964666 matches `sha256:065c3aee5798015d690ff29cbe69215515a585c0af45ca690484bf90dc6ecf1d`.
+  Actual logs prove 215 C++ tests with no skips, 875 Rust tests with none ignored/filtered,
+  all Flutter consumers and the stable WebDavClient tests/benchmark; experimental Python
+  and profiling retain the existing advisory policy. Every log/lock binding, twelve
+  cleanup records and the successful empty remote engine query were checked.
+- Canonical promotion completed at 2026-11-10T09:09:51Z; independent public readback binds the
+  accepted index and both wrapper children while preserving amd64 and arm64.
+- Added the opt-in native ARM CI lane and versioned proof configuration. Driver head
+  `3cab7a83734b0aeb86600141149f1088f5697bf7` passed all five source CI workflows; its PR merge has the identical
+  Git tree. Actual logs prove 550 suites / 31,339 assertions and all
+  4,688 distinct mutations without omissions, duplicates, skips or delegation.
+  The Windows archive digest, 3,027 passing tests and all 15 coverage floors were verified.
+  The [proof guide](docs/image-acceptance.md#native-ci-proofs) retains original receipt bytes,
+  maps downloaded logs and explains removing the start label before later PR updates.
 - Cache documentation separates proved ORT CUDA subcommand hits from the uncached
   outer nvcc driver, OpenCV classic FindCUDA's direct nvcc route, non-x86 Torch's
   direct compiler selection and the shipped image's empty Rust wrapper. The latter
