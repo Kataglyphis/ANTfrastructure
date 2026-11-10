@@ -27,6 +27,10 @@ See [MSYS2's symlink modes](https://www.msys2.org/docs/symlinks/).
 
 ## Preserved local proof workflows
 
+Compiler-tool fixtures normalize generated source/output basenames, independently of the temporary root.
+`test-compiler-tool-toggles.sh` keeps a synthetic path-with-spaces control outside `/tmp`; its mutation
+restores the old hard-coded prefix and must fail. This tests the argument recorder, not real cache hits.
+
 Regular operational drivers live under `linux/scripts/` and are versioned with their tests.
 Reuse these tools instead of reconstructing a scratch script on each session. Keep each run's
 inputs and evidence under ignored `logs/`; choose a new directory for a new attempt.
@@ -1065,7 +1069,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4843 entries** over **636 distinct test commands**; both digits are
+manifest holds **4844 entries** over **636 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

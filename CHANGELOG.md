@@ -15,6 +15,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-10 — keep compiler argument fixtures portable across temporary roots
+
+- The optional compiler-tool fixture now normalizes probe filenames independently of `/tmp`,
+  so ordinary pre-push checks also work under a task-owned `/var/tmp` root. A synthetic
+  path containing spaces and its mutation preserve this without depending on the host layout.
+- The two previously blocked ORT-cache mutations still test the same producer behavior;
+  no cache policy, quality threshold or build behavior changes.
+
 ## 2026-11-10 — ship and check a native WebGPU C API registration probe
 
 - CPU and NVIDIA build a versioned executable using their core's configured compiler, toolchain,

@@ -38759,5 +38759,13 @@
   "replace": "required; CMAKE_COMPILER_CACHE_PIN=''",
   "test": "bash linux/scripts/tests/test-onnx-webgpu-native-build.sh",
   "why": "The canonical cache callback must write the producer helper's local output slot without changing the caller's absent, empty or existing binding."
+ },
+ {
+  "id": "lib.compiler-tool-fixture-custom-temp-root",
+  "target": "linux/scripts/tests/test-compiler-tool-toggles.sh",
+  "find": "case \"$arg\" in */probe.c) arg=SOURCE ;; */probe) arg=OUTPUT ;; esac",
+  "replace": "case \"$arg\" in /tmp/*/probe.c) arg=SOURCE ;; /tmp/*/probe) arg=OUTPUT ;; esac",
+  "test": "bash linux/scripts/tests/test-compiler-tool-toggles.sh",
+  "why": "The compiler spy must normalize generated source and output argv under arbitrary temporary roots, including paths containing spaces."
  }
 ]
