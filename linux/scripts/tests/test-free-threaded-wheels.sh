@@ -385,6 +385,7 @@ _oft_run() {
     host_python_bin() { echo /opt/python/.venv/bin/python; }
     retag_directory_wheels() { echo "RETAG $*" >> "${OFT_LOG}"; }
     assert_onnx_webgpu_static_plugin() { printf "WEBGPU-GATE <%s>\n" "$1" >> "${OFT_LOG}"; return "${OFT_GATE_RC:-0}"; }
+    record_onnx_webgpu_build_products() { printf "BUILD-PROOF <%s> <%s> <%s> <%s>\n" "$@" >> "${OFT_LOG}"; return "${OFT_PROOF_RC:-0}"; }
     eval "${FN}"
     _ONNX_LIB_DIR="${ROOT}/a/b/c/lib" ORT_SRC_DIR="${ROOT}/ort"
     b="$1" o="$2"; shift 2; GIL_ARGS=("$@")
@@ -407,6 +408,7 @@ for _fl in nv wg; do
   t_assert_contains "${_out}" "ENV ${_ftpy} ${_ftpy} ${_ftpy} ${_ftpy%/python}"
   t_assert_contains "${_out}" "START onnxruntime ${_oft}/tmp/onnxruntime-ft-venv"
   t_assert_contains "${_out}" "STORE ${_b}/Release/dist /out/gpu/wheels-free-threaded"
+  t_assert_contains "${_out}" "BUILD-PROOF <${_b}/Release> </out/gpu> <free-threaded> <GIL_ARGS>"
   t_assert_fails test -e "${_ftpy%/bin/python}"
   unset -n _ga
 done
@@ -421,6 +423,12 @@ t_assert_eq "" "$(grep '^STORE' <<<"${_out}" || true)" "a failed pass stores not
 t_assert_eq "" "$(grep '^WEBGPU-GATE' <<<"${_out}" || true)" "a failed build must not be replaced by a successful cache verdict"
 _out="$(_oft_run /ort/build_native /out/gpu "${_wg[@]:0:${#_wg[@]}-1}")"
 t_assert_eq "RC=0" "${_out}" "a cross build without --build_wheel has no GIL wheel to twin, and runs no pass"
+
+t_case "the free-threaded pass cannot succeed when its bound-product proof fails"
+_out="$(OFT_PROOF_RC=19 _oft_run /ort/build_native_gpu /out/gpu "${_nv[@]}")"
+t_assert_contains "${_out}" 'BUILD-PROOF </ort/build_native_gpu/Release> </out/gpu> <free-threaded> <GIL_ARGS>'
+t_assert_contains "${_out}" 'ERR ONNX Runtime: the free-threaded WebGPU build proof failed'
+t_assert_contains "${_out}" 'RC=1'
 
 t_case "wiring: the GIL store is verified before the twins are touched, and only it is installed"
 _line() { grep -n -e "$1" "${MEDIA}" | cut -d: -f1 | head -n 1; }

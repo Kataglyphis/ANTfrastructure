@@ -15,6 +15,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-10 — bind WebGPU build modes to each native and Python product
+
+- CPU and NVIDIA record native core/GIL bytes before free-threaded reconfiguration; the FT pass records
+  its own wheel extension after the configured verdict and successful store. The preserved Python tool
+  writes `ort-webgpu-build.json` with source identity, mode flags, configuration digest and product hashes.
+- Missing/ambiguous/non-ELF products, duplicate or mistyped flags, another FT source/mode and changed
+  earlier GIL products fail the build. Explicit no-wheel builds retain their native-only path; publication
+  is atomic and failures stay fatal. Functional fixtures exercise both producer tails and the shared recorder.
+- These records precede stripping/auditwheel repair. Checked delivery mappings and actual factory
+  registration remain open, together with the media/acceptance matrix and CON231 consumer parity.
+
 ## 2026-11-10 — gate configured WebGPU modes on native and WASM builds
 
 - CPU, NVIDIA and free-threaded ORT builds require the actual WebGPU/static-plugin/EP-adapter/Dawn flags;

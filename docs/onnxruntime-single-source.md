@@ -612,3 +612,17 @@ actual native core and each Python extension, then prove factory registration
 through the environment that owns that product. Provider advertisement alone is
 not adapter availability or inference. Linux configured gates are implemented;
 the corresponding runtime/product proofs remain open under CON233.
+
+Native build prefixes now preserve `ort-webgpu-build.json` with separate native,
+GIL and FT product hashes taken against each phase's checked configuration.
+The FT receipt refuses changed GIL products or another source/mode. These records
+precede wheel repair: stripping/auditwheel delivery mapping, actual factory
+registration and the complete image matrix remain open. Do not treat their
+presence as a runtime PASS.
+
+Pinned Python `get_available_providers()` also enumerates environment devices
+([the pinned binding](https://github.com/microsoft/onnxruntime/blob/v1.31.1/onnxruntime/python/onnxruntime_pybind_module.cc)).
+It cannot distinguish a missing static factory from a registered factory with no
+usable adapter. Its unregistration API initializes `GetEnv()` without requiring
+that enumeration. Both legacy internal WebGPU and the static plugin register the
+same name; unregistration alone still needs the configured product binding above.

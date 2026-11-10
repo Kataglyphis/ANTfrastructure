@@ -1642,6 +1642,22 @@ The shared CMake reader keeps the launcher's existing first-value policy, while
 Boolean feature checks require BOOL entries and reject duplicate values. A missing
 reader export fails during ORT bootstrap before compilation.
 
+`record_onnx_webgpu_build_products` invokes the preserved
+`build/onnxruntime/build/lib/ort-webgpu-build-proof.py` after native/GIL output is
+final, before the warm tree is reconfigured for free-threading. The FT pass records
+its own extension after its configured verdict and wheel store succeed. Each
+prefix carries `ort-webgpu-build.json`: source ref/revision, per-phase configured
+flags and cache digest, plus separate SHA256 values for the native core and each
+wheel's Python extension. Missing, duplicate, linked or non-ELF products fail;
+an FT phase must match its GIL source/mode and retain its earlier product bytes.
+An explicit build without a Python wheel records the native core alone.
+
+These are **pre-repair build receipts**. Cross-wheel stripping and native
+`auditwheel` repair can change Python bytes, so final delivery must retain a
+checked mapping through those rewrites before using a receipt at runtime.
+The new receipts do not yet supply that mapping or prove factory registration.
+Atomic publication failures retain the prior receipt and fail the build.
+
 The C++ WASM WebGPU Asyncify and JSPI flavors also select `static_plugin` and
 check the first three flags ON, with external Dawn OFF for Emscripten's integrated
 Dawn. They use reduced operators rather than the minimal build that pinned ORT

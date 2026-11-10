@@ -506,7 +506,24 @@ onnx_build_free_threaded_wheel() {
     retag_directory_wheels "${build_dir}/${config}/dist" "*-cp3*t" "${FT_TARGET_PLATFORM_TAG}" "${ftpy}"
   fi
   ft_twin_store_built "${build_dir}/${config}/dist" "${output_dir}/wheels-free-threaded" || err "ONNX Runtime: no proved free-threaded twin (see above)"
+  record_onnx_webgpu_build_products "${build_dir}/${config}" "${output_dir}" free-threaded "$4" \
+    || err "ONNX Runtime: the free-threaded WebGPU build proof failed"
   rm -rf "${ftpy%/bin/python}"
+}
+
+# Wheel repair changes bytes later; this receipt preserves each product at its checked build boundary.
+record_onnx_webgpu_build_products() {
+  local config_dir="$1" output_dir="$2" phase="$3" expected=OFF revision option has_wheel=0
+  local -n _owbp_args="$4"
+  local -a _owbp_options=()
+  if onnx_webgpu_enabled_for_target; then expected=ON; fi
+  assert_onnx_webgpu_static_plugin "${config_dir}" || return $?
+  for option in "${_owbp_args[@]}"; do if [ "${option}" = --build_wheel ]; then has_wheel=1; fi; done
+  if [ "${phase}:${has_wheel}" = gil:0 ]; then _owbp_options+=(--without-wheel); fi
+  revision="$(git -C "${ORT_SRC_DIR}" rev-parse --verify HEAD)" || return $?
+  python3 "${_ONNX_LIB_DIR}/ort-webgpu-build-proof.py" --prefix "${output_dir}" --cmake-dir "${config_dir}" \
+    --phase "${phase}" --expected "${expected}" --source-ref "${ORT_VERSION}" --source-revision "${revision}" \
+    "${_owbp_options[@]}"
 }
 
 # report_onnx_build_output <headline> <output_dir>: advisory only, since a stage may never fill its wheels dir.

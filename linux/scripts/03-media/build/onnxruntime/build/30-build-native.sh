@@ -132,5 +132,8 @@ fi
 echo "ONNX Runtime native build verified:"
 ls -la "${lib_dir}"
 
+record_onnx_webgpu_build_products "${NATIVE_CPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" "${NATIVE_CPU_OUTPUT_DIR}" gil BUILD_ARGS \
+  || err "ONNX Runtime: the native/GIL WebGPU build proof failed"
+
 # Last, so every GIL output above is final before the tree is reconfigured.
 onnx_build_free_threaded_wheel "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_CPU_OUTPUT_DIR}" BUILD_ARGS

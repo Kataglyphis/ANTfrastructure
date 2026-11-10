@@ -153,5 +153,8 @@ finalize_onnx_native_output "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${
 assert_onnx_cuda_plugin_ep "${NATIVE_GPU_OUTPUT_DIR}"
 report_onnx_build_output "GPU build complete" "${NATIVE_GPU_OUTPUT_DIR}"
 
+record_onnx_webgpu_build_products "${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" "${NATIVE_GPU_OUTPUT_DIR}" gil BUILD_ARGS \
+  || err "ONNX Runtime: the native/GIL WebGPU build proof failed"
+
 # Last, so every GIL output above is final before the tree is reconfigured.
 onnx_build_free_threaded_wheel "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_GPU_OUTPUT_DIR}" BUILD_ARGS

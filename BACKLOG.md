@@ -1074,7 +1074,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       and JSPI select the same plugin ABI with Emscripten's integrated Dawn, check their configured modes
       and use shared artifact cache epoch `-wgpu3`. These are source/fixture gates; actual builds and runtime
       registration for native and Python linker products, all affected default/ROCm/NVIDIA media stages
-      and new acceptance are still open. Both enabled WASM flavors need real artifact proof. Before that
+      and new acceptance are still open. Native/GIL and FT build boundaries now preserve separate
+      configured-mode/product hashes in `ort-webgpu-build.json`; these precede wheel repair, so delivery
+      rewrite mapping and runtime factory proof remain open. Both enabled WASM flavors need real artifact proof. Before that
       media rebuild, preserve the
       OpenCV FindCUDA cache repair: its bounded SBSA replay records twelve forced-repeat hits and no misses;
       the complete stage, non-x86 Torch wrapper policy and consumer Rust cache wiring remain follow-ups

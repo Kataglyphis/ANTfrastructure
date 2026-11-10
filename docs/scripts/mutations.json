@@ -37823,5 +37823,189 @@
   "replace": "  local mode=\"${_cce_mode}\"\n  case \"${_cce_mode}\" in first) _cce_pattern='[A-Z]*' ;; bool) _cce_pattern=BOOL ;; *) return 2 ;; esac",
   "test": "bash linux/scripts/tests/test-cmake-compiler-cache-pin.sh",
   "why": "A shared CMake reader must not hide caller configuration observed by a supplied shell tool wrapper."
+ },
+ {
+  "id": "lib.webgpu-build-proof-typed-mode",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "if entries != [f\"{name}:BOOL={expected}\"]:",
+  "replace": "if not entries:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Missing, duplicate, mistyped or disabled entries cannot bind a selected native mode."
+ },
+ {
+  "id": "lib.webgpu-build-proof-all-flags",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "\"onnxruntime_USE_EP_API_ADAPTERS\",",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "The adapter flag belongs to the mode proof independently of the WebGPU enable flag."
+ },
+ {
+  "id": "lib.webgpu-build-proof-elf-products",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "if header != b\"\\x7fELF\":",
+  "replace": "if False and header != b\"\\x7fELF\":",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Text or empty products cannot become valid native or Python build receipts."
+ },
+ {
+  "id": "lib.webgpu-build-proof-prefix-boundary",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "relative = library.relative_to(prefix.resolve())",
+  "replace": "relative = Path(library.name)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "A symlink to a foreign core must not bind that file to this prefix."
+ },
+ {
+  "id": "lib.webgpu-build-proof-native-hash",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "return {\"kind\": \"native-core\", \"path\": relative.as_posix(), \"sha256\": digest}",
+  "replace": "return {\"kind\": \"native-core\", \"path\": relative.as_posix(), \"sha256\": \"0\" * 64}",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "The core digest must describe its actual bytes."
+ },
+ {
+  "id": "lib.webgpu-build-proof-python-hash",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "\"member\": entry.filename, \"sha256\": digest}]",
+  "replace": "\"member\": entry.filename, \"sha256\": \"0\" * 64}]",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Native core hashes cannot stand in for separately linked Python extensions."
+ },
+ {
+  "id": "lib.webgpu-build-proof-unique-wheel",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "if len(wheels) != 1:",
+  "replace": "if len(wheels) == 0:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Ambiguous staged ORT wheels cannot select an arbitrary product."
+ },
+ {
+  "id": "lib.webgpu-build-proof-unique-extension",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "if len(entries) != 1:",
+  "replace": "if len(entries) == 0:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Duplicate wheel members cannot choose arbitrary extension bytes."
+ },
+ {
+  "id": "lib.webgpu-build-proof-wheel-abi",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "if free_threaded != (phase == \"free-threaded\"):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "A GIL wheel cannot be recorded as the FT linker product or the reverse."
+ },
+ {
+  "id": "lib.webgpu-build-proof-explicit-no-wheel",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "if phase != \"gil\" or wheels:",
+  "replace": "if phase != \"gil\":",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "An explicit no-wheel build cannot silently discard a staged Python product."
+ },
+ {
+  "id": "lib.webgpu-build-proof-ft-source",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "previous.get(\"source\") != source",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "FT must extend the same source revision and ref as the native/GIL build."
+ },
+ {
+  "id": "lib.webgpu-build-proof-ft-mode",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "phases[\"gil\"].get(\"configured_flags\") != flags",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "FT must not silently change the GIL WebGPU selection."
+ },
+ {
+  "id": "lib.webgpu-build-proof-ft-once",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "set(phases) != {\"gil\"}",
+  "replace": "\"gil\" not in phases",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "A repeated FT phase cannot overwrite an earlier bound product."
+ },
+ {
+  "id": "lib.webgpu-build-proof-retained-gil-bytes",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "if phases[\"gil\"].get(\"products\") != expected_products:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Native/GIL products must retain the bytes recorded before FT reconfiguration."
+ },
+ {
+  "id": "lib.webgpu-build-proof-source-identity",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "not re.fullmatch(r\"[a-f0-9]{40}\", args.source_revision)",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "A short or malformed Git identity cannot become a source receipt."
+ },
+ {
+  "id": "lib.webgpu-build-proof-native-product-required",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py",
+  "find": "products.insert(0, native_product(args.prefix))",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "A GIL build receipt also binds the separately shipped native core."
+ },
+ {
+  "id": "lib.webgpu-build-proof-cpu-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh",
+  "find": "record_onnx_webgpu_build_products \"${NATIVE_CPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}\" \"${NATIVE_CPU_OUTPUT_DIR}\" gil BUILD_ARGS \\\n  || err \"ONNX Runtime: the native/GIL WebGPU build proof failed\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Both production tails must bind GIL outputs before the FT pass changes their configured tree."
+ },
+ {
+  "id": "lib.webgpu-build-proof-nvidia-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
+  "find": "record_onnx_webgpu_build_products \"${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}\" \"${NATIVE_GPU_OUTPUT_DIR}\" gil BUILD_ARGS \\\n  || err \"ONNX Runtime: the native/GIL WebGPU build proof failed\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "Both production tails must bind GIL outputs before the FT pass changes their configured tree."
+ },
+ {
+  "id": "lib.webgpu-build-proof-ft-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "  record_onnx_webgpu_build_products \"${build_dir}/${config}\" \"${output_dir}\" free-threaded \"$4\" \\\n    || err \"ONNX Runtime: the free-threaded WebGPU build proof failed\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "The real FT pass must record its own final wheel."
+ },
+ {
+  "id": "lib.webgpu-build-proof-ft-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "|| err \"ONNX Runtime: the free-threaded WebGPU build proof failed\"",
+  "replace": "|| true",
+  "test": "bash linux/scripts/tests/test-free-threaded-wheels.sh",
+  "why": "An unsuccessful FT receipt cannot report a successful build."
+ },
+ {
+  "id": "lib.webgpu-build-proof-wrapper-mode-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "assert_onnx_webgpu_static_plugin \"${config_dir}\" || return $?",
+  "replace": "assert_onnx_webgpu_static_plugin \"${config_dir}\" || true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "The shared recorder must retain the configured gate failure before writing any receipt."
+ },
+ {
+  "id": "lib.webgpu-build-proof-wrapper-git-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "revision=\"$(git -C \"${ORT_SRC_DIR}\" rev-parse --verify HEAD)\" || return $?",
+  "replace": "revision=\"$(git -C \"${ORT_SRC_DIR}\" rev-parse --verify HEAD)\" || true",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "A failed source lookup retains its raw status instead of becoming another command result."
+ },
+ {
+  "id": "lib.webgpu-build-proof-required-companion",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "\"${_owbp_options[@]}\"\n",
+  "replace": "\"${_owbp_options[@]}\" || return 0\n",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-build-proof.sh",
+  "why": "A missing recorder or failed publication cannot fall back to success."
  }
 ]
