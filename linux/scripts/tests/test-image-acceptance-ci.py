@@ -49,6 +49,7 @@ class NativeProofTests(unittest.TestCase):
         self.engine_result = subprocess.CompletedProcess(["fixture-engine"], 0, "", "")
         self.engine_probe = self.enterContext(patch.object(module.subprocess, "run", return_value=self.engine_result))
         self.enterContext(patch.object(module, "acceptance_api", return_value=self.api))
+        self.enterContext(patch.object(module.sys, "platform", "linux"))
         self.enterContext(patch.object(module.platform, "machine", return_value="aarch64"))
 
     def write_proof(self, proof: dict[str, Any]) -> None:
@@ -128,7 +129,7 @@ class NativeProofTests(unittest.TestCase):
         self.engine_probe.assert_not_called()
 
     def test_emulated_or_wrong_os_host_refuses_before_allocating_output(self) -> None:
-        for system, machine in (("linux", "x86_64"), ("darwin", "aarch64"), ("linux", "unknown")):
+        for system, machine in (("linux", "x86_64"), ("darwin", "aarch64"), ("win32", "aarch64"), ("linux", "unknown")):
             with self.subTest(system=system, machine=machine), patch.object(module.sys, "platform", system), patch.object(module.platform, "machine", return_value=machine):
                 with self.assertRaises(ValueError):
                     module.run_native(self.args)
