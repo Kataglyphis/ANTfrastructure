@@ -887,9 +887,16 @@ it for any process where the variable was never set at all
 deaths at 99 % were the *wrong server* answering, and the launcher is the
 second belt that turns a remaining sccache hiccup into lost hits instead of a
 lost build. To go back to uncached Rust, export
-`RUSTC_WRAPPER=""`; that is what `Dockerfile.toolchain:66` and
-`Dockerfile.package:262` do, and it holds for every stage that never calls
-`setup_sccache`. Where `setup_sccache` *does* run it overwrites the empty value
+`RUSTC_WRAPPER=""`; that is what `Dockerfile.toolchain` and
+`Dockerfile.package` do, and it holds for every stage that never calls
+`setup_sccache`. The amd64 OxidANT acceptance in run
+`20261110-013045-b0a6f8cb` inherited that empty wrapper and compiled directly
+through Cargo; an installed cache directory alone does not enable consumer caching.
+The same run's ARM C++ consumer selected `/usr/bin/ccache` with the pinned GCC;
+consumer compiler selection does not establish SDK/media sccache use end to end.
+Its selected environment and process sample are retained in
+`logs/test-results/plugin-proof-nvidia-runtime-9f4e6bd2/consumer-cache-scope-observation.json`.
+Where `setup_sccache` *does* run it overwrites the empty value
 (`compiler-cache.sh:199`), so the off switch on that lane is `USE_SCCACHE=0` —
 which also drops C/C++ back to ccache (`compiler-cache.sh:136-148`). nvcc and hipcc
 stay untouched (§ 5.4), and the Windows lane records that released sccache
@@ -971,9 +978,9 @@ are outside this change's scope):
 | target | gate | state | recommendation |
 |---|---|---|---|
 | **rustc** (gst-plugins-rs, the monorepo's Rust) | none any more — `ENABLE_SCCACHE_RUST=1` only reaches `media_common_init` (§ 5.3 item 1) | **ON by default since 2026-08-27**, through the guarded launcher (`compiler-cache.sh:172-210`, `build-gstreamer-monorepo.sh:649-659`) | [details](#rustc-gst-plugins-rs-the-monorepos-rust) |
-| **nvcc** | `ENABLE_SCCACHE_CUDA` (`build-opencv.sh`, `30-build-native-nvidia.sh`) | **ON by default since 2026-10-17**, on the hub's sccache build | [details](#nvcc--hipcc) |
+| **nvcc** | `ENABLE_SCCACHE_CUDA` (`build-opencv.sh`, `30-build-native-nvidia.sh`) | **ON by default since 2026-10-17**; ORT interception proved, OpenCV classic FindCUDA bypass described below | [details](#nvcc--hipcc) |
 | **hipcc** | `ENABLE_SCCACHE_HIP` (`30-build-native-amd.sh`) | **ON by default since 2026-10-17** | [details](#nvcc--hipcc) |
-| **C/C++** | — | sccache via the guarded launcher, always on; ccache is the automatic fallback | leave it — this is the owner-directed default since 2026-08-26 (§ 5.1), and both launcher resolvers already pick sccache first (§ 5.2). |
+| **C/C++** | — | shared media resolver prefers sccache, then ccache; non-x86 Torch wrapper exception below | leave the owner-directed default since 2026-08-26 (§ 5.1); both launcher resolvers pick sccache first (§ 5.2). |
 | **cross-machine tier** (`SCCACHE_MULTILEVEL_CHAIN`, webdav L2) | — | Windows lane only | [details](#cross-machine-tier-sccache_multilevel_chain-webdav-l2) |
 
 ### Per-target detail
@@ -1006,6 +1013,40 @@ canonical patch driver. A postcondition requires exactly both joined branches
 and no remaining long form before configuration; a newer source layout must be
 reviewed rather than partially accepted. Git and tarball fixtures cover repeatability.
 The Windows lane normalizes the same source through its existing patch API.
+
+**Non-x86 Torch wrapper setup bypasses compiler wrappers.**
+`setup-torch-venv.sh` calls `configure_foreign_arch_compiler_env` when the
+container's `uname -m` differs from `x86_64`. It selects `/opt/gcc-<pin>/bin/gcc`
+and `g++` directly and unsets `CC_LD`, `CXX_LD`, `RUSTC_WRAPPER` and
+`SCCACHE_RECACHE` before the native header probes and Torch app assembly.
+The ARM64 wrapper in run `20261110-013045-b0a6f8cb` printed this bypass and
+installed Torch wheels; this observation establishes no large uncached compile.
+Its historical rationale is unverified. Review the opt-out during subsequent
+cache work while retaining the selected target compiler and header preflight.
+The source blob and phase-scoped log markers are retained in
+`logs/test-results/plugin-proof-nvidia-runtime-9f4e6bd2/wrapper-cache-scope-observation.json`.
+
+**OpenCV classic FindCUDA still bypasses this launcher (measured 2026-11-09).**
+The build sets `CMAKE_CUDA_COMPILER_LAUNCHER`, but its generated FindCUDA rules
+execute `/usr/local/cuda/bin/nvcc` directly. A live `nvcc → cmake → sh → ninja`
+ancestry confirms that route; the stage reported 1,720 C/C++ hits, two C/C++ misses
+and three C/C++ cache errors, with no CUDA category. These findings are separate
+from the proved ORT CUDA interception. Preserve the architecture list and target
+host compiler when wiring the legacy nvcc entry, then prove that actual route with
+a cold/repeat build; setting the modern launcher alone is insufficient. The saved
+rule, process sample and counters are under
+`logs/test-results/plugin-proof-nvidia-arm64-media-2/` as `opencv-findcuda-*`.
+
+**CUDA cache counters describe subcommands.** The pinned implementation leaves the
+outer nvcc driver uncached and expands its dry run on every invocation so host-only
+changes participate in the cache keys. The inner host compilation is cached and
+deliberately reported as `CUDA/nvcc`; see the [driver policy](https://github.com/mozilla/sccache/blob/965c01943a40c9df96264474bbe28ba98f2e1487/src/compiler/nvcc.rs#L483)
+and [host-step accounting](https://github.com/mozilla/sccache/blob/965c01943a40c9df96264474bbe28ba98f2e1487/src/compiler/nvcc.rs#L869).
+`Non-cacheable compilations` therefore includes intentional outer-driver executions.
+Read that counter separately from `Non-cacheable calls`, which records refusals such
+as the old `multiple input files` parser failure. The local PTX-only backport also
+runs ptxas verification passes without an output file directly. Retain each counter;
+a positive internal count alone does not identify a lost CUDA cache entry.
 
 Measured 2026-11-09 against the pinned NVIDIA SDK, target AArch64 compiler and all
 five production architectures, with a private cache/server: the old option's cold

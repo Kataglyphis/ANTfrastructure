@@ -37,6 +37,20 @@ The later cb2b8db6 device run42525202720 passes onnxinference; its sole remainin
 failure is the older published IREE twin. Use the digest acceptance input in
 `windows-arm64.yml` to grade a newly built image before changing the public tag.
 
+## ARM64 CTest discovery ends with `LeakSanitizer has encountered a fatal error`
+
+The 2026-11-10 NVIDIA ARM consumer attempt finished its C++ build, then
+`commitTestSuite --gtest_list_tests` listed tests and exited 1 under qemu-user.
+CTest returned 8 before executing tests; its 300-second discovery timeout did not
+expire. The failed receipt and log are retained under
+`logs/image-acceptance/20261110-013045-b0a6f8cb-arm64/`.
+LSan needs ptrace, which this emulation route cannot provide; see the
+[sanitizer scope](cross-build-verification.md#the-native-gcc-ships-libsanitizer) and
+[upstream report](https://github.com/google/sanitizers/issues/1413).
+Run the unchanged consumer plan on a compatible ARM execution host.
+Disabling leak detection changes coverage and cannot establish the original acceptance.
+The image compiler battery's explicit emulation skip does not excuse a failed consumer.
+
 ## ARM64 TensorRT nvcc rejects `--target=aarch64-linux-gnu`
 
 Linux run `20261109-102131-e69f48d7` selected target CXX but published CUDAHOSTCXX

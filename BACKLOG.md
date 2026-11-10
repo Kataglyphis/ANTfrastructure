@@ -1071,25 +1071,28 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       chain), the nvidia proof chain, and detector parity on `TensorRTPluginExecutionProvider` on a card.
       Windows is this hub's Windows session. DirectML has no plugin and stays. The evidence, with links to every
       plugin: the 2026-11-08 deep research.
-      **Linux proof 2026-11-09:** Sequence37 passed NVIDIA amd64 media/android in run
-      `20261108-180128-c3904567` (media manifest
-      `sha256:486a9558b93caedc465460cc2d50ed9d103e6058ed2a4b7c2d37775575b490a3`).
-      ARM64 run `20261109-002505-d3b3c0b7` then failed QNN configure on GitHub HTTP 504 for the
-      fork's pinned protoc archive after CUDA compilation. The bounded configure retry has 100 fixture
-      assertions and eight mutations. Recovery `20261109-102131-e69f48d7` from fully proved `bf4c7d47`
-      passed ordinary disk/ancestry gates, both CUDA Python modes and QNN's module/export/HTP checks,
-      then failed TensorRT's nvcc host-compiler check; actual unit exit 1 was 2026-11-09T17:02:20Z.
-      Target CXX must be selected before CUDAHOSTCXX; the old real compiler control fails and the
-      fixed one compiles AArch64. A complete isolated TensorRT build over the target CPU core now
-      passes exports, original licences, G2 and target-loader resolution under QEMU. Native ldd's
-      failed ARM inspection had incorrectly passed, so closure checks now preserve that failure.
-      Linux also patches both separated CUDA standard options; a private NVCC repeat records
-      12 cache hits, zero cache errors and one uncached internal compilation. The TensorRT repeat
-      records 329 hits (317 C/C++, 12 CUDA), zero misses/errors and one uncached internal step.
-      Raw controls remain under `logs/test-results/plugin-proof-nvidia-arm64-media-1/`.
-      Full new-source preflight/CI, corrected ARM64 media/android recovery, both NVIDIA runtime
-      wrappers and their six-consumer receipts on one final index remain open, as does GPU inference.
-      These isolated controls do not prove a rebuilt media image, final wrapper or remote cache.
+      **Linux proof 2026-11-10 (hub `9f4e6bd2`):** the complete isolated preflight and all
+      required exact-source CI passed; source and cleanup evidence is retained in
+      `logs/test-results/plugin-proof-nvidia-arm64-media-2/source-proof.json`.
+      Corrected ARM64 media/android recovery `20261109-194812-1056be49` completed both
+      stages with actual publication at 2026-11-10T01:16:07Z. Both CUDA Python modes,
+      QNN's module/export/HTP checks and the TensorRT plugin checks passed; the compiled
+      free-threaded module also loaded under QEMU with the GIL disabled.
+      Both local runtime wrappers, shipped-content gates and runtime-image smokes passed
+      in `20261110-013045-b0a6f8cb`. The published candidate index is
+      `sha256:d2df9e170fadc7f2abbc22e004b615a7f8a4f41ee9c810c4f06ad7229ecace70`;
+      its remote wrappers are amd64
+      `sha256:3b9cf1c6a211d5b6b9e317da4081e3510b963fd1fb94cd33326716b307b73268`
+      and arm64 `sha256:33b92fa2e4e1f926fbdbd09e446ed4449f51b41376daf9ad2cf815c036565af7`.
+      All six amd64 consumers passed in `logs/image-acceptance/20261110-013045-b0a6f8cb/receipt.json`;
+      log/lock hashes, checked cleanup and exact remote children were independently verified.
+      The unchanged ARM check compiled its first consumer, then failed GoogleTest discovery
+      at 05:58Z with LeakSanitizer's fatal QEMU error; no consumer tests ran. Its failed receipt
+      is `logs/image-acceptance/20261110-013045-b0a6f8cb-arm64/receipt.json`.
+      **Still required:** unchanged ARM tests on a compatible execution host, the passed arm64
+      receipt and normal public promotion/readback; [diagnosis](docs/failure-modes.md#arm64-ctest-discovery-ends-with-leaksanitizer-has-encountered-a-fatal-error).
+      No physical GPU inference is established. The earlier failures and compiler/cache
+      regression controls remain in CHANGELOG and `logs/test-results/plugin-proof-nvidia-arm64-media-1/`.
       **Windows, owner 2026-11-08 ("Windows sofort komplett"): steps 2 and 4 landed in source together.** CUDA is the
       plugin build, the in-tree TensorRT EP is gone, and `Build-OrtTensorRtEpFromSource.ps1` builds the TensorRT plugin
       with SHA256-pinned seeds ([windows-cross-builds.md](docs/windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps)).

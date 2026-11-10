@@ -130,6 +130,29 @@ independently matched and a post-run engine query found no container under this 
 name prefix. This run used the earlier helper, before the checked-removal fix described above.
 No fresh hardware inference, NVIDIA wrapper or ARM64 consumer receipt is inferred from it.
 
+NVIDIA run `20261110-013045-b0a6f8cb` from hub
+`9f4e6bd2c0d416057224c585d5a34b7abbdb813d` published candidate index
+`sha256:d2df9e170fadc7f2abbc22e004b615a7f8a4f41ee9c810c4f06ad7229ecace70`.
+Its independently matched remote wrapper children are:
+
+| Platform | Wrapper manifest |
+|---|---|
+| `linux/amd64` | `sha256:3b9cf1c6a211d5b6b9e317da4081e3510b963fd1fb94cd33326716b307b73268` |
+| `linux/arm64` | `sha256:33b92fa2e4e1f926fbdbd09e446ed4449f51b41376daf9ad2cf815c036565af7` |
+
+All six amd64 consumers passed, with the receipt at
+`logs/image-acceptance/20261110-013045-b0a6f8cb/receipt.json`.
+An independent audit matched its log and lock hashes, checked cleanup records and remote
+index children, then found every exact test container name absent. The unchanged ARM attempt
+on this same immutable index compiled its first consumer, then failed GoogleTest discovery
+with LeakSanitizer's QEMU fatal error at 2026-11-10T05:58Z. The failed receipt is
+`logs/image-acceptance/20261110-013045-b0a6f8cb-arm64/receipt.json`; no consumer tests ran.
+A compatible ARM execution host and a passed ARM receipt are still required before public
+`:latest-nvidia` promotion; [diagnosis](failure-modes.md#arm64-ctest-discovery-ends-with-leaksanitizer-has-encountered-a-fatal-error).
+These image and consumer checks establish no
+physical NVIDIA inference. Raw proof, full stdout and actual test summaries are retained in
+`logs/test-results/plugin-proof-nvidia-runtime-9f4e6bd2/`.
+
 The default plan tests `linux/amd64`. The existing multi-architecture image gates still
 own the other architectures; this receipt does not claim new consumer coverage there.
 The scripts run consumer code, without executing GitHub's workflow/action runners, so
