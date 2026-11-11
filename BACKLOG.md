@@ -1034,8 +1034,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       **Rust source follow-up:** the exact shared Rust policy and prepared OxidANT V2 adapter replace the
       legacy provider/options. The pinned crate sources match both Cargo.lock checksums. Fake policy
       tests and an API24 typecheck of the actual adapter/provider modules pass; this is not the
-      complete locked consumer graph. Full-crate build/tests/clippy, HIP-process replacement,
-      package/profile migration and actual finished GPU acceptance remain required.
+      complete locked consumer graph. The actual locked inference crate now builds, compiles its test
+      targets, passes Clippy with warnings denied and executes all 65 CPU tests without ignored or
+      filtered cases. Full-workspace checks, HIP-process replacement, package/profile migration and
+      actual finished GPU acceptance remain required; the existing Rust cache opt-out reports zero requests.
       **Step 3 (in source 2026-11-08, owner: "sofort komplett, inklusive Entfernen"):**
       `30-build-native-amd.sh`, `--use_migraphx`, the `onnxruntime-migraphx` wheel and the two MIGraphX patches are
       gone; the rocm variant has no ORT GPU build, the plugin builds over the CPU prefix, the wrapper's app venv

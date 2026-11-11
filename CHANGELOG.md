@@ -25,6 +25,7 @@
 
 - Add the exact Rust registration-policy asset and compiled fake-adapter tests for image/bundle paths, locked successful registration, retries, fresh matching devices, raw errors and weak environment ownership.
 - Correct the pinned crate API name to `register_ep_library`; its high-level device iterator discards enumeration failures, so the prepared consumer adapter uses the exposed typed C API. Runtime ABI, packaging and hardware acceptance remain required.
+- The actual locked inference graph, all test targets, Clippy and 65 executed CPU tests now pass on the prepared consumer source, with no ignored or filtered cases. The integration test explicitly refuses a missing plugin root and no longer imports the removed built-in provider. Full workspace, real plugin/GPU, finished packages and Windows acceptance remain separate.
 
 ## 2026-11-11 — record detector timeout and plugin profile boundaries
 
