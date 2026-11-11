@@ -11,13 +11,12 @@ $newStageTree = {
     return , @($letters | ForEach-Object { @{ Name = $_.ToUpperInvariant(); Script = "$_.ps1"; SourceDir = "src-$_" } })
 }
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.CallAssertions.psm1') -ErrorAction Stop
+
 function Assert-SourceBuildStageLog {
     param([Parameter(Mandatory)][string]$Log, [Parameter(Mandatory)][string[]]$Expected)
-    $actual = @(Get-Content -LiteralPath $Log)
-    Assert-Equal $Expected.Count $actual.Count 'every expected stage ran exactly once'
-    for ($index = 0; $index -lt $Expected.Count; $index++) {
-        Assert-Equal $Expected[$index] $actual[$index] "stage log entry $index"
-    }
+    Assert-TestSequence -Actual @(Get-Content -LiteralPath $Log) -Expected $Expected `
+        -CountReason 'every expected stage ran exactly once' -EntryReason 'stage log entry'
 }
 
 Describe 'Invoke-SourceBuildChain' {

@@ -37463,5 +37463,141 @@
   "replace": "if ($false) { Assert-NativeLinkRun @cudnnProbe -Name 'cuDNN links + host API works (cudnnGetVersion)' -ExpectMatch 'cudnn' -FailMessage 'cuDNN did not compile/link/run (cudnnGetVersion) -- header/lib/DLL mismatch or missing dependent DLL' }",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Smoke.Cudnn.Tests.ps1",
   "why": "A healthy SDK must execute the native cuDNN host API control."
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-node-required",
+  "target": "windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1",
+  "find": "@('001-node-compute-info-lifetime.patch', '002-kernel-registry-lifetime.patch')",
+  "replace": "@('002-kernel-registry-lifetime.patch')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the node cleanup correction must be applied, not silently omitted"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-registry-required",
+  "target": "windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1",
+  "find": "@('001-node-compute-info-lifetime.patch', '002-kernel-registry-lifetime.patch')",
+  "replace": "@('001-node-compute-info-lifetime.patch')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the registry ownership correction must be applied, not silently omitted"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-fatal-patch",
+  "target": "windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1",
+  "find": "        Invoke-RequiredSourcePatch -SourceDir $SourceDir -PatchFile (Join-Path $PatchDir $name)",
+  "replace": "        try { Invoke-RequiredSourcePatch -SourceDir $SourceDir -PatchFile (Join-Path $PatchDir $name) } catch { Write-Warning $_ }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "missing and stale patches must stop the source build"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-before-configure",
+  "target": "windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1",
+  "find": "    Invoke-OrtAmdgpuEpSourcePatch -SourceDir $epRoot -PatchDir $PatchDir",
+  "replace": "    Write-Verbose 'lifetime corrections omitted'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the real primary source must receive both corrections before seed/configure work"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-entry-selection",
+  "target": "windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1",
+  "find": "$seeds = Initialize-OrtAmdgpuEpSeeds -WorkDir $WorkDir -PatchDir $PatchDir",
+  "replace": "$seeds = Initialize-OrtAmdgpuEpSeeds -WorkDir $WorkDir -PatchDir ''",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the selected mounted patch directory must reach the source initializer"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-callback-adjustment",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+            API_CALL_S(NodeComputeInfo, static_cast<NodeComputeInfo*>(this_), CreateState, compute_context, *compute_state);",
+  "replace": "+            API_CALL_S(NodeComputeInfo, this_, CreateState, compute_context, *compute_state);",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "every callback must adjust the nonzero C base offset introduced by virtual ownership"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-typed-release",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+        delete static_cast<NodeComputeInfoBase*>(info);",
+  "replace": "+        delete info;",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "deleting the original C base must not survive in the patched source"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-registry-owner",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/002-kernel-registry-lifetime.patch",
+  "find": "+    mutable Ort::KernelRegistry kernel_registry_{nullptr};",
+  "replace": "+    mutable OrtKernelRegistry* kernel_registry_{};",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the cached registry needs its releasing owner"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-registry-lock",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/002-kernel-registry-lifetime.patch",
+  "find": "+        const std::lock_guard lock{kernel_registry_mutex_};",
+  "replace": "+        (void)kernel_registry_mutex_;",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "parallel registry creation must remain synchronized"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-node-mount",
+  "target": "windows/Dockerfile.rocm-migraphx",
+  "find": "    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch,target=C:\\bkmnt\\ort-amdgpu-patches\\001-node-compute-info-lifetime.patch,readonly `\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the EP RUN must carry its selected node patch as a narrow read-only mount"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-registry-mount",
+  "target": "windows/Dockerfile.rocm-migraphx",
+  "find": "    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/patches/002-kernel-registry-lifetime.patch,target=C:\\bkmnt\\ort-amdgpu-patches\\002-kernel-registry-lifetime.patch,readonly `\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the EP RUN must carry its selected registry patch as a narrow read-only mount"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-mounted-selection",
+  "target": "windows/Dockerfile.rocm-migraphx",
+  "find": "-PatchDir 'C:\\bkmnt\\ort-amdgpu-patches'",
+  "replace": "-PatchDir 'C:\\bkmnt\\wrong-patches'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the EP invocation must use the directory populated by the two file mounts"
+ },
+ {
+  "id": "windows-lane.call-assertions-recorded-argument-index",
+  "target": "windows/scripts/tests/WindowsHarness.CallAssertions.psm1",
+  "find": "$call[$ArgumentIndex]",
+  "replace": "$call[0]",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/call-assertions-mutation.json",
+  "why": "recorded argument projections must preserve the requested argument boundary"
+ },
+ {
+  "id": "windows-lane.call-assertions-recorded-count",
+  "target": "windows/scripts/tests/WindowsHarness.CallAssertions.psm1",
+  "find": "    Assert-Equal $Expected.Count $Actual.Count $CountReason",
+  "replace": "    Write-Verbose 'sequence count omitted'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/call-assertions-mutation.json",
+  "why": "sequence assertions must reject extra and missing entries"
+ },
+ {
+  "id": "windows-lane.call-assertions-recorded-values",
+  "target": "windows/scripts/tests/WindowsHarness.CallAssertions.psm1",
+  "find": "        Assert-Equal $Expected[$index] $Actual[$index] \"$EntryReason $index\"",
+  "replace": "        Write-Verbose 'sequence value assertion omitted'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/call-assertions-mutation.json",
+  "why": "every recorded sequence entry must be compared in its original order"
+ },
+ {
+  "id": "windows-lane.call-assertions-source-order",
+  "target": "windows/scripts/tests/WindowsHarness.CallAssertions.psm1",
+  "find": "        Assert-TestAstOrder -Before $commands[$index - 1] -After $commands[$index]",
+  "replace": "        Write-Verbose 'source order omitted'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/call-assertions-mutation.json",
+  "why": "source call order assertions must reject a reversed sequence"
+ },
+ {
+  "id": "windows-lane.call-assertions-source-uniqueness",
+  "target": "windows/scripts/tests/WindowsHarness.CallAssertions.psm1",
+  "find": "        Assert-Equal 1 $selected.Count \"one selected call to $commandName\"",
+  "replace": "        Write-Verbose 'call uniqueness omitted'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/call-assertions-mutation.json",
+  "why": "a repeated selected source call must fail before source-order verification"
  }
 ]

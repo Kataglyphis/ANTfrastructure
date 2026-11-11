@@ -14,6 +14,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — Windows ROCm plugin lifetime corrections
+
+- Apply the canonical AMD EP node-cleanup and registry-ownership patches before
+  configuring the Windows plugin. Typed deletion keeps all six C ABI callback
+  adjustments; registry creation is synchronized and its owner releases before
+  data transfer. Only the EP RUN mounts the two shared patch files.
+- Windows source fixtures cover application, idempotence, missing/stale patches,
+  fatal child failures and build wiring. Separate native Windows controls show
+  both original failures and 11 node/41 registry checks after correction. These
+  controls do not replace the complete plugin build or physical GPU acceptance.
+- Share recorded argument and source-order assertions across the AMD EP,
+  TensorRT, disk-probe and chain-log suites. Preserve each caller's diagnostics;
+  the shared checks retain count, value, argument selection and uniqueness controls.
+
 ## 2026-11-10 — require the cuDNN host API smoke control
 
 - NVIDIA smoke now resolves the exact main cuDNN header, import library and

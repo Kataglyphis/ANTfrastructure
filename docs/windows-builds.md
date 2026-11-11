@@ -2517,6 +2517,17 @@ and remove recursion; each must fail the suite.
 
 ## Structural test AST helpers
 
+`WindowsHarness.CallAssertions.psm1` shares sequence comparisons, recorded argument
+projection and source call-order checks. It imports `TestHarness.psm1` unforced;
+copied suites carry both modules and the harness's existing companions.
+`Assert-TestSequence` compares the complete count and every ordered value.
+`Assert-TestRecordedArguments` preserves the selected argument boundaries and
+caller projection. `Assert-TestScriptCallOrder` requires one call per selected
+name, checks their source order and retains the selected call's exact wiring
+and optional unconditional verdict. These assertions inspect records and source;
+they do not execute the inspected script or prove a native build. Negative controls
+and mutation recipes cover lost counts, values, selected arguments, order and uniqueness.
+
 `TestHarness.psm1` owns file/snippet parsing, exact command-name queries and static
 parameter binding. `Get-TestAstCommands` includes nested scopes; callers retain
 their lane/ancestor checks. `Get-TestScriptCommands` combines file loading and a

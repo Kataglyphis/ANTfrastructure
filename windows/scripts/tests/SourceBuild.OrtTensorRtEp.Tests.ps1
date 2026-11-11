@@ -5,6 +5,7 @@
 
 Import-TestRepoModule -Name 'WindowsScripts.Shared', 'WindowsTargetArch.Common', 'WindowsSourceBuild.Common', 'WindowsSmokeTest.Common',
     'WindowsOrtProvenance.Common', 'WindowsBuildDriver.Common', 'WindowsNativeProvenance.Common', 'WindowsOrtProvenance.Build'
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.CallAssertions.psm1') -ErrorAction Stop
 $script:TrtEpScript = 'windows\scripts\build\Build-OrtTensorRtEpFromSource.ps1'
 $script:OnnxScript = 'windows\scripts\build\Build-OnnxFromSource.ps1'
 $script:TrtEpFunction = @('Get-OrtTensorRtEpPin', 'Get-OrtTensorRtEpDeclaration', 'Get-OrtTensorRtEpSeedGap', 'Get-OrtTensorRtMajor',
@@ -210,10 +211,8 @@ Describe 'Build-OrtTensorRtEpFromSource.ps1' {
     }
 
     It 'repairs the protobuf seed unconditionally before the TensorRT configure (mutation)' {
-        $repair = @(Get-TestScriptCommands -ScriptPath $script:TrtEpScript -Name 'Repair-OrtTensorRtProtobufRc')
-        Assert-TestAstCommand -Command $repair -Text "Repair-OrtTensorRtProtobufRc -SeedRoot `$roots['protobuf']" -Unconditional
-        $configure = @(Get-TestScriptCommands -ScriptPath $script:TrtEpScript -Name 'Invoke-CmakeConfigureLogged')[-1]
-        Assert-TestAstOrder -Before $repair[0] -After $configure
+        Assert-TestScriptCallOrder -ScriptPath $script:TrtEpScript -Name @('Repair-OrtTensorRtProtobufRc', 'Invoke-CmakeConfigureLogged') `
+            -Text "Repair-OrtTensorRtProtobufRc -SeedRoot `$roots['protobuf']" -Unconditional
     }
 
     It 'configures against the shim, the SDK and every seed, with downloads and the plugin''s own cache launcher off (mutation)' {

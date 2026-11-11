@@ -32,13 +32,19 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Next image build — GPU consumer findings
 
-Windows NVIDIA local continuation at `adea396e` produced final manifest
-`bac3305600ea01033618995b4d60bac4da6daef05d2c61ce77e116635a630726`
-without publication. Its 318/0/3 smoke result concealed an unexecuted cuDNN
-host API control; [the regression and fix](docs/failure-modes.md#cudnn-linkrun-skips-despite-installed-sdk-files)
-now has a corrected live-script replay (319 passed/0 failed/2 hardware skips); new final-source validation is still required. CUDA/TRT
-and DirectML hardware acceptance, the whole CUDA cache repeat and the other
-final-source Windows lanes remain open. CON228 stays open and its text draft.
+Windows NVIDIA source `536f92e5` produced immutable final manifest
+`bb71ef93a7658b155b2b7c7f1ad776dd51ebb28e48fc0f63405b7560bb6f35ed`
+without publication: 319 passed, 0 failed and 2 hardware skips, subsequently reconciled
+by actual CPU/CUDA/TensorRT and DirectML five-run numerical/profile checks.
+The forced ONNX repeat recorded 6,304 typed cache hits, zero misses and zero cache errors, but its
+enclosing QNN RUN failed on the upstream SDK403. The exact private SDK is now
+SHA256-verified and the canonical QNN download-cache fast path passes.
+The Windows AMD EP also inherits two pinned SDK lifetime defects; native
+Windows original-fails/fixed-passes controls are recorded, and its build now
+requires the shared patches ([mechanism and limits](docs/windows-rocm.md#migraphx-and-the-ort-plugin-ep-rocm-lane-spike)).
+Fresh CI and all requested producer/device receipts for the resulting final
+source, the complete coupled cache repeat and ARM64 publication remain open.
+CON228 stays open and its text draft. Detailed dated receipts: `logs/g5-results.md`.
 
 The application-build investigation is tracked in the items below. Recheck the cited
 image digests before implementing fixes and retain CPU-only support. The requested GPU

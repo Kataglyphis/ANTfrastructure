@@ -142,6 +142,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    CMake consumers use `Get-CmakeBuildArgs` for target, configuration and parallel flags; keep its argument order and caller-specific build verdict.
    Windows source builders share required-child path enumeration for FFmpeg's Vulkan SDK and the LiteRT wheel smoke; preserve leaf versus directory checks and each caller's fatal diagnostic.
    MIGraphX licence copying uses its existing file-gap helper; keep empty-list behavior and missing-file failures visible.
+   Windows AMD EP builds carry both canonical Linux-owned lifetime patches in the EP RUN; retain all six C-base callback adjustments, typed node deletion and synchronized registry ownership before configuration.
+   Windows call assertion suites carry WindowsHarness.CallAssertions.psm1 beside TestHarness.psm1; preserve sequence counts, argument boundaries, unique calls and source order.
    Windows mutation fixtures share module lifetime; import or parse failures cannot satisfy an expected assertion failure.
    Synthetic ELF and gst-inspect test fixtures share their writers; retain caller-specific `DT_STRSZ`, symbol-table and `Name` options.
    Windows script workspaces share AST validation before allocation and cleanup; log and Cargo paths use the canonical rooted-path resolver.

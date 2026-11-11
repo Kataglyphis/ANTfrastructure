@@ -17,7 +17,8 @@ param(
     [string]$MigraphxDir = 'C:\runtime\lib\migraphx',
     [string]$OnnxRuntimeDir = '',
     [string]$WorkDir = 'C:\temp\ort-amdgpu-ep-work',
-    [string]$BuildType = 'Release'
+    [string]$BuildType = 'Release',
+    [string]$PatchDir = ''
 )
 
 Set-StrictMode -Version Latest
@@ -56,6 +57,14 @@ function Get-OrtAmdgpuEpCmakeArgs {
     ) + $SeedArgs
 }
 
+function Invoke-OrtAmdgpuEpSourcePatch {
+    # The SDK's nonvirtual C base and borrowed registry cannot own their derived resources.
+    param([Parameter(Mandatory)][string]$SourceDir, [Parameter(Mandatory)][string]$PatchDir)
+    foreach ($name in @('001-node-compute-info-lifetime.patch', '002-kernel-registry-lifetime.patch')) {
+        Invoke-RequiredSourcePatch -SourceDir $SourceDir -PatchFile (Join-Path $PatchDir $name)
+    }
+}
+
 function Get-OrtAmdgpuEpStageGap {
     # What must sit beside migraphx-ep.dll for it to load; returns the missing names.
     param(
@@ -85,9 +94,10 @@ Write-Host "=== onnxruntime-ep-amdgpu source build (migraphx-ep.dll, clang-cl, O
 $python = Start-MigraphxBuildSession -WorkDir $WorkDir
 
 function Initialize-OrtAmdgpuEpSeeds {
-    param([string]$WorkDir)
+    param([string]$WorkDir, [string]$PatchDir)
 
     $epRoot = Save-MigraphxPrimarySource -Component OrtAmdgpuEp -WorkDir $WorkDir
+    Invoke-OrtAmdgpuEpSourcePatch -SourceDir $epRoot -PatchDir $PatchDir
     $specs = @(Get-MigraphxPinnedSourceSpec -Set OrtAmdgpuEp)
     $resolved = @{}
     foreach ($spec in $specs) { $resolved[$spec.Name] = Resolve-PinnedSource @spec }
@@ -131,9 +141,11 @@ function Install-OrtAmdgpuEpArtifacts {
     return $hipRuntime
 }
 
+if (-not $PatchDir) { $PatchDir = Join-Path $PSScriptRoot '../../../linux/scripts/03-media/build/onnxruntime/build/patches' }
+
 try {
     Switch-BuildPhase '1. EP source + FetchContent seeds'
-    $seeds = Initialize-OrtAmdgpuEpSeeds -WorkDir $WorkDir
+    $seeds = Initialize-OrtAmdgpuEpSeeds -WorkDir $WorkDir -PatchDir $PatchDir
     $epRoot = $seeds.EpRoot
     $seedArgs = $seeds.SeedArgs
 
