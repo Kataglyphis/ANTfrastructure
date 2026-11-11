@@ -442,6 +442,7 @@ Five of them are RULES and stay here:
   the image and command; preserve the production AppArmor setting.
   QAIRT endpoint exchange uses `qairt-key-handoff.py`; private keys and decrypted endpoints stay
   outside every Git checkout, and issue comments carry only public SPKI keys, fingerprints or ciphertext.
+  Private SDK delivery uses `qairt-private-transfer.py` beside the key helper; retain exact source/remote hashes, conditional no-replace, bounded execution and redacted receipts. Receiver cache/hash gates stay mandatory.
 
 - **Generated run artifacts belong under `logs/`.** Use `logs/build-logs/` for Linux stage logs
   and resource metrics, `logs/windows-build-logs/` for Windows BuildKit runs, and

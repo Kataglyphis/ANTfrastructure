@@ -5,14 +5,14 @@ import base64
 import importlib.util
 import io
 import json
-import shutil
 import subprocess
 import sys
-import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
+
+from qairt_key_fixture import QairtKeyFixture
 
 SCRIPT = Path(sys.argv.pop(1)).resolve()
 SPEC = importlib.util.spec_from_file_location("qairt_handoff", SCRIPT)
@@ -29,22 +29,16 @@ def encrypt(public: Path, value: bytes, mgf: str = "sha256") -> bytes:
     return result.stdout
 
 
-class HandoffTests(unittest.TestCase):
+class HandoffTests(QairtKeyFixture):
+    handoff = HANDOFF
     @classmethod
     def setUpClass(cls) -> None:
-        cls.temporary = tempfile.TemporaryDirectory(prefix="qairt-key-fixture-", dir="/tmp")
-        cls.addClassCleanup(cls.temporary.cleanup)
-        cls.root = Path(cls.temporary.name)
-        cls.key = cls.root / "original"
-        cls.record = HANDOFF.keygen(cls.key)
+        super().setUpClass()
         cls.other_key = cls.root / "other"
         HANDOFF.keygen(cls.other_key)
 
     def setUp(self) -> None:
-        self.working = tempfile.TemporaryDirectory(prefix="case-", dir=self.root)
-        self.addCleanup(self.working.cleanup)
-        self.directory = Path(self.working.name) / "key with spaces"
-        shutil.copytree(self.key, self.directory)
+        super().setUp()
         self.ciphertext = Path(self.working.name) / "ciphertext.txt"
         self.ciphertext.write_bytes(base64.b64encode(encrypt(self.key / "public.pem", PLAIN)))
 

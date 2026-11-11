@@ -39799,5 +39799,149 @@
   "replace": "except (OSError, ValueError, subprocess.TimeoutExpired) as error:\n        print(str(error), file=sys.stderr)",
   "test": "bash linux/scripts/tests/test-qairt-key-handoff.sh",
   "why": "Even a child exception containing the endpoint must remain redacted."
+ },
+ {
+  "id": "lib.qairt-transfer-fingerprint",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": "if fingerprint != record[\"sha256_spki\"]:",
+  "replace": "if False:",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "The recipient fingerprint must match before the private route is used.",
+  "timeout": 45
+ },
+ {
+  "id": "lib.qairt-transfer-private-mode",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": " or stat.S_IMODE(info.st_mode) & 0o077",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "Public endpoint/lock permissions cannot be accepted.",
+  "timeout": 45
+ },
+ {
+  "id": "lib.qairt-transfer-private-address",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": "if not address.is_private or address.is_unspecified or address.is_multicast:",
+  "replace": "if address.is_unspecified or address.is_multicast:",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "A global IP must fail before resolution or a network request.",
+  "timeout": 45
+ },
+ {
+  "id": "lib.qairt-transfer-object-scope",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": "if not re.fullmatch(r\"/preseed/[A-Za-z0-9][A-Za-z0-9_.-]*\\.zip\", object_path):",
+  "replace": "if False:",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "Only one preseed ZIP target is permitted.",
+  "timeout": 45
+ },
+ {
+  "id": "lib.qairt-transfer-source-pin",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": "if identity[2] != size or hash_stream(source, size, deadline) != (size, digest):",
+  "replace": "if identity[2] != size:",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "Source hash mismatch must fail before any HTTP request.",
+  "timeout": 45
+ },
+ {
+  "id": "lib.qairt-transfer-existing-refusal",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": "if status == 404:",
+  "replace": "if status in (200, 404):",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "A known existing object must be read back, never PUT again.",
+  "timeout": 45
+ },
+ {
+  "id": "lib.qairt-transfer-conditional-put",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": "connection.putheader(\"If-None-Match\", \"*\")",
+  "replace": "connection.putheader(\"X-Mutation-Ignore-Condition\", \"*\")",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "The upload needs the no-replace HTTP precondition.",
+  "timeout": 45
+ },
+ {
+  "id": "lib.qairt-transfer-remote-pin",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": "if response.status != 200 or hash_stream(response, size, self.deadline) != (size, digest):",
+  "replace": "if response.status != 200:",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "Successful GET status or length alone cannot prove remote bytes.",
+  "timeout": 45
+ },
+ {
+  "id": "lib.qairt-transfer-stream-pin",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": "if sent != size or actual.hexdigest() != digest:",
+  "replace": "if sent != size:",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "The sent stream must match the hash independently of its size.",
+  "timeout": 45
+ },
+ {
+  "id": "lib.qairt-transfer-source-stability",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": "remote.verify(size, digest)\n        if file_identity(source) != identity:",
+  "replace": "remote.verify(size, digest)\n        if False:",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "A changed source cannot produce a successful completion receipt.",
+  "timeout": 45
+ },
+ {
+  "id": "lib.qairt-transfer-local-lock",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": "fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)",
+  "replace": "fcntl.flock(lock, fcntl.LOCK_UN)",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "Concurrent local transfer attempts must refuse rather than overlap.",
+  "timeout": 45
+ },
+ {
+  "id": "lib.qairt-transfer-deadline",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": "signal.setitimer(signal.ITIMER_REAL, args.timeout)",
+  "replace": "signal.setitimer(signal.ITIMER_REAL, 0)",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "A stalled response must be interrupted by the whole-operation deadline.",
+  "timeout": 45
+ },
+ {
+  "id": "lib.qairt-transfer-receipt-no-replace",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": "os.open(args.receipt, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)",
+  "replace": "os.open(args.receipt, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "An existing receipt must refuse before any request.",
+  "timeout": 45
+ },
+ {
+  "id": "lib.qairt-transfer-redaction",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": "record.update(status=\"failed\", error_type=type(error).__name__)",
+  "replace": "record.update(status=\"failed\", error_type=str(error))",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "Exception text containing a private endpoint must never enter output or receipts.",
+  "timeout": 45
+ },
+ {
+  "id": "lib.qairt-transfer-endpoint-no-follow",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": "os.open(path, os.O_RDONLY | os.O_NOFOLLOW)",
+  "replace": "os.open(path, os.O_RDONLY)",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "A symlinked endpoint must refuse before it can select a route.",
+  "timeout": 45
+ },
+ {
+  "id": "lib.qairt-transfer-source-no-follow",
+  "target": "linux/scripts/qairt-private-transfer.py",
+  "find": "os.open(archive, os.O_RDONLY | os.O_NOFOLLOW)",
+  "replace": "os.open(archive, os.O_RDONLY)",
+  "test": "python3 linux/scripts/tests/qairt_private_transfer_tests.py linux/scripts/qairt-private-transfer.py",
+  "why": "The archive path cannot be a symlink to another local source.",
+  "timeout": 45
  }
 ]

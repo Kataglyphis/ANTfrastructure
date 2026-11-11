@@ -15,6 +15,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — prepare verified private QAIRT delivery
+
+- Add a persistent private-route SDK sender beside the endpoint key helper. Bind the recipient fingerprint, literal private address, exact archive size/hash and one preseed ZIP; bypass proxies and reject redirects.
+- Refuse mismatched existing objects, use conditional no-replace for absent objects and verify complete downloaded bytes before success. Keep a local lock, source identity checks, a whole-operation deadline and exclusive redacted receipts; preserve the receiver's original hash/cache gate.
+- Share real-key test setup and cover HTTP errors, races, stale receipts, symlinks, redaction and trickled responses with local fixtures and mutation recipes. These checks establish no Windows service, actual SDK copy, TLS or receiver acceptance.
+
 ## 2026-11-11 — preserve the private QAIRT endpoint handoff
 
 - Version RSA-3072 recipient-key generation and RSA-OAEP/SHA256/MGF1-SHA256 decryption. Restrict private files to their owner outside Git and refuse overwrites, mismatched fingerprints, malformed payloads and secret-bearing diagnostics.

@@ -61,7 +61,7 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/source-ci.py' 'linux/scripts/source_ci/*.py' \
   'linux/scripts/seal-mutation-unit.py' 'linux/scripts/audit-native-plugin-runtime.py' \
   'linux/scripts/owned_containers.py' 'linux/scripts/cleanup-owned-containers.py' \
-  'linux/scripts/qairt-key-handoff.py' \
+  'linux/scripts/qairt-key-handoff.py' 'linux/scripts/qairt-private-transfer.py' \
   'linux/scripts/layer-audit.py' 'linux/scripts/lib/cmakelang-py315.py' \
   'linux/scripts/lib/fetch-data-lock.py' 'linux/scripts/lib/dartdoc-guides.py' \
   'linux/scripts/renovate_audit.py' 'linux/scripts/renovate_cmake.py' \
