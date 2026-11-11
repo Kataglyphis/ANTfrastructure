@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests native ELF-to-wheel matching; it does not audit other shipped dependencies.
+# Real ELF matching and original-byte staging; no whole-bundle transaction, trusted-build attestation or GPU inference is proved.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -142,6 +142,66 @@ cp "$work/native/libonnxruntime.so.1.2.3" "$work/bundles/wrapped/lib/"
 ORT_CHAIN_WHEEL_DIR="$work/valid" STRIP=strip t_assert_ok stage_ort_wheel_licenses "$work/bundles/wrapped"
 t_assert_ok cmp "$work/LICENSE" "$work/bundles/wrapped/licenses/onnxruntime/LICENSE"
 ORT_CHAIN_WHEEL_DIR="$work/valid" STRIP=strip t_assert_fails stage_ort_wheel_licenses "$work/bundles/empty"
+
+restore_fixture() {
+  local bundle="$work/bundles/$1"
+  mkdir -p "$bundle/lib"
+  cp "$work/native/libonnxruntime.so.1.2.3" "$work/native/libonnxruntime.so.1" \
+    "$work/native/libonnxruntime_providers_shared.so" "$bundle/lib/"
+}
+restore_check() {
+  local case_name="$1"
+  shift
+  python3 "$SCRIPT" --wheel-dir "$work/valid" --destination "$work/bundles/$case_name" \
+    --strip strip --restore-unstripped "$@"
+}
+
+t_case 'native originals are restored only after all libraries and original notices match'
+restore_fixture restored
+printf 'separate image plugin' > "$work/bundles/restored/lib/libmigraphx-ep.so"
+ORT_CHAIN_WHEEL_DIR="$work/valid" STRIP=strip t_assert_ok stage_ort_wheel_originals "$work/bundles/restored"
+for name in libonnxruntime.so.1.2.3 libonnxruntime.so.1 libonnxruntime_providers_shared.so; do
+  original="$name"; [ "$name" != libonnxruntime.so.1 ] || original=libonnxruntime.so.1.2.3
+  t_assert_ok cmp "$work/build/$original" "$work/bundles/restored/lib/$name"
+done
+t_assert_eq 'separate image plugin' "$(cat "$work/bundles/restored/lib/libmigraphx-ep.so")"
+t_assert_ok cmp "$work/LICENSE" "$work/bundles/restored/licenses/onnxruntime/LICENSE"
+t_assert_ok python3 "$SCRIPT" --wheel-dir "$work/valid" --destination "$work/bundles/restored" \
+  --strip missing-strip-for-exact --require-unstripped --library "$work/bundles/restored/lib/libonnxruntime.so.1"
+ORT_CHAIN_WHEEL_DIR="$work/valid" STRIP=strip t_assert_ok stage_ort_wheel_originals "$work/bundles/restored"
+t_case 'a later mismatched provider or invalid license cannot partially restore native files'
+for rejected in wrong blank; do
+  restore_fixture "restore-$rejected"
+  ORT_CHAIN_WHEEL_DIR="$work/$rejected" STRIP=strip t_assert_fails stage_ort_wheel_originals "$work/bundles/restore-$rejected"
+  t_assert_ok cmp "$work/native/libonnxruntime.so.1.2.3" "$work/bundles/restore-$rejected/lib/libonnxruntime.so.1.2.3"
+  t_assert_fails test -e "$work/bundles/restore-$rejected/licenses/onnxruntime"
+done
+
+t_case 'restoration refuses external files, linked inputs, linked roots and escaped parents before writing'
+mkdir -p "$work/bundles/restore-external"
+t_assert_fails restore_check restore-external --library "$work/native/libonnxruntime.so.1.2.3"
+t_assert_fails test -e "$work/bundles/restore-external/licenses/onnxruntime"
+restore_fixture restore-linked-input
+ln -s libonnxruntime.so.1.2.3 "$work/bundles/restore-linked-input/lib/libonnxruntime.so"
+t_assert_fails restore_check restore-linked-input --library "$work/bundles/restore-linked-input/lib/libonnxruntime.so"
+t_assert_fails test -e "$work/bundles/restore-linked-input/licenses/onnxruntime"
+restore_fixture restore-root-target
+ln -s restore-root-target "$work/bundles/restore-linked-root"
+t_assert_fails restore_check restore-linked-root --library "$work/bundles/restore-linked-root/lib/libonnxruntime.so.1"
+t_assert_fails test -e "$work/bundles/restore-root-target/licenses/onnxruntime"
+mkdir -p "$work/bundles/restore-parent"
+ln -s "$work/native" "$work/bundles/restore-parent/lib"
+t_assert_fails restore_check restore-parent --library "$work/bundles/restore-parent/lib/libonnxruntime.so.1"
+t_assert_fails test -e "$work/bundles/restore-parent/licenses/onnxruntime"
+t_assert_fails cmp -s "$work/build/libonnxruntime.so.1.2.3" "$work/native/libonnxruntime.so.1.2.3"
+
+t_case 'duplicate destinations and contradictory modes fail before original-byte publication'
+restore_fixture restore-duplicate
+t_assert_fails restore_check restore-duplicate --library "$work/bundles/restore-duplicate/lib/libonnxruntime.so.1" \
+  --library "$work/bundles/restore-duplicate/lib/libonnxruntime.so.1"
+t_assert_ok cmp "$work/native/libonnxruntime.so.1" "$work/bundles/restore-duplicate/lib/libonnxruntime.so.1"
+t_assert_fails test -e "$work/bundles/restore-duplicate/licenses/onnxruntime"
+t_assert_fails restore_check restore-duplicate --require-unstripped --library "$work/bundles/restore-duplicate/lib/libonnxruntime.so.1"
 
 t_case 'the archive wrapper checks both actual packaged texts'
 mkdir -p "$work/package/app/licenses"

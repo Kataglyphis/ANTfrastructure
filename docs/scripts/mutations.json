@@ -40340,5 +40340,85 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-lib-modules.sh",
   "why": "The newly shared compiler library must source standalone logging from its canonical companion, with no private fallback."
+ },
+ {
+  "id": "packaging.ort-restore-wrapper-mode",
+  "target": "linux/scripts/06-packaging/ort-wheel-licenses.sh",
+  "find": "stage_ort_wheel_originals() { stage_ort_wheel_licenses \"$1\" --restore-unstripped; }",
+  "replace": "stage_ort_wheel_originals() { stage_ort_wheel_licenses \"$1\"; }",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "The shared original-byte API must actually restore the native core rather than only stage its matching notices."
+ },
+ {
+  "id": "packaging.ort-restore-linked-input",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "    if library.is_symlink():",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "An internal symlink is not an explicit regular native file eligible for replacement."
+ },
+ {
+  "id": "packaging.ort-restore-linked-root",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "        if path.is_symlink():",
+  "replace": "        if path.is_symlink() and path != destination:",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "The existing notice writer owns linked-root refusal before any native originals publish; the new mode must retain that canonical guard."
+ },
+ {
+  "id": "packaging.ort-restore-root-boundary",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "if not root.is_dir() or not target.is_relative_to(root):",
+  "replace": "if not root.is_dir():",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "Native originals cannot overwrite files outside the declared bundle, including through a parent link."
+ },
+ {
+  "id": "packaging.ort-restore-duplicate-target",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "if target in seen:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "Repeated destination arguments must refuse before notices or any native bytes change."
+ },
+ {
+  "id": "packaging.ort-restore-input-unchanged",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "if library.is_symlink() or not library.is_file() or file_sha(str(library)) != expected:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "A file replaced during copy must survive; an earlier wheel match is not authority to overwrite later bytes."
+ },
+ {
+  "id": "packaging.ort-restore-copy-complete",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "if file_sha(str(pending)) != original_sha:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "A silent short copy must fail before replacing the proved native input."
+ },
+ {
+  "id": "packaging.ort-restore-temporary-cleanup",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "            pending.unlink(missing_ok=True)",
+  "replace": "            pass",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "Failed copying or atomic replacement must remove its unpublished temporary file."
+ },
+ {
+  "id": "packaging.ort-restore-validate-before-write",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "            originals = original_library_plan(wheel, args.library, args.destination, args.strip, Path(temp), inputs) if args.restore_unstripped else []\n            output = write_texts(args.destination, texts)",
+  "replace": "            output = write_texts(args.destination, texts)\n            originals = original_library_plan(wheel, args.library, args.destination, args.strip, Path(temp), inputs) if args.restore_unstripped else []",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "All destination checks must complete before writing even the original notices."
+ },
+ {
+  "id": "packaging.ort-restore-publish-after-copy",
+  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "find": "        try:\n            with original.open(\"rb\") as source:",
+  "replace": "        try:\n            os.replace(pending, library)\n            with original.open(\"rb\") as source:",
+  "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
+  "why": "A failed copy cannot touch the prior native library; publish only a complete validated temporary."
  }
 ]

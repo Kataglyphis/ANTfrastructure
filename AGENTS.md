@@ -221,6 +221,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Finished-package binary checks use streaming exact hashes, not text-license normalization; copied `WindowsPackageBinary.Common.psm1` carries the MSI module and both Python verifiers, and MSI members map through the File and Media tables.
    Python app packages that contain Windows ORT must compare the installed texts with the matched wheel and check them in ZIP, MSI and MSIX; apps without ORT remain supported.
    Linux ORT license staging compares every selected native ELF with one wheel, directly or after target-compatible stripping; copied `stage-ort-wheel-licenses.py` carries `ort_census_probe.py`, and the shell companion carries both package verifiers.
+   Explicit native original-byte staging validates every selected library and notice before writing; replace only unchanged regular files inside the bundle and retain per-file failure/cleanup verdicts.
    GPU AppImages must retain the wheel's unstripped ORT bytes and verify the finished artifact, including both notices; a staged-tree match alone is insufficient.
    Their opt-in shared patchelf wrapper also preserves libmigraphx-ep.so exactly; its image-byte proof must survive package generation.
    Finished-package ORT trees use `06-packaging/ort-package-proof.sh` for library and notice checks; keep failures explicit under conditional callers.

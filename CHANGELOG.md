@@ -15,6 +15,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — stage original wheel bytes for native GPU packages
+
+- Actual Rust TAR, DEB and AppImage now pass strict finished wheel/plugin/helper/model checks and the TAR CPU smoke in accepted ROCm index `4e76aa2a75e1…`. GPU/cats parity and new image acceptance remain open.
+- Add opt-in `--restore-unstripped` and the shared `stage_ort_wheel_originals` API. Match every native library and both original texts to one wheel before replacing any checked in-bundle regular file.
+- Keep linked-root refusal in the canonical notice writer, which runs before native publication. Refuse escaping/link/duplicate destinations and late input changes; verify complete same-directory temporary copies and retain raw failures/cleanup. Publication is per file, so a failure leaves the bundle unaccepted. Finished-package verification still requires exact original wheel bytes.
+
 ## 2026-11-11 — keep source-proof fixtures self-contained
 
 - Load canonical standalone logging in the shared isolated-helper compiler library and retain required companion-source failures.

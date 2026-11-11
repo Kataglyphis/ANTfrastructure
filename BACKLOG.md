@@ -1060,7 +1060,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       TAR, DEB and AppImage in accepted ROCm index `4e76aa2a75e1…`. Finished verification remains red:
       native core `0083593fe853…` matches that image's CPU wheel only after target stripping, while
       GPU packages require the wheel's original bytes. No stripped-core exception or GPU result is
-      claimed. The complete older `eb3ca33d` source replay also remains red: 4844 of 5020 mutations bite,
+      claimed for that initial attempt. The follow-up replay restores uniquely matched original wheel
+      bytes (`4178745408d1…`) and passes the unchanged strict checks for actual TAR, DEB and AppImage:
+      original core/notices, image-identical plugin/full license tree, exact Cargo helper and locked model.
+      The finished TAR's CPU zero-image smoke passes; this is not cats/GPU parity, clean-host installation
+      or an image-acceptance receipt. Those checks and default-tip integration remain open.
+      The complete older `eb3ca33d` source replay also remains red: 4844 of 5020 mutations bite,
       176 unmutated baselines and 11 script suites fail; focused follow-ups do not replace a full replay.
       **Step 3 (in source 2026-11-08, owner: "sofort komplett, inklusive Entfernen"):**
       `30-build-native-amd.sh`, `--use_migraphx`, the `onnxruntime-migraphx` wheel and the two MIGraphX patches are

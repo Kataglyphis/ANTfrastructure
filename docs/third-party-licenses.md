@@ -226,6 +226,18 @@ argument remains required for CLI compatibility. Copies of the script require
 the caller must still identify every library actually shipped and its other
 dependencies.
 
+For a disposable native bundle whose core matches a wheel only after target stripping,
+`stage-ort-wheel-licenses.py --restore-unstripped` can restore that wheel's original
+ELF bytes. Supply every `--library` inside `--destination`; linked roots/files,
+escaping parents and duplicate destinations refuse before any output. All libraries
+and original texts must first match one wheel. The shell API is
+`stage_ort_wheel_originals BUNDLE`; it retains the separate image plugin untouched.
+It validates a complete same-directory temporary and unchanged input before replacing
+each file. Copy or replacement failure is fatal and cleans unpublished temporaries;
+there is no whole-bundle rollback, concurrent-writer protocol or build authentication.
+A failed bundle remains unaccepted. Re-run strict finished-package checks with
+`--require-unstripped`; this staging operation does not establish GPU inference.
+
 `linux/scripts/06-packaging/ort-wheel-licenses.sh` shares bundle library
 selection and archive or native AppImage verification. Its relative layout
 includes `stage-ort-wheel-licenses.py`, `ort_census_probe.py`,
