@@ -38,6 +38,18 @@ ElfImage: TypeAlias = tuple[bool, str, list[LoadSegment], list[DynamicEntry]]
 EMPTY_FACTS: FileFacts = (None, None, None, None, None)
 
 
+def elf_target(header: bytes) -> tuple[int, int, int]:
+    """Validate the ELF identity before invoking a target-specific strip tool."""
+    if len(header) < 20 or header[:4] != b"\x7fELF" or header[4] not in (1, 2) or header[5] not in (1, 2):
+        raise ValueError("invalid ELF identity")
+    order = "little" if header[5] == 1 else "big"
+    machine = int.from_bytes(header[18:20], order)
+    if machine == 0:
+        raise ValueError("invalid ELF machine")
+    return header[4], header[5], machine
+
+
+
 def emit(*fields: object) -> None:
     print("\t".join("-" if f in (None, "") else str(f) for f in fields))
 

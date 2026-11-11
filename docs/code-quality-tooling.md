@@ -27,6 +27,38 @@ See [MSYS2's symlink modes](https://www.msys2.org/docs/symlinks/).
 
 ## Preserved local proof workflows
 
+`probe-rust-child-under-dart.sh NEW_OUTPUT` compiles a Rust FFI fixture with the canonical
+native supervisor and runs it in a real Dart VM with an active child. Default mode requires
+all64 worker statuses, observed external supervisor reaping and correct raw failure, signal,
+timeout and exec-error controls. It retains compiler/VM versions, JSON results and C compiler
+cache statistics through `lib/isolated-helper-compile.sh` and `capture-sccache-command.sh`.
+The same builder compiles the canonical HIP executable and fake runtime with ASan; nine
+native-worker checks require normal teardown, including exit86 and an exact17-byte LSan
+negative control. These checks execute while the bounded Dart child is live. The wrapper also
+requires the real report: `--teardown-negative-control` uses a compiled early-exit86 fixture
+which passes raw status checks but fails without sanitizer teardown. Its report-gate mutation
+is caught against a green baseline. The local engine default seccomp profile passes this
+actual probe; generic isolated-preflight security settings stay unchanged. Earlier opted-out
+container proofs retain their own scope. The C supervisor is not sanitizer-instrumented.
+The measured cache covers local C/C++ objects, not Rust or S3.
+
+Both Linux source-CI jobs use `.github/actions/native-worker-test-tools`, which caches the
+SDK by the existing Flutter archive checksum and calls `ensure-native-worker-test-tools.sh`.
+The isolated bootstrap calls the same script. It requires working C/C++, Rust and sccache,
+then reuses `setup-flutter.sh --keep-cache` to retain and execute the pinned bundled Dart.
+The existing PE-tool step already supplies Rust/Cargo; test setup adds the cache package.
+Fresh ordinary image installs still strip the archive cache. Fixture/archive and YAML wiring
+checks do not prove a hosted CI run or the entire fresh isolated bootstrap.
+The host parity verifier uses the same `parse_cli_value_options` owner for its value flags;
+its bound `+CALLBACK` retains help alias binding, complete remaining argv, active errexit and
+unknown-option exit. Legacy status-count callbacks retain their existing contract.
+The frozen help-receipt matrix and explicit empty/spaced-value controls cover that reuse.
+`--expect-status-loss` selects the original failing runner; `--idle-reaper` omits the Dart
+child. The shared Rust suite also runs this real VM path and retains failures before fixture
+cleanup. Use a bounded owned-container unit with the cleanup hook below. These source tests
+prove no installed bridge or GPU inference; see the
+[external-reaper failure](failure-modes.md#a-native-child-returns-echild-while-running-under-dart).
+
 Compiler-tool fixtures normalize generated source/output basenames, independently of the temporary root.
 `test-compiler-tool-toggles.sh` keeps a synthetic path-with-spaces control outside `/tmp`; its mutation
 restores the old hard-coded prefix and must fail. This tests the argument recorder, not real cache hits.
@@ -1130,7 +1162,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4953 entries** over **643 distinct test commands**; both digits are
+manifest holds **4974 entries** over **644 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -3254,7 +3286,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 1064 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1067 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

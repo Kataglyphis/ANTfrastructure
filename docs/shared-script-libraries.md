@@ -2376,3 +2376,21 @@ The initializer is carried beside both the entrypoint and `bootstrap.sh` in
 standalone bundles and fresh per-stage copy/mount closures. It is sourced directly
 rather than invoked through a function that an older bootstrap may not provide.
 This shares the import policy without changing source scope or using `eval`.
+
+### Bound CLI callbacks
+
+`parse_cli_value_options MAP REMAINING +CALLBACK ARGS...` invokes the selected callback
+unconditionally so the caller's active Bash errexit policy survives. The callback receives the
+consumed-count variable name first, shifts that parameter, then handles the complete remaining
+argv and assigns its count through a nameref. It returns normally for handled flags; help and
+errors keep their original exit policy. Existing callback names without `+` retain their
+status-as-count interface. The host parity verifier uses the bound form; its frozen help
+receipts cover strict/conditional calls and usage aliases, with separate empty/spaced values.
+
+### Loaded module and isolated worker assets
+
+`shared/rust/loaded_module.rs` owns address-to-loaded-file lookup. Its exact shared asset accompanies the isolated Rust binding/tests, C source/header and HIP worker source/header. Declare consumer destinations in `.antfrastructure-shared.manifest`; retain the complete companion set. The [consumer contract](consumer-image-contract.md#amds-plugin-migraphx-ep) explains path and runtime evidence limits.
+
+### Cargo native helper transport
+
+`06-packaging/stage-cargo-native-helper.py` stages one exact OUT_DIR helper using successful Cargo JSON and the selected native artifact. Copies include `ort_census_probe.py`; the wheel-license stager imports the same ELF identity function. [The staging contract](linux-build-basics.md#cargo-native-helper-staging) states its target, no-replace and evidence limits.

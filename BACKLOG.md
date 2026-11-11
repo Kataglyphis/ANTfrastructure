@@ -1036,8 +1036,23 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       tests and an API24 typecheck of the actual adapter/provider modules pass; this is not the
       complete locked consumer graph. The actual locked inference crate now builds, compiles its test
       targets, passes Clippy with warnings denied and executes all 65 CPU tests without ignored or
-      filtered cases. Full-workspace checks, HIP-process replacement, package/profile migration and
-      actual finished GPU acceptance remain required; the existing Rust cache opt-out reports zero requests.
+      filtered cases. The prepared Linux Cargo integration now replaces the in-process HIP child with
+      the shared C/Rust transport and an OUT_DIR-built native executable. A separate exact-source run
+      executes79 library and6 build-output cases;14 integration cases pass with the pinned model required,
+      including real ORT/tract CPU inference and XNNPACK. Its earlier model-free green skipped bodies
+      and is not runtime acceptance. Full-workspace checks, finished helper transport, package/profile
+      migration and actual finished GPU acceptance remain required. Local C/C++ cache hits are measured;
+      the existing Rust wrapper opt-out remains explicit.
+      The prepared isolated worker transport now passes12 real process cases and an actual Dart FFI
+      matrix:64 retained worker statuses despite25 external supervisor reaps; the original runner loses64.
+      These are source-only transport checks. Native HIP, Cargo/consumer wiring, package delivery and
+      mutation-registry checks remain open; no installed-bridge or finished-package proof follows.
+      Nine native executable/fake-HIP checks now prove expected cleanup/error exits and a17-byte
+      LSan negative control through the real worker wait, with all controls inside the live Dart scope.
+      This proves no real HIP/GPU. The actual default-seccomp VM probe passes, and the report-gate
+      mutation bites against a green suite. Shared pinned Dart/cache preparation is now wired to
+      both source-CI jobs and isolated bootstrap; existing PE tools already supply Rust/Cargo.
+      Fresh provisioning/hosted-CI proof is still required before claiming the complete CI closure.
       **Step 3 (in source 2026-11-08, owner: "sofort komplett, inklusive Entfernen"):**
       `30-build-native-amd.sh`, `--use_migraphx`, the `onnxruntime-migraphx` wheel and the two MIGraphX patches are
       gone; the rocm variant has no ORT GPU build, the plugin builds over the CPU prefix, the wrapper's app venv

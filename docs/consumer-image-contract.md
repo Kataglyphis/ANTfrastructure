@@ -1101,6 +1101,24 @@ The prepared OxidANT adapter holds a weak environment reference and resolves its
 beside the actual loaded C API owner. Its fake-adapter tests prove policy/concurrency only;
 actual crate compilation, runtime teardown and finished-package inference remain separate checks.
 
+`shared/rust/loaded_module.rs` resolves a symbol's owning loaded file on Linux and Windows. Linux preserves filename bytes and spaces, prefers the kernel mapping link and refuses ambiguous escaped newlines in its text fallback. This locates a path; it neither authenticates mapped bytes nor retains a module lifetime. The Dart fixture loads the library relatively, changes cwd, and independently rejects an expected path naming a different existing module.
+
+The exact shared asset rows cover this lookup, Rust worker binding and test companion, C source/header and HIP executable source/header. Consumers declare their own destinations; package transport still needs the corresponding target-native built worker.
+
+The prepared Linux worker transport is `shared/rust/isolated_helper.rs` with
+`shared/native/isolated_helper.c` and `.h`. The control-only supervisor owns the fresh
+executable's `waitpid`; the parent validates its complete private packet and EOF before
+accepting a status collected by another runtime. Keep descriptor closure, parent-death
+guards, raw exec failures and timeout kill/reap. The worker runs application work only after
+`execve` and exits normally, including runtime teardown. The actual Dart VM fixture covers
+external reaping and12 isolated-worker cases. Nine native executable/fake-HIP checks now
+preserve cleanup/error exits and a17-byte LSan failure through the actual worker wait; the
+controls run before Dart child cleanup. The required real report rejects a compiled early
+exit86 without sanitizer teardown; matching status alone cannot pass. The actual probe also
+passes under the local engine default seccomp profile. These shared fixture results do not establish Cargo wiring, a real HIP driver,
+installed-bridge, package or hardware acceptance. Details and the original negative control:
+[child ownership](failure-modes.md#a-native-child-returns-echild-while-running-under-dart).
+
 Repeated registration never silently changes the path behind a name. The helper
 coordinates its own calls only; it does not coordinate external unregistration.
 Fake-binding and shared-copy tests prove these policies, not native ABI compatibility,

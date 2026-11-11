@@ -488,3 +488,11 @@ The last three were invisible until the 2026-08-08 orphan sweep: useful, and ref
 no doc included. None of `lib/` ships in the images (no Dockerfile copies it): consumers source it
 from their submodule, and in this repo `preflight.sh` and `flutter_checks.sh` source
 `lib/code-quality.sh`.
+
+### Cargo native helper staging
+
+`linux/scripts/06-packaging/stage-cargo-native-helper.py` selects one helper build script by exact Cargo package ID and requires one selected native artifact in the same successful JSON-lines build. Supply `--messages`, `--package-id`, `--module`, `--name-env`, `--path-env`, `--target` and an existing canonical `--destination`. The two environment keys name the helper basename and full path; the latter must equal that build script's exact `out_dir` plus basename. `cargo pkgid --locked -p PACKAGE` supplies the package ID without copying a version.
+
+Capture the actual `cargo build --message-format=json-render-diagnostics` stdout; a failed, incomplete, repeated or test-only build cannot identify a packaged module. The selected helper must be a regular executable, and both native headers must match the requested Linux target. The script copies and hashes the exact helper, publishes without replacing an existing file, and prints its basename. It does not scan old Cargo directories. A copied script carries `ort_census_probe.py`, which owns its ELF identity and streaming hash helpers.
+
+The JSON belongs to the caller: this is no authenticated build or linkage attestation, complete ELF validation, runtime test or finished-package proof. Packaging must place the helper beside the actual loaded module, preserve its loader/runtime closure and verify the final files. The shared source suite uses synthetic ELF headers for selection and copy controls; an actual Cargo build and target execution are separate evidence.

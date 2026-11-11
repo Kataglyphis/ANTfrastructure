@@ -22,24 +22,13 @@ import zipfile
 from contextlib import nullcontext
 from pathlib import Path
 
-from ort_census_probe import file_sha
+from ort_census_probe import elf_target, file_sha
 
 MAX_LIBRARY_BYTES = 1024 * 1024 * 1024
 MAX_TEXT_BYTES = 16 * 1024 * 1024
 CHUNK_BYTES = 1024 * 1024
 TEXTS = ("LICENSE", "ThirdPartyNotices.txt")
 ORT_LIBRARY = re.compile(r"^(libonnxruntime(?:_providers_[a-zA-Z0-9_]+)?\.so)(?:\.\d+)*$")
-
-
-def elf_target(header: bytes) -> tuple[int, int, int]:
-    """Validate the ELF identity before invoking a target-specific strip tool."""
-    if len(header) < 20 or header[:4] != b"\x7fELF" or header[4] not in (1, 2) or header[5] not in (1, 2):
-        raise ValueError("invalid ELF identity")
-    order = "little" if header[5] == 1 else "big"
-    machine = int.from_bytes(header[18:20], order)
-    if machine == 0:
-        raise ValueError("invalid ELF machine")
-    return header[4], header[5], machine
 
 
 def checked_entry(archive: zipfile.ZipFile, name: str, limit: int) -> zipfile.ZipInfo | None:

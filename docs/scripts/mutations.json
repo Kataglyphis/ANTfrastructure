@@ -31530,7 +31530,7 @@
  },
  {
   "id": "package.ort-wheel-elf-valid",
-  "target": "linux/scripts/06-packaging/stage-ort-wheel-licenses.py",
+  "target": "linux/scripts/06-packaging/ort_census_probe.py",
   "find": "        raise ValueError(\"invalid ELF identity\")",
   "replace": "        return (0, 0, 0)",
   "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
@@ -39639,5 +39639,506 @@
   "replace": "if False:",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "A missing inspected state must fail before mutating the container, and cannot escape as successful cleanup."
+ },
+ {
+  "id": "lib.ort-plugin-rust-hip-teardown-report",
+  "target": "linux/scripts/lib/isolated-helper-compile.sh",
+  "find": "[[ \"$(grep -Fxc -e 'SUMMARY: AddressSanitizer: 17 byte(s) leaked in 1 allocation(s).' \"${_ih_report}\")\" == 1 ]]",
+  "replace": "[[ -r \"${_ih_report}\" ]]",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "A fake worker exiting86 before cleanup must fail even when raw Dart/Rust status checks accept that code; require the real17-byte LSan report.",
+  "timeout": 90
+ },
+ {
+  "id": "lib.native-worker-tools-retain",
+  "target": "linux/scripts/05-frameworks/flutter/setup-flutter.sh",
+  "find": "KEEP_CACHE=1; shift",
+  "replace": "KEEP_CACHE=0; shift",
+  "test": "bash linux/scripts/tests/test-native-worker-tools.sh",
+  "why": "Native tests must retain the verified archive Dart SDK when requested.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.native-worker-tools-default-bare",
+  "target": "linux/scripts/05-frameworks/flutter/setup-flutter.sh",
+  "find": "KEEP_CACHE=0",
+  "replace": "KEEP_CACHE=1",
+  "test": "bash linux/scripts/tests/test-native-worker-tools.sh",
+  "why": "Fresh image installs keep the existing bare SDK default.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.native-worker-tools-caller-pins",
+  "target": "linux/scripts/ensure-native-worker-test-tools.sh",
+  "find": "unset FLUTTER_VERSION FLUTTER_SDK_SHA256",
+  "replace": ": inherited pins retained",
+  "test": "bash linux/scripts/tests/test-native-worker-tools.sh",
+  "why": "Native source test setup uses the canonical pin instead of an inherited stale override.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.native-worker-tools-required-compilers",
+  "target": "linux/scripts/ensure-native-worker-test-tools.sh",
+  "find": "for tool in cc c++ rustc sccache; do \"${tool}\" --version; done",
+  "replace": ": compiler probes omitted",
+  "test": "bash linux/scripts/tests/test-native-worker-tools.sh",
+  "why": "Every compiler and cache prerequisite failure must retain its raw status before an SDK fetch.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.native-worker-tools-complete-pin",
+  "target": "linux/scripts/ensure-native-worker-test-tools.sh",
+  "find": ": \"${FLUTTER_VERSION:?}\" \"${FLUTTER_SDK_SHA256:?}\"",
+  "replace": ": incomplete pin accepted",
+  "test": "bash linux/scripts/tests/test-native-worker-tools.sh",
+  "why": "A successful resolver with half a pin cannot authorize an installer invocation.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.native-worker-tools-required-dart",
+  "target": "linux/scripts/ensure-native-worker-test-tools.sh",
+  "find": "\"${dart_binary}\" --version",
+  "replace": ": Dart probe omitted",
+  "test": "bash linux/scripts/tests/test-native-worker-tools.sh",
+  "why": "A retained SDK must execute its Dart and retain a failed runtime status.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.native-worker-tools-ci-preflight",
+  "target": ".github/workflows/linux-x64.yml",
+  "find": "      - name: Prepare mandatory native worker tests\n        uses: ./.github/actions/native-worker-test-tools\n      # The runner image ships no pytest, and without it every mutation baseline fails unmutated.\n",
+  "replace": "      - name: Prepare mandatory native worker tests\n        run: echo tools-omitted\n      # The runner image ships no pytest, and without it every mutation baseline fails unmutated.\n",
+  "test": "bash linux/scripts/tests/test-native-worker-tools.sh",
+  "why": "Both source-CI lanes must provision the real VM/cache before their mandatory tests.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.native-worker-tools-ci-mutations",
+  "target": ".github/workflows/linux-x64.yml",
+  "find": "      - name: Prepare mandatory native worker tests\n        uses: ./.github/actions/native-worker-test-tools\n      - name: Install pytest (mutation-gate baselines)\n",
+  "replace": "      - name: Prepare mandatory native worker tests\n        run: echo tools-omitted\n      - name: Install pytest (mutation-gate baselines)\n",
+  "test": "bash linux/scripts/tests/test-native-worker-tools.sh",
+  "why": "Both source-CI lanes must provision the real VM/cache before their mandatory tests.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.native-worker-tools-isolated-setup",
+  "target": "linux/scripts/isolated-preflight/bootstrap.sh",
+  "find": "bash \"${task_source}/linux/scripts/ensure-native-worker-test-tools.sh\" /opt/preflight-native-tools",
+  "replace": ": native worker tools omitted",
+  "test": "bash linux/scripts/tests/test-native-worker-tools.sh",
+  "why": "The isolated bootstrap must execute the shared required tool provisioner.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.native-worker-tools-isolated-path",
+  "target": "linux/scripts/isolated-preflight/bootstrap.sh",
+  "find": "PATH=/opt/preflight-native-tools/flutter/bin/cache/dart-sdk/bin:",
+  "replace": "PATH=",
+  "test": "bash linux/scripts/tests/test-native-worker-tools.sh",
+  "why": "The nonroot isolated worker must receive the retained Dart executable on PATH.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.native-worker-tools-sdk-cache-key",
+  "target": ".github/actions/native-worker-test-tools/action.yml",
+  "find": "native-worker-sdk-${{ runner.os }}-${{ runner.arch }}-${{ steps.pin.outputs.sha256 }}",
+  "replace": "native-worker-sdk-${{ runner.os }}-${{ runner.arch }}",
+  "test": "bash linux/scripts/tests/test-native-worker-tools.sh",
+  "why": "The reusable CI SDK cache key retains the exact archive checksum.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.native-worker-tools-cache-package",
+  "target": ".github/actions/native-worker-test-tools/action.yml",
+  "find": "sccache build-essential xz-utils",
+  "replace": "build-essential xz-utils",
+  "test": "bash linux/scripts/tests/test-native-worker-tools.sh",
+  "why": "Bare source-CI setup explicitly installs the compiler cache prerequisite.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.native-worker-tools-ci-installer",
+  "target": ".github/actions/native-worker-test-tools/action.yml",
+  "find": "        bash linux/scripts/ensure-native-worker-test-tools.sh \"${RUNNER_TEMP}/native-worker-sdk\"",
+  "replace": "        : native installer omitted",
+  "test": "bash linux/scripts/tests/test-native-worker-tools.sh",
+  "why": "The composite action executes the required shared tool setup instead of merely naming its path.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.native-worker-tools-ci-path",
+  "target": ".github/actions/native-worker-test-tools/action.yml",
+  "find": "        echo \"${RUNNER_TEMP}/native-worker-sdk/flutter/bin/cache/dart-sdk/bin\" >> \"${GITHUB_PATH}\"",
+  "replace": "        : Dart path omitted",
+  "test": "bash linux/scripts/tests/test-native-worker-tools.sh",
+  "why": "Subsequent CI test steps require the retained Dart directory on PATH.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.native-worker-tools-ci-pin",
+  "target": ".github/actions/native-worker-test-tools/action.yml",
+  "find": "        flutter_resolve_pin",
+  "replace": "        : pin resolution omitted",
+  "test": "bash linux/scripts/tests/test-native-worker-tools.sh",
+  "why": "SDK cache identity and installer selection require canonical pin resolution.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.parity-shared-cli-bound-dispatch",
+  "target": "linux/scripts/06-packaging/verify-parity.sh",
+  "find": "parse_cli_value_options _parity_values _parity_rest +_parity_flag \"$@\"",
+  "replace": "parse_cli_value_options _parity_values _parity_rest _parity_flag \"$@\"",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "Parity uses output-count callbacks so required help preserves caller errexit and exact argument context.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.parity-shared-cli-unconditional-callback",
+  "target": "linux/scripts/lib/cli-value-options.sh",
+  "find": "      \"${_cpo_handler:1}\" _cpo_consumed \"$@\"",
+  "replace": "      \"${_cpo_handler:1}\" _cpo_consumed \"$@\" || _cpo_consumed=$?",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "An active strict caller must retain the raw failing usage status through the selected bound callback.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.parity-shared-cli-cross-value",
+  "target": "linux/scripts/06-packaging/verify-parity.sh",
+  "find": "[--cross]=CROSS_IMAGE",
+  "replace": "[--cross]=NATIVE_IMAGE",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "Every mapped value reaches its distinct caller variable, including spaced arguments and empty optional values.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.parity-shared-cli-consumed-flag",
+  "target": "linux/scripts/06-packaging/verify-parity.sh",
+  "find": "_parity_consumed=1",
+  "replace": "_parity_consumed=0",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "A handled verbose flag consumes one argument before help, preserving the frozen receipt matrix.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.parity-shared-cli-remaining-argv",
+  "target": "linux/scripts/06-packaging/verify-parity.sh",
+  "find": "  local -n _parity_consumed=\"$1\"\n  shift",
+  "replace": "  local -n _parity_consumed=\"$1\"\n  : output parameter retained",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "Bound callbacks remove only their output slot before forwarding all original remaining arguments to usage.",
+  "timeout": 30
+ },
+ {
+  "id": "lib.loaded-module.symbol-owner",
+  "target": "shared/rust/loaded_module.rs",
+  "find": "    Ok(path)\n}\n\n#[cfg(target_os = \"linux\")]\nstruct Mapping",
+  "replace": "    std::env::current_exe().map_err(|error| error.to_string())\n}\n\n#[cfg(target_os = \"linux\")]\nstruct Mapping",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "A foreign function must resolve to its loaded library rather than the host executable."
+ },
+ {
+  "id": "lib.loaded-module.exclusive-range",
+  "target": "shared/rust/loaded_module.rs",
+  "find": "address >= high",
+  "replace": "address > high",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "The byte just past a mapping cannot select that mapping."
+ },
+ {
+  "id": "lib.loaded-module.path-spaces",
+  "target": "shared/rust/loaded_module.rs",
+  "find": "OsStr::from_bytes(line.trim_ascii_start())",
+  "replace": "OsStr::from_bytes(line.trim_ascii_start().split(|byte| *byte == b' ').next().unwrap_or_default())",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "A space in the actual module filename is not a field separator."
+ },
+ {
+  "id": "lib.loaded-module.path-bytes",
+  "target": "shared/rust/loaded_module.rs",
+  "find": "PathBuf::from(OsStr::from_bytes(line.trim_ascii_start()))",
+  "replace": "PathBuf::from(OsStr::from_bytes(line.trim_ascii_start()).to_string_lossy().into_owned())",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "Non-UTF8 Linux filenames retain exact bytes instead of lossy substitutions."
+ },
+ {
+  "id": "lib.loaded-module.file-backed",
+  "target": "shared/rust/loaded_module.rs",
+  "find": "if inode.parse::<u64>().map_err(|error| error.to_string())? == 0 {",
+  "replace": "if inode.parse::<u64>().map_err(|error| error.to_string())? == u64::MAX {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "An anonymous mapping is refused even when its synthetic pathname is absolute."
+ },
+ {
+  "id": "lib.loaded-module.absolute-path",
+  "target": "shared/rust/loaded_module.rs",
+  "find": "if !path.is_absolute() {",
+  "replace": "if path.as_os_str().is_empty() {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "The textual mapping fallback cannot reinterpret a relative pathname under a changed cwd."
+ },
+ {
+  "id": "lib.loaded-module.ambiguous-newline",
+  "target": "shared/rust/loaded_module.rs",
+  "find": "bytes == b\"\\\\012\"",
+  "replace": "bytes == b\"\\\\013\"",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "Ambiguous proc mapping newline escapes cannot identify an exact file."
+ },
+ {
+  "id": "lib.loaded-module.null-address",
+  "target": "shared/rust/loaded_module.rs",
+  "find": "if address.is_null() {",
+  "replace": "if address as usize == usize::MAX {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "A null symbol is rejected explicitly before mapping lookup."
+ },
+ {
+  "id": "lib.native-worker.exact-loaded-module-rust",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "loaded-module-rust | shared/rust/loaded_module.rs | runtime_support/loaded_module.rs | exact |",
+  "replace": "loaded-module-rust | shared/rust/loaded_module.rs | runtime_support/loaded_module.rs | body |",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "Every declared native-worker companion remains exact, including its header."
+ },
+ {
+  "id": "lib.native-worker.exact-isolated-helper-rust",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "isolated-helper-rust | shared/rust/isolated_helper.rs | runtime_support/isolated_helper.rs | exact |",
+  "replace": "isolated-helper-rust | shared/rust/isolated_helper.rs | runtime_support/isolated_helper.rs | body |",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "Every declared native-worker companion remains exact, including its header."
+ },
+ {
+  "id": "lib.native-worker.exact-isolated-helper-tests-rust",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "isolated-helper-tests-rust | shared/rust/tests/isolated_helper_tests.rs | runtime_support/tests/isolated_helper_tests.rs | exact |",
+  "replace": "isolated-helper-tests-rust | shared/rust/tests/isolated_helper_tests.rs | runtime_support/tests/isolated_helper_tests.rs | body |",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "Every declared native-worker companion remains exact, including its header."
+ },
+ {
+  "id": "lib.native-worker.exact-isolated-helper-native-source",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "isolated-helper-native-source | shared/native/isolated_helper.c | runtime_support/isolated_helper.c | exact |",
+  "replace": "isolated-helper-native-source | shared/native/isolated_helper.c | runtime_support/isolated_helper.c | body |",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "Every declared native-worker companion remains exact, including its header."
+ },
+ {
+  "id": "lib.native-worker.exact-isolated-helper-native-header",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "isolated-helper-native-header | shared/native/isolated_helper.h | runtime_support/isolated_helper.h | exact |",
+  "replace": "isolated-helper-native-header | shared/native/isolated_helper.h | runtime_support/isolated_helper.h | body |",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "Every declared native-worker companion remains exact, including its header."
+ },
+ {
+  "id": "lib.native-worker.exact-hip-probe-native-header",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "hip-probe-native-header | shared/native/hip_copy.hpp | runtime_support/hip_copy.hpp | exact |",
+  "replace": "hip-probe-native-header | shared/native/hip_copy.hpp | runtime_support/hip_copy.hpp | body |",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "Every declared native-worker companion remains exact, including its header."
+ },
+ {
+  "id": "lib.native-worker.exact-hip-probe-native-main",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "hip-probe-native-main | shared/native/hip_probe_main.cpp | runtime_support/hip_probe_main.cpp | exact |",
+  "replace": "hip-probe-native-main | shared/native/hip_probe_main.cpp | runtime_support/hip_probe_main.cpp | body |",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "Every declared native-worker companion remains exact, including its header."
+ },
+ {
+  "id": "lib.native-worker.dart-module-refusal",
+  "target": "shared/rust/tests/dart_child_owner_probe.dart",
+  "find": "controls['module'] == 0 &&",
+  "replace": "controls['module'] != null &&",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "The live VM acceptance fails when the expected existing module differs from the loaded owner."
+ },
+ {
+  "id": "lib.native-worker.rust-module-refusal",
+  "target": "shared/rust/tests/dart_child_owner_probe.rs",
+  "find": "        Ok(_) => 22,",
+  "replace": "        Ok(_) => 0,",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "A compiled mismatched module result remains a refusal rather than success."
+ },
+ {
+  "id": "lib.native-worker.wrong-module-control",
+  "target": "linux/scripts/probe-rust-child-under-dart.sh",
+  "find": "module_path=\"${output}/hip-worker\"",
+  "replace": "module_path=\"${output}/libchild-owner-probe.so\"",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "The wrong-module control deliberately selects another existing file and must fail."
+ },
+ {
+  "id": "package.cargo-native-helper.success",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "finished[0].get(\"success\") is not True",
+  "replace": "finished[0].get(\"success\") is None",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "A failed Cargo build cannot identify delivered artifacts."
+ },
+ {
+  "id": "package.cargo-native-helper.single-build",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "len(finished) != 1",
+  "replace": "not finished",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "Repeated build completion records are refused."
+ },
+ {
+  "id": "package.cargo-native-helper.final-build",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "result[-1] != finished[0]",
+  "replace": "finished[0] != finished[0]",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "The successful build completion is the final record."
+ },
+ {
+  "id": "package.cargo-native-helper.single-record",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "if len(rows) != 1:",
+  "replace": "if not rows:",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "Duplicate module or build-script records never silently choose the first."
+ },
+ {
+  "id": "package.cargo-native-helper.exact-package",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "r.get(\"package_id\") == package",
+  "replace": "r.get(\"package_id\") is not None",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "Only the explicitly selected helper package may supply the worker."
+ },
+ {
+  "id": "package.cargo-native-helper.module-not-test",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "row.get(\"profile\", {}).get(\"test\") is not False",
+  "replace": "row.get(\"profile\", {}).get(\"test\") is None",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "Test executables cannot identify packaged native artifacts."
+ },
+ {
+  "id": "package.cargo-native-helper.duplicate-env",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "len(values) != len(pairs)",
+  "replace": "len(values) > len(pairs)",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "Repeated helper environment keys are ambiguous and refused."
+ },
+ {
+  "id": "package.cargo-native-helper.env-schema",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "all(isinstance(v, str) for v in p)",
+  "replace": "bool(p)",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "Cargo helper environment values are strings before use."
+ },
+ {
+  "id": "package.cargo-native-helper.basename",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "if not re.fullmatch(r\"[A-Za-z0-9][A-Za-z0-9_.+-]*\", name) or name in (\".\", \"..\"):",
+  "replace": "if name is None:",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "The helper name remains a single safe basename."
+ },
+ {
+  "id": "package.cargo-native-helper.canonical-out",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "if not out.is_absolute() or out.resolve(strict=True) != out:",
+  "replace": "if out.is_absolute() and out.resolve(strict=True) != out:",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "OUT_DIR remains absolute and canonical."
+ },
+ {
+  "id": "package.cargo-native-helper.exact-path",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "values.get(path_env) != str(helper)",
+  "replace": "values.get(path_env) is None",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "The full helper path equals the selected OUT_DIR and basename."
+ },
+ {
+  "id": "package.cargo-native-helper.no-source-links",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "metadata = path.lstat()",
+  "replace": "metadata = path.stat()",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "A linked native module or helper cannot redirect staging."
+ },
+ {
+  "id": "package.cargo-native-helper.nonempty",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "metadata.st_size < 64",
+  "replace": "metadata.st_size < 0",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "Empty native sources fail before header processing or destination writes."
+ },
+ {
+  "id": "package.cargo-native-helper.executable",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "if executable and not metadata.st_mode & 0o111:",
+  "replace": "if executable and not metadata.st_mode & 0o111 and False:",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "The staged native worker must be executable."
+ },
+ {
+  "id": "package.cargo-native-helper.target",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "elf_target(header) != (2, 1, machine)",
+  "replace": "elf_target(header) not in ((2, 1, machine), (2, 1, 183))",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "Selected module and helper both match the requested target."
+ },
+ {
+  "id": "package.cargo-native-helper.elf-type",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "not in (2, 3):",
+  "replace": "not in (1, 2, 3):",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "A relocatable object header is not a native executable or shared module."
+ },
+ {
+  "id": "package.cargo-native-helper.destination",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "if not stat.S_ISDIR(destination.lstat().st_mode) or destination.resolve(strict=True) != destination:",
+  "replace": "if not destination.is_dir():",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "A linked output directory cannot redirect the published companion."
+ },
+ {
+  "id": "package.cargo-native-helper.copy-hash",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "file_sha(str(temporary)) != expected",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "Copied bytes must retain the selected worker digest."
+ },
+ {
+  "id": "package.cargo-native-helper.source-hash",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "file_sha(str(helper)) != expected",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "A changed worker source cannot produce a passed copy."
+ },
+ {
+  "id": "package.cargo-native-helper.no-replace",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "os.link(temporary, destination / helper.name)",
+  "replace": "os.replace(temporary, destination / helper.name)",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "Publishing never replaces an existing output file."
+ },
+ {
+  "id": "package.cargo-native-helper.temp-cleanup",
+  "target": "linux/scripts/06-packaging/stage-cargo-native-helper.py",
+  "find": "temporary.unlink(missing_ok=True)",
+  "replace": "temporary.exists()",
+  "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
+  "why": "Failed copies and publications leave no staging temporary file."
  }
 ]

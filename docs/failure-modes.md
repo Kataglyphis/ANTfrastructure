@@ -22,6 +22,56 @@ Two neighbours, so you land on the right page:
 > the triage index: enough to recognise the failure and act, with a link when
 > the full history matters.
 
+## A native child returns ECHILD while running under Dart
+
+**Symptom.** A Rust child runner succeeds alone but loses the native child's exit status when
+called through Dart FFI. On 2026-11-11, the actual Dart3.13.7/Rust1.99.1 Linux probe lost all
+64 statuses; its required-success invocation exited1. A separate failure-control invocation
+reproduced the same64 ECHILD errors. In the final matrix the idle-reaper control retained all64
+statuses, while the active reaper again lost all64. None exercised HIP or a finished app.
+
+**Cause.** Dart's Linux process handler calls process-wide `wait`, so an active Dart process
+reaper can collect children created by native libraries too. See the
+[upstream handler](https://github.com/dart-lang/sdk/blob/main/runtime/bin/process_linux.cc).
+Waiting for one PID in Rust does not reserve that status against another thread's wait.
+
+**Action.** Keep the generic `shared/rust/bounded_process.rs` limited to callers that own
+child reaping. The prepared `isolated_helper.rs` instead carries `isolated_helper.c` and `.h`:
+a control-only supervisor reaps the fresh executable worker and sends its raw status through
+a private pipe. It accepts an externally reaped supervisor only after the complete validated
+worker packet and EOF; the parent never signals a supervisor's numeric PID. Both parent-death
+guards, descriptor isolation, exec errno and timeout kill/reap remain required. HIP still starts
+only after worker `execve` and retains normal process teardown. Kernel-blocked waits still need
+an owning unit bound. Native fake-HIP fixtures now run the canonical executable through this
+transport with ASan/LSan: eight cleanup/error/argument paths preserve their expected exits,
+and the intentional17-byte leak must emit its real report and exit86 after normal teardown.
+A separate compiled early-exit86 fixture is refused despite matching raw statuses. The local
+default seccomp profile passes this real probe; no generic isolation opt-out is required.
+These are fake ABI cases,
+not a real driver or GPU. Cargo wiring and finished-package/hardware acceptance remain open.
+
+Repeat with `bash linux/scripts/probe-rust-child-under-dart.sh NEW_OUTPUT`. Default mode now
+checks the prepared transport and requires observed external supervisor reaping with all64
+successful workers, plus raw exit/signal/timeout/exec-error controls. `--expect-status-loss`
+selects the original runner and records its failure only; `--idle-reaper` isolates the active
+Dart child. The later native-worker matrix retains64 statuses with34 observed external reaps,
+while the original control loses64. All raw status/timeout/exec and fake-HIP controls run
+before the Dart child is stopped; their30-second probe bound is below its60-second natural
+lifetime. An earlier probe ran the raw controls after Dart cleanup, so its active-reaper
+coverage applied only to the64 ownership calls. Preserve that scope correction with its proof. Run inside a bounded owned-container unit with independent
+cleanup; none of these source fixtures establishes GPU, package or installed-bridge acceptance.
+
+**Concurrent supervisor startup.** Initial `_Fork` supervisors left some workers waiting on
+libc futexes until timeout in the16-caller test. Eager symbol binding did not fix it. Ordinary
+`fork` for the initial supervisor restores the required libc state and passes the same test;
+only its single-threaded control process uses `_Fork` for the immediate worker exec. The
+[glibc process contract](https://sourceware.org/glibc/manual/latest/html_node/Creating-a-Process.html)
+explains the different state repair. The observed waits are consistent with inherited abort-lock
+readers before `sigaction(SIGABRT)`, as suggested by glibc's
+[signal wrapper](https://github.com/bminor/glibc/blob/master/signal/sigaction.c) and
+[abort lock](https://github.com/bminor/glibc/blob/master/stdlib/abort.c); the fixture does not
+identify a libc build-specific source line. Preserve the failed sources and process snapshots.
+
 ## systemd expands a Bash array before starting a detector
 
 **Symptom.** A user unit exits127 with `env: '': No such file or directory`; its journal reports

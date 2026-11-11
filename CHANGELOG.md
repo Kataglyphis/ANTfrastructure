@@ -15,6 +15,42 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — stage native Cargo companions from exact metadata
+
+- Select the helper from one exact build-script package and OUT_DIR in a successful Cargo JSON build containing the chosen native artifact. Refuse test artifacts, duplicate records, target mismatches, links, stale path substitutions and replacement of existing output.
+- Preserve the exact helper bytes through temporary copying and no-replace publication. Reuse the existing ELF identity parser in its census companion; the synthetic source suite does not establish runtime or finished-package acceptance.
+
+## 2026-11-11 — share loaded-module lookup and native worker assets
+
+- Resolve the actual loaded owner by symbol address, preserving Linux path bytes and spaces. Windows reuses the existing module APIs; path lookup does not authenticate mapped bytes or retain module lifetime.
+- Declare all seven worker/module companions as exact shared assets. Exercise relative Dart loading, a changed cwd and a wrong-module refusal alongside the existing live-reaper and sanitizer controls.
+- The prepared OxidANT Cargo integration compiles its C bridge and fresh HIP executable in `OUT_DIR`. Actual locked inference compilation, native tests and required-model CPU inference pass locally; finished helper transport, full workspace, bridge and GPU acceptance remain open.
+
+## 2026-11-11 — provide the native worker source-test prerequisites
+
+- Share pinned Dart preparation between both Linux CI jobs and isolated preflight. Reuse the existing Flutter archive and checksum; `--keep-cache` retains its bundled Dart only when requested. The existing PE tools already provide Rust/Cargo.
+- Reuse the shared value parser in the host parity verifier; preserve complete help argv, aliases and empty/spaced values instead of retaining another parsing loop.
+- Keep the actual compiler/cache/VM failures fatal and cache the SDK by its archive checksum. Fixture/archive and YAML checks cover the invocation closure; hosted CI and fresh bare-bootstrap proof remain separate.
+- The real live-Dart/fake-HIP sanitizer probe passes with the engine default seccomp profile. Generic runner isolation stays unchanged; the report-gate mutant bites against a green baseline.
+
+## 2026-11-11 — prove native worker teardown inside the live Dart scope
+
+- Run raw status, timeout and exec-error controls before stopping the bounded Dart child. Correct the earlier scope: its64 ownership calls were active, while its later status controls ran standalone.
+- Compile the canonical HIP worker and fake runtime with ASan. Nine native cases preserve their expected exits; the deliberate17-byte leak must reach normal LSan teardown and return86 through the worker wait. All45 Rust tests and the real VM pass; this is no real HIP/GPU, Cargo or package proof.
+- Record local C/C++ cache measurements and retain the permanent fixture builder. Bare source-CI/bootstrap prerequisite coverage remains open; compiler-image success cannot stand in for that run.
+
+## 2026-11-11 — preserve worker status under Dart reaping
+
+- Prepare a Rust/C worker transport whose control-only supervisor reaps the fresh executable before sending a validated private status packet. Preserve descriptor closure, parent-death guards, raw exec errors and timeout kill/reap; the worker retains normal teardown.
+- Initial ordinary fork fixes the16-caller libc wait found with `_Fork`; failed sources and process snapshots are retained. Actual23 policy,10 original-process and12 isolated-worker tests pass, plus the real Dart VM path. The matrix retains64 worker statuses despite25 observed external supervisor reaps; the original control loses64.
+- Local C cache measurement records one miss then four hits without cache errors. It proves no Rust/S3 coverage. Native HIP, Cargo/consumer wiring, package transport, mutation-registry execution and GPU acceptance remain open.
+
+## 2026-11-11 — reproduce Dart/native child reaping
+
+- Preserve an actual Dart/Rust FFI diagnostic and compiler/VM versions. Both64-child runs reproduce ECHILD when Dart owns the process-wide reaper; the required-success run fails and the separate failure control confirms the defect.
+- The final matrix retains all64 statuses with an idle Dart reaper and loses all64 with an active Dart child. The shared Rust suite runs23 policy tests and10 independent child/FD/timeout tests; reuse its existing harness instead of duplicating a suite bootstrap.
+- Keep the generic Rust process draft out of the Dart bridge until worker status and cleanup survive an external reaper. Owned diagnostic containers are independently removed; no GPU, finished-package or bridge acceptance follows from these probes.
+
 ## 2026-11-11 — preserve independent owned-container cleanup
 
 - Share preflight's ownership cleanup with a versioned `ExecStopPost` entry point, so a killed starter can still be cleaned independently. Check IDs, labels, CID binding and the final engine inventory; command success alone cannot pass.

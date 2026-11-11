@@ -25,7 +25,12 @@ parse_cli_value_options() {
       continue
     fi
     _cpo_consumed=0
-    "${_cpo_handler}" "$@" || _cpo_consumed=$?
+    # Bound callbacks keep the caller's active errexit policy.
+    if [[ "${_cpo_handler}" == +* ]]; then
+      "${_cpo_handler:1}" _cpo_consumed "$@"
+    else
+      "${_cpo_handler}" "$@" || _cpo_consumed=$?
+    fi
     case "${_cpo_consumed}" in
       0) break ;;
       1|2) shift "${_cpo_consumed}" ;;

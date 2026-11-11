@@ -80,6 +80,13 @@ gate cannot see them, by design.
 
 ## Bootstrapping Flutter in the package stage
 
+For native worker source tests, `setup-flutter.sh --keep-cache` explicitly retains the
+verified archive's bundled Dart SDK. `ensure-native-worker-test-tools.sh` owns this opt-in for
+CI/bootstrap callers. Fresh ordinary image installs keep the bare-SDK default below; an
+already matching bootstrapped SDK still takes the existing no-install path. This option
+proves no foreign-architecture bootstrap or finished Flutter package.
+
+
 Being COPY'd is not enough for Flutter. The upstream tarball is the framework
 checkout only: `bin/cache` is empty, and the first `flutter` invocation
 downloads the Dart SDK for `uname -m` and compiles the `flutter_tools`

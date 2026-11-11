@@ -46,7 +46,14 @@ t_assert_contains "${OUT}" "Shared config in sync." \
 for asset in \
   'ort-plugin-registration-python|shared/python/ort_plugin_eps.py|app/ort_plugin_eps.py' \
   'ort-plugin-registration-native|shared/native/ort_plugin_eps.hpp|include/ort_plugin_eps.hpp' \
-  'ort-plugin-registration-rust|shared/rust/ort_plugin_eps.rs|src/ort_plugin_eps.rs'; do
+  'ort-plugin-registration-rust|shared/rust/ort_plugin_eps.rs|src/ort_plugin_eps.rs' \
+  'loaded-module-rust|shared/rust/loaded_module.rs|runtime_support/loaded_module.rs' \
+  'isolated-helper-rust|shared/rust/isolated_helper.rs|runtime_support/isolated_helper.rs' \
+  'isolated-helper-tests-rust|shared/rust/tests/isolated_helper_tests.rs|runtime_support/tests/isolated_helper_tests.rs' \
+  'isolated-helper-native-source|shared/native/isolated_helper.c|runtime_support/isolated_helper.c' \
+  'isolated-helper-native-header|shared/native/isolated_helper.h|runtime_support/isolated_helper.h' \
+  'hip-probe-native-header|shared/native/hip_copy.hpp|runtime_support/hip_copy.hpp' \
+  'hip-probe-native-main|shared/native/hip_probe_main.cpp|runtime_support/hip_probe_main.cpp'; do
   IFS='|' read -r asset_id asset_source asset_target <<< "${asset}"
   t_case "${asset_id} is an exact shared asset inside the consumer package"
   _d="$(_consumer)"

@@ -250,6 +250,11 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Consumer checks running inside the family Linux image use `ci_image_python_require` from `python-probe.sh`; retain its image marker, pinned interpreter probe and caller-specific diagnostic.
    Runtime consumer probes retain lazy required-fact checks and distinguish missing facts from failed facts.
    Rust plugin consumers carry the exact shared policy, preserve GetEpDevices failures and retain the owning environment during V2 calls without blocking its normal teardown.
+   Native child waits under Dart must preserve external-reaper failures; an ECHILD or a successful failure-control probe never proves worker teardown or bridge acceptance.
+   Copied isolated-worker Rust bindings carry their canonical C source/header; retain descriptor closure, parent-death guards, validated worker status and normal worker exec/teardown. Initial supervisor startup uses ordinary fork for libc state repair.
+   Cargo native helper staging uses the exact successful Cargo JSON artifact and build-script OUT_DIR; copy stage-cargo-native-helper.py with ort_census_probe.py and retain target checks and no-replace publication.
+   Copied loaded-module Rust lookup stays an exact shared asset; retain byte paths, foreign-symbol ownership and the wrong-module refusal after relative loading and cwd changes.
+   Native transport controls execute while the bounded Dart child is live; preserve the canonical HIP worker/fake-runtime companions, normal sanitizer teardown, its real report and the expected leak-control exit.
    Copied Torch setup carries `package-image-wiring.sh`, `wheelhouse-manifest.sh` and `native-gcc-system-paths.sh` before its first execution.
    Copied `build-app-wheelhouse.sh` carries `torch-source-pins.sh` beside it.
    Native GCC profiles carry `native-gcc-system-paths.sh`; preserve flag expansion when the profile is sourced.
@@ -438,6 +443,10 @@ Five of them are RULES and stay here:
   the mutation recipe contract lives in `mutation_parse.py` beside its runner.
   Source CI dispatch, retrieval and audits use `source-ci.py` with its `source_ci/` and `host_commands.py` companions.
   Mutation seals require a loaded, terminal successful unit before stopping; cached default success is insufficient.
+  Native worker source tests require Dart, C/C++, Rust and sccache; use `ensure-native-worker-test-tools.sh` and preserve mandatory VM coverage.
+  Flutter `--keep-cache` is a test-runner opt-in; fresh image installs retain their default bare-SDK policy.
+  Parity CLI copies carry `lib/cli-value-options.sh` and logging companions; retain usage alias binding and complete remaining arguments.
+  `+CALLBACK` CLI dispatch uses an output count and an unconditional invocation; do not swallow the caller's active errexit policy.
   Container transport fixtures accept the shared runner security and value flags before parsing
   the image and command; preserve the production AppArmor setting.
 

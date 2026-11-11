@@ -56,6 +56,7 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/05-frameworks/*.py' \
   'linux/scripts/06-packaging/free-threaded-sysconfig-tools.py' \
   'linux/scripts/06-packaging/ort_census_probe.py' \
+  'linux/scripts/06-packaging/stage-cargo-native-helper.py' \
   'linux/scripts/06-packaging/python-app-selftest.py' \
   'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' \
   'linux/scripts/source-ci.py' 'linux/scripts/source_ci/*.py' \
@@ -169,6 +170,7 @@ mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
   'linux/scripts/quality_allow.py' \
   'linux/scripts/lib/fetch-data-lock.py' \
   'linux/scripts/06-packaging/ort_census_probe.py' \
+  'linux/scripts/06-packaging/stage-cargo-native-helper.py' \
   'linux/scripts/06-packaging/venv-version-probe.py' \
   'linux/scripts/verify_code_complexity.py' \
   'linux/scripts/verify_gate_registry.py' \
@@ -194,7 +196,7 @@ windows_environment_checked_files=('windows/scripts/build/litert-wheel-smoke.py'
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#parameter_return_files[@]}" -eq 133 ] || { echo "Expected 133 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
+[ "${#parameter_return_files[@]}" -eq 134 ] || { echo "Expected 134 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
 jetson_dockerfile="${ROOT}/linux/Dockerfile.torch"
 [ -f "${jetson_dockerfile}" ] || { echo "Torch Dockerfile is missing for the Jetson type gate" >&2; exit 2; }
 grep -Fq 'source=linux/jetson-webcam/app.py,target=/tmp/venv-probe-ty/jetson-webcam-app.py,ro' "${jetson_dockerfile}" || {
