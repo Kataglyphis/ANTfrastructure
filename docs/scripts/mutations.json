@@ -37618,10 +37618,10 @@
  },
  {
   "id": "windows-lane.torch-refusal-normalization",
-  "target": "windows/scripts/tests/Torch.Rocm.Check.Tests.ps1",
+  "target": "windows/scripts/tests/WindowsTorchRocm.RefusalFixture.psm1",
   "find": "Assert-Match $Pattern (ConvertTo-TestDiagnosticText -Output @($Result.Out)) $Why",
   "replace": "Assert-Match $Pattern $Result.Out $Why",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Torch.Rocm.Check.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/native-fixture-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Torch.Rocm.Refusal.Tests.ps1",
   "why": "a supplied wrapped refusal must still enforce the exact reason, failing status and absent download cache"
  },
  {

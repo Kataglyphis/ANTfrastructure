@@ -14,6 +14,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — share portable Torch refusal assertions
+
+- Move the wrapped-refusal control into a portable suite and share its assertion
+  with every native installer case. Its mutation runs without Windows batch tools
+  on Linux while retaining the raw exit, normalized reason and no-download guards.
+  Native installer and interpreter execution cases remain discovered separately.
+
 ## 2026-11-11 — run ORT census-path mutations on both hosts
 
 - Extract the three census-path cases into a separately discovered portable suite,

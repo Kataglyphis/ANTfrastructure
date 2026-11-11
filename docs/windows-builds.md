@@ -2526,6 +2526,13 @@ remain discovered. The inherited-twin mutation and directory-mapping mutation ru
 the complete portable suite through `Invoke-HarnessSuite.ps1`. These tests inspect
 paths and stub interpreter replies; they do not prove real uv, Python or inference.
 
+`WindowsTorchRocm.RefusalFixture.psm1` shares the original refusal assertion with
+native installer cases and the portable `Torch.Rocm.Refusal.Tests.ps1` control.
+The control requires the failing status, complete normalized reason and absent
+download cache, and proves each guard separately. Its mutation runs this complete
+portable suite; all installer and batch execution cases remain in the native suite.
+Copied fixtures carry `TestHarness.psm1` and its companions with the assertion module.
+
 `WindowsHarness.CallAssertions.psm1` shares sequence comparisons, recorded argument
 projection and source call-order checks. It imports `TestHarness.psm1` unforced;
 copied suites carry both modules and the harness's existing companions.

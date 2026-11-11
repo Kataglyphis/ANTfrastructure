@@ -145,7 +145,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows AMD EP builds carry both canonical Linux-owned lifetime patches in the EP RUN; retain all six C-base callback adjustments, typed node deletion and synchronized registry ownership before configuration.
    Windows call assertion suites carry WindowsHarness.CallAssertions.psm1 beside TestHarness.psm1; preserve sequence counts, argument boundaries, unique calls and source order.
    Windows mutation fixtures share module lifetime; import or parse failures cannot satisfy an expected assertion failure.
-   Captured child diagnostics share ANSI and continuation-gutter normalization; refusal assertions retain raw status, reason and pre-download checks. Census-path fixtures clear inherited twin-wheel overrides and run under both host platforms; preserve all native sync cases and the shared wheel-store fixture.
+   Captured child diagnostics share ANSI and continuation-gutter normalization; native and portable Torch refusal tests share WindowsTorchRocm.RefusalFixture.psm1; refusal assertions retain raw status, reason and pre-download checks. Census-path fixtures clear inherited twin-wheel overrides and run under both host platforms; preserve all native sync cases and the shared wheel-store fixture.
    Synthetic ELF and gst-inspect test fixtures share their writers; retain caller-specific `DT_STRSZ`, symbol-table and `Name` options.
    Windows script workspaces share AST validation before allocation and cleanup; log and Cargo paths use the canonical rooted-path resolver.
    Windows build drivers share config-file and workspace-root selection; callers still validate the resolved path.
