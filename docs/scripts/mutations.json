@@ -40420,5 +40420,13 @@
   "replace": "        try:\n            os.replace(pending, library)\n            with original.open(\"rb\") as source:",
   "test": "bash linux/scripts/tests/test-ort-wheel-licenses.sh",
   "why": "A failed copy cannot touch the prior native library; publish only a complete validated temporary."
+ },
+ {
+  "id": "sccache.fixture-helper-path",
+  "target": "linux/scripts/tests/test-compiler-cache.sh",
+  "find": "    absent)\n      command() {\n        if [ \"$#\" -eq 2 ] && [ \"$1\" = -v ] && [ \"$2\" = sccache ]; then return 1; fi\n        builtin command \"$@\"\n      }\n      sccache() { printf invoked >> \"${CACHE_FIXTURE_WORK}/unavailable-invoked\"; return 127; }\n      ;;",
+  "replace": "    absent)\n      PATH=\"$(\n        filtered=\"\"\n        while IFS= read -r candidate; do\n          [ -x \"${candidate}/sccache\" ] || filtered=\"${filtered:+${filtered}:}${candidate}\"\n        done < <(printf '%s\\n' \"${PATH//:/$'\\n'}\")\n        printf '%s' \"${filtered}\"\n      )\"\n      ;;",
+  "test": "bash linux/scripts/tests/test-compiler-cache.sh",
+  "why": "A missing-cache fixture must preserve colocated shell utilities; removing their whole PATH directory made the actual clean Ubuntu baseline fail."
  }
 ]

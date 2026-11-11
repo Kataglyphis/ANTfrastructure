@@ -15,6 +15,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — preserve utilities in cache-unavailability fixtures
+
+- Model the missing cache tool through its availability probe and a refused direct call, preserving dirname/chmod/head on PATH. The clean Ubuntu replay found the old whole-directory filter also hid these required utilities.
+- Add a grouped-tool regression and the original directory-filter mutation. Production cache selection and ordinary Cargo C/C++ caching still need their own measurements.
+
 ## 2026-11-11 — stage original wheel bytes for native GPU packages
 
 - Actual Rust TAR, DEB and AppImage now pass strict finished wheel/plugin/helper/model checks and the TAR CPU smoke in accepted ROCm index `4e76aa2a75e1…`. GPU/cats parity and new image acceptance remain open.

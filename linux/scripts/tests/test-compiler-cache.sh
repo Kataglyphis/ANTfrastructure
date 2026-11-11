@@ -10,21 +10,18 @@ CACHE_UTILS="${2:-${TESTS_DIR}/../01-core/compiler-cache-utils.sh}"
 CACHE_FIXTURE_WORK="$(mktemp -d)"
 trap 'rm -rf "${CACHE_FIXTURE_WORK}"' EXIT
 
-# _path_without <tool>: PATH minus every dir holding that executable; the image ships a real sccache.
-_path_without() {
-  local d out=""
-  while IFS= read -r d; do
-    [ -x "${d}/$1" ] || out="${out:+${out}:}${d}"
-  done < <(printf '%s\n' "${PATH//:/$'\n'}")
-  printf '%s' "${out}"
-}
-
 # _mk_fakes <sccache: ok|dead|absent> <ccache: present|absent>: stub binaries first on PATH.
 _mk_fakes() {
   _fake_bin="${CACHE_FIXTURE_WORK}/bin"
   rm -rf "${_fake_bin}"; mkdir -p "${_fake_bin}"
   case "${1:-ok}" in
-    absent) PATH="$(_path_without sccache)" ;;
+    absent)
+      command() {
+        if [ "$#" -eq 2 ] && [ "$1" = -v ] && [ "$2" = sccache ]; then return 1; fi
+        builtin command "$@"
+      }
+      sccache() { printf invoked >> "${CACHE_FIXTURE_WORK}/unavailable-invoked"; return 127; }
+      ;;
     dead)   printf '#!/bin/sh\ncase "$1" in --version) echo "sccache 0.17.0";; --start-server) exit 0;; --show-stats) exit 1;; esac\n' > "${_fake_bin}/sccache" ;;
     ok)     printf '#!/bin/sh\ncase "$1" in --version) echo "sccache 0.17.0";; --start-server) exit 0;; --show-stats) echo "Compile requests 1" >&2; exit 0;; esac\n' > "${_fake_bin}/sccache" ;;
   esac
@@ -96,7 +93,30 @@ t_assert_eq "${_out4}" "ccache"
 
 t_case "setup_ccache (bootstrap path) stays ccache when sccache is absent"
 _out5="$( _cache_fixture absent inherit cc setup_ccache CMAKE_C_COMPILER_LAUNCHER 2>/dev/null )"
-t_assert_eq "${_out5}" "ccache"
+t_assert_eq "ccache" "${_out5}"
+
+t_case "an unavailable cache tool beside core utilities must not hide those utilities"
+_grouped="${CACHE_FIXTURE_WORK}/grouped"
+mkdir -p "${_grouped}" || exit 1
+for _tool in bash cat dirname mkdir chmod head rm id; do
+  _tool_path="$(command -v "${_tool}")" || exit 1
+  ln -s "${_tool_path}" "${_grouped}/${_tool}" || exit 1
+done
+printf '#!/usr/bin/env bash\nprintf invoked >> %q\nexit 127\n' "${CACHE_FIXTURE_WORK}/unavailable-invoked" > "${_grouped}/sccache"
+chmod +x "${_grouped}/sccache"
+t_assert_ok env PATH="${_grouped}" bash -c 'command -v sccache >/dev/null'
+_grouped_probe="$(
+  PATH="${_grouped}"
+  _mk_fakes absent present >/dev/null
+  for _tool in dirname chmod mkdir head; do
+    command -v "${_tool}" >/dev/null || { printf 'missing:%s' "${_tool}"; exit 0; }
+  done
+  if command -v sccache >/dev/null; then printf sccache-visible; else printf helpers-ready; fi
+)"
+t_assert_eq helpers-ready "${_grouped_probe}"
+_grouped_output="$(PATH="${_grouped}" _cache_fixture absent inherit cc setup_ccache CMAKE_C_COMPILER_LAUNCHER 2>/dev/null)"
+t_assert_eq ccache "${_grouped_output}"
+t_assert_fails test -e "${CACHE_FIXTURE_WORK}/unavailable-invoked"
 
 # Rust has no ccache fallback, so a ccache verdict keeps RUSTC_WRAPPER sccache-class.
 t_case "setup_sccache keeps RUSTC_WRAPPER sccache-class on a ccache verdict"

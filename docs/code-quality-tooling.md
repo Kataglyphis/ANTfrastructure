@@ -903,6 +903,11 @@ and probe script so the build checks the same pin without copying the checker in
 the final image. The shared loader clears an ambient `TY_VERSION`; the preflight
 driver also clears `RUFF_VERSION` before loading its pinned tools. Fixtures and
 mutations prove ambient versions cannot replace either pin.
+The cache-unavailability fixture masks only the selected command probe and refuses
+unexpected direct calls. Its grouped-tool case keeps a fake cache executable beside
+real shell utilities: removing that whole PATH directory must fail before a broken
+fixture can be mistaken for a production resolver failure.
+
 The fake native-worker SDK suite uses a harness-owned temporary directory so
 intentionally failed downloads can retain diagnostic archives without leaking into
 the outer runner. Its command statuses and the runner's leftover check stay fatal.
@@ -1188,7 +1193,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5048 entries** over **645 distinct test commands**; both digits are
+manifest holds **5049 entries** over **645 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
