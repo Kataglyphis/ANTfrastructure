@@ -30,8 +30,7 @@ function Invoke-PythonCiFixtureDriver {
     }
     $code = $LASTEXITCODE
     $calls = if (Test-Path -LiteralPath $log) { @(Get-Content -LiteralPath $log) } else { @() }
-    # Child error views insert ANSI escapes and continuation gutters into assertion messages.
-    $text = ($output -join "`n") -replace '\x1b\[[0-9;]*m', '' -replace '\s*\n\s*(\|\s*)*', ' '
+    $text = ConvertTo-TestDiagnosticText -Output $output
     return [pscustomobject]@{ Code = $code; Calls = $calls; Text = $text }
 }
 

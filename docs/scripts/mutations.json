@@ -37599,5 +37599,37 @@
   "replace": "        Write-Verbose 'call uniqueness omitted'",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/call-assertions-mutation.json",
   "why": "a repeated selected source call must fail before source-order verification"
+ },
+ {
+  "id": "windows-lane.child-diagnostic-ansi",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "-replace '\\x1b\\[[0-9;]*m', ''",
+  "replace": "-replace 'NO_ANSI_MATCH', ''",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/native-fixture-mutation.json",
+  "why": "captured child diagnostics must remove ANSI escapes without changing their words"
+ },
+ {
+  "id": "windows-lane.child-diagnostic-continuations",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "-replace '\\s*\\n\\s*(\\|\\s*)*', ' '",
+  "replace": "-replace 'NO_GUTTER_MATCH', ' '",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/native-fixture-mutation.json",
+  "why": "wrapped PowerShell continuation gutters must not alter the expected refusal text"
+ },
+ {
+  "id": "windows-lane.torch-refusal-normalization",
+  "target": "windows/scripts/tests/Torch.Rocm.Check.Tests.ps1",
+  "find": "Assert-Match $Pattern (ConvertTo-TestDiagnosticText -Output @($Result.Out)) $Why",
+  "replace": "Assert-Match $Pattern $Result.Out $Why",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Torch.Rocm.Check.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/native-fixture-mutation.json",
+  "why": "a supplied wrapped refusal must still enforce the exact reason, failing status and absent download cache"
+ },
+ {
+  "id": "uv-chain-ort.census-fixture-twins",
+  "target": "windows/scripts/tests/Uv.ChainOrt.Tests.ps1",
+  "find": "`$env:PYTHON_WHEELS_FREE_THREADED = `$null; `$env:PYTHON_WHEELS_CP314T = `$null",
+  "replace": "Write-Verbose 'inherited twin stores retained'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Uv.ChainOrt.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/native-fixture-mutation.json",
+  "why": "the staged-census fixture must isolate its path assertion from inherited free-threaded stores"
  }
 ]

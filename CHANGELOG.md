@@ -14,6 +14,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — isolate native Windows test fixtures
+
+- Share captured child diagnostic normalization between Python CI and Torch
+  refusal fixtures; wrapped ANSI error text retains status, reason and no-download
+  assertions. The ORT census-path fixture clears inherited twin-wheel overrides
+  and proves its own path with both overrides deliberately present.
+
 ## 2026-11-11 — Windows ROCm plugin lifetime corrections
 
 - Apply the canonical AMD EP node-cleanup and registry-ownership patches before

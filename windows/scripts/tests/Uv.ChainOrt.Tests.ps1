@@ -122,13 +122,16 @@ Describe 'WindowsUv.Common: where the ORT census is, in the hub checkout and in 
             $probe = @"
 `$ErrorActionPreference = 'Stop'
 `$env:ORT_CHAIN_WHEEL_DIR = `$null; `$env:PYTHON_WHEELS = '$($f.Store)'
+`$env:PYTHON_WHEELS_FREE_THREADED = `$null; `$env:PYTHON_WHEELS_CP314T = `$null
 Import-Module '$(Join-Path $modules 'WindowsUv.Common.psm1')' -DisableNameChecking
 `$seen = [System.Collections.Generic.List[string]]::new()
 `$py = { param(`$exe, `$arguments) `$seen.Add(`$arguments -join ' '); [pscustomobject]@{ ExitCode = 0; Output = @() } }.GetNewClosure()
 Sync-UvChainOnnxRuntime -VenvPath '$($f.Venv)' -PythonRunner `$py -LogInfo { } -LogWarning { }
 `$seen[0]
 "@
-            $out = @(& pwsh -NoProfile -NonInteractive -Command $probe 2>&1 | ForEach-Object { "$_" })
+            $out = @(Invoke-WithEnv @{ PYTHON_WHEELS_FREE_THREADED = $f.Store; PYTHON_WHEELS_CP314T = $f.Store } {
+                & pwsh -NoProfile -NonInteractive -Command $probe 2>&1 | ForEach-Object { "$_" }
+            })
             Assert-Equal 0 $LASTEXITCODE "the image copy's sync threw: $($out -join ' | ')"
             Assert-Equal "-I $census --purge-list" ($out | Select-Object -Last 1) 'the census beside the modules dir, not the absent checkout path'
         }

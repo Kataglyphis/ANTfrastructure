@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Small argument and AST fixtures cover assertion failures, not production compilation or runtime order.
+# Small argument, AST and diagnostic fixtures do not prove production compilation or runtime order.
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.CallAssertions.psm1') -ErrorAction Stop
 
@@ -30,5 +30,18 @@ Describe 'Shared source call order assertions' {
             Add-Content -LiteralPath $fixture.ScriptPath -Value 'Repair-Input'
             Assert-Throws { Assert-TestScriptCallOrder @fixture } -MessagePattern 'one selected call to Repair-Input'
         }
+    }
+}
+
+Describe 'Captured child diagnostic text' {
+    It 'retains words and argument text while removing ANSI escapes and wrapped gutters' {
+        $raw = @("`e[31mrefused source with spaces`e[0m", "  | expected gpu,`r`n    | second gpu")
+        Assert-Equal 'refused source with spaces expected gpu, second gpu' (ConvertTo-TestDiagnosticText -Output $raw)
+    }
+
+    It 'preserves empty diagnostics and distinctions in the actual refusal reason' {
+        Assert-Equal '' (ConvertTo-TestDiagnosticText -Output @())
+        Assert-Equal 'different reason' (ConvertTo-TestDiagnosticText -Output @('different reason'))
+        Assert-Throws { Assert-Match 'expected reason' (ConvertTo-TestDiagnosticText -Output @('different reason')) } -MessagePattern 'Assert-Match'
     }
 }

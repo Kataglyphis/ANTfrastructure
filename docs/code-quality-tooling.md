@@ -1065,7 +1065,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4698 entries** over **631 distinct test commands**; both digits are
+manifest holds **4702 entries** over **634 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2787,6 +2787,14 @@ latencies in the CI image against a per-CPU baseline:
 moved set member, a missing collector, an absent artifact, a malformed compare file and the queue.
 
 ## Windows Pester coverage
+
+Captured child diagnostic checks use `ConvertTo-TestDiagnosticText` from
+`TestHarness.psm1` to remove ANSI escapes and wrapped continuation gutters.
+Python CI transport and Torch refusal fixtures share it; raw exit status, the
+expected reason and the no-download assertion remain independent. The ORT
+census-path fixture clears both inherited twin-wheel overrides, with both
+deliberately populated in its control. These tests prove fixture isolation,
+not real GPU inference or a consumer environment.
 
 The shared PE-icon fixture also links actual x64 and ARM64 executables and reads
 their resources. Linux preflight and mutation runners call

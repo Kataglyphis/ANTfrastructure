@@ -223,8 +223,20 @@ Describe 'rocm-checks\Torch.ps1: the one venv probe, shared with Install-TorchRo
     # A refusal: a non-zero exit, the named reason in the output, and no wheel cache created.
     function Assert-TorchRocmInstallRefused { param([object]$Result, [string]$Pattern, [string]$Why)
         Assert-True ($Result.Rc -ne 0) "exit code $($Result.Rc); output: $($Result.Out)"
-        Assert-Match $Pattern $Result.Out $Why
+        Assert-Match $Pattern (ConvertTo-TestDiagnosticText -Output @($Result.Out)) $Why
         Assert-False $Result.CacheMade 'refused before any download'
+    }
+
+    It 'matches a wrapped refusal while retaining the exit, reason and pre-download checks' {
+        $reason = 'rocBLAS serves gfx1036, the device pins cover only gfx1201, gfx1200'
+        $sample = @{ Rc = 1; CacheMade = $false; Out = "`e[31mrocBLAS serves gfx1036, the device pins cover only gfx1201,`r`n     | gfx1200`e[0m" }
+        Assert-TorchRocmInstallRefused $sample $reason 'wrapped refusal'
+        $sample.Rc = 0
+        Assert-Throws { Assert-TorchRocmInstallRefused $sample $reason '' } -MessagePattern 'Assert-True'
+        $sample.Rc = 1
+        Assert-Throws { Assert-TorchRocmInstallRefused $sample 'missing reason' '' } -MessagePattern 'Assert-Match'
+        $sample.CacheMade = $true
+        Assert-Throws { Assert-TorchRocmInstallRefused $sample $reason '' } -MessagePattern 'Assert-False'
     }
 
     It 'returns the last JSON line as a hashtable, ran the probe source and removed its file' {
