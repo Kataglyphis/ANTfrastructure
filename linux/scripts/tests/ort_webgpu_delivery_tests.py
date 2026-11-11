@@ -57,12 +57,76 @@ class DeliveryTests(unittest.TestCase):
             member = members[0]
             return f"{hashlib.sha256(archive.read(member)).hexdigest()}  {wheel.name}!{member}\n"
 
+    def invoke_rows(self, mode: str, store: Path, manifest: Path) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(["bash", str(self.worker), str(self.runtime), mode, str(store), str(manifest)],
+                              capture_output=True, text=True, check=False, timeout=30)
+
+    def unbuilt_prefix(self) -> Path:
+        prefix = self.root / "skipped GPU prefix"
+        prefix.mkdir()
+        for name in ("lib", "bin", "wheels", "wheels-free-threaded"):
+            (prefix / name).mkdir()
+        for name in proof.PHASES:
+            (prefix / name).write_text("")
+        return prefix
+
+    def test_skipped_gpu_prefix_has_no_delivery_to_attest(self) -> None:
+        prefix = self.unbuilt_prefix()
+        before = sorted(str(path.relative_to(prefix)) for path in prefix.rglob("*"))
+        for manifest in proof.PHASES:
+            for mode in ("check", "follow"):
+                with self.subTest(manifest=manifest, mode=mode):
+                    result = self.invoke_rows(mode, self.stores["gil"][0], prefix / manifest)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertEqual((prefix / manifest).read_bytes(), b"")
+                    self.assertFalse((prefix / fixture.RECEIPT).exists())
+        self.assertEqual(sorted(str(path.relative_to(prefix)) for path in prefix.rglob("*")), before)
+
+    def test_empty_rows_do_not_excuse_payloads_or_receipt_damage(self) -> None:
+        prefix = self.unbuilt_prefix()
+        for relative, data in (("lib/libonnxruntime.so", b"core"), ("wheels/unlisted.whl", b"wheel"),
+                               (fixture.RECEIPT, b""), (fixture.RECEIPT, b"{}"),
+                               ("unknown", b""), ("ort-provenance.sha256", b" "),
+                               ("lib/ort-provenance.sha256", b"")):
+            with self.subTest(payload=relative, bytes=data):
+                path = prefix / relative
+                path.write_bytes(data)
+                result = self.invoke_rows("check", self.stores["gil"][0], prefix / "ort-provenance.sha256")
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(path.read_bytes(), data)
+                if path.name in proof.PHASES and path.parent == prefix:
+                    path.write_bytes(b"")
+                else:
+                    path.unlink()
+
+    def test_symlinks_cannot_masquerade_as_an_unbuilt_prefix(self) -> None:
+        prefix = self.unbuilt_prefix()
+        empty_file, empty_dir = self.root / "empty file", self.root / "empty directory"
+        empty_file.write_bytes(b"")
+        empty_dir.mkdir()
+        for relative in ("empty-directory", "unexpected", "lib/foreign", "ort-provenance.sha256"):
+            with self.subTest(link=relative):
+                path = prefix / relative
+                existed = path.exists()
+                if existed:
+                    path.unlink()
+                path.symlink_to(empty_dir if relative == "empty-directory" else empty_file)
+                result = self.invoke_rows("check", self.stores["gil"][0], prefix / "ort-provenance.sha256")
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertTrue(path.is_symlink())
+                path.unlink()
+                if existed:
+                    path.write_text("")
+        linked = self.root / "linked prefix"
+        linked.symlink_to(prefix, target_is_directory=True)
+        result = self.invoke_rows("check", self.stores["gil"][0], linked / "ort-provenance.sha256")
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def run_rows(self, mode: str, phase: str = "gil", *, passed: bool = True) -> subprocess.CompletedProcess[str]:
         store, manifest = self.stores[phase]
         receipt = self.prefix / fixture.RECEIPT
         before = (manifest.read_bytes(), receipt.read_bytes())
-        result = subprocess.run(["bash", str(self.worker), str(self.runtime), mode, str(store), str(manifest)],
-                                capture_output=True, text=True, check=False, timeout=30)
+        result = self.invoke_rows(mode, store, manifest)
         if passed:
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr + json.dumps(self.elf_differences))
         else:

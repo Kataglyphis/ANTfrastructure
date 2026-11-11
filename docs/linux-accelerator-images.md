@@ -1699,6 +1699,14 @@ manifest, wheelhouse, product and build binding before publishing final hashes.
 Repeated checked repairs retain a continuous history. The native core is checked
 again, and a native-only OFF build cannot become a Python delivery proof.
 
+A skipped optional GPU build still leaves empty GIL/FT census placeholders.
+Check/follow treats that prefix as unbuilt only when it contains directories and
+exactly empty top-level census manifests. It publishes no build or delivery receipt.
+Any native library, wheel, unknown file, nested manifest, existing receipt or symlink
+requires the normal proof; empty manifest rows do not excuse damaged or missing
+evidence for a built prefix. The default-amd64 media solve exposed this distinction
+on 2026-11-11. This exception does not prove required CPU output or final acceptance.
+
 `runtime/ort_webgpu_delivery.py` uses the canonical build-proof API and the shared
 bounded `ElfSections` parser, carried with `python_app_deb_symbols.py` in every
 mounted/copied closure. Code, data, architecture, symbol names/types/values and

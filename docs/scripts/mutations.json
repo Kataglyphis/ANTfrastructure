@@ -40428,5 +40428,53 @@
   "replace": "    absent)\n      PATH=\"$(\n        filtered=\"\"\n        while IFS= read -r candidate; do\n          [ -x \"${candidate}/sccache\" ] || filtered=\"${filtered:+${filtered}:}${candidate}\"\n        done < <(printf '%s\\n' \"${PATH//:/$'\\n'}\")\n        printf '%s' \"${filtered}\"\n      )\"\n      ;;",
   "test": "bash linux/scripts/tests/test-compiler-cache.sh",
   "why": "A missing-cache fixture must preserve colocated shell utilities; removing their whole PATH directory made the actual clean Ubuntu baseline fail."
+ },
+ {
+  "id": "ort-census.webgpu-unbuilt-required",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "    if not rows and not lines and unbuilt_prefix(prefix):\n        return\n",
+  "replace": "    if False:\n        return\n",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "A skipped GPU build must retain successful GIL/FT check/follow transport without fabricated receipts."
+ },
+ {
+  "id": "ort-census.webgpu-unbuilt-payload-refusal",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "    if not rows and not lines and unbuilt_prefix(prefix):\n",
+  "replace": "    if not rows and not lines:\n",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Empty rows cannot hide native products, wheels or damaged receipts."
+ },
+ {
+  "id": "ort-census.webgpu-unbuilt-links",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "        if path.is_symlink():\n            return False\n",
+  "replace": "        if False:\n            return False\n",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "A linked empty directory or census placeholder is not an absent build."
+ },
+ {
+  "id": "ort-census.webgpu-unbuilt-root-link",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "    if prefix.is_symlink() or not prefix.is_dir():\n",
+  "replace": "    if not prefix.is_dir():\n",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "A linked prefix must not satisfy the absent-build exception."
+ },
+ {
+  "id": "ort-census.webgpu-unbuilt-empty-manifest",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": " or path.stat().st_size:\n",
+  "replace": " :\n",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Only exactly empty manifest placeholders may belong to an unbuilt prefix."
+ },
+ {
+  "id": "ort-census.webgpu-unbuilt-known-placeholders",
+  "target": "linux/scripts/03-media/runtime/ort_webgpu_delivery.py",
+  "find": "        if path.parent != prefix or path.name not in PHASES or not path.is_file() or path.stat().st_size:\n",
+  "replace": "        if not path.is_file() or path.stat().st_size:\n",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-delivery.sh",
+  "why": "Unknown and nested empty files must not become valid census placeholders."
  }
 ]

@@ -15,6 +15,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — preserve skipped GPU prefixes during WebGPU wheel delivery
+
+- The actual default-amd64 media solve reached finalization, then refused an empty skipped GPU prefix because it had no build receipt. Preserve that failed solve and its unchanged source.
+- Recognize only directories and empty top-level census placeholders as an unbuilt prefix, without fabricating receipts. Native products, wheels, unknown files, nested manifests and symlinks retain strict failures.
+- Reproduce all four GIL/FT check/follow failures before the fix; add payload, damaged-receipt and symlink controls. Real media acceptance and the measured compiler-cache errors remain open.
+
 ## 2026-11-11 — preserve utilities in cache-unavailability fixtures
 
 - Model the missing cache tool through its availability probe and a refused direct call, preserving dirname/chmod/head on PATH. The clean Ubuntu replay found the old whole-directory filter also hid these required utilities.

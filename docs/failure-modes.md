@@ -22,6 +22,22 @@ Two neighbours, so you land on the right page:
 > the triage index: enough to recognise the failure and act, with a link when
 > the full history matters.
 
+## Media finalization requires a WebGPU receipt for a skipped GPU build
+
+**Symptom.** The default-amd64 media solve reaches `finalize-media.sh`, then reports
+`onnxruntime-gpu/ort-webgpu-build.json` missing while checking an empty wheel manifest.
+
+**Cause.** The optional GPU build was skipped, but its pre-created wheel directories
+still produced empty GIL/FT census files. Delivery treated those placeholders as
+evidence of a built prefix. Seen 2026-11-11; the first solve remains failed.
+
+**Fix.** The shared delivery API recognizes only directories and empty top-level
+census files as an unbuilt prefix, without creating a receipt. Payloads, unknown
+files, nested census files, existing receipts and symlinks still require valid proof.
+The actual check/follow fixture covers both interpreter stores and refuses damaged
+built prefixes. [WebGPU delivery](linux-accelerator-images.md#native-webgpu-static-plugin)
+describes the boundary; a successful fixture is not final-image acceptance.
+
 ## A native child returns ECHILD while running under Dart
 
 **Symptom.** A Rust child runner succeeds alone but loses the native child's exit status when
