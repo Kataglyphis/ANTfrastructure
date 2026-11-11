@@ -1041,7 +1041,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       executes79 library and6 build-output cases;14 integration cases pass with the pinned model required,
       including real ORT/tract CPU inference and XNNPACK. Its earlier model-free green skipped bodies
       and is not runtime acceptance. Full-workspace checks, finished helper transport, package/profile
-      migration and actual finished GPU acceptance remain required. Local C/C++ cache hits are measured;
+      migration and actual finished GPU acceptance remain required. All14 workspace members and3 vendored
+      path dependencies now build;60 test executables compile, with all-target Clippy and formatting green.
+      Full-workspace test execution remains open. Local C/C++ cache hits are measured;
       the existing Rust wrapper opt-out remains explicit.
       The prepared isolated worker transport now passes12 real process cases and an actual Dart FFI
       matrix:64 retained worker statuses despite25 external supervisor reaps; the original runner loses64.

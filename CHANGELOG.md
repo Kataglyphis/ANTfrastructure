@@ -17,6 +17,8 @@
 
 ## 2026-11-11 — stage native Cargo companions from exact metadata
 
+- Actual OxidANT CLI Cargo metadata selects and stages its native helper; a missing runtime returns10 and a real ORT CPU smoke completes. All14 workspace members build and60 test executables compile, with Clippy/fmt green. These checks do not execute that full test graph or establish finished GPU packages.
+
 - Select the helper from one exact build-script package and OUT_DIR in a successful Cargo JSON build containing the chosen native artifact. Refuse test artifacts, duplicate records, target mismatches, links, stale path substitutions and replacement of existing output.
 - Preserve the exact helper bytes through temporary copying and no-replace publication. Reuse the existing ELF identity parser in its census companion; the synthetic source suite does not establish runtime or finished-package acceptance.
 
