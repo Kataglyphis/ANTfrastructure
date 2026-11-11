@@ -903,6 +903,14 @@ and probe script so the build checks the same pin without copying the checker in
 the final image. The shared loader clears an ambient `TY_VERSION`; the preflight
 driver also clears `RUFF_VERSION` before loading its pinned tools. Fixtures and
 mutations prove ambient versions cannot replace either pin.
+The fake native-worker SDK suite uses a harness-owned temporary directory so
+intentionally failed downloads can retain diagnostic archives without leaking into
+the outer runner. Its command statuses and the runner's leftover check stay fatal.
+
+The isolated type fixture includes the Cargo native-helper stager selected by both
+production scopes. Its wrong-return and missing-annotation controls must fail; a new
+scoped file needs a matching fixture before the fixed production census can pass.
+
 There is no allowlist or raised diagnostic threshold. `tests/test-python-types.sh` plants
 incorrect types and missing annotations in existing and newly discovered Linux and Windows
 files, requiring each gate to fail. Mutation cases remove the verdict, path selections,
@@ -1180,7 +1188,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5035 entries** over **645 distinct test commands**; both digits are
+manifest holds **5038 entries** over **645 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

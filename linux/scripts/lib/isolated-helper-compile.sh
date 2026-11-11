@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # One fixture compiler boundary retains the raw compiler verdict and cache statistics for both test drivers.
+# shellcheck source=log-bootstrap.sh
+source "${BASH_SOURCE[0]%/*}/log-bootstrap.sh" || return
 compile_isolated_helper_object() {
   local _ih_root="$1" _ih_output="$2"
   bash "${_ih_root}/linux/scripts/capture-sccache-command.sh" "${_ih_output}/native-cache" -- \

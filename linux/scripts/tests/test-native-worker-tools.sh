@@ -6,6 +6,7 @@ source "${TESTS_DIR}/test-workspace-fixture.sh"
 source "${TESTS_DIR}/lib-contract-fixture.sh"
 declare work ROOT out rc
 t_fixture_workspace_init work ROOT || exit 1
+t_private_tmpdir || exit 1
 lc_init "${work}" || exit 1
 for tool in cc c++ rustc sccache; do lc_stub "${tool}"; done
 scripts="${work}/scripts"

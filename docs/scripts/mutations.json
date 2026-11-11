@@ -40316,5 +40316,29 @@
   "replace": "  mapfile -t args <<< \"$3\"",
   "test": "bash linux/scripts/tests/test-ort-census.sh",
   "why": "Dropping the forwarded loader path must break the actual synthetic plugin lookup, rather than pass a source-only assertion."
+ },
+ {
+  "id": "python-types.cargo-helper-strict-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/06-packaging/stage-cargo-native-helper.py' \\\n  'linux/scripts/06-packaging/python-app-selftest.py' \\\n",
+  "replace": "  'linux/scripts/06-packaging/python-app-selftest.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The native helper stager must remain in the real checker scope; a complete isolated fixture must reject its type and annotation defects."
+ },
+ {
+  "id": "python-types.cargo-helper-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/06-packaging/stage-cargo-native-helper.py' \\\n  'linux/scripts/06-packaging/venv-version-probe.py' \\\n",
+  "replace": "  'linux/scripts/06-packaging/venv-version-probe.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The native helper stager must remain in the real checker scope; a complete isolated fixture must reject its type and annotation defects."
+ },
+ {
+  "id": "lib.isolated-helper-log-bootstrap",
+  "target": "linux/scripts/lib/isolated-helper-compile.sh",
+  "find": "source \"${BASH_SOURCE[0]%/*}/log-bootstrap.sh\" || return\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-lib-modules.sh",
+  "why": "The newly shared compiler library must source standalone logging from its canonical companion, with no private fallback."
  }
 ]

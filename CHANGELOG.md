@@ -15,6 +15,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — keep source-proof fixtures self-contained
+
+- Load canonical standalone logging in the shared isolated-helper compiler library and retain required companion-source failures.
+- Give the fake SDK installer suite a harness-owned TMPDIR, preserving diagnostic archives and raw failed-download statuses while letting the runner enforce cleanup.
+
+## 2026-11-11 — restore the native-helper type fixture
+
+- Add the Cargo helper stager to the isolated Python checker fixture and its independent return/annotation controls. The real134-path production guard exposed the missing test input before checker assertions ran.
+- Update expected fixture report counts for the added file; preserve production scopes, guard counts, pinned tools and failure policy. Scope-removal mutations must fail against a clean baseline.
+
 ## 2026-11-11 — model explicit launcher paths in ORT bundle census
 
 - Forward `--ld-library-path` to the existing loader-order probe in tree and image modes. Defaults remain strict, and foreign or missing core bytes remain failures.
