@@ -440,6 +440,8 @@ Five of them are RULES and stay here:
   Mutation seals require a loaded, terminal successful unit before stopping; cached default success is insufficient.
   Container transport fixtures accept the shared runner security and value flags before parsing
   the image and command; preserve the production AppArmor setting.
+  QAIRT endpoint exchange uses `qairt-key-handoff.py`; private keys and decrypted endpoints stay
+  outside every Git checkout, and issue comments carry only public SPKI keys, fingerprints or ciphertext.
 
 - **Generated run artifacts belong under `logs/`.** Use `logs/build-logs/` for Linux stage logs
   and resource metrics, `logs/windows-build-logs/` for Windows BuildKit runs, and

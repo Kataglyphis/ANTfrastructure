@@ -129,6 +129,41 @@ instead, and passing the value directly through `environment:` puts it in
 The backing file (`account_token.txt` here) sits next to the Compose file and
 must be covered by [`.gitignore`](../.gitignore) before it is created.
 
+## Private QAIRT endpoint handoff
+
+Use `linux/scripts/qairt-key-handoff.py` when the Windows peer needs to send its existing
+private WebDAV endpoint through coordination issue249. The helper exchanges the endpoint;
+it does not transfer QAIRT or authenticate the sender. Use the established authenticated
+issue account, and keep the separately confirmed SSH ED25519 host identity unchanged.
+
+```bash
+key_dir="${XDG_STATE_HOME:-$HOME/.local/state}/ANTfrastructure/qairt/issue-249-001"
+python3 linux/scripts/qairt-key-handoff.py keygen --directory "$key_dir"
+python3 linux/scripts/qairt-key-handoff.py public --directory "$key_dir"
+```
+
+Publish only the returned PEM SubjectPublicKeyInfo and its lowercase SHA256 over DER SPKI.
+This is a fresh RSA-3072 recipient key; its private directory is0700 and files are0600,
+outside every checkout. Existing directories and output files are refused.
+
+The peer encrypts only the UTF-8 endpoint, with RSA-OAEP, SHA256, MGF1-SHA256 and an empty
+label. The payload is at most318bytes and contains no embedded credentials, query or fragment.
+The reply names the public-key comment and fingerprint and carries the384-byte ciphertext as
+Base64. Never put the endpoint, private key, credentials or SDK bytes in the issue.
+
+```bash
+python3 linux/scripts/qairt-key-handoff.py decrypt --directory "$key_dir" \
+  --ciphertext /path/to/public-ciphertext.b64 --expected-fingerprint "$public_key_fingerprint"
+```
+
+Set `public_key_fingerprint` to the published `sha256_spki` value. Decryption validates the
+key pairing and fingerprint and writes only private `endpoint.txt`;
+stdout reports status and the public fingerprint. Wrong algorithms, tampering and failures
+with stale output are rejected without child diagnostics. Verify the existing service and
+private route before the separate transfer, then preserve the original archive size/hash and
+cache gates. Keep the key until the handoff is acknowledged; retire it after confirmed transfer.
+The regression suite proves file/cryptographic boundaries, not reachability or a completed SDK copy.
+
 ## See also
 
 - [Code quality tooling](code-quality-tooling.md) — the gate list, including the
