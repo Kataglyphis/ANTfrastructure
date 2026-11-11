@@ -14,6 +14,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — run ORT census-path mutations on both hosts
+
+- Extract the three census-path cases into a separately discovered portable suite,
+  sharing the wheel-store fixture with native sync tests. Recognise either trailing
+  path separator when mapping a Dockerfile directory destination. The Linux mutation
+  command now exercises its intended cases without requiring a Windows drive.
+- Preserve every native sync case and the inherited-twin negative control; a second
+  mutation checks the directory mapping. These fixtures do not run real inference.
+
 ## 2026-11-11 — align the TensorRT installer reference
 
 - Correct the script reference to describe the single CUDA-matched NVIDIA URL,

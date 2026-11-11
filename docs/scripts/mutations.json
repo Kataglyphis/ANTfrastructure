@@ -37626,10 +37626,18 @@
  },
  {
   "id": "uv-chain-ort.census-fixture-twins",
-  "target": "windows/scripts/tests/Uv.ChainOrt.Tests.ps1",
+  "target": "windows/scripts/tests/Uv.CensusPath.Tests.ps1",
   "find": "`$env:PYTHON_WHEELS_FREE_THREADED = `$null; `$env:PYTHON_WHEELS_CP314T = `$null",
   "replace": "Write-Verbose 'inherited twin stores retained'",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Uv.ChainOrt.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/native-fixture-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Uv.CensusPath.Tests.ps1",
   "why": "the staged-census fixture must isolate its path assertion from inherited free-threaded stores"
+ },
+ {
+  "id": "uv-chain-ort.census-fixture-copy-directory",
+  "target": "windows/scripts/tests/Uv.CensusPath.Tests.ps1",
+  "find": "if ($dest -match '[\\\\/]$')",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Uv.CensusPath.Tests.ps1",
+  "why": "a trailing directory separator must append the census filename after host path conversion"
  }
 ]

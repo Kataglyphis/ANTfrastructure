@@ -2518,6 +2518,14 @@ and remove recursion; each must fail the suite.
 
 ## Structural test AST helpers
 
+`Uv.CensusPath.Tests.ps1` runs the same three checkout, copied-image and missing-census
+cases under Linux and Windows. Its Dockerfile destination mapping recognises either
+trailing separator after host path conversion. It shares the wheel-store tree with
+the native sync suite through `WindowsUv.ChainFixtures.psm1`; all native sync cases
+remain discovered. The inherited-twin mutation and directory-mapping mutation run
+the complete portable suite through `Invoke-HarnessSuite.ps1`. These tests inspect
+paths and stub interpreter replies; they do not prove real uv, Python or inference.
+
 `WindowsHarness.CallAssertions.psm1` shares sequence comparisons, recorded argument
 projection and source call-order checks. It imports `TestHarness.psm1` unforced;
 copied suites carry both modules and the harness's existing companions.
