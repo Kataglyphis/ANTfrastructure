@@ -40284,5 +40284,21 @@
   "replace": "  :",
   "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
   "why": "A regular helper reached through an escaping parent directory is not inside the package."
+ },
+ {
+  "id": "mutations.external-changed-root",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "touched = changed_files(args.root, args.base)",
+  "replace": "touched = changed_files(ROOT, args.base)",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "A Hub-installed runner must select staged/edited consumer work from its explicit root rather than silently proving nothing."
+ },
+ {
+  "id": "mutations.external-push-root",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "entries = select_push(entries, args.push_range, args.root, os.path.abspath(args.manifest))",
+  "replace": "entries = select_push(entries, args.push_range, ROOT, os.path.abspath(args.manifest))",
+  "test": "bash linux/scripts/tests/test-mutation-push.sh",
+  "why": "Push-range history must come from the requested consumer root rather than the Hub history."
  }
 ]

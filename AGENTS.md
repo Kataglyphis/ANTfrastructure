@@ -89,6 +89,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    variables, reformat copies or add suppressions to evade a duplication finding.
    A declared shared shell mirror may count a real command from the validated image-consumer plan as a caller; retain the executable call and the separate shared-config drift gate.
    The duplication scanner shares the code-size shell lexer so quoted braces and here-doc bodies do not merge function units.
+   Mutation --root controls Git change/push selection as well as execution; an empty selection is no coverage receipt.
    Windows ShellCheck warning scans keep each command below 24,000 characters and merge every batch's JSON findings; preserve `-x` in each call.
    Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks.
    Copied lint drivers carry `lint-scope-init.sh` and `lint-root.sh`; source initialization in the driver shell so remaining positional arguments survive.

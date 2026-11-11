@@ -15,6 +15,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — select mutation changes from the requested checkout
+
+- Make `--changed` and `--push-range` use the explicit `--root` Git checkout, matching execution. A Hub-installed driver could otherwise report no selected work for a modified consumer.
+- Extend the real Git fixture with independent external staged/committed changes and require actual bites and nonempty coverage. Empty selection remains distinct from proof.
+
 ## 2026-11-11 — share finished AMD plugin and original-license proofs
 
 - Add shared native-package staging and verification for the separate MIGraphX plugin and its complete image license tree. Refuse in-tree providers, changed bytes, escaping paths and stale license destinations.

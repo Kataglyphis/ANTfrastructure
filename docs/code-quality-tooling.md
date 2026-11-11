@@ -1141,6 +1141,12 @@ intentional change to an existing recipe. It checks unique in-repo anchors befor
 writing atomically. Run the mutation gate afterwards: an applicable anchor does
 not prove the test catches the mutation.
 
+`--root` selects both the files executed and the Git checkout used by `--changed` or
+`--push-range`. Running a Hub-installed driver against another checkout must not select
+from the Hub's own history. The external-root fixture independently stages and commits
+changes in another local repository and requires an actual bite and nonempty coverage;
+`nothing selected` is not a mutation proof. This checks scope, not the consumer's semantics.
+
 Consumers can call `.github/workflows/mutation-gates.yml@develop` with a tracked
 `manifest` path and an optional tracked `setup-script`. The shared validator
 rejects missing or empty recipes, absolute or parent-traversal recipe targets,
@@ -1174,7 +1180,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5031 entries** over **645 distinct test commands**; both digits are
+manifest holds **5033 entries** over **645 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1517,7 +1523,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 104 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 106 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
@@ -1986,7 +1992,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 104 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 106 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
