@@ -14,6 +14,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — record private NVIDIA producer and host acceptance
+
+- Record the completed `a4d31ea5` private NVIDIA chain and image-bound five-run
+  CPU/CUDA/TensorRT-plugin/DirectML evidence. Correct the older backlog claim
+  that the complete chain and host inference were still unproved.
+- Keep compiler-counter measurements, other lanes, consumer adoption and ARM64
+  publication separate. This documentation does not move an image tag or approve
+  the open CON228 notice draft.
+
 ## 2026-11-11 — share portable Torch refusal assertions
 
 - Move the wrapped-refusal control into a portable suite and share its assertion

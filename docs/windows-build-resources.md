@@ -394,7 +394,7 @@ the scoop shims. The Windows image installs that binary rather than building it.
 The [shared source-build record](../shared/upstream/sccache/README.md) owns the
 patches, canary evidence and conditions for returning to upstream release assets.
 
-**Upstream checked 2026-11-09:** [sccache#2862](https://github.com/mozilla/sccache/issues/2862)
+**Upstream checked 2026-11-11:** [sccache#2862](https://github.com/mozilla/sccache/issues/2862)
 is still open; its fix [#2809](https://github.com/mozilla/sccache/pull/2809) merged
 on 2026-11-02. The pin carries that fix. The older bare-nvcc exemption for
 `onnxruntime_providers_cuda_llm` is removed; reintroducing it would lose the cache
@@ -458,6 +458,20 @@ each report 3,733 writes with 0 write failures. A configured second level or a
 successful write is not an independently observed second-level read hit.
 The free-threaded wheel loads with GIL disabled and carries the GIL wheel's
 DLL bytes; neither import nor byte equality is GPU inference.
+
+
+**Complete private NVIDIA evidence at `a4d31ea5`, 2026-11-11.** The normal full
+producer passes all stages and publish gates, with 319 smoke assertions and no
+failures. The two container hardware skips have separate image-bound host
+receipts: five correct CPU, CUDA, TensorRT-plugin and DirectML runs, provider
+operators in the profiles, CPU fallback disabled for strict GPU checks and
+native provenance checked before and after. The final private manifest is
+`sha256:d66fe94e923422d2cf52da458f26f01276eb010c03e1368677e31a84174d87ef`;
+no NVIDIA tag moved. These numerical fixtures do not prove arbitrary models.
+The dated 17-solve cache observations in `logs/g5-results.md` distinguish reused
+layers from executed Torch, final and gate steps. No fresh compiler-counter
+block appears in those solves; complete producer success supplies no new CUDA
+hit rate or whole-repeat result. Retain the failed repeat's separate status.
 
 
 Historical fixes and the canary bar before changing the pin:
