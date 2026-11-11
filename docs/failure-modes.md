@@ -397,6 +397,19 @@ needs host `tini` on PATH. Keep the named-unit deadline, ownership label, CID an
 Do not weaken group-disappearance checks or count partial results as complete acceptance.
 The transport regression checks the init argument; it does not prove the engine's actual reaper.
 
+### Isolated preflight cannot write its report bind
+
+**Symptom.** The nonroot worker cannot write `/evidence`; `os.access` at its actual UID returns
+false, and only the root-written prerequisite file appears. Partial stdout is insufficient evidence.
+
+**Cause.** A reconstructed engine invocation omitted the canonical runner's temporary report
+permission. Rootless container UID1000 differs from the host bind owner, even with matching names.
+
+**Fix.** Preserve the failed attempt, then invoke `run-isolated-preflight.py` directly. Its report
+bind is writable before launch and restored to0755 after cleanup. The explicit-image and retained
+SDK-cache options keep reuse inside this path. The engine fixture rejects a non-writable report
+bind; it does not model every host ACL or replace checking the real worker's write access.
+
 ### PowerShell mutation baseline aborts with a truncated assembly identity
 
 A previously green, unmodified suite may exit 134 at PowerShell startup with

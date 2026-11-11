@@ -19,6 +19,9 @@ if ARGS[:2] == ["image", "inspect"]:
 if ARGS and ARGS[0] == "run":
     if MODE == "name-collision":
         raise SystemExit(125)
+    reports = next((value.rsplit(":", 1)[0] for value in ARGS if value.endswith(":/evidence")), None)
+    if reports is not None and Path(reports).stat().st_mode & 0o222 != 0o222:
+        raise SystemExit("nonroot evidence mount is not writable")
     if "--label" in ARGS:
         STATE.write_text(ARGS[ARGS.index("--label") + 1])
         if MODE != "no-cid":

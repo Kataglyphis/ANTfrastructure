@@ -15,6 +15,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — reuse cached tools through the canonical source-proof runner
+
+- Add explicit image and read-only native SDK cache options to the existing isolated-preflight driver and record their scope. Source freezing, report setup, init, raw status and owned cleanup retain one owner.
+- Reject a missing cache or malformed ownership token before allocating a run; share a fresh explicit token with the independent cleanup hook. The transport fixture refuses an unwritable report bind, with an omission mutation; cached-image results do not prove fresh Ubuntu/SDK provisioning.
+
 ## 2026-11-11 — reap isolated-preflight orphaned test children
 
 - Require the container engine init in the preserved source runner. Adopted zombies under a timeout-only PID1 otherwise keep process groups visible after KILL and invalidate cleanup.

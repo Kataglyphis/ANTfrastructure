@@ -40148,5 +40148,53 @@
   "replace": "\"--pull\", \"never\",",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "The complete source runner must request an orphan reaper; adopted zombie groups otherwise cannot disappear after KILL."
+ },
+ {
+  "id": "host.proof-image-override",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "    image = args.image or base_image(source)",
+  "replace": "    image = base_image(source)",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "An explicitly selected cached image must reach the preserved-source runner and its receipt."
+ },
+ {
+  "id": "host.proof-native-cache-readonly",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "f\"{args.native_tools_cache}:/opt/preflight-native-tools:ro\"",
+  "replace": "f\"{args.native_tools_cache}:/opt/preflight-native-tools:rw\"",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Reusing the verified SDK cache must not expose its bytes to the disposable source check."
+ },
+ {
+  "id": "host.proof-writable-reports",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "    reports.chmod(0o777)",
+  "replace": "    reports.chmod(0o755)",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The nonroot worker needs a writable report bind before launch; stdout alone cannot replace missing evidence."
+ },
+ {
+  "id": "host.proof-native-cache-directory",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "        if not args.native_tools_cache.is_dir():",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A missing retained SDK directory must fail before source/output allocation rather than becoming an engine-created empty cache."
+ },
+ {
+  "id": "host.proof-supplied-run-id",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "    run_id = args.run_id",
+  "replace": "    run_id = uuid.uuid4().hex",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A long unit and its independent cleanup hook must use the same supplied fresh ownership token."
+ },
+ {
+  "id": "host.proof-run-id-validation",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "    if not re.fullmatch(r\"[0-9a-f]{32}\", args.run_id):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Malformed ownership tokens must refuse before allocating a source run or invoking a container engine."
  }
 ]

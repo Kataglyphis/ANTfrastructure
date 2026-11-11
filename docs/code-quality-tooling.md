@@ -84,6 +84,15 @@ knob is inherited. `preflight.log` preserves raw output; `run.json`, `container.
 retain source, base digest, bootstrap hash, tool versions and results. This is a local gate proof,
 not image acceptance or a hardware test. An apt repository or tool download must remain available.
 
+For a cached family image, pass `--image IMAGE` and optionally `--native-tools-cache PREFIX`.
+The latter mounts the retained SDK prefix read-only at `/opt/preflight-native-tools`; the same
+pinned installer validates reuse. This avoids reconstructing the runner and its report permissions.
+The receipt records the explicit image selection and cache path; such a replay does not establish
+fresh Ubuntu provisioning or a newly downloaded SDK. nerdctl still requires host `tini` on PATH.
+For a long unit, generate a fresh UUID hex token before launch and pass `--run-id TOKEN` so its
+independent `ExecStopPost` cleanup uses the same owner label, token and CID from the start.
+Malformed tokens refuse before allocating a run; do not reuse a prior invocation's token.
+
 The source bind is read-only and separate from writable reports. Rootless uid mapping requires a
 temporarily writable report directory; cleanup restores mode 0755 and never changes bind ownership.
 Only containers bearing this invocation's random ownership label can be removed. Worker failures
@@ -1165,7 +1174,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5014 entries** over **645 distinct test commands**; both digits are
+manifest holds **5020 entries** over **645 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

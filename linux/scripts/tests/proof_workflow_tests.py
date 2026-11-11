@@ -60,10 +60,10 @@ class EngineFixture(unittest.TestCase):
 class RunnerTests(EngineFixture):
     def runner_args(self) -> argparse.Namespace:
         return argparse.Namespace(revision=REVISION, output=self.output, name="a-retained-run",
-                                  jobs=4, memory="12g", engine=str(self.engine))
+                                  jobs=4, memory="12g", engine=str(self.engine), image=None, native_tools_cache=None, run_id="1" * 32)
 
-    def run_fixture(self, mode: str) -> tuple[int, dict[str, object], list[list[str]]]:
-        args = self.runner_args()
+    def run_fixture(self, mode: str, args: argparse.Namespace | None = None) -> tuple[int, dict[str, object], list[list[str]]]:
+        args = args or self.runner_args()
         with patch.dict(os.environ, {"PROOF_ENGINE_MODE": mode}):
             status = RUNNER.run(args)
         record = json.loads((self.output / "run.json").read_text())
@@ -86,6 +86,37 @@ class RunnerTests(EngineFixture):
         self.assertIn(f"{self.output / 'reports'}:/evidence", run)
         self.assertNotIn(f"{self.output}:/evidence", run)
         self.assertIn(["rm", "--force", "a" * 64], commands)
+
+    def test_explicit_image_and_readonly_native_cache_reach_the_canonical_runner(self) -> None:
+        args = self.runner_args()
+        args.image = "example.invalid/cached-tool@sha256:" + "d" * 64
+        args.native_tools_cache = self.root / "retained SDK"
+        args.native_tools_cache.mkdir()
+        with patch.object(RUNNER, "base_image", side_effect=AssertionError("explicit image was ignored")):
+            status, record, commands = self.run_fixture("success", args)
+        self.assertEqual(status, 0)
+        self.assertEqual(record["owner_run_id"], args.run_id)
+        self.assertEqual(record["image"], args.image)
+        self.assertEqual(record["image_selection"], "explicit")
+        self.assertEqual(record["native_tools_cache"], str(args.native_tools_cache))
+        run = next(argv for argv in commands if argv[0] == "run")
+        self.assertIn(args.image, run)
+        self.assertIn(f"{args.native_tools_cache}:/opt/preflight-native-tools:ro", run)
+        self.assertIn("--init", run)
+
+    def test_missing_native_cache_refuses_before_allocating_a_run(self) -> None:
+        argv = ["runner", "--output", str(self.output), "--name", "fixture", "--native-tools-cache", str(self.root / "absent")]
+        with patch.object(sys, "argv", argv), self.assertRaises(SystemExit) as error:
+            RUNNER.arguments()
+        self.assertEqual(error.exception.code, 2)
+        self.assertFalse(self.output.exists())
+
+    def test_malformed_ownership_token_refuses_before_allocating_a_run(self) -> None:
+        argv = ["runner", "--output", str(self.output), "--name", "fixture", "--run-id", "not-a-token"]
+        with patch.object(sys, "argv", argv), self.assertRaises(SystemExit) as error:
+            RUNNER.arguments()
+        self.assertEqual(error.exception.code, 2)
+        self.assertFalse(self.output.exists())
 
     def test_worker_failure_keeps_raw_status_and_removes_only_owned_container(self) -> None:
         status, record, _ = self.run_fixture("worker-failure")

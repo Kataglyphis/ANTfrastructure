@@ -438,6 +438,8 @@ Five of them are RULES and stay here:
   Copied host proof tools carry `host_commands.py`; the watcher also carries `preflight-status.py`,
   and isolated preflight carries both scripts under `isolated-preflight/`.
   Isolated preflight requires the engine init to reap orphaned test children; group-disappearance checks stay strict.
+  Cached-image replays use its explicit image and read-only native-tools-cache options; retain report writability and record the altered environment scope.
+  Long isolated-preflight units pass one fresh run-id to both the driver and independent cleanup hook before launch.
   Container cleanup tools also carry `owned_containers.py`; long container units require its
   `cleanup-owned-containers.py` ExecStopPost hook with the same fresh label/token and CID file.
   Copied `run-in-ci-image.sh` carries the shared `lib/cli-value-options.sh` and logging companions;
