@@ -14,6 +14,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — align the TensorRT installer reference
+
+- Correct the script reference to describe the single CUDA-matched NVIDIA URL,
+  ZIP signature, checksum check and fatal acquisition failure. The installer
+  already follows this policy; the reference still described removed fallbacks.
+
 ## 2026-11-11 — isolate native Windows test fixtures
 
 - Share captured child diagnostic normalization between Python CI and Torch

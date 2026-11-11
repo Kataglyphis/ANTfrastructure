@@ -1984,8 +1984,9 @@ when each discovery finds only one file. A fixture removes each class in turn to
 
 Auto-detects a TensorRT zip in `windows/downloads/` and installs it.
 Acquisition checks an explicit path, the staged repo and public download directories, then
-tries the CUDA-matched NVIDIA URL followed by two older CUDA URL shapes. The retries use the
-same PK signature check; tests hold archive precedence and the successful/failing fallback paths.
+tries the NVIDIA URL for the image's CUDA line. Downloads require the PK ZIP signature, and
+the archive is checked against `TENSORRT_ZIP_SHA256`. Without a staged archive, a failed
+download is fatal; another CUDA line is not tried.
 
 #### `Publish-ShimPatch.ps1`
 
