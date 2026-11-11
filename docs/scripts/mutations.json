@@ -40140,5 +40140,13 @@
   "replace": "temporary.exists()",
   "test": "bash linux/scripts/tests/test-cargo-native-helper.sh",
   "why": "Failed copies and publications leave no staging temporary file."
+ },
+ {
+  "id": "host.proof-orphan-reaper",
+  "target": "linux/scripts/run-isolated-preflight.py",
+  "find": "\"--pull\", \"never\", \"--init\",",
+  "replace": "\"--pull\", \"never\",",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The complete source runner must request an orphan reaper; adopted zombie groups otherwise cannot disappear after KILL."
  }
 ]

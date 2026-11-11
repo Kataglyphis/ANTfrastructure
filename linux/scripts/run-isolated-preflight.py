@@ -70,7 +70,7 @@ def base_image(source: Path) -> str:
 
 def container_args(args: argparse.Namespace, source: Path, reports: Path, sha: str, image: str, run_id: str) -> list[str]:
     return [args.engine, "run", "--name", args.name, "--cidfile", str(args.output / "container.cid"),
-            "--label", f"{OWNER_LABEL}={run_id}", "--pull", "never", "--security-opt", "apparmor=unconfined",
+            "--label", f"{OWNER_LABEL}={run_id}", "--pull", "never", "--init", "--security-opt", "apparmor=unconfined",
             "--cpus", str(args.jobs), "--memory", args.memory, "--shm-size", "1g", "--user", "0:0",
             "--entrypoint", "/bin/bash", "--env", f"ISOLATED_PREFLIGHT_REVISION={sha}",
             "--env", f"ISOLATED_PREFLIGHT_JOBS={args.jobs}",

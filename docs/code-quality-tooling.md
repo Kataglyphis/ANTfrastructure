@@ -75,7 +75,10 @@ python3 linux/scripts/run-isolated-preflight.py --revision HEAD \
 The runner preserves a complete Git clone at the selected commit in `source/`, even when the
 working tree has later edits. It uses that commit's pinned Ubuntu base and versioned
 `isolated-preflight/bootstrap.sh` and `worker.sh`, then runs every `make preflight` slug as a
-nonroot user. Setup reuses the canonical uv, PowerShell, PE-tool and locked quality-tool installers;
+nonroot user. The engine init reaps orphaned descendants so strict process-group cleanup can
+observe disappearance; nerdctl requires `tini` on the host PATH. A timeout wrapper alone does not
+reap adopted children. This keeps the default seccomp profile and capabilities unchanged.
+Setup reuses the canonical uv, PowerShell, PE-tool and locked quality-tool installers;
 `en_US.UTF-8`, Python headers, pip and Chromium are checked prerequisites. No selection or shard
 knob is inherited. `preflight.log` preserves raw output; `run.json`, `container.cid` and `reports/`
 retain source, base digest, bootstrap hash, tool versions and results. This is a local gate proof,
@@ -1162,7 +1165,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5013 entries** over **645 distinct test commands**; both digits are
+manifest holds **5014 entries** over **645 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

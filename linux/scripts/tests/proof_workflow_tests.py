@@ -81,6 +81,7 @@ class RunnerTests(EngineFixture):
         self.assertEqual((FIXTURE / "marker").read_text(), "dirty\n")
         self.assertEqual((self.output / "preflight.log").read_bytes(), b"worker\xff\n")
         run = next(args for args in commands if args[0] == "run")
+        self.assertIn("--init", run)
         self.assertIn(f"{self.output / 'source'}:/source:ro", run)
         self.assertIn(f"{self.output / 'reports'}:/evidence", run)
         self.assertNotIn(f"{self.output}:/evidence", run)

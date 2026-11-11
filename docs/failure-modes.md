@@ -382,6 +382,21 @@ the store · Stevedore and the docker service · build content and toolchain.
 
 ## Linux and cross-lane
 
+### Container preflight reports groups surviving KILL with only zombies
+
+**Symptom.** `ordered job process -<pgid> did not disappear after KILL`, while the group's
+remaining members have state `Z` and PPID1. The complete source check cannot pass cleanup.
+
+**Cause.** The container starts a timeout wrapper as PID1 without an orphan reaper. Killed
+grandchildren become adopted zombies; signals cannot remove them, so `kill -0` still sees the
+group. In the observed local run, 1,482 adopted zombies kept 250 failed-cleanup groups visible.
+
+**Fix.** Preserve raw logs and process evidence, stop only the owned unit, and verify its
+container is absent. Replay the complete frozen source using the engine's `--init`; nerdctl
+needs host `tini` on PATH. Keep the named-unit deadline, ownership label, CID and cleanup hook.
+Do not weaken group-disappearance checks or count partial results as complete acceptance.
+The transport regression checks the init argument; it does not prove the engine's actual reaper.
+
 ### PowerShell mutation baseline aborts with a truncated assembly identity
 
 A previously green, unmodified suite may exit 134 at PowerShell startup with

@@ -15,6 +15,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — reap isolated-preflight orphaned test children
+
+- Require the container engine init in the preserved source runner. Adopted zombies under a timeout-only PID1 otherwise keep process groups visible after KILL and invalidate cleanup.
+- Preserve strict group checks, source/report ownership, raw failures and the existing default isolation. The transport regression and omission mutation cover the requested init, not actual engine behavior.
+
 ## 2026-11-11 — stage native Cargo companions from exact metadata
 
 - Actual OxidANT CLI Cargo metadata selects and stages its native helper; a missing runtime returns10 and a real ORT CPU smoke completes. All14 workspace members build and60 test executables compile, with Clippy/fmt green. These checks do not execute that full test graph or establish finished GPU packages.
