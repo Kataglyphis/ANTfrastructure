@@ -40196,5 +40196,93 @@
   "replace": "    if False:",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "Malformed ownership tokens must refuse before allocating a source run or invoking a container engine."
+ },
+ {
+  "id": "packaging.amdgpu-module-bytes",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "  ort_assert_plugin_module \"$lib/${ORT_AMDGPU_EP_MODULE}\" || return 1",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "A separate plugin must match the original image module."
+ },
+ {
+  "id": "packaging.amdgpu-legacy-provider",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "  if [ -e \"$lib/libonnxruntime_providers_migraphx.so\" ] || [ -L \"$lib/libonnxruntime_providers_migraphx.so\" ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "An AMD package cannot retain the removed in-tree provider."
+ },
+ {
+  "id": "packaging.amdgpu-complete-license-tree",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "  diff --no-dereference -qr \"$image_licenses\" \"$licenses\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "Every original transitive license and the exact tree inventory remain required."
+ },
+ {
+  "id": "packaging.amdgpu-license-source",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "  [ -s \"$image_licenses/onnxruntime-ep-amdgpu/LICENSE\" ] || {",
+  "replace": "  true || {",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "A missing image plugin license must fail before staging, even under conditional calls."
+ },
+ {
+  "id": "packaging.amdgpu-license-destination",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "    mkdir \"$licenses\" || return",
+  "replace": "    mkdir -p \"$licenses\" || return",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "Staging must not reuse an existing or linked license destination."
+ },
+ {
+  "id": "packaging.amdgpu-license-parent",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "    _ort_package_inside \"$root\" \"$(dirname \"$licenses\")\" 'Plugin license destination escapes package' || return 1",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "Staging must refuse a destination whose existing parent is outside the package."
+ },
+ {
+  "id": "packaging.amdgpu-license-root",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "  _ort_package_inside \"$root\" \"$licenses\" 'Plugin licenses escape package' || return 1",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "An extracted package license tree cannot resolve outside its root."
+ },
+ {
+  "id": "packaging.amdgpu-license-mkdir-status",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "    mkdir \"$licenses\" || return",
+  "replace": "    mkdir \"$licenses\" || :",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "Failed allocation must retain its raw status and prevent later staging."
+ },
+ {
+  "id": "packaging.amdgpu-license-copy-status",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "    cp -a \"$image_licenses/.\" \"$licenses/\" || return",
+  "replace": "    cp -a \"$image_licenses/.\" \"$licenses/\" || :",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "Failed copying must retain its raw status rather than become a later proof error."
+ },
+ {
+  "id": "packaging.amdgpu-program-mode",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "  if [ ! -f \"$2\" ] || [ -L \"$2\" ] || [ ! -x \"$2\" ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "Finished launchers and native helpers must remain executable regular files, never links."
+ },
+ {
+  "id": "packaging.amdgpu-program-root",
+  "target": "linux/scripts/06-packaging/ort-package-proof.sh",
+  "find": "  _ort_package_inside \"$1\" \"$2\" 'Packaged program escapes package'",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-ort-package-proof.sh",
+  "why": "A regular helper reached through an escaping parent directory is not inside the package."
  }
 ]

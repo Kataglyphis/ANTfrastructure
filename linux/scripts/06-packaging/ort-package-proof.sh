@@ -81,3 +81,46 @@ ort_package_verify_notices() {
   done
   return 0
 }
+
+_ort_package_amdgpu_license_source() {
+  local image_licenses
+  image_licenses="$(ort_amdgpu_ep_dir)/../licenses"
+  [ -s "$image_licenses/onnxruntime-ep-amdgpu/LICENSE" ] || {
+    printf 'Image plugin license tree is missing\n' >&2; return 1;
+  }
+  printf '%s\n' "$image_licenses"
+}
+
+_ort_package_amdgpu() {
+  local operation="$1" root lib="$3" licenses="$4" image_licenses
+  root="$(realpath -e "$2")" || return 1
+  _ort_package_inside "$root" "$lib/${ORT_AMDGPU_EP_MODULE}" 'Plugin module escapes package' || return 1
+  ort_assert_plugin_module "$lib/${ORT_AMDGPU_EP_MODULE}" || return 1
+  if [ -e "$lib/libonnxruntime_providers_migraphx.so" ] || [ -L "$lib/libonnxruntime_providers_migraphx.so" ]; then
+    printf 'Legacy built-in MIGraphX provider is not allowed in a plugin package\n' >&2
+    return 1
+  fi
+  image_licenses="$(_ort_package_amdgpu_license_source)" || return 1
+  if [ "$operation" = stage ]; then
+    _ort_package_inside "$root" "$(dirname "$licenses")" 'Plugin license destination escapes package' || return 1
+    mkdir "$licenses" || return
+    cp -a "$image_licenses/." "$licenses/" || return
+  fi
+  _ort_package_inside "$root" "$licenses" 'Plugin licenses escape package' || return 1
+  diff --no-dereference -qr "$image_licenses" "$licenses"
+}
+
+# Usage: ort_package_verify_amdgpu ROOT LIB_DIR PLUGIN_LICENSE_DIR; image identity and complete original texts, not inference.
+ort_package_verify_amdgpu() { _ort_package_amdgpu verify "$@"; }
+
+# Usage: ort_package_stage_amdgpu_licenses ROOT LIB_DIR NEW_LICENSE_DIR; the destination parent must already be inside ROOT.
+ort_package_stage_amdgpu_licenses() { _ort_package_amdgpu stage "$@"; }
+
+# Usage: ort_package_require_program ROOT FILE; path, mode and regular-file checks, not execution or byte identity.
+ort_package_require_program() {
+  if [ ! -f "$2" ] || [ -L "$2" ] || [ ! -x "$2" ]; then
+    printf 'Missing, linked or nonexecutable packaged program: %s\n' "$2" >&2
+    return 1
+  fi
+  _ort_package_inside "$1" "$2" 'Packaged program escapes package'
+}

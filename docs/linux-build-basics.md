@@ -420,6 +420,20 @@ RUNPATH, and a patched loader segfaults. AccelerANTgine's `.deb`, tarball and Ap
 Debian 13 (himbeere2) and Ubuntu 26.04 this way. Without `LOADER` the packages need glibc 2.43:
 Ubuntu 26.04 and newer.
 
+Native AMD packages load the CPU ORT core and carry `libmigraphx-ep.so` separately. Source
+`ort-runtime-bundle.sh` before `ort-package-proof.sh`, then call
+`ort_package_stage_amdgpu_licenses ROOT LIB_DIR NEW_LICENSE_DIR` after staging the module.
+The destination parent must already exist inside `ROOT`; stale destinations refuse. The helper
+copies the image's complete original license tree, preserving transitive texts, and requires its
+original plugin LICENSE before writing. Allocation and copy errors retain their raw statuses.
+
+Run `ort_package_verify_amdgpu ROOT LIB_DIR PLUGIN_LICENSE_DIR` on every extracted finished
+format. It refuses an escaping or different module, the legacy in-tree provider, missing or
+changed original texts and extra inventory entries. This supplements the CPU wheel's core/notice
+proof; it does not prove ELF architecture, runtime linkage, provider registration or GPU inference.
+Use `ort_package_require_program ROOT FILE` for required launchers and native companions;
+it checks regular executable files and containment, while callers bind their exact bytes separately.
+
 ### GStreamer loads from the package alone
 
 The family's packages carry the image's own GStreamer, never the host's (owner rule, 2026-10-17):

@@ -15,6 +15,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — share finished AMD plugin and original-license proofs
+
+- Add shared native-package staging and verification for the separate MIGraphX plugin and its complete image license tree. Refuse in-tree providers, changed bytes, escaping paths and stale license destinations.
+- Retain original transitive texts and raw allocation/copy failures under conditional callers. These tree checks do not establish GPU inference or runtime linkage.
+
 ## 2026-11-11 — reuse cached tools through the canonical source-proof runner
 
 - Add explicit image and read-only native SDK cache options to the existing isolated-preflight driver and record their scope. Source freezing, report setup, init, raw status and owned cleanup retain one owner.
