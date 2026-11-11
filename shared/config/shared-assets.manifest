@@ -32,3 +32,4 @@ web-init-js          | shared/web/javascript/init.js                     | web/j
 flutter-web-htaccess | linux/webserver/templates/flutter-web.htaccess    | web/.htaccess                               | body  |
 ort-plugin-registration-python | shared/python/ort_plugin_eps.py | runtime_support/ort_plugin_eps.py | exact |
 ort-plugin-registration-native | shared/native/ort_plugin_eps.hpp | runtime_support/ort_plugin_eps.hpp | exact |
+ort-plugin-registration-rust | shared/rust/ort_plugin_eps.rs | runtime_support/ort_plugin_eps.rs | exact |

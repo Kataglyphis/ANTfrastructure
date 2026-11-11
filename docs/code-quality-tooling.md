@@ -56,6 +56,37 @@ keep their raw status; an interruption leaves an unobserved command status null 
 signal exit separately. Missing container evidence or failed cleanup cannot pass. For a user unit,
 wrap the same command with `systemd-run --user --unit=ant-preflight-001
 --property=RuntimeMaxSec=14400 --property=TimeoutStopSec=120`; the latter allows bounded cleanup.
+If argv contains literal shell expressions, such as a Bash array in `bash -c`, add
+`--expand-environment=no`. Host quoting preserves argv for systemd, whose own expansion
+otherwise runs before Bash; see [the observed failure](failure-modes.md#systemd-expands-a-bash-array-before-starting-a-detector).
+Container payloads may live outside the starter unit; verify their owned IDs are stopped or absent.
+A native detector survived its starter timeout; preserve the failed evidence and use an owned-container
+cleanup runner before another long probe ([recovery](failure-modes.md#a-timed-out-container-starter-leaves-the-detector-running)).
+
+`cleanup-owned-containers.py` is the independent `ExecStopPost` hook for long container units.
+Generate one fresh `uuid.uuid4().hex` token before starting, use it in a dedicated
+`org.kataglyphis.*` ownership label on `nerdctl run`, and pass that same label, token and CID file:
+
+```bash
+python3 linux/scripts/cleanup-owned-containers.py --engine nerdctl \
+  --owner-label org.kataglyphis.local-proof --run-id "$proof_run_id" \
+  --cidfile "$proof_output/container.cid" --output "$proof_output/cleanup.json"
+```
+
+Put the absolute command in the unit's `ExecStopPost=` property, without a leading `-`, and use
+`TimeoutStopSec=300`. Quote paths inside the property as systemd arguments, and retain
+`--expand-environment=no`. The hook then runs even after a killed starter. A manual call after
+handoff does not provide that guarantee. Keep the container foregrounded, without a restart policy;
+bound the payload itself as well. The hook checks full IDs, live ownership labels and any recorded
+CID before a destructive command, then verifies removal against the global container inventory.
+`--retain` stops instead of removing and requires exited/created, Running=false and PID0, preserving
+failed filesystems. Engine errors, false-success commands or late owned containers fail cleanup.
+An existing output is refused before touching containers; choose a fresh receipt for each invocation.
+Cleanup success proves stopped-or-absent only, never a successful workload. The shared owner module
+also serves isolated preflight's finally cleanup; copy `owned_containers.py` and `host_commands.py`
+beside either entry point. A final receipt and terminal unit state must both be checked.
+The local lifecycle proof covers raw workload exits0/37 and SIGKILL starter timeouts with both
+removal and stopped-container retention. It does not exercise a model, GPU or published image.
 
 ```bash
 python3 linux/scripts/watch-build-units.py --unit rebuild-sequence-37.service \
@@ -1099,7 +1130,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4925 entries** over **642 distinct test commands**; both digits are
+manifest holds **4953 entries** over **643 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

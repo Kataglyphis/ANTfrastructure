@@ -14,6 +14,7 @@ import uuid
 from pathlib import Path
 
 from host_commands import checked_output, run_logged
+from owned_containers import OwnedContainers
 
 ROOT = Path(__file__).resolve().parents[2]
 BOOTSTRAP = Path("linux/scripts/isolated-preflight/bootstrap.sh")
@@ -82,15 +83,7 @@ def interrupted(signum: int, _frame: object) -> None:
 
 def cleanup(engine: str, run_id: str, reports: Path) -> int:
     try:
-        owned = checked_output([engine, "ps", "-a", "--no-trunc", "--filter",
-                                f"label={OWNER_LABEL}={run_id}", "--format", "{{.ID}}"])
-        status = 0
-        for container_id in owned.splitlines():
-            if not re.fullmatch(r"[0-9a-f]{64}", container_id):
-                raise ValueError("the engine returned an invalid owned container ID")
-            result = subprocess.run([engine, "rm", "--force", container_id], timeout=60, check=False)
-            status = status or result.returncode
-        return status
+        return OwnedContainers(engine, OWNER_LABEL, run_id).cleanup(cidfile=reports.parent / "container.cid")
     finally:
         reports.chmod(0o755)
 
@@ -143,6 +136,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+    except (OSError, TypeError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
         print(f"run-isolated-preflight: {error}", file=sys.stderr)
         sys.exit(2)

@@ -159,6 +159,8 @@ t_assert_eq "patched --set-rpath x /a/libonnxruntime.so.1" \
   "$(KATAGLYPHIS_PATCHELF="${_work}/stub-patchelf" bash "${_keep}" --set-rpath x /a/libonnxruntime.so.1)" "CPU behavior unchanged"
 _assert_patchelf "" "GPU provider kept" bash "${_keep}" --keep-ort --set-rpath x /a/libonnxruntime_providers_shared.so
 _assert_patchelf "" "GPU core kept" bash "${_keep}" --keep-ort --set-rpath x /a/libonnxruntime.so.1
+_assert_patchelf "" "AMD plugin kept" bash "${_keep}" --keep-ort --set-rpath x "/a path/libmigraphx-ep.so"
+_assert_patchelf "patched --set-rpath x /a/libmigraphx-ep.so" "unselected AMD plugin patched" bash "${_keep}" --set-rpath x /a/libmigraphx-ep.so
 _assert_patchelf "patched --set-rpath x /a/libfoo.so" "other GPU bundle libraries patched" bash "${_keep}" --keep-ort --set-rpath x /a/libfoo.so
 
 t_case "an unresolvable library fails the install instead of shipping"

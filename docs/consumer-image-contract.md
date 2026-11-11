@@ -1046,7 +1046,7 @@ device it reports; the EP's name is the registration name you choose:
   `so.add_provider_for_devices([d for d in ort.get_ep_devices() if d.ep_name == "MIGraphX"], {})`.
 - C++: `Ort::Env::RegisterExecutionProviderLibrary("MIGraphX", path)`, then
   `SessionOptions::AppendExecutionProvider_V2` with the matching `OrtEpDevice`.
-- Rust (`ort` 2.0.0-rc.13): `Environment::register_execution_provider_library`.
+- Rust (`ort` 2.0.0-rc.13): `Environment::current()?.register_ep_library("MIGraphX", path)`; attach its matching devices through the V2 C API exposed by `ort::sys`.
 
 `MIGraphXExecutionProvider` no longer exists in the image: the built-in provider was unmaintained
 upstream and bound a strided partition output onto ORT's dense buffer on MIGraphX ≤ 2.18
@@ -1089,6 +1089,17 @@ still wins. Registration and V2 attachment
 are separate from session creation and real operator placement. The compiled fake API
 suite proves policy, and a real-header object checks signatures; neither proves a new
 runtime image, packaged inference or Windows loading.
+
+The Rust policy owner is `shared/rust/ort_plugin_eps.rs`, the exact
+`ort-plugin-registration-rust` asset. Its adapter receives the owning environment, returns
+explicit enumeration failures and attaches the selected matching device with plain options.
+The pinned crate's `Environment::devices()` discards `GetEpDevices` errors, so an adapter must
+use its typed C API when preserving that error. `register_ep_library` returns a weak handle;
+dropping that handle does not unregister the library. Keep one locked registration cache per
+environment and never replace a successfully registered name with another canonical path.
+The prepared OxidANT adapter holds a weak environment reference and resolves its bundled module
+beside the actual loaded C API owner. Its fake-adapter tests prove policy/concurrency only;
+actual crate compilation, runtime teardown and finished-package inference remain separate checks.
 
 Repeated registration never silently changes the path behind a name. The helper
 coordinates its own calls only; it does not coordinate external unregistration.

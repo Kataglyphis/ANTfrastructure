@@ -15,6 +15,31 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — preserve independent owned-container cleanup
+
+- Share preflight's ownership cleanup with a versioned `ExecStopPost` entry point, so a killed starter can still be cleaned independently. Check IDs, labels, CID binding and the final engine inventory; command success alone cannot pass.
+- Retain stopped failed containers when requested, preserve raw engine errors and refuse receipt overwrites. Transport fixtures cover foreign containers, false-success commands and incomplete stopped-state evidence; workload and hardware acceptance remain separate.
+- All 14 selected mutation controls and 24 source-quality gates pass. Four local live controls preserve raw exits0/37 and clean both SIGKILL starters while retaining their failed timeout verdicts. The first unavailable local image-reference attempts remain failed evidence.
+
+## 2026-11-11 — prepare shared Rust plugin registration
+
+- Add the exact Rust registration-policy asset and compiled fake-adapter tests for image/bundle paths, locked successful registration, retries, fresh matching devices, raw errors and weak environment ownership.
+- Correct the pinned crate API name to `register_ep_library`; its high-level device iterator discards enumeration failures, so the prepared consumer adapter uses the exposed typed C API. Runtime ABI, packaging and hardware acceptance remain required.
+
+## 2026-11-11 — record detector timeout and plugin profile boundaries
+
+- A real native CPU DEIM source run completed both repeats and per-run CPU profiles. The GPU source attempt timed out with empty results; its surviving engine-managed container was ownership-checked, stopped and retained. A starter-unit timeout is insufficient cleanup.
+- Prepared native consumer profile checks select the canonical MIGraphX plugin name and refuse old shared contracts before evidence or extraction. Source fixtures and mutation checks remain separate from finished-package/GPU acceptance.
+
+## 2026-11-11 — preserve literal arguments in diagnostic user units
+
+- Document `--expand-environment=no` when a user unit carries Bash expressions in argv. A detector startup failed127 before execution because systemd expanded its array; the corrected CPU run passed both repeated outputs and per-run profile checks.
+
+## 2026-11-11 — preserve the AMD plugin in native AppImages
+
+- Extend the shared AppImage patchelf wrapper's existing ORT preservation opt-in to `libmigraphx-ep.so`, whose finished bytes must match the image module.
+- Keep ordinary patching without the opt-in; cover selected and unselected paths with regression assertions and mutation recipes. This is not a finished consumer package or GPU proof.
+
 ## 2026-11-11 — version recurring source-proof and GPU diagnostic drivers
 
 - Replace repeated scratch CI dispatch, download and audit drivers with `source-ci.py` and shared modules;

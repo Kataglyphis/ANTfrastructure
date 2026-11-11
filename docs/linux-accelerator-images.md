@@ -1144,7 +1144,12 @@ rocm and builds the plugin over the CPU prefix. Its source and pins come from th
 The module links through the compiler-cache launcher and is checked for its two exports
 (`CreateEpFactories`, `ReleaseEpFactory`) and a resolvable closure, in the media stage
 (`verify-media-artifacts.sh onnxruntime-ep-amdgpu`) and in the runtime smoke (`gpu_plugin_ep_verdict`). The
-texts of everything linked into it ship under `licenses/`. A consumer registers it as
+texts of everything linked into it ship under `licenses/`. Native GPU packages must protect
+`libmigraphx-ep.so` from closure rewriting and preserve the complete original plugin license tree.
+The shared AppImage patchelf wrapper's existing `--keep-ort` opt-in also skips this module;
+without the opt-in it still forwards the operation. `test-linux-closure-install.sh` proves
+both paths with a recording patcher, not a finished AppImage or GPU inference.
+A consumer registers it as
 [the contract says](consumer-image-contract.md#amds-plugin-migraphx-ep). Since 2026-11-08 it is the only
 MIGraphX EP: the rocm variant has no ORT GPU build any more (the in-tree `--use_migraphx` EP, its
 `onnxruntime-migraphx` wheel and the two MIGraphX patches are gone, CON231 step 3), the plugin builds over the

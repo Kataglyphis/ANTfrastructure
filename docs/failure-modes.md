@@ -22,6 +22,36 @@ Two neighbours, so you land on the right page:
 > the triage index: enough to recognise the failure and act, with a link when
 > the full history matters.
 
+## systemd expands a Bash array before starting a detector
+
+**Symptom.** A user unit exits127 with `env: '': No such file or directory`; its journal reports
+`Invalid environment variable name evaluates to an empty string: DETECTOR_EVIDENCE_CLEAN[@]`.
+
+**Cause.** systemd expands variables in command arguments before `bash -c` sees the quoted array.
+The detector never starts, even though the host shell passed the intended arguments.
+
+**Fix.** Pass `systemd-run --expand-environment=no` for literal shell expressions. Keep the
+failed unit and log; use a new unit and output directory for the corrected attempt. Seen 2026-11-11;
+the corrected native CPU detector completed both runs and its per-run operator profile passed.
+
+## A timed-out container starter leaves the detector running
+
+**Symptom.** The native DEIM GPU user unit reached its 900-second RuntimeMax, reported `Result=timeout`
+and `MainPID=0`, but its exact container and detector process continued. Neither detections nor a
+complete profile had been written. Seen 2026-11-11; this failed source probe proves no GPU parity.
+
+**Cause.** The engine placed its payload outside the nerdctl starter's systemd unit. Terminating
+the starter therefore did not terminate the container, even though the unit was terminal.
+
+**Recovery.** Verify the saved CID against the owned container, stop that exact container, then
+check exited/PID0 and disappearance of the recorded host processes. Preserve the stopped failed
+container, cache, unit and logs for analysis. Do not restart based only on an observation timeout.
+Before another long probe, install `cleanup-owned-containers.py` as the unit's independent
+`ExecStopPost` hook, using the invocation's fresh label/token and CID file. It shares ownership
+checks with `run-isolated-preflight.py`, verifies absence or stopped/PID0 and can retain a failed
+filesystem. A unit bound alone is insufficient; real GPU inference still requires separate proof.
+See [preserved tools](code-quality-tooling.md#preserved-local-proof-workflows).
+
 ## ARM64 onnxinference crashes after requesting an unavailable ORT API
 
 Device run42521429496 at d63c982d reported API31 requested, ORT1.17.1/API17 loaded

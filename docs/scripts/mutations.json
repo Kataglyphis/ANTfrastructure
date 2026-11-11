@@ -36826,8 +36826,8 @@
  },
  {
   "id": "host.proof-owned-cleanup",
-  "target": "linux/scripts/run-isolated-preflight.py",
-  "find": "f\"label={OWNER_LABEL}={run_id}\"",
+  "target": "linux/scripts/owned_containers.py",
+  "find": "f\"label={self.label}={self.run_id}\"",
   "replace": "\"status=exited\"",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "Only the unique run label may select containers for cleanup; a name collision must preserve foreign containers."
@@ -39415,5 +39415,229 @@
   "replace": "if false; then",
   "test": "bash linux/scripts/tests/test-capture-sccache-command.sh",
   "why": "help must exit before creating an output directory or running a command"
+ },
+ {
+  "id": "lib.amd-plugin-appimage-module-preservation",
+  "target": "linux/scripts/06-packaging/patchelf-keep-glibc.sh",
+  "find": "libonnxruntime*.so*|libmigraphx-ep.so)",
+  "replace": "libonnxruntime*.so*)",
+  "test": "bash linux/scripts/tests/test-linux-closure-install.sh",
+  "why": "The opted-in AppImage wrapper must leave the AMD plugin bytes untouched."
+ },
+ {
+  "id": "lib.amd-plugin-appimage-opt-in-boundary",
+  "target": "linux/scripts/06-packaging/patchelf-keep-glibc.sh",
+  "find": "if [[ \"${keep_ort}\" == 1 ]]; then exit 0; fi",
+  "replace": "exit 0",
+  "test": "bash linux/scripts/tests/test-linux-closure-install.sh",
+  "why": "Ordinary module patching must retain the original non-opt-in behavior."
+ },
+ {
+  "id": "lib.ort-plugin-rust-advertised-precedence",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": "advertised.filter(|root| !root.is_empty())",
+  "replace": "advertised.filter(|root| !root.is_empty() && false)",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "A valid advertised image module wins over the bundle and malformed advertisements cannot fall back."
+ },
+ {
+  "id": "lib.ort-plugin-rust-absolute-root",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": "if !root.is_absolute() {",
+  "replace": "if false {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "Advertised roots must be absolute, even when a valid bundled module exists."
+ },
+ {
+  "id": "lib.ort-plugin-rust-absolute-bundle",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": "if !bundled.is_absolute() {",
+  "replace": "if false {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "The owning core bundle directory cannot be a relative search path."
+ },
+ {
+  "id": "lib.ort-plugin-rust-dangling-module",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": "error.kind() == ErrorKind::NotFound && absent",
+  "replace": "error.kind() == ErrorKind::NotFound && (absent || true)",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "A dangling bundled module must not count as an absent optional module."
+ },
+ {
+  "id": "lib.ort-plugin-rust-regular-module",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": "if !path.is_file() {",
+  "replace": "if false {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "A directory at the module path cannot be registered as a plugin library."
+ },
+ {
+  "id": "lib.ort-plugin-rust-path-freeze",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": "if previous != &path {",
+  "replace": "if false {",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "A successful registration freezes the canonical path behind its name."
+ },
+ {
+  "id": "lib.ort-plugin-rust-registration-status",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": "self.binding.register_library(plugin.name, &path)?;",
+  "replace": "let _ = self.binding.register_library(plugin.name, &path);",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "Failed native registration remains visible and retryable, without poisoning the success cache."
+ },
+ {
+  "id": "lib.ort-plugin-rust-provider-match",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": ".filter(|device| device.provider == plugin.name)",
+  "replace": ".filter(|device| !device.provider.is_empty())",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "Matching-provider ordinal selection must ignore devices from unrelated providers."
+ },
+ {
+  "id": "lib.ort-plugin-rust-device-index",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": "devices.get(index)",
+  "replace": "devices.first()",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "The selected matching device index must not silently become device zero."
+ },
+ {
+  "id": "lib.ort-plugin-rust-enumeration-status",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": ".devices()?",
+  "replace": ".devices().unwrap_or_default()",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "An enumeration error must retain its cause rather than become a missing-device verdict."
+ },
+ {
+  "id": "lib.ort-plugin-rust-attachment-status",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": ".append_provider(options, &selected.device, values)",
+  "replace": ".append_provider(options, &selected.device, values).or_else(|_| Ok(()))",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "A failed V2 attachment must fail without hiding its original reason."
+ },
+ {
+  "id": "lib.ort-plugin-rust-poisoned-cache",
+  "target": "shared/rust/ort_plugin_eps.rs",
+  "find": "        let mut registered = self\n            .registered\n            .lock()\n            .map_err(|_| \"Plugin registry lock is poisoned\".to_string())?;",
+  "replace": "        let mut registered = self.registered.lock().unwrap_or_else(|poison| poison.into_inner());",
+  "test": "bash linux/scripts/tests/test-ort-plugin-rust.sh",
+  "why": "A panic while changing registration state cannot silently reuse the poisoned cache."
+ },
+ {
+  "id": "lib.ort-plugin-rust-exact-copy",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "ort-plugin-registration-rust | shared/rust/ort_plugin_eps.rs | runtime_support/ort_plugin_eps.rs | exact |",
+  "replace": "ort-plugin-registration-rust | shared/rust/ort_plugin_eps.rs | runtime_support/ort_plugin_eps.rs | body |",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "The installed Rust policy remains an exact shared asset, including its header."
+ },
+ {
+  "id": "host.owned-id-check",
+  "target": "linux/scripts/owned_containers.py",
+  "find": "if not re.fullmatch(r\"[0-9a-f]{64}\", value):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Reject short or path-like IDs before any container mutation."
+ },
+ {
+  "id": "host.owned-run-token",
+  "target": "linux/scripts/owned_containers.py",
+  "find": "if not re.fullmatch(r\"[0-9a-f]{32}\", self.run_id):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A nonempty fresh-run token is required before engine queries."
+ },
+ {
+  "id": "host.owned-label-check",
+  "target": "linux/scripts/owned_containers.py",
+  "find": "if not re.fullmatch(r\"org\\.kataglyphis\\.[a-z0-9.-]+\", self.label):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Reject empty or selector-like ownership labels before engine calls."
+ },
+ {
+  "id": "host.owned-inspect-owner",
+  "target": "linux/scripts/owned_containers.py",
+  "find": "if record.get(\"Id\") != cid or not isinstance(labels, dict) or labels.get(self.label) != self.run_id:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "An engine selector alone cannot authorize removing a mismatched inspected container."
+ },
+ {
+  "id": "host.owned-cid-binding",
+  "target": "linux/scripts/owned_containers.py",
+  "find": "if expected not in owned and expected in self.ids(owned=False):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A saved foreign CID must refuse cleanup before touching any container."
+ },
+ {
+  "id": "host.owned-settled-check",
+  "target": "linux/scripts/owned_containers.py",
+  "find": "if not self.settled(cid, retain=retain):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A successful stop command cannot prove the retained payload actually stopped."
+ },
+ {
+  "id": "host.owned-final-inventory",
+  "target": "linux/scripts/owned_containers.py",
+  "find": "if remaining - owned or (remaining and not retain):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A late owned container must fail the final cleanup inventory."
+ },
+ {
+  "id": "host.owned-stopped-facts",
+  "target": "linux/scripts/owned_containers.py",
+  "find": "return state.get(\"Running\") is False and type(state.get(\"Pid\")) is int and state[\"Pid\"] == 0 and state.get(\"Status\") in (\"created\", \"exited\")",
+  "replace": "return state.get(\"Running\") is False",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Running=false alone is insufficient without PID0 and a stopped status."
+ },
+ {
+  "id": "host.owned-retain-filesystem",
+  "target": "linux/scripts/owned_containers.py",
+  "find": "command = [\"stop\", \"--time\", \"10\"] if retain else [\"rm\", \"--force\"]",
+  "replace": "command = [\"rm\", \"--force\"]",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Retained failed proof containers must keep their stopped filesystem."
+ },
+ {
+  "id": "host.owned-raw-status",
+  "target": "linux/scripts/owned_containers.py",
+  "find": "status = status or result.returncode",
+  "replace": "status = status or 0",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Preserve the first raw engine failure even when final inventory also fails."
+ },
+ {
+  "id": "host.owned-receipt-verdict",
+  "target": "linux/scripts/cleanup-owned-containers.py",
+  "find": "\"stopped-or-absent\" if status == 0 else \"failed\"",
+  "replace": "\"stopped-or-absent\"",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A failed cleanup must leave a failed receipt."
+ },
+ {
+  "id": "host.owned-receipt-no-replace",
+  "target": "linux/scripts/cleanup-owned-containers.py",
+  "find": "args.output.open(\"x\", encoding=\"utf-8\")",
+  "replace": "args.output.open(\"w\", encoding=\"utf-8\")",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Existing cleanup evidence must refuse before another container command."
+ },
+ {
+  "id": "host.owned-state-object",
+  "target": "linux/scripts/owned_containers.py",
+  "find": "if not isinstance(state, dict):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A missing inspected state must fail before mutating the container, and cannot escape as successful cleanup."
  }
 ]

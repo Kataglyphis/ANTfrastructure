@@ -32,9 +32,10 @@ def load(name: str, filename: str) -> ModuleType:
 RUNNER = load("fixture_preflight_runner", "run-isolated-preflight.py")
 WATCH = load("fixture_build_watch", "watch-build-units.py")
 PROBE = load("fixture_preflight_status", "preflight-status.py")
+OWNER = load("fixture_owned_containers", "owned_containers.py")
 
 
-class RunnerTests(unittest.TestCase):
+class EngineFixture(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory(prefix="ant-proof-workflow-")
         self.addCleanup(self.temporary.cleanup)
@@ -55,6 +56,8 @@ class RunnerTests(unittest.TestCase):
         self.origin.start()
         self.addCleanup(self.origin.stop)
 
+
+class RunnerTests(EngineFixture):
     def runner_args(self) -> argparse.Namespace:
         return argparse.Namespace(revision=REVISION, output=self.output, name="a-retained-run",
                                   jobs=4, memory="12g", engine=str(self.engine))
@@ -185,6 +188,102 @@ class RunnerTests(unittest.TestCase):
                                         capture_output=True, check=False)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(self.trace.read_text(), trace)
+
+
+class CleanupTests(EngineFixture):
+    def setUp(self) -> None:
+        super().setUp()
+        self.token = "c" * 32
+        self.label = "org.kataglyphis.fixture-proof"
+        self.state.write_text(f"{self.label}={self.token}")
+        self.cidfile = self.root / "container.cid"
+        self.cidfile.write_text("a" * 64 + "\n")
+        self.owner = OWNER.OwnedContainers(str(self.engine), self.label, self.token)
+
+    def test_remove_verifies_absence_and_preserves_foreign_container(self) -> None:
+        self.assertEqual(self.owner.cleanup(cidfile=self.cidfile), 0)
+        self.assertFalse(self.state.exists())
+        calls = [json.loads(line) for line in self.trace.read_text().splitlines()]
+        self.assertIn(["inspect", "a" * 64], calls)
+        self.assertNotIn(["rm", "--force", "b" * 64], calls)
+        self.assertIn(["ps", "-a", "--no-trunc", "--format", "{{.ID}}"], calls)
+
+    def test_successful_remove_that_leaves_container_present_fails(self) -> None:
+        with patch.dict(os.environ, {"PROOF_ENGINE_MODE": "remove-lies"}), patch.object(OWNER.time, "sleep"):
+            self.assertNotEqual(self.owner.cleanup(cidfile=self.cidfile), 0)
+
+    def test_late_owned_container_cannot_escape_the_final_inventory_check(self) -> None:
+        success = subprocess.CompletedProcess([], 0)
+        with patch.object(OWNER.OwnedContainers, "ids", side_effect=[{"a" * 64}, {"d" * 64}]), \
+                patch.object(OWNER.OwnedContainers, "state", return_value={}), \
+                patch.object(OWNER.OwnedContainers, "settled", return_value=True), \
+                patch.object(OWNER.subprocess, "run", return_value=success):
+            self.assertNotEqual(self.owner.cleanup(), 0)
+
+    def test_retain_stops_running_container_without_removing_its_filesystem(self) -> None:
+        self.state.with_suffix(".running").touch()
+        self.assertEqual(self.owner.cleanup(retain=True, cidfile=self.cidfile), 0)
+        self.assertTrue(self.state.exists())
+        self.assertFalse(self.state.with_suffix(".running").exists())
+        self.assertNotIn('"rm"', self.trace.read_text())
+
+    def test_retain_checks_real_stopped_state_after_success_and_failure(self) -> None:
+        for mode, expected in (("stop-lies", 1), ("stop-failure", 17)):
+            with self.subTest(mode=mode), patch.dict(os.environ, {"PROOF_ENGINE_MODE": mode}), patch.object(OWNER.time, "sleep"):
+                self.state.with_suffix(".running").touch()
+                self.assertEqual(self.owner.cleanup(retain=True, cidfile=self.cidfile), expected)
+
+    def test_already_stopped_retained_container_needs_no_stop(self) -> None:
+        self.assertEqual(self.owner.cleanup(retain=True, cidfile=self.cidfile), 0)
+        self.assertNotIn('"stop"', self.trace.read_text())
+
+    def test_changed_ownership_and_malformed_inspection_refuse_mutation(self) -> None:
+        for mode in ("wrong-label", "wrong-id", "malformed", "missing-state", "inspect-failure", "list-failure"):
+            with self.subTest(mode=mode), patch.dict(os.environ, {"PROOF_ENGINE_MODE": mode}):
+                with self.assertRaises((TypeError, ValueError, RuntimeError)):
+                    self.owner.cleanup(cidfile=self.cidfile)
+                self.assertNotIn('"rm"', self.trace.read_text())
+                self.assertNotIn('"stop"', self.trace.read_text())
+
+    def test_foreign_or_invalid_cid_file_refuses_mutation(self) -> None:
+        for cid in ("b" * 64, "short", "../foreign"):
+            with self.subTest(cid=cid), self.assertRaises(ValueError):
+                self.cidfile.write_text(cid)
+                self.owner.cleanup(cidfile=self.cidfile)
+        self.assertNotIn('"rm"', self.trace.read_text())
+
+    def test_absence_before_container_creation_is_successful_cleanup(self) -> None:
+        self.state.unlink()
+        self.cidfile.unlink()
+        self.assertEqual(self.owner.cleanup(cidfile=self.cidfile), 0)
+
+    def test_invalid_label_or_run_token_is_rejected_before_engine_calls(self) -> None:
+        for label, token in (("", self.token), ("status=running", self.token), (self.label, ""), (self.label, "old-run")):
+            with self.subTest(label=label, token=token), self.assertRaises(ValueError):
+                OWNER.OwnedContainers(str(self.engine), label, token)
+        self.assertFalse(self.trace.exists())
+
+    def test_retained_state_requires_all_stopped_facts(self) -> None:
+        valid = {"Running": False, "Pid": 0, "Status": "exited"}
+        self.assertTrue(OWNER.stopped(valid))
+        for broken in ({"Running": True}, {"Pid": 42}, {"Pid": False}, {"Status": "running"}):
+            with self.subTest(broken=broken):
+                self.assertFalse(OWNER.stopped(valid | broken))
+        self.assertFalse(OWNER.stopped({}))
+
+    def test_cli_preserves_cleanup_status_failure_receipt_and_existing_evidence(self) -> None:
+        output = self.root / "cleanup.json"
+        command = [sys.executable, str(SCRIPTS / "cleanup-owned-containers.py"), "--engine", str(self.engine),
+                   "--owner-label", self.label, "--run-id", self.token, "--cidfile", str(self.cidfile), "--output", str(output)]
+        with patch.dict(os.environ, {"PROOF_ENGINE_MODE": "cleanup-failure"}):
+            result = subprocess.run(command, capture_output=True, check=False)
+        self.assertEqual(result.returncode, 9, result.stderr)
+        record = json.loads(output.read_text())
+        self.assertEqual((record["status"], record["exit_status"]), ("failed", 9))
+        before, trace = output.read_bytes(), self.trace.read_bytes()
+        result = subprocess.run(command, capture_output=True, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((output.read_bytes(), self.trace.read_bytes()), (before, trace))
 
 
 class StatusTests(unittest.TestCase):

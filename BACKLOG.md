@@ -1015,12 +1015,27 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       proof (the smoke is GPU-less) and the consumer registration below, which reads the same variable on both
       lanes. **Step 2:** each consumer registers the plugin where `ORT_AMDGPU_EP_ROOT` is set, in this order:
       OrchestrANT (Python, `register_execution_provider_library`), AccelerANTgine (C++,
-      `Env::RegisterExecutionProviderLibrary`), OxidANT (Rust, `ort` rc.13 `register_execution_provider_library`),
+      `Env::RegisterExecutionProviderLibrary`), OxidANT (Rust, `ort` rc.13 `register_ep_library`),
       OmniAccelerANT (Dart over the native bridge); each change passes CON224 item 1's parity run with the plugin's
       operators in the profile. **Linux step 2 progress 2026-11-10:** shared Python/native helpers are in source.
       The standalone SDK rebuild with [node and registry ownership fixes](docs/linux-accelerator-images.md#node-compute-info-ownership)
       passes G2 and ASan/LSan on CPU plus two real plugin GPU tiny-model sessions. Full consumer builds,
       finished packages and their detector parity/operator profiles remain open; this is not image promotion.
+      **Native packaging source follow-up 2026-11-11:** AccelerANTgine's prepared CPack source selects the CPU core
+      and separate image plugin, preserves its full license tree and requires the shared plugin-safe AppImage
+      patcher. The actual install/proof blocks pass fixture and mutation checks. The prepared finished-package
+      verifier now checks the plugin, full license tree and executable HIP companions in all three formats;
+      source fixtures do not establish an actual DEB/TAR/AppImage or packaged detector proof.
+      Prepared native profile checks now require the shared `migraphx-plugin` choice and actual `MIGraphX`
+      operators in both complete runs; old helper refusal precedes evidence/extraction. A real source CPU
+      DEIM repeat passed, but the GPU attempt timed out with empty results. Its surviving container was
+      stopped and retained. Shared owned-container cleanup now passes real killed-starter controls for
+      removal and retained/PID0 state, plus raw success/failure checks; actual packaged GPU parity remains open.
+      **Rust source follow-up:** the exact shared Rust policy and prepared OxidANT V2 adapter replace the
+      legacy provider/options. The pinned crate sources match both Cargo.lock checksums. Fake policy
+      tests and an API24 typecheck of the actual adapter/provider modules pass; this is not the
+      complete locked consumer graph. Full-crate build/tests/clippy, HIP-process replacement,
+      package/profile migration and actual finished GPU acceptance remain required.
       **Step 3 (in source 2026-11-08, owner: "sofort komplett, inklusive Entfernen"):**
       `30-build-native-amd.sh`, `--use_migraphx`, the `onnxruntime-migraphx` wheel and the two MIGraphX patches are
       gone; the rocm variant has no ORT GPU build, the plugin builds over the CPU prefix, the wrapper's app venv

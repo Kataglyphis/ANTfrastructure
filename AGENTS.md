@@ -220,6 +220,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Python app packages that contain Windows ORT must compare the installed texts with the matched wheel and check them in ZIP, MSI and MSIX; apps without ORT remain supported.
    Linux ORT license staging compares every selected native ELF with one wheel, directly or after target-compatible stripping; copied `stage-ort-wheel-licenses.py` carries `ort_census_probe.py`, and the shell companion carries both package verifiers.
    GPU AppImages must retain the wheel's unstripped ORT bytes and verify the finished artifact, including both notices; a staged-tree match alone is insufficient.
+   Their opt-in shared patchelf wrapper also preserves libmigraphx-ep.so exactly; its image-byte proof must survive package generation.
    Finished-package ORT trees use `06-packaging/ort-package-proof.sh` for library and notice checks; keep failures explicit under conditional callers.
    Linux GPU app bundles require the image's provider in the self-test's available list and a relocatable ELF scan; packaging retains that requirement, and a separate GPU-host test must require the active provider before distribution.
    Python DEB dependency discovery must prove isolated launcher and sitecustomize startup before omitting preloaded site-package libraries; executable `.pth` lines invalidate that proof.
@@ -248,6 +249,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copies of `python_uv.sh` and `webdav-download.sh` carry `python-probe.sh`; missing companions fail rather than restoring interpreter-selection copies.
    Consumer checks running inside the family Linux image use `ci_image_python_require` from `python-probe.sh`; retain its image marker, pinned interpreter probe and caller-specific diagnostic.
    Runtime consumer probes retain lazy required-fact checks and distinguish missing facts from failed facts.
+   Rust plugin consumers carry the exact shared policy, preserve GetEpDevices failures and retain the owning environment during V2 calls without blocking its normal teardown.
    Copied Torch setup carries `package-image-wiring.sh`, `wheelhouse-manifest.sh` and `native-gcc-system-paths.sh` before its first execution.
    Copied `build-app-wheelhouse.sh` carries `torch-source-pins.sh` beside it.
    Native GCC profiles carry `native-gcc-system-paths.sh`; preserve flag expansion when the profile is sourced.
@@ -430,6 +432,8 @@ Five of them are RULES and stay here:
   and native plugin probe are documented in [quality tooling](docs/code-quality-tooling.md#preserved-local-proof-workflows).
   Copied host proof tools carry `host_commands.py`; the watcher also carries `preflight-status.py`,
   and isolated preflight carries both scripts under `isolated-preflight/`.
+  Container cleanup tools also carry `owned_containers.py`; long container units require its
+  `cleanup-owned-containers.py` ExecStopPost hook with the same fresh label/token and CID file.
   Copied `run-in-ci-image.sh` carries the shared `lib/cli-value-options.sh` and logging companions;
   the mutation recipe contract lives in `mutation_parse.py` beside its runner.
   Source CI dispatch, retrieval and audits use `source-ci.py` with its `source_ci/` and `host_commands.py` companions.
@@ -958,6 +962,8 @@ transcript. Each was a child that outlived whatever started it. So:
    `systemctl --user list-units '<prefix>*'` shows what runs, `systemctl --user stop <name>` ends
    it with every child, and nothing outlives its bound. A job meant to outlive the session (a
    chain, a watcher) says so in its handoff, by unit name.
+   Literal shell expressions in unit argv require `--expand-environment=no`; host-shell quoting does not disable systemd expansion.
+   Container engines may keep their payload outside the starter unit; use the versioned owned-container ExecStopPost hook and verify cleanup separately before handoff. Command success without stopped/PID0 or absence is insufficient; retained failed containers stay stopped.
 2. **A test fixture ends on its own.** A spin or a sleep has a bound (`while [ "${SECONDS}" -lt 60 ]`,
    `sleep 60`); a fixture that only a kill can end outlives every interrupted run.
    Fixtures unrelated to ref resolution use a synthetic immutable app identity;

@@ -45,7 +45,8 @@ t_assert_contains "${OUT}" "Shared config in sync." \
 
 for asset in \
   'ort-plugin-registration-python|shared/python/ort_plugin_eps.py|app/ort_plugin_eps.py' \
-  'ort-plugin-registration-native|shared/native/ort_plugin_eps.hpp|include/ort_plugin_eps.hpp'; do
+  'ort-plugin-registration-native|shared/native/ort_plugin_eps.hpp|include/ort_plugin_eps.hpp' \
+  'ort-plugin-registration-rust|shared/rust/ort_plugin_eps.rs|src/ort_plugin_eps.rs'; do
   IFS='|' read -r asset_id asset_source asset_target <<< "${asset}"
   t_case "${asset_id} is an exact shared asset inside the consumer package"
   _d="$(_consumer)"
