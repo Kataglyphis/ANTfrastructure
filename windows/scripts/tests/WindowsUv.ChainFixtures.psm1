@@ -33,3 +33,20 @@ function Assert-UvChainTestCommand {
 }
 
 Export-ModuleMember -Function Assert-UvChainTestCommand
+
+function New-ChainOrtFixture {
+    param([Parameter(Mandatory)][string]$Dir, [switch]$NoOrtWheel)
+    $venv = Join-Path $Dir 'venv'
+    New-Item -ItemType Directory -Force -Path (Join-Path $venv 'Scripts') | Out-Null
+    Set-Content -LiteralPath (Join-Path $venv 'Scripts\python.exe') 'x' -Encoding ASCII
+    $store = Join-Path $Dir 'store'
+    New-Item -ItemType Directory -Force -Path $store | Out-Null
+    $names = @('tvm-0.25.0-cp314-cp314-win_amd64.whl')
+    if (-not $NoOrtWheel) {
+        $names += 'onnxruntime-1.30.0-cp314-cp314-win_amd64.whl', 'onnxruntime_genai-0.15.2-cp314-cp314-win_amd64.whl', 'onnxruntime_extensions-0.14.0-cp39-abi3-win_amd64.whl'
+    }
+    foreach ($n in $names) { Set-Content -LiteralPath (Join-Path $store $n) 'x' -Encoding ASCII }
+    return [pscustomobject]@{ Venv = $venv; Store = $store }
+}
+
+Export-ModuleMember -Function New-ChainOrtFixture

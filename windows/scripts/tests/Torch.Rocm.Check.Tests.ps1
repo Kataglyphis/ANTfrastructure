@@ -4,6 +4,7 @@
 # Torch ROCm fixture setup is shared by installer, smoke and Dockerfile contracts.
 
 . (Join-Path $PSScriptRoot 'Import-TorchRocmTestSetup.ps1')
+Import-Module (Join-Path $PSScriptRoot 'WindowsTorchRocm.RefusalFixture.psm1') -ErrorAction Stop
 
 function Merge-TorchRocmReportFields {
     param([hashtable]$Base, [hashtable]$Change)
@@ -220,13 +221,6 @@ Describe 'rocm-checks\Torch.ps1: the one venv probe, shared with Install-TorchRo
         }
         return [pscustomobject]@{ Rc = $LASTEXITCODE; Out = $out; CacheMade = (Test-Path (Join-Path $Dir 'cache')) }
     }
-    # A refusal: a non-zero exit, the named reason in the output, and no wheel cache created.
-    function Assert-TorchRocmInstallRefused { param([object]$Result, [string]$Pattern, [string]$Why)
-        Assert-True ($Result.Rc -ne 0) "exit code $($Result.Rc); output: $($Result.Out)"
-        Assert-Match $Pattern $Result.Out $Why
-        Assert-False $Result.CacheMade 'refused before any download'
-    }
-
     It 'returns the last JSON line as a hashtable, ran the probe source and removed its file' {
         Invoke-InTestDir { param($dir)
             $py = New-TorchRocmFakePython -Dir $dir -Lines @('noise', '{"n": 1}', '{"venv": {"tag": "cp314"}, "n": 2}', 'tail noise')

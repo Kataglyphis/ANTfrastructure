@@ -7,22 +7,6 @@ Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsUv.Commo
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsUv.ChainFixtures.psm1') -Force -DisableNameChecking
 
-# A venv dir with a Scripts\python.exe, and a store holding two chain ORT wheels beside a non-ORT one.
-function script:New-ChainOrtFixture {
-    param([Parameter(Mandatory)][string]$Dir, [switch]$NoOrtWheel)
-    $venv = Join-Path $Dir 'venv'
-    New-Item -ItemType Directory -Force -Path (Join-Path $venv 'Scripts') | Out-Null
-    Set-Content -LiteralPath (Join-Path $venv 'Scripts\python.exe') 'x' -Encoding ASCII
-    $store = Join-Path $Dir 'store'
-    New-Item -ItemType Directory -Force -Path $store | Out-Null
-    $names = @('tvm-0.25.0-cp314-cp314-win_amd64.whl')
-    if (-not $NoOrtWheel) {
-        $names += 'onnxruntime-1.30.0-cp314-cp314-win_amd64.whl', 'onnxruntime_genai-0.15.2-cp314-cp314-win_amd64.whl', 'onnxruntime_extensions-0.14.0-cp39-abi3-win_amd64.whl'
-    }
-    foreach ($n in $names) { Set-Content -LiteralPath (Join-Path $store $n) 'x' -Encoding ASCII }
-    return [pscustomobject]@{ Venv = $venv; Store = $store }
-}
-
 function script:Get-ChainOrtPythonReply {
     param([object[]]$Arguments, [string[]]$Listed, [int]$UnownedExit, [string]$Abi, [int]$ImportExit, [int]$CheckExit)
     if ($Arguments -contains '--purge-list') { return [pscustomobject]@{ ExitCode = 0; Output = $Listed } }
@@ -88,59 +72,6 @@ Describe 'WindowsUv.Common: which store says "inside our images"' {
                 Assert-Equal $d (Get-ChainOrtWheelStore -DefaultStore $d) 'C:\runtime\wheels when it exists'
                 Assert-Null (Get-ChainOrtWheelStore -DefaultStore (Join-Path $d 'absent')) 'outside our images'
             }
-        }
-    }
-}
-
-# Where the single windows/Dockerfile COPY naming $Source puts it, re-rooted under $Root (drive dropped).
-function script:Get-ImageCopyDest {
-    param([Parameter(Mandatory)][string]$Source, [Parameter(Mandatory)][string]$Root)
-    $copies = @(Get-Content -LiteralPath (Join-Path (Get-RepoRoot) 'windows\Dockerfile') |
-            Where-Object { $_ -match '^COPY\s' -and @($_.Trim() -split '\s+' | Select-Object -Skip 1 | Select-Object -SkipLast 1) -contains $Source })
-    Assert-Equal 1 $copies.Count "exactly one windows/Dockerfile COPY carries $Source"
-    $dest = Join-Path $Root (($copies[0].Trim() -split '\s+')[-1] -replace '^[A-Za-z]:\\', '')
-    if ($dest.EndsWith('\')) { $dest = Join-Path $dest (Split-Path $Source -Leaf) }
-    return $dest
-}
-
-Describe 'WindowsUv.Common: where the ORT census is, in the hub checkout and in the image' {
-    It 'the hub checkout resolves its own linux\scripts copy' {
-        $want = [IO.Path]::GetFullPath((Join-Path (Get-RepoRoot) 'linux\scripts\03-media\runtime\ort-venv-census.py'))
-        Assert-Equal $want (Get-UvOrtCensusPath) 'the checkout copy'
-        Assert-True (Test-Path -LiteralPath $want -PathType Leaf) 'and it exists'
-    }
-
-    # PYTHON_WHEELS is image-wide, so the image's module copy runs the census on every sync and must find the COPYed one.
-    It 'the image copy of the module runs the census windows/Dockerfile COPYs beside its modules dir' {
-        Invoke-InTestDir { param($d)
-            $modules = Get-ImageCopyDest -Source 'windows\scripts\modules' -Root $d
-            $census = Get-ImageCopyDest -Source 'linux\scripts\03-media\runtime\ort-venv-census.py' -Root $d
-            $null = New-Item -ItemType Directory -Force -Path (Split-Path $modules), (Split-Path $census)
-            Copy-Item -Recurse -LiteralPath (Join-Path (Get-RepoRoot) 'windows\scripts\modules') -Destination $modules
-            Copy-Item -LiteralPath (Join-Path (Get-RepoRoot) 'linux\scripts\03-media\runtime\ort-venv-census.py') -Destination $census
-            $f = New-ChainOrtFixture -Dir $d
-            $probe = @"
-`$ErrorActionPreference = 'Stop'
-`$env:ORT_CHAIN_WHEEL_DIR = `$null; `$env:PYTHON_WHEELS = '$($f.Store)'
-Import-Module '$(Join-Path $modules 'WindowsUv.Common.psm1')' -DisableNameChecking
-`$seen = [System.Collections.Generic.List[string]]::new()
-`$py = { param(`$exe, `$arguments) `$seen.Add(`$arguments -join ' '); [pscustomobject]@{ ExitCode = 0; Output = @() } }.GetNewClosure()
-Sync-UvChainOnnxRuntime -VenvPath '$($f.Venv)' -PythonRunner `$py -LogInfo { } -LogWarning { }
-`$seen[0]
-"@
-            $out = @(& pwsh -NoProfile -NonInteractive -Command $probe 2>&1 | ForEach-Object { "$_" })
-            Assert-Equal 0 $LASTEXITCODE "the image copy's sync threw: $($out -join ' | ')"
-            Assert-Equal "-I $census --purge-list" ($out | Select-Object -Last 1) 'the census beside the modules dir, not the absent checkout path'
-        }
-    }
-
-    It 'with neither copy the resolver names the checkout path, and a sync inside our images fails on it' {
-        Invoke-InTestDir { param($d)
-            $f = New-ChainOrtFixture -Dir $d
-            $missing = Get-UvOrtCensusPath -ModuleDir (Join-Path $d 'temp\scripts\modules')
-            Assert-Equal ([IO.Path]::GetFullPath((Join-Path $d 'linux\scripts\03-media\runtime\ort-venv-census.py'))) $missing 'the checkout path'
-            $err = try { Sync-UvChainOnnxRuntime -VenvPath $f.Venv -WheelStore $f.Store -CensusPath $missing -LogInfo { } -LogWarning { }; '' } catch { $_.Exception.Message }
-            Assert-Match "^chain ORT: need the store .*\(missing: $([regex]::Escape($missing))\)$" $err 'the missing census is named, the venv untouched'
         }
     }
 }

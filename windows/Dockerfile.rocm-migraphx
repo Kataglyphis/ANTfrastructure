@@ -84,10 +84,12 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=secret,id=sccache_region,env=SCCACHE_REGION --mount=type=secret,id=sccache_s3_use_ssl,env=SCCACHE_S3_USE_SSL `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1,target=C:\bkmnt\Build-OrtAmdgpuEpFromSource.ps1 `
+    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch,target=C:\bkmnt\ort-amdgpu-patches\001-node-compute-info-lifetime.patch,readonly `
+    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/patches/002-kernel-registry-lifetime.patch,target=C:\bkmnt\ort-amdgpu-patches\002-kernel-registry-lifetime.patch,readonly `
     --mount=type=bind,source=windows/scripts/modules/WindowsOrtProvenance.Build.psm1,target=C:\bkmnt\ortmods\WindowsOrtProvenance.Build.psm1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=migraphxmods,source=/bkmods,target=C:\bkmnt\modules `
-    & 'C:\bkmnt\Build-OrtAmdgpuEpFromSource.ps1' -InstallDir 'C:\runtime\lib\onnxruntime-ep-amdgpu' -MigraphxDir 'C:\runtime\lib\migraphx' -WorkDir 'C:\temp\ort-amdgpu-ep-work'
+    & 'C:\bkmnt\Build-OrtAmdgpuEpFromSource.ps1' -InstallDir 'C:\runtime\lib\onnxruntime-ep-amdgpu' -MigraphxDir 'C:\runtime\lib\migraphx' -WorkDir 'C:\temp\ort-amdgpu-ep-work' -PatchDir 'C:\bkmnt\ort-amdgpu-patches'
 
 # Where the rocm-checks and users find them; unset means this stage never ran (-NoRocmSpikes).
 ENV MIGRAPHX_ROOT="C:\runtime\lib\migraphx" `

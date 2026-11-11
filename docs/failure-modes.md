@@ -22,6 +22,16 @@ Two neighbours, so you land on the right page:
 > the triage index: enough to recognise the failure and act, with a link when
 > the full history matters.
 
+## cuDNN link/run skips despite installed SDK files
+
+The NVIDIA smoke at `adea396e` printed three unset-variable errors for
+`$cudnnHeaders`, `$cudnnLibs` and `$cudnnDlls`, then skipped the host API
+control while reporting 318 passed/0 failed/3 skipped. The broad artifact
+checks passed, but their helper returns assertions, not file lists. Resolve
+the exact main files directly with `Find-FirstTreeFile` and fail on missing
+inputs. `cudnnGetVersion` needs no GPU, so absent container GPU access does
+not justify this skip. See [the smoke contract](windows-builds.md#smoke-testing).
+
 ## ARM64 onnxinference crashes after requesting an unavailable ORT API
 
 Device run42521429496 at d63c982d reported API31 requested, ORT1.17.1/API17 loaded
@@ -36,6 +46,59 @@ ZIP/PE fixtures prove transport; the real device run must still prove execution.
 The later cb2b8db6 device run42525202720 passes onnxinference; its sole remaining
 failure is the older published IREE twin. Use the digest acceptance input in
 `windows-arm64.yml` to grade a newly built image before changing the public tag.
+
+## TensorRT protobuf compiler-option scope is not verified
+
+The full NVIDIA run at `6737933a` completed ONNX CUDA compilation, both wheels
+and QNN staging, then stopped before TensorRT configuration. The scope gate
+correctly found unprotected protobuf warning arguments. The old `[^)]*` block
+matcher ended at the closing parenthesis in the `/wd4334` comment, leaving later
+options outside the rewrite. Simplified fixtures had missed that input shape.
+
+The repair consumes complete line comments before matching a command's closing
+parenthesis, preserves their text and ignores commented command examples. It
+validates all four blocks and every argument before the shared patch API writes
+the file; rejected input remains unchanged. Fixtures cover LF/CRLF, later flags,
+mixed arguments and comments. Twelve affected mutations bite, and the actual
+SHA-pinned protobuf 21.12 input plus a native RC/C++ control pass. These controls
+do not prove the complete TensorRT plugin, the CUDA repeat or GPU inference.
+See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
+
+## ARM64 TensorRT nvcc rejects `--target=aarch64-linux-gnu`
+
+Linux run `20261109-102131-e69f48d7` selected target CXX but published CUDAHOSTCXX
+from native g++ first. CMake 4.4.5 prefers that environment setting over the later
+host-compiler define. Call target setup before `cuda_cross_load`, and stop on
+setup failure. Real compiler controls reproduce the old failure and fixed
+AArch64 output; the [plugin build](linux-accelerator-images.md#the-plugin-tensorrt-ep)
+still needs its full image and consumer proofs.
+
+## CUDA sccache repeats report `multiple input files`
+
+ORT's separated `SHELL:--std c++20` reaches the pinned parser as another input.
+Keep both source branches joined through `003-cuda-standard-sccache.patch` and
+retain the source-drift postcondition. A private real replay proves the old
+refusal and 12 corrected subcompilation hits; one internal step stays uncached.
+See [cache measurements and limits](build-cache-tiers.md#nvcc--hipcc).
+
+## A cross-built plugin passes closure despite `ldd: not a dynamic executable`
+
+The old helper only searched stdout for `not found`, discarding ldd's failed
+status and stderr. A native ldd cannot grade the ARM64 TensorRT module.
+Retain inspector failures and use the target loader under bounded QEMU with
+the explicit chain and SDK search paths. This lists dependencies without
+initializing the plugin; see [the closure scope](linux-accelerator-images.md#the-plugin-tensorrt-ep).
+
+## TensorRT plugin reports throws with exceptions disabled
+
+The full Windows NVIDIA run at `93019e36` compiled protobuf's resources, then
+clang-cl rejected the TensorRT plugin's C++ sources with `cannot use 'throw'
+with exceptions disabled`. Its actual compile command had no `/EHsc`.
+`Get-OrtPluginEpCmakeArgs` replaced `CMAKE_CXX_FLAGS` with warning options and
+dropped the platform exception default. Keep `/EHsc` in the shared C++ policy
+so the ORT C++ API retains its throwing semantics. Argument fixtures cover the
+forwarded policy; a complete plugin build and GPU execution need separate proof.
+See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
 
 ## Contents
 

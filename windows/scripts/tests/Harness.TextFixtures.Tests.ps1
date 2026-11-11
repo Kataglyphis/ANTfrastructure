@@ -4,6 +4,13 @@
 Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.TextFixtures.psm1') -DisableNameChecking
 
 Describe 'Harness line-based text fixtures' {
+    It 'counts regex matches exactly and rejects a wrong count or invalid pattern (mutation)' {
+        Assert-MatchCount 2 'a+' 'aaa aa' 'two runs'
+        Assert-MatchCount 0 'z+' '' 'empty text'
+        Assert-Throws { Assert-MatchCount 1 'a+' 'aaa aa' 'wrong count' } -MessagePattern 'Assert-Equal.*wrong count'
+        Assert-Throws { Assert-MatchCount 0 '[' 'text' } -MessagePattern 'pattern|Unterminated'
+    }
+
     It 'matches native UTF-8 Set-Content bytes for absent, empty, blank and populated line collections' {
         $lineFiles = [ordered]@{
                 'absent.txt' = $null; 'empty.txt' = @(); 'blank.txt' = @('')

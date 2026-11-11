@@ -1,0 +1,13 @@
+// Copyright (c) Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: MIT
+Ort::Status ExecutionProvider::ReleaseNodeComputeInfos(const gsl::span<OrtNodeComputeInfo*> node_compute_info) noexcept
+try {
+    for (const auto& info : node_compute_info) {
+        delete info;
+    }
+    return STATUS_OK;
+} catch (const Ort::Exception& e) {
+    return Ort::Status{e};
+} catch (const std::exception& e) {
+    return Ort::Status{e.what(), ORT_EP_FAIL};
+}

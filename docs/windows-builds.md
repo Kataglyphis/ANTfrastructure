@@ -1536,6 +1536,14 @@ bare-`RUN` bypass to compensate for). The gate worked, and it proved the lane co
 (`cv2.CAP_GSTREAMER`, [windows-build-lanes.md](windows-build-lanes.md)
 § The classic lane was retired).
 
+The NVIDIA cuDNN control recursively resolves `cudnn.h`, `cudnn.lib` and
+`cudnn64_*.dll` with the shared `Find-FirstTreeFile` helper. Missing main
+files, scan errors or `CUDA_ROOT` fail; auxiliary SDK files cannot excuse
+a skip. The native lane compiles, links and calls `cudnnGetVersion`, which
+needs no GPU. The cross lane links and checks the target PE machine.
+`Smoke.Cudnn.Tests.ps1` covers discovery and dispatch with fake compilation;
+the actual image smoke must still prove SDK linkage and execution.
+
 Three things about the gate are load-bearing:
 
 - **It runs through `entrypoint.cmd`, not as a bare `RUN`.** A bare RUN bypasses `ENTRYPOINT`,
@@ -1976,8 +1984,9 @@ when each discovery finds only one file. A fixture removes each class in turn to
 
 Auto-detects a TensorRT zip in `windows/downloads/` and installs it.
 Acquisition checks an explicit path, the staged repo and public download directories, then
-tries the CUDA-matched NVIDIA URL followed by two older CUDA URL shapes. The retries use the
-same PK signature check; tests hold archive precedence and the successful/failing fallback paths.
+tries the NVIDIA URL for the image's CUDA line. Downloads require the PK ZIP signature, and
+the archive is checked against `TENSORRT_ZIP_SHA256`. Without a staged archive, a failed
+download is fatal; another CUDA line is not tried.
 
 #### `Publish-ShimPatch.ps1`
 
@@ -2509,6 +2518,32 @@ and remove recursion; each must fail the suite.
 
 ## Structural test AST helpers
 
+`Uv.CensusPath.Tests.ps1` runs the same three checkout, copied-image and missing-census
+cases under Linux and Windows. Its Dockerfile destination mapping recognises either
+trailing separator after host path conversion. It shares the wheel-store tree with
+the native sync suite through `WindowsUv.ChainFixtures.psm1`; all native sync cases
+remain discovered. The inherited-twin mutation and directory-mapping mutation run
+the complete portable suite through `Invoke-HarnessSuite.ps1`. These tests inspect
+paths and stub interpreter replies; they do not prove real uv, Python or inference.
+
+`WindowsTorchRocm.RefusalFixture.psm1` shares the original refusal assertion with
+native installer cases and the portable `Torch.Rocm.Refusal.Tests.ps1` control.
+The control requires the failing status, complete normalized reason and absent
+download cache, and proves each guard separately. Its mutation runs this complete
+portable suite; all installer and batch execution cases remain in the native suite.
+Copied fixtures carry `TestHarness.psm1` and its companions with the assertion module.
+
+`WindowsHarness.CallAssertions.psm1` shares sequence comparisons, recorded argument
+projection and source call-order checks. It imports `TestHarness.psm1` unforced;
+copied suites carry both modules and the harness's existing companions.
+`Assert-TestSequence` compares the complete count and every ordered value.
+`Assert-TestRecordedArguments` preserves the selected argument boundaries and
+caller projection. `Assert-TestScriptCallOrder` requires one call per selected
+name, checks their source order and retains the selected call's exact wiring
+and optional unconditional verdict. These assertions inspect records and source;
+they do not execute the inspected script or prove a native build. Negative controls
+and mutation recipes cover lost counts, values, selected arguments, order and uniqueness.
+
 `TestHarness.psm1` owns file/snippet parsing, exact command-name queries and static
 parameter binding. `Get-TestAstCommands` includes nested scopes; callers retain
 their lane/ancestor checks. `Get-TestScriptCommands` combines file loading and a
@@ -2517,6 +2552,9 @@ including quotes, rather than evaluating it. `ConvertTo-TestScriptParseResult`
 returns the validated AST and lexer tokens from one parse, so comment-aware scans
 cannot inspect declarations after a parse error. The parser helpers never execute
 the inspected script.
+`Assert-TestAstCommand -Unconditional` also requires the parsed call to have no
+enclosing function, conditional or loop. `Assert-TestAstOrder -Before ... -After ...`
+compares parsed source offsets; it proves source order, not runtime execution.
 
 `Get-TestSourceCopyLoopText` selects exactly one parsed `foreach` loop by its
 variable, optional condition marker and required copy command.

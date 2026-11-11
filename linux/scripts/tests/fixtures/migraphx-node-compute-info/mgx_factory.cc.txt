@@ -1,0 +1,13 @@
+// Copyright (c) Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: MIT
+
+Ort::Status ProviderFactory::GetKernelRegistry(std::string_view ep_name, const OrtKernelRegistry*& kernel_registry) const {
+    kernel_registry = nullptr;
+    if (GetNumRegisteredKernels() != 0) {
+        if (kernel_registry_ == nullptr) {
+            RETURN_IF_ERROR(CreateKernelRegistry(ep_name, data_transfer_.get(), kernel_registry_));
+        }
+        kernel_registry = kernel_registry_;
+    }
+    return STATUS_OK;
+}

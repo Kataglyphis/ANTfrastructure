@@ -5,10 +5,11 @@
 
 Import-TestRepoModule -Name 'WindowsScripts.Shared', 'WindowsTargetArch.Common', 'WindowsSourceBuild.Common', 'WindowsSmokeTest.Common',
     'WindowsOrtProvenance.Common', 'WindowsBuildDriver.Common', 'WindowsNativeProvenance.Common', 'WindowsOrtProvenance.Build'
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.CallAssertions.psm1') -ErrorAction Stop
 $script:TrtEpScript = 'windows\scripts\build\Build-OrtTensorRtEpFromSource.ps1'
 $script:OnnxScript = 'windows\scripts\build\Build-OnnxFromSource.ps1'
 $script:TrtEpFunction = @('Get-OrtTensorRtEpPin', 'Get-OrtTensorRtEpDeclaration', 'Get-OrtTensorRtEpSeedGap', 'Get-OrtTensorRtMajor',
-    'New-OrtTensorRtEpHome', 'Get-OrtTensorRtEpCmakeArgs', 'Get-OrtTensorRtEpModuleFinding', 'Copy-OrtTensorRtEpLicense', 'Install-OrtTensorRtEpArtifact')
+    'New-OrtTensorRtEpHome', 'Repair-OrtTensorRtProtobufRc', 'Get-OrtTensorRtEpCmakeArgs', 'Get-OrtTensorRtEpModuleFinding', 'Copy-OrtTensorRtEpLicense', 'Install-OrtTensorRtEpArtifact')
 $script:PluginExports = @('CreateEpFactories', 'ReleaseEpFactory')
 $script:TrtDelay = @('nvinfer_11.dll', 'nvinfer_plugin_11.dll', 'nvonnxparser_11.dll')
 
@@ -67,6 +68,28 @@ $Extra
     GIT_TAG        v1.14.0
   )
 "@
+}
+
+function Get-TrtProtobufRcFixture {
+    return @'
+if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+  add_definitions(/MP)
+endif()
+# add_definitions(/comment-only-option) is not a command
+add_definitions(/utf-8)
+add_definitions(
+  /wd4065 # /bigobj in a comment (not a compiler argument)
+  /wd4355 # compiler option after the comment closing parenthesis
+)
+add_definitions(/bigobj)
+add_definitions(-DPROTOBUF_FIXTURE)
+if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+  # Configure Resource Compiler
+  enable_language(RC)
+  set(rc_flags "/l0x409")
+  set(CMAKE_RC_COMPILE_OBJECT "<CMAKE_RC_COMPILER> ${rc_flags} <DEFINES> /fo<OBJECT> <SOURCE>")
+endif()
+'@
 }
 
 Describe 'Build-OrtTensorRtEpFromSource.ps1' {
@@ -135,10 +158,70 @@ Describe 'Build-OrtTensorRtEpFromSource.ps1' {
         }
     }
 
+    It 'scopes every protobuf compiler option to C/C++ and preserves definitions and the MSVC-only RC block (mutation)' {
+        Invoke-InTestDir { param($dir)
+            foreach ($lineEnding in @("`n", "`r`n")) {
+                Write-TestFileTree -Root $dir -Files @{ 'CMakeLists.txt' = (Get-TrtProtobufRcFixture).Replace("`r`n", "`n").Replace("`n", $lineEnding) }
+                Repair-OrtTensorRtProtobufRc -SeedRoot $dir
+                $fixed = [IO.File]::ReadAllText((Join-Path $dir 'CMakeLists.txt'))
+                $literals = @(foreach ($option in 'MP', 'utf-8', 'wd4065', 'wd4355', 'bigobj') { '"$<$<COMPILE_LANGUAGE:C,CXX>:/{0}>"' -f $option })
+                Assert-TestScriptContains -ScriptPath (Join-Path $dir 'CMakeLists.txt') -Literal ($literals + @(
+                    'add_definitions(-DPROTOBUF_FIXTURE)', 'if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")',
+                    '# /bigobj in a comment (not a compiler argument)',
+                    '# add_definitions(/comment-only-option) is not a command',
+                    'set(CMAKE_RC_COMPILE_OBJECT "<CMAKE_RC_COMPILER> ${rc_flags} <DEFINES> /fo<OBJECT> <SOURCE>")'
+                )) -ReasonPrefix 'retained protobuf compiler/resource contract'
+                Assert-False (($fixed -replace '(?m)#.*$', '') -match 'add_definitions\(\s*/') 'no compiler flag reaches the resource language'
+                Assert-FileUnchanged -Path (Join-Path $dir 'CMakeLists.txt') -Action {
+                    Repair-OrtTensorRtProtobufRc -SeedRoot $dir
+                } -Reason 'already-fixed source is byte-stable'
+            }
+        }
+    }
+
+    It 'refuses missing or changed protobuf compiler-option inputs (mutation)' {
+        Invoke-InTestDir { param($dir)
+            Assert-Throws { Repair-OrtTensorRtProtobufRc -SeedRoot $dir } -MessagePattern 'file not found'
+            foreach ($text in @(
+                'add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>")',
+                (Get-TrtProtobufRcFixture).Replace('/bigobj', '/unexpected-option'),
+                (Get-TrtProtobufRcFixture).Replace('/wd4065', '/wd4065 /unexpected-option'),
+                (Get-TrtProtobufRcFixture).Replace('/wd4355', '/wd4355 /unexpected-option'),
+                (Get-TrtProtobufRcFixture).Replace('add_definitions(/bigobj)', '')
+            )) {
+                Write-TestFileTree -Root $dir -Files @{ 'CMakeLists.txt' = $text }
+                $pattern = if ($text.Contains('/unexpected-option')) { 'Unexpected protobuf compiler option: /unexpected-option' } else { 'protobuf.*scope' }
+                Assert-FileUnchanged -Path (Join-Path $dir 'CMakeLists.txt') -Action {
+                    Assert-Throws { Repair-OrtTensorRtProtobufRc -SeedRoot $dir } -MessagePattern $pattern
+                } -Reason 'drift fails before rewriting the input'
+            }
+        }
+    }
+
+    It 'refuses unscoped arguments inside already-scoped protobuf option blocks (mutation)' {
+        Invoke-InTestDir -Files @{ 'CMakeLists.txt' = (Get-TrtProtobufRcFixture) } -Body { param($dir)
+            Repair-OrtTensorRtProtobufRc -SeedRoot $dir
+            $fixed = [IO.File]::ReadAllText((Join-Path $dir 'CMakeLists.txt'))
+            $warning = '"$<$<COMPILE_LANGUAGE:C,CXX>:/wd4065>"'
+            foreach ($extra in '/bigobj', '"/bigobj"', '-DUNSCOPED', '"$<$<COMPILE_LANGUAGE:C,CXX>:/unexpected-option>"') {
+                Write-TestFileTree -Root $dir -Files @{ 'CMakeLists.txt' = $fixed.Replace($warning, "$warning $extra") }
+                Assert-Throws { Repair-OrtTensorRtProtobufRc -SeedRoot $dir } -MessagePattern 'protobuf.*scope'
+            }
+        }
+    }
+
+    It 'repairs the protobuf seed unconditionally before the TensorRT configure (mutation)' {
+        Assert-TestScriptCallOrder -ScriptPath $script:TrtEpScript -Name @('Repair-OrtTensorRtProtobufRc', 'Invoke-CmakeConfigureLogged') `
+            -Text "Repair-OrtTensorRtProtobufRc -SeedRoot `$roots['protobuf']" -Unconditional
+    }
+
     It 'configures against the shim, the SDK and every seed, with downloads and the plugin''s own cache launcher off (mutation)' {
         function Get-NvccCudaCmakeArgs { param($CudaRoot, $CudaStandard) @("-DCMAKE_CUDA_COMPILER:FILEPATH=$CudaRoot/bin/nvcc.exe", "-DCMAKE_CUDA_STANDARD:STRING=$CudaStandard") }
         $seeds = [ordered]@{ protobuf = 'C:\t\protobuf-src\protobuf-21.12'; gsl = 'C:\t\gsl-src\GSL-4.0.0' }
         $a = @(Get-OrtTensorRtEpCmakeArgs -OrtHome 'C:\t\ort-home' -TensorRtSdk 'C:\tensorrt-sdk\current' -TrtMajor '11' -CudaRoot 'C:\cuda' -Python 'C:\py\python.exe' -SeedRoot $seeds)
+        $cxx = @($a | Where-Object { $_.StartsWith('-DCMAKE_CXX_FLAGS:STRING=') })
+        Assert-Equal 1 $cxx.Count 'one complete C++ flag argument reaches CMake'
+        Assert-Match '(?:=|\s)/EHsc(?:\s|$)' $cxx[0] 'the ORT C++ API throws, so plugin flags must retain exceptions'
         foreach ($want in '-DORT_HOME:PATH=C:/t/ort-home', '-DTENSORRT_HOME:PATH=C:/tensorrt-sdk/current', '-DTRT_MAJOR_VERSION:STRING=11',
             '-Donnxruntime_ep_tensorrt_OBJECT_CACHE=OFF', '-Donnxruntime_ep_tensorrt_INSTALL=OFF', '-DFETCHCONTENT_FULLY_DISCONNECTED:BOOL=ON',
             '-DCMAKE_POLICY_DEFAULT_CMP0170:STRING=NEW', '-DFETCHCONTENT_SOURCE_DIR_PROTOBUF:PATH=C:/t/protobuf-src/protobuf-21.12',
@@ -285,8 +368,7 @@ Describe 'NVIDIA plugin EP wiring' {
     It 'stamps G2 unconditionally after its own checks, over its whole tree, the shim and its CMake records (mutation)' {
         $ast = Get-TestScriptAst -ScriptPath $script:TrtEpScript
         $gate = @(Get-TestAstCommands -Ast $ast -Name 'Assert-ChainOrtOnly')
-        Assert-TestAstCommand -Command $gate -Text "Assert-ChainOrtOnly -Consumer 'tensorrt-ep' -OrtRoot `$ortPrefix -TreeRoot `$SourceDir -Shim `$ortHome -Log `$cfgLog -CmakeBuildDir `$buildDir"
-        Assert-True (Test-TestAstUnconditional -Node $gate[0]) 'no if, loop or function around the call'
+        Assert-TestAstCommand -Command $gate -Text "Assert-ChainOrtOnly -Consumer 'tensorrt-ep' -OrtRoot `$ortPrefix -TreeRoot `$SourceDir -Shim `$ortHome -Log `$cfgLog -CmakeBuildDir `$buildDir" -Unconditional
         $checks = @(Get-TestAstCommands -Ast $ast -Name 'Get-OrtTensorRtEpModuleFinding')[-1]
         Assert-True ($checks.Extent.EndOffset -lt $gate[0].Extent.StartOffset) 'after the module checks'
     }

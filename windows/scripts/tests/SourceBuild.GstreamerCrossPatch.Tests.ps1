@@ -19,7 +19,7 @@ Describe 'GStreamer cross source patch dispatch' {
                 $vulkan = Join-Path $state.Root 'subprojects/gst-plugins-bad/gst-libs/gst/vulkan/meson.build'
                 & $state.Apply $state.Root
                 $baseText = [IO.File]::ReadAllText($base); $vulkanText = [IO.File]::ReadAllText($vulkan)
-                Assert-Equal 2 ([regex]::Matches($baseText, "and host_machine.cpu_family\(\) in \['x86', 'x86_64'\]")).Count
+                Assert-MatchCount 2 "and host_machine.cpu_family\(\) in \['x86', 'x86_64'\]" $baseText
                 Assert-Match "if host_machine.cpu_family\(\) == 'aarch64'" $vulkanText
                 Assert-Match "vulkan_root, 'Lib-ARM64'" $vulkanText
                 Assert-Match "elif build_machine.cpu_family\(\) == 'x86_64'" $vulkanText

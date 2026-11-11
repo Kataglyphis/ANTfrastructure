@@ -47,10 +47,27 @@ rm -f "${_r}/lib/libnvinfer_plugin.so.11"
 t_assert_contains "$(TRTEP_WORK_DIR="${_T}/w2" TENSORRT_VERSION=11.4.0.106 TENSORRT_HOME="${_r}" trtep_tensorrt_home 2>&1)" "no libnvinfer_plugin.so.11 under any of:"
 t_assert_contains "$(TRTEP_WORK_DIR="${_T}/w3" TENSORRT_VERSION='' TENSORRT_HOME="${_r}" trtep_tensorrt_home 2>&1)" "TENSORRT_VERSION is not set"
 # A CUDA cross target hands the plugin the target's TensorRT root; a native build keeps TENSORRT_HOME (the arm64 nvidia lane, unproven by a build yet).
-_cross="$(bash -c 'source "$1"; cuda_cross_active() { return 0; }; cuda_cross_load() { CUDA_CROSS_TENSORRT_HOME=/target/tensorrt; }; TENSORRT_HOME=/host; trtep_enter_cross_env; printf "%s" "${TENSORRT_HOME}"' _ "${EP}")"
-t_assert_eq /target/tensorrt "${_cross}"
-_native="$(bash -c 'source "$1"; cuda_cross_active() { return 1; }; TENSORRT_HOME=/host; trtep_enter_cross_env; printf "%s" "${TENSORRT_HOME}"' _ "${EP}")"
-t_assert_eq /host "${_native}"
+_trtep_cross_env_fixture() {
+  bash -c '
+    source "$1"
+    mode="$2"; calls=""; CXX=/host/g++; CUDAHOSTCXX=/host/g++; TENSORRT_HOME=/host
+    cuda_cross_active() { [ "${mode}" != native ]; }
+    setup_linux_cross_env() {
+      calls="${calls}setup "
+      [ "${mode}" != fail ] || return 37
+      CXX=/target/aarch64-linux-gnu-g++
+    }
+    cuda_cross_load() {
+      calls="${calls}cuda "
+      CUDAHOSTCXX="${CXX}"; CUDA_CROSS_TENSORRT_HOME=/target/tensorrt
+    }
+    if trtep_enter_cross_env; then rc=0; else rc=$?; fi
+    printf "%s|%s|%s|%s|%s" "${rc}" "${CXX}" "${CUDAHOSTCXX}" "${TENSORRT_HOME}" "${calls}"
+  ' _ "${EP}" "$1"
+}
+t_assert_eq '0|/target/aarch64-linux-gnu-g++|/target/aarch64-linux-gnu-g++|/target/tensorrt|setup cuda ' "$(_trtep_cross_env_fixture cross)" "select the target C++ compiler before CUDAHOSTCXX is published"
+t_assert_eq '0|/host/g++|/host/g++|/host|' "$(_trtep_cross_env_fixture native)" "a native build keeps its compiler and TensorRT root without callbacks"
+t_assert_eq '37|/host/g++|/host/g++|/host|setup ' "$(_trtep_cross_env_fixture fail)" "a failed target setup retains raw status and stops before CUDA publication"
 t_assert_contains "$(t_fn_src "${EP}" trtep_compile)" 'trtep_enter_cross_env' "the compile enters the cross environment before it links the TensorRT tree"
 # The header discovery itself (TENSORRT_HOME first, then first_match_using over /usr/include and /usr/local) is the ORT subject of header_discovery_tests.py.
 t_assert_eq "${_r}/include/NvInfer.h" "$(TENSORRT_HOME="${_r}" trtep_tensorrt_header)"

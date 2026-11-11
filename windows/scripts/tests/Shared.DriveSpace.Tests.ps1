@@ -29,6 +29,8 @@ function Assert-DriveSpaceValues {
     Assert-Throws { Get-MutDriveFreeSpaceGb -Drive throwing } -MessagePattern '^fixture drive probe failed$'
 }
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.CallAssertions.psm1') -ErrorAction Stop
+
 Describe 'Shared disk free-space probing' {
     It 'distinguishes zero from unknown and rounds readings, with faults for both decisions' {
         $recipe = @{ ModuleArguments = (New-DriveSpaceFixture); IncludeControl = $true; Body = { param($state) Assert-DriveSpaceValues $state } }
@@ -40,7 +42,7 @@ Describe 'Shared disk free-space probing' {
         $recipe = New-DriveSpaceFixture
         Invoke-WithFunctionModule @recipe -Body { param($state)
             Assert-Throws { Assert-MutDiskHeadroom -Drive @('d:', 'D:\context', 'missing', 'N') -MinFreeGb 40 6>$null } -MessagePattern 'C: has 0 GB free'
-            Assert-Equal 'C|D|M|N' (($state.Calls | ForEach-Object { $_[0] }) -join '|') 'initial checks normalize and deduplicate drive paths'
+            Assert-TestRecordedArguments -Calls $state.Calls -Expected @('C', 'D', 'M', 'N') -Reason 'initial checks normalize and deduplicate drive paths'
             $warning = @(Assert-MutDiskHeadroom -Drive missing -MinFreeGb 40 -Force 3>&1 6>$null)
             Assert-Equal 1 $warning.Count
             Assert-Match 'C: has 0 GB free.*continuing because -Force' $warning[0].Message
