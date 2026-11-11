@@ -14,6 +14,7 @@ PROVIDERS = {
     "cpu": "CPUExecutionProvider",
     "cuda": "CUDAExecutionProvider",
     "migraphx": "MIGraphXExecutionProvider",
+    "migraphx-plugin": "MIGraphX",
     "directml": "DmlExecutionProvider",
     "xnnpack": "XnnpackExecutionProvider",
     "dnnl": "DnnlExecutionProvider",

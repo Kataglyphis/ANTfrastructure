@@ -15,6 +15,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — version recurring source-proof and GPU diagnostic drivers
+
+- Replace repeated scratch CI dispatch, download and audit drivers with `source-ci.py` and shared modules;
+  preserve exact run identity, original logs, native Windows archive hashes and coverage-policy checks.
+- Version mutation-unit sealing, cache-status capture and the real tiny MIGraphX ownership probe.
+  Preserve the command's raw failure, reject unloaded units and reuse the canonical profile verifier.
+- Add failure fixtures and mutation recipes; historical run scripts and receipts remain immutable evidence.
+
 ## 2026-11-10 — preserve MIGraphX node and registry ownership
 
 - The pinned plugin's C ABI node pointer now reaches an owning virtual base at release; both ordinary and cached nodes retain correct pointer adjustment in all six callbacks.

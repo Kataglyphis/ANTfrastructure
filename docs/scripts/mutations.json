@@ -39247,5 +39247,173 @@
   "replace": "detect_leaks=0:alloc_dealloc_mismatch=1:new_delete_type_mismatch=1",
   "test": "bash linux/scripts/tests/test-ort-migraphx-factory.sh",
   "why": "The original raw registry must prove leak detection is active."
+ },
+ {
+  "id": "lib.proof-source-mutation-union",
+  "target": "linux/scripts/source_ci/linux.py",
+  "find": "collections.Counter(all_ids) == collections.Counter(expected)",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "every executed mutation must match exactly one source manifest ID"
+ },
+ {
+  "id": "lib.proof-source-mutation-delegation",
+  "target": "linux/scripts/source_ci/linux.py",
+  "find": "delegated == skipped == 0",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "delegated or skipped mutations cannot prove this run"
+ },
+ {
+  "id": "lib.proof-source-tree-binding",
+  "target": "linux/scripts/source_ci/linux.py",
+  "find": "binding[\"tree\"] == git(args.root, \"rev-parse\", f\"{args.head}^{{tree}}\").decode().strip()",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "the tested checkout must match the exact local Git tree"
+ },
+ {
+  "id": "lib.proof-source-windows-skips",
+  "target": "linux/scripts/source_ci/windows.py",
+  "find": "(\"Failed\", \"Skipped\", \"Broken\", \"CoverageFailures\")",
+  "replace": "(\"Failed\", \"Broken\", \"CoverageFailures\")",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "a formally passed summary must not hide skipped native tests"
+ },
+ {
+  "id": "lib.proof-source-windows-policy",
+  "target": "linux/scripts/source_ci/windows.py",
+  "find": "require(old == new, \"Previously audited",
+  "replace": "require(True, \"Previously audited",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "a prior coverage baseline cannot certify a changed policy"
+ },
+ {
+  "id": "lib.proof-source-windows-bytes",
+  "target": "linux/scripts/source_ci/windows.py",
+  "find": "digest == artifact[\"digest\"] and args.zip.stat().st_size == artifact[\"size_in_bytes\"]",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "a valid modified ZIP must still fail its published digest and size"
+ },
+ {
+  "id": "lib.proof-source-windows-xml",
+  "target": "linux/scripts/source_ci/windows.py",
+  "find": "xml.tag == \"coverage\" and valid > 0 and 0 < covered <= valid and abs(covered / valid - float(xml.attrib[\"line-rate\"])) < 1e-6",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "native XML coverage must contain a nonzero consistent result"
+ },
+ {
+  "id": "lib.proof-source-security-gate",
+  "target": "linux/scripts/source_ci/combined.py",
+  "find": "re.search(r\"security-audit: .*mode gate\", path.read_text(encoding=\"utf-8\"))",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "a report-only security run is not the required gate"
+ },
+ {
+  "id": "lib.proof-source-workflow-skips",
+  "target": "linux/scripts/source_ci/combined.py",
+  "find": "row[\"file\"] == \"docs.yml\" and job[\"name\"] == \"docs / Publish the site\"",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "only the explicit docs publication job may be skipped"
+ },
+ {
+  "id": "lib.proof-source-log-binding",
+  "target": "linux/scripts/source_ci/combined.py",
+  "find": "fingerprint(args.directory / f\"source-ci-{job_id}.log\") == row[\"log_sha256\"]",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "later log edits must invalidate the joined source proof"
+ },
+ {
+  "id": "lib.proof-source-workflow-identity",
+  "target": "linux/scripts/source_ci/common.py",
+  "find": "run[\"path\"].split(\"@\", 1)[0] == \".github/workflows/\" + workflow",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "successful metadata from a different workflow cannot satisfy the selected run"
+ },
+ {
+  "id": "lib.proof-source-dispatch-exclusive",
+  "target": "linux/scripts/source_ci/dispatch.py",
+  "find": "Path(args.output).open(\"x\", encoding=\"utf-8\")",
+  "replace": "Path(args.output).open(\"w\", encoding=\"utf-8\")",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "an interrupted ambiguous dispatch must never be retried by overwriting its record"
+ },
+ {
+  "id": "lib.proof-source-dispatch-checkpoint",
+  "target": "linux/scripts/source_ci/dispatch.py",
+  "find": "row[\"state\"] = \"dispatching-once-do-not-repeat-if-interrupted\"",
+  "replace": "row[\"state\"] = \"pending\"",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "persist the ambiguous request state before sending the workflow write"
+ },
+ {
+  "id": "lib.proof-source-download-status",
+  "target": "linux/scripts/source_ci/fetch.py",
+  "find": "capture_output=True, check=True, timeout=60",
+  "replace": "capture_output=True, check=False, timeout=60",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "a failed raw HTTP response cannot become preserved log bytes"
+ },
+ {
+  "id": "lib.proof-mutation-seal-loaded",
+  "target": "linux/scripts/seal-mutation-unit.py",
+  "find": "before.get(\"LoadState\") == \"loaded\" and before.get(\"Id\") == args.unit",
+  "replace": "before.get(\"Id\") == args.unit",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "unloaded units have default success fields that do not prove execution"
+ },
+ {
+  "id": "lib.proof-mutation-seal-exact-ids",
+  "target": "linux/scripts/seal-mutation-unit.py",
+  "find": "actual == expected and all(count == 1 for count in actual.values())",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "a completed banner cannot replace the executed exact mutation ID set"
+ },
+ {
+  "id": "lib.proof-native-runtime-distinct-profiles",
+  "target": "linux/scripts/audit-native-plugin-runtime.py",
+  "find": "profile.parent == directory.resolve() and profile not in profiles",
+  "replace": "profile.parent == directory.resolve()",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "two reported GPU sessions need distinct original profiles"
+ },
+ {
+  "id": "lib.proof-native-runtime-plugin-provider",
+  "target": "shared/python/verify_ort_profile.py",
+  "find": "    \"migraphx-plugin\": \"MIGraphX\",\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-source-ci.sh",
+  "why": "the plugin profile uses its real provider name independently of the legacy built-in name"
+ },
+ {
+  "id": "lib.proof-cache-command-raw-failure",
+  "target": "linux/scripts/capture-sccache-command.sh",
+  "find": "  exit \"${result}\"",
+  "replace": "  exit \"${cache_result}\"",
+  "test": "bash linux/scripts/tests/test-capture-sccache-command.sh",
+  "why": "successful cache statistics cannot hide a failed wrapped command"
+ },
+ {
+  "id": "lib.proof-cli-argument-minimum",
+  "target": "linux/scripts/lib/cli-value-options.sh",
+  "find": "\"$#\" -lt \"${_crp_min}\"",
+  "replace": "\"$#\" -lt 0",
+  "test": "bash linux/scripts/tests/test-capture-sccache-command.sh",
+  "why": "missing positional arguments must fail before creating evidence or expanding unset arguments"
+ },
+ {
+  "id": "lib.proof-cli-help",
+  "target": "linux/scripts/lib/cli-value-options.sh",
+  "find": "if [[ \"${1:-}\" == --help ]]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-capture-sccache-command.sh",
+  "why": "help must exit before creating an output directory or running a command"
  }
 ]

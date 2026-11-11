@@ -70,6 +70,36 @@ content, so a changed job order does not silently select another gate. Observati
 acceptance receipts. Both Python host drivers require their sibling `host_commands.py`; the watcher
 also needs `preflight-status.py`. Preserve these companions when copying a tool.
 
+Use `linux/scripts/source-ci.py` for [source CI evidence](github-cli-pipeline-monitoring.md#preserved-source-ci-evidence)
+and `linux/scripts/seal-mutation-unit.py --unit NAME.service --manifest MANIFEST --log LOG --output PROOF`
+to seal a completed local mutation run before stopping its user unit. `--selected` requires the exact
+selected manifest; the tool compares every executed ID, refuses duplicates, unloaded units and live
+processes, and preserves terminal evidence even when stopping fails. Success after stopping is written
+separately to `PROOF-stopped.json`; a terminal-only file is not a completed seal.
+
+`capture-sccache-command.sh NEW_OUTPUT -- COMMAND [ARG...]` preserves text/JSON cache counters and both
+statuses on every command exit. Text counters also go to stderr. A failed command retains its raw
+status; failed stats turn an otherwise successful command red. Both shell entry points use `lib/cli-value-options.sh` and its logging companions for help/argument validation.
+Run the cache wrapper inside the image containing sccache; it neither starts a unit nor selects a container. Do not reuse an evidence directory.
+
+For the real tiny AMD ownership regression, run inside the selected image with GPU access:
+
+```bash
+bash linux/scripts/capture-sccache-command.sh /evidence/ownership-001 -- \
+  bash linux/scripts/probe-migraphx-ownership.sh /evidence/ownership-001 \
+    /work/migraphx-001 /work/migraphx-prefix-001 /models/relu.onnx
+```
+
+The model must have one float `x` input and `y` output, shape `[1]`, implementing Relu. Use absolute
+paths and separate work/prefix/output paths for each attempt. The runner calls the production builder,
+compiles `shared/native/tests/ort_plugin_runtime_probe.cpp` through the guarded cache launcher and
+requires CPU plus two V2 GPU sessions with ASan/LSan enabled. The versioned runtime audit requires
+three distinct profiles and delegates operator/per-run validation to `shared/python/verify_ort_profile.py`;
+`--device migraphx-plugin` selects the plugin's `MIGraphX` profile name. This is a tiny session and
+ownership proof, not full media acceptance, finished packages or detector parity. Old-image and
+standalone-module evidence cannot certify a later image. Optional final CORE_DIRECTORY selects the
+image's existing cache/Python companions; the default is `/opt/scripts/core`.
+
 For a native ORT plugin load/export check, use [the permanent probe](linux-accelerator-images.md#repeat-a-native-plugin-probe).
 For another consumer platform, preserve the full contract with [the plan command](image-acceptance.md#preserve-a-platform-specific-plan).
 `test-proof-workflows.sh` uses an isolated Git fixture and a fake engine to prove source preservation,
@@ -1069,7 +1099,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4904 entries** over **640 distinct test commands**; both digits are
+manifest holds **4925 entries** over **642 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -3193,7 +3223,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 1063 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1064 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

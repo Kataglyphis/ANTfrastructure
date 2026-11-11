@@ -432,6 +432,8 @@ Five of them are RULES and stay here:
   and isolated preflight carries both scripts under `isolated-preflight/`.
   Copied `run-in-ci-image.sh` carries the shared `lib/cli-value-options.sh` and logging companions;
   the mutation recipe contract lives in `mutation_parse.py` beside its runner.
+  Source CI dispatch, retrieval and audits use `source-ci.py` with its `source_ci/` and `host_commands.py` companions.
+  Mutation seals require a loaded, terminal successful unit before stopping; cached default success is insufficient.
   Container transport fixtures accept the shared runner security and value flags before parsing
   the image and command; preserve the production AppArmor setting.
 

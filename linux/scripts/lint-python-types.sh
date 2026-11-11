@@ -58,6 +58,8 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/06-packaging/ort_census_probe.py' \
   'linux/scripts/06-packaging/python-app-selftest.py' \
   'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' \
+  'linux/scripts/source-ci.py' 'linux/scripts/source_ci/*.py' \
+  'linux/scripts/seal-mutation-unit.py' 'linux/scripts/audit-native-plugin-runtime.py' \
   'linux/scripts/layer-audit.py' 'linux/scripts/lib/cmakelang-py315.py' \
   'linux/scripts/lib/fetch-data-lock.py' 'linux/scripts/lib/dartdoc-guides.py' \
   'linux/scripts/renovate_audit.py' 'linux/scripts/renovate_cmake.py' \

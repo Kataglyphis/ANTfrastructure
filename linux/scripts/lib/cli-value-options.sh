@@ -46,3 +46,16 @@ append_cli_nonempty_args() {
     _cna_args+=("${_cna_value}")
   done
 }
+
+cli_require_positionals() {
+  local _crp_usage="$1" _crp_min="$2" _crp_max="$3"
+  shift 3
+  if [[ "${1:-}" == --help ]]; then
+    printf 'Usage: %s %s\n' "${0##*/}" "${_crp_usage}"
+    exit 0
+  fi
+  if [[ "$#" -lt "${_crp_min}" || ( "${_crp_max}" -gt 0 && "$#" -gt "${_crp_max}" ) ]]; then
+    printf 'Usage: %s %s\n' "${0##*/}" "${_crp_usage}" >&2
+    exit 2
+  fi
+}
