@@ -15,6 +15,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-11 — model explicit launcher paths in ORT bundle census
+
+- Forward `--ld-library-path` to the existing loader-order probe in tree and image modes. Defaults remain strict, and foreign or missing core bytes remain failures.
+- Cover a synthetic plugin without RUNPATH against exact reference bytes. This models caller-declared paths; it does not validate a launcher or prove actual loading.
+
 ## 2026-11-11 — select mutation changes from the requested checkout
 
 - Make `--changed` and `--push-range` use the explicit `--root` Git checkout, matching execution. A Hub-installed driver could otherwise report no selected work for a modified consumer.

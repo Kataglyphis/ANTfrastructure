@@ -256,6 +256,11 @@ resolves it. A future base without it fails that walk; the fix is a measured
 
 ## The guards
 
+Linux G6 can model a caller-declared launcher search path with
+`--ld-library-path /lib` inside the scanned root, without rewriting an image-identical
+plugin. Default tree lookup remains strict; the census does not verify the launcher
+or establish actual loading. See the [consumer command](cross-build-verification.md#e-ort-single-source).
+
 The six guards come in two orthogonal halves plus reach. **G1** judges the
 shipped bytes and **G2** judges the build inputs. Neither is enough alone: G1
 would pass the pre-2026-09-23 Windows OpenCV image, and G2 cannot see a

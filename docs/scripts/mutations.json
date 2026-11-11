@@ -40300,5 +40300,21 @@
   "replace": "entries = select_push(entries, args.push_range, ROOT, os.path.abspath(args.manifest))",
   "test": "bash linux/scripts/tests/test-mutation-push.sh",
   "why": "Push-range history must come from the requested consumer root rather than the Hub history."
+ },
+ {
+  "id": "ort-census.explicit-loader-cli",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": "loader_args=$'--ld-library-path\\n'\"${2?--ld-library-path needs a bundle-relative loader path}\"",
+  "replace": "loader_args=\"\"",
+  "test": "bash linux/scripts/tests/test-ort-census.sh",
+  "why": "An explicit launcher path must reach the tree probe; a no-RUNPATH plugin still fails without it."
+ },
+ {
+  "id": "ort-census.explicit-loader-probe",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": "  mapfile -t args <<< \"$3${4:+$'\\n'}$4\"",
+  "replace": "  mapfile -t args <<< \"$3\"",
+  "test": "bash linux/scripts/tests/test-ort-census.sh",
+  "why": "Dropping the forwarded loader path must break the actual synthetic plugin lookup, rather than pass a source-only assertion."
  }
 ]

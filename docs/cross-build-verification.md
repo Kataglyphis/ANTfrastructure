@@ -669,7 +669,12 @@ is found by name and fingerprint only. The call sits inside the
 
 **Consumer use (G6).** Inside the image the app was built in, run
 `bash third_party/ANTfrastructure/linux/scripts/06-packaging/check-ort-provenance.sh <bundle-dir>`
-(`--reference DIR`, `--manifest FILE`, `--exempt ARCH:PATH:WHY`). Exit 0 is clean,
+(`--reference DIR`, `--manifest FILE`, `--exempt ARCH:PATH:WHY`). A launcher-based
+bundle may explicitly pass `--ld-library-path /lib`, using paths inside the scanned
+root, to model its loader search path while preserving the plugin bytes. The caller
+must establish that the launcher supplies that path; the census does not inspect
+its script or establish runtime loading. Missing and earlier foreign cores still
+fail, and tree mode inherits no ambient loader path. Exit 0 is clean,
 1 is findings, 2 is usage; `--image` grades the system it runs on.
 
 ### The in-image half of critical-fixes

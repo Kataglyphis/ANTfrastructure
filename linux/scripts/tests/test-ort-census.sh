@@ -156,6 +156,18 @@ t_case "G6: a bundle carrying the chain ORT beside its importer passes (main, ex
 t_assert_eq 0 "$(t_rc bash "${CENSUS}" --reference "${_ref}/lib" "${_bundle}")" "clean bundle"
 t_assert_contains "$(bash "${CENSUS}" --reference "${_ref}/lib" "${_bundle}" 2>&1)" "ORT census PASS" "says so"
 
+t_case "G6 models an explicit launcher path without rewriting a plugin's ELF"
+_loader_bundle="${_work}/loader-bundle"
+_elf "${_loader_bundle}/lib/libmigraphx-ep.so" libonnxruntime.so.1 "" OrtGetApiBase
+cp "${_ref}/lib/libonnxruntime.so.1" "${_loader_bundle}/lib/"
+t_assert_eq 1 "$(t_rc bash "${CENSUS}" --reference "${_ref}/lib" "${_loader_bundle}")" "default search stays strict"
+t_assert_eq 0 "$(t_rc bash "${CENSUS}" --reference "${_ref}/lib" --ld-library-path /lib "${_loader_bundle}")" "explicit launcher path resolves the image core"
+_elf "${_loader_bundle}/first/libonnxruntime.so.1" "" "" "${WINML_SRC}"
+_out="$(bash "${CENSUS}" --reference "${_ref}/lib" --ld-library-path /first:/lib "${_loader_bundle}" 2>&1)"
+t_assert_contains "${_out}" "UNRESOLVED   /lib/libmigraphx-ep.so -- libonnxruntime.so.1 resolves to /first/libonnxruntime.so.1" "earlier foreign core stays fatal"
+mv "${_loader_bundle}/lib/libonnxruntime.so.1" "${_work}/saved-loader-core"
+t_assert_eq 1 "$(t_rc bash "${CENSUS}" --reference "${_ref}/lib" --ld-library-path /lib "${_loader_bundle}")" "an explicit path cannot supply missing bytes"
+
 t_case "G6: a stale copy, an importer without RUNPATH, a renamed foreign ORT and a foreign wheel fail (exit 1)"
 _elf "${_work}/ref2/lib/libonnxruntime.so.1" "" "" "${CHAIN_SRC}" 'FileVersion 1.31'
 _out="$(bash "${CENSUS}" --reference "${_work}/ref2/lib" "${_bundle}" 2>&1)"

@@ -131,6 +131,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    TensorRT cross builds select target CXX before CUDAHOSTCXX is published; failed setup stops the build.
    Plugin closure checks retain inspector failures; SBSA TensorRT uses the target loader under bounded QEMU, not native ldd.
    Copied `35-build-migraphx-plugin-ep.sh` and `37-build-tensorrt-plugin-ep.sh` carry `plugin-ep-exports.sh` and `plugin-ep-seeds.txt` beside them; the media verify stage reads the export probe from the mounted ORT build directory, so keep that directory mount on the GPU RUN.
+   G6 accepts an explicit loader search path for launcher-based bundles; retain strict defaults, byte identity and foreign-first refusal.
    G2 reads `onnxruntime_ep_*` modules and `Microsoft.ML.OnnxRuntime.EP.*` directories as ORT consumers, never as ORT.
    AMD Python bundles carry the plugin MIGraphX EP beside the chain core and prove it against the image's module; their self-test proves registration, not availability.
    MIGraphX node cleanup retains its ownership patch and adjusting casts in all six C ABI callbacks; the SDK C base has no virtual destructor.

@@ -246,11 +246,11 @@ _ort_census_tree_args() {  # <root> <refs, one per line> <manifests, one per lin
   while IFS= read -r d; do printf '%s\n' --chain-root "${d}"; done < <(ort_census_chain_roots)
 }
 
-_ort_census_run() {  # <label> <stamps armed> <probe args, one per line> <exemption>...
+_ort_census_run() {  # <label> <stamps armed> <probe args, one per line> <loader args, one per line> <exemption>...
   local label="$1" armed="$2" probe py verb path detail bad=0
   local -a args=()
-  mapfile -t args <<< "$3"
-  shift 3
+  mapfile -t args <<< "$3${4:+$'\n'}$4"
+  shift 4
   py="$(command -v python3 || command -v python)"
   probe="$(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "${py}" "$(_ort_host_dir "${_ORT_CENSUS_HERE}")/ort_census_probe.py" \
     "${args[@]}")" || true
@@ -265,11 +265,12 @@ _ort_census_run() {  # <label> <stamps armed> <probe args, one per line> <exempt
 
 # G6 over one bundle; --image runs G1 over the system this runs in (what check_ort_census does in-image).
 ort_census_main() {
-  local root="" image=0 refs="" manifests=""
+  local root="" image=0 refs="" manifests="" loader_args=""
   local -a exempt=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --image) image=1; shift ;;
+      --ld-library-path) loader_args=$'--ld-library-path\n'"${2?--ld-library-path needs a bundle-relative loader path}"; shift 2 ;;
       --reference) refs+="${2:?--reference needs a directory}"$'\n'; shift 2 ;;
       --manifest) manifests+="${2:?--manifest needs a file}"$'\n'; shift 2 ;;
       --exempt) exempt+=("${2:?--exempt needs ARCH:PATH:WHY}"); shift 2 ;;
@@ -279,10 +280,10 @@ ort_census_main() {
     esac
   done
   if [ "${image}" = 1 ]; then
-    _ort_census_run / "$(ort_census_stamps_armed)" "$(ort_census_image_args)" \
+    _ort_census_run / "$(ort_census_stamps_armed)" "$(ort_census_image_args)" "${loader_args}" \
       ${_ORT_CENSUS_IMAGE_EXEMPT[@]+"${_ORT_CENSUS_IMAGE_EXEMPT[@]}"} ${exempt[@]+"${exempt[@]}"}
   elif [ -n "${root}" ] && [ -d "${root}" ]; then
-    _ort_census_run "${root}" 0 "$(_ort_census_tree_args "${root}" "${refs}" "${manifests}")" ${exempt[@]+"${exempt[@]}"}
+    _ort_census_run "${root}" 0 "$(_ort_census_tree_args "${root}" "${refs}" "${manifests}")" "${loader_args}" ${exempt[@]+"${exempt[@]}"}
   else
     _ort_census_usage >&2
     return 2
