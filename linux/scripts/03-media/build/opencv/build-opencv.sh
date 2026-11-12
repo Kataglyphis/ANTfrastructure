@@ -15,6 +15,8 @@ source_module cross-cuda.sh
 source "${SCRIPT_DIR}/opencv-ort.sh"
 # shellcheck source=opencv-cuda-cache.sh
 source "${SCRIPT_DIR}/opencv-cuda-cache.sh"
+# shellcheck source=opencv-cpu-baseline.sh
+source "${SCRIPT_DIR}/opencv-cpu-baseline.sh"
 # shellcheck source=../../ort-provenance.sh
 source "${SCRIPT_DIR}/../../ort-provenance.sh"
 
@@ -380,6 +382,7 @@ _opencv_cmake_core_opts() {
     if [ "$(cross_target_arch)" = "riscv64" ]; then
         _occmo_out+=("-DCPU_BASELINE=RVV" "-DWITH_HAL_RVV=ON")
     fi
+    opencv_amd64_baseline_args _occmo_out
 }
 
 _opencv_pin_available() {
@@ -631,6 +634,8 @@ configure_opencv() {
     echo "CMake options: ${cmake_opts[*]}"
     cmake -G Ninja "${OPENCV_SRC}" "${cmake_opts[@]}" 2>&1 | tee "${build_dir}/opencv-configure.log" \
         || die "OpenCV configure failed"
+    opencv_assert_amd64_baseline "${build_dir}/opencv-configure.log" \
+        || die "OpenCV amd64 configure did not take the AVX2 baseline"
     opencv_ort_assert_configure "${build_dir}" "${ort_compat}" "${ort_ver}" \
         || die "OpenCV configure resolved an ONNX Runtime other than the chain"
     opencv_cuda_cache_assert "${build_dir}" || die "OpenCV CUDA compiler cache wiring is unverified"

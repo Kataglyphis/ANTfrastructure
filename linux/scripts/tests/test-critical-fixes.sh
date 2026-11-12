@@ -65,6 +65,9 @@ F
     riscv64-*)
       cfg+=("--with-isa-spec=${RISCV_GCC_ISA_SPEC-20191213}")
       ;;
+    x86_64-*)
+      cfg+=("--with-arch=${X86_64_GCC_ARCH-x86-64-v3}" "--with-tune=${X86_64_GCC_TUNE-generic}")
+      ;;
 if ! grep -q -- '-nostdinc++' src/c++23/Makefile.in; then
   sed -i 's|@AM_CXXFLAGS@|-std=gnu++23 -nostdinc++|' src/c++23/Makefile.in \
     || die "AM_CXXFLAGS layout changed"
@@ -311,6 +314,9 @@ fix8 — push retry, the transient classifier itself, and per-run stage logs	lin
 fix8 — push retry, the transient classifier itself, and per-run stage logs	linux/scripts/01-core/cross-stage-build.sh	s|'use of closed network connection.*|'.'|	wrongly treats a build error as transient
 fix8 — push retry, the transient classifier itself, and per-run stage logs	linux/scripts/01-core/cross-stage-build.sh	s|${CROSS_RUN_ID}|run|	lost per-run log truncation
 fix9 — the riscv64 ISA-spec pin, the torch-less sentinel, both benign-noise classifiers	linux/scripts/02-toolchain/build-gcc.sh	s|--with-isa-spec=|--with-arch=|	lost the riscv64 ISA-spec pin
+fix9 — the riscv64 ISA-spec pin, the torch-less sentinel, both benign-noise classifiers	linux/scripts/02-toolchain/build-gcc.sh	s|X86_64_GCC_ARCH-x86-64-v3}|X86_64_GCC_ARCH-x86-64}|	lost the amd64 x86-64-v3 baseline
+fix9 — the riscv64 ISA-spec pin, the torch-less sentinel, both benign-noise classifiers	linux/scripts/02-toolchain/build-gcc.sh	s|X86_64_GCC_TUNE-generic}|X86_64_GCC_TUNE-znver5}|	lost the amd64 x86-64-v3 baseline
+fix9 — the riscv64 ISA-spec pin, the torch-less sentinel, both benign-noise classifiers	linux/scripts/02-toolchain/build-gcc.sh	s|^    x86_64-\*)|    i686-*)|	lost the amd64 x86-64-v3 baseline
 fix9 — the riscv64 ISA-spec pin, the torch-less sentinel, both benign-noise classifiers	linux/scripts/06-packaging/setup-torch-venv.sh	s|.torch-missing|.torch-absent|	lost the torch-less sentinel
 fix9 — the riscv64 ISA-spec pin, the torch-less sentinel, both benign-noise classifiers	linux/scripts/03-media/runtime/repair-wheels.sh	s|too-recent versioned symbols|glibc mismatch|	lost the benign-auditwheel classifier
 fix9 — the riscv64 ISA-spec pin, the torch-less sentinel, both benign-noise classifiers	linux/scripts/06-packaging/swap-native-gcc.sh	s|invalid -march=|bad march|	lost the benign -march classifier

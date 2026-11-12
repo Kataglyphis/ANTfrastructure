@@ -35,6 +35,12 @@ The WASM pass/cache entry points share allocation and companion staging; cache-s
 cases live in `onnx_web_cache_cases.sh`, and their expected flags come from the independent
 `wasm_proof_fixture.py`. Copies of those suites must carry their shared companions.
 These controls validate test transport, not the production gate's own assertions.
+
+The WebGPU runtime transport fixture supplies and asserts the FT dependency NumPy version
+and target architecture before checking every ORT interpreter branch. Both successful and
+failed factory callbacks must leave a completed transport; argument mutations prove these
+fixture assertions fail. Stub interpreters do not establish real dependency installation,
+factory registration or final image acceptance.
 GPU graph fixtures clear inherited accelerator/package defaults before their explicit
 CPU and conflict cases; a poisoned-image environment replay guards that isolation.
 
@@ -1204,7 +1210,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5559 entries** over **758 distinct test commands**; both digits are
+manifest holds **5599 entries** over **761 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -3328,7 +3334,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 1086 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1097 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -3339,7 +3345,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **421** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **423** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **0** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.

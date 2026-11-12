@@ -282,6 +282,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copies of `python_uv.sh` and `webdav-download.sh` carry `python-probe.sh`; missing companions fail rather than restoring interpreter-selection copies.
    Consumer checks running inside the family Linux image use `ci_image_python_require` from `python-probe.sh`; retain its image marker, pinned interpreter probe and caller-specific diagnostic.
    Runtime consumer probes retain lazy required-fact checks and distinguish missing facts from failed facts.
+   FT transport fixtures supply and assert both dependency pins before interpreting factory results; keep raw probe status and each interpreter branch observable.
    Rust plugin consumers carry the exact shared policy, preserve GetEpDevices failures and retain the owning environment during V2 calls without blocking its normal teardown.
    Native child waits under Dart must preserve external-reaper failures; an ECHILD or a successful failure-control probe never proves worker teardown or bridge acceptance.
    Copied isolated-worker Rust bindings carry their canonical C source/header; retain descriptor closure, parent-death guards, validated worker status and normal worker exec/teardown. Initial supervisor startup uses ordinary fork for libc state repair.
@@ -1248,6 +1249,17 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
   it: an rv64gc-only board cannot run this image anyway, and changing it invalidates the warm
   riscv64 compiler cache. The ISA string, and why the profile NAME does not work:
   [`riscv64-rva23-baseline.md`](docs/riscv64-rva23-baseline.md).
+- **amd64 builds for `x86-64-v3`** (owner decision 2026-11-12, CON264), set through `--with-arch`
+  with `--with-tune=generic` in `02-toolchain/build-gcc.sh`, never as a `CFLAGS` export, `native`
+  or a vendor tuning. OpenCV takes `CPU_BASELINE=AVX2`; AVX-512 is never baseline. Do not revert it
+  to "restore compatibility": every package built in the image inherits the floor, and changing it
+  empties the compile caches of all three arches. What is not covered (clang, Rust, Windows):
+  [`amd64-x86-64-v3-baseline.md`](docs/amd64-x86-64-v3-baseline.md).
+- **Intel's GPU user space is the free build, in every amd64 image** (owner decision 2026-11-12):
+  `intel-media-va-driver`, `libmfx-gen1.2` and `intel-opencl-icd` in the package stage, never
+  `intel-media-va-driver-non-free` and never a variant for them. A copied `smoke-runtime-image.sh`
+  carries `check-arch-isa.sh` and `check-intel-gpu-userspace.sh`; a copied `build-opencv.sh` carries
+  `opencv-cpu-baseline.sh`: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md#intel-gpu-user-space).
 - **riscv64's web-lane tools have two build paths; keep both** (owner decision 2026-09-23). By
   default android cross-builds `wasm-pack` and `flutter_rust_bridge_codegen`, and the package
   stage installs them after a fail-loud gate; `WEB_LANE_TOOLS_SOURCE=native` (plus

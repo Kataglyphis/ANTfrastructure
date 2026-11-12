@@ -15,6 +15,48 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-12 — retain platform checks and FT transport controls during source reconciliation
+
+- Preserve both OpenCV imports, all runtime platform gates, the canonical plugin profile name and both branches' mutation recipes while reconciling isolated WebGPU/MIGraphX work with the owner's updated baseline.
+- Group the three runtime platform calls without hiding shared failure accounting; four executable mutants prove main wiring, order, argument boundaries and failure visibility. The runtime file's frozen size budget shrinks.
+- Correct the FT transport fixture's missing NumPy/architecture inputs, assert the dependency install argv and raw transport status for every ORT branch, and retain failing factory callbacks. Two argument mutants must bite; these doubles do not prove a real dependency install or final image/consumer acceptance.
+
+## 2026-11-12 — set the amd64 baseline to x86-64-v3 (not built yet)
+
+- Owner decision CON264: the amd64 GCC is configured `--with-arch=x86-64-v3 --with-tune=generic`
+  on the native, cross and Canadian paths; OpenCV asks for `CPU_BASELINE=AVX2` and its configure
+  fails without it. No chain has run with it: the published images are unchanged.
+- New gates: a critical-fix pin, the configure-line cases in `test-native-gcc-multiarch.sh`,
+  `check_amd64_isa` in the runtime smoke (`test-amd64-isa-gate.sh`) and an entrypoint check that
+  refuses a CPU below the baseline (`test-cpu-baseline-check.sh`), each with mutation recipes. Not
+  covered: clang, Rust, Windows x64 and each shipped ELF.
+  [`amd64-x86-64-v3-baseline.md`](docs/amd64-x86-64-v3-baseline.md).
+
+## 2026-11-12 — add Intel's free GPU user space to the amd64 package stage (not built yet)
+
+- Owner decisions CON258 and CON259: `setup-package-image.sh` installs `intel-media-va-driver`,
+  `libmfx-gen1.2` and `intel-opencl-icd` on amd64, in every variant; never the multiverse
+  `-non-free` driver. FFmpeg gets `--enable-libvpl` on amd64 behind its own configure check.
+  `check_intel_gpu_userspace` fails an amd64 image without the driver files or the `h264_qsv`
+  encoder. Nothing has run on an Intel GPU.
+- The riscv64 and amd64 ISA gates now live in `06-packaging/check-arch-isa.sh` and share one
+  verdict renderer and one arch guard in `smoke-common.sh`; `smoke-runtime-image.sh` only wires them.
+  [`linux-accelerator-images.md`](docs/linux-accelerator-images.md#intel-gpu-user-space).
+
+## 2026-11-12 — the profile check knows the plugin MIGraphX EP by its name; BACKLOG CON234 to CON256
+
+- `shared/python/verify_ort_profile.py --device migraphx` requires nodes of the provider `MIGraphX`. AMD's plugin
+  reports the name it is registered under, the contract fixes `MIGraphX`, and the check still expected the removed
+  in-tree `MIGraphXExecutionProvider`, so no consumer package could have passed a profile check on the plugin
+  (owner, 2026-11-12: the family's name is `MIGraphX`). A test holds that the old name no longer passes, and
+  recipe `packaging.ort-profile-migraphx-plugin-name` holds the mapping. Not run against a profile from a card.
+- `docs/consumer-image-contract.md` names the Rust call that exists, `Environment::register_ep_library`
+  (`ort` 2.0.0-rc.13 has no `register_execution_provider_library`), gives Rust its second step, and says what was
+  read in AMD's source: one device, the option `device_id`, and an unknown option fails the session.
+- `BACKLOG.md`: CON234 to CON253 from the audit of the four consumers, CON254 (`New-PortableBundle` leaks its package
+  check's output), CON255 (one failed download fails the benchmark-history step) and CON256 (what the consumers'
+  move onto the plugin left open on the hub side). CON231's step 2 names the order and the name the owner chose.
+
 ## 2026-11-12 — admit bounded genuine MIGraphX parser builds
 
 - Genuine isolated Abseil/Protobuf build and install now pass with 975 installed files and original notices. The repeated build retains all installed bytes and reports 651 cache hits, zero misses and the expected negative C++20-probe cache error; this proves the parser component and compiler-cache replay, not normal GPU-image integration or final acceptance.
@@ -62,13 +104,11 @@
 - Shared CLI validation, entry-scope imports and native work/compiler setup retain source scope, caller arguments and raw failures; common logic replaces the measured duplicate blocks without an allowance.
 - The bounded proof transport retains its default configure mode and adds SDK probing, with raw child failures unchanged. Real isolated CMake configuration controls do not establish binary ABI or inference; normal producer integration remains open.
 
-
 ## 2026-11-12 — prepare pinned Linux MIGraphX parser dependencies
 
 - Preserve a reusable Abseil-then-Protobuf static/PIC builder, with the existing upstream pins, local-only source selection, canonical compiler-cache checks and original Abseil/Protobuf/utf8_range notices.
 - Source entries own their compiler/install/dependency prefix defaults and retain explicit overrides; the strict environment-knob gate now participates in source checks.
 - Share verified archive transport and absolute source-LLVM/GCC selection with backend preparation. Independent protocol controls cover argument boundaries, raw failures and missing notices; no vendor build or final backend acceptance is inferred.
-
 
 ## 2026-11-12 — prepare the corrected Linux MIGraphX source backend
 
@@ -394,6 +434,7 @@
 - Preserved all nine complete 2026-11-05 entries and their relative-link targets in
   the [dated archive](docs/changelog-archive-2026-11-05.md), registered in both docs
   indexes. No physical NVIDIA inference is established by these image/consumer checks.
+
 
 ## 2026-11-09 — repair Linux TensorRT cross builds and CUDA cache parsing
 

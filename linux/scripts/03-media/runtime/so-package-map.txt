@@ -97,6 +97,7 @@ libunwind-x86_64.so.8	libunwind8
 libunwind-aarch64.so.8	libunwind8
 libunwind-riscv.so.8	libunwind8
 libva.so.2	libva2
+libvpl.so.2	libvpl2
 libva-drm.so.2	libva-drm2
 libva-x11.so.2	libva-x11-2
 libdrm.so.2	libdrm2
