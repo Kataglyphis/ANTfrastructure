@@ -1524,7 +1524,7 @@ sourcing, or unset it when the caller had none (CON133, 2026-10-21; lands with t
 `Illegal instruction` (SIGILL, exit 132) on one machine and runs on another. Through the entrypoint
 the message is `this image is built for x86-64-v3 (AVX2, FMA, BMI2) and this CPU does not provide it`.
 
-**Cause.** The image is compiled for `x86-64-v3` (CON241). The CPU lacks AVX2, FMA or BMI2: Intel
+**Cause.** The image is compiled for `x86-64-v3` (CON264). The CPU lacks AVX2, FMA or BMI2: Intel
 before Haswell, AMD before Excavator, older Celeron, Pentium and Atom parts, or an emulator without
 AVX2.
 

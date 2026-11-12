@@ -128,7 +128,7 @@ These are recorded so nobody files them as gaps:
   later Python breaks the patch.
 - The CUDA arch set is `75;86;87;89;120`, with no PTX.
 - riscv64 is built for the RVA23 baseline.
-- amd64 is built for `x86-64-v3` with `generic` tuning (owner, 2026-11-12, CON241): CPUs without AVX2 are
+- amd64 is built for `x86-64-v3` with `generic` tuning (owner, 2026-11-12, CON264): CPUs without AVX2 are
   out, AVX-512 is never baseline. No image carries it yet and the before and after measurement is open:
   [`amd64-x86-64-v3-baseline.md`](amd64-x86-64-v3-baseline.md).
 - riscv64 uses the distro CMake 4.2.3.

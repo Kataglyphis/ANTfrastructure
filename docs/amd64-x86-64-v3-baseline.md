@@ -1,7 +1,7 @@
 # amd64: built for x86-64-v3
 
 The Linux amd64 images are compiled for `x86-64-v3` (AVX, AVX2, FMA, BMI1/2, LZCNT, MOVBE, F16C)
-with `generic` tuning (owner decision 2026-11-12, CON241). Until then nothing in the Linux lane set
+with `generic` tuning (owner decision 2026-11-12, CON264). Until then nothing in the Linux lane set
 an instruction-set level for amd64, so every source build without run-time dispatch was SSE2 code.
 
 **Not built yet.** The change is in the scripts; the first chain with it is the owner's call. The

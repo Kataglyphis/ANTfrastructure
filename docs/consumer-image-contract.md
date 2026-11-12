@@ -423,7 +423,7 @@ lane runs on the next `:latest`.
 
 ## amd64 needs an x86-64-v3 CPU
 
-From the first image built after the CON241 switch, the amd64 image and **every package built in
+From the first image built after the CON264 switch, the amd64 image and **every package built in
 it** need a CPU with AVX2, FMA and BMI2: Intel Haswell (2013), AMD Excavator (2015), or newer. The
 entrypoint refuses an older CPU with the cause; a run that replaces the entrypoint dies with
 `Illegal instruction`. clang and Rust keep their generic defaults, so a consumer that wants the
