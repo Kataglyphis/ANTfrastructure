@@ -273,6 +273,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    ORT and GenAI provenance checks share hashing and chain-byte membership; keep their distinct archive and exemption policies.
    Windows media staging rejects foreign ORT, GenAI and DirectML DLLs before copying and checks staged bytes against the chain.
    Copy `compiler-cache-utils.sh` beside `common.sh`, cache modules and standalone cache probes and `media-payloads.sh` beside packaging copy/validation scripts; preserve narrow mounts.
+   ROCm runtime paths keep source MIGraphX lib/lib64 before retained distro paths, follow a command-line ROCm symlink and exclude ASAN; discovery and ordering failures must precede any configuration replacement.
    Copy `elf-strip.sh` and `image-ref-args.sh` beside `build-helpers.sh`; `digest-pinning.sh` also requires `image-ref-args.sh`.
    Minimal toolchain bootstraps carry `elf-strip.sh` and `load-versions-env.sh`; keep the narrow GCC/LLVM mounts.
    New required toolchain imports validate their expected export and preserve selected-file failures; legacy file-only imports retain their caller policy.

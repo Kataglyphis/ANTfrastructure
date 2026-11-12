@@ -139,6 +139,13 @@ explicitly. `t_capture_command` captures merged output and raw failure status fo
 assertions; it does not turn a failed command into a successful test. These fixtures
 exercise stubbed operations and do not prove live cache servers or package builds.
 
+The packaging inventory companion also owns `media_rocm_library_paths [IMAGE_ROOT]`.
+It emits image-relative directories with source MIGraphX first, one entry per
+existing directory, and excludes ASAN. The normal runtime copy publisher uses
+that complete list only after a successful scan and sort. Copied consumers
+already carry `media-payloads.sh`; no private path-ordering copy is needed.
+These filesystem controls do not establish actual loader selection or GPU ABI.
+
 ## Shared synthetic test fixtures
 
 `linux/scripts/tests/synthetic-elf-fixture.sh` provides `t_write_synthetic_elf`

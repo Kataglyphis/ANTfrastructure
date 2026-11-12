@@ -43,7 +43,7 @@ fixture assertions fail. Stub interpreters do not establish real dependency inst
 factory registration or final image acceptance.
 The SDK dispatch fixture quotes its log redirection and checks complete child argv;
 space-containing temporary paths must leave no sibling file in the suite TMPDIR.
-The cache-launcher fixture redirects the shared helper\'s actual image fallback,
+The cache-launcher fixture redirects the shared helper's actual image fallback,
 so a real image launcher cannot replace its expected bare fallback. Standalone
 library checks require a source command; a ShellCheck annotation alone is refused.
 These source checks do not establish unconditional execution inside a branch.
@@ -1216,7 +1216,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5620 entries** over **761 distinct test commands**; both digits are
+manifest holds **5630 entries** over **762 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -3340,7 +3340,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 1097 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1098 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

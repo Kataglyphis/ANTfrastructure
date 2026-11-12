@@ -13941,7 +13941,7 @@
  },
  {
   "id": "rocm-stack.runtime-migraphx-ld-path",
-  "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+  "target": "linux/scripts/06-packaging/media-payloads.sh",
   "find": "\\( -name 'libamdhip64.so*' -o -name 'libmigraphx_c.so*' \\) -printf",
   "replace": "\\( -name 'libamdhip64.so*' \\) -printf",
   "test": "bash linux/scripts/tests/test-rocm-packages.sh",
@@ -13949,9 +13949,9 @@
  },
  {
   "id": "rocm-stack.runtime-asan-off-loader-path",
-  "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
-  "find": "find /opt/rocm -path '/opt/rocm/core-asan-*' -prune -o \\(",
-  "replace": "find /opt/rocm \\(",
+  "target": "linux/scripts/06-packaging/media-payloads.sh",
+  "find": "    -path \"${rocm_image_root}/opt/rocm/core-asan-*\" -prune -o \\\n",
+  "replace": "",
   "test": "bash linux/scripts/tests/test-rocm-packages.sh",
   "why": "core-asan-10.1/lib holds libamdhip64 too; over a real 10.1 ASAN install the find listed it (2026-10-07)"
  },
@@ -44996,5 +44996,85 @@
   "replace": "source \"${TESTS_DIR}/../01-core/compiler-cache-utils.sh\"",
   "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
   "why": "The fixture redirects the actual shared helper image fallback before exercising resolver stdout; no real server or compiler-cache hit is implied."
+ },
+ {
+  "id": "lib.rocm-source-paths-source-first",
+  "target": "linux/scripts/06-packaging/media-payloads.sh",
+  "find": "  local -a rocm_paths=(/opt/rocm/migraphx/lib /opt/rocm/migraphx/lib64)\n",
+  "replace": "  local -a rocm_paths=()\n",
+  "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
+  "why": "Source-prefix runtime paths retain priority,legacy HIP paths,ASAN exclusion,deduplication and raw failures; filesystem fixtures do not prove ELF ABI,real loader choice or image/GPU acceptance."
+ },
+ {
+  "id": "lib.rocm-source-paths-source-lib64",
+  "target": "linux/scripts/06-packaging/media-payloads.sh",
+  "find": "  local -a rocm_paths=(/opt/rocm/migraphx/lib /opt/rocm/migraphx/lib64)\n",
+  "replace": "  local -a rocm_paths=(/opt/rocm/migraphx/lib)\n",
+  "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
+  "why": "Source-prefix runtime paths retain priority,legacy HIP paths,ASAN exclusion,deduplication and raw failures; filesystem fixtures do not prove ELF ABI,real loader choice or image/GPU acceptance."
+ },
+ {
+  "id": "lib.rocm-source-paths-deduplicate",
+  "target": "linux/scripts/06-packaging/media-payloads.sh",
+  "find": "      rocm_seen[\"${rocm_library}\"]=1",
+  "replace": "      :",
+  "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
+  "why": "Source-prefix runtime paths retain priority,legacy HIP paths,ASAN exclusion,deduplication and raw failures; filesystem fixtures do not prove ELF ABI,real loader choice or image/GPU acceptance."
+ },
+ {
+  "id": "lib.rocm-source-paths-root-symlink",
+  "target": "linux/scripts/06-packaging/media-payloads.sh",
+  "find": "find -H \"${rocm_image_root}/opt/rocm\"",
+  "replace": "find \"${rocm_image_root}/opt/rocm\"",
+  "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
+  "why": "Source-prefix runtime paths retain priority,legacy HIP paths,ASAN exclusion,deduplication and raw failures; filesystem fixtures do not prove ELF ABI,real loader choice or image/GPU acceptance."
+ },
+ {
+  "id": "lib.rocm-source-paths-discovery-failure",
+  "target": "linux/scripts/06-packaging/media-payloads.sh",
+  "find": "-printf '%h\\n')\" || return",
+  "replace": "-printf '%h\\n')\" || true",
+  "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
+  "why": "Source-prefix runtime paths retain priority,legacy HIP paths,ASAN exclusion,deduplication and raw failures; filesystem fixtures do not prove ELF ABI,real loader choice or image/GPU acceptance."
+ },
+ {
+  "id": "lib.rocm-source-paths-sort-failure",
+  "target": "linux/scripts/06-packaging/media-payloads.sh",
+  "find": "| LC_ALL=C sort -u)\" || return",
+  "replace": "| LC_ALL=C sort -u)\" || true",
+  "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
+  "why": "Source-prefix runtime paths retain priority,legacy HIP paths,ASAN exclusion,deduplication and raw failures; filesystem fixtures do not prove ELF ABI,real loader choice or image/GPU acceptance."
+ },
+ {
+  "id": "lib.rocm-source-paths-image-relative",
+  "target": "linux/scripts/06-packaging/media-payloads.sh",
+  "find": "rocm_paths+=(\"${rocm_library#\"${rocm_image_root}\"}\")",
+  "replace": "rocm_paths+=(\"${rocm_library}\")",
+  "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
+  "why": "Source-prefix runtime paths retain priority,legacy HIP paths,ASAN exclusion,deduplication and raw failures; filesystem fixtures do not prove ELF ABI,real loader choice or image/GPU acceptance."
+ },
+ {
+  "id": "lib.rocm-source-paths-publish-failure",
+  "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+  "find": "  rocm_directories=\"$(media_rocm_library_paths \"${rocm_image_root}\")\" || return",
+  "replace": "  rocm_directories=\"$(media_rocm_library_paths \"${rocm_image_root}\")\"",
+  "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
+  "why": "Source-prefix runtime paths retain priority,legacy HIP paths,ASAN exclusion,deduplication and raw failures; filesystem fixtures do not prove ELF ABI,real loader choice or image/GPU acceptance."
+ },
+ {
+  "id": "lib.rocm-source-paths-write-failure",
+  "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+  "find": "> \"${rocm_image_root}/etc/ld.so.conf.d/000-rocm.conf\" || return",
+  "replace": "> \"${rocm_image_root}/etc/ld.so.conf.d/000-rocm.conf\" || true",
+  "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
+  "why": "Source-prefix runtime paths retain priority,legacy HIP paths,ASAN exclusion,deduplication and raw failures; filesystem fixtures do not prove ELF ABI,real loader choice or image/GPU acceptance."
+ },
+ {
+  "id": "lib.rocm-source-paths-main-call",
+  "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+  "find": "  publish_rocm_ld_path\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
+  "why": "Source-prefix runtime paths retain priority,legacy HIP paths,ASAN exclusion,deduplication and raw failures; filesystem fixtures do not prove ELF ABI,real loader choice or image/GPU acceptance."
  }
 ]

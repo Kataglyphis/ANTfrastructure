@@ -250,19 +250,16 @@ publish_cuda_ld_path() {
   [ -s /etc/ld.so.conf.d/000-cuda.conf ] || rm -f /etc/ld.so.conf.d/000-cuda.conf
 }
 
-# /opt/rocm is on no default loader path; no-op without it.
+# Resolve the full ordered list before replacing a healthy configuration.
 publish_rocm_ld_path() {
-  local lib
-  : > /etc/ld.so.conf.d/000-rocm.conf
-  # Dirs holding libamdhip64 or libmigraphx_c (extras-<major>/lib since 10.1), never core-asan-*: ASAN consumers preload it by hand.
-  {
-    find /opt/rocm -path '/opt/rocm/core-asan-*' -prune -o \( -name 'libamdhip64.so*' -o -name 'libmigraphx_c.so*' \) -printf '%h\n' 2>/dev/null || true
-    printf '%s\n' /opt/rocm/lib /opt/rocm/lib64
-  } | LC_ALL=C sort -u | while IFS= read -r lib; do
-    # if, not `[ ] && printf`: a false last iteration would fail the while under set -e.
-    if [ -n "${lib}" ] && [ -d "${lib}" ]; then printf '%s\n' "${lib}" >> /etc/ld.so.conf.d/000-rocm.conf; fi
-  done
-  [ -s /etc/ld.so.conf.d/000-rocm.conf ] || rm -f /etc/ld.so.conf.d/000-rocm.conf
+  local rocm_image_root="${1:-}" rocm_directories
+  rocm_directories="$(media_rocm_library_paths "${rocm_image_root}")" || return
+  if [ -n "${rocm_directories}" ]; then
+    printf '%s\n' "${rocm_directories}" > "${rocm_image_root}/etc/ld.so.conf.d/000-rocm.conf" || return
+  else
+    rm -f -- "${rocm_image_root}/etc/ld.so.conf.d/000-rocm.conf" || return
+  fi
+  return 0
 }
 
 # libtvm_compiler.so's libLLVM resolves only through this. See docs/artifact-copy-completeness.md § The llvm-target prefix fills what it needs, and nothing else

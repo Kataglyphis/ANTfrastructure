@@ -1122,6 +1122,25 @@ deps, so `triton-rocm` moves with it) only acts if the two drift. The extra was
 `develop` since 2026-09-29
 ([`linux-cross-builds.md`](linux-cross-builds.md#the-app-the-wrapper-builds)).
 
+### MIGraphX source-prefix loader paths
+
+The runtime publisher takes its ordered directories from
+`media_rocm_library_paths` in `06-packaging/media-payloads.sh`. Existing
+`/opt/rocm/migraphx/lib` and `lib64` come first; sorted retained HIP, distro
+MIGraphX and legacy paths follow once each. A command-line `/opt/rocm` symlink
+is followed and `core-asan-*` is pruned.
+
+Directory discovery and sorting must succeed before `000-rocm.conf` is replaced.
+Their raw failures remain fatal under conditional callers; an absent ROCm tree
+removes a stale configuration. The internal optional image-root argument supports
+offline filesystem staging while configuration entries remain image-relative.
+
+Filesystem and mutation controls prove this directory/publication policy. They
+do not inspect ELF ABI, prove the actual loader's selected library, build the
+source backend, or establish a shipped final-image or GPU acceptance receipt.
+The ordinary source GPU build, its runtime environment and shipped-soname
+precedence checks remain required.
+
 ### MIGraphX source-backend preparation
 
 The corrected backend is being prepared separately from the existing apt SDK.

@@ -15,11 +15,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — preserve source MIGraphX priority in runtime loader paths
+
+- Share ordered ROCm runtime directory enumeration through the existing packaging inventory companion. Source MIGraphX lib/lib64 precede retained distro/HIP paths, entries appear once, command-line ROCm links are followed and ASAN stays excluded.
+- Resolve discovery and ordering successfully before replacing the runtime configuration; preserve raw failures and output errors under conditional callers. CPU and legacy layouts retain their policies.
+- Filesystem, regular-publisher and mutation controls do not prove real ELF loader selection, normal source GPU-image construction or final image/consumer acceptance.
+
 ## 2026-11-13 — repair five full-preflight integration regressions
 
 - Classify source MIGraphX package/API pins under their real manual owner and hold each slaved source hash; retain the existing checksum audits without adding exemptions.
 - Keep guarded FT compiler-cache setup, each native helper's own logging bootstrap, and the narrow S3-drain mount and final drain on the FT dependency Dockerfile RUN.
-- Keep cache fixture image paths inside the shared helper fixture and reject comment-only logging bootstrap references; the first image-based repair replay exposed both controls.\n- Quote the SDK fixture log redirection and assert complete child argv. Unquoted space-containing paths previously passed ten tests while leaving a sibling file in the suite TMPDIR. The failed full run remains preserved; targeted source controls do not establish a full green preflight or final image acceptance.
+- Keep cache fixture image paths inside the shared helper fixture and reject comment-only logging bootstrap references; the first image-based repair replay exposed both controls.
+- Quote the SDK fixture log redirection and assert complete child argv. Unquoted space-containing paths previously passed ten tests while leaving a sibling file in the suite TMPDIR. The failed full run remains preserved; targeted source controls do not establish a full green preflight or final image acceptance.
 
 ## 2026-11-13 — launch the real rocMLIR component through the preserved proof transport
 

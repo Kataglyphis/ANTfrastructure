@@ -21,3 +21,27 @@ media_optional_payloads() {
 /usr/local/lib/onnxruntime-web|copy
 PAYLOADS
 }
+
+# Source MIGraphX precedes the retained distro extras tree without publishing ASAN paths.
+media_rocm_library_paths() {
+  local rocm_image_root="${1:-}" rocm_found rocm_sorted rocm_library
+  local -a rocm_paths=(/opt/rocm/migraphx/lib /opt/rocm/migraphx/lib64)
+  local -A rocm_seen=()
+  [ -d "${rocm_image_root}/opt/rocm" ] || return 0
+  rocm_found="$(find -H "${rocm_image_root}/opt/rocm" \
+    -path "${rocm_image_root}/opt/rocm/core-asan-*" -prune -o \
+    \( -name 'libamdhip64.so*' -o -name 'libmigraphx_c.so*' \) -printf '%h\n')" || return
+  rocm_sorted="$(printf '%s\n' "${rocm_found}" "${rocm_image_root}/opt/rocm/lib" \
+    "${rocm_image_root}/opt/rocm/lib64" | LC_ALL=C sort -u)" || return
+  while IFS= read -r rocm_library; do
+    rocm_paths+=("${rocm_library#"${rocm_image_root}"}")
+  done <<< "${rocm_sorted}"
+  for rocm_library in "${rocm_paths[@]}"; do
+    if [ -n "${rocm_library}" ] && [ -d "${rocm_image_root}${rocm_library}" ] \
+      && [ -z "${rocm_seen[${rocm_library}]:-}" ]; then
+      printf '%s\n' "${rocm_library}" || return
+      rocm_seen["${rocm_library}"]=1
+    fi
+  done
+  return 0
+}
