@@ -37359,5 +37359,269 @@
   "replace": "\"${runner}\"",
   "test": "bash linux/scripts/tests/test-tensorrt-closure.sh",
   "why": "Target-loader inspection remains bounded and preserves every argument boundary."
+ },
+ {
+  "id": "amd64-v3.gcc-arch-default",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "_gcc_config_opt \"--with-arch=\" \"${X86_64_GCC_ARCH-x86-64-v3}\"",
+  "replace": "_gcc_config_opt \"--with-arch=\" \"${X86_64_GCC_ARCH-x86-64}\"",
+  "test": "bash linux/scripts/tests/test-native-gcc-multiarch.sh",
+  "why": "the compiler default is the amd64 baseline: without it every source build falls back to SSE2"
+ },
+ {
+  "id": "amd64-v3.gcc-native-path",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "case \"${TARGET_TRIPLET:-$(gcc -dumpmachine 2>/dev/null || cc -dumpmachine 2>/dev/null || true)}\" in",
+  "replace": "case \"${TARGET_TRIPLET}\" in",
+  "test": "bash linux/scripts/tests/test-native-gcc-multiarch.sh",
+  "why": "the amd64 host GCC is built without --target, so keying on TARGET_TRIPLET alone skips the image's own compiler"
+ },
+ {
+  "id": "amd64-v3.gcc-tune",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "    _gcc_config_opt \"--with-tune=\" \"${X86_64_GCC_TUNE-generic}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-native-gcc-multiarch.sh",
+  "why": "generic tuning is explicit so the image is not biased to one CPU vendor"
+ },
+ {
+  "id": "amd64-v3.gcc-empty-drops",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "  if [ -n \"$2\" ]; then CONFIG_CMD+=(\"$1$2\"); fi",
+  "replace": "  CONFIG_CMD+=(\"$1$2\")",
+  "test": "bash linux/scripts/tests/test-native-gcc-multiarch.sh",
+  "why": "an override that empties a default must drop the option, not pass an empty one to configure"
+ },
+ {
+  "id": "amd64-v3.gate-old-is-not-ok",
+  "target": "linux/scripts/06-packaging/check-arch-isa.sh",
+  "find": "  if [ \"${cc}\" != x86-64-v3 ]; then printf 'OLD cc %s\\n' \"${cc:-generic}\"; return 0; fi\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-amd64-isa-gate.sh",
+  "why": "a compiler that predates the switch must not be graded as x86-64-v3"
+ },
+ {
+  "id": "amd64-v3.gate-defines",
+  "target": "linux/scripts/06-packaging/check-arch-isa.sh",
+  "find": "if [ \"${defs}\" = 3 ]; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-amd64-isa-gate.sh",
+  "why": "a default cc that predefines less than the gcc claims is not our compiler"
+ },
+ {
+  "id": "amd64-v3.gate-opencv",
+  "target": "linux/scripts/06-packaging/check-arch-isa.sh",
+  "find": "    *AVX2*) printf 'OK opencv %s\\n' \"${ocv}\" ;;",
+  "replace": "    *)      printf 'OK opencv %s\\n' \"${ocv}\" ;;",
+  "test": "bash linux/scripts/tests/test-amd64-isa-gate.sh",
+  "why": "OpenCV at its upstream SSE3 baseline under a v3 compiler ships 128-bit intrinsics"
+ },
+ {
+  "id": "amd64-v3.gate-loader",
+  "target": "linux/scripts/06-packaging/check-arch-isa.sh",
+  "find": "    *supported*) printf 'OK loader %s\\n' \"${ld}\" ;;",
+  "replace": "    *)           printf 'OK loader %s\\n' \"${ld}\" ;;",
+  "test": "bash linux/scripts/tests/test-amd64-isa-gate.sh",
+  "why": "a loader wording the entrypoint cannot read would leave its CPU check blind"
+ },
+ {
+  "id": "amd64-v3.gate-wired",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "    check_amd64_isa \"${image_tag}\" \"${target_arch}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-amd64-isa-gate.sh",
+  "why": "an unwired gate is not a gate"
+ },
+ {
+  "id": "amd64-v3.gate-probe-wired",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "  _probe_amd64_baseline\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-amd64-isa-gate.sh",
+  "why": "a gate without its probe lines reads NONE on every image"
+ },
+ {
+  "id": "amd64-v3.renderer-bad-fails",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "    BAD)  fail \"${bad//@2@/${value}}\" ;;",
+  "replace": "    BAD)  echo \"${bad//@2@/${value}}\" ;;",
+  "test": "bash linux/scripts/tests/test-amd64-isa-gate.sh",
+  "why": "a BAD verdict of either ISA gate must fail the smoke, not print"
+ },
+ {
+  "id": "amd64-v3.renderer-none-fails",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "    NONE) fail \"${none}\" ;;",
+  "replace": "    NONE) : ;;",
+  "test": "bash linux/scripts/tests/test-amd64-isa-gate.sh",
+  "why": "a probe that found nothing is a vacuous pass unless NONE fails"
+ },
+ {
+  "id": "amd64-v3.opencv-request",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cpu-baseline.sh",
+  "find": "_oaba_out+=(\"-DCPU_BASELINE=AVX2\")",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-amd64-isa-gate.sh",
+  "why": "OpenCV takes its intrinsics width from CPU_BASELINE, not from the compiler default"
+ },
+ {
+  "id": "amd64-v3.opencv-request-wired",
+  "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+  "find": "    opencv_amd64_baseline_args _occmo_out\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-amd64-isa-gate.sh",
+  "why": "a request nothing appends is not a request"
+ },
+ {
+  "id": "amd64-v3.opencv-check-wired",
+  "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+  "find": "    opencv_assert_amd64_baseline \"${build_dir}/opencv-configure.log\" \\\n        || die \"OpenCV amd64 configure did not take the AVX2 baseline\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-amd64-isa-gate.sh",
+  "why": "a configure that fell back must stop the build, not ship"
+ },
+ {
+  "id": "amd64-v3.opencv-check-baseline-line",
+  "target": "linux/scripts/03-media/build/opencv/opencv-cpu-baseline.sh",
+  "find": "baseline=\"$(sed -n '/Baseline:/{s/^.*Baseline:[[:space:]]*//p;q}' \"${log}\")\"",
+  "replace": "baseline=\"$(cat \"${log}\")\"",
+  "test": "bash linux/scripts/tests/test-amd64-isa-gate.sh",
+  "why": "AVX2 in the dispatched list is not an AVX2 baseline"
+ },
+ {
+  "id": "amd64-v3.entry-below",
+  "target": "linux/scripts/04-runtime/entrypoint.sh",
+  "find": "    *x86-64-v3*)              printf below ;;",
+  "replace": "    *x86-64-v3*)              printf unknown ;;",
+  "test": "bash linux/scripts/tests/test-cpu-baseline-check.sh",
+  "why": "a CPU the loader lists without the supported marker is below the baseline"
+ },
+ {
+  "id": "amd64-v3.entry-fatal",
+  "target": "linux/scripts/04-runtime/entrypoint.sh",
+  "find": "    echo \"ERROR: this image is built for x86-64-v3 (AVX2, FMA, BMI2) and this CPU does not provide it. See docs/amd64-x86-64-v3-baseline.md\" >&2\n    return 1\n",
+  "replace": "    echo \"ERROR: this image is built for x86-64-v3 (AVX2, FMA, BMI2) and this CPU does not provide it. See docs/amd64-x86-64-v3-baseline.md\" >&2\n    return 0\n",
+  "test": "bash linux/scripts/tests/test-cpu-baseline-check.sh",
+  "why": "a CPU below the baseline must be refused with the cause, not die later with a bare SIGILL"
+ },
+ {
+  "id": "amd64-v3.entry-wired",
+  "target": "linux/scripts/04-runtime/entrypoint.sh",
+  "find": "_ep_cpu_baseline_check /lib64/ld-linux-x86-64.so.2 || exit 1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cpu-baseline-check.sh",
+  "why": "a check nothing calls is not a check"
+ },
+ {
+  "id": "critical-fixes.amd64-v3-pin",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "-q 'X86_64_GCC_ARCH-x86-64-v3}' \"${gcc}\" ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+  "why": "the source pin must see a changed amd64 default"
+ },
+ {
+  "id": "amd64-v3.arch-gate-own-arch-only",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "  [ \"$2\" = \"$1\" ] || return 0\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-amd64-isa-gate.sh",
+  "why": "an arch-specific gate must not grade another architecture's image"
+ },
+ {
+  "id": "intel-gpu.packages",
+  "target": "linux/scripts/06-packaging/setup-package-image.sh",
+  "find": "    append_available_packages _sdp_out intel-media-va-driver libmfx-gen1.2 intel-opencl-icd\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-intel-gpu-userspace.sh",
+  "why": "the amd64 package stage installs Intel's free GPU user space"
+ },
+ {
+  "id": "intel-gpu.absent-is-bad",
+  "target": "linux/scripts/06-packaging/check-intel-gpu-userspace.sh",
+  "find": "if [ \"${state}\" = present ]; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-intel-gpu-userspace.sh",
+  "why": "a package the index lacked is skipped silently at install time, so a missing file must fail the image"
+ },
+ {
+  "id": "intel-gpu.none-is-not-green",
+  "target": "linux/scripts/06-packaging/check-intel-gpu-userspace.sh",
+  "find": "  [ \"${n}\" -gt 0 ] || printf 'NONE - -\\n'\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-intel-gpu-userspace.sh",
+  "why": "a probe that printed no INTELGPU line is a vacuous pass unless it reads NONE"
+ },
+ {
+  "id": "intel-gpu.probe-va-path",
+  "target": "linux/scripts/06-packaging/check-intel-gpu-userspace.sh",
+  "find": "va:/usr/lib/x86_64-linux-gnu/dri/iHD_drv_video.so",
+  "replace": "va:/usr/lib/x86_64-linux-gnu/dri/i965_drv_video.so",
+  "test": "bash linux/scripts/tests/test-intel-gpu-userspace.sh",
+  "why": "the probe must look for the file intel-media-va-driver ships"
+ },
+ {
+  "id": "intel-gpu.gate-wired",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "    check_intel_gpu_userspace \"${image_tag}\" \"${target_arch}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-intel-gpu-userspace.sh",
+  "why": "an unwired gate is not a gate"
+ },
+ {
+  "id": "intel-gpu.probe-wired",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "  _probe_intel_gpu_userspace\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-intel-gpu-userspace.sh",
+  "why": "a gate without its probe lines reads NONE on every image"
+ },
+ {
+  "id": "intel-gpu.ffmpeg-libvpl-enabled",
+  "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+  "find": "        _ffha_out+=(\"--enable-libvpl\")\n",
+  "replace": "        :\n",
+  "test": "bash linux/scripts/tests/test-intel-gpu-userspace.sh",
+  "why": "FFmpeg's own Quick Sync codecs need --enable-libvpl"
+ },
+ {
+  "id": "intel-gpu.ffmpeg-libvpl-amd64-only",
+  "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+  "find": "if [ \"$(cross_target_arch)\" = \"amd64\" ] \\\n        && ffmpeg_probe_pkg_config_feature \"libvpl\"",
+  "replace": "if ffmpeg_probe_pkg_config_feature \"libvpl\"",
+  "test": "bash linux/scripts/tests/test-intel-gpu-userspace.sh",
+  "why": "Quick Sync is an x86 GPU feature: no other arch asks for it"
+ },
+ {
+  "id": "intel-gpu.ffmpeg-libvpl-check-args",
+  "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+  "find": "\"vpl >= 2.6\" \"mfxvideo.h mfxdispatcher.h\" \"MFXLoad\"",
+  "replace": "\"vpl\" \"mfxvideo.h\" \"MFXInit\"",
+  "test": "bash linux/scripts/tests/test-intel-gpu-userspace.sh",
+  "why": "the probe must ask what FFmpeg's configure asks, or a pass here fails there hours into the media stage"
+ },
+ {
+  "id": "intel-gpu.ffmpeg-libvpl-runtime-map",
+  "target": "linux/scripts/03-media/runtime/so-package-map.txt",
+  "find": "libvpl.so.2\tlibvpl2\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-intel-gpu-userspace.sh",
+  "why": "FFmpeg's new NEEDED entry must resolve to a package in the runtime image"
+ },
+ {
+  "id": "intel-gpu.ffmpeg-qsv-probed",
+  "target": "linux/scripts/06-packaging/check-intel-gpu-userspace.sh",
+  "find": "grep -c -e h264_qsv",
+  "replace": "grep -c -e h264_vaapi",
+  "test": "bash linux/scripts/tests/test-intel-gpu-userspace.sh",
+  "why": "the image gate must look for a Quick Sync encoder, not any hardware encoder"
+ },
+ {
+  "id": "intel-gpu.ffmpeg-libvpl-dep",
+  "target": "linux/scripts/03-media/build/ffmpeg/install-deps.sh",
+  "find": "    install_optional_target_packages libvpl-dev\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-intel-gpu-userspace.sh",
+  "why": "without the dispatcher's headers the probe skips Quick Sync silently"
  }
 ]

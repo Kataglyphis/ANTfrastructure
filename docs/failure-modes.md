@@ -123,6 +123,7 @@ See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
 - [An arm64 app dies in `ndk_translation` on an API 30 emulator](#an-arm64-app-dies-in-ndk_translation-on-an-api-30-emulator)
 - [The Vulkan variables name an arch-specific SDK dir](#vulkan-env-names-an-arch-specific-sdk-dir)
 - [A lane's `ARCH` arrives as `x86_64`](#a-lanes-arch-arrives-as-x86_64)
+- [A command dies with `Illegal instruction` on amd64](#a-command-dies-with-illegal-instruction-on-amd64)
 - [The core registry blacklists `libgstvalidatessim.so`](#the-core-registry-blacklists-libgstvalidatessimso)
 - [GStreamer scan reports UNKNOWN after Broken pipe](#gstreamer-scan-reports-unknown-after-broken-pipe)
 - [DeepStream: `nvstreammux` stops the pipeline with `reason error (-5)` and no message](#deepstream-nvstreammux-stops-the-pipeline-with-reason-error--5-and-no-message)
@@ -1516,6 +1517,19 @@ is `ARCH="$(uname -m)"`. An `ARCH` already in the environment stays exported wit
 
 **Fix.** `vulkan_env_source_script` and the entrypoint put the caller's `ARCH` back after
 sourcing, or unset it when the caller had none (CON133, 2026-10-21; lands with the next image).
+
+### A command dies with `Illegal instruction` on amd64
+
+**Symptom.** A binary from the amd64 image, or from a package built in it, ends with
+`Illegal instruction` (SIGILL, exit 132) on one machine and runs on another. Through the entrypoint
+the message is `this image is built for x86-64-v3 (AVX2, FMA, BMI2) and this CPU does not provide it`.
+
+**Cause.** The image is compiled for `x86-64-v3` (CON241). The CPU lacks AVX2, FMA or BMI2: Intel
+before Haswell, AMD before Excavator, older Celeron, Pentium and Atom parts, or an emulator without
+AVX2.
+
+**Fix.** None in the image: run it on a newer CPU. `ld.so --help` lists the levels a CPU supports.
+[`amd64-x86-64-v3-baseline.md`](amd64-x86-64-v3-baseline.md) (lands with the first chain after the switch).
 
 ### The core registry blacklists `libgstvalidatessim.so`
 

@@ -261,6 +261,12 @@ _ffmpeg_hwaccel_args() {
         _ffha_out+=("--enable-vaapi")
     fi
 
+    # Quick Sync, amd64 only; the arguments are FFmpeg's own libvpl check, so a pass here passes there.
+    if [ "$(cross_target_arch)" = "amd64" ] \
+        && ffmpeg_probe_pkg_config_feature "libvpl" "vpl >= 2.6" "mfxvideo.h mfxdispatcher.h" "MFXLoad"; then
+        _ffha_out+=("--enable-libvpl")
+    fi
+
     if ffmpeg_probe_vdpau; then
         _ffha_out+=("--enable-vdpau")
     fi

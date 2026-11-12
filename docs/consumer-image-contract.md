@@ -421,6 +421,14 @@ lane runs on the next `:latest`.
 | The Android SDK on arm64 and riscv64 (CON96) | `/opt/android-sdk`, `/opt/android` and the builder's x86_64 rustup ship in both, 3.41 GB of layers no arm64 or riscv64 host can run; `ANDROID_HOME` points at x86_64 tools | both trees empty, with `/opt/android/.android-payload-off`; `ANDROID_HOME`, `ANDROID_SDK_ROOT` and the six Android roots empty, nothing Android on `PATH`. Build Android from the amd64 image, as before. `HOST_PAYLOAD_ARCHES=amd64,arm64,riscv64` builds the old shape ([why](artifact-copy-completeness.md#the-host-payload-stays-with-the-host-that-runs-it)) |
 | `VULKAN_SDK` and the variables `setup-env.sh` derives from it, after the entrypoint (CON48) | `/opt/vulkan/<version>/<arch>`; a riscv64 lane under QEMU in the amd64 image overrides `VULKAN_SDK` and `VK_ADD_LAYER_PATH` (`riscv64_cross_env`) | `/opt/vulkan/active` on every arch; the boot smoke fails an arch dir ([why](failure-modes.md#vulkan-env-names-an-arch-specific-sdk-dir)) |
 
+## amd64 needs an x86-64-v3 CPU
+
+From the first image built after the CON241 switch, the amd64 image and **every package built in
+it** need a CPU with AVX2, FMA and BMI2: Intel Haswell (2013), AMD Excavator (2015), or newer. The
+entrypoint refuses an older CPU with the cause; a run that replaces the entrypoint dies with
+`Illegal instruction`. clang and Rust keep their generic defaults, so a consumer that wants the
+level from them passes it: [`amd64-x86-64-v3-baseline.md`](amd64-x86-64-v3-baseline.md#not-covered).
+
 ## The Android SDK roots are advertised
 
 `Dockerfile.android` advertises where each Android payload lives; `Dockerfile.package`

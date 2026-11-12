@@ -55,6 +55,155 @@ ROCm and Windows ARM GPU images are outside the requested matrix.
 - **Image readiness and capacity:** CON90 and CON174 track the ROCm Python rollout and
   measured disk requirements for GPU consumer builds.
 
+## Next image build — Intel hardware and x86 CPU findings
+
+Owner request 2026-11-10: the images shall run on the owner's Intel device (integrated GPU, Arc
+discrete GPU, Core Ultra NPU), on Linux and on Windows, for ONNX Runtime inference, video decode
+and encode, OpenCV on the GPU and PyTorch on the GPU. Everything below was read on `:latest` amd64
+`a106e548…` (created 2026-11-06, hub `5d23fe5a`) on the build host, a Ryzen 9 9950X with an RX 9070 XT.
+**That was the host's stale local copy:** the registry's `:latest` was already `ede5c3e0…` (2026-11-08,
+hub `118c5425`). No Intel-area source changed between the two revisions; nothing was read again on
+the newer index, so re-run the probes on it first.
+**Nothing here has run on Intel hardware.** Package sizes are `apt-get install --assume-no` on that
+image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read that day.
+
+- **Where it ships:** the variant rule of 2026-09-22 puts CON235 to CON237 into `:latest` on amd64, as
+  QNN is arm64-only: about 0.4 GB of packages plus OpenVINO. Only the XPU torch (CON238) replaces a
+  default component and is multi-GB. `:amd64-intel` does not fit the tag grammar; the names are
+  `:latest-intel` and `:winamd64-intel`.
+- **Already open, and larger on every x86 CPU:** CON218 (GenAI threads) and CON191 (`libdnnl.so.3`,
+  still absent on `a106e548…`). An explicit WebGPU session on that image also falls back to the CPU
+  provider (`DawnProcTable must be provided`); CON233's WebGPU work owns that.
+- **The scratch probes** sit untracked in `logs/reports/intel-amd-cpu-20261110/` on the build host.
+- **Owner decisions 2026-11-12:** Intel support ships in `:latest` amd64 (CON235 to CON237); the free VA
+  driver; FFmpeg with `--enable-libvpl`; CON238 postponed indefinitely; CON240 is to be fixed; CON241 is
+  raised to `x86-64-v3`. The owner's Intel machine is a CPU with integrated GPU and NPU, no Arc card:
+  "the owner's device" below proves the iGPU and the NPU, and an Arc card stays unproven.
+
+- [ ] **CON234 — an Intel host baseline, and the probe as a preserved proof** [S, ★★]. The scratch
+      probe reports the device nodes, the Vulkan devices, one VA-API encode per render node, the element
+      counts of GStreamer's `va` and `qsv`, OpenCV's OpenCL state and the provider an explicit ORT session
+      really uses, from a hand-encoded model that needs no `onnx` module. On the AMD host: both render
+      nodes encode, `va` has 13 elements, `qsv` none, OpenCL is absent, WebGPU and DNNL fall back to the
+      CPU provider. Run it first, unchanged, on the owner's Intel device; then move it beside the preserved
+      proof workflows with fixtures for its pass and fail verdicts. A rootless engine needs `0666` render
+      nodes; the NPU needs `--device /dev/accel`. Done when an Intel baseline is recorded here and the
+      probe is tracked and tested.
+- [ ] **CON235 — Intel video in `:latest` amd64: the VA driver and the QSV runtime** [S, ★★★]. The image
+      has FFmpeg with `--enable-vaapi`, `libgstva.so`, `libgstqsv.so` and `libvpl2`, but its VA drivers are
+      `radeonsi`, `r600`, `nouveau`, `d3d12` and `virtio_gpu` only, and no QSV runtime sits under the
+      dispatcher. Ubuntu 26.04 carries `intel-media-va-driver-non-free` and `libmfx-gen1.2` (both 26.1.2):
+      10.5 MB to fetch, 51.5 MB installed with `libigdgmm12`. Package stage only, amd64 only. Owner 2026-11-12:
+      the free `intel-media-va-driver` (universe, 16.6 MB installed against 40.7 MB), not the multiverse
+      build. In the tree since 2026-11-12, not built: `setup-package-image.sh` installs it and
+      `libmfx-gen1.2`, which depends on no VA driver, and the smoke's `check_intel_gpu_userspace` fails an
+      amd64 image without their files or without FFmpeg's `h264_qsv` encoder. `build-ffmpeg.sh` passes
+      `--enable-libvpl` on amd64 behind FFmpeg 9.0.2's own check (`vpl >= 2.6`; `libvpl-dev` 2.16.0 is in
+      the index), which needs the media stage rebuilt. Open: what the free build cannot encode, read
+      from `vainfo` on the device. Done when, on an Intel GPU, the VA-API encode
+      passes and `qsv` registers elements, and a smoke fails an amd64 image without the driver.
+- [ ] **CON236 — an OpenCL and Level Zero runtime for Intel GPUs in `:latest` amd64** [S, ★★]. OpenCV is
+      built with OpenCL and `ocl-icd-libopencl1` is installed, but `/etc/OpenCL/vendors` does not exist:
+      `cv2.ocl.haveOpenCL()` is False on the AMD host too. `intel-opencl-icd` 26.05.37020.3,
+      `libze-intel-gpu1` and `libze1` 1.28.2 are 73.8 MB to fetch and 322 MB installed, with `libigc2`
+      and `libigdfcl2`. CON237's GPU device and CON238 need Level Zero. Whether the rocm and nvidia
+      variants ship an OpenCL driver was not checked. With CON238 postponed, check whether
+      `libze-intel-gpu1` still has a consumer; the NPU needs only the `libze1` loader. In the tree since
+      2026-11-12, not built: `intel-opencl-icd` alone, under the same gate; `libze1` waits for CON237 and
+      `libze-intel-gpu1` for CON238. Simulated with `libze1`, the free set of CON235 and this entry is
+      76.6 MB to fetch and 299 MB installed. Done when a T-API operation runs on the Intel GPU
+      on the owner's device and the measured image-size delta is recorded.
+- [ ] **CON237 — OpenVINO, its ORT provider as a chain-built plugin, and the NPU driver** [L, ★★★].
+      `OPENVINO_VERSION=2026.4.1` is pinned and Renovate-tracked, yet nothing fetches OpenVINO:
+      `ffmpeg_probe_libopenvino` always skips, the image's FFmpeg has no `--enable-libopenvino`, and the
+      probe's fallback literal `2026.2.1` differs from the pin. Read 2026-11-10:
+      1. ORT v1.31.1's tree carries the provider's `OrtEpFactory` (`core/providers/openvino/ov_factory.cc`);
+         nobody built it here.
+      2. Intel's `onnxruntime-ep-openvino` 1.8.1 is binary-only (52.6 MB Linux, 75.8 MB Windows) and
+         bundles OpenVINO and TBB, which the chain-only rule excludes; `ort-provenance.sh` refuses
+         `libonnxruntime_providers_openvino.so` as a binary the chain does not build.
+      3. The `openvino` 2026.4.1 wheels stop at cp314 (59.1 MB), so Python 3.15 needs a source build.
+      4. `intel/linux-npu-driver` v1.38.0 has an `ubuntu2604` tarball (55 MB); Ubuntu 26.04 has no
+         package, and the driver follows the host's kernel and firmware.
+
+      Build OpenVINO at the pin and the provider as a plugin over the chain's CPU prefix, with QNN's
+      export, census and verify contracts; add the NPU user-space driver; then wire FFmpeg's
+      backend at the pin (owner 2026-11-12) and drop the probe's literal. amd64 only. Done when `verify_ort_profile.py` shows operators on the
+      OpenVINO provider on the owner's Intel GPU and NPU, and a device-less check reports registration only.
+- [b] **CON238 — PyTorch on Intel GPUs: a torch-only `-intel` tag** [M, ★★]. **Postponed indefinitely**
+      (owner 2026-11-12): the approach below is approved, and it is built only if he gets an Intel GPU. `torch` 2.14.1+xpu for cp315 is 861 MB on Linux and 768 MB on Windows,
+      against 196 MB and 126 MB for `+cpu`, plus 21 Intel runtime wheels of 1,022 MB (`mkl` 224,
+      `intel-opencl-rt` 204, `intel-sycl-rt` 134, `impi-rt` 129); cp315t wheels exist too. It replaces the
+      CPU torch, so it is the one piece the variant rule sends to its own tag. Nothing built in media
+      depends on it: the proposal is a variant that differs only in the torch stage
+      (`PYTORCH_EXTRA=pytorch-xpu`) and reuses the default android image, one runtime-lane build instead
+      of a `gpu → media → android` chain. Today `CROSS_VARIANT` always inserts the `gpu` stage and Windows'
+      `-Variant` re-tags every stage after base. It also needs a `pytorch-xpu` extra in OrchestrANT, its
+      row in `venv-version-probe.py`, and CON236. Done when `torch.xpu` runs a model on the owner's device
+      from `:latest-intel` and `:winamd64-intel`, and the default tags keep the CPU torch.
+- [ ] **CON239 — Intel on the Windows lane** [M, ★★]. A Windows container gets no GPU, so this is
+      app-package work, read from source only:
+      1. The DXGI selector's contract names AMD `0x1002` and NVIDIA `0x10de`; Intel is `0x8086`.
+      2. `Build-FfmpegFromSource.ps1` configures AMF on rocm and NVENC/NVDEC on nvidia, no QSV. What FFmpeg
+         detects for D3D11VA and D3D12VA was not read.
+      3. The OpenVINO provider for GPU and NPU belongs in the app bundles as a chain-built plugin (CON237).
+      4. The XPU torch is CON238.
+
+      Done when a packaged app runs DirectML on the Intel GPU and OpenVINO on the NPU on the owner's
+      Windows device, with real provider profiles.
+- [ ] **CON240 — torch's MKL does not use AVX-512 on AMD CPUs** [M, ★]. Measured 2026-11-10 on eight
+      pinned cores of the 9950X, a 4096² multiply, best of seven: numpy on OpenBLAS 0.3.34 (`SkylakeX`
+      kernels) 1,465 GFLOPS in float32 and 873 in float64; torch 2.14.1+cpu on MKL 2024.2 946 and 497, so
+      65 % and 57 %; ORT's CPU provider 1,889 in float32. `MKL_VERBOSE` names the generic
+      `Intel(R) Architecture processors` path. Matmul and `Linear` on the CPU pay it; convolutions run
+      oneDNN 3.12 at `avx512_core`, and nothing through ORT is affected. A load of about 1.3 ran beside
+      the benchmark, and Windows was not measured. Options: AMD's `zentorch` 2.14.1.0 matches this torch
+      but has cp310 to cp314 wheels only; a source-built torch on OpenBLAS costs hours of chain, as on
+      riscv64. Owner 2026-11-12: fix it with a source-built torch. That needs
+      its own plan: riscv64's build switches oneDNN and OpenMP off and cannot be copied, OpenBLAS must be
+      its OpenMP build, and consumers' locks must take the chain wheel. No cold build time is measured
+      on this host. Done when the benchmark is repeated on a chain-built torch and convolutions do not
+      regress.
+- [ ] **CON241 — the amd64 baseline is `x86-64-v3`: prepared, not built** [S, ★]. Owner 2026-11-12: raise
+      it, tune `generic`, and build nothing until he says go. In the tree: the GCC default on the native,
+      cross and Canadian paths, OpenCV's `CPU_BASELINE=AVX2` with its configure check, the smoke's
+      `check_amd64_isa`, the entrypoint's CPU check, the critical-fix pin and their mutation recipes
+      (`docs/amd64-x86-64-v3-baseline.md`). Before the switch the hot libraries already dispatched at run
+      time and took AVX-512 on the 9950X; only code without dispatch was SSE2. Open:
+      1. The "before" numbers on the published `:latest`, on an idle host.
+      2. A fresh chain from the compiler stage on the owner's go. Expect the compile caches of all three
+         arches to miss once: the host GCC builds the cross compilers too.
+      3. The "after" numbers, both recorded in `docs/image-decisions.md`.
+      4. Not covered: clang's default, Rust, and Windows (CON244).
+
+      Done when `check_amd64_isa` passes on a published amd64 image and both measurements are recorded.
+- [ ] **CON244 — Windows x64: the source builds that get no CPU flag** [M, ★]. Read 2026-11-12, source only:
+      the amd64 `SimdFlags` of `WindowsTargetArch.Common.psm1` (AVX2, FMA, SSE4.2) reach ONNX Runtime,
+      OpenCV and LiteRT only; the scripts give FFmpeg, GStreamer, LLVM, CPython, IREE, TVM and the Rust
+      crates no CPU flag, and the list lacks BMI, LZCNT and MOVBE. `TargetArch.Common.Tests.ps1` pins the
+      string byte for byte, and ORT's ninja patch strips `/arch:`, so a raise is spelled
+      `/clang:-march=x86-64-v3`. Done when the owner decides whether Windows follows CON241, and a raise
+      is measured.
+- [ ] **CON245 — language models on the Intel GPU and NPU** [M, ★★]. Owner request 2026-11-12. Nothing was
+      read for it: after CON237, choose between OpenVINO GenAI and ONNX Runtime GenAI over the OpenVINO
+      provider, and size the models against the device's memory. Done when one model answers from the
+      iGPU and from the NPU on the owner's device, with provider evidence.
+- [ ] **CON246 — Intel DL Streamer** [M, ★]. Owner request 2026-11-12: Intel's counterpart to the nvidia
+      variant's DeepStream, GStreamer elements over OpenVINO. Nothing was read for it, and it needs
+      CON237 first. Done when its size, licence and build route are recorded and a pipeline runs on the
+      iGPU.
+- [ ] **CON247 — an Intel host: setup page, acceptance by hand, the Vulkan driver** [S, ★★]. Found
+      2026-11-12:
+      1. `docs/linux-host-setup.md` has no Intel section: kernel driver, GPU and NPU firmware on the
+         host, `--device` flags and render-node permissions.
+      2. No Intel machine runs in CI, so CON234 to CON237 are accepted by hand on the owner's device, as
+         on the Jetson; each page has to say so.
+      3. Intel's Vulkan driver is in the image: the local `:latest` lists `intel_icd.json` and
+         `intel_hasvk_icd.json` from `mesa-vulkan-drivers` (read 2026-11-12). That a WebGPU session
+         reaches it on Intel hardware is not shown.
+
+      Done when the page has the section and the probe of CON234 reports an Intel Vulkan device.
+
 ## Open — getting fixes to consumers
 
 - [ ] **CON126 — every hub pipeline runs at the host's parallelism, never one step at a time** [L, ★★★].

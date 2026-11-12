@@ -71,6 +71,11 @@ else
     install_target_packages libsvtav1enc-dev || install_target_packages libsvtav1-dev || true
 fi
 
+# Quick Sync's dispatcher exists in Ubuntu for amd64 only; the image gate fails an amd64 FFmpeg built without it.
+if [ "$(cross_target_arch)" = "amd64" ]; then
+    install_optional_target_packages libvpl-dev
+fi
+
 if [ "${#optional_cross_target_packages[@]}" -gt 0 ]; then
     install_optional_target_packages "${optional_cross_target_packages[@]}"
 fi

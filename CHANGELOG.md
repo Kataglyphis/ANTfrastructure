@@ -14,6 +14,28 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-12 — set the amd64 baseline to x86-64-v3 (not built yet)
+
+- Owner decision CON241: the amd64 GCC is configured `--with-arch=x86-64-v3 --with-tune=generic`
+  on the native, cross and Canadian paths; OpenCV asks for `CPU_BASELINE=AVX2` and its configure
+  fails without it. No chain has run with it: the published images are unchanged.
+- New gates: a critical-fix pin, the configure-line cases in `test-native-gcc-multiarch.sh`,
+  `check_amd64_isa` in the runtime smoke (`test-amd64-isa-gate.sh`) and an entrypoint check that
+  refuses a CPU below the baseline (`test-cpu-baseline-check.sh`), each with mutation recipes. Not
+  covered: clang, Rust, Windows x64 and each shipped ELF.
+  [`amd64-x86-64-v3-baseline.md`](docs/amd64-x86-64-v3-baseline.md).
+
+## 2026-11-12 — add Intel's free GPU user space to the amd64 package stage (not built yet)
+
+- Owner decisions CON235 and CON236: `setup-package-image.sh` installs `intel-media-va-driver`,
+  `libmfx-gen1.2` and `intel-opencl-icd` on amd64, in every variant; never the multiverse
+  `-non-free` driver. FFmpeg gets `--enable-libvpl` on amd64 behind its own configure check.
+  `check_intel_gpu_userspace` fails an amd64 image without the driver files or the `h264_qsv`
+  encoder. Nothing has run on an Intel GPU.
+- The riscv64 and amd64 ISA gates now live in `06-packaging/check-arch-isa.sh` and share one
+  verdict renderer and one arch guard in `smoke-common.sh`; `smoke-runtime-image.sh` only wires them.
+  [`linux-accelerator-images.md`](docs/linux-accelerator-images.md#intel-gpu-user-space).
+
 ## 2026-11-09 — repair Linux TensorRT cross builds and CUDA cache parsing
 
 - NVIDIA ARM64 run `20261109-102131-e69f48d7` ended with exit 1 at 17:02:20Z.

@@ -740,3 +740,23 @@ smoke_ffmpeg_test_encode() {
 smoke_ffmpeg_decode_to_null() {
   "$1" -y -i "$2" -f null /dev/null 2>/dev/null
 }
+
+# Renders one shipped-truth verdict line; @1@ and @2@ in the BAD and OLD texts stand for the line's subject and value.
+_shipped_verdict_line() {
+  local bad="$2" old="$3" none="$4" verb subject value
+  read -r verb subject value <<< "$1"
+  bad="${bad//@1@/${subject}}"; old="${old//@1@/${subject}}"
+  case "${verb}" in
+    BAD)  fail "${bad//@2@/${value}}" ;;
+    SKIP) echo "  ~~   ${subject}: ${value}" ;;
+    OLD)  echo "  ~~   ${old//@2@/${value}}" ;;
+    NONE) fail "${none}" ;;
+  esac
+}
+
+# Runs one shipped-truth gate on its own architecture only: <arch> <target> <title> <name> <pass prefix> <pass suffix> <parser> <renderer>.
+_shipped_arch_gate() {
+  [ "$2" = "$1" ] || return 0
+  echo "--- SHIPPED-TRUTH $3 ---"
+  _shipped_truth_verdict_gate "$4 gate could not run: the in-image probe never printed RTPROBE_DONE" "$5" "$6" "$7" "$8"
+}

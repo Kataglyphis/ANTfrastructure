@@ -541,6 +541,20 @@ _gcc_native_multiarch() {
   return 0
 }
 
+# An override that empties a default drops its configure option.
+_gcc_config_opt() {
+  if [ -n "$2" ]; then CONFIG_CMD+=("$1$2"); fi
+  return 0
+}
+
+# amd64 builds for x86-64-v3 on the native and the cross path alike. docs/amd64-x86-64-v3-baseline.md
+case "${TARGET_TRIPLET:-$(gcc -dumpmachine 2>/dev/null || cc -dumpmachine 2>/dev/null || true)}" in
+  x86_64-*)
+    _gcc_config_opt "--with-arch=" "${X86_64_GCC_ARCH-x86-64-v3}"
+    _gcc_config_opt "--with-tune=" "${X86_64_GCC_TUNE-generic}"
+    ;;
+esac
+
 if [ -n "${TARGET_TRIPLET}" ]; then
   _gcc_ma="$(_gcc_native_multiarch)"
   CONFIG_CMD+=(
@@ -553,13 +567,10 @@ if [ -n "${TARGET_TRIPLET}" ]; then
   # Pin an ISA spec the bundled binutils names, or the shipped riscv64 GCC's default -march will not assemble.
   case "${TARGET_TRIPLET}" in
     riscv64-*)
-      _isa_spec="${RISCV_GCC_ISA_SPEC-20191213}"
-      [ -n "${_isa_spec}" ] && CONFIG_CMD+=("--with-isa-spec=${_isa_spec}")
+      _gcc_config_opt "--with-isa-spec=" "${RISCV_GCC_ISA_SPEC-20191213}"
       # An ISA string, not the rva23u64 profile name, which GCC's configure rejects. docs/riscv64-rva23-baseline.md
-      _rv_arch="${RISCV_GCC_ARCH-rv64gcv_zicsr_zifencei_zba_zbb_zbs_zicond}"
-      _rv_abi="${RISCV_GCC_ABI-lp64d}"
-      [ -n "${_rv_arch}" ] && CONFIG_CMD+=("--with-arch=${_rv_arch}")
-      [ -n "${_rv_abi}" ] && CONFIG_CMD+=("--with-abi=${_rv_abi}")
+      _gcc_config_opt "--with-arch=" "${RISCV_GCC_ARCH-rv64gcv_zicsr_zifencei_zba_zbb_zbs_zicond}"
+      _gcc_config_opt "--with-abi=" "${RISCV_GCC_ABI-lp64d}"
       ;;
   esac
 fi

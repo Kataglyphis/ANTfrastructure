@@ -1409,6 +1409,28 @@ prebuilt wheels) and `GPU_TARGETS`/`AMDGPU_TARGETS` (no such knob for the
 MIGraphX EP build). The kernel driver stays on the HOST — the image ships
 userspace only, and that is correct.
 
+## Intel GPU user space
+
+Every amd64 image, the `nvidia` and `rocm` variants included, installs Ubuntu's free Intel GPU user
+space in the package stage (owner decision 2026-11-12, CON235 and CON236): the VA driver
+`intel-media-va-driver`, the Quick Sync runtime `libmfx-gen1.2` and the OpenCL ICD
+`intel-opencl-icd`, about 0.3 GB installed. FFmpeg is built with `--enable-libvpl` there, for its own
+Quick Sync codecs. It is not a variant: an Intel GPU sits beside other
+vendors' cards, and a tag names one variant only. Intel's Vulkan driver already ships with
+`mesa-vulkan-drivers`.
+
+- **Not proven on hardware.** No image carries it yet and nothing has run on an Intel GPU. The
+  smoke's `check_intel_gpu_userspace` grades presence only: the three driver files and FFmpeg's
+  `h264_qsv` encoder. An amd64 image built before the change fails it; the drivers come back with a
+  runtime-lane re-run, the encoder needs the media stage rebuilt.
+- **The free driver, on purpose.** The multiverse `intel-media-va-driver-non-free` is the same
+  driver built with Intel's non-free media kernels. What the free build cannot encode on a given
+  GPU is read from `vainfo` on the device (CON234).
+- **Running it.** The container needs the render node, `--device /dev/dri`, and a rootless engine
+  needs that node accessible to its user. The host side is CON247.
+- **Not there yet.** OpenVINO, its ONNX Runtime provider and the NPU driver (CON237); PyTorch on
+  Intel GPUs (CON238, postponed).
+
 ## Hailo (in the standard image)
 
 HailoRT + `hailortcli` + the `hailonet` element + **TAPPAS** (`hailofilter`,

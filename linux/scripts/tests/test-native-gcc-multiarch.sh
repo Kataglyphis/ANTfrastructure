@@ -11,8 +11,10 @@ trap 'rm -rf "${_work}"' EXIT
 
 # build-gcc.sh's configure region, CONFIG_CMD printed one word per line so an empty word shows.
 awk '/^_gcc_is_canadian_native\(\) \{$/{p=1} p{print} p && /^fi$/{exit}' "${BUILD_GCC}" > "${_work}/configure.sh"
-_configure_for() {  # <host> <target> -> the configure words, one per line
-  env HOST_TRIPLET="$1" TARGET_TRIPLET="$2" SYSROOT=/ NATIVE_SYSTEM_HEADER_DIR="/usr/$2/include" bash -c '
+_configure_for() {  # <host> <target> -> the configure words, one per line; NATIVE_TRIPLET fakes the build host's gcc
+  env HOST_TRIPLET="$1" TARGET_TRIPLET="$2" SYSROOT=/ NATIVE_SYSTEM_HEADER_DIR="/usr/$2/include" \
+    NATIVE_TRIPLET="${NATIVE_TRIPLET:-x86_64-linux-gnu}" bash -c '
+    gcc() { printf "%s\n" "${NATIVE_TRIPLET}"; }
     set -euo pipefail; CONFIG_CMD=(); source "$1"; printf "%s\n" "${CONFIG_CMD[@]}"' _ "${_work}/configure.sh"
 }
 _multiarch_words() { printf '%s\n' "$(_configure_for "$1" "$2")" | grep -c -e '--enable-multiarch'; }
@@ -29,6 +31,20 @@ t_assert_eq "0" "$(_multiarch_words "" aarch64-linux-gnu)" "a plain cross keeps 
 t_assert_eq "0" "$(_multiarch_words x86_64-linux-gnu aarch64-linux-gnu)" "a Canadian with host != target"
 t_assert_eq "0" "$(_multiarch_words "" "")" "the full make never reaches the target block"
 t_assert_eq "0" "$(_configure_for "" aarch64-linux-gnu | grep -c '^$')" "an unset helper result is no word at all"
+
+t_case "amd64 gets the x86-64-v3 baseline on the native and the cross path, and no other arch does"
+_out="$(_configure_for "" "")"
+t_assert_contains "${_out}" "--with-arch=x86-64-v3" "the host build has no --target, so the arm keys on the build triplet"
+t_assert_contains "${_out}" "--with-tune=generic" "a vendor tuning would bias the image"
+t_assert_contains "$(_configure_for "" x86_64-linux-gnu)" "--with-arch=x86-64-v3" "the cross GCC of an arm64 build platform"
+t_assert_contains "$(_configure_for x86_64-linux-gnu x86_64-linux-gnu)" "--with-arch=x86-64-v3" "its Canadian native"
+t_assert_eq "0" "$(_configure_for "" aarch64-linux-gnu | grep -c -e 'x86-64')" "a cross to arm64 from an amd64 host"
+t_assert_eq "0" "$(NATIVE_TRIPLET=aarch64-linux-gnu _configure_for "" "" | grep -c -e '--with-arch')" "an arm64 host's own GCC"
+_out="$(_configure_for "" riscv64-linux-gnu)"
+t_assert_contains "${_out}" "--with-arch=rv64gcv_zicsr_zifencei_zba_zbb_zbs_zicond" "riscv64 keeps its own baseline"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c -e 'x86-64' -e '--with-tune')" "and gains nothing from amd64's"
+t_assert_eq "0" "$(X86_64_GCC_ARCH='' X86_64_GCC_TUNE='' _configure_for "" "" | grep -c -e '--with-arch' -e '--with-tune')" \
+  "an empty override drops the flag, as on riscv64"
 
 # ── swap-native-gcc.sh: the relocated GCC's multiarch ────────────────────────
 _swap_fn="$(t_fn_src "${SWAP}" _assert_native_gcc_multiarch)" || exit 1

@@ -292,6 +292,11 @@ fix9_riscv_isaspec_and_noise_2026_07() {
     "build-gcc.sh lost the riscv64 ISA-spec pin (A2 regression)" loud _critical_source_all_grep \
     -qE '^[[:space:]]*riscv64-\*\)' "${gcc}" -q '--with-isa-spec=' "${gcc}" -q 'RISCV_GCC_ISA_SPEC-20191213' "${gcc}"
 
+  # Without the compiler default every amd64 source build silently falls back to SSE2.
+  _critical_source_verdict "build-gcc.sh sets the amd64 x86-64-v3 baseline with generic tuning (CON241)" \
+    "build-gcc.sh lost the amd64 x86-64-v3 baseline (CON241 regression)" loud _critical_source_all_grep \
+    -qE '^[[:space:]]*x86_64-\*\)' "${gcc}" -q 'X86_64_GCC_ARCH-x86-64-v3}' "${gcc}" -q 'X86_64_GCC_TUNE-generic}' "${gcc}"
+
   # The riscv64 torch-wheel fallback drops a sentinel the runtime smoke keys on.
   _critical_source_pattern "setup-torch-venv.sh writes the /opt/venv/.torch-missing sentinel (A3)" \
     "setup-torch-venv.sh lost the torch-less sentinel (A3 regression)" \

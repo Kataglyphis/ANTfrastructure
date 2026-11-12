@@ -224,3 +224,5 @@ mutation-family:onnx-ep-amdgpu
 mutation-family:onnx-ep-qnn
 mutation-family:onnx-ep-tensorrt
 mutation-family:cmake-msvc-notice
+mutation-family:amd64-v3
+mutation-family:intel-gpu

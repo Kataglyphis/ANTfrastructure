@@ -128,6 +128,9 @@ These are recorded so nobody files them as gaps:
   later Python breaks the patch.
 - The CUDA arch set is `75;86;87;89;120`, with no PTX.
 - riscv64 is built for the RVA23 baseline.
+- amd64 is built for `x86-64-v3` with `generic` tuning (owner, 2026-11-12, CON241): CPUs without AVX2 are
+  out, AVX-512 is never baseline. No image carries it yet and the before and after measurement is open:
+  [`amd64-x86-64-v3-baseline.md`](amd64-x86-64-v3-baseline.md).
 - riscv64 uses the distro CMake 4.2.3.
 - riscv64's GStreamer runs on Ubuntu's GLib: `yield_older_prefix_glib` drops the prefix's GLib when it is
   older than the distro's (2.86.3 vs 2.88.0), which GTK 4 4.22.4 and PyGObject need, as amd64 and arm64

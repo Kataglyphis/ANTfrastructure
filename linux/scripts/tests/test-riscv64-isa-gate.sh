@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# The riscv64 ISA gate in smoke-runtime-image.sh, on attribute strings read off a shipped image; see docs/riscv64-rva23-baseline.md
+# The riscv64 ISA gate in check-arch-isa.sh, on attribute strings read off a shipped image; see docs/riscv64-rva23-baseline.md
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 SMOKE="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
+ISA="${TESTS_DIR}/../06-packaging/check-arch-isa.sh"
 
 eval "$(sed -n '/^_smoke_probe_values()/,/^}/p' "${SMOKE}")"
-eval "$(sed -n '/^_rvv_verdicts()/,/^}/p' "${SMOKE}")"
+eval "$(sed -n '/^_rvv_verdicts()/,/^}/p' "${ISA}")"
 
 _UBUNTU_LIBC='rv64i2p1_m2p0_a2p1_f2p2_d2p2_c2p0_b1p0_v1p0_zicond1p0_zvl128b1p0'
 _OLD_OPENCV='rv64i2p1_m2p0_a2p1_f2p2_d2p2_c2p0_zicsr2p0_zifencei2p0_zmmul1p0_zaamo1p0_zalrsc1p0_zca1p0_zcd1p0'
@@ -43,7 +44,8 @@ t_assert_contains "$(_rvv_verdicts "PKG numpy")" "NONE" "unrelated probe lines m
 t_case "the gate is wired into the smoke run and is riscv64-only"
 t_assert_contains "$(cat "${SMOKE}")" 'check_riscv64_isa "${image_tag}" "${target_arch}"' \
   "an unwired gate is not a gate"
-t_assert_contains "$(cat "${SMOKE}")" '[ "${target_arch}" = riscv64 ] || return 0'
+# test-amd64-isa-gate.sh runs both ISA gates through the shared arch guard.
+t_assert_contains "$(t_fn_src "${ISA}" check_riscv64_isa)" "_shipped_arch_gate riscv64 "
 
 t_case "the probe emits RVARCH lines for the objects that matter"
 _probe_src="$(cat "${SMOKE}")"
