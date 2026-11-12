@@ -1012,7 +1012,7 @@ name, `/usr/local/lib/onnxruntime-gpu/lib/libonnxruntime_providers_cuda.so`, and
 `onnxruntime-gpu` wheel in `/opt/venv` registers it on import, so Python's
 `providers=["CUDAExecutionProvider"]` is unchanged. A C++ or Rust consumer registers that path under
 the name `CUDAExecutionProvider` once per process before it creates a session
-(`Ort::Env::RegisterExecutionProviderLibrary`, `Environment::register_execution_provider_library`);
+(`Ort::Env::RegisterExecutionProviderLibrary`; in Rust `Environment::register_ep_library`, `ort` 2.0.0-rc.13);
 the legacy `OrtSessionOptionsAppendExecutionProvider_CUDA` bridge is gone with `GetProvider`.
 
 ## NVIDIA's plugin TensorRT EP
@@ -1046,7 +1046,15 @@ device it reports; the EP's name is the registration name you choose:
   `so.add_provider_for_devices([d for d in ort.get_ep_devices() if d.ep_name == "MIGraphX"], {})`.
 - C++: `Ort::Env::RegisterExecutionProviderLibrary("MIGraphX", path)`, then
   `SessionOptions::AppendExecutionProvider_V2` with the matching `OrtEpDevice`.
-- Rust (`ort` 2.0.0-rc.13): `Environment::register_execution_provider_library`.
+- Rust (`ort` 2.0.0-rc.13): `Environment::current()?.register_ep_library("MIGraphX", path)`, then the device
+  from `Environment::devices()` whose `ep()` is `"MIGraphX"`, appended with `SessionBuilder::with_devices` (its
+  option keys need the `MIGraphX.` prefix; a key without it is dropped) or the raw
+  `SessionOptionsAppendExecutionProvider_V2`. The crate has no `register_execution_provider_library`.
+
+Read in the plugin's source at `ORT_AMDGPU_EP_COMMIT`, not run on a card: it takes exactly one device, the card is
+chosen by the option `device_id`, and an option it does not list (`migraphx_mem_limit` among them) fails the
+session. A profile of such a session names its nodes `MIGraphX`, which `verify_ort_profile.py --device migraphx`
+requires.
 
 `MIGraphXExecutionProvider` no longer exists in the image: the built-in provider was unmaintained
 upstream and bound a strided partition output onto ORT's dense buffer on MIGraphX ≤ 2.18

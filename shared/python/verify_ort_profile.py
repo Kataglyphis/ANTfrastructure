@@ -13,7 +13,8 @@ from typing import cast
 PROVIDERS = {
     "cpu": "CPUExecutionProvider",
     "cuda": "CUDAExecutionProvider",
-    "migraphx": "MIGraphXExecutionProvider",
+    # AMD's plugin reports the name it is registered under, and the family registers it as MIGraphX (CON231).
+    "migraphx": "MIGraphX",
     "directml": "DmlExecutionProvider",
     "xnnpack": "XnnpackExecutionProvider",
     "dnnl": "DnnlExecutionProvider",

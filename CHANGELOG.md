@@ -13,6 +13,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-12 — the profile check knows the plugin MIGraphX EP by its name; BACKLOG CON234 to CON256
+
+- `shared/python/verify_ort_profile.py --device migraphx` requires nodes of the provider `MIGraphX`. AMD's plugin
+  reports the name it is registered under, the contract fixes `MIGraphX`, and the check still expected the removed
+  in-tree `MIGraphXExecutionProvider`, so no consumer package could have passed a profile check on the plugin
+  (owner, 2026-11-12: the family's name is `MIGraphX`). A test holds that the old name no longer passes, and
+  recipe `packaging.ort-profile-migraphx-plugin-name` holds the mapping. Not run against a profile from a card.
+- `docs/consumer-image-contract.md` names the Rust call that exists, `Environment::register_ep_library`
+  (`ort` 2.0.0-rc.13 has no `register_execution_provider_library`), gives Rust its second step, and says what was
+  read in AMD's source: one device, the option `device_id`, and an unknown option fails the session.
+- `BACKLOG.md`: CON234 to CON253 from the audit of the four consumers, CON254 (`New-PortableBundle` leaks its package
+  check's output), CON255 (one failed download fails the benchmark-history step) and CON256 (what the consumers'
+  move onto the plugin left open on the hub side). CON231's step 2 names the order and the name the owner chose.
+
 ## 2026-11-09 — verify acceptance cleanup and publish the plugin-only ROCm wrapper
 
 - Acceptance checks each consumer and ownership-helper container through a successful engine query
