@@ -36,6 +36,20 @@
   verdict renderer and one arch guard in `smoke-common.sh`; `smoke-runtime-image.sh` only wires them.
   [`linux-accelerator-images.md`](docs/linux-accelerator-images.md#intel-gpu-user-space).
 
+## 2026-11-12 — the profile check knows the plugin MIGraphX EP by its name; BACKLOG CON234 to CON256
+
+- `shared/python/verify_ort_profile.py --device migraphx` requires nodes of the provider `MIGraphX`. AMD's plugin
+  reports the name it is registered under, the contract fixes `MIGraphX`, and the check still expected the removed
+  in-tree `MIGraphXExecutionProvider`, so no consumer package could have passed a profile check on the plugin
+  (owner, 2026-11-12: the family's name is `MIGraphX`). A test holds that the old name no longer passes, and
+  recipe `packaging.ort-profile-migraphx-plugin-name` holds the mapping. Not run against a profile from a card.
+- `docs/consumer-image-contract.md` names the Rust call that exists, `Environment::register_ep_library`
+  (`ort` 2.0.0-rc.13 has no `register_execution_provider_library`), gives Rust its second step, and says what was
+  read in AMD's source: one device, the option `device_id`, and an unknown option fails the session.
+- `BACKLOG.md`: CON234 to CON253 from the audit of the four consumers, CON254 (`New-PortableBundle` leaks its package
+  check's output), CON255 (one failed download fails the benchmark-history step) and CON256 (what the consumers'
+  move onto the plugin left open on the hub side). CON231's step 2 names the order and the name the owner chose.
+
 ## 2026-11-09 — repair Linux TensorRT cross builds and CUDA cache parsing
 
 - NVIDIA ARM64 run `20261109-102131-e69f48d7` ended with exit 1 at 17:02:20Z.

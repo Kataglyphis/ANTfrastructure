@@ -32945,6 +32945,14 @@
   "why": "a session that fell back to the CPU provider must not prove XNNPACK ran"
  },
  {
+  "id": "packaging.ort-profile-migraphx-plugin-name",
+  "target": "shared/python/verify_ort_profile.py",
+  "find": "\"migraphx\": \"MIGraphX\",",
+  "replace": "\"migraphx\": \"MIGraphXExecutionProvider\",",
+  "test": "python3 shared/python/tests/test_verify_ort_profile.py",
+  "why": "a profile proves the registered plugin by its own name; the removed in-tree provider's name must not pass"
+ },
+ {
   "id": "packaging.ort-profile-repeat-count",
   "target": "shared/python/verify_ort_profile.py",
   "find": "if len(runs) < minimum:",
