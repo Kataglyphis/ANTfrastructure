@@ -50,6 +50,15 @@ class BuildProofTests(unittest.TestCase):
     def write_config(self, mode: str = "ON") -> None:
         (self.config / "CMakeCache.txt").write_text("".join(f"{name}:BOOL={mode}\n" for name in FLAGS))
 
+    def unbuilt_prefix(self) -> Path:
+        prefix = self.root / "skipped GPU prefix"
+        prefix.mkdir()
+        for name in ("lib", "bin", "wheels", "wheels-free-threaded"):
+            (prefix / name).mkdir()
+        for name in ("ort-provenance.sha256", "ort-provenance-free-threaded.sha256"):
+            (prefix / name).write_text("")
+        return prefix
+
     def wheel(self, phase: str, *, member: str | None = None, duplicate: bool = False,
               content: bytes | None = None, linked: bool = False) -> Path:
         folder = self.prefix / ("wheels" if phase == "gil" else "wheels-free-threaded")

@@ -111,7 +111,7 @@ run_optional_flavor_pass() {
   local label="$1"
   shift
   info ">>> ${label}"
-  rm -rf "${BUILD_DIR}"
+  rm -rf "${BUILD_DIR}" || return $?
   if "$@" && assert_onnx_webgpu_static_plugin "${BUILD_DIR}/${WASM_CONFIG}" ON OFF; then
     return 0
   fi
@@ -124,14 +124,27 @@ run_optional_flavor_pass() {
 
 # Both flavors share the plugin ABI and reduced operators; only JSPI drops the common exception flag.
 run_webgpu_flavor_pass() {
-  local _wgp_label="$1" _wgp_flavor="$2"
+  local _wgp_label="$1" _wgp_flavor="$2" _wgp_status=0
   local -n _wgp_base_args="$3"
   shift 3
   if run_optional_flavor_pass "${_wgp_label}" \
       "${BUILD_SH}" "${_wgp_base_args[@]}" --enable_wasm_simd --enable_wasm_threads \
       --use_webgpu static_plugin --use_webnn "$@" --target onnxruntime_webassembly \
       "${REDUCED_SIZE_ARGS[@]}"; then
-    collect_wasm_artifacts "ort-wasm-simd-threaded.${_wgp_flavor}.*"
+    collect_wasm_artifacts "ort-wasm-simd-threaded.${_wgp_flavor}.*" || return $?
+    local revision proof_status=0
+    revision="$(git -C "${ORT_SRC_DIR}" rev-parse --verify HEAD)" || return $?
+    python3 "${SCRIPT_DIR}/lib/ort-webgpu-wasm-proof.py" record --prefix "${WASM_OUTPUT_DIR}" \
+      --source-ref "${ORT_VERSION}" --source-revision "${revision}" --config "${WASM_CONFIG}" \
+      --flavor "${_wgp_flavor}" --cmake-dir "${BUILD_DIR}/${WASM_CONFIG}" || proof_status=$?
+    if [ "${proof_status}" -ne 0 ]; then
+      if [ "${ORT_WEB_REQUIRED:-0}" = 1 ]; then return "${proof_status}"; fi
+      warn "${_wgp_label}: no valid compiled-product receipt; shared cache remains unaccepted"
+    fi
+  else
+    _wgp_status=$?
+    if [ "${ORT_WEB_REQUIRED:-0}" = 1 ]; then return "${_wgp_status}"; fi
+    warn "${_wgp_label} failed before its proof; no flavor receipt was published"
   fi
   return 0
 }
@@ -141,10 +154,16 @@ collect_wasm_artifacts() {
   shift
   local names=(-name "$pattern")
   for pattern in "$@"; do names+=(-o -name "$pattern"); done
-  find "${BUILD_DIR}/${WASM_CONFIG}" -type f '(' "${names[@]}" ')' -print0 | xargs -0 cp -t "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
+  local status=0
+  find "${BUILD_DIR}/${WASM_CONFIG}" -type f '(' "${names[@]}" ')' -print0 | xargs -0 cp -t "${WASM_OUTPUT_DIR}/" 2>/dev/null || status=$?
+  if [ "${status}" -ne 0 ] && [ "${ORT_WEB_REQUIRED:-0}" = 1 ]; then return "${status}"; fi
+  return 0
 }
 
 mkdir -p "${WASM_OUTPUT_DIR}"
+_wasm_revision="$(git -C "${ORT_SRC_DIR}" rev-parse --verify HEAD)"
+python3 "${SCRIPT_DIR}/lib/ort-webgpu-wasm-proof.py" reset --prefix "${WASM_OUTPUT_DIR}" \
+  --source-ref "${ORT_VERSION}" --source-revision "${_wasm_revision}" --config "${WASM_CONFIG}"
 rm -rf "${BUILD_DIR}" || true
 
 info ">>> Pass 1: SIMD + Threads"

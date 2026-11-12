@@ -15,6 +15,106 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-12 — admit bounded genuine MIGraphX parser builds
+
+- Genuine isolated Abseil/Protobuf build and install now pass with 975 installed files and original notices. The repeated build retains all installed bytes and reports 651 cache hits, zero misses and the expected negative C++20-probe cache error; this proves the parser component and compiler-cache replay, not normal GPU-image integration or final acceptance.
+- Add a parser component-build mode using the two original pinned archives, the ordinary offline image entrypoint and existing cache/ownership cleanup. A fresh exact-byte and canonical disk check must both meet the normal 180GiB floor before a source snapshot or unit is created; the launcher performs no reclaim.
+- Keep the one-hour build bound separate from preparation's five-minute bound. Admission and dispatch controls do not establish a successful vendor build or ordinary final image/consumer acceptance.
+
+## 2026-11-12 — preserve the complete MIGraphX dependency-stack entry
+
+- Add one recurring source-stack command with seven independently pinned archives, verified source-cache hits and the correct upstream release payloads. Preserve selected child arguments, required CK/rocMLIR API checks, SDK resolution, development prefixes and raw build failures.
+- Original archive-cache checks and explicit child/download doubles validate orchestration; actual large vendor builds, normal Dockerfile wiring, shipped-prefix precedence, complete binary licence review and final consumer/image acceptance remain open.
+
+## 2026-11-12 — bind MIGraphX Python and HIP to their selected prefixes
+
+- Replace Linux's fixed Python search through 3.14 with the pinned interpreter and its paired config, ABI suffix and header roots; require exact pybind11 and one matching installed extension. Retain both source patches in the source inventory and installed provenance.
+- Resolve the plugin's HIP package from the independent ROCm SDK, preferring its normal core over ASAN. Metadata/loader refusal controls remain separate from the actual small Python binding build and from full backend/GPU acceptance.
+
+## 2026-11-12 — preserve the complete MIGraphX source build entry
+
+- Build and install the prepared backend with retained compiler/cache/features, fresh output prefix, memory-capped jobs and unchanged source inputs. Raw build, install and staging failures remain fatal.
+- Bind installed files and native ELF identities, preserve selected hash-checked original dependency notices, and retain the original archive licence and applied patch with provenance. Lifecycle/native-fixture checks do not prove a genuine backend build, complete binary licence review or ordinary GPU/image acceptance.
+
+## 2026-11-12 — verify rocMLIR exports and host C API state
+
+- Require exact package/API versions, the supplied archive and original headers, dialect registration and the real high-level pipeline before a built package can pass. Check original notices and input bytes before and after the host probe.
+- Persist the recurring source-check launcher, resolve selected mutation IDs against current recipes and retain matching locked tools, bounded units and cleanup. Compiled API fixture controls do not prove genuine vendor linkage or GPU/image acceptance.
+
+## 2026-11-12 — prepare the complete rocMLIR package build
+
+- Preserve a reusable full-library builder with the selected preparation bindings, memory-capped parallelism, actual upstream target and generated package installation. The Ninja plan gate checks every planned C/C++ cache/compiler/toolchain binding and preserves raw metadata failures without compiling.
+- Require nonempty installed archive, exports and headers, inspect archive members and copy verified original notices before success. Explicit lifecycle doubles test failure and argument behavior; actual vendor compilation, external linkage, binary licence review and final acceptance remain open.
+
+## 2026-11-12 — preserve genuine rocmlirTriton source preparation
+
+- Pin the complete upstream source archive, configure its vendored LLVM/MLIR/LLD/Triton offline with the required fat static/PIC library and both LLVM targets, and preserve original source notices. Regression and mutation controls retain byte identity, failure status and configured cache facts; vendor-library builds, binary licence closure and final acceptance remain open.
+- Preserve the recurring offline source-quality worker and ownership cleanup in the repository.
+
+## 2026-11-12 — check the selected MIGraphX SDK development closure
+
+- Verify installed CK host exports through an external CMake/C++ API consumer and exact original header bytes; support readonly development prefixes in bounded SDK checks, with real compiler/transport negative controls.
+
+- Prepare the requirements-pinned MIGraphX CK host code generator with shared ROCm-CMake setup, C++20, static/PIC/CArrays embedding, original notices and bounded component transport; full backend and acceptance remain open.
+
+- Preserve an early CMake package-resolution check for HIP/HSA, selected GPU libraries, SQLite, pybind11, CK host and rocMLIR. The latter two retain their minimum versions; missing or incompatible packages fail with identities.
+- Isolate vendor package-config variables from the missing-package aggregate; a real CMake negative control exposed a false success before this correction. The actual SDK probe resolves nine packages and refuses missing CK host and rocMLIR.
+- Shared CLI validation, entry-scope imports and native work/compiler setup retain source scope, caller arguments and raw failures; common logic replaces the measured duplicate blocks without an allowance.
+- The bounded proof transport retains its default configure mode and adds SDK probing, with raw child failures unchanged. Real isolated CMake configuration controls do not establish binary ABI or inference; normal producer integration remains open.
+
+
+## 2026-11-12 — prepare pinned Linux MIGraphX parser dependencies
+
+- Preserve a reusable Abseil-then-Protobuf static/PIC builder, with the existing upstream pins, local-only source selection, canonical compiler-cache checks and original Abseil/Protobuf/utf8_range notices.
+- Source entries own their compiler/install/dependency prefix defaults and retain explicit overrides; the strict environment-knob gate now participates in source checks.
+- Share verified archive transport and absolute source-LLVM/GCC selection with backend preparation. Independent protocol controls cover argument boundaries, raw failures and missing notices; no vendor build or final backend acceptance is inferred.
+
+
+## 2026-11-12 — prepare the corrected Linux MIGraphX source backend
+
+- Add preserved source/configuration and isolated user-unit drivers. They verify both archives, apply the selective source patch and require the complete GPU feature selection; they do not build, install or accept an image.
+- Pin the MIT rocm-cmake revision required by MIGraphX and install its CMake API ahead of the older SDK copy. Force the image's source-built LLVM and reject compiler drift.
+- Cover source-pin shape, archive copy/hash/extraction, full feature and compiler/cache/HIP verdicts, plus unit ownership/deadlines and raw start failures with independent controls and mutation recipes. Actual configuration remains refused at missing Protobuf; no backend acceptance is granted.
+
+## 2026-11-12 — prepare the zero-pad/MaxPool correction
+
+- Preserve an independent negative-input fixture with a visible padded output and official ONNX reference expectation. The first unisolated fixture exposed an unsuitable CPU baseline and remains preserved; it is not a regression success.
+- Prepare a narrow upstream-source guard that keeps zero Pad explicit before MaxPool while retaining the other elimination paths. The real original and patched passes compile against the image SDK with one shared updated test object: the original fails the negative case, and the patched pass passes all six upstream tests. A cache-measured reusable probe retains this proof; source-policy mutations and producer wiring remain separate requirements. A selective preload of the compiled correction also restores the actual GPU boundary case and unchanged original-model score; this diagnostic does not grant ordinary package or final-image acceptance. Disabling the whole pass remains an explicit diagnostic control only.
+
+## 2026-11-12 — preserve paired native tensor replay
+
+- Replace repeated inline CPU/GPU loops with a reusable host transport that preserves command-prefix arguments and raw failures, strips inherited tuning overrides, requires one completed profile per device and checks every repeated run before tensor comparison. Explicit loader/library selection remains the caller's responsibility.
+- Protocol doubles and omission mutations cover sequencing, status, profile cardinality, new destinations and isolated probe arguments. They do not prove a native core, GPU execution or numerical acceptance; actual device evidence remains separate.
+
+## 2026-11-12 — prepare explicitly bounded intermediate-tensor diagnostics
+
+- Preserve an ONNX tensor inventory and output-exposure tool with exact original/diagnostic model hashes, strict shape inference and unchanged node/initializer bytes. It retains original outputs, refuses external payloads, nested graphs, local functions, sparse payloads and unusable float ranks, and writes only new evidence.
+- Keep schema-double regressions separate from actual ONNX parsing and CPU/GPU execution. Preparing or exposing a tensor can change fusion and never grants original-model or finished-package acceptance; model copies remain diagnostic artifacts.
+
+## 2026-11-12 — replay recorded tensors through an explicit native core
+
+- Preserve a native C-API replay of the saved float32 input, using the canonical plugin registry, two sequential runs, raw snapshots and per-run profiles. Successful execution remains diagnostic; ordinary photograph parity and finished-package acceptance stay mandatory.
+- Share SDK session lifetime with the existing tiny-model probe. Select the canonical GCC tree for Clang compilation/linking, retain measured cold/warm compiler-cache evidence and test exact little-endian transport, refusal paths and independent assertion controls.
+- Actual old and new core/plugin pairs produce byte-identical outputs under one fixed package/host runtime closure. Both retain the failing score delta above the unchanged tolerance; this does not identify an internal operator or replay the entire old image.
+
+## 2026-11-12 — bind WASM products before shared-cache reuse
+
+- Preserve a reusable detector-tensor diagnostic with exact repeated input validation, raw float/shape/file checks and all CPU/GPU output-pair summaries. Diagnostic success is explicitly separate from numerical, provider or package acceptance; actual model/consumer acceptance remains required.
+
+- Prepare separate Asyncify/JSPI receipts before their configured build trees change, binding the pinned source, typed plugin/thread/JSPI flags, actual build configuration and compiled WASM bytes.
+- Validate the shared pool's source, configuration, flavor selection, six direct recipe files and every payload hash. A marker alone or a partial/changed pool cannot be reused; copied payloads are checked and omit cache-internal markers.
+- Forward strict WASM policy through the canonical media stage, preserve required failures at the outer cache boundary and verify again after JS staging. The documented optional policy remains explicit. Synthetic controls do not prove compilation, factory registration, JS-loader correctness or inference; actual image acceptance remains open.
+- Isolate GPU graph fixtures from inherited image defaults; replay them with conflicting accelerator flags to preserve their CPU and refusal controls.
+
+## 2026-11-12 — replay all native and Python WebGPU media factories
+
+- Prepare a separate hash-bound NumPy pool for offline FT factory probes: original AMD64/ARM64 wheels and the original RISC-V source archive, with target ABI/ELF-header checks, original licenses, fresh import/GIL checks and verified cache reuse. Runtime builds and full image acceptance remain open.
+- Share strict unbuilt-prefix detection with runtime default discovery. Preserve explicit requests and failures for malformed or populated prefixes; an empty optional GPU tree needs no fabricated receipt.
+- Add a reusable media replay that selects GIL/FT wheels from completed delivery receipts, prepares separate environments with an explicit existing NumPy pin and invokes each canonical factory gate in its owning process.
+- Keep offline installation by default, explicit network opt-in for the pinned dependency, raw child failures and both streams after failures or timeouts. Refuse reused evidence roots and publish the overall receipt only after every requested native/GIL/FT phase succeeds.
+- Synthetic receipt and subprocess controls prove dispatch and failure accounting; actual image, both WASM flavors and final consumer acceptance require separate evidence.
+- The local default-amd64 media index `b6b654b62f92` passes the actual native/GIL/FT factory and negative controls, with the FT GIL disabled, raw zero and checked cleanup/container absence. This covers its CPU prefix, not other products, WASM or final runtime/consumer acceptance.
+
 ## 2026-11-11 — preserve skipped GPU prefixes during WebGPU wheel delivery
 
 - The actual default-amd64 media solve reached finalization, then refused an empty skipped GPU prefix because it had no build receipt. Preserve that failed solve and its unchanged source.

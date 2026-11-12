@@ -338,4 +338,8 @@ for broken in missing failed duplicate wrong; do
 done
 t_assert_contains "$(ft_store_probe_script)" '--phase free-threaded --source-ref "${WEBGPU_EXPECT_REF:?missing ORT source pin}"'
 t_assert_contains "$(ft_store_probe_script)" '"${work}/venv/bin/python" -I /opt/scripts/03-media/final/ort_webgpu_runtime.py'
+t_assert_contains "$(ft_store_probe_script)" '"${work}/venv/bin/python" -I /opt/scripts/packaging/free-threaded-probe-deps.py install'
+t_assert_contains "$(ft_store_probe_script)" 'FTS NOINSTALL the pinned offline probe dependencies do not install'
+t_assert_contains "$(cat "${SCRIPTS}/06-packaging/check-free-threaded-wheels.sh")" 'FT_PROBE_NUMPY_VERSION=$(_rt_versions_env_pin PY_NUMPY_VERSION)'
+t_assert_contains "$(cat "${SCRIPTS}/06-packaging/check-free-threaded-wheels.sh")" 'FT_PROBE_ARCH=${target_arch}'
 t_summary

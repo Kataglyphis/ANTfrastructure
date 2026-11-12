@@ -17,11 +17,14 @@ bash "${scripts}/03-media/build/onnxruntime/build/35-build-migraphx-plugin-ep.sh
   2>&1 | tee "${output_directory}/module-build-phase.log"
 export ORT_AMDGPU_EP_ROOT="${MGXEP_OUTPUT_DIR}"
 source "${core}/compiler-cache-utils.sh"
+source "${scripts}/01-core/cross-gcc.sh"
+gcc_root="$(gcc_toolchain_resolve_prefix)"
+toolchain=("--gcc-toolchain=${gcc_root}")
 launcher="$(compiler_cache_guarded_launcher "${core}")"
-"${launcher}" clang++ -std=c++17 -g -O0 -fsanitize=address -fno-omit-frame-pointer \
+"${launcher}" clang++ "${toolchain[@]}" -std=c++17 -g -O0 -fsanitize=address -fno-omit-frame-pointer \
   -I/usr/local/lib/onnxruntime-cpu/include -I"${hub}/shared/native" \
   -c "${hub}/shared/native/tests/ort_plugin_runtime_probe.cpp" -o "${output_directory}/probe.o"
-clang++ -fsanitize=address "${output_directory}/probe.o" -L/usr/local/lib/onnxruntime-cpu/lib \
+clang++ "${toolchain[@]}" -fsanitize=address "${output_directory}/probe.o" -L/usr/local/lib/onnxruntime-cpu/lib \
   -Wl,-rpath,/usr/local/lib/onnxruntime-cpu/lib -lonnxruntime -ldl -pthread -o "${output_directory}/probe"
 ASAN_OPTIONS=detect_leaks=1:alloc_dealloc_mismatch=1:new_delete_type_mismatch=1 \
   "${output_directory}/probe" "${model}" "${output_directory}" | tee "${output_directory}/sessions.tsv"

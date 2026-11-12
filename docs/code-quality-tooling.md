@@ -27,6 +27,17 @@ See [MSYS2's symlink modes](https://www.msys2.org/docs/symlinks/).
 
 ## Preserved local proof workflows
 
+Python module suites share `linux/scripts/tests/python-proof-fixture.sh` for module
+loading and unittest execution. The wrapper requires raw success, a positive executed
+test count and an exact successful summary; a zero-exit empty or failed suite is red.
+Fixture-path environment state survives both passing and failing callbacks unchanged.
+The WASM pass/cache entry points share allocation and companion staging; cache-specific
+cases live in `onnx_web_cache_cases.sh`, and their expected flags come from the independent
+`wasm_proof_fixture.py`. Copies of those suites must carry their shared companions.
+These controls validate test transport, not the production gate's own assertions.
+GPU graph fixtures clear inherited accelerator/package defaults before their explicit
+CPU and conflict cases; a poisoned-image environment replay guards that isolation.
+
 `probe-rust-child-under-dart.sh NEW_OUTPUT` compiles a Rust FFI fixture with the canonical
 native supervisor and runs it in a real Dart VM with an active child. Default mode requires
 all64 worker statuses, observed external supervisor reaping and correct raw failure, signal,
@@ -1193,7 +1204,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5055 entries** over **645 distinct test commands**; both digits are
+manifest holds **5559 entries** over **758 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -3317,7 +3328,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 1070 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1086 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

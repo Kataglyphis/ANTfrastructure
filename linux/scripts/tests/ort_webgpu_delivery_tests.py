@@ -62,13 +62,7 @@ class DeliveryTests(unittest.TestCase):
                               capture_output=True, text=True, check=False, timeout=30)
 
     def unbuilt_prefix(self) -> Path:
-        prefix = self.root / "skipped GPU prefix"
-        prefix.mkdir()
-        for name in ("lib", "bin", "wheels", "wheels-free-threaded"):
-            (prefix / name).mkdir()
-        for name in proof.PHASES:
-            (prefix / name).write_text("")
-        return prefix
+        return self.built.unbuilt_prefix()
 
     def test_skipped_gpu_prefix_has_no_delivery_to_attest(self) -> None:
         prefix = self.unbuilt_prefix()

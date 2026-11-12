@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import importlib.machinery
 import importlib.util
+import io
 import json
 import subprocess
 import sys
@@ -85,6 +86,56 @@ class RuntimeTests(unittest.TestCase):
 
     def prove(self, phase: str = "gil", prefixes: list[Path] | None = None) -> dict:
         return runtime.prove(prefixes if prefixes is not None else [self.prefix], phase, "v1.31.1")
+
+    def test_default_discovery_omits_only_unbuilt_prefixes_and_keeps_explicit_requests(self) -> None:
+        unbuilt = self.built.unbuilt_prefix()
+        with patch.object(runtime, "DEFAULT_PREFIXES", (self.prefix, unbuilt, self.root / "absent")):
+            self.assertEqual(runtime.selected_prefixes(None), [self.prefix])
+            self.assertEqual(runtime.selected_prefixes([unbuilt]), [unbuilt])
+            self.assertEqual(runtime.selected_prefixes([]), [])
+        with self.assertRaises(OSError):
+            self.prove(prefixes=runtime.selected_prefixes([unbuilt]))
+        self.binding.unregister_execution_provider_library.assert_not_called()
+
+    def test_default_payload_and_damaged_receipt_cannot_be_silently_skipped(self) -> None:
+        unbuilt = self.built.unbuilt_prefix()
+        for relative, content in (("lib/unlisted.so", b"payload"), (fixture.RECEIPT, b"{}"),
+                                  ("unknown", b""), ("lib/ort-provenance.sha256", b"")):
+            with self.subTest(relative=relative):
+                path = unbuilt / relative
+                path.write_bytes(content)
+                with patch.object(runtime, "DEFAULT_PREFIXES", (self.prefix, unbuilt)):
+                    selected = runtime.selected_prefixes(None)
+                self.assertEqual(selected, [self.prefix, unbuilt])
+                with self.assertRaises((OSError, ValueError)):
+                    self.prove(prefixes=selected)
+                path.unlink()
+        self.binding.unregister_execution_provider_library.assert_not_called()
+
+    def test_default_broken_links_and_nondirectories_remain_failed_inputs(self) -> None:
+        broken, regular = self.root / "broken prefix", self.root / "regular prefix"
+        broken.symlink_to(self.root / "absent", target_is_directory=True)
+        regular.write_bytes(b"invalid prefix")
+        for prefix in (broken, regular):
+            with (self.subTest(prefix=prefix), patch.object(runtime, "DEFAULT_PREFIXES", (self.prefix, prefix))):
+                selected = runtime.selected_prefixes(None)
+                self.assertEqual(selected, [self.prefix, prefix])
+                with self.assertRaises(OSError):
+                    self.prove(prefixes=selected)
+        self.binding.unregister_execution_provider_library.assert_not_called()
+
+    def test_cli_discovers_defaults_and_refuses_an_empty_default_set(self) -> None:
+        unbuilt = self.built.unbuilt_prefix()
+        argv = [str(SUBJECT), "--phase", "gil", "--source-ref", "v1.31.1"]
+        with (patch.object(runtime.sys, "argv", argv), patch.object(runtime.sys, "stdout", io.StringIO()),
+              patch.object(runtime, "DEFAULT_PREFIXES", (self.prefix, unbuilt)),
+              patch.object(runtime, "prove", return_value={}) as proof):
+            self.assertEqual(runtime.main(), 0)
+        proof.assert_called_once_with([self.prefix], "gil", "v1.31.1")
+        with (patch.object(runtime.sys, "argv", argv), patch.object(runtime.sys, "stderr", io.StringIO()) as error,
+              patch.object(runtime, "DEFAULT_PREFIXES", (unbuilt, self.root / "absent"))):
+            self.assertEqual(runtime.main(), 1)
+        self.assertIn("distinct owning ORT prefix", error.getvalue())
 
     def test_enabled_factory_requires_first_success_and_precise_repeat_failure(self) -> None:
         result = self.prove()

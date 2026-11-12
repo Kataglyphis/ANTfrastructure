@@ -5,12 +5,20 @@ set -u
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/script-stage-fixture.sh"
 t_private_tmpdir
 declare work STEP
-script_stage_fixture_init work STEP 40-build-wasm.sh "${1:-}" lib bin 'source tree' || exit 1
+fixture_stage=40-build-wasm.sh
+if [ "${1:-}" = --cache ]; then fixture_stage=web-wasm-cache.sh; shift; fi
+script_stage_fixture_init work STEP "${fixture_stage}" "${1:-}" lib bin 'source tree' || exit 1
 cp "${STEP}" "${work}/step.sh"
 cp "${TESTS_DIR}/../01-core/logging.sh" "${work}/lib/logging.sh"
+cp "${STEP%/*}/lib/ort-webgpu-wasm-proof.py" "${STEP%/*}/lib/ort-webgpu-build-proof.py" "${work}/lib/"
+if [ "${fixture_stage}" = web-wasm-cache.sh ]; then
+  source "${TESTS_DIR}/onnx_web_cache_cases.sh"
+  exit $?
+fi
 cat > "${work}/lib/common.sh" <<'STUB'
 parse_common_args() { :; }
 detect_jobs() { JOBS=3; }
+git() { printf '%040d\n' 1; }
 sccache_s3_fetch() { printf 'fetch:%s\n' "$1" >> "$FIXTURE_ROOT/events"; [ "${FIXTURE_S3_ARCHIVE:-}" != "" ] || return 2; cp "$FIXTURE_S3_ARCHIVE" "$2"; }
 sccache_s3_store() { printf 'store:%s\n' "$1" >> "$FIXTURE_ROOT/events"; cp "$2" "$FIXTURE_ROOT/stored.tgz"; }
 source "$(dirname "${BASH_SOURCE[0]}")/logging.sh"
@@ -33,7 +41,9 @@ printf '<%s>' "$@" > "$FIXTURE_ROOT/args.$pass"
 [ "$FIXTURE_FAIL_PASS" != "$pass" ] || exit 9
 mkdir -p "$BUILD_DIR/$WASM_CONFIG/nested space"
 if [ "$pass" = asyncify ] || [ "$pass" = jspi ]; then
-  printf 'onnxruntime_USE_WEBGPU:BOOL=ON\nonnxruntime_USE_EP_API_ADAPTERS:BOOL=ON\nonnxruntime_WEBGPU_STATIC_PLUGIN:BOOL=ON\nonnxruntime_USE_EXTERNAL_DAWN:BOOL=OFF\n' > "$BUILD_DIR/$WASM_CONFIG/CMakeCache.txt"
+  fixture_options=()
+  [ "$FIXTURE_ARTIFACTS" != none ] || fixture_options+=(--config-only)
+  python3 "$FIXTURE_WASM_PROOF" --cmake-dir "$BUILD_DIR/$WASM_CONFIG" --prefix "$BUILD_DIR/$WASM_CONFIG" --flavor "$pass" --config "$WASM_CONFIG" "${fixture_options[@]}"
   if [ "${FIXTURE_BAD_PLUGIN_PASS:-}" = "$pass" ]; then
     sed -i 's/onnxruntime_USE_EP_API_ADAPTERS:BOOL=ON/onnxruntime_USE_EP_API_ADAPTERS:BOOL=OFF/' "$BUILD_DIR/$WASM_CONFIG/CMakeCache.txt"
   fi
@@ -41,9 +51,9 @@ fi
 [ "$FIXTURE_ARTIFACTS" != none ] || exit 0
 stem=ort-wasm-simd-threaded
 case "$pass" in
-  simd) touch "$BUILD_DIR/$WASM_CONFIG/$stem.wasm" ;;
-  jsep) touch "$BUILD_DIR/$WASM_CONFIG/$stem.jsep.wasm" "$BUILD_DIR/$WASM_CONFIG/$stem.webnn.mjs" "$BUILD_DIR/$WASM_CONFIG/nested space/$stem.jsep.extra file" ;;
-  *) touch "$BUILD_DIR/$WASM_CONFIG/$stem.$pass.wasm" "$BUILD_DIR/$WASM_CONFIG/$stem.$pass.mjs" ;;
+  simd) printf '\0asm\1\0\0\0' > "$BUILD_DIR/$WASM_CONFIG/$stem.wasm" ;;
+  jsep) printf '\0asm\1\0\0\0' > "$BUILD_DIR/$WASM_CONFIG/$stem.jsep.wasm"; touch "$BUILD_DIR/$WASM_CONFIG/$stem.webnn.mjs" "$BUILD_DIR/$WASM_CONFIG/nested space/$stem.jsep.extra file" ;;
+  *) : ;;
 esac
 touch "$BUILD_DIR/$WASM_CONFIG/unrelated.wasm"
 mkdir -p "$BUILD_DIR/$WASM_CONFIG/$stem.directory.wasm"
@@ -54,16 +64,29 @@ printf 'copy\n' >> "$FIXTURE_ROOT/events"
 [ "$FIXTURE_COPY_FAIL" != 1 ] || exit 7
 exec "$FIXTURE_REAL_CP" "$@"
 STUB
+cat > "${work}/bin/rm" <<'STUB'
+#!/usr/bin/env bash
+if [ "${!#}" = "$BUILD_DIR" ]; then
+  count="$(cat "$FIXTURE_ROOT/reset-count")"
+  count=$((count+1))
+  printf '%s\n' "$count" > "$FIXTURE_ROOT/reset-count"
+  [ "$count" != "$FIXTURE_RESET_FAIL_AT" ] || exit 7
+fi
+exec "$FIXTURE_REAL_RM" "$@"
+STUB
 printf '#!/usr/bin/env bash\nexit 0\n' > "${work}/bin/ccache"
-chmod +x "${work}/source tree/build.sh" "${work}/bin/cp" "${work}/bin/ccache"
+chmod +x "${work}/source tree/build.sh" "${work}/bin/cp" "${work}/bin/rm" "${work}/bin/ccache"
 _wasm_case() {
   local failure="$1" flavors="$2" required="$3" copy_failure="$4" artifacts="${5:-present}"
   rm -rf "${work}/build tree" "${work}/output" "${work}/ccache"
   mkdir -p "${work}/ccache"
   : > "${work}/events"
+  printf '0\n' > "${work}/reset-count"
   status=0
   output="$(env PATH="${work}/bin:${PATH}" FIXTURE_ROOT="${work}" FIXTURE_REAL_CP="$(command -v cp)" \
     FIXTURE_FAIL_PASS="$failure" FIXTURE_COPY_FAIL="$copy_failure" FIXTURE_ARTIFACTS="$artifacts" \
+    FIXTURE_RESET_FAIL_AT="${FIXTURE_RESET_FAIL_AT:-0}" FIXTURE_REAL_RM="$(command -v rm)" \
+    FIXTURE_WASM_PROOF="${TESTS_DIR}/wasm_proof_fixture.py" \
     CCACHE_DIR="${work}/ccache" ORT_VERSION=v1.31.0 FIXTURE_S3_ARCHIVE="${FIXTURE_S3_ARCHIVE:-}" FIXTURE_CCACHE_WRITES="${FIXTURE_CCACHE_WRITES:-0}" \
     ORT_SRC_DIR="${work}/source tree" BUILD_DIR="${work}/build tree" WASM_CONFIG=Release WASM_OUTPUT_DIR="${work}/output" \
     CMAKE_POLICY_VERSION_MINIMUM=3.5 ORT_WASM_WEBGPU_FLAVORS="$flavors" ORT_WEB_REQUIRED="$required" \
@@ -87,7 +110,7 @@ t_assert_eq "${common}${simd}" "$(cat "${work}/args.simd")"
 t_assert_eq "${common}${simd}<--use_jsep><--use_webnn>" "$(cat "${work}/args.jsep")"
 t_assert_eq "${common}${simd}<--use_webgpu><static_plugin><--use_webnn><--target><onnxruntime_webassembly>${reduced}" "$(cat "${work}/args.asyncify")"
 t_assert_eq "${common/<--disable_wasm_exception_catching>/}${simd}<--use_webgpu><static_plugin><--use_webnn><--enable_wasm_jspi><--target><onnxruntime_webassembly>${reduced}" "$(cat "${work}/args.jspi")"
-t_assert_eq $'ort-wasm-simd-threaded.asyncify.mjs\nort-wasm-simd-threaded.asyncify.wasm\nort-wasm-simd-threaded.jsep.extra file\nort-wasm-simd-threaded.jsep.wasm\nort-wasm-simd-threaded.jspi.mjs\nort-wasm-simd-threaded.jspi.wasm\nort-wasm-simd-threaded.wasm\nort-wasm-simd-threaded.webnn.mjs' "$(find "${work}/output" -type f -printf '%f\n' | LC_ALL=C sort)"
+t_assert_eq $'ort-wasm-simd-threaded.asyncify.mjs\nort-wasm-simd-threaded.asyncify.wasm\nort-wasm-simd-threaded.jsep.extra file\nort-wasm-simd-threaded.jsep.wasm\nort-wasm-simd-threaded.jspi.mjs\nort-wasm-simd-threaded.jspi.wasm\nort-wasm-simd-threaded.wasm\nort-wasm-simd-threaded.webnn.mjs\nort-webgpu-wasm.json' "$(find "${work}/output" -type f -printf '%f\n' | LC_ALL=C sort)"
 t_case "the wasm ccache dir rides S3 as one archive per ORT version: restored when empty, stored when it grew"
 _wasm_case '' false 0 0; FIXTURE_CCACHE_WRITES=1 _wasm_case '' false 0 0
 t_assert_eq 0 "${status}" "${output}"
@@ -150,5 +173,19 @@ for pass in asyncify jspi; do
   t_assert_fails test -f "${work}/output/ort-wasm-simd-threaded.${pass}.wasm"
 done
 t_case "the shared WASM cache cannot reuse the old in-tree WebGPU binaries"
-t_assert_contains "$(cat "${TESTS_DIR}/../../Dockerfile.media")" 'id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-wgpu3,sharing=locked'
+t_case "required collection rejects missing products and failed copies before later passes"
+for policy in copy-fails no-artifacts; do
+  copy_failure=0; artifacts=present
+  [ "${policy}" != copy-fails ] || copy_failure=1
+  [ "${policy}" != no-artifacts ] || artifacts=none
+  _wasm_case '' true 1 "${copy_failure}" "${artifacts}"
+  t_assert_eq 123 "${status}" "${output}"
+  t_assert_eq build:simd "$(grep '^build:' "${work}/events")"
+done
+t_case "required flavor reset fails before a stale build tree can reach the builder"
+FIXTURE_RESET_FAIL_AT=4 _wasm_case '' true 1 0
+t_assert_eq 7 "${status}" "${output}"
+t_assert_eq $'build:simd\nbuild:jsep' "$(grep '^build:' "${work}/events")"
+t_case "the shared WASM cache cannot reuse the old in-tree WebGPU binaries"
+t_assert_contains "$(cat "${TESTS_DIR}/../../Dockerfile.media")" 'id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-${ORT_WASM_WEBGPU_FLAVORS}-wgpu3,sharing=locked'
 t_summary

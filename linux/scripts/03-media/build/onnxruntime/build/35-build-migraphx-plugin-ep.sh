@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=plugin-ep-exports.sh
 source "${SCRIPT_DIR}/plugin-ep-exports.sh"
 
-# The ROCm root the in-tree EP build used to default; the plugin's MIGraphX and HIP CMake packages are found below it.
+# Source-built MIGraphX can live outside the HIP SDK selected by ROCM_HOME.
 MIGRAPHX_HOME="${MIGRAPHX_HOME:-/opt/rocm}"
 MGXEP_OUTPUT_DIR="${MGXEP_OUTPUT_DIR:-/usr/local/lib/onnxruntime-ep-amdgpu}"
 # The rocm image's only ORT: its GPU EP is this plugin, so there is no ORT GPU build to link against.
@@ -284,15 +284,21 @@ mgxep_compile() {
   mgx="$(find "${MIGRAPHX_HOME}" -maxdepth 5 -path '*/lib/cmake/migraphx' -type d 2>/dev/null | sort | tail -n 1 || true)"
   [ -f "${mgx}/migraphx-config.cmake" ] || err "no migraphx-config.cmake under ${MIGRAPHX_HOME}"
   mgx="${mgx%/lib/cmake/migraphx}"
-  rocm="$(find "${MIGRAPHX_HOME}" -maxdepth 5 -path '*/lib/cmake/hip' -type d 2>/dev/null | sort | tail -n 1 || true)"
-  rocm="${rocm%/lib/cmake/hip}"
+  rocm="${ROCM_HOME:-/opt/rocm}"
+  if [ -f "${rocm}/core/lib/cmake/hip/hip-config.cmake" ]; then
+    rocm+="/core"
+  elif [ ! -f "${rocm}/lib/cmake/hip/hip-config.cmake" ]; then
+    rocm="$(find "${rocm}" -maxdepth 5 -path '*/lib/cmake/hip' -type d 2>/dev/null | sort | tail -n 1 || true)"
+    [ -f "${rocm}/hip-config.cmake" ] || { err "no hip-config.cmake under ${ROCM_HOME:-/opt/rocm}"; return; }
+    rocm="${rocm%/lib/cmake/hip}"
+  fi
   ort_prefix="$(mgxep_ort_prefix "${MGXEP_ORT_DIR}" "${work}/ort")"
   setup_host_python_environment; python="${HOST_PYTHON_BIN}"
   # shellcheck disable=SC2034  # read through the nameref in plugin_ep_configure_and_build
   local -a cmake_args=(
     -S "${MGXEP_SRC}" -B "${work}/build" -G Ninja -DCMAKE_BUILD_TYPE=Release
     -DUSE_MIGRAPHX=ON -DUSE_AMDGPU=OFF -DUSE_DML=OFF -DUSE_HIP=OFF
-    "-DCMAKE_PREFIX_PATH=${mgx};${rocm:-/opt/rocm}" "-Donnxruntime_DIR=${ort_prefix}/lib/cmake/onnxruntime"
+    "-DCMAKE_PREFIX_PATH=${mgx};${rocm}" "-Donnxruntime_DIR=${ort_prefix}/lib/cmake/onnxruntime"
     "-DPython3_EXECUTABLE=${python}" "-DPython_EXECUTABLE=${python}"
     -Dprotobuf_FORCE_FETCH_DEPENDENCIES=ON -Dprotobuf_WITH_ZLIB=OFF
     -DFETCHCONTENT_FULLY_DISCONNECTED=ON -DCMAKE_POLICY_DEFAULT_CMP0170=NEW -DCMAKE_POLICY_VERSION_MINIMUM=3.5

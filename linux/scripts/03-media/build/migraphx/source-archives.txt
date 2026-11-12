@@ -1,0 +1,7 @@
+migraphx|MIGRAPHX_WINDOWS_COMMIT|MIGRAPHX_WINDOWS_SOURCE_SHA256|https://github.com/ROCm/AMDMIGraphX/archive/{0}.tar.gz
+rocm-cmake|MIGRAPHX_ROCM_CMAKE_COMMIT|MIGRAPHX_ROCM_CMAKE_SOURCE_SHA256|https://github.com/ROCm/rocm-cmake/archive/{0}.tar.gz
+msgpack|MIGRAPHX_WINDOWS_MSGPACK_VERSION|MIGRAPHX_WINDOWS_MSGPACK_SHA256|https://github.com/msgpack/msgpack-c/releases/download/cpp-{0}/msgpack-{0}.tar.gz
+abseil|MIGRAPHX_WINDOWS_ABSEIL_VERSION|MIGRAPHX_WINDOWS_ABSEIL_SHA256|https://github.com/abseil/abseil-cpp/archive/refs/tags/{0}.tar.gz
+protobuf|MIGRAPHX_WINDOWS_PROTOBUF_VERSION|MIGRAPHX_WINDOWS_PROTOBUF_SHA256|https://github.com/protocolbuffers/protobuf/releases/download/v{0}/protobuf-{0}.tar.gz
+ck|MIGRAPHX_CK_COMMIT|MIGRAPHX_CK_SOURCE_SHA256|https://codeload.github.com/ROCm/composable_kernel/tar.gz/{0}
+rocmlir|MIGRAPHX_ROCMLIR_COMMIT|MIGRAPHX_ROCMLIR_SOURCE_SHA256|https://codeload.github.com/ROCm/rocmlirTriton/tar.gz/{0}

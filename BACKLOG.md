@@ -1067,6 +1067,52 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       or an image-acceptance receipt. Those checks and default-tip integration remain open.
       The complete older `eb3ca33d` source replay also remains red: 4844 of 5020 mutations bite,
       176 unmutated baselines and 11 script suites fail; focused follow-ups do not replace a full replay.
+      **Tensor diagnosis 2026-11-12:** the prepared Rust CLI records each actual model input and
+      first output before detection postprocessing. On the RX9070XT all four CPU/MIGraphX inputs
+      are byte-identical (`1x3x640x640`, SHA256 `a7a7689f3ab4bd52ef0169387a3ac97a8d757d9bda9d252f149c490724ffacad`);
+      both providers repeat their raw output bytes, and each GPU run has a MIGraphX operator.
+      CPU/GPU output already differs before postprocessing, and the unchanged strict detector
+      comparator stays red. The reusable tensor summary validates evidence/input identity and
+      grants no numerical or provider acceptance. This diagnostic replaces only the executable
+      in a preserved package closure; internal operator cause, finished-package and full consumer
+      acceptance remain open. Direct array errors include row reordering and are not box displacement.
+      Direct native C-API replay now consumes that saved input without Rust or detector postprocessing.
+      Old and new explicit core/plugin pairs produce identical CPU outputs and identical GPU outputs
+      under the same new-package loader/library closure and host ROCm. Each pair completes two runs
+      per provider with per-run operators; class-15 score delta remains `0.06410074234008789`, above
+      the unchanged `0.05`. This does not replay an entire old image, identify an internal operator
+      or grant parity. The preserved native builder shares SDK lifetime/cache/toolchain helpers;
+      SDK-free transport tests and tiny-model controls do not replace actual finished consumers.
+      Intermediate-tensor preparation now inventories the original model and can expose one known
+      float output in a separately hashed diagnostic copy, retaining original outputs and exact node
+      and initializer bytes. Schema-double tests do not prove ONNX parsing or inference. Exposed
+      outputs can alter fusion; actual intermediate probes do not replace original-model parity,
+      and an internal operator cause remains unproved.
+      A reusable host tensor-pair driver now replaces inline CPU/GPU/profile/summary loops,
+      retaining explicit loader arguments, raw failures and per-run profiles. Protocol fixtures
+      prove transport only; they do not establish numerical or finished-consumer acceptance.
+      **Padding diagnosis:** an independent negative-input zero-Pad/MaxPool case with the Pad also
+      exposed gives correct CPU values but incorrect default MIGraphX border values; disabling only
+      eliminate_pad restores the GPU result. The same explicit diagnostic control restores the
+      original model's failing raw confidence near the CPU value, with operators in both GPU runs.
+      The narrow MaxPool guard compiles against the real SDK: the original numerical case fails,
+      and all six patched upstream tests pass. Selectively loading that compiled source on the
+      actual GPU restores the tiny result and the unchanged original model's failing raw score
+      (delta 0.00003954768180847168), with repeated bytes and per-run operators. This explicit
+      preload is a diagnosis, not the shipped backend. Linux installs MIGraphX from AMD apt;
+      producer wiring, ordinary package defaults and all finished-consumer/image receipts remain open.
+      Full source-backend preparation now verifies the upstream-required rocm-cmake pin,
+      selects the source-built LLVM explicitly and keeps every GPU feature enabled.
+      An early SDK development-package check now preserves CK host/rocMLIR version requirements
+      and fails on missing selected package metadata; this is not binary ABI or inference proof.
+      Its normal producer wiring and real full backend compilation remain open.
+      A preserved Linux parser-dependency builder now plans pinned static/PIC Abseil then Protobuf,
+      with source/compiler/cache and original-notice controls. Its real vendor compilation remains
+      unperformed below the media admission floor; backend configuration/normal producer wiring
+      and all ordinary finished-consumer/final-image receipts remain open.
+      Actual preparation now installs the required CMake tools and msgpack exports,
+      selects source LLVM and HIP, then refuses missing Protobuf development files.
+      No full backend configuration, backend installation or image acceptance has passed.
       **Step 3 (in source 2026-11-08, owner: "sofort komplett, inklusive Entfernen"):**
       `30-build-native-amd.sh`, `--use_migraphx`, the `onnxruntime-migraphx` wheel and the two MIGraphX patches are
       gone; the rocm variant has no ORT GPU build, the plugin builds over the CPU prefix, the wrapper's app venv
@@ -1108,6 +1154,18 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       smoke file contract; [windows-cross-builds.md](docs/windows-cross-builds.md#the-qnn-plugin-ep)). Proven when a
       Windows chain builds it and `:winarm64` republishes; a Snapdragon run of a registered session is still open.
 - [ ] **CON233 — move every EP with a plugin to it, CUDA and TensorRT included** [L, ★★].
+  - Genuine isolated Linux Abseil/Protobuf builds now pass: 975 installed files, 94 static archives and original Abseil/Protobuf/utf8_range notices. The repeat has 651 compiler-cache hits, zero misses and one classified negative C++20 feature-probe cache error; every installed byte matches the first run. External target/API checks, rocMLIR/full-backend builds and ordinary image/consumer acceptance remain open.
+  - Actual parser component builds have a bounded launcher mode with two readonly original archives, the canonical disk probe and an exact 180GiB byte floor before freezing. Transport/negative controls do not prove a successful vendor build, ordinary Docker/runtime integration or finished consumer/image acceptance.
+  - One preserved source-stack entry now resolves all seven pinned archives, rechecks cache hits and orders parsers, CK/API, rocMLIR, SDK and the full backend. The real retained archive cache has seven verified hits without fetching; actual vendor builds, Dockerfile/runtime-prefix wiring and ordinary finished-consumer/final-image acceptance remain required.
+  - CK host source builder now follows the exact MIGraphX requirements pin and codegen project, with original notice and shared ROCm-CMake/cache transport; actual CK/rocmlirTriton/full-backend integration and ordinary final-image/consumer proofs remain required.
+  - A full rocMLIR package builder and metadata-only cache-plan gate are prepared: actual graph has 3071 C/C++ actions through the selected launcher, four separate assembly actions and 274 fat-library archives. No vendor compilation has run; SDK/API linkage, binary licence review and ordinary final acceptance remain open.
+  - An external rocMLIR CMake/C-API probe now requires exact version/API, selected original headers, dialect and pipeline state, stable inputs and notices. Compiled original-declaration fixtures validate its gates; real vendor build/linkage and normal final acceptance remain open.
+  - The complete MIGraphX source-build entry now retains all feature/compiler bindings through build/install and checks the install manifest, native ELF identities, selected original notice hashes and archive/patch provenance. Actual backend compilation, complete binary licence review, production precedence/wiring and ordinary finished-consumer/final-image acceptance remain open.
+  - Linux Python discovery now selects the pinned interpreter/config/headers and extension ABI rather than stopping at 3.14; the plugin resolves HIP independently of the source prefix. Original-selection refusal and a real tiny 3.15.2 binding are proved separately; full backend, production wiring and ordinary GPU/image acceptance remain open.
+  - Genuine rocmlirTriton source is pinned and configured offline with vendored LLVM/MLIR/LLD/Triton; 44 original source texts are preserved. Vendor builds, selected-target binary licence review, normal source-backend integration and final consumer/image acceptance remain open.
+  - An external CK CMake target now links and its real GetHeaders API returns the exact selected original header. Normal SDK integration, rocmlirTriton/full backend and ordinary finished-consumer/final-image evidence remain open.
+
+
       **Owner decision 2026-11-08, superseding the triggers below:** every EP that has a plugin moves, at its newest
       version, and the in-tree paths go. Second decision the same day ("sofort komplett, inklusive Entfernen", both
       lanes): no consumer-first order; the removals land now and consumers lose their GPU EP until they register.
@@ -1133,7 +1191,19 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       configured target compiler and shared cache helpers; its runtime phase checks each core directly,
       rejects legacy WebGPU and retains registration/negative/cleanup controls. Fixtures use stub Python
       bindings and a fake C ABI; actual native/Python factory registration in the image matrix and image
-      delivery remain open. Both enabled WASM flavors need real artifact proof. Before that
+      delivery remain open. A prepared reusable media replay selects collected wheels through completed
+      receipts, keeps isolated native/GIL/FT processes and retained raw logs, and refuses incomplete verdicts;
+      its synthetic controls are separate from actual image execution. The 2026-11-12 local default-amd64
+      media replay (index `b6b654b62f92`) passes native/GIL/FT factory and precise negative controls,
+      including disabled-GIL checks; other products and final consumer acceptance remain open.
+      An actual FT-store replay exposed a missing NumPy dependency and default discovery selecting an
+      unbuilt GPU tree. Runtime discovery now shares the strict delivery predicate; FT dependency
+      provisioning now has a prepared separate pinned offline NumPy pool; source-build/target execution
+      and full final-image replay remain open, with both failed controls preserved.
+      WASM source now prepares per-flavor configured/product receipts, checked shared-cache source/configuration,
+      direct-recipe and full-payload identities, and strict failure propagation through ORT_WEB_REQUIRED=1.
+      Both enabled WASM flavors still need actual source-to-artifact proof and runtime registration; the four
+      local media builds predate these receipts and do not complete that evidence. Before that
       media rebuild, preserve the
       OpenCV FindCUDA cache repair: its bounded SBSA replay records twelve forced-repeat hits and no misses;
       the complete stage, non-x86 Torch wrapper policy and consumer Rust cache wiring remain follow-ups

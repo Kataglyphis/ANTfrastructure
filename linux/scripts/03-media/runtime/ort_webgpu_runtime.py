@@ -171,14 +171,21 @@ def prove_native(prefixes: list[Path], source_ref: str) -> dict:
     return {"phase": "native", "cores": [native_core(prefix, source_ref) for prefix in prefixes]}
 
 
+def selected_prefixes(requested: list[Path] | None) -> list[Path]:
+    """Default discovery omits only absent or canonically unbuilt optional prefixes."""
+    if requested is not None:
+        return requested
+    return [p for p in DEFAULT_PREFIXES if (p.exists() or p.is_symlink()) and not delivery.unbuilt_prefix(p)]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prefix", action="append", type=Path)
     parser.add_argument("--phase", choices=("native", "gil", "free-threaded"), required=True)
     parser.add_argument("--source-ref", required=True)
     args = parser.parse_args()
-    prefixes = args.prefix if args.prefix is not None else [p for p in DEFAULT_PREFIXES if p.is_dir()]
     try:
+        prefixes = selected_prefixes(args.prefix)
         if not args.source_ref:
             raise ValueError("the expected ORT source ref is required")
         result = (prove_native(prefixes, args.source_ref) if args.phase == "native"

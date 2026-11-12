@@ -1,6 +1,5 @@
 // This bounded SDK probe exercises real registration and inference, not a finished consumer package.
-#include "ort_plugin_eps.hpp"
-#include <onnxruntime_c_api.h>
+#include "ort_probe_session.hpp"
 
 #include <array>
 #include <filesystem>
@@ -11,15 +10,9 @@
 
 namespace plugins = antfrastructure::ort_plugins;
 
-template<typename T> using Owned = std::unique_ptr<T, void(ORT_API_CALL *)(T *)>;
-
-void checked(const OrtApi &api, OrtStatus *status)
-{
-    if (status == nullptr) { return; }
-    const std::string reason = api.GetErrorMessage(status);
-    api.ReleaseStatus(status);
-    throw std::runtime_error(reason);
-}
+using antfrastructure::ort_probes::Owned;
+using antfrastructure::ort_probes::checked;
+namespace probes = antfrastructure::ort_probes;
 
 void session_probe(const OrtApi &api,
   OrtEnv *env,
@@ -28,39 +21,12 @@ void session_probe(const OrtApi &api,
   const std::filesystem::path &prefix,
   bool gpu)
 {
-    OrtSessionOptions *raw_options = nullptr;
-    checked(api, api.CreateSessionOptions(&raw_options));
-    const Owned<OrtSessionOptions> options(raw_options, api.ReleaseSessionOptions);
-    checked(api, api.EnableProfiling(options.get(), prefix.c_str()));
-    checked(api, api.SetIntraOpNumThreads(options.get(), 2));
-    if (gpu) {
-        std::string reason;
-        const plugins::PluginRegistry<OrtApi>::ProviderOptions values{ { "device_id", "0" } };
-        if (!registry.append_provider(options.get(), plugins::migraphx, 0, {}, values, reason)) {
-            throw std::runtime_error(reason);
-        }
-    } else if (!registry.registered_libraries().empty()) {
-        throw std::runtime_error("CPU probe registered a plugin");
-    }
-    OrtSession *raw_session = nullptr;
-    checked(api, api.CreateSession(env, model.c_str(), options.get(), &raw_session));
-    const Owned<OrtSession> session(raw_session, api.ReleaseSession);
-    OrtMemoryInfo *raw_memory = nullptr;
-    checked(api, api.CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &raw_memory));
-    const Owned<OrtMemoryInfo> memory(raw_memory, api.ReleaseMemoryInfo);
+    const auto options = probes::options(api, registry, prefix, gpu, 2);
+    const auto session = probes::session(api, env, model, options.get());
     std::array<float, 1> input{ -1.0F };
     const std::array<int64_t, 1> dimensions{ 1 };
-    OrtValue *raw_input = nullptr;
-    checked(api,
-      api.CreateTensorWithDataAsOrtValue(memory.get(),
-        input.data(),
-        sizeof(input),
-        dimensions.data(),
-        dimensions.size(),
-        ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
-        &raw_input));
-    const Owned<OrtValue> input_value(raw_input, api.ReleaseValue);
-    const OrtValue *input_pointer = input_value.get();
+    const auto input_value = probes::cpu_input(api, input.data(), input.size(), dimensions.data(), dimensions.size());
+    const OrtValue *input_pointer = input_value.tensor.get();
     const char *input_name = "x";
     const char *output_name = "y";
     OrtValue *raw_output = nullptr;
@@ -84,9 +50,7 @@ int main(int argc, char **argv)
         if (argc != 3) { throw std::runtime_error("Expected MODEL and OUTPUT_DIRECTORY"); }
         const auto *api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
         if (api == nullptr) { throw std::runtime_error("Required ORT API is unavailable"); }
-        OrtEnv *raw_env = nullptr;
-        checked(*api, api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "native-plugin-probe", &raw_env));
-        const Owned<OrtEnv> env(raw_env, api->ReleaseEnv);
+        const auto env = probes::environment(*api, "native-plugin-probe");
         plugins::PluginRegistry<OrtApi> registry(*api, env.get());
         const std::filesystem::path directory(argv[2]);
         session_probe(*api, env.get(), registry, argv[1], directory / "cpu", false);

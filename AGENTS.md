@@ -108,19 +108,38 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Bound command callbacks retain their original parse phase and source scope; preserve caller-specific raw failure and advisory policies.
    Copied core and dependency preambles carry `cross-active-fallback.sh`; source it at the original registration point to retain alias binding.
    Ordered directory visitors retain the caller's `dir` binding, append policy and unconditional selected calls.
+   rocMLIR library builds keep preparation bindings in the build shell, inspect every planned C/C++ cache/compiler/toolchain binding, use memory-capped jobs and install the generated package leaf; required archive/exports/headers and original notices precede success. Plans and payload presence do not prove linkage or binary licence closure.
+   External rocMLIR consumers require exact package/API pins, the supplied archive and original headers, observable dialect/pipeline state, unchanged inputs and original notices; host fixture proofs do not establish vendor linkage or GPU acceptance.
+   Full MIGraphX source builds retain preparation scope, fresh-prefix refusal, memory-capped jobs, raw failures and unchanged source inputs; installed manifests, native ELF identities and original notice hashes must pass before provenance is written. Copied stagers carry both notice policies and the shared ELF census reader in its relative packaging layout.
+   Linux MIGraphX Python builds require the exact selected interpreter and pybind11 pins, paired config prefix/suffix/headers and one matching installed extension ABI; retain both source patches in provenance. Plugin builds resolve HIP from ROCM_HOME independently of the MIGraphX source prefix and prefer the normal SDK core.
+   Full MIGraphX source-stack copies carry source-stack.sh, source-archives.txt and all selected child closures; validate every archive pin before fetching, rehash cache hits and retain every required API/SDK/build failure.
+   Actual MIGraphX parser proof units require both original archives, the canonical disk probe and at least 180GiB in exact available bytes before freezing; retain the finite build timeout, ordinary entrypoint, two-job cap and cleanup. No reclaim or floor override is performed by that launcher.
+   Recurring source proofs use the versioned launcher and current recipe definitions by ID; retain reviewed resource limits, matching tool locks, fresh units, raw statuses and canonical cleanup.
+   rocmlirTriton preparation carries `source-rocmlir.sh` and `rocmlir-source-notices.sha256`; preserve all vendored compiler trees, fat static/PIC targets, original notice bytes and configured cache facts. Source preparation does not prove binary licence closure. Proof workers carry `proof-cleanup.sh` and retain raw status and fatal ownership failures.
+   MIGraphX CK host builds use the requirements-pinned codegen subdirectory, C++20, static/PIC output and original CK license; generic MLIR does not replace rocmlirTriton.
+   CK host consumer probes select the exact installed package and library, compare original header bytes and retain child failures; metadata alone does not prove linkage or GPU inference.
+   Native MIGraphX CMake plans share caller-array initialization and NUL argument recording; copied CK verification entries carry their CMake/C++ project and existing shared companions.
    The plugin QNN EP stage checks the module, both exports and the HTP backend beside it on arm64; the CPU prefix refuses an in-tree QNN provider.
    The GPU prefix refuses an in-tree TensorRT provider and requires the CUDA module's plugin exports; the TensorRT plugin stage runs on nvidia images with TensorRT.
    Native and C++ WASM WebGPU select `--use_webgpu static_plugin`; retain native external Dawn and Emscripten's integrated Dawn.
    Check the configured flags on CPU, NVIDIA, free-threaded, Asyncify and JSPI builds; explicit opt-outs prove OFF.
+   Record both WASM products before their configured trees change; reuse the shared pool only after its source, mode, direct recipe and every artifact hash pass.
+   CON233 media chains forward ORT_WEB_REQUIRED=1 and require both flavors; preserve strict failures through the cache wrapper and after JS staging.
+   Copied WASM proof modules carry the canonical build-proof module; copied WASM suites carry wasm_proof_fixture.py with independent expected flags.
+   Python proof suites carry python-proof-fixture.sh; raw zero, a nonempty executed unittest suite and its successful summary are all required.
    Native/GIL and free-threaded builds carry `ort-webgpu-build-proof.py`; record each linker product before its configured tree changes.
    Build receipts retain pre-repair bytes; wheel repair checks their source/mode and records validated final hashes before runtime registration proof.
    Carry `ort_webgpu_delivery.py`, the canonical build-proof module and `python-app-deb-depends.py` with `python_app_deb_symbols.py` through media/runtime copies.
    WebGPU delivery requires a matching precheck and unchanged loaded code/data; loader metadata normalization does not prove loader safety or inference.
    Only unbuilt ORT prefixes containing directories and empty top-level census placeholders may omit WebGPU receipts; payloads, unknown files and symlinks still fail.
+   Runtime default-prefix discovery shares that unbuilt-prefix predicate; explicit prefix requests are never silently filtered.
    Native WebGPU probes load each checked core directly, reject the legacy compiled provider and retain exact API failure and cleanup controls.
    Compile each shipped probe through shared cache/CMake helpers using its core's configured target compiler, flags and absolute C API header.
    Python WebGPU factory checks require a completed delivery and the loaded extension's own hash; native core hashes do not prove Python modes.
+   FT smoke dependencies use the separate pinned offline probe pool; never add NumPy to the exact twin-family store or fetch it during acceptance.
    Keep factory unregistration isolated, its precise missing-registration control and FT GIL checks before and after loading and execution.
+   Media factory replay selects collected wheels from completed delivery receipts and uses fresh GIL/FT environments with an explicit NumPy pin.
+   Preserve raw child statuses and both streams, including timeout output; an existing evidence directory or partial phase set cannot publish a passed receipt.
    Copied runtime smoke drivers carry `check-ort-runtime.sh`; the FT store runs the same Python gate in its installed FT environment.
    `finalize-media.sh` retains collection, both Python-mode repairs/verdicts and final smoke ordering; native install failures stay fatal and foreign failures stay advisory.
    Shared CMake entry checks retain first-value launcher reads and strict typed, duplicate-refusing Boolean reads.
@@ -204,6 +223,15 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Reusable GPU workflow invocation scopes use the shared validated suffix for artifact names and job concurrency; raw caller input must not cancel a valid invocation before validation.
    GPU artifact staging checks the raw archive digest, both required check receipts and exact expanded files before atomic no-replace publication; trusted callers remain responsible for receipt provenance and hardware checks.
    GPU detector parity uses the shared two-cats comparator; validate the CPU baseline before using `--pairwise` for repeats, and require real provider profiles and matched results. For repeated inference, `verify_ort_profile.py --min-runs` requires provider operators in every complete sequential run; process identity alone does not prove one session.
+   Tensor diagnostics compare every repeated input before describing model-output differences; a successful diagnostic never grants numerical/provider/package acceptance. Copy `compare_detector_parity.py` beside `summarize_detector_tensors.py` for its canonical JSON reader.
+   Native tensor replay and the tiny SDK probe carry `ort_probe_session.hpp` beside `ort_plugin_eps.hpp`; preserve caller-owned options/input memory and use the canonical GCC toolchain for Clang SDK links. Raw replay success never grants parity.
+   Intermediate-tensor diagnostics bind the original and instrumented model hashes and preserve node/initializer bytes; exposed outputs can change fusion, so they cannot replace original-model or finished-consumer acceptance.
+   Copied host tensor-pair drivers carry the CLI/environment helpers, both shared Python probes and the parity reader; preserve raw child status, isolated Python, both devices and every-run profile checks.
+   Explicit zero padding contributes to MaxPool on negative inputs; preserve that padding and a valid CPU baseline when testing compiler folds. A pass-disable or preload diagnostic is not a shipping compiler fix; compile original and patched passes successfully before accepting a numerical regression control.
+   MIGraphX source preparation uses its requirements-pinned rocm-cmake API and absolute source-built LLVM paths; keep all selected GPU features and reject a configuration-only receipt as image acceptance.
+   Linux MIGraphX source entries carry `cli-common.sh`, `entry-common.sh` and `source-common.sh`; the parser-dependency builder also carries `source-deps.sh`, retains the original Abseil, Protobuf and utf8_range notices and checks cache, compiler, static/PIC and offline facts before building.
+   The MIGraphX SDK check carries both `sdk-closure` CMake files and requires CK host, rocMLIR and the selected development packages; ordinary MLIR metadata is not rocMLIR, vendor config variables cannot erase missing facts, and resolution is not ABI or inference acceptance.
+   Native C++ diagnostic builders carry `lib/native-cxx-probe.sh`; preserve its caller-visible launcher, GCC root, single-argument toolchain flag and raw failures.
    The opt-in Linux clean-host and GPU profile actions download by immutable ID, check the upload digest and compare the same packages before and after the actual check; keep the default CPU name-based path.
    Windows ORT provider staging validates requested DLL names and their presence before changing the destination; unrelated SDK DLLs remain opt-in.
    Flutter apps with an Android manifest validate its mipmap launcher reference and every standard-density PNG; the source check does not prove image identity or inspect an APK.

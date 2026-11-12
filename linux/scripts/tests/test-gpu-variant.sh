@@ -3,6 +3,8 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+# Image defaults must not select an accelerator for synthetic CPU cases.
+unset ENABLE_NVIDIA ENABLE_AMD ONNX_PACKAGE PYTORCH_EXTRA
 t_private_tmpdir
 CORE="${TESTS_DIR}/../01-core"
 _VARIANT_WORK="$(mktemp -d)"

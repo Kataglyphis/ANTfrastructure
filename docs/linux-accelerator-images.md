@@ -1122,6 +1122,391 @@ deps, so `triton-rocm` moves with it) only acts if the two drift. The extra was
 `develop` since 2026-09-29
 ([`linux-cross-builds.md`](linux-cross-builds.md#the-app-the-wrapper-builds)).
 
+### MIGraphX source-backend preparation
+
+The corrected backend is being prepared separately from the existing apt SDK.
+`linux/scripts/03-media/build/migraphx/prepare-source-build.sh` takes
+`NEW_WORK MIGRAPHX_ARCHIVE ROCM_CMAKE_ARCHIVE MSGPACK_ARCHIVE ROCM_ROOT`. It checks the copied
+archives against the recorded SHA256 pins, retains the upstream notices and
+applies the canonical MaxPool patch. The rocm-cmake commit must also match
+MIGraphX's own requirements file. Its MIT build tools and the already pinned Boost-licensed msgpack headers are
+installed into the new workspace; the original archives and system SDK are unchanged.
+
+The original msgpack release exports its CMake package only when its C library
+is enabled. Preparation builds that small static archive and installs the
+upstream package; MIGraphX consumes its C++ header interface. The original
+COPYING and Boost licence text remain beside the prepared headers.
+
+This preparation requires the pinned source-built LLVM through absolute paths.
+A short compiler name let CMake select a distro compiler in the first refused
+probe. All GPU, rocMLIR, composable-kernel, rocBLAS, hipBLASLt, MIOpen, HIPRTC,
+Python, ONNX and TensorFlow switches remain enabled. The configured cache and
+HIP compiler probe must confirm those selections. Compiler-cache launchers use
+the canonical resolver and retain statistics in the command log.
+
+For repeatable isolated probes, use
+`linux/scripts/launch-migraphx-configure-proof.py` with new output and explicit
+unit names, the three verified archives, the existing compiler-cache directory and
+the exact local ROCm tool image. It freezes the staged source, uses an offline
+container with the ordinary entrypoint and records a five-minute user-unit
+bound, ownership token and canonical cleanup hook. The final loaded unit state,
+cleanup and independent engine inventory still need to be checked.
+
+The latest real probe reaches the installed msgpack C++ package and then refuses
+missing Protobuf development files. Full backend configuration has not passed.
+The preserved `source-check.sh` driver runs independent archive/compiler/plan and
+launcher regressions, their mutations and ordinary source quality gates; these
+checks do not provide the missing dependency or accept a backend.
+
+For recurring source checks, use `linux/scripts/launch-migraphx-source-check.py`
+with `--template` pointing to a previously reviewed local invocation,
+`--output` to a fresh directory, `--unit` to a fresh explicit service name and
+one or more `--manifest` files. Selection resolves IDs against the new frozen
+registry, so old manifests cannot silently replay obsolete mutation anchors.
+The launcher retains the reviewed offline resources, normal image entrypoint,
+ownership cleanup and all four locked quality inputs. It refuses existing units
+and changed tool locks. Sealing the actual terminal unit and independently proving
+container absence remain separate required steps.
+
+Offline source checks need the complete locked project environment and the
+separate uvx tool cache. Reuse matching lock inputs; a project venv alone cannot
+satisfy an uncached uvx request. Offline wheels retain the exact hashes recorded
+in the [quality lock](../quality/uv.lock), with their own persistent UV_CACHE_DIR.
+The ordinary tool pins and all report scopes still apply.
+
+Before a full producer pays for parser dependencies,
+`check-source-sdk.sh NEW_WORK ROCM_ROOT` checks the selected native SDK package
+closure with the same source-built compiler and GCC context. It requires HIP,
+HSA, MIOpen, rocBLAS, hipBLAS/hipBLASLt, HIPRTC, SQLite, pybind11, CK host and
+rocMLIR. CK host and rocMLIR must meet 1.0.0; an ordinary LLVM MLIR package
+cannot satisfy rocMLIR. The new output directory preserves compiler identity,
+CMake arguments, pybind11 lookup diagnostics and raw configuration status.
+
+The script carries the shared entry/compiler companions and both CMake files
+under `sdk-closure`. Imports stay in the entry shell; work allocation retains
+caller-visible paths, refuses reuse and preserves directory failures. The existing bounded
+launcher accepts `--mode sdk` without source archives for this probe, while its default remains source
+configuration; unknown modes fail. Real CMake tests use isolated package-config
+doubles for independent required names, absent/incompatible metadata and raw
+dispatch failures. Each package lookup has function scope so vendor config
+variables cannot erase an earlier missing result. A valid CMake control proved
+the original false success before this guard. The real ROCm SDK probe resolves
+nine packages and refuses missing CK host and rocMLIR; pybind11 comes from the
+image Python 3.15 environment. This proves resolution policy, not SDK binary ABI, compiled
+bindings or GPU inference. Normal producer wiring and actual library compilation
+remain required.
+
+For the source parsers, `build-source-deps.sh NEW_WORK ABSEIL_ARCHIVE PROTOBUF_ARCHIVE`
+builds the existing requirements-pinned Abseil first and Protobuf second, into
+`NEW_WORK/host-deps`. Run it only as part of a producer admitted by the normal
+resource guard. It verifies copied original archives, uses static PIC libraries
+and the same absolute source LLVM/GCC setup, and refuses an absent or replaced
+compiler-cache pin. Protobuf uses local dependencies only; FetchContent stays
+disconnected. Its own protoc is built with its runtime. Pass that private prefix
+as `MIGRAPHX_DEPS_PREFIX` when preparing the backend. The source entry owns the
+compiler, install and dependency prefix defaults and preserves explicit values;
+source checks also enforce the strict environment-knob registry.
+
+Source entries carry `cli-common.sh`, `entry-common.sh` and `source-common.sh`;
+CLI validation rejects an empty work root, publishes the first work argument and restores caller positional
+context before framework imports; native workspace/compiler setup shares the
+same caller-visible slots and raw failures. the dependency entry also carries
+`source-deps.sh`. The original Abseil and Protobuf LICENSE files and bundled
+utf8_range MIT text stay in `host-deps/share/licenses`. Later backend packaging
+must carry these original texts with the linked code. The independent command
+doubles exercise arguments, real archive extraction, original notice bytes and
+raw configure/build/install failures. They do not prove vendor compilation or
+installed package compatibility. Real Protobuf/Abseil compilation and the
+remaining Python/rocMLIR/CK development closure are still required.
+
+A configured workspace is not a built backend. Production build/install,
+dependency licence staging, runtime precedence, normal media wiring and actual
+finished-consumer/image acceptance remain required. No disabled compiler pass
+or diagnostic preload satisfies those requirements.
+
+The CK host dependency now has a separate entry point,
+`linux/scripts/03-media/build/migraphx/build-source-ck.sh
+NEW_WORK CK_ARCHIVE ROCM_CMAKE_ARCHIVE`. It selects the `codegen` subdirectory at
+the exact commit recorded in MIGraphX's requirements, with a SHA256-pinned archive,
+C++20, static/PIC output and upstream's static-library `CArrays` embedding mode.
+The attempted `LD` mode fails CMake export generation because its internal
+header archive is not in the upstream export set; retain that failed attempt.
+Each generated header translation unit uses the same compiler-cache launcher.
+The shared
+ROCm-CMake bootstrap validates its version and retains its original license.
+The dependency builder retains the CK root LICENSE with the installed host output.
+Its protocol regressions do not establish an installed SDK or GPU inference.
+
+`launch-migraphx-configure-proof.py --mode ck` accepts the CK archive as
+`--archive` and the pinned `--rocm-cmake-archive`; no msgpack input is used.
+It retains the bounded owned-container transport and raw component failure.
+This small host component is not a full ROCm kernel, rocMLIR or media rebuild.
+The requirements select `ROCm/rocmlirTriton`, whose release source vendors LLVM/MLIR
+and Triton; generic installed MLIR is insufficient. Its genuine source build and
+the full backend remain required, with all selected MIGraphX features enabled.
+
+
+The separate rocmlirTriton preparation entry is
+`linux/scripts/03-media/build/migraphx/prepare-source-rocmlir.sh
+NEW_WORK ROCMLIR_ARCHIVE ROCM_CMAKE_ARCHIVE ROCM_ROOT`. Its version, exact upstream
+commit and complete archive checksum are pinned in `versions.env`. The genuine
+archive contains LLVM, MLIR, LLD and Triton; the source contract checks their
+required project files before configuring. It bootstraps the same pinned ROCm-CMake
+macros, selects the source-built native LLVM/GCC, records NUL-delimited CMake
+arguments and verifies the configured compiler-cache launchers and required flags.
+
+This entry only configures: it does not build or install the vendor libraries.
+It retains the requirements' fat `rockCompiler` library, static/PIC settings and both
+`X86;AMDGPU` LLVM targets. `TRITON_OFFLINE_BUILD=ON` and the launcher's disabled
+network prevent configure-time dependency downloads; FetchContent options are
+recorded even when this upstream configure reports them unused. Triton's upstream
+backend selection remains unchanged. An ordinary installed MLIR cannot substitute
+for the vendored compiler tree.
+
+`rocmlir-source-notices.sha256` preserves 42 named original licence files plus the
+complete original `xxhash.cpp` and `ConvertUTF.h` notice carriers. The copier verifies
+staged bytes, refuses a reused destination and never hashes the preserved original
+through a helper that can delete a bad input. All three primary texts are required.
+This source collection includes unused upstream components; it neither proves
+linkage nor completes the per-file licence review of a future binary. The curated
+entry records the primary Apache/LLVM-exception, MIT and legacy NCSA texts; further
+selected-target obligations still require review before packaging.
+
+Use `launch-migraphx-configure-proof.py --mode rocmlir --archive FILE
+--rocm-cmake-archive FILE` with the other normal launcher arguments. Both inputs
+are read-only; no msgpack archive is used. The bounded normal-entrypoint unit
+retains raw status, cache statistics, ownership restoration and owned-container
+cleanup. A successful configure and source-notice receipt is not SDK installation,
+GPU inference or final runtime/image acceptance. The source regressions cover
+missing trees, invalid paths/hashes, original-byte preservation, conditional-call
+failures, exact arguments and missing or changed configured facts.
+
+The reusable `source-proof.sh` worker owns the offline quality environment and
+bind-mount cleanup for these source checks. Both proof workers carry the shared
+`proof-cleanup.sh`; it preserves child status and treats import or ownership failures
+as failures. Its fixed container paths are the
+existing proof layout: `/workspace`, `/hub`, `/proof`, `/cache`,
+`/quality-wheels` and `/quality-cache`; callers retain the bounded unit transport.
+
+
+The full library entry is `linux/scripts/03-media/build/migraphx/build-source-rocmlir.sh`,
+with the same four arguments as preparation. Run it only after normal resource
+admission; it is a large vendor build. It sources preparation into the same shell
+so the selected compiler, host Python and compiler-cache binding remain available.
+The memory-heavy job helper caps the caller's requested parallelism.
+
+Before building, `inspect-rocmlir-build.py` reads the selected `librockCompiler`
+target with Ninja's `compdb-targets`, `inputs` and `commands` tools. It never executes
+the recorded build commands. Every planned C/C++ object action must retain the
+selected cache launcher, source compiler and GCC toolchain. Assembly is reported
+separately and still checked for the selected compiler. Unknown compiler outputs
+cannot disappear from the census. The fat-library MRI plan must contain unique,
+nonempty static archives. Raw subtool failures remain fatal; a fresh output
+directory and unchanged CMake/Ninja inputs bind the observation.
+
+The actual preserved configuration currently plans 3,062 C++, nine C and four
+assembly actions, and merges 274 archives. These are planned actions, including
+build tools and generated-code prerequisites; they do not prove compilation,
+linkage, cache hits or which objects a final consumer will load.
+
+The builder selects the actual upstream Linux target `librockCompiler`, then
+installs from the generated `build/mlir/tools/rocmlir-lib` package directory.
+That directory's real CMake install script includes the library, public/external
+headers and package exports; it has no child install scripts. This avoids assuming
+a complete unbuilt LLVM toolchain can be installed after selecting only the
+required package. Nonempty archive/configuration/header checks and the selected
+source `llvm-ar t` must pass before the original notice policy is copied into
+`host-deps/share/licenses/rocmlir`. Before reporting success, the builder runs
+the separate external consumer below. The actual vendor build, downstream SDK/API
+execution, selected-target binary licence review, normal producer wiring and
+finished-consumer/image acceptance remain required. The lifecycle regression
+suite uses explicit command doubles and cannot replace those proofs.
+
+The external check is `linux/scripts/03-media/build/migraphx/verify-source-rocmlir.sh
+NEW_WORK ROCMLIR_PREFIX ORIGINAL_SOURCE`. Its CMake project requires the exact
+rocMLIR package and dialect API versions, the supplied imported archive and both
+installed include roots. All three selected headers must match the original source.
+It compiles a C++17 program that registers the dialects and passes, loads the
+MIGraphX dialect and inspects the printed high-level pipeline for `migraphx-to-tosa`.
+Failed state checks and stdout writes remain fatal. The installed payload and
+selected original headers must remain byte-identical across execution; original
+notice hashes are checked non-destructively before and after it.
+
+Use `launch-migraphx-configure-proof.py --mode rocmlir-consumer --deps-prefix PREFIX
+--original-source TREE` for its bounded worker. Both inputs are mounted read-only.
+The regression fixture retains hash-bound original declarations and their original
+licence texts, creates a real CMake export, then compiles and executes an explicit
+small C-API implementation double. Its refusal controls exercise the production
+probe and transport, not a built rocmlirTriton library or numerical GPU inference.
+CK and rocMLIR consumers share native compiler/cache configuration and archive
+selection without dropping their distinct API and input-identity checks.
+
+The pinned upstream Linux Python module enumerates versions only through 3.14.
+The prepared source build applies `002-select-pinned-python.patch` after the padding
+correction. It requires `PYTHON_VERSION` and `PY_PYBIND11_VERSION` exactly, uses
+`Python_EXECUTABLE` and its sysconfig-paired config tool, and checks that tool's
+prefix, extension suffix and every include root. Raw failed probes stay fatal
+even if they returned plausible output. A cache value or PATH entry cannot replace
+the selected config. Missing selected headers fail before backend compilation.
+Windows discovery retains its existing branch.
+
+The installed backend stager requires exactly one Python extension whose filename
+matches its selected runtime interpreter's extension suffix. Both actual patches
+are preserved with the installed provenance. The [upstream pybind11 licence](https://raw.githubusercontent.com/pybind/pybind11/v3.1.0/LICENSE)
+is BSD-3-Clause; the source inventory now names that header dependency explicitly.
+Complete linked-binary licence review, including staged original texts for every
+selected header-only and system dependency, remains required before distribution.
+
+Use `verify-source-python.sh NEW_WORK PATCHED_MIGRAPHX_SOURCE` to test only the
+upstream Python module functions through a real tiny binding. The bounded
+`launch-migraphx-configure-proof.py --mode python-consumer --original-source TREE`
+transport mounts that source read-only. It records the selected source/compiler,
+CMake arguments, exact interpreter/extension ABI, cold-loaded module origin and
+bytes, constant result and GIL state. This small module is not the MIGraphX backend
+and does not prove free-threaded support, GPU inference or image acceptance.
+The controlled CMake tests separately demonstrate the original 3.14 enumeration
+failing the selected-ABI assertion and the correction refusing foreign inputs.
+
+When the plugin builds against a dedicated source prefix, `MIGRAPHX_HOME` selects
+that prefix while `ROCM_HOME` selects HIP. The normal `core/lib/cmake/hip` package
+takes precedence over other trees; a missing HIP package fails before configuration.
+
+For a bounded actual parser component build, use the same
+`launch-migraphx-configure-proof.py` launcher with `--mode parsers`,
+`--archive ABSEIL_ARCHIVE` and `--protobuf-archive PROTOBUF_ARCHIVE`.
+Both archives are required regular files and reach fixed read-only mount paths.
+The worker invokes the existing pinned parser builder, whose own verified
+extraction and compiler/cache checks still apply; no generated package metadata
+or disabled feature replaces that builder.
+
+Before freezing the staged source, this mode probes the output filesystem with
+the production `disk-guard.sh` helper and checks exact available bytes independently.
+Both must meet 180GiB; unknown values and failed probes refuse. The receipt
+records the admission values. The launcher never reclaims space or downgrades
+that refusal. Parser units retain the ordinary offline entrypoint, two CPUs,
+6GiB memory, the worker's two-job cap, a one-hour start bound and the existing
+180-second stop bound. Preparation modes retain their five-minute bound.
+Canonical cleanup and independent engine absence still precede a passed result.
+A passed component build alone does not wire or accept an ordinary GPU image.
+
+A genuine isolated Linux build of the pinned Abseil and Protobuf now completes
+configuration, compilation and installation with the selected Clang/GCC,
+static PIC output and C++17. Its supplied development prefix contains 975 files,
+including 94 static archives, protoc, exported packages and the three original
+Abseil/Protobuf/utf8_range notice texts. External target/API or protoc execution
+has not been proved by that receipt.
+
+The first measured run reports 652 compiler requests: 155 hits, 496 misses and
+one cache error. The repeat reports 651 hits, zero misses and the same one
+expected error; all 975 installed files remain byte-identical. The error is
+the explicit Abseil C++20 feature test rejecting the selected C++17 mode, bound
+to its CMake configure event and sccache log. Read/write/timeout and non-cacheable
+counts are zero. This is not a claim that every cache-error counter is zero,
+nor evidence for rocMLIR, the full backend or an ordinary finished image.
+The original archives and both successful component outputs remain preserved.
+
+For the complete dependency sequence, preserve and use
+`linux/scripts/03-media/build/migraphx/build-source-stack.sh
+NEW_WORK SOURCE_CACHE ROCM_ROOT` inside a normally admitted producer. The normal
+large-build resource guard and disk floor still apply. This command does not itself
+wire the source prefix into `Dockerfile.amd` or establish a finished image.
+
+Its sibling `source-archives.txt` is the seven-input contract: MIGraphX, ROCm-CMake,
+msgpack, Abseil, Protobuf, CK and rocmlirTriton. Version and checksum pins must all
+resolve before the first fetch. Protobuf and msgpack use their original release
+payloads; a GitHub source snapshot with the same version has different bytes.
+The table retains the existing checksums rather than accepting that substitute.
+Selected names, expanded URLs and hash-keyed cache paths are recorded in
+`NEW_WORK/source-archive-plan.txt`.
+
+The source cache names each archive `SHA256.tar.gz`. A regular existing file must
+pass the canonical SHA256 verifier before it is reused; symlinked files refuse.
+A bad file is discarded by that verifier and fetched through the existing
+verified mirror/upstream downloader. Download failures keep their status, and
+returned bytes must pass another hash check before a child starts.
+A genuine retained-input replay proved all seven cache hits without a fetch;
+that is source-cache evidence, not a cold URL download or compiler-cache result.
+
+The sequence builds the static parser dependencies, builds CK and runs its
+external target/original-header check, then builds rocMLIR with its required
+post-install C-API check. It supplies exactly those three new development
+prefixes to the SDK resolution check before invoking the complete backend entry.
+Existing output prefixes refuse before downloads or builds. Each required child
+runs unconditionally and its failure stops later work. The work tree, source
+plan and component evidence remain available for diagnosis.
+
+Copies carry `source-stack.sh`, `source-archives.txt`, the selected children and
+their documented shared closures. Independent regression controls use real
+hashing and explicit download/build doubles; they do not prove actual parser,
+rocMLIR or backend compilation, full linked-notice obligations, shipped loader,
+PATH/pkg-config/Python precedence, GPU parity or final runtime/image acceptance.
+
+The full backend entry is `linux/scripts/03-media/build/migraphx/build-source-backend.sh
+NEW_WORK MIGRAPHX_ARCHIVE ROCM_CMAKE_ARCHIVE MSGPACK_ARCHIVE ROCM_ROOT`.
+Run it inside a normally admitted producer after preparing all required development
+dependencies. It retains preparation in the build shell, so all ten features,
+the selected compiler/cache and host Python reach the actual full build.
+`MIGRAPHX_DEPS_PREFIX` may contain semicolon-separated absolute prefixes, including
+spaces; each selected notice component needs exactly one owner.
+The default install prefix is `/opt/rocm/migraphx`; select a fresh absolute
+`MIGRAPHX_SOURCE_PREFIX`. Existing paths, symlinks and aliases resolving to an
+existing prefix refuse before preparation. The ordinary resource admission and
+disk floor still apply to this large build.
+
+The entry uses memory-capped jobs, builds and installs the configured project,
+then rechecks its original source-input hashes. Its preserved
+`stage-backend-install.py` helper requires a complete, unique install manifest,
+nonempty selected headers/configuration, all selected core/frontend/target libraries,
+a Python extension, native ELF identities and the exact installed version.
+ELF identity checking uses the canonical packaging reader; it does not inspect
+complete loader structures, prove ABI compatibility or run the libraries.
+Installed paths and symlink targets must stay under the selected prefix.
+The current ordinary GPU image still uses its distro backend; this separate build
+entry does not yet wire the source prefix into that image.
+
+`backend-source-notices.sha256` binds eight original dependency notice files.
+The rocMLIR component must also retain its complete existing original-notice policy.
+The backend's own original licence must match the unique primary file inside the
+hash-checked source archive. The selected texts and actual applied patch are copied
+under `share/licenses/migraphx-source-build`; only after byte checks pass is
+`build-provenance.json` written with source/archive/patch and installed-file identities.
+The receipt explicitly keeps complete binary licence review false.
+It does not cover every linked header-only or system dependency and does not
+establish complete redistribution obligations, numerical GPU execution or final
+consumer/image acceptance. Failed staging can leave partial output without a receipt.
+
+Copies of the stager need both notice policy files beside it and
+`06-packaging/ort_census_probe.py` in the shared relative script layout.
+The regression suite compiles one tiny native test library and uses explicit build
+lifecycle doubles. It cannot replace the unexecuted genuine MIGraphX build,
+the selected-target licence review, source-prefix precedence checks or real
+finished-consumer/provider-profile acceptance.
+
+The installed CK host target is checked separately by
+`linux/scripts/03-media/build/migraphx/verify-source-ck.sh
+NEW_WORK CK_PREFIX ORIGINAL_HEADER`. The original header is
+`include/ck/utility/type.hpp` from the pinned CK archive. Its separate CMake project
+requires the exact recorded package version from the supplied prefix, links
+`composable_kernel::ck_host` and calls the real `GetHeaders` API. It checks the
+selected library path and compares every byte of that one embedded header with
+the original; this host check does not execute a GPU kernel or compare every header.
+
+Use `launch-migraphx-configure-proof.py --mode ck-consumer --deps-prefix PREFIX
+--original-header FILE` for the bounded proof. Both inputs are mounted read-only.
+The same optional `--deps-prefix` works in `--mode sdk` and precedes the image SDK
+search paths; the default SDK path list remains when no prefix is supplied.
+Fixture CMake/C++ tests reject wrong versions, missing targets, a fallback package,
+foreign selected libraries, truncated header output and swallowed child failures.
+Actual CK imported-target link and original-header evidence are separate from those
+fixtures and still do not establish normal image, backend or GPU acceptance.
+
+The native CMake entries share directory initialization and plan recording in
+`source-common.sh`. The plan prepends source, build and Ninja arguments to the caller-owned options,
+including spaces and empty values, and preserves the array binding. It then appends
+the selected compiler and cache flags, records NUL-separated arguments and retains
+raw native/cache failures without writing a partial plan. Source imports and each
+caller's configure/error-reporting order stay at their original points.
+
 ### AMD's plugin MIGraphX EP
 
 Since 2026-11-07 the rocm media stage builds AMD's out-of-tree ONNX Runtime plugin EP
@@ -1732,6 +2117,10 @@ separate interpreter process. It requires exactly one owning prefix, its unchang
 native core, the expected source ref, compatible phase flags and continuous,
 completed wheel delivery with the exact final manifest and extension bytes.
 Pending repairs, ambiguous owners and native-only receipts cannot prove Python.
+Default discovery shares the delivery gate's unbuilt-prefix predicate: only absent
+prefixes or directories containing solely empty top-level census placeholders are
+omitted. Explicit requests are retained, and payloads, damaged receipts, unknown
+files and broken links still reach the required proof and fail when invalid.
 Enabled mode first unregisters the static factory successfully; both modes then
 require ORT's precise missing-registration error as a negative control. It does
 not enumerate devices. The FT store runs the same gate using its installed FT
@@ -1741,6 +2130,42 @@ Existing ONNX/GenAI transports move unchanged into `check-ort-runtime.sh`, reduc
 the smoke driver's frozen size. Fixtures use stub bindings, not real ORT; actual
 image matrix remains open, including executing these probes against each actual
 native/GIL/FT product.
+
+For a media image without the final runtime venv, reuse
+`runtime/ort_webgpu_media.py`. It selects each GIL/FT wheel from its completed
+delivery receipt in `/opt/wheels` and `/opt/wheels-free-threaded`, creates a fresh
+venv per prefix and interpreter, and installs that exact wheel plus the caller's
+explicit `PY_NUMPY_VERSION` pin. NumPy permits normal package import; no substitute
+ORT is fetched and dependency resolution is disabled. The default is offline;
+`--allow-network` permits fetching the pinned NumPy wheel through the configured
+uv cache. Run inside the selected image with its normal entrypoint and a bounded
+owned-container unit, keeping the same UID for any shared cache.
+
+```bash
+python3 -I linux/scripts/03-media/runtime/ort_webgpu_media.py \
+  --prefix /usr/local/lib/onnxruntime-cpu --source-ref "$ONNXRUNTIME_VERSION" \
+  --gil-python /usr/local/bin/python3.15 --ft-python /usr/local/bin/python3.15t \
+  --numpy-version "$PY_NUMPY_VERSION" --work-dir /proof/media-factories
+```
+
+Load both version pins through `01-core/load-versions-env.sh`; the supplied
+interpreters must belong to the selected image. Repeat `--prefix` for every built
+CPU/NVIDIA prefix. The evidence directory must not exist. Every child retains its
+argv, stdout and stderr, including partial timeout output; failed phases preserve
+earlier evidence and never write the overall receipt. Native/GIL/FT factories run
+in separate processes through the canonical runtime gate. This proves factories
+and precise negative controls, not WASM, devices, inference or final-image
+consumer acceptance. Stub-child regression and mutation controls cover transport;
+an actual media replay remains separate evidence.
+
+The local default-amd64 media replay on 2026-11-12 passed all three factory
+phases, including the GIL-disabled FT checks, against image index
+`sha256:b6b654b62f92e5448c71a293327651016d0b915cdc4a2a6baec4006db5b82d4f`.
+Evidence is retained in
+`logs/test-results/webgpu-registration-20261110/media-default-amd64-20261112-2/factory-proof-4/proof.json`,
+with raw status zero, checked cleanup and independent container absence. This
+covers the CPU prefix in that media image; other target/variant products, WASM
+execution and fresh final runtime/consumer acceptance remain open.
 
 The preserved C API probe is built in both native CPU/NVIDIA producers before the
 GIL receipt and FT reconfiguration. Its CMake project reads the core's configured
@@ -1764,6 +2189,8 @@ Every selected native prefix must pass. Real executable fixtures use a deliberat
 small fake C ABI, while a separate compile uses byte-verified official headers;
 neither completes real ORT registration or the target image matrix.
 
+### WASM static-plugin artifacts
+
 The C++ WASM WebGPU Asyncify and JSPI flavors also select `static_plugin` and
 check the first three flags ON, with external Dawn OFF for Emscripten's integrated
 Dawn. They use reduced operators rather than the minimal build that pinned ORT
@@ -1771,9 +2198,38 @@ forbids with static plugins. The JSEP JavaScript backend retains its own path.
 A failed configuration follows the existing optional-flavor policy or fails under
 `ORT_WEB_REQUIRED=1`. Shared completed WASM assets use cache epoch `-wgpu3`, so
 this migration cannot reuse the legacy in-tree EP binaries from `-wgpu2`.
-The cache identity also includes `ONNXRUNTIME_WASM_BUILD_TYPE`; completed Debug
-and Release assets cannot shadow each other. Both flavors use one shared driver
+The cache identity also includes `ONNXRUNTIME_WASM_BUILD_TYPE` and the enabled flavor
+set; completed Debug, Release and disabled-flavor assets cannot shadow each other. Both flavors use one shared driver
 that preserves their original argument order and JSPI-only exception behavior.
+
+The prepared `ort-webgpu-wasm-proof.py` records each flavor before the next pass
+clears its CMake tree. It reuses the canonical typed-cache reader and atomic writer
+from `ort-webgpu-build-proof.py`, which must accompany it. The receipt binds the
+source ref/full revision, actual configuration, the four plugin/Dawn booleans,
+threading and JSPI booleans, cache digest and exact WASM module digest. The module
+must have a WebAssembly v1 header and its loader must be a nonempty regular file.
+The compiled receipt does not bind mutable npm-generated loader code; loader and
+factory execution require separate tests.
+
+`web-wasm-cache.sh` accepts a shared pool only when its manifest and marker match
+the source revision, configuration, flavor selection, six direct recipe files and
+every regular payload byte. It validates copied bytes, replaces stale output and
+keeps cache-internal markers out of delivered output. Missing or altered receipts,
+extra files, changed recipes and legacy marker-only pools trigger a fresh build;
+nonregular trees fail before reset. These checks trust the builder's source-to-module
+relation and do not claim complete compiler/environment reproducibility.
+The direct recipe comprises `40-build-wasm.sh`, `build-onnxruntime.sh`,
+`web-wasm-cache.sh`, and the `lib/` companions `common.sh`,
+`ort-webgpu-build-proof.py` and `ort-webgpu-wasm-proof.py`.
+
+For CON233's own chains, export `ORT_WEB_REQUIRED=1 ORT_WASM_WEBGPU_FLAVORS=true`.
+The canonical media-stage argument builder forwards both; required build, copy and
+receipt failures propagate through the outer driver. The post-JS `--verify-only`
+path checks the compiled modules again without creating a cache. Generic optional
+web builds retain their explicit policy and cannot stamp an incomplete pool.
+Start the strict AMD64 lane before foreign targets so the common host-built pool
+exists; a foreign-target skip cannot seal an empty directory. The existing disk
+admission and digest-pinned parent handoff rules still apply.
 
 These are source gates and fixture proofs for CON233. Actual build/runtime
 registration proofs, separate media rebuilds for default amd64/arm64/riscv64,

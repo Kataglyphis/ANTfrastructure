@@ -217,6 +217,156 @@ repeated results to each other. It retains the schema, bounds and one-to-one tol
 checks without reapplying the CPU-only two-cats score oracle to a GPU reference.
 Pairwise checks must not replace the default CPU-baseline checks.
 
+### Tensor diagnosis
+
+`shared/python/summarize_detector_tensors.py CPU_DIRECTORY GPU_DIRECTORY --runs 2
+--output NEW_JSON` summarizes raw model tensors when investigating detector
+differences. Carry `compare_detector_parity.py` beside it for the canonical
+duplicate-key JSON reader; the command supports isolated Python execution.
+Each directory contains exactly `run-N.json`, `run-N-input.f32le` and
+`run-N-output.f32le` for every requested run. Schema1 metadata names each fixed
+payload, its positive integer shape, float32 type and little-endian byte order.
+Files must be regular and nonempty, byte counts must match, and values must be finite.
+
+Every CPU/GPU input shape and exact byte hash must match before output comparison.
+The report retains repeat identities, every cross-pair's error statistics, raw
+array coordinates and per-axis maxima for small axes. Different outputs can
+produce a successful diagnostic report with `acceptance: false`; there is no raw
+tensor tolerance or implicit GPU verdict. Existing summaries are never overwritten.
+These files trust the recording application and do not authenticate model/binary
+identity, prove GPU execution or replace the ordinary photograph comparator,
+per-run operator profiles, exact package binding and hardware checks above.
+The prepared OxidANT `onnx-detect --tensor-snapshots NEW_DIRECTORY` captures the
+real preprocessed input and first output before postprocessing on each model run.
+
+To replay a captured input without the consumer binding or postprocessing, use
+the family image's SDK and a new output directory:
+
+```bash
+bash linux/scripts/build-native-tensor-replay.sh NEW_BUILD ORT_SDK_PREFIX
+bash linux/scripts/check-native-tensor-replay.sh NEW_BUILD CORE RELU_MODEL
+NEW_BUILD/ort-tensor-replay CORE MODEL 1,3,640,640 INPUT.f32le cpu NEW_CPU
+ORT_AMDGPU_EP_ROOT=PLUGIN_PREFIX NEW_BUILD/ort-tensor-replay CORE MODEL 1,3,640,640 INPUT.f32le migraphx NEW_GPU
+```
+
+The Linux replay opens the explicit core, uses `ort_plugin_eps.hpp` registration,
+selects GPU device zero, and runs twice in one session with default intra-op
+threads and spinning enabled. It records the first model output as host float32,
+plus raw inputs and an ORT profile. Check each profile with
+`verify_ort_profile.py --min-runs 2` and summarize both `tensors/` directories;
+raw exit zero does not apply the detector's score tolerance or prove acceptance.
+For repeated host probes, keep that sequence in the reusable pair transport:
+
+```bash
+bash linux/scripts/replay-native-tensor-pair.sh HOST_PYTHON NEW_PAIR MODEL 1,3,640,640 INPUT.f32le -- \
+  env ORT_AMDGPU_EP_ROOT=PLUGIN_PREFIX LD_LIBRARY_PATH=EXPLICIT_LIBS \
+  LOADER --library-path EXPLICIT_RUNTIME_LIBS NEW_BUILD/ort-tensor-replay CORE
+```
+
+The prefix ends at `CORE`; the driver appends model, shape, input, device and a
+new device-specific output path without reparsing arguments. It runs CPU then
+MIGraphX, removes inherited MIGraphX tuning overrides, requires exactly one profile
+for each, invokes the isolated Python profile probe with two required runs and
+only then summarizes all raw cross-pairs. It preserves failing native, profile
+and summary statuses and refuses an existing pair directory. Use an explicit
+host interpreter; the command does not provision an image interpreter. Keep
+`cli-value-options.sh`, `gpu-profile-env.sh` and their logging companion in `lib/`,
+and both Python probes plus `compare_detector_parity.py` in the shared layout.
+Protocol-double tests do not establish actual model/provider execution.
+
+Preserve the exact executable, core, plugin, input/model hashes, environment,
+loader search order and runtime library closure for each comparison. Swapping a
+core/plugin pair under a fixed closure does not replay its entire original image.
+
+Both native SDK probes carry `ort_probe_session.hpp` and `ort_plugin_eps.hpp`.
+Options and input memory-info remain owned until after their dependent objects.
+The builder uses the shared compiler-cache launcher, records cold/warm object
+hashes/statistics and resolves the source-built GCC prefix before Clang links.
+The ownership probe retains its original sanitizer policy with that same GCC
+selection. SDK-free transport tests check independent little-endian bytes,
+shape/count/finite-input and no-overwrite refusals with assertion controls;
+they do not execute ORT. The SDK command proves tiny CPU inference and precise
+refusals, including a missing plugin; it does not prove GPU execution, sanitizer
+cleanliness or consumer parity. Those require their separate actual runs.
+
+For an intermediate tensor, use `shared/python/prepare_onnx_tensor_replay.py`
+with an existing ONNX-enabled tooling interpreter, separate from the consumer:
+
+```bash
+python prepare_onnx_tensor_replay.py inventory ORIGINAL.onnx --model-sha256 SHA256 --output NEW_INVENTORY.json
+python prepare_onnx_tensor_replay.py expose ORIGINAL.onnx --model-sha256 SHA256 --tensor EXACT_NAME --output NEW_MODEL_DIRECTORY
+```
+
+The inventory records topological node/output positions, names, operators and
+inferred types/shapes. Only known top-level float32 outputs with rank one through
+eight and no known nonpositive dimension can be exposed. Unknown dimensions
+remain unknown; the native replay validates their actual runtime shape. The tool
+requires the original hash, strict shape inference and the ONNX checker. It
+refuses external tensor data, nested graphs, local functions and sparse payloads.
+The diagnostic retains all original outputs, puts the selected tensor first and
+checks that node and initializer bytes did not change. Its manifest records both
+model hashes and the actual ONNX version; outputs require new files/directories.
+It does not install or update dependencies, and the media image need not contain
+the ONNX preparation module. Reuse a recorded tooling environment and preserve
+its interpreter/module identity with the invocation.
+
+Run `NEW_MODEL_DIRECTORY/model.onnx` through the native replay with the same
+captured input and fixed runtime closure. Verify every repeated provider profile
+and summarize the raw tensors as above. Adding outputs can alter optimization
+and fusion even when nodes and weights match. A divergence in this instrumented
+model is not by itself the first failing operator of the original model. Preserve
+the original-model photograph parity result separately. Source regressions use
+schema doubles and omission mutations; real ONNX preparation and actual device
+execution need their own evidence.
+
+### Zero-pad/MaxPool regression fixture
+
+`linux/scripts/prepare-migraphx-padding-reproducer.py NEW_DIRECTORY` uses an
+existing ONNX tooling interpreter to preserve an independent negative-input
+fixture, original expected bytes and hashes. Its 2x2 input is `[-1,-2;-3,-4]`;
+explicit zero padding on the bottom/right followed by a 2x2 stride-one MaxPool
+must yield `[-1,0;0,0]`. The padded tensor remains a second graph output so the
+native CPU baseline stays independently checkable. Without that output, the
+first attempted fixture already produced unexpected CPU values and cannot
+isolate the GPU compiler. Validate the CPU result before any negative control.
+
+Use the pair driver for this fixture in separate default and explicit control
+processes. `MIGRAPHX_DISABLE_PASSES=eliminate_pad` in the command prefix is a
+semantic diagnostic control, not an accepted shipping policy. Preserve both
+raw outputs and every repeated provider profile. A narrow source guard is
+prepared at `linux/scripts/patches/migraphx/001-preserve-zero-pad-maxpool.patch`;
+the real original and patched passes compile against the image SDK with the
+same updated upstream test object. The original negative case fails with the
+wrong boundary values; all six patched upstream tests pass, including the
+existing convolution/im2col cases. Linux currently installs MIGraphX through
+AMD apt, so producer wiring and actual corrected-byte/default-policy acceptance
+remain required. This standalone pass proof does not replace the backend. The independent fixture does not replace the original photograph or
+any finished-consumer/image receipt.
+
+The reusable source check is:
+
+```bash
+bash linux/scripts/probe-migraphx-padding.sh NEW_OUTPUT VERIFIED_UPSTREAM_SOURCE MIGRAPHX_SDK
+```
+
+It applies the canonical patch, compiles one updated test object and both real
+pass variants, requires the original numerical assertion to fail, and runs the
+complete patched upstream test file. Every object has a cold/warm cache receipt
+and byte comparison. Both executables define the pass symbol themselves. Compiler selection is shared
+with the native tensor replay builder through `lib/native-cxx-probe.sh`; copied
+standalone probes must retain that helper, `cli-value-options.sh`, its logging
+companion and the canonical core companions. The
+generated `libmigraphx-padding-probe.so` is a selective source-interposition
+diagnostic only; loading it does not establish a shipped compiler fix. The actual selective probe restores both the independent boundary case and the
+unchanged original detector tensor: the previously failing class-15 score differs
+from CPU by about 0.00003955, CPU bytes match the original baseline, and both
+GPU runs contain provider operators. Loader bindings prove use of the corrected
+pass. Preserve this as a preload diagnostic; ordinary package defaults and
+shipped-backend acceptance remain open. The
+auto-discovered policy suite compiles the actual patched function with typed
+graph doubles and checks MaxPool, average and the existing LP fold; it does not
+prove SDK numerics or GPU inference. Fixture-preparation tests use schema doubles.
+
 ## A package on your own GPU
 
 No hosted runner has a GPU, so a package has run on one only where someone ran it. On Windows, unpack

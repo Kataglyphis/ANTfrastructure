@@ -958,6 +958,34 @@ support also ships as a proved free-threaded (`cp3XYt`) twin, in a store of its 
     `local-task` from 8 threads.
   - `iree-compile` and `iree-run-module` ran from the twins.
 
+### Offline free-threaded probe dependencies
+
+The normal ORT factory import initializes NumPy. Its generic compiled-module declaration probe
+does not execute that full import. The prepared runtime layer therefore stages NumPy separately
+in `/opt/ft-probe-deps`; it does not change `/opt/wheels-free-threaded` or its exact family set.
+`build-free-threaded-probe-deps.sh` reads `PY_NUMPY_VERSION` and the Python pin. Its companion
+`free-threaded-probe-deps.py` requires the matching `free-threaded-probe-deps.json` lock and a
+running target FT interpreter with the GIL off. Copy all three files together.
+
+AMD64 and ARM64 retain their exact official wheels. RISC-V retains the verified original sdist
+and builds its wheel on the target interpreter, including under QEMU. The dedicated per-arch
+BuildKit cache retains the wheel and receipt; every reuse rechecks input/output hashes and runs
+a normal NumPy import in a fresh offline venv with the GIL checked before and after. Source builds
+use the shared compiler-cache launcher, report its statistics to stderr and drain the shared S3
+layer. No cache-size or GC policy changes are part of this layer.
+
+The receipt binds the upstream URL/hash, NumPy version, Python FT tag, architecture and exact
+wheel hash. Validation also checks wheel metadata, the original license, ELF class/byte order
+and machine, and refuses extra files or symlinks. ELF headers do not prove a complete loader
+closure, and the receipt trusts the image builder for the source-to-wheel relation. The wheel
+retains its complete bundled notices; the curated NumPy entry does not enumerate its transitive
+native library licenses.
+
+`FT-STORE` installs only that checked wheel into its disposable venv with `--offline --no-index
+--no-deps`, before the existing module and full ORT factory controls. A failed dependency install
+emits `FTS NOINSTALL` and fails the verdict. Source-level fixtures prove refusal and dispatch;
+they do not establish RISC-V execution, the final image matrix, GPU availability or inference.
+
 ## The Windows image ships lavapipe
 
 The Windows amd64 image and the arm64 bundle carry Mesa's lavapipe — a CPU Vulkan

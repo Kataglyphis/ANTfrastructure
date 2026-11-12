@@ -22,6 +22,20 @@ Two neighbours, so you land on the right page:
 > the triage index: enough to recognise the failure and act, with a link when
 > the full history matters.
 
+## A retained Linux image inspects successfully, but the parser unit says image not available
+
+The retained ROCm image in the 2026-11-12 parser build was inspectable through
+its local tag, RepoDigest and config ID. The RepoDigest and prefixed config-ID
+spellings nevertheless failed at `nerdctl run --pull never` before a container
+started; both failed units and successful cleanup receipts are retained.
+
+The existing local tag started the same image. Inspect that tag first, record
+its expected manifest/config identity, then compare the actual container's
+`Image` field with the expected manifest. The successful parser runs passed
+that comparison. This local reference-resolution observation does not permit
+accepting an unrelated image or treating a running component as final image
+acceptance.
+
 ## Media finalization requires a WebGPU receipt for a skipped GPU build
 
 **Symptom.** The default-amd64 media solve reaches `finalize-media.sh`, then reports
