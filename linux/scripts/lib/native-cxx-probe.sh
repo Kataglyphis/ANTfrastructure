@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Native probes share compiler selection while preserving explicit caller output bindings and raw failures.
+# shellcheck source=log-bootstrap.sh
+source "${BASH_SOURCE[0]%/*}/log-bootstrap.sh" || return
 source "$(dirname "${BASH_SOURCE[0]}")/cli-value-options.sh"
 
 native_cxx_probe_setup() {

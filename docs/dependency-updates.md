@@ -1340,6 +1340,14 @@ Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for
 
 `test-bump-versions.sh` runs the audit against the real pin files, so preflight's `script-tests` catches a new SHA pin that has none of the four.
 
+The Linux source backend's `MIGRAPHX_ROCM_CMAKE_VERSION`,
+`MIGRAPHX_CK_HOST_VERSION`, `MIGRAPHX_ROCMLIR_VERSION` and
+`MIGRAPHX_ROCMLIR_DIALECT_API_VERSION` are MANUAL because their package/API values
+come from the selected MIGraphX requirements and source headers. Their three
+source checksums carry explicit `bump:hold` ownership beside each pin; re-derive
+each complete version/commit/hash tuple when the owning requirements move.
+They add no checksum exemption and do not establish a successful library build.
+
 **`bump:hold` marker:** a comment line containing `bump:hold <reason>` directly above a `KEY=` in versions.env blocks every `bump_versions.py` write for that key (reported as `HELD`); Renovate's `--apply` does not read the marker and is kept off a held key only by `.github/renovate.json`'s approval rule. Use it for pins that are **slaved to another project's internals**, not independent software — e.g. `PROTOC_VERSION`/`PROTOBUF_VERSION` must match LiteRT-LM's internal `protobuf.cmake` pin (auto-bumping protoc to latest shipped gencode its runtime `#error`s on, 2026-08-03). Re-derive held keys manually when their master pin moves.
 
 `common.sh` loads `versions.env` at load time through `load_versions_env` (`01-core/load-versions-env.sh`: parsed line by line and exported, never `source`d; a value already set in the environment wins), and `artifact-common.sh` gets it by sourcing `common.sh`. Per-Dockerfile ARG defaults are safety nets and should match.

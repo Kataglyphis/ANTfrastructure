@@ -8,7 +8,7 @@ load_versions_env "${core}/versions.env"
 arch="${TARGETARCH:?missing target architecture}"
 if [ "${arch}" = riscv64 ]; then
   source "${core}/common.sh"
-  compiler_cache_launcher_env
+  compiler_cache_launcher_env 2>/dev/null || true
   launcher="$(compiler_cache_launcher)"
   export CC="${launcher} ${CC:-gcc}" CXX="${launcher} ${CXX:-g++}"
   finish() {

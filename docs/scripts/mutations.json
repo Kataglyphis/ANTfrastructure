@@ -42288,10 +42288,10 @@
  {
   "id": "lib.mgx-launcher-start-bound",
   "target": "linux/scripts/launch-migraphx-configure-proof.py",
-  "find": "f\"TimeoutStartSec={3600 if args.mode == 'parsers' else 300}\"",
+  "find": "f\"TimeoutStartSec={timeout}\"",
   "replace": "\"TimeoutStartSec=0\"",
   "test": "bash linux/scripts/tests/test-migraphx-configure-launcher.sh",
-  "why": "Selected dependency builds retain a finite hour bound; preparation keeps its existing five-minute bound."
+  "why": "Every preparation or selected vendor-build profile keeps its own finite start bound."
  },
  {
   "id": "lib.mgx-launcher-stop-bound",
@@ -44744,9 +44744,9 @@
  {
   "id": "lib.mgx-parser-build-disk-before-freeze",
   "target": "linux/scripts/launch-migraphx-configure-proof.py",
-  "find": "admission = require_build_disk(args.output.parent) if args.mode == \"parsers\" else None",
+  "find": "admission = require_build_disk(args.output.parent) if args.mode in BUILD_PROFILES else None",
   "replace": "admission = None",
-  "test": "python3 linux/scripts/tests/migraphx_configure_launcher_tests.py MigraphxConfigureLauncherTests.test_parser_disk_refusal_prevents_freezing_and_launch",
+  "test": "python3 linux/scripts/tests/migraphx_configure_launcher_tests.py MigraphxConfigureLauncherTests.test_vendor_disk_refusal_prevents_freezing_and_launch",
   "why": "Selected parser build transport retains normal resource admission,immutable inputs and bounded failure policy; protocol doubles are not real vendor or final image acceptance."
  },
  {
@@ -44760,8 +44760,8 @@
  {
   "id": "lib.mgx-parser-build-bounded-build-profile",
   "target": "linux/scripts/launch-migraphx-configure-proof.py",
-  "find": "3600 if args.mode == 'parsers' else 300",
-  "replace": "0 if args.mode == 'parsers' else 300",
+  "find": "\"parsers\": (3600, \"2\", \"6g\")",
+  "replace": "\"parsers\": (0, \"2\", \"6g\")",
   "test": "python3 linux/scripts/tests/migraphx_configure_launcher_tests.py MigraphxConfigureLauncherTests.test_parser_build_requires_exact_two_archives_and_long_bounded_transport",
   "why": "Selected parser build transport retains normal resource admission,immutable inputs and bounded failure policy; protocol doubles are not real vendor or final image acceptance."
  },
@@ -44828,5 +44828,173 @@
   "replace": "--arch amd64",
   "test": "bash linux/scripts/tests/test-webgpu-runtime-transport.sh",
   "why": "The FT factory transport must install probe dependencies for the selected NumPy pin and target architecture; interpreter doubles do not prove real wheel or image acceptance."
+ },
+ {
+  "id": "lib.mgx-rocmlir-build-finite-bound",
+  "target": "linux/scripts/launch-migraphx-configure-proof.py",
+  "find": "\"rocmlir-build\": (7200, \"4\", \"12g\")",
+  "replace": "\"rocmlir-build\": (0, \"4\", \"12g\")",
+  "test": "bash linux/scripts/tests/test-migraphx-configure-launcher.sh",
+  "why": "Selected rocMLIR build transport retains its real builder,raw failures,exact finite resource profile and normal disk admission; doubles do not prove a vendor build or image acceptance."
+ },
+ {
+  "id": "lib.mgx-rocmlir-build-cpu-profile",
+  "target": "linux/scripts/launch-migraphx-configure-proof.py",
+  "find": "\"rocmlir-build\": (7200, \"4\", \"12g\")",
+  "replace": "\"rocmlir-build\": (7200, \"2\", \"12g\")",
+  "test": "bash linux/scripts/tests/test-migraphx-configure-launcher.sh",
+  "why": "Selected rocMLIR build transport retains its real builder,raw failures,exact finite resource profile and normal disk admission; doubles do not prove a vendor build or image acceptance."
+ },
+ {
+  "id": "lib.mgx-rocmlir-build-memory-profile",
+  "target": "linux/scripts/launch-migraphx-configure-proof.py",
+  "find": "\"rocmlir-build\": (7200, \"4\", \"12g\")",
+  "replace": "\"rocmlir-build\": (7200, \"4\", \"6g\")",
+  "test": "bash linux/scripts/tests/test-migraphx-configure-launcher.sh",
+  "why": "Selected rocMLIR build transport retains its real builder,raw failures,exact finite resource profile and normal disk admission; doubles do not prove a vendor build or image acceptance."
+ },
+ {
+  "id": "lib.mgx-rocmlir-build-disk-required",
+  "target": "linux/scripts/launch-migraphx-configure-proof.py",
+  "find": "if args.mode in BUILD_PROFILES else None",
+  "replace": "if args.mode == \"parsers\" else None",
+  "test": "bash linux/scripts/tests/test-migraphx-configure-launcher.sh",
+  "why": "Selected rocMLIR build transport retains its real builder,raw failures,exact finite resource profile and normal disk admission; doubles do not prove a vendor build or image acceptance."
+ },
+ {
+  "id": "lib.mgx-rocmlir-build-cli-mode",
+  "target": "linux/scripts/launch-migraphx-configure-proof.py",
+  "find": "\"python-consumer\", \"parsers\", \"rocmlir-build\"), default=\"configure\"",
+  "replace": "\"python-consumer\", \"parsers\"), default=\"configure\"",
+  "test": "bash linux/scripts/tests/test-migraphx-configure-launcher.sh",
+  "why": "Selected rocMLIR build transport retains its real builder,raw failures,exact finite resource profile and normal disk admission; doubles do not prove a vendor build or image acceptance."
+ },
+ {
+  "id": "lib.mgx-rocmlir-build-actual-builder",
+  "target": "linux/scripts/03-media/build/migraphx/configure-proof.sh",
+  "find": "bash /hub/linux/scripts/03-media/build/migraphx/build-source-rocmlir.sh /proof/work /source.tar.gz /rocm-cmake.tar.gz /opt/rocm > /proof/configure.log 2>&1",
+  "replace": "bash /hub/linux/scripts/03-media/build/migraphx/prepare-source-rocmlir.sh /proof/work /source.tar.gz /rocm-cmake.tar.gz /opt/rocm > /proof/configure.log 2>&1",
+  "test": "bash linux/scripts/tests/test-migraphx-sdk-closure.sh",
+  "why": "Selected rocMLIR build transport retains its real builder,raw failures,exact finite resource profile and normal disk admission; doubles do not prove a vendor build or image acceptance."
+ },
+ {
+  "id": "lib.mgx-rocmlir-build-raw-failure",
+  "target": "linux/scripts/03-media/build/migraphx/configure-proof.sh",
+  "find": "bash /hub/linux/scripts/03-media/build/migraphx/build-source-rocmlir.sh /proof/work /source.tar.gz /rocm-cmake.tar.gz /opt/rocm > /proof/configure.log 2>&1",
+  "replace": "bash /hub/linux/scripts/03-media/build/migraphx/build-source-rocmlir.sh /proof/work /source.tar.gz /rocm-cmake.tar.gz /opt/rocm > /proof/configure.log 2>&1 || true",
+  "test": "bash linux/scripts/tests/test-migraphx-sdk-closure.sh",
+  "why": "Selected rocMLIR build transport retains its real builder,raw failures,exact finite resource profile and normal disk admission; doubles do not prove a vendor build or image acceptance."
+ },
+ {
+  "id": "lib.mgx-rocmlir-build-worker-jobs",
+  "target": "linux/scripts/03-media/build/migraphx/configure-proof.sh",
+  "find": "export JOBS=4 BUILD_JOBS=4 MAX_JOBS=4",
+  "replace": "export JOBS=2 BUILD_JOBS=2 MAX_JOBS=2",
+  "test": "bash linux/scripts/tests/test-migraphx-sdk-closure.sh",
+  "why": "Selected rocMLIR build transport retains its real builder,raw failures,exact finite resource profile and normal disk admission; doubles do not prove a vendor build or image acceptance."
+ },
+ {
+  "id": "lib.full-preflight-rocm-ck-owner",
+  "target": "docs/scripts/bump_versions.py",
+  "find": "    \"MIGRAPHX_ROCM_CMAKE_VERSION\", \"MIGRAPHX_CK_HOST_VERSION\",\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "New source package versions are deliberately slaved to MIGraphX requirements and must keep an explicit manual owner without exempting their hashes. Source/fixture contracts do not prove actual GPU/image acceptance."
+ },
+ {
+  "id": "lib.full-preflight-rocmlir-api-owner",
+  "target": "docs/scripts/bump_versions.py",
+  "find": "    \"MIGRAPHX_ROCMLIR_VERSION\", \"MIGRAPHX_ROCMLIR_DIALECT_API_VERSION\",\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "New source package versions are deliberately slaved to MIGraphX requirements and must keep an explicit manual owner without exempting their hashes. Source/fixture contracts do not prove actual GPU/image acceptance."
+ },
+ {
+  "id": "lib.full-preflight-rocm_cmake-hash-owner",
+  "target": "linux/scripts/01-core/versions.env",
+  "find": "# bump:hold slaved to MIGraphX requirements; re-derive the complete source commit/version/hash tuple together.\nMIGRAPHX_ROCM_CMAKE_SOURCE_SHA256=",
+  "replace": "MIGRAPHX_ROCM_CMAKE_SOURCE_SHA256=",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "A source hash moves only with its reviewed requirement tuple; removing its hold must make the existing real-pin audit red. Source/fixture contracts do not prove actual GPU/image acceptance."
+ },
+ {
+  "id": "lib.full-preflight-ck-hash-owner",
+  "target": "linux/scripts/01-core/versions.env",
+  "find": "# bump:hold slaved to MIGraphX requirements; re-derive the complete source commit/version/hash tuple together.\nMIGRAPHX_CK_SOURCE_SHA256=",
+  "replace": "MIGRAPHX_CK_SOURCE_SHA256=",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "A source hash moves only with its reviewed requirement tuple; removing its hold must make the existing real-pin audit red. Source/fixture contracts do not prove actual GPU/image acceptance."
+ },
+ {
+  "id": "lib.full-preflight-rocmlir-hash-owner",
+  "target": "linux/scripts/01-core/versions.env",
+  "find": "# bump:hold slaved to MIGraphX requirements; re-derive the complete source commit/version/hash tuple together.\nMIGRAPHX_ROCMLIR_SOURCE_SHA256=",
+  "replace": "MIGRAPHX_ROCMLIR_SOURCE_SHA256=",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "A source hash moves only with its reviewed requirement tuple; removing its hold must make the existing real-pin audit red. Source/fixture contracts do not prove actual GPU/image acceptance."
+ },
+ {
+  "id": "lib.full-preflight-ft-cache-env",
+  "target": "linux/scripts/06-packaging/build-free-threaded-probe-deps.sh",
+  "find": "  compiler_cache_launcher_env 2>/dev/null || true\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+  "why": "Every launcher resolution keeps its guarded parent-shell environment call. Source/fixture contracts do not prove actual GPU/image acceptance."
+ },
+ {
+  "id": "lib.full-preflight-native-bootstrap",
+  "target": "linux/scripts/lib/native-cxx-probe.sh",
+  "find": "source \"${BASH_SOURCE[0]%/*}/log-bootstrap.sh\" || return\n",
+  "replace": "true\n",
+  "test": "bash linux/scripts/tests/test-lib-modules.sh",
+  "why": "Standalone native C++ helpers retain their own required canonical logging bootstrap. Source/fixture contracts do not prove actual GPU/image acceptance."
+ },
+ {
+  "id": "lib.full-preflight-ft-run-drain",
+  "target": "linux/Dockerfile.torch",
+  "find": "    TARGETARCH=\"${TARGETARCH}\" bash /opt/scripts/packaging/build-free-threaded-probe-deps.sh; \\\n    bash /opt/scripts/core/sccache-s3-level.sh drain\n",
+  "replace": "    TARGETARCH=\"${TARGETARCH}\" bash /opt/scripts/packaging/build-free-threaded-probe-deps.sh; \\\n    true\n",
+  "test": "bash linux/scripts/tests/test-sccache-s3-level.sh",
+  "why": "A RUN mounting sccache ends in the canonical drain and carries its library. Source/fixture contracts do not prove actual GPU/image acceptance."
+ },
+ {
+  "id": "lib.full-preflight-ft-drain-library",
+  "target": "linux/Dockerfile.torch",
+  "find": "    --mount=type=bind,source=linux/scripts/01-core/sccache-s3-level.sh,target=/opt/scripts/core/sccache-s3-level.sh,ro \\\n    set -euo pipefail; \\\n    TARGETARCH=\"${TARGETARCH}\" bash /opt/scripts/packaging/build-free-threaded-probe-deps.sh;",
+  "replace": "    set -euo pipefail; \\\n    TARGETARCH=\"${TARGETARCH}\" bash /opt/scripts/packaging/build-free-threaded-probe-deps.sh;",
+  "test": "bash linux/scripts/tests/test-sccache-s3-level.sh",
+  "why": "The FT compiler RUN retains the narrow canonical drain mount. Source/fixture contracts do not prove actual GPU/image acceptance."
+ },
+ {
+  "id": "lib.full-preflight-sdk-fixture-redirect",
+  "target": "linux/scripts/tests/migraphx_sdk_closure_tests.py",
+  "find": "shlex.quote(str(self.root / \"dispatch.log\"))",
+  "replace": "str(self.root / \"dispatch.log\")",
+  "test": "bash linux/scripts/tests/test-migraphx-sdk-closure.sh",
+  "why": "A path with spaces remains one redirection target and must not become extra child argv or an unowned temporary file. Source/fixture contracts do not prove actual GPU/image acceptance."
+ },
+ {
+  "id": "lib.full-preflight-sdk-child-argv",
+  "target": "linux/scripts/03-media/build/migraphx/configure-proof.sh",
+  "find": "build-source-rocmlir.sh /proof/work /source.tar.gz /rocm-cmake.tar.gz /opt/rocm",
+  "replace": "build-source-rocmlir.sh /proof/work /source.tar.gz /rocm-cmake.tar.gz /wrong-rocm",
+  "test": "bash linux/scripts/tests/test-migraphx-sdk-closure.sh",
+  "why": "Every dispatch branch must retain the complete selected archive and SDK arguments, independently expected by the fixture. Source/fixture contracts do not prove actual GPU/image acceptance."
+ },
+ {
+  "id": "lib.full-preflight-bootstrap-comment-not-import",
+  "target": "linux/scripts/tests/test-lib-modules.sh",
+  "find": "grep -Eq '^[[:space:]]*source[[:space:]]+[^#]*log-bootstrap[.]sh'",
+  "replace": "grep -qF 'log-bootstrap.sh'",
+  "test": "bash linux/scripts/tests/test-lib-modules.sh",
+  "why": "A ShellCheck source comment cannot satisfy the library import contract; the source-line check does not prove unconditional branch execution."
+ },
+ {
+  "id": "lib.full-preflight-cache-fixture-image-isolation",
+  "target": "linux/scripts/tests/test-compiler-cache-launcher.sh",
+  "find": "source <(sed \"s#/opt/scripts/core#${_COMMON_SH_DIR}#g\" \"${TESTS_DIR}/../01-core/compiler-cache-utils.sh\")",
+  "replace": "source \"${TESTS_DIR}/../01-core/compiler-cache-utils.sh\"",
+  "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+  "why": "The fixture redirects the actual shared helper image fallback before exercising resolver stdout; no real server or compiler-cache hit is implied."
  }
 ]

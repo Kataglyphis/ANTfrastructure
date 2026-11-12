@@ -104,17 +104,41 @@ class MigraphxConfigureLauncherTests(unittest.TestCase):
               self.assertRaisesRegex(RuntimeError, "canonical probe failed")):
             self.api["require_build_disk"](self.root)
 
-    def test_parser_disk_refusal_prevents_freezing_and_launch(self) -> None:
-        self.args.mode = "parsers"
+    def test_vendor_disk_refusal_prevents_freezing_and_launch(self) -> None:
         self.args.protobuf_archive = self.args.msgpack_archive
-        for failure in [ValueError("180GiB reserve"), RuntimeError("admission probe failed")]:
-            frozen, launch = self.install_main_doubles(raw=0)
-            with (mock.patch.dict(self.globals, require_build_disk=mock.Mock(side_effect=failure)),
-                  self.assertRaises(type(failure))):
-                self.api["main"]()
-            frozen.assert_not_called()
-            launch.assert_not_called()
-            self.assertFalse((self.args.output / "invocation.json").exists())
+        for mode in ["parsers", "rocmlir-build"]:
+            self.args.mode = mode
+            for failure in [ValueError("180GiB reserve"), RuntimeError("admission probe failed")]:
+                frozen, launch = self.install_main_doubles(raw=0)
+                with (self.subTest(mode=mode, failure=failure),
+                      mock.patch.dict(self.globals, require_build_disk=mock.Mock(side_effect=failure)),
+                      self.assertRaises(type(failure))):
+                    self.api["main"]()
+                frozen.assert_not_called()
+                launch.assert_not_called()
+                self.assertFalse((self.args.output / "invocation.json").exists())
+
+    def test_rocmlir_build_profile_keeps_ordinary_isolation_and_four_compilers(self) -> None:
+        self.args.mode = "rocmlir-build"
+        payload = self.api["payload"](self.args, self.root / "frozen", "e" * 32)
+        self.assertEqual(payload[-1], "rocmlir-build")
+        for flag, expected in [("--memory", "12g"), ("--cpus", "4"), ("--network", "none"), ("--pull", "never")]:
+            self.assertEqual(payload[payload.index(flag) + 1], expected)
+        self.assertIn("--init", payload)
+        self.assertNotIn("--entrypoint", payload)
+        command = self.api["unit_command"](self.args, self.root / "frozen", "e" * 32)
+        self.assertIn("TimeoutStartSec=7200", command)
+        self.assertIn("TimeoutStopSec=180", command)
+        self.assertIn("RemainAfterExit=yes", command)
+        fact = {"available_bytes": 300000000000, "canonical_free_gib": 279,
+                "required_bytes": 193273528320, "reclaim_performed": False}
+        _frozen, launch = self.install_main_doubles(raw=0)
+        with mock.patch.dict(self.globals, require_build_disk=mock.Mock(return_value=fact)) as namespace:
+            self.assertEqual(self.api["main"](), 0)
+            namespace["require_build_disk"].assert_called_once_with(self.args.output.parent)
+        record = json.loads((self.args.output / "invocation.json").read_text())
+        self.assertEqual(record["resource_admission"], fact)
+        self.assertEqual(record["command"], launch.call_args.args[0])
 
     def test_parser_admission_is_recorded_with_the_actual_launch(self) -> None:
         self.args.mode = "parsers"
@@ -146,7 +170,7 @@ class MigraphxConfigureLauncherTests(unittest.TestCase):
 
 
     def test_ck_mode_requires_its_two_archives_and_omits_msgpack(self) -> None:
-        for mode in ["ck", "rocmlir"]:
+        for mode in ["ck", "rocmlir", "rocmlir-build"]:
             argv = ["launcher", "--mode", mode, "--output", str(self.args.output),
                     "--compiler-cache", str(self.args.compiler_cache), "--unit", self.args.unit,
                     "--image", self.args.image, "--archive", str(self.args.archive),

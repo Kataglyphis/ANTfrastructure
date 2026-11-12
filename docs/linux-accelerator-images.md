@@ -1389,6 +1389,17 @@ that refusal. Parser units retain the ordinary offline entrypoint, two CPUs,
 Canonical cleanup and independent engine absence still precede a passed result.
 A passed component build alone does not wire or accept an ordinary GPU image.
 
+The same launcher accepts `--mode rocmlir-build --archive ROCMLIR_ARCHIVE
+--rocm-cmake-archive ROCM_CMAKE_ARCHIVE` to invoke `build-source-rocmlir.sh`,
+including real compilation, installation, original notices and its required external
+C-API consumer check. Both archives are read-only; the same two independent
+180GiB admission checks run before freezing. This profile retains four CPUs,
+12GiB memory, four worker jobs, a two-hour start bound and the same stop/cleanup
+policy. `--mode rocmlir` remains preparation only with its five-minute bound.
+Transport fixtures cover exact archives, resource profiles, executed worker job
+values, early disk refusal and raw failure. A successful launcher or protocol
+double is not evidence of a successful vendor build or ordinary image acceptance.
+
 A genuine isolated Linux build of the pinned Abseil and Protobuf now completes
 configuration, compilation and installation with the selected Clang/GCC,
 static PIC output and C++17. Its supplied development prefix contains 975 files,

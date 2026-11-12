@@ -100,9 +100,12 @@ class MigraphxSDKClosureTests(unittest.TestCase):
         worker = SDK.parent / "configure-proof.sh"
         text = worker.read_text()
         body = text[text.index('case "${1:-configure}"'):]
-        body = body.replace("/proof/configure.log", str(self.root / "dispatch.log"))
+        body = body.replace("/proof/configure.log", shlex.quote(str(self.root / "dispatch.log")))
         argv = self.root / "argv"
-        stub = "bash() { printf '%s\\0' \"$@\" > " + shlex.quote(str(argv)) + "; return \"$FAKE_STATUS\"; }\n"
+        jobs = self.root / "worker-jobs"
+        stub = ("bash() { printf '%s\\0' \"$@\" > " + shlex.quote(str(argv))
+                + "; printf '%s\\0' \"${JOBS:-}\" \"${BUILD_JOBS:-}\" \"${MAX_JOBS:-}\" > "
+                + shlex.quote(str(jobs)) + "; return \"$FAKE_STATUS\"; }\n")
         for mode, fake, expected, target in [
             ("", 0, 0, "prepare-source-build.sh"), ("sdk", 0, 0, "check-source-sdk.sh"),
             ("sdk", 37, 37, "check-source-sdk.sh"),
@@ -111,6 +114,7 @@ class MigraphxSDKClosureTests(unittest.TestCase):
             ("python-consumer", 0, 0, "verify-source-python.sh"), ("python-consumer", 37, 37, "verify-source-python.sh"),
             ("rocmlir-consumer", 0, 0, "verify-source-rocmlir.sh"), ("rocmlir-consumer", 37, 37, "verify-source-rocmlir.sh"),
             ("rocmlir", 0, 0, "prepare-source-rocmlir.sh"), ("rocmlir", 37, 37, "prepare-source-rocmlir.sh"),
+            ("rocmlir-build", 0, 0, "build-source-rocmlir.sh"), ("rocmlir-build", 37, 37, "build-source-rocmlir.sh"),
             ("ck-consumer", 0, 0, "verify-source-ck.sh"), ("ck-consumer", 37, 37, "verify-source-ck.sh"), ("unrecognized", 0, 2, ""),
         ]:
             with self.subTest(mode=mode, status=fake):
@@ -121,9 +125,22 @@ class MigraphxSDKClosureTests(unittest.TestCase):
                     env=dict(os.environ, LC_ALL="C", FAKE_STATUS=str(fake)),
                 )
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                if mode == "rocmlir-build":
+                    self.assertEqual(jobs.read_bytes().split(b"\0")[:-1], [b"4", b"4", b"4"])
                 if target:
-                    self.assertEqual(argv.read_bytes().split(b"\0")[0],
-                                     ("/hub/linux/scripts/03-media/build/migraphx/" + target).encode())
+                    expected_args = {
+                        "prepare-source-build.sh": ["/proof/work", "/source.tar.gz", "/rocm-cmake.tar.gz", "/msgpack.tar.gz", "/opt/rocm"],
+                        "check-source-sdk.sh": ["/proof/work", "/opt/rocm"],
+                        "build-source-deps.sh": ["/proof/work", "/abseil.tar.gz", "/protobuf.tar.gz"],
+                        "build-source-ck.sh": ["/proof/work", "/source.tar.gz", "/rocm-cmake.tar.gz"],
+                        "verify-source-python.sh": ["/proof/work", "/migraphx-original-source"],
+                        "verify-source-rocmlir.sh": ["/proof/work", "/deps-prefix", "/rocmlir-original-source"],
+                        "prepare-source-rocmlir.sh": ["/proof/work", "/source.tar.gz", "/rocm-cmake.tar.gz", "/opt/rocm"],
+                        "build-source-rocmlir.sh": ["/proof/work", "/source.tar.gz", "/rocm-cmake.tar.gz", "/opt/rocm"],
+                        "verify-source-ck.sh": ["/proof/work", "/deps-prefix", "/ck-original-header.hpp"],
+                    }[target]
+                    expected_args.insert(0, "/hub/linux/scripts/03-media/build/migraphx/" + target)
+                    self.assertEqual(argv.read_bytes().split(b"\0")[:-1], [value.encode() for value in expected_args])
                 else:
                     self.assertFalse(argv.exists())
 

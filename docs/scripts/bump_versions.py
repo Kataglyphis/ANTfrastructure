@@ -349,6 +349,9 @@ MANUAL = [
     "LITERT_TFLITE_PROTOC_VERSION",
     # No reliable programmatic source, platform choices, or deliberate pins.
     "TENSORRT_VERSION", "TENSORRT_LINUX_CUDA", "MIGRAPHX_VERSION",
+    # Source package/API versions are re-derived with MIGraphX requirements, not bumped independently.
+    "MIGRAPHX_ROCM_CMAKE_VERSION", "MIGRAPHX_CK_HOST_VERSION",
+    "MIGRAPHX_ROCMLIR_VERSION", "MIGRAPHX_ROCMLIR_DIALECT_API_VERSION",
     # Windows rocm lane: slaved to MIGRAPHX_WINDOWS_COMMIT's requirements.txt, re-derived with it.
     "MIGRAPHX_WINDOWS_ABSEIL_VERSION", "MIGRAPHX_WINDOWS_PROTOBUF_VERSION",
     "MIGRAPHX_WINDOWS_MSGPACK_VERSION", "MIGRAPHX_WINDOWS_SQLITE_VERSION", "MIGRAPHX_WINDOWS_SQLITE_YEAR",

@@ -22,12 +22,14 @@ ARCHIVES = {
     "configure": (("archive", "source.tar.gz"), ("rocm_cmake_archive", "rocm-cmake.tar.gz"),
                   ("msgpack_archive", "msgpack.tar.gz")),
     "ck": (("archive", "source.tar.gz"), ("rocm_cmake_archive", "rocm-cmake.tar.gz")),
+    "rocmlir-build": (("archive", "source.tar.gz"), ("rocm_cmake_archive", "rocm-cmake.tar.gz")),
     "rocmlir": (("archive", "source.tar.gz"), ("rocm_cmake_archive", "rocm-cmake.tar.gz")),
     "sdk": (),
     "ck-consumer": (),
     "rocmlir-consumer": (),
     "python-consumer": (),
 }
+BUILD_PROFILES = {"parsers": (3600, "2", "6g"), "rocmlir-build": (7200, "4", "12g")}
 PREFIX_INPUTS = (("deps_prefix", "/deps-prefix", True), ("original_header", "/ck-original-header.hpp", False),
                  ("original_source", "/rocmlir-original-source", True))
 INPUT_MODES = {
@@ -59,10 +61,10 @@ def validate_prefix_inputs(args: argparse.Namespace, parser: argparse.ArgumentPa
 def arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--mode", choices=("configure", "sdk", "ck", "ck-consumer", "rocmlir", "rocmlir-consumer", "python-consumer", "parsers"), default="configure")
-    parser.add_argument("--archive", type=Path, help="required in configure/ck/rocmlir/parsers modes")
+    parser.add_argument("--mode", choices=("configure", "sdk", "ck", "ck-consumer", "rocmlir", "rocmlir-consumer", "python-consumer", "parsers", "rocmlir-build"), default="configure")
+    parser.add_argument("--archive", type=Path, help="required in configure/ck/rocmlir/rocmlir-build/parsers modes")
     parser.add_argument("--protobuf-archive", type=Path, help="required in parsers mode")
-    parser.add_argument("--rocm-cmake-archive", type=Path, help="required in configure/ck/rocmlir modes")
+    parser.add_argument("--rocm-cmake-archive", type=Path, help="required in configure/ck/rocmlir/rocmlir-build modes")
     parser.add_argument("--msgpack-archive", type=Path, help="required in configure mode")
     parser.add_argument("--deps-prefix", type=Path, help="supplied development prefix for SDK or external consumer mode")
     parser.add_argument("--original-header", type=Path, help="original ck/utility/type.hpp for CK consumer mode")
@@ -89,6 +91,7 @@ def arguments() -> argparse.Namespace:
 
 
 def payload(args: argparse.Namespace, source: Path, run_id: str) -> list[str]:
+    _timeout, cpus, memory = BUILD_PROFILES.get(args.mode, (300, "2", "6g"))
     archives = []
     for name, target in ARCHIVES[args.mode]:
         archives += ["-v", f"{getattr(args, name)}:/{target}:ro"]
@@ -104,7 +107,7 @@ def payload(args: argparse.Namespace, source: Path, run_id: str) -> list[str]:
         args.engine, "run", "--name", args.unit.removesuffix(".service"),
         "--cidfile", str(args.output / "container.cid"), "--label", f"{LABEL}={run_id}",
         "--pull", "never", "--init", "--security-opt", "apparmor=unconfined",
-        "--user", "0:0", "--cpus", "2", "--memory", "6g", "--network", "none",
+        "--user", "0:0", "--cpus", cpus, "--memory", memory, "--network", "none",
         "--workdir", "/hub", "-v", f"{source}:/hub:ro",
         "-v", f"{source / 'linux/scripts/01-core'}:/opt/scripts/core:ro",
         "-v", f"{args.output}:/proof", *archives,
@@ -115,6 +118,7 @@ def payload(args: argparse.Namespace, source: Path, run_id: str) -> list[str]:
 
 
 def unit_command(args: argparse.Namespace, source: Path, run_id: str) -> list[str]:
+    timeout, _cpus, _memory = BUILD_PROFILES.get(args.mode, (300, "2", "6g"))
     cleanup = [
         "/usr/bin/python3", str(source / "linux/scripts/cleanup-owned-containers.py"),
         "--engine", args.engine, "--owner-label", LABEL, "--run-id", run_id,
@@ -122,7 +126,7 @@ def unit_command(args: argparse.Namespace, source: Path, run_id: str) -> list[st
     ]
     return [
         "systemd-run", "--user", "--no-block", "--expand-environment=no", "--unit=" + args.unit,
-        "-p", "Type=oneshot", "-p", "RemainAfterExit=yes", "-p", f"TimeoutStartSec={3600 if args.mode == 'parsers' else 300}",
+        "-p", "Type=oneshot", "-p", "RemainAfterExit=yes", "-p", f"TimeoutStartSec={timeout}",
         "-p", "TimeoutStopSec=180", "-p", "StandardOutput=append:" + str(args.output / "unit.log"),
         "-p", "StandardError=append:" + str(args.output / "unit.log"),
         "-p", "ExecStopPost=" + shlex.join(cleanup), *payload(args, source, run_id),
@@ -156,7 +160,7 @@ def main() -> int:
     state = checked_output(["systemctl", "--user", "show", "--property=LoadState", "--value", args.unit]).strip()
     if state != "not-found":
         raise ValueError("preserve the existing unit and choose a new unit name")
-    admission = require_build_disk(args.output.parent) if args.mode == "parsers" else None
+    admission = require_build_disk(args.output.parent) if args.mode in BUILD_PROFILES else None
     source, head, patch = freeze_owner_source(args.output)
     ownership = OwnedContainers(args.engine, LABEL, uuid.uuid4().hex)
     command = unit_command(args, source, ownership.run_id)

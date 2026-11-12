@@ -15,6 +15,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — repair five full-preflight integration regressions
+
+- Classify source MIGraphX package/API pins under their real manual owner and hold each slaved source hash; retain the existing checksum audits without adding exemptions.
+- Keep guarded FT compiler-cache setup, each native helper's own logging bootstrap, and the narrow S3-drain mount and final drain on the FT dependency Dockerfile RUN.
+- Keep cache fixture image paths inside the shared helper fixture and reject comment-only logging bootstrap references; the first image-based repair replay exposed both controls.\n- Quote the SDK fixture log redirection and assert complete child argv. Unquoted space-containing paths previously passed ten tests while leaving a sibling file in the suite TMPDIR. The failed full run remains preserved; targeted source controls do not establish a full green preflight or final image acceptance.
+
+## 2026-11-13 — launch the real rocMLIR component through the preserved proof transport
+
+- Add a separately selected rocMLIR build mode invoking the existing complete builder and required external API consumer, with both original archives, normal offline entrypoint and canonical/exact 180GiB admission before freezing.
+- Keep preparation at five minutes and parser builds at two jobs/6GiB/one hour; rocMLIR uses four jobs/12GiB/two hours. Executed worker environment, immutable inputs, raw failures and resource-refusal controls have mutation proofs. A transport proof does not establish a completed vendor build, normal image wiring or final acceptance.
+
 ## 2026-11-12 — retain platform checks and FT transport controls during source reconciliation
 
 - Preserve both OpenCV imports, all runtime platform gates, the canonical plugin profile name and both branches' mutation recipes while reconciling isolated WebGPU/MIGraphX work with the owner's updated baseline.

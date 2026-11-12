@@ -41,6 +41,12 @@ and target architecture before checking every ORT interpreter branch. Both succe
 failed factory callbacks must leave a completed transport; argument mutations prove these
 fixture assertions fail. Stub interpreters do not establish real dependency installation,
 factory registration or final image acceptance.
+The SDK dispatch fixture quotes its log redirection and checks complete child argv;
+space-containing temporary paths must leave no sibling file in the suite TMPDIR.
+The cache-launcher fixture redirects the shared helper\'s actual image fallback,
+so a real image launcher cannot replace its expected bare fallback. Standalone
+library checks require a source command; a ShellCheck annotation alone is refused.
+These source checks do not establish unconditional execution inside a branch.
 GPU graph fixtures clear inherited accelerator/package defaults before their explicit
 CPU and conflict cases; a poisoned-image environment replay guards that isolation.
 
@@ -1210,7 +1216,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5599 entries** over **761 distinct test commands**; both digits are
+manifest holds **5620 entries** over **761 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

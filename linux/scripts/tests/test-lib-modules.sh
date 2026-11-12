@@ -5,6 +5,13 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 LIB_DIR="${TESTS_DIR}/../lib"
 
+# A source annotation cannot replace the library's own import command.
+_bootstrap_source() { grep -Eq '^[[:space:]]*source[[:space:]]+[^#]*log-bootstrap[.]sh' "$1"; }
+t_case "a comment-only bootstrap reference cannot satisfy the import contract"
+_bootstrap_fixture="$(t_mktemp)"
+printf '# shellcheck source=log-bootstrap.sh\n' > "${_bootstrap_fixture}"
+t_assert_fails _bootstrap_source "${_bootstrap_fixture}"
+
 for mod in "${LIB_DIR}"/*.sh; do
   name="$(basename "${mod}")"
   # The agentic-* pair is one loop split over two files, not a library; see docs/agentic-loop-build-matrix.md#the-two-bash-files
@@ -26,7 +33,7 @@ for mod in "${LIB_DIR}"/*.sh; do
   t_assert_fails grep -qF '[1;34m[INFO]' "${mod}"
 
   t_case "${name}: sources the shared bootstrap"
-  t_assert_ok grep -qF 'log-bootstrap.sh' "${mod}"
+  t_assert_ok _bootstrap_source "${mod}"
 done
 
 t_case "every cd in lib/ is guarded — an unguarded cd runs the suite/app in the WRONG tree"

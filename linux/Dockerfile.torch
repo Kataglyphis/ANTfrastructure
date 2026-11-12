@@ -196,7 +196,10 @@ RUN --mount=type=secret,id=asset_mirror,required=false \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
-    TARGETARCH="${TARGETARCH}" bash /opt/scripts/packaging/build-free-threaded-probe-deps.sh
+    --mount=type=bind,source=linux/scripts/01-core/sccache-s3-level.sh,target=/opt/scripts/core/sccache-s3-level.sh,ro \
+    set -euo pipefail; \
+    TARGETARCH="${TARGETARCH}" bash /opt/scripts/packaging/build-free-threaded-probe-deps.sh; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
 
 # WORKDIR is created root-owned, so chown it; drop the sudo shim and the real setuid sudo, pure attack surface at uid 1001.
 LABEL kataglyphis.step=runtime-user

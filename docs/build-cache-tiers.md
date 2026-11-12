@@ -34,6 +34,13 @@ caller retains its protected-slug and next-runtime threshold logic. The lifecycl
 `test-storage-sdk-refactors.sh` exercise refusals and fallback ordering without pruning a real
 build cache.
 
+The free-threaded NumPy probe-dependency RUN keeps both compiler cache mounts,
+the S3 secret, a narrow mount of `sccache-s3-level.sh` and a closing canonical
+drain. Its RISC-V builder retains guarded parent-shell cache environment setup,
+compiler statistics and failure-time draining. Native wheel paths do not need a
+compiler server. Source fixtures check this wiring; actual cache reuse still
+requires measured compiler statistics.
+
 ## 1. The tiers
 
 | # | Tier | Wired at | Covers | Stored in | Destroyed by |

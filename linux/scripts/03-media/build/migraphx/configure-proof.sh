@@ -31,6 +31,10 @@ case "${1:-configure}" in
   python-consumer)
     bash /hub/linux/scripts/03-media/build/migraphx/verify-source-python.sh /proof/work /migraphx-original-source > /proof/configure.log 2>&1
     ;;
+  rocmlir-build)
+    export JOBS=4 BUILD_JOBS=4 MAX_JOBS=4
+    bash /hub/linux/scripts/03-media/build/migraphx/build-source-rocmlir.sh /proof/work /source.tar.gz /rocm-cmake.tar.gz /opt/rocm > /proof/configure.log 2>&1
+    ;;
   rocmlir)
     bash /hub/linux/scripts/03-media/build/migraphx/prepare-source-rocmlir.sh /proof/work /source.tar.gz /rocm-cmake.tar.gz /opt/rocm > /proof/configure.log 2>&1
     ;;
