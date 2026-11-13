@@ -59,6 +59,12 @@ Both Clang aliases must report the exact full pin. Nonzero or timed-out children
 cannot pass. Bind the actual container image manifest and preserve cleanup evidence
 separately; this JSON alone does not authenticate an image.
 
+The initial full compiler image built successfully but selected Ubuntu Clang
+23.1.6 for the 23.1.5 source pin. A digest-bound disposable selection replay now
+proves both Clang aliases at 23.1.5 and all four GNU aliases at 16.2.0/v3/generic.
+The corrected canonical solve reuses both expensive source RUNs. Fresh rebuilt
+image qualification and downstream SDK/backend/consumer acceptance remain open.
+
 The synthetic suites `test-llvm-alternatives.sh` and `test-compiler-defaults.sh`
 prove selection, collection and refusal, with actual mutation recipes. They do not
 prove an installed compiler, linked ELF ISA, cross SDK tools, compiler-cache coverage,

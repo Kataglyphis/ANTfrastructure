@@ -2380,7 +2380,8 @@ admission and digest-pinned parent handoff rules still apply.
 
 The prepared source at `031569f5` passes 280 Python methods, all 131 affected
 actual mutations, 26 normal quality groups and 16 unchanged normal-hook samples.
-Its full 42-group, 5,824-mutation Linux preflight is running separately. Earlier
+Its full 42-group, 5,824-mutation Linux preflight passes 600 suites and 32,176
+assertions; the successful terminal, complete mutator and independent cleanup are sealed. Earlier
 failed fixtures, the surviving recipe mutation and the three quality failures
 remain preserved; the accepted source proof is
 `logs/test-results/webgpu-registration-20261110/webgpu-wasm-factory-20261113/source-proof.json`.

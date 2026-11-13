@@ -17,6 +17,7 @@
 
 ## 2026-11-13 — select the pinned native LLVM tree
 
+- Source commit `b7fab2ed` passes 297 Python methods, all 75 affected mutations (20 new), all 26 normal quality groups and 16 normal-hook samples. An actual digest-bound selection replay proves both Clang aliases at 23.1.5 and all four GNU aliases at 16.2.0/v3/generic. The canonical rebuild reuses both expensive GNU/LLVM RUNs; final image qualification and the newer 5,844-mutation preflight remain open.
 - Correct the compiler stage's alternatives to use its explicit native source prefix and refuse incomplete installs before updates. Keep GNU aliases and expensive compiler cache layers intact.
 - Replace the Clang channel smoke with an exact successful first-line version check; wrong patches, prereleases and failed children fail the aggregate.
 - Isolate the copied-installer fixture from inherited cross-image mode; retain missing, empty, partial and parse failure assertions.
@@ -24,7 +25,7 @@
 
 ## 2026-11-13 — prepare executed WASM factory receipts
 
-- Source preparation now passes 280 Python methods, 131 actual affected mutations, all 26 normal quality groups and the unchanged normal hook's 16 actual samples at local commit `031569f5`. The full 42-group/5,824-mutation preflight is running; actual instrumented WASM/image/consumer acceptance remains open.
+- Source preparation now passes 280 Python methods, 131 actual affected mutations, all 26 normal quality groups and the unchanged normal hook's 16 actual samples at local commit `031569f5`. Its full 42-group/5,824-mutation preflight now passes 600 suites and 32,176 assertions; actual instrumented WASM/image/consumer acceptance remains open.
 - Reuse the native C API factory controls through an explicit linked-core WASM entry and a deferred CMake hook on the owning target; preserve native loader cleanup, operator hooks and the two core pass arguments.
 - Require bounded Node execution, actual JSPI capability, numeric status, exact C success/negative controls and unchanged inputs. Bind both module and loader bytes plus per-flavor raw runtime receipts; add a fresh two-flavor replay.
 - Carry the Hub probe's original MIT text with each instrumented WASM product and bind its exact bytes; reject altered or linked notice destinations.
