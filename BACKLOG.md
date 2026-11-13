@@ -1864,13 +1864,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 ## Open — Linux arm64 and riscv64
 
-- [ ] **CON130 — prove riscv64's pkg-config isolation on AccelerANTgine** [S, ★★].
-      `riscv64_cross_env` unsets `PKG_CONFIG_PATH` and its riscv64 twin (c40797cc), and it strips the host-triplet dirs
-      from `GST_PLUGIN_PATH` (0aef805d, `test-riscv64-cross.sh:163`), so QEMU no longer opens the amd64 plugins: OxidANT
-      run 40837860172 logged 1224 such lines, and 41268857583 logs none. That run also compiled gtk4-sys. BeschleunigerBallett
-      41156999263 passed, but its raster shard does not compile gtk4-sys. Left: AccelerANTgine's `linux-riscv64.yml` last
-      ran on 2026-10-15 (38756496664), before both fixes. A dispatched run there must resolve riscv64's `gtk4.pc`.
-
 - [ ] **CON145 — `cxxbridge` in the Linux and Windows images** [S, ★★]. Found 2026-10-21 with
       BeschleunigerBallett 7f54642c: every BB configure runs an unpinned `cargo install cxxbridge-cmd` at build time
       (`_myproject_find_or_install_cxxbridge`, `third_party/CMakeLists.txt:103`). `CXXBRIDGE_CMD_VERSION=1.0.205` matches
@@ -2299,42 +2292,29 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 - [ ] **CON269 — what the consumer hook pair and the staleness gate leave open** [S, ★★]. Found 2026-11-12
       while CON243 and CON244 were built; what is built is in `CHANGELOG.md` and
       [`adopting-in-a-new-project.md` § The git hooks, by reference](docs/adopting-in-a-new-project.md#the-git-hooks-by-reference).
-      1. OxidANT, AccelerANTgine, OrchestrANT and OmniAccelerANT still run their own `--stale-check`
-         loop in `scripts/linux/run-lint-gates.sh`. Each drops it at the pin bump that brings the gate.
-      2. No hook checks line endings in a consumer. The hub's `crlf-guard` is a function of
+      1. No hook checks line endings in a consumer. The hub's `crlf-guard` is a function of
          `preflight.sh` over the hub's own shell files, and `run-lint-gates.sh` has no such gate.
          First step: move that check into a script that takes `--root`, then call it from the staged
          checks and the full gates.
-      3. `lint-shell.sh` without arguments scans `linux/` only, so no gate lints
+      2. `lint-shell.sh` without arguments scans `linux/` only, so no gate lints
          `shared/linux/templates/git-hooks/*`. They were checked by hand with
          `bash linux/scripts/lint-shell.sh <file>`.
-      4. The refusal of `--index` without `--staged` has a test and no mutation recipe: its mutant runs
+      3. The refusal of `--index` without `--staged` has a test and no mutation recipe: its mutant runs
          the downloaded linters inside `test-lint-gates.sh`.
-      5. The commit hook's large-file check is `verify_large_files.py --root`, which refuses a tracked
+      4. The commit hook's large-file check is `verify_large_files.py --root`, which refuses a tracked
          file that is missing from disk. A deletion that is not staged yet stops every commit until it
          is; AccelerANTgine's clone on the Linux dev host was in that state on 2026-11-12. First step:
          the gate sniffs the blob (`git cat-file`) in place of the working-tree file.
-      6. The config line is relative, so a linked worktree whose hub submodule is not checked out has
+      5. The config line is relative, so a linked worktree whose hub submodule is not checked out has
          no hook: in a scratch clone of OxidANT a 1 MB binary was committed there without one line of
          output, and the `core.hooksPath` warning stays silent because the setting is not empty.
          An absolute path fails such a commit with the bootstrap's `git submodule update` hint.
          The aggregator cannot warn there, it is in the missing submodule. First step: decide between
          the absolute path per clone and a check in the copied bootstrap `antfrastructure.sh`.
 
-      Done when the four wrappers hold no `--stale-check` loop, a staged CRLF shell script stops a commit
+      Done when a staged CRLF shell script stops a commit
       in `test-consumer-hooks.sh`, a default `lint-shell.sh` run lists both hook files, a commit passes
       beside an unstaged deletion, and a commit in a worktree without the submodule is stopped or named.
-
-- [ ] **CON270 — the hub's own `pre-commit` reads the old index under `git commit -a`** [S, ★★]. Found
-      2026-11-12 with a probe hook under git 2.47.3: for `git commit -a` and `git commit <path>` git
-      hands the hook `GIT_INDEX_FILE=<git dir>/index.lock` (or `next-index-<pid>.lock`), and the plain
-      index does not list the files yet. `linux/host-config/git-hooks/pre-commit` unsets
-      `GIT_INDEX_FILE` before it reads `git diff --cached`, so its staged shellcheck, its doc gates and
-      its mutation sample see no file for such a commit. OmniAccelerANT's
-      `scripts/git-hooks/pre-commit` does the same and then exits 0 on an empty list.
-      First step: read the staged list before the `unset`, as the consumer template does.
-      Done when `test-precommit-hook.sh` runs the hook under a real `git commit -a` and the staged
-      shell file is checked.
 
 - [ ] **CON245 — a `kind = "pattern"` row with `max = 0` fails the lint gates** [S, ★★]. Found by the audit of
       2026-11-12: many AGENTS.md rules are one pattern, and two sampled ones hold by habit only
@@ -2449,17 +2429,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       new behaviour with a mutation recipe each, OxidANT's quality report records Rust test counts, and
       OrchestrANT's lane prints a second percentage for `benchmarks/`. The pytest-timeout half is CON238.
 
-- [ ] **CON251 — the docs cross-reference gate takes a plain mention for a heading** [S, ★★]. Found 2026-11-12,
-      when three consumer backlogs tripped on it in one day. A sentence such as "AGENTS.md § 5 re-records
-      from five or more runs" fails with `(no such heading)`: `SECTION_REF`
-      (`docs/scripts/verify_doc_links.py:95`) reads up to 70 characters after the sign as a heading name and
-      stops only at `. , ; ) | " [ ]` or the line's end. The finding does not say how to write a plain mention.
-      Either the pattern stops at a section number and checks it as `LOCAL_SECTION_REF` checks numbered
-      sections, or the message says how to write the mention.
-      First step: that sentence as a fixture page in `test-doc-links.sh`.
-      Done when the fixture passes, or fails with the hint; a renamed real heading still fails; and the new
-      branch has a mutation recipe.
-
 - [ ] **CON252 — `check_gpu_detector_parity.py` moves to `shared/python/`** [S, ★]. Found by the audit of
       2026-11-12: OxidANT's and OmniAccelerANT's `scripts/windows/check_gpu_detector_parity.py` (186 and 183
       lines) share about 110 lines, with the photo's hash typed into each. Two consumers, so the rule for
@@ -2481,14 +2450,3 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       change: a sensor for each, so a silent fall back to tract shows (not double-checked).
       Done when `linux/homeassistant/README.md` lists the sensors under "The cat cams", the live instance has
       kept a week of `model_ms` for each camera, and the alert has fired once on a test value.
-- [ ] **CON255 — one failed download of an earlier result fails the benchmark-history step** [S, ★★]. Found
-      2026-11-12: OrchestrANT's Linux x64 lane went red in *Benchmark history (x64)* (run 43247734183, job
-      131305386619) on `gh run download 41810334383 -n bench-history-hot-paths-x64-gil`, a 502/503 from the
-      artifact store; the build, the tests and the packages of that run had passed. `fetch` in
-      `linux/scripts/bench-history.py` reads up to `--keep` (20) earlier records on eight threads through
-      `pool.map`, so the first exception of any one download ends the step, and the report and the upload after
-      it are skipped: the run's own result is then missing from the history too. First step: `_download` tries
-      a failed download again (three times, with a pause), and `fetch` goes on without a record that still
-      fails, naming it in a warning; the comparison already says how many earlier results it read. Done when a
-      test with a download that fails once, and one that fails always, holds both, and the step still fails
-      when the artifact list itself cannot be read.

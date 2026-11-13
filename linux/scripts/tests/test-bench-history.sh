@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bench-history.py on synthetic results of all four formats and a replayed Actions API; no real GitHub call or runner timing; arguments select sections (-k fetch).
+# bench-history.py on synthetic results of all four formats and a replayed Actions API; no real GitHub call, artifact-store error or runner timing; arguments select sections (-k fetch).
 set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${here}/test-harness.sh"
@@ -150,17 +150,19 @@ _section_inputs() {
   _refused "a declaration without a direction fails" criterion slower --metrics '{"detector":{"direction":"up"}}'
 }
 
-_section_fetch() {
-  # The Actions API replayed through a fake gh: weekly records, some expired, plus noise that must not count.
+# The Actions API replayed through a fake gh: weekly records, some expired, plus noise that must not count.
+_fake_actions_api() {
   fake="${work}/fake"
-  mkdir -p "${fake}/bin" "${fake}/api" "${fake}/runs"
+  mkdir -p "${fake}/bin" "${fake}/api" "${fake}/runs" "${fake}/fail"
   cat > "${fake}/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${FAKE_GH}/calls"
 case "$1 $2" in
   "api -X") f="${FAKE_GH}/api/$(printf '%s' "$4" | tr '/?&=' '____').json"
             if [ -f "$f" ]; then cat "$f"; else echo "HTTP 403: $4" >&2; exit 1; fi ;;
-  "run download") mkdir -p "$9" && cp "${FAKE_GH}/runs/$3/"* "$9/" ;;
+  "run download") left="$(cat "${FAKE_GH}/fail/$3" 2>/dev/null || echo 0)"
+                  if [ "${left}" -gt 0 ]; then echo "$((left - 1))" > "${FAKE_GH}/fail/$3"; echo "HTTP 503: run $3" >&2; exit 1; fi
+                  mkdir -p "$9" && cp "${FAKE_GH}/runs/$3/"* "$9/" ;;
   *) exit 1 ;;
 esac
 EOF
@@ -196,7 +198,10 @@ api = fake / "api"
 EOF
   # fetched <args...>: bh's fetch against the fake API, as run 4242 of o/r.
   fetched() { PATH="${fake}/bin:${PATH}" FAKE_GH="${fake}" GH_TOKEN=t GITHUB_REPOSITORY=o/r GITHUB_RUN_ID=4242 bh fetch "$@"; }
+}
 
+_section_fetch() {
+  _fake_actions_api
   fetched --key k --dest "${work}/weekly"
   t_case "a weekly series is read across two API pages, back to the oldest unexpired week"
   t_assert_grep "${work}/rc" '^0$'
@@ -221,6 +226,51 @@ EOF
   t_assert_grep "${work}/err" '^::error title=Benchmark history unreadable::.*HTTP 403'
 }
 
+_section_fetch_failures() {
+  _fake_actions_api
+  # ${fake}/fail/<run> holds how many more downloads of that run the fake store refuses.
+  echo 1 > "${fake}/fail/1019"
+  echo 99 > "${fake}/fail/1018"
+  : > "${fake}/calls"
+  fetched --key k --keep 4 --branch develop --retry-pause 0 --dest "${work}/flaky"
+  t_case "a download that fails once is tried again, and its record is read"
+  t_assert_eq 2 "$(grep -c -e 'download 1019 ' "${fake}/calls")"
+  t_assert_eq "1016 1017 1019" "$(find "${work}/flaky" -name '*.json' | sed 's/.*-//; s/\.json$//' | sort | tr '\n' ' ' | sed 's/ $//')"
+  t_case "a download that fails every time is left out after three tries, and the step goes on"
+  t_assert_eq 3 "$(grep -c -e 'download 1018 ' "${fake}/calls")"
+  t_assert_grep "${work}/rc" '^0$'
+  t_case "the record left out is named in a warning, and the count line says what was read"
+  t_assert_grep "${work}/err" '^::warning title=Benchmark history incomplete::left out after 3 tries: gh run download 1018 -n bench-history-k: HTTP 503'
+  t_assert_eq 1 "$(grep -c -e '::warning' "${work}/err")" "the download that passed on its second try is no warning"
+  t_assert_grep "${work}/out" '^bench-history: read 3 earlier result\(s\) of bench-history-k on develop, 1 left out$'
+
+  t_case "the pause comes between the tries only, and --retry-pause sets it"
+  t_assert_eq "[7.5, 7.5] 3" "$(python3 - "${tool}" <<'PY'
+import importlib.util
+import pathlib
+import sys
+import time
+
+sys.path.insert(0, str(pathlib.Path(sys.argv[1]).parent))
+import quality_report_github as github
+
+spec = importlib.util.spec_from_file_location("bench_history", sys.argv[1])
+bench = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(bench)
+slept, calls = [], []
+time.sleep = slept.append
+def refuse(*args):
+    calls.append(args)
+    raise github.Broken("HTTP 503")
+github.download = refuse
+failure = bench._try_download("o/r", 1, "bench-history-k", "unused", bench.parse_args(
+    ["fetch", "--key", "k", "--dest", "d", "--retry-pause", "7.5"]).retry_pause)
+print(slept, len(calls) if failure == "HTTP 503" else failure)
+PY
+)"
+  rm -f "${fake}/fail/"*
+}
+
 _section_action() {
   bench_action="${actions}/bench-history/action.yml"
   frontend_action="${actions}/frontend-perf-report/action.yml"
@@ -235,5 +285,5 @@ _section_action() {
   t_assert_grep "${frontend_action}" '^        format: flutter-frame$'
 }
 
-t_sections _section_criterion _section_formats _section_inputs _section_fetch _section_action -- "$@"
+t_sections _section_criterion _section_formats _section_inputs _section_fetch _section_fetch_failures _section_action -- "$@"
 t_summary

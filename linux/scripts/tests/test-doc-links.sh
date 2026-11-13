@@ -112,6 +112,40 @@ printf '# Guide\n\n## 1b. Real\n\nSee CHANGELOG.md \xc2\xa7 2026-09-01 for it.\n
 t_assert_eq "0" "$(_rc "${fix}")"
 rm -rf "${fix}"
 
+# _mention <sentence> [agents heading]: the fixture with a numbered AGENTS.md and that sentence on the guide page.
+_mention() {
+  local d; d="$(_fixture ':')"
+  printf '# Rules\n\n## %s\n\ntext\n' "${2:-5. Build, run, test}" > "${d}/AGENTS.md"
+  printf '# Guide\n\n## Real Heading\n\n%s\n' "$1" > "${d}/docs/guide.md"
+  printf '%s' "${d}"
+}
+
+t_case "a section number with prose after it is a mention of that section, not a heading name"
+fix="$(_mention "$(printf '`AGENTS.md` \xc2\xa7 5 re-records the golden from five or more runs.')")"
+t_assert_eq "0" "$(_rc "${fix}")" "$(_run "${fix}")"
+t_assert_contains "$(_run "${fix}")" "1 ${SGN}-refs" "the mention is still checked, not skipped"
+rm -rf "${fix}"
+
+t_case "such a mention fails when no section of the page carries the number"
+fix="$(_mention "$(printf '`AGENTS.md` \xc2\xa7 7 re-records the golden from five or more runs.')")"
+t_assert_eq "1" "$(_rc "${fix}")"
+t_assert_contains "$(_run "${fix}")" \
+  "[section] ${D}guide.md -> AGENTS.md ${SGN} 7 re-records the golden from five or more runs  (no such heading)"
+rm -rf "${fix}"
+
+t_case "a renamed real heading still fails, with or without a number before it"
+_by_name="$(printf 'See `AGENTS.md` \xc2\xa7 Build and run.')"
+fix="$(_mention "${_by_name}" "5. Build and run, then test")"
+t_assert_eq "0" "$(_rc "${fix}")" "the reference must resolve before the rename, or its failure after proves nothing"
+rm -rf "${fix}"
+fix="$(_mention "${_by_name}" "5. Compile and run, then test")"
+t_assert_eq "1" "$(_rc "${fix}")"
+t_assert_contains "$(_run "${fix}")" "AGENTS.md ${SGN} Build and run  (no such heading)"
+rm -rf "${fix}"
+fix="$(_mention "$(printf 'See `AGENTS.md` \xc2\xa7 5 Build and run.')" "Compile and run, then test")"
+t_assert_eq "1" "$(_rc "${fix}")" "the page has no numbered section left for the 5 to name"
+rm -rf "${fix}"
+
 t_case "a bare pointer in a file HEADER is a finding until it is frozen"
 fix="$(_fixture "# see ${D}guide.md")"
 t_assert_eq "1" "$(_rc "${fix}")"

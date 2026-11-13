@@ -98,6 +98,8 @@ SECTION_REF = re.compile(
     # Stop at [ and ] too, or a link whose text carries the reference reads "](x.md" into the name.
     + r"\s*\"?([^.,;)|\"\[\]\n]{2,70})"
 )
+# "AGENTS.md § 5 re-records the golden": the number is the reference, the words after it are the sentence.
+NUMBER_LED = re.compile(r"(\d+[a-z]?)(?![\w.(])")
 
 
 def slug(heading: str) -> str:
@@ -282,6 +284,9 @@ def check_section_refs(docs: dict[str, Doc], findings: list[str]) -> int:
             checked += 1
             # Prose abbreviates, so either may be a prefix of the other; a rename still fails.
             if _heading_match(want, other.anchors):
+                continue
+            num = NUMBER_LED.match(raw_name)
+            if num and num.group(1) in NUMBERED_HEADING.findall(other.body):
                 continue
             findings.append(
                 f"[section] {doc.rel} -> {target_name} {SECTION_SIGN} {raw_name}  (no such heading)"

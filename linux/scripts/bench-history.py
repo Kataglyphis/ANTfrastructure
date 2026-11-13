@@ -22,6 +22,8 @@ FORMATS = ("criterion", "google-benchmark", "flutter-frame", "orchestrant-bench"
 MIN_HISTORY_TO_FAIL = 3
 FAIL_RATIO = 2.0
 ARTIFACT_PREFIX = "bench-history-"
+# The artifact store answers a download with a passing 502 or 503 now and then.
+DOWNLOAD_TRIES = 3
 EXIT_INPUT = 2
 GBENCH_UNITS = {"ns": 1.0, "us": 1e3, "ms": 1e6, "s": 1e9}
 GBENCH_FIELDS = {
@@ -278,15 +280,37 @@ def _candidates(slug: str, key: str, branch: str, pages: int) -> list[dict[str, 
     return sorted(seen.values(), key=lambda a: str(a.get("created_at", "")), reverse=True)
 
 
-def _download(slug: str, key: str, artifact: dict[str, Any], dest: pathlib.Path) -> pathlib.Path:
-    """One earlier record into dest as <created>-<run>.json."""
+def _try_download(slug: str, run_id: int, name: str, tmp: str, pause: float) -> str:
+    """Fetch one artifact, trying a failed download again after the pause; the last failure, or empty."""
+    import time
+
+    import quality_report_github as github
+    failure = ""
+    for attempt in range(DOWNLOAD_TRIES):
+        if attempt:
+            time.sleep(pause)
+        try:
+            github.download(slug, run_id, name, tmp)
+        except github.Broken as exc:
+            failure = str(exc)
+        else:
+            return ""
+    return failure
+
+
+def _download(slug: str, key: str, artifact: dict[str, Any], dest: pathlib.Path, pause: float) -> pathlib.Path | None:
+    """One earlier record into dest as <created>-<run>.json; None, with a warning, when its download keeps failing."""
     import shutil
     import tempfile
 
     import quality_report_github as github
     run_id = int(str(artifact["workflow_run"]["id"]))
     with tempfile.TemporaryDirectory() as tmp:
-        github.download(slug, run_id, f"{ARTIFACT_PREFIX}{key}", tmp)
+        failure = _try_download(slug, run_id, f"{ARTIFACT_PREFIX}{key}", tmp, pause)
+        if failure:
+            print(f"::warning title=Benchmark history incomplete::left out after {DOWNLOAD_TRIES} tries: {failure}",
+                  file=sys.stderr)
+            return None
         found = sorted(pathlib.Path(tmp).glob("**/*.json"))
         if len(found) != 1:
             raise github.Broken(f"run {run_id}'s {ARTIFACT_PREFIX}{key} holds {len(found)} JSON files, not 1")
@@ -296,7 +320,7 @@ def _download(slug: str, key: str, artifact: dict[str, Any], dest: pathlib.Path)
 
 
 def fetch(args: argparse.Namespace) -> int:
-    """Download up to --keep earlier default-branch records through the Actions API."""
+    """Download up to --keep earlier default-branch records through the Actions API; an unreadable list raises."""
     from concurrent.futures import ThreadPoolExecutor
 
     import quality_report_github as github
@@ -310,8 +334,9 @@ def fetch(args: argparse.Namespace) -> int:
     dest.mkdir(parents=True, exist_ok=True)
     chosen = _candidates(slug, args.key, branch, args.pages)[: args.keep]
     with ThreadPoolExecutor(max_workers=8) as pool:
-        list(pool.map(lambda a: _download(slug, args.key, a, dest), chosen))
-    print(f"bench-history: read {len(chosen)} earlier result(s) of {ARTIFACT_PREFIX}{args.key} on {branch}")
+        read = [p for p in pool.map(lambda a: _download(slug, args.key, a, dest, args.retry_pause), chosen) if p]
+    left_out = f", {len(chosen) - len(read)} left out" if len(read) < len(chosen) else ""
+    print(f"bench-history: read {len(read)} earlier result(s) of {ARTIFACT_PREFIX}{args.key} on {branch}{left_out}")
     return 0
 
 
@@ -333,6 +358,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     fet.add_argument("--branch", default="", help="default: the repository's default branch")
     fet.add_argument("--repo", default="", help="owner/name; default: GITHUB_REPOSITORY or origin")
     fet.add_argument("--pages", type=int, default=10, help="artifact list pages of 100 to scan")
+    fet.add_argument("--retry-pause", type=float, default=5.0, help="seconds before a failed download is tried again")
     return parser.parse_args(argv)
 
 

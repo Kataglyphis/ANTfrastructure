@@ -3506,16 +3506,16 @@
  {
   "id": "pre-commit.doc-span-fast-slugs",
   "target": "docs/cross-build-verification.md",
-  "find": "`_FAST_SLUGS` (`:88-91`)",
-  "replace": "`_FAST_SLUGS` (`:88-92`)",
+  "find": "`_FAST_SLUGS` (`:105-108`)",
+  "replace": "`_FAST_SLUGS` (`:105-109`)",
   "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
   "why": "the _FAST_SLUGS offset quoted in prose is re-derived from the hook, not trusted"
  },
  {
   "id": "pre-commit.doc-span-staged-shell",
   "target": "docs/cross-build-verification.md",
-  "find": "(`:102-119`, the binary resolved",
-  "replace": "(`:102-118`, the binary resolved",
+  "find": "(`:119-136`, the binary resolved",
+  "replace": "(`:119-135`, the binary resolved",
   "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
   "why": "the staged-shell block offset quoted in prose is re-derived from the hook, not trusted"
  },
@@ -37895,5 +37895,85 @@
   "replace": "    :\n",
   "test": "bash linux/scripts/tests/test-intel-gpu-userspace.sh",
   "why": "without the dispatcher's headers the probe skips Quick Sync silently"
+ },
+ {
+  "id": "pre-commit.commit-a-reads-its-own-index",
+  "target": "linux/host-config/git-hooks/pre-commit",
+  "find": "    GIT_INDEX_FILE=\"${_index}\" git diff --cached --name-only --diff-filter=ACM\n",
+  "replace": "    git diff --cached --name-only --diff-filter=ACM\n",
+  "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+  "why": "git commit -a and git commit <path> keep the commit's index in a lock file; read from the plain index, the staged shellcheck, the doc gates and the mutation sample see no file"
+ },
+ {
+  "id": "pre-commit.unreadable-index-stops",
+  "target": "linux/host-config/git-hooks/pre-commit",
+  "find": "_staged_any=\"$(_staged_paths)\" || {",
+  "replace": "_staged_any=\"$(_staged_paths || true)\" || {",
+  "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+  "why": "a staged list that cannot be read is empty, and an empty list passes every staged check"
+ },
+ {
+  "id": "doc-links.numbered-mention-passes",
+  "target": "docs/scripts/verify_doc_links.py",
+  "find": "            if num and num.group(1) in NUMBERED_HEADING.findall(other.body):\n                continue",
+  "replace": "            if False:\n                continue",
+  "test": "bash linux/scripts/tests/test-doc-links.sh",
+  "why": "a section number with prose after it was read as one heading name, and three consumer backlogs failed on a plain mention in one day"
+ },
+ {
+  "id": "doc-links.numbered-mention-number-checked",
+  "target": "docs/scripts/verify_doc_links.py",
+  "find": "num.group(1) in NUMBERED_HEADING.findall(other.body)",
+  "replace": "num.group(1)",
+  "test": "bash linux/scripts/tests/test-doc-links.sh",
+  "why": "the number must name a numbered section of the page, or any digit after the sign makes a reference pass"
+ },
+ {
+  "id": "bench-history.failed-download-retried",
+  "target": "linux/scripts/bench-history.py",
+  "find": "    for attempt in range(DOWNLOAD_TRIES):",
+  "replace": "    for attempt in range(1):",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch_failures",
+  "why": "one 502 from the artifact store must not cost the comparison an earlier record"
+ },
+ {
+  "id": "bench-history.failed-download-left-out",
+  "target": "linux/scripts/bench-history.py",
+  "find": "            return None\n        found = sorted(",
+  "replace": "            raise github.Broken(failure)\n        found = sorted(",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch_failures",
+  "why": "one earlier record that cannot be downloaded ended the step, and the run's own result never reached the history"
+ },
+ {
+  "id": "bench-history.left-out-is-named",
+  "target": "linux/scripts/bench-history.py",
+  "find": "            print(f\"::warning title=Benchmark history incomplete::left out after {DOWNLOAD_TRIES} tries: {failure}\",\n                  file=sys.stderr)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch_failures",
+  "why": "a median over fewer records than asked for must say which one is missing"
+ },
+ {
+  "id": "bench-history.retry-pauses",
+  "target": "linux/scripts/bench-history.py",
+  "find": "            time.sleep(pause)",
+  "replace": "            time.sleep(0)",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch_failures",
+  "why": "three tries in the same instant meet the same outage"
+ },
+ {
+  "id": "bench-history.count-is-what-was-read",
+  "target": "linux/scripts/bench-history.py",
+  "find": "read {len(read)} earlier",
+  "replace": "read {len(chosen)} earlier",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch_failures",
+  "why": "the count line is how a reader sees that the median spans fewer records"
+ },
+ {
+  "id": "bench-history.unreadable-list-fails",
+  "target": "linux/scripts/bench-history.py",
+  "find": "            print(f\"::error title=Benchmark history unreadable::{exc}\", file=sys.stderr)\n            return EXIT_INPUT",
+  "replace": "            print(f\"::error title=Benchmark history unreadable::{exc}\", file=sys.stderr)\n            return 0",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch",
+  "why": "an artifact list that cannot be read is no empty history: the step must fail, unlike one record's download"
  }
 ]

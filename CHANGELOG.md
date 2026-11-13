@@ -14,6 +14,30 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — three small gate faults: the hub hook under `git commit -a`, a section number in prose, one failed download (CON270, CON251, CON255)
+
+- **CON270.** `linux/host-config/git-hooks/pre-commit` reads the staged list once, from the index git names in
+  `GIT_INDEX_FILE`, before it unsets the variable for everything it starts. Under `git commit -a` and
+  `git commit <path>` git builds the commit's index in a lock file, so the hook's staged `shellcheck`, its doc gates
+  and its mutation sample saw no file and said OK. A list that cannot be read now stops the commit.
+  `test-precommit-hook.sh` commits for real with `-a`, with a path and plain. OmniAccelerANT's own hook already
+  reads the list before its `unset`.
+- **CON251.** `verify_doc_links.py` passes a `§` reference that goes on as a sentence after a section number
+  ("`AGENTS.md` § 5 re-records the golden") when the page it names has a numbered heading with that number. A
+  number no section carries still fails, and so does a renamed heading cited by name. Not covered: the words behind
+  a number that still exists are not compared.
+- **CON255.** `bench-history.py fetch` tries the download of one earlier record three times, `--retry-pause` (5 s)
+  apart, and goes on without a record that still fails: a `Benchmark history incomplete` warning names it and the
+  count line ends in `, <n> left out`. An artifact list that cannot be read still exits 2. Consumers take it at
+  their next pin bump.
+- Ten recipes hold the three (`pre-commit.*`, `doc-links.numbered-mention-*`, `bench-history.*`), each proved on the
+  arm64 dev host. Details in `docs/code-quality-tooling.md`.
+- **CON269** loses its first item: none of the four consumer wrappers holds a `--stale-check` loop any more.
+- **CON130** is closed by its run: AccelerANTgine's `linux-riscv64.yml` passed on 2026-11-13 (run 43403278204, hub
+  pin `ed3d1707`), the first run since 2026-10-15 and the first after both fixes. CMake resolved GStreamer through
+  pkg-config, 239 of 239 tests passed under QEMU, and the log has no `x86_64-linux-gnu` line and no plugin that
+  failed to load. AccelerANTgine does not build gtk4, so no `gtk4.pc` was there to resolve.
+
 ## 2026-11-13 — BACKLOG CON256: what the first complete AMD package build on `:latest-rocm` showed
 
 - OxidANT's candidate lane (run 43345664993, hub pin ed3d170): the census passes with `--library-path lib/glibc:lib`;

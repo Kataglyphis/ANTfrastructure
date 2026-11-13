@@ -370,10 +370,16 @@ earlier default-branch results. The `bench-history` action wraps it.
   later median. `fetch` reads earlier records through the Actions API (`gh api`), only unexpired
   artifacts of default-branch runs other than this one, newest first, so a weekly series survives
   `actions/cache`'s 7-day eviction. A private repository's calling job needs `actions: read`; a
-  public one reads them with `contents: read` alone (probe runs 41259780836 and 41259826301). An
-  unreadable API fails the step instead of passing on an empty history.
+  public one reads them with `contents: read` alone (probe runs 41259780836 and 41259826301).
+- **A download that fails.** `fetch` tries the download of one earlier record three times,
+  `--retry-pause` (5 s) apart. A record that still fails is left out: a
+  `Benchmark history incomplete` warning names its run and the store's answer, and the count line
+  ends in `, <n> left out`. The step goes on, so the run's own result is still compared and stored.
+  An artifact list that cannot be read exits 2 as before, and so does an earlier artifact that
+  holds no or several JSON files: neither reads as an empty history.
 - **Not covered.** Noise below a doubling, a change of runner or CPU model (put the arch in the
-  key), and whether a stored run was otherwise green.
+  key), and whether a stored run was otherwise green. When the artifact store refuses every
+  download, the run is compared with nothing and passes, with one warning per record.
 
 ```bash
 python3 linux/scripts/bench-history.py fetch --key criterion-x64 --dest earlier
@@ -382,7 +388,8 @@ python3 linux/scripts/bench-history.py report --format criterion --result target
 ```
 
 Test: `tests/test-bench-history.sh`, which replays the Actions API through a fake `gh` (two pages,
-a weekly series with expired weeks, another branch, this run). Recipes: `bench-history.*`.
+a weekly series with expired weeks, another branch, this run, a download that fails once and one
+that fails every time). Recipes: `bench-history.*`.
 
 #### `dart format`: the tracked files, in the floor's style
 
@@ -1065,7 +1072,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4735 entries** over **634 distinct test commands**; both digits are
+manifest holds **4745 entries** over **635 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1339,6 +1346,16 @@ commit of a session is the most expensive one even if it touched one file. The
 hook now selects on the STAGED files alone — the same scoping it already applies
 to `shellcheck` (`--files`) and to the doc gates. `--changed` keeps its meaning
 for a by-hand proof; the pre-push hook uses `--push-range`.
+
+**Which index.** The staged list is read once, from the index git names in
+`GIT_INDEX_FILE`. `git commit -a` and `git commit <path>` build the commit's index in a
+lock file (`index.lock`, `next-index-<pid>.lock`), and the plain index does not list
+their files yet: read from it, the staged `shellcheck`, the doc gates and the mutation
+sample saw no file and the hook said OK. The hook unsets the variable for everything it
+starts, so only that one `git diff --cached` gets the path. A list that cannot be read
+stops the commit. `tests/test-precommit-hook.sh` commits for real with `-a`, with a path
+and plain; recipes `pre-commit.commit-a-reads-its-own-index` and
+`pre-commit.unreadable-index-stops`.
 
 **Cost.** Even staged-only, the mass is lopsided: the totals above spread over a
 handful of suites, and on 2026-09-04 `test-code-complexity.sh` alone owned more
@@ -2203,6 +2220,27 @@ instead of the slug. `windows/` is not scanned: it is its own lane.
 Fixtures for both failure directions live in
 `linux/scripts/tests/test-doc-links.sh`; mutation `doc-links.code-pointers`
 proves the scan is still running.
+
+### A section number with prose after it
+
+The `§` check reads what follows the sign as a heading name, up to 70 characters or the
+next `. , ; ) | " [ ]`. A sentence that goes on after a section number was therefore one
+long name that no heading has, and the gate failed it with `(no such heading)`:
+
+```text
+`AGENTS.md` § 5 re-records the golden from five or more runs.
+```
+
+Such a reference passes when the page it names has a numbered heading with that number
+(`## 5. Build, run, test`), the rule a bare `(§ 1a)` already follows on its own page. A
+number no section carries still fails, and so does a renamed heading cited by name.
+
+**Not covered.** Behind a number that still exists the words are not compared: a
+reference to section 5 by its old title passes after that section was renamed. A number
+that names a list item or an unnumbered heading still fails; write the heading's name.
+
+Fixtures in `test-doc-links.sh`; recipes `doc-links.numbered-mention-passes` and
+`doc-links.numbered-mention-number-checked`.
 
 ### The secret scan scans from inside the tree
 

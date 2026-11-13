@@ -8,6 +8,8 @@ HOOK="${TESTS_DIR}/../../host-config/git-hooks/pre-commit"
 
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
+# A hook that starts this suite must not hand its own repository to the fixture's real commits.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
 
 python3 - "${_work}/manifest.json" <<'PY'
 import json
@@ -183,5 +185,77 @@ t_assert_eq "0" "$(printf '%s' "${_crlf_plan}" | tr -cd '\r' | wc -c | tr -d ' '
 t_assert_eq "plan 3 11" "$(printf '%s\n' "${_crlf_plan}" | head -1)"
 PREFLIGHT_PYTHON="${_work}/crlf-python" _run_hook 3 "${_work}/both.txt" >/dev/null
 t_assert_eq "0" "$(tr -cd '\r' < "${_ARGV}" | wc -c | tr -d ' ')" "the gate receives ids without \r"
+
+# Real commits from here: the stub git above cannot show which index the hook reads.
+_repo="${_work}/repo"
+_SC_LOG="${_work}/shellcheck-argv.txt"
+: > "${_work}/gitconfig"
+mkdir -p "${_repo}/linux/scripts" "${_repo}/docs/scripts" "${_repo}/a"
+printf '#!/usr/bin/env bash\nexit 0\n' > "${_repo}/linux/scripts/preflight.sh"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s/bin/shellcheck-recorder"\n' "${_work}" > "${_repo}/linux/scripts/lint-shell.sh"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "${HOOK_TEST_SC_LOG}"\nexit "${HOOK_TEST_SC_RC:-0}"\n' \
+  > "${_work}/bin/shellcheck-recorder"
+chmod +x "${_work}/bin/shellcheck-recorder"
+printf 'import sys; sys.exit(0)\n' > "${_repo}/linux/scripts/verify_shellcheck_warnings.py"
+gate_stub_recorder "${_repo}/docs/scripts/verify_mutations.py"
+printf 'x\n' > "${_repo}/a/hot.conf"
+printf 'GUARD=on\n' > "${_repo}/linux/scripts/subject.sh"
+printf 'GUARD=on\n' > "${_repo}/linux/scripts/left-out.sh"
+
+# <git args...>: git in the fixture, under no developer's config and with the hook under test.
+_git() {
+  GIT_CONFIG_GLOBAL="${_work}/gitconfig" GIT_CONFIG_NOSYSTEM=1 git -C "${_repo}" -c user.name=fixture \
+    -c user.email=fixture@example.invalid -c core.hooksPath="${HOOK%/*}" "$@"
+}
+# <shellcheck rc> <git commit args...>: one real commit through the hook; output in _out, status in _rc.
+_commit() {
+  local _sc_rc="$1"
+  shift
+  rm -f "${_ARGV}" "${_SC_LOG}"
+  _out="$(HOOK_TEST_ARGV="${_ARGV}" HOOK_TEST_GATE_RC=0 HOOK_TEST_STALE_RC=0 HOOK_TEST_SC_LOG="${_SC_LOG}" \
+    HOOK_TEST_SC_RC="${_sc_rc}" PRECOMMIT_MUTATION_CAP=0 PRECOMMIT_MUTATION_MANIFEST="${_work}/manifest.json" \
+    _git commit -q "$@" 2>&1 </dev/null)"
+  _rc=$?
+}
+_checked() { cat "${_SC_LOG}" 2>/dev/null; }
+git init -q -b develop "${_repo}" >/dev/null 2>&1
+_git add -A >/dev/null 2>&1
+_git commit -q --no-verify -m base >/dev/null 2>&1
+t_assert_eq "base" "$(_git log -1 --format=%s 2>&1)" "the fixture repository must hold its first commit, or no case below commits anything"
+
+t_case "git commit -a: the shell file only the commit's own index lists is checked"
+printf 'GUARD=off\n' > "${_repo}/linux/scripts/subject.sh"
+printf 'y\n' > "${_repo}/a/hot.conf"
+_commit 0 -a -m all
+t_assert_eq 0 "${_rc}" "a clean commit passes: ${_out}"
+t_assert_contains "$(_checked)" "linux/scripts/subject.sh" "the plain index does not list what -a adds: ${_out}"
+t_assert_eq "10" "$(_gate_ids)" "the mutation sample reads the same list"
+
+t_case "git commit -a: a shellcheck finding in such a file stops the commit"
+_tip="$(_git rev-parse HEAD)"
+printf 'GUARD=again\n' > "${_repo}/linux/scripts/subject.sh"
+_commit 1 -a -m refused
+t_assert_eq 1 "${_rc}" "${_out}"
+t_assert_contains "${_out}" "shellcheck FAILED on staged files"
+t_assert_eq "${_tip}" "$(_git rev-parse HEAD)" "nothing was committed"
+
+t_case "git commit <path>: the file named on the command line is checked"
+_commit 0 -m path linux/scripts/subject.sh
+t_assert_eq 0 "${_rc}" "${_out}"
+t_assert_contains "$(_checked)" "linux/scripts/subject.sh" "nor what a path on the command line adds: ${_out}"
+
+t_case "a plain commit is graded on what is staged, not on the working tree"
+printf 'GUARD=staged\n' > "${_repo}/linux/scripts/subject.sh"
+_git add linux/scripts/subject.sh
+printf 'GUARD=unstaged\n' > "${_repo}/linux/scripts/left-out.sh"
+_commit 0 -m plain
+t_assert_eq 0 "${_rc}" "${_out}"
+t_assert_eq "-S error linux/scripts/subject.sh" "$(_checked)" "the file left out of the commit is not this commit's"
+
+t_case "an index that cannot be read stops the commit: an empty list would pass every staged check"
+printf 'not an index\n' > "${_work}/broken-index"
+_out="$(cd "${_repo}" && GIT_INDEX_FILE="${_work}/broken-index" HOOK_TEST_ARGV="${_ARGV}" bash "${HOOK}" 2>&1 </dev/null)"
+t_assert_eq 1 "$?" "${_out}"
+t_assert_contains "${_out}" "cannot read this commit's staged files"
 
 t_summary

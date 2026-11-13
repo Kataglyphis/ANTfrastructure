@@ -361,9 +361,9 @@ Every check with a script is runnable standalone (same command); `crlf-guard`
 and `stage-graph` are inline in `preflight.sh` and have no separate entry point.
 The pre-commit hook (`linux/host-config/git-hooks/pre-commit`) runs the
 whole-tree gates that are cheap — `PREFLIGHT_ONLY=` the 21 fast slugs in
-`_FAST_SLUGS` (`:88-91`), 6.4 s combined — and then three blocks scoped to the
+`_FAST_SLUGS` (`:105-108`), 6.4 s combined — and then three blocks scoped to the
 STAGED content, so nothing slow runs over the whole tree: `shellcheck -S error`
-plus the warning ratchet on staged `.sh` files (`:102-119`, the binary resolved
+plus the warning ratchet on staged `.sh` files (`:119-136`, the binary resolved
 through `lint-shell.sh --print-bin`, its one owner), the doc-duplication gate
 when `docs/*.md` moved, and `verify_mutations.py` on a SAMPLE of the entries whose
 target is staged — at most `PRECOMMIT_MUTATION_CAP` (default 16), newest first, and
