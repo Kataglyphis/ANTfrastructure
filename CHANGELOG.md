@@ -15,6 +15,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — reconcile the preserved Rust workspace proof
+
+- Independently recheck the 11 November complete Rust test log: 912 passed cases in 64 summaries, zero failed, ignored or filtered; cleanup and container-absence receipts remain preserved.
+- Compare its recorded source inventory with the verified newer prepared package snapshot. Declared Rust/Cargo/native/shader hashes match, while docs and test scripts differ and seven historic source-root files have drifted. Preserve the old evidence; fresh-image, recorded-pin and finished GPU/package acceptance remain open.
+
 ## 2026-11-13 — measure compiler-cache activity without rates or timings
 
 - Limit the permanent sccache probe to aggregate integer request, hit and write counters. Falling hit rates and durations can no longer erase actual activity; subtotals and error rows cannot manufacture it.

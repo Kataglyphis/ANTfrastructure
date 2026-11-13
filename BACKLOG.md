@@ -1288,10 +1288,17 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the shared C/Rust transport and an OUT_DIR-built native executable. A separate exact-source run
       executes79 library and6 build-output cases;14 integration cases pass with the pinned model required,
       including real ORT/tract CPU inference and XNNPACK. Its earlier model-free green skipped bodies
-      and is not runtime acceptance. Full-workspace checks, finished helper transport, package/profile
-      migration and actual finished GPU acceptance remain required. All14 workspace members and3 vendored
-      path dependencies now build;60 test executables compile, with all-target Clippy and formatting green.
-      Full-workspace test execution remains open. Local C/C++ cache hits are measured;
+      and is not runtime acceptance. All 14 workspace members and 3 vendored path dependencies build;
+      all-target Clippy and formatting pass. The preserved 11 November complete canonical workspace replay
+      passes 912 cases across 64 summaries, with zero failed, ignored or filtered cases. It includes
+      40 headless and 43 root ABI/compiler cases, required CPU models, GenAI, GTK, GStreamer, lavapipe
+      and post-test ORT/tract/XNNPACK photograph parity. Its raw log hash, cleanup and independent
+      container-absence proof are rechecked. The newer 955-file prepared package snapshot matches the
+      recorded 953-file inventory's declared Rust/Cargo/native/shader hashes; 17 docs/script/test paths
+      differ. Seven historic docs/test files no longer match the old inventory, so retain that root as
+      evidence and do not silently reuse it as an unchanged current source. Recorded Hub-pin integration,
+      fresh-image workspace checks, finished helper/package profiles and actual finished GPU acceptance
+      remain required. Local C/C++ cache hits are measured;
       the existing Rust wrapper opt-out remains explicit.
       The prepared isolated worker transport now passes12 real process cases and an actual Dart FFI
       matrix:64 retained worker statuses despite25 external supervisor reaps; the original runner loses64.

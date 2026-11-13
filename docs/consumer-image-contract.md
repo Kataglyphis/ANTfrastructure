@@ -1169,6 +1169,21 @@ Fake-binding and shared-copy tests prove these policies, not native ABI compatib
 a working driver, operator placement or packaged inference. The consumer integrations
 and hardware profile criteria above remain required.
 
+### Historical OxidANT workspace replay
+
+The preserved 11 November 2026 canonical prepared-workspace run passes 912 tests
+in 64 summaries without failed, ignored or filtered cases. It includes required
+CPU models, GenAI, GTK, GStreamer, software Vulkan and post-test
+ORT/tract/XNNPACK photograph parity, with the normal image entrypoint. Its raw
+log SHA256, cleanup and independent container-absence receipts are rechecked.
+
+The newer 955-file prepared package snapshot matches the recorded 953-file
+inventory's declared Rust, Cargo, native and shader hashes; 17 documentation,
+script and test paths differ. Seven files in the historic source root no longer
+match that inventory. Preserve the evidence and do not treat the historic root
+as an unchanged current checkout. Recorded Hub-pin integration, fresh-image
+execution and actual finished GPU packages still require their own receipts.
+
 ## Qualcomm's plugin QNN EP
 
 `:latest` on arm64 ships Qualcomm's plugin QNN execution provider, built from its pinned ORT fork
