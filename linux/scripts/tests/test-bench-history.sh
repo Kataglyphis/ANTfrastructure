@@ -11,13 +11,13 @@ trap 'rm -rf "${work}"' EXIT
 # bh <args...>: the tool's stdout, stderr and status land in ${work}/out, err and rc.
 bh() {
   python3 - "${tool}" "${FAKE_GH:-}" "$@" > "${work}/out" 2> "${work}/err" <<'PY'
-from contextlib import ExitStack
 import os
-from pathlib import Path
 import runpy
 import shutil
 import subprocess
 import sys
+from contextlib import ExitStack
+from pathlib import Path
 from unittest.mock import patch
 
 tool, fake = sys.argv[1:3]
