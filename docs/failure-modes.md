@@ -2068,6 +2068,13 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 ### `exporting layers` prints nothing for 20+ minutes
 
+If a failed import names `Files/temp/qnn-sdk-extract/.../lib-safe/aarch64-android`
+and reports disk-full, inspect the source-chain SDK scrub before repeating it.
+The extraction is separate from the container profile's `%TEMP%`; unused
+platform files must be removed in the creating RUN after runtime staging.
+See [the QNN scratch policy](windows-build-resources.md#extracted-qnn-sdk-scratch).
+Do not delete `hcs*` directories or snapshot-store files by hand.
+
 **Symptom.** BK lane: `exporting layers` (or the following `unpacking to …`) prints NOTHING for 20+ minutes after a heavy amd64 layer (the LiteRT-LM Bazel output is the measured case) — or the merge fan-in `COPY --from=media-core C:\runtime C:\runtime` sits silent for 10–15 minutes on a step that took 5 s the run before — and every daemon — buildkitd, containerd, vmcompute, wcifs — sits at 0.00 s CPU, no shim/container process is left, and `buildctl debug workers` still answers in <1 s
 
 **Cause.** **Not a hang — a slow, mostly kernel-side layer export/unpack.** Measured 2026-08-24/25: `exporting layers 1216.3s done` after 20 idle-looking minutes, then `unpacking … 1277.0s done`, and the stage went `OK` at 58:08 (17 min of actual build); arm64 run 12 (2026-08-25): the fan-in COPY finished `DONE 847.4s` after 14 idle-looking minutes (run 11: 5.1 s), no eventlog entry, nothing written under the buildkitd root

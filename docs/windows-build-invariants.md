@@ -595,6 +595,12 @@ script/patch trees are never touched. **Check that before widening it
 further**: a scrub of `C:\temp` would delete the CPython tree the merge stage
 fans in.
 
+The default QNN extraction at `TEMP_DIR/qnn-sdk-extract` is a separate required
+scrub after all selected source components have copied their runtime payloads.
+Remove only that leaf, retain the cached SDK archive and CPython tree, and fail
+before export on a relative root, reparse metadata, a removal error or a remaining
+extraction tree. Other container-profile scratch remains best-effort.
+
 ### A committed layer can never be shrunk later
 
 **A committed layer can never be shrunk later, so scrub INSIDE the container.** The BK lane — the only lane since 2026-08-31 — passes `-ScrubAfter` to the media branch and merge/GStreamer runs (`Clear-BuildScratch`: pip cache, `~\.nuget`, `%TEMP%`, INetCache). It was added there first; the classic lane went without it until 2026-08-07 and shipped debris the BK lane's images did not. Source trees are a separate mechanism — each leaf script calls `Remove-SourceBuildTree` itself. The toolchain stage is excluded on purpose: its CPython tree at `C:\temp\cpython` IS the deliverable.

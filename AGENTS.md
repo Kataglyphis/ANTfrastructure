@@ -141,6 +141,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows source builders share Meson binaries, ARM per-file feature selection, handoff transfers and sccache commands; retain caller flags and failure policy.
    CMake consumers use `Get-CmakeBuildArgs` for target, configuration and parallel flags; keep its argument order and caller-specific build verdict.
    Windows source builders share required-child path enumeration for FFmpeg's Vulkan SDK and the LiteRT wheel smoke; preserve leaf versus directory checks and each caller's fatal diagnostic.
+   Source-chain scrubbing must remove the default QNN SDK extraction after runtime staging, preserve cached archives and CPython, and fail on unsafe paths or incomplete removal.
    MIGraphX licence copying uses its existing file-gap helper; keep empty-list behavior and missing-file failures visible.
    Windows MIGraphX applies the shared explicit-zero MaxPool correction to the pinned primary source before dependencies; keep average/max pads explicit, LP-norm folding and the narrow patch mount.
    Windows AMD EP builds carry both canonical Linux-owned lifetime patches in the EP RUN; retain all six C-base callback adjustments, typed node deletion and synchronized registry ownership before configuration.

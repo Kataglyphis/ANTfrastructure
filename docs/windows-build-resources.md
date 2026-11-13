@@ -138,6 +138,29 @@ so no earlier run's tree reaches CMake, and again after the wheels, so the host 
 the space back. `SourceBuild.IreeScratch.Tests.ps1` holds the path on both sides and
 both resets.
 
+### Extracted QNN SDK scratch
+
+`Resolve-QnnSdk` verifies the SDK archive, extracts it under
+`TEMP_DIR/qnn-sdk-extract` and stages selected backend DLLs and Hexagon payloads
+into each component's runtime tree. The default extraction also contains other
+platforms, including Android libraries. It is not an exported SDK contract.
+
+`Clear-BuildScratch`, called by the source-chain epilogue with `-ScrubAfter`,
+removes that one extraction tree after the selected components finish. The SDK
+archive cache, compiler-cache mounts, copied runtime and `TEMP_DIR/cpython` remain.
+A relative temporary root, reparse metadata on the parent or leaf, removal error
+or remaining tree stops the build before export; ordinary profile-cache cleanup
+retains its best-effort policy. The host disk-reclaim tool does not perform this
+in-container cleanup.
+
+On 2026-11-13 the `0a822337` ROCm producer completed TVM, IREE, native/Python
+smokes and both IREE free-threaded imports, then exhausted host storage while
+the Windows importer copied an unused `lib-safe/aarch64-android` member from
+this extraction. Its first import failed with `0x5`; the retries also recorded
+disk-full and `0x20`. This proves an unwanted export payload, not that every
+import error has the same cause. `SourceBuild.Scratch.Tests.ps1` uses private
+file trees and failure fixtures; the reduced real image export must still pass.
+
 ## Building a project inside the image, as AGENTS.md carried it
 
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading and the relative links. The RULES stayed there; this is the reference behind them.

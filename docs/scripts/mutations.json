@@ -38031,5 +38031,69 @@
   "replace": "$docker.ByName['built'].Lines",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.DockerFixtures.Tests.ps1 -ResultFile logs/code-quality/migraphx-pad-run-stage-selection.json",
   "why": "RUN selection must preserve the requested parsed stage."
+ },
+ {
+  "id": "windows-lane.qnn-scratch-remove",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "            Remove-Item -LiteralPath $qnnExtract -Recurse -Force -ErrorAction Stop",
+  "replace": "            Write-Verbose 'mutant: no SDK cleanup'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Scratch.Tests.ps1 -ResultFile logs/code-quality/qnn-sdk-scratch-mutation.json",
+  "why": "unused cross-platform SDK files must be removed before exporting the layer"
+ },
+ {
+  "id": "windows-lane.qnn-scratch-cache-root",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "        $qnnExtract = Join-Path $env:TEMP_DIR 'qnn-sdk-extract'",
+  "replace": "        $qnnExtract = Join-Path $env:TEMP_DIR 'qnn-sdk-cache'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Scratch.Tests.ps1 -ResultFile logs/code-quality/qnn-sdk-scratch-mutation.json",
+  "why": "the pinned download cache must never be selected as the extraction tree"
+ },
+ {
+  "id": "windows-lane.qnn-scratch-broad-root",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "        $qnnExtract = Join-Path $env:TEMP_DIR 'qnn-sdk-extract'",
+  "replace": "        $qnnExtract = $env:TEMP_DIR",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Scratch.Tests.ps1 -ResultFile logs/code-quality/qnn-sdk-scratch-mutation.json",
+  "why": "cleanup must preserve the source-built interpreter and all sibling caches"
+ },
+ {
+  "id": "windows-lane.qnn-scratch-unset-root",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "    if (-not [string]::IsNullOrWhiteSpace($env:TEMP_DIR)) {",
+  "replace": "    if ($true) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Scratch.Tests.ps1 -ResultFile logs/code-quality/qnn-sdk-scratch-mutation.json",
+  "why": "an unknown temporary root must not create a relative cleanup target"
+ },
+ {
+  "id": "windows-lane.qnn-scratch-absolute-root",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "        if (-not [IO.Path]::IsPathFullyQualified($env:TEMP_DIR)) { throw 'TEMP_DIR must be absolute before scrubbing QNN SDK extraction.' }",
+  "replace": "        if ($false) { throw 'TEMP_DIR must be absolute before scrubbing QNN SDK extraction.' }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Scratch.Tests.ps1 -ResultFile logs/code-quality/qnn-sdk-scratch-mutation.json",
+  "why": "relative roots must refuse before any filesystem cleanup"
+ },
+ {
+  "id": "windows-lane.qnn-scratch-reparse",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "                if ((Get-Item -LiteralPath $scratchPath -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) {",
+  "replace": "                if ($false) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Scratch.Tests.ps1 -ResultFile logs/code-quality/qnn-sdk-scratch-mutation.json",
+  "why": "reparse metadata on the extraction root or its parent must refuse cleanup"
+ },
+ {
+  "id": "windows-lane.qnn-scratch-failure-status",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "            Remove-Item -LiteralPath $qnnExtract -Recurse -Force -ErrorAction Stop",
+  "replace": "            Remove-Item -LiteralPath $qnnExtract -Recurse -Force -ErrorAction SilentlyContinue",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Scratch.Tests.ps1 -ResultFile logs/code-quality/qnn-sdk-scratch-mutation.json",
+  "why": "a real SDK cleanup error must remain fatal with its original diagnostic"
+ },
+ {
+  "id": "windows-lane.qnn-scratch-postcondition",
+  "target": "windows/scripts/modules/WindowsSourceBuild.Common.psm1",
+  "find": "            if (Test-Path -LiteralPath $qnnExtract) { throw \"QNN SDK extraction remains after cleanup: $qnnExtract\" }",
+  "replace": "            Write-Verbose 'mutant: SDK removal unchecked'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Scratch.Tests.ps1 -ResultFile logs/code-quality/qnn-sdk-scratch-mutation.json",
+  "why": "a no-op removal must not report a successful scrub"
  }
 ]

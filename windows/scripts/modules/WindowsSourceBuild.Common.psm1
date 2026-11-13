@@ -2713,9 +2713,22 @@ function Import-BuildHandoff {
 }
 
 function Clear-BuildScratch {
-    # Best-effort: build scratch in the container profile is dead weight in an exported image.
+    # Unused SDK platforms can exhaust the Windows layer importer.
     [CmdletBinding()]
     param()
+    if (-not [string]::IsNullOrWhiteSpace($env:TEMP_DIR)) {
+        if (-not [IO.Path]::IsPathFullyQualified($env:TEMP_DIR)) { throw 'TEMP_DIR must be absolute before scrubbing QNN SDK extraction.' }
+        $qnnExtract = Join-Path $env:TEMP_DIR 'qnn-sdk-extract'
+        if (Test-Path -LiteralPath $qnnExtract) {
+            foreach ($scratchPath in @($env:TEMP_DIR, $qnnExtract)) {
+                if ((Get-Item -LiteralPath $scratchPath -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                    throw "QNN SDK scratch must not be a reparse point: $scratchPath"
+                }
+            }
+            Remove-Item -LiteralPath $qnnExtract -Recurse -Force -ErrorAction Stop
+            if (Test-Path -LiteralPath $qnnExtract) { throw "QNN SDK extraction remains after cleanup: $qnnExtract" }
+        }
+    }
     $targets = @(
         ($env:TEMP + '\*'),
         'C:\Windows\Temp\*',

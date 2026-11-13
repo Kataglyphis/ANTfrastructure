@@ -15,6 +15,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — scrub temporary QNN SDK payloads before Windows export
+
+- Remove the default extracted QNN SDK after source-chain runtime staging.
+  Preserve cached archives, copied runtime and CPython; refuse relative roots,
+  reparse metadata, removal errors and leftovers before layer export.
+- Add private-tree regression and mutation checks. The earlier `0a822337`
+  TVM/IREE compile and wheel gates passed, but its image import exhausted disk
+  while copying unused Android SDK files; the corrected producer remains to be
+  qualified.
+
 ## 2026-11-13 — bind private Windows results and the public ARM64 replay
 
 - Record frozen `5bd443ea` CPU, ARM64 cross, NVIDIA and ROCm image evidence,
