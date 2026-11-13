@@ -84,6 +84,12 @@ proves both Clang aliases at 23.1.5 and all four GNU aliases at 16.2.0/v3/generi
 The corrected canonical solve reuses both expensive source RUNs. Its fresh image passes\nthe six compiler aliases, but the wider inventory finds 153 of 157 source tools\nelsewhere and a distro `llvm-config` at 23.1.6. The late PATH correction and\nnative inventory gate own that remaining SDK prerequisite. Fresh rebuilt
 image qualification and downstream SDK/backend/consumer acceptance remain open.
 
+The late correction at local `c215635d` passes 304 Python methods, all 47
+actual affected mutations and all 26 normal quality groups. A real original-red,
+candidate-green replay selects all 157 utilities with `llvm-config` 23.1.5 and
+preserves GNU defaults. This explicit PATH replay is not fresh-image admission;
+the next canonical rebuild still requires the normal disk reserve.
+
 The synthetic suites `test-llvm-alternatives.sh` and `test-compiler-defaults.sh`
 prove selection, collection and refusal, with actual mutation recipes. They do not
 prove an installed compiler, linked ELF ISA, cross SDK tools, compiler-cache coverage,

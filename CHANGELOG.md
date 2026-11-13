@@ -17,6 +17,7 @@
 
 ## 2026-11-13 — prefer every native source LLVM tool
 
+- Local source `c215635d` passes 304 Python methods, all 47 affected mutations (14 new), all 26 normal quality groups and 16 unchanged hook controls. The real original fails status 1; the explicit candidate PATH passes all 157 tools and keeps GNU defaults. The next canonical build remains gated on disk admission; no fresh-image or SDK acceptance is claimed.
 - The corrected compiler image passes the six ordinary compiler defaults, but broader inspection finds 153 of 157 source tools elsewhere on PATH; default `llvm-config` still reports distro 23.1.6 against source 23.1.5. Preserve that narrower pass and the failed SDK admission.
 - Put the native LLVM bin directory behind Python and GNU after the expensive source builds. Carry the permanent probe in the compiler bundle and require every executable source tool to win PATH, a complete unique core inventory and the exact successful `llvm-config` pin.
 - Keep this native tool-selection mode separate from the amd64 GNU default-ISA probe. Regression fixtures do not prove linked library versions, rebuilt-image admission or SDK/backend/GPU acceptance.
