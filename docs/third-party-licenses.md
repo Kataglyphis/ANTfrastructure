@@ -9,6 +9,13 @@ file, the `SPDX-License-Identifier: MIT` header on every source file, and the
 `org.opencontainers.image.licenses="MIT"` label on the published images.  Each
 upstream component below carries its own license terms.
 
+The Linux source MIGraphX backend also stages pybind11's original distribution
+notice under `share/licenses/migraphx-source-build/pybind11/LICENSE`. Staging
+binds the selected Python package version and configured CMake origin before
+checking the original notice hash. The original-text fixture and its source
+metadata move with a reviewed pybind11 pin; this checks one notice's provenance,
+not the complete linked binary's licence closure.
+
 ## Maintaining this list
 
 Everything between the `generated:deps-table` markers is **generated**. Editing

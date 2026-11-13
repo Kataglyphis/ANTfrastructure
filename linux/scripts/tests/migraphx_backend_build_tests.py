@@ -14,6 +14,7 @@ import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -66,8 +67,10 @@ class MigraphxBackendInstallTests(unittest.TestCase):
         self.policy = self.root / "notice policies"
         self.policy.mkdir()
         self.prepare_notices()
+        self.pybind_distribution = SimpleNamespace(version="3.1.0", files=[self.pybind_entry], locate_file=lambda value: self.pybind_root / value)
+        self.api["stage"].__globals__["distribution"] = mock.Mock(return_value=self.pybind_distribution)
         self.args = argparse.Namespace(prefix=self.prefix, work=self.work, deps_prefix=";".join(map(str, self.dependencies)),
-                                       version="2.18.0", source_commit="a" * 40, source_sha256="", patch=self.root / "fix.patch", python_patch=self.root / "python-selector.patch")
+                                       version="2.18.0", pybind_version="3.1.0", source_commit="a" * 40, source_sha256="", patch=self.root / "fix.patch", python_patch=self.root / "python-selector.patch")
         self.args.patch.write_text("original tracked modification\n")
         self.args.python_patch.write_text("selected interpreter patch\n")
         self.archive_license(b"original backend notice\r\n")
@@ -82,6 +85,12 @@ class MigraphxBackendInstallTests(unittest.TestCase):
         components = {"msgpack": self.work / "host-tools", "rocm-cmake": self.work / "host-tools",
                       "abseil": self.dependencies[0], "protobuf": self.dependencies[0], "utf8_range": self.dependencies[0],
                       "ck": self.dependencies[1], "rocmlir": self.dependencies[2]}
+        self.pybind_root = self.root / "selected Python site-packages"
+        self.pybind_entry = Path("pybind11-3.1.0.dist-info/licenses/LICENSE")
+        cmake_dir = self.pybind_root / "pybind11/share/cmake/pybind11"
+        cmake_dir.mkdir(parents=True)
+        (cmake_dir / "pybind11Config.cmake").write_text("selected package")
+        (self.work / "build/CMakeCache.txt").write_text(f"pybind11_DIR:PATH={cmake_dir}\n")
         names = ["abseil/LICENSE", "protobuf/LICENSE", "utf8_range/LICENSE", "ck/LICENSE",
                  "rocmlir/LICENSE", "rocm-cmake/LICENSE", "msgpack/COPYING", "msgpack/LICENSE_1_0.txt"]
         rows = []
@@ -91,6 +100,10 @@ class MigraphxBackendInstallTests(unittest.TestCase):
             file.parent.mkdir(parents=True, exist_ok=True)
             file.write_bytes(("original " + name + "\r\n").encode())
             rows.append(hashlib.sha256(file.read_bytes()).hexdigest() + "  " + name)
+        notice = self.pybind_root / self.pybind_entry
+        notice.parent.mkdir(parents=True)
+        notice.write_bytes(b"original pybind11 notice\r\n")
+        rows.append(hashlib.sha256(notice.read_bytes()).hexdigest() + "  pybind11/LICENSE")
         (self.policy / "backend-source-notices.sha256").write_text("\n".join(rows) + "\n")
         rocmlir = components["rocmlir"] / "share/licenses/rocmlir"
         rows = []
@@ -129,6 +142,8 @@ class MigraphxBackendInstallTests(unittest.TestCase):
         self.assertEqual(proof["source_commit"], "a" * 40)
         self.assertEqual(proof["source_archive_sha256"], self.args.source_sha256)
         self.assertFalse(proof["complete_binary_licence_review"])
+        self.assertEqual(proof["pybind11_version"], "3.1.0")
+        self.assertEqual((self.destination / "pybind11/LICENSE").read_bytes(), (self.pybind_root / self.pybind_entry).read_bytes())
         self.assertEqual(proof["python_selection_patch_sha256"],
                          hashlib.sha256(self.args.python_patch.read_bytes()).hexdigest())
         self.assertEqual((self.destination / "migraphx/python-selection.patch").read_bytes(),
@@ -142,6 +157,67 @@ class MigraphxBackendInstallTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.api["stage"](self.args)
         self.assertEqual((self.destination / "build-provenance.json").read_bytes(), original)
+
+    def test_pybind_version_files_and_cmake_origin_are_required(self) -> None:
+        package = self.pybind_distribution
+        original = package.files
+        cache = self.work / "build/CMakeCache.txt"
+        raw = cache.read_text()
+        for field, value in [("version", "3.0.0"), ("files", []), ("files", original * 2),
+                             ("files", [Path("../") / original[0]])]:
+            with self.subTest(field=field, value=value), mock.patch.object(package, field, value), self.assertRaises(ValueError):
+                self.api["stage"](self.args)
+            self.assertFalse(self.destination.exists())
+        for text in ["", raw + raw, "pybind11_DIR:PATH=/foreign/package\n"]:
+            cache.write_text(text)
+            with self.subTest(cache=text), self.assertRaises(ValueError):
+                self.api["stage"](self.args)
+            self.assertFalse(self.destination.exists())
+        cache.write_text(raw)
+        (self.pybind_root / "pybind11/share/cmake/pybind11/pybind11Config.cmake").unlink()
+        with self.assertRaises(ValueError):
+            self.api["stage"](self.args)
+        self.assertFalse(self.destination.exists())
+
+    def test_pybind_notice_traversal_refuses_even_matching_external_original_bytes(self) -> None:
+        outside = self.pybind_root.parent / self.pybind_entry
+        outside.parent.mkdir(parents=True)
+        outside.write_bytes((self.pybind_root / self.pybind_entry).read_bytes())
+        with (mock.patch.object(self.pybind_distribution, "files", [Path("..") / self.pybind_entry]),
+              self.assertRaisesRegex(ValueError, "Invalid pybind11 notice path")):
+            self.api["stage"](self.args)
+        self.assertFalse(self.destination.exists())
+
+    def test_production_pybind_notice_policy_matches_original_fixture(self) -> None:
+        fixture = ROOT / "linux/scripts/tests/fixtures/pybind11-license"
+        source = json.loads((fixture / "source.json").read_text())
+        digest = hashlib.sha256((fixture / "LICENSE.txt").read_bytes()).hexdigest()
+        self.assertEqual(digest, source["sha256"])
+        pins = (ROOT / "linux/scripts/01-core/versions.env").read_text()
+        self.assertIn("PY_PYBIND11_VERSION=" + source["version"] + "\n", pins)
+        rows = [line.split() for line in (LIB / "backend-source-notices.sha256").read_text().splitlines()
+                if line and not line.startswith("#")]
+        self.assertEqual([row[0] for row in rows if row[1] == "pybind11/LICENSE"], [digest])
+
+    def test_pybind_missing_package_notice_and_symlink_are_rejected(self) -> None:
+        require_notice = self.api["pybind_notice_root"]
+        namespace = require_notice.__globals__
+        with (mock.patch.dict(namespace, distribution=mock.Mock(side_effect=namespace["PackageNotFoundError"]("pybind11"))),
+              self.assertRaisesRegex(ValueError, "no pybind11 distribution")):
+            require_notice(self.work, "3.1.0")
+        notice = self.pybind_root / self.pybind_entry
+        raw = notice.read_bytes()
+        notice.unlink()
+        with self.assertRaises(ValueError):
+            require_notice(self.work, "3.1.0")
+        external = self.root / "external notice"
+        external.write_bytes(raw)
+        notice.symlink_to(external)
+        with self.assertRaises(ValueError):
+            require_notice(self.work, "3.1.0")
+        with self.assertRaises(ValueError):
+            self.api["stage"](self.args)
+        self.assertFalse(self.destination.exists())
 
     def test_every_selected_payload_and_python_extension_is_required(self) -> None:
         for name in [*self.payloads, *("lib/lib" + name + ".so" for name in self.libraries), self.module_name]:
@@ -242,6 +318,7 @@ class MigraphxBackendInstallTests(unittest.TestCase):
 
     def test_every_known_original_notice_rejects_corruption_or_symlinks(self) -> None:
         selected = self.api["notice_sources"](self.work, self.args.deps_prefix)
+        selected["pybind11"] = (self.pybind_root / self.pybind_entry).parent
         policy = self.policy / "backend-source-notices.sha256"
         for line in policy.read_text().splitlines():
             _sha, name = line.split()
@@ -361,6 +438,16 @@ class MigraphxBackendInstallTests(unittest.TestCase):
             self.assertEqual(result.returncode, 2, result.stderr)
             self.assertFalse(target.exists())
 
+        complete = ["stage", "--prefix", str(self.prefix), "--work", str(self.work),
+                    "--deps-prefix", self.args.deps_prefix, "--version", "2.18.0",
+                    "--source-commit", self.args.source_commit, "--source-sha256", self.args.source_sha256,
+                    "--patch", str(self.args.patch), "--python-patch", str(self.args.python_patch)]
+        result = subprocess.run([sys.executable, str(script), *complete], capture_output=True,
+                                text=True, check=False, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Incomplete backend stage arguments", result.stderr)
+        self.assertFalse(self.destination.exists())
+
 
 BACKEND_CLI = r"""
 [[ "$#" -eq 7 && "$2" == 5 ]] || return 2
@@ -386,7 +473,7 @@ sha256sum "$work/input.bin" > "$work/source-inputs.sha256"
 [[ "$FAIL_PHASE" != no-notice ]] || unlink "$work/source/LICENSE"
 CMAKE_COMPILER_CACHE_PIN='/selected cache'
 [[ "$FAIL_PHASE" != no-cache ]] || CMAKE_COMPILER_CACHE_PIN=''
-HOST_PYTHON_BIN=stage_python JOBS=7
+HOST_PYTHON_BIN=stage_python JOBS=7 PY_PYBIND11_VERSION=3.1.0
 MIGRAPHX_DEPS_PREFIX="$DEPS_PREFIX"
 MIGRAPHX_VERSION=2.18.0 MIGRAPHX_WINDOWS_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 MIGRAPHX_WINDOWS_SOURCE_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
@@ -464,7 +551,7 @@ class MigraphxBackendLifecycleTests(unittest.TestCase):
         stage = (self.root / "stage.nul").read_bytes().split(b"\0")[:-1]
         self.assertEqual(stage[:2], [str(self.scripts / "stage-backend-install.py").encode(), b"stage"])
         for flag, expected in [(b"--work", str(work).encode()), (b"--deps-prefix", b"/parser deps;/CK deps;/rocMLIR deps"),
-                               (b"--version", b"2.18.0"), (b"--patch", str(self.patch).encode()),
+                               (b"--version", b"2.18.0"), (b"--pybind-version", b"3.1.0"), (b"--patch", str(self.patch).encode()),
                                (b"--python-patch", str(self.python_patch).encode()),
                                (b"--source-commit", b"a" * 40), (b"--source-sha256", b"b" * 64)]:
             self.assertEqual(stage[stage.index(flag) + 1], expected)

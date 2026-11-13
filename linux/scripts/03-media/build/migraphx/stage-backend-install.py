@@ -10,13 +10,14 @@ import shutil
 import sys
 import sysconfig
 import tarfile
+from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 
 LIBRARIES = ("migraphx", "migraphx_c", "migraphx_gpu", "migraphx_ref",
              "migraphx_onnx", "migraphx_tf", "migraphx_py")
 PAYLOADS = ("include/migraphx/migraphx.h", "lib/cmake/migraphx/migraphx-config.cmake")
 COMPONENTS = ("msgpack", "rocm-cmake", "abseil", "protobuf", "utf8_range", "ck", "rocmlir")
-NOTICE_NAMES = {"msgpack/COPYING", "msgpack/LICENSE_1_0.txt",
+NOTICE_NAMES = {"msgpack/COPYING", "msgpack/LICENSE_1_0.txt", "pybind11/LICENSE",
                 *(component + "/LICENSE" for component in COMPONENTS if component != "msgpack")}
 POLICY_DIR = Path(__file__).resolve().parent
 ELF_TARGET = runpy.run_path(str(POLICY_DIR.parents[2] / "06-packaging/ort_census_probe.py"))["elf_target"]
@@ -89,6 +90,27 @@ def notice_sources(work: Path, dependencies: str) -> dict[str, Path]:
     return selected
 
 
+def pybind_notice_root(work: Path, expected_version: str) -> Path:
+    try:
+        package = distribution("pybind11")
+    except PackageNotFoundError as error:
+        raise ValueError("Selected Python has no pybind11 distribution") from error
+    require(package.version == expected_version, "Selected pybind11 version differs from its pin")
+    suffix = (f"pybind11-{expected_version}.dist-info", "licenses", "LICENSE")
+    candidates = [file for file in package.files or [] if Path(file).parts[-3:] == suffix]
+    require(len(candidates) == 1, "Missing or ambiguous original pybind11 notice")
+    relative = Path(candidates[0])
+    require(not relative.is_absolute() and ".." not in relative.parts, "Invalid pybind11 notice path")
+    notice = Path(str(package.locate_file(candidates[0])))
+    require(not notice.is_symlink() and notice.is_file(), "Original pybind11 notice is not a regular file")
+    cmake_dir = Path(str(package.locate_file("pybind11/share/cmake/pybind11")))
+    cache = (work / "build/CMakeCache.txt").read_text()
+    selected = re.findall(r"^pybind11_DIR:[^=]+=(.+)$", cache, re.MULTILINE)
+    require(len(selected) == 1 and Path(selected[0]).resolve() == cmake_dir.resolve()
+            and (cmake_dir / "pybind11Config.cmake").is_file(), "Built pybind11 CMake package differs from selected Python")
+    return notice.parent
+
+
 def checked_notice_files(sources: dict[str, Path], policy: Path) -> dict[str, Path]:
     expected = {}
     for line in policy.read_text().splitlines():
@@ -132,7 +154,7 @@ def write_backend_receipt(args: argparse.Namespace, files: dict[str, dict[str, s
     notice_hashes = {name: digest(file) for name, file in notices.items()}
     record = {"schema_version": 1, "version": args.version, "source_commit": args.source_commit,
               "source_archive_sha256": args.source_sha256, "patch_sha256": digest(args.patch),
-              "python_selection_patch_sha256": digest(args.python_patch),
+              "python_selection_patch_sha256": digest(args.python_patch), "pybind11_version": args.pybind_version,
               "installed_files": files, "original_notices": notice_hashes,
               "complete_binary_licence_review": False, "scope": __doc__}
     destination.mkdir(parents=True)
@@ -153,6 +175,7 @@ def stage(args: argparse.Namespace) -> None:
             "Missing pinned backend source identity")
     files = installed_files(args.prefix, args.work / "build/install_manifest.txt", args.version)
     sources = notice_sources(args.work, args.deps_prefix)
+    sources["pybind11"] = pybind_notice_root(args.work, args.pybind_version)
     notices = checked_notice_files(sources, POLICY_DIR / "backend-source-notices.sha256")
     rocmlir_policy = POLICY_DIR / "rocmlir-source-notices.sha256"
     rocmlir = sources["rocmlir"]
@@ -174,6 +197,7 @@ def main() -> int:
     parser.add_argument("--work", type=Path)
     parser.add_argument("--deps-prefix")
     parser.add_argument("--version")
+    parser.add_argument("--pybind-version")
     parser.add_argument("--source-commit")
     parser.add_argument("--source-sha256")
     parser.add_argument("--patch", type=Path)
@@ -184,7 +208,7 @@ def main() -> int:
             check_prefix(args.prefix)
         else:
             require(all(getattr(args, name) is not None for name in
-                        ("work", "deps_prefix", "version", "source_commit", "source_sha256", "patch", "python_patch")), "Incomplete backend stage arguments")
+                        ("work", "deps_prefix", "version", "pybind_version", "source_commit", "source_sha256", "patch", "python_patch")), "Incomplete backend stage arguments")
             stage(args)
     except (OSError, TypeError, ValueError, tarfile.TarError) as error:
         print("MIGraphX install refused: " + str(error), file=sys.stderr)

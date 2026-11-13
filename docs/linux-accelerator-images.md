@@ -1215,6 +1215,33 @@ image Python 3.15 environment. This proves resolution policy, not SDK binary ABI
 bindings or GPU inference. Normal producer wiring and actual library compilation
 remain required.
 
+Backend notice staging reads pybind11 from the same selected Python that runs
+the stager. Its version must match the caller pin; exactly one regular original
+distribution notice must match the checked notice policy. The build cache's
+`pybind11_DIR` must resolve to that distribution's CMake package. Version,
+missing/ambiguous notice, path escape, symlink and foreign package failures
+precede provenance. The original text is staged at
+`share/licenses/migraphx-source-build/pybind11/LICENSE` with its version recorded.
+The retained fixture is the exact original 3.1.0 notice from the verified
+compiler image, not generated text; a pin bump requires revalidating that source.
+This is one dependency notice contract, not complete binary licence review.
+
+A genuine isolated rocmlirTriton build now compiles and installs its real fat
+archive and 2,272 installed files, preserves 44 original notice files, and
+successfully links/runs the external host C API consumer against that archive.
+The consumer checks API6, registered MIGraphX dialect and the high-level
+`migraphx-to-tosa` pipeline while retaining its input bytes. Its first measured
+cache result is 98 hits and 3,072 misses. Seven cache errors and two compiler
+failures map to explicit negative CMake feature probes; read/write errors and
+timeouts are zero. The same-source warm replay has 3,169 hits, one successful
+CMake coverage-probe miss, the same seven classified cache errors and two
+negative compiler probes. All 2,272 installed files, modes, ownership and
+symlink targets are identical; original notices and the external API pass again.
+Both bounded units are stopped with successful independent container-absence
+checks. The complete MIGraphX
+backend, normal GPU/Runtime wiring, binary licence closure and finished consumer
+and image acceptance remain required.
+
 For the source parsers, `build-source-deps.sh NEW_WORK ABSEIL_ARCHIVE PROTOBUF_ARCHIVE`
 builds the existing requirements-pinned Abseil first and Protobuf second, into
 `NEW_WORK/host-deps`. Run it only as part of a producer admitted by the normal

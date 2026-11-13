@@ -15,6 +15,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — retain pybind11's original source-backend notice
+
+- Require the builder-selected Python pybind11 version, one regular original distribution notice and the same configured CMake package before staging its original text and recording provenance.
+- Preserve the exact 3.1.0 original notice fixture and policy hash; reject version/origin/path/duplicate/missing inputs before receipt publication. Complete binary licence review remains false.
+- Genuine rocmlirTriton cold/warm build/install and host C API checks pass with 2,272 identical installed files and 44 original notices. The replay measures 3,169 hits and one successful coverage-probe miss; seven cache errors and two compiler failures are classified negative feature probes. Normal backend/image/consumer acceptance remains open.
+
 ## 2026-11-13 — preserve source MIGraphX priority in runtime loader paths
 
 - Share ordered ROCm runtime directory enumeration through the existing packaging inventory companion. Source MIGraphX lib/lib64 precede retained distro/HIP paths, entries appear once, command-line ROCm links are followed and ASAN stays excluded.

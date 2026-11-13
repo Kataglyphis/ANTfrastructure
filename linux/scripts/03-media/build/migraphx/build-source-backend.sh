@@ -17,6 +17,7 @@ cmake --install "${work}/build"
 sha256sum --check "${work}/source-inputs.sha256"
 "${HOST_PYTHON_BIN}" "${SCRIPT_DIR}/stage-backend-install.py" stage \
   --prefix "${MIGRAPHX_SOURCE_PREFIX}" --work "${work}" --deps-prefix "${MIGRAPHX_DEPS_PREFIX}" \
+  --pybind-version "${PY_PYBIND11_VERSION:?missing selected pybind11 pin}" \
   --version "${MIGRAPHX_VERSION}" --source-commit "${MIGRAPHX_WINDOWS_COMMIT}" \
   --source-sha256 "${MIGRAPHX_WINDOWS_SOURCE_SHA256}" --patch "${patch_file}" --python-patch "${python_patch_file}"
 printf 'MIGRAPHX SOURCE BUILT: %s; ordinary SDK/GPU, binary licence review and image acceptance remain required\n' "${MIGRAPHX_SOURCE_PREFIX}"

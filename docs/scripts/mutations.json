@@ -45076,5 +45076,101 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
   "why": "Source-prefix runtime paths retain priority,legacy HIP paths,ASAN exclusion,deduplication and raw failures; filesystem fixtures do not prove ELF ABI,real loader choice or image/GPU acceptance."
+ },
+ {
+  "id": "lib.mgx-pybind-notice-version",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "package.version == expected_version",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Original pybind11 notice staging binds selected Python version,unique regular original bytes and configured CMake origin before provenance;fixture and source proofs do not complete binary licence review or image/GPU acceptance."
+ },
+ {
+  "id": "lib.mgx-pybind-notice-missing-package",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "raise ValueError(\"Selected Python has no pybind11 distribution\") from error",
+  "replace": "return work",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Original pybind11 notice staging binds selected Python version,unique regular original bytes and configured CMake origin before provenance;fixture and source proofs do not complete binary licence review or image/GPU acceptance."
+ },
+ {
+  "id": "lib.mgx-pybind-notice-unique-original",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "len(candidates) == 1",
+  "replace": "bool(candidates)",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Original pybind11 notice staging binds selected Python version,unique regular original bytes and configured CMake origin before provenance;fixture and source proofs do not complete binary licence review or image/GPU acceptance."
+ },
+ {
+  "id": "lib.mgx-pybind-notice-relative-path",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "not relative.is_absolute() and \"..\" not in relative.parts",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Original pybind11 notice staging binds selected Python version,unique regular original bytes and configured CMake origin before provenance;fixture and source proofs do not complete binary licence review or image/GPU acceptance."
+ },
+ {
+  "id": "lib.mgx-pybind-notice-regular-original",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "not notice.is_symlink() and notice.is_file()",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Original pybind11 notice staging binds selected Python version,unique regular original bytes and configured CMake origin before provenance;fixture and source proofs do not complete binary licence review or image/GPU acceptance."
+ },
+ {
+  "id": "lib.mgx-pybind-notice-cmake-origin",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "Path(selected[0]).resolve() == cmake_dir.resolve()",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Original pybind11 notice staging binds selected Python version,unique regular original bytes and configured CMake origin before provenance;fixture and source proofs do not complete binary licence review or image/GPU acceptance."
+ },
+ {
+  "id": "lib.mgx-pybind-notice-cmake-exists",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "(cmake_dir / \"pybind11Config.cmake\").is_file()",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Original pybind11 notice staging binds selected Python version,unique regular original bytes and configured CMake origin before provenance;fixture and source proofs do not complete binary licence review or image/GPU acceptance."
+ },
+ {
+  "id": "lib.mgx-pybind-notice-stage-required",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "    sources[\"pybind11\"] = pybind_notice_root(args.work, args.pybind_version)\n",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Original pybind11 notice staging binds selected Python version,unique regular original bytes and configured CMake origin before provenance;fixture and source proofs do not complete binary licence review or image/GPU acceptance."
+ },
+ {
+  "id": "lib.mgx-pybind-notice-receipt-version",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "\"pybind11_version\": args.pybind_version",
+  "replace": "\"pybind11_version\": \"wrong\"",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Original pybind11 notice staging binds selected Python version,unique regular original bytes and configured CMake origin before provenance;fixture and source proofs do not complete binary licence review or image/GPU acceptance."
+ },
+ {
+  "id": "lib.mgx-pybind-notice-cli-pin-required",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "\"version\", \"pybind_version\", \"source_commit\"",
+  "replace": "\"version\", \"source_commit\"",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Original pybind11 notice staging binds selected Python version,unique regular original bytes and configured CMake origin before provenance;fixture and source proofs do not complete binary licence review or image/GPU acceptance."
+ },
+ {
+  "id": "lib.mgx-pybind-notice-original-policy",
+  "target": "linux/scripts/03-media/build/migraphx/backend-source-notices.sha256",
+  "find": "83965b843b98f670d3a85bd041ed4b372c8ec50d7b4a5995a83ac697ba675dcb  pybind11/LICENSE",
+  "replace": "03965b843b98f670d3a85bd041ed4b372c8ec50d7b4a5995a83ac697ba675dcb  pybind11/LICENSE",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Original pybind11 notice staging binds selected Python version,unique regular original bytes and configured CMake origin before provenance;fixture and source proofs do not complete binary licence review or image/GPU acceptance."
+ },
+ {
+  "id": "lib.mgx-pybind-notice-caller-pin",
+  "target": "linux/scripts/03-media/build/migraphx/build-source-backend.sh",
+  "find": "--pybind-version \"${PY_PYBIND11_VERSION:?missing selected pybind11 pin}\"",
+  "replace": "--pybind-version 3.0.0",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendLifecycleTests",
+  "why": "Original pybind11 notice staging binds selected Python version,unique regular original bytes and configured CMake origin before provenance;fixture and source proofs do not complete binary licence review or image/GPU acceptance."
  }
 ]

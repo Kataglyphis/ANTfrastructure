@@ -1382,6 +1382,15 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       for the removal; it does not prove new hardware inference. Done when the four AMD packages pass
       parity on the plugin (step 2).
 
+**Owner follow-up, queued for after normal rebuilt-backend and finished-app parity validation:**
+Check current upstream for existing fixes, then prepare a focused ROCm/AMDMIGraphX PR for
+`001-preserve-zero-pad-maxpool.patch` with a minimal reproducer, expected/actual results and
+regression test. Prepare separate onnxruntime/onnxruntime-ep-amdgpu PRs for the node-compute-info
+and kernel-registry lifetime fixes, each with its relevant evidence. The Python-selection patch
+needs a general upstream design; project build/cache/pinning scripts stay local. Remove local
+patches only after verified upstream fixes reach the selected version. This queued work does not
+interrupt active builds, replace CON231/CON233, or change publication approvals and holds.
+
 - [ ] **CON256 — the plugin move's open points on the hub side** [M, ★★★]. Found 2026-11-12, when the consumers
       began CON231 step 2. Read at hub d66d3909 and in AMD's source at `ORT_AMDGPU_EP_COMMIT`; nothing here was run
       on a card or in the x64 rocm image.
@@ -1447,11 +1456,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
   - Actual parser component builds have a bounded launcher mode with two readonly original archives, the canonical disk probe and an exact 180GiB byte floor before freezing. Transport/negative controls do not prove a successful vendor build, ordinary Docker/runtime integration or finished consumer/image acceptance.
   - One preserved source-stack entry now resolves all seven pinned archives, rechecks cache hits and orders parsers, CK/API, rocMLIR, SDK and the full backend. The real retained archive cache has seven verified hits without fetching; actual vendor builds, Dockerfile/runtime-prefix wiring and ordinary finished-consumer/final-image acceptance remain required.
   - CK host source builder now follows the exact MIGraphX requirements pin and codegen project, with original notice and shared ROCm-CMake/cache transport; actual CK/rocmlirTriton/full-backend integration and ordinary final-image/consumer proofs remain required.
-  - A full rocMLIR package builder and metadata-only cache-plan gate are prepared: actual graph has 3071 C/C++ actions through the selected launcher, four separate assembly actions and 274 fat-library archives. No vendor compilation has run; SDK/API linkage, binary licence review and ordinary final acceptance remain open.
-  - An external rocMLIR CMake/C-API probe now requires exact version/API, selected original headers, dialect and pipeline state, stable inputs and notices. Compiled original-declaration fixtures validate its gates; real vendor build/linkage and normal final acceptance remain open.
+  - The full rocMLIR package builder now compiles the genuine pinned vendor target and validates its cache plan. Cold/warm installs retain 2,272 identical files and 44 original notices; the real external host C API passes. Warm cache: 3,169 hits, one successful coverage-probe miss, seven classified negative-header errors and two negative compiler checks. Full backend, binary licence review and ordinary final acceptance remain open.
+  - The external rocMLIR CMake/C-API probe passes against both real vendor installs, requiring exact API6, selected original headers, MIGraphX dialect, migraphx-to-tosa pipeline and unchanged inputs. Its fixtures remain separate; GPU execution and normal final acceptance remain open.
   - The complete MIGraphX source-build entry now retains all feature/compiler bindings through build/install and checks the install manifest, native ELF identities, selected original notice hashes and archive/patch provenance. Actual backend compilation, complete binary licence review, production precedence/wiring and ordinary finished-consumer/final-image acceptance remain open.
   - Linux Python discovery now selects the pinned interpreter/config/headers and extension ABI rather than stopping at 3.14; the plugin resolves HIP independently of the source prefix. Original-selection refusal and a real tiny 3.15.2 binding are proved separately; full backend, production wiring and ordinary GPU/image acceptance remain open.
-  - Genuine rocmlirTriton source is pinned and configured offline with vendored LLVM/MLIR/LLD/Triton; 44 original source texts are preserved. Vendor builds, selected-target binary licence review, normal source-backend integration and final consumer/image acceptance remain open.
+  - Genuine rocmlirTriton cold/warm builds complete offline with vendored LLVM/MLIR/LLD/Triton; 44 original source texts match policy and source. Selected-target binary licence review, normal source-backend integration and final consumer/image acceptance remain open.
   - An external CK CMake target now links and its real GetHeaders API returns the exact selected original header. Normal SDK integration, rocmlirTriton/full backend and ordinary finished-consumer/final-image evidence remain open.
 
 
