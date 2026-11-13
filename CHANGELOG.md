@@ -17,6 +17,7 @@
 
 ## 2026-11-13 — prepare executed WASM factory receipts
 
+- Source preparation now passes 280 Python methods, 131 actual affected mutations, all 26 normal quality groups and the unchanged normal hook's 16 actual samples at local commit `031569f5`. The full 42-group/5,824-mutation preflight is running; actual instrumented WASM/image/consumer acceptance remains open.
 - Reuse the native C API factory controls through an explicit linked-core WASM entry and a deferred CMake hook on the owning target; preserve native loader cleanup, operator hooks and the two core pass arguments.
 - Require bounded Node execution, actual JSPI capability, numeric status, exact C success/negative controls and unchanged inputs. Bind both module and loader bytes plus per-flavor raw runtime receipts; add a fresh two-flavor replay.
 - Carry the Hub probe's original MIT text with each instrumented WASM product and bind its exact bytes; reject altered or linked notice destinations.

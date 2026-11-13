@@ -1515,7 +1515,11 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       A linked-core mode now reuses the native C API controls in each actual WASM target, with a deferred
       CMake hook, strict Node driver, source/product/loader-bound factory receipts and a fresh two-flavor
       replay command. Cache epoch `-wgpu4` preserves the older pool. Host fake-ABI/loader fixtures prove
-      refusal and transport policies only; source quality and actual instrumented builds remain open.
+      refusal and transport policies only. Source commit `031569f5` passes 280 Python methods, all 131
+      affected actual mutations (39 new), 26 normal quality groups and the unchanged normal hook's 16
+      actual samples. The clean source's full 42-group/5824-mutation preflight is running; its complete
+      result and actual instrumented builds remain open. Native and WASM probe products also retain
+      the Hub's exact original MIT notice, with missing/altered/linked destinations rejected.
       Both enabled WASM flavors still need actual source-to-artifact proof and runtime registration; the four
       local media builds predate these receipts and do not complete that evidence. Before that
       media rebuild, preserve the

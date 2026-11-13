@@ -2309,7 +2309,9 @@ the owning environment and checks the first unregistration and exact missing-key
 control, including error code. Providers, statuses, environment and loader handle
 are released; a cleanup failure cannot print a successful verdict. Runtime also
 requires raw success, one matching mode sentinel and unchanged core/probe bytes.
-Every selected native prefix must pass. Real executable fixtures use a deliberately
+Every selected native prefix must pass. Its CMake install also preserves the Hub's
+original MIT text under `share/licenses/ort-webgpu-factory-probe/LICENSE`.
+Real executable fixtures use a deliberately
 small fake C ABI, while a separate compile uses byte-verified official headers;
 neither completes real ORT registration or the target image matrix.
 
@@ -2376,7 +2378,13 @@ Start the strict AMD64 lane before foreign targets so the common host-built pool
 exists; a foreign-target skip cannot seal an empty directory. The existing disk
 admission and digest-pinned parent handoff rules still apply.
 
-These are source gates and fixture proofs for CON233. Actual build/runtime
+The prepared source at `031569f5` passes 280 Python methods, all 131 affected
+actual mutations, 26 normal quality groups and 16 unchanged normal-hook samples.
+Its full 42-group, 5,824-mutation Linux preflight is running separately. Earlier
+failed fixtures, the surviving recipe mutation and the three quality failures
+remain preserved; the accepted source proof is
+`logs/test-results/webgpu-registration-20261110/webgpu-wasm-factory-20261113/source-proof.json`.
+These are source and fixture results for CON233. Actual build/runtime
 registration proofs, separate media rebuilds for default amd64/arm64/riscv64,
 ROCm amd64 and NVIDIA amd64/arm64, and new consumer acceptance remain open.
 The goal's WASM artifact proof must check both enabled WebGPU flavors; an optional

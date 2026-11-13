@@ -46571,7 +46571,7 @@
   "find": "*(\"lib/\" + name for name in RUNTIME[\"COMPANIONS\"])",
   "replace": "*()",
   "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
-  "why": "The shared cache fingerprint includes all four compilation/runtime companions."
+  "why": "The shared cache fingerprint includes all five compilation/runtime companions."
  },
  {
   "id": "probe.wasm-webgpu-build-hook-forwarding",
