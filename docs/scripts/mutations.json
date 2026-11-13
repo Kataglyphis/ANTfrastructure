@@ -47124,5 +47124,197 @@
   "replace": "local prefix=\"$1\" arch=\"$2\" host_arch=amd64 entry",
   "test": "bash linux/scripts/tests/test-llvm-target-aliases.sh",
   "why": "ARM64 and RISC-V builders require their own native trees rather than a literal amd64 retention rule."
+ },
+ {
+  "id": "compiler-llvm-tools.source-prefix-first",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "if [ -e \"${source_prefix}\" ] || [ -L \"${source_prefix}\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "An installed pinned source compiler must precede the versioned apt bootstrap."
+ },
+ {
+  "id": "compiler-llvm-tools.incomplete-source-refuses",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "    [ -x \"${candidate}\" ] || return 1",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "A partial native source tree cannot select apt or silently succeed without a compiler."
+ },
+ {
+  "id": "compiler-llvm-tools.source-prefix-is-native",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "source_prefix=\"/opt/llvm-target-$(build_arch_oci)\" || return $?",
+  "replace": "source_prefix=\"/opt/llvm-target-amd64\"",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "ARM64 and RISC-V build hosts must select their own source compiler prefix."
+ },
+ {
+  "id": "compiler-llvm-tools.host-lookup-raw-status",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "source_prefix=\"/opt/llvm-target-$(build_arch_oci)\" || return $?",
+  "replace": "source_prefix=\"/opt/llvm-target-$(build_arch_oci)\"",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "Failed host discovery must not fall through to a bootstrap selection."
+ },
+ {
+  "id": "compiler-llvm-tools.dangling-source-refuses",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "[ -e \"${source_prefix}\" ] || [ -L \"${source_prefix}\" ]",
+  "replace": "[ -e \"${source_prefix}\" ]",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "A dangling source prefix is incomplete rather than permission to borrow apt."
+ },
+ {
+  "id": "compiler-llvm-tools.native-backend-union",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "if [ \"${target}\" != \"${host}\" ]; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "The native host Clang must emit every configured cross target, not only its own machine."
+ },
+ {
+  "id": "compiler-llvm-tools.foreign-backend-stays-narrow",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "if [ \"${target}\" != \"${host}\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "Foreign target-native trees keep their own backend instead of rebuilding all host targets."
+ },
+ {
+  "id": "compiler-llvm-tools.native-backends-include-host",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "for target in \"${host}\" \"${backend_targets[@]}\"; do",
+  "replace": "for target in \"${backend_targets[@]}\"; do",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "A cross-only target list must still retain the build host backend."
+ },
+ {
+  "id": "compiler-llvm-tools.native-backends-deduplicate",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "*\";${backend};\"*) ;;",
+  "replace": "__never__) ;;",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "Host inclusion and repeated architecture selections must not duplicate CMake backend names."
+ },
+ {
+  "id": "compiler-llvm-tools.backend-host-raw-status",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "host=\"$(build_arch_oci)\" || return $?",
+  "replace": "host=\"$(build_arch_oci)\"",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "A failed build-host query cannot quietly change native backend selection to the foreign path."
+ },
+ {
+  "id": "compiler-llvm-tools.backend-normalizer-raw-status",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "targets=\"$(arch_list_csv_normalize \"${CROSS_TARGETS:-amd64,arm64,riscv64}\")\" || return $?",
+  "replace": "targets=\"$(arch_list_csv_normalize \"${CROSS_TARGETS:-amd64,arm64,riscv64}\")\"",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "Malformed or failed target normalization must stop before a backend list is emitted."
+ },
+ {
+  "id": "compiler-llvm-tools.backend-mapping-raw-status",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "backend=\"$(llvm_cross_backend \"${target}\")\" || return $?",
+  "replace": "backend=\"$(llvm_cross_backend \"${target}\")\"",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "A failed backend mapping must not become an empty or partial successful list."
+ },
+ {
+  "id": "compiler-llvm-tools.configure-uses-backend-union",
+  "target": "linux/scripts/02-toolchain/llvm-cross.sh",
+  "find": "[\"backend\"]=\"$(llvm_cross_build_backends \"${target_label}\")\"",
+  "replace": "[\"backend\"]=\"$(llvm_cross_backend \"${target_label}\")\"",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "The actual LLVM configure state must consume the host-aware backend union."
+ },
+ {
+  "id": "smoke.clang-cross-both-drivers",
+  "target": "linux/scripts/06-packaging/smoke-toolchain.sh",
+  "find": "for driver in clang clang++; do",
+  "replace": "for driver in clang; do",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "Both the C and C++ wrapper drivers require their own pin and target compiler probes."
+ },
+ {
+  "id": "smoke.clang-cross-full-pin",
+  "target": "linux/scripts/06-packaging/smoke-toolchain.sh",
+  "find": "    check_clang_version \"${compiler}\" \"${LLVM_RELEASE}\" \"${driver} (${target_arch} wrapper)\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "A same-major or bootstrap wrapper must not escape the exact successful Clang version gate."
+ },
+ {
+  "id": "smoke.clang-cross-codegen",
+  "target": "linux/scripts/06-packaging/smoke-toolchain.sh",
+  "find": "    validate_compiler_for_target \"${compiler}\" \"${target_arch}\" \"${driver} (${target_arch} wrapper)\" cross",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "Version output alone cannot prove target object emission, linking and the existing QEMU execution checks."
+ },
+ {
+  "id": "smoke.clang-cross-mode",
+  "target": "linux/scripts/06-packaging/smoke-toolchain.sh",
+  "find": "    validate_compiler_for_target \"${compiler}\" \"${target_arch}\" \"${driver} (${target_arch} wrapper)\" cross",
+  "replace": "    validate_compiler_for_target \"${compiler}\" \"${target_arch}\" \"${driver} (${target_arch} wrapper)\" native",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "A cross wrapper is a host program; retain cross-mode object and executable checks."
+ },
+ {
+  "id": "smoke.clang-cross-wired",
+  "target": "linux/scripts/06-packaging/smoke-toolchain.sh",
+  "find": "  check_cross_clang \"${target_arch}\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "The ordinary toolchain target loop must execute the Clang wrapper gates."
+ },
+ {
+  "id": "smoke.clang-cross-version-raw-failure",
+  "target": "linux/scripts/06-packaging/smoke-toolchain.sh",
+  "find": "    check_clang_version \"${compiler}\" \"${LLVM_RELEASE}\" \"${driver} (${target_arch} wrapper)\"",
+  "replace": "    check_clang_version \"${compiler}\" \"${LLVM_RELEASE}\" \"${driver} (${target_arch} wrapper)\" || true",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "An unexpected version callback failure must still stop the unconditional compiler smoke."
+ },
+ {
+  "id": "smoke.clang-cross-codegen-raw-failure",
+  "target": "linux/scripts/06-packaging/smoke-toolchain.sh",
+  "find": "    validate_compiler_for_target \"${compiler}\" \"${target_arch}\" \"${driver} (${target_arch} wrapper)\" cross",
+  "replace": "    validate_compiler_for_target \"${compiler}\" \"${target_arch}\" \"${driver} (${target_arch} wrapper)\" cross || true",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "An unexpected target-compiler callback failure must stop before a later successful driver can hide it."
+ },
+ {
+  "id": "compiler-llvm-tools.foreign-backend-raw-failure",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "    llvm_cross_backend \"${target}\"\n    return $?",
+  "replace": "    llvm_cross_backend \"${target}\"\n    return 0",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "Foreign backend selection must propagate the actual mapping failure under conditional callers."
+ },
+ {
+  "id": "compiler-llvm-tools.wrappers-after-source-build",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "  install_cross_llvm_runner_tools\n  build_cross_llvm_targets\n  install_cross_clang_wrappers",
+  "replace": "  install_cross_clang_wrappers\n  install_cross_llvm_runner_tools\n  build_cross_llvm_targets",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "A fresh compiler has no native source prefix before the unified build; early wrappers permanently bake the apt bootstrap path."
+ },
+ {
+  "id": "compiler-llvm-tools.source-wrapper-publication",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "  build_cross_llvm_targets\n  install_cross_clang_wrappers",
+  "replace": "  build_cross_llvm_targets",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "The completed source build must publish its selected driver paths into the ordinary architecture wrappers."
+ },
+ {
+  "id": "compiler-llvm-tools.failed-build-stops-wrapper-publication",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "  build_cross_llvm_targets\n  install_cross_clang_wrappers",
+  "replace": "  build_cross_llvm_targets || true\n  install_cross_clang_wrappers",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "A failed source build must retain its raw status and cannot publish a successful-looking cross wrapper."
  }
 ]

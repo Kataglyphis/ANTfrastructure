@@ -73,6 +73,15 @@ the runtime package's existing `/usr/local/llvm-target/lib` publication under
 Write failures stop before `ldconfig` and cache-update failures retain their
 raw status even under conditional callers.
 
+Cross-Clang architecture wrappers are a separate surface from default PATH tools.
+An actual SDK failure showed that a versioned apt driver can load the source LLVM
+DSO yet require symbols it does not export. Wrapper selection therefore prefers
+the existing native source tree and rejects partial trees; installation binds
+the wrappers only after the unified source builds finish. The native LLVM build
+includes all configured CPU target backends, and `smoke-toolchain.sh` checks both
+wrapper drivers for the full pin, target objects, linking and the existing QEMU
+execution policy. See [the wrapper contract](linux-cross-builds.md#clang-cross-wrappers).
+
 GNU aliases use the separate amd64 mode below. Path/cache selection and version
 responses do not prove linked bytes, SDK ABI or inference.
 

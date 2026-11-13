@@ -1935,6 +1935,23 @@ the parent qualification and failed SDK receipts separate; retry the normal SDK
 with the repaired script and unchanged verification. See [prefix ownership and
 fixture limits](artifact-copy-completeness.md#sdk-materialization-preserves-build-host-and-target-paths).
 
+### SDK Cross-Clang wrapper cannot load the source LLVM symbols
+
+**Symptom.** Materialization and Vulkan setup complete, then SDK verification fails
+`/usr/bin/clang-23: undefined symbol: LLVMInitializeAArch64TargetInfo, version LLVM_23.1`.
+
+**Cause.** The wrapper selector preferred the major-suffixed apt driver even though
+the native source prefix existed. The intentional source-first loader cache then
+supplied the source LLVM DSO to that distro binary. The old native build carried
+only its host backend, while cross wrappers also need the configured CPU targets.
+
+**Fix.** Select the native source compiler before considering a bootstrap fallback,
+refuse incomplete source prefixes, build its configured cross backends and publish
+wrappers after those builds complete. Require
+the normal compiler's exact wrapper pins and target object/link/QEMU smokes before
+SDK retry. Preserve the original native-tool and loader receipts at their stated
+scope. The source loader priority stays in place; see [Clang cross wrappers](linux-cross-builds.md#clang-cross-wrappers).
+
 ### Source Clang works but the default LLVM soname still selects the distro
 
 **Symptom.** `ldd` of the explicit source Clang uses its own LLVM through RUNPATH,

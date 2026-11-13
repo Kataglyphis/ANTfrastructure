@@ -52,7 +52,7 @@ _llvm_cross_resolve_dirs() {
   _llvm_cross_resolve_dirs_result["build_dir_suffix"]="${triplet}"
   _llvm_cross_resolve_dirs_result["wrapper_dir_suffix"]="${triplet}-tool-bin"
 
-  _llvm_cross_resolve_dirs_result["backend"]="$(llvm_cross_backend "${target_label}")" || die "No LLVM backend for ${target_label}"
+  _llvm_cross_resolve_dirs_result["backend"]="$(llvm_cross_build_backends "${target_label}")" || die "No LLVM backend for ${target_label}"
   _llvm_cross_resolve_dirs_result["source_root"]="${LLVM_CROSS_SOURCE_ROOT:-/var/cache/llvm-src}"
   _llvm_cross_resolve_dirs_result["build_root"]="${LLVM_CROSS_BUILD_ROOT:-/var/tmp/llvm-cross-build}"
   _llvm_cross_resolve_dirs_result["source_dir"]="${_llvm_cross_resolve_dirs_result["source_root"]}/llvm-project-${_llvm_cross_resolve_dirs_result["release"]}"

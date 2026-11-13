@@ -32,9 +32,17 @@ build_llvm_clang_from_source() {
   bash "${builder}" "${args[@]}"
 }
 
-# Host LLVM tool path, preferring the -${CLANG_WANTED} suffixed name.
+# Cross wrappers cannot mix apt drivers with the source LLVM loader winner.
 llvm_selected_host_tool() {
   local base="$1" candidate=""
+  local source_prefix
+  source_prefix="/opt/llvm-target-$(build_arch_oci)" || return $?
+  if [ -e "${source_prefix}" ] || [ -L "${source_prefix}" ]; then
+    candidate="${source_prefix}/bin/${base}"
+    [ -x "${candidate}" ] || return 1
+    printf '%s' "${candidate}"
+    return 0
+  fi
   for candidate in "${base}-${CLANG_WANTED}" "${base}"; do
     command -v "${candidate}" >/dev/null 2>&1 || continue
     command -v "${candidate}"
@@ -107,6 +115,28 @@ install_cross_clang_wrappers() {
 llvm_cross_backend() {
   arch_to_llvm_target "$1" 2>/dev/null
 }
+
+# The host compiler drives every configured cross wrapper; foreign native installs need only their own backend.
+llvm_cross_build_backends() {
+  local target="$1" host targets backend result=""
+  host="$(build_arch_oci)" || return $?
+  if [ "${target}" != "${host}" ]; then
+    llvm_cross_backend "${target}"
+    return $?
+  fi
+  targets="$(arch_list_csv_normalize "${CROSS_TARGETS:-amd64,arm64,riscv64}")" || return $?
+  local -a backend_targets=()
+  IFS=',' read -r -a backend_targets <<< "${targets}"
+  for target in "${host}" "${backend_targets[@]}"; do
+    backend="$(llvm_cross_backend "${target}")" || return $?
+    case ";${result};" in
+      *";${backend};"*) ;;
+      *) result+="${result:+;}${backend}" ;;
+    esac
+  done
+  printf '%s' "${result}"
+}
+
 
 llvm_cross_root() {
   : "${LLVM_CROSS_ROOT:=/opt/llvm-cross}"
@@ -514,8 +544,8 @@ install_llvm_clang() {
   tool_version flang-new --version
 
   [ "${installed_from_source}" = "1" ] && log "Installed LLVM/Clang ${CLANG_WANTED} from source"
-  install_cross_clang_wrappers
   install_cross_llvm_runner_tools
   build_cross_llvm_targets
+  install_cross_clang_wrappers
 }
 

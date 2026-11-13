@@ -28,6 +28,17 @@ source "${_SCRIPT_DIR}/smoke-common.sh"
 # Load platform helpers (from 01-core or /opt/scripts/core) if available
 smoke_load_platform
 
+# A version string alone cannot prove that a host-built wrapper emits and links the selected target.
+check_cross_clang() {
+  local target_arch="$1" driver compiler
+  for driver in clang clang++; do
+    compiler="$(command -v "${driver}-${target_arch}" 2>/dev/null || true)"
+    check_clang_version "${compiler}" "${LLVM_RELEASE}" "${driver} (${target_arch} wrapper)"
+    validate_compiler_for_target "${compiler}" "${target_arch}" "${driver} (${target_arch} wrapper)" cross
+  done
+}
+
+
 smoke_target() {
   local target_arch="$1"
   local triplet
@@ -54,6 +65,7 @@ smoke_target() {
     fail "cross-ld (${triplet}-ld) not found"
   fi
 
+  check_cross_clang "${target_arch}"
   echo ""
 }
 
