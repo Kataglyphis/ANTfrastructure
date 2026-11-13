@@ -186,6 +186,87 @@ class RunnerTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(self.trace.read_text(), trace)
 
+    def helper(self, *options: str, **environment: str) -> tuple[subprocess.CompletedProcess[bytes], list[list[str]]]:
+        """run-in-ci-image.sh on the fixture with the recording engine; its result and the engine calls it made."""
+        before = len(self.trace.read_text().splitlines()) if self.trace.exists() else 0
+        result = subprocess.run(["bash", str(SCRIPTS / "run-in-ci-image.sh"), str(FIXTURE), "--engine", str(self.engine),
+                                 "--image", "example.invalid/image", *options, "--", "true"],
+                                capture_output=True, check=False, env={**os.environ, **environment})
+        lines = self.trace.read_text().splitlines()[before:] if self.trace.exists() else []
+        return result, [json.loads(line) for line in lines]
+
+    def test_volumes_environment_and_privilege_reach_the_run(self) -> None:
+        result, calls = self.helper("--volume", "cargo-cache:/var/cache/cargo", "--volume", "build:/workspace/build",
+                                    "--env", "CARGO_HOME=/var/cache/cargo", "--env", "EMPTY=", "--privileged")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        run = calls[-1]
+        mounts = [run[i + 1] for i, word in enumerate(run) if word == "--mount"]
+        self.assertEqual(mounts, ["type=volume,source=cargo-cache,target=/var/cache/cargo",
+                                  "type=volume,source=build,target=/workspace/build"])
+        self.assertEqual([run[i + 1] for i, word in enumerate(run) if word == "-e"],
+                         ["CARGO_HOME=/var/cache/cargo", "EMPTY="])
+        self.assertIn("--privileged", run)
+        self.assertLess(run.index("--privileged"), run.index("example.invalid/image"))
+        _, calls = self.helper()
+        for absent in ("--privileged", "--mount", "-e", "--user"):
+            self.assertNotIn(absent, calls[-1])
+        for option, value in (("--volume", "cache"), ("--volume", "cache:relative"), ("--volume", ":/abs"),
+                              ("--volume", "a,b:/abs"), ("--volume", "a:/abs:ro"), ("--volume", ""),
+                              ("--env", "NAME"), ("--env", "1X=y"), ("--env", "=y"), ("--env", "")):
+            refused, calls = self.helper(option, value)
+            self.assertEqual(refused.returncode, 2, (option, value))
+            self.assertEqual(calls, [], (option, value))
+
+    def test_a_rootless_engine_on_linux_runs_as_root_and_keeps_tar_from_restoring_owners(self) -> None:
+        rootless = {"PROOF_ENGINE_INFO": "[name=seccomp,profile=builtin name=cgroupns name=rootless]"}
+        user = lambda run: [run[i + 1] for i, word in enumerate(run) if word == "--user"]
+        pairs = lambda run: [run[i + 1] for i, word in enumerate(run) if word == "-e"]
+        result, calls = self.helper(**rootless)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((user(calls[-1]), pairs(calls[-1])), (["0:0"], ["TAR_OPTIONS=--no-same-owner"]))
+        result, calls = self.helper("--user", "1000:1000", **rootless)
+        self.assertEqual((user(calls[-1]), pairs(calls[-1])), (["1000:1000"], []))
+        result, calls = self.helper("--env", "TAR_OPTIONS=--numeric-owner", **rootless)
+        self.assertEqual((user(calls[-1]), pairs(calls[-1])), (["0:0"], ["TAR_OPTIONS=--numeric-owner"]))
+        result, calls = self.helper(PROOF_ENGINE_INFO="[name=seccomp,profile=builtin name=cgroupns]")
+        self.assertEqual((user(calls[-1]), pairs(calls[-1])), ([], []))
+
+    def test_every_run_says_how_old_the_local_image_is(self) -> None:
+        result, calls = self.helper(PROOF_ENGINE_CREATED="2026-10-01T08:00:00Z")
+        self.assertIn(b"run-in-ci-image.sh: image example.invalid/image, local copy created 2026-10-01T08:00:00Z\n",
+                      result.stderr)
+        self.assertEqual(result.stdout, b"worker\xff\n")
+        result, calls = self.helper()
+        self.assertIn(b"image example.invalid/image, no local copy; the engine pulls it\n", result.stderr)
+        self.assertNotIn(["pull", "example.invalid/image"], calls)
+
+    def test_a_named_volume_is_handed_to_the_user_the_run_has(self) -> None:
+        handed = lambda calls: [call for call in calls if call[0] == "run" and "chown" in call]
+        result, calls = self.helper("--user", "1000:1000", "--volume", "cache:/cache", "--platform", "linux/arm64")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        first = handed(calls)
+        self.assertEqual(len(first), 1)
+        self.assertEqual(first[0][-4:], ["example.invalid/image", "chown", "1000:1000", "/cache"])
+        self.assertEqual(first[0][first[0].index("--user") + 1], "0:0")
+        self.assertIn("type=volume,source=cache,target=/cache", first[0])
+        self.assertEqual(first[0][first[0].index("--platform") + 1], "linux/arm64")
+        self.assertLess(calls.index(first[0]), len(calls) - 1)
+        for root in ("0:0", "0", "root", "root:root"):
+            result, calls = self.helper("--user", root, "--volume", "cache:/cache")
+            self.assertEqual(handed(calls), [], root)
+        result, calls = self.helper("--user", "1000:1000")
+        self.assertEqual(handed(calls), [])
+        # Without --user the image's own user runs, and only a local copy names it.
+        result, calls = self.helper("--volume", "cache:/cache", PROOF_ENGINE_CREATED="2026-10-01T08:00:00Z",
+                                    PROOF_ENGINE_IMAGE_USER="1001")
+        self.assertEqual(handed(calls)[0][-2:], ["1001", "/cache"])
+        self.assertNotIn("pull", [call[0] for call in calls])
+        result, calls = self.helper("--volume", "cache:/cache", "--platform", "linux/arm64", PROOF_ENGINE_IMAGE_USER="1001")
+        self.assertIn(["pull", "--platform", "linux/arm64", "example.invalid/image"], calls)
+        self.assertEqual(handed(calls)[0][-2:], ["1001", "/cache"])
+        result, calls = self.helper("--volume", "cache:/cache", PROOF_ENGINE_CREATED="2026-10-01T08:00:00Z")
+        self.assertEqual(handed(calls), [])
+
 
 class StatusTests(unittest.TestCase):
     def test_running_success_field_is_not_a_terminal_verdict(self) -> None:

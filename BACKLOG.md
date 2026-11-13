@@ -1328,6 +1328,15 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `onnxruntime-gpu/lib`, which rocm no longer has; `AGENTS.md` 1243-1244 says the verify stages fail an in-tree
       MIGraphX provider, which only the runtime smoke does; CON233 names per-language registration helpers that
       `shared/` does not hold.
+      (j) **The Python bundle's library closure, seen 2026-11-13.** OrchestrANT's first AMD bundle on the
+      plugin-only image (run 43409294907, job *inventory (amd, x64, latest-rocm)*, hub pin ed3d170) stops in
+      `elf-closure.sh`: `runtime/lib/python3.15/site-packages/onnxruntime/capi/libmigraphx-ep.so: libonnxruntime.so.1`
+      resolves "neither inside the bundle nor to the system allowlist". `python-app-bundle.sh` (line 253) copies the
+      module beside the wheel's core, the module has no run path, and the closure does not count the core that
+      loads it as the answer to that name. It is the Python twin of the census fault under (i), and it comes
+      before (a): with it fixed the lane reaches the registration gate that cannot pass without a card. Not
+      looked at: under which file name the wheel holds its core, and whether `--allow-unresolved` or a rule for
+      a library's own loader is the right answer.
       (i) **Seen in `:latest-rocm`, 2026-11-12** (OxidANT's AMD candidate lane, the first consumer build on the
       plugin-only image). Run 43303579930 stopped at the wheel proof (`expected one wheel matching every native
       library; found 0`): the image strips the CPU core, so `stage-ort-wheel-licenses.py --require-unstripped`
@@ -2268,26 +2277,13 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       953d6f6, `Invoke-DartChecks.ps1 -Engine wslc`, analyze 146 s against nerdctl's
       371 s, format + test 23 s against 32 s (2026-10-06).
 
-- [ ] **CON242 — `run-in-ci-image.sh` takes a volume, an environment variable and `--privileged`** [M, ★★★].
-      Found by the audit of 2026-11-12; the gap is widest in AccelerANTgine, whose pages gave no local
-      container command. `linux/scripts/run-in-ci-image.sh` takes
-      `--image`, `--engine`, `--platform`, `--workdir`, `--name`, `--user`, `--keep` and `--mount-hub-scripts`
-      only, and section 3 of `docs/adopting-in-a-new-project.md` says it "has no option for a second mount".
-      So a one-command local test run with warm caches cannot be built on it. The consumers' CI lanes pass
-      `--privileged` and `-e CARGO_HOME` to their containers, the only complete lane driver is
-      OmniAccelerANT's PowerShell `Invoke-LinuxLane.ps1`, and the Linux dev host has no `pwsh`.
-      1. `--volume name:path` (repeatable; the long `--mount` form, the volume created and owned for the
-         run's user), `--env K=V` (repeatable) and `--privileged`.
-      2. Under a rootless engine on Linux, `--user 0:0` and `TAR_OPTIONS=--no-same-owner` without being asked
-         ([`linux-build-basics.md` § A lane under a rootless engine …](docs/linux-build-basics.md#a-lane-under-a-rootless-engine-on-a-linux-host-runs-as-root)).
-      3. One line with the local image's creation date on every run. A month-old local `:latest` without
-         GTK 4 looked like broken code.
-
-      First step: item 1, with its cases beside the helper's existing ones in
-      `linux/scripts/tests/proof_workflow_tests.py` (run by `test-proof-workflows.sh`), whose recording
-      engine already keeps the arguments it got, and a mutation recipe per option. Done when that suite is
-      green in `run-tests.sh`, the adoption page's cargo-cache run uses this helper in place of a plain
-      `nerdctl run`, and one consumer runs its Linux test step through it on a named volume.
+- [ ] **CON242 — one consumer runs its Linux test step through `run-in-ci-image.sh` on a named volume** [S, ★★].
+      The helper takes `--volume NAME:/PATH`, `--env NAME=VALUE` and `--privileged` since 2026-11-13, runs as root by
+      itself under a rootless engine on Linux and names the local image's creation date
+      ([`shared-script-libraries.md` § `run-in-ci-image.sh`](docs/shared-script-libraries.md#run-in-ci-imagesh--run-a-command-in-the-ci-image)).
+      Left: no consumer page gives its local test run through it yet; AccelerANTgine's pages gave no local container
+      command at all. Each consumer takes it at the pin bump that brings the options.
+      Done when one consumer's documented Linux test command is this helper with a named volume, and it was run once.
 
 - [ ] **CON269 — what the consumer hook pair and the staleness gate leave open** [S, ★★]. Found 2026-11-12
       while CON243 and CON244 were built; what is built is in `CHANGELOG.md` and

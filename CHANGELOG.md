@@ -14,6 +14,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — `run-in-ci-image.sh` takes a volume, an environment variable and `--privileged` (CON242)
+
+- `--volume NAME:/PATH` and `--env NAME=VALUE` (both repeatable) and `--privileged`: a local test run with warm
+  caches is one command through the helper. A named volume is handed to the run's user by one short root container
+  when that user is not root; without `--user` the image's own user is read from the local copy, pulled first when
+  there is none. A malformed value is refused before any engine call.
+- Under a rootless engine on Linux the helper passes `--user 0:0` and `TAR_OPTIONS=--no-same-owner` by itself; an
+  explicit `--user` and a caller's `TAR_OPTIONS` are kept. Rootful Docker, CI and Windows hosts are unchanged.
+- Every run prints `run-in-ci-image.sh: image <ref>, local copy created <date>` (or `no local copy`) on stderr.
+- Four tests on the recording engine and fifteen recipes (`host.run-image-*`); each path also ran once for real
+  on the rootless arm64 dev host, as root and as uid 1001 on a fresh volume. The adoption page's cargo-cache run uses
+  the helper. Left in CON242: no consumer documents its local test run through it yet.
+- **CON256 (j), new:** OrchestrANT's first AMD bundle on the plugin-only image stops in the bundle's library
+  closure, before the registration gate (run 43409294907).
+
 ## 2026-11-13 — three small gate faults: the hub hook under `git commit -a`, a section number in prose, one failed download (CON270, CON251, CON255)
 
 - **CON270.** `linux/host-config/git-hooks/pre-commit` reads the staged list once, from the index git names in

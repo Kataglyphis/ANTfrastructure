@@ -36971,7 +36971,7 @@
  {
   "id": "host.proof-nerdctl-apparmor",
   "target": "linux/scripts/run-in-ci-image.sh",
-  "find": "if [ \"${ENGINE##*/}\" = nerdctl ]; then ARGS+=(--security-opt apparmor=unconfined); fi",
+  "find": "if [ \"${ENGINE##*/}\" = nerdctl ]; then COMMON+=(--security-opt apparmor=unconfined); fi",
   "replace": ":",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "Manual nerdctl probes retain the host AppArmor setting used by the build lane."
@@ -37023,6 +37023,126 @@
   "replace": "if false; then",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "The existing runner must retain all value-option boundaries and refuse missing or empty inputs before invoking the engine."
+ },
+ {
+  "id": "host.run-image-volume-reaches-run",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "for volume in \"${VOLUMES[@]}\"; do ARGS+=(--mount \"type=volume,source=${volume%%:*},target=${volume#*:}\"); done",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A named volume is the only way a cache outlives the run; each --volume must reach the engine as a volume mount."
+ },
+ {
+  "id": "host.run-image-volume-shape-refused",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "[[ \"${2-}\" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*:/[^,:]*$ ]] || die \"--volume",
+  "replace": "[ -n \"${2-}\" ] || die \"--volume",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A value without a name, with a relative path or with a comma would become another mount than the one asked for."
+ },
+ {
+  "id": "host.run-image-env-reaches-run",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "for pair in \"${ENVS[@]}\"; do ARGS+=(-e \"${pair}\"); done",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Each --env must reach the container, an empty value too."
+ },
+ {
+  "id": "host.run-image-env-shape-refused",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "[[ \"${2-}\" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || die \"--env",
+  "replace": "[ -n \"${2-}\" ] || die \"--env",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A bare NAME would copy the host's value into the container, which the option does not promise."
+ },
+ {
+  "id": "host.run-image-privileged",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "[ \"${PRIVILEGED}\" -eq 0 ] || ARGS+=(--privileged)",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The consumers' lanes run privileged; a local run that asks for it must get it, and one that does not must not."
+ },
+ {
+  "id": "host.run-image-rootless-runs-as-root",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "  USER_SPEC=0:0\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Under a rootless engine on Linux any user but root cannot write the bind-mounted checkout."
+ },
+ {
+  "id": "host.run-image-rootless-tar-owners",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "ENVS+=(TAR_OPTIONS=--no-same-owner)",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "As root GNU tar restores an archive's owners, and one beyond the subuid range fails the extraction."
+ },
+ {
+  "id": "host.run-image-rootless-keeps-callers-tar",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "[[ \" ${ENVS[*]%%=*} \" == *\" TAR_OPTIONS \"* ]] || ENVS+=",
+  "replace": "ENVS+=",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A TAR_OPTIONS the caller passed is the caller's choice; the default must not follow it and win."
+ },
+ {
+  "id": "host.run-image-rootful-keeps-image-user",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "== *rootless* ]]; then",
+  "replace": "== * ]]; then",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A rootful engine and CI run the image's own user; only a rootless one gets root."
+ },
+ {
+  "id": "host.run-image-rootless-keeps-callers-user",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "if [ -z \"${USER_SPEC}\" ] && [ \"$(uname -s)\" = Linux ]",
+  "replace": "if [ \"$(uname -s)\" = Linux ]",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "An explicit --user is kept under a rootless engine too."
+ },
+ {
+  "id": "host.run-image-age-line",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "printf 'run-in-ci-image.sh: image %s, %s\\n' \"${IMAGE}\" \"${AGE}\" >&2",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A month-old local image looked like broken code; every run names the image and its creation date on stderr."
+ },
+ {
+  "id": "host.run-image-volume-handed-to-user",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "  *) hand_volumes_to \"${RUN_USER}\" ;;",
+  "replace": "  *) : ;;",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A new named volume is root's; a run under another user could not write its cache."
+ },
+ {
+  "id": "host.run-image-root-needs-no-handing",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "  ''|0|0:*|root|root:*) ;;",
+  "replace": "  '') ;;",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A run as root owns every volume already; a second container start for it is waste."
+ },
+ {
+  "id": "host.run-image-user-from-local-copy",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "  RUN_USER=\"$(engine_says image inspect --format '{{.Config.User}}' \"${IMAGE}\")\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Without --user the image's own user runs, and a volume must be handed to that user."
+ },
+ {
+  "id": "host.run-image-pull-before-image-user",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "[ -n \"${CREATED}\" ] || \"${ENGINE}\" pull",
+  "replace": "true || \"${ENGINE}\" pull",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Only a local copy names the image's user; without one the helper pulls before it asks."
  },
  {
   "id": "quality-report.perf-engine-security-option",

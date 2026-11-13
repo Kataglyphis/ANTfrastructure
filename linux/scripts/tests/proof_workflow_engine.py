@@ -15,6 +15,13 @@ MODE = os.environ.get("PROOF_ENGINE_MODE", "success")
 with TRACE.open("a") as trace:
     trace.write(json.dumps(ARGS) + "\n")
 if ARGS[:2] == ["image", "inspect"]:
+    # Each answer is empty unless a test names it: no local copy, and an image that runs as root.
+    wanted = "PROOF_ENGINE_IMAGE_USER" if ".Config.User" in " ".join(ARGS) else "PROOF_ENGINE_CREATED"
+    if ".Created" in " ".join(ARGS) or ".Config.User" in " ".join(ARGS):
+        print(os.environ.get(wanted, ""))
+    raise SystemExit(0)
+if ARGS and ARGS[0] in ("info", "pull"):
+    print(os.environ.get("PROOF_ENGINE_INFO", "") if ARGS[0] == "info" else "")
     raise SystemExit(0)
 if ARGS and ARGS[0] == "run":
     if MODE == "name-collision":
