@@ -925,6 +925,14 @@ only after a detour through the config file:
   actual compilation. A real cache probe still requires its compiler output,
   measured counters and actual container/image identity. Uncached advisories
   require review even when the diagnostic exits zero.
+
+  The corrected normal-base replay on 2026-11-13 passes four bootstrap gcc/g++
+  calls with two hits, two misses and no uncached label. Its actual container
+  matches the checked base manifest; terminal, cleanup and independent inventory
+  receipts are under
+  `logs/test-results/webgpu-registration-20261110/normal-toolchain-renewal-20261113/base-cache-probe-3`.
+  This proves that bootstrap replay only, not source-built compilers, shared
+  BuildKit cache mounts, S3 or a finished image.
 - **True again, and on purpose:** "sccache's C/C++ path always preprocesses".
   The base image *does* bake `use_preprocessor_cache_mode = true` plus
   `file_stat_matches` / `use_ctime_for_stat` into `/etc/sccache/config.toml`

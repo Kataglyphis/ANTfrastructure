@@ -1009,6 +1009,8 @@ shared test helper emits forward slashes. Prove the copy before trusting its bui
   a warning string written INSIDE a Dockerfile command counts as if it had fired. Match real
   output lines only.
 
+Host test jobs use an on-disk TMPDIR outside every Git checkout, so non-Git fixtures cannot inherit an ancestor repository index.
+
 ## Background jobs and test processes (no ghosts)
 
 On 2026-10-21 the build host carried a test fixture spinning at 100 % for 2.8 days and 24 headless

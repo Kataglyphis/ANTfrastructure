@@ -22,6 +22,19 @@ Two neighbours, so you land on the right page:
 > the triage index: enough to recognise the failure and act, with a link when
 > the full history matters.
 
+## Doc-link mutation baselines fail when host TMPDIR sits under repository logs
+
+The fixtures that deliberately contain no Git metadata still let Git discover a
+parent checkout. With host TMPDIR under this repository's ignored logs, the
+2026-11-13 normal hook reported stale pointer rows and a mismatched scan floor;
+the isolated image source proof passed. This is a real invalid fixture baseline,
+not a mutation bite.
+
+Run host test jobs with a fresh on-disk TMPDIR outside all Git checkouts, such as
+a task-specific directory under ~/.cache. The identical staged patch and normal
+hooks then pass all affected mutations. Retain the earlier failure; do not skip
+the test, narrow the gate or change global Git configuration.
+
 ## probe-sccache reports NOCACHE despite recorded cache hits and misses
 
 The older activity sampler added every row containing cache hits or writes,
