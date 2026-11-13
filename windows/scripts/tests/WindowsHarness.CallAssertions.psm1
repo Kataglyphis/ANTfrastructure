@@ -40,4 +40,15 @@ function Assert-TestScriptCallOrder {
     Assert-TestAstCommand -Command @($commands[$RequiredIndex]) -Text $Text -Unconditional:$Unconditional
 }
 
-Export-ModuleMember -Function Assert-TestSequence, Assert-TestRecordedArguments, Assert-TestScriptCallOrder
+function Assert-TestScriptParameterDefault {
+    param([Parameter(Mandatory)][Management.Automation.Language.Ast]$Ast,
+        [Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
+        [string]$Message = '')
+    $parameter = @($Ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq $Name })
+    Assert-Equal 1 $parameter.Count "one $Name parameter"
+    Assert-NotNull $parameter[0].DefaultValue "$Name has a default expression"
+    $reason = if ($Message) { $Message } else { "$Name default expression" }
+    Assert-Equal $Text $parameter[0].DefaultValue.Extent.Text $reason
+}
+
+Export-ModuleMember -Function Assert-TestSequence, Assert-TestRecordedArguments, Assert-TestScriptCallOrder, Assert-TestScriptParameterDefault

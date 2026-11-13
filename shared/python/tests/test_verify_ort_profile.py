@@ -33,16 +33,25 @@ class ProfileTest(unittest.TestCase):
             },
             {
                 "cat": "Node",
-                "args": {
-                    "provider": "MIGraphXExecutionProvider",
-                    "op_name": "FusedGraph",
-                },
+                "args": {"provider": "MIGraphX", "op_name": "FusedGraph"},
             },
         ]
         self.assertEqual(self.run_profile(profile, "cpu").returncode, 0)
         self.assertEqual(self.run_profile(profile, "migraphx").returncode, 0)
         self.assertNotEqual(self.run_profile(profile, "cuda").returncode, 0)
         self.assertNotEqual(self.run_profile(profile, "directml").returncode, 0)
+
+    def test_the_removed_in_tree_name_does_not_prove_the_plugin_ran(self) -> None:
+        profile = [
+            {
+                "cat": "Node",
+                "args": {
+                    "provider": "MIGraphXExecutionProvider",
+                    "op_name": "FusedGraph",
+                },
+            }
+        ]
+        self.assertNotEqual(self.run_profile(profile, "migraphx").returncode, 0)
 
     def test_registration_event_alone_does_not_prove_inference(self) -> None:
         profile = [{"cat": "Session", "args": {"provider": "CUDAExecutionProvider"}}]
@@ -51,7 +60,7 @@ class ProfileTest(unittest.TestCase):
     def test_all_supported_gpu_providers_accept_fused_computation(self) -> None:
         for device, provider in (
             ("cuda", "CUDAExecutionProvider"),
-            ("migraphx", "MIGraphXExecutionProvider"),
+            ("migraphx", "MIGraphX"),
             ("directml", "DmlExecutionProvider"),
         ):
             with self.subTest(device=device):
@@ -102,7 +111,7 @@ class ProfileTest(unittest.TestCase):
                     "op_name": "MemcpyToHost",
                 },
             },
-            {"cat": "Node", "args": {"provider": "MIGraphXExecutionProvider"}},
+            {"cat": "Node", "args": {"provider": "MIGraphX"}},
             {
                 "cat": "Node",
                 "args": {"provider": "CPUExecutionProvider", "op_name": "Conv"},

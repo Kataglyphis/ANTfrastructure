@@ -142,6 +142,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    CMake consumers use `Get-CmakeBuildArgs` for target, configuration and parallel flags; keep its argument order and caller-specific build verdict.
    Windows source builders share required-child path enumeration for FFmpeg's Vulkan SDK and the LiteRT wheel smoke; preserve leaf versus directory checks and each caller's fatal diagnostic.
    MIGraphX licence copying uses its existing file-gap helper; keep empty-list behavior and missing-file failures visible.
+   Windows MIGraphX applies the shared explicit-zero MaxPool correction to the pinned primary source before dependencies; keep average/max pads explicit, LP-norm folding and the narrow patch mount.
    Windows AMD EP builds carry both canonical Linux-owned lifetime patches in the EP RUN; retain all six C-base callback adjustments, typed node deletion and synchronized registry ownership before configuration.
    Windows call assertion suites carry WindowsHarness.CallAssertions.psm1 beside TestHarness.psm1; preserve sequence counts, argument boundaries, unique calls and source order.
    Windows mutation fixtures share module lifetime; import or parse failures cannot satisfy an expected assertion failure.
@@ -150,6 +151,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows script workspaces share AST validation before allocation and cleanup; log and Cargo paths use the canonical rooted-path resolver.
    Windows build drivers share config-file and workspace-root selection; callers still validate the resolved path.
    Windows source-copy mutation suites share AST loop selection and fixture execution; callers keep their source lists and assertions.
+   Windows parameter-default and Dockerfile build-mount tests share their harness assertions; preserve parsed stages, required arguments and caller-selected filename exclusivity.
    Windows Slang consumers snapshot pinned WGSL before compilation and use the shared parity assertion for every fresh manifest output after CRLF/LF normalization.
    Windows suites share `New-TestDir -Prefix` and `Assert-Throws -MessagePattern`; suite-scoped directories retain their `AfterAll` cleanup.
    Fixture byte-preservation checks share `Assert-FileUnchanged`; retain caller bindings and propagate operation exceptions.
@@ -1173,6 +1175,17 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
   it: an rv64gc-only board cannot run this image anyway, and changing it invalidates the warm
   riscv64 compiler cache. The ISA string, and why the profile NAME does not work:
   [`riscv64-rva23-baseline.md`](docs/riscv64-rva23-baseline.md).
+- **amd64 builds for `x86-64-v3`** (owner decision 2026-11-12, CON264), set through `--with-arch`
+  with `--with-tune=generic` in `02-toolchain/build-gcc.sh`, never as a `CFLAGS` export, `native`
+  or a vendor tuning. OpenCV takes `CPU_BASELINE=AVX2`; AVX-512 is never baseline. Do not revert it
+  to "restore compatibility": every package built in the image inherits the floor, and changing it
+  empties the compile caches of all three arches. What is not covered (clang, Rust, Windows):
+  [`amd64-x86-64-v3-baseline.md`](docs/amd64-x86-64-v3-baseline.md).
+- **Intel's GPU user space is the free build, in every amd64 image** (owner decision 2026-11-12):
+  `intel-media-va-driver`, `libmfx-gen1.2` and `intel-opencl-icd` in the package stage, never
+  `intel-media-va-driver-non-free` and never a variant for them. A copied `smoke-runtime-image.sh`
+  carries `check-arch-isa.sh` and `check-intel-gpu-userspace.sh`; a copied `build-opencv.sh` carries
+  `opencv-cpu-baseline.sh`: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md#intel-gpu-user-space).
 - **riscv64's web-lane tools have two build paths; keep both** (owner decision 2026-09-23). By
   default android cross-builds `wasm-pack` and `flutter_rust_bridge_codegen`, and the package
   stage installs them after a fail-loud gate; `WEB_LANE_TOOLS_SOURCE=native` (plus

@@ -394,7 +394,7 @@ the scoop shims. The Windows image installs that binary rather than building it.
 The [shared source-build record](../shared/upstream/sccache/README.md) owns the
 patches, canary evidence and conditions for returning to upstream release assets.
 
-**Upstream checked 2026-11-11:** [sccache#2862](https://github.com/mozilla/sccache/issues/2862)
+**Upstream checked 2026-11-12:** [sccache#2862](https://github.com/mozilla/sccache/issues/2862)
 is still open; its fix [#2809](https://github.com/mozilla/sccache/pull/2809) merged
 on 2026-11-02. The pin carries that fix. The older bare-nvcc exemption for
 `onnxruntime_providers_cuda_llm` is removed; reintroducing it would lose the cache
@@ -473,6 +473,47 @@ layers from executed Torch, final and gate steps. No fresh compiler-counter
 block appears in those solves; complete producer success supplies no new CUDA
 hit rate or whole-repeat result. Retain the failed repeat's separate status.
 
+
+**Frozen source `5bd443ea` evidence, 2026-11-12.** These private image manifests are
+dated producer evidence, not public tags or acceptance of a later source commit:
+
+| Lane | Manifest SHA256 | Actual producer/smoke scope |
+|---|---|---|
+| CPU amd64 | `99663296bfb1cc88911ff4d729269d2db37b3025e8fbdeccee9d781da846c98c` | full raw0, 289 pass / 0 fail / 2 skip |
+| ARM64 payload | `cada63a7de6578861efb37aac9eee8faf5dade814bbe3dc36881b994280fef1e` | full raw0, 152 pass / 0 fail / 17 skip; device execution open |
+| NVIDIA amd64 | `8111a9a1ad46717b5204ea5bc647a78717f8c52aa0a8991233f624a2b1748f2b` | audited full raw1 disk stop + documented Torch/final raw0; 319 pass / 0 fail / 2 hardware skips with separate host proof |
+| ROCm amd64 | `fa4bc369a67ea33182e33b42c00e243f71a2c3faf372754fbe14494fcaf5b309` | audited full/media/final raw1/1/0; 286 pass / 0 fail / 2 skip, plus a separate HIP-load skip; AMD device execution open |
+
+The full NVIDIA driver explicitly forced `media-core-built-onnx`. Its bounded
+executed ONNX block reports 6,304 typed hits: C 78, C++ 1,578, CUBIN 1,700,
+cudafe++ 605, nvcc 605 and PTX 1,738. Misses, cache errors and compilation failures
+are zero; retain 605 non-cacheable compilations and zero non-cacheable calls.
+The 2,261 top-level requests and 6,909 inner requests are distinct counters.
+L0 supplies the 6,304 hits; neither L1's zero hits nor its 605 misses prove an S3
+read hit. Do not add later QNN/TensorRT snapshots or duplicate console output.
+The original partial counter receipt does not prove a whole product; the later
+full-lane audit binds its source, forced driver, final image and continuation.
+Per-stage uncached gaps in CON229 remain open.
+
+The completed ROCm MIGraphX RUN8 reports 509 C++ hits, 17 misses and no cache or
+compile errors. GStreamer RUN27 reports 4,894 C++ hits, 16 misses, 103 cache errors
+and 32 compilation failures; repeated displays are not summed. Their original
+causes remain unclassified. An isolated real Linux GCC probe with the Linux binary
+of the same pinned `0.19.0+965c019.pr2809` build shows that a missing-header preprocessing failure
+increments Cache errors, while an undeclared identifier after preprocessing
+increments Compilation failures. Valid cold/warm controls still miss/hit correctly.
+This explains the counter categories, not the Windows requests: do not classify
+the 103 events as expected Meson checks or backend failures without request logs.
+
+The same NVIDIA bytes additionally pass five correct negative-input explicit
+zero-Pad/MaxPool runs through CPU, CUDA and TensorRTPlugin, with both outputs
+checked for shape/type/count/finite values and provider work in every complete
+run. CUDA has 10 GPU operator events and TensorRTPlugin 5. The image-bound C++
+probe has 15 actual CPU controls and 8 actually compiled semantic mutants. Forty-five
+runtime DLLs and the earlier accepted probe/model remain unchanged. This small
+graph does not establish MIGraphX, arbitrary models or Windows AMD execution.
+The native evidence receipt is `negative-pool-native-evidence-20261112.json`;
+[coordination and remaining scope](https://github.com/Kataglyphis/ANTfrastructure/issues/249#issuecomment-6824366231).
 
 Historical fixes and the canary bar before changing the pin:
 

@@ -6,6 +6,7 @@
 Import-TestRepoModule -Name 'WindowsSourceBuild.Patches'
 Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.GitFixtures.psm1') -ErrorAction Stop
 Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.CallAssertions.psm1') -ErrorAction Stop
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.DockerFixtures.psm1') -ErrorAction Stop
 $script:LifetimeScript = 'windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1'
 $script:LifetimePatchDir = Join-Path (Get-RepoRoot) 'linux/scripts/03-media/build/onnxruntime/build/patches'
 $script:LifetimeFixtureDir = Join-Path (Get-RepoRoot) 'linux/scripts/tests/fixtures/migraphx-node-compute-info'
@@ -105,15 +106,13 @@ Describe 'Windows AMD EP required lifetime corrections' {
     }
 
     It 'mounts each shared patch only in the EP RUN and passes that exact directory' {
-        $docker = Get-TestDockerfileStagesFromPath -Path (Join-Path (Get-RepoRoot) 'windows/Dockerfile.rocm-migraphx') -JoinContinuations -IgnoreComments -TrimLines -StrictFromHeader
-        $runs = @($docker.ByName.built.Lines | Where-Object { $_ -match '^RUN ' })
-        $ep = @($runs | Where-Object { $_ -match 'Build-OrtAmdgpuEpFromSource.ps1' })
-        Assert-Equal 1 $ep.Count 'one EP RUN consumes the corrections'
-        foreach ($name in $script:LifetimeNames) {
-            $mount = "source=linux/scripts/03-media/build/onnxruntime/build/patches/$name,target=C:\bkmnt\ort-amdgpu-patches\$name,readonly"
-            Assert-True $ep[0].Contains($mount) 'each canonical shared patch is mounted read-only'
-            Assert-Equal 1 @($runs | Where-Object { $_.Contains($name) }).Count 'patch changes invalidate only the EP RUN'
+        $contract = @{
+            Path = 'windows/Dockerfile.rocm-migraphx'; ScriptLeaf = 'Build-OrtAmdgpuEpFromSource.ps1'
+            Mount = @(foreach ($name in $script:LifetimeNames) {
+                @{ Text = "source=linux/scripts/03-media/build/onnxruntime/build/patches/$name,target=C:\bkmnt\ort-amdgpu-patches\$name,readonly"; Exclusive = $name }
+            })
+            ArgumentText = @("-PatchDir 'C:\bkmnt\ort-amdgpu-patches'")
         }
-        Assert-True $ep[0].Contains("-PatchDir 'C:\bkmnt\ort-amdgpu-patches'") 'the build uses the mounted patch directory'
+        Assert-TestDockerfileBuildMounts @contract
     }
 }

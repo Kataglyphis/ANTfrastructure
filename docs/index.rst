@@ -164,6 +164,7 @@ Common development targets:
    qnn-linux
    riscv64-venv-parity
    riscv64-rva23-baseline
+   amd64-x86-64-v3-baseline
    riscv64-cross-test-lanes
    upstreamable-patches
    upstream/README
@@ -242,6 +243,7 @@ Common development targets:
    refactoring-backlog
    build-watch-list
    windows-refactor-backlog
+   changelog-archive-2026-11-06
    changelog-archive-2026-11-04
    changelog-archive-2026-10-22
    changelog-archive-2026-10-19

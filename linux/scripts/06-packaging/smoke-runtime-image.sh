@@ -9,6 +9,8 @@ source "${_SCRIPT_DIR}/check-ort-provenance.sh"
 source "${_SCRIPT_DIR}/check-free-threaded-wheels.sh"
 source "${_SCRIPT_DIR}/check-gpu-runtime.sh"
 source "${_SCRIPT_DIR}/check-python-runtime.sh"
+source "${_SCRIPT_DIR}/check-arch-isa.sh"
+source "${_SCRIPT_DIR}/check-intel-gpu-userspace.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 
@@ -1382,6 +1384,8 @@ _shipped_truth_probe() {
   _probe_actual_versions
   _probe_venv_inventory
   _probe_elf_and_sonames
+  _probe_amd64_baseline
+  _probe_intel_gpu_userspace
 }
 
 # No exemption or SKIP arm; a deliberately unadvertised key goes in verify_advertised_keys.py's EXCUSED.
@@ -1501,25 +1505,6 @@ run_shipped_truth_probe() {
   echo ""
 }
 
-# riscv64 ISA gate: one OK|BAD|SKIP <lib> <attr> line per shipped object.
-_rvv_verdicts() {
-  local probe="$1" lib attr n=0 cc vcc=0
-  cc="$(_smoke_probe_values "${probe}" RVCC | head -1)"
-  # Demand vector only once the image's own toolchain defaults to it; before that plain objects are expected.
-  case "${cc}" in rva23*|*gcv*|*_v|*_v_*) vcc=1 ;; esac
-  while read -r lib attr; do
-    [ -n "${lib}" ] || continue
-    n=$((n + 1))
-    case "${attr}" in
-      "")        printf 'SKIP %s no ISA attribute could be read\n' "${lib}" ;;
-      *_v1p0*)   printf 'OK %s %s\n' "${lib}" "${attr}" ;;
-      *)         if [ "${vcc}" = "1" ]; then printf 'BAD %s %s\n' "${lib}" "${attr}"
-                 else printf 'OLD %s %s\n' "${lib}" "${attr}"; fi ;;
-    esac
-  done < <(_smoke_probe_values "${probe}" RVARCH)
-  [ "${n}" -gt 0 ] || printf 'NONE - -\n'
-}
-
 # Shared shipped-truth records count only explicit OK and BAD results.
 _shipped_truth_verdict_rows() {
   local pass_prefix="$1" pass_suffix="$2" parser="$3" renderer="$4" empty_failure="${5:-}"
@@ -1546,27 +1531,6 @@ _shipped_truth_verdict_gate() {
     return 0
   fi
   _shipped_truth_verdict_rows "${pass_prefix}" "${pass_suffix}" "${parser}" "${renderer}" "${empty_failure}"
-}
-
-_rvv_verdict_line() {
-  local verb lib attr
-  read -r verb lib attr <<< "$1"
-  case "${verb}" in
-    BAD)  fail "RVV: ${lib} was built WITHOUT the vector extension (${attr}) -- the image's own glibc requires it, so this object is below the platform baseline. See docs/riscv64-rva23-baseline.md" ;;
-    SKIP) echo "  ~~   ${lib}: ${attr}" ;;
-    OLD)  echo "  ~~   ${lib} predates the RVA23 switch (${attr}); the image's own gcc has no vector default either" ;;
-    NONE) fail "RVV: the probe found none of the objects it checks -- a vacuous pass, not a green image" ;;
-  esac
-}
-
-# C: riscv64 objects must carry the vector extension Ubuntu's own userland requires.
-check_riscv64_isa() {
-  local image_tag="$1" target_arch="$2"
-  [ "${target_arch}" = riscv64 ] || return 0
-  echo "--- SHIPPED-TRUTH C: riscv64 ISA of the shipped objects ---"
-  _shipped_truth_verdict_gate \
-    "riscv64 ISA gate could not run: the in-image probe never printed RTPROBE_DONE" \
-    "RVV: all " " checked object(s) carry v1p0" _rvv_verdicts _rvv_verdict_line
 }
 
 # Pure verdict function for the soname-precedence gate.
@@ -2429,6 +2393,8 @@ main() {
     check_advertised_versions "${image_tag}" "${target_arch}"
     check_venv_package_set "${image_tag}" "${target_arch}"
     check_riscv64_isa "${image_tag}" "${target_arch}"
+    check_amd64_isa "${image_tag}" "${target_arch}"
+    check_intel_gpu_userspace "${image_tag}" "${target_arch}"
     check_soname_precedence "${image_tag}" "${target_arch}"
     check_ort_census "${image_tag}" "${target_arch}"
     check_free_threaded_wheels "${image_tag}" "${target_arch}"

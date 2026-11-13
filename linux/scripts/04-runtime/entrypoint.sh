@@ -16,6 +16,29 @@ _safe_source() {
   return 1
 }
 
+# The loader's own verdict on the image's x86-64-v3 baseline: ok, below or unknown. docs/amd64-x86-64-v3-baseline.md
+_ep_cpu_baseline_verdict() {
+  case "$1" in
+    *"x86-64-v3 (supported"*) printf ok ;;
+    *x86-64-v3*)              printf below ;;
+    *)                        printf unknown ;;
+  esac
+  return 0
+}
+
+# A CPU below the baseline dies later with a bare SIGILL, so name the cause here; an unreadable loader gives no verdict.
+_ep_cpu_baseline_check() {
+  local ld="$1" text=""
+  [ -x "${ld}" ] || return 0
+  text="$("${ld}" --help 2>/dev/null || true)"
+  if [ "$(_ep_cpu_baseline_verdict "${text}")" = below ]; then
+    echo "ERROR: this image is built for x86-64-v3 (AVX2, FMA, BMI2) and this CPU does not provide it. See docs/amd64-x86-64-v3-baseline.md" >&2
+    return 1
+  fi
+  return 0
+}
+_ep_cpu_baseline_check /lib64/ld-linux-x86-64.so.2 || exit 1
+
 # LunarG's setup-env.sh sets ARCH=$(uname -m); a lane's -e ARCH=amd64 must reach its command unchanged.
 _ep_arch="${ARCH-}"; _ep_arch_set="${ARCH+1}"
 

@@ -27,9 +27,29 @@ when you go to regenerate a patch — see
 [`windows/scripts/patches/README.md`](../windows/scripts/patches/README.md) for
 why each fix is in the form it is:
 
-- a static `.patch` under `windows/scripts/patches/<component>/`
+- a static `.patch` under `windows/scripts/patches/<component>/` or a shared upstream patch under `shared/upstream/<component>/patches/`
 - an inline guarded edit in a `Build-*.ps1` script
 - a whole-file asset staged over the upstream one
+
+## MIGraphX: explicit zero padding before MaxPool
+
+**Grade A, local source fix; upstream submission still needs a current-branch
+search and re-diff.** The Windows pin is
+`95672916ed289d4be9d230a9be732e1bbad97e8c` (2.18.0). The shared
+[`0001-preserve-zero-pad-maxpool.patch`](../shared/upstream/migraphx/patches/0001-preserve-zero-pad-maxpool.patch)
+keeps explicit zero pads before max pooling because zero wins over negative
+input values; it retains average-pooling behavior and LP-norm folding. It also
+updates the existing pooling expectation and adds upstream negative-max and
+LP-norm regression cases. Original source provenance and its MIT text accompany
+the compressed specimen under `windows/scripts/tests/fixtures/`.
+
+The actual upstream C++ unit target passed seven cases with the fix; reverting
+the max guard and blocking all pooling each failed their intended assertion.
+The [Windows source-build contract](windows-rocm.md#explicit-zero-padding-before-maxpool)
+and fixture suite bind the exact patch and build wiring. Windows native
+compilation and AMD GPU inference remain open. Linux currently consumes a
+packaged MIGraphX, so placing a patch here alone does not correct that image.
+No upstream issue or pull request has been filed for this patch.
 
 ## Prepared and ready to send (12)
 

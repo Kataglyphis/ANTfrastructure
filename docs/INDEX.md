@@ -120,9 +120,11 @@ The two halves of one topic often split:
 | **Prepared upstream submissions** — the artefacts too big to inline in the register, and the verification behind them | [`upstream/README.md`](upstream/README.md) |
 | **Which local patches to send upstream** — every third-party source change the *Linux* chain carries, graded by the work left before a merge request. Windows half: [`upstream-windows-patches.md`](upstream-windows-patches.md) | [`upstreamable-patches.md`](upstreamable-patches.md) |
 | **riscv64 builds at RVA23 (with vector)** — why enabling RVV costs no compatibility, why `rva23u64_zifencei` and not `rv64gcv`, and the four consumers that need more than `-march` | [`riscv64-rva23-baseline.md`](riscv64-rva23-baseline.md) |
+| **amd64 builds for x86-64-v3** — the CPU floor it sets for the image and for every package built in it, where it is set, what is not covered, the gates | [`amd64-x86-64-v3-baseline.md`](amd64-x86-64-v3-baseline.md) |
 | **riscv64 consumer lanes** (CON48) — cross-build on the amd64 runner, test under QEMU: the sysroot from the image's riscv64 child, the distro clang, the QEMU CPU model, and the arch-specific variables the lane overrides | [`riscv64-cross-test-lanes.md`](riscv64-cross-test-lanes.md) |
 | **IREE's two-stage cross build** — why the host stage runs COMPILER=ON in the default (runtime-only target) configuration, the three tools it must install, and the WERROR / OUTPUT_FORMAT_C flags stage 2 requires | [`iree-two-stage-build.md`](iree-two-stage-build.md) |
 | CUDA / ROCm / accelerator image variants | [`linux-accelerator-images.md`](linux-accelerator-images.md) |
+| **Intel GPU user space in the amd64 images**: the free VA driver, Quick Sync runtime and OpenCL ICD, and what is not proven | [`linux-accelerator-images.md`](linux-accelerator-images.md#intel-gpu-user-space) |
 | **NVIDIA on arm64 (SBSA)**: building natively on an arm64 host, and running the image on a Jetson | [`linux-accelerator-images.md`](linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson) |
 | **DeepStream** in the nvidia variant: what ships, TensorRT 10 beside 11, the gates, the licence decision | [`linux-accelerator-images.md`](linux-accelerator-images.md#deepstream-nvidia-variant) |
 | **TensorRT 11** in the nvidia variant: the runtime `.so` files only, the ORT TensorRT EP, the SLA's redistribution terms | [`linux-accelerator-images.md`](linux-accelerator-images.md#tensorrt-11) |
@@ -224,6 +226,7 @@ owning page above.
 | What to read in a running chain's log | [`build-watch-list.md`](build-watch-list.md) | The 2026-09-05 wave's closure changes, grouped by stage: the log line that proves each one worked and the line that means it failed, plus the read-only probes to run on the shipped bytes afterwards. Why: eleven backlog entries closed on static proof, and a first rebuild attempt still found two build-killing bugs. |
 | Open refactor work, Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | What changed and why, current wave | [`../CHANGELOG.md`](../CHANGELOG.md) |
+| Changelog entries 2026-11-05 … 2026-11-06 | [`changelog-archive-2026-11-06.md`](changelog-archive-2026-11-06.md) | Compiler caches, Windows TensorRT acquisition and GPU runtime fixes. |
 | Changelog entries 2026-10-23 … 2026-11-04 | [`changelog-archive-2026-11-04.md`](changelog-archive-2026-11-04.md) | Linux and Windows build, cache, packaging and acceptance history. |
 | Changelog entries 2026-10-20 … 2026-10-22 | [`changelog-archive-2026-10-22.md`](changelog-archive-2026-10-22.md) | Linux and Windows build fixes, shared tooling and CI regression coverage. |
 | Changelog entries 2026-10-19 | [`changelog-archive-2026-10-19.md`](changelog-archive-2026-10-19.md) | The docs and script consolidation into the hub (README rule, docs sites, release workflow, shared Windows/Linux helpers), the hub pin round, Python 3.15 in the Windows docs, the sccache config facts. |

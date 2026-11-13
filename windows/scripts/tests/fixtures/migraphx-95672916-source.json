@@ -1,0 +1,13 @@
+{
+  "Repository": "ROCm/AMDMIGraphX",
+  "Commit": "95672916ed289d4be9d230a9be732e1bbad97e8c",
+  "License": "MIT",
+  "Source": "https://github.com/ROCm/AMDMIGraphX/tree/95672916ed289d4be9d230a9be732e1bbad97e8c",
+  "Files": {
+    "src/eliminate_pad.cpp": "4326061bdc6d40518ea3fa5d502d4e6c23961df034cf2af4317c996e29605236",
+    "test/eliminate_pad_test.cpp": "31b3bab35d9397553857b4e8b72a872751d6d11cb1acc1ec1f62f0f6adb5b425",
+    "LICENSE": "2282fd4f9d4acde1c5ab41a3d189752fd0af1048aec181519a903a0c8da8de53"
+  },
+  "ArchiveSha256": "90775816f5089a49bb4177f3474094b749aac943dc994d18f30f537eb8eba1d3",
+  "Purpose": "Compressed immutable upstream specimens keep exact patch-test bytes away from source formatters; no third-party binary or GPU proof."
+}
