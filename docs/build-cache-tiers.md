@@ -102,8 +102,21 @@ logs are preserved under
 `logs/test-results/webgpu-registration-20261110/script-context-cache-20261113/actual-2`.
 Transfer metadata reuse remains an inference, not a proved cause. The full-SHA
 namespace correction and equal-length source control are now implemented;
-their actual six-solve replay remains required. The failed flat-context run stays
-failed, and no cache-acceptance claim is valid yet.
+the corrected six-solve replay passes on clean local source `2006ae77`.
+
+**Corrected namespace measurement, 2026-11-13: PASSED for script transport.**
+Both SDK COPY and AMD read-only mounts execute cold, reuse the consumer after an
+unselected-source change, and execute with the exact new bytes after an
+equal-length selected-source change. Staged receipts retain equal sizes and zero
+mtimes in each profile; exported artifact bytes bind each expected receipt.
+All six raw child statuses are zero. The loaded successful unit was recorded
+before stopping, followed by an independent engine inventory. Evidence is
+preserved under
+`logs/test-results/webgpu-registration-20261110/script-context-namespaces-20261113/actual-1`
+and its sibling `actual-proof.json`. Original source and OCI inputs remain
+unchanged. The earlier flat-context failure stays failed. This establishes
+selected-script delivery and reuse only; compiler-cache statistics, the ordinary
+compiler/SDK/backend rebuild and finished image/GPU acceptance remain open.
 
 ### 1.1 The cerbero state cachemount (CERB-CACHE)
 

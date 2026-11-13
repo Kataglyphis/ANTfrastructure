@@ -18,11 +18,11 @@
 ## 2026-11-13 — bind selected script transport to its complete receipt hash
 
 - Stage each named SDK/AMD script bundle under its full receipt SHA256 and a fixed files leaf. Validate and forward HUB_SCRIPTS_KEY; exact COPY and read-only selectors reject a missing namespace while preserving the legacy flat staging API.
-- Keep deterministic modes/timestamps and exact source bytes. The permanent cache probe now uses an equal-length selected-source edit and saves raw child status before its strict step/artifact verdicts. Regression and mutation fixtures do not replace the required real six-solve replay; the earlier stale-byte failure remains failed.
+- Keep deterministic modes/timestamps and exact source bytes. The permanent cache probe now uses an equal-length selected-source edit and saves raw child status before its strict step/artifact verdicts. The corrected real six-solve replay now passes for both transports: cold execution, an unchanged-byte cache hit and exact new bytes after an equal-length selected edit. Original inputs remain unchanged; this proves script transport only. The earlier stale-byte failure remains failed, and ordinary compiler/SDK/backend and finished GPU acceptance remain open.
 
 ## 2026-11-13 — preserve an actual selected-context cache probe
 
-- Actual SDK transport testing detects stale receipt bytes after a selected source changes; the probe refuses acceptance. The full-SHA transport correction and AMD measurement remain open.
+- The original flat SDK transport test detected stale receipt bytes after a selected source changed and correctly refused acceptance. Its failed evidence remains preserved; the subsequent namespace result is recorded above.
 
 - Add a permanent amd64 BuildKit probe for the SDK COPY alias and AMD read-only context mount, with cold, unrelated-source and selected-source controls, exact plain-step markers and exported receipt-bound bytes.
 - Derive one checked native OCI layout from the pinned input for nerdctl; retain original blobs, local OCI pins, unchanged original inputs and raw child failures. Fake-engine negative fixtures do not prove actual cache reuse or compiler/image/GPU acceptance.
