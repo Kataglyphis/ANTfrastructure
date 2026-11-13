@@ -1332,7 +1332,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Run 43314831939 then built and tested and stopped at the bundle census: `UNRESOLVED /lib/libmigraphx-ep.so --
       no libonnxruntime.so.1 on its ld.so search path`. The image's module has no run path, and
       `ort_assert_plugin_module` forbids a package to patch one in. Owner, 2026-11-12: the census takes the
-      launcher's library path; no per-consumer exemption, no image rebuild.
+      launcher's library path; no per-consumer exemption, no image rebuild. Closed 2026-11-13 for native
+      packages: `check-ort-provenance.sh --library-path`
+      ([contract](docs/consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime)). Open:
+      `python-app-bundle.sh` does not pass it, because its module sits in `capi`, which no launcher path names,
+      and with `PYTHON_APP_HOST_GPU_RUNTIME=true` its closure stops on the same import before the census runs
+      (shown on a fixture, not in the rocm image).
       (j) **Stand-ins the consumers carry until the hub owns them.** OxidANT: `stage_amdgpu_ep_notices` and
       `verify_amdgpu_ep_notices` in its `scripts/linux/lib/ort-runtime-bundle.sh`. AccelerANTgine: the inventory
       text form `tree` with `verify_plugin_texts`, and `accelerantgine_keep_module_in_appimage`, because

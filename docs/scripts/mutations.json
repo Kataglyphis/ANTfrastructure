@@ -14316,6 +14316,94 @@
   "why": "G1 would call the shipped ORT twin's pybind module STALE"
  },
  {
+  "id": "ort-census.library-path-reaches-probe",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": "  if [ -n \"${4:-}\" ]; then printf '%s\\n' --ld-library-path \"$4\"; fi",
+  "replace": "  if false; then printf '%s\\n' --ld-library-path \"$4\"; fi",
+  "test": "bash linux/scripts/tests/test-ort-census.sh",
+  "why": "the launcher's library path must reach the probe, or a module that may not be patched stays UNRESOLVED"
+ },
+ {
+  "id": "ort-census.library-path-root-relative",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": "      \"${base}\"/*) inside=\"${inside#\"${base}\"}\" ;;",
+  "replace": "      \"${base}\"/*) ;;",
+  "test": "bash linux/scripts/tests/test-ort-census.sh",
+  "why": "the probe joins a library path to its --root itself; a host path is searched below the bundle and finds nothing"
+ },
+ {
+  "id": "ort-census.library-path-absolute",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": "      //*) echo \"check-ort-provenance: --library-path entry '${entry}' is absolute",
+  "replace": "      //NEVER*) echo \"check-ort-provenance: --library-path entry '${entry}' is absolute",
+  "test": "bash linux/scripts/tests/test-ort-census.sh",
+  "why": "an absolute path that also names a bundle directory (/lib) would be read as the bundle's own"
+ },
+ {
+  "id": "ort-census.library-path-dotdot",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": "      */../*) echo \"check-ort-provenance: --library-path entry '${entry}' leaves the bundle",
+  "replace": "      */NEVER/*) echo \"check-ort-provenance: --library-path entry '${entry}' leaves the bundle",
+  "test": "bash linux/scripts/tests/test-ort-census.sh",
+  "why": "a '..' from the bundle root leaves the bundle or hides which of its directories is meant; it is refused by name"
+ },
+ {
+  "id": "ort-census.library-path-exists",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": "&& pwd -P)\" || inside=\"\"",
+  "replace": "&& pwd -P)\" || inside=\"${base}/${entry}\"",
+  "test": "bash linux/scripts/tests/test-ort-census.sh",
+  "why": "a directory the bundle lacks is a stale statement about its launcher, not an empty search"
+ },
+ {
+  "id": "ort-census.library-path-physical",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": "cd -- \"$1/${entry}\" 2>/dev/null && pwd -P)",
+  "replace": "cd -- \"$1/${entry}\" 2>/dev/null && pwd)",
+  "test": "bash linux/scripts/tests/test-ort-census.sh",
+  "why": "a link out of the bundle names a directory the package does not carry; only its physical path shows that"
+ },
+ {
+  "id": "ort-census.library-path-empty",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": "    *::* | *$'\\n'*) echo \"check-ort-provenance: --library-path needs",
+  "replace": "    NEVER) echo \"check-ort-provenance: --library-path needs",
+  "test": "bash linux/scripts/tests/test-ort-census.sh",
+  "why": "an empty entry is named as one; left to the next check it reads as an absolute path"
+ },
+ {
+  "id": "ort-census.library-path-image",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": "    if [ \"${libset}\" = 1 ]; then\n      echo \"check-ort-provenance: --library-path describes",
+  "replace": "    if false; then\n      echo \"check-ort-provenance: --library-path describes",
+  "test": "bash linux/scripts/tests/test-ort-census.sh",
+  "why": "--image reads the running system's LD_LIBRARY_PATH; a stated path would be dropped without a word"
+ },
+ {
+  "id": "ort-census.library-path-label",
+  "target": "linux/scripts/06-packaging/check-ort-provenance.sh",
+  "find": "    label+=\" (library path ${libpath})\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-ort-census.sh",
+  "why": "the verdict line names the library path it assumed, or a green log hides the caller's statement"
+ },
+ {
+  "id": "ort-census.probe-ldpath-before-runpath",
+  "target": "linux/scripts/06-packaging/ort_census_probe.py",
+  "find": "        for d in rpath + self.ldpath + runpath + self.search:",
+  "replace": "        for d in rpath + runpath + self.ldpath + self.search:",
+  "test": "bash linux/scripts/tests/test-ort-census.sh",
+  "why": "ld.so searches the library path before DT_RUNPATH, so a launcher's path can shadow an importer's own $ORIGIN copy"
+ },
+ {
+  "id": "ort-census.library-path-unproven-name-ends-search",
+  "target": "linux/scripts/06-packaging/ort_census_probe.py",
+  "find": "            if self.stated and d in self.ldpath and os.path.lexists(host(self.root, posixpath.join(d, name))):",
+  "replace": "            if False:",
+  "test": "bash linux/scripts/tests/test-ort-census.sh",
+  "why": "ld.so opens a link out of the bundle or a directory of the import's name and never reaches the chain core behind it; counted as absent, a foreign ONNX Runtime passes"
+ },
+ {
   "id": "python.free-threaded-helper.bare-so-needs-pyinit",
   "target": "linux/scripts/02-toolchain/python/free-threaded-wheel.py",
   "find": "            if suffix in BARE_SUFFIXES and not exports_init(str(item.locate()), name):\n                continue\n",

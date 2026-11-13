@@ -14,6 +14,30 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — the bundle census takes the launcher's library path (`--library-path`)
+
+- `check-ort-provenance.sh --library-path DIR[:DIR...] <bundle>` states the library path the bundle's launcher hands
+  the loader, relative to the bundle root, and the probe searches it where `ld.so` searches `LD_LIBRARY_PATH`. Two
+  hub gates contradicted each other in OxidANT run 43314831939 (2026-11-12): a native AMD package keeps
+  `libmigraphx-ep.so` byte for byte the image's (`ort_assert_plugin_module`), so the module has no run path, and G6
+  called its `libonnxruntime.so.1` import UNRESOLVED. What an import resolves to is graded as before, and without
+  the option no caller sees a difference. An absolute path, a `..`, an empty entry, a directory the bundle lacks, an
+  entry that is a link out of the bundle and the option beside `--image` are usage errors; the PASS and FAILED lines
+  name the path.
+- On a stated path a file of the import's name that is a link out of the bundle, a link loop or a directory ends
+  the search unproven, as the loader's open would, and the finding names it. On an importer's own RUNPATH list such
+  a name still counts as absent, an older limit ([§ E](docs/cross-build-verification.md#e-ort-single-source)).
+- The entries reach the probe as paths below its `--root` (`/lib/glibc:/lib`), which is how it prints every path of
+  a bundle; joined to the host path they would find nothing.
+- `--help` and a usage error print the usage again: the function read `# Usage:` comment lines the file no longer has.
+- `python-app-bundle.sh` is unchanged. A Python AMD bundle keeps the module in `onnxruntime/capi`, which no launcher
+  path names; read in the scripts and seen on a fixture, its `libonnxruntime.so.1` is the closure's copy in
+  `runtime/lib`, on the launcher's path only through the bundled loader and otherwise preloaded by
+  `sitecustomize.py`. BACKLOG CON256 (i) holds the open point.
+- `test-ort-census.sh` gains three cases; recipes `ort-census.library-path-*` (nine) and
+  `ort-census.probe-ldpath-before-runpath` hold them, each seen to bite. Not run in the x64 rocm image or on a real
+  `libmigraphx-ep.so`. Contract: [`consumer-image-contract.md`](docs/consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime).
+
 ## 2026-11-12 — the consumer hook pair: staged checks on a commit, the repo's full gates on a push; mutation staleness is a lint gate (CON243, CON244)
 
 - `shared/linux/templates/git-hooks/` holds a `pre-commit` and a new `pre-push`. Both call the repo's own

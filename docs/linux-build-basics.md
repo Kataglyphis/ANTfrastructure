@@ -404,6 +404,10 @@ It stages the two chain ORT aliases and, for a GPU variant, the shared provider 
 MIGraphX provider. It checks all requested inputs before writing and copies their bytes unchanged.
 The caller must prove provenance, match all staged ORT files to their wheel, and carry its license
 texts. Staging does not test a GPU or make vendor runtime libraries available.
+An AMD package `--protect`s the staged plugin module in its closure, because its checks compare
+the module with the image's byte for byte; the module then has no RUNPATH, and the package's G6 call
+states the launcher's library path instead
+([`consumer-image-contract.md`](consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime)).
 
 `bundle-loader.sh --external-library-path` preserves nonempty `LD_LIBRARY_PATH` entries for host
 SDK libraries while putting the bundle's private library directory first. It supports either the
