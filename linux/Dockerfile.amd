@@ -5,6 +5,8 @@
 ARG BASE_IMAGE=local/kataglyphis:sdk
 FROM ${BASE_IMAGE}
 
+ARG HUB_SCRIPTS_KEY
+
 LABEL org.kataglyphis.build-script-closure=migraphx-image
 
 ARG TARGETARCH
@@ -33,7 +35,7 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=
 # Compile the corrected backend with the shared cache and original source/notice contracts.
 LABEL kataglyphis.step=migraphx-source
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=secret,id=sccache_s3,required=false \
-    --mount=type=bind,from=hub-scripts,source=/,target=/opt/scripts,ro \
+    --mount=type=bind,from=hub-scripts,source=/${HUB_SCRIPTS_KEY}/files,target=/opt/scripts,ro \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH},sharing=locked \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH},sharing=locked \
     --mount=type=cache,target=/var/cache/migraphx-source,id=migraphx-source-${TARGETARCH},sharing=locked \

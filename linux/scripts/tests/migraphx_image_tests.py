@@ -207,7 +207,7 @@ class ImageWiringTests(unittest.TestCase):
     def test_exact_bundle_is_mounted_readonly_once_in_the_compile_run(self) -> None:
         run = normal_run()
         binds = re.findall(r"--mount=type=bind,[^\s]+", run)
-        self.assertEqual(binds, ["--mount=type=bind,from=hub-scripts,source=/,target=/opt/scripts,ro"])
+        self.assertEqual(binds, ["--mount=type=bind,from=hub-scripts,source=/${HUB_SCRIPTS_KEY}/files,target=/opt/scripts,ro"])
         text = (ROOT / "linux/Dockerfile.amd").read_text()
         self.assertEqual(text.count("LABEL org.kataglyphis.build-script-closure=migraphx-image"), 1)
         self.assertNotIn("source=linux/scripts,target=", text)

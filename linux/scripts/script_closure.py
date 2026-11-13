@@ -50,27 +50,47 @@ def read_profile(root: Path, profile: str, trail: tuple[str, ...] = (), manifest
     return selected
 
 
-def stage(root: Path, profile: str, output: Path) -> None:
+def closure_files(root: Path, profile: str) -> tuple[dict[str, bytes], dict[str, dict[str, str | int]]]:
     root = root.resolve(strict=True)
     selected = read_profile(root, profile)
     payloads = {target: source.read_bytes() for target, source in selected.items()}
-    output.mkdir()
     records: dict[str, dict[str, str | int]] = {}
     for target, payload in sorted(payloads.items()):
-        destination = output / target
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(payload)
         mode = 0o755 if target.endswith(".sh") else 0o644
-        destination.chmod(mode)
         records[target] = {"source": selected[target].relative_to(root).as_posix(),
                            "sha256": hashlib.sha256(payload).hexdigest(),
                            "size": len(payload), "mode": format(mode, "o")}
+    return payloads, records
+
+
+def _stage(root: Path, profile: str, output: Path, addressed: bool) -> str:
+    payloads, records = closure_files(root, profile)
     receipt = {"schema_version": 1, "profile": profile, "files": records, "scope": __doc__}
-    (output / "SCRIPT-CLOSURE.json").write_text(json.dumps(receipt, sort_keys=True, indent=2) + "\n")
+    receipt_bytes = (json.dumps(receipt, sort_keys=True, indent=2) + "\n").encode()
+    key = hashlib.sha256(receipt_bytes).hexdigest()
+    output.mkdir()
+    tree = output / key / "files" if addressed else output
+    if addressed:
+        tree.mkdir(parents=True)
+    for target, payload in sorted(payloads.items()):
+        destination = tree / target
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        destination.chmod(int(str(records[target]["mode"]), 8))
+    (tree / "SCRIPT-CLOSURE.json").write_bytes(receipt_bytes)
     for path in [*sorted(output.rglob("*"), key=lambda item: len(item.parts), reverse=True), output]:
         if path.is_dir():
             path.chmod(0o755)
         os.utime(path, (0, 0))
+    return key
+
+
+def stage(root: Path, profile: str, output: Path) -> None:
+    _stage(root, profile, output, False)
+
+
+def stage_context(root: Path, profile: str, output: Path) -> str:
+    return _stage(root, profile, output, True)
 
 
 def profile_for(dockerfile: Path) -> str | None:
@@ -89,12 +109,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("profile", nargs="?")
     parser.add_argument("--profile-for", type=Path)
+    parser.add_argument("--context", action="store_true", help="Print the full receipt SHA and stage beneath that directory")
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent)
     parser.add_argument("--output", type=Path, default=Path("/script-bundle"))
     args = parser.parse_args()
     try:
         if args.profile_for is not None:
-            if args.profile is not None:
+            if args.profile is not None or args.context:
                 raise ValueError("Choose a profile or a Dockerfile query")
             profile = profile_for(args.profile_for)
             if profile is not None:
@@ -103,6 +124,9 @@ def main() -> int:
             return 0
         if args.profile is None:
             raise ValueError("A script closure profile is required")
+        if args.context:
+            print(stage_context(args.root, args.profile, args.output))
+            return 0
         stage(args.root, args.profile, args.output)
     except (OSError, ValueError) as error:
         print("Script closure refused: " + str(error), file=sys.stderr)

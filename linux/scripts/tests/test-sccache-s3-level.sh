@@ -192,7 +192,7 @@ for f in sorted(glob.glob(os.path.join(sys.argv[1], "Dockerfile.*"))):
         # Dockerfile.base only initialises the caches; nothing there compiles.
         if "target=/var/cache/sccache" in b and not f.endswith("Dockerfile.base"):
             lib = "source=linux/scripts/01-core," in b or "source=linux/scripts/01-core/sccache-s3-level.sh," in b
-            if "--mount=type=bind,from=hub-scripts,source=/,target=/opt/scripts,ro" in b:
+            if "--mount=type=bind,from=hub-scripts,source=/${HUB_SCRIPTS_KEY}/files,target=/opt/scripts,ro" in b:
                 mapping = dockerfile_script_map(Path(sys.argv[1]).resolve().parent, Path(f).name)
                 lib = mapping.get("/opt/scripts/core/sccache-s3-level.sh") == "linux/scripts/01-core/sccache-s3-level.sh"
             if not (lib and "type=secret,id=sccache_s3,required=false" in b and b.rstrip().endswith("sccache-s3-level.sh drain")):

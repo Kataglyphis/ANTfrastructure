@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from script_closure import profile_for, read_profile, selected_file, stage
+from script_closure import profile_for, read_profile, selected_file, stage_context
 from source_ci.common import fingerprint, git, read, require, save, timestamp
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -74,10 +74,10 @@ def recipe(transport: str) -> str:
     lines = ["# syntax=docker/dockerfile:1.28.0", "ARG BASE_IMAGE"]
     if transport == "copy":
         lines.append("FROM hub-scripts AS sdk-core-scripts")
-    lines += ["FROM ${BASE_IMAGE} AS consumer", "ARG CACHE_NONCE"]
+    lines += ["FROM ${BASE_IMAGE} AS consumer", "ARG CACHE_NONCE", "ARG HUB_SCRIPTS_KEY"]
     if transport == "copy":
-        lines.append("COPY --from=sdk-core-scripts / /opt/scripts/")
-    mount = "--mount=type=bind,from=hub-scripts,source=/,target=/opt/scripts,ro " if transport == "mount" else ""
+        lines.append("COPY --from=sdk-core-scripts /${HUB_SCRIPTS_KEY}/files/ /opt/scripts/")
+    mount = "--mount=type=bind,from=hub-scripts,source=/${HUB_SCRIPTS_KEY}/files,target=/opt/scripts,ro " if transport == "mount" else ""
     lines.append("RUN --network=none " + mount +
                  'set -eu; digest="$(sha256sum /opt/scripts/SCRIPT-CLOSURE.json)"; digest="${digest%% *}"; '
                  'printf "%s %s\\n" "$CACHE_NONCE" "$digest" > /cache-proof.txt; '
@@ -90,8 +90,9 @@ def production_contract(source: Path, profile: str, dockerfile: str, transport: 
     path = source / "linux" / dockerfile
     require(profile_for(path) == profile, "Production Dockerfile profile differs")
     text = path.read_text()
-    fragments = ("FROM hub-scripts AS sdk-core-scripts", "COPY --from=sdk-core-scripts / /opt/scripts/") if transport == "copy" else (
-        "--mount=type=bind,from=hub-scripts,source=/,target=/opt/scripts,ro",)
+    fragments = ("FROM hub-scripts AS sdk-core-scripts", "COPY --from=sdk-core-scripts /${HUB_SCRIPTS_KEY}/files/ /opt/scripts/") if transport == "copy" else (
+        "--mount=type=bind,from=hub-scripts,source=/${HUB_SCRIPTS_KEY}/files,target=/opt/scripts,ro",)
+    require(text.count("ARG HUB_SCRIPTS_KEY\n") == 1, "Production context key ARG differs")
     require(all(text.count(fragment) == 1 for fragment in fragments), "Production selected-context transport differs")
     return fingerprint(path)
 
@@ -131,11 +132,11 @@ def mirror_inputs(scripts: Path, profile: str, output: Path) -> dict[Path, str]:
     return fingerprints
 
 
-def build_command(args: argparse.Namespace, context: Path, scripts: Path, output: Path, nonce: str) -> list[str]:
+def build_command(args: argparse.Namespace, context: Path, scripts: Path, output: Path, nonce: str, key: str) -> list[str]:
     command = [args.engine, "build", "--platform=linux/amd64", "--progress=plain", "--pull=false"]
     if args.buildkit_host:
         command += ["--buildkit-host", args.buildkit_host]
-    command += ["--build-arg", "BASE_IMAGE=ubuntu@" + args.base_digest, "--build-arg", "CACHE_NONCE=" + nonce,
+    command += ["--build-arg", "BASE_IMAGE=ubuntu@" + args.base_digest, "--build-arg", "CACHE_NONCE=" + nonce, "--build-arg", "HUB_SCRIPTS_KEY=" + key,
                 "--build-context", "ubuntu@" + args.base_digest + "=oci-layout://" + str(args.base_context),
                 "--build-context", "hub-scripts=" + str(scripts), "--output", "type=local,dest=" + str(output), str(context)]
     return command
@@ -144,17 +145,19 @@ def build_command(args: argparse.Namespace, context: Path, scripts: Path, output
 def execute_phase(args: argparse.Namespace, output: Path, mirror: Path, profile: str, transport: str, nonce: str, cached: bool) -> dict[str, Any]:
     output.mkdir()
     scripts = output / "scripts"
-    stage(mirror, profile, scripts)
-    digest = fingerprint(scripts / "SCRIPT-CLOSURE.json")
+    key = stage_context(mirror, profile, scripts)
+    digest = fingerprint(scripts / key / "files/SCRIPT-CLOSURE.json")
+    require(digest == key, "Staged context key differs from the exact receipt")
     context = output / "build-context"
     context.mkdir()
     dockerfile = context / "Dockerfile"
     dockerfile.write_text(recipe(transport))
-    command = build_command(args, context, scripts, output / "export", nonce)
+    command = build_command(args, context, scripts, output / "export", nonce, key)
     save(output / "invocation.json", {"command": command, "receipt_sha256": digest, "expected_cached": cached,
                                       "dockerfile_sha256": fingerprint(dockerfile)})
     with (output / "build.log").open("wb") as stream:
         result = subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT, check=False, timeout=120)
+    save(output / "command-status.json", {"exit_status": result.returncode})
     require(result.returncode == 0, "BuildKit solve failed; retain its build.log")
     step = consumer_step((output / "build.log").read_text(), nonce, digest, cached)
     record = {"receipt_sha256": digest, "artifact_sha256": artifact(output / "export", nonce, digest),
@@ -177,7 +180,10 @@ def replay_profile(args: argparse.Namespace, profile: str, dockerfile: str, tran
     require(first["receipt_sha256"] == warm["receipt_sha256"] and first["artifact_sha256"] == warm["artifact_sha256"],
             "Unselected source change altered the staged or exported bytes")
     selected = mirror / SELECTED
-    selected.write_bytes(selected.read_bytes() + b"\n# The isolated selected control must invalidate the consumer RUN.\n")
+    before = selected.read_bytes()
+    after = before.replace(b"# ", b"#x", 1)
+    require(after != before and len(after) == len(before), "Selected-source control must change bytes without changing length")
+    selected.write_bytes(after)
     changed = execute_phase(args, output / "selected-change", mirror, profile, transport, nonce, False)
     require(changed["receipt_sha256"] != first["receipt_sha256"] and changed["artifact_sha256"] != first["artifact_sha256"],
             "Selected source change did not alter staged and exported bytes")

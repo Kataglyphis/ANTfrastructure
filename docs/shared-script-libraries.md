@@ -159,7 +159,12 @@ file modes and timestamps. The receipt describes staged sources only.
 
 The cross-stage driver reads one literal Dockerfile profile label with
 `stage-script-closure.py --profile-for DOCKERFILE`. It stages fresh selected bytes
-under the run's log directory and passes `--build-context hub-scripts=PATH`.
+under the run's log directory. `--context` prints only the full receipt SHA256
+and stages the bundle at `PATH/SHA256/files/`. The driver validates that key and
+passes both `--build-context hub-scripts=PATH` and
+`--build-arg HUB_SCRIPTS_KEY=SHA256`. SDK COPY and AMD read-only mounts select
+that exact namespace and leaf; a missing key cannot fall back to the flat root.
+The legacy flat staging API remains available for its existing callers.
 Dry runs validate the profile without creating a staging directory. Query,
 allocation and staging failures retain their raw status and prevent dispatch.
 Legacy Dockerfiles without this contract keep their existing argument list.
@@ -176,8 +181,9 @@ or BuildKit hits.
 `script_context_cache.py` and `probe-script-context-cache.py` reuse that stager
 and the shared evidence helpers for the [actual BuildKit transport probe](build-cache-tiers.md#selected-script-contexts).
 Both production transports, exact step markers, exported bytes and unchanged
-original inputs are required. Keep its fake-engine fixture visibly separate from
-real cache receipts.
+original inputs are required. The selected-source control changes bytes without
+changing their length; each child status is recorded before semantic assertions.
+Keep its fake-engine fixture visibly separate from real cache receipts.
 
 ## Shared synthetic test fixtures
 

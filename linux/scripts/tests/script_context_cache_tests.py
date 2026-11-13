@@ -231,16 +231,11 @@ class ContextCacheTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "platform"):
             API["native_base"](context, digest, self.root / "nonlinux")
         self.assertFalse((self.root / "nonlinux").exists())
-        manifest = json.loads((context / "blobs/sha256" / digest.split(":")[1]).read_text())
-        manifest["schemaVersion"] = 3
-        raw = json.dumps(manifest).encode()
-        version_digest = "sha256:" + hashlib.sha256(raw).hexdigest()
-        (context / "blobs/sha256" / version_digest.split(":")[1]).write_bytes(raw)
-        row = json.loads((context / "index.json").read_text())["manifests"][0]
-        row.update(digest=version_digest, size=len(raw))
-        (context / "index.json").write_text(json.dumps({"manifests": [row]}))
+        self.root = self.root / "schema-control"
+        self.root.mkdir()
+        context, digest = self.base(schema_version=3)
         with self.assertRaisesRegex(ValueError, "native OCI"):
-            API["native_base"](context, version_digest, self.root / "wrong-schema")
+            API["native_base"](context, digest, self.root / "wrong-schema")
 
     def test_production_transport_and_recipe_keep_copy_alias_or_readonly_mount(self) -> None:
         source = self.source()
@@ -251,7 +246,7 @@ class ContextCacheTests(unittest.TestCase):
             self.assertIn("FROM scratch AS result", text)
             self.assertEqual(API["production_contract"](source, profile, name, transport),
                              hashlib.sha256((source / "linux" / name).read_bytes()).hexdigest())
-            fragment = "COPY --from=sdk-core-scripts / /opt/scripts/" if transport == "copy" else "--mount=type=bind,from=hub-scripts,source=/,target=/opt/scripts,ro"
+            fragment = "COPY --from=sdk-core-scripts /${HUB_SCRIPTS_KEY}/files/ /opt/scripts/" if transport == "copy" else "--mount=type=bind,from=hub-scripts,source=/${HUB_SCRIPTS_KEY}/files,target=/opt/scripts,ro"
             self.assertIn(fragment, text)
             if transport == "copy":
                 self.assertIn("FROM hub-scripts AS sdk-core-scripts", text)
@@ -279,12 +274,13 @@ class ContextCacheTests(unittest.TestCase):
     def test_command_boundaries_keep_local_output_pinned_base_and_selected_context(self) -> None:
         args = self.arguments()
         args.buildkit_host = "unix:///fixture/socket with spaces"
-        command = API["build_command"](args, self.root / "context", self.root / "selected", self.root / "export", NONCE)
+        command = API["build_command"](args, self.root / "context", self.root / "selected", self.root / "export", NONCE, DIGEST)
         self.assertEqual(command[-1], str(self.root / "context"))
         self.assertEqual(command[command.index("--buildkit-host") + 1], args.buildkit_host)
         self.assertIn("hub-scripts=" + str(self.root / "selected"), command)
         self.assertIn("ubuntu@" + args.base_digest + "=oci-layout://" + str(args.base_context), command)
         self.assertIn("CACHE_NONCE=" + NONCE, command)
+        self.assertIn("HUB_SCRIPTS_KEY=" + DIGEST, command)
         self.assertIn("type=local,dest=" + str(self.root / "export"), command)
 
     def test_full_fake_transport_runs_all_six_phases_and_preserves_original_source(self) -> None:
@@ -296,6 +292,9 @@ class ContextCacheTests(unittest.TestCase):
         for row in proof["profiles"]:
             self.assertEqual([phase["cached"] for phase in row["phases"]], [False, True, False])
             self.assertTrue(row["original_inputs_unchanged"])
+            for phase in ("cold", "unselected-change", "selected-change"):
+                status = json.loads((args.output / row["profile"] / phase / "command-status.json").read_text())
+                self.assertEqual(status["exit_status"], 0)
         self.assertEqual(subprocess.run(["git", "-C", str(args.source), "status", "--porcelain"], capture_output=True, text=True, check=True).stdout, "")
 
     def test_missing_marker_bad_artifact_false_warm_and_false_selected_hits_refuse(self) -> None:
@@ -305,6 +304,30 @@ class ContextCacheTests(unittest.TestCase):
             with self.subTest(mode=mode), mock.patch.dict(os.environ, SCRIPT_CONTEXT_FIXTURE_MODE=mode), self.assertRaises(ValueError):
                 API["run"](args)
             self.assertFalse((args.output / "proof.json").exists())
+            if mode in ("exit", "exit-with-evidence"):
+                status = json.loads((args.output / "sdk-core/cold/command-status.json").read_text())
+                self.assertEqual(status["exit_status"], 47)
+
+    def test_wrong_namespace_key_refuses_before_build_dispatch(self) -> None:
+        args = self.arguments()
+        def wrong_key(_root: Path, _profile: str, output: Path) -> str:
+            path = output / DIGEST / "files"
+            path.mkdir(parents=True)
+            (path / "SCRIPT-CLOSURE.json").write_bytes(b"foreign receipt")
+            return DIGEST
+        output = self.root / "wrong-phase"
+        with mock.patch.dict(API["execute_phase"].__globals__, stage_context=wrong_key), self.assertRaisesRegex(ValueError, "context key"):
+            API["execute_phase"](args, output, args.source / "linux/scripts", "sdk-core", "copy", NONCE, False)
+        self.assertFalse((output / "invocation.json").exists())
+
+    def test_missing_equal_size_control_refuses_before_the_selected_solve(self) -> None:
+        args = self.arguments()
+        path = args.source / "linux/scripts/01-core/logging.sh"
+        path.write_bytes(b"no comment token\n")
+        args.output.mkdir()
+        with self.assertRaisesRegex(ValueError, "control must change"):
+            API["replay_profile"](args, *API["PROFILES"][0], NONCE)
+        self.assertFalse((args.output / "sdk-core/selected-change").exists())
 
     def test_dirty_sources_refuse_before_output_allocation(self) -> None:
         args = self.arguments()

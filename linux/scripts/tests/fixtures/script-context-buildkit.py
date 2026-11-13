@@ -22,7 +22,9 @@ def command_inputs(argv: list[str]) -> tuple[str, str, Path]:
     text = (context / "Dockerfile").read_text()
     assert "RUN --network=none" in text and "FROM scratch AS result" in text
     assert "COPY --from=consumer /cache-proof.txt /cache-proof.txt" in text
-    digest = hashlib.sha256((scripts / "SCRIPT-CLOSURE.json").read_bytes()).hexdigest()
+    key = next(value.removeprefix("HUB_SCRIPTS_KEY=") for value in argv if value.startswith("HUB_SCRIPTS_KEY="))
+    digest = hashlib.sha256((scripts / key / "files/SCRIPT-CLOSURE.json").read_bytes()).hexdigest()
+    assert digest == key
     output = Path(argv[argv.index("--output") + 1].removeprefix("type=local,dest="))
     return nonce, digest, output
 

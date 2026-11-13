@@ -180,6 +180,68 @@ class ScriptClosureTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stdout, "")
 
+    def test_addressed_context_binds_the_full_receipt_and_preserves_flat_bytes(self) -> None:
+        flat = self.stage()
+        output = self.work / "addressed"
+        key = MODULE["stage_context"](self.root, "sample", output)
+        expected = hashlib.sha256((flat / "SCRIPT-CLOSURE.json").read_bytes()).hexdigest()
+        self.assertEqual(key, expected)
+        self.assertRegex(key, r"^[0-9a-f]{64}$")
+        self.assertEqual([path.name for path in output.iterdir()], [key])
+        self.assertFalse((output / "files").exists())
+        self.assertEqual(self.snapshot(output / key / "files"), self.snapshot(flat))
+        (self.root / "data.txt").write_bytes(b"changed selected data\n")
+        second = self.work / "second-addressed"
+        changed = MODULE["stage_context"](self.root, "sample", second)
+        self.assertNotEqual(changed, key)
+        self.assertEqual([path.name for path in second.iterdir()], [changed])
+
+    def test_addressed_context_cli_prints_only_the_validated_key(self) -> None:
+        output = self.work / "cli-addressed"
+        result = subprocess.run(["python3", str(ROOT / "linux/scripts/stage-script-closure.py"),
+                                 "sample", "--context", "--root", str(self.root), "--output", str(output)],
+                                capture_output=True, text=True, check=False, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        key = result.stdout.strip()
+        self.assertRegex(key, r"^[0-9a-f]{64}$")
+        self.assertEqual(key, hashlib.sha256((output / key / "files/SCRIPT-CLOSURE.json").read_bytes()).hexdigest())
+        before = self.snapshot(output)
+        with self.assertRaises(FileExistsError):
+            MODULE["stage_context"](self.root, "sample", output)
+        self.assertEqual(self.snapshot(output), before)
+
+    def test_context_namespace_survives_unselected_changes_but_changes_on_equal_size_bytes(self) -> None:
+        first = self.work / "first-context"
+        key = MODULE["stage_context"](self.root, "sample", first)
+        (self.root / "unused.txt").write_bytes(b"changed outside the selection")
+        (self.profiles / "sample.txt").write_text("# plan comment\n@shared\ndata.txt|config/data.txt\n")
+        warm = self.work / "warm-context"
+        self.assertEqual(MODULE["stage_context"](self.root, "sample", warm), key)
+        self.assertEqual(self.snapshot(first), self.snapshot(warm))
+        selected = self.root / "data.txt"
+        before = selected.read_bytes()
+        selected.write_bytes(before.swapcase())
+        self.assertEqual(len(before), selected.stat().st_size)
+        changed = self.work / "changed-context"
+        new_key = MODULE["stage_context"](self.root, "sample", changed)
+        self.assertNotEqual(new_key, key)
+        old_receipt = first / key / "files/SCRIPT-CLOSURE.json"
+        new_receipt = changed / new_key / "files/SCRIPT-CLOSURE.json"
+        self.assertEqual(old_receipt.stat().st_size, new_receipt.stat().st_size)
+        self.assertEqual(old_receipt.stat().st_mtime_ns, new_receipt.stat().st_mtime_ns)
+        self.assertNotEqual(old_receipt.read_bytes(), new_receipt.read_bytes())
+
+    def test_context_and_profile_query_modes_cannot_be_combined(self) -> None:
+        dockerfile = self.work / "Dockerfile"
+        dockerfile.write_text("LABEL org.kataglyphis.build-script-closure=sample\n")
+        output = self.work / "query-output"
+        result = subprocess.run(["python3", str(ROOT / "linux/scripts/stage-script-closure.py"), "--context",
+                                 "--profile-for", str(dockerfile), "--root", str(self.root), "--output", str(output)],
+                                capture_output=True, text=True, check=False, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+        self.assertFalse(output.exists())
+
     def test_real_sdk_and_migraphx_profiles_share_the_same_core_sources(self) -> None:
         scripts = ROOT / "linux/scripts"
         shared = MODULE["read_profile"](scripts, "core-common")

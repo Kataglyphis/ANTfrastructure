@@ -1160,7 +1160,10 @@ CMake consumer projects, original-notice policies and the packaging ELF reader.
 
 Before a solve, the host driver reads the Dockerfile's literal
 `org.kataglyphis.build-script-closure` label and creates a fresh named `hub-scripts`
-context. No broad source-tree mount enters either Dockerfile. Host staging rejects
+context beneath the full receipt SHA256 and a fixed `files` leaf. The validated
+`HUB_SCRIPTS_KEY` build argument selects that exact path for the SDK COPY and
+AMD read-only mount. Missing keys cannot select the flat context root. No broad
+source-tree mount enters either Dockerfile. Host staging rejects
 path escapes, symlinks, missing inputs,
 repeated destinations, reserved receipt paths and recursive/empty plans.
 Selected file bytes and the semantic receipt remain exact; modes and timestamps

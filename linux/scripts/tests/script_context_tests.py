@@ -1,5 +1,6 @@
 """Real host staging and captured cross-stage dispatch prove transport and raw failures, not BuildKit reuse, images or GPU acceptance."""
 
+import hashlib
 import json
 import os
 import subprocess
@@ -17,6 +18,7 @@ python3() {
   printf '%s\0' "$@" >> "$PY_CALLS"
   if [[ "$FAIL_POINT" == query && "$3" == --profile-for ]]; then return 41; fi
   if [[ "$FAIL_POINT" == stage && "$3" != --profile-for ]]; then return 43; fi
+  if [[ "$FAIL_POINT" == key && "$3" != --profile-for ]]; then printf invalid-key; return 0; fi
   command python3 "$@"
 }
 if [[ "$FAIL_POINT" == mkdir ]]; then mkdir() { return 71; }; fi
@@ -51,7 +53,7 @@ class ScriptContextTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.dockerfile = self.root / "Dockerfile.sdk"
-        self.dockerfile.write_text("FROM base\nLABEL org.kataglyphis.build-script-closure=sdk-core\nCOPY --from=hub-scripts / /opt/scripts/\n")
+        self.dockerfile.write_text("FROM base\nARG HUB_SCRIPTS_KEY\nLABEL org.kataglyphis.build-script-closure=sdk-core\nCOPY --from=hub-scripts /${HUB_SCRIPTS_KEY}/files/ /opt/scripts/\n")
         self.env = dict(os.environ, LC_ALL="C", CONTEXT=str(CORE / "context-management.sh"),
                         DOCKERFILE=str(self.dockerfile), LOG_DIR=str(self.root / "logs with spaces"),
                         ARGS=str(self.root / "args"), STATUS=str(self.root / "status"), DRY="0",
@@ -93,11 +95,17 @@ class ScriptContextTests(unittest.TestCase):
         raw, args = self.execute()
         self.assertEqual(raw, 0)
         self.assertEqual(args[:3], ["original argument", "--existing", "--build-context"])
-        self.assertEqual(len(args), 4)
+        self.assertEqual(len(args), 6)
         name, value = args[3].split("=", 1)
         self.assertEqual(name, "hub-scripts")
         context = Path(value)
         self.assertTrue(context.is_relative_to(self.root / "logs with spaces"))
+        self.assertEqual(args[4], "--build-arg")
+        key = args[5].removeprefix("HUB_SCRIPTS_KEY=")
+        self.assertRegex(key, r"^[0-9a-f]{64}$")
+        self.assertEqual([path.name for path in context.iterdir()], [key])
+        context = context / key / "files"
+        self.assertEqual(hashlib.sha256((context / "SCRIPT-CLOSURE.json").read_bytes()).hexdigest(), key)
         records = json.loads((context / "SCRIPT-CLOSURE.json").read_text())
         self.assertEqual(records["profile"], "sdk-core")
         self.assertEqual(len(records["files"]), 24)
@@ -107,7 +115,7 @@ class ScriptContextTests(unittest.TestCase):
 
     def test_dry_run_queries_without_creating_staging_directories(self) -> None:
         self.env["DRY"] = "1"
-        self.assertEqual(self.execute(), (0, ["original argument", "--existing", "--build-context", "hub-scripts=<staged-sdk-core>"]))
+        self.assertEqual(self.execute(), (0, ["original argument", "--existing", "--build-context", "hub-scripts=<staged-sdk-core>", "--build-arg", "HUB_SCRIPTS_KEY=<receipt-sha256>"]))
         self.assertFalse((self.root / "logs with spaces").exists())
         self.assertEqual((self.root / "calls").read_bytes().count(b"--output\0"), 0)
 
@@ -123,7 +131,7 @@ class ScriptContextTests(unittest.TestCase):
         self.assertEqual(self.execute(), (0, ["original argument", "--existing"]))
 
     def test_raw_failures_do_not_append_arguments(self) -> None:
-        for phase, expected in (("query", 41), ("stage", 43), ("mkdir", 71), ("mktemp", 73), ("loader", 2)):
+        for phase, expected in (("query", 41), ("stage", 43), ("mkdir", 71), ("mktemp", 73), ("loader", 2), ("key", 2)):
             with self.subTest(phase=phase):
                 self.env["FAIL_POINT"] = phase
                 self.assertEqual(self.execute(), (expected, ["original argument", "--existing"]))
@@ -146,6 +154,8 @@ class ScriptContextTests(unittest.TestCase):
         self.assertEqual(arguments[6], b"--build-context")
         self.assertTrue(arguments[7].startswith(b"hub-scripts="))
         self.assertTrue(Path(arguments[7].decode().split("=", 1)[1]).is_dir())
+        self.assertEqual(arguments[8], b"--build-arg")
+        self.assertTrue(arguments[9].startswith(b"HUB_SCRIPTS_KEY="))
 
     def test_context_failure_prevents_cross_stage_dispatch(self) -> None:
         self.env.update(WIRED="1", FAIL_POINT="stage")

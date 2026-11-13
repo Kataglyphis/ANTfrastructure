@@ -123,7 +123,10 @@ def script_bundles(dockerfile: Path) -> dict[str, dict[str, Path]]:
         module = import_module("script_closure")
         profile = module.profile_for(dockerfile)
         if profile is not None:
-            bundles["hub-scripts"] = {"/" + target: source for target, source in module.read_profile(SCRIPTS_SRC, profile).items()}
+            prefix = "/${HUB_SCRIPTS_KEY}/files/"
+            if len(re.findall(r"^ARG HUB_SCRIPTS_KEY$", text, re.MULTILINE)) != 1:
+                raise ValueError("The addressed context requires one key ARG")
+            bundles["hub-scripts"] = {prefix + target: source for target, source in module.read_profile(SCRIPTS_SRC, profile).items()}
     stage = ""
     for line in join_continuations(read(dockerfile)):
         declaration = re.match(r"FROM\s+\S+\s+AS\s+([A-Za-z0-9_-]+)", line, re.IGNORECASE)

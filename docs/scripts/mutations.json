@@ -45656,8 +45656,8 @@
  {
   "id": "lib.mgx-image-bundle-readonly",
   "target": "linux/Dockerfile.amd",
-  "find": "from=hub-scripts,source=/,target=/opt/scripts,ro",
-  "replace": "from=hub-scripts,source=/,target=/opt/scripts",
+  "find": "from=hub-scripts,source=/${HUB_SCRIPTS_KEY}/files,target=/opt/scripts,ro",
+  "replace": "from=hub-scripts,source=/${HUB_SCRIPTS_KEY}/files,target=/opt/scripts",
   "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
   "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
  },
@@ -45672,8 +45672,8 @@
  {
   "id": "lib.script-closure-sdk-producer",
   "target": "linux/Dockerfile.sdk",
-  "find": "COPY --from=sdk-core-scripts / /opt/scripts/",
-  "replace": "COPY --from=unknown-scripts / /opt/scripts/",
+  "find": "COPY --from=sdk-core-scripts /${HUB_SCRIPTS_KEY}/files/ /opt/scripts/",
+  "replace": "COPY --from=unknown-scripts /${HUB_SCRIPTS_KEY}/files/ /opt/scripts/",
   "test": "bash linux/scripts/tests/test-sudo-policy-closures.sh",
   "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
  },
@@ -45704,16 +45704,16 @@
  {
   "id": "lib.script-context-stage-status",
   "target": "linux/scripts/01-core/context-management.sh",
-  "find": "  python3 -B \"${_sc_helper}\" \"${_sc_profile}\" --output \"${_sc_work}/scripts\" || return",
-  "replace": "  python3 -B \"${_sc_helper}\" \"${_sc_profile}\" --output \"${_sc_work}/scripts\" || return 0",
+  "find": "  _sc_key=\"$(python3 -B \"${_sc_helper}\" \"${_sc_profile}\" --context --output \"${_sc_work}/scripts\")\" || return",
+  "replace": "  _sc_key=\"$(python3 -B \"${_sc_helper}\" \"${_sc_profile}\" --context --output \"${_sc_work}/scripts\")\" || return 0",
   "test": "python3 linux/scripts/tests/script_context_tests.py",
   "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
  },
  {
   "id": "lib.script-context-argv-boundaries",
   "target": "linux/scripts/01-core/context-management.sh",
-  "find": "  _sc_args+=(--build-context \"hub-scripts=${_sc_work}/scripts\")",
-  "replace": "  _sc_args=(--build-context \"hub-scripts=${_sc_work}/scripts\")",
+  "find": "  _sc_args+=(--build-context \"hub-scripts=${_sc_work}/scripts\" --build-arg \"HUB_SCRIPTS_KEY=${_sc_key}\")",
+  "replace": "  _sc_args=(--build-context \"hub-scripts=${_sc_work}/scripts\" --build-arg \"HUB_SCRIPTS_KEY=${_sc_key}\")",
   "test": "python3 linux/scripts/tests/script_context_tests.py",
   "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
  },
@@ -45728,7 +45728,7 @@
  {
   "id": "lib.script-context-dry-forwarding",
   "target": "linux/scripts/01-core/context-management.sh",
-  "find": "    _sc_args+=(--build-context \"hub-scripts=<staged-${_sc_profile}>\")",
+  "find": "    _sc_args+=(--build-context \"hub-scripts=<staged-${_sc_profile}>\" --build-arg \"HUB_SCRIPTS_KEY=<receipt-sha256>\")",
   "replace": "    :",
   "test": "python3 linux/scripts/tests/script_context_tests.py",
   "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
@@ -45800,7 +45800,7 @@
  {
   "id": "copy-coverage.named-context-external",
   "target": "linux/scripts/verify_script_copy_coverage.py",
-  "find": "            bundles[\"hub-scripts\"] = {\"/\" + target: source for target, source in module.read_profile(SCRIPTS_SRC, profile).items()}",
+  "find": "            bundles[\"hub-scripts\"] = {prefix + target: source for target, source in module.read_profile(SCRIPTS_SRC, profile).items()}",
   "replace": "            bundles[\"hub-scripts\"] = {}",
   "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
   "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
@@ -46032,8 +46032,8 @@
  {
   "id": "lib.context-cache-readonly-mount",
   "target": "linux/scripts/script_context_cache.py",
-  "find": "source=/,target=/opt/scripts,ro ",
-  "replace": "source=/,target=/opt/scripts ",
+  "find": "source=/${HUB_SCRIPTS_KEY}/files,target=/opt/scripts,ro ",
+  "replace": "source=/${HUB_SCRIPTS_KEY}/files,target=/opt/scripts ",
   "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
   "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
  },
@@ -46164,5 +46164,133 @@
   "replace": "True",
   "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
   "why": "Native cache-probe OCI inputs retain exact platform and manifest selection; synthetic fixture metadata does not prove actual image execution or compiler/GPU acceptance."
+ },
+ {
+  "id": "lib.script-namespace-full-digest",
+  "target": "linux/scripts/script_closure.py",
+  "find": "    key = hashlib.sha256(receipt_bytes).hexdigest()",
+  "replace": "    key = hashlib.sha256(receipt_bytes).hexdigest()[:16]",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.script-namespace-addressed-tree",
+  "target": "linux/scripts/script_closure.py",
+  "find": "    tree = output / key / \"files\" if addressed else output",
+  "replace": "    tree = output / \"wrong\" / \"files\" if addressed else output",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.script-namespace-context-mode",
+  "target": "linux/scripts/script_closure.py",
+  "find": "    return _stage(root, profile, output, True)",
+  "replace": "    return _stage(root, profile, output, False)",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.script-namespace-cli-mode",
+  "target": "linux/scripts/script_closure.py",
+  "find": "        if args.context:",
+  "replace": "        if False:",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.script-namespace-query-exclusive",
+  "target": "linux/scripts/script_closure.py",
+  "find": "            if args.profile is not None or args.context:",
+  "replace": "            if args.profile is not None:",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.script-namespace-host-context",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": " --context --output \"${_sc_work}/scripts\"",
+  "replace": " --output \"${_sc_work}/scripts\"",
+  "test": "python3 linux/scripts/tests/script_context_tests.py",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.script-namespace-host-key",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": "  [[ \"${_sc_key}\" =~ ^[0-9a-f]{64}$ ]] || {",
+  "replace": "  [[ 1 = 1 ]] || {",
+  "test": "python3 linux/scripts/tests/script_context_tests.py",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.script-namespace-key-forwarding",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": " --build-arg \"HUB_SCRIPTS_KEY=${_sc_key}\"",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/script_context_tests.py",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "copy-coverage.context-key-arg",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "            if len(re.findall(r\"^ARG HUB_SCRIPTS_KEY$\", text, re.MULTILINE)) != 1:",
+  "replace": "            if False:",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "copy-coverage.context-key-selector",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "            prefix = \"/${HUB_SCRIPTS_KEY}/files/\"",
+  "replace": "            prefix = \"/\"",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.script-namespace-sdk-key",
+  "target": "linux/Dockerfile.sdk",
+  "find": "ARG HUB_SCRIPTS_KEY\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.script-namespace-amd-key",
+  "target": "linux/Dockerfile.amd",
+  "find": "ARG HUB_SCRIPTS_KEY\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-key-binding",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "digest == key, \"Staged context key differs",
+  "replace": "True, \"Staged context key differs",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-key-argument",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "\"HUB_SCRIPTS_KEY=\" + key",
+  "replace": "\"OTHER_SCRIPTS_KEY=\" + key",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-same-size-control",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "after != before and len(after) == len(before)",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-raw-status-record",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "    save(output / \"command-status.json\", {\"exit_status\": result.returncode})",
+  "replace": "    pass",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
  }
 ]

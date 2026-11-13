@@ -62,7 +62,11 @@ Two properties are worth internalising because they are counter-intuitive:
 ### Selected script contexts
 
 The host stages the SDK and AMD selected-file plans into a named `hub-scripts`
-context. `probe-script-context-cache.py --source CLEAN_HUB --base-context OCI_DIR
+context under the full SHA256 of its semantic receipt and a fixed `files` leaf.
+The host passes `HUB_SCRIPTS_KEY` with that key; SDK COPY and AMD read-only
+mounts select the exact path. An empty key selects no bundle. Selected-byte
+changes therefore change the transported path even when sizes and normalized
+mtimes stay equal. `probe-script-context-cache.py --source CLEAN_HUB --base-context OCI_DIR
 --base-digest sha256:INDEX --output NEW_OUTPUT --engine nerdctl` measures their
 actual BuildKit transport on amd64. It uses an existing local OCI base, exports
 one small receipt-bound artifact through a final scratch stage and retains every
@@ -76,7 +80,8 @@ which scans direct manifest descriptors.
 Both the SDK FROM-alias/COPY and AMD read-only mount must pass three solves with
 one fresh nonce: an executed cold consumer, a cached consumer after changing an
 actual unselected source in a disposable mirror, and an executed consumer after
-changing a selected source. Staged receipts and exported artifact bytes must
+changing a selected source with an equal-length edit. Raw child statuses are
+saved before semantic assertions. Staged receipts and exported artifact bytes must
 agree independently with those decisions. Echoed command text cannot satisfy an
 execution marker. Original inputs and the clean source revision must stay unchanged.
 An existing output directory refuses before any solve.
@@ -88,16 +93,17 @@ measures selected-context transport only: it supplies no compiler-cache
 statistics, full compiler-stage reuse, vendor build, binary licence, GPU or
 final-image acceptance.
 
-**Actual local measurement, 2026-11-13: FAILED.** The SDK cold solve executes and
+**Historical flat-context measurement, 2026-11-13: FAILED.** The SDK cold solve executes and
 the unrelated-source solve reuses its consumer step. A selected-source change
 then executes but reads the prior receipt hash. The two staged receipts have
 different SHA256 values, equal 5081-byte sizes and zero mtimes. The strict probe
 rejects this stale delivery; its AMD half has not run. The observation and raw
 logs are preserved under
 `logs/test-results/webgpu-registration-20261110/script-context-cache-20261113/actual-2`.
-Transfer metadata reuse is the current inference, not a proved cause. The next
-correction is to test full-SHA namespaces for transported files and a same-size
-selected-source control. No cache-acceptance claim is valid yet.
+Transfer metadata reuse remains an inference, not a proved cause. The full-SHA
+namespace correction and equal-length source control are now implemented;
+their actual six-solve replay remains required. The failed flat-context run stays
+failed, and no cache-acceptance claim is valid yet.
 
 ### 1.1 The cerbero state cachemount (CERB-CACHE)
 

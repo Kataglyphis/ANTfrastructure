@@ -193,14 +193,25 @@ t_assert_eq 2 "$(t_rc _gate "${fix}" --provided-scripts Dockerfile.absent)"
 t_assert_eq 2 "$(t_rc _gate "${fix}" --provided-scripts Dockerfile.base extra)"
 
 t_case "a declared external context provides only the files actually transported"
-_bundle_transport_controls $'FROM image\nLABEL org.kataglyphis.build-script-closure=fixture' hub-scripts ''
-_bundle_transport_controls $'FROM hub-scripts AS selected-scripts\nFROM image\nLABEL org.kataglyphis.build-script-closure=fixture' selected-scripts ''
-printf 'FROM image\nLABEL org.kataglyphis.build-script-closure=fixture\nRUN bash /opt/scripts/core/entry.sh\n' > "${df}"
+_bundle_transport_controls $'FROM image\nLABEL org.kataglyphis.build-script-closure=fixture\nARG HUB_SCRIPTS_KEY' hub-scripts '/${HUB_SCRIPTS_KEY}/files'
+_bundle_transport_controls $'FROM hub-scripts AS selected-scripts\nFROM image\nLABEL org.kataglyphis.build-script-closure=fixture\nARG HUB_SCRIPTS_KEY' selected-scripts '/${HUB_SCRIPTS_KEY}/files'
+printf 'FROM image\nLABEL org.kataglyphis.build-script-closure=fixture\nARG HUB_SCRIPTS_KEY\nRUN bash /opt/scripts/core/entry.sh\n' > "${df}"
 t_assert_eq 1 "$(t_rc _gate "${fix}")" "a label alone transports no files"
 for label in '' 'LABEL org.kataglyphis.build-script-closure=absent' 'LABEL org.kataglyphis.build-script-closure=bad_profile' $'LABEL org.kataglyphis.build-script-closure=fixture\nLABEL org.kataglyphis.build-script-closure=fixture'; do
   printf 'FROM image\n%s\nCOPY --from=hub-scripts / /opt/scripts/\nRUN bash /opt/scripts/core/entry.sh\n' "${label}" > "${df}"
   t_assert_fails _gate "${fix}"
 done
+
+t_case "addressed contexts require the key ARG and the exact namespace selector"
+printf 'FROM image\nLABEL org.kataglyphis.build-script-closure=fixture\nARG HUB_SCRIPTS_KEY\n' > "${df}"
+_df "${df}" 'COPY --from=hub-scripts /${HUB_SCRIPTS_KEY}/files/ /opt/scripts/' 'RUN bash /opt/scripts/core/entry.sh'
+t_assert_eq 0 "$(t_rc _gate "${fix}")"
+sed -i '/^ARG HUB_SCRIPTS_KEY$/d' "${df}"
+t_assert_fails _gate "${fix}"
+t_assert_contains "$(t_out _gate "${fix}")" 'requires one key ARG'
+printf 'FROM image\nLABEL org.kataglyphis.build-script-closure=fixture\nARG HUB_SCRIPTS_KEY\n' > "${df}"
+_df "${df}" 'COPY --from=hub-scripts / /opt/scripts/' 'RUN bash /opt/scripts/core/entry.sh'
+t_assert_eq 1 "$(t_rc _gate "${fix}")"
 
 t_case "the REAL tree is covered today"
 t_assert_eq "0" "$(t_rc "${PY}" "${TESTS_DIR}/../verify_script_copy_coverage.py")"
