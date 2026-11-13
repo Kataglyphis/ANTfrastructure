@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# The consumer push hook, reached by reference and never copied: the repo's full lint gates, then its own pre-push checks. See docs/adopting-in-a-new-project.md#the-git-hooks-by-reference
+set -euo pipefail
+
+_hub="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+_root="$(git rev-parse --show-toplevel)"
+# See docs/failure-modes.md#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
+cd "${_root}"
+
+# Git writes one line per ref it will update; a run by hand has a terminal there and is always checked.
+if [ ! -t 0 ]; then
+  _live=0
+  while read -r _ _lsha _; do
+    case "${_lsha}" in *[!0]*) _live=$((_live + 1)) ;; esac
+  done
+  if [ "${_live}" -eq 0 ]; then
+    echo "pre-push: OK; no commit to push, nothing to check"
+    exit 0
+  fi
+fi
+
+_dirty="$(git status --porcelain | grep -c . || true)"
+if [ "${_dirty}" -gt 0 ]; then
+  echo "pre-push: ${_dirty} uncommitted path(s): every check reads this working tree, not the pushed commits"
+fi
+
+# The repo's own wrapper carries its flags; the bare aggregator knows none of them.
+if [ -f scripts/linux/run-lint-gates.sh ]; then
+  _gates=(scripts/linux/run-lint-gates.sh)
+else
+  _gates=("${_hub}/linux/scripts/run-lint-gates.sh" "${_root}")
+fi
+echo "pre-push: ${_gates[*]}"
+bash "${_gates[@]}" </dev/null || {
+  echo "pre-push: lint gates FAILED, the push is stopped; fix what is named above, or 'git push --no-verify' if you know why" >&2
+  exit 1
+}
+
+# The one extension point; its contract is in the section named above.
+_extra=scripts/linux/pre-push-checks.sh
+if [ -f "${_extra}" ]; then
+  echo "pre-push: ${_extra}"
+  _rc=0
+  bash "${_extra}" </dev/null || _rc=$?
+  if [ "${_rc}" -ne 0 ]; then
+    echo "pre-push: ${_extra} FAILED (exit ${_rc}), the push is stopped" >&2
+    exit 1
+  fi
+fi
+echo "pre-push: OK"

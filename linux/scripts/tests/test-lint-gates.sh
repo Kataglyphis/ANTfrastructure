@@ -168,6 +168,67 @@ t_assert_contains "$(t_out _lint_gates_shared_config)" "DRIFTED .clang-format"
 t_case "the gate is registered, so it cannot be defined and never called"
 t_assert_contains "$(cat "${GATE}")" 'run_gate "shared-config drift" _lint_gates_shared_config'
 
+# Mutation staleness reads a consumer's own manifests and runs none of their tests.
+_recipes() {  # _recipes <find text> -> a consumer whose one recipe names that text in scripts/linux/subject.sh
+  local d; d="$(_consumer)"
+  mkdir -p "${d}/scripts/linux/tests/fixtures"
+  printf 'GUARD=on\n' > "${d}/scripts/linux/subject.sh"
+  printf '[{"id":"probe.guard","target":"scripts/linux/subject.sh","find":"%s","replace":"GUARD=off","test":"false","why":"probe"}]\n' "$1" \
+    > "${d}/scripts/linux/tests/probe-mutations.json"
+  git -C "${d}" add -A >/dev/null 2>&1
+  printf '%s' "${d}"
+}
+
+t_case "a recipe whose find text is gone FAILS the gate, named with its manifest"
+_lint_gates_parse_args "$(_recipes GUARD=renamed-away)"
+t_assert_eq "1" "$(t_rc _lint_gates_mutation_staleness)" \
+  "the consumer's mutation lane finds it only after the push"
+_out="$(t_out _lint_gates_mutation_staleness)"
+t_assert_contains "${_out}" "probe.guard" "the recipe to re-point"
+t_assert_contains "${_out}" "scripts/linux/tests/probe-mutations.json" "and the manifest that holds it"
+
+t_case "a recipe that still applies passes, and its test is not run"
+_lint_gates_parse_args "$(_recipes GUARD=on)"
+t_assert_eq "0" "$(t_rc _lint_gates_mutation_staleness)" \
+  "the recipe's test is \`false\`: a pass proves the gate read the edit and ran nothing"
+t_assert_contains "$(t_out _lint_gates_mutation_staleness)" "probe-mutations.json: 1 entr(ies), no test run"
+
+t_case "only a tracked manifest directly in scripts/linux/tests is graded"
+_nested="$(_recipes GUARD=on)"
+sed 's/GUARD=on/GUARD=gone/' "${_nested}/scripts/linux/tests/probe-mutations.json" \
+  > "${_nested}/scripts/linux/tests/fixtures/stale-mutations.json"
+git -C "${_nested}" add -A >/dev/null 2>&1
+cp "${_nested}/scripts/linux/tests/fixtures/stale-mutations.json" "${_nested}/scripts/linux/tests/untracked-mutations.json"
+_lint_gates_parse_args "${_nested}"
+t_assert_eq "0" "$(t_rc _lint_gates_mutation_staleness)" \
+  "a suite's fixture manifest is stale on purpose, and a scratch file is not the repo's"
+t_assert_eq "1" "$(t_out _lint_gates_mutation_staleness | grep -c -e 'mutations\.json: ')" "one manifest graded"
+
+t_case "a consumer without a manifest passes, and says so"
+_lint_gates_parse_args "$(_consumer)"
+t_assert_eq "0" "$(t_rc _lint_gates_mutation_staleness)"
+t_assert_contains "$(t_out _lint_gates_mutation_staleness)" "nothing to grade"
+
+t_case "mutation staleness is registered for every consumer, behind no flag"
+t_assert_eq "1" "$(grep -c '^  run_gate "mutation staleness" _lint_gates_mutation_staleness$' "${GATE}")" \
+  "the reusable lint lane passes no flag for it, so a flag would leave CI without the check"
+
+t_case "--staged is accepted and sets the flag; no flag, the full gates"
+_LINT_GATES_STAGED=0
+_lint_gates_parse_args "$(_consumer)" --staged
+t_assert_eq "1" "${_LINT_GATES_STAGED}"
+_LINT_GATES_STAGED=0
+_lint_gates_parse_args "$(_consumer)"
+t_assert_eq "0" "${_LINT_GATES_STAGED}"
+
+t_case "--index belongs to --staged, and an index file that is not there is refused"
+t_assert_eq "2" "$(t_rc bash "${GATE}" "$(_consumer)" --index "${_work}/no-such-index")" \
+  "the full gates read the working tree, so an index there would be ignored in silence"
+t_assert_eq "2" "$(t_rc bash "${GATE}" "$(_consumer)" --staged --index "${_work}/no-such-index")"
+t_assert_contains "$(t_out bash "${GATE}" "$(_consumer)" --staged --index "${_work}/no-such-index")" "--index: no such file" \
+  "git reads a missing index as an empty one, and an empty one has nothing staged"
+t_assert_eq "2" "$(t_rc bash "${GATE}" "$(_consumer)" --staged --index)" "the flag takes the file"
+
 t_case "gates.sh: a clean batch is green, and a missing command is a caller bug"
 gate_reset "T"
 run_gate "only" true

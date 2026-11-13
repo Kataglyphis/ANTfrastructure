@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
-# pre-commit — the consumer-facing hook, reached BY REFERENCE, never copied.
-#
-# Install it with one config line, from the consumer's repo root:
-#
-#   git config core.hooksPath third_party/ANTfrastructure/shared/linux/templates/git-hooks
-#
-# That is the whole adoption. There is deliberately NO shared-assets.manifest
-# row and no sync step: a copied hook is a fork that nobody re-syncs, and a hook
-# is the one file where a stale copy is invisible — it keeps passing.
-#
-# Everything this runs lives upstream in run-lint-gates.sh, so a new gate
-# reaches every consumer on the next submodule pin bump, with no per-repo edit.
-# The hub's OWN hooks are a different pair (linux/host-config/git-hooks): they
-# gate this repository's internals (mutations, the shellcheck ratchet) and are
-# not for consumers.
-#
-# Bypass: git commit --no-verify — then run the gates before pushing.
-# docs/adopting-in-a-new-project.md
+# The consumer commit hook, reached by reference and never copied: only the checks of what is staged. See docs/adopting-in-a-new-project.md#the-git-hooks-by-reference
 set -euo pipefail
 
-cd "$(git rev-parse --show-toplevel)"
-bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD"
+_hub="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+_root="$(git rev-parse --show-toplevel)"
+# `git commit -a` and `git commit <path>` build this commit's index in a lock file the plain index does not show yet.
+_index="${GIT_INDEX_FILE:-}"
+case "${_index}" in '' | /* | [A-Za-z]:[/\\]*) ;; *) _index="${_root}/${_index}" ;; esac
+# See docs/failure-modes.md#a-push-leaves-the-repo-bare-corebare-and-coreworktree-do-not-make-sense
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX
+cd "${_root}"
+
+# The repo's own wrapper carries its flags; the bare aggregator knows none of them.
+if [ -f scripts/linux/run-lint-gates.sh ]; then
+  _gates=(scripts/linux/run-lint-gates.sh --staged)
+else
+  _gates=("${_hub}/linux/scripts/run-lint-gates.sh" "${_root}" --staged)
+fi
+# As an argument: an exported index would reach every git call the wrapper makes, in any repository.
+if [ -n "${_index}" ]; then _gates+=(--index "${_index}"); fi
+echo "pre-commit: ${_gates[*]}"
+bash "${_gates[@]}" </dev/null || {
+  echo "pre-commit: FAILED; fix what is named above, or 'git commit --no-verify' and run the gates before the push" >&2
+  exit 1
+}
+echo "pre-commit: OK for what is staged; the push runs the full gates"

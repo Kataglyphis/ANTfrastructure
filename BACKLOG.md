@@ -22,6 +22,7 @@ Decisions and checked closures live in [`docs/image-decisions.md`](docs/image-de
 **Added 2026-11-12:** CON234 to CON256, from the audit of OxidANT, AccelerANTgine, OrchestrANT and OmniAccelerANT,
 from that day's red consumer checks and from the consumers' first step onto the plugin MIGraphX EP. Each claim about hub code was read at hub `d66d3909`; what the audit's
 second pass did not re-check says `(not double-checked)`.
+CON243 and CON244 were built that day; what they left open is CON269, and CON270 was found on the way.
 
 ## Protocol
 
@@ -1323,6 +1324,20 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `onnxruntime-gpu/lib`, which rocm no longer has; `AGENTS.md` 1243-1244 says the verify stages fail an in-tree
       MIGraphX provider, which only the runtime smoke does; CON233 names per-language registration helpers that
       `shared/` does not hold.
+      (i) **Seen in `:latest-rocm`, 2026-11-12** (OxidANT's AMD candidate lane, the first consumer build on the
+      plugin-only image). Run 43303579930 stopped at the wheel proof (`expected one wheel matching every native
+      library; found 0`): the image strips the CPU core, so `stage-ort-wheel-licenses.py --require-unstripped`
+      holds for the NVIDIA prefix only; OxidANT 6c1e85d asks for exact bytes on NVIDIA alone. If
+      `verify-ort-appimage-payload.sh` asks for exact bytes too, an AMD AppImage fails there next (not yet seen).
+      Run 43314831939 then built and tested and stopped at the bundle census: `UNRESOLVED /lib/libmigraphx-ep.so --
+      no libonnxruntime.so.1 on its ld.so search path`. The image's module has no run path, and
+      `ort_assert_plugin_module` forbids a package to patch one in. Owner, 2026-11-12: the census takes the
+      launcher's library path; no per-consumer exemption, no image rebuild.
+      (j) **Stand-ins the consumers carry until the hub owns them.** OxidANT: `stage_amdgpu_ep_notices` and
+      `verify_amdgpu_ep_notices` in its `scripts/linux/lib/ort-runtime-bundle.sh`. AccelerANTgine: the inventory
+      text form `tree` with `verify_plugin_texts`, and `accelerantgine_keep_module_in_appimage`, because
+      `patchelf-keep-glibc.sh --keep-ort` keeps `libonnxruntime*` only and CPack's AppImage step would patch the
+      module. Both repos' BACKLOGs name them for removal.
       First step: (a), in the rocm image on a machine without a card: register the module from Python and write
       the result into `docs/failure-modes.md`, then make the two pages agree and settle the gate. Done when each
       letter is fixed or decided and one consumer's AMD package passes parity with `MIGraphX` nodes in its profile.
@@ -2265,38 +2280,45 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       green in `run-tests.sh`, the adoption page's cargo-cache run uses this helper in place of a plain
       `nerdctl run`, and one consumer runs its Linux test step through it on a named volume.
 
-- [ ] **CON243 — mutation staleness is a gate of `run-lint-gates.sh`** [S, ★★★]. Found 2026-11-12: OrchestrANT
-      c0a2800 had to re-point two recipes that a refactor made stale, and CI said so only after the push.
-      `verify_mutations.py --stale-check` runs no test and takes `--root` and `--manifest`
-      (`docs/scripts/verify_mutations.py:735-757`), but the hub runs it on its own manifest only
-      (`linux/host-config/git-hooks/pre-push`, `.github/workflows/python-refactor.yml:75`), and the
-      aggregator's gate list (`_lint_gates_main`) has no mutation gate. A consumer's CI finds a stale recipe
-      in its mutation lane (`mutation-gates.yml`), which runs only after the push. Since that week OxidANT,
-      AccelerANTgine, OrchestrANT and OmniAccelerANT each carry the same four lines in their
-      `scripts/linux/run-lint-gates.sh` wrapper, a loop over `scripts/linux/tests/*mutations*.json`. The
-      reusable lint lane calls the hub aggregator, not the wrapper
-      (`.github/workflows/lint-gates.yml:122`), so CI's lint lane still lacks the check.
-      First step: a `mutation staleness` gate in `linux/scripts/run-lint-gates.sh` over every tracked
-      `scripts/linux/tests/*mutations*.json`; a tree with none passes with a line that says so.
-      Done when `test-lint-gates.sh` fails on a planted recipe whose `find` text is gone, the gate has its
-      mutation recipe and its lines in the `run-lint-gates.sh` section of `docs/shared-script-libraries.md`,
-      and the four wrappers have dropped their copies at their next pin bump.
+- [ ] **CON269 — what the consumer hook pair and the staleness gate leave open** [S, ★★]. Found 2026-11-12
+      while CON243 and CON244 were built; what is built is in `CHANGELOG.md` and
+      [`adopting-in-a-new-project.md` § The git hooks, by reference](docs/adopting-in-a-new-project.md#the-git-hooks-by-reference).
+      1. OxidANT, AccelerANTgine, OrchestrANT and OmniAccelerANT still run their own `--stale-check`
+         loop in `scripts/linux/run-lint-gates.sh`. Each drops it at the pin bump that brings the gate.
+      2. No hook checks line endings in a consumer. The hub's `crlf-guard` is a function of
+         `preflight.sh` over the hub's own shell files, and `run-lint-gates.sh` has no such gate.
+         First step: move that check into a script that takes `--root`, then call it from the staged
+         checks and the full gates.
+      3. `lint-shell.sh` without arguments scans `linux/` only, so no gate lints
+         `shared/linux/templates/git-hooks/*`. They were checked by hand with
+         `bash linux/scripts/lint-shell.sh <file>`.
+      4. The refusal of `--index` without `--staged` has a test and no mutation recipe: its mutant runs
+         the downloaded linters inside `test-lint-gates.sh`.
+      5. The commit hook's large-file check is `verify_large_files.py --root`, which refuses a tracked
+         file that is missing from disk. A deletion that is not staged yet stops every commit until it
+         is; AccelerANTgine's clone on the Linux dev host was in that state on 2026-11-12. First step:
+         the gate sniffs the blob (`git cat-file`) in place of the working-tree file.
+      6. The config line is relative, so a linked worktree whose hub submodule is not checked out has
+         no hook: in a scratch clone of OxidANT a 1 MB binary was committed there without one line of
+         output, and the `core.hooksPath` warning stays silent because the setting is not empty.
+         An absolute path fails such a commit with the bootstrap's `git submodule update` hint.
+         The aggregator cannot warn there, it is in the missing submodule. First step: decide between
+         the absolute path per clone and a check in the copied bootstrap `antfrastructure.sh`.
 
-- [ ] **CON244 — the consumer hook template runs the repo's own lint wrapper, and gets a `pre-push`** [M, ★★].
-      Found by the audit of 2026-11-12. `shared/linux/templates/git-hooks/pre-commit:23` calls the bare
-      aggregator, so it drops what each repo's `scripts/linux/run-lint-gates.sh` passes: `--ratchets`, and
-      with it the large-files check, and `--agents-drift`. That week a 19 MB core file reached a commit;
-      the template would not have refused it. The directory holds no `pre-push`.
-      `core.hooksPath` was unset in all four clones on the Linux dev host, and nothing notices such a clone.
-      1. The template calls `scripts/linux/run-lint-gates.sh` when the repo has one, and the bare aggregator
-         only when it has none.
-      2. A `pre-push` beside it does the same. `pre-commit` keeps the index checks (large files, CRLF,
-         secrets in staged files), so a commit takes seconds.
-      3. The aggregator prints one warning line when `core.hooksPath` is unset and `CI` is not set.
+      Done when the four wrappers hold no `--stale-check` loop, a staged CRLF shell script stops a commit
+      in `test-consumer-hooks.sh`, a default `lint-shell.sh` run lists both hook files, a commit passes
+      beside an unstaged deletion, and a commit in a worktree without the submodule is stopped or named.
 
-      Done when a new `test-consumer-hooks.sh`, in the style of `test-prepush-hook.sh`, stops a push on a
-      planted stale recipe (CON243) and a commit on a staged 1 MB binary, both through a repo-style wrapper
-      and each with a mutation recipe, and section 8 of `docs/adopting-in-a-new-project.md` names both hooks.
+- [ ] **CON270 — the hub's own `pre-commit` reads the old index under `git commit -a`** [S, ★★]. Found
+      2026-11-12 with a probe hook under git 2.47.3: for `git commit -a` and `git commit <path>` git
+      hands the hook `GIT_INDEX_FILE=<git dir>/index.lock` (or `next-index-<pid>.lock`), and the plain
+      index does not list the files yet. `linux/host-config/git-hooks/pre-commit` unsets
+      `GIT_INDEX_FILE` before it reads `git diff --cached`, so its staged shellcheck, its doc gates and
+      its mutation sample see no file for such a commit. OmniAccelerANT's
+      `scripts/git-hooks/pre-commit` does the same and then exits 0 on an empty list.
+      First step: read the staged list before the `unset`, as the consumer template does.
+      Done when `test-precommit-hook.sh` runs the hook under a real `git commit -a` and the staged
+      shell file is checked.
 
 - [ ] **CON245 — a `kind = "pattern"` row with `max = 0` fails the lint gates** [S, ★★]. Found by the audit of
       2026-11-12: many AGENTS.md rules are one pattern, and two sampled ones hold by habit only

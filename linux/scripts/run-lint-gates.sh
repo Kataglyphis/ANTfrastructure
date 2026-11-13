@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# run-lint-gates.sh - shellcheck, actionlint, gitleaks, ruff, shared config, pins, README length (+ratchets) over ONE consumer tree.
+# run-lint-gates.sh - shellcheck, actionlint, gitleaks, ruff, shared config, pins, README length, mutation staleness (+ratchets) over ONE consumer tree.
 
-#   run-lint-gates.sh <consumer-root> [--exclude <top-level-dir>]... [--ratchets] [--code-dupes|--code-dupes-report] [--allow-empty-shell] [--agents-drift]
+#   run-lint-gates.sh <consumer-root> [--exclude <top-level-dir>]... [--ratchets] [--code-dupes|--code-dupes-report] [--allow-empty-shell] [--agents-drift] [--staged [--index <file>]]
 
 # The root is mandatory: derived from BASH_SOURCE inside a submodule, it would grade ANTfrastructure instead.
 
 # --exclude (default third_party) still keeps the tracked plain files directly inside the excluded directory.
 
 # --ratchets reads freeze files at <consumer-root>/<gate>.allow; seed them from the first run.
+
+# --staged runs only the checks of what the index holds, for a commit hook. See docs/shared-script-libraries.md#the-staged-checks---staged
 set -uo pipefail
 
 _LINT_GATES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,6 +26,8 @@ _LINT_GATES_CODE_DUPES=0
 _LINT_GATES_CODE_DUPES_REPORT=0
 _LINT_GATES_ALLOW_EMPTY_SHELL=0
 _LINT_GATES_AGENTS_DRIFT=0
+_LINT_GATES_STAGED=0
+_LINT_GATES_INDEX=""
 _LINT_GATES_PY=""
 
 _lint_gates_die() { printf 'run-lint-gates.sh: %s\n' "$*" >&2; exit 2; }
@@ -35,6 +39,19 @@ _lint_gates_hub() {
   printf '%s is missing from the hub half (looked at %s).\n' "$1" "${_LINT_GATES_HUB_FILE}" >&2
   printf 'It ships in this repo, so this is a broken checkout and not a gate to skip.\n' >&2
   return 1
+}
+
+# <flag>: sets the switch a flag without a value names; 1 when it names none.
+_lint_gates_switch() {
+  case "$1" in
+    --ratchets) _LINT_GATES_RATCHETS=1 ;;
+    --code-dupes) _LINT_GATES_CODE_DUPES=1 ;;
+    --code-dupes-report) _LINT_GATES_CODE_DUPES_REPORT=1 ;;
+    --allow-empty-shell) _LINT_GATES_ALLOW_EMPTY_SHELL=1 ;;
+    --agents-drift) _LINT_GATES_AGENTS_DRIFT=1 ;;
+    --staged) _LINT_GATES_STAGED=1 ;;
+    *) return 1 ;;
+  esac
 }
 
 _lint_gates_parse_args() {
@@ -49,27 +66,16 @@ _lint_gates_parse_args() {
         _LINT_GATES_EXCLUDE+=("${2%/}")
         shift 2
         ;;
-      --ratchets)
-        _LINT_GATES_RATCHETS=1
+      --index)
+        [ "$#" -ge 2 ] || _lint_gates_die "--index needs the index file of the commit"
+        _LINT_GATES_INDEX="$2"
+        shift 2
+        ;;
+      *)
+        _lint_gates_switch "$1" \
+          || _lint_gates_die "unknown argument '$1' (expected --exclude <dir>, --ratchets, --code-dupes, --code-dupes-report, --allow-empty-shell, --agents-drift, --staged or --index <file>)"
         shift
         ;;
-      --code-dupes)
-        _LINT_GATES_CODE_DUPES=1
-        shift
-        ;;
-      --code-dupes-report)
-        _LINT_GATES_CODE_DUPES_REPORT=1
-        shift
-        ;;
-      --allow-empty-shell)
-        _LINT_GATES_ALLOW_EMPTY_SHELL=1
-        shift
-        ;;
-      --agents-drift)
-        _LINT_GATES_AGENTS_DRIFT=1
-        shift
-        ;;
-      *) _lint_gates_die "unknown argument '$1' (expected --exclude <dir>, --ratchets, --code-dupes, --code-dupes-report, --allow-empty-shell or --agents-drift)" ;;
     esac
   done
   [ "${#_LINT_GATES_EXCLUDE[@]}" -gt 0 ] || _LINT_GATES_EXCLUDE=(third_party)
@@ -179,6 +185,25 @@ _lint_gates_readme() {
   _lint_gates_hub linux/scripts/verify_readme_length.py || return 1
   _lint_gates_interpreter || return 1
   ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --root "${_LINT_GATES_ROOT}"
+}
+
+# A recipe whose find text a refactor moved fails before the push, not in the mutation lane after it.
+_lint_gates_mutation_staleness() {
+  local manifest out rc=0
+  _lint_gates_scope "mutation staleness" ':(glob)scripts/linux/tests/*mutations*.json' allow-empty || rc=$?
+  [ "${rc}" -ne 2 ] || return 0
+  [ "${rc}" -eq 0 ] || return "${rc}"
+  _lint_gates_hub docs/scripts/verify_mutations.py || return 1
+  _lint_gates_interpreter || return 1
+  for manifest in "${_LINT_GATES_SCOPE[@]}"; do
+    if out="$(_lint_gates_hub_python --manifest "${_LINT_GATES_ROOT}/${manifest}" --root "${_LINT_GATES_ROOT}" --stale-check 2>&1)"; then
+      printf '%s: %s\n' "${manifest}" "$(printf '%s\n' "${out}" | sed '1d; s/^ *//' | paste -sd' ' -)"
+    else
+      printf '== verify_mutations.py --stale-check --manifest %s ==\n%s\n' "${manifest}" "${out}" >&2
+      rc=1
+    fi
+  done
+  return "${rc}"
 }
 
 # _LINT_GATES_PY is expanded unquoted: it may be a command line such as `uv run --no-project python`.
@@ -417,9 +442,108 @@ _lint_gates_secret_scan_all() {
   return "${rc}"
 }
 
+# The freeze is <root>/large-files.allow, and the sizes come from the index, so a staged file is graded before its commit.
+_lint_gates_large_files() {
+  _lint_gates_hub linux/scripts/verify_large_files.py || return 1
+  _lint_gates_interpreter || return 1
+  printf '== verify_large_files.py --root %s ==\n' "${_LINT_GATES_ROOT}"
+  _lint_gates_hub_python --root "${_LINT_GATES_ROOT}"
+}
+
+# <staged path>: the entry its scan runs under, as _lint_gates_secret_scope picks them; nothing for a vendored subtree.
+_lint_gates_staged_entry() {
+  if ! _lint_gates_excluded "$1"; then
+    printf '%s\n' "${1%%/*}"
+    return 0
+  fi
+  case "$1" in */*/*) ;; *) printf '%s\n' "$1" ;; esac
+}
+
+# <work>: the staged blobs under <work>/tree and their scan entries, published; a failed git call returns 1.
+_LINT_GATES_STAGED_SCOPE=()
+_lint_gates_staged_export() {
+  local work="$1" path entry
+  local -a paths=()
+  _LINT_GATES_STAGED_SCOPE=()
+  git -C "${_LINT_GATES_ROOT}" diff --cached --name-only --diff-filter=ACMRT -z > "${work}/staged" || return 1
+  while IFS= read -r -d '' path; do
+    [ -z "$(_lint_gates_staged_entry "${path}")" ] || paths+=("${path}")
+  done < "${work}/staged"
+  [ "${#paths[@]}" -gt 0 ] || return 0
+  printf '%s\0' "${paths[@]}" \
+    | git -C "${_LINT_GATES_ROOT}" checkout-index -z --stdin --prefix="${work}/tree/" || return 1
+  while IFS= read -r entry; do
+    # A link holds a path, and a gitlink inside a vendored directory holds a commit: neither is content.
+    [ ! -L "${work}/tree/${entry}" ] || continue
+    if _lint_gates_excluded "${entry}" && [ ! -f "${work}/tree/${entry}" ]; then continue; fi
+    _LINT_GATES_STAGED_SCOPE+=("${entry}")
+  done < <(for path in "${paths[@]}"; do _lint_gates_staged_entry "${path}"; done | sort -u)
+}
+
+# The staged blobs through the tree scan's own driver: the working tree may hold edits this commit does not carry.
+_lint_gates_staged_secrets() {
+  local work config rc=0
+  work="$(mktemp -d)" || return 1
+  if ! _lint_gates_staged_export "${work}"; then
+    rm -rf "${work}"
+    printf 'could not read the staged files of %s\n' "${_LINT_GATES_ROOT}" >&2
+    return 1
+  fi
+  if [ "${#_LINT_GATES_STAGED_SCOPE[@]}" -eq 0 ]; then
+    rm -rf "${work}"
+    printf 'no staged first-party file - nothing to scan in this commit.\n'
+    return 0
+  fi
+  printf 'staged secret-scan scope (%d path(s)):\n' "${#_LINT_GATES_STAGED_SCOPE[@]}"
+  printf '  %s\n' "${_LINT_GATES_STAGED_SCOPE[@]}"
+  config="$(_lint_gates_secret_config)"
+  _lint_gates_secret_selftest || rc=1
+  if [ "${rc}" -eq 0 ]; then
+    _LINT_GATES_ROOT="${work}/tree" _lint_gates_secret_scan_all "${config}" "${_LINT_GATES_STAGED_SCOPE[@]}" || rc=1
+  fi
+  rm -rf "${work}"
+  return "${rc}"
+}
+
+# One line and never a verdict: without a hook these gates run only when someone remembers them.
+_lint_gates_hook_notice() {
+  local hub line
+  [ -z "${CI:-}" ] || return 0
+  git -C "${_LINT_GATES_ROOT}" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  [ -z "$(git -C "${_LINT_GATES_ROOT}" config --get core.hooksPath 2>/dev/null)" ] || return 0
+  hub="$(cd "${_LINT_GATES_DIR}/../.." && pwd)"
+  line="git config core.hooksPath ${hub#"${_LINT_GATES_ROOT}/"}/shared/linux/templates/git-hooks"
+  # The hub's own pair is the other one, and make hooks sets it.
+  [ "${hub}" != "${_LINT_GATES_ROOT}" ] || line="make hooks"
+  printf 'run-lint-gates.sh: WARNING: core.hooksPath is unset in %s, so no git hook runs these gates; set it once: %s\n' \
+    "${_LINT_GATES_ROOT}" "${line}" >&2
+}
+
+# The commit hook's half; --index is this commit's index, which `git commit -a` keeps in a lock file.
+_lint_gates_staged_main() {
+  if [ -n "${_LINT_GATES_INDEX}" ]; then
+    # A missing file would read as an empty index, and an empty index as nothing to check.
+    [ -f "${_LINT_GATES_INDEX}" ] || _lint_gates_die "--index: no such file: ${_LINT_GATES_INDEX}"
+    export GIT_INDEX_FILE="${_LINT_GATES_INDEX}"
+  fi
+  printf 'staged checks over %s (excluding: %s)\n' "${_LINT_GATES_ROOT}" "${_LINT_GATES_EXCLUDE[*]}"
+  gate_reset "STAGED CHECKS"
+  if [ "${_LINT_GATES_RATCHETS}" -eq 1 ]; then
+    run_gate "large files" _lint_gates_large_files
+  fi
+  run_gate "gitleaks (staged files)" _lint_gates_staged_secrets
+  _lint_gates_hook_notice
+  assert_gates
+}
+
 _lint_gates_main() {
   _lint_gates_parse_args "$@"
   cd "${_LINT_GATES_ROOT}" || _lint_gates_die "cannot enter ${_LINT_GATES_ROOT}"
+  if [ "${_LINT_GATES_STAGED}" -eq 1 ]; then
+    _lint_gates_staged_main
+    return
+  fi
+  [ -z "${_LINT_GATES_INDEX}" ] || _lint_gates_die "--index belongs to --staged; the full gates read the working tree"
   printf 'lint gates over %s (excluding: %s)\n' "${_LINT_GATES_ROOT}" "${_LINT_GATES_EXCLUDE[*]}"
   gate_reset "LINT GATES"
   run_gate "shellcheck" _lint_gates_shell
@@ -429,6 +553,7 @@ _lint_gates_main() {
   run_gate "shared-config drift" _lint_gates_shared_config
   run_gate "consumer pins" _lint_gates_consumer_pins
   run_gate "README length" _lint_gates_readme
+  run_gate "mutation staleness" _lint_gates_mutation_staleness
   if [ "${_LINT_GATES_RATCHETS}" -eq 1 ]; then
     run_gate "ratchets" _lint_gates_ratchet
   fi
@@ -440,6 +565,7 @@ _lint_gates_main() {
   elif [ "${_LINT_GATES_CODE_DUPES_REPORT}" -eq 1 ]; then
     run_gate "code duplication report" _lint_gates_code_dupes report
   fi
+  _lint_gates_hook_notice
   assert_gates
 }
 

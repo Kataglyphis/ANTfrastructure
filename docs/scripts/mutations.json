@@ -37113,6 +37113,182 @@
   "why": "A failed engine query needs its original stderr in the retained consumer log."
  },
  {
+  "id": "lint-gates.mutation-staleness-registered",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  run_gate \"mutation staleness\" _lint_gates_mutation_staleness\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "a gate function nothing registers runs in no consumer and in no lint lane"
+ },
+ {
+  "id": "lint-gates.mutation-staleness-verdict",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "--root \"${_LINT_GATES_ROOT}\" --stale-check 2>&1)\"; then",
+  "replace": "--root \"${_LINT_GATES_ROOT}\" --stale-check 2>&1)\" || true; then",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "a stale recipe must fail the gates, or the consumer's mutation lane finds it after the push"
+ },
+ {
+  "id": "lint-gates.mutation-staleness-direct-children",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "':(glob)scripts/linux/tests/*mutations*.json'",
+  "replace": "'scripts/linux/tests/*mutations*.json'",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "without the glob magic a star crosses directories, and a suite's fixture manifest is stale on purpose"
+ },
+ {
+  "id": "lint-gates.staged-large-files",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "    run_gate \"large files\" _lint_gates_large_files\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k commit",
+  "why": "a staged binary over the ratchet's limit must stop the commit, not wait for the push"
+ },
+ {
+  "id": "lint-gates.staged-secrets-read-the-index",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "_LINT_GATES_ROOT=\"${work}/tree\" _lint_gates_secret_scan_all",
+  "replace": "_lint_gates_secret_scan_all",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k commit",
+  "why": "the commit carries the staged blob; a scan of the working tree passes a secret that was staged and then edited away"
+ },
+ {
+  "id": "lint-gates.staged-index-of-the-commit",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "    export GIT_INDEX_FILE=\"${_LINT_GATES_INDEX}\"\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k commit",
+  "why": "git commit -a builds its index in a lock file; the plain index shows nothing staged for it"
+ },
+ {
+  "id": "lint-gates.staged-vendored-subtree-skipped",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  case \"$1\" in */*/*) ;; *) printf '%s\\n' \"$1\" ;; esac",
+  "replace": "  printf '%s\\n' \"$1\"",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k commit",
+  "why": "a vendored subtree is graded by its own repository; scanning it here stops commits over another project's fixtures"
+ },
+ {
+  "id": "lint-gates.index-file-must-exist",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "    [ -f \"${_LINT_GATES_INDEX}\" ] || _lint_gates_die \"--index: no such file: ${_LINT_GATES_INDEX}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "git reads a missing index as an empty one, so a wrong path would pass every commit"
+ },
+ {
+  "id": "lint-gates.hook-notice-silent-in-ci",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  [ -z \"${CI:-}\" ] || return 0\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k notice",
+  "why": "a runner has no hooks by design; the line there is noise in every lint log"
+ },
+ {
+  "id": "lint-gates.hook-notice-only-when-unset",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  [ -z \"$(git -C \"${_LINT_GATES_ROOT}\" config --get core.hooksPath 2>/dev/null)\" ] || return 0\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k notice",
+  "why": "a clone with hooks, the template's or its own, must not be told to set them"
+ },
+ {
+  "id": "lint-gates.hook-notice-printed",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "    run_gate \"code duplication report\" _lint_gates_code_dupes report\n  fi\n  _lint_gates_hook_notice\n",
+  "replace": "    run_gate \"code duplication report\" _lint_gates_code_dupes report\n  fi\n",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k notice",
+  "why": "a clone without hooks runs the gates only when someone remembers; the full run is where it must say so"
+ },
+ {
+  "id": "lint-gates.hook-notice-hub-line",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  [ \"${hub}\" != \"${_LINT_GATES_ROOT}\" ] || line=\"make hooks\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k notice",
+  "why": "the consumer pair is not the hub's; the hub's clone is sent to make hooks"
+ },
+ {
+  "id": "lint-gates.hook-push-stops",
+  "target": "shared/linux/templates/git-hooks/pre-push",
+  "find": "or 'git push --no-verify' if you know why\" >&2\n  exit 1",
+  "replace": "or 'git push --no-verify' if you know why\" >&2\n  exit 0",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k push",
+  "why": "a failure that is printed and pushed anyway is the fault this hook was built for"
+ },
+ {
+  "id": "lint-gates.hook-push-prefers-the-wrapper",
+  "target": "shared/linux/templates/git-hooks/pre-push",
+  "find": "if [ -f scripts/linux/run-lint-gates.sh ]; then\n  _gates=(scripts/linux/run-lint-gates.sh)",
+  "replace": "if false; then\n  _gates=(scripts/linux/run-lint-gates.sh)",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k push",
+  "why": "the bare aggregator drops the wrapper's --ratchets and --agents-drift, so the push would check less than CI"
+ },
+ {
+  "id": "lint-gates.hook-push-delete-checks-nothing",
+  "target": "shared/linux/templates/git-hooks/pre-push",
+  "find": "  if [ \"${_live}\" -eq 0 ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k push",
+  "why": "a deleted branch carries no commit; minutes of gates for it teach --no-verify"
+ },
+ {
+  "id": "lint-gates.hook-push-extension-runs",
+  "target": "shared/linux/templates/git-hooks/pre-push",
+  "find": "if [ -f \"${_extra}\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k extension",
+  "why": "the extension point is how a repo runs its script suites before a push; unread, a red suite reaches CI"
+ },
+ {
+  "id": "lint-gates.hook-push-extension-stops",
+  "target": "shared/linux/templates/git-hooks/pre-push",
+  "find": "FAILED (exit ${_rc}), the push is stopped\" >&2\n    exit 1",
+  "replace": "FAILED (exit ${_rc}), the push is stopped\" >&2\n    exit 0",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k extension",
+  "why": "a failing extension must stop the push, not print and continue"
+ },
+ {
+  "id": "lint-gates.hook-push-clears-git-env",
+  "target": "shared/linux/templates/git-hooks/pre-push",
+  "find": "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX",
+  "replace": ": unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k extension",
+  "why": "with git's hook state inherited, a fixture's git call acts on the repository being pushed"
+ },
+ {
+  "id": "lint-gates.hook-commit-stops",
+  "target": "shared/linux/templates/git-hooks/pre-commit",
+  "find": "and run the gates before the push\" >&2\n  exit 1",
+  "replace": "and run the gates before the push\" >&2\n  exit 0",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k commit",
+  "why": "a refusal that is printed and committed anyway stops nothing"
+ },
+ {
+  "id": "lint-gates.hook-commit-prefers-the-wrapper",
+  "target": "shared/linux/templates/git-hooks/pre-commit",
+  "find": "if [ -f scripts/linux/run-lint-gates.sh ]; then\n  _gates=(scripts/linux/run-lint-gates.sh --staged)",
+  "replace": "if false; then\n  _gates=(scripts/linux/run-lint-gates.sh --staged)",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k commit",
+  "why": "the bare aggregator has no --ratchets, so the large-file check never ran and a 19 MB core file reached a commit"
+ },
+ {
+  "id": "lint-gates.hook-commit-hands-over-the-index",
+  "target": "shared/linux/templates/git-hooks/pre-commit",
+  "find": "if [ -n \"${_index}\" ]; then _gates+=(--index \"${_index}\"); fi",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k commit",
+  "why": "without the index git handed the hook, git commit -a is checked against nothing"
+ },
+ {
+  "id": "lint-gates.hook-commit-staged-only",
+  "target": "shared/linux/templates/git-hooks/pre-commit",
+  "find": "  _gates=(scripts/linux/run-lint-gates.sh --staged)",
+  "replace": "  _gates=(scripts/linux/run-lint-gates.sh)",
+  "test": "bash linux/scripts/tests/test-consumer-hooks.sh -k commit",
+  "why": "the full gates on every commit take minutes and teach --no-verify"
+ },
+ {
   "id": "lib.trt-ep-protobuf-rc-frontend",
   "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
   "find": "                '\"$<$<COMPILE_LANGUAGE:C,CXX>:' + $option.Value + '>\"'",

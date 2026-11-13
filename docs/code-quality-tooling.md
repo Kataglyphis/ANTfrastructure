@@ -1065,7 +1065,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4702 entries** over **630 distinct test commands**; both digits are
+manifest holds **4724 entries** over **634 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2113,7 +2113,7 @@ The README rule caps a README at about 100 lines, badges included
 rule's page; a missing `README.md` fails too.
 
 - **Where it runs.** Here as a preflight slug in the commit hook's fast set; in every consumer
-  through `run-lint-gates.sh`, so `lint-gates.yml` and the consumers' pre-commit template run it.
+  through `run-lint-gates.sh`, so `lint-gates.yml` and the consumers' pre-push template run it.
 - **Counting.** Newline characters, plus an unterminated last line: what an editor numbers.
 - **Not covered.** Any other README (`docs/`, `linux/llm-stack/`, a crate's), and the order and
   content of its sections.

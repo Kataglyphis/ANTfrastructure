@@ -14,6 +14,36 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-12 — the consumer hook pair: staged checks on a commit, the repo's full gates on a push; mutation staleness is a lint gate (CON243, CON244)
+
+- `shared/linux/templates/git-hooks/` holds a `pre-commit` and a new `pre-push`. Both call the repo's own
+  `scripts/linux/run-lint-gates.sh` when it has one and the bare aggregator only when it has none. The old
+  `pre-commit` called the bare aggregator, so it dropped the wrapper's `--ratchets`, and with it the large-file
+  check, and `--agents-drift`. It was also tracked as `100644`: git skips a hook that is not executable with one
+  `hint:` line, so the template ran in no Linux clone. Both files are executable now.
+- `pre-commit` runs the wrapper with `--staged --index <the index of this commit>`: the large-file check, behind
+  `--ratchets`, and the secret scan over the staged blobs. `git commit -a` and `git commit <path>` are graded on the
+  index git builds for them. One staged file took 2.4 and 2.7 s in a scratch clone of OxidANT on the Raspberry Pi 5.
+- `pre-push` runs the wrapper, then `scripts/linux/pre-push-checks.sh` when the repo has that file; the contract is
+  in [`adopting-in-a-new-project.md` § The git hooks, by reference](docs/adopting-in-a-new-project.md#the-git-hooks-by-reference).
+  A push took 130 s in the same clone beside another build, 188 s under more load: the shellcheck warning
+  ratchet 60 s, shellcheck 32 s and gitleaks 26 s of the 130.
+- `run-lint-gates.sh` has an eighth gate, `mutation staleness`, over every tracked
+  `scripts/linux/tests/*mutations*.json`: a stale recipe fails with its id, in every consumer and in the reusable
+  lint lane. It takes `--staged [--index <file>]`, and it prints one warning line when `core.hooksPath` is unset
+  and `CI` is not set.
+- `test-consumer-hooks.sh` drives both hooks with real commits and pushes in throwaway repos, over a hub copy whose
+  downloaded linters are stubs; `test-lint-gates.sh` holds the gate. 22 recipes `lint-gates.*` hold the behaviour,
+  each proved by hand. Not run: the full preflight, CI, and a push from a real consumer clone.
+- A review ran both hooks in scratch clones of OxidANT and OrchestrANT, the hub tree copied over the submodule,
+  pushing to throwaway bare remotes. A clean push passed (127 s and 84 s). A stale recipe and a shellcheck error
+  each stopped the push by name in both, an oversized comment block in OxidANT, and a failing
+  `pre-push-checks.sh` in both. A commit took 3 s, and 5 to 16 s with all four cores busy.
+- Open, `BACKLOG.md` CON269: the four consumer wrappers still carry their own `--stale-check` loop, no hook
+  checks line endings in a consumer, no gate lints the two hook files, and a linked worktree without the hub
+  submodule has no hook and no line that says so. CON270: the hub's own `pre-commit` reads the old index under
+  `git commit -a`.
+
 ## 2026-11-12 — set the amd64 baseline to x86-64-v3 (not built yet)
 
 - Owner decision CON264: the amd64 GCC is configured `--with-arch=x86-64-v3 --with-tune=generic`

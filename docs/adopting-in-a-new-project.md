@@ -694,19 +694,66 @@ Small decisions that were folklore until 2026-09-15, one line each.
   `<Platform> <Arch> · <what>`: § 6,
   [Workflow file names and display names](#workflow-file-names-and-display-names).
 
-### The pre-commit hook, by reference
+### The git hooks, by reference
 
-A consumer gets the whole lint aggregator on every commit with one config line and no copied file:
+One config line per clone, and no copied file:
 
 ```bash
 git config core.hooksPath third_party/ANTfrastructure/shared/linux/templates/git-hooks
 ```
 
-That directory holds a single `pre-commit` that `cd`s to the toplevel and runs
-`run-lint-gates.sh` over it, and nothing hub-specific. It is **not** a `shared-assets.manifest`
-row: a copied hook is a fork nobody re-syncs, and a stale hook is invisible because it keeps
-passing. The hub's own versioned hooks under `linux/host-config/git-hooks/` are a different pair:
-they `cd` into the hub layout, gate this repository's internals, and stay hub-only.
+That directory holds a `pre-commit` and a `pre-push`. Each calls the repo's own
+`scripts/linux/run-lint-gates.sh` when the repo has one, so the flags that wrapper passes
+(`--ratchets`, `--agents-drift`, `--exclude`) apply, and the bare
+`run-lint-gates.sh <root>` only when it has none. The wrapper must pass its arguments on (`"$@"`).
+
+| Hook | Runs | Measured 2026-11-12 and 2026-11-13 on a Raspberry Pi 5 |
+|---|---|---|
+| `pre-commit` | `<wrapper> --staged --index <the index of this commit>`: the large-file check (only when the wrapper passes `--ratchets`) and the secret scan over the staged blobs ([the staged checks](shared-script-libraries.md#the-staged-checks---staged)) | 2.4 to 3.0 s, one staged file in a clone of OxidANT; 5 to 16 s in a clone of OrchestrANT with all four cores busy |
+| `pre-push` | `<wrapper>`, the full gates, then `scripts/linux/pre-push-checks.sh` when the repo has that file | 127 to 188 s in the clone of OxidANT and 47 to 84 s in the one of OrchestrANT, beside other builds |
+
+The commit hook leaves every whole-tree gate to the push, mutation staleness included. Neither hook
+checks line endings: the aggregator has no such gate for a consumer (`BACKLOG.md` CON269).
+The push hook reads the working tree, not the pushed commits, and prints how many paths are
+uncommitted. It checks nothing when the push updates no ref or only deletes refs. A run by hand
+without a terminal (`git hook run pre-push`) hands it no ref either: run the wrapper to check by hand.
+
+The path is relative to the top level of each working tree. A linked worktree (`git worktree add`)
+has no hook until `third_party/ANTfrastructure` is checked out in it: git finds no hooks directory
+there and says nothing, and the warning below stays silent because the setting is not empty
+(`BACKLOG.md` CON269).
+
+**The extension point.** `scripts/linux/pre-push-checks.sh` is the one place for what a repo
+checks before a push beyond lint, for example the script suites its CI lint lane runs. The contract:
+
+- The hook runs `bash scripts/linux/pre-push-checks.sh`, without arguments, from the top level of
+  the repository, after the lint gates passed. Failed gates stop the push before it runs.
+- Exit code 0 lets the push continue. Any other exit code stops the push, and the hook prints it.
+- Standard input is `/dev/null`. `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and `GIT_PREFIX` are
+  unset, so a `git` call in a test fixture acts on the fixture and not on the repository.
+- It reads the working tree, as the gates do. The hook sets no time limit.
+- The file needs no executable bit. CI does not call it: let the CI step it mirrors call the same file.
+
+**Bypass.** `git commit --no-verify` and `git push --no-verify` skip the hook. Run
+`scripts/linux/run-lint-gates.sh` by hand before the push then.
+
+**A clone without the config line** gets one line from every local run of the gates:
+`run-lint-gates.sh: WARNING: core.hooksPath is unset in <root>, …`. CI (`CI` set) gets none, and
+neither does a clone whose `core.hooksPath` names any other directory.
+
+A repo that keeps its own hooks directory calls these from its own hooks, a `pre-commit` before
+it unsets `GIT_INDEX_FILE`:
+`exec bash third_party/ANTfrastructure/shared/linux/templates/git-hooks/pre-push "$@"`.
+`pre-commit install` (the pre-commit framework) refuses to run while `core.hooksPath` is set, so a
+clone has that framework's hooks or these, not both.
+
+Both files are tracked executable. Git skips a hook that is not, and says only
+`hint: The '…/pre-commit' hook was ignored because it's not set as executable.`
+
+The hooks are **not** a `shared-assets.manifest` row: a copied hook is a fork nobody re-syncs, and
+a stale hook is invisible because it keeps passing. The hub's own versioned hooks under
+`linux/host-config/git-hooks/` are a different pair: they `cd` into the hub layout, gate this
+repository's internals, and stay hub-only.
 
 ## 9. Quality gates
 
@@ -720,7 +767,8 @@ and gets all of it:
    [`../shared/config/README.md`](../shared/config/README.md).
 2. **The lint aggregator.** `bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh .`
    runs shellcheck, actionlint + CI image refs, gitleaks (with a self-test), ruff, the manifest
-   drift check and the consumer pin-forwarding check, all from pinned and SHA-verified binaries:
+   drift check, the consumer pin-forwarding check, the README length and the stale-recipe check of
+   item 7, the linters from pinned and SHA-verified binaries:
    [`shared-script-libraries.md`](shared-script-libraries.md) § run-lint-gates.sh.
    Keep a ~5-line `scripts/linux/run-lint-gates.sh` wrapper so the dev-box command and the CI step
    are the same string, and call the reusable lane from CI:
@@ -770,12 +818,15 @@ and gets all of it:
    empty shards fail rather than passing without a test. Recipe targets must be
    normalized relative paths within the caller root. Setup runs once in each
    disposable test copy, so a script such as `uv sync` can create that copy's `.venv`.
+   The lint aggregator fails on a stale recipe in every tracked
+   `scripts/linux/tests/*mutations*.json`; a manifest kept elsewhere is checked by its mutation
+   lane only.
 8. **PowerShell-only consumers** call `powershell-quality.yml@develop`; it runs
    PSScriptAnalyzer and complexity over `lint-path` rooted at the caller and uploads JSON. `strict: true`
    makes complexity findings fatal when the consumer has removed its debt.
 
-Still hub-only: the hub's own git hooks; consumers get the hook of § 8
-([The pre-commit hook, by reference](#the-pre-commit-hook-by-reference)).
+Still hub-only: the hub's own git hooks; consumers get the pair of § 8
+([The git hooks, by reference](#the-git-hooks-by-reference)).
 
 ## Checklist
 
