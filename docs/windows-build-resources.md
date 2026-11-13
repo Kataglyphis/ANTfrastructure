@@ -272,8 +272,10 @@ unselected twin retains the existing skip policy. The gate proves the selected
 metadata version; it does not resolve all dependencies, prove ABI compatibility,
 run the module or demonstrate GPU inference. Existing import, architecture and
 hardware gates remain separate. Regression and mutation checks use real
-installed metadata and ZIPs without compiling TVM; corrected product images
-still require their own build receipts.
+installed metadata and ZIPs without compiling TVM. The suite uses the shared
+harness and case-scoped temporary directories: Linux mutation shards do not
+install Pester, so Pester-only setup/teardown would invalidate those recipes.
+Corrected product images still require their own build receipts.
 
 ## The Windows cache, tier by tier
 

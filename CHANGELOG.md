@@ -16,6 +16,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — run TVM-FFI metadata mutation tests on Linux
+
+- Use shared harness fixtures with case-scoped cleanup instead of Pester-only
+  lifecycle keywords; Linux mutation shards do not install Pester. Keep real
+  metadata checks, callbacks and all negative cases unchanged.
+
 ## 2026-11-13 — preserve the vendored TVM-FFI release metadata
 
 - Share source-version selection across Windows native and cross builds; scope

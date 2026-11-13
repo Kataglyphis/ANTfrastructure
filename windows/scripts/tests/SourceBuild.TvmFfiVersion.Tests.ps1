@@ -29,11 +29,11 @@ Describe 'TVM-FFI source version and process environment' {
             $prelude = 'param($State); $script:ffiState = $State; function Invoke-NativeProbeProcess { param($FilePath, $ArgumentList) $script:ffiState.Args = @($FilePath) + $ArgumentList; $script:ffiState }'
             Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsTvm.Common.psm1' -FunctionName Get-TvmFfiSourceVersion -Prelude $prelude -ArgumentList @($state) `
                 -BodyArgumentList @($state, $dir) -Body { param($fixture, $root)
-                    Assert-Equal '0.1.13.post3' (Get-MutTvmFfiSourceVersion -SourceDir $root)
-                    Assert-TestSequence -Actual $fixture.Args -Expected @('git', '-C', (Join-Path $root '3rdparty/tvm-ffi'), 'describe', '--tags', '--abbrev=0', '--match', 'v*')
-                    $fixture.ExitCode = 128; $fixture.Text = 'v99.0'
-                    Assert-Equal '0.1.14.post0' (Get-MutTvmFfiSourceVersion -SourceDir $root) 'failed probe output cannot become a release tag'
-                }
+                Assert-Equal '0.1.13.post3' (Get-MutTvmFfiSourceVersion -SourceDir $root)
+                Assert-TestSequence -Actual $fixture.Args -Expected @('git', '-C', (Join-Path $root '3rdparty/tvm-ffi'), 'describe', '--tags', '--abbrev=0', '--match', 'v*')
+                $fixture.ExitCode = 128; $fixture.Text = 'v99.0'
+                Assert-Equal '0.1.14.post0' (Get-MutTvmFfiSourceVersion -SourceDir $root) 'failed probe output cannot become a release tag'
+            }
         }
     }
 
@@ -84,53 +84,59 @@ Describe 'TVM-FFI source version and process environment' {
     }
 }
 
-Describe 'TVM-FFI installed and wheel metadata gate' {
-    BeforeAll {
-        $script:ffiRoot = New-TestDir -Prefix 'tvm-ffi-metadata-'
+function script:Invoke-TvmFfiMetadataFixture {
+    param([Parameter(Mandatory)][scriptblock]$Body)
+    $metadataBody = $Body
+    Invoke-InTestDir -Body { param($dir)
         $hostPython = @(Get-Command python, python3 -CommandType Application -ErrorAction SilentlyContinue)[0].Source
-        $venv = Join-Path $script:ffiRoot 'isolated python'
+        $venv = Join-Path $dir 'isolated python'
         & $hostPython -I -m venv --without-pip $venv | Out-Host
         Assert-Equal 0 $LASTEXITCODE 'create a real isolated metadata environment'
-        $script:ffiPython = @{ Exe = (Join-Path $venv $(if ($IsWindows) { 'Scripts/python.exe' } else { 'bin/python' })) }
-        $script:ffiSite = (& $script:ffiPython.Exe -I -c 'import sysconfig; print(sysconfig.get_path("purelib"))').Trim()
+        $python = @{ Exe = (Join-Path $venv $(if ($IsWindows) { 'Scripts/python.exe' } else { 'bin/python' })) }
+        $site = (& $python.Exe -I -c 'import sysconfig; print(sysconfig.get_path("purelib"))').Trim()
         Assert-Equal 0 $LASTEXITCODE
-        $script:ffiDist = 'apache_tvm_ffi-0.1.14.post0.dist-info/METADATA'
-    }
-    AfterAll { Remove-TestDir -Path $script:ffiRoot }
+        & $metadataBody ([pscustomobject]@{ Root = $dir; Python = $python; Site = $site; Dist = 'apache_tvm_ffi-0.1.14.post0.dist-info/METADATA' })
+    }.GetNewClosure()
+}
 
+Describe 'TVM-FFI installed and wheel metadata gate' {
     It 'reads actual installed metadata and rejects a development version, wrong name or absent distribution' {
-        foreach ($case in @(
-            @{ Name = 'apache-tvm-ffi'; Version = '0.1.14.post0'; Failure = '' },
-            @{ Name = 'apache-tvm-ffi'; Version = '0.1.dev1+gdaf594da8'; Failure = 'differs from selected' },
-            @{ Name = 'another-package'; Version = '0.1.14.post0'; Failure = 'Expected exactly one' }
-        )) {
-            Write-TestFileTree -Root $script:ffiSite -Files @{ $script:ffiDist = "Metadata-Version: 2.1`nName: $($case.Name)`nVersion: $($case.Version)`n" }
-            $check = { Assert-TvmFfiPackageVersion -Python $script:ffiPython -ExpectedVersion '0.1.14.post0' }
-            if ($case.Failure) { Assert-Throws $check -MessagePattern $case.Failure } else { & $check }
+        Invoke-TvmFfiMetadataFixture -Body { param($fixture)
+            foreach ($case in @(
+                    @{ Name = 'apache-tvm-ffi'; Version = '0.1.14.post0'; Failure = '' },
+                    @{ Name = 'apache-tvm-ffi'; Version = '0.1.dev1+gdaf594da8'; Failure = 'differs from selected' },
+                    @{ Name = 'another-package'; Version = '0.1.14.post0'; Failure = 'Expected exactly one' }
+                )) {
+                Write-TestFileTree -Root $fixture.Site -Files @{ $fixture.Dist = "Metadata-Version: 2.1`nName: $($case.Name)`nVersion: $($case.Version)`n" }
+                $check = { Assert-TvmFfiPackageVersion -Python $fixture.Python -ExpectedVersion '0.1.14.post0' }
+                if ($case.Failure) { Assert-Throws $check -MessagePattern $case.Failure } else { & $check }
+            }
+            Write-TestFileTree -Root $fixture.Site -Files @{
+                $fixture.Dist                                = "Name: apache-tvm-ffi`nVersion: 0.1.14.post0`n"
+                'apache_tvm_ffi-0.1.dev1.dist-info/METADATA' = "Name: apache-tvm-ffi`nVersion: 0.1.dev1`n"
+            }
+            Assert-Throws { Assert-TvmFfiPackageVersion -Python $fixture.Python -ExpectedVersion '0.1.14.post0' } -MessagePattern 'Expected exactly one'
+            Remove-Item -LiteralPath (Join-Path $fixture.Site 'apache_tvm_ffi-0.1.dev1.dist-info') -Recurse -Force
+            Remove-Item -LiteralPath (Join-Path $fixture.Site 'apache_tvm_ffi-0.1.14.post0.dist-info') -Recurse -Force
+            Assert-Throws { Assert-TvmFfiPackageVersion -Python $fixture.Python -ExpectedVersion '0.1.14.post0' } -MessagePattern 'Expected exactly one'
         }
-        Write-TestFileTree -Root $script:ffiSite -Files @{
-            $script:ffiDist = "Name: apache-tvm-ffi`nVersion: 0.1.14.post0`n"
-            'apache_tvm_ffi-0.1.dev1.dist-info/METADATA' = "Name: apache-tvm-ffi`nVersion: 0.1.dev1`n"
-        }
-        Assert-Throws { Assert-TvmFfiPackageVersion -Python $script:ffiPython -ExpectedVersion '0.1.14.post0' } -MessagePattern 'Expected exactly one'
-        Remove-Item -LiteralPath (Join-Path $script:ffiSite 'apache_tvm_ffi-0.1.dev1.dist-info') -Recurse -Force
-        Remove-Item -LiteralPath (Join-Path $script:ffiSite 'apache_tvm_ffi-0.1.14.post0.dist-info') -Recurse -Force
-        Assert-Throws { Assert-TvmFfiPackageVersion -Python $script:ffiPython -ExpectedVersion '0.1.14.post0' } -MessagePattern 'Expected exactly one'
     }
 
     It 'reads the saved twin archive and refuses wrong versions, multiple distributions and missing metadata' {
-        foreach ($kind in 'valid', 'development', 'multiple', 'empty') {
-            $members = @{}
-            if ($kind -ne 'empty') {
-                $version = if ($kind -eq 'development') { '0.1.dev1' } else { '0.1.14.post0' }
-                $members[$script:ffiDist] = "Metadata-Version: 2.1`nName: apache_tvm_ffi`nVersion: $version`n"
-            }
-            if ($kind -eq 'multiple') { $members['other-1.dist-info/METADATA'] = "Name: other`nVersion: 1`n" }
-            $wheel = New-TestWheel -Path (Join-Path $script:ffiRoot "$kind twin.whl") -Member $members
-            $check = { Assert-TvmFfiPackageVersion -Python $script:ffiPython -ExpectedVersion '0.1.14.post0' -WheelPath $wheel }
-            if ($kind -eq 'valid') { & $check } else {
-                $pattern = if ($kind -eq 'development') { 'differs from selected' } else { 'Expected exactly one' }
-                Assert-Throws $check -MessagePattern $pattern
+        Invoke-TvmFfiMetadataFixture -Body { param($fixture)
+            foreach ($kind in 'valid', 'development', 'multiple', 'empty') {
+                $members = @{}
+                if ($kind -ne 'empty') {
+                    $version = if ($kind -eq 'development') { '0.1.dev1' } else { '0.1.14.post0' }
+                    $members[$fixture.Dist] = "Metadata-Version: 2.1`nName: apache_tvm_ffi`nVersion: $version`n"
+                }
+                if ($kind -eq 'multiple') { $members['other-1.dist-info/METADATA'] = "Name: other`nVersion: 1`n" }
+                $wheel = New-TestWheel -Path (Join-Path $fixture.Root "$kind twin.whl") -Member $members
+                $check = { Assert-TvmFfiPackageVersion -Python $fixture.Python -ExpectedVersion '0.1.14.post0' -WheelPath $wheel }
+                if ($kind -eq 'valid') { & $check } else {
+                    $pattern = if ($kind -eq 'development') { 'differs from selected' } else { 'Expected exactly one' }
+                    Assert-Throws $check -MessagePattern $pattern
+                }
             }
         }
     }
