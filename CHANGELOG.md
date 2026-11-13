@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — check the native architecture Clang wrappers explicitly
+
+- Run both native architecture wrappers through the same exact-pin, object and link probes before the foreign-target loop, which intentionally skips the host. Bare host Clang is a separate command. The 50-assertion fixture includes explicit dispatch coverage and an executable removal mutant; real rebuilt-image acceptance remains required.
+
 ## 2026-11-13 — keep Cross-Clang wrappers on the pinned source compiler
 
 - The exact e7ca source proof now passes all 42 groups, all 5,886 actual mutations and 604 suites with 32,301 assertions; successful terminal, canonical cleanup and independent container absence are sealed. Actual SDK2 completes materialization and Vulkan setup, then fails through the versioned distro Clang wrapper with an LLVM symbol lookup error. Preserve both SDK failures and the qualified compiler's narrower receipts.

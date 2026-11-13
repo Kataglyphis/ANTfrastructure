@@ -296,6 +296,7 @@ main() {
   print_smoke_header "${host_arch}" "${target_arches}"
   check_host_gcc
   check_llvm_clang
+  check_cross_clang "${host_arch}"
   check_native_llvm_tools
   check_rust "${target_arches}"
   check_node

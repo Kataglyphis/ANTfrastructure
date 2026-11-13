@@ -1258,7 +1258,9 @@ The native LLVM build includes its host backend and every configured cross CPU
 backend in one deduplicated CMake list. Foreign target-native builds keep only
 their own backend. The ordinary toolchain smoke checks both wrapper drivers at
 every requested target against the full successful `LLVM_RELEASE`, then reuses
-the target object, link and QEMU probes. The common compiler probe compiles C
+the target object, link and QEMU probes. The native architecture wrapper runs
+explicitly before the separate foreign-target loop; checking bare host Clang
+does not check the architecture wrapper's baked driver path. The common compiler probe compiles C
 input through each driver; it does not prove the complete C++ language or ABI. These wrappers are the only path in the build where clang IS the
 compiler; nothing in the tree sets a bare `CC=clang`. They live in the build-stage
 images (the compiler stage installs them); `Dockerfile.package` does not copy

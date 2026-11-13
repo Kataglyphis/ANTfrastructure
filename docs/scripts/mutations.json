@@ -47316,5 +47316,13 @@
   "replace": "  build_cross_llvm_targets || true\n  install_cross_clang_wrappers",
   "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
   "why": "A failed source build must retain its raw status and cannot publish a successful-looking cross wrapper."
+ },
+ {
+  "id": "smoke.clang-cross-host-wired",
+  "target": "linux/scripts/06-packaging/smoke-toolchain.sh",
+  "find": "  check_llvm_clang\n  check_cross_clang \"${host_arch}\"\n",
+  "replace": "  check_llvm_clang\n",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "The foreign-target loop skips the build host, so its architecture wrappers need their own unconditional exact-pin and real compiler probes."
  }
 ]

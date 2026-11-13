@@ -174,4 +174,7 @@ bash -ec "${lifecycle_source}"$'\n'"${lifecycle_setup}"$'\nlifecycle_calls=()\na
 t_assert_eq 47 "${status}"
 t_assert_no_grep "${work}/failed-install.log" invalid-wrapper-publication
 
+t_case "the native architecture wrapper is checked outside the foreign-target loop"
+host_main_source="$(t_fn_src "${TESTS_DIR}/../06-packaging/smoke-toolchain.sh" main)" || exit 1
+t_assert_contains "${host_main_source}" $'\n  check_cross_clang "${host_arch}"\n'
 t_summary

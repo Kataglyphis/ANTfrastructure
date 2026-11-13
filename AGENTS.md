@@ -81,7 +81,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    it on the SHIPPED bytes. Same rule for `PATH`, `PKG_CONFIG_PATH` and `PYTHONPATH`.
    Native LLVM alternatives select the explicit source prefix; after Python setup, its executable tree wins PATH behind GNU. Incomplete tools, foreign selections, full-version mismatches and default shared-LLVM loader-cache losses fail.
    SDK LLVM materialization restores the selected architecture prefix as an alias and retains the native host tree for foreign targets; existing PATH, alternatives, loader and CMake references must keep resolving.
-   Cross-Clang wrappers bind after the source build, prefer the existing native source prefix and refuse incomplete source installs. The native LLVM build includes the host and configured cross backends; both wrapper drivers receive exact-version and real target compiler smokes.
+   Cross-Clang wrappers bind after the source build, prefer the existing native source prefix and refuse incomplete source installs. The native LLVM build includes the host and configured cross backends; both wrapper drivers receive exact-version and real target compiler smokes, including the build-host architecture outside the foreign-target loop.
 6. **One-line comments, only the why**, in every repo of the family: § Comments: one line, only
    the why.
 7. **Quality exceptions must shrink.** Refactor the code to satisfy duplication, complexity and size
