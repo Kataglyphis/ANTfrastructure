@@ -916,8 +916,15 @@ only after a detour through the config file:
   that proved it, the guard fired 1451 times with ZERO build aborts.
 
   ccache stays installed and mounted as the deeper fallback, and
-  `probe-sccache.sh` exists — it asserts, per compiler SHAPE this chain feeds a
-  launcher, that the compile survives AND that cache activity was recorded.
+  `probe-sccache.sh` checks each compiler shape and reports whether cache activity
+  was recorded. Its sampler sums only aggregate integer executed-request,
+  hit and write counters, including the older singular write label. Rates,
+  timings, error counts and per-language subtotals are excluded: those fields
+  can fall while real activity increases. Fixtures prove that the old sampler
+  fails and the corrected sampler retains raw stats failures; they prove no
+  actual compilation. A real cache probe still requires its compiler output,
+  measured counters and actual container/image identity. Uncached advisories
+  require review even when the diagnostic exits zero.
 - **True again, and on purpose:** "sccache's C/C++ path always preprocesses".
   The base image *does* bake `use_preprocessor_cache_mode = true` plus
   `file_stat_matches` / `use_ctime_for_stat` into `/etc/sccache/config.toml`

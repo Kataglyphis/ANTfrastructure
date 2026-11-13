@@ -22,6 +22,20 @@ Two neighbours, so you land on the right page:
 > the triage index: enough to recognise the failure and act, with a link when
 > the full history matters.
 
+## probe-sccache reports NOCACHE despite recorded cache hits and misses
+
+The older activity sampler added every row containing cache hits or writes,
+including hit percentages, timing averages, error counts and per-language
+subtotals. A falling hit percentage could outweigh a successful cacheable miss
+and report no activity. The isolated 2026-11-13 base probe retained four actual
+compiles, two hits and two misses alongside that contradictory advisory.
+
+Count only aggregate integer executed-request, hit and write rows. Independent
+fixtures preserve the original failure and reject percentages, fractional
+values, timings, subtotals and errors as activity. Retain raw stats failures.
+The fixture is not a real compiler-cache or image acceptance receipt; repeat the
+actual probe and check its container against the expected image.
+
 ## A retained Linux image inspects successfully, but the parser unit says image not available
 
 The retained ROCm image in the 2026-11-12 parser build was inspectable through

@@ -15,6 +15,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — measure compiler-cache activity without rates or timings
+
+- Limit the permanent sccache probe to aggregate integer request, hit and write counters. Falling hit rates and durations can no longer erase actual activity; subtotals and error rows cannot manufacture it.
+- Retain raw stats failures and independent original-fails/corrected-passes fixtures. The contradictory real base diagnostic is preserved; an actual corrected replay and ordinary compiler/SDK/backend acceptance remain separate requirements.
+
 ## 2026-11-13 — bind selected script transport to its complete receipt hash
 
 - Stage each named SDK/AMD script bundle under its full receipt SHA256 and a fixed files leaf. Validate and forward HUB_SCRIPTS_KEY; exact COPY and read-only selectors reject a missing namespace while preserving the legacy flat staging API.

@@ -46292,5 +46292,29 @@
   "replace": "    pass",
   "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
   "why": "Full-SHA selected-file namespaces prevent equal-stat stale transfer; host arguments,production selectors and exact byte/step verdicts remain mandatory. Synthetic fixtures do not prove real BuildKit reuse,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.cache-readiness-integer-activity",
+  "target": "linux/scripts/02-toolchain/probe-sccache.sh",
+  "find": "/^([Cc]ache writes?|Cache hits|Compile requests executed)[[:space:]][[:space:]]+[0-9]+[[:space:]]*$/",
+  "replace": "/[Cc]ache write|Cache hits|Compile requests executed/",
+  "test": "bash linux/scripts/tests/test-sccache-probe-stats.sh",
+  "why": "Cache activity uses only aggregate integer counters and retains raw collection failures. Synthetic rows and parser fixtures do not prove real compiler reuse,S3,compiler-stage or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.cache-readiness-language-subtotals",
+  "target": "linux/scripts/02-toolchain/probe-sccache.sh",
+  "find": "[Cc]ache writes?|Cache hits|Compile requests executed",
+  "replace": "[Cc]ache writes?|Cache hits.*|Compile requests executed",
+  "test": "bash linux/scripts/tests/test-sccache-probe-stats.sh",
+  "why": "Cache activity uses only aggregate integer counters and retains raw collection failures. Synthetic rows and parser fixtures do not prove real compiler reuse,S3,compiler-stage or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.cache-readiness-integer-values",
+  "target": "linux/scripts/02-toolchain/probe-sccache.sh",
+  "find": "[[:space:]][[:space:]]+[0-9]+[[:space:]]*$/",
+  "replace": "[[:space:]][[:space:]]+.+$/",
+  "test": "bash linux/scripts/tests/test-sccache-probe-stats.sh",
+  "why": "Cache activity uses only aggregate integer counters and retains raw collection failures. Synthetic rows and parser fixtures do not prove real compiler reuse,S3,compiler-stage or final image/GPU acceptance."
  }
 ]
