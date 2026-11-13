@@ -47556,5 +47556,285 @@
   "replace": "    return unit.get(\"ActiveState\") in (\"inactive\", \"failed\") and (ended or failed)",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "A retained completed oneshot must end observation while a running success field remains nonterminal."
+ },
+ {
+  "id": "host.compiler-diagnostic-unique-marker",
+  "target": "linux/scripts/local-proof/compiler-prefix-diagnostic.py",
+  "find": "    assert source.count(MARKER) == 1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.compiler-diagnostic-required-smoke",
+  "target": "linux/scripts/local-proof/compiler-prefix-diagnostic.py",
+  "find": "    assert 'publish_llvm_target_ld_path' in after and 'smoke-toolchain.sh' in after\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.compiler-diagnostic-prefix-boundary",
+  "target": "linux/scripts/local-proof/compiler-prefix-diagnostic.py",
+  "find": "    assert 'LABEL kataglyphis.step=script-modes' in before\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.compiler-diagnostic-engine",
+  "target": "linux/scripts/local-proof/compiler-prefix-diagnostic.py",
+  "find": "    assert len(argv) > 8 and Path(argv[0]).name == 'nerdctl' and argv[1] == 'build'\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.compiler-diagnostic-context",
+  "target": "linux/scripts/local-proof/compiler-prefix-diagnostic.py",
+  "find": "    assert argv[-1] == '.' and '--pull=false' in argv\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.compiler-diagnostic-no-publication",
+  "target": "linux/scripts/local-proof/compiler-prefix-diagnostic.py",
+  "find": "    assert not any(value.startswith(('--push', '--output', '--no-cache', '--target')) for value in argv)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.compiler-diagnostic-unique-output-flags",
+  "target": "linux/scripts/local-proof/compiler-prefix-diagnostic.py",
+  "find": "    assert argv.count('-t') == argv.count('-f') == 1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.compiler-diagnostic-unverified-name",
+  "target": "linux/scripts/local-proof/compiler-prefix-diagnostic.py",
+  "find": "    assert image.startswith('ant-local/') and 'unverified' in image and '@' not in image\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.compiler-diagnostic-loaded-failure",
+  "target": "linux/scripts/local-proof/compiler-prefix-diagnostic.py",
+  "find": "    assert actual['LoadState'] == 'loaded' and actual['MainPID'] == '0'\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.compiler-diagnostic-failed-terminal",
+  "target": "linux/scripts/local-proof/compiler-prefix-diagnostic.py",
+  "find": "    assert actual['ActiveState'] == actual['SubState'] == 'failed'\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.compiler-diagnostic-failed-status",
+  "target": "linux/scripts/local-proof/compiler-prefix-diagnostic.py",
+  "find": "    assert int(actual['ExecMainStatus']) > 0 and int(actual['ExecMainExitTimestampMonotonic']) > 0\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.cross-clang-link-scope",
+  "target": "linux/scripts/local-proof/launch-cross-clang-link-probe.py",
+  "find": "    assert report['status'] == 'observed-cross-Clang-link-diagnostics-only' and report['mode'] == mode\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.cross-clang-link-backends",
+  "target": "linux/scripts/local-proof/launch-cross-clang-link-probe.py",
+  "find": "    assert report['actual_backends']['returncode'] == 0 and set(report['actual_backends']['stdout'].split()) == {'X86', 'AArch64', 'RISCV'}\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.cross-clang-link-no-preload",
+  "target": "linux/scripts/local-proof/launch-cross-clang-link-probe.py",
+  "find": "    assert not report['environment'].get('LD_PRELOAD')\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.cross-clang-link-six-tuples",
+  "target": "linux/scripts/local-proof/launch-cross-clang-link-probe.py",
+  "find": "    assert len(records) == 6 and {(row['arch'], row['language']) for row in records} == {(arch, language) for arch in ['amd64', 'arm64', 'riscv64'] for language in ['c', 'cxx']}\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.cross-clang-link-native-bytes",
+  "target": "linux/scripts/local-proof/launch-cross-clang-link-probe.py",
+  "find": "    assert report['native_clang_sha256_before'] == report['native_clang_sha256_after']\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.cross-clang-link-actual-gnu-root",
+  "target": "linux/scripts/local-proof/launch-cross-clang-link-probe.py",
+  "find": "        worker['gnu_sysroot'](row['arch'], row['gcc_sysroot'])\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "Both control modes retain the shared actual GNU sysroot and child-status checks."
+ },
+ {
+  "id": "host.cross-clang-link-real-links",
+  "target": "linux/scripts/local-proof/launch-cross-clang-link-probe.py",
+  "find": "            assert row['minimal_link']['returncode'] == row['dynamic_link']['returncode'] == row['static_link']['returncode'] == 0\n",
+  "replace": "            pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.cross-clang-link-execution",
+  "target": "linux/scripts/local-proof/launch-cross-clang-link-probe.py",
+  "find": "            assert isinstance(row['execution'], dict) and row['execution']['returncode'] == 0 and row['execution']['stdout'].strip() == '42'\n",
+  "replace": "            pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.cross-clang-link-failed-link-status",
+  "target": "linux/scripts/local-proof/launch-cross-clang-link-probe.py",
+  "find": "            assert isinstance(row['minimal_link']['returncode'], int) and row['minimal_link']['returncode'] > 0\n",
+  "replace": "            pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "host.cross-clang-link-failed-link-evidence",
+  "target": "linux/scripts/local-proof/launch-cross-clang-link-probe.py",
+  "find": "            assert not row['minimal_link']['timed_out'] and row['minimal_link']['stderr'].strip()\n",
+  "replace": "            pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
+ },
+ {
+  "id": "lib.smoke-link-stderr",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "  if printf 'int main(void){return 0;}\\n' | \"${cc_path}\" -x c - -o \"${cc_exe}\"; then",
+  "replace": "  if printf 'int main(void){return 0;}\\n' | \"${cc_path}\" -x c - -o \"${cc_exe}\" 2>/dev/null; then",
+  "test": "bash linux/scripts/tests/test-smoke-compiler-link.sh",
+  "why": "Real linker diagnostics must remain observable on stderr."
+ },
+ {
+  "id": "lib.smoke-link-failure-count",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "    fail \"${label}: link smoke FAILED (rc=${link_status})\"",
+  "replace": "    pass \"${label}: link smoke FAILED (rc=${link_status})\"",
+  "test": "bash linux/scripts/tests/test-smoke-compiler-link.sh",
+  "why": "A failed link must increment the actual smoke aggregate."
+ },
+ {
+  "id": "lib.smoke-link-raw-status",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "    link_status=$?\n    fail \"${label}: link smoke FAILED (rc=${link_status})\"",
+  "replace": "    link_status=0\n    fail \"${label}: link smoke FAILED (rc=${link_status})\"",
+  "test": "bash linux/scripts/tests/test-smoke-compiler-link.sh",
+  "why": "The failure message must preserve the real linker status."
+ },
+ {
+  "id": "lib.smoke-link-allocation-exit",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "    fail \"${label}: cannot allocate link smoke directory\"\n    return 1",
+  "replace": "    fail \"${label}: cannot allocate link smoke directory\"\n    return 0",
+  "test": "bash linux/scripts/tests/test-smoke-compiler-link.sh",
+  "why": "Invalid temporary allocation must fail before executing the compiler."
+ },
+ {
+  "id": "lib.smoke-link-directory-exists",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "  tmpdir=\"$(mktemp -d)\" && [ -n \"${tmpdir}\" ] && [ -d \"${tmpdir}\" ] || {",
+  "replace": "  tmpdir=\"$(mktemp -d)\" && [ -n \"${tmpdir}\" ] || {",
+  "test": "bash linux/scripts/tests/test-smoke-compiler-link.sh",
+  "why": "A successful allocator reporting a missing directory cannot enter a link probe."
+ },
+ {
+  "id": "lib.smoke-link-cleanup-status",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "  rm -rf \"${tmpdir}\" || cleanup_status=$?",
+  "replace": "  rm -rf \"${tmpdir}\" || cleanup_status=0",
+  "test": "bash linux/scripts/tests/test-smoke-compiler-link.sh",
+  "why": "Failed cleanup must fail the aggregate and retain its original status."
+ },
+ {
+  "id": "gate-fixture.temp-allocation-raw-status",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "    failed) return 71 ;;\n",
+  "replace": "    failed) return 0 ;;\n",
+  "test": "bash linux/scripts/tests/test-harness-guards.sh",
+  "why": "Shared allocation fixtures retain the failed allocator's raw status without writing paths."
+ },
+ {
+  "id": "gate-fixture.temp-allocation-missing-path",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "    missing) printf '%s' \"$2\" ;;\n",
+  "replace": "    missing) printf '%s' '' ;;\n",
+  "test": "bash linux/scripts/tests/test-harness-guards.sh",
+  "why": "A reported missing path remains distinct from a successful allocator's empty output."
+ },
+ {
+  "id": "host.cross-clang-link-gnu-child-status",
+  "target": "linux/scripts/local-proof/probe-cross-clang-link.py",
+  "find": "    assert result['returncode'] == 0\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A failed GNU sysroot query cannot supply the diagnostic root."
+ },
+ {
+  "id": "host.cross-clang-link-gnu-root-layout",
+  "target": "linux/scripts/local-proof/probe-cross-clang-link.py",
+  "find": "    assert root in ({'', '/'} if arch == 'amd64' else {'/'})\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
+  "why": "A native empty sysroot is valid while foreign sysroots must prove the staged filesystem root."
+ },
+ {
+  "id": "compiler-llvm-tools.wrapper-filesystem-root",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "  sysroot=\"/\"\n",
+  "replace": "  sysroot=\"/usr/${triplet}\"\n",
+  "test": "bash linux/scripts/tests/test-llvm-wrapper-sysroot.sh",
+  "why": "Generated wrappers must not double-root Debian's absolute target linker-script paths."
+ },
+ {
+  "id": "compiler-llvm-tools.wrapper-required-foreign-tree",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "    [ -d \"/usr/${triplet}\" ] || {\n",
+  "replace": "    true || {\n",
+  "test": "bash linux/scripts/tests/test-llvm-wrapper-sysroot.sh",
+  "why": "Absent foreign target files must refuse before either wrapper is written."
+ },
+ {
+  "id": "compiler-llvm-tools.wrapper-native-tree-policy",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "  if [ \"${target_label}\" != \"$(build_arch_oci)\" ]; then\n",
+  "replace": "  if [ \"${target_label}\" = \"$(build_arch_oci)\" ]; then\n",
+  "test": "bash linux/scripts/tests/test-llvm-wrapper-sysroot.sh",
+  "why": "The host target needs no redundant foreign tree, while foreign target trees remain mandatory."
+ },
+ {
+  "id": "compiler-llvm-tools.wrapper-conditional-tree-refusal",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "      die \"Expected cross target tree not found for ${target_label}: /usr/${triplet}\"\n      return 1\n",
+  "replace": "      die \"Expected cross target tree not found for ${target_label}: /usr/${triplet}\"\n",
+  "test": "bash linux/scripts/tests/test-llvm-wrapper-sysroot.sh",
+  "why": "A conditional caller must still refuse absent foreign target files even when die is a returning callback."
  }
 ]

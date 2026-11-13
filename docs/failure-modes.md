@@ -1965,6 +1965,24 @@ the normal compiler's exact wrapper pins and target object/link/QEMU smokes befo
 SDK retry. Preserve the original native-tool and loader receipts at their stated
 scope. The source loader priority stays in place; see [Clang cross wrappers](linux-cross-builds.md#clang-cross-wrappers).
 
+### Cross-Clang objects pass but the final compiler link smoke fails
+
+**Symptom.** Both foreign Clang drivers report the exact source pin and emit target
+objects, but the required dynamic link fails. Older common smokes discarded its stderr.
+
+**Cause.** The foreign wrapper used `/usr/<triplet>` as the sysroot even though source
+GNU uses `/`. Debian's libc/libm linker scripts contain absolute target paths; the extra
+sysroot makes the linker search for them beneath the target tree again. Actual same-image
+baseline failures and GNU-root C/C++ dynamic/static/QEMU controls established this cause.
+
+**Fix.** Use `/` in the normal wrappers and retain the foreign staged-tree existence guard.
+Preserve the failed normal producer, candidate absence and original log.
+The common smoke now retains actual linker stderr and the raw failure status. Use the
+[versioned diagnostic prefix and linker controls](local-proof-workflows.md#failed-compiler-linker-diagnostics)
+to compare the baked wrapper with GNU's reported sysroot on the same image bytes.
+A successful object or diagnostic override cannot qualify the normal wrapper. Establish
+the actual linker error before changing source, then rebuild with the required smoke intact.
+
 ### Source Clang works but the default LLVM soname still selects the distro
 
 **Symptom.** `ldd` of the explicit source Clang uses its own LLVM through RUNPATH,

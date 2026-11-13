@@ -453,6 +453,11 @@
     }
   ],
   "new_canonical_files": [
+    "linux/scripts/local-proof/compiler-prefix-diagnostic.py",
+    "linux/scripts/local-proof/launch-cross-clang-link-probe.py",
+    "linux/scripts/local-proof/probe-cross-clang-link.py",
+    "linux/scripts/local-proof/probe-cross-clang-link.sh",
+    "linux/scripts/local-proof/cross-clang-link-minimal.c",
     "linux/scripts/local-proof/checkpoint-proof-runs.py",
     "linux/scripts/local-proof/probe-soname-load.py",
     "linux/scripts/local-proof/proof_profiles.py",

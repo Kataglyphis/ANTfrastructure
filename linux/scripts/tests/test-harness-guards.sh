@@ -116,4 +116,18 @@ t_assert_contains "$(_harness "${_two} t_sections _section_a _section_b -- a")" 
 t_assert_contains "$(_harness "${_two} t_sections _section_a _section_b -- x a")" "expected -k <section>"
 t_assert_contains "$(_harness "${_two} t_sections _section_a _section_b -- -k")" "assertion(s) FAILED"
 
+t_case "allocation failure fixture preserves raw, empty and missing-path outcomes"
+status=0
+output="$(t_failed_temp_allocation failed '/fixture path/absent')" || status=$?
+t_assert_eq 71 "${status}"
+t_assert_eq '' "${output}"
+for allocation in empty missing; do
+  status=0
+  output="$(t_failed_temp_allocation "${allocation}" '/fixture path/absent')" || status=$?
+  t_assert_eq 0 "${status}"
+  expected=''
+  [ "${allocation}" != missing ] || expected='/fixture path/absent'
+  t_assert_eq "${expected}" "${output}"
+done
+
 t_summary

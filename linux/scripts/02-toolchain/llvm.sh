@@ -74,12 +74,13 @@ _llvm_install_cross_clang_wrapper() {
   local triplet sysroot wrapper _pair _name _bin
 
   triplet="$(arch_deb_multiarch_triplet_for "$target_label")" || return 0
-  # The build host's own arch uses "/" as sysroot; compare with build_arch_oci, never a literal amd64.
-  if [ "${target_label}" = "$(build_arch_oci)" ]; then
-    sysroot="/"
-  else
-    sysroot="/usr/${triplet}"
-    [ -d "${sysroot}" ] || die "Expected cross sysroot not found for ${target_label}: ${sysroot}"
+  # Debian linker scripts already name absolute target paths below the filesystem root.
+  sysroot="/"
+  if [ "${target_label}" != "$(build_arch_oci)" ]; then
+    [ -d "/usr/${triplet}" ] || {
+      die "Expected cross target tree not found for ${target_label}: /usr/${triplet}"
+      return 1
+    }
   fi
 
   for _pair in "clang:${host_clang}" "clang++:${host_clangxx}"; do

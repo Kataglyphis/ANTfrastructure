@@ -16,6 +16,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — match Cross-Clang's sysroot to the staged GNU layout
+
+- Actual same-image baseline/control probes show Debian libc/libm linker scripts fail beneath a second `/usr/<triplet>` sysroot. Keep all wrappers at the filesystem root, matching source GNU, and require foreign staged target trees before writing them. Check generated wrapper arguments on every supported host/target combination. Fresh ordinary compiler, SDK and consumer acceptance remain required.
+
+## 2026-11-13 — preserve actual linker errors and recurring diagnostic drivers
+
+- Retain common compiler link stderr and raw failure statuses; fail invalid temporary allocation and cleanup. Add a 47-assertion fixture and six executable mutations; share invalid-allocation fixtures with the object lifecycle suite through the harness.
+- Version the bounded failed-compiler prefix exporter, exact-image linker launcher, worker and fixture closure. Eleven exporter and twelve receipt/worker mutations exercise their independent refusal tests. Diagnostic images and sysroot overrides never qualify a normal compiler, SDK or final runtime; the mandatory production smoke remains required. See [local operational workflows](docs/local-proof-workflows.md#failed-compiler-linker-diagnostics).
+
 ## 2026-11-13 — version recurring operational tools and their companions
 
 - Preserve the recurring source-proof, compiler/SDK, cache-diagnostic and cleanup drivers under versioned script paths, with an inventory of their former session copies. Make machine and run inputs explicit while retaining original authorization, resource, ancestry, cleanup and receipt guards. Add a shared multi-run handoff updater and executable refusal regressions; historical evidence and frozen build sources stay preserved. See [local operational workflows](docs/local-proof-workflows.md).

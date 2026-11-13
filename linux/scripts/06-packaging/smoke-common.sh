@@ -337,17 +337,26 @@ validate_compiler_for_target() {
   [ "${mode}" != "cross" ] && _cc_check_binary_elf "${cc_path}" "${label}" "${expected_machine}"
   _cc_check_object "${cc_path}" "${label}" "${expected_machine}"
 
-  # link smoke, then the checks that need the linked exe
-  tmpdir="$(mktemp -d)"
-  local cc_exe="${tmpdir}/smoke"
-  if printf 'int main(void){return 0;}\n' | "${cc_path}" -x c - -o "${cc_exe}" 2>/dev/null; then
+  # Keep linker diagnostics visible because an object smoke cannot validate the sysroot.
+  tmpdir="$(mktemp -d)" && [ -n "${tmpdir}" ] && [ -d "${tmpdir}" ] || {
+    fail "${label}: cannot allocate link smoke directory"
+    return 1
+  }
+  local cc_exe="${tmpdir}/smoke" link_status=0 cleanup_status=0
+  if printf 'int main(void){return 0;}\n' | "${cc_path}" -x c - -o "${cc_exe}"; then
     pass "${label}: link smoke OK"
     _cc_check_loader "${cc_exe}" "${label}" "${target_arch}"
     [ "${mode}" = "cross" ] && _cc_check_qemu_exec "${cc_path}" "${label}" "${target_arch}" "${tmpdir}"
   else
-    fail "${label}: link smoke FAILED (missing crt/startup files?)"
+    link_status=$?
+    fail "${label}: link smoke FAILED (rc=${link_status})"
   fi
-  rm -rf "${tmpdir}"
+  rm -rf "${tmpdir}" || cleanup_status=$?
+  if [ "${cleanup_status}" -ne 0 ]; then
+    fail "${label}: cannot remove link smoke directory (rc=${cleanup_status})"
+    return "${cleanup_status}"
+  fi
+  return 0
 }
 
 # Self-contained, as smokes do not source build-helpers.sh; newline-separated so a strict IFS still splits.

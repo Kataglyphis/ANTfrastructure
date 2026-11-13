@@ -97,6 +97,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks.
    Copied lint drivers carry `lint-scope-init.sh` and `lint-root.sh`; source initialization in the driver shell so remaining positional arguments survive.
    Wheel unpack/pack transport keeps Python argument boundaries and raw status; packaging execution keeps best-effort and sudo failure policies separate.
+   Cross-Clang wrappers use the filesystem-root sysroot with Debian's absolute target linker scripts; foreign target trees remain mandatory.
    Compiler smoke callbacks stay unconditional; preserve GStreamer's separate target lookups, temporary cleanup and raw failure statuses.
    ORT tree scans retain archive candidates; record scans stay shallow and preserve component-name exclusions.
    Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion.
@@ -276,6 +277,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Python DEBs without bundled glibc require libc6 >= 2.36 for DT_RELR or its GLIBC_ABI_DT_RELR marker; reject unrecognized GLIBC_ABI markers rather than understate the host requirement.
    Use `docs/scripts/merge_mutation_recipes.py` to preview or merge recurring mutation recipe updates; stale anchors and unintended replacements fail before writing.
    Core disk probes share validation without merging zero-disabled and nonnegative-free-space policies.
+   Invalid temporary-allocation fixtures share the harness emitter and retain failed, empty and missing-path outcomes.
    Test workers use the harness optional-function emitter; keep required definitions mandatory.
    Stream receipt suites carry `stream-receipt-fixture.sh`; keep their expected results independent of production code.
    Wheelhouse stderr fixtures pin child locale to C.UTF-8; retain both parent-locale controls and original receipt bytes.
@@ -484,7 +486,7 @@ Five of them are RULES and stay here:
   stage; the other three orchestrators do not take the flag, so pipe them through `tee` yourself.
 
 - **Preserve recurring operational scripts in the repo.** The canonical implementation must be Git-tracked; an ignored `logs/` copy is evidence only. Promote a recurring helper before its next use, retain its required companions and parameterize run-specific inputs. The [operational toolkit](docs/local-proof-workflows.md) owns the reusable proof, checkpoint and authorized cleanup drivers. Reuse and extend the canonical helper;
-  do not regenerate regular preflight, monitoring or probe drivers in scratch space. Keep run-specific
+  do not regenerate regular preflight, monitoring or probe drivers in scratch space. Diagnostic compiler prefixes remain explicitly unverified and cannot qualify an SDK parent; retain the failed producer and mandatory source smoke. Keep run-specific
   inputs, extracted code and reports under `logs/`. The permanent isolated preflight, unit watcher
   and native plugin probe are documented in [quality tooling](docs/code-quality-tooling.md#preserved-local-proof-workflows).
   Copied host proof tools carry `host_commands.py`; the watcher also carries `preflight-status.py`,
