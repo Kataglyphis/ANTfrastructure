@@ -19,7 +19,9 @@
 
 - Read-only diagnostics show source Clang loading its own LLVM via RUNPATH while the default loader cache still prefers the distro's identical LLVM soname. Keep those separate findings.
 - Reuse one loader-path publisher for the native compiler's late `000-llvm-native.conf` and the package's existing `000-llvm-target.conf`. Keep original default paths, shell options and raw config/cache failures; carry the companion in isolated package copies.
-- Native probe schema 2 additionally requires valid shared-library names from `llvm-config`, existing source libraries and source-first default loader-cache winners. This is cache selection, not proof of SDK ABI or inference.
+- Native probe schema 2 reads each original shared library's ELF SONAME with bounded successful `readelf -d`, distinguishes it from `llvm-config`'s linker alias, and requires a raw-cache-backed source winner. Missing, ambiguous or failed reports fail; this is no SDK ABI or inference proof.
+- Local `6412e572` passes 309 Python methods, all 102 affected mutations (20 new), all 26 quality groups and 16 normal-hook controls. The exact committed patch matches the tested snapshot. A real image-bound red/green replay changes bare-soname loading from distro LLVM to the source file and verifies its hash; the original six compiler defaults remain correct. Fresh compiler/SDK and final GPU acceptance stay open behind disk admission.
+- The earlier frozen `b7fab2ed` full preflight passes all 42 groups, all 5,844 actual mutations and 602 suites with 32,207 assertions. Its successful unit state, cleanup and independent container absence are retained; the newer 5,878-entry source run is separate and still running.
 
 ## 2026-11-13 — prefer every native source LLVM tool
 

@@ -76,6 +76,11 @@ raw status even under conditional callers.
 GNU aliases use the separate amd64 mode below. Path/cache selection and version
 responses do not prove linked bytes, SDK ABI or inference.
 
+A diagnostic replay may apply the candidate PATH and loader publisher to preserved
+image bytes to test the correction. SDK admission still requires a fresh canonical
+compiler image, both probe modes without candidate PATH or loader overrides, and
+its independently checked image identity and OCI ancestry.
+
 For an amd64 image, run the reusable installed-defaults probe through the normal
 image entrypoint with explicit pins from the producer's `versions.env`:
 
