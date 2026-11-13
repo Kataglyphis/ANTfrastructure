@@ -1072,7 +1072,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4760 entries** over **635 distinct test commands**; both digits are
+manifest holds **4764 entries** over **636 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2792,7 +2792,9 @@ lines in the file. A moved line keeps its key; a new member regresses even when 
 
 An artifact source is read from the checkout first. Otherwise, unless `--offline`, the GitHub CLI
 downloads the newest matching artifact of a run at the same SHA. No file, no run or no login
-gives `not-collected`, never 0 and never held.
+gives `not-collected`, never 0 and never held. A download the artifact store refuses is tried
+three times, 5 s apart (`quality_report_github.download`); one that still fails leaves the
+verdict `incomplete`, as before. An API lookup is not tried again.
 
 **Output and exit status.** Exactly one
 `quality-report: verdict=<ok|regressed|incomplete> regressed=<n> improved=<n> metrics=<n>` line,

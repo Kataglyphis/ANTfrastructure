@@ -14,6 +14,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — a refused download of the earlier measurements is tried again (CON271)
+
+- Owner decision of the same day: `quality_report_github.download` tries a download three times, 5 s apart, and
+  only the last failure is `Broken`; the module's "never retries" rule goes. A refusal by the artifact store made
+  OmniAccelerANT's quality-report lane red (run 43453000910). An API lookup is still not tried again.
+  `bench-history.py fetch` keeps its own loop and asks the helper for one try per call.
+- Tests: three `Download` cases in `quality_report_tests.py`; recipes `quality-report.download-*` and
+  `bench-history.download-tries-once-per-loop`.
+- BACKLOG: CON235 and CON236 carry the owner's decisions of the day (one default score threshold of 0.25; every
+  consumer's lanes once after each image publish).
+
 ## 2026-11-13 — BACKLOG: CON234 cut down to what is left, with the day's consumer evidence
 
 - CON234 named four steps; three are done in ModelANT and the consumers (decode cases and their replay, the

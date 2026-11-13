@@ -38095,5 +38095,37 @@
   "replace": "            print(f\"::error title=Benchmark history unreadable::{exc}\", file=sys.stderr)\n            return 0",
   "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch",
   "why": "an artifact list that cannot be read is no empty history: the step must fail, unlike one record's download"
+ },
+ {
+  "id": "quality-report.download-tried-once",
+  "target": "linux/scripts/quality_report_github.py",
+  "find": "    for attempt in range(max(1, tries)):",
+  "replace": "    for attempt in range(1):",
+  "test": "bash linux/scripts/tests/test-quality-report.sh",
+  "why": "A download the artifact store refuses once must not leave the verdict incomplete."
+ },
+ {
+  "id": "quality-report.download-retry-no-pause",
+  "target": "linux/scripts/quality_report_github.py",
+  "find": "        if attempt:\n            time.sleep(pause)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-quality-report.sh",
+  "why": "The second try comes after a pause, not at once into the same refusal."
+ },
+ {
+  "id": "quality-report.download-failure-swallowed",
+  "target": "linux/scripts/quality_report_github.py",
+  "find": "    raise Broken(f\"gh run download {run_id} -n {name}: {stderr}\")",
+  "replace": "    return",
+  "test": "bash linux/scripts/tests/test-quality-report.sh",
+  "why": "A download refused every time is still Broken: the verdict says incomplete, never a comparison with nothing."
+ },
+ {
+  "id": "bench-history.download-tries-once-per-loop",
+  "target": "linux/scripts/bench-history.py",
+  "find": "            github.download(slug, run_id, name, tmp, tries=1)",
+  "replace": "            github.download(slug, run_id, name, tmp)",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch_failures",
+  "why": "bench-history keeps its own retry loop; the helper's three tries inside it would make nine."
  }
 ]

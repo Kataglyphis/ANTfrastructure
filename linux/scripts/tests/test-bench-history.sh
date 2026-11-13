@@ -259,13 +259,15 @@ bench = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bench)
 slept, calls = [], []
 time.sleep = slept.append
-def refuse(*args):
-    calls.append(args)
+def refuse(*args, **options):
+    calls.append((args, options))
     raise github.Broken("HTTP 503")
 github.download = refuse
 failure = bench._try_download("o/r", 1, "bench-history-k", "unused", bench.parse_args(
     ["fetch", "--key", "k", "--dest", "d", "--retry-pause", "7.5"]).retry_pause)
-print(slept, len(calls) if failure == "HTTP 503" else failure)
+# Each call asks the shared helper for one try: this loop is the retry.
+once = all(options == {"tries": 1} for _, options in calls)
+print(slept, len(calls) if failure == "HTTP 503" and once else (failure, calls))
 PY
 )"
   rm -f "${fake}/fail/"*

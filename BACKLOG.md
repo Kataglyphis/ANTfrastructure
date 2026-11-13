@@ -470,16 +470,16 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       Done when the three golden tests read the lossless copy at one ModelANT pin and fleet-health's contract
       rows (CON247) read 0.
 
-- [b] **CON235 — one default score threshold for the detectors, or a written reason for two** [S, ★].
-      Blocked on an owner answer. Found by the audit of 2026-11-12: OrchestrANT's CLI and OxidANT's
-      environment variable default to 0.5. ObservANT uses 0.25, a value measured at the cameras, and
-      OxidANT's bridge floor and AccelerANTgine's `YoloConfig` are 0.25 too. Nobody decided the two 0.5
-      defaults, so one picture gives different results per product. With the answer, ModelANT's
-      `contracts/README.md` states it beside CON234's cases.
+- [ ] **CON235 — ModelANT's contract states the one default score threshold, 0.25** [S, ★].
+      Owner decision 2026-11-13: one default for every detector, 0.25, the value measured at the cameras.
+      OxidANT (`DEFAULT_SCORE_THRESHOLD`) and OrchestrANT (`yolo-monitor --conf`) moved from 0.5 that day;
+      ObservANT, OxidANT's bridge floor and AccelerANTgine's `YoloConfig` were at 0.25 already. Left: ModelANT's
+      `contracts/README.md` states it beside CON234's cases, so a fourth detector finds it written down.
 
-- [b] **CON236 — after an image is published, the consumers' lanes run on it** [M, ★★★].
-      Blocked on an owner decision: the lanes cost runner time, and by the rule of 2026-10-15 only Linux x64
-      runs on a push (`docs/branch-and-release-strategy.md`). Five consumer checks were red on 2026-11-12 with
+- [ ] **CON236 — after an image is published, the consumers' lanes run on it** [M, ★★★].
+      Owner decision 2026-11-13: after each publish of an image, every consumer's on-request lanes run once on
+      it, by dispatch; the rule of 2026-10-15 that only Linux x64 runs on a push stays
+      (`docs/branch-and-release-strategy.md`). Five consumer checks were red on 2026-11-12 with
       one cause: the image had moved ahead of the consumers, and nothing said so until the next push that
       asked for those lanes with a `[ci <lane>]` token.
       1. `:winamd64`'s GenAI gained llguidance (LAI-H2); OxidANT's and AccelerANTgine's tests expected a
@@ -494,9 +494,8 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       plan, `shared/config/image-consumers.json`, runs six Linux amd64 checks, with no OrchestrANT row and
       no Android, web, packaging or Windows lane. The consumer-pins gate (`docs/scripts/consumer_pins.py`)
       has rows for ruff, torch, torchvision and GenAI only, and it reads the consumer's own hub pin, which
-      lags the image. To decide: after a publish, start each consumer's on-request lanes once by dispatch
-      or on a schedule, or stay with the report-only row (CON247, item 6). Done when the owner has chosen
-      and, with a dispatch, a publish of `:latest` or `:winamd64` shows one run per consumer lane on the new
+      lags the image. First step: the publish workflow dispatches each consumer's `on-request.yml` with the lanes that run
+      on that image, which needs a token allowed to dispatch in the consumers. Done when a publish of `:latest` or `:winamd64` shows one run per consumer lane on the new
       digest.
 
 ## Open — Flet clients for OrchestrANT's UIs
@@ -2302,17 +2301,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Done when a staged CRLF shell script stops a commit
       in `test-consumer-hooks.sh`, a default `lint-shell.sh` run lists both hook files, a commit passes
       beside an unstaged deletion, and a commit in a worktree without the submodule is stopped or named.
-
-- [ ] **CON271 — one failed download of the earlier measurements fails the quality-report lane** [S, ★★].
-      Found 2026-11-13: OmniAccelerANT's *code quality measurements* lane went red (run 43453000910) on
-      `gh run download 43441835694 -n code-quality-measurements`, a refusal by the artifact store; its rerun was
-      not needed for anything the commit changed. `previous_develop` in `linux/scripts/quality_report_github.py`
-      calls `download` once, the report says `verdict=incomplete` and the step exits 2. The module's first lines
-      say it "never retries", so this is a rule to change, not an oversight: the owner decides whether the one
-      download gets the three tries `bench-history.py fetch` has since CON255, or whether a comparison that
-      cannot be read stays a red lane. First step, with a yes: the retry inside `download`, with `tries=1` passed
-      where `bench-history.py` keeps its own loop. Done when a test with a download that fails once still
-      compares, and one that fails every time still gives `incomplete`.
 
 - [ ] **CON245 — a `kind = "pattern"` row with `max = 0` fails the lint gates** [S, ★★]. Found by the audit of
       2026-11-12: many AGENTS.md rules are one pattern, and two sampled ones hold by habit only

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[1]
@@ -18,6 +19,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import quality_report
 import quality_report_compare as compare
+import quality_report_github as github
 from quality_report_model import CODE, HIGHER, LOWER, Item, Metric
 
 GIT_ENV = {"GIT_AUTHOR_NAME": "fixture", "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
@@ -219,6 +221,52 @@ class Checkouts(unittest.TestCase):
                          {"value": 0, "unit": "pairs", "better": "lower", "class": "code"})
         self.assertIn("verify_code_dupes.py", row["source"])
         self.assertIn("No nonzero", (root / "logs/code-quality/queue.md").read_text())
+
+
+class Download(unittest.TestCase):
+    """`gh run download` replaced by a fake that refuses as often as told; the pause is recorded, not slept."""
+
+    def fetch(self, refusals: int, tries: int = github.DOWNLOAD_TRIES) -> tuple[list[list[str]], list[float], Exception | None]:
+        calls: list[list[str]] = []
+        slept: list[float] = []
+
+        def gh_run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            calls.append(argv)
+            Path(argv[argv.index("-D") + 1], "measurements.json").write_text("{}")
+            refused = len(calls) <= refusals
+            return subprocess.CompletedProcess(argv, 1 if refused else 0, "", "HTTP 503: refused" if refused else "")
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                unittest.mock.patch.object(github, "_gh", lambda: "gh"), \
+                unittest.mock.patch.object(github.subprocess, "run", gh_run), \
+                unittest.mock.patch.object(github.time, "sleep", slept.append):
+            dest = os.path.join(tmp, "previous")
+            try:
+                github.download("o/r", 42, "code-quality-measurements", dest, tries=tries)
+            except github.Broken as exc:
+                self.assertFalse(os.path.exists(dest), "a refused download leaves no partial directory")
+                return calls, slept, exc
+            self.assertTrue(os.path.isfile(os.path.join(dest, "measurements.json")))
+            return calls, slept, None
+
+    def test_a_download_refused_once_is_tried_again_after_the_pause(self) -> None:
+        calls, slept, failed = self.fetch(1)
+        self.assertIsNone(failed)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(slept, [github.DOWNLOAD_PAUSE_S])
+
+    def test_a_download_refused_every_time_is_broken_after_three_tries(self) -> None:
+        calls, slept, failed = self.fetch(99)
+        self.assertEqual(len(calls), github.DOWNLOAD_TRIES)
+        self.assertEqual(github.DOWNLOAD_TRIES, 3)
+        self.assertEqual(slept, [github.DOWNLOAD_PAUSE_S] * 2, "the pause comes between tries only")
+        self.assertIn("HTTP 503: refused", str(failed))
+        self.assertIn("gh run download 42 -n code-quality-measurements", str(failed))
+
+    def test_a_caller_with_its_own_loop_asks_once(self) -> None:
+        calls, slept, failed = self.fetch(99, tries=1)
+        self.assertEqual((len(calls), slept), (1, []))
+        self.assertIsNotNone(failed)
 
 
 if __name__ == "__main__":
