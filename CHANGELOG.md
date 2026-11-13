@@ -15,6 +15,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — preserve an actual selected-context cache probe
+
+- Add a permanent amd64 BuildKit probe for the SDK COPY alias and AMD read-only context mount, with cold, unrelated-source and selected-source controls, exact plain-step markers and exported receipt-bound bytes.
+- Derive one checked native OCI layout from the pinned input for nerdctl; retain original blobs, local OCI pins, unchanged original inputs and raw child failures. Fake-engine negative fixtures do not prove actual cache reuse or compiler/image/GPU acceptance.
+
 ## 2026-11-13 — wire the complete source backend into the normal AMD producer
 
 - Keep AMD's apt SDK and build the complete pinned MIGraphX stack in its normal GPU stage. Install exact pybind11 first; SDK and AMD share a core manifest; the host driver stages a deterministic selected-file context and passes it as `hub-scripts`. The compile step consumes 76 selected source files with compiler/source/uv caches and the upload secret.

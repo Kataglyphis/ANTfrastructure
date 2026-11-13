@@ -12,6 +12,7 @@ bash linux/scripts/tests/test-migraphx-stack.sh > "${evidence}/stack-tests.log" 
 bash linux/scripts/tests/test-migraphx-image.sh > "${evidence}/image-tests.log" 2>&1
 bash linux/scripts/tests/test-script-closure.sh > "${evidence}/script-closure-tests.log" 2>&1
 bash linux/scripts/tests/test-script-context.sh > "${evidence}/script-context-tests.log" 2>&1
+bash linux/scripts/tests/test-script-context-cache.sh > "${evidence}/script-context-cache-tests.log" 2>&1
 bash linux/scripts/tests/test-genai-ort.sh > "${evidence}/genai-tests.log" 2>&1
 bash linux/scripts/tests/test-sccache-s3-level.sh > "${evidence}/s3-tests.log" 2>&1
 bash linux/scripts/tests/test-gpu-runtime-check.sh > "${evidence}/gpu-runtime-tests.log" 2>&1

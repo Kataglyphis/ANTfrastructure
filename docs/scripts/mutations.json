@@ -45828,5 +45828,341 @@
   "replace": "                pass",
   "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
   "why": "A real declared context FROM alias preserves its selected sources through actual copy/bind transports; this does not prove BuildKit cache reuse or compiled/image acceptance."
+ },
+ {
+  "id": "lib.context-cache-base-format",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "re.fullmatch(r\"sha256:[0-9a-f]{64}\", digest)",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-base-index",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "any(row[\"digest\"] == digest for row in index[\"manifests\"])",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-base-bytes",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "fingerprint(blob) == digest.split(\":\")[1]",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-production-profile",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "profile_for(path) == profile",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-production-transport",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "all(text.count(fragment) == 1 for fragment in fragments)",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-one-consumer",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "len(headers) == 1",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-warm-step",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "len(cache_lines) == 1 and not markers",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-executed-step",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "not cache_lines and markers == [(nonce, digest)]",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-finished-step",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "re.search(r\"^#\" + step + r\" DONE \\d+(?:\\.\\d+)?s$\", log, re.MULTILINE)",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-artifact-files",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "sorted(item.name for item in directory.iterdir()) == [\"cache-proof.txt\"]",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-artifact-regular",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "not path.is_symlink() and path.is_file()",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-artifact-bytes",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "path.read_bytes() == f\"{nonce} {digest}\\n\".encode()",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-control-namespace",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "scripts / SELECTED in selected.values() and scripts / UNSELECTED not in selected.values()",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-raw-build-status",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "result.returncode == 0",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-warm-receipt",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "first[\"receipt_sha256\"] == warm[\"receipt_sha256\"]",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-warm-artifact",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "first[\"artifact_sha256\"] == warm[\"artifact_sha256\"]",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-selected-receipt",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "changed[\"receipt_sha256\"] != first[\"receipt_sha256\"]",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-selected-artifact",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "changed[\"artifact_sha256\"] != first[\"artifact_sha256\"]",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-original-inputs",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "all(fingerprint(path) == digest for path, digest in original.items())",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-clean-source",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "not git(args.source, \"status\", \"--porcelain\").strip(), \"Preserve a clean source input\"",
+  "replace": "True, \"Preserve a clean source input\"",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-stable-base",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "base_identity(args.base_context, args.base_digest) == index",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-stable-source",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "git(args.source, \"rev-parse\", \"HEAD\").decode().strip() == head\n            and not git(args.source, \"status\", \"--porcelain\").strip()",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-fresh-output",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "    args.output.mkdir()",
+  "replace": "    args.output.mkdir(exist_ok=True)",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-complete-profiles",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "for profile in PROFILES]",
+  "replace": "for profile in PROFILES[:1]]",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-cold-nonce",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "\"CACHE_NONCE=\" + nonce",
+  "replace": "\"OTHER_NONCE=\" + nonce",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-readonly-mount",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "source=/,target=/opt/scripts,ro ",
+  "replace": "source=/,target=/opt/scripts ",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-copy-alias",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "        lines.append(\"FROM hub-scripts AS sdk-core-scripts\")",
+  "replace": "        pass",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-failure-status",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "        return 2",
+  "replace": "        return 0",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Selected-context cache evidence requires exact actual consumer step/byte/input verdicts for both production transports; fixture logs and fake solves do not prove real cache reuse,compiler statistics,vendor builds or final image/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-oci-size",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "type(descriptor[\"size\"]) is int and descriptor[\"size\"] > 0 and path.stat().st_size == descriptor[\"size\"]",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Native cache-probe OCI inputs require unique amd64 selection,exact original and copied blobs and stable identities; synthetic layouts do not prove image execution,compiler reuse or GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-oci-hash",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "fingerprint(path) == digest.removeprefix(\"sha256:\")",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Native cache-probe OCI inputs require unique amd64 selection,exact original and copied blobs and stable identities; synthetic layouts do not prove image execution,compiler reuse or GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-oci-native-root",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "len(matches) == 1, \"Expected one pinned OCI root descriptor\"",
+  "replace": "True, \"Expected one pinned OCI root descriptor\"",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Native cache-probe OCI inputs require unique amd64 selection,exact original and copied blobs and stable identities; synthetic layouts do not prove image execution,compiler reuse or GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-oci-native-child",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "len(matches) == 1, \"Expected one exact linux/amd64 child\"",
+  "replace": "True, \"Expected one exact linux/amd64 child\"",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Native cache-probe OCI inputs require unique amd64 selection,exact original and copied blobs and stable identities; synthetic layouts do not prove image execution,compiler reuse or GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-oci-manifest",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "descriptor[\"mediaType\"] == \"application/vnd.oci.image.manifest.v1+json\" and document.get(\"schemaVersion\") == 2",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Native cache-probe OCI inputs require unique amd64 selection,exact original and copied blobs and stable identities; synthetic layouts do not prove image execution,compiler reuse or GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-oci-config-platform",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "config.get(\"architecture\") == \"amd64\" and config.get(\"os\") == \"linux\"",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Native cache-probe OCI inputs require unique amd64 selection,exact original and copied blobs and stable identities; synthetic layouts do not prove image execution,compiler reuse or GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-oci-layers",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "isinstance(document[\"layers\"], list) and bool(document[\"layers\"])",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Native cache-probe OCI inputs require unique amd64 selection,exact original and copied blobs and stable identities; synthetic layouts do not prove image execution,compiler reuse or GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-oci-original-stable",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "all(fingerprint(Path(path)) == digest for path, digest in native[\"source_blobs\"].items())",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Native cache-probe OCI inputs require unique amd64 selection,exact original and copied blobs and stable identities; synthetic layouts do not prove image execution,compiler reuse or GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-oci-derived-stable",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "base_identity(solve_args.base_context, solve_args.base_digest) == native[\"index_sha256\"]",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Native cache-probe OCI inputs require unique amd64 selection,exact original and copied blobs and stable identities; synthetic layouts do not prove image execution,compiler reuse or GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-oci-copied-bytes",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "        oci_blob(output, row)",
+  "replace": "        pass",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Native cache-probe OCI inputs require unique amd64 selection,exact original and copied blobs and stable identities; synthetic layouts do not prove image execution,compiler reuse or GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-oci-config-arch",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "config.get(\"architecture\") == \"amd64\"",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Native cache-probe OCI inputs retain exact platform and manifest selection; synthetic fixture metadata does not prove actual image execution or compiler/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-oci-config-os",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "config.get(\"os\") == \"linux\"",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Native cache-probe OCI inputs retain exact platform and manifest selection; synthetic fixture metadata does not prove actual image execution or compiler/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-oci-manifest-version",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "document.get(\"schemaVersion\") == 2",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Native cache-probe OCI inputs retain exact platform and manifest selection; synthetic fixture metadata does not prove actual image execution or compiler/GPU acceptance."
+ },
+ {
+  "id": "lib.context-cache-oci-child-selection",
+  "target": "linux/scripts/script_context_cache.py",
+  "find": "row.get(\"platform\") == {\"os\": \"linux\", \"architecture\": \"amd64\"}",
+  "replace": "True",
+  "test": "python3 linux/scripts/tests/script_context_cache_tests.py",
+  "why": "Native cache-probe OCI inputs retain exact platform and manifest selection; synthetic fixture metadata does not prove actual image execution or compiler/GPU acceptance."
  }
 ]

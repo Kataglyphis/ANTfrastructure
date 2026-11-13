@@ -1778,6 +1778,19 @@ its own plugin directory.
 **Fix.** The plugin link `deepstream.sh stage-runtime` makes:
 [`linux-accelerator-images.md` § NVDEC through the distro libv4l2](linux-accelerator-images.md#nvdec-through-the-distro-libv4l2).
 
+### nerdctl build reports `OCI layout cannot have empty digest`
+
+**Symptom.** A local named-context solve stops before its first RUN with this error.
+
+**Cause.** The exported Ubuntu layout can point at a multi-platform index.
+[nerdctl 2.4.1](https://github.com/containerd/nerdctl/blob/v2.4.1/pkg/cmd/builder/build.go#L610)
+scans only direct image-manifest descriptors and selects none from that wrapper.
+
+**Fix.** The selected-context cache probe derives a new single-amd64 layout from
+the pinned input, verifies its config platform and all referenced/copied bytes,
+and preserves the original. The failed first probe remains failed. This proves
+neither compiler reuse nor image/GPU acceptance.
+
 ### A no-push wrapper build cannot find its own android image
 
 **Symptom.** In `Dockerfile.torch`'s `wheels-source` stage: `cross-android-...: not found`; with an OCI context added, `unable to get info about digest ... content sha256:...: not found`; extracting with `nerdctl cp`, `cannot use cp with stopped containers in rootless mode`.

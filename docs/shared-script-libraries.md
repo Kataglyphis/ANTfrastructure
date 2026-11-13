@@ -173,6 +173,12 @@ copied-root isolation. Cold SDK import suites use the actual declared map and
 prove required-child failures; they do not establish SDK execution, binary ABI
 or BuildKit hits.
 
+`script_context_cache.py` and `probe-script-context-cache.py` reuse that stager
+and the shared evidence helpers for the [actual BuildKit transport probe](build-cache-tiers.md#selected-script-contexts).
+Both production transports, exact step markers, exported bytes and unchanged
+original inputs are required. Keep its fake-engine fixture visibly separate from
+real cache receipts.
+
 ## Shared synthetic test fixtures
 
 `linux/scripts/tests/synthetic-elf-fixture.sh` provides `t_write_synthetic_elf`

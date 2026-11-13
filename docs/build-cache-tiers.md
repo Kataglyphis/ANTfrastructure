@@ -59,6 +59,35 @@ Two properties are worth internalising because they are counter-intuitive:
 - **T0/T1 are in the same store**, so the one command that wipes layers also
   wipes the compiler caches. That is why Standing rule 3 exists.
 
+### Selected script contexts
+
+The host stages the SDK and AMD selected-file plans into a named `hub-scripts`
+context. `probe-script-context-cache.py --source CLEAN_HUB --base-context OCI_DIR
+--base-digest sha256:INDEX --output NEW_OUTPUT --engine nerdctl` measures their
+actual BuildKit transport on amd64. It uses an existing local OCI base, exports
+one small receipt-bound artifact through a final scratch stage and retains every
+build command and plain step log. It creates no image tag and clears no cache.
+A pinned OCI input is copied into a fresh native layout with exactly one
+linux/amd64 manifest; its config platform, referenced sizes/hashes and copied
+bytes must pass before the new index is written. Original blobs remain unchanged.
+This native wrapper is required by [nerdctl 2.4.1's context selector](https://github.com/containerd/nerdctl/blob/v2.4.1/pkg/cmd/builder/build.go#L610),
+which scans direct manifest descriptors.
+
+Both the SDK FROM-alias/COPY and AMD read-only mount must pass three solves with
+one fresh nonce: an executed cold consumer, a cached consumer after changing an
+actual unselected source in a disposable mirror, and an executed consumer after
+changing a selected source. Staged receipts and exported artifact bytes must
+agree independently with those decisions. Echoed command text cannot satisfy an
+execution marker. Original inputs and the clean source revision must stay unchanged.
+An existing output directory refuses before any solve.
+
+The fixture suite uses a fake engine to exercise refusals, including nonzero
+status with convincing output, false cache reports and changed source/base
+identities. Those fixtures prove no real cache reuse. A successful real probe
+measures selected-context transport only: it supplies no compiler-cache
+statistics, full compiler-stage reuse, vendor build, binary licence, GPU or
+final-image acceptance.
+
 ### 1.1 The cerbero state cachemount (CERB-CACHE)
 
 `03-media/build/gstreamer/android/build-android-from-source.sh` keeps its
