@@ -1295,7 +1295,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `docs/linux-accelerator-images.md` (1138-1139) and `AGENTS.md` (line 111) say registration fails with HIP
       error 100 without a device, and AMD's factory does call `hipGetDeviceCount` when ORT asks for its devices. If
       the second holds, `--require-registered-plugin MIGraphX` cannot pass on a hosted runner and OrchestrANT's AMD
-      bundle lane is red by design.
+      bundle lane is red by design. **Seen 2026-11-13, the second holds:** in `:latest-rocm` on a hosted runner a
+      packaged OxidANT registered the packaged module and got `HIP failure 100: no ROCm-capable device is detected`
+      from `mgx_factory.cc:114` (run 43345664993); the request by name was refused with that text, `auto` ran on the
+      CPU, and nothing hung or crashed. So the bundle gate needs another proof on a builder without a card (the
+      module found, loaded and refused for that reason), and the two pages must say so.
       (b) **Which module a package loads.** The contract says `ORT_AMDGPU_EP_ROOT` first, then the bundled copy;
       `python-app-bundle.sh` (line 249) says the bundled copy "when ORT_AMDGPU_EP_ROOT is unset". In the rocm image
       the variable is set, so a package check there runs the image's module, not the packaged one, the trap the
@@ -1337,7 +1341,14 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ([contract](docs/consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime)). Open:
       `python-app-bundle.sh` does not pass it, because its module sits in `capi`, which no launcher path names,
       and with `PYTHON_APP_HOST_GPU_RUNTIME=true` its closure stops on the same import before the census runs
-      (shown on a fixture, not in the rocm image).
+      (shown on a fixture, not in the rocm image). With the option the census passed on the real package
+      (`ORT census PASS ... (library path lib/glibc:lib)`, run 43345664993). That run then stopped where (i)
+      expected: `verify-ort-appimage-payload.sh` passes `--require-unstripped` for `amd` too, and the core an AMD
+      AppImage carries is the wheel's library stripped (`found 0`); the tarball and the DEB had passed without the
+      flag. Fix: exact bytes for `nvidia` only, with a stripped-core case in `test-ort-appimage-payload.sh`. That
+      suite runs its AMD leg on x86-64 alone, so the change and its recipe need an x86-64 host; the hub's push hook
+      on arm64 cannot prove them. Until then OxidANT's and AccelerANTgine's AMD AppImage checks stop there, and
+      OmniAccelerANT proves the extracted AppImage with its own check.
       (j) **Stand-ins the consumers carry until the hub owns them.** OxidANT: `stage_amdgpu_ep_notices` and
       `verify_amdgpu_ep_notices` in its `scripts/linux/lib/ort-runtime-bundle.sh`. AccelerANTgine: the inventory
       text form `tree` with `verify_plugin_texts`, and `accelerantgine_keep_module_in_appimage`, because

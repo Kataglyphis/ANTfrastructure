@@ -14,6 +14,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — BACKLOG CON256: what the first complete AMD package build on `:latest-rocm` showed
+
+- OxidANT's candidate lane (run 43345664993, hub pin ed3d170): the census passes with `--library-path lib/glibc:lib`;
+  registering the packaged module on a runner without a card fails with HIP error 100, is refused by name and
+  leaves `auto` on the CPU; the tarball and the DEB pass the wheel proof. It stops at
+  `verify-ort-appimage-payload.sh`, which asks an AMD AppImage for the wheel's exact bytes although the image strips
+  its CPU core. CON256 (a) and (i) record both; the fix needs an x86-64 host for the suite's AMD leg.
+
 ## 2026-11-13 — the bundle census takes the launcher's library path (`--library-path`)
 
 - `check-ort-provenance.sh --library-path DIR[:DIR...] <bundle>` states the library path the bundle's launcher hands
