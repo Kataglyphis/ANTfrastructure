@@ -79,6 +79,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    `000-<name>.conf` into `/etc/ld.so.conf.d` (read in SORT order) and never rely on a purge,
    because another dependency pulls the distro copy back in. The soname-precedence gate enforces
    it on the SHIPPED bytes. Same rule for `PATH`, `PKG_CONFIG_PATH` and `PYTHONPATH`.
+   Native LLVM alternatives select the explicit source prefix; incomplete tools and full-version smoke mismatches fail.
 6. **One-line comments, only the why**, in every repo of the family: § Comments: one line, only
    the why.
 7. **Quality exceptions must shrink.** Refactor the code to satisfy duplication, complexity and size

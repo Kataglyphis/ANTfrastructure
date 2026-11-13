@@ -158,10 +158,10 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=cache,target
     bash /opt/scripts/toolchain/setup-dependencies.sh dockerfile-llvm; \
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
-# Installs under /usr/lib/llvm-*/bin are not always the top alternative, so clang is pinned to LLVM_RELEASE.
+# Keep the pinned native source tree ahead of the apt bootstrap.
 LABEL kataglyphis.step=llvm-alternatives
 RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/02-toolchain/register-llvm-alternatives.sh,target=/tmp/register-llvm-alternatives.sh,ro \
-    set -euo pipefail; LLVM_RELEASE="${LLVM_RELEASE}" bash /tmp/register-llvm-alternatives.sh
+    set -euo pipefail; bash /tmp/register-llvm-alternatives.sh "/opt/llvm-target-${TARGETARCH}"
 
 # Toolchain contract
 LABEL kataglyphis.step=toolchain-dependencies-verify

@@ -35,7 +35,7 @@ bash linux/scripts/tests/test-migraphx-sdk-closure.sh > "${evidence}/sdk-tests.l
 bash linux/scripts/tests/test-migraphx-source-deps.sh > "${evidence}/deps-tests.log" 2>&1
 bash linux/scripts/tests/test-migraphx-source-plan.sh > "${evidence}/plan-tests.log" 2>&1
 bash linux/scripts/tests/test-migraphx-configure-launcher.sh > "${evidence}/launcher-tests.log" 2>&1
-for suite in test-onnx-webgpu-native test-onnx-webgpu-wasm-proof test-onnx-webgpu-wasm-runtime test-onnx-wasm-passes test-onnx-web-cache; do
+for suite in test-verified-installers test-compiler-defaults test-llvm-alternatives test-onnx-webgpu-native test-onnx-webgpu-wasm-proof test-onnx-webgpu-wasm-runtime test-onnx-wasm-passes test-onnx-web-cache; do
   bash "linux/scripts/tests/${suite}.sh" > "${evidence}/${suite}.log" 2>&1
 done
 python3 docs/scripts/verify_mutations.py --root "${hub}" --manifest "${evidence}/selected-mutations.json" --jobs 2 > "${evidence}/mutations.log" 2>&1

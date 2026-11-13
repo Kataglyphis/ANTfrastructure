@@ -89,9 +89,9 @@ check_host_gcc() {
 check_llvm_clang() {
   # LLVM/Clang
   echo "--- LLVM/Clang ---"
-  check_version_major_minor "clang --version" "${LLVM_RELEASE}" "clang"
+  check_clang_version clang "${LLVM_RELEASE}" "clang"
   check_dumpmachine "$(command -v clang)" "$(smoke_host_machine)" "host clang"
-  check_version_major_minor "clang++ --version" "${LLVM_RELEASE}" "clang++"
+  check_clang_version clang++ "${LLVM_RELEASE}" "clang++"
   echo ""
 }
 

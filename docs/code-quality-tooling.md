@@ -16,6 +16,14 @@ suite can fail, a `preflight.sh` slug, and a section below. The table of all
 slugs with their proof status is generated, not hand-written — see
 `docs/code-quality-gates.md`.
 
+## Installer import fixture scope
+
+Copied installer import tests set their own native build mode before sourcing the
+Rust preamble. An inherited cross-image mode with no target list cannot replace
+the expected missing/empty/partial/parse diagnostics with an earlier nounset error.
+The regression repeats valid cold imports under that ambient cross state; it
+does not install Rust, fetch archives or qualify any target compiler.
+
 ## Git Bash symlink prerequisites
 
 Start Git and Bash with `MSYS=winsymlinks:nativestrict` when running the Hub's
@@ -1216,7 +1224,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **5824 entries** over **770 distinct test commands**; both digits are
+manifest holds **5844 entries** over **772 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -3340,7 +3348,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 1099 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 1100 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -3351,7 +3359,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **423** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **425** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **0** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.

@@ -183,16 +183,19 @@ check_version() {
   fi
 }
 
-# <cmd> <pinned x.y.z> <label>: for major-channel tools, not LLVM; the trailing dot keeps 23.1 off 23.10.
-check_version_major_minor() {
-  local cmd="$1" expected="$2" label="$3"
-  local ver mm
-  mm="${expected%.*}"
-  ver="$(${cmd} 2>/dev/null | head -1 || true)"
-  if echo "${ver}" | grep -qE "version ${mm//./\\.}\\.[0-9]"; then
-    pass "${label}: ${ver} (pin ${expected}, channel ${mm}.x)"
+# A banner is a version check only; linking and shipped consumer behavior need separate probes.
+check_clang_version() {
+  local binary="$1" expected="$2" label="$3" banner first
+  if banner="$("${binary}" --version 2>&1)"; then
+    first="${banner%%$'\n'*}"
+    if [[ "${first}" =~ (^|[[:space:]])clang[[:space:]]version[[:space:]]([^[:space:]]+) ]] \
+       && [ "${BASH_REMATCH[2]}" = "${expected}" ]; then
+      pass "${label}: ${first}"
+    else
+      fail "${label}: ${first:-MISSING} (expected exact ${expected})"
+    fi
   else
-    fail "${label}: ${ver:-MISSING} (expected ${mm}.x from pin ${expected})"
+    fail "${label}: --version failed: ${banner}"
   fi
 }
 

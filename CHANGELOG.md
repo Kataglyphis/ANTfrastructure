@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — select the pinned native LLVM tree
+
+- Correct the compiler stage's alternatives to use its explicit native source prefix and refuse incomplete installs before updates. Keep GNU aliases and expensive compiler cache layers intact.
+- Replace the Clang channel smoke with an exact successful first-line version check; wrong patches, prereleases and failed children fail the aggregate.
+- Isolate the copied-installer fixture from inherited cross-image mode; retain missing, empty, partial and parse failure assertions.
+- Preserve an amd64 installed-defaults probe with raw child evidence, exact GNU/LLVM pins and unforced v3/generic checks for every ordinary GNU alias. Synthetic tests and mutation recipes cover refusal; rebuilt-image and downstream acceptance remain required.
+
 ## 2026-11-13 — prepare executed WASM factory receipts
 
 - Source preparation now passes 280 Python methods, 131 actual affected mutations, all 26 normal quality groups and the unchanged normal hook's 16 actual samples at local commit `031569f5`. The full 42-group/5,824-mutation preflight is running; actual instrumented WASM/image/consumer acceptance remains open.

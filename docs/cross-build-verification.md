@@ -34,6 +34,36 @@ and Clang's depth-two, ten-library bound, file types and advisory messages. Path
 remain intact through the scanner. Its fixture suite simulates readelf output rather than
 claiming a real compiler or ELF test.
 
+## Native compiler selection
+
+The compiler stage selects `/opt/llvm-target-${TARGETARCH}` explicitly for
+`clang`, `clang++`, `llvm-ar` and `llvm-ranlib`. The alternatives helper
+checks all four executables before its first update and retains each update failure.
+There is no distro fallback. The baked smoke checks the successful first-line
+Clang token against the full `LLVM_RELEASE`, including the patch version.
+This preserves the existing GNU `cc`/`c++` selection.
+
+For an amd64 image, run the reusable installed-defaults probe through the normal
+image entrypoint with explicit pins from the producer's `versions.env`:
+
+```bash
+python3 /opt/scripts/packaging/probe-compiler-defaults.py --gcc-version 16.2.0 --llvm-version 23.1.5
+```
+
+Mount the source-owned probe at that path read-only when the image does not carry it.
+It records raw bounded child output/status and resolved paths for `gcc`, `g++`,
+`cc`, `c++`, `clang` and `clang++`. Every GNU alias must report the exact
+pin, Linux amd64, default `-march=x86-64-v3`, `-mtune=generic` and all three
+`__AVX2__`/`__FMA__`/`__BMI2__` macros without forced architecture flags.
+Both Clang aliases must report the exact full pin. Nonzero or timed-out children
+cannot pass. Bind the actual container image manifest and preserve cleanup evidence
+separately; this JSON alone does not authenticate an image.
+
+The synthetic suites `test-llvm-alternatives.sh` and `test-compiler-defaults.sh`
+prove selection, collection and refusal, with actual mutation recipes. They do not
+prove an installed compiler, linked ELF ISA, cross SDK tools, compiler-cache coverage,
+GPU inference or finished-image/consumer acceptance.
+
 ## Failure classes (from build history)
 
 | # | Class | Representative bug(s) | Fix commit(s) | Caught early by |

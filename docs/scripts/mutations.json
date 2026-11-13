@@ -46628,5 +46628,165 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
   "why": "The shared native probe installs the same original notice beside its binary."
+ },
+ {
+  "id": "probe.compiler-defaults.native-tree",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "bash /tmp/register-llvm-alternatives.sh \"/opt/llvm-target-${TARGETARCH}\"",
+  "replace": "bash /tmp/register-llvm-alternatives.sh \"/usr/lib/llvm-23\"",
+  "test": "bash linux/scripts/tests/test-llvm-alternatives.sh",
+  "why": "The native stage must select the unified source install instead of apt's same-channel compiler."
+ },
+ {
+  "id": "probe.compiler-defaults.complete-install",
+  "target": "linux/scripts/02-toolchain/register-llvm-alternatives.sh",
+  "find": "[ -x \"${prefix}/bin/${name}\" ] ||",
+  "replace": ": ||",
+  "test": "bash linux/scripts/tests/test-llvm-alternatives.sh",
+  "why": "All required source tools must exist before any alternatives update."
+ },
+ {
+  "id": "probe.compiler-defaults.manual-selection",
+  "target": "linux/scripts/02-toolchain/register-llvm-alternatives.sh",
+  "find": "  update-alternatives --set \"${name}\" \"${prefix}/bin/${name}\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-llvm-alternatives.sh",
+  "why": "An installed high-priority distro alternative must not remain selected."
+ },
+ {
+  "id": "probe.compiler-defaults.raw-update-status",
+  "target": "linux/scripts/02-toolchain/register-llvm-alternatives.sh",
+  "find": "  update-alternatives --set \"${name}\" \"${prefix}/bin/${name}\"",
+  "replace": "  update-alternatives --set \"${name}\" \"${prefix}/bin/${name}\" || true",
+  "test": "bash linux/scripts/tests/test-llvm-alternatives.sh",
+  "why": "A failed alternative update cannot report a successful compiler stage."
+ },
+ {
+  "id": "probe.compiler-defaults.all-llvm-tools",
+  "target": "linux/scripts/02-toolchain/register-llvm-alternatives.sh",
+  "find": "tools=(clang clang++ llvm-ar llvm-ranlib)",
+  "replace": "tools=(clang clang++ llvm-ar)",
+  "test": "bash linux/scripts/tests/test-llvm-alternatives.sh",
+  "why": "The archive indexer must come from the same source tree as the compiler."
+ },
+ {
+  "id": "probe.compiler-defaults.smoke-exact-patch",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "[ \"${BASH_REMATCH[2]}\" = \"${expected}\" ]",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-llvm-alternatives.sh",
+  "why": "A newer distro patch does not satisfy the selected source pin."
+ },
+ {
+  "id": "probe.compiler-defaults.smoke-child-status",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "if banner=\"$(\"${binary}\" --version 2>&1)\"; then",
+  "replace": "if banner=\"$(\"${binary}\" --version 2>&1)\" || true; then",
+  "test": "bash linux/scripts/tests/test-llvm-alternatives.sh",
+  "why": "A failing executable cannot pass by printing the expected version."
+ },
+ {
+  "id": "probe.compiler-defaults.smoke-first-line",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "first=\"${banner%%$'\\n'*}\"",
+  "replace": "first=\"${banner}\"",
+  "test": "bash linux/scripts/tests/test-llvm-alternatives.sh",
+  "why": "A later valid token cannot replace a missing compiler banner."
+ },
+ {
+  "id": "probe.compiler-defaults.smoke-cxx",
+  "target": "linux/scripts/06-packaging/smoke-toolchain.sh",
+  "find": "  check_clang_version clang++ \"${LLVM_RELEASE}\" \"clang++\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-llvm-alternatives.sh",
+  "why": "Both default Clang languages require exact patch checks."
+ },
+ {
+  "id": "probe.compiler-defaults.gnu-pin",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "    if version != expected:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "Every GNU alias must match the complete selected pin."
+ },
+ {
+  "id": "probe.compiler-defaults.gnu-target",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "    if not machine.startswith(\"x86_64-\") or not machine.endswith(\"-linux-gnu\"):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "An amd64 response check must reject a foreign compiler."
+ },
+ {
+  "id": "probe.compiler-defaults.gnu-defaults",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "        if values != [wanted]:",
+  "replace": "        if not values:",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "Nonempty defaults are insufficient when ISA or tuning differs."
+ },
+ {
+  "id": "probe.compiler-defaults.gnu-macros",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "        if re.findall(rf\"^#define __{name}__ (\\S+)$\", macros, re.MULTILINE) != [\"1\"]:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "All three v3 macros must be exactly one literal one."
+ },
+ {
+  "id": "probe.compiler-defaults.llvm-pin",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "    if not match or match[1] != expected:",
+  "replace": "    if not match:",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "The external installed-image probe independently rejects wrong LLVM patch versions."
+ },
+ {
+  "id": "probe.compiler-defaults.child-status",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "or result.get(\"timed_out\") is not False):",
+  "replace": "or result.get(\"timed_out\") is not False) and False:",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "Nonzero and timed-out compiler children remain failed evidence."
+ },
+ {
+  "id": "probe.compiler-defaults.bounded-output",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "or len(stdout) + len(stderr) > 2 * 1024 * 1024:",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "Oversized child evidence is refused rather than accepted as a response."
+ },
+ {
+  "id": "probe.compiler-defaults.complete-aliases",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "    if set(payload[\"tools\"]) != {*GNU, *LLVM}:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "Missing and unexpected ordinary aliases cannot produce a complete receipt."
+ },
+ {
+  "id": "probe.compiler-defaults.timeout",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "check=False, timeout=20)",
+  "replace": "check=False, timeout=None)",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "Each compiler child has its own finite execution bound."
+ },
+ {
+  "id": "probe.compiler-defaults.failed-cli-status",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "        status = 1",
+  "replace": "        status = 0",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "A failed semantic receipt must also return a failed process status."
+ },
+ {
+  "id": "probe.compiler-defaults.installer-fixture-mode",
+  "target": "linux/scripts/tests/verified_installer_tests.py",
+  "find": "            env=dict(os.environ, BUILD_MODE=\"native\"),",
+  "replace": "            env=dict(os.environ),",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "Cold installer imports own their build mode instead of failing early on an inherited cross image without CROSS_TARGETS."
  }
 ]

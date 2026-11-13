@@ -317,6 +317,7 @@ See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
 - [The torch stage fails with `ORT-CENSUS FAIL`](#the-torch-stage-fails-with-ort-census-fail)
 - [The torch stage fails with `CHAIN-WHEEL FAIL`](#the-torch-stage-fails-with-chain-wheel-fail)
 - [A build or smoke stops on an ONNX Runtime that is not the chain's](#a-build-or-smoke-stops-on-an-onnx-runtime-that-is-not-the-chains)
+- [The compiler stage selects distro Clang after building the pinned release](#the-compiler-stage-selects-distro-clang-after-building-the-pinned-release)
 - [The wrapper smoke fails `clang --version` after a partial rebuild](#the-wrapper-smoke-fails-clang---version-after-a-partial-rebuild)
 - [`fatal error: sanitizer/common_interface_defs.h: No such file or directory` on arm64/riscv64](#fatal-error-sanitizercommon_interface_defsh-no-such-file-or-directory-on-arm64riscv64)
 - [A Jetson GPU container sees no GPU](#a-jetson-gpu-container-sees-no-gpu)
@@ -1902,6 +1903,20 @@ Known filesystem, ZIP and metadata errors become `ORT-CENSUS FAIL` findings. Une
 **Cause.** A consumer compiled, linked, fetched or loaded an ORT that is not the chain build. An upstream bump that re-enabled a download is the usual source. The STAMP case means the consumer's layer predates the build gate or ran against another ORT build. On Linux, Ubuntu's `gstreamer1.0-plugins-bad` depends on `libonnxruntime1.x`, which is how apt pulled a distro ORT on 2026-08-27 (12 packages, 62.9 MB).
 
 **Fix.** Remove the source, never loosen the gate: restore the pre-set, `ORT_HOME` or fetch block the consumer lost; drop the package that drags a distro ORT in; replace a stray copy with a link to the chain file. For STAMP, rebuild that consumer's stage. Which gate sits where, and what each message means: [`onnxruntime-single-source.md` § Failure messages](onnxruntime-single-source.md#failure-messages).
+
+### The compiler stage selects distro Clang after building the pinned release
+
+**Symptom.** The installed-defaults probe reports Ubuntu Clang 23.1.6 when the
+producer pin is 23.1.5, even though the source build completed.
+
+**Cause.** The old alternatives helper searched major-only distro paths and missed
+the unified source install at `/opt/llvm-target-amd64`. Its smoke checked only
+the major/minor channel, hiding the wrong patch release.
+
+**Fix.** Pass the explicit native source prefix to the alternatives helper and
+rebuild the compiler stage with the full-version smoke. Preserve the failed image;
+do not admit it as an SDK parent. The late selection fix reuses the expensive source
+layers. See [compiler selection and probe limits](cross-build-verification.md#native-compiler-selection).
 
 ### The wrapper smoke fails `clang --version` after a partial rebuild
 
