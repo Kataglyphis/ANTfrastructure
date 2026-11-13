@@ -1906,6 +1906,19 @@ Known filesystem, ZIP and metadata errors become `ORT-CENSUS FAIL` findings. Une
 
 **Fix.** Remove the source, never loosen the gate: restore the pre-set, `ORT_HOME` or fetch block the consumer lost; drop the package that drags a distro ORT in; replace a stray copy with a link to the chain file. For STAMP, rebuild that consumer's stage. Which gate sits where, and what each message means: [`onnxruntime-single-source.md` § Failure messages](onnxruntime-single-source.md#failure-messages).
 
+### The AMD GPU environment shadows the qualified source LLVM
+
+**Symptom.** The SDK selects the pinned native tools, but the following GPU
+stage PATH puts `/usr/lib/llvm-23/bin` before them.
+
+**Cause.** The AMD environment prepended both the distro LLVM directory and
+ROCm tools to its inherited PATH after source-backend construction.
+
+**Fix.** Keep source MIGraphX first, preserve the complete inherited PATH and
+append ROCm tools. Do not replace the selected native compiler with an apt
+driver. Executable-resolution fixtures cover this order; actual GPU image and
+consumer acceptance remain separate. See [the normal AMD entry](linux-accelerator-images.md#migraphx-source-backend-preparation).
+
 ### The compiler stage selects distro Clang after building the pinned release
 
 **Symptom.** The installed-defaults probe reports Ubuntu Clang 23.1.6 when the

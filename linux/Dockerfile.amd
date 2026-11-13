@@ -47,7 +47,7 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=secret,id=sc
     rm -r -- /tmp/migraphx-source-stack; \
     bash /opt/scripts/core/sccache-s3-level.sh drain
 
-ENV PATH="/opt/rocm/migraphx/bin:/usr/lib/llvm-${LLVM_RELEASE%%.*}/bin:/opt/rocm/bin:${PATH}" \
+ENV PATH="/opt/rocm/migraphx/bin:${PATH}:/opt/rocm/bin" \
     ROCM_HOME="/opt/rocm" \
     MIGRAPHX_HOME="/opt/rocm/migraphx" \
     PKG_CONFIG_PATH="/opt/rocm/migraphx/lib/pkgconfig:/opt/rocm/migraphx/lib64/pkgconfig:${PKG_CONFIG_PATH:-}" \

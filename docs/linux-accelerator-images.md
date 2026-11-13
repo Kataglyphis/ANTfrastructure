@@ -1151,6 +1151,12 @@ selects the host Python, installs exactly `PY_PYBIND11_VERSION` without extra
 dependencies, runs the complete source stack, publishes the shared ROCm loader
 configuration and runs `ldconfig`. Required failures stop the remaining phases.
 
+The following GPU environment keeps source MIGraphX first, then the inherited
+GNU/source-LLVM PATH, and appends ROCm tools. It does not insert the distro LLVM
+directory before the pinned source compiler. The executable-resolution fixture
+uses the actual Dockerfile expression, paths containing spaces and conflicting
+distro/vendor tool names; it does not prove driver ABI or a built GPU image.
+
 The SDK and AMD use `stage-script-closure.py` and the declarative plans under
 `linux/scripts/script-closures`. Their common plan owns 21 shared inputs once.
 The SDK core plan selects 24 files, including the compiler-cache companion

@@ -47324,5 +47324,29 @@
   "replace": "  check_llvm_clang\n",
   "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
   "why": "The foreign-target loop skips the build host, so its architecture wrappers need their own unconditional exact-pin and real compiler probes."
+ },
+ {
+  "id": "lib.mgx-image-native-path-before-distro",
+  "target": "linux/Dockerfile.amd",
+  "find": "ENV PATH=\"/opt/rocm/migraphx/bin:${PATH}:/opt/rocm/bin\"",
+  "replace": "ENV PATH=\"/opt/rocm/migraphx/bin:/usr/lib/llvm-${LLVM_RELEASE%%.*}/bin:/opt/rocm/bin:${PATH}\"",
+  "test": "bash linux/scripts/tests/test-migraphx-image.sh",
+  "why": "The AMD environment must not restore a major-only distro LLVM path ahead of the qualified source toolchain."
+ },
+ {
+  "id": "lib.mgx-image-native-path-before-rocm",
+  "target": "linux/Dockerfile.amd",
+  "find": "ENV PATH=\"/opt/rocm/migraphx/bin:${PATH}:/opt/rocm/bin\"",
+  "replace": "ENV PATH=\"/opt/rocm/migraphx/bin:/opt/rocm/bin:${PATH}\"",
+  "test": "bash linux/scripts/tests/test-migraphx-image.sh",
+  "why": "ROCm tools remain available after the inherited native compilers, so a vendor clang cannot shadow the source build."
+ },
+ {
+  "id": "lib.mgx-image-retains-inherited-compiler-path",
+  "target": "linux/Dockerfile.amd",
+  "find": "ENV PATH=\"/opt/rocm/migraphx/bin:${PATH}:/opt/rocm/bin\"",
+  "replace": "ENV PATH=\"/opt/rocm/migraphx/bin:/opt/rocm/bin\"",
+  "test": "bash linux/scripts/tests/test-migraphx-image.sh",
+  "why": "The complete inherited GNU and source LLVM path must survive the GPU environment boundary."
  }
 ]

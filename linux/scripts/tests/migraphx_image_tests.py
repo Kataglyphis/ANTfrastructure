@@ -238,6 +238,41 @@ class ImageWiringTests(unittest.TestCase):
                          'LD_LIBRARY_PATH="/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib64:'):
             self.assertIn(expected, text)
 
+    def test_gpu_path_keeps_inherited_compilers_before_distro_and_rocm_tools(self) -> None:
+        text = (ROOT / "linux/Dockerfile.amd").read_text()
+        matches = re.findall(r'^ENV PATH="([^"]+)"', text, re.MULTILINE)
+        self.assertEqual(len(matches), 1)
+        expression = matches[0]
+        for original, variable in (("/opt/rocm/migraphx/bin", "${TEST_MGX_BIN}"),
+                                   ("/usr/lib/llvm-${LLVM_RELEASE%%.*}/bin", "${TEST_DISTRO_BIN}"),
+                                   ("/opt/rocm/bin", "${TEST_ROCM_BIN}")):
+            expression = expression.replace(original, variable)
+        with tempfile.TemporaryDirectory(prefix="AMD inherited PATH ") as temporary:
+            root = Path(temporary)
+            paths = {name: root / name for name in ("native GNU", "native LLVM", "base", "source MIGraphX", "distro LLVM", "ROCm")}
+            tools = {"native GNU": ["gcc", "g++", "cc", "c++"], "native LLVM": ["clang", "clang++", "llvm-config"],
+                     "base": ["migraphx-driver"], "source MIGraphX": ["migraphx-driver"],
+                     "distro LLVM": ["clang", "clang++", "llvm-config"], "ROCm": ["clang", "clang++", "llvm-config", "hipcc"]}
+            for name, binaries in tools.items():
+                paths[name].mkdir()
+                for binary in binaries:
+                    path = paths[name] / binary
+                    path.write_text("#!/bin/sh\nexit 0\n")
+                    path.chmod(0o755)
+            initial = ":".join(str(paths[name]) for name in ("native GNU", "native LLVM", "base"))
+            selected = [*(paths["native GNU"] / name for name in tools["native GNU"]),
+                        *(paths["native LLVM"] / name for name in tools["native LLVM"]),
+                        paths["source MIGraphX"] / "migraphx-driver", paths["ROCm"] / "hipcc"]
+            script = 'PATH="$1"\nPATH="' + expression + '"\nprintf "%s\\n" "$PATH"\n'
+            script += 'for tool in gcc g++ cc c++ clang clang++ llvm-config migraphx-driver hipcc; do command -v "$tool"; done\n'
+            environment = dict(os.environ, LLVM_RELEASE="23.1.5", TEST_MGX_BIN=str(paths["source MIGraphX"]),
+                               TEST_DISTRO_BIN=str(paths["distro LLVM"]), TEST_ROCM_BIN=str(paths["ROCm"]))
+            result = subprocess.run(["bash", "-c", script, "_", initial], env=environment,
+                                    capture_output=True, text=True, check=False, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(initial, result.stdout.splitlines()[0])
+            self.assertEqual(result.stdout.splitlines()[1:], [str(path) for path in selected])
+
     def test_shipped_runtime_environment_is_conditional_and_keeps_existing_search_paths(self) -> None:
         text = (ROOT / "linux/Dockerfile.package").read_text()
         expected = {
