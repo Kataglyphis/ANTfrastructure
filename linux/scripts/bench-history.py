@@ -290,7 +290,8 @@ def _try_download(slug: str, run_id: int, name: str, tmp: str, pause: float) -> 
         if attempt:
             time.sleep(pause)
         try:
-            github.download(slug, run_id, name, tmp)
+            # Once each: this loop is the retry, with its own pause.
+            github.download(slug, run_id, name, tmp, tries=1)
         except github.Broken as exc:
             failure = str(exc)
         else:

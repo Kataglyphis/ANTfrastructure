@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
 """Same-SHA lane artifacts and the previous develop record through the GitHub CLI.
-It reads public run metadata only and never retries; see docs/code-quality-tooling.md#quality-report"""
+It reads public run metadata only; a download is tried three times. See docs/code-quality-tooling.md#quality-report"""
 
 from __future__ import annotations
 
@@ -10,9 +10,13 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from fnmatch import fnmatch
 
 MEASUREMENTS_ARTIFACT = "code-quality-measurements"
+# The artifact store refuses a download now and then (OmniAccelerANT run 43453000910); a lookup is not tried again.
+DOWNLOAD_TRIES = 3
+DOWNLOAD_PAUSE_S = 5.0
 
 
 class Unavailable(Exception):
@@ -60,15 +64,23 @@ def api(path: str) -> dict[str, object]:
     return doc
 
 
-def download(slug: str, run_id: int, name: str, dest: str) -> None:
-    """Fetch one artifact of one run into dest; a failure is Broken."""
-    os.makedirs(dest, exist_ok=True)
-    proc = subprocess.run([_gh(), "run", "download", str(run_id), "-R", slug, "-n", name,
-                           "-D", dest], capture_output=True, text=True, check=False,
-                          stdin=subprocess.DEVNULL)
-    if proc.returncode != 0:
+def download(slug: str, run_id: int, name: str, dest: str, tries: int = DOWNLOAD_TRIES,
+             pause: float = DOWNLOAD_PAUSE_S) -> None:
+    """Fetch one artifact of one run into dest, `tries` times at most; the last failure is Broken."""
+    gh = _gh()
+    stderr = ""
+    for attempt in range(max(1, tries)):
+        if attempt:
+            time.sleep(pause)
+        os.makedirs(dest, exist_ok=True)
+        proc = subprocess.run([gh, "run", "download", str(run_id), "-R", slug, "-n", name,
+                               "-D", dest], capture_output=True, text=True, check=False,
+                              stdin=subprocess.DEVNULL)
+        if proc.returncode == 0:
+            return
         shutil.rmtree(dest, ignore_errors=True)
-        raise Broken(f"gh run download {run_id} -n {name}: {proc.stderr.strip()[-300:]}")
+        stderr = proc.stderr.strip()[-300:]
+    raise Broken(f"gh run download {run_id} -n {name}: {stderr}")
 
 
 def _list(doc: dict[str, object], key: str) -> list[dict[str, object]]:
