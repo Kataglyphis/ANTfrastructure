@@ -228,11 +228,39 @@ _ort_host_arch() {
 }
 
 _ort_census_usage() {
-  sed -n 's/^# \(Usage: .*\)$/\1/p; s/^# \(Defaults .*\)$/\1/p' "${BASH_SOURCE[0]}"
+  printf '%s\n' \
+    'Usage: check-ort-provenance.sh [--reference DIR]... [--manifest FILE]... [--exempt ARCH:PATH:WHY]... [--library-path DIR[:DIR...]] BUNDLE' \
+    '       check-ort-provenance.sh --image [--exempt ARCH:PATH:WHY]...' \
+    'Defaults: the reference is the chain ORT of the image this runs in; --library-path names bundle-relative directories.'
+}
+
+# A bundle launcher's library path in the probe's terms: paths below --root, never host paths. See docs/cross-build-verification.md#e-ort-single-source
+_ort_census_library_path() {  # <bundle> <DIR[:DIR...]> : /DIR[:/DIR...], or 2 with the reason
+  local base rest="$2:" entry inside out=""
+  base="$(CDPATH='' cd -- "$1" && pwd -P)" || { echo "check-ort-provenance: cannot enter the bundle $1" >&2; return 2; }
+  case ":${rest}" in
+    *::* | *$'\n'*) echo "check-ort-provenance: --library-path needs DIR[:DIR...] with no empty entry, not '$2'" >&2; return 2 ;;
+  esac
+  while [ -n "${rest}" ]; do
+    entry="${rest%%:*}"
+    rest="${rest#*:}"
+    case "/${entry}/" in
+      //*) echo "check-ort-provenance: --library-path entry '${entry}' is absolute; name it relative to the bundle root" >&2; return 2 ;;
+      */../*) echo "check-ort-provenance: --library-path entry '${entry}' leaves the bundle" >&2; return 2 ;;
+    esac
+    inside="$(CDPATH='' cd -- "$1/${entry}" 2>/dev/null && pwd -P)" || inside=""
+    # The physical directory: a link out of the bundle is a path the package does not carry.
+    case "${inside}/" in
+      "${base}"/*) inside="${inside#"${base}"}" ;;
+      *) echo "check-ort-provenance: --library-path entry '${entry}' is no directory inside $1" >&2; return 2 ;;
+    esac
+    out+=":${inside:-/}"
+  done
+  printf '%s\n' "${out#:}"
 }
 
 # The probe arguments for one bundle (G6): its root, and by default the chain ORT of the image this runs in.
-_ort_census_tree_args() {  # <root> <refs, one per line> <manifests, one per line>
+_ort_census_tree_args() {  # <root> <refs, one per line> <manifests, one per line> [library path, as _ort_census_library_path prints it]
   local d refs="$2" manifests="$3"
   if [ -z "${refs}" ]; then
     for d in ${_ORT_CENSUS_REFS}; do [ ! -d "${d}/lib" ] || refs+="${d}/lib"$'\n'; done
@@ -244,6 +272,7 @@ _ort_census_tree_args() {  # <root> <refs, one per line> <manifests, one per lin
     [ -z "${d}" ] || printf '%s\n' --ref-manifest "$(_ort_host_dir "$(dirname "${d}")")/$(basename "${d}")"
   done <<< "${manifests}"
   while IFS= read -r d; do printf '%s\n' --chain-root "${d}"; done < <(ort_census_chain_roots)
+  if [ -n "${4:-}" ]; then printf '%s\n' --ld-library-path "$4"; fi
 }
 
 _ort_census_run() {  # <label> <stamps armed> <probe args, one per line> <exemption>...
@@ -263,15 +292,27 @@ _ort_census_run() {  # <label> <stamps armed> <probe args, one per line> <exempt
   echo "ORT census PASS: every ONNX Runtime binary in ${label} is the chain build"
 }
 
+# G6 over one bundle; a stated launcher library path is taken on trust, the launcher itself is not read.
+_ort_census_bundle() {  # <root> <refs> <manifests> <library path stated 0|1> <library path> <exemption>...
+  local root="$1" refs="$2" manifests="$3" libset="$4" libpath="$5" label="$1" probe_path=""
+  shift 5
+  if [ "${libset}" = 1 ]; then
+    probe_path="$(_ort_census_library_path "${root}" "${libpath}")" || return 2
+    label+=" (library path ${libpath})"
+  fi
+  _ort_census_run "${label}" 0 "$(_ort_census_tree_args "${root}" "${refs}" "${manifests}" "${probe_path}")" "$@"
+}
+
 # G6 over one bundle; --image runs G1 over the system this runs in (what check_ort_census does in-image).
 ort_census_main() {
-  local root="" image=0 refs="" manifests=""
+  local root="" image=0 refs="" manifests="" libpath="" libset=0
   local -a exempt=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --image) image=1; shift ;;
       --reference) refs+="${2:?--reference needs a directory}"$'\n'; shift 2 ;;
       --manifest) manifests+="${2:?--manifest needs a file}"$'\n'; shift 2 ;;
+      --library-path) libpath="${2-}"; libset=1; shift "$(($# > 1 ? 2 : 1))" ;;
       --exempt) exempt+=("${2:?--exempt needs ARCH:PATH:WHY}"); shift 2 ;;
       -h | --help) _ort_census_usage; return 0 ;;
       -*) echo "check-ort-provenance: unknown option $1" >&2; return 2 ;;
@@ -279,10 +320,14 @@ ort_census_main() {
     esac
   done
   if [ "${image}" = 1 ]; then
+    if [ "${libset}" = 1 ]; then
+      echo "check-ort-provenance: --library-path describes a bundle's launcher; --image reads the system's own LD_LIBRARY_PATH" >&2
+      return 2
+    fi
     _ort_census_run / "$(ort_census_stamps_armed)" "$(ort_census_image_args)" \
       ${_ORT_CENSUS_IMAGE_EXEMPT[@]+"${_ORT_CENSUS_IMAGE_EXEMPT[@]}"} ${exempt[@]+"${exempt[@]}"}
   elif [ -n "${root}" ] && [ -d "${root}" ]; then
-    _ort_census_run "${root}" 0 "$(_ort_census_tree_args "${root}" "${refs}" "${manifests}")" ${exempt[@]+"${exempt[@]}"}
+    _ort_census_bundle "${root}" "${refs}" "${manifests}" "${libset}" "${libpath}" ${exempt[@]+"${exempt[@]}"}
   else
     _ort_census_usage >&2
     return 2

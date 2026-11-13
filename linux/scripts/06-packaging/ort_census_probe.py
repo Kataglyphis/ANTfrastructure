@@ -321,6 +321,7 @@ class Census:
         self.skipped = 0
         self.uses: list[tuple[str, list[str], list[str], DynamicInfo]] = []
         self.ldpath: list[str] = [d for d in (args.ld_library_path or "").split(":") if d]
+        self.stated: bool = not args.image and bool(self.ldpath)
         self.search: list[str] = []
         if args.image:
             multi = [posixpath.join(d, n) for d in ("/lib", "/usr/lib") for n in self._list(d)
@@ -464,13 +465,16 @@ class Census:
             hit = resolve(self.root, posixpath.join(d, name)) if d.startswith("/") else None
             if hit:
                 return hit
+            # ld.so opens what the tree only names: a link out of it, a loop or a directory ends the search, unproven.
+            if self.stated and d in self.ldpath and os.path.lexists(host(self.root, posixpath.join(d, name))):
+                return posixpath.join(d, name)
         return None
 
     def resolutions(self) -> None:
         for importer, abi, needed, dyn in self.uses:
             for name in needed or (["libonnxruntime.so"] if "OrtGetApiBase" in abi else []):
                 hit = self.ld_lookup(importer, dyn, name)
-                emit("RES", importer, name, hit, self.sha(hit) if hit else None)
+                emit("RES", importer, name, hit, self.sha(hit) if hit and resolve(self.root, hit) else None)
 
 
 def emit_reference(census: Census, args: argparse.Namespace) -> None:

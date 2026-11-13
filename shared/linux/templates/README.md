@@ -36,11 +36,11 @@ state and the parent's Git config; status 2 leaves the checkout for review. Sync
 and the Git mode companion to consumers when this bootstrap changes. In a WSL checkout written
 by Windows Git, bootstrap uses `git.exe` for its Git index check and submodule commands.
 
-`git-hooks/pre-commit` is the third file here, and the one a consumer does
+`git-hooks/pre-commit` and `git-hooks/pre-push` are the files here a consumer does
 **not** copy: `git config core.hooksPath
-third_party/ANTfrastructure/shared/linux/templates/git-hooks` runs
-`run-lint-gates.sh` over the repo on every commit. A copied hook is a fork nobody
-re-syncs ([`adopting-in-a-new-project.md` § 8](../../../docs/adopting-in-a-new-project.md#the-pre-commit-hook-by-reference)).
+third_party/ANTfrastructure/shared/linux/templates/git-hooks` runs the staged
+checks on every commit and the repo's full lint gates on every push. A copied hook is a fork nobody
+re-syncs ([`adopting-in-a-new-project.md` § 8](../../../docs/adopting-in-a-new-project.md#the-git-hooks-by-reference)).
 The hub's own hooks are `linux/host-config/git-hooks/`, not these.
 
 ## Why this is copied rather than consumed

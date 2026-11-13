@@ -1072,7 +1072,10 @@ refuses that case loudly and supports every op MIGraphX parses. The rocm image's
 plugin is reached by registration alone. A Python app bundle built from the image carries the module
 beside the chain ORT as `onnxruntime/capi/libmigraphx-ep.so`, and its self-test reports it under
 `registered_plugin_eps` ([python-app-bundles.md](python-app-bundles.md#linux-gpu-bundles)): resolve
-`ORT_AMDGPU_EP_ROOT` first, then that path. Why and how it is built:
+`ORT_AMDGPU_EP_ROOT` first, then that path. A native package that carries the module beside the chain
+core leaves it unpatched and states its launcher's library path to the bundle census
+([Prove your bundle ships the image's ONNX Runtime](#prove-your-bundle-ships-the-images-onnx-runtime)).
+Why and how it is built:
 [linux-accelerator-images.md](linux-accelerator-images.md#amds-plugin-migraphx-ep); the move per consumer is
 BACKLOG CON231 step 2.
 
@@ -1178,8 +1181,29 @@ the exe that loads it, then System32 (assumed to hold Windows ML's
 searches its own directory first. So ship `onnxruntime.dll` beside the exe, not
 beside a plugin. A bundle fails as STALE with an older chain DLL, FOREIGN with a
 NuGet, PyPI or pyke ORT (statically linked ones included), and UNRESOLVED when an
-importer has no app-local chain copy or a Linux `.so` has no `$ORIGIN` RUNPATH to
-one.
+importer has no app-local chain copy or a Linux `.so` has neither an `$ORIGIN`
+RUNPATH to one nor a stated launcher library path that holds one.
+
+**A Linux module you must not patch.** A package that carries AMD's plugin keeps
+`libmigraphx-ep.so` byte for byte the image's (`ort_assert_plugin_module`), so its closure
+`--protect`s the module, the module gets no RUNPATH, and the census alone calls its
+`libonnxruntime.so.1` import UNRESOLVED. Never patch the module and never exempt the finding.
+Where the package's launcher puts the chain core's directory on the loader's library path
+(`LD_LIBRARY_PATH`, or the bundled loader's `--library-path`), state that path, relative to the
+bundle and in the launcher's order, after the step that writes the launcher:
+
+`bash third_party/ANTfrastructure/linux/scripts/06-packaging/check-ort-provenance.sh --library-path lib/glibc:lib <bundle>`
+
+What the import then lands on must still be the chain ORT. The census trusts the path and does
+not read the launcher, so the directory that holds the core has to reach the loader on every way
+the launcher starts the program. `bundle-loader.sh` hands the loader `<lib>/glibc:<lib>` only
+when it starts the program through the bundled loader; on a host whose glibc is new enough it
+starts the program with no library path, unless `--external-library-path` or the consumer's own
+launcher line exports `LD_LIBRARY_PATH` with `<lib>` first. Without one, the module loads there
+only because the process already holds `libonnxruntime.so.1` (`ld.so` matches a loaded SONAME),
+which the census does not model and only a load of the module on such a host shows. A Python app
+bundle's builder does not pass the option yet (BACKLOG CON256). What the option refuses and how
+the probe resolves it: [`cross-build-verification.md` § E](cross-build-verification.md#e-ort-single-source).
 
 ## GenAI's library and headers
 

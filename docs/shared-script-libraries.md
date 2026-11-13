@@ -1233,7 +1233,7 @@ package and OxidANT a Rust crate, neither has a single `.py`, and refusing an em
 Python scope made both lanes exit 1 on every push for a reason nothing in either tree
 could change. A permanently red lane is a tolerated failure by construction.
 
-### `run-lint-gates.sh` — seven gates over a consumer tree, plus the opt-in ratchets
+### `run-lint-gates.sh` — eight gates over a consumer tree, plus the opt-in ratchets
 
 ```bash
 bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD"
@@ -1242,9 +1242,9 @@ bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD" --ratche
 ```
 
 shellcheck, actionlint (+ the CI image-ref check), gitleaks, ruff (error tier),
-the shared-config drift check, the consumer pin-forwarding check and the
-[README length](code-quality-tooling.md#readme-length-readme-length), in one
-command, every gate running even after one fails. Three consumers had grown their own copy
+the shared-config drift check, the consumer pin-forwarding check, the
+[README length](code-quality-tooling.md#readme-length-readme-length) and mutation
+staleness, in one command, every gate running even after one fails. Three consumers had grown their own copy
 — two of them as `run:` blocks inside a workflow, so the gate blocking their
 deploy could not be reproduced locally at all.
 
@@ -1263,6 +1263,19 @@ are the consumer's own, and dropping the whole prefix excluded them silently.
 The pin *preconditions* the copies carried ("does the pinned `lint-secrets.sh`
 understand a scan root yet?") are gone by construction: this script ships in the
 same commit as the gates it calls.
+
+**Mutation staleness** runs `verify_mutations.py --stale-check --root <consumer-root>` over
+every tracked `scripts/linux/tests/*mutations*.json`, directly in that directory, and runs no
+recipe's test. A recipe whose `find` text is gone fails the gate with the recipe's id and its
+manifest; a manifest that still applies prints one line; a tree without one passes with
+`nothing to grade`. The reusable lint lane calls this script, so CI's lint lane has the check
+too. Not covered: an untracked manifest, one in a subdirectory or elsewhere, and whether a
+mutant is caught, which the mutation lane proves. A consumer wrapper that still runs its own
+`--stale-check` loop before this script deletes that loop: both give the same verdict.
+
+One warning line on stderr, never a verdict, when `core.hooksPath` is unset in the graded
+checkout and `CI` is not set: it names the config line of
+[the git hooks](adopting-in-a-new-project.md#the-git-hooks-by-reference).
 
 **`--agents-drift`** (opt-in) adds
 [`verify_agents_drift.py`](code-quality-tooling.md#agents-drift-agents-drift) over the consumer:
@@ -1317,6 +1330,34 @@ The Python gates run under `PREFLIGHT_PYTHON` when it is set (the same contract
 `preflight.sh` and `lint-workflows.sh` document) and probe the interpreter first:
 on a Windows host plain `python3` is the Microsoft Store stub, and the probe
 names the fix instead of letting a gate die inside its Python step.
+
+### The staged checks (`--staged`)
+
+```bash
+bash scripts/linux/run-lint-gates.sh --staged
+bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD" --ratchets --staged --index .git/index
+```
+
+`--staged` replaces the gates above by the two that can grade the index alone, for
+[the commit hook](adopting-in-a-new-project.md#the-git-hooks-by-reference):
+
+- **Large files**, only with `--ratchets`: `verify_large_files.py --root`, the same check
+  and the same `large-files.allow` as the ratchet step. It reads blob sizes from the index, so
+  it grades a staged file before its commit. It reads the whole index, and it refuses a
+  tracked file that is missing from the working tree.
+- **The secret scan**: the staged blobs of added, copied, modified, renamed and type-changed
+  paths are written to a temporary tree with `git checkout-index` and scanned by the same
+  driver, self-test and config as the tree scan. A secret that is staged fails although the
+  working tree no longer holds it; an unstaged one does not. A vendored subtree, a symbolic
+  link and a gitlink are not scanned. A commit that stages no file to scan passes without a scan.
+
+`--index <file>` names the index to read. The commit hook passes the one git hands it:
+`git commit -a` and `git commit <path>` build the commit's index in a lock file, and the
+plain index does not show their files yet. A file that does not exist is refused, and so is
+`--index` without `--staged`. The other flags are accepted and select nothing.
+
+Left to the full gates: every whole-tree gate, mutation staleness included. Not available in
+either mode: a line-ending check, for which the hub has only its own preflight slug.
 
 ### `05-frameworks/flutter/setup-sqlite3-wasm.sh`
 

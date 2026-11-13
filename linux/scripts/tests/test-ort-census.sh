@@ -252,6 +252,82 @@ for _style in gnu sysv; do
   t_assert_contains "${_r}" "exit 0" "resolved to the chain ORT beside it (${_style})"
 done
 
+# A native AMD package: the plugin module must stay the image's bytes, so it has no run path, and the launcher's library path finds the core.
+_pkg="${_work}/package"
+_elf "${_pkg}/lib/libmigraphx-ep.so" libonnxruntime.so.1 "" CreateEpFactories
+cp "${_ref}/lib/libonnxruntime.so.1" "${_pkg}/lib/"
+mkdir -p "${_pkg}/lib/glibc" "${_pkg}/alt"
+_module_res="UNRESOLVED   /lib/libmigraphx-ep.so -- libonnxruntime.so.1 resolves to"
+# _census <census args>...: the census's lines against the reference fixture, then "exit <status>".
+_census() {
+  local out rc
+  out="$(bash "${CENSUS}" --reference "${_ref}/lib" "$@" 2>&1)"
+  rc=$?
+  printf '%s\nexit %s\n' "${out}" "${rc}"
+}
+
+t_case "G6 --library-path: a module without a run path is UNRESOLVED alone and resolves on the launcher's library path"
+t_assert_eq "  UNRESOLVED   /lib/libmigraphx-ep.so -- no libonnxruntime.so.1 on its ld.so search path
+ORT census FAILED: 1 finding(s) in ${_pkg}
+exit 1" "$(_census "${_pkg}")" "without the option, as before"
+t_assert_eq "" "$(_ort_census_tree_args "${_pkg}" "${_ref}/lib" "" | grep -e 'ld-library-path' || true)" "no option, no library path for the probe"
+t_assert_eq "ORT census PASS: every ONNX Runtime binary in ${_pkg} (library path lib/glibc:lib) is the chain build
+exit 0" "$(_census --library-path lib/glibc:lib "${_pkg}")" "passes, and says what it assumed"
+t_assert_eq "/lib/glibc:/lib:/" "$(_ort_census_library_path "${_pkg}" "lib/glibc/:./lib:.")" "the probe gets paths below its root, never host paths"
+mapfile -t _targs < <(_ort_census_tree_args "${_pkg}" "${_ref}/lib" "" /lib/glibc:/lib)
+t_assert_contains "$(_probe "${_targs[@]}" | tr -d '\r')" "RES	/lib/libmigraphx-ep.so	libonnxruntime.so.1	/lib/libonnxruntime.so.1" "found in the bundle's own lib"
+t_assert_contains "$(bash "${CENSUS}" --help)" "[--library-path DIR[:DIR...]] BUNDLE" "the usage names it"
+
+t_case "G6 --library-path: what the import resolves to must still be the chain ORT, in the loader's order"
+_elf "${_pkg}/lib/glibc/libonnxruntime.so.1" "" "" "${WINML_SRC}"
+_r="$(_census --library-path lib/glibc:lib "${_pkg}")"
+t_assert_contains "${_r}" "${_module_res} /lib/glibc/libonnxruntime.so.1, which is not the chain ORT" "the first entry wins, and it is foreign"
+t_assert_contains "${_r}" "ORT census FAILED: 2 finding(s) in ${_pkg} (library path lib/glibc:lib)
+exit 1" "the foreign file and the import, red"
+mv "${_pkg}/lib/glibc/libonnxruntime.so.1" "${_pkg}/lib/libonnxruntime.so.1"
+t_assert_contains "$(_census --library-path lib/glibc:lib "${_pkg}")" "${_module_res} /lib/libonnxruntime.so.1, which is not the chain ORT" "a foreign core beside the module"
+mv "${_pkg}/lib/libonnxruntime.so.1" "${_pkg}/alt/libonnxruntime.so.1"
+cp "${_ref}/lib/libonnxruntime.so.1" "${_pkg}/lib/"
+_elf "${_pkg}/lib/libAccelerANTgine.so" libonnxruntime.so.1 '$ORIGIN' OrtGetApiBase
+t_assert_contains "$(_census --library-path alt:lib "${_pkg}")" "UNRESOLVED   /lib/libAccelerANTgine.so -- libonnxruntime.so.1 resolves to /alt/libonnxruntime.so.1" \
+  "a library path precedes the importer's own RUNPATH"
+rm -f "${_pkg}/alt/libonnxruntime.so.1" "${_pkg}/lib/libAccelerANTgine.so"
+
+t_case "G6 --library-path: a path outside the bundle, a missing one, an empty one and --image are usage errors (exit 2)"
+# _refused <reason> <census args>...: that reason alone, exit 2, and no census ran.
+_refused() { t_assert_eq "check-ort-provenance: --library-path $1"$'\n'"exit 2" "$(_census "${@:2}")" "refused: ${*:2}"; }
+_refused "entry 'lib/nope' is no directory inside ${_pkg}" --library-path lib/nope:lib "${_pkg}"
+_refused "entry '/lib' is absolute; name it relative to the bundle root" --library-path /lib "${_pkg}"
+_refused "entry '${_pkg}/lib' is absolute; name it relative to the bundle root" --library-path "${_pkg}/lib" "${_pkg}"
+_refused "entry '../ref/lib' leaves the bundle" --library-path ../ref/lib "${_pkg}"
+_refused "entry 'lib/../lib' leaves the bundle" --library-path lib/../lib "${_pkg}"
+_refused "needs DIR[:DIR...] with no empty entry, not ''" --library-path '' "${_pkg}"
+_refused "needs DIR[:DIR...] with no empty entry, not 'lib::lib'" --library-path lib::lib "${_pkg}"
+_refused "needs DIR[:DIR...] with no empty entry, not 'lib"$'\n'"lib'" --library-path $'lib\nlib' "${_pkg}"
+_refused "needs DIR[:DIR...] with no empty entry, not ''" "${_pkg}" --library-path
+if t_posix_symlinks; then
+  ln -s "${_ref}/lib" "${_pkg}/out"
+  _refused "entry 'out' is no directory inside ${_pkg}" --library-path out "${_pkg}"
+  rm -f "${_pkg}/out"
+else
+  echo "  note: this host cannot create symlinks; the link-out-of-the-bundle case runs where it can"
+fi
+# The loader opens what a stated directory names: such a name is the hit, and the chain core behind it proves nothing.
+mkdir "${_pkg}/lib/glibc/libonnxruntime.so.1"
+t_assert_contains "$(_census --library-path lib/glibc:lib "${_pkg}")" "${_module_res} /lib/glibc/libonnxruntime.so.1, which is not the chain ORT" \
+  "a directory of the import's name on the stated path ends the search"
+rmdir "${_pkg}/lib/glibc/libonnxruntime.so.1"
+if t_posix_symlinks; then
+  ln -s "${_ref}/lib/libonnxruntime.so.1" "${_pkg}/lib/glibc/libonnxruntime.so.1"
+  t_assert_contains "$(_census --library-path lib/glibc:lib "${_pkg}")" "${_module_res} /lib/glibc/libonnxruntime.so.1, which is not the chain ORT" \
+    "a link out of the bundle ends it too, even to the chain's own file"
+  rm -f "${_pkg}/lib/glibc/libonnxruntime.so.1"
+fi
+t_assert_contains "$(_census --library-path lib/glibc:lib "${_pkg}")" "ORT census PASS" "the clean package passes again"
+_out="$(_ort_census_run() { echo "ORT census ran: $*"; }; ort_census_main --image --library-path lib 2>&1; echo "exit $?")"
+t_assert_eq "check-ort-provenance: --library-path describes a bundle's launcher; --image reads the system's own LD_LIBRARY_PATH
+exit 2" "${_out}" "--image is refused before any scan"
+
 t_case "G1 image mode: ld.so.conf order and LD_LIBRARY_PATH decide which copy an importer gets"
 _img="${_work}/img"
 mkdir -p "${_img}/etc/ld.so.conf.d"

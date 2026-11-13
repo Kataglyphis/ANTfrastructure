@@ -167,6 +167,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Renovate planner companions belong in the strict ty and ANN001/ANN201 scopes; the isolated type fixture must detect their removal.
    Gradle wrapper updates change only the version in one distribution URL; duplicate properties and checksum-pinned archives refuse before writing.
    Shared harness mutation suites stay host-portable; native batch execution remains in the separately discovered Windows suite.
+   Consumer-hook fixtures retain Git's canonical root spelling when checking native Git Bash output.
    Copied code-quality and coverage libraries carry `cli-value-options.sh`; preserve empty-argument filtering, prefixing and caller argv order.
    Copied `app-packaging.sh` carries `app-packaging-license.sh`; both it and `pe-icon-tools.sh` carry `log-bootstrap.sh` in the shared lib layout. Package the original project license and validate declared texts in built artifacts.
    Native and Python app DEBs use gzip compression and root-owned payloads; retain both properties when changing their builders.
@@ -1276,6 +1277,10 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
   - Qualcomm's plugin QNN EP (`36-build-qnn-plugin-ep.sh`, arm64) is the chain's build of Qualcomm's ORT fork, from
     the pinned tag tarball with `--ort_home` over the chain prefix, and a census ROOT, never a downloaded wheel or
     archive; the ORT CPU build carries no in-tree QNN EP ([qnn-linux.md](docs/qnn-linux.md#the-plugin-ep)).
+  - A package that keeps an ORT module unpatched (AMD's plugin, byte for byte the image's) states its launcher's
+    library path to the bundle census: `check-ort-provenance.sh --library-path DIR[:DIR...] <bundle>`, entries
+    relative to the bundle. Never patch a RUNPATH into the module, exempt the finding or hand the probe a host path
+    ([contract](docs/consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime)).
   - The image census (SHIPPED-TRUTH E) and `verify-critical-fixes.sh` fix11 enforce it. Every
     consumer, guard and gap: [`onnxruntime-single-source.md`](docs/onnxruntime-single-source.md);
     the Windows rule:

@@ -25,6 +25,9 @@ must actually succeed; a missing privilege is a prerequisite failure, not a
 skipped assertion. This does not make Windows a substitute for Linux-only gates.
 See [MSYS2's symlink modes](https://www.msys2.org/docs/symlinks/).
 
+Consumer-hook fixtures compare Git's canonical repository root in hook output.
+Native Git may report `C:/...` for a fixture Bash created under `/tmp/...`.
+
 ## Preserved local proof workflows
 
 Regular operational drivers live under `linux/scripts/` and are versioned with their tests.
@@ -1065,7 +1068,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4760 entries** over **645 distinct test commands**; both digits are
+manifest holds **4793 entries** over **649 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2113,7 +2116,7 @@ The README rule caps a README at about 100 lines, badges included
 rule's page; a missing `README.md` fails too.
 
 - **Where it runs.** Here as a preflight slug in the commit hook's fast set; in every consumer
-  through `run-lint-gates.sh`, so `lint-gates.yml` and the consumers' pre-commit template run it.
+  through `run-lint-gates.sh`, so `lint-gates.yml` and the consumers' pre-push template run it.
 - **Counting.** Newline characters, plus an unterminated last line: what an editor numbers.
 - **Not covered.** Any other README (`docs/`, `linux/llm-stack/`, a crate's), and the order and
   content of its sections.

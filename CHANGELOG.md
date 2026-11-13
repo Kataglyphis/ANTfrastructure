@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — preserve native Git root spelling in consumer-hook tests
+
+- Compare the fallback hook's root argument with Git's canonical fixture path.
+  This retains the full commit/push assertions on Git Bash, where `/tmp/...`
+  and `C:/...` can name the same fixture. Hook behavior and gate coverage stay
+  unchanged.
+
 ## 2026-11-13 — scrub temporary QNN SDK payloads before Windows export
 
 - Remove the default extracted QNN SDK after source-chain runtime staging.
@@ -55,6 +62,68 @@
   The seven-case upstream C++ reference proof is recorded in
   the ROCm and upstream patch pages. Corrected Windows compilation and AMD device
   acceptance remain pending.
+
+## 2026-11-13 — BACKLOG CON256: what the first complete AMD package build on `:latest-rocm` showed
+
+- OxidANT's candidate lane (run 43345664993, hub pin ed3d170): the census passes with `--library-path lib/glibc:lib`;
+  registering the packaged module on a runner without a card fails with HIP error 100, is refused by name and
+  leaves `auto` on the CPU; the tarball and the DEB pass the wheel proof. It stops at
+  `verify-ort-appimage-payload.sh`, which asks an AMD AppImage for the wheel's exact bytes although the image strips
+  its CPU core. CON256 (a) and (i) record both; the fix needs an x86-64 host for the suite's AMD leg.
+
+## 2026-11-13 — the bundle census takes the launcher's library path (`--library-path`)
+
+- `check-ort-provenance.sh --library-path DIR[:DIR...] <bundle>` states the library path the bundle's launcher hands
+  the loader, relative to the bundle root, and the probe searches it where `ld.so` searches `LD_LIBRARY_PATH`. Two
+  hub gates contradicted each other in OxidANT run 43314831939 (2026-11-12): a native AMD package keeps
+  `libmigraphx-ep.so` byte for byte the image's (`ort_assert_plugin_module`), so the module has no run path, and G6
+  called its `libonnxruntime.so.1` import UNRESOLVED. What an import resolves to is graded as before, and without
+  the option no caller sees a difference. An absolute path, a `..`, an empty entry, a directory the bundle lacks, an
+  entry that is a link out of the bundle and the option beside `--image` are usage errors; the PASS and FAILED lines
+  name the path.
+- On a stated path a file of the import's name that is a link out of the bundle, a link loop or a directory ends
+  the search unproven, as the loader's open would, and the finding names it. On an importer's own RUNPATH list such
+  a name still counts as absent, an older limit ([§ E](docs/cross-build-verification.md#e-ort-single-source)).
+- The entries reach the probe as paths below its `--root` (`/lib/glibc:/lib`), which is how it prints every path of
+  a bundle; joined to the host path they would find nothing.
+- `--help` and a usage error print the usage again: the function read `# Usage:` comment lines the file no longer has.
+- `python-app-bundle.sh` is unchanged. A Python AMD bundle keeps the module in `onnxruntime/capi`, which no launcher
+  path names; read in the scripts and seen on a fixture, its `libonnxruntime.so.1` is the closure's copy in
+  `runtime/lib`, on the launcher's path only through the bundled loader and otherwise preloaded by
+  `sitecustomize.py`. BACKLOG CON256 (i) holds the open point.
+- `test-ort-census.sh` gains three cases; recipes `ort-census.library-path-*` (nine) and
+  `ort-census.probe-ldpath-before-runpath` hold them, each seen to bite. Not run in the x64 rocm image or on a real
+  `libmigraphx-ep.so`. Contract: [`consumer-image-contract.md`](docs/consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime).
+
+## 2026-11-12 — the consumer hook pair: staged checks on a commit, the repo's full gates on a push; mutation staleness is a lint gate (CON243, CON244)
+
+- `shared/linux/templates/git-hooks/` holds a `pre-commit` and a new `pre-push`. Both call the repo's own
+  `scripts/linux/run-lint-gates.sh` when it has one and the bare aggregator only when it has none. The old
+  `pre-commit` called the bare aggregator, so it dropped the wrapper's `--ratchets`, and with it the large-file
+  check, and `--agents-drift`. It was also tracked as `100644`: git skips a hook that is not executable with one
+  `hint:` line, so the template ran in no Linux clone. Both files are executable now.
+- `pre-commit` runs the wrapper with `--staged --index <the index of this commit>`: the large-file check, behind
+  `--ratchets`, and the secret scan over the staged blobs. `git commit -a` and `git commit <path>` are graded on the
+  index git builds for them. One staged file took 2.4 and 2.7 s in a scratch clone of OxidANT on the Raspberry Pi 5.
+- `pre-push` runs the wrapper, then `scripts/linux/pre-push-checks.sh` when the repo has that file; the contract is
+  in [`adopting-in-a-new-project.md` § The git hooks, by reference](docs/adopting-in-a-new-project.md#the-git-hooks-by-reference).
+  A push took 130 s in the same clone beside another build, 188 s under more load: the shellcheck warning
+  ratchet 60 s, shellcheck 32 s and gitleaks 26 s of the 130.
+- `run-lint-gates.sh` has an eighth gate, `mutation staleness`, over every tracked
+  `scripts/linux/tests/*mutations*.json`: a stale recipe fails with its id, in every consumer and in the reusable
+  lint lane. It takes `--staged [--index <file>]`, and it prints one warning line when `core.hooksPath` is unset
+  and `CI` is not set.
+- `test-consumer-hooks.sh` drives both hooks with real commits and pushes in throwaway repos, over a hub copy whose
+  downloaded linters are stubs; `test-lint-gates.sh` holds the gate. 22 recipes `lint-gates.*` hold the behaviour,
+  each proved by hand. Not run: the full preflight, CI, and a push from a real consumer clone.
+- A review ran both hooks in scratch clones of OxidANT and OrchestrANT, the hub tree copied over the submodule,
+  pushing to throwaway bare remotes. A clean push passed (127 s and 84 s). A stale recipe and a shellcheck error
+  each stopped the push by name in both, an oversized comment block in OxidANT, and a failing
+  `pre-push-checks.sh` in both. A commit took 3 s, and 5 to 16 s with all four cores busy.
+- Open, `BACKLOG.md` CON269: the four consumer wrappers still carry their own `--stale-check` loop, no hook
+  checks line endings in a consumer, no gate lints the two hook files, and a linked worktree without the hub
+  submodule has no hook and no line that says so. CON270: the hub's own `pre-commit` reads the old index under
+  `git commit -a`.
 
 ## 2026-11-12 — set the amd64 baseline to x86-64-v3 (not built yet)
 

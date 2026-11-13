@@ -669,8 +669,29 @@ is found by name and fingerprint only. The call sits inside the
 
 **Consumer use (G6).** Inside the image the app was built in, run
 `bash third_party/ANTfrastructure/linux/scripts/06-packaging/check-ort-provenance.sh <bundle-dir>`
-(`--reference DIR`, `--manifest FILE`, `--exempt ARCH:PATH:WHY`). Exit 0 is clean,
-1 is findings, 2 is usage; `--image` grades the system it runs on.
+(`--reference DIR`, `--manifest FILE`, `--exempt ARCH:PATH:WHY`, `--library-path DIR[:DIR...]`).
+Exit 0 is clean, 1 is findings, 2 is usage; `--image` grades the system it runs on.
+
+**`--library-path` (bundle mode only).** A bundle has no `ld.so.conf` and the census gives it no
+environment, so an import resolves through the importer's own RPATH or RUNPATH and nothing else.
+`--library-path lib/glibc:lib` adds the path the bundle's launcher hands the loader, searched
+where `ld.so` searches `LD_LIBRARY_PATH`: after DT_RPATH, before DT_RUNPATH, for every importer.
+The verdict does not move: the file found must be the chain ORT, or the importer stays
+`UNRESOLVED ... resolves to <file>, which is not the chain ORT`. The PASS and FAILED lines name
+the path.
+
+- Entries are directories relative to the bundle root. An absolute path, a `..`, an empty entry,
+  a directory the bundle lacks, an entry that is a link out of the bundle and the option beside
+  `--image` are usage errors (exit 2).
+- The probe's paths are relative to its `--root` (a finding prints `/lib/libmigraphx-ep.so`), so
+  the entries reach it as `/lib/glibc:/lib` and `host()` joins them. Joined to the host path
+  first, they would be searched below the bundle a second time and find nothing.
+- The census takes the path on the caller's word; it does not read the launcher. When a consumer
+  passes it: [`consumer-image-contract.md`](consumer-image-contract.md#prove-your-bundle-ships-the-images-onnx-runtime).
+- On a stated path the search ends where `ld.so`'s would: a file of the import's name that is a
+  link out of the bundle, a link loop or a directory is the hit, unproven, and the finding names
+  it; the chain core behind it does not count. Not covered: the same name on an importer's own
+  RUNPATH or RPATH list still counts as absent there, and the next directory is searched.
 
 ### The in-image half of critical-fixes
 
