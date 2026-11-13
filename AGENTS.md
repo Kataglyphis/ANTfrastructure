@@ -97,7 +97,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks.
    Copied lint drivers carry `lint-scope-init.sh` and `lint-root.sh`; source initialization in the driver shell so remaining positional arguments survive.
    Wheel unpack/pack transport keeps Python argument boundaries and raw status; packaging execution keeps best-effort and sudo failure policies separate.
-   Cross-Clang wrappers use the filesystem-root sysroot with Debian's absolute target linker scripts; foreign target trees remain mandatory.
+   Cross-Clang wrappers use the filesystem-root sysroot with Debian's absolute target linker scripts; foreign target trees remain mandatory. Independent image probes require that same root and reject the old double-root wrappers.
    Compiler smoke callbacks stay unconditional; preserve GStreamer's separate target lookups, temporary cleanup and raw failure statuses.
    ORT tree scans retain archive candidates; record scans stay shallow and preserve component-name exclusions.
    Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion.

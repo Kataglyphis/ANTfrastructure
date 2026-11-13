@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — align the independent image probe with the repaired wrappers
+
+- Require the filesystem-root sysroot in all six image-probe wrapper contracts. Preserve independent positive fixtures and reject the old double-root layout for both foreign C/C++ drivers; actual mutations restore each obsolete foreign expectation. Keep the failed probe and retry the same immutable compiler image with fresh input hashes. This host-only correction grants no SDK or final runtime acceptance.
+
 ## 2026-11-13 — match Cross-Clang's sysroot to the staged GNU layout
 
 - Actual same-image baseline/control probes show Debian libc/libm linker scripts fail beneath a second `/usr/<triplet>` sysroot. Keep all wrappers at the filesystem root, matching source GNU, and require foreign staged target trees before writing them. Check generated wrapper arguments on every supported host/target combination. Fresh ordinary compiler, SDK and consumer acceptance remain required.

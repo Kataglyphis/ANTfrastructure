@@ -47836,5 +47836,21 @@
   "replace": "      die \"Expected cross target tree not found for ${target_label}: /usr/${triplet}\"\n",
   "test": "bash linux/scripts/tests/test-llvm-wrapper-sysroot.sh",
   "why": "A conditional caller must still refuse absent foreign target files even when die is a returning callback."
+ },
+ {
+  "id": "compiler-llvm-tools.image-probe-filesystem-root-arm64",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "'arm64': ('aarch64-linux-gnu', '/')",
+  "replace": "'arm64': ('aarch64-linux-gnu', '/usr/aarch64-linux-gnu')",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The independent positive fixture must reject restoring the obsolete foreign sysroot expectation."
+ },
+ {
+  "id": "compiler-llvm-tools.image-probe-filesystem-root-riscv64",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "'riscv64': ('riscv64-linux-gnu', '/')",
+  "replace": "'riscv64': ('riscv64-linux-gnu', '/usr/riscv64-linux-gnu')",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The independent positive fixture must reject restoring the obsolete foreign sysroot expectation."
  }
 ]

@@ -42,6 +42,7 @@ pin, base-ancestry and accepted-checkpoint contracts. They are not general arbit
 launchers. A new platform or source-proof kind needs a reviewed profile and matching tests.
 The targeted source scope `operational-tools` permits only the same exact patch, cleanup and normal-hook proof as the existing named source profiles. It grants no compiler or image acceptance.
 The retained `probe-soname-load.py` worker takes the soname, expected prefix and maps output as positional arguments; its original bytes remain bound by the supplied qualification.
+The independent cross-Clang image probe requires `--sysroot=/` for all six wrappers, matching Debian's absolute target linker scripts. Its separately constructed positive fixture uses that root; four negative controls reject the old `/usr/<triplet>` root for both foreign C/C++ drivers. Mutations restore each obsolete foreign root and must fail the fixture. A corrected host probe can check an already built immutable image; record its actual input hashes in a fresh invocation and retain the failed old probe. This does not replace the baked smoke or grant SDK, complete C++ ABI or GPU acceptance.
 Default paths derive from `Path.home()`; original qualifications, loader probes, parallel-source
 producers, compiler unit identities and cleanup authorization files are explicit inputs.
 

@@ -18,8 +18,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from proof_types import Helpers, Json
 
-TARGETS = {'amd64': ('x86_64-linux-gnu', '/'), 'arm64': ('aarch64-linux-gnu', '/usr/aarch64-linux-gnu'),
-           'riscv64': ('riscv64-linux-gnu', '/usr/riscv64-linux-gnu')}
+TARGETS = {'amd64': ('x86_64-linux-gnu', '/'), 'arm64': ('aarch64-linux-gnu', '/'),
+           'riscv64': ('riscv64-linux-gnu', '/')}
 BACKENDS = {'X86', 'AArch64', 'RISCV'}
 BAKED_FILES = ('smoke-toolchain.sh', 'smoke-common.sh', 'probe-compiler-defaults.py', 'llvm-loader-path.sh')
 PREFIX = '/opt/llvm-target-amd64'

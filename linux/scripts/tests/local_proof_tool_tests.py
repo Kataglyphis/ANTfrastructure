@@ -43,7 +43,7 @@ class ToolTests(unittest.TestCase):
     def test_cross_probe_receipt_refusals(self) -> None:
         result = self.run_tool(TOOLS / 'test-probe-cross-clang-image.py', '--source', str(ROOT))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout)['refusal_controls'], 22)
+        self.assertEqual(json.loads(result.stdout)['refusal_controls'], 26)
 
     def test_sdk_parent_receipt_refusals(self) -> None:
         result = self.run_tool(TOOLS / 'test-native-oci-cross-qualification.py')

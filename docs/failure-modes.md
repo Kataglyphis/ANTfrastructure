@@ -1983,6 +1983,14 @@ to compare the baked wrapper with GNU's reported sysroot on the same image bytes
 A successful object or diagnostic override cannot qualify the normal wrapper. Establish
 the actual linker error before changing source, then rebuild with the required smoke intact.
 
+If that rebuilt image passes its baked link smoke but the external image probe fails with
+`Wrapper does not bind the source driver and target contract`, inspect the retained wrapper
+scripts and probe's expected roots. An old host probe may still require `/usr/<triplet>`.
+Update the versioned probe and independent refusal fixtures to require `/`, preserve the failed
+invocation and rerun against the same immutable image with fresh output and actual input hashes.
+A successful old fixture does not qualify the image; no compiler rebuild follows from a stale
+host expectation alone.
+
 ### Source Clang works but the default LLVM soname still selects the distro
 
 **Symptom.** `ldd` of the explicit source Clang uses its own LLVM through RUNPATH,

@@ -27,8 +27,8 @@ wrappers = {}
 smoke = ['=== Toolchain Smoke Test ===\n']
 for arch, triplet, sysroot, machine, qemu in [
         ('amd64','x86_64-linux-gnu','/','Advanced Micro Devices X86-64',None),
-        ('arm64','aarch64-linux-gnu','/usr/aarch64-linux-gnu','AArch64','qemu-aarch64'),
-        ('riscv64','riscv64-linux-gnu','/usr/riscv64-linux-gnu','RISC-V','qemu-riscv64')]:
+        ('arm64','aarch64-linux-gnu','/','AArch64','qemu-aarch64'),
+        ('riscv64','riscv64-linux-gnu','/','RISC-V','qemu-riscv64')]:
     for driver in ['clang','clang++']:
         name = driver + '-' + arch
         wrappers[name] = {'selected':'/usr/local/bin/' + name,
@@ -66,7 +66,11 @@ reject('failed-backend-probe', lambda p:p['backends'].update(returncode=47))
 reject('missing-wrapper', lambda p:p['wrappers'].pop('clang++-arm64'))
 reject('shadowed-wrapper', lambda p:p['wrappers']['clang-amd64'].update(selected='/shadow/clang-amd64'))
 reject('apt-driver-path', lambda p:p['wrappers']['clang-arm64'].update(script=p['wrappers']['clang-arm64']['script'].replace('/opt/llvm-target-amd64/bin/clang','/usr/bin/clang-23')))
-reject('wrong-sysroot', lambda p:p['wrappers']['clang-riscv64'].update(script=p['wrappers']['clang-riscv64']['script'].replace('/usr/riscv64-linux-gnu','/')))
+reject('wrong-sysroot', lambda p:p['wrappers']['clang-riscv64'].update(script=p['wrappers']['clang-riscv64']['script'].replace('--sysroot=/','--sysroot=/wrong')))
+for arch, triplet in [('arm64','aarch64-linux-gnu'), ('riscv64','riscv64-linux-gnu')]:
+    for driver in ['clang','clang++']:
+        name = driver + '-' + arch
+        reject('double-root-' + name, lambda p, name=name, triplet=triplet:p['wrappers'][name].update(script=p['wrappers'][name]['script'].replace('--sysroot=/','--sysroot=/usr/' + triplet)))
 reject('stale-full-pin', lambda p:p['wrappers']['clang++-amd64']['version'].update(stdout='clang version 23.1.6\n'))
 reject('failed-version-child', lambda p:p['wrappers']['clang++-riscv64']['version'].update(returncode=47))
 reject('failed-smoke', lambda p:p['smoke'].update(returncode=47))
