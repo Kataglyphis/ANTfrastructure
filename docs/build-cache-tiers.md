@@ -983,6 +983,19 @@ which also drops C/C++ back to ccache (`compiler-cache.sh:136-148`). nvcc and hi
 stay untouched (§ 5.4), and the Windows lane records that released sccache
 breaks the build around them.
 
+The one-line `sccache-stats|` record is a counter summary, not error attribution.
+The 13 November ordinary GNU RUN retained 186 `cache_errors` and zero failed S3
+writes. Its default `SCCACHE_ERROR_LOG=/tmp/sccache.log` lived under that RUN's
+tmpfs mount; the later compiler image contains no such file. Its successful
+build, upload drain and later cached solves cannot identify those 186 causes.
+
+At the next naturally executed source/media RUN, retain raw phase counters and
+error evidence before its temporary filesystem disappears. Preserve noncacheable
+calls, failed compiles, cache errors and failed uploads separately. Keep unknown
+causes unknown; forcing the expensive cached compiler RUN to execute again would
+measure a different run. Complete-stage CUDA, non-x86 Torch and consumer Rust
+cache proofs below remain required.
+
 ### 5.2 Does the current setup double-cache or fight ccache? No — verified
 
 The precedence is explicit and correct:

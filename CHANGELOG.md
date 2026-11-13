@@ -15,6 +15,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — record compiler-cache evidence limits
+
+- Bind the original GNU counters to their preserved log and document why its default error log did not survive: the GNU RUN mounts /tmp as tmpfs, and a fresh query of the preserved compiler image finds no error log. The 186 cache errors remain unclassified; zero failed S3 writes is a separate result.
+- Keep raw phase diagnostics as a requirement for the next naturally executed source/media build. Existing compiler inputs, caches, image receipts and the disk-admission floor stay unchanged; no rebuild or zero-error claim follows from this investigation.
+
 ## 2026-11-13 — publish native LLVM loader priority
 
 - Read-only diagnostics show source Clang loading its own LLVM via RUNPATH while the default loader cache still prefers the distro's identical LLVM soname. Keep those separate findings.
