@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — version recurring operational tools and their companions
+
+- Preserve the recurring source-proof, compiler/SDK, cache-diagnostic and cleanup drivers under versioned script paths, with an inventory of their former session copies. Make machine and run inputs explicit while retaining original authorization, resource, ancestry, cleanup and receipt guards. Add a shared multi-run handoff updater and executable refusal regressions; historical evidence and frozen build sources stay preserved. See [local operational workflows](docs/local-proof-workflows.md).
+
 ## 2026-11-13 — preserve the SDK compiler order in the AMD GPU environment
 
 - Keep source MIGraphX first, the inherited GNU/source-LLVM PATH next and ROCm tools afterward. The old environment placed distro LLVM ahead of the qualified source compiler. An executable-resolution fixture expands the actual Dockerfile expression with spaces and conflicting tool names; three mutations remove or shadow the inherited tools. Actual rebuilt GPU/default/consumer acceptance remains required.

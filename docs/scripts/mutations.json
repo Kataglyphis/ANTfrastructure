@@ -36899,7 +36899,7 @@
  {
   "id": "host.proof-running-unit",
   "target": "linux/scripts/watch-build-units.py",
-  "find": "return unit.get(\"ActiveState\") in (\"inactive\", \"failed\") and (ended or failed)",
+  "find": "return retained or (unit.get(\"ActiveState\") in (\"inactive\", \"failed\") and (ended or failed))",
   "replace": "return unit.get(\"Result\") == \"success\" or ended or failed",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "An active unit's initial Result=success is not a completed build."
@@ -47348,5 +47348,213 @@
   "replace": "ENV PATH=\"/opt/rocm/migraphx/bin:/opt/rocm/bin\"",
   "test": "bash linux/scripts/tests/test-migraphx-image.sh",
   "why": "The complete inherited GNU and source LLVM path must survive the GPU environment boundary."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-probe-guard-01",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "    assert len(backends) == 3 and set(backends) == BACKENDS, 'Native LLVM must carry exactly all three configured backends'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-probe-guard-02",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "    assert set(payload['wrappers']) == expected, 'Every actual architecture wrapper is required'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-probe-guard-03",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "        assert row['selected'] == '/usr/local/bin/' + name, 'PATH selected another architecture wrapper'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-probe-guard-04",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "        assert shlex.split(lines[1]) == ['exec', f'{PREFIX}/bin/{driver}', '--target=' + triplet,\n                                        '--sysroot=' + sysroot, f'--gcc-toolchain=/opt/gcc-{gcc_pin}', '$@'], 'Wrapper does not bind the source driver and target contract'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-probe-guard-05",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "    assert '=== Results: 0 failure(s) ===' in smoke and not re.search(r'^\\s*FAIL ', smoke, re.MULTILINE), 'The actual baked toolchain smoke must pass'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-probe-guard-06",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "                assert smoke.count(f'  PASS {label}: {suffix}\\n') == 1, 'Missing actual wrapper compiler assertion: ' + label\n",
+  "replace": "                pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-probe-guard-07",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "            assert re.search(r'^  PASS ' + re.escape(label) + r': object ELF machine=.+$', smoke, re.MULTILINE), 'Missing target object ELF assertion'\n",
+  "replace": "            pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-probe-guard-08",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "                assert re.search(r'^  PASS ' + re.escape(label) + r': static binary RUNS under \\S+ \\(exit 42\\)$', smoke, re.MULTILINE), 'Actual foreign static execution is required'\n",
+  "replace": "                pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-probe-guard-09",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "    assert set(payload['native_programs']) == {'c', 'cxx'}, 'Both real native languages are required'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-probe-guard-10",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "        assert output(row['execution']) == '42', 'Native executable returned the wrong result: ' + name\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-probe-guard-11",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "        assert re.search(r'^\\s*Machine:\\s+Advanced Micro Devices X86-64\\s*$', output(row['elf']), re.MULTILINE), 'Native executable has the wrong ELF machine'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-probe-guard-12",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "    assert not payload['environment'].get('LD_PRELOAD'), 'Preload cannot qualify the ordinary image'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-probe-guard-13",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "        helpers['llvm_facts']({'version':row['version']}, llvm_pin)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-parent-guard-01",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "    if plan.get('launcher_contract') == 2:\n        assert proof['cross_wrapper_checks_required'] and proof['cross_wrapper_CPU_checks_passed']\n        assert set(proof['cross_wrapper_modes']) == {'default','login'}\n        for mode,result in proof['cross_wrapper_modes'].items():\n            assert result['status'] == 'passed-baked-cross-Clang-wrappers-and-CPU-smokes-only' and result['mode'] == mode\n            assert result['native_backends'] == ['AArch64','RISCV','X86'] and result['wrapper_count'] == 6\n            assert result['foreign_static_executions_required'] == 4 and result['native_languages'] == ['c','cxx']\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-parent-guard-02",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "        assert proof['cross_wrapper_checks_required'] and proof['cross_wrapper_CPU_checks_passed']\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-parent-guard-03",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "        assert set(proof['cross_wrapper_modes']) == {'default','login'}\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-parent-guard-04",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "            assert result['status'] == 'passed-baked-cross-Clang-wrappers-and-CPU-smokes-only' and result['mode'] == mode\n",
+  "replace": "            pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-parent-guard-05",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "            assert result['native_backends'] == ['AArch64','RISCV','X86'] and result['wrapper_count'] == 6\n",
+  "replace": "            pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.preserved-parent-guard-06",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "            assert result['foreign_static_executions_required'] == 4 and result['native_languages'] == ['c','cxx']\n",
+  "replace": "            pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
+  "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
+ },
+ {
+  "id": "host.preserved-authorization",
+  "target": "linux/host-config/autonomous-safe-prune.py",
+  "find": "assert 'agents may run the existing `linux/host-config/prune-safe.sh` autonomously' in authorization.read_text()",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "Removing the operational guard must fail the real assertion-bearing refusal fixture."
+ },
+ {
+  "id": "host.preserved-mid-build-budget",
+  "target": "linux/host-config/autonomous-safe-prune.py",
+  "find": "assert args.keep_gb > 0 and (args.keep_gb >= 100 or args.idle_store)",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "Removing the operational guard must fail the real assertion-bearing refusal fixture."
+ },
+ {
+  "id": "host.preserved-cache-identities",
+  "target": "linux/host-config/verify-safe-prune.py",
+  "find": "assert before['cachemount_ids'] == after['cachemount_ids']",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "Removing the operational guard must fail the real assertion-bearing refusal fixture."
+ },
+ {
+  "id": "host.preserved-image-identities",
+  "target": "linux/host-config/verify-safe-prune.py",
+  "find": "assert image_identities(before) == image_identities(after)",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "Removing the operational guard must fail the real assertion-bearing refusal fixture."
+ },
+ {
+  "id": "host.preserved-idle-store",
+  "target": "linux/host-config/verify-safe-prune.py",
+  "find": "    assert all(value['in_use'] == 0 for snapshot in [before, after] for value in snapshot['buildkit_record_types'].values())",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "Removing the operational guard must fail the real assertion-bearing refusal fixture."
+ },
+ {
+  "id": "host.preserved-checkpoint-owner",
+  "target": "linux/scripts/local-proof/checkpoint-proof-runs.py",
+  "find": "    assert invocation['run_id'] == record['owner_run_id']",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh",
+  "why": "Removing the operational guard must fail the real assertion-bearing refusal fixture."
+ },
+ {
+  "id": "host.preserved-oneshot-observer",
+  "target": "linux/scripts/watch-build-units.py",
+  "find": "    return retained or (unit.get(\"ActiveState\") in (\"inactive\", \"failed\") and (ended or failed))",
+  "replace": "    return unit.get(\"ActiveState\") in (\"inactive\", \"failed\") and (ended or failed)",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A retained completed oneshot must end observation while a running success field remains nonterminal."
  }
 ]

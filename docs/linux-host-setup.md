@@ -591,6 +591,8 @@ no network. Check this before debugging a mirror or a DNS resolver.
 
 ### B7. Reclaiming disk without losing the compile caches
 
+The versioned [authorized cleanup controller](local-proof-workflows.md#authorized-cleanup) preserves runtime snapshots, exact image/cachemount identities and independent post-cleanup checks. It retains the supplied standing authorization, skips when the reserve already passes and creates no recurring schedule.
+
 Moved here from `AGENTS.md` on 2026-09-15: the rule lives there, the
 measurements live here.
 

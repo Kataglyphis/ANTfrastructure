@@ -39,7 +39,8 @@ def parse_units(text: str) -> list[dict[str, str]]:
 def terminal(unit: dict[str, str]) -> bool:
     ended = int(unit.get("ExecMainExitTimestampMonotonic") or "0") > 0
     failed = unit.get("Result") not in (None, "", "success")
-    return unit.get("ActiveState") in ("inactive", "failed") and (ended or failed)
+    retained = ended and unit.get("ActiveState") == "active" and unit.get("SubState") == "exited" and unit.get("MainPID") == "0"
+    return retained or (unit.get("ActiveState") in ("inactive", "failed") and (ended or failed))
 
 
 def log_tail(path: Path) -> dict[str, object]:

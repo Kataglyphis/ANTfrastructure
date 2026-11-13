@@ -328,6 +328,8 @@ class StatusTests(unittest.TestCase):
         self.assertFalse(WATCH.terminal(unit))
         self.assertFalse(WATCH.terminal(dict(unit, ActiveState="inactive", MainPID="0")))
         self.assertTrue(WATCH.terminal(dict(unit, ActiveState="inactive", MainPID="0", ExecMainExitTimestampMonotonic="123")))
+        self.assertFalse(WATCH.terminal(dict(unit, SubState="exited", MainPID="0")))
+        self.assertTrue(WATCH.terminal(dict(unit, SubState="exited", MainPID="0", ExecMainExitTimestampMonotonic="123")))
         with self.assertRaises(ValueError):
             WATCH.parse_units(text.replace("LoadState=loaded", "LoadState=not-found"))
 

@@ -205,6 +205,7 @@ Common development targets:
    cross-build-verification
    image-acceptance
    code-quality-tooling
+   local-proof-workflows
    code-quality-gates
    fleet-health
    consumer-inventory

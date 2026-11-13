@@ -483,7 +483,7 @@ Five of them are RULES and stay here:
 - **`--log-dir` is not universal.** `build-cross-chain.sh` and `build-cross-stage.sh` tee each
   stage; the other three orchestrators do not take the flag, so pipe them through `tee` yourself.
 
-- **Preserve recurring operational scripts in the repo.** Reuse and extend the canonical helper;
+- **Preserve recurring operational scripts in the repo.** The canonical implementation must be Git-tracked; an ignored `logs/` copy is evidence only. Promote a recurring helper before its next use, retain its required companions and parameterize run-specific inputs. The [operational toolkit](docs/local-proof-workflows.md) owns the reusable proof, checkpoint and authorized cleanup drivers. Reuse and extend the canonical helper;
   do not regenerate regular preflight, monitoring or probe drivers in scratch space. Keep run-specific
   inputs, extracted code and reports under `logs/`. The permanent isolated preflight, unit watcher
   and native plugin probe are documented in [quality tooling](docs/code-quality-tooling.md#preserved-local-proof-workflows).
