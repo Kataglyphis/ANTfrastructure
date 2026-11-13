@@ -14,6 +14,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — BACKLOG: CON234 cut down to what is left, with the day's consumer evidence
+
+- CON234 named four steps; three are done in ModelANT and the consumers (decode cases and their replay, the
+  metadata keys in the contract, and since today the check of those keys in C++ and Rust). The entry now holds the
+  lossless `two_cats` copy and the note on where the no-suppression rule has a recipe.
+- CON271, new: a refused download of the earlier measurements made OmniAccelerANT's quality-report lane red (run
+  43453000910); the helper never retries by its own rule, so the entry asks the owner.
+
 ## 2026-11-13 — `run-in-ci-image.sh` takes a volume, an environment variable and `--privileged` (CON242)
 
 - `--volume NAME:/PATH` and `--env NAME=VALUE` (both repeatable) and `--privileged`: a local test run with warm

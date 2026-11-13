@@ -454,30 +454,21 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       with the console captured. Done when the cause is named and fixed in its own repo, and the
       retry logs no `flaky:` line on 50 consecutive runs.
 
-- [ ] **CON234 — ModelANT's inference contract gets decode cases, and the three detectors replay them** [M, ★★★].
-      ModelANT's work, kept here as CON112 is. Owner decisions 2026-11-12: rows of the `xyxy_score_class`
-      layout (DEIM) get no overlap suppression in any detector; detection boxes are clamped to the frame in
-      all three detectors; both rules go into ModelANT's inference contract as decode cases (raw rows in,
-      boxes out) that Rust, C++ and Python replay. Found by the audit of 2026-11-12:
-      `contracts/inference-v1.json` has four cases, all for preprocessing, and its `output` block names the
-      tensor, its shape, columns, coordinate space and class range, and no decode rule. C++ and Python each
-      compared against their own recording of `two_cats.jpg`, and the two differed (AccelerANTgine 4
-      detections, OrchestrANT 5), while Rust asked only for two cats or more: C++ ran same-class NMS at 0.45
-      on DEIM rows and dropped a box at IoU 0.47, Python and Rust kept it, and only Rust clamped.
-      AccelerANTgine a3bc65d follows the first rule already; nothing shared holds the three to it.
-      1. ModelANT: the cases. At least a NaN score, a NaN corner, class 80, `x2` before `x1`, two same-class
-         boxes at IoU 0.47 (both kept), a box past the frame edge (clamped) and a letterbox mapping, with a
-         recipe per rule in its `scripts/tests/contract-mutations.json`.
-      2. OxidANT, AccelerANTgine and OrchestrANT replay them where the four preprocessing cases run today.
-         Each gets a mutation recipe "suppress overlaps on corner rows" that must fail.
-      3. The contract lists the metadata keys and their allowed values (`kataglyphis.preprocess`,
-         `kataglyphis.output`). Python reads only the first, C++ only the second, and Rust neither.
-      4. A decoded, lossless copy of `two_cats` in `contracts/fixtures/` (PNG, or raw RGB with its SHA-256 in
-         the contract), so the three golden tests give the model the same pixels. Today three JPEG decoders
-         feed them, and one box's score differs by 0.019 between two recordings (not double-checked).
+- [ ] **CON234 — the three detectors' golden tests get the same pixels, and the contract rows read 0** [S, ★★].
+      What is left of the decode contract of 2026-11-12. Done since: ModelANT `a6eaca1` carries nine decode cases
+      with a recipe per rule, its contract lists the metadata keys and their values, OxidANT, AccelerANTgine and
+      OrchestrANT pin it and replay every case, and all three refuse a model whose `kataglyphis.preprocess` or
+      `kataglyphis.output` contradicts what the detector does (C++ and Rust since 2026-11-13).
+      1. A decoded, lossless copy of `two_cats` in ModelANT's `contracts/fixtures/` (PNG, or raw RGB with its
+         SHA-256 in the contract), so the three golden tests give the model the same pixels. Today three JPEG
+         decoders feed them, and one box's score differs by 0.019 between two recordings (not double-checked).
+      2. A recipe "suppress overlaps on corner rows" exists in OrchestrANT only. OxidANT has no suppression code
+         to switch on, and AccelerANTgine's manifest holds script recipes, not C++ ones; in both the replayed
+         case "two boxes of one class at IoU 0.47, both kept" is the guard. Write that down in ModelANT's
+         `contracts/README.md`, or give C++ a source recipe when its mutation lane can build.
 
-      Done when a ModelANT commit carries the cases, the three repos pin it and replay every case on their
-      Linux x64 lanes, and fleet-health's contract rows (CON247) read 0.
+      Done when the three golden tests read the lossless copy at one ModelANT pin and fleet-health's contract
+      rows (CON247) read 0.
 
 - [b] **CON235 — one default score threshold for the detectors, or a written reason for two** [S, ★].
       Blocked on an owner answer. Found by the audit of 2026-11-12: OrchestrANT's CLI and OxidANT's
@@ -2311,6 +2302,17 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Done when a staged CRLF shell script stops a commit
       in `test-consumer-hooks.sh`, a default `lint-shell.sh` run lists both hook files, a commit passes
       beside an unstaged deletion, and a commit in a worktree without the submodule is stopped or named.
+
+- [ ] **CON271 — one failed download of the earlier measurements fails the quality-report lane** [S, ★★].
+      Found 2026-11-13: OmniAccelerANT's *code quality measurements* lane went red (run 43453000910) on
+      `gh run download 43441835694 -n code-quality-measurements`, a refusal by the artifact store; its rerun was
+      not needed for anything the commit changed. `previous_develop` in `linux/scripts/quality_report_github.py`
+      calls `download` once, the report says `verdict=incomplete` and the step exits 2. The module's first lines
+      say it "never retries", so this is a rule to change, not an oversight: the owner decides whether the one
+      download gets the three tries `bench-history.py fetch` has since CON255, or whether a comparison that
+      cannot be read stays a red lane. First step, with a yes: the retry inside `download`, with `tries=1` passed
+      where `bench-history.py` keeps its own loop. Done when a test with a download that fails once still
+      compares, and one that fails every time still gives `incomplete`.
 
 - [ ] **CON245 — a `kind = "pattern"` row with `max = 0` fails the lint gates** [S, ★★]. Found by the audit of
       2026-11-12: many AGENTS.md rules are one pattern, and two sampled ones hold by habit only
