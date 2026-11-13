@@ -318,6 +318,7 @@ See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
 - [The torch stage fails with `CHAIN-WHEEL FAIL`](#the-torch-stage-fails-with-chain-wheel-fail)
 - [A build or smoke stops on an ONNX Runtime that is not the chain's](#a-build-or-smoke-stops-on-an-onnx-runtime-that-is-not-the-chains)
 - [The compiler stage selects distro Clang after building the pinned release](#the-compiler-stage-selects-distro-clang-after-building-the-pinned-release)
+- [Native LLVM utilities remain on the distro after Clang selection is fixed](#native-llvm-utilities-remain-on-the-distro-after-clang-selection-is-fixed)
 - [The wrapper smoke fails `clang --version` after a partial rebuild](#the-wrapper-smoke-fails-clang---version-after-a-partial-rebuild)
 - [`fatal error: sanitizer/common_interface_defs.h: No such file or directory` on arm64/riscv64](#fatal-error-sanitizercommon_interface_defsh-no-such-file-or-directory-on-arm64riscv64)
 - [A Jetson GPU container sees no GPU](#a-jetson-gpu-container-sees-no-gpu)
@@ -1917,6 +1918,20 @@ the major/minor channel, hiding the wrong patch release.
 rebuild the compiler stage with the full-version smoke. Preserve the failed image;
 do not admit it as an SDK parent. The late selection fix reuses the expensive source
 layers. See [compiler selection and probe limits](cross-build-verification.md#native-compiler-selection).
+
+### Native LLVM utilities remain on the distro after Clang selection is fixed
+
+**Symptom.** Clang reports the source pin, but `llvm-config --version` reports
+Ubuntu's newer patch and most native utility paths still resolve under `/usr`.
+
+**Cause.** Four compiler alternatives were changed without adding the complete
+native source bin tree to the final compiler image PATH.
+
+**Fix.** Put that tree behind the pinned Python and GNU bins after Python setup,
+and retain the baked native tool-selection probe. This reuses the expensive source
+RUNs and preserves ordinary GNU aliases. The failed wider SDK admission remains
+separate from the passing six-compiler check; see
+[selection scope](cross-build-verification.md#native-compiler-selection).
 
 ### The wrapper smoke fails `clang --version` after a partial rebuild
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Check installed amd64 compiler responses and defaults; no per-ELF ISA, other SDK tools or consumer acceptance proof."""
+"""Check amd64 compiler defaults or native LLVM tool selection; no linked-library, cross-SDK, ELF ISA or consumer acceptance proof."""
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import re
 import shutil
@@ -109,18 +110,61 @@ def pin(value: str) -> str:
     return value
 
 
+
+def collect_native_llvm(prefix: Path, expected: str) -> dict:
+    tools = []
+    for path in sorted((prefix / "bin").iterdir()):
+        if path.is_file() and os.access(path, os.X_OK) and path.name not in GNU:
+            selected = shutil.which(path.name)
+            tools.append({"name": path.name, "source": str(path.resolve()),
+                          "selected": str(Path(selected).resolve()) if selected else None})
+    return {"schema_version": 1, "prefix": str(prefix.resolve()), "expected": expected,
+            "tools": tools, "version": command("llvm-config", ["--version"])}
+
+
+def validate_native_llvm(payload: dict, prefix: Path, expected: str) -> dict:
+    if (type(payload.get("schema_version")) is not int or payload["schema_version"] != 1
+            or payload["prefix"] != str(prefix.resolve()) or payload["expected"] != expected):
+        raise ValueError("native LLVM probe source expectations differ")
+    required = {"clang", "clang++", "llvm-config", "llvm-ar", "llvm-ranlib",
+                "llvm-tblgen", "clang-tblgen", "lld", "ld.lld"}
+    names = [row["name"] for row in payload["tools"]]
+    if not required.issubset(names) or len(names) != len(set(names)):
+        raise ValueError("native LLVM tool inventory is incomplete or duplicated")
+    for row in payload["tools"]:
+        if (not Path(row["source"]).is_relative_to(prefix.resolve())
+                or row["selected"] != row["source"]):
+            raise ValueError(f"native LLVM tool is not selected from its source tree: {row['name']}")
+    version = output(payload["version"])
+    if version != expected:
+        raise ValueError(f"native llvm-config version {version!r} differs from {expected}")
+    return {"native_prefix": str(prefix.resolve()), "native_tool_count": len(names), "llvm_config_version": version}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--gcc-version", type=pin, required=True)
+    parser.add_argument("--gcc-version", type=pin)
     parser.add_argument("--llvm-version", type=pin, required=True)
+    parser.add_argument("--native-llvm-prefix", type=Path)
     args = parser.parse_args()
+    if args.native_llvm_prefix:
+        if args.gcc_version or not args.native_llvm_prefix.is_absolute():
+            parser.error("native LLVM mode requires one absolute prefix and no GCC pin")
+    elif not args.gcc_version:
+        parser.error("amd64 compiler-default mode requires --gcc-version")
     expected = {"gcc": args.gcc_version, "llvm": args.llvm_version}
-    payload = collect(expected)
+    payload: dict = {"expected": expected}
     try:
-        payload["facts"] = validate(payload, expected)
-        payload["status"] = "passed-installed-amd64-compiler-defaults-only"
+        if args.native_llvm_prefix:
+            payload = collect_native_llvm(args.native_llvm_prefix, args.llvm_version)
+            payload["facts"] = validate_native_llvm(payload, args.native_llvm_prefix, args.llvm_version)
+            payload["status"] = "passed-native-llvm-tool-selection-only"
+        else:
+            payload = collect(expected)
+            payload["facts"] = validate(payload, expected)
+            payload["status"] = "passed-installed-amd64-compiler-defaults-only"
         status = 0
-    except (ValueError, KeyError, TypeError) as error:
+    except (ValueError, KeyError, TypeError, OSError) as error:
         payload["status"] = "failed"
         payload["error"] = str(error)
         status = 1

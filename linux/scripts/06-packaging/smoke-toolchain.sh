@@ -95,6 +95,16 @@ check_llvm_clang() {
   echo ""
 }
 
+# Every installed source utility must win PATH, not only the four compiler alternatives.
+check_native_llvm_tools() {
+  if python3 "${_SCRIPT_DIR}/probe-compiler-defaults.py" --llvm-version "${LLVM_RELEASE}" \
+      --native-llvm-prefix "/opt/llvm-target-$(smoke_host_arch)"; then
+    pass "native LLVM tool paths and full llvm-config pin"
+  else
+    fail "native LLVM tool selection or llvm-config pin"
+  fi
+}
+
 check_rust() {
   local target_arches="$1"
 
@@ -274,6 +284,7 @@ main() {
   print_smoke_header "${host_arch}" "${target_arches}"
   check_host_gcc
   check_llvm_clang
+  check_native_llvm_tools
   check_rust "${target_arches}"
   check_node
   check_python "${target_arches}"

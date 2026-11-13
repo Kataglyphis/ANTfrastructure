@@ -232,7 +232,7 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=
 
 # Path only: every downstream stage creates its own venv, so one made here would be discarded.
 ENV VIRTUAL_ENV=/opt/python/.venv \
-    PATH=/opt/python/.venv/bin:${PATH} \
+    PATH=/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/opt/llvm-target-${TARGETARCH}/bin:${PATH} \
     UV_PYTHON=/opt/python/.venv/bin/python \
     MEDIA_HOST_PYTHON=/opt/python/.venv/bin/python
 
@@ -243,7 +243,8 @@ COPY --chmod=755 linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 COPY --chmod=755 linux/scripts/02-toolchain/python/build_python.sh \
                  linux/scripts/02-toolchain/python/fix-staged-python-pc.sh \
                  /opt/scripts/python/
-COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh \
+COPY --chmod=755 linux/scripts/06-packaging/probe-compiler-defaults.py \
+                 linux/scripts/06-packaging/smoke-common.sh \
                  linux/scripts/06-packaging/smoke-toolchain.sh \
                  linux/scripts/06-packaging/smoke-cross-all-arches.sh \
                  /opt/scripts/packaging/

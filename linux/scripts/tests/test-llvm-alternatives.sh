@@ -87,4 +87,23 @@ clang() { printf 'clang version 23.1.6\n'; }
 clang++() { printf 'clang version 23.1.6\n'; }
 LLVM_RELEASE=23.1.5 check_llvm_clang
 t_assert_eq 2 "${FAILURES}"
+t_case "native LLVM PATH follows GNU and reaches every source utility"
+t_assert_contains "$(cat "${TESTS_DIR}/../../Dockerfile.toolchain")" 'PATH=/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/opt/llvm-target-${TARGETARCH}/bin:${PATH}'
+t_assert_contains "$(cat "${TESTS_DIR}/../../Dockerfile.toolchain")" 'COPY --chmod=755 linux/scripts/06-packaging/probe-compiler-defaults.py'
+t_assert_contains "$(t_fn_src "${TESTS_DIR}/../06-packaging/smoke-toolchain.sh" main)" $'\n  check_native_llvm_tools\n'
+
+t_case "native tool smoke forwards the host prefix and propagates child failure"
+t_source_functions "${TESTS_DIR}/../06-packaging/smoke-toolchain.sh" check_native_llvm_tools || exit 1
+_SCRIPT_DIR=/fixture
+smoke_host_arch() { printf arm64; }
+python3() {
+  printf '%s\n' "$@" > "${LLVM_ALT_CALLS}"
+  return "${native_status}"
+}
+for native_status in 0 47; do
+  FAILURES=0
+  LLVM_RELEASE=23.1.5 check_native_llvm_tools
+  t_assert_eq "$(( native_status != 0 ))" "${FAILURES}"
+  t_assert_eq $'/fixture/probe-compiler-defaults.py\n--llvm-version\n23.1.5\n--native-llvm-prefix\n/opt/llvm-target-arm64' "$(cat "${LLVM_ALT_CALLS}")"
+done
 t_summary

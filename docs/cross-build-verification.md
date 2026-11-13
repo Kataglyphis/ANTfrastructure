@@ -43,6 +43,25 @@ There is no distro fallback. The baked smoke checks the successful first-line
 Clang token against the full `LLVM_RELEASE`, including the patch version.
 This preserves the existing GNU `cc`/`c++` selection.
 
+After Python setup, PATH puts the native source LLVM bin directory behind the
+Python and GNU bins. This late ENV change leaves the expensive GNU, LLVM, Rust
+and Python RUN inputs untouched. All executable native LLVM utilities, including
+versioned aliases, must resolve to that source tree; checking four alternatives
+alone leaves tools such as `llvm-config` on apt's newer patch release.
+The baked smoke carries the permanent probe and checks this selection on its
+actual host architecture:
+
+```bash
+python3 /opt/scripts/packaging/probe-compiler-defaults.py --llvm-version 23.1.5 --native-llvm-prefix /opt/llvm-target-amd64
+```
+
+This mode requires a nonempty, unique inventory with the core compiler, archiver,
+tablegen and linker tools, refuses escaped source paths and checks the default
+`llvm-config`'s exact successful pin. GNU aliases use the separate amd64 mode
+below. Path selection and a version response do not prove linked library versions
+or SDK compilation.
+
+
 For an amd64 image, run the reusable installed-defaults probe through the normal
 image entrypoint with explicit pins from the producer's `versions.env`:
 
@@ -62,7 +81,7 @@ separately; this JSON alone does not authenticate an image.
 The initial full compiler image built successfully but selected Ubuntu Clang
 23.1.6 for the 23.1.5 source pin. A digest-bound disposable selection replay now
 proves both Clang aliases at 23.1.5 and all four GNU aliases at 16.2.0/v3/generic.
-The corrected canonical solve reuses both expensive source RUNs. Fresh rebuilt
+The corrected canonical solve reuses both expensive source RUNs. Its fresh image passes\nthe six compiler aliases, but the wider inventory finds 153 of 157 source tools\nelsewhere and a distro `llvm-config` at 23.1.6. The late PATH correction and\nnative inventory gate own that remaining SDK prerequisite. Fresh rebuilt
 image qualification and downstream SDK/backend/consumer acceptance remain open.
 
 The synthetic suites `test-llvm-alternatives.sh` and `test-compiler-defaults.sh`

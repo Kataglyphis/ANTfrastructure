@@ -46704,8 +46704,8 @@
  {
   "id": "probe.compiler-defaults.gnu-pin",
   "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
-  "find": "    if version != expected:",
-  "replace": "    if False:",
+  "find": "    if version != expected:\n        raise ValueError(f\"GCC full version {version!r} differs from {expected}\")",
+  "replace": "    if False:\n        raise ValueError(f\"GCC full version {version!r} differs from {expected}\")",
   "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
   "why": "Every GNU alias must match the complete selected pin."
  },
@@ -46788,5 +46788,117 @@
   "replace": "            env=dict(os.environ),",
   "test": "bash linux/scripts/tests/test-verified-installers.sh",
   "why": "Cold installer imports own their build mode instead of failing early on an inherited cross image without CROSS_TARGETS."
+ },
+ {
+  "id": "probe.native-llvm-path",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "PATH=/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/opt/llvm-target-${TARGETARCH}/bin:${PATH}",
+  "replace": "PATH=/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:${PATH}",
+  "test": "bash linux/scripts/tests/test-llvm-alternatives.sh",
+  "why": "Every source LLVM utility must outrank distro aliases while GNU keeps its priority."
+ },
+ {
+  "id": "probe.native-llvm-copied-probe",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "COPY --chmod=755 linux/scripts/06-packaging/probe-compiler-defaults.py \\\n                 linux/scripts/06-packaging/smoke-common.sh",
+  "replace": "COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh",
+  "test": "bash linux/scripts/tests/test-llvm-alternatives.sh",
+  "why": "The baked smoke must carry the exact native-selection probe it invokes."
+ },
+ {
+  "id": "probe.native-llvm-smoke-call",
+  "target": "linux/scripts/06-packaging/smoke-toolchain.sh",
+  "find": "  check_native_llvm_tools\n  check_rust",
+  "replace": "  :\n  check_rust",
+  "test": "bash linux/scripts/tests/test-llvm-alternatives.sh",
+  "why": "The final compiler image must actually execute the broad native tool gate."
+ },
+ {
+  "id": "probe.native-llvm-smoke-status",
+  "target": "linux/scripts/06-packaging/smoke-toolchain.sh",
+  "find": "--native-llvm-prefix \"/opt/llvm-target-$(smoke_host_arch)\"; then",
+  "replace": "--native-llvm-prefix \"/opt/llvm-target-$(smoke_host_arch)\" || true; then",
+  "test": "bash linux/scripts/tests/test-llvm-alternatives.sh",
+  "why": "A failed native inventory must increment the outer smoke failure count."
+ },
+ {
+  "id": "probe.native-llvm-executables",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "path.is_file() and os.access(path, os.X_OK) and path.name not in GNU",
+  "replace": "path.is_file() and path.name not in GNU",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "Nonexecutable source data is not a PATH-selected command."
+ },
+ {
+  "id": "probe.native-llvm-gnu-aliases",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": " and path.name not in GNU:",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "GNU aliases retain their independent default-compiler policy."
+ },
+ {
+  "id": "probe.native-llvm-scope",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "or payload[\"prefix\"] != str(prefix.resolve()) or payload[\"expected\"] != expected):",
+  "replace": "or payload[\"prefix\"] != str(prefix.resolve()) or payload[\"expected\"] != expected) and False:",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "A receipt from another prefix or pin cannot qualify this source tree."
+ },
+ {
+  "id": "probe.native-llvm-required-tools",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "if not required.issubset(names) or len(names) != len(set(names)):",
+  "replace": "if len(names) != len(set(names)):",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "A missing required compiler, linker or tablegen must fail the inventory."
+ },
+ {
+  "id": "probe.native-llvm-unique-tools",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "if not required.issubset(names) or len(names) != len(set(names)):",
+  "replace": "if not required.issubset(names):",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "Duplicated tool rows cannot manufacture a complete inventory."
+ },
+ {
+  "id": "probe.native-llvm-owned-source",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "not Path(row[\"source\"]).is_relative_to(prefix.resolve())",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "An escaped source symlink cannot make a matching distro path valid."
+ },
+ {
+  "id": "probe.native-llvm-selected-source",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "or row[\"selected\"] != row[\"source\"]):",
+  "replace": "or False):",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "Missing or distro-selected utilities must fail even when all source files exist."
+ },
+ {
+  "id": "probe.native-llvm-config-pin",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "    if version != expected:\n        raise ValueError(f\"native llvm-config",
+  "replace": "    if False:\n        raise ValueError(f\"native llvm-config",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "The default llvm-config must report the full selected source patch."
+ },
+ {
+  "id": "probe.native-llvm-config-status",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "    version = output(payload[\"version\"])",
+  "replace": "    version = str(payload[\"version\"][\"stdout\"]).strip()",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "A failed llvm-config cannot pass by printing the expected version."
+ },
+ {
+  "id": "probe.native-llvm-mode-scope",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "if args.gcc_version or not args.native_llvm_prefix.is_absolute():",
+  "replace": "if not args.native_llvm_prefix.is_absolute():",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "A native LLVM-only receipt cannot silently accept the GNU-mode pin."
  }
 ]

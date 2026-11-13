@@ -7,7 +7,10 @@ import io
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
+from collections.abc import Generator
+from pathlib import Path
 from types import ModuleType
 from typing import cast
 from unittest.mock import patch
@@ -33,6 +36,24 @@ def payload() -> dict:
         tools[name] = {"binary": "/fixture/" + name, "resolved_binary": "/fixture/" + name,
                        "version": response("clang version 23.1.5\nInstalledDir: /fixture/llvm-23.1.5/bin\n")}
     return {"schema_version": 1, "expected": EXPECTED, "host": {"system": "Linux", "machine": "x86_64"}, "tools": tools}
+
+
+NATIVE_TOOLS = ("clang", "clang++", "llvm-config", "llvm-ar", "llvm-ranlib",
+                "llvm-tblgen", "clang-tblgen", "lld", "ld.lld")
+
+
+@contextlib.contextmanager
+def native_fixture() -> Generator[Path]:
+    with tempfile.TemporaryDirectory() as temporary:
+        prefix = Path(temporary) / "source LLVM"
+        (prefix / "bin").mkdir(parents=True)
+        for name in (*NATIVE_TOOLS, "cc", "notes"):
+            path = prefix / "bin" / name
+            path.write_text("fixture")
+            path.chmod(0o644 if name == "notes" else 0o755)
+        with (patch.object(g.shutil, "which", side_effect=lambda name: str(prefix / "bin" / name)),
+              patch.object(g, "command", return_value=response("23.1.5\n"))):
+            yield prefix
 
 
 class CompilerDefaultsTests(unittest.TestCase):
@@ -164,6 +185,85 @@ class CompilerDefaultsTests(unittest.TestCase):
         for value in ("23.1", "v23.1.5", "23.1.5-rc1"):
             with self.subTest(value=value), self.assertRaises(argparse.ArgumentTypeError):
                 g.pin(value)
+
+
+class NativeLlvmTests(unittest.TestCase):
+    def test_every_executable_source_tool_wins_and_gnu_aliases_are_excluded(self) -> None:
+        with native_fixture() as prefix:
+            record = g.collect_native_llvm(prefix, "23.1.5")
+            facts = g.validate_native_llvm(record, prefix, "23.1.5")
+            self.assertEqual({"native_prefix": str(prefix), "native_tool_count": 9, "llvm_config_version": "23.1.5"}, facts)
+            self.assertEqual(set(NATIVE_TOOLS), {row["name"] for row in record["tools"]})
+            for row in record["tools"]:
+                self.assertEqual(str(prefix / "bin" / row["name"]), row["source"])
+                self.assertEqual(row["source"], row["selected"])
+            g.command.assert_called_once_with("llvm-config", ["--version"])
+
+    def test_any_missing_or_distro_selected_tool_fails(self) -> None:
+        with native_fixture() as prefix:
+            for name in NATIVE_TOOLS:
+                for selected in (None, "/usr/lib/llvm-23/bin/" + name):
+                    record = g.collect_native_llvm(prefix, "23.1.5")
+                    row = next(row for row in record["tools"] if row["name"] == name)
+                    row["selected"] = selected
+                    with self.subTest(name=name, selected=selected), self.assertRaises(ValueError):
+                        g.validate_native_llvm(record, prefix, "23.1.5")
+
+    def test_source_symlinks_cannot_escape_the_owning_prefix(self) -> None:
+        with native_fixture() as prefix:
+            record = g.collect_native_llvm(prefix, "23.1.5")
+            record["tools"][0].update(source="/usr/lib/llvm-23/bin/clang", selected="/usr/lib/llvm-23/bin/clang")
+            with self.assertRaises(ValueError):
+                g.validate_native_llvm(record, prefix, "23.1.5")
+
+    def test_required_inventory_and_unique_names_are_mandatory(self) -> None:
+        with native_fixture() as prefix:
+            for name in NATIVE_TOOLS:
+                record = g.collect_native_llvm(prefix, "23.1.5")
+                record["tools"] = [row for row in record["tools"] if row["name"] != name]
+                with self.subTest(missing=name), self.assertRaises(ValueError):
+                    g.validate_native_llvm(record, prefix, "23.1.5")
+            record = g.collect_native_llvm(prefix, "23.1.5")
+            record["tools"].append(record["tools"][0])
+            with self.assertRaises(ValueError):
+                g.validate_native_llvm(record, prefix, "23.1.5")
+
+    def test_native_scope_and_full_config_pin_are_required(self) -> None:
+        with native_fixture() as prefix:
+            for key, value in (("schema_version", True), ("schema_version", 2),
+                               ("prefix", str(prefix / "other")), ("expected", "23.1.6")):
+                record = g.collect_native_llvm(prefix, "23.1.5")
+                record[key] = value
+                with self.subTest(key=key), self.assertRaises(ValueError):
+                    g.validate_native_llvm(record, prefix, "23.1.5")
+            for version in ("23.1.6", "23.1.50", "23.1.5-rc1", ""):
+                record = g.collect_native_llvm(prefix, "23.1.5")
+                record["version"]["stdout"] = version
+                with self.subTest(version=version), self.assertRaises(ValueError):
+                    g.validate_native_llvm(record, prefix, "23.1.5")
+
+    def test_native_cli_retains_failed_child_and_separate_scope(self) -> None:
+        with native_fixture() as prefix:
+            for status in (0, 47):
+                with (patch.object(g, "command", return_value={**response("23.1.5"), "returncode": status}),
+                      patch.object(sys, "argv", ["probe", "--llvm-version", "23.1.5", "--native-llvm-prefix", str(prefix)]),
+                      contextlib.redirect_stdout(io.StringIO()) as buffer):
+                    self.assertEqual(0 if status == 0 else 1, g.main())
+                result = json.loads(buffer.getvalue())
+                self.assertEqual(status, result["version"]["returncode"])
+                if status == 0:
+                    self.assertEqual("passed-native-llvm-tool-selection-only", result["status"])
+                    self.assertEqual(9, result["facts"]["native_tool_count"])
+                else:
+                    self.assertEqual("failed", result["status"])
+
+    def test_native_cli_rejects_mixed_relative_or_missing_modes(self) -> None:
+        for args in (["--llvm-version", "23.1.5"], ["--llvm-version", "23.1.5", "--native-llvm-prefix", "relative"],
+                     ["--llvm-version", "23.1.5", "--gcc-version", "16.2.0", "--native-llvm-prefix", "/fixture"]):
+            with (self.subTest(args=args), patch.object(sys, "argv", ["probe", *args]),
+                  contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error):
+                g.main()
+            self.assertEqual(2, error.exception.code)
 
 
 if __name__ == "__main__":

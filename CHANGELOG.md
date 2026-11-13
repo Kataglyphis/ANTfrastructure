@@ -15,6 +15,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — prefer every native source LLVM tool
+
+- The corrected compiler image passes the six ordinary compiler defaults, but broader inspection finds 153 of 157 source tools elsewhere on PATH; default `llvm-config` still reports distro 23.1.6 against source 23.1.5. Preserve that narrower pass and the failed SDK admission.
+- Put the native LLVM bin directory behind Python and GNU after the expensive source builds. Carry the permanent probe in the compiler bundle and require every executable source tool to win PATH, a complete unique core inventory and the exact successful `llvm-config` pin.
+- Keep this native tool-selection mode separate from the amd64 GNU default-ISA probe. Regression fixtures do not prove linked library versions, rebuilt-image admission or SDK/backend/GPU acceptance.
+
 ## 2026-11-13 — select the pinned native LLVM tree
 
 - Source commit `b7fab2ed` passes 297 Python methods, all 75 affected mutations (20 new), all 26 normal quality groups and 16 normal-hook samples. An actual digest-bound selection replay proves both Clang aliases at 23.1.5 and all four GNU aliases at 16.2.0/v3/generic. The canonical rebuild reuses both expensive GNU/LLVM RUNs; final image qualification and the newer 5,844-mutation preflight remain open.
