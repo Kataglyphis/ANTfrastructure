@@ -246,6 +246,35 @@ stage seconds too (hub #184).
 > CUDA TUs (FlashAttention, MoE kernels) use **more than the ~4 GB/job estimate**, so
 > do not shrink the reserve without watching `docker stats` + host free RAM.
 
+## TVM-FFI wheel versions in tagless checkouts
+
+The Windows TVM source builder uses `Get-TvmFfiSourceVersion` for native and
+cross wheels: normalize the vendored submodule's nearest release tag, or use
+TVM's `apache-tvm-ffi>=` bound when tags are unavailable. The native GIL install
+and free-threaded build each set only
+`SETUPTOOLS_SCM_PRETEND_VERSION_FOR_APACHE_TVM_FFI` for that call. The shared
+process-environment helper restores a previous value, including after failure;
+TVM's separate SCM version remains untouched.
+
+The `6235d8b4` ROCm producer exposed the defect on 2026-11-13: the exact pinned
+FFI commit `daf594da8e6950fdc02ae35fcf4e0ab2e59a4979`, which upstream tags
+[`v0.1.14-post0`](https://github.com/apache/tvm-ffi/tree/v0.1.14-post0), built as
+`0.1.dev1+gdaf594da8` without local tags. TVM imported, but pip still reported
+that version below `apache-tvm-ffi>=0.1.14.post0`. This correction changes the
+metadata version, not the source pin or ABI. The actual pinned SCM provider in
+an isolated tagless checkout reproduces both the bad default and the scoped
+`0.1.14.post0` result.
+
+After each native build, `Assert-TvmFfiPackageVersion` reads the real installed
+GIL distribution or the saved twin archive with `importlib.metadata`. Missing,
+multiple, foreign or differently versioned metadata fails. A legitimately
+unselected twin retains the existing skip policy. The gate proves the selected
+metadata version; it does not resolve all dependencies, prove ABI compatibility,
+run the module or demonstrate GPU inference. Existing import, architecture and
+hardware gates remain separate. Regression and mutation checks use real
+installed metadata and ZIPs without compiling TVM; corrected product images
+still require their own build receipts.
+
 ## The Windows cache, tier by tier
 
 Moved out of `AGENTS.md` on 2026-09-15 with only this heading and the list marker

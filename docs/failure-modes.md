@@ -2976,6 +2976,15 @@ class 2, the `printf | grep -q` form).
 first export early and then writes 200 000 lines; the recipes `onnx-ep-amdgpu.exports-grep-reads-whole-table`
 and `onnx-ep-tensorrt.verify-exports-grep-reads-whole-table` prove the stand-in bites.
 
+### TVM imports but pip reports apache-tvm-ffi 0.1.dev1 below its requirement
+
+A tagless vendored checkout can make setuptools-scm label the pinned release as
+a development version. On Windows, use the shared FFI source-version selector
+and the distribution-specific SCM override for both the GIL install and twin
+build. Do not substitute a PyPI binary or merely suppress the warning. Require
+the installed/archive metadata gate as well as the existing imports.
+[Details and proof limits](windows-build-resources.md#tvm-ffi-wheel-versions-in-tagless-checkouts).
+
 ## The docs lock check asks for setuptools
 
 **Symptom.** `docs/uv.lock is missing or stale`, right after `Failed to build sphinx-kataglyphis-theme`,

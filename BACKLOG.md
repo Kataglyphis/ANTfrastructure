@@ -2228,8 +2228,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
   and Python CPU gates, ROCm code-object generation and both IREE GIL-disabled
   imports pass, but the image export fails on import/disk-full retries.
   The extracted multi-platform QNN SDK was still in that layer. Its required
-  in-layer scrub now has regression and mutation coverage; real corrected
-  image export, final-source CI and device acceptance remain open.
+  in-layer scrub now has regression and mutation coverage. The `6235d8b4`
+  retry actually exports TVM/IREE with 9,995 cumulative C/C++ hits and zero
+  misses/cache errors/compile failures, then stops before merge at 30.8/45 GiB.
+  Its native TVM-FFI metadata is incorrectly labelled `0.1.dev1`; the scoped
+  version correction and real metadata gate need new product-build receipts.
+  Final-source CI, all complete lanes and device acceptance remain open.
   The full `93019e36` NVIDIA retry records 1,656 C/C++ hits but rejects all 605 CUDA calls on the separated `--std c++20` value. The working repair joins that option without changing C++20, warnings or architectures; a local actual-argv replay now records typed CUDA/PTX/CUBIN/device-code hits. The complete plugin and remote-cache repeat remain open.
   The later `6737933a` ONNX pass compiles and stages the CUDA plugin, with 299 CUDA and 616 CUBIN hits, zero non-cacheable calls and zero cache/compile errors. Both cache levels report 3,733 writes without failure. Its full product run then stops at the protobuf comment defect; a normal full retry and forced CUDA repeat are still required. The [resource page](docs/windows-build-resources.md#persistent-compile-cache-sccache) separates each stage and the retained raw-counter limits.
       Done 2026-11-06: the `cuda_llm` exemption is gone (CHANGELOG). The nvidia chain of 2026-11-06 compiled ORT's CUDA RUN through sccache, MoE kernels included: 4937 compilations, 0 failures, 4330 WebDAV writes; 1663 hits (25 %) on a freshly rebuilt toolchain. `Test-CudaCache.ps1` passed on that toolchain (4 misses, then 4 hits). The warm reruns of 2026-11-07 hit: ORT's CUDA RUN 5993 hits, 0 misses (PTX, CUBIN and nvcc 100 %, 30:26 against 2:00:39 cold), OpenCV's 3355 hits, 1 miss. Still open: 289 failed S3 writes in the cold RUN.

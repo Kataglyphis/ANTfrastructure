@@ -242,6 +242,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows formatting preserves distinct C/C++ fallback and tracked-only Dart policies; copied source-build suites carry their retry and media wiring fixture companions.
    Repository refresh shares best-effort fetches; callers retain checkout failure policy. Linux parser destination maps preserve raw values and consumed-argument counts.
    Object smokes share compile/cleanup lifecycle while retaining caller ELF policies; allocation or cleanup failure cannot pass.
+   Windows TVM-FFI builds share the cross-lane version selector, scope the SCM override to that distribution and verify installed GIL and saved twin metadata; restore the environment on failure.
    Host probing preserves target/build precedence and failed/empty probe behavior; shared runtime transports retain Python guards and caller sentinel verdicts. TVM codegen skips only a missing import; unexpected initialization errors fail the smoke.
    Flutter browser smokes record Playwright failures and let unexpected Python errors propagate, so an implementation bug cannot report a green run.
    Base, toolchain and required-platform entry points carry `module-bootstrap.sh` in copied and mounted closures; keep the per-file mounts narrow.

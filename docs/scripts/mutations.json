@@ -32037,7 +32037,7 @@
   "target": "windows/scripts/build/Build-TvmFromSource.ps1",
   "find": "    $tvmLlvmTargetsBuilt = $null",
   "replace": "    $tvmLlvmTargetsUnset = $null",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmNullReturn.Tests.ps1 -ResultFile logs/code-quality/tvm-llvm-targets-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.IreeTvmNullReturn.Tests.ps1 -ResultFile logs/code-quality/tvm-llvm-targets-mutation.json",
   "why": "off the rocm lane the variable is never set, and strict mode stopped the amd64 chain's TVM build on its return"
  },
  {
@@ -32269,7 +32269,7 @@
   "target": "windows/scripts/build/Build-TvmFromSource.ps1",
   "find": "-LogFile $llvmBuildLog -Install -InstallConfig 'Release' | Out-Host",
   "replace": "-LogFile $llvmBuildLog -Install -InstallConfig 'Release'",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.NinjaReturnLeak.Tests.ps1 -ResultFile logs/code-quality/tvm-minimal-llvm-ninja.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.NinjaReturnLeak.Tests.ps1 -ResultFile logs/code-quality/tvm-minimal-llvm-ninja.json",
   "why": "the ROCm TVM branch returned ninja's whole log as its llvm-config path, and cmd.exe refused the resulting command line"
  },
  {
@@ -38359,5 +38359,93 @@
   "replace": "            Write-Verbose 'mutant: SDK removal unchecked'",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.Scratch.Tests.ps1 -ResultFile logs/code-quality/qnn-sdk-scratch-mutation.json",
   "why": "a no-op removal must not report a successful scrub"
+ },
+ {
+  "id": "wheels-source.tvm-ffi-specific-scm",
+  "target": "windows/scripts/modules/WindowsTvm.Common.psm1",
+  "find": "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_APACHE_TVM_FFI = $ffiVersion",
+  "replace": "SETUPTOOLS_SCM_PRETEND_VERSION = $ffiVersion",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TvmFfiVersion.Tests.ps1 -ResultFile logs/test-results/tvm-ffi-version-mutation.json",
+  "why": "The release override must target FFI without changing the TVM/global override."
+ },
+ {
+  "id": "wheels-source.tvm-ffi-selected-scm",
+  "target": "windows/scripts/modules/WindowsTvm.Common.psm1",
+  "find": "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_APACHE_TVM_FFI = $ffiVersion",
+  "replace": "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_APACHE_TVM_FFI = '0.1.dev1'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TvmFfiVersion.Tests.ps1 -ResultFile logs/test-results/tvm-ffi-version-mutation.json",
+  "why": "Both callbacks must inherit the selected release version."
+ },
+ {
+  "id": "wheels-source.tvm-ffi-metadata-version",
+  "target": "windows/scripts/modules/WindowsTvm.Common.psm1",
+  "find": "if version != expected:",
+  "replace": "if False:",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TvmFfiVersion.Tests.ps1 -ResultFile logs/test-results/tvm-ffi-version-mutation.json",
+  "why": "Installed and archived development versions must be refused."
+ },
+ {
+  "id": "wheels-source.tvm-ffi-metadata-cardinality",
+  "target": "windows/scripts/modules/WindowsTvm.Common.psm1",
+  "find": "if len(distributions) != 1 or re.sub(r\"[-_.]+\", \"-\", distributions[0].metadata[\"Name\"]).lower() != \"apache-tvm-ffi\":",
+  "replace": "if False:",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TvmFfiVersion.Tests.ps1 -ResultFile logs/test-results/tvm-ffi-version-mutation.json",
+  "why": "Foreign or multiple distributions cannot satisfy the FFI metadata gate."
+ },
+ {
+  "id": "wheels-source.tvm-ffi-validate-installed",
+  "target": "windows/scripts/modules/WindowsTvm.Common.psm1",
+  "find": "if (-not $Wheel -or $buildResult) {",
+  "replace": "if ($Wheel -and $buildResult) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TvmFfiVersion.Tests.ps1 -ResultFile logs/test-results/tvm-ffi-version-mutation.json",
+  "why": "The GIL in-place install requires actual metadata validation."
+ },
+ {
+  "id": "wheels-source.tvm-ffi-validate-twin",
+  "target": "windows/scripts/modules/WindowsTvm.Common.psm1",
+  "find": "if (-not $Wheel -or $buildResult) {",
+  "replace": "if (-not $Wheel) {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TvmFfiVersion.Tests.ps1 -ResultFile logs/test-results/tvm-ffi-version-mutation.json",
+  "why": "An actually built twin needs saved archive metadata validation."
+ },
+ {
+  "id": "wheels-source.tvm-ffi-failed-describe",
+  "target": "windows/scripts/modules/WindowsTvm.Common.psm1",
+  "find": "$describe = if ($tag.ExitCode -eq 0) { $tag.Text } else { '' }",
+  "replace": "$describe = if ($true) { $tag.Text } else { '' }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TvmFfiVersion.Tests.ps1 -ResultFile logs/test-results/tvm-ffi-version-mutation.json",
+  "why": "A failed git probe must not provide a plausible but invalid release tag."
+ },
+ {
+  "id": "wheels-source.tvm-ffi-required-bound",
+  "target": "windows/scripts/modules/WindowsTvm.Common.psm1",
+  "find": "Get-VendoredTvmFfiVersion -DescribeOutput $describe -TvmPyprojectText $pyproject",
+  "replace": "Get-VendoredTvmFfiVersion -DescribeOutput $describe -TvmPyprojectText ''",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TvmFfiVersion.Tests.ps1 -ResultFile logs/test-results/tvm-ffi-version-mutation.json",
+  "why": "A tagless checkout must use TVM source dependency metadata."
+ },
+ {
+  "id": "wheels-source.tvm-ffi-required-check",
+  "target": "windows/scripts/modules/WindowsTvm.Common.psm1",
+  "find": "Assert-TvmFfiPackageVersion -Python $Python -ExpectedVersion $ffiVersion -WheelPath $wheelPath",
+  "replace": "Write-Host 'unchecked metadata'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TvmFfiVersion.Tests.ps1 -ResultFile logs/test-results/tvm-ffi-version-mutation.json",
+  "why": "Successful callbacks must still pass the required metadata gate."
+ },
+ {
+  "id": "wheels-source.tvm-ffi-cross-selector",
+  "target": "windows/scripts/build/Build-TvmFromSource.ps1",
+  "find": "$ffiVersion = Get-TvmFfiSourceVersion -SourceDir $SourceDir",
+  "replace": "$ffiVersion = '0.1.dev1'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TvmFfiVersion.Tests.ps1 -ResultFile logs/test-results/tvm-ffi-version-mutation.json",
+  "why": "Cross and native version selection must stay shared."
+ },
+ {
+  "id": "wheels-source.tvm-ffi-twin-scope",
+  "target": "windows/scripts/build/Build-TvmFromSource.ps1",
+  "find": "Invoke-TvmFfiPythonBuild -Python $py -SourceDir $SourceDir -Wheel -Build {",
+  "replace": "Invoke-TvmFfiPythonBuild -Python $py -SourceDir $SourceDir -Build {",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TvmFfiVersion.Tests.ps1 -ResultFile logs/test-results/tvm-ffi-version-mutation.json",
+  "why": "The twin requires archive validation rather than rechecking the installed GIL distribution."
  }
 ]
