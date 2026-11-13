@@ -6,6 +6,13 @@ set -euo pipefail
 # shellcheck source=media-payloads.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/media-payloads.sh"
 
+# shellcheck source=llvm-loader-path.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/llvm-loader-path.sh"
+declare -F publish_llvm_target_ld_path >/dev/null || {
+  printf 'ERROR: copy-media-payloads requires publish_llvm_target_ld_path\n' >&2
+  exit 1
+}
+
 SRCPREFIX="${SRCPREFIX:-}"
 
 _payload_logger="$(dirname "${BASH_SOURCE[0]}")/log-bootstrap.sh"
@@ -251,11 +258,6 @@ publish_cuda_ld_path() {
 }
 
 
-# libtvm_compiler.so's libLLVM resolves only through this. See docs/artifact-copy-completeness.md § The llvm-target prefix fills what it needs, and nothing else
-publish_llvm_target_ld_path() {
-  printf '/usr/local/llvm-target/lib\n' > /etc/ld.so.conf.d/000-llvm-target.conf
-  ldconfig
-}
 
 main() {
   copy_media_payloads "${1:-}"

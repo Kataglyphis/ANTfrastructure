@@ -15,6 +15,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — publish native LLVM loader priority
+
+- Read-only diagnostics show source Clang loading its own LLVM via RUNPATH while the default loader cache still prefers the distro's identical LLVM soname. Keep those separate findings.
+- Reuse one loader-path publisher for the native compiler's late `000-llvm-native.conf` and the package's existing `000-llvm-target.conf`. Keep original default paths, shell options and raw config/cache failures; carry the companion in isolated package copies.
+- Native probe schema 2 additionally requires valid shared-library names from `llvm-config`, existing source libraries and source-first default loader-cache winners. This is cache selection, not proof of SDK ABI or inference.
+
 ## 2026-11-13 — prefer every native source LLVM tool
 
 - Local source `c215635d` passes 304 Python methods, all 47 affected mutations (14 new), all 26 normal quality groups and 16 unchanged hook controls. The real original fails status 1; the explicit candidate PATH passes all 157 tools and keeps GNU defaults. The next canonical build remains gated on disk admission; no fresh-image or SDK acceptance is claimed.

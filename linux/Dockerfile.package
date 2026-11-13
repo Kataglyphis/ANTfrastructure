@@ -121,7 +121,7 @@ COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /usr/lo
 # docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
 COPY --link --from=artifact-source /opt/llvm-target /usr/local/llvm-target
 # Tolerant per-path copies: variant payloads such as onnxruntime-gpu may be absent.
-COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh linux/scripts/06-packaging/media-payloads.sh linux/scripts/lib/log-bootstrap.sh /tmp/
+COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh linux/scripts/06-packaging/llvm-loader-path.sh linux/scripts/06-packaging/media-payloads.sh linux/scripts/lib/log-bootstrap.sh /tmp/
 LABEL kataglyphis.step=media-payloads
 RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
     set -euo pipefail; \
@@ -129,7 +129,7 @@ RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
     ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" ENABLE_AMD="${ENABLE_AMD:-false}" \
       ENABLE_ROCM_ASAN="${ENABLE_ROCM_ASAN:-false}" ENABLE_DEEPSTREAM="${ENABLE_DEEPSTREAM:-false}" \
       ENABLE_TENSORRT="${ENABLE_TENSORRT:-false}" TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh; \
-    rm -f /tmp/copy-media-payloads.sh /tmp/media-payloads.sh /tmp/log-bootstrap.sh
+    rm -f /tmp/copy-media-payloads.sh /tmp/media-payloads.sh /tmp/log-bootstrap.sh /tmp/llvm-loader-path.sh
 
 FROM ${PACKAGE_BASE_STAGE} AS package
 

@@ -79,7 +79,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    `000-<name>.conf` into `/etc/ld.so.conf.d` (read in SORT order) and never rely on a purge,
    because another dependency pulls the distro copy back in. The soname-precedence gate enforces
    it on the SHIPPED bytes. Same rule for `PATH`, `PKG_CONFIG_PATH` and `PYTHONPATH`.
-   Native LLVM alternatives select the explicit source prefix; after Python setup, its executable tree wins PATH behind GNU. Incomplete tools, foreign selections and full-version mismatches fail.
+   Native LLVM alternatives select the explicit source prefix; after Python setup, its executable tree wins PATH behind GNU. Incomplete tools, foreign selections, full-version mismatches and default shared-LLVM loader-cache losses fail.
 6. **One-line comments, only the why**, in every repo of the family: § Comments: one line, only
    the why.
 7. **Quality exceptions must shrink.** Refactor the code to satisfy duplication, complexity and size
@@ -281,6 +281,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Shared mirror enumeration preserves source-file order and original shell-option behavior; artifact and image probes retain caller failure policies.
    ORT and GenAI provenance checks share hashing and chain-byte membership; keep their distinct archive and exemption policies.
    Windows media staging rejects foreign ORT, GenAI and DirectML DLLs before copying and checks staged bytes against the chain.
+   Copied `copy-media-payloads.sh` carries `llvm-loader-path.sh`; native compiler and package publication share its source-first conf and raw write/cache failures.
    Copy `compiler-cache-utils.sh` beside `common.sh`, cache modules and standalone cache probes and `media-payloads.sh` beside packaging copy/validation scripts; preserve narrow mounts.
    ROCm runtime paths keep source MIGraphX lib/lib64 before retained distro paths, follow a command-line ROCm symlink and exclude ASAN; discovery and ordering failures must precede any configuration replacement.
    GPU and runtime ROCm configuration share `publish_rocm_ld_path` from `media-payloads.sh`; keep the required source build, publication and ldconfig calls unconditional and preserve their raw failures.

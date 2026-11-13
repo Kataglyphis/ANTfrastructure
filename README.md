@@ -18,7 +18,7 @@
 
 [**Docs site**](https://containerization.jonasheinle.de)
 
-Prebuilt Linux and Windows Server Core images provide [pinned GCC and native LLVM tools](docs/cross-build-verification.md#native-compiler-selection), Vulkan, MSVC,
+Prebuilt Linux and Windows Server Core images provide [pinned GCC, LLVM tools and loader priority](docs/cross-build-verification.md#native-compiler-selection), Vulkan, MSVC,
 media and inference libraries, nginx, and an arm64 artifact bundle. The composite
 actions, reusable workflows, shell libraries and gates serve the family at `@develop`.
 

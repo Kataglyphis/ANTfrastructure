@@ -318,6 +318,7 @@ See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
 - [The torch stage fails with `CHAIN-WHEEL FAIL`](#the-torch-stage-fails-with-chain-wheel-fail)
 - [A build or smoke stops on an ONNX Runtime that is not the chain's](#a-build-or-smoke-stops-on-an-onnx-runtime-that-is-not-the-chains)
 - [The compiler stage selects distro Clang after building the pinned release](#the-compiler-stage-selects-distro-clang-after-building-the-pinned-release)
+- [Source Clang works but the default LLVM soname still selects the distro](#source-clang-works-but-the-default-llvm-soname-still-selects-the-distro)
 - [Native LLVM utilities remain on the distro after Clang selection is fixed](#native-llvm-utilities-remain-on-the-distro-after-clang-selection-is-fixed)
 - [The wrapper smoke fails `clang --version` after a partial rebuild](#the-wrapper-smoke-fails-clang---version-after-a-partial-rebuild)
 - [`fatal error: sanitizer/common_interface_defs.h: No such file or directory` on arm64/riscv64](#fatal-error-sanitizercommon_interface_defsh-no-such-file-or-directory-on-arm64riscv64)
@@ -1918,6 +1919,19 @@ the major/minor channel, hiding the wrong patch release.
 rebuild the compiler stage with the full-version smoke. Preserve the failed image;
 do not admit it as an SDK parent. The late selection fix reuses the expensive source
 layers. See [compiler selection and probe limits](cross-build-verification.md#native-compiler-selection).
+
+### Source Clang works but the default LLVM soname still selects the distro
+
+**Symptom.** `ldd` of the explicit source Clang uses its own LLVM through RUNPATH,
+but `ldconfig -p` lists the distro copy first for the same soname.
+
+**Cause.** Executable selection and per-binary RUNPATH did not publish the source
+library directory to the default loader cache.
+
+**Fix.** Use the shared loader publisher for the late `000-llvm-native.conf` and
+run the native schema-2 cache-priority gate. Keep the runtime package's existing
+`000-llvm-target.conf` publication and its required companion. Cache selection
+is separate from actual SDK linking and runtime acceptance.
 
 ### Native LLVM utilities remain on the distro after Clang selection is fixed
 

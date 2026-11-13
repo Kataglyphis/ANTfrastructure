@@ -82,7 +82,7 @@ copies = [shlex.split(line) for line in text.splitlines() if line.startswith('CO
 for source, destination in [('copy-media-payloads.sh', '/tmp/'), ('validate-compilers.sh', '/opt/scripts/packaging/')]:
     companions = {'linux/scripts/06-packaging/' + source, 'linux/scripts/06-packaging/media-payloads.sh'}
     if source == 'copy-media-payloads.sh':
-        companions.add('linux/scripts/lib/log-bootstrap.sh')
+        companions.update({'linux/scripts/lib/log-bootstrap.sh', 'linux/scripts/06-packaging/llvm-loader-path.sh'})
     assert any(row[-1] == destination and companions <= set(row) for row in copies), source
 assert any('target=/tmp/validate-compilers.sh' in line and 'target=/tmp/media-payloads.sh' in line for line in text.splitlines() if line.startswith('RUN ')), 'artifact-source validator bind mount'
 PY_CLOSURE

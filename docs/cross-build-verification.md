@@ -55,12 +55,26 @@ actual host architecture:
 python3 /opt/scripts/packaging/probe-compiler-defaults.py --llvm-version 23.1.5 --native-llvm-prefix /opt/llvm-target-amd64
 ```
 
-This mode requires a nonempty, unique inventory with the core compiler, archiver,
-tablegen and linker tools, refuses escaped source paths and checks the default
-`llvm-config`'s exact successful pin. GNU aliases use the separate amd64 mode
-below. Path selection and a version response do not prove linked library versions
-or SDK compilation.
+Native schema 2 requires a nonempty, unique inventory with the core compiler,
+archiver, tablegen and linker tools. It refuses escaped source paths and checks
+the default `llvm-config`'s exact successful pin. The shared names reported by
+`llvm-config --link-shared --libnames` must be valid, unique source files.
+Each file's successful `readelf -d` report must contain one valid ELF SONAME,
+which must win the default loader cache. A linker alias such as `libLLVM-23.so`
+can differ from the actual `libLLVM.so.23.1` SONAME. The raw cache report must
+substantiate its recorded winner. Nonzero or timed-out child reports fail.
 
+Source Clang's RUNPATH can already select its own LLVM while a generic soname
+lookup still picks the distro. The compiler therefore publishes
+`/opt/llvm-target-<host>/lib` through `000-llvm-native.conf` after the expensive
+builds and before the baked gate. The shared `llvm-loader-path.sh` also retains
+the runtime package's existing `/usr/local/llvm-target/lib` publication under
+`000-llvm-target.conf`; copied payload entries carry that companion.
+Write failures stop before `ldconfig` and cache-update failures retain their
+raw status even under conditional callers.
+
+GNU aliases use the separate amd64 mode below. Path/cache selection and version
+responses do not prove linked bytes, SDK ABI or inference.
 
 For an amd64 image, run the reusable installed-defaults probe through the normal
 image entrypoint with explicit pins from the producer's `versions.env`:

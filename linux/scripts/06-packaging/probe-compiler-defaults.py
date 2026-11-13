@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check amd64 compiler defaults or native LLVM tool selection; no linked-library, cross-SDK, ELF ISA or consumer acceptance proof."""
+"""Check compiler defaults, native LLVM paths and loader-cache selection; no SDK ABI, ELF ISA or consumer acceptance proof."""
 from __future__ import annotations
 
 import argparse
@@ -110,6 +110,55 @@ def pin(value: str) -> str:
     return value
 
 
+def llvm_cache_winner(text: str, name: str) -> str | None:
+    match = re.search(rf"^\s*{re.escape(name)}\s+\([^)]+\)\s+=>\s+(.+)$", text, re.MULTILINE)
+    return str(Path(match[1]).resolve()) if match else None
+
+
+def parse_llvm_soname(text: str) -> str | None:
+    values = re.findall(r"\(SONAME\)\s+Library soname:\s*\[([^\]]+)\]", text)
+    return values[0] if len(values) == 1 else None
+
+
+def collect_native_libraries(prefix: Path) -> dict:
+    names = command("llvm-config", ["--link-shared", "--libnames"])
+    cache = command("ldconfig", ["-p"])
+    libraries = []
+    for name in names["stdout"].split():
+        path = prefix / "lib" / name
+        dynamic = command("readelf", ["-d", str(path)])
+        soname = parse_llvm_soname(dynamic["stdout"])
+        libraries.append({"name": name, "source": str(path.resolve()), "source_exists": path.is_file(),
+                          "dynamic": dynamic, "soname": soname,
+                          "cache_winner": llvm_cache_winner(cache["stdout"], soname) if soname else None})
+    return {"shared_names": names, "loader_cache": cache, "libraries": libraries}
+
+
+def native_library_soname(row: dict) -> str:
+    soname = parse_llvm_soname(output(row["dynamic"]))
+    if (not soname or Path(soname).name != soname or not soname.startswith("libLLVM") or ".so" not in soname
+            or row["soname"] != soname):
+        raise ValueError("native LLVM ELF SONAME is invalid")
+    return soname
+
+
+def native_library_facts(payload: dict, prefix: Path) -> dict:
+    names = output(payload["shared_names"]).split()
+    if (not names or len(names) != len(set(names))
+            or any(Path(name).name != name or not name.startswith("libLLVM") or ".so" not in name for name in names)):
+        raise ValueError("native LLVM shared library names are invalid")
+    cache = output(payload["loader_cache"])
+    if [row["name"] for row in payload["libraries"]] != names:
+        raise ValueError("native LLVM library inventory differs")
+    sonames = []
+    for row in payload["libraries"]:
+        soname = native_library_soname(row)
+        if (row["source_exists"] is not True or not Path(row["source"]).is_relative_to(prefix.resolve())
+                or row["cache_winner"] != llvm_cache_winner(cache, soname) or row["cache_winner"] != row["source"]):
+            raise ValueError(f"native LLVM shared library loses default loader lookup: {row['name']}")
+        sonames.append(soname)
+    return {"native_library_sonames": sonames}
+
 
 def collect_native_llvm(prefix: Path, expected: str) -> dict:
     tools = []
@@ -118,12 +167,13 @@ def collect_native_llvm(prefix: Path, expected: str) -> dict:
             selected = shutil.which(path.name)
             tools.append({"name": path.name, "source": str(path.resolve()),
                           "selected": str(Path(selected).resolve()) if selected else None})
-    return {"schema_version": 1, "prefix": str(prefix.resolve()), "expected": expected,
-            "tools": tools, "version": command("llvm-config", ["--version"])}
+    shared = collect_native_libraries(prefix)
+    return {"schema_version": 2, "prefix": str(prefix.resolve()), "expected": expected,
+            "tools": tools, "version": command("llvm-config", ["--version"]), **shared}
 
 
 def validate_native_llvm(payload: dict, prefix: Path, expected: str) -> dict:
-    if (type(payload.get("schema_version")) is not int or payload["schema_version"] != 1
+    if (type(payload.get("schema_version")) is not int or payload["schema_version"] != 2
             or payload["prefix"] != str(prefix.resolve()) or payload["expected"] != expected):
         raise ValueError("native LLVM probe source expectations differ")
     required = {"clang", "clang++", "llvm-config", "llvm-ar", "llvm-ranlib",
@@ -138,7 +188,8 @@ def validate_native_llvm(payload: dict, prefix: Path, expected: str) -> dict:
     version = output(payload["version"])
     if version != expected:
         raise ValueError(f"native llvm-config version {version!r} differs from {expected}")
-    return {"native_prefix": str(prefix.resolve()), "native_tool_count": len(names), "llvm_config_version": version}
+    return {"native_prefix": str(prefix.resolve()), "native_tool_count": len(names), "llvm_config_version": version,
+            **native_library_facts(payload, prefix)}
 
 
 def main() -> int:
@@ -158,7 +209,7 @@ def main() -> int:
         if args.native_llvm_prefix:
             payload = collect_native_llvm(args.native_llvm_prefix, args.llvm_version)
             payload["facts"] = validate_native_llvm(payload, args.native_llvm_prefix, args.llvm_version)
-            payload["status"] = "passed-native-llvm-tool-selection-only"
+            payload["status"] = "passed-native-llvm-tool-and-loader-selection-only"
         else:
             payload = collect(expected)
             payload["facts"] = validate(payload, expected)

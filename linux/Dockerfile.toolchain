@@ -244,6 +244,7 @@ COPY --chmod=755 linux/scripts/02-toolchain/python/build_python.sh \
                  linux/scripts/02-toolchain/python/fix-staged-python-pc.sh \
                  /opt/scripts/python/
 COPY --chmod=755 linux/scripts/06-packaging/probe-compiler-defaults.py \
+                 linux/scripts/06-packaging/llvm-loader-path.sh \
                  linux/scripts/06-packaging/smoke-common.sh \
                  linux/scripts/06-packaging/smoke-toolchain.sh \
                  linux/scripts/06-packaging/smoke-cross-all-arches.sh \
@@ -257,7 +258,11 @@ RUN --mount=type=secret,id=asset_mirror,required=false set -euo pipefail; \
 
 # A broken compiler stage fails here, not hours later in a downstream build.
 LABEL kataglyphis.step=toolchain-smoke
+# hadolint shell=bash
 RUN --mount=type=secret,id=asset_mirror,required=false set -euo pipefail; \
+    source /opt/scripts/packaging/llvm-loader-path.sh; \
+    declare -F publish_llvm_target_ld_path >/dev/null; \
+    publish_llvm_target_ld_path "/opt/llvm-target-${TARGETARCH}" /etc/ld.so.conf.d/000-llvm-native.conf; \
     bash /opt/scripts/packaging/smoke-toolchain.sh
 
 # sudo-rs mishandles --preserve-env*, so this pass-through strips it and runs the command.

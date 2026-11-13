@@ -4281,8 +4281,8 @@
  },
  {
   "id": "llvm-target.ld-path-published",
-  "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
-  "find": "  printf '/usr/local/llvm-target/lib\\n' > /etc/ld.so.conf.d/000-llvm-target.conf\n  ldconfig",
+  "target": "linux/scripts/06-packaging/llvm-loader-path.sh",
+  "find": "  printf '%s\\n' \"${prefix}/lib\" > \"${config}\" || return $?\n  ldconfig",
   "replace": "  :",
   "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
   "why": "libtvm_compiler.so's DT_NEEDED libLLVM.so.<ver> resolves through this conf and nothing else, so dropping it makes `import tvm` die in the shipped image"
@@ -4290,8 +4290,8 @@
  {
   "id": "llvm-target.no-package-stage-copy",
   "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
-  "find": "  ldconfig\n}",
-  "replace": "  ldconfig\n  cp -a \"${_lib}\" \"/usr/local/llvm-target/lib/${_soname}\"\n}",
+  "find": "  publish_llvm_target_ld_path\n}",
+  "replace": "  publish_llvm_target_ld_path\n  cp -a \"${_lib}\" \"/usr/local/llvm-target/lib/${_soname}\"\n}",
   "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
   "why": "the package stage held a second copy of the fill for months and its filename-only guard is what let the foreign arches take the builder's libs; one owner or the bug comes back"
  },
@@ -46800,8 +46800,8 @@
  {
   "id": "probe.native-llvm-copied-probe",
   "target": "linux/Dockerfile.toolchain",
-  "find": "COPY --chmod=755 linux/scripts/06-packaging/probe-compiler-defaults.py \\\n                 linux/scripts/06-packaging/smoke-common.sh",
-  "replace": "COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh",
+  "find": "COPY --chmod=755 linux/scripts/06-packaging/probe-compiler-defaults.py \\\n",
+  "replace": "COPY --chmod=755 ",
   "test": "bash linux/scripts/tests/test-llvm-alternatives.sh",
   "why": "The baked smoke must carry the exact native-selection probe it invokes."
  },
@@ -46864,8 +46864,8 @@
  {
   "id": "probe.native-llvm-owned-source",
   "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
-  "find": "not Path(row[\"source\"]).is_relative_to(prefix.resolve())",
-  "replace": "False",
+  "find": "not Path(row[\"source\"]).is_relative_to(prefix.resolve())\n                or row[\"selected\"] != row[\"source\"]",
+  "replace": "False\n                or row[\"selected\"] != row[\"source\"]",
   "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
   "why": "An escaped source symlink cannot make a matching distro path valid."
  },
@@ -46900,5 +46900,165 @@
   "replace": "if not args.native_llvm_prefix.is_absolute():",
   "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
   "why": "A native LLVM-only receipt cannot silently accept the GNU-mode pin."
+ },
+ {
+  "id": "probe.llvm-loader-write-status",
+  "target": "linux/scripts/06-packaging/llvm-loader-path.sh",
+  "find": " > \"${config}\" || return $?",
+  "replace": " > \"${config}\"",
+  "test": "bash linux/scripts/tests/test-llvm-loader-path.sh",
+  "why": "A failed conf write cannot proceed to a successful ldconfig under conditional callers."
+ },
+ {
+  "id": "probe.llvm-loader-cache-status",
+  "target": "linux/scripts/06-packaging/llvm-loader-path.sh",
+  "find": "  ldconfig",
+  "replace": "  ldconfig || true",
+  "test": "bash linux/scripts/tests/test-llvm-loader-path.sh",
+  "why": "A failed loader-cache update must retain its raw failure."
+ },
+ {
+  "id": "probe.llvm-loader-native-publish",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "    publish_llvm_target_ld_path \"/opt/llvm-target-${TARGETARCH}\" /etc/ld.so.conf.d/000-llvm-native.conf;",
+  "replace": "    :;",
+  "test": "bash linux/scripts/tests/test-llvm-loader-path.sh",
+  "why": "The native compiler must publish its library directory before the baked smoke."
+ },
+ {
+  "id": "probe.llvm-loader-native-companion",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "                 linux/scripts/06-packaging/llvm-loader-path.sh \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-llvm-loader-path.sh",
+  "why": "The late native loader publisher must be carried beside its caller."
+ },
+ {
+  "id": "probe.llvm-loader-package-companion",
+  "target": "linux/Dockerfile.package",
+  "find": "linux/scripts/06-packaging/copy-media-payloads.sh linux/scripts/06-packaging/llvm-loader-path.sh",
+  "replace": "linux/scripts/06-packaging/copy-media-payloads.sh",
+  "test": "bash linux/scripts/tests/test-llvm-loader-path.sh",
+  "why": "The isolated package payload entry imports the same shared publisher."
+ },
+ {
+  "id": "probe.llvm-loader-required-export",
+  "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+  "find": "declare -F publish_llvm_target_ld_path >/dev/null || {",
+  "replace": ": || {",
+  "test": "bash linux/scripts/tests/test-log-fallbacks.sh",
+  "why": "An empty required companion must fail before payload or logger use."
+ },
+ {
+  "id": "probe.llvm-loader-first-winner",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "    match = re.search(rf\"^\\s*{re.escape(name)}\\s+\\([^)]+\\)\\s+=>\\s+(.+)$\", text, re.MULTILINE)",
+  "replace": "    match = re.search(rf\"^\\s*{re.escape(name)}\\s+\\([^)]+\\)\\s+=>\\s+(.+)$\", chr(10).join(reversed(text.splitlines())), re.MULTILINE)",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "The first cache entry wins; a later source path cannot hide a distro-first lookup."
+ },
+ {
+  "id": "probe.llvm-loader-selection-verdict",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "or row[\"cache_winner\"] != row[\"source\"]):",
+  "replace": "or False):",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "A distro or missing loader-cache winner must fail native admission."
+ },
+ {
+  "id": "probe.llvm-loader-file-present",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "row[\"source_exists\"] is not True or",
+  "replace": "False or",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "A missing source library cannot qualify through a stale cache row."
+ },
+ {
+  "id": "probe.llvm-loader-owned-library",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "not Path(row[\"source\"]).is_relative_to(prefix.resolve())\n                or row[\"cache_winner\"]",
+  "replace": "False\n                or row[\"cache_winner\"]",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "Matching distro source/cache paths cannot stand in for the source prefix."
+ },
+ {
+  "id": "probe.llvm-loader-shared-names",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "    if (not names or len(names) != len(set(names))",
+  "replace": "    if (False or len(names) != len(set(names))",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "An empty shared-library list is a vacuous cache pass."
+ },
+ {
+  "id": "probe.llvm-loader-library-inventory",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "    if [row[\"name\"] for row in payload[\"libraries\"]] != names:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "The source-library inventory must match the reported shared names."
+ },
+ {
+  "id": "probe.llvm-loader-cache-raw-status",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "    cache = output(payload[\"loader_cache\"])",
+  "replace": "    cache = payload[\"loader_cache\"][\"stdout\"]",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "A failed ldconfig child cannot qualify a previously recorded winner."
+ },
+ {
+  "id": "probe.llvm-loader-shared-raw-status",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "    names = output(payload[\"shared_names\"]).split()",
+  "replace": "    names = payload[\"shared_names\"][\"stdout\"].split()",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "A failed shared-name child cannot qualify previously printed names."
+ },
+ {
+  "id": "probe.llvm-loader-gate-called",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "**native_library_facts(payload, prefix)",
+  "replace": "**{}",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "Native executable/version success must also invoke the shared-library gate."
+ },
+ {
+  "id": "probe.llvm-loader-dynamic-status",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "parse_llvm_soname(output(row[\"dynamic\"]))",
+  "replace": "parse_llvm_soname(row[\"dynamic\"][\"stdout\"])",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "Failed readelf output cannot qualify a stale ELF SONAME."
+ },
+ {
+  "id": "probe.llvm-loader-soname-used",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "llvm_cache_winner(cache[\"stdout\"], soname) if soname else None",
+  "replace": "llvm_cache_winner(cache[\"stdout\"], name) if soname else None",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "The ELF SONAME, rather than llvm-config linker alias, selects the cache entry."
+ },
+ {
+  "id": "probe.llvm-loader-unique-soname",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "return values[0] if len(values) == 1 else None",
+  "replace": "return values[0] if values else None",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "Ambiguous ELF SONAME output must fail instead of selecting its first entry."
+ },
+ {
+  "id": "probe.llvm-loader-soname-bound",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "or row[\"soname\"] != soname",
+  "replace": "or False",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "The recorded SONAME must match its raw ELF dynamic report."
+ },
+ {
+  "id": "probe.llvm-loader-cache-record",
+  "target": "linux/scripts/06-packaging/probe-compiler-defaults.py",
+  "find": "row[\"cache_winner\"] != llvm_cache_winner(cache, soname)",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
+  "why": "Raw loader-cache output must substantiate the recorded winning source path."
  }
 ]
