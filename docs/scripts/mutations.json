@@ -47060,5 +47060,69 @@
   "replace": "False",
   "test": "bash linux/scripts/tests/test-compiler-defaults.sh",
   "why": "Raw loader-cache output must substantiate the recorded winning source path."
+ },
+ {
+  "id": "llvm-target.selected-prefix-alias",
+  "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+  "find": "    ln -s \"${prefix}\" \"${prefix}-${arch}\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-llvm-target-aliases.sh",
+  "why": "Native SDK PATH, alternatives, loader entries and external CMake references still name the selected architecture prefix."
+ },
+ {
+  "id": "llvm-target.foreign-build-host-retained",
+  "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+  "find": "[ \"${entry}\" = \"${prefix}-${host_arch}\" ]",
+  "replace": "false",
+  "test": "bash linux/scripts/tests/test-llvm-target-aliases.sh",
+  "why": "Moving a foreign target must retain the native compiler and library tree used by the SDK builder."
+ },
+ {
+  "id": "llvm-target.unselected-prefix-cleanup",
+  "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+  "find": "        rm -rf \"${entry}\" || return $?",
+  "replace": "        :",
+  "test": "bash linux/scripts/tests/test-llvm-target-aliases.sh",
+  "why": "The native copied tree must become an alias and unused architecture prefixes must not survive materialization."
+ },
+ {
+  "id": "llvm-target.dangling-prefix-cleanup",
+  "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+  "find": "[ -e \"${entry}\" ] || [ -L \"${entry}\" ] || continue",
+  "replace": "[ -e \"${entry}\" ] || continue",
+  "test": "bash linux/scripts/tests/test-llvm-target-aliases.sh",
+  "why": "A dangling selected prefix must be removed before its valid replacement alias is created."
+ },
+ {
+  "id": "llvm-target.prefix-cleanup-raw-failure",
+  "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+  "find": "        rm -rf \"${entry}\" || return $?",
+  "replace": "        rm -rf \"${entry}\"",
+  "test": "bash linux/scripts/tests/test-llvm-target-aliases.sh",
+  "why": "Conditional callers must receive the original cleanup failure before any alias creation is attempted."
+ },
+ {
+  "id": "llvm-target.prefix-alias-raw-failure",
+  "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+  "find": "    ln -s \"${prefix}\" \"${prefix}-${arch}\"",
+  "replace": "    ln -s \"${prefix}\" \"${prefix}-${arch}\" || true",
+  "test": "bash linux/scripts/tests/test-llvm-target-aliases.sh",
+  "why": "A failed alias cannot pass the SDK materializer under an outer conditional call."
+ },
+ {
+  "id": "llvm-target.prefix-preservation-wired",
+  "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+  "find": "_llvm_target_preserve_prefixes /opt/llvm-target \"${_arch}\" \"${_host_arch}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-llvm-target-aliases.sh",
+  "why": "The SDK entry point must actually preserve prefixes after target materialization."
+ },
+ {
+  "id": "llvm-target.prefix-host-is-detected",
+  "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
+  "find": "local prefix=\"$1\" arch=\"$2\" host_arch=\"$3\" entry",
+  "replace": "local prefix=\"$1\" arch=\"$2\" host_arch=amd64 entry",
+  "test": "bash linux/scripts/tests/test-llvm-target-aliases.sh",
+  "why": "ARM64 and RISC-V builders require their own native trees rather than a literal amd64 retention rule."
  }
 ]

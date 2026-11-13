@@ -1920,6 +1920,21 @@ rebuild the compiler stage with the full-version smoke. Preserve the failed imag
 do not admit it as an SDK parent. The late selection fix reuses the expensive source
 layers. See [compiler selection and probe limits](cross-build-verification.md#native-compiler-selection).
 
+### SDK verification loses Clang after successful LLVM materialization
+
+**Symptom.** The real SDK NEEDED walk and Vulkan installation pass, then verification
+fails `Required tool is missing: clang`. The qualified parent compiler was correct.
+
+**Cause.** Materialization copied the native LLVM tree to `/opt/llvm-target` and
+deleted its architecture prefix, which PATH, alternatives and the native loader
+configuration still referenced. A correct generic tree alone cannot satisfy them.
+
+**Fix.** Restore the selected architecture name as an alias after materialization
+and retain the distinct native host tree when selecting a foreign target. Keep
+the parent qualification and failed SDK receipts separate; retry the normal SDK
+with the repaired script and unchanged verification. See [prefix ownership and
+fixture limits](artifact-copy-completeness.md#sdk-materialization-preserves-build-host-and-target-paths).
+
 ### Source Clang works but the default LLVM soname still selects the distro
 
 **Symptom.** `ldd` of the explicit source Clang uses its own LLVM through RUNPATH,

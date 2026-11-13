@@ -425,6 +425,28 @@ load-bearing and stays: `libtvm_compiler.so` carries a `DT_NEEDED` on
 `libLLVM.so.<ver>` that resolves through `/etc/ld.so.conf.d/000-llvm-target.conf`
 and nothing else, so dropping it makes `import tvm` die.
 
+### SDK materialization preserves build-host and target paths
+
+The compiler image publishes its native architecture prefix in PATH, alternatives
+and `000-llvm-native.conf`. On 2026-11-13 the ordinary amd64 SDK copied that tree
+to `/opt/llvm-target`, then deleted every architecture prefix. Its real verification
+failed `Required tool is missing: clang` despite the correct generic tree.
+
+After materialization, `_llvm_target_preserve_prefixes` restores the selected
+`/opt/llvm-target-<arch>` name as a symlink to the complete generic prefix. For a
+native target this replaces the redundant source tree. For a foreign target it
+retains the separate native host tree, so build commands never select foreign
+executables. Other architecture prefixes, including dangling links, are removed.
+Original selected-prefix CMake references therefore keep resolving too. A failed
+cleanup stops before alias creation; both cleanup and alias failures retain their
+raw status under conditional callers.
+
+`test-llvm-target-aliases.sh` exercises all three native architectures and foreign
+host/target pairs, exact fixture bytes, dangling links and failure statuses. Its
+mutation recipes prove these checks can fail. These filesystem fixtures do not
+prove real ELF loading, SDK ABI or GPU execution. Final packaging still carries
+only the selected generic tree; retaining build-host tools is an SDK concern.
+
 ### A copied prefix carries links that only resolved where it came from
 
 The demand-driven fill closes `DT_NEEDED`. It does not close the other half of the

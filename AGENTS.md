@@ -80,6 +80,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    because another dependency pulls the distro copy back in. The soname-precedence gate enforces
    it on the SHIPPED bytes. Same rule for `PATH`, `PKG_CONFIG_PATH` and `PYTHONPATH`.
    Native LLVM alternatives select the explicit source prefix; after Python setup, its executable tree wins PATH behind GNU. Incomplete tools, foreign selections, full-version mismatches and default shared-LLVM loader-cache losses fail.
+   SDK LLVM materialization restores the selected architecture prefix as an alias and retains the native host tree for foreign targets; existing PATH, alternatives, loader and CMake references must keep resolving.
 6. **One-line comments, only the why**, in every repo of the family: § Comments: one line, only
    the why.
 7. **Quality exceptions must shrink.** Refactor the code to satisfy duplication, complexity and size
@@ -1512,7 +1513,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
 - **Linux disk reclaim: `linux/host-config/prune-safe.sh`, NEVER `nerdctl builder prune -f`**, and
   `nerdctl system prune` / `nerdctl builder prune` are not steps on the list at all. The `-f`
   prune deletes `type==exec.cachemount` records (hours of compile time) together with the cheap
-  layer cache. The measurements, the mid-run lever ORDER and the third cache store
+  layer cache. Standing owner authorization (2026-11-13) permits agents to run this script when the canonical disk reserve is insufficient, without another confirmation. Measure first; use `PRUNE_KEEP_GB=120 PRUNE_DUP_CACHEMOUNTS=0` by default and retain the documented minimum of 100 GB during builds. Verify cachemount and required-image identities afterward and recheck the unchanged disk guard. This does not authorize other deletion or a recurring service. The measurements, the mid-run lever ORDER and the third cache store
   `prune-safe.sh` cannot reach:
   [`linux-host-setup.md` § B7](docs/linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches).
 

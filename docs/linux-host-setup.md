@@ -621,6 +621,15 @@ BuildKit's. `PRUNE_DUP_CACHEMOUNTS=1` removes the surplus records, and refuses
 while any build holds a record. Through wave 4:
 **12 invocations, ~1 TB reclaimed, 0 cachemount losses.**
 
+Standing owner authorization dated 2026-11-13 lets agents run this canonical
+script when a build fails its disk-reserve check, without asking again. Measure
+first and skip cleanup when the reserve already passes. Use
+`PRUNE_KEEP_GB=120 PRUNE_DUP_CACHEMOUNTS=0` by default; the documented mid-run
+minimum below remains available. Preserve and compare cachemount IDs and required
+local image identities before and after, then rerun the original disk guard.
+This authorization does not cover surplus-cachemount removal, arbitrary file or
+image deletion, or a recurring timer.
+
 **Mid-run, use `PRUNE_KEEP_GB>=100`.** Smaller budgets evict the in-flight
 lanes' fresh layers and buy recompile churn; the kata-buildcache media slugs,
 rewritten every round, are the better lever when the store runs lean.

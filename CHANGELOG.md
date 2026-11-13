@@ -15,6 +15,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — preserve LLVM paths during SDK materialization
+
+- The ordinary compiler now completes. Its actual image passes all 157 native tools, six compiler defaults and source LLVM loader selection in ordinary and SDK login shells; its native OCI matches the qualified manifest and original base ancestry.
+- The first ordinary amd64 SDK fails verification because materialization removes the native LLVM prefix from PATH and loader references. Preserve this failure; restore the selected prefix as an alias and retain the native host tree for foreign targets. Filesystem regressions pass 67 assertions and all eight new mutations bite; fresh SDK and final consumer acceptance remain open.
+- Record standing owner permission for canonical Linux layer cleanup when disk admission fails. Keep compiler cachemounts and required images, compare identities and recheck the original guard; default to 120 GB retained layers with duplicate removal disabled.
+
 ## 2026-11-13 — record compiler-cache evidence limits
 
 - Bind the original GNU counters to their preserved log and document the configured error-log path under the GNU RUN's tmpfs. Original log creation is unproved; any file written there would be temporary. A fresh query of the preserved compiler image finds no error log. The 186 cache errors remain unclassified; zero failed S3 writes is a separate result.
