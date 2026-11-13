@@ -68,6 +68,31 @@ export_image_to_oci_layout() {
   "${nerdctl_bin}" save "${tag}" | tar -xf - -C "${dest_dir}"
 }
 
+# The compiler receives only staged selected bytes; host source directories never become its build context.
+append_script_closure_context() {
+  local -n _sc_args="$1"
+  local _sc_dockerfile="$2" _sc_text _sc_profile _sc_helper _sc_root _sc_work
+  [ -f "${_sc_dockerfile}" ] || return 0
+  _sc_text="$(cat "${_sc_dockerfile}")" || return
+  case "${_sc_text}" in
+    *org.kataglyphis.build-script-closure*|*hub-scripts*) ;;
+    *) return 0 ;;
+  esac
+  _sc_helper="${_CM_DIR}/../stage-script-closure.py"
+  _sc_profile="$(python3 -B "${_sc_helper}" --profile-for "${_sc_dockerfile}")" || return
+  [ -n "${_sc_profile}" ] || return 0
+  if declare -F is_dry_run >/dev/null 2>&1 && is_dry_run; then
+    _sc_args+=(--build-context "hub-scripts=<staged-${_sc_profile}>")
+    return 0
+  fi
+  _sc_root="${LOG_DIR:-${_CM_DIR}/../../../logs/build-logs}/script-contexts"
+  mkdir -p "${_sc_root}" || return
+  _sc_work="$(mktemp -d "${_sc_root}/${_sc_profile}.XXXXXX")" || return
+  python3 -B "${_sc_helper}" "${_sc_profile}" --output "${_sc_work}/scripts" || return
+  _sc_args+=(--build-context "hub-scripts=${_sc_work}/scripts")
+  return 0
+}
+
 remove_local_image_if_exists() {
   local nerdctl_bin="$1"
   local image_ref="$2"

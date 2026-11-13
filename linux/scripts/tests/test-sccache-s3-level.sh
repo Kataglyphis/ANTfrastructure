@@ -184,20 +184,24 @@ t_assert_eq "" "$(PATH="${WORK}/bin:${PATH}" SCCACHE_SERVER_UDS="${WORK}/s.sock"
 # One pass over every Dockerfile RUN: "drain:" for a sccache RUN short of its secret, library or drain, "mounts:" for a compiling one without both caches.
 bad="$(PYTHONPATH="${TESTS_DIR}" python3 - "${LINUX_DIR}" <<'EOF'
 import glob, os, re, sys
-from dockerfile_runs import dockerfile_runs
+from pathlib import Path
+from dockerfile_runs import dockerfile_runs, dockerfile_script_map
 for f in sorted(glob.glob(os.path.join(sys.argv[1], "Dockerfile.*"))):
     for s, b in dockerfile_runs(f):
         where = "%s:%d" % (os.path.basename(f), s)
         # Dockerfile.base only initialises the caches; nothing there compiles.
         if "target=/var/cache/sccache" in b and not f.endswith("Dockerfile.base"):
             lib = "source=linux/scripts/01-core," in b or "source=linux/scripts/01-core/sccache-s3-level.sh," in b
+            if "--mount=type=bind,from=hub-scripts,source=/,target=/opt/scripts,ro" in b:
+                mapping = dockerfile_script_map(Path(sys.argv[1]).resolve().parent, Path(f).name)
+                lib = mapping.get("/opt/scripts/core/sccache-s3-level.sh") == "linux/scripts/01-core/sccache-s3-level.sh"
             if not (lib and "type=secret,id=sccache_s3,required=false" in b and b.rstrip().endswith("sccache-s3-level.sh drain")):
                 print("drain:" + where)
         if re.search(r"setup-dependencies\.sh\b[^;&|]*\b(vulkan|dockerfile-gcc|dockerfile-llvm|target-clang)\b", b):
             if not ("target=/var/cache/sccache" in b and "target=/var/cache/ccache" in b):
                 print("mounts:" + where)
 EOF
-)"
+)" || { printf 'Dockerfile cache scan failed\n' >&2; exit 1; }
 
 t_case "every Dockerfile RUN on the sccache mount carries the secret, the library, and ends in the drain"
 t_assert_eq "" "$(grep '^drain:' <<<"${bad}" || true)" "RUNs missing the secret mount, the library or the closing drain"

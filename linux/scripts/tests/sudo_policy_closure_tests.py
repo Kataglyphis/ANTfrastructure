@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS = ROOT / "linux/scripts"
 sys.path.insert(0, str(SCRIPTS))
+from dockerfile_runs import dockerfile_script_map
 from verify_dockerfile_env_order import instructions
 
 
@@ -74,15 +75,9 @@ class SudoPolicyClosureTests(unittest.TestCase):
             )
 
     def test_sdk_copies_the_current_companion(self: "SudoPolicyClosureTests") -> None:
-        selected = [
-            text
-            for _, text in instructions(ROOT / "linux/Dockerfile.sdk")
-            if text.startswith("COPY ")
-            and "linux/scripts/01-core/common.sh" in text.split()
-        ]
-        self.assertEqual(1, len(selected))
-        self.assertIn("linux/scripts/01-core/sudo-policy.sh", selected[0].split())
-        self.assertEqual("/opt/scripts/core/", selected[0].split()[-1])
+        selected = dockerfile_script_map(ROOT, "Dockerfile.sdk")
+        self.assertEqual(selected.get("/opt/scripts/core/common.sh"), "linux/scripts/01-core/common.sh")
+        self.assertEqual(selected.get("/opt/scripts/core/sudo-policy.sh"), "linux/scripts/01-core/sudo-policy.sh")
 
     def test_whole_core_copies_keep_the_existing_route(
         self: "SudoPolicyClosureTests",

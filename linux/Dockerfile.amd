@@ -5,10 +5,13 @@
 ARG BASE_IMAGE=local/kataglyphis:sdk
 FROM ${BASE_IMAGE}
 
+LABEL org.kataglyphis.build-script-closure=migraphx-image
+
 ARG TARGETARCH
 ARG LLVM_RELEASE=23.1.5
 ARG ROCM_VERSION=10.1
 ARG MIGRAPHX_VERSION=2.18.0
+ARG JOBS
 # ASAN-instrumented ROCm beside the normal one, off by default. See docs/linux-accelerator-images.md § ROCm
 ARG ENABLE_ROCM_ASAN=false
 ARG USE_FAST_UBUNTU_MIRROR=false
@@ -26,9 +29,29 @@ RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=
     ENABLE_ROCM_ASAN="${ENABLE_ROCM_ASAN}" ROCM_VERSION="${ROCM_VERSION}" MIGRAPHX_VERSION="${MIGRAPHX_VERSION}" \
       bash /tmp/core-scripts/setup-rocm-repo.sh
 
-ENV PATH="/usr/lib/llvm-${LLVM_RELEASE%%.*}/bin:/opt/rocm/bin:${PATH}" \
+
+# Compile the corrected backend with the shared cache and original source/notice contracts.
+LABEL kataglyphis.step=migraphx-source
+RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=secret,id=sccache_s3,required=false \
+    --mount=type=bind,from=hub-scripts,source=/,target=/opt/scripts,ro \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH},sharing=locked \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH},sharing=locked \
+    --mount=type=cache,target=/var/cache/migraphx-source,id=migraphx-source-${TARGETARCH},sharing=locked \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH},sharing=locked \
+    set -euo pipefail; \
+    status=0; \
+    trap 'status=$?; if [ "${status}" -ne 0 ]; then bash /opt/scripts/core/sccache-s3-level.sh drain || true; fi; exit "${status}"' EXIT; \
+    bash /opt/scripts/03-media/build/migraphx/build-image.sh /tmp/migraphx-source-stack /var/cache/migraphx-source /opt/rocm; \
+    rm -r -- /tmp/migraphx-source-stack; \
+    bash /opt/scripts/core/sccache-s3-level.sh drain
+
+ENV PATH="/opt/rocm/migraphx/bin:/usr/lib/llvm-${LLVM_RELEASE%%.*}/bin:/opt/rocm/bin:${PATH}" \
     ROCM_HOME="/opt/rocm" \
-    MIGRAPHX_HOME="/opt/rocm"
+    MIGRAPHX_HOME="/opt/rocm/migraphx" \
+    PKG_CONFIG_PATH="/opt/rocm/migraphx/lib/pkgconfig:/opt/rocm/migraphx/lib64/pkgconfig:${PKG_CONFIG_PATH:-}" \
+    PYTHONPATH="/opt/rocm/migraphx/lib:${PYTHONPATH:-}" \
+    CMAKE_PREFIX_PATH="/opt/rocm/migraphx:${CMAKE_PREFIX_PATH:-}" \
+    LD_LIBRARY_PATH="/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib64:${LD_LIBRARY_PATH:-}"
 
 LABEL org.opencontainers.image.title="Kataglyphis AMD GPU" \
       org.opencontainers.image.description="AMD GPU (MIGraphX) acceleration layer for the Kataglyphis accelerator toolchain"

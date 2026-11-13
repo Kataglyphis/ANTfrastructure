@@ -9,6 +9,8 @@ import tempfile
 from collections.abc import Sequence
 from typing import Any
 
+from dockerfile_runs import dockerfile_script_map
+
 WORKER = r'''
 set -u
 root="$1" caller="$2" active="$3" enabled="$4" late="$5" after="$6" scope="$7" strict="$8" context="$9"
@@ -180,7 +182,10 @@ def cold_closures(docker_root: pathlib.Path) -> list[tuple[str, int, str, dict[s
     leaf = 'linux/scripts/01-core/cross-active-fallback.sh'
     for docker in ('Dockerfile.base', 'Dockerfile.toolchain', 'Dockerfile.sdk', 'Dockerfile.media'):
         for line, text in instructions(docker_root / docker):
-            mapping = instruction_mapping(text)
+            if docker == "Dockerfile.sdk" and text.startswith("COPY --from=sdk-core-scripts "):
+                mapping = dockerfile_script_map(docker_root.parent, docker)
+            else:
+                mapping = instruction_mapping(text)
             matching = [target for target, source in mapping.items() if source in entries]
             if not matching:
                 continue
@@ -210,9 +215,6 @@ def stage_closure(base: pathlib.Path, row: tuple[str, int, str, dict[str, str]],
             shutil.copytree(source_path, dest, dirs_exist_ok=True)
         else:
             dest.write_bytes(source_path.read_bytes())
-    if docker == 'Dockerfile.sdk':
-        for inherited in ('compiler-cache-utils.sh', 'versions.env', 'platform.sh'):
-            (entry.parent / inherited).write_bytes((core_sources / inherited).read_bytes())
     if entry.name == 'install-deps-preamble.sh':
         entry.write_text(entry.read_text().replace('/opt/scripts/core', str(stage / 'opt/scripts/core')))
     leaf = entry.parent / 'cross-active-fallback.sh'

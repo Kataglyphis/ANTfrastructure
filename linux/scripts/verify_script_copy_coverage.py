@@ -5,8 +5,10 @@ docs/cross-build-verification.md#failure-classes-from-build-history
 """
 from __future__ import annotations
 
+import json
 import re
 import sys
+from importlib import import_module
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -31,10 +33,10 @@ KNOWN_BASE_PROVIDED: dict[str, list[str]] = {
 }
 
 OPT = "/opt/scripts/"
-REF_RE = re.compile(r"/opt/scripts/[A-Za-z0-9._/-]+\.sh")
+REF_RE = re.compile(r"/opt/scripts/[A-Za-z0-9._/-]+\.sh(?![A-Za-z0-9._/-])")
 # --mount=type=bind,source=linux/scripts/...,target=/opt/scripts/...[,ro]
 MOUNT_RE = re.compile(r"--mount=type=bind,[^ ]*")
-KV_RE = re.compile(r"(source|target)=([^,\s]+)")
+KV_RE = re.compile(r"(from|source|target)=([^,\s]+)")
 
 
 def read(path: Path) -> str:
@@ -76,9 +78,9 @@ def _expand_var_dirs(src: str) -> list[Path]:
     return [p for p in REPO_ROOT.glob(glob_rel)]
 
 
-def _add_provision(provided: dict[str, Path], src: str, dest: str) -> None:
+def _add_provision(provided: dict[str, Path], src: str, dest: str, prefix: str = OPT, pattern: str = "*.sh") -> None:
     """Record `src` as provided at `dest`; directories expand to every *.sh, ${VAR} is a wildcard."""
-    if OPT not in dest or not src.startswith("linux/scripts/"):
+    if prefix not in dest or not (src == "linux/scripts" or src.startswith("linux/scripts/")):
         return
     for src_path in _expand_var_dirs(src):
         # Substitute this src's ${VAR} match back into dest.
@@ -88,23 +90,83 @@ def _add_provision(provided: dict[str, Path], src: str, dest: str) -> None:
         if src.endswith("/") or src_path.is_dir():
             if not src_path.is_dir():
                 continue
-            for f in src_path.rglob("*.sh"):
+            for f in src_path.rglob(pattern):
+                if not f.is_file():
+                    continue
                 rel = f.relative_to(src_path).as_posix()
                 provided[this_dest.rstrip("/") + "/" + rel] = f
         else:
             provided[this_dest + src_path.name if this_dest.endswith("/") else this_dest] = src_path
 
 
+def declared_bundle(line: str, profile: str) -> dict[str, Path]:
+    """Require every selected input and transitive plan to be present in the producer's actual mounts."""
+    mounted: dict[str, Path] = {}
+    for value in MOUNT_RE.findall(line):
+        arguments = dict(KV_RE.findall(value))
+        if "source" in arguments and "target" in arguments and "from" not in arguments:
+            _add_provision(mounted, arguments["source"], arguments["target"], "/script-sources", "*")
+    read_profile = import_module("script_closure").read_profile
+    manifests: set[Path] = set()
+    selected = read_profile(SCRIPTS_SRC, profile, manifests=manifests)
+    required = {*selected.values(), *manifests, SCRIPTS_SRC / "stage-script-closure.py", SCRIPTS_SRC / "script_closure.py"}
+    if any(mounted.get("/script-sources/" + path.relative_to(SCRIPTS_SRC).as_posix()) != path for path in required):
+        return {}
+    return {"/script-bundle/" + target: source for target, source in selected.items()}
+
+
+def script_bundles(dockerfile: Path) -> dict[str, dict[str, Path]]:
+    """Recognize the canonical selected-file producer only at its declared named stage."""
+    bundles: dict[str, dict[str, Path]] = {}
+    text = read(dockerfile)
+    if "org.kataglyphis.build-script-closure" in text or "hub-scripts" in text:
+        module = import_module("script_closure")
+        profile = module.profile_for(dockerfile)
+        if profile is not None:
+            bundles["hub-scripts"] = {"/" + target: source for target, source in module.read_profile(SCRIPTS_SRC, profile).items()}
+    stage = ""
+    for line in join_continuations(read(dockerfile)):
+        declaration = re.match(r"FROM\s+\S+\s+AS\s+([A-Za-z0-9_-]+)", line, re.IGNORECASE)
+        if declaration:
+            stage = declaration[1]
+            source = line.split()[1]
+            if source in bundles:
+                bundles[stage] = bundles[source]
+        elif line.upper().startswith("FROM "):
+            stage = ""
+        profile = re.search(r"\bpython3 /script-sources/stage-script-closure\.py ([a-z][a-z0-9-]*)\s*$", line)
+        if stage and profile:
+            bundles[stage] = declared_bundle(line, profile[1])
+    return bundles
+
+
+def add_bundle(provided: dict[str, Path], files: dict[str, Path], source: str, destination: str) -> None:
+    """Transfer only selected files actually transported from the recognized bundle."""
+    prefix = source.rstrip("/") + "/"
+    for path, original in files.items():
+        if path == source:
+            target = destination + Path(path).name if destination.endswith("/") else destination
+        elif path.startswith(prefix):
+            target = destination.rstrip("/") + "/" + path[len(prefix):]
+        else:
+            continue
+        provided[target] = original
+
+
 def build_provided(dockerfile: Path) -> dict[str, Path]:
     """Provided /opt/scripts/* path -> repo source, from COPYs and per-RUN bind mounts alike."""
     provided: dict[str, Path] = {}
+    bundles = script_bundles(dockerfile)
     for line in join_continuations(read(dockerfile)):
         s = line.strip()
         # Bind mounts can appear on any RUN line.
         for m in MOUNT_RE.findall(s):
             kv = dict(KV_RE.findall(m))
             if "source" in kv and "target" in kv:
-                _add_provision(provided, kv["source"], kv["target"])
+                if kv.get("from") in bundles:
+                    add_bundle(provided, bundles[kv["from"]], kv["source"], kv["target"])
+                else:
+                    _add_provision(provided, kv["source"], kv["target"])
         if not s.upper().startswith("COPY "):
             continue
         # Drop 'COPY' and any --flags; keep the src... dest tokens.
@@ -112,8 +174,12 @@ def build_provided(dockerfile: Path) -> dict[str, Path]:
         if len(toks) < 2:
             continue
         srcs, dest = toks[:-1], toks[-1]
+        from_stage = re.search(r"--from=([A-Za-z0-9_-]+)", s)
         for src in srcs:
-            _add_provision(provided, src, dest)
+            if from_stage and from_stage[1] in bundles:
+                add_bundle(provided, bundles[from_stage[1]], src, dest)
+            else:
+                _add_provision(provided, src, dest)
     return provided
 
 
@@ -195,7 +261,23 @@ def report_core_usage() -> int:
     return 0
 
 
+def report_provided(arguments: list[str]) -> int:
+    """Expose the actual declared script map without modifying source or build state."""
+    if len(arguments) != 2 or arguments[0] != "--provided-scripts" or re.fullmatch(r"Dockerfile\.[A-Za-z0-9_-]+", arguments[1]) is None:
+        print("Pass --provided-scripts and one Linux Dockerfile name", file=sys.stderr)
+        return 2
+    dockerfile = REPO_ROOT / "linux" / arguments[1]
+    if not dockerfile.is_file():
+        print("Requested Linux Dockerfile is missing", file=sys.stderr)
+        return 2
+    provided = {target: source.relative_to(REPO_ROOT).as_posix() for target, source in build_provided(dockerfile).items()}
+    print(json.dumps(provided, sort_keys=True))
+    return 0
+
+
 def main() -> int:
+    if "--provided-scripts" in sys.argv[1:]:
+        return report_provided(sys.argv[1:])
     if "--report-core-usage" in sys.argv[1:]:
         return report_core_usage()
     dockerfiles = sorted((REPO_ROOT / "linux").glob("Dockerfile.*"))

@@ -271,7 +271,8 @@ ENV PATH="${PATH}${ANDROID_HOME:+:${ANDROID_HOME}/cmdline-tools/latest/bin:${AND
 # The roots HIP's tools read, empty outside the rocm variant: docs/linux-accelerator-images.md#running-it-on-an-amd-gpu
 ARG ROCM_ON=${ENABLE_AMD/false/}
 ENV ROCM_PATH=${ROCM_ON:+/opt/rocm} \
-    HIP_PATH=${ROCM_ON:+/opt/rocm}
+    HIP_PATH=${ROCM_ON:+/opt/rocm} \
+    MIGRAPHX_HOME=${ROCM_ON:+/opt/rocm/migraphx}
 # AMD's plugin MIGraphX EP; a consumer registers ${ORT_AMDGPU_EP_ROOT}/lib/libmigraphx-ep.so: docs/consumer-image-contract.md#amds-plugin-migraphx-ep
 ENV ORT_AMDGPU_EP_ROOT=${ROCM_ON:+/usr/local/lib/onnxruntime-ep-amdgpu}
 # NVIDIA's plugin TensorRT EP; a consumer registers ${ORT_TENSORRT_EP_ROOT}/lib/libonnxruntime_ep_tensorrt.so: docs/consumer-image-contract.md#nvidias-plugin-tensorrt-ep
@@ -281,8 +282,12 @@ ENV ORT_TENSORRT_EP_ROOT=${TRT_ON:+/usr/local/lib/onnxruntime-ep-tensorrt}
 ARG QNN_ON1=${TARGETARCH#amd64}
 ARG QNN_ON=${QNN_ON1#riscv64}
 ENV ORT_QNN_EP_ROOT=${QNN_ON:+/usr/local/lib/onnxruntime-ep-qnn}
-# Appended, so a ROCm tool never shadows the image's own of the same name.
-ENV PATH="${PATH}${ROCM_ON:+:/opt/rocm/bin}"
+# The corrected source prefix precedes the retained distro SDK.
+ENV PATH="${ROCM_ON:+/opt/rocm/migraphx/bin:}${PATH}${ROCM_ON:+:/opt/rocm/bin}" \
+    PKG_CONFIG_PATH="${ROCM_ON:+/opt/rocm/migraphx/lib/pkgconfig:/opt/rocm/migraphx/lib64/pkgconfig:}${PKG_CONFIG_PATH}" \
+    PYTHONPATH="${ROCM_ON:+/opt/rocm/migraphx/lib:}${PYTHONPATH:-}" \
+    CMAKE_PREFIX_PATH="${ROCM_ON:+/opt/rocm/migraphx:}${CMAKE_PREFIX_PATH:-}" \
+    LD_LIBRARY_PATH="${ROCM_ON:+/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib64:}${LD_LIBRARY_PATH:-}"
 
 # A login shell rebuilds PATH from /etc/profile; `:=` keeps a caller's CARGO_HOME, the case guard stays idempotent.
 LABEL kataglyphis.step=rust-profile

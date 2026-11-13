@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — wire the complete source backend into the normal AMD producer
+
+- Keep AMD's apt SDK and build the complete pinned MIGraphX stack in its normal GPU stage. Install exact pybind11 first; SDK and AMD share a core manifest; the host driver stages a deterministic selected-file context and passes it as `hub-scripts`. The compile step consumes 76 selected source files with compiler/source/uv caches and the upload secret.
+- Extend script-copy coverage to actual declared bundle transports and complete mounted inputs, retain real missing-script failures and reject false .sha256-to-.sh matches. SDK cold-import suites use the read-only declared-script map; namespace, deterministic-byte and mutation controls do not prove BuildKit hits.
+- Share ROCm configuration publication between the GPU entry and runtime copier. Preserve source-first lib/lib64 ordering, required build/publication/ldconfig failures and the original build status during failure-time cache drain.
+- Prefer the corrected prefix in GPU and conditional shipped-runtime PATH, pkg-config, Python, CMake and loader paths. Shell/transport/mutation controls do not prove a built image, actual ELF selection, complete licences or finished GPU consumer acceptance.
+
 ## 2026-11-13 — retain pybind11's original source-backend notice
 
 - Require the builder-selected Python pybind11 version, one regular original distribution notice and the same configured CMake package before staging its original text and recording provenance.

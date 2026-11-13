@@ -1347,8 +1347,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       and all six patched upstream tests pass. Selectively loading that compiled source on the
       actual GPU restores the tiny result and the unchanged original model's failing raw score
       (delta 0.00003954768180847168), with repeated bytes and per-run operators. This explicit
-      preload is a diagnosis, not the shipped backend. Linux installs MIGraphX from AMD apt;
-      producer wiring, ordinary package defaults and all finished-consumer/image receipts remain open.
+      preload is a diagnosis, not the shipped backend. The normal Linux GPU producer now retains
+      the apt SDK and invokes the complete corrected source stack with selected Python/pybind11,
+      fresh narrow imports, compiler/source caches and shared source-first runtime publication.
+      A real producer rebuild, selected-byte loader proof, complete binary licence review and
+      all ordinary finished-consumer/image receipts remain open.
       Full source-backend preparation now verifies the upstream-required rocm-cmake pin,
       selects the source-built LLVM explicitly and keeps every GPU feature enabled.
       An early SDK development-package check now preserves CK host/rocMLIR version requirements
@@ -1458,7 +1461,8 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
   - CK host source builder now follows the exact MIGraphX requirements pin and codegen project, with original notice and shared ROCm-CMake/cache transport; actual CK/rocmlirTriton/full-backend integration and ordinary final-image/consumer proofs remain required.
   - The full rocMLIR package builder now compiles the genuine pinned vendor target and validates its cache plan. Cold/warm installs retain 2,272 identical files and 44 original notices; the real external host C API passes. Warm cache: 3,169 hits, one successful coverage-probe miss, seven classified negative-header errors and two negative compiler checks. Full backend, binary licence review and ordinary final acceptance remain open.
   - The external rocMLIR CMake/C-API probe passes against both real vendor installs, requiring exact API6, selected original headers, MIGraphX dialect, migraphx-to-tosa pipeline and unchanged inputs. Its fixtures remain separate; GPU execution and normal final acceptance remain open.
-  - The complete MIGraphX source-build entry now retains all feature/compiler bindings through build/install and checks the install manifest, native ELF identities, selected original notice hashes and archive/patch provenance. Actual backend compilation, complete binary licence review, production precedence/wiring and ordinary finished-consumer/final-image acceptance remain open.
+  - The repaired base source 8e79becb passes its complete Linux preflight: 593 suites, 32,093 assertions and all 5,620 actual mutation IDs, with cleanup and independent container-absence proof. Later source-image integration still needs its own validated delta and real image/consumer evidence.
+  - The complete MIGraphX stack is now called by the normal AMD GPU producer after exact selected-Python pybind11 setup. The declared host-prepared 76-file context shares its core selection with the SDK; deterministic staging and the shared GPU/runtime publisher retain cache drains and raw failures. Environments prefer the source prefix; actual BuildKit cache isolation remains to measure. Actual backend/image construction, selected-byte precedence, complete binary licence review and ordinary finished-consumer/final-image acceptance remain open.
   - Linux Python discovery now selects the pinned interpreter/config/headers and extension ABI rather than stopping at 3.14; the plugin resolves HIP independently of the source prefix. Original-selection refusal and a real tiny 3.15.2 binding are proved separately; full backend, production wiring and ordinary GPU/image acceptance remain open.
   - Genuine rocmlirTriton cold/warm builds complete offline with vendored LLVM/MLIR/LLD/Triton; 44 original source texts match policy and source. Selected-target binary licence review, normal source-backend integration and final consumer/image acceptance remain open.
   - An external CK CMake target now links and its real GetHeaders API returns the exact selected original header. Normal SDK integration, rocmlirTriton/full backend and ordinary finished-consumer/final-image evidence remain open.

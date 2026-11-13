@@ -250,17 +250,6 @@ publish_cuda_ld_path() {
   [ -s /etc/ld.so.conf.d/000-cuda.conf ] || rm -f /etc/ld.so.conf.d/000-cuda.conf
 }
 
-# Resolve the full ordered list before replacing a healthy configuration.
-publish_rocm_ld_path() {
-  local rocm_image_root="${1:-}" rocm_directories
-  rocm_directories="$(media_rocm_library_paths "${rocm_image_root}")" || return
-  if [ -n "${rocm_directories}" ]; then
-    printf '%s\n' "${rocm_directories}" > "${rocm_image_root}/etc/ld.so.conf.d/000-rocm.conf" || return
-  else
-    rm -f -- "${rocm_image_root}/etc/ld.so.conf.d/000-rocm.conf" || return
-  fi
-  return 0
-}
 
 # libtvm_compiler.so's libLLVM resolves only through this. See docs/artifact-copy-completeness.md § The llvm-target prefix fills what it needs, and nothing else
 publish_llvm_target_ld_path() {

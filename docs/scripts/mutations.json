@@ -4762,7 +4762,7 @@
  {
   "id": "copy-coverage.dir-copy-expands",
   "target": "linux/scripts/verify_script_copy_coverage.py",
-  "find": "            for f in src_path.rglob(\"*.sh\"):",
+  "find": "            for f in src_path.rglob(pattern):",
   "replace": "            for f in []:",
   "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
   "why": "a directory COPY provides every script beneath it; not expanding it makes the gate red on a healthy tree until someone deletes it"
@@ -19981,8 +19981,8 @@
  },
  {
   "id": "lib.module-bootstrap-sdk-companion-copy",
-  "target": "linux/Dockerfile.sdk",
-  "find": "    linux/scripts/01-core/module-bootstrap.sh \\\n",
+  "target": "linux/scripts/script-closures/core-common.txt",
+  "find": "01-core/module-bootstrap.sh|core/module-bootstrap.sh\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-module-bootstrap.sh",
   "why": "the SDK must ship the bootstrap companion used before setup-dependencies loads its modules"
@@ -24298,8 +24298,8 @@
  },
  {
   "id": "lib.guarded-link-sdk-fresh-copy",
-  "target": "linux/Dockerfile.sdk",
-  "find": "    linux/scripts/01-core/path-helpers.sh \\\n",
+  "target": "linux/scripts/script-closures/core-common.txt",
+  "find": "01-core/path-helpers.sh|core/path-helpers.sh\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-guarded-links.sh",
   "why": "the SDK refreshes the exact shared helper beside the newly copied callers"
@@ -25674,8 +25674,8 @@
  },
  {
   "id": "lib.cross-active-sdk-closure",
-  "target": "linux/Dockerfile.sdk",
-  "find": "    linux/scripts/01-core/cross-active-fallback.sh \\\n",
+  "target": "linux/scripts/script-closures/core-common.txt",
+  "find": "01-core/cross-active-fallback.sh|core/cross-active-fallback.sh\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-cross-active-registration.sh",
   "why": "The SDK common refresh includes its new required owner even over an older compiler ancestor."
@@ -28298,8 +28298,8 @@
  },
  {
   "id": "lib.sudo-policy-sdk-companion",
-  "target": "linux/Dockerfile.sdk",
-  "find": "    linux/scripts/01-core/sudo-policy.sh \\\n",
+  "target": "linux/scripts/script-closures/core-common.txt",
+  "find": "01-core/sudo-policy.sh|core/sudo-policy.sh\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-sudo-policy-closures.sh",
   "why": "The SDK copies the current source-only policy alongside its current common owner."
@@ -29691,8 +29691,8 @@
  {
   "id": "lib.asset-mirror-dockerfile-mount",
   "target": "linux/Dockerfile.amd",
-  "find": "RUN --mount=type=secret,id=asset_mirror,required=false ",
-  "replace": "RUN ",
+  "find": "RUN --mount=type=secret,id=asset_mirror,required=false --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro",
+  "replace": "RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro",
   "test": "bash linux/scripts/tests/test-asset-mirror.sh",
   "why": "a RUN that reads a hub script mounts the mirror secret, or its downloads go to GitHub alone"
  },
@@ -45055,7 +45055,7 @@
  },
  {
   "id": "lib.rocm-source-paths-publish-failure",
-  "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+  "target": "linux/scripts/06-packaging/media-payloads.sh",
   "find": "  rocm_directories=\"$(media_rocm_library_paths \"${rocm_image_root}\")\" || return",
   "replace": "  rocm_directories=\"$(media_rocm_library_paths \"${rocm_image_root}\")\"",
   "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
@@ -45063,7 +45063,7 @@
  },
  {
   "id": "lib.rocm-source-paths-write-failure",
-  "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+  "target": "linux/scripts/06-packaging/media-payloads.sh",
   "find": "> \"${rocm_image_root}/etc/ld.so.conf.d/000-rocm.conf\" || return",
   "replace": "> \"${rocm_image_root}/etc/ld.so.conf.d/000-rocm.conf\" || true",
   "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
@@ -45172,5 +45172,661 @@
   "replace": "--pybind-version 3.0.0",
   "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendLifecycleTests",
   "why": "Original pybind11 notice staging binds selected Python version,unique regular original bytes and configured CMake origin before provenance;fixture and source proofs do not complete binary licence review or image/GPU acceptance."
+ },
+ {
+  "id": "lib.mgx-image-prefix-refusal",
+  "target": "linux/scripts/03-media/build/migraphx/build-image.sh",
+  "find": "[[ \"${MIGRAPHX_SOURCE_PREFIX}\" == /opt/rocm/migraphx ]]",
+  "replace": "[[ -n \"${MIGRAPHX_SOURCE_PREFIX}\" ]]",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-prefix-export",
+  "target": "linux/scripts/03-media/build/migraphx/build-image.sh",
+  "find": "export MIGRAPHX_SOURCE_PREFIX\n",
+  "replace": ":\n",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-selected-python",
+  "target": "linux/scripts/03-media/build/migraphx/build-image.sh",
+  "find": "--python \"${HOST_PYTHON_BIN}\"",
+  "replace": "--python /different/python",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-no-extra-deps",
+  "target": "linux/scripts/03-media/build/migraphx/build-image.sh",
+  "find": "--no-deps ",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-exact-pin",
+  "target": "linux/scripts/03-media/build/migraphx/build-image.sh",
+  "find": "pybind11==${PY_PYBIND11_VERSION:?missing selected pybind11 pin}",
+  "replace": "pybind11==3.1.0",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-missing-pin",
+  "target": "linux/scripts/03-media/build/migraphx/build-image.sh",
+  "find": "${PY_PYBIND11_VERSION:?missing selected pybind11 pin}",
+  "replace": "${PY_PYBIND11_VERSION:-3.1.0}",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-complete-stack",
+  "target": "linux/scripts/03-media/build/migraphx/build-image.sh",
+  "find": "bash \"${SCRIPT_DIR}/build-source-stack.sh\" \"$@\"\n",
+  "replace": ":\n",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-publisher",
+  "target": "linux/scripts/03-media/build/migraphx/build-image.sh",
+  "find": "publish_rocm_ld_path\n",
+  "replace": ":\n",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-ldconfig",
+  "target": "linux/scripts/03-media/build/migraphx/build-image.sh",
+  "find": "ldconfig\n",
+  "replace": ":\n",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-install-fatal",
+  "target": "linux/scripts/03-media/build/migraphx/build-image.sh",
+  "find": "uv pip install --python \"${HOST_PYTHON_BIN}\" --no-deps \"pybind11==${PY_PYBIND11_VERSION:?missing selected pybind11 pin}\"",
+  "replace": "uv pip install --python \"${HOST_PYTHON_BIN}\" --no-deps \"pybind11==${PY_PYBIND11_VERSION:?missing selected pybind11 pin}\" || true",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-core-companion",
+  "target": "linux/scripts/script-closures/core-common.txt",
+  "find": "01-core/compiler-cache-utils.sh|core/compiler-cache-utils.sh\n",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-source-patch",
+  "target": "linux/scripts/script-closures/migraphx-image.txt",
+  "find": "patches/migraphx/001-preserve-zero-pad-maxpool.patch|patches/migraphx/001-preserve-zero-pad-maxpool.patch\n",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-cache-mount",
+  "target": "linux/Dockerfile.amd",
+  "find": "    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH},sharing=locked \\\n",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-s3-secret",
+  "target": "linux/Dockerfile.amd",
+  "find": "--mount=type=secret,id=sccache_s3,required=false",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-failed-build-status",
+  "target": "linux/Dockerfile.amd",
+  "find": "exit \"${status}\"",
+  "replace": "exit 0",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-closing-drain",
+  "target": "linux/Dockerfile.amd",
+  "find": "    bash /opt/scripts/core/sccache-s3-level.sh drain\n",
+  "replace": ":\n",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-gpu-home",
+  "target": "linux/Dockerfile.amd",
+  "find": "MIGRAPHX_HOME=\"/opt/rocm/migraphx\"",
+  "replace": "MIGRAPHX_HOME=\"/opt/rocm\"",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-gpu-path",
+  "target": "linux/Dockerfile.amd",
+  "find": "PATH=\"/opt/rocm/migraphx/bin:",
+  "replace": "PATH=\"",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-gpu-pkg-config",
+  "target": "linux/Dockerfile.amd",
+  "find": "PKG_CONFIG_PATH=\"/opt/rocm/migraphx/lib/pkgconfig:/opt/rocm/migraphx/lib64/pkgconfig:",
+  "replace": "PKG_CONFIG_PATH=\"",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-gpu-python",
+  "target": "linux/Dockerfile.amd",
+  "find": "PYTHONPATH=\"/opt/rocm/migraphx/lib:",
+  "replace": "PYTHONPATH=\"",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-gpu-cmake",
+  "target": "linux/Dockerfile.amd",
+  "find": "CMAKE_PREFIX_PATH=\"/opt/rocm/migraphx:",
+  "replace": "CMAKE_PREFIX_PATH=\"",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-gpu-loader",
+  "target": "linux/Dockerfile.amd",
+  "find": "LD_LIBRARY_PATH=\"/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib64:",
+  "replace": "LD_LIBRARY_PATH=\"",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-runtime-home",
+  "target": "linux/Dockerfile.package",
+  "find": "MIGRAPHX_HOME=${ROCM_ON:+/opt/rocm/migraphx}",
+  "replace": "MIGRAPHX_HOME=${ROCM_ON:+/opt/rocm}",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-runtime-path",
+  "target": "linux/Dockerfile.package",
+  "find": "${ROCM_ON:+/opt/rocm/migraphx/bin:}",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-runtime-pkg-config",
+  "target": "linux/Dockerfile.package",
+  "find": "${ROCM_ON:+/opt/rocm/migraphx/lib/pkgconfig:/opt/rocm/migraphx/lib64/pkgconfig:}",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-runtime-python",
+  "target": "linux/Dockerfile.package",
+  "find": "${ROCM_ON:+/opt/rocm/migraphx/lib:}",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-runtime-cmake",
+  "target": "linux/Dockerfile.package",
+  "find": "${ROCM_ON:+/opt/rocm/migraphx:}",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-runtime-loader",
+  "target": "linux/Dockerfile.package",
+  "find": "${ROCM_ON:+/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib64:}",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "copy-coverage.leaf-name-boundary",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "\\.sh(?![A-Za-z0-9._/-])",
+  "replace": "\\.sh",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "copy-coverage.bundle-mounted-inputs",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "    if any(mounted.get(\"/script-sources/\" + path.relative_to(SCRIPTS_SRC).as_posix()) != path for path in required):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "copy-coverage.bundle-required-plans",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "*manifests, ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "copy-coverage.bundle-required-selected",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "*selected.values(), ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "copy-coverage.bundle-required-entry",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "SCRIPTS_SRC / \"stage-script-closure.py\", ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "copy-coverage.bundle-required-module",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": ", SCRIPTS_SRC / \"script_closure.py\"",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "copy-coverage.bundle-data-inputs",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "arguments[\"target\"], \"/script-sources\", \"*\")",
+  "replace": "arguments[\"target\"], \"/script-sources\", \"*.sh\")",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "copy-coverage.bundle-transport-required",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "    bundles = script_bundles(dockerfile)\n",
+  "replace": "    bundles = script_bundles(dockerfile)\n    for files in bundles.values():\n        add_bundle(provided, files, \"/script-bundle\", \"/opt/scripts\")\n",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "copy-coverage.bundle-bind-provision",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "                    add_bundle(provided, bundles[kv[\"from\"]], kv[\"source\"], kv[\"target\"])",
+  "replace": "                    pass",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "copy-coverage.bundle-copy-provision",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "                add_bundle(provided, bundles[from_stage[1]], src, dest)",
+  "replace": "                pass",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "copy-coverage.bundle-stage-reset",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "        elif line.upper().startswith(\"FROM \"):\n            stage = \"\"",
+  "replace": "        elif line.upper().startswith(\"FROM \"):\n            pass",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "copy-coverage.report-map-arity",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "len(arguments) != 2",
+  "replace": "len(arguments) < 2",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "copy-coverage.report-map-name",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "re.fullmatch(r\"Dockerfile\\.[A-Za-z0-9_-]+\", arguments[1]) is None",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "copy-coverage.report-map-existing-file",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "    if not dockerfile.is_file():",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "copy-coverage.report-map-dispatch",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "        return report_provided(sys.argv[1:])",
+  "replace": "        return 0",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-profile-shape",
+  "target": "linux/scripts/script_closure.py",
+  "find": "re.fullmatch(r\"[a-z][a-z0-9-]*\", profile) is None",
+  "replace": "False",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-profile-cycle",
+  "target": "linux/scripts/script_closure.py",
+  "find": " or profile in trail",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-empty",
+  "target": "linux/scripts/script_closure.py",
+  "find": "    if not selected:",
+  "replace": "    if False:",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-relative-path",
+  "target": "linux/scripts/script_closure.py",
+  "find": "    if not path.parts or path.is_absolute() or \"\\\\\" in value or \"..\" in path.parts:",
+  "replace": "    if False:",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-symlink",
+  "target": "linux/scripts/script_closure.py",
+  "find": "path.is_symlink() or ",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-source-root",
+  "target": "linux/scripts/script_closure.py",
+  "find": "not actual.is_relative_to(root.resolve()) or ",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-regular-file",
+  "target": "linux/scripts/script_closure.py",
+  "find": " or not actual.is_file()",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-duplicate-target",
+  "target": "linux/scripts/script_closure.py",
+  "find": "        if selected.keys() & entries.keys():",
+  "replace": "        if False:",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-reserved-receipt",
+  "target": "linux/scripts/script_closure.py",
+  "find": "            if target_path.split(\"/\")[0] == \"SCRIPT-CLOSURE.json\":",
+  "replace": "            if False:",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-payload-hash",
+  "target": "linux/scripts/script_closure.py",
+  "find": "hashlib.sha256(payload).hexdigest()",
+  "replace": "\"0\" * 64",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-script-mode",
+  "target": "linux/scripts/script_closure.py",
+  "find": "mode = 0o755 if target.endswith(\".sh\") else 0o644",
+  "replace": "mode = 0o644",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-stable-time",
+  "target": "linux/scripts/script_closure.py",
+  "find": "        os.utime(path, (0, 0))",
+  "replace": "        pass",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-refuse-existing",
+  "target": "linux/scripts/script_closure.py",
+  "find": "    output.mkdir()",
+  "replace": "    output.mkdir(exist_ok=True)",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-cli-failure",
+  "target": "linux/scripts/script_closure.py",
+  "find": "        return 2",
+  "replace": "        return 0",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-required-stage",
+  "target": "linux/scripts/script_closure.py",
+  "find": "        stage(args.root, args.profile, args.output)",
+  "replace": "        pass",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-complete-marker",
+  "target": "linux/scripts/script_closure.py",
+  "find": "    print(\"SCRIPT_CLOSURE_STAGED \" + args.profile)",
+  "replace": "    pass",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-input-plans",
+  "target": "linux/scripts/script_closure.py",
+  "find": "        manifests.add(manifest)",
+  "replace": "        pass",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-bundle-readonly",
+  "target": "linux/Dockerfile.amd",
+  "find": "from=hub-scripts,source=/,target=/opt/scripts,ro",
+  "replace": "from=hub-scripts,source=/,target=/opt/scripts",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.mgx-image-bundle-stage",
+  "target": "linux/Dockerfile.amd",
+  "find": "from=hub-scripts,source=/",
+  "replace": "from=unknown-scripts,source=/",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-closure-sdk-producer",
+  "target": "linux/Dockerfile.sdk",
+  "find": "COPY --from=sdk-core-scripts / /opt/scripts/",
+  "replace": "COPY --from=unknown-scripts / /opt/scripts/",
+  "test": "bash linux/scripts/tests/test-sudo-policy-closures.sh",
+  "why": "Declared script bundles retain real source bytes,deterministic output,actual stage transport and complete mounted inputs; fixtures and metadata do not prove BuildKit hits,compiler builds,ELF ABI or GPU/final-image acceptance."
+ },
+ {
+  "id": "lib.script-context-query-status",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": "  _sc_profile=\"$(python3 -B \"${_sc_helper}\" --profile-for \"${_sc_dockerfile}\")\" || return",
+  "replace": "  _sc_profile=\"$(python3 -B \"${_sc_helper}\" --profile-for \"${_sc_dockerfile}\")\" || return 0",
+  "test": "python3 linux/scripts/tests/script_context_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "lib.script-context-mkdir-status",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": "  mkdir -p \"${_sc_root}\" || return",
+  "replace": "  mkdir -p \"${_sc_root}\" || return 0",
+  "test": "python3 linux/scripts/tests/script_context_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "lib.script-context-allocation-status",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": "  _sc_work=\"$(mktemp -d \"${_sc_root}/${_sc_profile}.XXXXXX\")\" || return",
+  "replace": "  _sc_work=\"$(mktemp -d \"${_sc_root}/${_sc_profile}.XXXXXX\")\" || return 0",
+  "test": "python3 linux/scripts/tests/script_context_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "lib.script-context-stage-status",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": "  python3 -B \"${_sc_helper}\" \"${_sc_profile}\" --output \"${_sc_work}/scripts\" || return",
+  "replace": "  python3 -B \"${_sc_helper}\" \"${_sc_profile}\" --output \"${_sc_work}/scripts\" || return 0",
+  "test": "python3 linux/scripts/tests/script_context_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "lib.script-context-argv-boundaries",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": "  _sc_args+=(--build-context \"hub-scripts=${_sc_work}/scripts\")",
+  "replace": "  _sc_args=(--build-context \"hub-scripts=${_sc_work}/scripts\")",
+  "test": "python3 linux/scripts/tests/script_context_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "lib.script-context-dry-no-staging",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": "  if declare -F is_dry_run >/dev/null 2>&1 && is_dry_run; then",
+  "replace": "  if false; then",
+  "test": "python3 linux/scripts/tests/script_context_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "lib.script-context-dry-forwarding",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": "    _sc_args+=(--build-context \"hub-scripts=<staged-${_sc_profile}>\")",
+  "replace": "    :",
+  "test": "python3 linux/scripts/tests/script_context_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "lib.script-context-legacy-loader",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": "    *) return 0 ;;",
+  "replace": "    *) : ;;",
+  "test": "python3 linux/scripts/tests/script_context_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "lib.script-context-owner-import",
+  "target": "linux/scripts/01-core/cross-stage-build.sh",
+  "find": "source \"${_CROSS_STAGE_BUILD_SH_DIR}/context-management.sh\"",
+  "replace": ":",
+  "test": "python3 linux/scripts/tests/script_context_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "lib.script-context-dispatch-wiring",
+  "target": "linux/scripts/01-core/cross-stage-build.sh",
+  "find": "  append_script_closure_context build_args \"${dockerfile}\" || return",
+  "replace": "  :",
+  "test": "python3 linux/scripts/tests/script_context_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "lib.script-context-dispatch-status",
+  "target": "linux/scripts/01-core/cross-stage-build.sh",
+  "find": "  append_script_closure_context build_args \"${dockerfile}\" || return",
+  "replace": "  append_script_closure_context build_args \"${dockerfile}\" || return 0",
+  "test": "python3 linux/scripts/tests/script_context_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "lib.script-context-literal-profile",
+  "target": "linux/scripts/script_closure.py",
+  "find": "    return profiles[0]",
+  "replace": "    return \"missing\"",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "lib.script-context-ambiguous-profile",
+  "target": "linux/scripts/script_closure.py",
+  "find": "    if len(profiles) != 1:",
+  "replace": "    if not profiles:",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "lib.script-context-query-inputs",
+  "target": "linux/scripts/script_closure.py",
+  "find": "                read_profile(args.root, profile)",
+  "replace": "                pass",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "lib.script-context-query-output",
+  "target": "linux/scripts/script_closure.py",
+  "find": "                print(profile)",
+  "replace": "                pass",
+  "test": "python3 linux/scripts/tests/script_closure_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "copy-coverage.named-context-external",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "            bundles[\"hub-scripts\"] = {\"/\" + target: source for target, source in module.read_profile(SCRIPTS_SRC, profile).items()}",
+  "replace": "            bundles[\"hub-scripts\"] = {}",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "copy-coverage.named-context-profile",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "        profile = module.profile_for(dockerfile)",
+  "replace": "        profile = None",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "lib.script-context-required-cache-scan",
+  "target": "linux/scripts/tests/test-sccache-s3-level.sh",
+  "find": ")\" || { printf 'Dockerfile cache scan failed\\n' >&2; exit 1; }",
+  "replace": ")\"",
+  "test": "python3 linux/scripts/tests/script_context_tests.py",
+  "why": "Host-selected script contexts preserve actual selected bytes,fail before dispatch on required errors and retain caller arguments. These controls do not prove BuildKit cache reuse,compiled libraries,ELF ABI or finished GPU/image acceptance."
+ },
+ {
+  "id": "copy-coverage.named-context-alias",
+  "target": "linux/scripts/verify_script_copy_coverage.py",
+  "find": "                bundles[stage] = bundles[source]",
+  "replace": "                pass",
+  "test": "bash linux/scripts/tests/test-script-copy-coverage.sh",
+  "why": "A real declared context FROM alias preserves its selected sources through actual copy/bind transports; this does not prove BuildKit cache reuse or compiled/image acceptance."
  }
 ]

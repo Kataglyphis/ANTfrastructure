@@ -111,7 +111,7 @@ t_assert_eq "yes" "$([ "${_asan_end:-0}" -lt "${_check_at:-0}" ] && [ "${_check_
 
 # MIGraphX's own prefix: /opt/rocm/lib up to 10.0, /opt/rocm/extras-10 from 10.1 (installed and listed 2026-10-07).
 _LAYOUT="$(_block '# MIGraphX left /opt/rocm/lib' 'esac')"
-_PUB="$(t_fn_src "${TESTS_DIR}/../06-packaging/media-payloads.sh" media_rocm_library_paths)"$'\n'"$(t_fn_src "${TESTS_DIR}/../06-packaging/copy-media-payloads.sh" publish_rocm_ld_path)" || exit 1
+_PUB="$(t_fn_src "${TESTS_DIR}/../06-packaging/media-payloads.sh" media_rocm_library_paths)"$'\n'"$(t_fn_src "${TESTS_DIR}/../06-packaging/media-payloads.sh" publish_rocm_ld_path)" || exit 1
 # _tree <root> <path>...: empty files (and their directories) under <root>.
 _tree() { local r="$1" p; shift; for p in "$@"; do mkdir -p "${r}/$(dirname "${p}")"; : > "${r}/${p}"; done; }
 # _root <path>...: a fresh root holding /opt/rocm/lib and those files, printed.

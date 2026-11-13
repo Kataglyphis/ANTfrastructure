@@ -4,7 +4,6 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 source "${TESTS_DIR}/../06-packaging/media-payloads.sh"
-t_source_functions "${TESTS_DIR}/../06-packaging/copy-media-payloads.sh" publish_rocm_ld_path || exit 1
 t_private_tmpdir
 work="$(t_mktemp -d)"
 image="${work}/image with spaces"

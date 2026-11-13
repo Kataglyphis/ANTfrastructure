@@ -9,6 +9,18 @@ hub="$(cd "${SCRIPT_DIR}/../../../../.." && pwd)"
 cd "${hub}"
 export LC_ALL=C KNOB_GATE=1
 bash linux/scripts/tests/test-migraphx-stack.sh > "${evidence}/stack-tests.log" 2>&1
+bash linux/scripts/tests/test-migraphx-image.sh > "${evidence}/image-tests.log" 2>&1
+bash linux/scripts/tests/test-script-closure.sh > "${evidence}/script-closure-tests.log" 2>&1
+bash linux/scripts/tests/test-script-context.sh > "${evidence}/script-context-tests.log" 2>&1
+bash linux/scripts/tests/test-genai-ort.sh > "${evidence}/genai-tests.log" 2>&1
+bash linux/scripts/tests/test-sccache-s3-level.sh > "${evidence}/s3-tests.log" 2>&1
+bash linux/scripts/tests/test-gpu-runtime-check.sh > "${evidence}/gpu-runtime-tests.log" 2>&1
+bash linux/scripts/tests/test-cross-stage-build-cmd.sh > "${evidence}/cross-stage-cmd-tests.log" 2>&1
+bash linux/scripts/tests/test-script-copy-coverage.sh > "${evidence}/copy-coverage-tests.log" 2>&1
+bash linux/scripts/tests/test-module-bootstrap.sh > "${evidence}/module-bootstrap-tests.log" 2>&1
+bash linux/scripts/tests/test-cross-active-registration.sh > "${evidence}/cross-active-registration-tests.log" 2>&1
+bash linux/scripts/tests/test-sudo-policy-closures.sh > "${evidence}/sudo-policy-closures-tests.log" 2>&1
+bash linux/scripts/tests/test-guarded-links.sh > "${evidence}/guarded-links-tests.log" 2>&1
 bash linux/scripts/tests/test-migraphx-python-selection.sh > "${evidence}/python-selection-tests.log" 2>&1
 bash linux/scripts/tests/test-migraphx-python-probe.sh > "${evidence}/python-probe-tests.log" 2>&1
 bash linux/scripts/tests/test-migraphx-plugin-ep.sh > "${evidence}/plugin-tests.log" 2>&1

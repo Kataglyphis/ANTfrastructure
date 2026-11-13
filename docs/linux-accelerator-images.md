@@ -1124,8 +1124,9 @@ deps, so `triton-rocm` moves with it) only acts if the two drift. The extra was
 
 ### MIGraphX source-prefix loader paths
 
-The runtime publisher takes its ordered directories from
-`media_rocm_library_paths` in `06-packaging/media-payloads.sh`. Existing
+GPU production and the runtime copier share `publish_rocm_ld_path` and its
+ordered directory helper `media_rocm_library_paths` from
+`06-packaging/media-payloads.sh`. Existing
 `/opt/rocm/migraphx/lib` and `lib64` come first; sorted retained HIP, distro
 MIGraphX and legacy paths follow once each. A command-line `/opt/rocm` symlink
 is followed and `core-asan-*` is pruned.
@@ -1138,10 +1139,51 @@ offline filesystem staging while configuration entries remain image-relative.
 Filesystem and mutation controls prove this directory/publication policy. They
 do not inspect ELF ABI, prove the actual loader's selected library, build the
 source backend, or establish a shipped final-image or GPU acceptance receipt.
-The ordinary source GPU build, its runtime environment and shipped-soname
-precedence checks remain required.
+The normal producer and conditional runtime environment now select this source
+prefix in code. Actual GPU-stage construction and shipped-soname selection
+checks remain required; a generic probe accepting any /opt prefix is insufficient.
 
 ### MIGraphX source-backend preparation
+
+The normal `Dockerfile.amd` GPU stage retains AMD's apt SDK, then invokes
+`build/migraphx/build-image.sh NEW_WORK SOURCE_CACHE ROCM_ROOT`. This entry
+selects the host Python, installs exactly `PY_PYBIND11_VERSION` without extra
+dependencies, runs the complete source stack, publishes the shared ROCm loader
+configuration and runs `ldconfig`. Required failures stop the remaining phases.
+
+The SDK and AMD use `stage-script-closure.py` and the declarative plans under
+`linux/scripts/script-closures`. Their common plan owns 21 shared inputs once.
+The SDK core plan selects 24 files, including the compiler-cache companion
+required by common.sh. AMD selects 76 files: current core/bootstrap/download
+helpers, the media entry and architecture flags, both source patches, build and
+CMake consumer projects, original-notice policies and the packaging ELF reader.
+
+Before a solve, the host driver reads the Dockerfile's literal
+`org.kataglyphis.build-script-closure` label and creates a fresh named `hub-scripts`
+context. No broad source-tree mount enters either Dockerfile. Host staging rejects
+path escapes, symlinks, missing inputs,
+repeated destinations, reserved receipt paths and recursive/empty plans.
+Selected file bytes and the semantic receipt remain exact; modes and timestamps
+are normalized. Unselected file changes and plan comments leave the staged
+output byte-identical in the unit controls. Actual BuildKit cache reuse remains
+a required separate measurement.
+
+The SDK copies its prepared named context. The AMD compile RUN binds only its
+selected bundle read-only at /opt/scripts. Compiler caches retain their existing
+per-architecture IDs; verified source archives and uv use separate persistent
+mounts. The asset mirror and S3 credentials remain secrets.
+The closing drain prints measured statistics to stderr. A failed build also drains
+without replacing its raw status; its workspace remains until the failed layer is
+discarded. Successful workspace cleanup preserves the installed original notices
+and provenance and does not prune caches.
+
+GPU and conditional final-runtime environments put `/opt/rocm/migraphx` before
+the retained distro tree in PATH, PKG_CONFIG_PATH, CMAKE_PREFIX_PATH and
+LD_LIBRARY_PATH. PYTHONPATH selects the installed flat `lib` extension directory;
+it is not assumed to be a site-packages tree. CPU runtime environments retain
+their earlier search paths. These integration and shell controls are source
+evidence only. A normal rebuilt backend, selected-byte loader proof, complete
+binary licence review and all finished-consumer/final-image receipts remain open.
 
 The corrected backend is being prepared separately from the existing apt SDK.
 `linux/scripts/03-media/build/migraphx/prepare-source-build.sh` takes

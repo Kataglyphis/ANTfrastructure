@@ -141,10 +141,37 @@ exercise stubbed operations and do not prove live cache servers or package build
 
 The packaging inventory companion also owns `media_rocm_library_paths [IMAGE_ROOT]`.
 It emits image-relative directories with source MIGraphX first, one entry per
-existing directory, and excludes ASAN. The normal runtime copy publisher uses
-that complete list only after a successful scan and sort. Copied consumers
-already carry `media-payloads.sh`; no private path-ordering copy is needed.
+existing directory, and excludes ASAN. Its shared `publish_rocm_ld_path` uses
+that complete list only after a successful scan and sort. The normal GPU entry
+and runtime copy entry call that same publisher. Copied consumers already carry
+`media-payloads.sh`; no private publication or path-ordering copy is needed.
 These filesystem controls do not establish actual loader selection or GPU ABI.
+
+## Selected script closures
+
+`script_closure.py` owns deterministic selected-file staging; its CLI is
+`stage-script-closure.py PROFILE`. The plans under `script-closures` map source
+files to image paths and include other plans explicitly. SDK and AMD consume
+one common core selection, while their remaining files stay profile-specific.
+The stager reads every selected source before allocating a fresh output, preserves
+its bytes and records hashes, rejects unsafe or ambiguous inputs, and normalizes
+file modes and timestamps. The receipt describes staged sources only.
+
+The cross-stage driver reads one literal Dockerfile profile label with
+`stage-script-closure.py --profile-for DOCKERFILE`. It stages fresh selected bytes
+under the run's log directory and passes `--build-context hub-scripts=PATH`.
+Dry runs validate the profile without creating a staging directory. Query,
+allocation and staging failures retain their raw status and prevent dispatch.
+Legacy Dockerfiles without this contract keep their existing argument list.
+
+The absolute script-copy gate follows the declared external context only through
+its actual COPY or read-only bind transport, including a declared FROM alias. It also models canonical internal
+producers when all selected inputs and transitive plans are mounted. Its read-only
+`--provided-scripts Dockerfile.sdk` report gives a JSON image-path/source map.
+The shared structural fixture runs that report in a fresh process, retaining
+copied-root isolation. Cold SDK import suites use the actual declared map and
+prove required-child failures; they do not establish SDK execution, binary ABI
+or BuildKit hits.
 
 ## Shared synthetic test fixtures
 
