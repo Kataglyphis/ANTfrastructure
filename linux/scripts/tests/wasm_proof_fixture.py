@@ -2,7 +2,15 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 from pathlib import Path
+
+
+def install_node_fixture(directory: Path) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / "node"
+    shutil.copy2(Path(__file__).parent / "fixtures/webgpu-native/node", target)
+    return directory
 
 
 def expected_flags(flavor: str) -> dict[str, str]:

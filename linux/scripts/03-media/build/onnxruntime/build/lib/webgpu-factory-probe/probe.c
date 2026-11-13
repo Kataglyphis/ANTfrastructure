@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: MIT
 // Isolated registration and legacy-mode checks cannot prove adapter availability or inference.
+#ifdef WEBGPU_PROBE_LINKED_CORE
+#define PROBE_LABEL "WEBGPU-WASM"
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#else
+#define EMSCRIPTEN_KEEPALIVE
+#endif
+#else
 #include <dlfcn.h>
+#define PROBE_LABEL "WEBGPU-NATIVE"
+#endif
 #include <stdio.h>
 #include <string.h>
 #include WEBGPU_ORT_C_API_HEADER
@@ -16,14 +26,14 @@ typedef struct {
 } Probe;
 
 static int error(const char *message) {
-  fprintf(stderr, "WEBGPU-NATIVE FAIL: %s\n", message);
+  fprintf(stderr, PROBE_LABEL " FAIL: %s\n", message);
   return 1;
 }
 
 static int status_error(Probe *probe, OrtStatus *status, const char *operation) {
   if (!status) return 0;
   const char *message = probe->api->GetErrorMessage(status);
-  fprintf(stderr, "WEBGPU-NATIVE FAIL: %s: %s\n", operation, message ? message : "missing status message");
+  fprintf(stderr, PROBE_LABEL " FAIL: %s: %s\n", operation, message ? message : "missing status message");
   probe->api->ReleaseStatus(status);
   return 1;
 }
@@ -32,7 +42,7 @@ static int require_missing(Probe *probe, OrtStatus *status) {
   if (!status) return error("negative control unexpectedly unregistered a factory");
   const char *message = probe->api->GetErrorMessage(status);
   int failed = probe->api->GetErrorCode(status) != ORT_FAIL || !message || strcmp(message, MISSING) != 0;
-  if (failed) fprintf(stderr, "WEBGPU-NATIVE FAIL: unexpected negative control: %s\n", message ? message : "missing message");
+  if (failed) fprintf(stderr, PROBE_LABEL " FAIL: unexpected negative control: %s\n", message ? message : "missing message");
   probe->api->ReleaseStatus(status);
   return failed;
 }
@@ -44,6 +54,10 @@ static int required_api(const OrtApi *api) {
 }
 
 static int open_core(Probe *probe, const char *path) {
+#ifdef WEBGPU_PROBE_LINKED_CORE
+  (void)path;
+  const OrtApiBase *base = OrtGetApiBase();
+#else
   probe->library = dlopen(path, RTLD_NOW | RTLD_LOCAL);
   if (!probe->library) return error(dlerror());
   void *symbol = dlsym(probe->library, "OrtGetApiBase");
@@ -52,6 +66,7 @@ static int open_core(Probe *probe, const char *path) {
   _Static_assert(sizeof(entry) == sizeof(symbol), "Linux function pointers must match dlsym pointers");
   memcpy(&entry, &symbol, sizeof(entry));
   const OrtApiBase *base = entry();
+#endif
   if (!base || !base->GetApi || !base->GetVersionString) return error("missing C API base");
   probe->api = base->GetApi(ORT_API_VERSION);
   if (!required_api(probe->api)) return error("missing required C API exports");
@@ -93,20 +108,34 @@ static int registration(Probe *probe, int enabled) {
 
 static int cleanup(Probe *probe, int failed) {
   if (probe->env) probe->api->ReleaseEnv(probe->env);
+#ifndef WEBGPU_PROBE_LINKED_CORE
   if (probe->library && dlclose(probe->library) != 0) { error("dlclose failed"); failed = 1; }
+#endif
   return failed;
 }
 
+static int run_probe(const char *path, int enabled) {
+  Probe probe = {0};
+  int failed = open_core(&probe, path);
+  if (!failed) failed = compiled_providers(&probe);
+  if (!failed) failed = registration(&probe, enabled);
+  failed = cleanup(&probe, failed);
+  if (!failed && printf(PROBE_LABEL " OK: mode=%s api=%u version=%s\n", enabled ? "ON" : "OFF", (unsigned)ORT_API_VERSION, probe.version) < 0) return 1;
+  if (!failed && fflush(stdout) != 0) return error("stdout flush failed");
+  return failed;
+}
+
+#ifdef WEBGPU_PROBE_LINKED_CORE
+EMSCRIPTEN_KEEPALIVE int OrtWebGpuFactoryProbe(int enabled) {
+  if (enabled != 0 && enabled != 1) return error("mode must be zero or one");
+  return run_probe(NULL, enabled);
+}
+#else
 int main(int argc, char **argv) {
   if (argc != 3 || argv[1][0] != '/' || (strcmp(argv[2], "ON") != 0 && strcmp(argv[2], "OFF") != 0)) {
     fprintf(stderr, "Usage: ort-webgpu-factory-probe /absolute/core.so ON|OFF\n");
     return 2;
   }
-  Probe probe = {0};
-  int failed = open_core(&probe, argv[1]);
-  if (!failed) failed = compiled_providers(&probe);
-  if (!failed) failed = registration(&probe, strcmp(argv[2], "ON") == 0);
-  failed = cleanup(&probe, failed);
-  if (!failed && printf("WEBGPU-NATIVE OK: mode=%s api=%u version=%s\n", argv[2], (unsigned)ORT_API_VERSION, probe.version) < 0) return 1;
-  return failed;
+  return run_probe(argv[1], strcmp(argv[2], "ON") == 0);
 }
+#endif

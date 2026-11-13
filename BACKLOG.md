@@ -1490,7 +1490,7 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       **Source preparation 2026-11-10:** native CPU/NVIDIA and their free-threaded wheels select the pinned
       `--use_webgpu static_plugin` mode with external Dawn and require the actual configured flags. Asyncify
       and JSPI select the same plugin ABI with Emscripten's integrated Dawn, check their configured modes
-      and use shared artifact cache epoch `-wgpu3`. These are source/fixture gates; actual builds and runtime
+      and use shared artifact cache epoch `-wgpu4`. These are source/fixture gates; actual builds and runtime
       registration for native and Python linker products, all affected default/ROCm/NVIDIA media stages
       and new acceptance are still open. Native/GIL and FT build boundaries now preserve separate
       configured-mode/product hashes in `ort-webgpu-build.json`; canonical wheel repair adds checked delivery
@@ -1512,6 +1512,10 @@ interrupt active builds, replace CON231/CON233, or change publication approvals 
       and full final-image replay remain open, with both failed controls preserved.
       WASM source now prepares per-flavor configured/product receipts, checked shared-cache source/configuration,
       direct-recipe and full-payload identities, and strict failure propagation through ORT_WEB_REQUIRED=1.
+      A linked-core mode now reuses the native C API controls in each actual WASM target, with a deferred
+      CMake hook, strict Node driver, source/product/loader-bound factory receipts and a fresh two-flavor
+      replay command. Cache epoch `-wgpu4` preserves the older pool. Host fake-ABI/loader fixtures prove
+      refusal and transport policies only; source quality and actual instrumented builds remain open.
       Both enabled WASM flavors still need actual source-to-artifact proof and runtime registration; the four
       local media builds predate these receipts and do not complete that evidence. Before that
       media rebuild, preserve the

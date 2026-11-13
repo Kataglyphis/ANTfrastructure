@@ -130,6 +130,7 @@ run_webgpu_flavor_pass() {
   if run_optional_flavor_pass "${_wgp_label}" \
       "${BUILD_SH}" "${_wgp_base_args[@]}" --enable_wasm_simd --enable_wasm_threads \
       --use_webgpu static_plugin --use_webnn "$@" --target onnxruntime_webassembly \
+      --cmake_extra_defines "CMAKE_PROJECT_TOP_LEVEL_INCLUDES=${CMAKE_PROJECT_TOP_LEVEL_INCLUDES:+${CMAKE_PROJECT_TOP_LEVEL_INCLUDES};}${SCRIPT_DIR}/lib/webgpu-factory-probe/wasm.cmake" \
       "${REDUCED_SIZE_ARGS[@]}"; then
     collect_wasm_artifacts "ort-wasm-simd-threaded.${_wgp_flavor}.*" || return $?
     local revision proof_status=0
@@ -139,7 +140,7 @@ run_webgpu_flavor_pass() {
       --flavor "${_wgp_flavor}" --cmake-dir "${BUILD_DIR}/${WASM_CONFIG}" || proof_status=$?
     if [ "${proof_status}" -ne 0 ]; then
       if [ "${ORT_WEB_REQUIRED:-0}" = 1 ]; then return "${proof_status}"; fi
-      warn "${_wgp_label}: no valid compiled-product receipt; shared cache remains unaccepted"
+      warn "${_wgp_label}: no valid compiled-product/factory receipt; shared cache remains unaccepted"
     fi
   else
     _wgp_status=$?

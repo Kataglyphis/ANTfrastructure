@@ -5,14 +5,15 @@ import argparse
 import copy
 import hashlib
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from types import ModuleType
 from typing import cast
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from wasm_proof_fixture import create_flavor, expected_flags
+from wasm_proof_fixture import create_flavor, expected_flags, install_node_fixture
 
 g = cast(ModuleType, globals()["g"])
 
@@ -20,6 +21,8 @@ g = cast(ModuleType, globals()["g"])
 class WasmProofTests(unittest.TestCase):
     def setUp(self) -> None:
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        node_fixture = install_node_fixture(self.root / "bin")
+        self.enterContext(patch.dict(os.environ, {"PATH": str(node_fixture) + os.pathsep + os.environ["PATH"]}))
         self.prefix = self.root / "artifacts"
         self.prefix.mkdir()
         self.args = argparse.Namespace(action="record", prefix=self.prefix, config="Release", source_ref="v1.31.1",
@@ -47,6 +50,76 @@ class WasmProofTests(unittest.TestCase):
             self.assertEqual(phase["configured_flags"]["onnxruntime_ENABLE_WEBASSEMBLY_JSPI"], "ON" if flavor == "jspi" else "OFF")
             self.assertEqual(len(phase["cmake_cache_sha256"]), 64)
             self.assertEqual(phase["product"]["path"], f"ort-wasm-simd-threaded.{flavor}.wasm")
+
+    def test_raw_failed_factory_record_is_preserved_without_accepting_the_flavor(self) -> None:
+        node = self.root / "bin/node"
+        node.write_text("#!/usr/bin/env python3\nprint('raw failing fixture')\nraise SystemExit(47)\n")
+        with self.assertRaisesRegex(ValueError, "failed"):
+            self.record("asyncify")
+        raw = json.loads((self.prefix / "ort-webgpu-wasm.asyncify.runtime.json").read_text())
+        self.assertEqual(raw["returncode"], 47)
+        self.assertIn("raw failing fixture", raw["stdout"])
+        self.assertFalse((self.prefix / g.RECEIPT).exists())
+
+    def test_runtime_receipt_bytes_and_self_consistent_failed_verdicts_are_rejected(self) -> None:
+        self.both()
+        runtime = self.prefix / "ort-webgpu-wasm.jspi.runtime.json"
+        original = runtime.read_bytes()
+        runtime.write_bytes(original + b" ")
+        with self.assertRaisesRegex(ValueError, "runtime receipt changed"):
+            g.verify(self.args)
+        changed = json.loads(original)
+        changed["returncode"] = 47
+        runtime.write_text(json.dumps(changed))
+        path = self.prefix / g.RECEIPT
+        receipt = json.loads(path.read_text())
+        receipt["flavors"]["jspi"]["runtime"]["sha256"] = hashlib.sha256(runtime.read_bytes()).hexdigest()
+        path.write_text(json.dumps(receipt))
+        with self.assertRaisesRegex(ValueError, "failed"):
+            g.verify(self.args)
+
+    def test_fresh_replay_runs_exactly_both_flavors_without_rewriting_receipts(self) -> None:
+        self.both()
+        before = {path.name: path.read_bytes() for path in self.prefix.iterdir()}
+        with patch.dict(g.RUNTIME, {"run_probe": Mock(wraps=g.RUNTIME["run_probe"])}):
+            g.replay(self.args)
+            self.assertEqual([call.args[1] for call in g.RUNTIME["run_probe"].call_args_list], ["asyncify", "jspi"])
+        self.assertEqual({path.name: path.read_bytes() for path in self.prefix.iterdir()}, before)
+
+    def test_compiled_probe_carries_the_hubs_exact_original_mit_notice(self) -> None:
+        hub = Path(__file__).resolve().parents[3]
+        original = hub / "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/LICENSE"
+        self.assertEqual(original.read_bytes(), (hub / "LICENSE").read_bytes())
+        self.both()
+        self.assertEqual((self.prefix / g.PROBE_LICENSE).read_bytes(), original.read_bytes())
+        receipt = json.loads((self.prefix / g.RECEIPT).read_text())
+        for phase in receipt["flavors"].values():
+            self.assertEqual(phase["product"]["probe_license"]["sha256"], hashlib.sha256(original.read_bytes()).hexdigest())
+
+    def test_changed_missing_or_linked_mit_notice_cannot_be_accepted_or_overwritten(self) -> None:
+        self.both()
+        notice = self.prefix / g.PROBE_LICENSE
+        notice.write_text("foreign nonempty license")
+        with self.assertRaises(ValueError):
+            g.verify(self.args)
+        with self.assertRaises(ValueError):
+            g.stage_probe_license(self.prefix)
+        self.assertEqual(notice.read_text(), "foreign nonempty license")
+        notice.unlink()
+        with self.assertRaises(ValueError):
+            g.verify(self.args)
+        outside = self.root / "outside license"
+        outside.write_text("preserved")
+        notice.symlink_to(outside)
+        with self.assertRaises(ValueError):
+            g.stage_probe_license(self.prefix)
+        self.assertEqual(outside.read_text(), "preserved")
+        notice.unlink()
+        absent = self.root / "absent license target"
+        notice.symlink_to(absent)
+        with self.assertRaises(ValueError):
+            g.stage_probe_license(self.prefix)
+        self.assertFalse(absent.exists())
 
     def test_one_flavor_is_not_a_complete_bundle(self) -> None:
         self.record("asyncify")
@@ -102,7 +175,7 @@ class WasmProofTests(unittest.TestCase):
         self.both()
         path = self.prefix / g.RECEIPT
         original = json.loads(path.read_text())
-        for field, value in (("source", {"ref": "foreign", "revision": "1" * 40}), ("config", "Debug"), ("schema_version", 2)):
+        for field, value in (("source", {"ref": "foreign", "revision": "1" * 40}), ("config", "Debug"), ("schema_version", 1)):
             changed = copy.deepcopy(original)
             changed[field] = value
             path.write_text(json.dumps(changed))
@@ -156,14 +229,15 @@ class WasmProofTests(unittest.TestCase):
         (self.prefix / "ort-wasm-simd-threaded.jspi.mjs").write_text("different loader")
         with self.assertRaisesRegex(ValueError, "shared-cache"):
             g.verify_cache(self.args)
-        g.verify(self.args)
+        with self.assertRaisesRegex(ValueError, "changed after"):
+            g.verify(self.args)
 
     def test_recipe_changes_and_invalid_cli_source_cannot_reuse_or_reset(self) -> None:
         self.both()
         g.seal_cache(self.args)
         with patch.object(g, "recipe_fingerprint", return_value={"changed recipe": "0" * 64}), self.assertRaises(ValueError):
             g.verify_cache(self.args)
-        self.assertEqual(len(g.recipe_fingerprint()), 6)
+        self.assertEqual(len(g.recipe_fingerprint()), 11)
         keep = self.prefix / "keep"
         keep.write_text("preserved")
         self.args.action = "reset"

@@ -2320,31 +2320,52 @@ check the first three flags ON, with external Dawn OFF for Emscripten's integrat
 Dawn. They use reduced operators rather than the minimal build that pinned ORT
 forbids with static plugins. The JSEP JavaScript backend retains its own path.
 A failed configuration follows the existing optional-flavor policy or fails under
-`ORT_WEB_REQUIRED=1`. Shared completed WASM assets use cache epoch `-wgpu3`, so
-this migration cannot reuse the legacy in-tree EP binaries from `-wgpu2`.
+`ORT_WEB_REQUIRED=1`. Shared completed WASM assets use cache epoch `-wgpu4`, so
+this migration cannot reuse the legacy in-tree EP binaries or the uninstrumented `-wgpu3` pool.
 The cache identity also includes `ONNXRUNTIME_WASM_BUILD_TYPE` and the enabled flavor
 set; completed Debug, Release and disabled-flavor assets cannot shadow each other. Both flavors use one shared driver
 that preserves their original argument order and JSPI-only exception behavior.
 
-The prepared `ort-webgpu-wasm-proof.py` records each flavor before the next pass
-clears its CMake tree. It reuses the canonical typed-cache reader and atomic writer
-from `ort-webgpu-build-proof.py`, which must accompany it. The receipt binds the
-source ref/full revision, actual configuration, the four plugin/Dawn booleans,
-threading and JSPI booleans, cache digest and exact WASM module digest. The module
-must have a WebAssembly v1 header and its loader must be a nonempty regular file.
-The compiled receipt does not bind mutable npm-generated loader code; loader and
-factory execution require separate tests.
+`ort-webgpu-wasm-proof.py record` checks each flavor before the next pass clears
+its CMake tree. Schema 2 binds the source ref/full revision, configuration, six
+typed mode flags, cache digest and exact WASM and MJS digests. It executes
+`webgpu-factory-probe/run-wasm.mjs` with the original bytes and one thread.
+The source-owned `wasm.cmake` hook defers binding the shared C probe to the real
+`onnxruntime_webassembly` target, so it uses that target's compiler and C API.
+An existing semicolon-separated `CMAKE_PROJECT_TOP_LEVEL_INCLUDES` value is
+preserved before this hook; the two core passes retain their existing arguments.
 
-`web-wasm-cache.sh` accepts a shared pool only when its manifest and marker match
-the source revision, configuration, flavor selection, six direct recipe files and
-every regular payload byte. It validates copied bytes, replaces stale output and
-keeps cache-internal markers out of delivered output. Missing or altered receipts,
-extra files, changed recipes and legacy marker-only pools trigger a fresh build;
-nonregular trees fail before reset. These checks trust the builder's source-to-module
-relation and do not claim complete compiler/environment reproducibility.
-The direct recipe comprises `40-build-wasm.sh`, `build-onnxruntime.sh`,
-`web-wasm-cache.sh`, and the `lib/` companions `common.sh`,
-`ort-webgpu-build-proof.py` and `ort-webgpu-wasm-proof.py`.
+The exported `OrtWebGpuFactoryProbe(1)` rejects the legacy compiled provider,
+creates an ORT environment, unregisters its static factory once, requires the
+precise missing-library failure on the second call and releases the environment.
+Native builds retain their loader cleanup. The WASM entry flushes its C verdict
+before returning; the Node driver requires numeric zero and actual JSPI support
+for JSPI. A timeout, inner failure, missing/duplicate/wrong-mode C marker or
+changed module, loader, Node executable or recipe fails. Raw child output,
+status and timeout are written before a flavor receipt is accepted.
+
+The instrumented product also carries `ort-webgpu-factory-probe.LICENSE`, the
+Hub's original MIT notice. The probe companion must match the root `LICENSE`
+byte-for-byte; each flavor binds the staged text, and missing, altered or linked
+destinations fail. Consumers distributing these modules carry that notice with
+ORT's own original notices.
+
+Each flavor's runtime JSON is itself hash-bound to the schema-2 receipt.
+Verification requires both complete flavors and the current five runtime/probe
+companions. `web-wasm-cache.sh` additionally binds the full payload and eleven direct
+recipe files, validates copied bytes and keeps internal cache markers out of the
+delivered output. Missing/altered receipts, changed recipes and old marker-only
+pools require a fresh build; nonregular trees fail before reset. These checks
+trust the builder's source-to-module relation rather than authenticating it or
+proving complete compiler/environment reproducibility.
+
+For a fresh runtime replay against a receipt-bearing product directory, run
+`python3 build/lib/ort-webgpu-wasm-proof.py replay --prefix <directory>
+--source-ref <pin> --source-revision <full-revision> --config <configuration>`
+from the ONNX build-script directory. Replay runs both flavors in separate bounded
+Node processes and emits their raw result records without rewriting products.
+This proves factory registration and its negative controls only; browser/device
+availability, inference and complete global-runtime teardown remain separate.
 
 For CON233's own chains, export `ORT_WEB_REQUIRED=1 ORT_WASM_WEBGPU_FLAVORS=true`.
 The canonical media-stage argument builder forwards both; required build, copy and

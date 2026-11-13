@@ -130,8 +130,10 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Native and C++ WASM WebGPU select `--use_webgpu static_plugin`; retain native external Dawn and Emscripten's integrated Dawn.
    Check the configured flags on CPU, NVIDIA, free-threaded, Asyncify and JSPI builds; explicit opt-outs prove OFF.
    Record both WASM products before their configured trees change; reuse the shared pool only after its source, mode, direct recipe and every artifact hash pass.
+   Both WASM factory receipts require the real linked C export, exact unregister/negative controls, raw Node success and unchanged module/loader/recipe bytes; initialization or Dawn instance creation is insufficient.
+   Instrumented WASM products carry the Hub probe's original MIT notice as a hash-bound sidecar; keep the companion identical to the root LICENSE and refuse foreign or linked destinations.
    CON233 media chains forward ORT_WEB_REQUIRED=1 and require both flavors; preserve strict failures through the cache wrapper and after JS staging.
-   Copied WASM proof modules carry the canonical build-proof module; copied WASM suites carry wasm_proof_fixture.py with independent expected flags.
+   Copied WASM proof modules carry the build-proof/runtime modules and webgpu-factory-probe companions; copied suites carry wasm_proof_fixture.py and its independent node fixture.
    Python proof suites carry python-proof-fixture.sh; raw zero, a nonempty executed unittest suite and its successful summary are all required.
    Native/GIL and free-threaded builds carry `ort-webgpu-build-proof.py`; record each linker product before its configured tree changes.
    Build receipts retain pre-repair bytes; wheel repair checks their source/mode and records validated final hashes before runtime registration proof.
@@ -149,7 +151,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied runtime smoke drivers carry `check-ort-runtime.sh`; the FT store runs the same Python gate in its installed FT environment.
    `finalize-media.sh` retains collection, both Python-mode repairs/verdicts and final smoke ordering; native install failures stay fatal and foreign failures stay advisory.
    Shared CMake entry checks retain first-value launcher reads and strict typed, duplicate-refusing Boolean reads.
-   Static-plugin WASM assets key the shared cache by build type and `-wgpu3`; an old completed artifact cache is not a rebuild.
+   Static-plugin WASM assets key the shared cache by build type and `-wgpu4`; an old completed artifact cache is not a rebuild.
    Its protobuf seed validates every C/C++ option argument, including mixed scoped inputs; none may reach rc.exe or its cmcldeps preprocessor.
    Shared plugin C++ flags retain /EHsc because the ORT C++ API throws.
    CUDA standard options stay joined so sccache does not parse the value as another input.

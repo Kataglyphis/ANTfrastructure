@@ -4,7 +4,6 @@
 scripts="${STEP%/*}"
 cp "${STEP}" "${work}/web-wasm-cache.sh"
 cp "${scripts}/40-build-wasm.sh" "${work}/"
-cp "${scripts}/lib/ort-webgpu-wasm-proof.py" "${scripts}/lib/ort-webgpu-build-proof.py" "${work}/lib/"
 cp "${TESTS_DIR}/../01-core/logging.sh" "${work}/lib/"
 cat > "${work}/lib/common.sh" <<'SH'
 parse_common_args() { :; }
@@ -38,7 +37,7 @@ _run() {
   local -a extra=()
   [ "${6:-0}" != 1 ] || extra+=(--verify-only)
   status=0
-  output="$(env LC_ALL=C FIXTURE_ROOT="${case_root}" FIXTURE_MODE="${mode}" FIXTURE_EVENTS="${case_root}/events" \
+  output="$(env LC_ALL=C PATH="${work}/bin:${PATH}" FIXTURE_ROOT="${case_root}" FIXTURE_MODE="${mode}" FIXTURE_EVENTS="${case_root}/events" \
     FIXTURE_EMITTER="${TESTS_DIR}/wasm_proof_fixture.py" FIXTURE_PROOF="${work}/lib/ort-webgpu-wasm-proof.py" \
     ORT_VERSION="${version}" ORT_SRC_DIR="${work}/source" WASM_CONFIG="${config}" \
     WASM_OUTPUT_DIR="${case_root}/output" ORT_WEB_SHARED_CACHE="${case_root}/shared" \

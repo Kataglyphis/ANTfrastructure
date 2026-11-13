@@ -38051,16 +38051,16 @@
  {
   "id": "lib.onnx-webgpu-wasm-cache-epoch",
   "target": "linux/Dockerfile.media",
-  "find": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-${ORT_WASM_WEBGPU_FLAVORS}-wgpu3,sharing=locked",
-  "replace": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-${ORT_WASM_WEBGPU_FLAVORS}-wgpu2,sharing=locked",
+  "find": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-${ORT_WASM_WEBGPU_FLAVORS}-wgpu4,sharing=locked",
+  "replace": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-${ORT_WASM_WEBGPU_FLAVORS}-wgpu3,sharing=locked",
   "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
   "why": "Changing the compiled WebGPU ABI must not reuse already completed WASM assets from the legacy in-tree EP cache."
  },
  {
   "id": "lib.onnx-webgpu-wasm-build-type-key",
   "target": "linux/Dockerfile.media",
-  "find": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-${ORT_WASM_WEBGPU_FLAVORS}-wgpu3,sharing=locked",
-  "replace": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ORT_WASM_WEBGPU_FLAVORS}-wgpu3,sharing=locked",
+  "find": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-${ORT_WASM_WEBGPU_FLAVORS}-wgpu4,sharing=locked",
+  "replace": "id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ORT_WASM_WEBGPU_FLAVORS}-wgpu4,sharing=locked",
   "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
   "why": "Completed Debug and Release WASM assets must not share an artifact-cache identity."
  },
@@ -38795,8 +38795,8 @@
  {
   "id": "probe.native-webgpu-registration-call",
   "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
-  "find": "if (!failed) failed = registration(&probe, strcmp(argv[2], \"ON\") == 0);",
-  "replace": "if (!failed && argc > 100) failed = registration(&probe, strcmp(argv[2], \"ON\") == 0);",
+  "find": "if (!failed) failed = registration(&probe, enabled);",
+  "replace": "if (!failed && enabled > 100) failed = registration(&probe, enabled);",
   "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
   "why": "The real native executable must create an owning environment and check its factory."
  },
@@ -38804,7 +38804,7 @@
   "id": "probe.native-webgpu-provider-call",
   "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
   "find": "if (!failed) failed = compiled_providers(&probe);",
-  "replace": "if (!failed && argc > 100) failed = compiled_providers(&probe);",
+  "replace": "if (!failed && enabled > 100) failed = compiled_providers(&probe);",
   "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
   "why": "The compiled-provider legacy gate must run before environment creation."
  },
@@ -41280,7 +41280,7 @@
  {
   "id": "lib.onnx-wasm-proof-receipt-identity",
   "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-proof.py",
-  "find": "if (receipt.get(\"schema_version\") != 1 or receipt.get(\"source\") != source_identity(args)\n            or receipt.get(\"config\") != args.config):",
+  "find": "if (receipt.get(\"schema_version\") != 2 or receipt.get(\"source\") != source_identity(args)\n            or receipt.get(\"config\") != args.config):",
   "replace": "if False:",
   "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
   "why": "Both flavor records must belong to the requested source and configuration."
@@ -41312,7 +41312,7 @@
  {
   "id": "lib.onnx-wasm-proof-product-bytes",
   "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-proof.py",
-  "find": "if phase[\"product\"] != wasm_product(args.prefix, flavor):",
+  "find": "if phase[\"product\"] != product:",
   "replace": "if False:",
   "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
   "why": "An earlier product must stay unchanged before the next pass is recorded."
@@ -41336,8 +41336,8 @@
  {
   "id": "lib.onnx-wasm-proof-product-digest",
   "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-proof.py",
-  "find": "return {\"path\": wasm.name, \"sha256\": digest}",
-  "replace": "return {\"path\": wasm.name, \"sha256\": \"0\" * 64}",
+  "find": "return {\"path\": wasm.name, \"sha256\": digest,",
+  "replace": "return {\"path\": wasm.name, \"sha256\": \"0\" * 64,",
   "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
   "why": "Receipts retain the real compiled module digest."
  },
@@ -46316,5 +46316,317 @@
   "replace": "[[:space:]][[:space:]]+.+$/",
   "test": "bash linux/scripts/tests/test-sccache-probe-stats.sh",
   "why": "Cache activity uses only aggregate integer counters and retains raw collection failures. Synthetic rows and parser fixtures do not prove real compiler reuse,S3,compiler-stage or final image/GPU acceptance."
+ },
+ {
+  "id": "probe.wasm-webgpu-runtime-binding",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-runtime.py",
+  "find": "if (proof.get(\"schema_version\") != 1 or proof.get(\"flavor\") != flavor\n            or proof.get(\"product\") != product or proof.get(\"source\") != source\n            or proof.get(\"recipe\") != recipe(digest)):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "A factory receipt binds its source, flavor, exact products and current recipe."
+ },
+ {
+  "id": "probe.wasm-webgpu-child-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-runtime.py",
+  "find": "if (type(proof.get(\"returncode\")) is not int or proof[\"returncode\"] != 0\n            or proof.get(\"timed_out\") is not False or proof.get(\"unchanged_inputs\") is not True\n            or not re.fullmatch(r\"[0-9a-f]{64}\", proof.get(\"node_sha256\", \"\"))):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "A false/failed status, timeout or changed inputs cannot be a runtime pass."
+ },
+ {
+  "id": "probe.wasm-webgpu-output-bound",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-runtime.py",
+  "find": "if not isinstance(stdout, str) or not isinstance(stderr, str) or len(stdout) + len(stderr) > 2 * 1024 * 1024:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "Unbounded or malformed child output is not a valid receipt."
+ },
+ {
+  "id": "probe.wasm-webgpu-one-c-sentinel",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-runtime.py",
+  "find": "len(success) != 1",
+  "replace": "not success",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "Two C success markers cannot be accepted as one invocation."
+ },
+ {
+  "id": "probe.wasm-webgpu-inner-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-runtime.py",
+  "find": "any(marker in stdout + stderr for marker in failed)",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "An inner failure remains fatal even beside a successful C marker."
+ },
+ {
+  "id": "probe.wasm-webgpu-c-mode-version",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-runtime.py",
+  "find": "if not match or (re.fullmatch(r\"v?[0-9]+\\.[0-9]+\\.[0-9]+\", source_ref)\n                     and match[2] != source_ref.removeprefix(\"v\")):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "C output must identify the requested enabled mode and pinned version."
+ },
+ {
+  "id": "probe.wasm-webgpu-one-node-identity",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-runtime.py",
+  "find": "if len(metadata) != 1:",
+  "replace": "if not metadata:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "Duplicate runtime identities cannot be normalized to the first line."
+ },
+ {
+  "id": "probe.wasm-webgpu-node-capability",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-runtime.py",
+  "find": "if (not re.fullmatch(r\"v[0-9]+\\.[0-9]+\\.[0-9]+\", node[\"version\"])\n            or type(node[\"jspiSupported\"]) is not bool or (flavor == \"jspi\" and not node[\"jspiSupported\"])):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "JSPI requires a real supported Node capability and typed runtime identity."
+ },
+ {
+  "id": "probe.wasm-webgpu-bounded-child",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-runtime.py",
+  "find": "timeout=120",
+  "replace": "timeout=1200",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "The child has its own bounded deadline rather than relying on the outer source unit."
+ },
+ {
+  "id": "probe.wasm-webgpu-unchanged-inputs",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-runtime.py",
+  "find": "return before == [digest(path) for path in paths] and before_recipe == recipe(digest)",
+  "replace": "return True",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "Changes during execution invalidate the raw proof."
+ },
+ {
+  "id": "probe.wasm-webgpu-recipe-before-child",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-runtime.py",
+  "find": "\"recipe\": before_recipe",
+  "replace": "\"recipe\": {}",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "An executed proof must retain its complete source-owned runtime recipe."
+ },
+ {
+  "id": "probe.wasm-webgpu-linked-mode",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (enabled != 0 && enabled != 1) return error(\"mode must be zero or one\");",
+  "replace": "if (enabled < 0) return error(\"mode must be zero or one\");",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The linked entry refuses invalid enabled values instead of treating any nonzero input as ON."
+ },
+ {
+  "id": "probe.wasm-webgpu-flush-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/probe.c",
+  "find": "if (!failed && fflush(stdout) != 0) return error(\"stdout flush failed\");",
+  "replace": "if (!failed) (void)fflush(stdout);",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "A failed real flush cannot be hidden behind a buffered success marker."
+ },
+ {
+  "id": "probe.wasm-webgpu-deferred-target",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/wasm.cmake",
+  "find": "cmake_language(DEFER CALL ant_ort_webgpu_factory_probe)",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "The owning target must actually receive the shared C probe after it is declared."
+ },
+ {
+  "id": "probe.wasm-webgpu-hook-idempotent",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/wasm.cmake",
+  "find": "include_guard(GLOBAL)",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "An operator who already includes the hook cannot attach duplicate probe sources."
+ },
+ {
+  "id": "probe.wasm-webgpu-required-target",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/wasm.cmake",
+  "find": "if(NOT TARGET onnxruntime_webassembly)",
+  "replace": "if(FALSE)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "A missing owning target fails with its explicit configuration diagnostic."
+ },
+ {
+  "id": "probe.wasm-webgpu-required-header",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/wasm.cmake",
+  "find": "if(NOT EXISTS \"${header}\")",
+  "replace": "if(FALSE)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "A missing owning header fails before generating a misleading build tree."
+ },
+ {
+  "id": "probe.wasm-webgpu-target-system",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/wasm.cmake",
+  "find": "NOT\n     CMAKE_SYSTEM_NAME\n     STREQUAL\n     \"Emscripten\"",
+  "replace": "FALSE",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "The hook refuses a foreign target or legacy WebGPU configuration."
+ },
+ {
+  "id": "probe.wasm-webgpu-webgpu-mode",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/wasm.cmake",
+  "find": "OR NOT onnxruntime_USE_WEBGPU",
+  "replace": "OR FALSE",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "The hook refuses a foreign target or legacy WebGPU configuration."
+ },
+ {
+  "id": "probe.wasm-webgpu-adapter-mode",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/wasm.cmake",
+  "find": "OR NOT onnxruntime_USE_EP_API_ADAPTERS",
+  "replace": "OR FALSE",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "The hook refuses a foreign target or legacy WebGPU configuration."
+ },
+ {
+  "id": "probe.wasm-webgpu-static-mode",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/wasm.cmake",
+  "find": "OR NOT onnxruntime_WEBGPU_STATIC_PLUGIN",
+  "replace": "OR FALSE",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "The hook refuses a foreign target or legacy WebGPU configuration."
+ },
+ {
+  "id": "probe.wasm-webgpu-integrated-dawn",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/wasm.cmake",
+  "find": "OR onnxruntime_USE_EXTERNAL_DAWN",
+  "replace": "OR FALSE",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "The hook refuses a foreign target or legacy WebGPU configuration."
+ },
+ {
+  "id": "probe.wasm-webgpu-driver-status",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/run-wasm.mjs",
+  "find": "if (status !== 0)",
+  "replace": "if (false)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "Numeric zero is required; a nonzero or string status cannot pass the driver."
+ },
+ {
+  "id": "probe.wasm-webgpu-driver-enabled-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/run-wasm.mjs",
+  "find": "module._OrtWebGpuFactoryProbe(1)",
+  "replace": "module._OrtWebGpuFactoryProbe(0)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "The real driver invokes the enabled-factory control."
+ },
+ {
+  "id": "probe.wasm-webgpu-driver-jspi-capability",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/run-wasm.mjs",
+  "find": "if (flavor === 'jspi' && !jspiSupported)",
+  "replace": "if (false)",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-runtime.sh",
+  "why": "A Node runtime without JSPI must refuse before importing the loader."
+ },
+ {
+  "id": "probe.wasm-webgpu-record-validates-child",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-proof.py",
+  "find": "RUNTIME[\"validate\"](runtime, args.flavor, product, source, file_digest)",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
+  "why": "A failed recorded Node child cannot publish a successful flavor."
+ },
+ {
+  "id": "probe.wasm-webgpu-preserve-raw-child",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-proof.py",
+  "find": "BUILD[\"write_receipt\"](args.prefix, runtime, filename=runtime_name)",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
+  "why": "Raw child status/output must survive before a semantic failure is returned."
+ },
+ {
+  "id": "probe.wasm-webgpu-verify-runtime-bytes",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-proof.py",
+  "find": "if phase[\"runtime\"] != {\"path\": runtime_path.name, \"sha256\": file_digest(runtime_path)}:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
+  "why": "Runtime receipt bytes remain bound even when the JSON semantics are unchanged."
+ },
+ {
+  "id": "probe.wasm-webgpu-verify-runtime-verdict",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-proof.py",
+  "find": "RUNTIME[\"validate\"](json.loads(runtime_path.read_text()), flavor, product, source_identity(args), file_digest)",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
+  "why": "A self-consistent hash cannot turn a failed factory result into acceptance."
+ },
+ {
+  "id": "probe.wasm-webgpu-loader-digest",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-proof.py",
+  "find": "\"loader\": {\"path\": loader.name, \"sha256\": loader_digest}",
+  "replace": "\"loader\": {\"path\": loader.name, \"sha256\": \"0\" * 64}",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
+  "why": "The compiled receipt binds the exact MJS loader as well as the WASM bytes."
+ },
+ {
+  "id": "probe.wasm-webgpu-replay-both",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-proof.py",
+  "find": "for flavor in FLAVORS:",
+  "replace": "for flavor in FLAVORS[:1]:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
+  "why": "A fresh runtime replay must actually execute both enabled flavors."
+ },
+ {
+  "id": "probe.wasm-webgpu-complete-recipe",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-proof.py",
+  "find": "*(\"lib/\" + name for name in RUNTIME[\"COMPANIONS\"])",
+  "replace": "*()",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
+  "why": "The shared cache fingerprint includes all four compilation/runtime companions."
+ },
+ {
+  "id": "probe.wasm-webgpu-build-hook-forwarding",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh",
+  "find": "\"CMAKE_PROJECT_TOP_LEVEL_INCLUDES=${CMAKE_PROJECT_TOP_LEVEL_INCLUDES:+${CMAKE_PROJECT_TOP_LEVEL_INCLUDES};}${SCRIPT_DIR}/lib/webgpu-factory-probe/wasm.cmake\"",
+  "replace": "\"CMAKE_PROJECT_TOP_LEVEL_INCLUDES=${SCRIPT_DIR}/lib/webgpu-factory-probe/wasm.cmake\"",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "The required factory hook retains the operator list and path boundaries."
+ },
+ {
+  "id": "probe.wasm-webgpu-original-mit-text",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/LICENSE",
+  "find": "MIT License",
+  "replace": "Foreign License",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
+  "why": "The copied probe notice must retain the original Hub text rather than a replacement notice."
+ },
+ {
+  "id": "probe.wasm-webgpu-mit-identity",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-proof.py",
+  "find": "if digest != file_digest(Path(__file__).parent / \"webgpu-factory-probe/LICENSE\"):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
+  "why": "An altered existing notice must fail instead of being normalized or accepted."
+ },
+ {
+  "id": "probe.wasm-webgpu-mit-stage-call",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-proof.py",
+  "find": "if install_notice:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
+  "why": "A compiled product cannot omit the original notice during recording."
+ },
+ {
+  "id": "probe.wasm-webgpu-mit-dangling-link",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-proof.py",
+  "find": "if target.exists() or target.is_symlink():",
+  "replace": "if target.exists():",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
+  "why": "A dangling destination link must fail before writing outside the product directory."
+ },
+ {
+  "id": "probe.wasm-webgpu-mit-product-binding",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-wasm-proof.py",
+  "find": "\"probe_license\": probe_license(prefix)",
+  "replace": "\"probe_license\": {}",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-wasm-proof.sh",
+  "why": "Both compiled flavor receipts bind the actual original notice bytes."
+ },
+ {
+  "id": "probe.wasm-webgpu-native-mit-install",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/webgpu-factory-probe/CMakeLists.txt",
+  "find": "install(FILES LICENSE DESTINATION share/licenses/ort-webgpu-factory-probe)",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-onnx-webgpu-native.sh",
+  "why": "The shared native probe installs the same original notice beside its binary."
  }
 ]

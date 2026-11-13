@@ -15,6 +15,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — prepare executed WASM factory receipts
+
+- Reuse the native C API factory controls through an explicit linked-core WASM entry and a deferred CMake hook on the owning target; preserve native loader cleanup, operator hooks and the two core pass arguments.
+- Require bounded Node execution, actual JSPI capability, numeric status, exact C success/negative controls and unchanged inputs. Bind both module and loader bytes plus per-flavor raw runtime receipts; add a fresh two-flavor replay.
+- Carry the Hub probe's original MIT text with each instrumented WASM product and bind its exact bytes; reject altered or linked notice destinations.
+- Advance the shared artifact pool to `-wgpu4` and bind all runtime/probe recipe companions. Fake host ABI/loader fixtures test refusal and transport; actual instrumented builds, the image matrix and finished consumer acceptance remain open.
+
 ## 2026-11-13 — reconcile the preserved Rust workspace proof
 
 - Independently recheck the 11 November complete Rust test log: 912 passed cases in 64 summaries, zero failed, ignored or filtered; cleanup and container-absence receipts remain preserved.

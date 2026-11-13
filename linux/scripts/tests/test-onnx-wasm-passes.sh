@@ -10,7 +10,10 @@ if [ "${1:-}" = --cache ]; then fixture_stage=web-wasm-cache.sh; shift; fi
 script_stage_fixture_init work STEP "${fixture_stage}" "${1:-}" lib bin 'source tree' || exit 1
 cp "${STEP}" "${work}/step.sh"
 cp "${TESTS_DIR}/../01-core/logging.sh" "${work}/lib/logging.sh"
-cp "${STEP%/*}/lib/ort-webgpu-wasm-proof.py" "${STEP%/*}/lib/ort-webgpu-build-proof.py" "${work}/lib/"
+cp "${STEP%/*}/lib/ort-webgpu-wasm-proof.py" "${STEP%/*}/lib/ort-webgpu-build-proof.py" \
+  "${STEP%/*}/lib/ort-webgpu-wasm-runtime.py" "${work}/lib/"
+cp -a "${STEP%/*}/lib/webgpu-factory-probe" "${work}/lib/"
+cp "${TESTS_DIR}/fixtures/webgpu-native/node" "${work}/bin/node"
 if [ "${fixture_stage}" = web-wasm-cache.sh ]; then
   source "${TESTS_DIR}/onnx_web_cache_cases.sh"
   exit $?
@@ -108,9 +111,14 @@ simd='<--enable_wasm_simd><--enable_wasm_threads>'
 reduced="<--disable_ml_ops><--disable_generation_ops><--disable_types><string><float4><float8><optional><sparsetensor><--include_ops_by_config><${work}/source tree/onnxruntime/wasm/reduced_types.config><--enable_reduced_operator_type_support>"
 t_assert_eq "${common}${simd}" "$(cat "${work}/args.simd")"
 t_assert_eq "${common}${simd}<--use_jsep><--use_webnn>" "$(cat "${work}/args.jsep")"
-t_assert_eq "${common}${simd}<--use_webgpu><static_plugin><--use_webnn><--target><onnxruntime_webassembly>${reduced}" "$(cat "${work}/args.asyncify")"
-t_assert_eq "${common/<--disable_wasm_exception_catching>/}${simd}<--use_webgpu><static_plugin><--use_webnn><--enable_wasm_jspi><--target><onnxruntime_webassembly>${reduced}" "$(cat "${work}/args.jspi")"
-t_assert_eq $'ort-wasm-simd-threaded.asyncify.mjs\nort-wasm-simd-threaded.asyncify.wasm\nort-wasm-simd-threaded.jsep.extra file\nort-wasm-simd-threaded.jsep.wasm\nort-wasm-simd-threaded.jspi.mjs\nort-wasm-simd-threaded.jspi.wasm\nort-wasm-simd-threaded.wasm\nort-wasm-simd-threaded.webnn.mjs\nort-webgpu-wasm.json' "$(find "${work}/output" -type f -printf '%f\n' | LC_ALL=C sort)"
+t_assert_eq "${common}${simd}<--use_webgpu><static_plugin><--use_webnn><--target><onnxruntime_webassembly><--cmake_extra_defines><CMAKE_PROJECT_TOP_LEVEL_INCLUDES=${work}/lib/webgpu-factory-probe/wasm.cmake>${reduced}" "$(cat "${work}/args.asyncify")"
+t_assert_eq "${common/<--disable_wasm_exception_catching>/}${simd}<--use_webgpu><static_plugin><--use_webnn><--enable_wasm_jspi><--target><onnxruntime_webassembly><--cmake_extra_defines><CMAKE_PROJECT_TOP_LEVEL_INCLUDES=${work}/lib/webgpu-factory-probe/wasm.cmake>${reduced}" "$(cat "${work}/args.jspi")"
+t_assert_eq $'ort-wasm-simd-threaded.asyncify.mjs\nort-wasm-simd-threaded.asyncify.wasm\nort-wasm-simd-threaded.jsep.extra file\nort-wasm-simd-threaded.jsep.wasm\nort-wasm-simd-threaded.jspi.mjs\nort-wasm-simd-threaded.jspi.wasm\nort-wasm-simd-threaded.wasm\nort-wasm-simd-threaded.webnn.mjs\nort-webgpu-factory-probe.LICENSE\nort-webgpu-wasm.asyncify.runtime.json\nort-webgpu-wasm.json\nort-webgpu-wasm.jspi.runtime.json' "$(find "${work}/output" -type f -printf '%f\n' | LC_ALL=C sort)"
+t_case "operator CMake includes precede the required factory hook without splitting paths"
+CMAKE_PROJECT_TOP_LEVEL_INCLUDES='/operator path/first.cmake;/second.cmake' _wasm_case '' true 1 0
+t_assert_eq 0 "${status}" "${output}"
+t_assert_contains "$(cat "${work}/args.asyncify")" "<CMAKE_PROJECT_TOP_LEVEL_INCLUDES=/operator path/first.cmake;/second.cmake;${work}/lib/webgpu-factory-probe/wasm.cmake>"
+t_assert_contains "$(cat "${work}/args.jspi")" "<CMAKE_PROJECT_TOP_LEVEL_INCLUDES=/operator path/first.cmake;/second.cmake;${work}/lib/webgpu-factory-probe/wasm.cmake>"
 t_case "the wasm ccache dir rides S3 as one archive per ORT version: restored when empty, stored when it grew"
 _wasm_case '' false 0 0; FIXTURE_CCACHE_WRITES=1 _wasm_case '' false 0 0
 t_assert_eq 0 "${status}" "${output}"
@@ -187,5 +195,5 @@ FIXTURE_RESET_FAIL_AT=4 _wasm_case '' true 1 0
 t_assert_eq 7 "${status}" "${output}"
 t_assert_eq $'build:simd\nbuild:jsep' "$(grep '^build:' "${work}/events")"
 t_case "the shared WASM cache cannot reuse the old in-tree WebGPU binaries"
-t_assert_contains "$(cat "${TESTS_DIR}/../../Dockerfile.media")" 'id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-${ORT_WASM_WEBGPU_FLAVORS}-wgpu3,sharing=locked'
+t_assert_contains "$(cat "${TESTS_DIR}/../../Dockerfile.media")" 'id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-${ONNXRUNTIME_WASM_BUILD_TYPE}-${ORT_WASM_WEBGPU_FLAVORS}-wgpu4,sharing=locked'
 t_summary

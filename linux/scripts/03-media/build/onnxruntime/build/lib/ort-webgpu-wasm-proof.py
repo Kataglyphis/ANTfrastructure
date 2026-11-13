@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bind compiled WASM modes/bytes and shared-cache contents; no factory, loader, device or inference proof."""
+"""Bind WASM modes, bytes and executed factory controls; no adapter, browser or inference proof."""
 from __future__ import annotations
 
 import argparse
@@ -12,12 +12,14 @@ import shutil
 import sys
 from pathlib import Path
 
+RUNTIME = runpy.run_path(str(Path(__file__).with_name("ort-webgpu-wasm-runtime.py")))
 BUILD = runpy.run_path(str(Path(__file__).with_name("ort-webgpu-build-proof.py")))
 if not all(callable(BUILD.get(name)) for name in ("configured_mode", "write_receipt")):
     raise ValueError("missing canonical build-proof API")
 RECEIPT = "ort-webgpu-wasm.json"
 CACHE = "ort-wasm-cache.json"
 FLAVORS = ("asyncify", "jspi")
+PROBE_LICENSE = "ort-webgpu-factory-probe.LICENSE"
 
 
 def expected_flags(flavor: str) -> dict[str, str]:
@@ -39,15 +41,36 @@ def file_digest(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def wasm_product(prefix: Path, flavor: str) -> dict:
+def probe_license(prefix: Path) -> dict[str, str]:
+    notice = prefix / PROBE_LICENSE
+    digest = file_digest(notice)
+    if digest != file_digest(Path(__file__).parent / "webgpu-factory-probe/LICENSE"):
+        raise ValueError("WASM probe license differs from its original MIT text")
+    return {"path": notice.name, "sha256": digest}
+
+
+def stage_probe_license(prefix: Path) -> None:
+    target = prefix / PROBE_LICENSE
+    if target.exists() or target.is_symlink():
+        probe_license(prefix)
+        return
+    shutil.copy2(Path(__file__).parent / "webgpu-factory-probe/LICENSE", target)
+    probe_license(prefix)
+
+
+def wasm_product(prefix: Path, flavor: str, install_notice: bool = False) -> dict:
     stem = f"ort-wasm-simd-threaded.{flavor}"
     wasm = prefix / (stem + ".wasm")
     digest = file_digest(wasm)
     with wasm.open("rb") as stream:
         if stream.read(8) != b"\0asm\x01\0\0\0":
             raise ValueError(f"not a WebAssembly v1 module: {wasm}")
-    file_digest(prefix / (stem + ".mjs"))
-    return {"path": wasm.name, "sha256": digest}
+    loader = prefix / (stem + ".mjs")
+    loader_digest = file_digest(loader)
+    if install_notice:
+        stage_probe_license(prefix)
+    return {"path": wasm.name, "sha256": digest,
+            "loader": {"path": loader.name, "sha256": loader_digest}, "probe_license": probe_license(prefix)}
 
 
 def source_identity(args: argparse.Namespace) -> dict:
@@ -60,7 +83,7 @@ def checked_receipt(args: argparse.Namespace, complete: bool) -> dict:
     regular_prefix(args.prefix)
     file_digest(args.prefix / RECEIPT)
     receipt = json.loads((args.prefix / RECEIPT).read_text())
-    if (receipt.get("schema_version") != 1 or receipt.get("source") != source_identity(args)
+    if (receipt.get("schema_version") != 2 or receipt.get("source") != source_identity(args)
             or receipt.get("config") != args.config):
         raise ValueError("WASM receipt source/configuration differs")
     phases = receipt["flavors"]
@@ -71,8 +94,13 @@ def checked_receipt(args: argparse.Namespace, complete: bool) -> dict:
             raise ValueError("WASM receipt has a legacy or foreign configuration")
         if not re.fullmatch(r"[0-9a-f]{64}", phase["cmake_cache_sha256"]):
             raise ValueError("WASM receipt lacks its configured-cache identity")
-        if phase["product"] != wasm_product(args.prefix, flavor):
+        product = wasm_product(args.prefix, flavor)
+        if phase["product"] != product:
             raise ValueError("compiled WASM bytes changed after their build proof")
+        runtime_path = args.prefix / f"ort-webgpu-wasm.{flavor}.runtime.json"
+        if phase["runtime"] != {"path": runtime_path.name, "sha256": file_digest(runtime_path)}:
+            raise ValueError("WASM factory runtime receipt changed")
+        RUNTIME["validate"](json.loads(runtime_path.read_text()), flavor, product, source_identity(args), file_digest)
     return receipt
 
 
@@ -86,12 +114,20 @@ def record(args: argparse.Namespace) -> None:
     if (args.prefix / RECEIPT).exists():
         receipt = checked_receipt(args, False)
     else:
-        receipt = {"schema_version": 1, "source": source, "config": args.config, "flavors": {}}
+        receipt = {"schema_version": 2, "source": source, "config": args.config, "flavors": {}}
     if args.flavor in receipt["flavors"]:
         raise ValueError("refusing to replace an already recorded WASM flavor")
+    product = wasm_product(args.prefix, args.flavor, install_notice=True)
+    runtime = RUNTIME["run_probe"](args.prefix, args.flavor, product, source, file_digest)
+    runtime_name = f"ort-webgpu-wasm.{args.flavor}.runtime.json"
+    BUILD["write_receipt"](args.prefix, runtime, filename=runtime_name)
+    print("WASM-FACTORY-RECORD: " + json.dumps(runtime, sort_keys=True), file=sys.stderr)
+    RUNTIME["validate"](runtime, args.flavor, product, source, file_digest)
+    if product != wasm_product(args.prefix, args.flavor):
+        raise ValueError("WASM product changed during factory verification")
     receipt["flavors"][args.flavor] = {"configured_flags": flags,
-        "cmake_cache_sha256": hashlib.sha256(cache.read_bytes()).hexdigest(),
-        "product": wasm_product(args.prefix, args.flavor)}
+        "cmake_cache_sha256": hashlib.sha256(cache.read_bytes()).hexdigest(), "product": product,
+        "runtime": {"path": runtime_name, "sha256": file_digest(args.prefix / runtime_name)}}
     BUILD["write_receipt"](args.prefix, receipt, filename=RECEIPT)
 
 
@@ -106,6 +142,15 @@ def verify(args: argparse.Namespace) -> None:
         raise ValueError("no WASM artifacts were built")
 
 
+def replay(args: argparse.Namespace) -> None:
+    receipt = checked_receipt(args, True)
+    for flavor in FLAVORS:
+        product = receipt["flavors"][flavor]["product"]
+        result = RUNTIME["run_probe"](args.prefix, flavor, product, source_identity(args), file_digest)
+        print("WASM-FACTORY-REPLAY: " + json.dumps(result, sort_keys=True))
+        RUNTIME["validate"](result, flavor, product, source_identity(args), file_digest)
+
+
 def cache_files(prefix: Path) -> dict[str, str]:
     regular_prefix(prefix)
     return {p.name: file_digest(p) for p in sorted(prefix.iterdir()) if p.name not in (CACHE, ".complete")}
@@ -114,7 +159,8 @@ def cache_files(prefix: Path) -> dict[str, str]:
 def recipe_fingerprint() -> dict[str, str]:
     root = Path(__file__).resolve().parent.parent
     names = ("40-build-wasm.sh", "build-onnxruntime.sh", "web-wasm-cache.sh", "lib/common.sh",
-             "lib/ort-webgpu-build-proof.py", "lib/ort-webgpu-wasm-proof.py")
+             "lib/ort-webgpu-build-proof.py", "lib/ort-webgpu-wasm-proof.py",
+             *("lib/" + name for name in RUNTIME["COMPANIONS"]))
     return {name: file_digest(root / name) for name in names}
 
 
@@ -169,7 +215,7 @@ def copy_cache(args: argparse.Namespace) -> None:
 
 def arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("record", "verify", "seal-cache", "verify-cache", "reset", "copy-cache"))
+    parser.add_argument("action", choices=("record", "verify", "replay", "seal-cache", "verify-cache", "reset", "copy-cache"))
     parser.add_argument("--prefix", type=Path, required=True)
     parser.add_argument("--source-ref", required=True)
     parser.add_argument("--source-revision", required=True)
@@ -189,7 +235,7 @@ def main() -> int:
             raise ValueError("record requires a flavor and its actual CMake directory")
         if args.action == "copy-cache" and args.destination is None:
             raise ValueError("copy-cache requires an explicit destination")
-        {"record": record, "verify": verify, "seal-cache": seal_cache, "verify-cache": verify_cache,
+        {"record": record, "verify": verify, "replay": replay, "seal-cache": seal_cache, "verify-cache": verify_cache,
          "reset": reset, "copy-cache": copy_cache}[args.action](args)
     except (OSError, ValueError, KeyError, TypeError) as error:
         print(f"WASM-PROOF FAIL: {error}", file=sys.stderr)
