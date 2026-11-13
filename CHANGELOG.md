@@ -17,6 +17,8 @@
 
 ## 2026-11-13 — preserve an actual selected-context cache probe
 
+- Actual SDK transport testing detects stale receipt bytes after a selected source changes; the probe refuses acceptance. The full-SHA transport correction and AMD measurement remain open.
+
 - Add a permanent amd64 BuildKit probe for the SDK COPY alias and AMD read-only context mount, with cold, unrelated-source and selected-source controls, exact plain-step markers and exported receipt-bound bytes.
 - Derive one checked native OCI layout from the pinned input for nerdctl; retain original blobs, local OCI pins, unchanged original inputs and raw child failures. Fake-engine negative fixtures do not prove actual cache reuse or compiler/image/GPU acceptance.
 

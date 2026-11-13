@@ -88,6 +88,17 @@ measures selected-context transport only: it supplies no compiler-cache
 statistics, full compiler-stage reuse, vendor build, binary licence, GPU or
 final-image acceptance.
 
+**Actual local measurement, 2026-11-13: FAILED.** The SDK cold solve executes and
+the unrelated-source solve reuses its consumer step. A selected-source change
+then executes but reads the prior receipt hash. The two staged receipts have
+different SHA256 values, equal 5081-byte sizes and zero mtimes. The strict probe
+rejects this stale delivery; its AMD half has not run. The observation and raw
+logs are preserved under
+`logs/test-results/webgpu-registration-20261110/script-context-cache-20261113/actual-2`.
+Transfer metadata reuse is the current inference, not a proved cause. The next
+correction is to test full-SHA namespaces for transported files and a same-size
+selected-source control. No cache-acceptance claim is valid yet.
+
 ### 1.1 The cerbero state cachemount (CERB-CACHE)
 
 `03-media/build/gstreamer/android/build-android-from-source.sh` keeps its
