@@ -16,6 +16,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — QNN fixture environment argument boundaries
+
+- Keep PATH, SDK cache and extraction directories as individually quoted environment values in
+  `test-qnn-community-zip.sh`; an inherited WSL PATH containing spaces previously stopped `env`
+  before the resolver ran. Production QNN SDK code and dependency pins are unchanged.
+- Preserve the original selection cases, exercise plain and spaced layouts, and verify the fake
+  cache bytes and complete downloader arguments: 24 assertions and three valid unquoting mutants.
+  Controlled clean-PATH diagnostics do not turn the earlier failed full preflight green.
+
 ## 2026-11-13 — a refused download of the earlier measurements is tried again (CON271)
 
 - Owner decision of the same day: `quality_report_github.download` tries a download three times, 5 s apart, and

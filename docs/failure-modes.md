@@ -2997,3 +2997,15 @@ find out, and an isolated build offline has no setuptools to download. `check_do
 
 **Fix.** `uv lock --project docs` and commit the one-line change with the gitlink that caused it. Do not add
 `--no-build-isolation` or lower the theme's bound: the check would still read the lock as stale.
+
+### QNN Community test fails with a spaced PATH
+
+The last `test-qnn-community-zip.sh` case reports empty output, no `rc=0` and zero fake downloads,
+while the same unchanged suite passes with a Linux-only PATH. Its old `_run` word-split a string
+of environment assignments; a PATH entry such as `Program Files` became another `env` argument
+before Bash could run the resolver. The fixture now supplies per-call bindings as individually
+quoted environment values and tests both plain and spaced PATH/cache/extract directories.
+All original selection cases remain covered; three valid unquoting mutations reject the broken
+transport on the deliberately spaced case. Fake download/extraction tests do not grade real SDK
+downloads, installation or inference. A diagnostic clean-PATH pass does not replace a failed full
+preflight result.

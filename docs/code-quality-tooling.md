@@ -87,6 +87,11 @@ PowerShell children inside one command or fix the .NET implementation. `test-mut
 checks overlap, timeouts, output and cache lifetime; both cache mutations must bite. No automatic
 retry turns a failed baseline green.
 
+Shell fixtures pass environment assignments as individual quoted arguments. The QNN Community
+fixture exercises plain and spaced PATH/cache/extract values with fake archive bytes. Its three
+unquoting mutations must fail the planted spaced case even on a clean Linux PATH; these checks
+do not prove a real SDK transfer or hardware inference. See [the failure](failure-modes.md#qnn-community-test-fails-with-a-spaced-path).
+
 ## C++ formatters and linters (clang-format, clang-tidy, cmake-format)
 
 The commands, the traps and the cadence — everything that is true for any
@@ -1075,7 +1080,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4839 entries** over **653 distinct test commands**; both digits are
+manifest holds **4842 entries** over **653 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

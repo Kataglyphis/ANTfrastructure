@@ -38727,5 +38727,29 @@
   "replace": "            github.download(slug, run_id, name, tmp)",
   "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch_failures",
   "why": "bench-history keeps its own retry loop; the helper's three tries inside it would make nine."
+ },
+ {
+  "id": "lib.qnn-community-fixture-path-argv",
+  "target": "linux/scripts/tests/test-qnn-community-zip.sh",
+  "find": "env -i PATH=\"${PATH}\"",
+  "replace": "env -i PATH=${PATH}",
+  "test": "bash linux/scripts/tests/test-qnn-community-zip.sh",
+  "why": "The SDK fixture must exercise complete environment values with spaces and glob characters on every host."
+ },
+ {
+  "id": "lib.qnn-community-fixture-cache-argv",
+  "target": "linux/scripts/tests/test-qnn-community-zip.sh",
+  "find": "QNN_SDK_CACHE_DIR=\"${QNN_SDK_CACHE_DIR:?}\"",
+  "replace": "QNN_SDK_CACHE_DIR=${QNN_SDK_CACHE_DIR:?}",
+  "test": "bash linux/scripts/tests/test-qnn-community-zip.sh",
+  "why": "The SDK fixture must exercise complete environment values with spaces and glob characters on every host."
+ },
+ {
+  "id": "lib.qnn-community-fixture-extract-argv",
+  "target": "linux/scripts/tests/test-qnn-community-zip.sh",
+  "find": "QNN_SDK_EXTRACT_DIR=\"${QNN_SDK_EXTRACT_DIR:-}\"",
+  "replace": "QNN_SDK_EXTRACT_DIR=${QNN_SDK_EXTRACT_DIR:-}",
+  "test": "bash linux/scripts/tests/test-qnn-community-zip.sh",
+  "why": "The SDK fixture must exercise complete environment values with spaces and glob characters on every host."
  }
 ]
