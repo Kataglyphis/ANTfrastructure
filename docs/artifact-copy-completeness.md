@@ -447,6 +447,17 @@ mutation recipes prove these checks can fail. These filesystem fixtures do not
 prove real ELF loading, SDK ABI or GPU execution. Final packaging still carries
 only the selected generic tree; retaining build-host tools is an SDK concern.
 
+The local `e7ca4436` repair also passes real disposable replays on the qualified
+compiler parent for amd64, arm64 and riscv64. Each replay runs the actual new
+materializer, compares original target and host Clang hashes, and reruns the baked
+native 157-tool inventory, six compiler defaults and source LLVM loader checks in
+ordinary and SDK login shells. A foreign target retains its separate native tree;
+the selected generic ELF has the requested machine. Successful terminal states,
+canonical cleanup and independent container absence are preserved. This checks
+materialization on real source trees; it does not prove a complete SDK, foreign
+target ABI, final runtime image or GPU inference. The new source's full preflight
+and ordinary SDK build remain separate requirements.
+
 ### A copied prefix carries links that only resolved where it came from
 
 The demand-driven fill closes `DT_NEEDED`. It does not close the other half of the

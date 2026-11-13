@@ -19,6 +19,7 @@
 
 - The ordinary compiler now completes. Its actual image passes all 157 native tools, six compiler defaults and source LLVM loader selection in ordinary and SDK login shells; its native OCI matches the qualified manifest and original base ancestry.
 - The first ordinary amd64 SDK fails verification because materialization removes the native LLVM prefix from PATH and loader references. Preserve this failure; restore the selected prefix as an alias and retain the native host tree for foreign targets. Filesystem regressions pass 67 assertions and all eight new mutations bite; fresh SDK and final consumer acceptance remain open.
+- Source repair `e7ca4436` passes all 24 affected mutations, all 26 quality groups and 16 unchanged normal-hook controls; its exact committed patch matches the tested snapshot. Real disposable parent-image replays for amd64, arm64 and riscv64 preserve both Clang hashes, the native 157-tool inventory, compiler defaults and source LLVM loading in ordinary and SDK login shells. Every replay seals successful state, cleanup and independent container absence. This proves materialization only; the repaired source's complete 5,886-mutation preflight and ordinary SDK/backend/consumer acceptance are separate.
 - Record standing owner permission for canonical Linux layer cleanup when disk admission fails. Keep compiler cachemounts and required images, compare identities and recheck the original guard; default to 120 GB retained layers with duplicate removal disabled.
 
 ## 2026-11-13 — record compiler-cache evidence limits
