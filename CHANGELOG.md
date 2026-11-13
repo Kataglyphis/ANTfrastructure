@@ -16,6 +16,65 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-13 — BACKLOG: CON234 cut down to what is left, with the day's consumer evidence
+
+- CON234 named four steps; three are done in ModelANT and the consumers (decode cases and their replay, the
+  metadata keys in the contract, and since today the check of those keys in C++ and Rust). The entry now holds the
+  lossless `two_cats` copy and the note on where the no-suppression rule has a recipe.
+- CON271, new: a refused download of the earlier measurements made OmniAccelerANT's quality-report lane red (run
+  43453000910); the helper never retries by its own rule, so the entry asks the owner.
+
+## 2026-11-13 — `run-in-ci-image.sh` takes a volume, an environment variable and `--privileged` (CON242)
+
+- `--volume NAME:/PATH` and `--env NAME=VALUE` (both repeatable) and `--privileged`: a local test run with warm
+  caches is one command through the helper. A named volume is handed to the run's user by one short root container
+  when that user is not root; without `--user` the image's own user is read from the local copy, pulled first when
+  there is none. A malformed value is refused before any engine call.
+- Under a rootless engine on Linux the helper passes `--user 0:0` and `TAR_OPTIONS=--no-same-owner` by itself; an
+  explicit `--user` and a caller's `TAR_OPTIONS` are kept. Rootful Docker, CI and Windows hosts are unchanged.
+- Every run prints `run-in-ci-image.sh: image <ref>, local copy created <date>` (or `no local copy`) on stderr.
+- Four tests on the recording engine and fifteen recipes (`host.run-image-*`); each path also ran once for real
+  on the rootless arm64 dev host, as root and as uid 1001 on a fresh volume. The adoption page's cargo-cache run uses
+  the helper. Left in CON242: no consumer documents its local test run through it yet.
+- **CON256 (j), new:** OrchestrANT's first AMD bundle on the plugin-only image stops in the bundle's library
+  closure, before the registration gate (run 43409294907).
+
+## 2026-11-13 — three small gate faults: the hub hook under `git commit -a`, a section number in prose, one failed download (CON270, CON251, CON255)
+
+- **CON270.** `linux/host-config/git-hooks/pre-commit` reads the staged list once, from the index git names in
+  `GIT_INDEX_FILE`, before it unsets the variable for everything it starts. Under `git commit -a` and
+  `git commit <path>` git builds the commit's index in a lock file, so the hook's staged `shellcheck`, its doc gates
+  and its mutation sample saw no file and said OK. A list that cannot be read now stops the commit.
+  `test-precommit-hook.sh` commits for real with `-a`, with a path and plain. OmniAccelerANT's own hook already
+  reads the list before its `unset`.
+- **CON251.** `verify_doc_links.py` passes a `§` reference that goes on as a sentence after a section number
+  ("`AGENTS.md` § 5 re-records the golden") when the page it names has a numbered heading with that number. A
+  number no section carries still fails, and so does a renamed heading cited by name. Not covered: the words behind
+  a number that still exists are not compared.
+- **CON255.** `bench-history.py fetch` tries the download of one earlier record three times, `--retry-pause` (5 s)
+  apart, and goes on without a record that still fails: a `Benchmark history incomplete` warning names it and the
+  count line ends in `, <n> left out`. An artifact list that cannot be read still exits 2. Consumers take it at
+  their next pin bump.
+- Ten recipes hold the three (`pre-commit.*`, `doc-links.numbered-mention-*`, `bench-history.*`), each proved on the
+  arm64 dev host. Details in `docs/code-quality-tooling.md`.
+- **CON269** loses its first item: none of the four consumer wrappers holds a `--stale-check` loop any more.
+- **CON130** is closed by its run: AccelerANTgine's `linux-riscv64.yml` passed on 2026-11-13 (run 43403278204, hub
+  pin `ed3d1707`), the first run since 2026-10-15 and the first after both fixes. CMake resolved GStreamer through
+  pkg-config, 239 of 239 tests passed under QEMU, and the log has no `x86_64-linux-gnu` line and no plugin that
+  failed to load. AccelerANTgine does not build gtk4, so no `gtk4.pc` was there to resolve.
+
+## 2026-11-13 — retain standalone OpenCV plugin cache evidence
+
+- Report OpenCV GStreamer plugin counters and complete the sccache server before
+  deleting its source, preserving the preceding GStreamer log. Add portable
+  regression and mutation checks for the lifecycle wiring.
+- Bind the incoming benchmark-history fetch replay to its Bash fake explicitly,
+  preventing Windows Python from falling through to an installed GitHub CLI.
+  Retain every fetch, retry and report assertion and allow repeated fixture setup.
+- Document that retained cache-log copies must use a consumed ARG nonce instead
+  of `--no-cache`, which can reset even read-only cache-mount associations.
+  Keep actual prefix counters separate from pending producer/device evidence.
+
 ## 2026-11-13 — run TVM-FFI metadata mutation tests on Linux
 
 - Use shared harness fixtures with case-scoped cleanup instead of Pester-only

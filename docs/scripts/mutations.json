@@ -3506,16 +3506,16 @@
  {
   "id": "pre-commit.doc-span-fast-slugs",
   "target": "docs/cross-build-verification.md",
-  "find": "`_FAST_SLUGS` (`:88-91`)",
-  "replace": "`_FAST_SLUGS` (`:88-92`)",
+  "find": "`_FAST_SLUGS` (`:105-108`)",
+  "replace": "`_FAST_SLUGS` (`:105-109`)",
   "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
   "why": "the _FAST_SLUGS offset quoted in prose is re-derived from the hook, not trusted"
  },
  {
   "id": "pre-commit.doc-span-staged-shell",
   "target": "docs/cross-build-verification.md",
-  "find": "(`:102-119`, the binary resolved",
-  "replace": "(`:102-118`, the binary resolved",
+  "find": "(`:119-136`, the binary resolved",
+  "replace": "(`:119-135`, the binary resolved",
   "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
   "why": "the staged-shell block offset quoted in prose is re-derived from the hook, not trusted"
  },
@@ -36963,7 +36963,7 @@
  {
   "id": "host.proof-nerdctl-apparmor",
   "target": "linux/scripts/run-in-ci-image.sh",
-  "find": "if [ \"${ENGINE##*/}\" = nerdctl ]; then ARGS+=(--security-opt apparmor=unconfined); fi",
+  "find": "if [ \"${ENGINE##*/}\" = nerdctl ]; then COMMON+=(--security-opt apparmor=unconfined); fi",
   "replace": ":",
   "test": "bash linux/scripts/tests/test-proof-workflows.sh",
   "why": "Manual nerdctl probes retain the host AppArmor setting used by the build lane."
@@ -38447,5 +38447,253 @@
   "replace": "Invoke-TvmFfiPythonBuild -Python $py -SourceDir $SourceDir -Build {",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.TvmFfiVersion.Tests.ps1 -ResultFile logs/test-results/tvm-ffi-version-mutation.json",
   "why": "The twin requires archive validation rather than rechecking the installed GIL distribution."
+ },
+ {
+  "id": "host.run-image-volume-reaches-run",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "for volume in \"${VOLUMES[@]}\"; do ARGS+=(--mount \"type=volume,source=${volume%%:*},target=${volume#*:}\"); done",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A named volume is the only way a cache outlives the run; each --volume must reach the engine as a volume mount."
+ },
+ {
+  "id": "host.run-image-volume-shape-refused",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "[[ \"${2-}\" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*:/[^,:]*$ ]] || die \"--volume",
+  "replace": "[ -n \"${2-}\" ] || die \"--volume",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A value without a name, with a relative path or with a comma would become another mount than the one asked for."
+ },
+ {
+  "id": "host.run-image-env-reaches-run",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "for pair in \"${ENVS[@]}\"; do ARGS+=(-e \"${pair}\"); done",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Each --env must reach the container, an empty value too."
+ },
+ {
+  "id": "host.run-image-env-shape-refused",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "[[ \"${2-}\" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || die \"--env",
+  "replace": "[ -n \"${2-}\" ] || die \"--env",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A bare NAME would copy the host's value into the container, which the option does not promise."
+ },
+ {
+  "id": "host.run-image-privileged",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "[ \"${PRIVILEGED}\" -eq 0 ] || ARGS+=(--privileged)",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "The consumers' lanes run privileged; a local run that asks for it must get it, and one that does not must not."
+ },
+ {
+  "id": "host.run-image-rootless-runs-as-root",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "  USER_SPEC=0:0\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Under a rootless engine on Linux any user but root cannot write the bind-mounted checkout."
+ },
+ {
+  "id": "host.run-image-rootless-tar-owners",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "ENVS+=(TAR_OPTIONS=--no-same-owner)",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "As root GNU tar restores an archive's owners, and one beyond the subuid range fails the extraction."
+ },
+ {
+  "id": "host.run-image-rootless-keeps-callers-tar",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "[[ \" ${ENVS[*]%%=*} \" == *\" TAR_OPTIONS \"* ]] || ENVS+=",
+  "replace": "ENVS+=",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A TAR_OPTIONS the caller passed is the caller's choice; the default must not follow it and win."
+ },
+ {
+  "id": "host.run-image-rootful-keeps-image-user",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "== *rootless* ]]; then",
+  "replace": "== * ]]; then",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A rootful engine and CI run the image's own user; only a rootless one gets root."
+ },
+ {
+  "id": "host.run-image-rootless-keeps-callers-user",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "if [ -z \"${USER_SPEC}\" ] && [ \"$(uname -s)\" = Linux ]",
+  "replace": "if [ \"$(uname -s)\" = Linux ]",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "An explicit --user is kept under a rootless engine too."
+ },
+ {
+  "id": "host.run-image-age-line",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "printf 'run-in-ci-image.sh: image %s, %s\\n' \"${IMAGE}\" \"${AGE}\" >&2",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A month-old local image looked like broken code; every run names the image and its creation date on stderr."
+ },
+ {
+  "id": "host.run-image-volume-handed-to-user",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "  *) hand_volumes_to \"${RUN_USER}\" ;;",
+  "replace": "  *) : ;;",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A new named volume is root's; a run under another user could not write its cache."
+ },
+ {
+  "id": "host.run-image-root-needs-no-handing",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "  ''|0|0:*|root|root:*) ;;",
+  "replace": "  '') ;;",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "A run as root owns every volume already; a second container start for it is waste."
+ },
+ {
+  "id": "host.run-image-user-from-local-copy",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "  RUN_USER=\"$(engine_says image inspect --format '{{.Config.User}}' \"${IMAGE}\")\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Without --user the image's own user runs, and a volume must be handed to that user."
+ },
+ {
+  "id": "host.run-image-pull-before-image-user",
+  "target": "linux/scripts/run-in-ci-image.sh",
+  "find": "[ -n \"${CREATED}\" ] || \"${ENGINE}\" pull",
+  "replace": "true || \"${ENGINE}\" pull",
+  "test": "bash linux/scripts/tests/test-proof-workflows.sh",
+  "why": "Only a local copy names the image's user; without one the helper pulls before it asks."
+ },
+ {
+  "id": "pre-commit.commit-a-reads-its-own-index",
+  "target": "linux/host-config/git-hooks/pre-commit",
+  "find": "    GIT_INDEX_FILE=\"${_index}\" git diff --cached --name-only --diff-filter=ACM\n",
+  "replace": "    git diff --cached --name-only --diff-filter=ACM\n",
+  "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+  "why": "git commit -a and git commit <path> keep the commit's index in a lock file; read from the plain index, the staged shellcheck, the doc gates and the mutation sample see no file"
+ },
+ {
+  "id": "pre-commit.unreadable-index-stops",
+  "target": "linux/host-config/git-hooks/pre-commit",
+  "find": "_staged_any=\"$(_staged_paths)\" || {",
+  "replace": "_staged_any=\"$(_staged_paths || true)\" || {",
+  "test": "bash linux/scripts/tests/test-precommit-hook.sh",
+  "why": "a staged list that cannot be read is empty, and an empty list passes every staged check"
+ },
+ {
+  "id": "doc-links.numbered-mention-passes",
+  "target": "docs/scripts/verify_doc_links.py",
+  "find": "            if num and num.group(1) in NUMBERED_HEADING.findall(other.body):\n                continue",
+  "replace": "            if False:\n                continue",
+  "test": "bash linux/scripts/tests/test-doc-links.sh",
+  "why": "a section number with prose after it was read as one heading name, and three consumer backlogs failed on a plain mention in one day"
+ },
+ {
+  "id": "doc-links.numbered-mention-number-checked",
+  "target": "docs/scripts/verify_doc_links.py",
+  "find": "num.group(1) in NUMBERED_HEADING.findall(other.body)",
+  "replace": "num.group(1)",
+  "test": "bash linux/scripts/tests/test-doc-links.sh",
+  "why": "the number must name a numbered section of the page, or any digit after the sign makes a reference pass"
+ },
+ {
+  "id": "bench-history.failed-download-retried",
+  "target": "linux/scripts/bench-history.py",
+  "find": "    for attempt in range(DOWNLOAD_TRIES):",
+  "replace": "    for attempt in range(1):",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch_failures",
+  "why": "one 502 from the artifact store must not cost the comparison an earlier record"
+ },
+ {
+  "id": "bench-history.failed-download-left-out",
+  "target": "linux/scripts/bench-history.py",
+  "find": "            return None\n        found = sorted(",
+  "replace": "            raise github.Broken(failure)\n        found = sorted(",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch_failures",
+  "why": "one earlier record that cannot be downloaded ended the step, and the run's own result never reached the history"
+ },
+ {
+  "id": "bench-history.left-out-is-named",
+  "target": "linux/scripts/bench-history.py",
+  "find": "            print(f\"::warning title=Benchmark history incomplete::left out after {DOWNLOAD_TRIES} tries: {failure}\",\n                  file=sys.stderr)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch_failures",
+  "why": "a median over fewer records than asked for must say which one is missing"
+ },
+ {
+  "id": "bench-history.retry-pauses",
+  "target": "linux/scripts/bench-history.py",
+  "find": "            time.sleep(pause)",
+  "replace": "            time.sleep(0)",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch_failures",
+  "why": "three tries in the same instant meet the same outage"
+ },
+ {
+  "id": "bench-history.count-is-what-was-read",
+  "target": "linux/scripts/bench-history.py",
+  "find": "read {len(read)} earlier",
+  "replace": "read {len(chosen)} earlier",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch_failures",
+  "why": "the count line is how a reader sees that the median spans fewer records"
+ },
+ {
+  "id": "bench-history.unreadable-list-fails",
+  "target": "linux/scripts/bench-history.py",
+  "find": "            print(f\"::error title=Benchmark history unreadable::{exc}\", file=sys.stderr)\n            return EXIT_INPUT",
+  "replace": "            print(f\"::error title=Benchmark history unreadable::{exc}\", file=sys.stderr)\n            return 0",
+  "test": "bash linux/scripts/tests/test-bench-history.sh -k fetch",
+  "why": "an artifact list that cannot be read is no empty history: the step must fail, unlike one record's download"
+ },
+ {
+  "id": "sccache.opencv-plugin-stats",
+  "target": "windows/scripts/build/Build-OpencvGstreamerPlugin.ps1",
+  "find": "Write-SccacheStats -Label 'opencv-gstreamer-plugin'",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OpencvPluginCache.Tests.ps1 -ResultFile logs/test-results/opencv-plugin-cache-mutation.json",
+  "why": "Missing component counters must fail the structural lifecycle suite."
+ },
+ {
+  "id": "sccache.opencv-plugin-stop",
+  "target": "windows/scripts/build/Build-OpencvGstreamerPlugin.ps1",
+  "find": "Complete-SccacheServerSession",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OpencvPluginCache.Tests.ps1 -ResultFile logs/test-results/opencv-plugin-cache-mutation.json",
+  "why": "Missing server completion must fail before scratch removal."
+ },
+ {
+  "id": "sccache.opencv-plugin-stop-before-cleanup",
+  "target": "windows/scripts/build/Build-OpencvGstreamerPlugin.ps1",
+  "find": "Complete-SccacheServerSession\n\n# Scrub the clone: ~500 MB of source that must not fatten the layer.\nRemove-Item -Path $SourceDir -Recurse -Force -ErrorAction SilentlyContinue",
+  "replace": "# Scrub the clone: ~500 MB of source that must not fatten the layer.\nRemove-Item -Path $SourceDir -Recurse -Force -ErrorAction SilentlyContinue\nComplete-SccacheServerSession",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OpencvPluginCache.Tests.ps1 -ResultFile logs/test-results/opencv-plugin-cache-mutation.json",
+  "why": "Completion after deleting the source must fail the ordering check."
+ },
+ {
+  "id": "sccache.opencv-plugin-unconditional-stats",
+  "target": "windows/scripts/build/Build-OpencvGstreamerPlugin.ps1",
+  "find": "Write-SccacheStats -Label 'opencv-gstreamer-plugin'",
+  "replace": "if ($false) { Write-SccacheStats -Label 'opencv-gstreamer-plugin' }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OpencvPluginCache.Tests.ps1 -ResultFile logs/test-results/opencv-plugin-cache-mutation.json",
+  "why": "Dead conditional stats must not satisfy the required unconditional call."
+ },
+ {
+  "id": "sccache.opencv-plugin-label",
+  "target": "windows/scripts/build/Build-OpencvGstreamerPlugin.ps1",
+  "find": "Write-SccacheStats -Label 'opencv-gstreamer-plugin'",
+  "replace": "Write-SccacheStats -Label 'build'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OpencvPluginCache.Tests.ps1 -ResultFile logs/test-results/opencv-plugin-cache-mutation.json",
+  "why": "Counters must retain the component label for producer attribution."
+ },
+ {
+  "id": "sccache.opencv-plugin-no-truncating-start",
+  "target": "windows/scripts/build/Build-OpencvGstreamerPlugin.ps1",
+  "find": "Write-SccacheStats -Label 'opencv-gstreamer-plugin'",
+  "replace": "Start-SccacheServerSession\nWrite-SccacheStats -Label 'opencv-gstreamer-plugin'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OpencvPluginCache.Tests.ps1 -ResultFile logs/test-results/opencv-plugin-cache-mutation.json",
+  "why": "A fresh explicit session would truncate the preceding GStreamer log."
  }
 ]

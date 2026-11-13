@@ -320,9 +320,17 @@ bash third_party/ANTfrastructure/linux/scripts/run-in-ci-image.sh . -- \
        --build-dir /tmp/build
 ```
 
-It mounts the checkout and nothing else, and has no option for a second mount (2026-09-25): a
-cargo cache that outlives the run (below) needs a plain `nerdctl run`/`docker run` with the image
-from `ci-image-ref.sh` and a named volume.
+A cache that outlives the run goes on a named volume, with the variable that points the tool at it:
+
+```bash
+bash third_party/ANTfrastructure/linux/scripts/run-in-ci-image.sh . \
+  --volume myrepo-cargo:/var/cache/cargo -- \
+  bash scripts/linux/cmake-configure-build.sh --preset <preset> \
+       --build-dir /tmp/build --cargo-cache-dir /var/cache/cargo
+```
+
+`--env NAME=VALUE` and `--privileged` are passed on the same way, and under a rootless engine on
+Linux the helper runs as root by itself.
 
 Three constraints:
 

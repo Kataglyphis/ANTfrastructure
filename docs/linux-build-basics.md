@@ -188,6 +188,7 @@ host user's. As root, GNU tar also restores an archive's owners, and one beyond 
 subuids fails the extraction (Flutter's `gradle-wrapper.tgz` carries uid 397546: `Cannot change
 ownership to uid 397546, gid 5000: Invalid argument`), so `TAR_OPTIONS=--no-same-owner` goes with
 the user. A Windows host (Rancher) and CI, whose runner is uid 1001 itself, need neither.
+`run-in-ci-image.sh` passes both by itself when the engine reports `rootless` and no `--user` is given.
 
 ## Optional Ubuntu Apt Mirror Workaround
 

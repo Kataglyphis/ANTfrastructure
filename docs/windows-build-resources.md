@@ -395,6 +395,30 @@ there; the tiers, the numbers and the two incidents are here.
 
 ## Persistent compile cache (sccache)
 
+The standalone OpenCV GStreamer plugin reports
+`Write-SccacheStats -Label 'opencv-gstreamer-plugin'`, then completes the server
+before source cleanup. It preserves the preceding GStreamer log by leaving
+session startup to the launcher. `SourceBuild.OpencvPluginCache.Tests.ps1`
+checks unconditional wiring and order; fresh producer counters and retained
+bytes are separate evidence.
+
+**Retained log transport:** never use `--no-cache` to force a cache-log copy,
+even when the mount is read-only. BuildKit 0.33's
+[IgnoreCache handling](https://github.com/moby/buildkit/blob/dddd5621af04ea57823085c93a063383f71d3173/solver/llbsolver/vertex.go)
+collects cache IDs and the worker resets their associations before execution.
+Consume a unique per-run ARG in the copy command instead. On 2026-11-13 the
+incorrect diagnostic export lost the original full server trace; the recovered
+image build log and transcript do not replace that trace.
+
+**Current prefix evidence (`ee49f2dd`, 2026-11-13):** all 11 ROCm images through
+media merge passed. TVM reports 9,995 cumulative C/C++ hits with zero misses,
+cache errors or compilation failures. GStreamer reports 4,892 C/C++ hits,
+18 misses, 103 cache errors and 32 compilation failures; the latter causes
+remain unclassified. Do not sum duplicate stats renderings or infer CUDA/Rust
+hits from C/C++ counters. The new standalone-plugin instrumentation still needs
+a producer run; the ordinary ROCm tail, final-source lanes and device checks
+remain open.
+
 Without BuildKit cache mounts a container-local sccache cache dies with the
 layer, so the WebDAV remote is the only compile cache that survives a
 container. **sccache is therefore REQUIRED by default for the media stages:

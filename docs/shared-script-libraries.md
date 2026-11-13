@@ -1165,7 +1165,8 @@ bash third_party/ANTfrastructure/linux/scripts/run-in-ci-image.sh . -- bash scri
 ```
 
 `<repo-root> [--engine docker|nerdctl] [--image REF] [--platform ...] [--workdir ...]
-[--mount-hub-scripts] [--name N] [--user U[:G]] [--keep] -- <command...>`.
+[--mount-hub-scripts] [--name N] [--user U[:G]] [--keep] [--volume NAME:/PATH]... [--env NAME=VALUE]...
+[--privileged] -- <command...>`.
 
 Every consumer README, every "reproducing CI locally" section and half the agent
 prompts carried the same hand-typed `docker run`, and they had all drifted: a
@@ -1188,6 +1189,40 @@ than documented for the reader: from Git Bash, MSYS rewrites anything that looks
 like a POSIX path into a Windows one, destroys every `-v`/`-w` argument, and
 fails with "expected an absolute path". A note nobody reads is how that keeps
 being rediscovered.
+
+**A cache that outlives the run.** `--volume NAME:/PATH` (repeatable) mounts a named volume, which the
+engine creates on first use, and `--env NAME=VALUE` (repeatable) points a tool at it:
+
+```bash
+bash third_party/ANTfrastructure/linux/scripts/run-in-ci-image.sh . \
+  --volume myrepo-cargo-target:/ct --env CARGO_TARGET_DIR=/ct \
+  --volume myrepo-cargo-registry:/usr/local/cargo/registry -- cargo test --locked
+```
+
+A new named volume belongs to root. When the run has another user (`--user`, or the image's own user
+when no `--user` is given), the helper first starts one short container as root that hands each
+volume's directory to that user; only the directory, not what an earlier run under another user left
+in it. Without `--user` it reads the image's user from the local copy and pulls the image first when
+there is none. A value that is not `NAME:/absolute/path`, or carries a comma or a mount option, is
+refused before any engine call, and so is an `--env` without `=`. `--privileged` is passed on as it
+is; the consumers' CI lanes run privileged, so a local run that should match them asks for it.
+
+**Under a rootless engine on Linux** the helper runs as root without being asked: when the engine's
+`info` reports `rootless` and no `--user` was given, it passes `--user 0:0` and
+`TAR_OPTIONS=--no-same-owner`
+([`linux-build-basics.md` § A lane under a rootless engine …](linux-build-basics.md#a-lane-under-a-rootless-engine-on-a-linux-host-runs-as-root)
+has the two failures behind that). An explicit `--user` is kept, and so is a `TAR_OPTIONS` the caller
+passes with `--env`. Docker on a CI runner and Rancher Desktop on Windows are not rootless in this
+sense and keep the image's user.
+
+**How old the image is.** Every run prints one line on stderr before the command starts:
+`run-in-ci-image.sh: image <ref>, local copy created <date>`, or `no local copy; the engine pulls it`.
+A month-old local `:latest` without GTK 4 once looked like broken code. The line is on stderr, so
+the command's stdout stays the command's.
+
+Not covered: bind mounts beyond the checkout and the hub scripts, devices (`--device`), GPU flags and
+a network other than the default. Tests: `proof_workflow_tests.py` with an engine that records its
+arguments, and one real run of each path on the rootless arm64 dev host; recipes `host.run-image-*`.
 
 CI workflow steps keep using the `run-in-linux-container` composite action; this
 is for everything that is not a workflow step.

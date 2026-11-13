@@ -97,6 +97,9 @@ Copy-Item -Path $pluginDll.FullName -Destination $dest -Force
 if (-not (Test-Path $dest)) { throw "build-opencv-gstreamer-plugin: install copy to $dest failed." }
 Write-Host "Installed GStreamer videoio plugin: $dest ($([math]::Round($pluginDll.Length / 1KB)) KB, OpenCV $OpenCvVersion)"
 
+Write-SccacheStats -Label 'opencv-gstreamer-plugin'
+Complete-SccacheServerSession
+
 # Scrub the clone: ~500 MB of source that must not fatten the layer.
 Remove-Item -Path $SourceDir -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host 'build-opencv-gstreamer-plugin: done.'

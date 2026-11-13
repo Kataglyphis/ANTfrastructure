@@ -503,6 +503,16 @@ the newest sample before trusting the aggregate.
 
 ### A daemon's log is only as durable as its last flush
 
+The standalone OpenCV GStreamer plugin writes its component stats, then calls
+`Complete-SccacheServerSession` before deleting its source. Its automatic server
+start must append to the preceding GStreamer log; an explicit
+`Start-SccacheServerSession` would truncate that evidence. The structural suite
+`SourceBuild.OpencvPluginCache.Tests.ps1` proves call order, not runtime flushes.
+
+Never pass `--no-cache` to a retained cache-log export, even with `readonly`:
+BuildKit 0.33 resets cache-mount associations before that command executes.
+Use a consumed per-run ARG nonce to force the copy without discarding the mount.
+
 **A daemon's log is only as durable as its last flush — stop the server before
 the RUN ends.** `SCCACHE_ERROR_LOG` is written by the sccache SERVER, and
 `SCCACHE_IDLE_TIMEOUT=0` means it never exits on its own, so BuildKit tears

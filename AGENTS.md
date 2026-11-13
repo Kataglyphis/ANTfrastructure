@@ -986,6 +986,12 @@ orphans heavy on CPU or memory or shaped like test leftovers
 
 ## Caching discipline (do not regress)
 
+Retained cache-log exports never use `--no-cache`, including read-only mounts:
+BuildKit can reset their cache associations before the copy. Consume a per-run
+ARG nonce instead. The standalone OpenCV GStreamer plugin reports its own
+sccache counters and completes the server before deleting its source; do not
+start a truncating session over the preceding GStreamer log.
+
 Map: [`linux-build-basics.md` § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where).
 Tiers, measurements and every failure class: [`build-cache-tiers.md`](docs/build-cache-tiers.md).
 Toggles: `USE_CCACHE`, `USE_SCCACHE`, `USE_LLD` accept `0/false/no/off`;

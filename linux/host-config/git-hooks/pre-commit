@@ -11,6 +11,9 @@
 # Bypass:  git commit --no-verify   — then run `make preflight` before pushing.
 set -euo pipefail
 
+# `git commit -a` and `git commit <path>` build this commit's index in a lock file the plain index does not show yet.
+_index="${GIT_INDEX_FILE:-}"
+
 # Git exports GIT_DIR (and may export GIT_WORK_TREE/GIT_INDEX_FILE/GIT_PREFIX) to
 # hooks. Test fixtures that shell out to git then operate on the superproject
 # instead of their own temp repo -- measured 2026-09-12: every renovate mutation
@@ -80,6 +83,20 @@ fi
 _root="$(git rev-parse --show-toplevel)"
 cd "${_root}"
 
+# For this one call: an exported index would reach every git call a gate or a fixture makes.
+_staged_paths() {
+  if [ -n "${_index}" ]; then
+    GIT_INDEX_FILE="${_index}" git diff --cached --name-only --diff-filter=ACM
+  else
+    git diff --cached --name-only --diff-filter=ACM
+  fi
+}
+# A list that cannot be read must stop the commit: an empty one skips every staged check below.
+_staged_any="$(_staged_paths)" || {
+  echo "pre-commit: FAILED — cannot read this commit's staged files" >&2
+  exit 1
+}
+
 # Whole-tree gates that are cheap. Measured 2026-09-04: 18 slugs, 6.4s combined.
 # doc-links is here, not in the docs-only block: code carries docs/ pointers too.
 # The warning ratchet slug is NOT here: its whole-tree run is 22s, so the hook
@@ -99,7 +116,7 @@ PREFLIGHT_ONLY="${_FAST_SLUGS}" bash linux/scripts/preflight.sh || {
 # Lint only what is being committed: the whole tree costs 105s in shellcheck, a
 # handful of files costs nothing. (Do not start this comment with the tool's
 # name -- shellcheck parses such a line as a directive and errors out.)
-_staged_sh="$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.sh$' || true)"
+_staged_sh="$(printf '%s\n' "${_staged_any}" | grep -E '\.sh$' || true)"
 if [ -n "${_staged_sh}" ]; then
   echo "pre-commit: shellcheck on staged shell files…"
   _sc_bin="$(bash linux/scripts/lint-shell.sh --print-bin)" || {
@@ -119,7 +136,7 @@ if [ -n "${_staged_sh}" ]; then
 fi
 
 # Doc duplication only when docs move — sub-second.
-_staged_md="$(git diff --cached --name-only --diff-filter=ACM | grep -E '^docs/.*\.md$' || true)"
+_staged_md="$(printf '%s\n' "${_staged_any}" | grep -E '^docs/.*\.md$' || true)"
 if [ -n "${_staged_md}" ]; then
   echo "pre-commit: doc duplication gate…"
   # shellcheck disable=SC2086
@@ -129,7 +146,7 @@ fi
 # Derived doc numbers only when one of their inputs is staged. Most gate commits
 # append to the manifest, and its quoted total once went stale while this hook
 # said OK (CI run 36022089345). The digits are rewritten by --update, never typed.
-_staged_dn="$(git diff --cached --name-only --diff-filter=ACM \
+_staged_dn="$(printf '%s\n' "${_staged_any}" \
   | grep -E '^(docs/scripts/mutations\.json|linux/host-config/git-hooks/pre-commit|docs/code-quality-tooling\.md|docs/cross-build-verification\.md|AGENTS\.md)$' || true)"
 if [ -n "${_staged_dn}" ]; then
   echo "pre-commit: derived doc numbers…"
@@ -145,7 +162,6 @@ fi
 # commit). Newest entries first, capped, and it PRINTS the sample size -- green
 # here never means full coverage. It answers the one question reading a test
 # cannot: can it fail? docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget
-_staged_any="$(git diff --cached --name-only --diff-filter=ACM || true)"
 if [ -n "${_staged_any}" ]; then
   _staged_list="$(mktemp)"
   printf '%s\n' "${_staged_any}" > "${_staged_list}"
