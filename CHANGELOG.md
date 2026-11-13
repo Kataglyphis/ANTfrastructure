@@ -17,7 +17,7 @@
 
 ## 2026-11-13 — record compiler-cache evidence limits
 
-- Bind the original GNU counters to their preserved log and document why its default error log did not survive: the GNU RUN mounts /tmp as tmpfs, and a fresh query of the preserved compiler image finds no error log. The 186 cache errors remain unclassified; zero failed S3 writes is a separate result.
+- Bind the original GNU counters to their preserved log and document the configured error-log path under the GNU RUN's tmpfs. Original log creation is unproved; any file written there would be temporary. A fresh query of the preserved compiler image finds no error log. The 186 cache errors remain unclassified; zero failed S3 writes is a separate result.
 - Keep raw phase diagnostics as a requirement for the next naturally executed source/media build. Existing compiler inputs, caches, image receipts and the disk-admission floor stay unchanged; no rebuild or zero-error claim follows from this investigation.
 
 ## 2026-11-13 — publish native LLVM loader priority

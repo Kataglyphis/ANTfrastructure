@@ -985,9 +985,11 @@ breaks the build around them.
 
 The one-line `sccache-stats|` record is a counter summary, not error attribution.
 The 13 November ordinary GNU RUN retained 186 `cache_errors` and zero failed S3
-writes. Its default `SCCACHE_ERROR_LOG=/tmp/sccache.log` lived under that RUN's
-tmpfs mount; the later compiler image contains no such file. Its successful
-build, upload drain and later cached solves cannot identify those 186 causes.
+writes. The configured default `SCCACHE_ERROR_LOG=/tmp/sccache.log` points into
+that RUN's tmpfs mount. Whether the original run created a log is unrecorded;
+a file written there would not enter the committed layer. The later compiler
+image contains no such file. The successful build, upload drain and later
+cached solves cannot identify those 186 causes.
 
 At the next naturally executed source/media RUN, retain raw phase counters and
 error evidence before its temporary filesystem disappears. Preserve noncacheable
