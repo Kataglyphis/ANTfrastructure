@@ -8,14 +8,16 @@ t_private_tmpdir
 work="$(t_mktemp -d)"
 image="${work}/image with spaces"
 mkdir -p "${image}/etc/ld.so.conf.d"
-for path in migraphx/lib migraphx/lib/migraphx/lib migraphx/lib64 extras-10/lib/migraphx core/lib lib lib64 core-asan-10/lib; do
+for path in migraphx/lib migraphx/lib/migraphx/lib migraphx/lib64 extras-10/lib/migraphx core/lib core/lib/rocm_sysdeps/lib lib lib64 core-asan-10/lib core-asan-10/lib/rocm_sysdeps/lib; do
   mkdir -p "${image}/opt/rocm/${path}"
 done
 for path in migraphx/lib extras-10/lib/migraphx core-asan-10/lib; do
   : >"${image}/opt/rocm/${path}/libmigraphx_c.so.2"
 done
 : >"${image}/opt/rocm/core/lib/libamdhip64.so.10"
-expected=$'/opt/rocm/migraphx/lib\n/opt/rocm/migraphx/lib/migraphx/lib\n/opt/rocm/migraphx/lib64\n/opt/rocm/core/lib\n/opt/rocm/extras-10/lib/migraphx\n/opt/rocm/lib\n/opt/rocm/lib64'
+: >"${image}/opt/rocm/core/lib/rocm_sysdeps/lib/librocm_sysdeps_sqlite3.so"
+: >"${image}/opt/rocm/core-asan-10/lib/rocm_sysdeps/lib/librocm_sysdeps_sqlite3.so"
+expected=$'/opt/rocm/migraphx/lib\n/opt/rocm/migraphx/lib/migraphx/lib\n/opt/rocm/migraphx/lib64\n/opt/rocm/core/lib\n/opt/rocm/core/lib/rocm_sysdeps/lib\n/opt/rocm/extras-10/lib/migraphx\n/opt/rocm/lib\n/opt/rocm/lib64'
 t_case 'source directories lead before the lexically earlier distro extras; duplicates and ASAN stay absent'
 t_assert_eq "${expected}" "$(media_rocm_library_paths "${image}")"
 t_assert_eq 1 "$(media_rocm_library_paths "${image}" | grep -c -x -e /opt/rocm/migraphx/lib)"
@@ -28,7 +30,7 @@ ln -s rocm-10 "${image}/opt/rocm"
 t_assert_eq "${expected}" "$(media_rocm_library_paths "${image}")"
 t_case 'an absent source prefix preserves the existing HIP, extras and legacy directories'
 command rm -r -- "${image}/opt/rocm/migraphx"
-t_assert_eq $'/opt/rocm/core/lib\n/opt/rocm/extras-10/lib/migraphx\n/opt/rocm/lib\n/opt/rocm/lib64' "$(media_rocm_library_paths "${image}")"
+t_assert_eq $'/opt/rocm/core/lib\n/opt/rocm/core/lib/rocm_sysdeps/lib\n/opt/rocm/extras-10/lib/migraphx\n/opt/rocm/lib\n/opt/rocm/lib64' "$(media_rocm_library_paths "${image}")"
 t_case 'CPU images publish no ROCm path and remove a stale configuration'
 empty="${work}/empty image"
 mkdir -p "${empty}/etc/ld.so.conf.d"

@@ -1143,6 +1143,39 @@ The normal producer and conditional runtime environment now select this source
 prefix in code. Actual GPU-stage construction and shipped-soname selection
 checks remain required; a generic probe accepting any /opt prefix is insufficient.
 
+### Source backend entry-library loads
+
+Ordinary ROCm GPU4 on 2026-11-14 completed the full source/backend build,
+installation and exact-row stager, but a real fresh process could not load its
+core: `librocm_sysdeps_sqlite3.so` was present under the SDK's nested sysdeps
+directory and absent from the loader configuration. Preserve the failed image
+and its evidence; successful compilation did not establish runtime loading.
+
+The shared `media_rocm_library_paths` discovery now includes that exact vendor
+soname, retains source-prefix priority and excludes the ASAN tree. After
+`publish_rocm_ld_path` and `ldconfig`, the ordinary AMD `build-image.sh` invokes
+`stage-backend-install.py verify-loads --prefix /opt/rocm/migraphx` through the
+selected host Python. This requires an absolute regular directory, contained
+selected library targets and hashes matching the installed provenance before
+actually loading all seven entry libraries. Missing dependencies remain fatal.
+The existing stager and its packaging ELF companion stay in the narrow script
+closure; the gate does not import a private fallback or modify its install receipt.
+
+The real new-gate control fails with status 2 on the unchanged GPU4 image. A
+disposable container using the corrected publisher and `ldconfig` passes all
+seven entry loads; separate cold bare-soname processes select the source core
+and GPU libraries, whose hashes match the original installation record. Inputs,
+raw statuses, process maps and independent container absence are retained under
+`logs/test-results/webgpu-registration-20261110/rocm-sqlite-loader-20261114/image-replay-1/`.
+The original image stays unchanged. This replay is not a normally rebuilt image.
+
+The baked gate checks absolute entry loads. Its tiny native DSO and child-command
+fixtures prove hash/path refusals, actual dispatch, order and fatal errors, without
+proving vendor compilation or GPU inference. Neither entry loading nor the
+diagnostic maps prove every ABI use, complete dependency bytes, full binary
+licence closure, finished-consumer parity or digest-specific FINAL acceptance.
+Those remain required after exact new-source verification and an ordinary rebuild.
+
 ### MIGraphX source-backend preparation
 
 The normal `Dockerfile.amd` GPU stage retains AMD's apt SDK, then invokes

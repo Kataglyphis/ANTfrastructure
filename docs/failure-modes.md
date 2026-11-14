@@ -5,6 +5,26 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## MIGraphX core cannot find ROCm SQLite
+
+**Symptom.** Ordinary GPU4 completes and loads its local image, but a real cold
+`ctypes.CDLL` of its source core fails with `librocm_sysdeps_sqlite3.so` missing.
+
+**Cause.** The core's actual ELF NEEDED entry names the vendor soname. Its file
+exists under `/opt/rocm/core-10.1/lib/rocm_sysdeps/lib`, while the shared publisher
+only discovers HIP/MIGraphX directories. The loader cache lists distro SQLite
+under a different soname; the source backend needs the recorded vendor library.
+
+**Fix.** Discover the exact SQLite soname through the shared publisher, preserve
+source-first ordering and ASAN exclusion, publish the complete configuration and
+run `ldconfig`. The normal producer must then load all seven installed source
+entry libraries, checking containment and recorded hashes before success.
+The new gate fails on the unchanged image and passes in a disposable corrected
+publisher replay, including two independent cold source-library mappings.
+Keep the original failure, maps, statuses and checked container absence. This
+replay does not accept the original image; complete exact-source QA, an ordinary
+rebuild, full licences and final consumers remain required. See [the gate's scope](linux-accelerator-images.md#source-backend-entry-library-loads).
+
 ## MIGraphX install refused: Repeated normalized install path
 
 The ordinary ROCm GPU3 run on 2026-11-14 completed all rocMLIR and MIGraphX

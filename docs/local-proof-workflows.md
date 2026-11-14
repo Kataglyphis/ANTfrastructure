@@ -136,6 +136,8 @@ An optional paired `--gpu-source NEW_CHECKOUT --gpu-source-proof COMPLETE_PROOF`
 
 The additional `backend-install-manifest` source profile admits exactly four reviewed production files by SHA256: the install stager, shared ROCm loader paths and GPU/package Dockerfiles, plus the host proof-kind table that names this targeted source scope. It retains exact HIP bytes, unchanged SDK Dockerfile/pins and complete new-source verification; any missing, additional or altered production input refuses. Original SDK qualification, native ancestry and disk/idle admission remain required. These supplied receipts do not authenticate provenance or prove image acceptance.
 
+The additional `backend-runtime-load` profile binds six exact file hashes: the earlier GPU/package Dockerfiles, updated stager, shared ROCm paths, normal AMD entry and host proof-kind table. Its earlier HIP and backend-install profiles retain their original pins. Shared profile selection requires the complete exact meaningful path set before file validation, then every selected hash, original SDK/pins, exact HIP repair and complete new-source proof. Fixtures preserve the earlier policy checksum and check current runtime-profile bytes, added/missing paths and failed proofs. This profile grants no rebuilt-image, complete ABI, licence or GPU acceptance.
+
 The source and parent proof hashes remain in `invocation.json`; real SDK receipts are inputs, never generated from a stage plan. `test-normal-stage-launch.sh` uses synthetic OCI bytes and explicit command/qualification doubles, covers source/parent/host/transport refusals and cannot establish source provenance or hardware acceptance.
 
 ## Observe and checkpoint

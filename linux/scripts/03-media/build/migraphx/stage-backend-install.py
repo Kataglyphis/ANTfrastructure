@@ -2,6 +2,7 @@
 """Bind installed files and selected original notice bytes; this does not prove ABI, complete licences or GPU acceptance."""
 
 import argparse
+import ctypes
 import hashlib
 import json
 import re
@@ -47,6 +48,18 @@ def selected_libraries(records: dict[str, dict[str, str]]) -> list[str]:
         require(len(candidates) == 1, "Missing or ambiguous installed backend library: " + library)
         selected.append(candidates[0])
     return selected
+
+
+def verify_loads(prefix: Path) -> None:
+    require(prefix.is_absolute() and prefix.is_dir() and not prefix.is_symlink(), "Invalid backend load prefix")
+    record = json.loads((prefix / "share/licenses/migraphx-source-build/build-provenance.json").read_text())
+    files = record["installed_files"]
+    handles = []
+    for name in selected_libraries(files):
+        path = prefix / name
+        require(path.resolve().is_relative_to(prefix.resolve()), "Backend load path escapes its prefix")
+        require(digest(path) == files[name]["sha256"], "Backend load bytes differ from installation")
+        handles.append(ctypes.CDLL(str(path)))
 
 
 def installed_files(prefix: Path, manifest: Path, version: str) -> dict[str, dict[str, str]]:
@@ -202,7 +215,7 @@ def stage(args: argparse.Namespace) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("check-prefix", "stage"))
+    parser.add_argument("action", choices=("check-prefix", "stage", "verify-loads"))
     parser.add_argument("--prefix", required=True, type=Path)
     parser.add_argument("--work", type=Path)
     parser.add_argument("--deps-prefix")
@@ -216,6 +229,9 @@ def main() -> int:
     try:
         if args.action == "check-prefix":
             check_prefix(args.prefix)
+        elif args.action == "verify-loads":
+            verify_loads(args.prefix)
+            print("MIGRAPHX SOURCE LIBRARY LOADS PASSED: selected entry libraries; full ABI, licences and GPU acceptance remain required")
         else:
             require(all(getattr(args, name) is not None for name in
                         ("work", "deps_prefix", "version", "pybind_version", "source_commit", "source_sha256", "patch", "python_patch")), "Incomplete backend stage arguments")

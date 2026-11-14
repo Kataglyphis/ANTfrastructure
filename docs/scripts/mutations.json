@@ -13942,10 +13942,10 @@
  {
   "id": "rocm-stack.runtime-migraphx-ld-path",
   "target": "linux/scripts/06-packaging/media-payloads.sh",
-  "find": "\\( -name 'libamdhip64.so*' -o -name 'libmigraphx_c.so*' \\) -printf",
-  "replace": "\\( -name 'libamdhip64.so*' \\) -printf",
+  "find": " -o -name 'libmigraphx_c.so*'",
+  "replace": "",
   "test": "bash linux/scripts/tests/test-rocm-packages.sh",
-  "why": "the runtime image's MIGraphX EP needs libmigraphx_c.so.3, which sits outside every HIP dir since 10.1"
+  "why": "The runtime image's MIGraphX EP needs libmigraphx_c.so.3 outside every HIP directory; preserve the independent SQLite directory selector."
  },
  {
   "id": "rocm-stack.runtime-asan-off-loader-path",
@@ -49760,10 +49760,10 @@
  {
   "id": "compiler-llvm-tools.gpu-repair-current-inputs",
   "target": "linux/scripts/local-proof/gpu_source_profile.py",
-  "find": "    assert backend or paths == REPAIR_CHANGES, 'Unreviewed HIP repair input changes'",
+  "find": "    assert paths == REPAIR_CHANGES, 'Unreviewed HIP repair input changes'",
   "replace": "    pass",
   "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
-  "why": "The alternate source cannot include an unreviewed production input or omit the required HIP repair."
+  "why": "The alternate source cannot include an unreviewed production input or omit required changes; exact hash and full-source checks remain separate."
  },
  {
   "id": "compiler-llvm-tools.gpu-repair-exact-HIP-bytes",
@@ -49884,5 +49884,125 @@
   "replace": "assert True, 'Backend install repair bytes differ: ' + relative",
   "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
   "why": "Exact CMake repeats and private-layout bindings need executable positive and negative controls; fixtures do not prove an image, complete licences or GPU inference."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-runtime-repair-exact-paths",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "        if paths == REPAIR_CHANGES | hashes.keys():",
+  "replace": "        if REPAIR_CHANGES <= paths:",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "Runtime repair admission requires the complete exact path set before reading files; fixtures do not authenticate source history or an image."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-runtime-repair-scope",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "('backend-runtime-load', RUNTIME_REPAIR_HASHES)",
+  "replace": "('backend-install-manifest', RUNTIME_REPAIR_HASHES)",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "The new loader repair keeps an explicit proof scope instead of relabeling the historical install profile."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-runtime-repair-current-bytes",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "'fe1e27fdd1ae4e5679c9ec79f63d516d18fde2070063aa9725137cd70131e012'",
+  "replace": "'0000000000000000000000000000000000000000000000000000000000000000'",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "The runtime profile binds the actual current loader-gate bytes while preserving earlier source pins; supplied proofs do not authenticate provenance."
+ },
+ {
+  "id": "lib.rocm-source-paths-sqlite-required",
+  "target": "linux/scripts/06-packaging/media-payloads.sh",
+  "find": " -o -name 'librocm_sysdeps_sqlite3.so*'",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
+  "why": "The original ROCm SQLite soname must be discovered for the real backend dependency; filesystem controls do not prove native ABI or GPU inference."
+ },
+ {
+  "id": "lib.mgx-load-prefix-absolute",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "prefix.is_absolute() and prefix.is_dir() and not prefix.is_symlink()",
+  "replace": "prefix.is_dir() and not prefix.is_symlink()",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Actual library loading requires an absolute installed prefix; tiny native DSO fixtures do not prove a vendor backend or hardware acceptance."
+ },
+ {
+  "id": "lib.mgx-load-prefix-directory",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "prefix.is_absolute() and prefix.is_dir() and not prefix.is_symlink()",
+  "replace": "prefix.is_absolute() and not prefix.is_symlink()",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Missing or non-directory prefixes refuse before provenance reads; native fixture success does not establish full ABI or licence closure."
+ },
+ {
+  "id": "lib.mgx-load-prefix-alias",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "prefix.is_absolute() and prefix.is_dir() and not prefix.is_symlink()",
+  "replace": "prefix.is_absolute() and prefix.is_dir()",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "A symlinked prefix cannot masquerade as the selected installation; fixture loading is separate from actual image acceptance."
+ },
+ {
+  "id": "lib.mgx-load-contained-target",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "require(path.resolve().is_relative_to(prefix.resolve()), \"Backend load path escapes its prefix\")",
+  "replace": "require(True, \"Backend load path escapes its prefix\")",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Even matching bytes cannot redirect an entry-library load outside its installed prefix; selected loads do not prove the full dependency closure."
+ },
+ {
+  "id": "lib.mgx-load-installed-bytes",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "require(digest(path) == files[name][\"sha256\"], \"Backend load bytes differ from installation\")",
+  "replace": "require(True, \"Backend load bytes differ from installation\")",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Entry-library bytes must match the staged install record before loading; this does not authenticate the record or prove complete binary licences."
+ },
+ {
+  "id": "lib.mgx-load-every-entry",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "    for name in selected_libraries(files):",
+  "replace": "    for name in selected_libraries(files)[:2]:",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "All seven independently expected entry libraries must load, including the GPU target; fixture DSOs do not run GPU inference."
+ },
+ {
+  "id": "lib.mgx-load-real-loader",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "        handles.append(ctypes.CDLL(str(path)))",
+  "replace": "        handles.append(str(path))",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "Hash and path checks cannot replace an actual dynamic-library load or its missing-dependency failure; no complete ABI proof is claimed."
+ },
+ {
+  "id": "lib.mgx-load-cli-dispatch",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "            verify_loads(args.prefix)",
+  "replace": "            pass",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
+  "why": "The real CLI must execute its loader gate before emitting success; command fixtures do not accept a finished image."
+ },
+ {
+  "id": "lib.mgx-image-load-gate-required",
+  "target": "linux/scripts/03-media/build/migraphx/build-image.sh",
+  "find": "\"${HOST_PYTHON_BIN}\" \"${SCRIPT_DIR}/stage-backend-install.py\" verify-loads --prefix \"${MIGRAPHX_SOURCE_PREFIX}\"\n",
+  "replace": "",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py ImageEntryTests",
+  "why": "The ordinary producer must invoke the preserved load check after publication and ldconfig; child doubles prove wiring and raw failures, not a real image."
+ },
+ {
+  "id": "lib.mgx-image-load-gate-after-ldconfig",
+  "target": "linux/scripts/03-media/build/migraphx/build-image.sh",
+  "find": "ldconfig\n\"${HOST_PYTHON_BIN}\" \"${SCRIPT_DIR}/stage-backend-install.py\" verify-loads --prefix \"${MIGRAPHX_SOURCE_PREFIX}\"\n",
+  "replace": "\"${HOST_PYTHON_BIN}\" \"${SCRIPT_DIR}/stage-backend-install.py\" verify-loads --prefix \"${MIGRAPHX_SOURCE_PREFIX}\"\nldconfig\n",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py ImageEntryTests",
+  "why": "The load gate observes the newly published loader configuration and retains fatal ordering; shell fixtures do not prove runtime ABI or inference."
+ },
+ {
+  "id": "lib.mgx-image-load-gate-source-prefix",
+  "target": "linux/scripts/03-media/build/migraphx/build-image.sh",
+  "find": "verify-loads --prefix \"${MIGRAPHX_SOURCE_PREFIX}\"",
+  "replace": "verify-loads --prefix /opt/rocm",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py ImageEntryTests",
+  "why": "The producer checks the actual source installation rather than the retained distro SDK; fixture argument checks are separate from loader selection in an image."
  }
 ]

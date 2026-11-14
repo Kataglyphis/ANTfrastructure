@@ -16,3 +16,4 @@ bash "${SCRIPT_DIR}/build-source-stack.sh" "$@"
 source "${SCRIPT_DIR}/../../../06-packaging/media-payloads.sh"
 publish_rocm_ld_path
 ldconfig
+"${HOST_PYTHON_BIN}" "${SCRIPT_DIR}/stage-backend-install.py" verify-loads --prefix "${MIGRAPHX_SOURCE_PREFIX}"

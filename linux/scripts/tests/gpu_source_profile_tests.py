@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import json
 import subprocess
 import sys
 import tempfile
@@ -156,20 +157,18 @@ class GpuSourceProfileTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'complete source proof refused'):
             self.select()
 
-    def test_backend_install_profile_requires_every_reviewed_file_byte(self) -> None:
+    def exercise_reviewed_profile(self, table: str, profile: str, relatives: tuple[str, ...]) -> None:
         expected = {}
-        for relative in ('linux/scripts/03-media/build/migraphx/stage-backend-install.py',
-                         'linux/scripts/06-packaging/media-payloads.sh', 'linux/Dockerfile.amd', 'linux/Dockerfile.package',
-                         'linux/scripts/local-proof/proof_profiles.py'):
+        for relative in relatives:
             path = self.source / relative
             path.parent.mkdir(parents=True,exist_ok=True)
             raw = ('independent reviewed fixture ' + relative).encode()
             path.write_bytes(raw)
             expected[relative] = hashlib.sha256(raw).hexdigest()
         self.repair_paths.update(expected)
-        with mock.patch.object(PROFILE,'BACKEND_REPAIR_HASHES',expected):
+        with mock.patch.object(PROFILE,table,expected):
             review = self.select()[3]
-            self.assertEqual(review['profile'],'backend-install-manifest')
+            self.assertEqual(review['profile'],profile)
             self.assertEqual(set(review['reviewed_changes']),PROFILE.REPAIR_CHANGES | expected.keys())
             for relative in expected:
                 path = self.source / relative
@@ -187,18 +186,45 @@ class GpuSourceProfileTests(unittest.TestCase):
                 path.write_bytes(raw)
             for relative in expected:
                 self.repair_paths.remove(relative)
-                with self.subTest(relative=relative), self.assertRaisesRegex(AssertionError,'HIP repair input changes'):
+                with self.subTest(relative=relative), self.assertRaisesRegex(AssertionError,'HIP repair input changes|Backend install repair bytes differ'):
                     self.select()
                 self.repair_paths.add(relative)
 
-    def test_backend_production_file_hashes_bind_current_reviewed_bytes(self) -> None:
+    def test_backend_install_profile_requires_every_reviewed_file_byte(self) -> None:
+        self.exercise_reviewed_profile('BACKEND_REPAIR_HASHES','backend-install-manifest',
+            ('linux/scripts/03-media/build/migraphx/stage-backend-install.py',
+             'linux/scripts/06-packaging/media-payloads.sh','linux/Dockerfile.amd','linux/Dockerfile.package',
+             'linux/scripts/local-proof/proof_profiles.py'))
+
+    def test_runtime_load_profile_requires_every_reviewed_file_byte(self) -> None:
+        self.exercise_reviewed_profile('RUNTIME_REPAIR_HASHES','backend-runtime-load',
+            ('linux/scripts/03-media/build/migraphx/stage-backend-install.py',
+             'linux/scripts/03-media/build/migraphx/build-image.sh','linux/scripts/06-packaging/media-payloads.sh',
+             'linux/Dockerfile.amd','linux/Dockerfile.package','linux/scripts/local-proof/proof_profiles.py'))
+
+    def test_backend_production_file_hashes_preserve_the_earlier_profile(self) -> None:
         expected = {
             'linux/scripts/03-media/build/migraphx/stage-backend-install.py', 'linux/scripts/06-packaging/media-payloads.sh',
             'linux/Dockerfile.amd', 'linux/Dockerfile.package',
             'linux/scripts/local-proof/proof_profiles.py',
         }
         self.assertEqual(set(PROFILE.BACKEND_REPAIR_HASHES),expected)
-        for relative, sha256 in PROFILE.BACKEND_REPAIR_HASHES.items():
+        original = json.dumps(PROFILE.BACKEND_REPAIR_HASHES,sort_keys=True).encode()
+        self.assertEqual(hashlib.sha256(original).hexdigest(),'a0f24c3d70f3c9a1a3931b17224eb3180add3c0e402f809a982ddda140f4e3a4')
+
+    def test_runtime_profile_rejects_added_or_missing_paths_before_reading_files(self) -> None:
+        required = PROFILE.REPAIR_CHANGES | PROFILE.RUNTIME_REPAIR_HASHES.keys()
+        for paths in (required | {'quality/uv.lock'}, required - {HIP_PATH},
+                      required - {'linux/scripts/03-media/build/migraphx/stage-backend-install.py'}):
+            with self.subTest(paths=paths), self.assertRaisesRegex(AssertionError,'HIP repair input changes'):
+                PROFILE.repair_profile(paths)
+
+    def test_runtime_production_file_hashes_bind_current_reviewed_bytes(self) -> None:
+        expected = {'linux/scripts/03-media/build/migraphx/stage-backend-install.py',
+                    'linux/scripts/03-media/build/migraphx/build-image.sh','linux/scripts/06-packaging/media-payloads.sh',
+                    'linux/Dockerfile.amd','linux/Dockerfile.package','linux/scripts/local-proof/proof_profiles.py'}
+        self.assertEqual(set(PROFILE.RUNTIME_REPAIR_HASHES),expected)
+        for relative, sha256 in PROFILE.RUNTIME_REPAIR_HASHES.items():
             self.assertEqual(hashlib.sha256((ROOT / relative).read_bytes()).hexdigest(),sha256,relative)
 
 

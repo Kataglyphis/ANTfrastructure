@@ -120,9 +120,13 @@ class ImageEntryTests(unittest.TestCase):
         packaging = self.scripts.parents[2] / "06-packaging"
         packaging.mkdir()
         (packaging / "media-payloads.sh").write_text(PUBLICATION_DOUBLE)
+        selected_python = self.root / "selected Python/python"
+        selected_python.parent.mkdir()
+        selected_python.write_text('''#!/usr/bin/env bash\nset -euo pipefail\nprintf 'loads\\n' >> "$EVENTS"\nprintf '%s\\0' "$@" > "$LOAD_ARGS"\nif [[ "$FAIL_PHASE" == loads ]]; then exit 49; fi\n''')
+        selected_python.chmod(0o755)
         self.events = self.root / "events"
         self.env = dict(os.environ, LC_ALL="C", FAIL_PHASE="", EVENTS=str(self.events),
-                        SELECTED_PYTHON="/selected Python/python", UV_ARGS=str(self.root / "uv.nul"),
+                        SELECTED_PYTHON=str(selected_python), UV_ARGS=str(self.root / "uv.nul"), LOAD_ARGS=str(self.root / "loads.nul"),
                         STACK_ARGS=str(self.root / "stack.nul"), PREFIX_RECORD=str(self.root / "prefix"))
         self.env.pop("MIGRAPHX_SOURCE_PREFIX", None)
         self.args = [str(self.root / "new work"), str(self.root / "source cache"), "/opt/rocm"]
@@ -137,9 +141,11 @@ class ImageEntryTests(unittest.TestCase):
     def test_normal_order_retains_exact_python_pin_and_complete_stack_argv(self) -> None:
         result = self.run_entry()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.recorded_events(), ["python", "uv", "stack", "publish", "ldconfig"])
+        self.assertEqual(self.recorded_events(), ["python", "uv", "stack", "publish", "ldconfig", "loads"])
+        self.assertEqual((self.root / "loads.nul").read_bytes().split(b"\0")[:-1],
+                         [os.fsencode(self.scripts / "stage-backend-install.py"), b"verify-loads", b"--prefix", b"/opt/rocm/migraphx"])
         self.assertEqual((self.root / "uv.nul").read_bytes().split(b"\0")[:-1],
-                         [b"pip", b"install", b"--python", b"/selected Python/python", b"--no-deps", b"pybind11==3.1.0"])
+                         [b"pip", b"install", b"--python", os.fsencode(self.env["SELECTED_PYTHON"]), b"--no-deps", b"pybind11==3.1.0"])
         self.assertEqual((self.root / "stack.nul").read_bytes().split(b"\0")[:-1],
                          [arg.encode() for arg in self.args])
         self.assertEqual((self.root / "prefix").read_text(), "/opt/rocm/migraphx")
@@ -158,8 +164,8 @@ class ImageEntryTests(unittest.TestCase):
         self.assertEqual(self.recorded_events(), ["python"])
 
     def test_each_required_failure_stops_later_phases_and_keeps_raw_status(self) -> None:
-        cases = [("python", 43), ("uv", 43), ("stack", 45), ("publish", 47), ("ldconfig", 43)]
-        order = ["python", "uv", "stack", "publish", "ldconfig"]
+        cases = [("python", 43), ("uv", 43), ("stack", 45), ("publish", 47), ("ldconfig", 43), ("loads", 49)]
+        order = ["python", "uv", "stack", "publish", "ldconfig", "loads"]
         for phase, expected in cases:
             with self.subTest(phase=phase):
                 self.events.unlink(missing_ok=True)

@@ -1,6 +1,7 @@
 """Installed-tree and shell lifecycle controls use a tiny native DSO, not a built MIGraphX or GPU backend."""
 
 import argparse
+import contextlib
 import hashlib
 import io
 import json
@@ -125,6 +126,53 @@ class MigraphxBackendInstallTests(unittest.TestCase):
             member.size = len(raw)
             archive.addfile(member, io.BytesIO(raw))
         self.args.source_sha256 = hashlib.sha256((self.work / "source.tar.gz").read_bytes()).hexdigest()
+
+    def test_installed_entry_libraries_load_real_native_files_without_changing_receipt(self) -> None:
+        self.api["stage"](self.args)
+        before = (self.destination / "build-provenance.json").read_bytes()
+        loader = self.api["ctypes"].CDLL
+        with mock.patch.object(self.api["ctypes"], "CDLL", wraps=loader) as calls:
+            self.api["verify_loads"](self.prefix)
+        self.assertEqual([call.args for call in calls.call_args_list],
+                         [(str(self.prefix / ("lib/lib" + name + ".so")),) for name in self.libraries])
+        self.assertEqual((self.destination / "build-provenance.json").read_bytes(), before)
+        with mock.patch.object(self.api["ctypes"], "CDLL", side_effect=OSError("missing transitive dependency")), \
+                self.assertRaisesRegex(OSError, "missing transitive dependency"):
+            self.api["verify_loads"](self.prefix)
+
+    def test_installed_load_refuses_relative_missing_file_or_aliased_prefixes(self) -> None:
+        self.api["stage"](self.args)
+        alias = self.root / "prefix alias"
+        alias.symlink_to(self.prefix, target_is_directory=True)
+        with contextlib.chdir(self.root), self.assertRaisesRegex(ValueError, "Invalid backend load prefix"):
+            self.api["verify_loads"](Path("installed prefix"))
+        for prefix in (alias, self.root / "missing prefix", self.args.patch):
+            with self.subTest(prefix=prefix), self.assertRaisesRegex(ValueError, "Invalid backend load prefix"):
+                self.api["verify_loads"](prefix)
+
+    def test_installed_load_refuses_changed_bytes_and_external_targets(self) -> None:
+        self.api["stage"](self.args)
+        library = self.prefix / "lib/libmigraphx_gpu.so"
+        library.unlink()
+        library.write_bytes(b"changed selected bytes")
+        with self.assertRaisesRegex(ValueError, "load bytes differ"):
+            self.api["verify_loads"](self.prefix)
+        library.unlink()
+        library.symlink_to(self.native)
+        with self.assertRaisesRegex(ValueError, "load path escapes"):
+            self.api["verify_loads"](self.prefix)
+
+    def test_installed_load_cli_checks_all_libraries_and_reports_real_failure(self) -> None:
+        self.api["stage"](self.args)
+        command = [sys.executable, str(LIB / "stage-backend-install.py"), "verify-loads", "--prefix", str(self.prefix)]
+        result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("MIGRAPHX SOURCE LIBRARY LOADS PASSED", result.stdout)
+        (self.prefix / "lib/libmigraphx_gpu.so").unlink()
+        result = subprocess.run(command, capture_output=True, text=True, check=False, timeout=15)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("MIGraphX install refused", result.stderr)
+        self.assertNotIn("LIBRARY LOADS PASSED", result.stdout)
 
     def test_fresh_absolute_prefix_only_and_alias_refusals(self) -> None:
         check = self.api["check_prefix"]

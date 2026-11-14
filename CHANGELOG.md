@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — require installed MIGraphX entry libraries to load
+
+- Ordinary GPU4 builds and stages successfully, then its real core load exposes an unregistered vendor SQLite dependency. Discover the exact ROCm SQLite soname through the existing shared publisher, preserving source-first order and ASAN exclusion. The normal AMD producer now invokes `stage-backend-install.py verify-loads` after `ldconfig`, binding every selected entry's bytes to the install record and retaining real dynamic-loader failures. Native DSO, CLI, path and shell controls cover the new gate; the actual unchanged-image control fails and the disposable corrected-publisher replay loads all seven entries plus matching cold core/GPU bytes. Keep that diagnostic scope separate from a rebuilt image, complete ABI/licences and hardware inference. A new exact source profile binds this delta and retains both earlier profiles, SDK/HIP pins and complete-source admission. See [the failure and required follow-up](docs/failure-modes.md#migraphx-core-cannot-find-rocm-sqlite).
+
 ## 2026-11-14 — handle actual MIGraphX CMake installation
 
 - Coalesce exact repeated CMake install rows while retaining normalized-alias, complete-tree and original-notice checks. Require each selected library exactly once in either the public or private ROCm library directory, check native ELF identities there, and give both directories priority over distro libraries in GPU/runtime environments and the shared loader configuration. The ordinary GPU source profile admits only these four reviewed production-file hashes with a fresh complete source proof and the original qualified SDK. Fixtures cover staging, ambiguity and path order; they do not establish a rebuilt image, full binary licence closure or GPU parity. See [the actual staging failure](docs/failure-modes.md#migraphx-install-refused-repeated-normalized-install-path).

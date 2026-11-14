@@ -30,7 +30,7 @@ media_rocm_library_paths() {
   [ -d "${rocm_image_root}/opt/rocm" ] || return 0
   rocm_found="$(find -H "${rocm_image_root}/opt/rocm" \
     -path "${rocm_image_root}/opt/rocm/core-asan-*" -prune -o \
-    \( -name 'libamdhip64.so*' -o -name 'libmigraphx_c.so*' \) -printf '%h\n')" || return
+    \( -name 'libamdhip64.so*' -o -name 'libmigraphx_c.so*' -o -name 'librocm_sysdeps_sqlite3.so*' \) -printf '%h\n')" || return
   rocm_sorted="$(printf '%s\n' "${rocm_found}" "${rocm_image_root}/opt/rocm/lib" \
     "${rocm_image_root}/opt/rocm/lib64" | LC_ALL=C sort -u)" || return
   while IFS= read -r rocm_library; do
