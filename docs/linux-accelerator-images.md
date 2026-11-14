@@ -1609,14 +1609,18 @@ disk floor still apply to this large build.
 
 The entry uses memory-capped jobs, builds and installs the configured project,
 then rechecks its original source-input hashes. Its preserved
-`stage-backend-install.py` helper requires a complete, unique install manifest,
+`stage-backend-install.py` helper coalesces exact repeated CMake manifest rows, then requires a complete, unique normalized install inventory,
 nonempty selected headers/configuration, all selected core/frontend/target libraries,
 a Python extension, native ELF identities and the exact installed version.
 ELF identity checking uses the canonical packaging reader; it does not inspect
 complete loader structures, prove ABI compatibility or run the libraries.
-Installed paths and symlink targets must stay under the selected prefix.
-The current ordinary GPU image still uses its distro backend; this separate build
-entry does not yet wire the source prefix into that image.
+Installed paths and symlink targets must stay under the selected prefix. Different
+manifest spellings that normalize to one path still refuse. Each selected library
+must appear exactly once in `lib` or ROCm's private `lib/migraphx/lib`; a missing or
+ambiguous library refuses before notice staging. The ordinary GPU recipe invokes
+the complete source stack. The observed GPU3 run built all backend targets and
+installed them, then failed the earlier repeated-row check; no successful GPU image
+or final consumer acceptance follows from that attempt.
 
 `backend-source-notices.sha256` binds eight original dependency notice files.
 The rocMLIR component must also retain its complete existing original-notice policy.
@@ -1632,7 +1636,7 @@ consumer/image acceptance. Failed staging can leave partial output without a rec
 Copies of the stager need both notice policy files beside it and
 `06-packaging/ort_census_probe.py` in the shared relative script layout.
 The regression suite compiles one tiny native test library and uses explicit build
-lifecycle doubles. It cannot replace the unexecuted genuine MIGraphX build,
+lifecycle doubles. It cannot replace successful genuine MIGraphX staging,
 the selected-target licence review, source-prefix precedence checks or real
 finished-consumer/provider-profile acceptance.
 

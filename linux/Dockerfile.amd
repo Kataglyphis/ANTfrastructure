@@ -53,7 +53,7 @@ ENV PATH="/opt/rocm/migraphx/bin:${PATH}:/opt/rocm/bin" \
     PKG_CONFIG_PATH="/opt/rocm/migraphx/lib/pkgconfig:/opt/rocm/migraphx/lib64/pkgconfig:${PKG_CONFIG_PATH:-}" \
     PYTHONPATH="/opt/rocm/migraphx/lib:${PYTHONPATH:-}" \
     CMAKE_PREFIX_PATH="/opt/rocm/migraphx:${CMAKE_PREFIX_PATH:-}" \
-    LD_LIBRARY_PATH="/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib64:${LD_LIBRARY_PATH:-}"
+    LD_LIBRARY_PATH="/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib/migraphx/lib:/opt/rocm/migraphx/lib64:${LD_LIBRARY_PATH:-}"
 
 LABEL org.opencontainers.image.title="Kataglyphis AMD GPU" \
       org.opencontainers.image.description="AMD GPU (MIGraphX) acceleration layer for the Kataglyphis accelerator toolchain"

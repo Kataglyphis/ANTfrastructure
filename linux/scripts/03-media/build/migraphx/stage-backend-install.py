@@ -39,12 +39,22 @@ def check_prefix(prefix: Path) -> None:
     require(not prefix.resolve().exists(), "The resolved backend install prefix already exists")
 
 
+def selected_libraries(records: dict[str, dict[str, str]]) -> list[str]:
+    selected = []
+    for library in LIBRARIES:
+        candidates = [f"{directory}/lib{library}.so" for directory in ("lib", "lib/migraphx/lib")
+                      if f"{directory}/lib{library}.so" in records]
+        require(len(candidates) == 1, "Missing or ambiguous installed backend library: " + library)
+        selected.append(candidates[0])
+    return selected
+
+
 def installed_files(prefix: Path, manifest: Path, version: str) -> dict[str, dict[str, str]]:
     root = prefix.resolve(strict=True)
     require(not prefix.is_symlink() and root.is_dir(), "Installed backend prefix is not a regular directory")
     rows = manifest.read_text().splitlines()
     records = {}
-    for value in rows:
+    for value in dict.fromkeys(rows):
         path = Path(value)
         require(path.is_absolute() and path.is_file() and path.stat().st_size > 0, "Invalid installed file: " + value)
         relative = path.relative_to(prefix.absolute()).as_posix()
@@ -63,7 +73,7 @@ def installed_files(prefix: Path, manifest: Path, version: str) -> dict[str, dic
             "Python extension does not match exactly the selected interpreter ABI")
     with Path(sys.executable).open("rb") as stream:
         native = ELF_TARGET(stream.read(20))
-    for name in [*("lib/lib" + library + ".so" for library in LIBRARIES), *modules]:
+    for name in [*selected_libraries(records), *modules]:
         with (root / name).open("rb") as stream:
             require(ELF_TARGET(stream.read(20)) == native, "Installed backend ELF identity differs from the native builder")
     header = (root / "include/migraphx/version.h").read_text()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import subprocess
 import sys
@@ -154,6 +155,51 @@ class GpuSourceProfileTests(unittest.TestCase):
         self.full.side_effect = ValueError('fixture complete source proof refused')
         with self.assertRaisesRegex(ValueError, 'complete source proof refused'):
             self.select()
+
+    def test_backend_install_profile_requires_every_reviewed_file_byte(self) -> None:
+        expected = {}
+        for relative in ('linux/scripts/03-media/build/migraphx/stage-backend-install.py',
+                         'linux/scripts/06-packaging/media-payloads.sh', 'linux/Dockerfile.amd', 'linux/Dockerfile.package',
+                         'linux/scripts/local-proof/proof_profiles.py'):
+            path = self.source / relative
+            path.parent.mkdir(parents=True,exist_ok=True)
+            raw = ('independent reviewed fixture ' + relative).encode()
+            path.write_bytes(raw)
+            expected[relative] = hashlib.sha256(raw).hexdigest()
+        self.repair_paths.update(expected)
+        with mock.patch.object(PROFILE,'BACKEND_REPAIR_HASHES',expected):
+            review = self.select()[3]
+            self.assertEqual(review['profile'],'backend-install-manifest')
+            self.assertEqual(set(review['reviewed_changes']),PROFILE.REPAIR_CHANGES | expected.keys())
+            for relative in expected:
+                path = self.source / relative
+                raw = path.read_bytes()
+                path.write_bytes(raw + b'changed')
+                with self.subTest(relative=relative), self.assertRaisesRegex(AssertionError,'Backend install repair bytes differ'):
+                    self.select()
+                path.write_bytes(raw)
+            for relative in ('linux/Dockerfile.sdk','linux/scripts/01-core/versions.env'):
+                path = self.source / relative
+                raw = path.read_bytes()
+                path.write_bytes(raw + b'changed')
+                with self.subTest(relative=relative), self.assertRaisesRegex(AssertionError,'Dockerfile or pins differ'):
+                    self.select()
+                path.write_bytes(raw)
+            for relative in expected:
+                self.repair_paths.remove(relative)
+                with self.subTest(relative=relative), self.assertRaisesRegex(AssertionError,'HIP repair input changes'):
+                    self.select()
+                self.repair_paths.add(relative)
+
+    def test_backend_production_file_hashes_bind_current_reviewed_bytes(self) -> None:
+        expected = {
+            'linux/scripts/03-media/build/migraphx/stage-backend-install.py', 'linux/scripts/06-packaging/media-payloads.sh',
+            'linux/Dockerfile.amd', 'linux/Dockerfile.package',
+            'linux/scripts/local-proof/proof_profiles.py',
+        }
+        self.assertEqual(set(PROFILE.BACKEND_REPAIR_HASHES),expected)
+        for relative, sha256 in PROFILE.BACKEND_REPAIR_HASHES.items():
+            self.assertEqual(hashlib.sha256((ROOT / relative).read_bytes()).hexdigest(),sha256,relative)
 
 
 if __name__ == '__main__':

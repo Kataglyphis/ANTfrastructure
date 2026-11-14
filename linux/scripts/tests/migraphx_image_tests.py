@@ -236,7 +236,7 @@ class ImageWiringTests(unittest.TestCase):
         for expected in ('MIGRAPHX_HOME="/opt/rocm/migraphx"', 'PATH="/opt/rocm/migraphx/bin:',
                          'PKG_CONFIG_PATH="/opt/rocm/migraphx/lib/pkgconfig:/opt/rocm/migraphx/lib64/pkgconfig:',
                          'PYTHONPATH="/opt/rocm/migraphx/lib:', 'CMAKE_PREFIX_PATH="/opt/rocm/migraphx:',
-                         'LD_LIBRARY_PATH="/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib64:'):
+                         'LD_LIBRARY_PATH="/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib/migraphx/lib:/opt/rocm/migraphx/lib64:'):
             self.assertIn(expected, text)
 
     def test_gpu_path_keeps_inherited_compilers_before_distro_and_rocm_tools(self) -> None:
@@ -282,7 +282,7 @@ class ImageWiringTests(unittest.TestCase):
             "PKG_CONFIG_PATH": "${ROCM_ON:+/opt/rocm/migraphx/lib/pkgconfig:/opt/rocm/migraphx/lib64/pkgconfig:}${PKG_CONFIG_PATH}",
             "PYTHONPATH": "${ROCM_ON:+/opt/rocm/migraphx/lib:}${PYTHONPATH:-}",
             "CMAKE_PREFIX_PATH": "${ROCM_ON:+/opt/rocm/migraphx:}${CMAKE_PREFIX_PATH:-}",
-            "LD_LIBRARY_PATH": "${ROCM_ON:+/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib64:}${LD_LIBRARY_PATH:-}",
+            "LD_LIBRARY_PATH": "${ROCM_ON:+/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib/migraphx/lib:/opt/rocm/migraphx/lib64:}${LD_LIBRARY_PATH:-}",
         }
         for name, value in expected.items():
             self.assertRegex(text, re.escape(name) + r'="?' + re.escape(value) + r'(?:"|\s)')

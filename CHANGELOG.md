@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — handle actual MIGraphX CMake installation
+
+- Coalesce exact repeated CMake install rows while retaining normalized-alias, complete-tree and original-notice checks. Require each selected library exactly once in either the public or private ROCm library directory, check native ELF identities there, and give both directories priority over distro libraries in GPU/runtime environments and the shared loader configuration. The ordinary GPU source profile admits only these four reviewed production-file hashes with a fresh complete source proof and the original qualified SDK. Fixtures cover staging, ambiguity and path order; they do not establish a rebuilt image, full binary licence closure or GPU parity. See [the actual staging failure](docs/failure-modes.md#migraphx-install-refused-repeated-normalized-install-path).
+
 ## 2026-11-14 — request raw HIP device output
 
 - Request Clang's raw HIP device ELF before inspection and report non-ELF results explicitly. The kernel, pinned compiler, selected ROCm headers/device libraries and architecture remain required. The qualified SDK-to-GPU launcher can reuse the existing SDK for this exact isolated smoke repair with a separately verified complete source preflight; it records both revisions and rejects additional production changes. Fixture and mutation coverage grades flags, refusal boundaries and CLI forwarding, not actual ROCm compilation or GPU inference. See [early HIP check](docs/linux-accelerator-images.md#early-hip-device-compiler-check) and [stage launch](docs/local-proof-workflows.md#ordinary-sdk-and-gpu-stage-launch).

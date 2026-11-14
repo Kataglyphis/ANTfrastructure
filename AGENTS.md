@@ -292,7 +292,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows media staging rejects foreign ORT, GenAI and DirectML DLLs before copying and checks staged bytes against the chain.
    Copied `copy-media-payloads.sh` carries `llvm-loader-path.sh`; native compiler and package publication share its source-first conf and raw write/cache failures.
    Copy `compiler-cache-utils.sh` beside `common.sh`, cache modules and standalone cache probes and `media-payloads.sh` beside packaging copy/validation scripts; preserve narrow mounts.
-   ROCm runtime paths keep source MIGraphX lib/lib64 before retained distro paths, follow a command-line ROCm symlink and exclude ASAN; discovery and ordering failures must precede any configuration replacement.
+   ROCm runtime paths keep source MIGraphX public and private lib directories before retained distro paths, follow a command-line ROCm symlink and exclude ASAN; discovery and ordering failures must precede any configuration replacement.
+   MIGraphX install manifests coalesce exact repeated CMake rows only; retain alias, complete-tree, unique-library, native-ELF and original-notice refusals for public and private ROCm layouts.
    GPU and runtime ROCm configuration share `publish_rocm_ld_path` from `media-payloads.sh`; keep the required source build, publication and ldconfig calls unconditional and preserve their raw failures.
    Copy `elf-strip.sh` and `image-ref-args.sh` beside `build-helpers.sh`; `digest-pinning.sh` also requires `image-ref-args.sh`.
    Minimal toolchain bootstraps carry `elf-strip.sh` and `load-versions-env.sh`; keep the narrow GCC/LLVM mounts.
@@ -491,7 +492,7 @@ Five of them are RULES and stay here:
   stage; the other three orchestrators do not take the flag, so pipe them through `tee` yourself.
 
 - Compiler-plan copies carry `compiler_plan_profile.py` and `native_oci_layout.py`; retain the strict default profile and record every reviewed input delta rather than rewriting its reference.
-- The HIP smoke requests raw device ELF with `--no-gpu-bundle-output`; copied GPU launchers carry `gpu_source_profile.py`. An explicit alternate source requires the exact reviewed repair and its own complete preflight while preserving the original qualified SDK identity.
+- The HIP smoke requests raw device ELF with `--no-gpu-bundle-output`; copied GPU launchers carry `gpu_source_profile.py`. An explicit alternate source requires the exact reviewed HIP or backend-install repair and its own complete preflight while preserving the original qualified SDK identity.
 - **Preserve recurring operational scripts in the repo.** The canonical implementation must be Git-tracked; an ignored `logs/` copy is evidence only. Promote a recurring helper before its next use, retain its required companions and parameterize run-specific inputs. The [operational toolkit](docs/local-proof-workflows.md) owns the reusable proof, checkpoint and authorized cleanup drivers. Reuse and extend the canonical helper;
   do not regenerate regular preflight, monitoring or probe drivers in scratch space. Diagnostic compiler prefixes remain explicitly unverified and cannot qualify an SDK parent; retain the failed producer and mandatory source smoke. Keep run-specific
   inputs, extracted code and reports under `logs/`. Add missing recurring functionality to Git before

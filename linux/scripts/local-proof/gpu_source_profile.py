@@ -1,10 +1,11 @@
-"""Constrain the HIP output-format repair when reusing a qualified SDK; no provenance, build or inference acceptance."""
+"""Constrain reviewed HIP and backend-install repairs when reusing a qualified SDK; no provenance, build or inference acceptance."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from native_oci_layout import sha
 from normal_stage_launch import full_source
 from proof_commands import checked_run
 
@@ -24,7 +25,14 @@ HOST_BASE_CHANGES = {
 }
 REPAIR_CHANGES = {HIP, 'linux/scripts/local-proof/launch-normal-gpu.py',
                   'linux/scripts/local-proof/gpu_source_profile.py', 'linux/scripts/local-proof/inventory.json'}
-METADATA = {'AGENTS.md', 'README.md', 'CHANGELOG.md', 'docs/code-quality-tooling.md', 'docs/failure-modes.md',
+BACKEND_REPAIR_HASHES = {
+    'linux/scripts/local-proof/proof_profiles.py': '6dad8cde51f997a3a62f88834c863ec2efeeb1e82046398abee3f233b658a9dc',
+    'linux/scripts/03-media/build/migraphx/stage-backend-install.py': '715cea6765ab1fdb9c0ed5a941a8e6b793fd62d2d42ee1305ec557970eef4889',
+    'linux/scripts/06-packaging/media-payloads.sh': '1dc5842a269e70474b859473bb91fe5bc963b2bb1f4e87ad99aae6683d7ee784',
+    'linux/Dockerfile.amd': '5a5f296d4a7dd30cd85d5624029a8c192b056d7d1ad7322a80feddd2502ea8a8',
+    'linux/Dockerfile.package': '71d038133f2c97c6a3d364d28e945dcac03089d2bafd8f57633f6d27813bbe25',
+}
+METADATA = {'AGENTS.md', 'README.md', 'CHANGELOG.md', 'BACKLOG.md', 'docs/code-quality-tooling.md', 'docs/failure-modes.md',
             'docs/local-proof-workflows.md', 'docs/linux-accelerator-images.md', 'docs/scripts/mutations.json'}
 
 
@@ -59,13 +67,18 @@ def select_gpu_source(plan: Json, selected: Path | None, proof_path: Path | None
     head = checked_run(['git', '-C', str(source), 'rev-parse', 'HEAD']).stdout.strip()
     checked_run(['git', '-C', str(source), 'merge-base', '--is-ancestor', TOOL_BASE, head])
     assert git_paths(source, SDK_REVISION, TOOL_BASE) == HOST_BASE_CHANGES, 'Unreviewed intervening image inputs'
-    assert git_paths(source, TOOL_BASE, head) == REPAIR_CHANGES, 'Unreviewed HIP repair input changes'
+    paths = git_paths(source, TOOL_BASE, head)
+    backend = paths == REPAIR_CHANGES | BACKEND_REPAIR_HASHES.keys()
+    assert backend or paths == REPAIR_CHANGES, 'Unreviewed HIP repair input changes'
     assert (source / HIP).read_text() == expected_hip_repair((producer / HIP).read_text()), 'GPU source contains more than the exact HIP output-format repair'
-    for relative in ('linux/Dockerfile.sdk', 'linux/Dockerfile.amd', 'linux/scripts/01-core/versions.env'):
+    for relative in ('linux/Dockerfile.sdk', 'linux/scripts/01-core/versions.env', *(() if backend else ('linux/Dockerfile.amd',))):
         assert (source / relative).read_bytes() == (producer / relative).read_bytes(), 'SDK/GPU Dockerfile or pins differ'
+    if backend:
+        for relative, expected in BACKEND_REPAIR_HASHES.items():
+            assert sha(source / relative) == expected, 'Backend install repair bytes differ: ' + relative
     full = full_source(source, proof_path, head)
-    review = {'profile': 'hip-object-output', 'SDK_source_revision': SDK_REVISION, 'tool_base': TOOL_BASE,
-              'GPU_source_revision': head, 'reviewed_changes': sorted(REPAIR_CHANGES),
+    review = {'profile': 'backend-install-manifest' if backend else 'hip-object-output', 'SDK_source_revision': SDK_REVISION, 'tool_base': TOOL_BASE,
+              'GPU_source_revision': head, 'reviewed_changes': sorted(paths),
               'full_registry_mutations': full['actual_full_registry_mutations'], 'all_preflight_groups': 42,
               'compiler_and_SDK_inputs_preserved': True, 'cache_hits_claimed': False, 'scope': __doc__}
     return source, head, proof_path.resolve(strict=True), review

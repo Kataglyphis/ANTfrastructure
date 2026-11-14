@@ -287,7 +287,7 @@ ENV PATH="${ROCM_ON:+/opt/rocm/migraphx/bin:}${PATH}${ROCM_ON:+:/opt/rocm/bin}" 
     PKG_CONFIG_PATH="${ROCM_ON:+/opt/rocm/migraphx/lib/pkgconfig:/opt/rocm/migraphx/lib64/pkgconfig:}${PKG_CONFIG_PATH}" \
     PYTHONPATH="${ROCM_ON:+/opt/rocm/migraphx/lib:}${PYTHONPATH:-}" \
     CMAKE_PREFIX_PATH="${ROCM_ON:+/opt/rocm/migraphx:}${CMAKE_PREFIX_PATH:-}" \
-    LD_LIBRARY_PATH="${ROCM_ON:+/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib64:}${LD_LIBRARY_PATH:-}"
+    LD_LIBRARY_PATH="${ROCM_ON:+/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib/migraphx/lib:/opt/rocm/migraphx/lib64:}${LD_LIBRARY_PATH:-}"
 
 # A login shell rebuilds PATH from /etc/profile; `:=` keeps a caller's CARGO_HOME, the case guard stays idempotent.
 LABEL kataglyphis.step=rust-profile

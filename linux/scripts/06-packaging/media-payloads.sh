@@ -25,7 +25,7 @@ PAYLOADS
 # Source MIGraphX precedes the retained distro extras tree without publishing ASAN paths.
 media_rocm_library_paths() {
   local rocm_image_root="${1:-}" rocm_found rocm_sorted rocm_library
-  local -a rocm_paths=(/opt/rocm/migraphx/lib /opt/rocm/migraphx/lib64)
+  local -a rocm_paths=(/opt/rocm/migraphx/lib /opt/rocm/migraphx/lib/migraphx/lib /opt/rocm/migraphx/lib64)
   local -A rocm_seen=()
   [ -d "${rocm_image_root}/opt/rocm" ] || return 0
   rocm_found="$(find -H "${rocm_image_root}/opt/rocm" \

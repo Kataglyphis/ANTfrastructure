@@ -5,6 +5,23 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## MIGraphX install refused: Repeated normalized install path
+
+The ordinary ROCm GPU3 run on 2026-11-14 completed all rocMLIR and MIGraphX
+backend build targets, installed them, then failed `stage-backend-install.py`
+with `MIGraphX install refused: Repeated normalized install path`. CMake can
+record one exact installed filename more than once; that is not a second payload.
+Coalesce exact manifest rows while retaining normalized-alias, complete-tree,
+nonempty-file, contained-symlink, native-ELF and original-notice checks.
+
+This installation also puts private core/frontend/target libraries under
+`lib/migraphx/lib`, beside public libraries in `lib`. Require every selected
+library exactly once across those two directories and retain both directories
+before distro paths in the GPU/runtime environment and shared `000-rocm.conf`.
+The fixtures cover those layouts and failure controls, not actual loader ABI,
+complete binary licence closure or GPU inference. A fresh ordinary GPU build and
+the subsequent Media/runtime and finished-consumer proofs remain required.
+
 ## Compiler planner refuses a fourth OCI transport delta
 
 The default compiler-plan profile accepts only the original three LLVM changes.

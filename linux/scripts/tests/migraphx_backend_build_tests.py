@@ -259,11 +259,59 @@ class MigraphxBackendInstallTests(unittest.TestCase):
         original = self.manifest.read_text()
         foreign = self.root / "foreign file"
         foreign.write_text("foreign")
-        for manifest in ["", original + original.splitlines()[0] + "\n", "relative\n", original + str(foreign) + "\n",
+        alias = str(self.prefix) + "/./include/migraphx/migraphx.h"
+        for manifest in ["", original + alias + "\n", "relative\n", original + str(foreign) + "\n",
                          "\n".join(original.splitlines()[1:]) + "\n"]:
             self.manifest.write_text(manifest)
             with self.subTest(manifest=manifest), self.assertRaises(ValueError):
                 self.api["installed_files"](self.prefix, self.manifest, "2.18.0")
+
+    def test_cmake_exact_repeated_paths_keep_complete_file_and_symlink_bindings(self) -> None:
+        expected = self.api["installed_files"](self.prefix,self.manifest,"2.18.0")
+        original = self.manifest.read_text()
+        self.manifest.write_text(original + original + original.splitlines()[0] + "\n")
+        self.assertEqual(self.api["installed_files"](self.prefix,self.manifest,"2.18.0"),expected)
+        self.assertTrue(any("symlink" in record for record in expected.values()))
+
+    def private_layout(self) -> list[str]:
+        directory = self.prefix / "lib/migraphx/lib"
+        directory.mkdir(parents=True)
+        moved = []
+        for name in self.libraries:
+            if name not in {"migraphx_c","migraphx_py"}:
+                source = self.prefix / f"lib/lib{name}.so"
+                source.unlink()
+                relative = f"lib/migraphx/lib/lib{name}.so"
+                (self.prefix / relative).symlink_to("../../native-fixture.so")
+                moved.append(relative)
+        self.refresh_manifest()
+        return moved
+
+    def test_private_rocm_libraries_and_repeated_manifest_stage_original_notices(self) -> None:
+        moved = self.private_layout()
+        self.manifest.write_text(self.manifest.read_text() * 2)
+        self.api["stage"](self.args)
+        proof = json.loads((self.destination / "build-provenance.json").read_text())
+        self.assertFalse(proof["complete_binary_licence_review"])
+        for name in moved:
+            self.assertEqual(proof["installed_files"][name],{"sha256":self.api["digest"](self.native),"symlink":"../../native-fixture.so"})
+        self.assertEqual((self.destination / "migraphx/LICENSE").read_bytes(),(self.work / "source/LICENSE").read_bytes())
+
+    def test_missing_or_ambiguous_private_libraries_refuse(self) -> None:
+        for relative in self.private_layout():
+            file = self.prefix / relative
+            file.unlink()
+            self.refresh_manifest()
+            with self.subTest(relative=relative), self.assertRaisesRegex(ValueError,"Missing or ambiguous installed backend library"):
+                self.api["installed_files"](self.prefix,self.manifest,"2.18.0")
+            file.symlink_to("../../native-fixture.so")
+            duplicate = self.prefix / "lib" / file.name
+            duplicate.symlink_to("native-fixture.so")
+            self.refresh_manifest()
+            with self.subTest(duplicate=duplicate), self.assertRaisesRegex(ValueError,"Missing or ambiguous installed backend library"):
+                self.api["installed_files"](self.prefix,self.manifest,"2.18.0")
+            duplicate.unlink()
+        self.refresh_manifest()
 
     def test_unlisted_files_and_directory_links_and_foreign_library_links_refuse(self) -> None:
         for path in [self.prefix / "unexpected", self.prefix / "alias"]:

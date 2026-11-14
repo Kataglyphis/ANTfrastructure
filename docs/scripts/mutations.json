@@ -45000,7 +45000,7 @@
  {
   "id": "lib.rocm-source-paths-source-first",
   "target": "linux/scripts/06-packaging/media-payloads.sh",
-  "find": "  local -a rocm_paths=(/opt/rocm/migraphx/lib /opt/rocm/migraphx/lib64)\n",
+  "find": "  local -a rocm_paths=(/opt/rocm/migraphx/lib /opt/rocm/migraphx/lib/migraphx/lib /opt/rocm/migraphx/lib64)\n",
   "replace": "  local -a rocm_paths=()\n",
   "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
   "why": "Source-prefix runtime paths retain priority,legacy HIP paths,ASAN exclusion,deduplication and raw failures; filesystem fixtures do not prove ELF ABI,real loader choice or image/GPU acceptance."
@@ -45008,8 +45008,8 @@
  {
   "id": "lib.rocm-source-paths-source-lib64",
   "target": "linux/scripts/06-packaging/media-payloads.sh",
-  "find": "  local -a rocm_paths=(/opt/rocm/migraphx/lib /opt/rocm/migraphx/lib64)\n",
-  "replace": "  local -a rocm_paths=(/opt/rocm/migraphx/lib)\n",
+  "find": "  local -a rocm_paths=(/opt/rocm/migraphx/lib /opt/rocm/migraphx/lib/migraphx/lib /opt/rocm/migraphx/lib64)\n",
+  "replace": "  local -a rocm_paths=(/opt/rocm/migraphx/lib /opt/rocm/migraphx/lib/migraphx/lib)\n",
   "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
   "why": "Source-prefix runtime paths retain priority,legacy HIP paths,ASAN exclusion,deduplication and raw failures; filesystem fixtures do not prove ELF ABI,real loader choice or image/GPU acceptance."
  },
@@ -45096,8 +45096,8 @@
  {
   "id": "lib.mgx-pybind-notice-unique-original",
   "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
-  "find": "len(candidates) == 1",
-  "replace": "bool(candidates)",
+  "find": "require(len(candidates) == 1, \"Missing or ambiguous original pybind11 notice\")",
+  "replace": "require(bool(candidates), \"Missing or ambiguous original pybind11 notice\")",
   "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests",
   "why": "Original pybind11 notice staging binds selected Python version,unique regular original bytes and configured CMake origin before provenance;fixture and source proofs do not complete binary licence review or image/GPU acceptance."
  },
@@ -45344,7 +45344,7 @@
  {
   "id": "lib.mgx-image-gpu-loader",
   "target": "linux/Dockerfile.amd",
-  "find": "LD_LIBRARY_PATH=\"/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib64:",
+  "find": "LD_LIBRARY_PATH=\"/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib/migraphx/lib:/opt/rocm/migraphx/lib64:",
   "replace": "LD_LIBRARY_PATH=\"",
   "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
   "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
@@ -45392,7 +45392,7 @@
  {
   "id": "lib.mgx-image-runtime-loader",
   "target": "linux/Dockerfile.package",
-  "find": "${ROCM_ON:+/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib64:}",
+  "find": "${ROCM_ON:+/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib/migraphx/lib:/opt/rocm/migraphx/lib64:}",
   "replace": "",
   "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
   "why": "Normal AMD source-image integration retains complete stack,selected Python pin,fresh per-file closure,caches,source-first environments and raw RUN failures; controls do not prove installed vendor binaries,complete licences,real loader ABI or GPU/final-image acceptance."
@@ -49760,7 +49760,7 @@
  {
   "id": "compiler-llvm-tools.gpu-repair-current-inputs",
   "target": "linux/scripts/local-proof/gpu_source_profile.py",
-  "find": "    assert git_paths(source, TOOL_BASE, head) == REPAIR_CHANGES, 'Unreviewed HIP repair input changes'",
+  "find": "    assert backend or paths == REPAIR_CHANGES, 'Unreviewed HIP repair input changes'",
   "replace": "    pass",
   "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
   "why": "The alternate source cannot include an unreviewed production input or omit the required HIP repair."
@@ -49771,7 +49771,7 @@
   "find": "    assert (source / HIP).read_text() == expected_hip_repair((producer / HIP).read_text()), 'GPU source contains more than the exact HIP output-format repair'",
   "replace": "    pass",
   "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
-  "why": "The only production byte changes are the raw-output flag and failure diagnostic; bypasses remain rejected."
+  "why": "The HIP bytes remain exactly the raw-output flag and diagnostic even in the reviewed backend-install profile."
  },
  {
   "id": "compiler-llvm-tools.gpu-repair-original-anchors",
@@ -49828,5 +49828,61 @@
   "replace": "record = {'source_revision':plan['source_revision'], 'parent_source_revision':plan['source_revision']",
   "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
   "why": "A repaired GPU invocation records its actual source separately from the original qualified SDK source."
+ },
+ {
+  "id": "lib.mgx-install-manifest-exact-repeat",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "for value in dict.fromkeys(rows):",
+  "replace": "for value in rows:",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_cmake_exact_repeated_paths_keep_complete_file_and_symlink_bindings",
+  "why": "Exact CMake repeats and private-layout bindings need executable positive and negative controls; fixtures do not prove an image, complete licences or GPU inference."
+ },
+ {
+  "id": "lib.mgx-install-private-libraries",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "for directory in (\"lib\", \"lib/migraphx/lib\")",
+  "replace": "for directory in (\"lib\",)",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_private_rocm_libraries_and_repeated_manifest_stage_original_notices",
+  "why": "Exact CMake repeats and private-layout bindings need executable positive and negative controls; fixtures do not prove an image, complete licences or GPU inference."
+ },
+ {
+  "id": "lib.mgx-install-ambiguous-library",
+  "target": "linux/scripts/03-media/build/migraphx/stage-backend-install.py",
+  "find": "require(len(candidates) == 1, \"Missing or ambiguous installed backend library: \" + library)",
+  "replace": "require(bool(candidates), \"Missing or ambiguous installed backend library: \" + library)",
+  "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendInstallTests.test_missing_or_ambiguous_private_libraries_refuse",
+  "why": "Exact CMake repeats and private-layout bindings need executable positive and negative controls; fixtures do not prove an image, complete licences or GPU inference."
+ },
+ {
+  "id": "lib.mgx-install-private-loader",
+  "target": "linux/scripts/06-packaging/media-payloads.sh",
+  "find": "  local -a rocm_paths=(/opt/rocm/migraphx/lib /opt/rocm/migraphx/lib/migraphx/lib /opt/rocm/migraphx/lib64)\n",
+  "replace": "  local -a rocm_paths=(/opt/rocm/migraphx/lib /opt/rocm/migraphx/lib64)\n",
+  "test": "bash linux/scripts/tests/test-rocm-loader-paths.sh",
+  "why": "Exact CMake repeats and private-layout bindings need executable positive and negative controls; fixtures do not prove an image, complete licences or GPU inference."
+ },
+ {
+  "id": "lib.mgx-install-gpu-private-environment",
+  "target": "linux/Dockerfile.amd",
+  "find": "/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib/migraphx/lib:/opt/rocm/migraphx/lib64:",
+  "replace": "/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib64:",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Exact CMake repeats and private-layout bindings need executable positive and negative controls; fixtures do not prove an image, complete licences or GPU inference."
+ },
+ {
+  "id": "lib.mgx-install-runtime-private-environment",
+  "target": "linux/Dockerfile.package",
+  "find": "/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib/migraphx/lib:/opt/rocm/migraphx/lib64:",
+  "replace": "/opt/rocm/migraphx/lib:/opt/rocm/migraphx/lib64:",
+  "test": "python3 linux/scripts/tests/migraphx_image_tests.py",
+  "why": "Exact CMake repeats and private-layout bindings need executable positive and negative controls; fixtures do not prove an image, complete licences or GPU inference."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-install-repair-exact-bytes",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "assert sha(source / relative) == expected, 'Backend install repair bytes differ: ' + relative",
+  "replace": "assert True, 'Backend install repair bytes differ: ' + relative",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "Exact CMake repeats and private-layout bindings need executable positive and negative controls; fixtures do not prove an image, complete licences or GPU inference."
  }
 ]
