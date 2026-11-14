@@ -16,9 +16,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — bind native GPU export to a checked local manifest selector
+
+- The actual Docker-loaded local GPU4 image resolves by immutable manifest ID, while its digest-qualified repository name and inspected config ID do not resolve as local image selectors. Use the manifest for the bounded host export and independently require its lookup to match the tagged image's config and manifest. Preserve all native byte/SDK ancestry, source proof, raw status, disk and final-acceptance guards; Media keeps repository@digest with its native context. Command fixtures, refusal controls and executable mutations cover this selector boundary. The actual engine readback proves resolution only, not a completed export, rebuilt image or hardware inference. See [the observed local resolution failure](docs/failure-modes.md#local-docker-loaded-gpu-image-does-not-resolve-by-repositorydigest).
+
 ## 2026-11-14 — require installed MIGraphX entry libraries to load
 
 - Ordinary GPU4 builds and stages successfully, then its real core load exposes an unregistered vendor SQLite dependency. Discover the exact ROCm SQLite soname through the existing shared publisher, preserving source-first order and ASAN exclusion. The normal AMD producer now invokes `stage-backend-install.py verify-loads` after `ldconfig`, binding every selected entry's bytes to the install record and retaining real dynamic-loader failures. Native DSO, CLI, path and shell controls cover the new gate; the actual unchanged-image control fails and the disposable corrected-publisher replay loads all seven entries plus matching cold core/GPU bytes. Keep that diagnostic scope separate from a rebuilt image, complete ABI/licences and hardware inference. A new exact source profile binds this delta and retains both earlier profiles, SDK/HIP pins and complete-source admission. See [the failure and required follow-up](docs/failure-modes.md#migraphx-core-cannot-find-rocm-sqlite).
+
+## 2026-11-14 — preserve native GPU-to-Media handoffs
+
+- Share the bounded native OCI export transport and add explicit ROCm amd64 GPU export/sealing and ordinary Media launch commands. Require the completed GPU producer, exact source/SDK receipts, current image identity, every native blob and matching SDK layer descriptors/diffIDs. Reuse verified parent layer links while retaining independent child metadata and raw producer/extractor failures. Media requires both Asyncify and JSPI through the normal build driver and unchanged disk/idle gates. Synthetic archive/command controls and executable mutations cover refusals; these tools do not authenticate receipts, prove binary licence closure, hardware inference or final acceptance. See [native GPU handoff](docs/local-proof-workflows.md#native-gpu-to-media-handoff).
 
 ## 2026-11-14 — handle actual MIGraphX CMake installation
 

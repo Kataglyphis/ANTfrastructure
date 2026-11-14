@@ -81,6 +81,16 @@ def export_worker_inputs(plan: Json, sdk: bool) -> dict[str, str]:
     return {str(path):sha(path) for path in paths}
 
 
+def export_command(helper: Path, image: str, context: Path, parent_proof: str, unit: str) -> list[str]:
+    engine = str(Path.home() / '.local/bin/nerdctl')
+    return ["systemd-run", "--user", "--no-block", "--expand-environment=no", f"--unit={unit}",
+            "-p", "Type=oneshot", "-p", "RemainAfterExit=yes", "-p", "TimeoutStartSec=1200", "-p", "TimeoutStopSec=120",
+            "-p", "KillMode=control-group", "-p", f"StandardOutput=append:{context}.unit.log", "-p", f"StandardError=append:{context}.unit.log",
+            "-E", "LC_ALL=C", "-E", f"HOME={Path.home()}", "-E", f"PATH={Path.home()}/.local/bin:/usr/local/bin:/usr/bin:/bin",
+            "/bin/bash", "-euo", "pipefail", "-c", 'source "$1"; declare -F export_image_to_oci_layout >/dev/null; export_image_to_oci_layout "$2" "$3" "$4" "${5:-}"',
+            "qualified-native-export", str(helper), engine, image, str(context), parent_proof]
+
+
 def launch(args: argparse.Namespace, plan: Json, proof: Json) -> int:
     subject = load_subject(plan, args.sdk_invocation)
     assert state(args.unit)["LoadState"] == "not-found" and not args.context.exists()
@@ -95,13 +105,7 @@ def launch(args: argparse.Namespace, plan: Json, proof: Json) -> int:
     worker_inputs = export_worker_inputs(plan,sdk)
     helper = Path(next(iter(worker_inputs)))
     parent_proof = subject['compiler_parent_proof'] if sdk else ''
-    engine = str(Path.home() / ".local/bin/nerdctl")
-    command = ["systemd-run", "--user", "--no-block", "--expand-environment=no", f"--unit={args.unit}",
-               "-p", "Type=oneshot", "-p", "RemainAfterExit=yes", "-p", "TimeoutStartSec=1200", "-p", "TimeoutStopSec=120",
-               "-p", "KillMode=control-group", "-p", f"StandardOutput=append:{args.context}.unit.log", "-p", f"StandardError=append:{args.context}.unit.log",
-               "-E", "LC_ALL=C", "-E", f"HOME={Path.home()}", "-E", f"PATH={Path.home()}/.local/bin:/usr/local/bin:/usr/bin:/bin",
-               "/bin/bash", "-euo", "pipefail", "-c", 'source "$1"; declare -F export_image_to_oci_layout >/dev/null; export_image_to_oci_layout "$2" "$3" "$4" "${5:-}"',
-               "qualified-native-export", str(helper), engine, subject['image'], str(args.context), parent_proof]
+    command = export_command(helper, subject['image'], args.context, parent_proof, args.unit)
     invocation = args.context.with_suffix(".invocation.json")
     assert not invocation.exists()
     record = {"created_at": datetime.datetime.now(datetime.UTC).isoformat(), "unit": args.unit, "command": command,

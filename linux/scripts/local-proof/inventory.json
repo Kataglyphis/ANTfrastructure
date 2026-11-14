@@ -459,6 +459,9 @@
     }
   ],
   "new_canonical_files": [
+    "linux/scripts/local-proof/gpu-oci-handoff.py",
+    "linux/scripts/local-proof/gpu_handoff_profile.py",
+    "linux/scripts/local-proof/launch-normal-media.py",
     "linux/scripts/local-proof/compiler-prefix-diagnostic.py",
     "linux/scripts/local-proof/launch-cross-clang-link-probe.py",
     "linux/scripts/local-proof/probe-cross-clang-link.py",

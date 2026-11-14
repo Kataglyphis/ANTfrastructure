@@ -31,7 +31,7 @@ def plain_file(path: Path) -> None:
 def parent_layout(proof_path: Path) -> tuple[Json, Path, NativeLayout]:
     plain_file(proof_path)
     proof = json.loads(proof_path.read_text())
-    assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry'}, 'Qualified native OCI parent required'
+    assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only'}, 'Verified native OCI parent required'
     assert proof['all_native_blob_sizes_and_sha256_verified'] is True, 'Parent blob verification is required'
     assert proof['stopped']['ActiveState'] == 'inactive' and proof['stopped']['MainPID'] == '0', 'Parent export must be sealed'
     context = plain_directory(Path(proof['context']))

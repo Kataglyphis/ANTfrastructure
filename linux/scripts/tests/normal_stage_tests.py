@@ -106,10 +106,10 @@ class StageTests(unittest.TestCase):
         with mock.patch.object(STAGE,'host_admission',return_value=self.work / 'temporary') as host, \
                 mock.patch.object(runpy,'run_path',return_value={'require_build_disk':disk}), \
                 mock.patch.object(subprocess,'run',transport), mock.patch.object(sys,'path',sys.path.copy()), redirect_stdout(io.StringIO()):
-            result = STAGE.launch_stage(self.work,self.output,unit or (self.unit if stage == 'gpu' else self.unit.replace('-gpu-','-sdk-')),repo,stage,arch,
+            result = STAGE.launch_stage(self.work,self.output,unit or self.unit.replace('-gpu-', '-' + stage + '-'),repo,stage,arch,
                                        self.work / 'parent context','ant-local/webgpu-parent@sha256:' + 'a' * 64,required,{'parent_manifest':'sha256:' + 'a' * 64},variant)
-        host.assert_called_once_with(self.unit if stage == 'gpu' else self.unit.replace('-gpu-','-sdk-'),self.output,
-                                     self.image if stage == 'gpu' else 'ant-local/webgpu-fixture:cross-sdk-amd64')
+        expected = {'gpu':self.image, 'sdk':'ant-local/webgpu-fixture:cross-sdk-amd64', 'media':'ant-local/webgpu-fixture:cross-media-rocm-amd64'}
+        host.assert_called_once_with(self.unit.replace('-gpu-', '-' + stage + '-'),self.output,expected[stage])
         disk.assert_called_once_with(self.output.parent)
         return result,json.loads((self.output / 'invocation.json').read_text())
 
@@ -135,8 +135,20 @@ class StageTests(unittest.TestCase):
         self.assertIn('CROSS_SDK_BASE_CONTEXT=' + str(self.work / 'parent context'),record['command'])
         self.assertFalse(any(value.startswith('CROSS_VARIANT=') for value in record['command']))
 
+    def test_media_requires_both_wasm_modes_and_normal_parent(self) -> None:
+        status, record = self.launch(stage='media')
+        self.assertEqual(status,0)
+        command = record['command']
+        self.assertEqual(record['image'],'ant-local/webgpu-fixture:cross-media-rocm-amd64')
+        for value in ['ORT_WEB_REQUIRED=1','ORT_WASM_WEBGPU_FLAVORS=true','CROSS_VARIANT=rocm',
+                      'CROSS_MEDIA_BASE_IMAGE=ant-local/webgpu-parent@sha256:' + 'a' * 64,
+                      'CROSS_MEDIA_BASE_CONTEXT=' + str(self.work / 'parent context')]:
+            self.assertEqual(command.count(value),1)
+        self.assertEqual(command[-8:-6],['--stage','media'])
+        self.assertNotIn('--push',command)
+
     def test_disk_floor_and_profiles_refuse_before_allocation(self) -> None:
-        cases: list[dict[str, Any]] = [{'available':193273528319}, {'required':193273528319}, {'repo':'public/fixture'}, {'stage':'media','variant':''}, {'variant':'unreviewed'}, {'arch':'arm64'}, {'unit':'wrong.service'}, {'variant':''}]
+        cases: list[dict[str, Any]] = [{'available':193273528319}, {'required':193273528319}, {'repo':'public/fixture'}, {'stage':'media','variant':''}, {'stage':'media','arch':'arm64'}, {'variant':'unreviewed'}, {'arch':'arm64'}, {'unit':'wrong.service'}, {'variant':''}]
         for values in cases:
             with self.subTest(values=values), self.assertRaises(AssertionError):
                 self.launch(**values)

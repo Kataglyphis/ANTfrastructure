@@ -130,6 +130,11 @@ class SeedTests(unittest.TestCase):
         self.save_proof()
         self.assertEqual(len(self.seed()['linked_layers']),25)
 
+    def test_gpu_byte_handoff_is_explicitly_separate_from_qualification(self) -> None:
+        self.proof.update(status='passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only',GPU_or_FINAL_acceptance=False)
+        self.save_proof()
+        self.assertEqual(len(self.seed()['linked_layers']),25)
+
     def test_identity_refuses_directories_and_symlinks(self) -> None:
         source = self.parent / 'blobs/sha256' / self.parent_layout[1]['layers'][0]['digest'].split(':')[1]
         alias = self.work / 'blob alias'

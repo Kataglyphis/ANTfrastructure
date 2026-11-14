@@ -5,6 +5,25 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## Local Docker-loaded GPU image does not resolve by repository@digest
+
+**Symptom.** The 2026-11-14 GPU4 image is loaded and visible under its local tag,
+but `nerdctl run` or `image inspect` on its reported repository@manifest fails
+resolution. Inspection of its config ID as an image selector also fails.
+
+**Cause.** The installed local engine resolves this Docker-loaded image by its
+immutable manifest ID. A reported RepoDigest does not establish a registered
+digest-qualified local image name, and the inspected config ID is another digest.
+
+**Fix.** Query the local tag, validate its unique manifest and config, then
+independently inspect the manifest ID and require both identities to match before
+passing that ID to the bounded native GPU export. Keep failures fatal. The real
+read-only selector replay on GPU4 passes and its command fixtures refuse wrong
+cardinality/config/manifest and failed lookups. Native export bytes, SDK ancestry
+and disk admission remain separate; Media retains repository@digest together with
+its native context. Selector resolution proves neither a completed export nor
+runtime loading, full licences or hardware inference. See [the versioned handoff](local-proof-workflows.md#native-gpu-to-media-handoff).
+
 ## MIGraphX core cannot find ROCm SQLite
 
 **Symptom.** Ordinary GPU4 completes and loads its local image, but a real cold

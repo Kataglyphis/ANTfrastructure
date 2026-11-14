@@ -48224,8 +48224,8 @@
  {
   "id": "compiler-llvm-tools.oci-parent-reuse-parent-status",
   "target": "linux/scripts/local-proof/native_oci_seed.py",
-  "find": "    assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry'}, 'Qualified native OCI parent required'\n",
-  "replace": "    pass\n",
+  "find": "assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only'}, 'Verified native OCI parent required'",
+  "replace": "pass",
   "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
   "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
  },
@@ -48608,16 +48608,16 @@
  {
   "id": "compiler-llvm-tools.normal-stage-shared-16",
   "target": "linux/scripts/local-proof/normal_stage_launch.py",
-  "find": "    assert stage in {'sdk', 'gpu'} and variant in {'', 'rocm'}, 'Unreviewed stage profile'",
-  "replace": "    pass",
+  "find": "assert stage in {'sdk', 'gpu', 'media'} and variant in {'', 'rocm'}, 'Unreviewed stage profile'",
+  "replace": "pass",
   "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
   "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Unreviewed stage profile"
  },
  {
   "id": "compiler-llvm-tools.normal-stage-shared-17",
   "target": "linux/scripts/local-proof/normal_stage_launch.py",
-  "find": "    assert (stage == 'gpu') == bool(variant) and (stage != 'gpu' or arch == 'amd64'), 'Unreviewed GPU architecture'",
-  "replace": "    pass",
+  "find": "assert (stage in {'gpu', 'media'}) == bool(variant) and (stage == 'sdk' or arch == 'amd64'), 'Unreviewed GPU architecture'",
+  "replace": "pass",
   "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
   "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Unreviewed GPU architecture"
  },
@@ -48776,7 +48776,7 @@
  {
   "id": "compiler-llvm-tools.normal-stage-canonical-tag",
   "target": "linux/scripts/local-proof/normal_stage_launch.py",
-  "find": "'cross_gpu_tag' if stage == 'gpu' else 'cross_sdk_tag'",
+  "find": "{'gpu':'cross_gpu_tag', 'sdk':'cross_sdk_tag', 'media':'cross_media_tag'}[stage]",
   "replace": "'cross_sdk_tag'",
   "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
   "why": "GPU admission must use the source's canonical cross-toolchain-rocm tag instead of a second or guessed naming schema."
@@ -50004,5 +50004,453 @@
   "replace": "verify-loads --prefix /opt/rocm",
   "test": "python3 linux/scripts/tests/migraphx_image_tests.py ImageEntryTests",
   "why": "The producer checks the actual source installation rather than the retained distro SDK; fixture argument checks are separate from loader selection in an image."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-01",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert value['Id'] == unit and value['LoadState'] == 'loaded', 'Producer unit is missing'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-02",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert value['ActiveState'] == 'active' and value['SubState'] == 'exited', 'Producer has not succeeded'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-03",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert value['MainPID'] == value['ExecMainStatus'] == '0' and value['Result'] == 'success', 'Producer failed or remains live'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-04",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert invocation['stage'] == 'gpu' and invocation['variant'] == 'rocm' and invocation['target_arch'] == 'amd64', 'Only ordinary ROCm amd64 is reviewed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-05",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert re.fullmatch(r'webgpu-normal-gpu-amd64-[0-9-]+\\.service', invocation['unit']), 'Unexpected GPU producer unit'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-06",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert invocation['launch_status'] == 0 and invocation['publication'] is False, 'Successful local GPU launch required'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-07",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert invocation['source_full_preflight_passed'] and invocation['producer_source_unchanged'], 'GPU source proof was not retained'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-08",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert invocation['parent_' + field] == parent[field], 'GPU SDK identity differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-09",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert invocation['parent_OCI_index_sha256'] == parent['index_sha256'], 'GPU SDK index differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-10",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert invocation['SDK_layers_rehashed'] == parent['layers'] and invocation['compiler_layers_rehashed'] == 26, 'GPU ancestry coverage differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-11",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert repo.startswith('ant-local/webgpu-') and invocation['image'] == repo + ':cross-toolchain-rocm-amd64', 'Unexpected local GPU image'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-12",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert command[:2] == ['systemd-run', '--user'] and '--expand-environment=no' in command, 'GPU transport differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-13",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert command[-10:] == ['/bin/bash', str(source / 'linux/scripts/build-cross-stage.sh'), '--stage', 'gpu', '--arch', 'amd64', '--image-repo', repo, '--log-dir', str(output / 'logs')], 'GPU stage command differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-14",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert command.count('CROSS_VARIANT=rocm') == 1 and command.count('CROSS_GPU_BASE_CONTEXT=' + parent['context']) == 1, 'GPU SDK context or variant differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-15",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert references == [expected], 'GPU parent must use its actual SDK repository and digest'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-16",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert '--push' not in command and '--gates-only' not in command, 'Actual unpublished GPU build required'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-17",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert Path(invocation['output']) == invocation_path.resolve().parent, 'GPU output binding differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-18",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert sha(sdk_invocation) == invocation['SDK_invocation_sha256'] and sha(parent_path) == invocation['parent_OCI_proof_sha256'], 'GPU SDK receipt bytes changed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-19",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert str(source) == invocation['source'] and revision == invocation['source_revision'], 'GPU source differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-20",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert sha(full) == invocation['source_full_preflight_sha256'] and invocation['GPU_source_review'] == review, 'GPU source review differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-21",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert invocation['parent_source_revision'] == plan['source_revision'], 'GPU parent source differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-22",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert len(images) == 1, 'GPU engine query must select one image'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-23",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert len(digests) == 1, 'GPU image manifest is ambiguous'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-24",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert re.fullmatch(r'sha256:[0-9a-f]{64}', manifest), 'GPU manifest is malformed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-25",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert re.fullmatch(r'sha256:[0-9a-f]{64}', actual['Id']), 'GPU config is malformed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-26",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert proof['status'] == STATUS and proof['GPU_invocation'] == str(invocation_path.resolve()), 'GPU OCI proof scope differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-27",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert proof['GPU_invocation_sha256'] == sha(invocation_path), 'GPU invocation bytes changed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-28",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert proof['source_revision'] == invocation['source_revision'], 'GPU OCI source differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-29",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert proof['parent_OCI_proof_sha256'] == invocation['parent_OCI_proof_sha256'], 'GPU OCI SDK proof differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-30",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert proof['export_transport'] == {'producer_status':0, 'extractor_status':0} and proof['parent_layer_reuse_verified'], 'GPU export transport failed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-31",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert proof['matched_SDK_layers_and_diffIDs'] == parent['layers'], 'GPU SDK coverage differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-profile-32",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert proof['manifest'] == actual['manifest'] and proof['config'] == actual['config'], 'Engine GPU image differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-01",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert COMMON['state'](args.unit)['LoadState'] == 'not-found' and not context.exists() and not context.is_symlink(), 'Preserve existing export work'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-02",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert not path.exists(), 'Preserve existing export invocation'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-03",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert plan['required_bytes'] >= 193273528320 and disk['available_bytes'] >= plan['required_bytes'], 'Unchanged disk reserve required'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-04",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert record['unit'] == args.unit and record['context'] == str(context), 'GPU export binding differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-05",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert record['GPU_invocation'] == str(args.gpu_invocation.resolve()) and record['parent_OCI_proof_sha256'] == invocation['parent_OCI_proof_sha256'], 'GPU export input paths or SDK proof differ'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-06",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert record['GPU_invocation_sha256'] == sha(args.gpu_invocation) and record['actual_image'] == actual, 'GPU export subject changed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-07",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert record['worker_inputs_sha256'] == worker_inputs() and record['launch_status'] == 0, 'GPU export inputs changed or launch failed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-08",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert child[0] == actual['manifest'] and child[1]['config']['digest'] == actual['config'], 'GPU native bytes differ'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-09",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert transport == {'producer_status':0, 'extractor_status':0}, 'GPU export producer or extractor failed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-10",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert not context.with_suffix('.proof.json').exists() and not context.with_suffix('.proof-stopped.json').exists(), 'Preserve sealed GPU proofs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-11",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert proof['stopped']['ActiveState'] == 'inactive' and proof['stopped']['MainPID'] == '0', 'GPU export did not stop'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-12",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert context.parent.resolve(strict=True) == context.parent and context.name.startswith('gpu-context-'), 'Fresh plain GPU context required'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-13",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert re.fullmatch(r'webgpu-normal-gpu-export-amd64-[0-9-]+\\.service', args.unit), 'Unexpected GPU export unit'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-ancestry",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "    layer_ancestry(native, sdk, parent['layers'])",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Preserve real ancestry checks, raw failures and required Wasm forwarding; fixtures do not prove image completion or hardware inference."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-raw",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "    return result.returncode",
+  "replace": "    return 0",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Preserve real ancestry checks, raw failures and required Wasm forwarding; fixtures do not prove image completion or hardware inference."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-raw-receipt",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "record.update(launch_status=result.returncode, stdout=result.stdout, stderr=result.stderr)",
+  "replace": "record.update(launch_status=0, stdout=result.stdout, stderr=result.stderr)",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Preserve real ancestry checks, raw failures and required Wasm forwarding; fixtures do not prove image completion or hardware inference."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-handoff-export-reused-layers",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "    sdk, reuse = verify_seed(Path(invocation['parent_OCI_proof']), context)",
+  "replace": "    sdk, reuse = native_layout(Path(json.loads(Path(invocation['parent_OCI_proof']).read_text())['context'])), {}",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Preserve real ancestry checks, raw failures and required Wasm forwarding; fixtures do not prove image completion or hardware inference."
+ },
+ {
+  "id": "compiler-llvm-tools.media-both-wasm-modes",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "        command += ['-E', 'ORT_WEB_REQUIRED=1', '-E', 'ORT_WASM_WEBGPU_FLAVORS=true']",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "Preserve real ancestry checks, raw failures and required Wasm forwarding; fixtures do not prove image completion or hardware inference."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-local-selector-export-manifest",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "    reference = actual['manifest']",
+  "replace": "    reference = actual['image'].rsplit(':', 1)[0] + '@' + actual['manifest']",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "The installed local engine resolves the immutable manifest ID for a Docker-loaded GPU image; synthetic transports do not prove an actual native export or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-local-selector-not-config",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "    reference = actual['manifest']",
+  "replace": "    reference = actual['config']",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "The exported selector must be the manifest ID, not Docker inspection's config ID; metadata equality alone does not perform an OCI export."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-local-selector-query-required",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "    resolved = json.loads(checked_run([engine, 'image', 'inspect', manifest]).stdout)",
+  "replace": "    resolved = [actual]",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "The immutable local selector needs its own successful real engine query; the tag lookup cannot substitute for it, and command doubles do not authenticate image bytes."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-local-selector-cardinality",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "len(resolved) == 1 and resolved[0]['Id'] == actual['Id']",
+  "replace": "resolved[0]['Id'] == actual['Id']",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "Multiple local selector matches cannot pass by using the first config; wrong-cardinality fixtures are independent of native export and SDK ancestry."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-local-selector-config-binding",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "len(resolved) == 1 and resolved[0]['Id'] == actual['Id']",
+  "replace": "len(resolved) == 1",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "The separately resolved manifest must bind the same validated config as the tagged image; this does not prove runtime loading or inference."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-local-selector-manifest-binding",
+  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
+  "find": "assert {value.rsplit('@', 1)[1] for value in resolved[0]['RepoDigests']} == {manifest}, 'Local immutable manifest digest differs'",
+  "replace": "assert True, 'Local immutable manifest digest differs'",
+  "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
+  "why": "The local ID lookup must also retain the exact manifest identity; a matching config with another manifest cannot qualify this transport."
  }
 ]
