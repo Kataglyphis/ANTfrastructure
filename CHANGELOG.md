@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — retain live IREE wheelhouse cache inputs
+
+- Extend the existing read-only Media log reader to the exact outer app-wheelhouse RUN, retaining its final-drain lifetime and mandatory input hashes. The stable four-file configure snapshot adds an explicit IREE target profile with matching Media unit/process and build-root checks; its default MIGraphX profile remains available. Independent file/process fixtures and executable guard mutations cover phase, CLI, owner and path refusals. These host tools preserve the live build and prove neither completed cache performance, error causes, linkage nor image/hardware acceptance. See [live configure snapshots](docs/local-proof-workflows.md#live-configure-snapshots).
+
 ## 2026-11-14 — retain native ORT Media cache diagnostics
 
 - Extend the existing bounded host readers to exact outer CPU, GPU/plugin and Wasm-build commands in the normal Media Dockerfile. Child commands, other phases, verify-only calls and wrong unit owners refuse; Media sealing requires the actual worker/profile hashes before writing a proof. Independent process/Dockerfile fixtures and executable mutations cover these boundaries. Old compiler/MIGraphX profiles and raw/partial statuses remain intact. These host tools leave the live producer unchanged and do not classify cache errors, prove a flavor or grant image/hardware acceptance. See [phase-scoped log retention](docs/local-proof-workflows.md#live-cache-log-retention).

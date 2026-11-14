@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reuse a bounded read-only log-capture profile for an actual compiler or MIGraphX RUN; no build acceptance."""
+"""Reuse a bounded read-only log-capture profile for an actual selected outer RUN; no build acceptance."""
 
 import argparse
 import datetime

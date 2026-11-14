@@ -107,7 +107,7 @@ full binary licences, native loader ABI, GPU parity or digest-specific FINAL acc
 
 ## Live configure snapshots
 
-Use `snapshot-live-configure.py` beside its `capture-live-sccache-log.py`, `cache_capture_profile.py`, `native_oci_layout.py`, `native_oci_seed.py` and `proof_commands.py` companions. This replaces repeated copying/hash commands before the normal MIGraphX RUN removes its private build directory. The current process must match the normal build marker and remain the same start identity throughout copying; its supplied producer unit must be live. The output parent is a plain directory and the new output cannot overlap the source.
+Use `snapshot-live-configure.py` beside its `capture-live-sccache-log.py`, `cache_capture_profile.py`, `native_oci_layout.py`, `native_oci_seed.py` and `proof_commands.py` companions. This replaces repeated copying/hash commands before the selected RUN removes its private build directory. The default `--phase migraphx` retains the original GPU profile; `--phase app-wheelhouse` requires a normal live Media unit, its exact outer `build-app-wheelhouse.sh;` command and a root under `tmp/app-wheelhouse/iree-build-target`. Inner children, sibling build trees and other unit families refuse. The current process must match the normal build marker and remain the same start identity throughout copying; its supplied producer unit must be live. The output parent is a plain directory and the new output cannot overlap the source.
 
 ```bash
 python3 linux/scripts/local-proof/snapshot-live-configure.py \
@@ -116,17 +116,17 @@ python3 linux/scripts/local-proof/snapshot-live-configure.py \
   --output /absolute/path/to/fresh-configure-snapshot
 ```
 
-It copies only CMakeCache.txt, build.ninja, CMakeFiles/rules.ninja and CMakeFiles/CMakeConfigureLog.yaml, each at most 32 MiB and together at most 64 MiB. Every source/copy hash must match, source directories/files cannot be symlinks, and existing outputs remain preserved. A failed copy leaves diagnostic partial files without a passed observation. The invocation and process marker do not authenticate producer ownership; a stable snapshot proves neither a completed phase, final cache-error attribution, binary linkage/licence closure nor image acceptance. `test-live-configure-snapshot.sh` uses real file copies and explicit unit/process doubles.
+It copies only CMakeCache.txt, build.ninja, CMakeFiles/rules.ninja and CMakeFiles/CMakeConfigureLog.yaml, together at most 64 MiB. The legacy profile additionally limits each file to 32 MiB; the explicit IREE profile permits one file up to that unchanged total bound because its actual generated Ninja file exceeds 32 MiB. Every source/copy hash must match, source directories/files cannot be symlinks, and existing outputs remain preserved. A failed copy leaves diagnostic partial files without a passed observation. The invocation and process marker do not authenticate producer ownership; a stable snapshot proves neither a completed phase, final cache-error attribution, binary linkage/licence closure nor image acceptance. `test-live-configure-snapshot.sh` uses real file copies and explicit unit/process doubles.
 
 ## Live cache log retention
 
 `replay-sccache-log-capture.py` reuses the bounded read-only unit transport with the current canonical `capture-live-sccache-log.py` and its `cache_capture_profile.py` companion. Both reader inputs are hashed in the invocation. The existing GCC, LLVM, Rust and Python phases retain their compiler unit names; `--phase migraphx` matches the actual normal `bash /opt/scripts/03-media/build/migraphx/build-image.sh` process and uses `webgpu-gpu<run>-migraphx-error-capture-<date>-<attempt>.service`.
 
-Media additionally supports `--phase ort-cpu`, `ort-gpu` and `ort-web` with
+Media additionally supports `--phase ort-cpu`, `ort-gpu`, `ort-web` and `app-wheelhouse` with
 `webgpu-media<run>-<phase>-error-capture-<date>-<attempt>.service`. The first two
 match the actual outer `build-onnxruntime.sh --step cpu;` and `--step gpu;` RUNs;
 `ort-web` matches the actual `web-wasm-cache.sh;` build wrapper, excluding the
-separate verify-only call. The terminating semicolon preserves the outer RUN's
+separate verify-only call. `app-wheelhouse` matches the actual outer `build-app-wheelhouse.sh;` RUN, covering its IREE, Torch and final drain lifetime without claiming per-project counters. The terminating semicolon preserves the outer RUN's
 lifetime through its final drain; an inner child command alone refuses. Independent
 fixtures match the normal Dockerfile declarations and reject wrong phases/owners
 before allocating output. Media seals require both exact worker and profile hashes.

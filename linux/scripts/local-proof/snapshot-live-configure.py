@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import re
 import runpy
 import shutil
 import stat
@@ -23,24 +24,26 @@ if TYPE_CHECKING:
 FILES = ('CMakeCache.txt', 'build.ninja', 'CMakeFiles/rules.ninja', 'CMakeFiles/CMakeConfigureLog.yaml')
 MAX_FILE = 32 * 1024 * 1024
 MAX_TOTAL = 64 * 1024 * 1024
+CONFIGURE_ROOTS = {'migraphx': ('tmp', 'migraphx-source-stack'),
+                   'app-wheelhouse': ('tmp', 'app-wheelhouse', 'iree-build-target')}
 START_TICKS = runpy.run_path(str(Path(__file__).with_name('capture-live-sccache-log.py')))['start_ticks']
 
 
-def file_hashes(root: Path) -> dict[str, str]:
+def file_hashes(root: Path, max_file: int) -> dict[str, str]:
     total = 0
     hashes = {}
     for name in FILES:
         path = root / name
         assert not any((root / parent).is_symlink() for parent in [Path(name),*Path(name).parents] if str(parent) != '.'), 'Configure input has a symlink component'
         info = path.lstat()
-        assert stat.S_ISREG(info.st_mode) and 0 < info.st_size <= MAX_FILE, 'Configure input is missing, empty, nonregular or oversized'
+        assert stat.S_ISREG(info.st_mode) and 0 < info.st_size <= max_file, 'Configure input is missing, empty, nonregular or oversized'
         total += info.st_size
         assert total <= MAX_TOTAL, 'Configure input set exceeds the byte bound'
         hashes[name] = sha(path)
     return hashes
 
 
-def live_subject(invocation: Path, pid: int, process: Path | None) -> tuple[Json, dict[str, str], Path, str, str]:
+def live_subject(invocation: Path, pid: int, process: Path | None, phase: str) -> tuple[Json, dict[str, str], Path, str, str]:
     assert pid > 1, 'Invalid source process'
     inv = json.loads(invocation.read_text())
     raw = checked_run(['systemctl','--user','show',inv['unit'],'--property=Id,LoadState,ActiveState,MainPID']).stdout
@@ -49,29 +52,33 @@ def live_subject(invocation: Path, pid: int, process: Path | None) -> tuple[Json
     process = process if process is not None else Path(f'/proc/{pid}')
     ticks = START_TICKS(process)
     command = (process / 'cmdline').read_bytes().replace(b'\0',b' ').decode(errors='replace').strip()
-    assert PHASE_MARKERS['migraphx'] in command, 'Process does not match the normal MIGraphX build'
+    assert PHASE_MARKERS[phase] in command, 'Process does not match the selected build phase'
+    assert phase == 'migraphx' or re.fullmatch(r'webgpu-normal-media-(?:amd64|arm64|riscv64)-[0-9-]+\.service', inv['unit']), 'Media snapshot requires its Media producer unit'
     return inv,unit,process,ticks,command
 
 
-def snapshot(invocation: Path, pid: int, relative: Path, output: Path, process: Path | None = None) -> Json:
+def snapshot(invocation: Path, pid: int, relative: Path, output: Path, process: Path | None = None, phase: str = 'migraphx') -> Json:
     assert not relative.is_absolute() and '..' not in relative.parts, 'Invalid relative build path'
-    assert relative.parts[:2] == ('tmp','migraphx-source-stack'), 'Only the normal MIGraphX work tree is supported'
-    inv,unit,process,ticks,command = live_subject(invocation,pid,process)
+    assert phase in CONFIGURE_ROOTS, 'Unsupported configure snapshot phase'
+    selected = CONFIGURE_ROOTS[phase]
+    assert relative.parts[:len(selected)] == selected, 'Build tree does not match the selected phase'
+    inv,unit,process,ticks,command = live_subject(invocation,pid,process,phase)
     root = process / 'root' / relative
     assert root.is_dir() and not any((process / 'root' / parent).is_symlink() for parent in [relative,*relative.parents] if str(parent) != '.'), 'Build path must have regular directory components'
     plain_directory(output.parent)
     assert not output.resolve().is_relative_to(root.resolve()) and not root.resolve().is_relative_to(output.resolve()), 'Source and snapshot roots overlap'
-    before = file_hashes(root)
+    max_file = MAX_TOTAL if phase == 'app-wheelhouse' else MAX_FILE
+    before = file_hashes(root,max_file)
     output.mkdir(mode=0o700)
     for name in FILES:
         target = output / name
         target.parent.mkdir(parents=True,exist_ok=True)
         shutil.copy2(root / name,target)
-    assert file_hashes(root) == before == file_hashes(output), 'Source or copied configure bytes changed'
+    assert file_hashes(root,max_file) == before == file_hashes(output,max_file), 'Source or copied configure bytes changed'
     assert START_TICKS(process) == ticks, 'Source process identity changed during snapshot'
     record: Json = {'status':'passed-stable-live-configure-copy-only', 'observed_at':datetime.datetime.now(datetime.UTC).isoformat(),
               'producer_unit':inv['unit'], 'producer_unit_state':unit, 'invocation':str(invocation.resolve()), 'invocation_sha256':sha(invocation),
-              'source_revision':inv['source_revision'], 'pid':pid, 'pid_start_ticks':ticks, 'command':command,
+              'source_revision':inv['source_revision'], 'phase':phase, 'pid':pid, 'pid_start_ticks':ticks, 'command':command,
               'source_root':str(root), 'output':str(output.resolve()), 'sha256':before, 'source_hashes_unchanged_across_copy':True,
               'producer_changed':False, 'image_acceptance':False, 'scope':__doc__}
     with (output / 'observation.json').open('x') as stream:
@@ -83,10 +90,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--invocation',required=True,type=Path)
     parser.add_argument('--pid',required=True,type=int)
+    parser.add_argument('--phase',choices=tuple(CONFIGURE_ROOTS),default='migraphx')
     parser.add_argument('--relative-root',required=True,type=Path)
     parser.add_argument('--output',required=True,type=Path)
     args = parser.parse_args()
-    record = snapshot(args.invocation,args.pid,args.relative_root,args.output)
+    record = snapshot(args.invocation,args.pid,args.relative_root,args.output,phase=args.phase)
     print(json.dumps({'status':record['status'],'files':len(record['sha256']),'output':record['output']}))
 
 

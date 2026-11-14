@@ -48968,7 +48968,7 @@
  {
   "id": "compiler-llvm-tools.configure-snapshot-guard-2",
   "target": "linux/scripts/local-proof/snapshot-live-configure.py",
-  "find": "        assert stat.S_ISREG(info.st_mode) and 0 < info.st_size <= MAX_FILE, 'Configure input is missing, empty, nonregular or oversized'",
+  "find": "        assert stat.S_ISREG(info.st_mode) and 0 < info.st_size <= max_file, 'Configure input is missing, empty, nonregular or oversized'",
   "replace": "        pass",
   "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
   "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Configure input is missing, empty, nonregular or oversized"
@@ -49000,10 +49000,10 @@
  {
   "id": "compiler-llvm-tools.configure-snapshot-guard-6",
   "target": "linux/scripts/local-proof/snapshot-live-configure.py",
-  "find": "    assert PHASE_MARKERS['migraphx'] in command, 'Process does not match the normal MIGraphX build'",
+  "find": "    assert PHASE_MARKERS[phase] in command, 'Process does not match the selected build phase'",
   "replace": "    pass",
   "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
-  "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Process does not match the normal MIGraphX build"
+  "why": "The independent phase fixtures reject unrelated and inner child processes before snapshot output exists."
  },
  {
   "id": "compiler-llvm-tools.configure-snapshot-guard-7",
@@ -49016,10 +49016,10 @@
  {
   "id": "compiler-llvm-tools.configure-snapshot-guard-8",
   "target": "linux/scripts/local-proof/snapshot-live-configure.py",
-  "find": "    assert relative.parts[:2] == ('tmp','migraphx-source-stack'), 'Only the normal MIGraphX work tree is supported'",
+  "find": "    assert relative.parts[:len(selected)] == selected, 'Build tree does not match the selected phase'",
   "replace": "    pass",
   "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
-  "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Only the normal MIGraphX work tree is supported"
+  "why": "A selected snapshot phase must reject other real build trees before allocating output."
  },
  {
   "id": "compiler-llvm-tools.configure-snapshot-guard-9",
@@ -49040,7 +49040,7 @@
  {
   "id": "compiler-llvm-tools.configure-snapshot-guard-11",
   "target": "linux/scripts/local-proof/snapshot-live-configure.py",
-  "find": "    assert file_hashes(root) == before == file_hashes(output), 'Source or copied configure bytes changed'",
+  "find": "    assert file_hashes(root,max_file) == before == file_hashes(output,max_file), 'Source or copied configure bytes changed'",
   "replace": "    pass",
   "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
   "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Source or copied configure bytes changed"
@@ -50516,5 +50516,93 @@
   "replace": "if capture[\"phase\"] == \"migraphx\":",
   "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
   "why": "Each Media phase must reject missing worker/profile hashes before any proof is written, while complete inputs can seal."
+ },
+ {
+  "id": "compiler-llvm-tools.wheelhouse-cache-reader-phase",
+  "target": "linux/scripts/local-proof/cache_capture_profile.py",
+  "find": "    'app-wheelhouse': 'bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh;',\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "The actual wheelhouse outer RUN must remain an explicitly supported Media reader phase."
+ },
+ {
+  "id": "compiler-llvm-tools.wheelhouse-cache-reader-outer-lifetime",
+  "target": "linux/scripts/local-proof/cache_capture_profile.py",
+  "find": "'app-wheelhouse': 'bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh;'",
+  "replace": "'app-wheelhouse': 'bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh'",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "An inner wheelhouse child ends before the outer final cache drain and cannot satisfy phase retention."
+ },
+ {
+  "id": "compiler-llvm-tools.wheelhouse-configure-root",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "'app-wheelhouse': ('tmp', 'app-wheelhouse', 'iree-build-target')",
+  "replace": "'app-wheelhouse': ('tmp', 'app-wheelhouse')",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The IREE target profile must reject sibling wheelhouse build directories."
+ },
+ {
+  "id": "compiler-llvm-tools.wheelhouse-configure-owner",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    assert phase == 'migraphx' or re.fullmatch(r'webgpu-normal-media-(?:amd64|arm64|riscv64)-[0-9-]+\\.service', inv['unit']), 'Media snapshot requires its Media producer unit'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "A live GPU unit is not the selected Media wheelhouse producer."
+ },
+ {
+  "id": "compiler-llvm-tools.wheelhouse-configure-supported-phase",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    assert phase in CONFIGURE_ROOTS, 'Unsupported configure snapshot phase'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "Unsupported configure phases must refuse explicitly before allocating output."
+ },
+ {
+  "id": "compiler-llvm-tools.wheelhouse-configure-selected-root",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    selected = CONFIGURE_ROOTS[phase]",
+  "replace": "    selected = CONFIGURE_ROOTS['migraphx']",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The selected IREE phase must retain its own build root rather than the legacy MIGraphX root."
+ },
+ {
+  "id": "compiler-llvm-tools.wheelhouse-configure-receipt-phase",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "'phase':phase, 'pid':pid",
+  "replace": "'phase':'migraphx', 'pid':pid",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "A Media snapshot receipt must record the actual selected phase."
+ },
+ {
+  "id": "compiler-llvm-tools.wheelhouse-configure-cli-phase",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    record = snapshot(args.invocation,args.pid,args.relative_root,args.output,phase=args.phase)",
+  "replace": "    record = snapshot(args.invocation,args.pid,args.relative_root,args.output)",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The CLI must forward the explicit Media phase rather than silently choosing MIGraphX."
+ },
+ {
+  "id": "compiler-llvm-tools.wheelhouse-cache-reader-input-closure",
+  "target": "linux/scripts/local-proof/seal-sccache-log-capture.py",
+  "find": "if capture[\"phase\"] == \"migraphx\" or capture[\"phase\"] in MEDIA_PHASE_MARKERS:",
+  "replace": "if capture[\"phase\"] in {\"migraphx\", \"ort-cpu\", \"ort-gpu\", \"ort-web\"}:",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "The wheelhouse reader must also reject missing worker/profile hashes before any sealed proof is written."
+ },
+ {
+  "id": "compiler-llvm-tools.wheelhouse-configure-file-limit",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    max_file = MAX_TOTAL if phase == 'app-wheelhouse' else MAX_FILE",
+  "replace": "    max_file = MAX_FILE",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The explicit IREE profile permits its real large Ninja file within the unchanged aggregate byte bound."
+ },
+ {
+  "id": "compiler-llvm-tools.wheelhouse-configure-legacy-file-limit",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    max_file = MAX_TOTAL if phase == 'app-wheelhouse' else MAX_FILE",
+  "replace": "    max_file = MAX_TOTAL",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "Adding the IREE profile must preserve the original MIGraphX per-file byte bound."
  }
 ]

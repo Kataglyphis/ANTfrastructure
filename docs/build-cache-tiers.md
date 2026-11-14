@@ -992,7 +992,9 @@ image contains no such file. The successful build, upload drain and later
 cached solves cannot identify those 186 causes.
 
 The versioned read-only cache reader now has exact native ORT Media CPU,
-GPU/plugin and Wasm outer-RUN profiles. Preserve the selected process start
+GPU/plugin, Wasm and app-wheelhouse outer-RUN profiles. The same host tools can
+retain four stable IREE target CMake/Ninja inputs from the actual Media wheelhouse
+process, selected explicitly and bound to its live unit, start identity and tree. Preserve the selected process start
 identity and final-drain lifetime; a wrong phase or child command refuses.
 Worker/profile hashes bind each seal, and a timeout stays partial. See
 [the host retention workflow](local-proof-workflows.md#live-cache-log-retention).

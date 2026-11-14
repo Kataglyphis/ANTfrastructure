@@ -47,10 +47,80 @@ class SnapshotTests(unittest.TestCase):
             path.write_bytes(bytes([index + 65]) * (index + 1))
 
     def snapshot(self, *, ticks: tuple[str, str] = ('17','17'), pid: int = 123,
-                 relative: Path | None = None, output: Path | None = None) -> dict[str, Any]:
+                 relative: Path | None = None, output: Path | None = None, phase: str = 'migraphx') -> dict[str, Any]:
         runner = mock.Mock(return_value=subprocess.CompletedProcess([],0,self.unit,''))
         with mock.patch.dict(SNAPSHOT['snapshot'].__globals__,{'START_TICKS':mock.Mock(side_effect=ticks),'checked_run':runner}):
-            return SNAPSHOT['snapshot'](self.invocation,pid,relative or self.relative,output or self.output,self.process)
+            return SNAPSHOT['snapshot'](self.invocation,pid,relative or self.relative,output or self.output,self.process,phase)
+
+    def media_inputs(self) -> None:
+        self.relative = Path('tmp/app-wheelhouse/iree-build-target')
+        self.source = self.process / 'root' / self.relative
+        self.write_inputs(self.source)
+        self.unit = self.unit.replace('gpu-amd64', 'media-amd64')
+        self.invocation.write_text(json.dumps({'unit': 'webgpu-normal-media-amd64-99999999-1.service', 'source_revision': 'f' * 40}))
+        (self.process / 'cmdline').write_bytes(b'bash -lc set -euo pipefail; bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh; drain')
+
+    def test_media_iree_keeps_exact_inputs_and_phase(self) -> None:
+        self.media_inputs()
+        before = {name: (self.source / name).read_bytes() for name in NAMES}
+        record = self.snapshot(phase='app-wheelhouse')
+        self.assertEqual(record['phase'], 'app-wheelhouse')
+        self.assertEqual(record['producer_unit'], 'webgpu-normal-media-amd64-99999999-1.service')
+        self.assertEqual(set(record['sha256']), set(NAMES))
+        for name in NAMES:
+            self.assertEqual((self.output / name).read_bytes(), before[name])
+            self.assertEqual((self.source / name).read_bytes(), before[name])
+
+    def test_media_file_limit_uses_the_unchanged_total_bound(self) -> None:
+        self.media_inputs()
+        with mock.patch.dict(SNAPSHOT['snapshot'].__globals__, {'MAX_FILE': 3, 'MAX_TOTAL': 12}):
+            record = self.snapshot(phase='app-wheelhouse')
+        self.assertEqual(set(record['sha256']), set(NAMES))
+
+    def test_media_file_and_total_bounds_refuse_before_output(self) -> None:
+        self.media_inputs()
+        (self.source / 'CMakeCache.txt').write_bytes(b'x' * 13)
+        with mock.patch.dict(SNAPSHOT['snapshot'].__globals__, {'MAX_TOTAL': 12}), self.assertRaises(AssertionError):
+            self.snapshot(phase='app-wheelhouse')
+        self.assertFalse(self.output.exists())
+        self.write_inputs(self.source)
+        with mock.patch.dict(SNAPSHOT['snapshot'].__globals__, {'MAX_TOTAL': 9}), self.assertRaises(AssertionError):
+            self.snapshot(phase='app-wheelhouse')
+        self.assertFalse(self.output.exists())
+
+    def test_media_wrong_phase_inner_command_and_owner_refuse(self) -> None:
+        self.media_inputs()
+        outer = (self.process / 'cmdline').read_bytes()
+        for command in (b'bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh', b'ninja -C /tmp/app-wheelhouse/iree-build-target'):
+            (self.process / 'cmdline').write_bytes(command)
+            with self.assertRaises(AssertionError):
+                self.snapshot(phase='app-wheelhouse')
+            self.assertFalse(self.output.exists())
+        (self.process / 'cmdline').write_bytes(outer)
+        self.unit = self.unit.replace('media-amd64', 'gpu-amd64')
+        self.invocation.write_text(json.dumps({'unit': 'webgpu-normal-gpu-amd64-99999999-1.service', 'source_revision': 'f' * 40}))
+        with self.assertRaisesRegex(AssertionError, 'Media producer'):
+            self.snapshot(phase='app-wheelhouse')
+        self.assertFalse(self.output.exists())
+
+    def test_media_other_build_roots_and_unknown_phase_refuse(self) -> None:
+        self.media_inputs()
+        for relative in (Path('tmp/app-wheelhouse/other-build'), Path('tmp/migraphx-source-stack/backend/build')):
+            self.write_inputs(self.process / 'root' / relative)
+            with self.assertRaisesRegex(AssertionError, 'selected phase'):
+                self.snapshot(relative=relative, phase='app-wheelhouse')
+            self.assertFalse(self.output.exists())
+        with self.assertRaisesRegex(AssertionError, 'Unsupported configure'):
+            self.snapshot(phase='ort-web')
+        self.assertFalse(self.output.exists())
+
+    def test_snapshot_cli_forwards_selected_phase(self) -> None:
+        argv = ['snapshot-live-configure.py', '--invocation', str(self.invocation), '--pid', '123',
+                '--relative-root', str(self.relative), '--output', str(self.output), '--phase', 'app-wheelhouse']
+        selected = mock.Mock(return_value={'status': 'fixture', 'sha256': {}, 'output': str(self.output)})
+        with mock.patch.object(sys, 'argv', argv), mock.patch.dict(SNAPSHOT['main'].__globals__, {'snapshot': selected}), mock.patch('builtins.print'):
+            SNAPSHOT['main']()
+        selected.assert_called_once_with(self.invocation, 123, self.relative, self.output, phase='app-wheelhouse')
 
     def test_stable_exact_four_files_and_input_binding(self) -> None:
         before = {name:(self.source / name).read_bytes() for name in NAMES}
@@ -60,6 +130,7 @@ class SnapshotTests(unittest.TestCase):
             self.assertEqual((self.output / name).read_bytes(),before[name])
             self.assertEqual((self.source / name).read_bytes(),before[name])
         self.assertEqual(record['source_revision'],'f' * 40)
+        self.assertEqual(record['phase'], 'migraphx')
         self.assertEqual(record['pid_start_ticks'],'17')
         self.assertEqual(record['invocation_sha256'],SNAPSHOT['sha'](self.invocation))
         self.assertFalse(record['producer_changed'])

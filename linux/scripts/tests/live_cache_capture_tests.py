@@ -68,6 +68,7 @@ class CaptureTests(unittest.TestCase):
             'ort-cpu': 'bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step cpu;',
             'ort-gpu': 'bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step gpu;',
             'ort-web': 'bash /opt/scripts/03-media/build/onnxruntime/build/web-wasm-cache.sh;',
+            'app-wheelhouse': 'bash /opt/scripts/frameworks/torch/build-app-wheelhouse.sh;',
         }
         for phase, marker in commands.items():
             self.assertEqual((ROOT / 'linux/Dockerfile.media').read_text().count(marker), 1)
@@ -221,7 +222,7 @@ class CaptureTests(unittest.TestCase):
         worker = TOOLS / 'capture-live-sccache-log.py'
         paths = [worker, TOOLS / 'cache_capture_profile.py']
         invocation = self.work / 'invocation.json'
-        owner = 'media' if phase in {'ort-cpu', 'ort-gpu', 'ort-web'} else ('gpu' if phase == 'migraphx' else 'compiler')
+        owner = 'media' if phase in {'ort-cpu', 'ort-gpu', 'ort-web', 'app-wheelhouse'} else ('gpu' if phase == 'migraphx' else 'compiler')
         value = {'unit':f'webgpu-{owner}1-{phase}-error-capture-99999999-1.service',
                  'command':['python3',str(worker),'--pid','123','--phase',phase,'--output',str(self.output)],
                  'capture_script_sha256':READER['hashlib'].sha256(worker.read_bytes()).hexdigest(),
@@ -270,6 +271,9 @@ class CaptureTests(unittest.TestCase):
 
     def test_media_web_reader_requires_full_input_hashes(self) -> None:
         self.media_closure_required('ort-web')
+
+    def test_media_wheelhouse_reader_requires_full_input_hashes(self) -> None:
+        self.media_closure_required('app-wheelhouse')
 
     def test_compiler_reader_hash_changes_remain_fatal(self) -> None:
         invocation,value,terminal = self.sealer_fixture('llvm')
