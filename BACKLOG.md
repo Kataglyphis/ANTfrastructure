@@ -462,10 +462,8 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       1. A decoded, lossless copy of `two_cats` in ModelANT's `contracts/fixtures/` (PNG, or raw RGB with its
          SHA-256 in the contract), so the three golden tests give the model the same pixels. Today three JPEG
          decoders feed them, and one box's score differs by 0.019 between two recordings (not double-checked).
-      2. A recipe "suppress overlaps on corner rows" exists in OrchestrANT only. OxidANT has no suppression code
-         to switch on, and AccelerANTgine's manifest holds script recipes, not C++ ones; in both the replayed
-         case "two boxes of one class at IoU 0.47, both kept" is the guard. Write that down in ModelANT's
-         `contracts/README.md`, or give C++ a source recipe when its mutation lane can build.
+      2. Done 2026-11-14: ModelANT `7b02dfb` names each detector's guard under rule 4 (OrchestrANT's and
+         AccelerANTgine's suppression recipes, OxidANT's replayed case).
 
       Done when the three golden tests read the lossless copy at one ModelANT pin and fleet-health's contract
       rows (CON247) read 0.
@@ -1841,6 +1839,19 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       step itself is a type check on the GNU target, not proof of the MSVC lane, and costs about 5 minutes
       a package. If the answer changes: the package and the Rust target in the package stage, a smoke line
       for each, and one `clippy-windows` step in OxidANT with its minutes measured.
+
+- [ ] **CON272 — a consumer's `uv lock` in the image: `/opt/venv` lacks setuptools, and no hub script knows the
+      command** [S, ★★]. Found 2026-11-14 adding pytest-timeout to OrchestrANT (owner: lock in the image, on 3.15).
+      Any new dependency makes `uv lock` resolve again, and that builds the riscv64 git source of torchvision for its
+      metadata; isolated, its build environment wants `torch==2.14.1` from PyPI, which has no cp315 wheel, so the
+      lock fails although the committed one passes `uv lock --check`. What worked, in one `--rm` container:
+      `uv pip install --python /opt/venv/bin/python "setuptools<82" wheel`, then
+      `UV_PROJECT_ENVIRONMENT=/opt/venv VIRTUAL_ENV=/opt/venv uv lock --no-build-isolation-package torchvision`,
+      which builds against the image's own torch 2.14.1+cpu: 14.5 min on a Pi 5, an 11 GB uv cache (PyTorch's git
+      checkout), and a lock diff of only the new package. Missing in the image: setuptools and wheel in `/opt/venv`
+      (or a lock venv with them beside the image's torch). Missing in the hub: the command itself, ideally in
+      `renovate-locks.sh`'s uv path, so a consumer never rediscovers it. Done when a consumer adds a pure-Python
+      dependency with one hub command in the image and the lock moves by that package alone.
 
 ## Open — Linux arm64 and riscv64
 

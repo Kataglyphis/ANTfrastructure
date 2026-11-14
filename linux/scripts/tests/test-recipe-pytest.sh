@@ -16,7 +16,7 @@ cat >> "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'
 uv_venv_create() {
   echo "create $1 python=$2" >> "${REC}"
   mkdir -p "$1/bin"
-  printf '#!/usr/bin/env bash\necho "pytest from $(pwd): $*" >> "%s"\n' "${REC}" > "$1/bin/python"
+  printf '#!/usr/bin/env bash\necho "pytest from $(pwd): $*" >> "%s"\necho "path ${PATH%%%%:*} venv ${VIRTUAL_ENV}" >> "%s"\n' "${REC}" "${REC}" > "$1/bin/python"
   chmod +x "$1/bin/python"
 }
 uv_venv_activate() { :; }
@@ -45,6 +45,8 @@ t_case "two recipes with the same extras build one venv on the pinned Python and
 t_assert_eq 1 "$(_count '^create ')" "one venv"
 t_assert_grep "${REC}" "^create ${venvs}/recipe-pytest-py${PINNED}-test-[0-9a-f]{12} python=${PINNED}$"
 t_assert_eq 1 "$(_count '^sync extras=test$')" "one sync, with the test extra"
+t_case "the venv is active for pytest, so a test that starts python3 itself finds it first"
+t_assert_grep "${REC}" "^path ${venvs}/recipe-pytest-py${PINNED}-test-[0-9a-f]{12}/bin venv ${venvs}/recipe-pytest-py${PINNED}-test-[0-9a-f]{12}$"
 t_case "pytest runs from the recipe's copy with the recipe's own arguments"
 t_assert_grep "${REC}" "^pytest from ${copy}: -m pytest -q -p no:cacheprovider tests/unit/test_a.py -k fast$"
 t_assert_grep "${REC}" "^pytest from ${copy}: -m pytest -q -p no:cacheprovider tests/unit/test_b.py$"

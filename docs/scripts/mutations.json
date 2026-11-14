@@ -38191,5 +38191,13 @@
   "replace": "lock_key=\"fixed\"",
   "test": "bash linux/scripts/tests/test-recipe-pytest.sh",
   "why": "A changed lock is synced into a new venv, never into one built from the old lock."
+ },
+ {
+  "id": "recipe-pytest.venv-not-active",
+  "target": "linux/scripts/02-toolchain/python/recipe-pytest.sh",
+  "find": "export VIRTUAL_ENV=\"${venv}\" PATH=\"${venv}/bin:${PATH}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-recipe-pytest.sh",
+  "why": "pytest runs with the recipe venv active, so a test that starts python3 itself finds that venv, not the image's /opt/venv."
  }
 ]

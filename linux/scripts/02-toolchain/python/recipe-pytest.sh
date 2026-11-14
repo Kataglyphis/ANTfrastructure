@@ -29,5 +29,7 @@ mkdir -p "$(dirname "${venv}")"
   fi
 ) 9>"${venv}.lock"
 
+# Active as the test leg's venv is: a test that starts `python3` itself must find this venv, not the image's /opt/venv.
+export VIRTUAL_ENV="${venv}" PATH="${venv}/bin:${PATH}"
 # python -m from the copy's root, so the package imported is the recipe's mutated one, not the copy that synced.
 exec "${venv}/bin/python" -m pytest -q -p no:cacheprovider "$@"
