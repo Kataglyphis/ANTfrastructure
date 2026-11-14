@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — reclaim obsolete published local images autonomously
+
+- Record the owner's standing local container-cleanup authorization and the exact-tag workflow: first prove idle state and immutable registry/config availability, then remove only selected obsolete published copies, retain every unselected image/cachemount identity and recheck real disk admission. The actual four-image cleanup frees 121,229,893,632 bytes, preserves all 12 cachemounts and 46 other image entries, and admits the single prepared ordinary GPU5 from frozen `8c4e13b0`. No registry data, volume, checkout or receipt is deleted, and no new image/consumer acceptance is claimed. Reuse existing versioned probes and documented nerdctl commands; [host cleanup](docs/linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches) owns the mechanism.
+
 ## 2026-11-14 — qualify the repaired GPU source before its ordinary rebuild
 
 - The frozen SQLite-loader source `8c4e13b0` passes all 6,246 mutations/42 default groups and 617 suites/32,480 assertions; the complete receipt binds exact IDs, successful cleanup, independent container absence and stopped test unit. Separate host selector tools `158daf7f` pass their affected-source and normal-hook checks. No repaired GPU image or Media acceptance follows: the fresh 180-GiB admission still refuses and the remaining regular cache cannot cover the gap. Preserve the original GPU4 runtime failure and all protected data. The actual configure snapshot also identifies vendor SQLite 3.51.3 and nlohmann/json 3.12.0; this is selection evidence, not completed binary licence review. See [the loader evidence and remaining scope](docs/linux-accelerator-images.md#source-backend-entry-library-loads).

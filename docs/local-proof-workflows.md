@@ -52,6 +52,14 @@ The independent cross-Clang image probe requires `--sysroot=/` for all six wrapp
 Default paths derive from `Path.home()`; original qualifications, loader probes, parallel-source
 producers, compiler unit identities and cleanup authorization files are explicit inputs.
 
+The owner's standing local container cleanup also permits the documented selective
+removal of obsolete published local images after an idle-engine and immutable
+registry/config check. Reuse the full-state and bounded unit watcher tools with
+run-specific selected-tag data; preserve every unselected image and compiler/source
+cachemount, check before/after identities and recheck the actual ordinary reserve.
+The [host cleanup page](linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches)
+owns this workflow; cleanup does not create source, image or hardware acceptance.
+
 ## Native GPU-to-Media handoff
 
 Use `gpu-oci-handoff.py launch|seal --compiler-plan PLAN --gpu-invocation GPU_INVOCATION

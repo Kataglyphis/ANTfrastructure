@@ -651,6 +651,30 @@ not-container-referenced, so it deletes TAGGED cross-stage locals too — on
 2026-08-18 the `cross-media-*` tags vanished mid-run and only the
 registry-digest-pinned handoffs survived, via a re-pull that cost ~25 minutes.
 
+The owner also authorizes autonomous local container-space cleanup (2026-11-14).
+For image removal, select explicit obsolete **published** tags and wait until no
+build/container is running and every BuildKit record type reports no in-use records.
+Read each exact `repository@sha256:...` manifest from the registry and match its
+config digest to the current local image before using the documented `nerdctl rmi`
+command without force. Preserve the current compiler/SDK/GPU parents, E30 and valid
+receipts, all compiler/source cachemounts, checkouts and outputs. A registry lookup
+proves current availability, not future registry retention; save the exact references.
+Do not delete registry versions or volumes as part of this local cleanup.
+
+Use the Git-tracked `nerdctl-full-state.py` and `watch-build-units.py` tools for
+before/after inventory and the bounded named cleanup unit. Store selected tag/digest
+inputs and original manifest readbacks under ignored `logs/host-maintenance/`; an
+input record is not a generated executable cleanup script. Verify identical
+cachemount IDs, no unexpected removed images and unchanged remaining image identities,
+then recheck the ordinary byte reserve before any producer starts. The regular-layer
+cleanup above retains its separate mid-run budget policy.
+
+Actual cleanup `owner-container-cleanup-20261114-1` removed four old published local
+SDK/NVIDIA-Android copies, freed 121,229,893,632 bytes and retained all 12 cachemounts
+and all 46 other image records. The checked reserve rose above 180 GiB and the
+prepared GPU5 launched from its exact qualified source and original SDK. This is
+local resource recovery, not image, binary-licence or finished-consumer acceptance.
+
 ### B8. ghcr registry hygiene
 
 Also moved from `AGENTS.md` on 2026-09-15.
