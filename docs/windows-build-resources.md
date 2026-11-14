@@ -463,6 +463,14 @@ The host cache initializer and CMake build setup share one `SCCACHE_MAX_JOBS`
 defaulting helper. Each caller keeps its own activation point and log message;
 both preserve an explicit limit and fill an absent or empty value from the CPU count.
 
+The standalone HailoRT stage starts the shared cache session before CMake, so
+its nested protobuf compiles belong to the same session. After Ninja it asks
+for advanced `sccache-stats|` counters on stderr and drains/stops the server
+before success cleanup. This direct RUN has no media-chain epilogue. The
+`a7ba976b` pass exported HailoRT without an aggregate snapshot; those missing
+counters remain unknown. Regression and mutation wiring checks do not replace
+a new producer receipt or establish Hailo device execution. CON229 stays open.
+
 **The pin is the hub build `0.19.0+965c019.pr2809`.** Its source is
 `SCCACHE_SOURCE_REV=965c01943a40c9df96264474bbe28ba98f2e1487` plus the shared
 patch series. `Install-RustToolchain.ps1` downloads the hub asset

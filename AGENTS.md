@@ -141,6 +141,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Wrap provisioning deletes the git wraps it extracts; a dependency reached only through a wrap's `[provide]` needs a pinned wrap-file, and its plugin belongs in the contract.
    Copied `WindowsBuild.Common.psm1` and `Build-TorchApp.ps1` carry `WindowsSdistCompiler.Common.psm1` with its `WindowsTargetArch` and `WindowsScripts.Shared` siblings; its gate grades only what uv reports as built.
    Windows source builders share Meson binaries, ARM per-file feature selection, handoff transfers and sccache commands; retain caller flags and failure policy.
+   Standalone HailoRT starts its shared cache session before configure, prints stderr counters after compilation and drains before success cleanup; wiring tests do not prove hits.
    CMake consumers use `Get-CmakeBuildArgs` for target, configuration and parallel flags; keep its argument order and caller-specific build verdict.
    Windows source builders share required-child path enumeration for FFmpeg's Vulkan SDK and the LiteRT wheel smoke; preserve leaf versus directory checks and each caller's fatal diagnostic.
    Source-chain scrubbing must remove the default QNN SDK extraction after runtime staging, preserve cached archives and CPython, and fail on unsafe paths or incomplete removal.

@@ -38815,5 +38815,77 @@
   "replace": "  local fixture_bin=\"$1\" probe_path=\"${_CC_HOST_TOOL_BIN}:/usr/bin:/bin\"",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "Synthetic consumer probes must not execute a host tool found outside their explicit fixture paths; injecting a controlled host SDK directory must fail."
+ },
+ {
+  "id": "lib.hailort-cache-prologue",
+  "target": "windows/scripts/build/Build-HailortFromSource.ps1",
+  "find": "Start-SccacheServerSession\n\nInvoke-CmakeConfigure -SourceDir $sourceRoot -BuildDir $BuildDir -InstallPrefix $InstallDir `\n    -BuildType $BuildType -ExtraArgs $cmakeExtra -TargetArch $targetArch",
+  "replace": "Invoke-CmakeConfigure -SourceDir $sourceRoot -BuildDir $BuildDir -InstallPrefix $InstallDir `\n    -BuildType $BuildType -ExtraArgs $cmakeExtra -TargetArch $targetArch",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.HailortCache.Tests.ps1",
+  "why": "The direct Hailo stage must own a fresh cache session before configure can compile nested protobuf."
+ },
+ {
+  "id": "lib.hailort-cache-stats",
+  "target": "windows/scripts/build/Build-HailortFromSource.ps1",
+  "find": "Write-SccacheStatsToStderr -Advanced -RequireRemote",
+  "replace": "Write-Host 'Hailo cache statistics omitted'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.HailortCache.Tests.ps1",
+  "why": "The direct Hailo stage needs a real stderr statistics call instead of an unmeasured successful compile."
+ },
+ {
+  "id": "lib.hailort-cache-epilogue",
+  "target": "windows/scripts/build/Build-HailortFromSource.ps1",
+  "find": "Complete-SccacheServerSession\n\n# Verify",
+  "replace": "# Verify",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.HailortCache.Tests.ps1",
+  "why": "The direct Hailo stage must use the shared upload drain and stop before success cleanup closes the layer."
+ },
+ {
+  "id": "lib.hailort-cache-advanced",
+  "target": "windows/scripts/build/Build-HailortFromSource.ps1",
+  "find": "Write-SccacheStatsToStderr -Advanced -RequireRemote",
+  "replace": "Write-SccacheStatsToStderr -RequireRemote",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.HailortCache.Tests.ps1",
+  "why": "Hailo statistics retain the selected advanced counter view."
+ },
+ {
+  "id": "lib.hailort-cache-remote",
+  "target": "windows/scripts/build/Build-HailortFromSource.ps1",
+  "find": "Write-SccacheStatsToStderr -Advanced -RequireRemote",
+  "replace": "Write-SccacheStatsToStderr -Advanced",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.HailortCache.Tests.ps1",
+  "why": "Statistics must not start a local cache server when the remote backend is deliberately disabled."
+ },
+ {
+  "id": "lib.hailort-cache-conditional-stats",
+  "target": "windows/scripts/build/Build-HailortFromSource.ps1",
+  "find": "Write-SccacheStatsToStderr -Advanced -RequireRemote",
+  "replace": "if ($false) { Write-SccacheStatsToStderr -Advanced -RequireRemote }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.HailortCache.Tests.ps1",
+  "why": "An unreachable statistics call cannot supply stage evidence."
+ },
+ {
+  "id": "lib.hailort-cache-start-order",
+  "target": "windows/scripts/build/Build-HailortFromSource.ps1",
+  "find": "Start-SccacheServerSession\n\nInvoke-CmakeConfigure -SourceDir $sourceRoot -BuildDir $BuildDir -InstallPrefix $InstallDir `\n    -BuildType $BuildType -ExtraArgs $cmakeExtra -TargetArch $targetArch",
+  "replace": "Invoke-CmakeConfigure -SourceDir $sourceRoot -BuildDir $BuildDir -InstallPrefix $InstallDir `\n    -BuildType $BuildType -ExtraArgs $cmakeExtra -TargetArch $targetArch\nStart-SccacheServerSession",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.HailortCache.Tests.ps1",
+  "why": "Resetting the session after configure loses nested protobuf compile counters."
+ },
+ {
+  "id": "lib.hailort-cache-stop-order",
+  "target": "windows/scripts/build/Build-HailortFromSource.ps1",
+  "find": "Write-SccacheStatsToStderr -Advanced -RequireRemote\nComplete-SccacheServerSession",
+  "replace": "Complete-SccacheServerSession\nWrite-SccacheStatsToStderr -Advanced -RequireRemote",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.HailortCache.Tests.ps1",
+  "why": "Stopping before reading counters would query a fresh server and lose the actual compile measurement."
+ },
+ {
+  "id": "lib.hailort-cache-stats-order",
+  "target": "windows/scripts/build/Build-HailortFromSource.ps1",
+  "find": "Invoke-NinjaBuildWithRetry -BuildDir $BuildDir -Install -InstallConfig $BuildType\nWrite-SccacheStatsToStderr -Advanced -RequireRemote",
+  "replace": "Write-SccacheStatsToStderr -Advanced -RequireRemote\nInvoke-NinjaBuildWithRetry -BuildDir $BuildDir -Install -InstallConfig $BuildType",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.HailortCache.Tests.ps1",
+  "why": "The statistics snapshot must follow the real Hailo Ninja build."
  }
 ]

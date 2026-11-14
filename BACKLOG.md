@@ -2196,6 +2196,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       2026-11-06 ([`third-party-licenses.md` § The MSVC runtime notice](docs/third-party-licenses.md#the-msvc-runtime-notice));
       the paragraph on the installers' licence page stays a draft until someone qualified has read it.
 - [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
+  The `a7ba976b` standalone HailoRT pass exports successfully but has no aggregate
+  cache counters. Its shared session start, advanced stderr snapshot and upload
+  drain are now explicit; a new product-build measurement is still required.
   The `0a822337` ROCm TVM/IREE RUN ends with a 9,995-hit WebDAV snapshot and zero
   misses/cache errors; earlier 3,323 and 9,914 checkpoints are not added. Native
   and Python CPU gates, ROCm code-object generation and both IREE GIL-disabled
