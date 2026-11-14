@@ -48912,10 +48912,10 @@
  {
   "id": "compiler-llvm-tools.cache-reader-exact-input-closure",
   "target": "linux/scripts/local-proof/seal-sccache-log-capture.py",
-  "find": "    assert inv.get(\"capture_inputs_sha256\") == expected_inputs, \"MIGraphX reader requires its complete input hashes\"",
+  "find": "    assert inv.get(\"capture_inputs_sha256\") == expected_inputs, \"GPU/Media reader requires its complete input hashes\"",
   "replace": "    pass",
   "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
-  "why": "The MIGraphX seal requires exactly its actual worker and profile companion, rejecting missing or extra input names."
+  "why": "GPU and Media reader seals require exactly their actual worker and profile companion, rejecting missing or extra input names."
  },
  {
   "id": "compiler-llvm-tools.cache-reader-legacy-companion-digest",
@@ -50452,5 +50452,69 @@
   "replace": "assert True, 'Local immutable manifest digest differs'",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "The local ID lookup must also retain the exact manifest identity; a matching config with another manifest cannot qualify this transport."
+ },
+ {
+  "id": "compiler-llvm-tools.media-cache-reader-cpu-marker",
+  "target": "linux/scripts/local-proof/cache_capture_profile.py",
+  "find": "--step cpu;'",
+  "replace": "--step genai;'",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "The independent actual-Dockerfile CPU command must match the selected reader profile before output is allocated."
+ },
+ {
+  "id": "compiler-llvm-tools.media-cache-reader-gpu-marker",
+  "target": "linux/scripts/local-proof/cache_capture_profile.py",
+  "find": "--step gpu;'",
+  "replace": "--step genai;'",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "The independent actual-Dockerfile GPU/plugin command must match its own reader phase."
+ },
+ {
+  "id": "compiler-llvm-tools.media-cache-reader-web-marker",
+  "target": "linux/scripts/local-proof/cache_capture_profile.py",
+  "find": "web-wasm-cache.sh;'",
+  "replace": "web-wasm-cache.sh --verify-only;'",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Wasm compilation retention must select the real build wrapper, not the separate verify-only invocation."
+ },
+ {
+  "id": "compiler-llvm-tools.media-cache-reader-owner",
+  "target": "linux/scripts/local-proof/cache_capture_profile.py",
+  "find": "owner = 'media' if phase in MEDIA_PHASE_MARKERS",
+  "replace": "owner = 'compiler' if phase in MEDIA_PHASE_MARKERS",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Media reader phases require their explicit Media unit family and refuse compiler-family substitutions."
+ },
+ {
+  "id": "compiler-llvm-tools.media-cache-reader-cpu-outer-lifetime",
+  "target": "linux/scripts/local-proof/cache_capture_profile.py",
+  "find": "--step cpu;'",
+  "replace": "--step cpu'",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "The CPU child command cannot replace the outer RUN lifetime that retains its final drain."
+ },
+ {
+  "id": "compiler-llvm-tools.media-cache-reader-gpu-outer-lifetime",
+  "target": "linux/scripts/local-proof/cache_capture_profile.py",
+  "find": "--step gpu;'",
+  "replace": "--step gpu'",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "The GPU/plugin child command cannot replace the outer RUN lifetime."
+ },
+ {
+  "id": "compiler-llvm-tools.media-cache-reader-web-outer-lifetime",
+  "target": "linux/scripts/local-proof/cache_capture_profile.py",
+  "find": "web-wasm-cache.sh;'",
+  "replace": "web-wasm-cache.sh'",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "The Wasm child command cannot satisfy the exact outer build-wrapper marker."
+ },
+ {
+  "id": "compiler-llvm-tools.media-cache-reader-input-closure",
+  "target": "linux/scripts/local-proof/seal-sccache-log-capture.py",
+  "find": "if capture[\"phase\"] == \"migraphx\" or capture[\"phase\"] in MEDIA_PHASE_MARKERS:",
+  "replace": "if capture[\"phase\"] == \"migraphx\":",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Each Media phase must reject missing worker/profile hashes before any proof is written, while complete inputs can seal."
  }
 ]

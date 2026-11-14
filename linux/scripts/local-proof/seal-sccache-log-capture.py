@@ -10,7 +10,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from cache_capture_profile import validate_capture_unit
+from cache_capture_profile import MEDIA_PHASE_MARKERS, validate_capture_unit
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--invocation", type=Path, required=True)
@@ -41,11 +41,11 @@ with log.open("rb") as stream:
 if "capture_script_sha256" in inv:
     script = Path(command[command.index("--pid") - 1])
     assert hashlib.sha256(script.read_bytes()).hexdigest() == inv["capture_script_sha256"]
-if capture["phase"] == "migraphx":
+if capture["phase"] == "migraphx" or capture["phase"] in MEDIA_PHASE_MARKERS:
     current_script = Path(command[command.index("--pid") - 1])
     expected_inputs = {str(path): hashlib.sha256(path.read_bytes()).hexdigest()
                        for path in [current_script, current_script.with_name("cache_capture_profile.py")]}
-    assert inv.get("capture_inputs_sha256") == expected_inputs, "MIGraphX reader requires its complete input hashes"
+    assert inv.get("capture_inputs_sha256") == expected_inputs, "GPU/Media reader requires its complete input hashes"
 for filename, expected in inv.get("capture_inputs_sha256", {}).items():
     assert hashlib.sha256(Path(filename).read_bytes()).hexdigest() == expected, "Cache reader companion bytes changed"
 proof = {"status": "passed-actual-error-log-file-retention-only", "observed_at": datetime.datetime.now(datetime.UTC).isoformat(),

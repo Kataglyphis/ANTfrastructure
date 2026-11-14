@@ -122,6 +122,17 @@ It copies only CMakeCache.txt, build.ninja, CMakeFiles/rules.ninja and CMakeFile
 
 `replay-sccache-log-capture.py` reuses the bounded read-only unit transport with the current canonical `capture-live-sccache-log.py` and its `cache_capture_profile.py` companion. Both reader inputs are hashed in the invocation. The existing GCC, LLVM, Rust and Python phases retain their compiler unit names; `--phase migraphx` matches the actual normal `bash /opt/scripts/03-media/build/migraphx/build-image.sh` process and uses `webgpu-gpu<run>-migraphx-error-capture-<date>-<attempt>.service`.
 
+Media additionally supports `--phase ort-cpu`, `ort-gpu` and `ort-web` with
+`webgpu-media<run>-<phase>-error-capture-<date>-<attempt>.service`. The first two
+match the actual outer `build-onnxruntime.sh --step cpu;` and `--step gpu;` RUNs;
+`ort-web` matches the actual `web-wasm-cache.sh;` build wrapper, excluding the
+separate verify-only call. The terminating semicolon preserves the outer RUN's
+lifetime through its final drain; an inner child command alone refuses. Independent
+fixtures match the normal Dockerfile declarations and reject wrong phases/owners
+before allocating output. Media seals require both exact worker and profile hashes.
+These profiles collect diagnostics only: the GPU step may skip NVIDIA compilation,
+and Wasm cache reuse or an empty log does not prove either flavor actually built.
+
 Supply the actual live PID, producer unit, original reviewed transport template and a fresh output. The reader opens only the existing regular `/proc/<pid>/root/tmp/sccache.log`, tracks process start identity and refuses replacement of that live log inode. It retains all bytes before closing the descriptor, including after the RUN filesystem disappears. Each replay writes its unit log beside the new invocation. `seal-sccache-log-capture.py` verifies worker/companion hashes, raw terminal status, file size/SHA and stopped/PID0 state. A reader timeout is explicitly partial, and neither an empty file nor a completed reader classifies compiler-cache errors or accepts an image. `test-live-cache-capture.sh` uses synthetic process files and command doubles; it does not prove a genuine build or source provenance.
 
 `audit-failed-source-check.py` also retains a completed mutation run containing `SURVIVED` failures before preflight starts. Its failed receipt requires exact passed/survived IDs, the matching failure summary, actual failed/PID0 unit, cleanup and independent absence. Quality-only failures retain their strict complete mutation proof. Interrupted or other incomplete mutation failures need separate inspection; a failure audit never accepts source.

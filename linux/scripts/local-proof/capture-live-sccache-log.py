@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Retain an existing compiler/MIGraphX RUN log through teardown; no error classification, provenance authentication or build acceptance."""
+"""Retain an existing reviewed compiler/GPU/Media RUN log through teardown; no error classification, provenance authentication or build acceptance."""
 
 from __future__ import annotations
 

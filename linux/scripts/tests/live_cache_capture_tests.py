@@ -63,6 +63,32 @@ class CaptureTests(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 PROFILE['validate_capture_unit'](unit,phase)
 
+    def test_media_phase_pairs_require_exact_outer_run_commands(self) -> None:
+        commands = {
+            'ort-cpu': 'bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step cpu;',
+            'ort-gpu': 'bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step gpu;',
+            'ort-web': 'bash /opt/scripts/03-media/build/onnxruntime/build/web-wasm-cache.sh;',
+        }
+        for phase, marker in commands.items():
+            self.assertEqual((ROOT / 'linux/Dockerfile.media').read_text().count(marker), 1)
+            PROFILE['validate_capture_unit'](f'webgpu-media1-{phase}-error-capture-99999999-1.service', phase)
+            with self.assertRaises(AssertionError):
+                PROFILE['validate_capture_unit'](f'webgpu-compiler1-{phase}-error-capture-99999999-1.service', phase)
+            wrong_phase = commands['ort-cpu' if phase != 'ort-cpu' else 'ort-gpu']
+            for wrong in (marker.removesuffix(';'), wrong_phase):
+                (self.process / 'cmdline').write_bytes(wrong.encode())
+                with self.assertRaises(AssertionError):
+                    self.capture(phase=phase)
+                self.assertFalse(self.output.exists())
+            command = 'bash -lc set -euo pipefail; ' + marker + ' bash /opt/scripts/core/sccache-s3-level.sh drain'
+            (self.process / 'cmdline').write_bytes(command.encode())
+            with mock.patch.object(time, 'monotonic', side_effect=[0, 2]):
+                record = self.capture(phase=phase)
+            self.assertEqual(record['phase'], phase)
+            self.assertEqual(record['status'], 'captured-partial-observation-timeout')
+            self.assertFalse(record['producer_changed'])
+            self.output.rename(self.work / phase)
+
     def test_existing_descriptor_survives_process_tree_teardown(self) -> None:
         def teardown(_seconds: int) -> None:
             gone = self.work / 'gone'
@@ -195,7 +221,8 @@ class CaptureTests(unittest.TestCase):
         worker = TOOLS / 'capture-live-sccache-log.py'
         paths = [worker, TOOLS / 'cache_capture_profile.py']
         invocation = self.work / 'invocation.json'
-        value = {'unit':f'webgpu-{"gpu" if phase == "migraphx" else "compiler"}1-{phase}-error-capture-99999999-1.service',
+        owner = 'media' if phase in {'ort-cpu', 'ort-gpu', 'ort-web'} else ('gpu' if phase == 'migraphx' else 'compiler')
+        value = {'unit':f'webgpu-{owner}1-{phase}-error-capture-99999999-1.service',
                  'command':['python3',str(worker),'--pid','123','--phase',phase,'--output',str(self.output)],
                  'capture_script_sha256':READER['hashlib'].sha256(worker.read_bytes()).hexdigest(),
                  'capture_inputs_sha256':{str(path):READER['hashlib'].sha256(path.read_bytes()).hexdigest() for path in paths}}
@@ -209,17 +236,40 @@ class CaptureTests(unittest.TestCase):
             with mock.patch.object(sys,'argv',['seal','--invocation',str(invocation)]), mock.patch.object(subprocess,'run',return_value=subprocess.CompletedProcess([],0,terminal,'')), self.assertRaises(AssertionError):
                 runpy.run_path(str(TOOLS / 'seal-sccache-log-capture.py'),run_name='__main__')
             self.assertFalse((self.output / 'unit-proof.json').exists())
-        invocation.write_text(json.dumps(value))
-        answers = [subprocess.CompletedProcess([],0,terminal,''),subprocess.CompletedProcess([],0,'',''),
-                   subprocess.CompletedProcess([],0,'LoadState=not-found\nActiveState=inactive\nMainPID=0\n','')]
-        with mock.patch.object(sys,'argv',['seal','--invocation',str(invocation)]), mock.patch.object(subprocess,'run',side_effect=answers), redirect_stdout(io.StringIO()):
-            runpy.run_path(str(TOOLS / 'seal-sccache-log-capture.py'),run_name='__main__')
-        proof = json.loads((self.output / 'unit-proof-stopped.json').read_text())
+        proof = self.seal_fixture(invocation, value, terminal)
         self.assertFalse(proof['complete_phase_process_observed'])
         self.assertFalse(proof['compiler_or_image_pass_claimed'])
         self.assertEqual(proof['stopped']['MainPID'],'0')
 
 
+
+    def seal_fixture(self, invocation: Path, value: dict[str, Any], terminal: str) -> dict[str, Any]:
+        invocation.write_text(json.dumps(value))
+        answers = [subprocess.CompletedProcess([], 0, terminal, ''), subprocess.CompletedProcess([], 0, '', ''),
+                   subprocess.CompletedProcess([], 0, 'LoadState=not-found\nActiveState=inactive\nMainPID=0\n', '')]
+        with mock.patch.object(sys, 'argv', ['seal', '--invocation', str(invocation)]), mock.patch.object(subprocess, 'run', side_effect=answers), redirect_stdout(io.StringIO()):
+            runpy.run_path(str(TOOLS / 'seal-sccache-log-capture.py'), run_name='__main__')
+        return json.loads((self.output / 'unit-proof-stopped.json').read_text())
+
+    def media_closure_required(self, phase: str) -> None:
+        invocation, value, terminal = self.sealer_fixture(phase)
+        invocation.write_text(json.dumps(dict(value, capture_inputs_sha256={})))
+        with mock.patch.object(sys, 'argv', ['seal', '--invocation', str(invocation)]), mock.patch.object(subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, terminal, '')), self.assertRaises(AssertionError):
+            runpy.run_path(str(TOOLS / 'seal-sccache-log-capture.py'), run_name='__main__')
+        self.assertFalse((self.output / 'unit-proof.json').exists())
+        proof = self.seal_fixture(invocation, value, terminal)
+        self.assertFalse(proof['complete_phase_process_observed'])
+        self.assertFalse(proof['compiler_or_image_pass_claimed'])
+        self.assertEqual(proof['stopped']['MainPID'], '0')
+
+    def test_media_cpu_reader_requires_full_input_hashes(self) -> None:
+        self.media_closure_required('ort-cpu')
+
+    def test_media_gpu_reader_requires_full_input_hashes(self) -> None:
+        self.media_closure_required('ort-gpu')
+
+    def test_media_web_reader_requires_full_input_hashes(self) -> None:
+        self.media_closure_required('ort-web')
 
     def test_compiler_reader_hash_changes_remain_fatal(self) -> None:
         invocation,value,terminal = self.sealer_fixture('llvm')
