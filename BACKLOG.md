@@ -469,13 +469,17 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       rows (CON247) read 0.
 
 - [ ] **CON236 — the Windows publish dispatches the consumers' lanes too** [S, ★★]. Owner decision 2026-11-13:
-      after each publish every consumer's lanes run once on the new image. Since that day
-      `build-runtime-manifest.sh` calls `dispatch-consumer-lanes.sh --tag <tag>` after a promotion
-      ([`image-acceptance.md` § After a publish …](docs/image-acceptance.md#after-a-publish-the-consumers-lanes-run-on-it)),
-      which covers `:latest` and the Linux GPU tags. Left: the Windows images (`:winamd64`, `:winarm64`
-      and their GPU tags) are published by the Windows scripts, which do not call it yet; a run by hand
-      covers them. First step: call it at the end of the Windows publish, proven with `pwsh` (not on the
-      arm64 dev host). Done when a Windows publish shows one run per consumer lane on the new digest.
+      after each publish every consumer's lanes run once on the new image. `build-runtime-manifest.sh`
+      calls `dispatch-consumer-lanes.sh --tag <tag>` after a promotion; since 2026-11-14
+      `windows/Build-Buildkit.ps1 -PushRef` calls it too after its final push, through
+      `Invoke-BkConsumerDispatch` and Git Bash (owner decision that day: the existing script, not a
+      PowerShell copy); a failure warns and the push stands
+      ([`image-acceptance.md` § After a publish …](docs/image-acceptance.md#after-a-publish-the-consumers-lanes-run-on-it)).
+      Pester suite `BuildKit.ConsumerDispatch.Tests.ps1` (9 cases), proven by hand in the image with
+      a throwaway Pester 6.2 against four mutations. Left: no manifest recipe yet, since this arm64 host
+      cannot prove a `pwsh` recipe in its hooks (CON273); and done when a Windows publish shows one
+      run per consumer lane on the new digest, which needs that host's `gh` login and `python3` on
+      Git Bash's `PATH`.
 
 ## Open — Flet clients for OrchestrANT's UIs
 
@@ -1852,6 +1856,15 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       (or a lock venv with them beside the image's torch). Missing in the hub: the command itself, ideally in
       `renovate-locks.sh`'s uv path, so a consumer never rediscovers it. Done when a consumer adds a pure-Python
       dependency with one hub command in the image and the lock moves by that package alone.
+
+- [ ] **CON273 — the CI image has `pwsh` but no Pester, so no `pwsh` recipe can be proven off Windows** [S, ★★].
+      Found 2026-11-14 for CON236: `pwsh` 7.6.9 is in `kataglyphis_beschleuniger:latest`, Pester is not, so
+      `Invoke-Tests.ps1` reports every suite SKIPPED there, and the arm64 dev host has no `pwsh` at all; its
+      commit hooks then fail every recipe whose test runs `pwsh`. A throwaway
+      `Install-PinnedPowerShellModule -Name Pester -Version 6.2 -Minimum` inside one `--rm` container works.
+      Fix: install Pester at the floor `windows-x64.yml` pins into the Linux image, then let
+      `mutation_push.py` delegate a `pwsh` recipe to the image (or to CI, as it does for Chrome) when the host
+      has no `pwsh`. Done when a recipe on `WindowsBuildKit.Common.psm1` passes this host's hooks.
 
 ## Open — Linux arm64 and riscv64
 

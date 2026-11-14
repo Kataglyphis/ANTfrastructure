@@ -162,8 +162,11 @@ consumers that have an `on-request.yml`, and per published tag the lane words it
 Windows tags their own lanes). A tag without a row dispatches nothing. A dispatch that is refused
 makes the script exit 1 after the others were sent and print its command for a run by hand;
 `build-runtime-manifest.sh` then warns and goes on, since the promotion has already happened. `--dry-run` prints the commands. It needs a `gh` that may dispatch in
-the consumers, which the publishing host's login is. Not covered: the Windows images, which
-`build-runtime-manifest.sh` does not publish; their publish calls the same script by hand until
-it does it itself (BACKLOG CON236). Tests: `linux/scripts/tests/test-dispatch-consumer-lanes.sh`;
-recipes `dispatch-lanes.*`.
+the consumers, which the publishing host's login is. The Windows images (`:winamd64`, `:winarm64` and
+their GPU tags) are published by `windows/Build-Buildkit.ps1 -PushRef`, which calls the same script
+after its final push through `Invoke-BkConsumerDispatch` (`WindowsBuildKit.Common.psm1`): Git Bash
+at `C:\Program Files\Git\usr\bin\bash.exe` as a login shell, so that host's `gh` and `python3` must be on
+its `PATH`. No Git Bash, a ref without a tag or a refused dispatch only warns with the command to
+run by hand; the push stands. Tests: `linux/scripts/tests/test-dispatch-consumer-lanes.sh`, recipes
+`dispatch-lanes.*`; the Windows call `windows/scripts/tests/BuildKit.ConsumerDispatch.Tests.ps1`.
 
