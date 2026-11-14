@@ -16,6 +16,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — align the general cleanup fixture with decimal MB
+
+- Correct the general daemon-prune fixture's 100-GiB expectation to 107375 MB,
+  retaining its read-only, Apply and command-order assertions.
+- Document the native crash fixture's host MSVC and Visual Studio CMake
+  generator prerequisites; an unprovisioned local host remains a failed run.
+
 ## 2026-11-14 — document delegated maintenance and new-host limits
 
 - Describe the verified local on-demand cleanup/recovery pilot, its fixed rights,

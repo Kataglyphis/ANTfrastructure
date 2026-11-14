@@ -1514,6 +1514,8 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
 
 - **PowerShell gate:** `pwsh -File windows/scripts/Invoke-Lint.ps1` +
   `pwsh -File windows/scripts/tests/Invoke-Tests.ps1` (CI: `.github/workflows/windows-x64.yml`).
+  The full native suite requires host x64 MSVC and a Visual Studio CMake generator
+  for its real crash fixture; missing prerequisites remain a failed run.
   The test runner writes each parent run's JSON summary to ignored `logs/windows-tests/`.
   The suite guards *classes* of defect, not instances: when you fix a bug here, prefer a guard for
   its class. Which classes, and why the linter exits 2 for an infrastructure failure:

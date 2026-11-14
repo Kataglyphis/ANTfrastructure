@@ -2850,6 +2850,14 @@ yet in a VC Tools release the image ships.
 which is not trivially comparable. Drop the workaround once the image's VC Tools carry the
 fix.
 
+### Native crash fixture: NMake does not support platform x64
+
+`CrashDump.Native.Tests.ps1` uses `-A x64` for its real MSVC fixture. If CMake
+selects NMake on a host without Visual Studio, configuration fails before the
+fixture is compiled. Check the installed compiler and selected CMake generator;
+run the full suite in the [required host environment](windows-builds.md#prerequisites).
+Retain the failed local result until the real fixture passes there or in CI.
+
 ### A Windows test exits `0xC0000005` with no gtest line and no dump
 
 **Symptom.** A GoogleTest executable on a Windows runner ends with exit code `-1073741819`

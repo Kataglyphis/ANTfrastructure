@@ -49,6 +49,18 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Next image build — GPU consumer findings
 
+**Windows evidence, 2026-11-14, private source `d9f129af`:** the NVIDIA producer
+passes its audited three-request chain (raw 1/1/0) and 319 smoke assertions with
+two retained skips. Fresh image-bound CPU/CUDA/TensorRT MatMul and negative
+Pad/MaxPool checks each pass five numerical/profile runs; canonical DirectML
+and five strict NVIDIA-adapter runs separately reconcile the two smoke skips.
+See [Issue249](https://github.com/Kataglyphis/ANTfrastructure/issues/249#issuecomment-6884427022)
+and `logs/g5-results.md`. Typed current-source CUDA repeat, other final-source
+lanes, device acceptance, hosted CI and current ARM promotion remain open.
+Local native Windows lint and strict complexity pass; the full suite retains
+its failed result, including missing host MSVC for the real crash fixture.
+The corrected general cleanup fixture still needs complete final-source CI.
+
 **Windows evidence, 2026-11-12, frozen source `5bd443ea`:** the private CPU
 producer passes 289 smoke assertions (two retained skips); ARM64 cross passes
 152 (17 retained skips). NVIDIA passes 319 (two container hardware skips with

@@ -966,6 +966,12 @@ Source build from the pinned release tag (`FFMPEG_VERSION` in `versions.env`; a 
 
 ## Prerequisites
 
+The full native Windows test runner also builds `CrashDump.Native.Tests.ps1`'s
+real x64 MSVC fixture. Run it with installed MSVC and a working Visual Studio
+CMake generator. A host with only Stevedore may default to NMake, reject the
+fixture's `-A x64` and lack `cl.exe`; that local run remains failed. The
+Windows x64 CI runner provides the compiler environment.
+
 **Provisioning a FRESH machine?** Follow the ordered checklist in
 [Fresh Windows Host Bring-Up](windows-host-setup.md): it sequences everything on this page
 (Stevedore install, CNI conf, debug flags, GC policy, Defender exclusions, dufs/sccache, gate
