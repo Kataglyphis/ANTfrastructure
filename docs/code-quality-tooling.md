@@ -893,15 +893,15 @@ files. It uses the Linux target for Linux and shared scripts and the Windows tar
 missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
 The full-tree Ruff annotation scan writes
 `logs/code-quality/ruff-annotations-gate.txt`. A second full-tree ANN202 gate writes
-`logs/code-quality/ruff-private-returns-gate.txt`. The maintained 122-file scope has fatal
+`logs/code-quality/ruff-private-returns-gate.txt`. The maintained parameter/return scope has fatal
 ANN001/ANN201 checks in `logs/code-quality/ruff-parameters-returns-gate.txt`.
 The Linux x64 workflow uploads
 these files after preflight. Any finding in the full Ruff annotation scan or the generic
 Linux/Windows ty reports fails preflight. A failed download, invalid configuration or
 checker crash also fails CI.
 
-**All 154 tracked Python files have fatal ty coverage.** The locked quality
-environment checks 146 Linux/shared files, and the Windows platform gate checks
+**All tracked Python files have fatal ty coverage.** The locked quality
+environment checks Linux/shared files, and the Windows platform gate checks
 the Windows certificate helper. Five files with dependencies absent from the
 locked environment are checked in their real workflow or build environments:
 `docs/conf.py`, the WebDAV downloader, `venv-version-probe.py`, the Jetson webcam
@@ -910,7 +910,9 @@ remaining files whose imports resolve in the locked environment.
 `quality/pyproject.toml` and the committed `quality/uv.lock` supply pytest,
 PyYAML, markdown-it-py and Playwright to a Python 3.14 environment; the gate
 syncs it with `uv sync --project quality --locked` and passes that interpreter
-to ty. The Linux and Windows strict results have separate ignored reports.
+to ty. The Linux and Windows strict results have separate ignored reports. The local FINAL
+acceptance companion belongs to both strict ty and ANN001/ANN201 scopes; the isolated
+fixture checks type errors and missing annotations for that companion.
 Linux x64 checks `docs/conf.py` with the pinned DocumANTation submodule using
 `--docs-conf` before building and publishing the site. That mode writes
 `logs/code-quality/ty-docs-conf-gate.txt` and fails for a missing theme or a
@@ -1224,7 +1226,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **6481 entries** over **803 distinct test commands**; both digits are
+manifest holds **6560 entries** over **804 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

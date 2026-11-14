@@ -37771,16 +37771,16 @@
  {
   "id": "python-types.native-image-proof-strict-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' \\\n",
-  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' \\\n",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "the isolated type fixture must detect removing the native proof driver from mandatory checks"
  },
  {
   "id": "python-types.native-image-proof-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'docs/scripts/verify_mutations.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'docs/scripts/verify_mutations.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "the isolated type fixture must detect removing the native proof driver from mandatory checks"
  },
@@ -51112,7 +51112,7 @@
  {
   "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-5",
   "target": "linux/scripts/local-proof/runtime_launch_profile.py",
-  "find": "assert len(rows) == 1 and rows[0]['Digest'] == actual['manifest'] and rows[0]['Platform'] == 'linux/amd64', 'Local immutable alias differs'",
+  "find": "assert len(rows) == 1 and rows[0]['Digest'] == actual['manifest'] and rows[0]['Platform'] == platform, 'Local immutable alias differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
@@ -51184,7 +51184,7 @@
  {
   "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-14",
   "target": "linux/scripts/local-proof/runtime_launch_profile.py",
-  "find": "assert rows[0]['Digest'] == actual['manifest'] and rows[0]['Platform'] == 'linux/amd64', 'Preserve a foreign existing alias'",
+  "find": "assert rows[0]['Digest'] == actual['manifest'] and rows[0]['Platform'] == platform, 'Preserve a foreign existing alias'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
@@ -51440,8 +51440,8 @@
  {
   "id": "compiler-llvm-tools.runtime-worker-binding",
   "target": "linux/scripts/local-proof/runtime_launch_profile.py",
-  "find": "scripts / 'host_commands.py']}",
-  "replace": "scripts / 'owned_containers.py']}",
+  "find": "'cleanup-owned-containers.py', 'host_commands.py']]",
+  "replace": "'cleanup-owned-containers.py', 'owned_containers.py']]",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
  },
@@ -51632,8 +51632,8 @@
  {
   "id": "python-types.runtime-owned-nerdctl-args-2",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'docs/scripts/verify_mutations.py' \\\n   'linux/scripts/owned-nerdctl.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned-nerdctl.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "Independent fixture type and annotation errors must fail when either runtime ownership companion leaves its mandatory scope; no runtime or cleanup execution is proved."
  },
@@ -51648,8 +51648,8 @@
  {
   "id": "python-types.runtime-owned-nerdctl-2",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py'  \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "Independent fixture type and annotation errors must fail when either runtime ownership companion leaves its mandatory scope; no runtime or cleanup execution is proved."
  },
@@ -51864,8 +51864,8 @@
  {
   "id": "compiler-llvm-tools.runtime-source-worker-companion",
   "target": "linux/scripts/local-proof/runtime_launch_profile.py",
-  "find": "                      Path(__file__).with_name('runtime_source_profile.py'),\n",
-  "replace": "",
+  "find": "'android_handoff_profile.py', 'runtime_source_profile.py'",
+  "replace": "'android_handoff_profile.py'",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
  },
@@ -51884,5 +51884,637 @@
   "replace": "source_proof=None",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "image-acceptance.local-require-1",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(module.__file__ is not None and Path(module.__file__).resolve() == directory / (name + '.py'), 'Local producer API belongs to another checkout')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-2",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(result.returncode == 0, f'Local subject query failed ({result.returncode}): {result.stdout}{result.stderr}')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-3",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(isinstance(value, dict), 'Local producer evidence must be an object')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-4",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(LOCAL_REF.fullmatch(image) is not None, 'Local acceptance needs an immutable docker.io/ant-local/webgpu reference')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-5",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require({**plan, 'platform': canonical['platform']} == canonical, 'Local FINAL acceptance requires the complete canonical consumer contract')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-6",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(command[:2] == ['systemd-run', '--user'] and command[-11:] == expected, 'Local runtime driver differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-7",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require('--expand-environment=no' in command and '--unit=' + invocation['unit'] in command, 'Local runtime transport differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-8",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(invocation.get('image') == prefix + '-' + arch, 'Local subject is not the final runtime wrapper')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-9",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "        require([value for value in command if value.startswith(name + '=')] == [name + '=' + expected_value], 'Local runtime gate or pin differs: ' + name)\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-10",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require('--push' not in command and '--gates-only' not in command, 'Actual unpublished local runtime required')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-11",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require([value for value in command if value.startswith(key)] == [key + parent], 'Runtime Android pin differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-12",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(platform in {'linux/amd64', 'linux/arm64', 'linux/riscv64'} and invocation.get('target_arch') == arch, 'Local runtime platform differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-13",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(invocation.get('stage') == 'runtime' and isinstance(variant, str) and (variant, arch) in LANES, 'Local FINAL producer must be a supported ordinary Linux runtime lane')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-14",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(type(invocation.get('launch_status')) is int and invocation['launch_status'] == 0 and invocation.get('publication') is False, 'Actual unpublished producer launch required')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-15",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(Path(text(invocation, 'output')).resolve() == path.parent, 'Local runtime invocation directory differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-16",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(invocation.get('source_full_preflight_passed') is True and invocation.get('producer_source_unchanged') is True, 'Complete runtime source proof required')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-17",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(fingerprint(proof) == text(invocation, 'source_full_preflight_sha256', HASH), 'Runtime complete source proof changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-18",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(raw.isdigit() and int(raw) > 0, 'Local runtime never exited')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-19",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(wrapper.name == 'owned-nerdctl.py' and wrapper.parent.name == 'scripts' and wrapper.parent.parent.name == 'linux', 'Runtime engine wrapper layout differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-20",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(output(['git', '-C', str(host), 'rev-parse', 'HEAD']).strip() == text(invocation, 'host_tools_revision', SHA), 'Runtime host source revision differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-21",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(not output(['git', '-C', str(host), 'status', '--porcelain']).strip(), 'Runtime host source changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-22",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(invocation.get('selected_host_workers_sha256') == {str(path): fingerprint(path) for path in workers}, 'Runtime worker closure changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-23",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(fingerprint(android_path) == text(invocation, 'Android_invocation_sha256', HASH) and fingerprint(proof_path) == text(invocation, 'parent_OCI_proof_sha256', HASH), 'Original Android evidence changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-24",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(android.get('stage') == 'android' and android.get('target_arch') == platform.removeprefix('linux/') and android.get('variant') == invocation['variant'], 'Original Android lane differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-25",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(android.get('source_revision') == proof.get('source_revision') == text(invocation, 'parent_source_revision', SHA), 'Original Android source differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-26",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(proof.get('manifest') == text(invocation, 'parent_manifest', DIGEST) and proof.get('config') == text(invocation, 'parent_config', DIGEST), 'Original Android image differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-27",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(invocation.get('expected_runtime_run_id') == 'runtime-' + run_id and invocation.get('owner_label') == 'org.kataglyphis.normal-runtime', 'Runtime ownership differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-28",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(type(cleanup.get('exit_status')) is int and cleanup['exit_status'] == 0 and cleanup.get('run_id') == run_id and cleanup.get('owner_label') == invocation['owner_label'], 'Runtime cleanup did not succeed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-29",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(not raw.strip(), 'Runtime still owns containers: ' + raw)\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-30",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(isinstance(values, list) and len(values) == 1 and isinstance(values[0], dict), 'Local engine query must select one image object')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-31",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require({value.rsplit('@', 1)[1] for value in actual.get('RepoDigests', [])} == {manifest}, 'Local runtime manifest differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-32",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(actual.get('Os') == 'linux' and actual.get('Architecture') == platform.removeprefix('linux/'), 'Local engine image platform differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-33",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(all(labels.get(key) == value for key, value in required.items()), 'Local runtime provenance or app label differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-34",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(resolved.get('Id') == config and {value.rsplit('@', 1)[1] for value in resolved.get('RepoDigests', [])} == {manifest}, 'Local immutable manifest/config differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-35",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(local_api('runtime_launch_profile').local_reference(subject) == image, 'Local reference belongs to another repository')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-36",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(len(rows) == 1 and rows[0].get('Digest') == subject['manifest'] and rows[0].get('Platform') == platform, 'Local digest alias differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-37",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(after == before, 'Local runtime identity or producer evidence changed during consumer checks')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-38",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(before.get('image') == image and before.get('platform') == platform, 'Local subject/platform differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-39",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(isinstance(variant, str) and (variant, platform.removeprefix('linux/')) in LANES, 'Local receipt runtime lane is unsupported')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-40",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(terminal.get('LoadState') == 'loaded' and terminal.get('ActiveState') == 'active' and terminal.get('SubState') == 'exited', 'Local receipt producer was not terminal')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-41",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(terminal.get('MainPID') == terminal.get('ExecMainStatus') == '0' and terminal.get('Result') == 'success', 'Local receipt producer failed or was live')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-42",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(type(before.get('exit_timestamp_monotonic')) is int and before['exit_timestamp_monotonic'] > 0, 'Local receipt producer never exited')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-require-43",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(Path(text(before, 'producer_invocation')).is_absolute(), 'Local producer invocation path must be absolute')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-refusal-subject-41",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    if not isinstance(result, str) or not result or (pattern is not None and not pattern.fullmatch(result)):\n        raise ValueError('Missing or invalid local producer field: ' + key)\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-refusal-subject-63",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    if not isinstance(command, list) or not all(isinstance(value, str) for value in command):\n        raise ValueError('Local runtime command is missing')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-refusal-subject-149",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(isinstance(config_data, dict) and isinstance(config_data.get('Labels'), dict), 'Local runtime image config labels are malformed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-refusal-subject-204",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    if not isinstance(before, dict) or before != after or before.get('kind') != KIND:\n        raise ValueError('Local subject evidence is missing or changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-refusal-subject-216",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    require(isinstance(terminal, dict), 'Local receipt producer unit is malformed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-refusal-runner-380",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    if module.__file__ is None or Path(module.__file__).resolve() != directory / 'image_acceptance_local.py':\n        raise ValueError('Local acceptance companion belongs to another checkout')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-refusal-runner-255",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        if receipt.get('image_transport') != 'local':\n            raise ValueError('Local receipt transport is missing')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-refusal-runner-260",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        if any(key.startswith('local_') for key in receipt):\n            raise ValueError('Local subject evidence cannot authorize registry promotion')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-refusal-runner-262",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        if receipt.get('image_transport', 'registry') != 'registry':\n            raise ValueError('Local acceptance cannot authorize registry promotion')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-refusal-runner-390",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        if any(path.exists() or path.is_symlink() for path in [Path(args.workspace), Path(args.receipt)]):\n            raise ValueError('Local acceptance requires a fresh workspace and receipt')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-refusal-runner-404",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        if previous and previous['local_subject'] != receipt['local_subject']:\n            raise ValueError('Local replay producer or image identity changed')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-explicit-mode-off",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    local = bool(getattr(args, 'local_runtime_invocation', None))",
+  "replace": "    local = False",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-explicit-mode-on",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    local = bool(getattr(args, 'local_runtime_invocation', None))",
+  "replace": "    local = True",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-validate-full-plan",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        local_module().complete_plan(plan, read_plan(DEFAULT_PLAN))\n        local_module().validate_receipt",
+  "replace": "        pass\n        local_module().validate_receipt",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-start-full-plan",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        local_module().complete_plan(plan, read_plan(DEFAULT_PLAN))\n        if any",
+  "replace": "        pass\n        if any",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-before-prune-validation",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        validate_receipt(receipt, args.image, args.plan, allow_local=local)\n        prune_consumer_checkouts",
+  "replace": "        pass\n        prune_consumer_checkouts",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-failed-status-retained",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        receipt[\"status\"] = \"failed\"\n        receipt[\"error\"] = str(exc)",
+  "replace": "        receipt[\"error\"] = str(exc)",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-replay-origin",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        if previous and previous['local_subject'] != receipt['local_subject']:\n            raise ValueError('Local replay producer or image identity changed')",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-prepare-subject",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "receipt['local_subject'] = local_module().prepare(args.engine, args.image, plan['platform'],\n                                                        args.local_runtime_invocation, work)",
+  "replace": "receipt['local_subject'] = {}",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-post-observation",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        receipt['local_subject_after'] = local_module().recheck(args.engine, args.image, plan['platform'],\n                                                              args.local_runtime_invocation, receipt['local_subject'])",
+  "replace": "        receipt['local_subject_after'] = receipt['local_subject']",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-registry-mode-finish",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "def finish_acceptance_image(args: CheckArgs, plan: AcceptancePlan, receipt: dict[str, Any], local: bool) -> None:\n    if local:",
+  "replace": "def finish_acceptance_image(args: CheckArgs, plan: AcceptancePlan, receipt: dict[str, Any], local: bool) -> None:\n    if True:",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-prepare-observe-call",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    origin, subject = observe(engine, image, platform, Path(invocation))",
+  "replace": "    origin, subject = {}, {'image':'unused', 'manifest':image.rsplit('@', 1)[1], 'config':'sha256:' + 'a' * 64}",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-host-source-call",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    host_binding(invocation)\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-full-source-call",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "        local_api('normal_stage_launch').full_source(source, proof, text(invocation, 'source_revision', SHA))",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-loaded-terminal-call",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "        terminal = local_api('gpu_handoff_profile').terminal(unit)",
+  "replace": "        terminal = {}",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-command-call",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    command_binding(invocation, android, platform, parent)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-cleanup-call",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    cleanup = cleanup_binding(invocation, invocation_path.parent, engine)",
+  "replace": "    cleanup = 'a' * 64",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-shared-alias-call",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    local_api('runtime_launch_profile').prepare_local_alias(subject, workspace / 'local-image-alias.json', platform=platform, engine=engine)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-shared-alias-platform",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "platform=platform, engine=engine)",
+  "replace": "platform='linux/amd64', engine=engine)",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-shared-alias-engine",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "platform=platform, engine=engine)",
+  "replace": "platform=platform)",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-retained-observation",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    after, subject = observe(engine, image, platform, Path(invocation))",
+  "replace": "    after, subject = before, {'image':'unused', 'manifest':image.rsplit('@', 1)[1], 'config':before['config']}",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-post-alias-call",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    verify_alias(engine, image, platform, subject)\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-kind",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "KIND = 'local-runtime-final'",
+  "replace": "KIND = 'unbound-local-image'",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "image-acceptance.local-unsupported-alias-platform",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "    assert platform in {'linux/amd64', 'linux/arm64', 'linux/riscv64'}, 'Unsupported local alias platform'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
+  "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
+ },
+ {
+  "id": "python-types.image-acceptance-local-strict-type-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py'",
+  "replace": "'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The isolated real type fixture must catch removal of the local FINAL module from strict ty; no real consumer/image proof."
+ },
+ {
+  "id": "python-types.image-acceptance-local-strict-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'docs/scripts/verify_mutations.py'",
+  "replace": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'docs/scripts/verify_mutations.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The isolated annotation fixture must catch removal of the local FINAL module from mandatory ANN001/ANN201; coverage expands without diagnostic exceptions."
  }
 ]

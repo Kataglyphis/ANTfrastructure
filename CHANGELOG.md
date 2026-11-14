@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — bind local FINAL checks to their actual runtime producer
+
+- Add explicit local FINAL acceptance with the entire canonical consumer plan, original source/submodule/lock and cleanup policies, exact manifest/config and completed producer bindings before and after consumer work. Reuse verified alias metadata and the host worker closure. Local schema-2 receipts cannot authorize registry promotion; public checks keep their existing path. Validate every receipt before pruning checkouts, so invalid metadata remains failed evidence. Synthetic controls cover supported lane schemas and refusals, while real FINAL consumers, GPU parity and complete binary licences remain required. See [local FINAL checks](docs/image-acceptance.md#check-an-unpublished-local-final-wrapper).
+
 ## 2026-11-14 — distinguish repaired runtime sources from native Android parents
 
 - Add an explicit paired runtime source/proof selector restricted to the reviewed stable-context repair. Require that checkout's exact complete source proof before tag lookup or engine preparation; retain Android's original source, invocation and native ancestry separately from the new runtime revision and proof hash. The default path and all normal runtime gates remain enabled. Synthetic source/command fixtures prove selection and refusal behavior, not a finished runtime or FINAL acceptance. See [ordinary local runtime](docs/local-proof-workflows.md#ordinary-local-runtime).

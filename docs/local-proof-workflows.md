@@ -240,6 +240,16 @@ not build runtime, authenticate supplied receipts, prove complete binary licence
 or establish FINAL consumer or GPU inference acceptance. Other Linux lanes and
 finished consumer/provider-profile requirements remain separate required work.
 
+## Local FINAL consumer acceptance
+
+The explicit [unpublished FINAL mode](image-acceptance.md#check-an-unpublished-local-final-wrapper)
+uses the existing full consumer runner and a producer-bound local receipt. It shares
+`runtime_worker_files` and the platform/engine-aware `prepare_local_alias` helper;
+copy the complete runtime/native/source profile companions. Actual runtime success,
+canonical producer cleanup and its independent absence query are prerequisites.
+The receipt remains local and cannot promote a registry tag. Fixture and mutation
+coverage establish refusals only, not real consumers or hardware acceptance.
+
 ## Live configure snapshots
 
 Use `snapshot-live-configure.py` beside its `capture-live-sccache-log.py`, `cache_capture_profile.py`, `native_oci_layout.py`, `native_oci_seed.py` and `proof_commands.py` companions. This replaces repeated copying/hash commands before the selected RUN removes its private build directory. The default `--phase migraphx` retains the original GPU profile; `--phase app-wheelhouse` requires a normal live Media unit, its exact outer `build-app-wheelhouse.sh;` command and a root under `tmp/app-wheelhouse/iree-build-target`. Inner children, sibling build trees and other unit families refuse. The current process must match the normal build marker and remain the same start identity throughout copying; its supplied producer unit must be live. The output parent is a plain directory and the new output cannot overlap the source.

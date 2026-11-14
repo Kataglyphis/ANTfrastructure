@@ -82,6 +82,62 @@ attestations bound to an included runtime manifest are excluded from platform co
 Only a registry HTTP 404 permits creating an absent tag; authentication and network
 failures stop promotion.
 
+## Check an unpublished local FINAL wrapper
+
+After a normal Linux runtime actually succeeds, preserve its loaded successful
+producer unit, source/full-preflight receipt and original Android evidence.
+Run its exact invocation-owned cleanup command and independently prove every
+owned container absent. A live or failed producer, changed source/worker bytes,
+missing cleanup, a base/package image or a foreign manifest/config cannot qualify.
+
+Commit the acceptance tooling, then use a fresh workspace and receipt:
+
+```bash
+python3 linux/scripts/image-acceptance.py check \
+  --image docker.io/ant-local/webgpu-NAME@sha256:WRAPPER_MANIFEST \
+  --local-runtime-invocation logs/RUN/invocation.json \
+  --workspace out/acceptance/local/consumers \
+  --receipt logs/image-acceptance/LOCAL_RUN/receipt.json
+```
+
+The mode uses the complete canonical consumer list, commands, refs and timeout;
+only its supported Linux platform may differ. Its lane schemas cover default
+amd64/arm64/riscv64, ROCm amd64 and NVIDIA amd64/arm64. This schema support and its
+synthetic fixtures prove no actual execution on another architecture or GPU.
+Use the ordinary platform-plan command above for a retained non-amd64 plan.
+
+The same consumer runner freezes sources, recursive submodules, data and
+dependency locks, preserves command statuses/logs and checks tracked-source
+cleanliness and container/ownership cleanup. It uses the checked local digest
+alias with pull disabled; it never invents a GHCR reference or intercepts a pull.
+Before alias preparation it verifies the original runtime unit, exact complete
+source proof, full host-worker closure and original Android receipt hashes,
+platform, run/app/parent labels and immutable manifest/config. The alias uses
+the actual source tag and is read back through the shared metadata helper.
+A fresh post-consumer observation must match before the receipt can pass.
+
+Local receipts use schema 2 and explicit local transport and retain the alias
+receipt/hash and both producer/image observations. Keep those files, all consumer
+logs and the original producer/source/parent evidence. Replay uses the same
+`--local-runtime-invocation`, `--replay` and another fresh workspace; its hub revision,
+image, original producer and complete consumer source/lock bindings must match.
+The original local image and loaded successful producer must still be available.
+
+A local receipt cannot authorize registry promotion. The public path rejects
+local schema/transport/origin fields before any registry access and retains its
+normal schema-1 immutable GHCR-index and published-platform checks. Local checks
+do not authenticate supplied receipts, independently reconstruct binary ancestry,
+prove full binary licences, provider placement or finished GPU-app parity.
+Those actual checks remain separate obligations.
+
+Copies using the local mode carry `image_acceptance_local.py`, its
+`source_ci.common` helper and the existing native/source/runtime profile closure
+under `local-proof/`. Required companions fail rather than falling back to another
+checkout. Registry mode remains available without loading the local profiles.
+The local companion joins strict ty and parameter/return-annotation scans; isolated
+mutation fixtures prove both scopes. Receipt validation runs before successful
+checkout pruning, so invalid result metadata keeps failed evidence and sources.
+
 ## Native CI proofs
 
 [`linux-arm64-image-acceptance.yml`](../.github/workflows/linux-arm64-image-acceptance.yml)

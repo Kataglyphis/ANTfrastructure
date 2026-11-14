@@ -522,6 +522,18 @@
       "classification": "versioned",
       "canonical": "linux/scripts/local-proof/runtime_source_profile.py",
       "reason": "Exact reviewed alternate runtime source requires its own complete proof while original Android/native parent bindings remain distinct; no image or FINAL acceptance."
+    },
+    {
+      "name": "image-acceptance.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/image-acceptance.py",
+      "reason": "Shared complete consumer runner; explicit local schema2 remains separate from public registry promotion."
+    },
+    {
+      "name": "image_acceptance_local.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/image_acceptance_local.py",
+      "reason": "Bind completed runtime/source/parent/worker/cleanup evidence to immutable local FINAL identity; synthetic fixtures do not establish actual consumers or inference."
     }
   ],
   "new_canonical_files": [

@@ -29,9 +29,10 @@ def alias_inventory(engine: str, reference: str) -> list[Json]:
     return [row for row in rows if row['Name'] == reference]
 
 
-def prepare_local_alias(actual: Json, path: Path) -> Json:
+def prepare_local_alias(actual: Json, path: Path, *, platform: str = 'linux/amd64', engine: str | None = None) -> Json:
     assert not path.exists() and not path.is_symlink(), 'Preserve prior local alias evidence'
-    engine = str(Path.home() / '.local/bin/nerdctl')
+    assert platform in {'linux/amd64', 'linux/arm64', 'linux/riscv64'}, 'Unsupported local alias platform'
+    engine = engine or str(Path.home() / '.local/bin/nerdctl')
     reference = local_reference(actual)
     record: Json = {'status': 'local-alias-preparation-started', 'reference': reference, 'actual_image': actual,
                     'publication': False, 'scope': 'Local immutable metadata only; no registry availability or image acceptance.'}
@@ -39,7 +40,7 @@ def prepare_local_alias(actual: Json, path: Path) -> Json:
     rows = alias_inventory(engine, reference)
     assert len(rows) <= 1, 'Local immutable alias is ambiguous'
     if rows:
-        assert rows[0]['Digest'] == actual['manifest'] and rows[0]['Platform'] == 'linux/amd64', 'Preserve a foreign existing alias'
+        assert rows[0]['Digest'] == actual['manifest'] and rows[0]['Platform'] == platform, 'Preserve a foreign existing alias'
         record['created'] = False
     else:
         command = [engine, 'image', 'tag', actual['image'], reference]
@@ -49,13 +50,22 @@ def prepare_local_alias(actual: Json, path: Path) -> Json:
         assert result.returncode == 0, 'Local immutable alias creation failed'
         record['created'] = True
     rows = alias_inventory(engine, reference)
-    assert len(rows) == 1 and rows[0]['Digest'] == actual['manifest'] and rows[0]['Platform'] == 'linux/amd64', 'Local immutable alias differs'
+    assert len(rows) == 1 and rows[0]['Digest'] == actual['manifest'] and rows[0]['Platform'] == platform, 'Local immutable alias differs'
     resolved = json.loads(checked_run([engine, 'image', 'inspect', actual['manifest']]).stdout)
     assert len(resolved) == 1 and resolved[0]['Id'] == actual['config'], 'Local immutable alias config differs'
     assert {value.rsplit('@', 1)[1] for value in resolved[0]['RepoDigests']} == {actual['manifest']}, 'Local immutable manifest differs'
     record.update(status='prepared-verified-local-immutable-alias-only', inventory=rows)
     path.write_text(json.dumps(record, indent=2) + '\n')
     return {'local_immutable_alias': record, 'local_alias_receipt_sha256': sha(path)}
+
+
+def runtime_worker_files(host_root: Path) -> list[Path]:
+    scripts = host_root / 'linux/scripts'
+    tools = scripts / 'local-proof'
+    return [tools / name for name in ['runtime_launch_profile.py', 'launch-normal-runtime.py', 'normal_stage_launch.py',
+                                      'android_handoff_profile.py', 'runtime_source_profile.py']] + [
+        scripts / name for name in ['owned-nerdctl.py', 'owned_nerdctl_args.py', 'owned_containers.py',
+                                    'cleanup-owned-containers.py', 'host_commands.py']]
 
 
 def runtime_tags(source: Path, prefix: str) -> tuple[str, ...]:
@@ -105,11 +115,7 @@ def launch_runtime(plan: Json, invocation: Json, invocation_path: Path, parent: 
                       runtime_source_selection=review)
     record.update(stage='runtime', variant='rocm', image_prefix=prefix, app_ref=app_ref, Android_layers_rehashed=parent['layers'],
                   Media_layers_matched=parent['matched_Media_layers_and_diffIDs'], host_tools_revision=checked_run(['git', '-C', str(host_root), 'rev-parse', 'HEAD']).stdout.strip(),
-                  selected_host_workers_sha256={str(path): sha(path) for path in [Path(__file__), Path(__file__).with_name('launch-normal-runtime.py'),
-                      Path(__file__).with_name('normal_stage_launch.py'), Path(__file__).with_name('android_handoff_profile.py'),
-                      Path(__file__).with_name('runtime_source_profile.py'),
-                      scripts / 'owned-nerdctl.py', scripts / 'owned_nerdctl_args.py', scripts / 'owned_containers.py',
-                      scripts / 'cleanup-owned-containers.py', scripts / 'host_commands.py']},
+                  selected_host_workers_sha256={str(path): sha(path) for path in runtime_worker_files(host_root)},
                   run_id=run_id, owner_label=owner_label, expected_runtime_run_id='runtime-' + run_id,
                   engine=engine, engine_wrapper=wrapper, cleanup_command=cleanup,
                   GPU_or_FINAL_acceptance=False, scope=__doc__)

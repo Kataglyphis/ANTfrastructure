@@ -68,6 +68,9 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    byte-identical and map downloaded logs through their artifact-relative metadata paths.
    `--gates-only` exits before builds, candidate creation and promotion, including when
    combined with push flags; it provides no consumer acceptance receipt.
+   Explicit local FINAL acceptance retains the complete canonical consumer plan, its own
+   immutable manifest/config and successful producer/source/cleanup bindings before and after checks;
+   its schema-2 receipt cannot promote a registry tag. Validate receipts before pruning checkouts.
    Linux acceptance restores disposable rootful checkout ownership on every exit;
    failed container cleanup or ownership restoration cannot produce a passed receipt.
    Require a successful engine query to prove every consumer and ownership-helper container absent;
