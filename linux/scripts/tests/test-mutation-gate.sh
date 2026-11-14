@@ -71,6 +71,13 @@ _out="$(t_out _gate_with_input)"
 t_assert_contains "${_out}" "bites" "a test process must see EOF, not the caller's input"
 t_assert_eq "0" "$(t_rc _gate_with_input)" "inherited input must not turn a baseline into a false failure"
 
+t_case "a test that prints bytes that are not UTF-8 is still read, and its catch still bites"
+_fixture "GUARD=on" "GUARD=off" yes .
+# A fuzz test prints the input it failed on, raw: one 0xA4 byte crashed the whole run with UnicodeDecodeError.
+printf 'printf "input: \\244\\n"\ngrep -q "GUARD=on" ./subject.sh\n' > "${_work}/t.sh"
+t_assert_contains "$(_run)" "bites" "the undecodable byte must not cost the verdict"
+t_assert_eq "0" "$(_rc)" "and the run must not crash"
+
 t_case "a mutation the tests SURVIVE is the whole point, and fails the gate"
 _fixture "GUARD=on" "GUARD=off" no
 _out="$(_run)"

@@ -14,6 +14,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — a test output that is not UTF-8 no longer crashes the mutation gate
+
+- `verify_mutations.py` read a test's output as strict UTF-8, so a fuzz test that printed the raw input it failed on
+  (AccelerANTgine's quoting property, one 0xA4 byte) ended the whole run with `UnicodeDecodeError` instead of a
+  verdict. The output is now decoded with `errors="replace"`. Case in `test-mutation-gate.sh`, recipe
+  `mutations.test-output-undecodable`.
+
 ## 2026-11-13 — after a publish, the consumers' lanes run on the new image (CON236, CON235)
 
 - Owner decision of the day: `linux/scripts/dispatch-consumer-lanes.sh --tag TAG` dispatches each consumer's
