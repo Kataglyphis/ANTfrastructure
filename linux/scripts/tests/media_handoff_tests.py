@@ -163,12 +163,12 @@ class MediaTests(unittest.TestCase):
         self.assertNotIn('GPU_invocation', record)
         hashes = record['worker_inputs_sha256']
         self.assertEqual({Path(name).name for name in hashes}, {'context-management.sh', 'native_oci_seed.py', 'native_oci_layout.py',
-                         'native-oci-handoff.py', 'normal_stage_launch.py', 'gpu_handoff_profile.py', 'gpu-oci-handoff.py',
+                         'native-oci-handoff.py', 'normal_stage_launch.py', 'stage_handoff_profile.py', 'gpu_handoff_profile.py', 'gpu-oci-handoff.py',
                          'media_handoff_profile.py', 'media-oci-handoff.py'})
         for name, digest in hashes.items():
             self.assertEqual(sha(Path(name)), digest)
         with self.assertRaisesRegex(AssertionError, 'Unreviewed'):
-            fixtures.CLI['worker_inputs']('android')
+            fixtures.CLI['worker_inputs']('package')
 
     def test_media_export_seal_retains_gpu_layers_and_media_scope(self) -> None:
         _, context, _ = self.native_media()

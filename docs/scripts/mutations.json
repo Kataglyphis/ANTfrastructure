@@ -48224,7 +48224,7 @@
  {
   "id": "compiler-llvm-tools.oci-parent-reuse-parent-status",
   "target": "linux/scripts/local-proof/native_oci_seed.py",
-  "find": "assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only', MEDIA_STATUS}, 'Verified native OCI parent required'",
+  "find": "assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only', MEDIA_STATUS, ANDROID_STATUS}, 'Verified native OCI parent required'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
   "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
@@ -50207,56 +50207,56 @@
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-26",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert proof['status'] == STATUS and proof['GPU_invocation'] == str(invocation_path.resolve()), 'GPU OCI proof scope differs'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['status'] == status and proof[kind + '_invocation'] == str(invocation_path.resolve()), f'{kind} OCI proof scope differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-27",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert proof['GPU_invocation_sha256'] == sha(invocation_path), 'GPU invocation bytes changed'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof[kind + '_invocation_sha256'] == sha(invocation_path), f'{kind} invocation bytes changed'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-28",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert proof['source_revision'] == invocation['source_revision'], 'GPU OCI source differs'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['source_revision'] == invocation['source_revision'], f'{kind} OCI source differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-29",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert proof['parent_OCI_proof_sha256'] == invocation['parent_OCI_proof_sha256'], 'GPU OCI SDK proof differs'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['parent_OCI_proof_sha256'] == invocation['parent_OCI_proof_sha256'], f'{kind} OCI {parent_kind} proof differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-30",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert proof['export_transport'] == {'producer_status':0, 'extractor_status':0} and proof['parent_layer_reuse_verified'], 'GPU export transport failed'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['export_transport'] == {'producer_status': 0, 'extractor_status': 0} and proof['parent_layer_reuse_verified'], f'{kind} export transport failed'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-31",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert proof['matched_SDK_layers_and_diffIDs'] == parent['layers'], 'GPU SDK coverage differs'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['matched_' + parent_kind + '_layers_and_diffIDs'] == parent['layers'], f'{kind} {parent_kind} coverage differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-32",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert proof['manifest'] == actual['manifest'] and proof['config'] == actual['config'], 'Engine GPU image differs'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['manifest'] == actual['manifest'] and proof['config'] == actual['config'], f'Engine {kind} image differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
@@ -50367,8 +50367,8 @@
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-ancestry",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "    layer_ancestry(native, sdk, parent['layers'])",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "    layer_ancestry(native, ancestor, parent['layers'])",
   "replace": "    pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Preserve real ancestry checks, raw failures and required Wasm forwarding; fixtures do not prove image completion or hardware inference."
@@ -50607,24 +50607,24 @@
  },
  {
   "id": "compiler-llvm-tools.media-handoff-profile-01",
-  "target": "linux/scripts/local-proof/media_handoff_profile.py",
-  "find": "assert invocation['parent_source_revision'] == gpu['source_revision'], 'Media parent source differs'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert invocation['parent_source_revision'] == previous['source_revision'], 'Downstream parent source differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.media-handoff-profile-02",
-  "target": "linux/scripts/local-proof/media_handoff_profile.py",
-  "find": "assert invocation['GPU_layers_rehashed'] == parent['layers'], 'Media GPU layer coverage differs'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert invocation[parent_kind + '_layers_rehashed'] == parent['layers'], 'Downstream parent layer coverage differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.media-handoff-profile-03",
-  "target": "linux/scripts/local-proof/media_handoff_profile.py",
-  "find": "assert invocation['SDK_layers_matched'] == parent['matched_SDK_layers_and_diffIDs'], 'Media SDK ancestry differs'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert invocation[ancestor_kind + '_layers_matched'] == parent['matched_' + ancestor_kind + '_layers_and_diffIDs'], 'Downstream ancestry differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
@@ -50647,80 +50647,80 @@
  },
  {
   "id": "compiler-llvm-tools.media-handoff-profile-06",
-  "target": "linux/scripts/local-proof/media_handoff_profile.py",
-  "find": "assert Path(invocation['output']) == invocation_path.resolve().parent, 'Media output binding differs'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert Path(invocation['output']) == invocation_path.resolve().parent, f'{kind} output binding differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.media-handoff-profile-07",
-  "target": "linux/scripts/local-proof/media_handoff_profile.py",
-  "find": "assert sha(gpu_path) == invocation['GPU_invocation_sha256'] and sha(proof_path) == invocation['parent_OCI_proof_sha256'], 'Media parent receipt bytes changed'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert sha(parent_path) == invocation[parent_kind + '_invocation_sha256'] and sha(proof_path) == invocation['parent_OCI_proof_sha256'], f'{kind} parent receipt bytes changed'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.media-handoff-profile-08",
-  "target": "linux/scripts/local-proof/media_handoff_profile.py",
-  "find": "assert proof['status'] == STATUS and proof['Media_invocation'] == str(invocation_path.resolve()), 'Media OCI proof scope differs'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['status'] == status and proof[kind + '_invocation'] == str(invocation_path.resolve()), f'{kind} OCI proof scope differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.media-handoff-profile-09",
-  "target": "linux/scripts/local-proof/media_handoff_profile.py",
-  "find": "assert proof['Media_invocation_sha256'] == sha(invocation_path), 'Media invocation bytes changed'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof[kind + '_invocation_sha256'] == sha(invocation_path), f'{kind} invocation bytes changed'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.media-handoff-profile-10",
-  "target": "linux/scripts/local-proof/media_handoff_profile.py",
-  "find": "assert proof['source_revision'] == invocation['source_revision'], 'Media OCI source differs'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['source_revision'] == invocation['source_revision'], f'{kind} OCI source differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.media-handoff-profile-11",
-  "target": "linux/scripts/local-proof/media_handoff_profile.py",
-  "find": "assert proof['parent_OCI_proof_sha256'] == invocation['parent_OCI_proof_sha256'], 'Media OCI GPU proof differs'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['parent_OCI_proof_sha256'] == invocation['parent_OCI_proof_sha256'], f'{kind} OCI {parent_kind} proof differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.media-handoff-profile-12",
-  "target": "linux/scripts/local-proof/media_handoff_profile.py",
-  "find": "assert proof['export_transport'] == {'producer_status': 0, 'extractor_status': 0} and proof['parent_layer_reuse_verified'], 'Media export transport failed'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['export_transport'] == {'producer_status': 0, 'extractor_status': 0} and proof['parent_layer_reuse_verified'], f'{kind} export transport failed'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.media-handoff-profile-13",
-  "target": "linux/scripts/local-proof/media_handoff_profile.py",
-  "find": "assert proof['matched_GPU_layers_and_diffIDs'] == parent['layers'], 'Media GPU coverage differs'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['matched_' + parent_kind + '_layers_and_diffIDs'] == parent['layers'], f'{kind} {parent_kind} coverage differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.media-handoff-profile-14",
-  "target": "linux/scripts/local-proof/media_handoff_profile.py",
-  "find": "assert proof['manifest'] == actual['manifest'] and proof['config'] == actual['config'], 'Engine Media image differs'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['manifest'] == actual['manifest'] and proof['config'] == actual['config'], f'Engine {kind} image differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.media-handoff-profile-15",
-  "target": "linux/scripts/local-proof/media_handoff_profile.py",
-  "find": "assert invocation[field] == gpu[field], 'Media must retain its exact proven GPU source'",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert invocation[field] == previous[field], 'Downstream must retain its exact proven parent source'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
@@ -50792,7 +50792,7 @@
  {
   "id": "compiler-llvm-tools.media-handoff-export-worker-closure",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "if kind == 'media':",
+  "find": "if kind in {'media', 'android'}:",
   "replace": "if False:",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
@@ -50856,17 +50856,225 @@
  {
   "id": "compiler-llvm-tools.media-handoff-native-media-parent",
   "target": "linux/scripts/local-proof/native_oci_seed.py",
-  "find": ", MEDIA_STATUS}",
-  "replace": "}",
+  "find": ", MEDIA_STATUS, ANDROID_STATUS}",
+  "replace": ", ANDROID_STATUS}",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
  },
  {
   "id": "compiler-llvm-tools.media-handoff-native-ancestry",
-  "target": "linux/scripts/local-proof/media_handoff_profile.py",
-  "find": "    layer_ancestry(native, gpu, parent['layers'])",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "    layer_ancestry(native, ancestor, parent['layers'])",
   "replace": "    pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Valid but unrelated Media blobs must not replace the exact recorded GPU layer descriptors and diffIDs."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-shared-guard-01",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert invocation[field] == previous[field], 'Downstream must retain its exact proven parent source'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-shared-guard-02",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert invocation['parent_source_revision'] == previous['source_revision'], 'Downstream parent source differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-shared-guard-03",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert invocation[parent_kind + '_layers_rehashed'] == parent['layers'], 'Downstream parent layer coverage differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-shared-guard-04",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert invocation[ancestor_kind + '_layers_matched'] == parent['matched_' + ancestor_kind + '_layers_and_diffIDs'], 'Downstream ancestry differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-shared-guard-05",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert Path(invocation['output']) == invocation_path.resolve().parent, f'{kind} output binding differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-shared-guard-06",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert sha(parent_path) == invocation[parent_kind + '_invocation_sha256'] and sha(proof_path) == invocation['parent_OCI_proof_sha256'], f'{kind} parent receipt bytes changed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-shared-guard-07",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['status'] == status and proof[kind + '_invocation'] == str(invocation_path.resolve()), f'{kind} OCI proof scope differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-shared-guard-08",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof[kind + '_invocation_sha256'] == sha(invocation_path), f'{kind} invocation bytes changed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-shared-guard-09",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['source_revision'] == invocation['source_revision'], f'{kind} OCI source differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-shared-guard-10",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['parent_OCI_proof_sha256'] == invocation['parent_OCI_proof_sha256'], f'{kind} OCI {parent_kind} proof differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-shared-guard-11",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['export_transport'] == {'producer_status': 0, 'extractor_status': 0} and proof['parent_layer_reuse_verified'], f'{kind} export transport failed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-shared-guard-12",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['matched_' + parent_kind + '_layers_and_diffIDs'] == parent['layers'], f'{kind} {parent_kind} coverage differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-shared-guard-13",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "assert proof['manifest'] == actual['manifest'] and proof['config'] == actual['config'], f'Engine {kind} image differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-shared-command",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "    validate_stage_invocation(invocation, parent, stage, previous['image'])",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-shared-native-ancestry",
+  "target": "linux/scripts/local-proof/stage_handoff_profile.py",
+  "find": "    layer_ancestry(native, ancestor, parent['layers'])",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-stage-and-variant",
+  "target": "linux/scripts/local-proof/android_handoff_profile.py",
+  "find": "assert invocation['stage'] == 'android' and invocation['variant'] == 'rocm', 'Only ordinary ROCm Android is reviewed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-inherited-source-call",
+  "target": "linux/scripts/local-proof/android_handoff_profile.py",
+  "find": "    validate_inherited_source(invocation, parent, media, 'android', 'Media', 'GPU')",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-load-validation",
+  "target": "linux/scripts/local-proof/android_handoff_profile.py",
+  "find": "    validate_android(invocation, parent, media)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-load-media-parent",
+  "target": "linux/scripts/local-proof/android_handoff_profile.py",
+  "find": "'Android', 'Media', load_media, media_layout",
+  "replace": "'Android', 'GPU', load_media, media_layout",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-native-layout-subject",
+  "target": "linux/scripts/local-proof/android_handoff_profile.py",
+  "find": "'Android', 'Media', STATUS, actual_image",
+  "replace": "'Media', 'Media', STATUS, actual_image",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-native-layout-parent",
+  "target": "linux/scripts/local-proof/android_handoff_profile.py",
+  "find": "'Android', 'Media', STATUS, actual_image",
+  "replace": "'Android', 'GPU', STATUS, actual_image",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-export-scope",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "'android': ('Android', 'Media', ANDROID_STATUS)",
+  "replace": "'android': ('Android', 'GPU', STATUS)",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-worker-closure",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "if kind == 'android':",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-inherited-worker-closure",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "if kind in {'media', 'android'}:",
+  "replace": "if kind == 'media':",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-entry-kind",
+  "target": "linux/scripts/local-proof/android-oci-handoff.py",
+  "find": "return TRANSPORT['main_for']('android', load_android)",
+  "replace": "return TRANSPORT['main_for']('media', load_android)",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.android-handoff-native-parent-status",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": ", MEDIA_STATUS, ANDROID_STATUS}",
+  "replace": ", MEDIA_STATUS}",
+  "test": "bash linux/scripts/tests/test-android-handoff.sh",
+  "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
  }
 ]

@@ -388,7 +388,7 @@ class HandoffTests(unittest.TestCase):
     def test_export_inputs_bind_every_runtime_companion(self) -> None:
         hashes = CLI['worker_inputs']()
         self.assertEqual({Path(path).name for path in hashes},{'context-management.sh','native_oci_seed.py',
-                         'native_oci_layout.py','native-oci-handoff.py','normal_stage_launch.py','gpu_handoff_profile.py','gpu-oci-handoff.py'})
+                         'native_oci_layout.py','native-oci-handoff.py','normal_stage_launch.py','stage_handoff_profile.py','gpu_handoff_profile.py','gpu-oci-handoff.py'})
         for path,sha256 in hashes.items():
             self.assertEqual(fixtures.sha(Path(path)),sha256)
 

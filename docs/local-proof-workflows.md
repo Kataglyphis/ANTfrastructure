@@ -139,6 +139,38 @@ Linux architectures and variants require their actual lane proofs. Runtime must
 consume this run's verified Android output; a resumed no-push chain cannot supply
 that prefix from a mutable or published tag.
 
+## Native Android export
+
+After the same ordinary ROCm amd64 Android producer actually succeeds, use
+`android-oci-handoff.py launch|seal --compiler-plan PLAN --android-invocation
+ANDROID_INVOCATION --context FRESH_PARENT/android-context-NAME --unit
+webgpu-normal-android-export-amd64-DATE-N.service`. It requires the exact source
+and complete preflight already bound to Media, the original successful loaded
+producer units, both required Media Wasm flags, the stopped native Media receipt
+and its full GPU/SDK/compiler ancestry. The immutable local manifest must resolve
+to the same config as the Android tag; an ordinary invocation alone is insufficient.
+
+The bounded shared exporter retains the Android subject, all Media layer
+descriptors and diffIDs, independent child metadata, complete blob hashes and both
+raw transport statuses. Sealing requires the exact original worker files and
+verified parent-layer identities before stopping the export unit. Preserve all
+existing receipts and their original tool-path/hash bindings. Fresh ordinary
+180-GiB admission remains mandatory before export, with no floor override.
+
+Copies of the GPU, Media and Android profiles carry `stage_handoff_profile.py`,
+`normal_stage_launch.py` and the native OCI helpers. Android additionally carries
+`android_handoff_profile.py` and its Media/GPU companions; the worker inventory
+binds that recursive closure. Their shared source, receipt and ancestry checks
+retain each caller's own stage labels and Media's required Wasm checks.
+
+`test-android-handoff.sh` uses synthetic real OCI bytes and explicit engine/unit
+and parent doubles, including known but wrong stage receipts and unrelated valid
+parent bytes. Its mutations detect lost bindings and preserve raw failures. This
+does not build Android, authenticate supplied receipts, prove binary licences or
+run inference. Runtime must consume this actual verified Android output; the
+ordinary final wrapper and fresh digest-specific six-consumer acceptance remain
+separate required steps.
+
 ## Live configure snapshots
 
 Use `snapshot-live-configure.py` beside its `capture-live-sccache-log.py`, `cache_capture_profile.py`, `native_oci_layout.py`, `native_oci_seed.py` and `proof_commands.py` companions. This replaces repeated copying/hash commands before the selected RUN removes its private build directory. The default `--phase migraphx` retains the original GPU profile; `--phase app-wheelhouse` requires a normal live Media unit, its exact outer `build-app-wheelhouse.sh;` command and a root under `tmp/app-wheelhouse/iree-build-target`. Inner children, sibling build trees and other unit families refuse. The current process must match the normal build marker and remain the same start identity throughout copying; its supplied producer unit must be live. The output parent is a plain directory and the new output cannot overlap the source.

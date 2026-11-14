@@ -474,6 +474,24 @@
       "classification": "versioned",
       "canonical": "linux/scripts/local-proof/launch-normal-android.py",
       "reason": "Exact native ROCm Media/GPU ancestry and ordinary Android handoff; no image or hardware acceptance."
+    },
+    {
+      "name": "stage_handoff_profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/stage_handoff_profile.py",
+      "reason": "Shared exact downstream source/native ancestry and explicit Android export; no source authentication or FINAL acceptance."
+    },
+    {
+      "name": "android_handoff_profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/android_handoff_profile.py",
+      "reason": "Shared exact downstream source/native ancestry and explicit Android export; no source authentication or FINAL acceptance."
+    },
+    {
+      "name": "android-oci-handoff.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/android-oci-handoff.py",
+      "reason": "Shared exact downstream source/native ancestry and explicit Android export; no source authentication or FINAL acceptance."
     }
   ],
   "new_canonical_files": [

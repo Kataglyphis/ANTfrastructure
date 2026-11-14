@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — preserve native Android ancestry before runtime
+
+- Add the persistent ROCm amd64 native Android export entry and profile. Share source, receipt and OCI ancestry checks with GPU/Media while retaining exact stage labels, required Media Wasm flags, original worker bindings, raw transport failures and ordinary disk admission. Synthetic native-byte controls and executable mutations reject unrelated or changed parents. This is a host handoff, not final wrapper, licence or hardware acceptance. See [native Android export](docs/local-proof-workflows.md#native-android-export).
+
 ## 2026-11-14 — preserve native Media-to-Android handoff
 
 - Bind the ordinary ROCm Media producer to its exact proven GPU source, required Wasm flags and native parent receipts. Reuse the bounded native exporter with distinct Media subjects, all GPU ancestry and raw transport statuses, then launch normal Android from that immutable Media layout. Shared stage/source metadata preserves the existing GPU/SDK contracts and refuses changed inputs or publication flags. Synthetic byte/command fixtures and executable mutations cover the boundaries; actual Media/Android completion, native/GIL/FT products, licences, runtime and FINAL consumers remain separate required proofs. See [the handoff workflow](docs/local-proof-workflows.md#native-media-to-android-handoff).

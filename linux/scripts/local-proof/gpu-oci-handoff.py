@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export reviewed ordinary ROCm amd64 GPU/Media with native parent ancestry; no full licence closure, inference or FINAL acceptance."""
+"""Export reviewed ordinary ROCm amd64 GPU/Media/Android with native parent ancestry; no full licence closure, inference or FINAL acceptance."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 from gpu_handoff_profile import STATUS, actual_image, load_gpu, terminal
 from native_oci_layout import layer_ancestry, native_layout, sha
-from native_oci_seed import MEDIA_STATUS, verify_seed
+from native_oci_seed import ANDROID_STATUS, MEDIA_STATUS, verify_seed
 from proof_commands import checked_run
 
 if TYPE_CHECKING:
@@ -24,7 +24,8 @@ if TYPE_CHECKING:
     from proof_types import Json
 
 COMMON = runpy.run_path(str(Path(__file__).with_name('native-oci-handoff.py')))
-EXPORTS = {'gpu': ('GPU', 'SDK', STATUS), 'media': ('Media', 'GPU', MEDIA_STATUS)}
+EXPORTS = {'gpu': ('GPU', 'SDK', STATUS), 'media': ('Media', 'GPU', MEDIA_STATUS),
+           'android': ('Android', 'Media', ANDROID_STATUS)}
 
 
 def export_profile(kind: str) -> tuple[str, str, str]:
@@ -36,9 +37,11 @@ def worker_inputs(kind: str = 'gpu') -> dict[str, str]:
     export_profile(kind)
     directory = Path(__file__).resolve().parent
     paths = [directory.parent / '01-core/context-management.sh',
-             *(directory / name for name in ('native_oci_seed.py', 'native_oci_layout.py', 'native-oci-handoff.py', 'normal_stage_launch.py', 'gpu_handoff_profile.py', 'gpu-oci-handoff.py'))]
-    if kind == 'media':
+             *(directory / name for name in ('native_oci_seed.py', 'native_oci_layout.py', 'native-oci-handoff.py', 'normal_stage_launch.py', 'stage_handoff_profile.py', 'gpu_handoff_profile.py', 'gpu-oci-handoff.py'))]
+    if kind in {'media', 'android'}:
         paths += [directory / name for name in ('media_handoff_profile.py', 'media-oci-handoff.py')]
+    if kind == 'android':
+        paths += [directory / name for name in ('android_handoff_profile.py', 'android-oci-handoff.py')]
     return {str(path):sha(path) for path in paths}
 
 

@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from gpu_source_profile import select_gpu_source
-from native_oci_layout import layer_ancestry, sha
-from native_oci_seed import parent_layout
+from native_oci_layout import sha
 from normal_stage_launch import full_source, validate_stage_invocation
 from proof_commands import checked_run
+from stage_handoff_profile import native_stage_layout
 
 if TYPE_CHECKING:
     from proof_types import Json
@@ -72,15 +72,4 @@ def actual_image(invocation: Json) -> Json:
 
 
 def gpu_layout(proof_path: Path, invocation_path: Path, invocation: Json, parent: Json) -> tuple[Json, Path]:
-    proof, context, native = parent_layout(proof_path)
-    assert proof['status'] == STATUS and proof['GPU_invocation'] == str(invocation_path.resolve()), 'GPU OCI proof scope differs'
-    assert proof['GPU_invocation_sha256'] == sha(invocation_path), 'GPU invocation bytes changed'
-    assert proof['source_revision'] == invocation['source_revision'], 'GPU OCI source differs'
-    assert proof['parent_OCI_proof_sha256'] == invocation['parent_OCI_proof_sha256'], 'GPU OCI SDK proof differs'
-    assert proof['export_transport'] == {'producer_status':0, 'extractor_status':0} and proof['parent_layer_reuse_verified'], 'GPU export transport failed'
-    _, _, sdk = parent_layout(Path(invocation['parent_OCI_proof']))
-    assert proof['matched_SDK_layers_and_diffIDs'] == parent['layers'], 'GPU SDK coverage differs'
-    layer_ancestry(native, sdk, parent['layers'])
-    actual = actual_image(invocation)
-    assert proof['manifest'] == actual['manifest'] and proof['config'] == actual['config'], 'Engine GPU image differs'
-    return proof, context
+    return native_stage_layout(proof_path, invocation_path, invocation, parent, 'GPU', 'SDK', STATUS, actual_image)
