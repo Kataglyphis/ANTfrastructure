@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — qualify the repaired GPU source before its ordinary rebuild
+
+- The frozen SQLite-loader source `8c4e13b0` passes all 6,246 mutations/42 default groups and 617 suites/32,480 assertions; the complete receipt binds exact IDs, successful cleanup, independent container absence and stopped test unit. Separate host selector tools `158daf7f` pass their affected-source and normal-hook checks. No repaired GPU image or Media acceptance follows: the fresh 180-GiB admission still refuses and the remaining regular cache cannot cover the gap. Preserve the original GPU4 runtime failure and all protected data. The actual configure snapshot also identifies vendor SQLite 3.51.3 and nlohmann/json 3.12.0; this is selection evidence, not completed binary licence review. See [the loader evidence and remaining scope](docs/linux-accelerator-images.md#source-backend-entry-library-loads).
+
 ## 2026-11-14 — bind native GPU export to a checked local manifest selector
 
 - The actual Docker-loaded local GPU4 image resolves by immutable manifest ID, while its digest-qualified repository name and inspected config ID do not resolve as local image selectors. Use the manifest for the bounded host export and independently require its lookup to match the tagged image's config and manifest. Preserve all native byte/SDK ancestry, source proof, raw status, disk and final-acceptance guards; Media keeps repository@digest with its native context. Command fixtures, refusal controls and executable mutations cover this selector boundary. The actual engine readback proves resolution only, not a completed export, rebuilt image or hardware inference. See [the observed local resolution failure](docs/failure-modes.md#local-docker-loaded-gpu-image-does-not-resolve-by-repositorydigest).

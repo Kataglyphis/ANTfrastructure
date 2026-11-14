@@ -66,6 +66,15 @@ inspection reports that RepoDigest; its inspected config ID is a different ident
 Media's FROM still uses repository@digest with the verified native OCI context.
 The unchanged byte reserve applies before starting; existing units, contexts and receipts refuse.
 
+The 2026-11-14 loader repair has a complete 6,246-mutation/42-group source proof
+at exact production `8c4e13b0`; qualified host tools are separate at `158daf7f`.
+The next `launch-normal-gpu.py` must explicitly select that production source and
+its new `rocm-sqlite-loader-20261114/full-preflight-1/complete-preflight-proof.json`,
+retaining the original `amdgpu-codegen-20261114` compiler plan, SDK invocation and
+stopped native SDK proof. A tool or documentation descendant is not the image
+producer and does not inherit the production source receipt. The real GPU rebuild,
+native export, both actual Wasm modes and final consumers remain required.
+
 Sealing rehashes the complete native OCI layout, verifies all SDK descriptors/diffIDs and
 immutable shared parent layer identities, and requires both actual export pipeline statuses.
 Only after a successful stop and independent terminal-state observation is a stopped receipt

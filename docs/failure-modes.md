@@ -41,8 +41,10 @@ entry libraries, checking containment and recorded hashes before success.
 The new gate fails on the unchanged image and passes in a disposable corrected
 publisher replay, including two independent cold source-library mappings.
 Keep the original failure, maps, statuses and checked container absence. This
-replay does not accept the original image; complete exact-source QA, an ordinary
-rebuild, full licences and final consumers remain required. See [the gate's scope](linux-accelerator-images.md#source-backend-entry-library-loads).
+replay does not accept the original image. Exact repaired source `8c4e13b0` now
+passes its complete 6,246-mutation/42-group preflight with sealed cleanup and
+independent absence; an ordinary rebuild, full licences and final consumers
+remain required. The next build still needs fresh unchanged 180-GiB admission. See [the gate's scope](linux-accelerator-images.md#source-backend-entry-library-loads).
 
 ## MIGraphX install refused: Repeated normalized install path
 

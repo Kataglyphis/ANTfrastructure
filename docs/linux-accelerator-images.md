@@ -1169,6 +1169,33 @@ raw statuses, process maps and independent container absence are retained under
 `logs/test-results/webgpu-registration-20261110/rocm-sqlite-loader-20261114/image-replay-1/`.
 The original image stays unchanged. This replay is not a normally rebuilt image.
 
+The exact repaired production commit `8c4e13b01fb43f8f55e5ca39aa7c0109d23504e5`
+passes all 6,246 actual registry mutations, all 42 default groups and 617 suites
+with 32,480 assertions. The complete source receipt at
+`logs/test-results/webgpu-registration-20261110/rocm-sqlite-loader-20261114/full-preflight-1/complete-preflight-proof.json`
+has SHA256 `8df2bdea4f10936a5577207c701d0df30801fa6a664d74ed74c2240cd3933db3`.
+Its raw command, cleanup and independent engine-query statuses are zero; the
+owned container is absent and test unit stopped. This does not accept a GPU image.
+Separate host selector commit `158daf7f` passes 122 affected mutations, 26 quality
+groups and 16 normal-hook controls; its read-only original-image selector replay
+proves resolution, not native export or Media. The next ordinary GPU source remains
+the exact production commit above, with the original qualified compiler/SDK.
+
+After that source run, actual disk admission reports 171,158,962,176 bytes available
+against the unchanged 193,273,528,320-byte floor. All 12 cachemounts and 50 local
+image identities remain present; only 12,789,941,806 bytes of regular layer cache
+remain, insufficient even if all were reclaimable. No GPU5, native GPU export or
+Media build has started. The existing request for additional space or an explicit
+additional cleanup target remains pending; source qualification does not waive
+resource admission or authorize deleting protected outputs.
+
+The original backend's preserved actual `CMakeCache.txt` selects vendor SQLite
+3.51.3 from `/opt/rocm/core/lib/rocm_sysdeps` and nlohmann/json 3.12.0 from
+`/opt/rocm/share/cmake/nlohmann_json`. Their selected-source and notice obligations
+still need the complete linked-binary review; the existing original-notice receipt
+continues to record `complete_binary_licence_review=false`. Configuration selection
+alone does not prove which dependency bytes reached the finished binary.
+
 The baked gate checks absolute entry loads. Its tiny native DSO and child-command
 fixtures prove hash/path refusals, actual dispatch, order and fatal errors, without
 proving vendor compilation or GPU inference. Neither entry loading nor the
