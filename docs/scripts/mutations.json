@@ -51584,8 +51584,8 @@
  {
   "id": "compiler-llvm-tools.runtime-cli-app",
   "target": "linux/scripts/local-proof/launch-normal-runtime.py",
-  "find": "args.unit, args.image_prefix, args.app_ref)",
-  "replace": "args.unit, args.image_prefix, 'develop')",
+  "find": "args.output.resolve(), args.unit, args.image_prefix, args.app_ref,\n",
+  "replace": "args.output.resolve(), args.unit, args.image_prefix, 'develop',\n",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
  },
@@ -51692,5 +51692,197 @@
   "replace": "'--run-id', run_id, '--output'",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "The actual cleanup CLI must run with its required CID-file argument and invocation label; an empty engine double proves parsing and status, not real container cleanup."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-assert-1",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "        assert proof_path is None, 'Alternate runtime proof requires its selected source'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent paired-selection, parent-lane and complete-proof controls must refuse before engine preparation; fixtures prove no actual runtime or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-assert-2",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "    assert proof_path is not None, 'Alternate runtime source requires its complete source proof'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent paired-selection, parent-lane and complete-proof controls must refuse before engine preparation; fixtures prove no actual runtime or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-assert-3",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "    assert source != producer.resolve(strict=True), 'Alternate runtime source must be distinct'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent paired-selection, parent-lane and complete-proof controls must refuse before engine preparation; fixtures prove no actual runtime or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-assert-4",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "    assert invocation['source_revision'] == ANDROID_REVISION, 'Runtime repair requires the reviewed original Android source'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent paired-selection, parent-lane and complete-proof controls must refuse before engine preparation; fixtures prove no actual runtime or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-assert-5",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "    assert invocation['stage'] == 'android' and invocation['variant'] == 'rocm' and invocation['target_arch'] == 'amd64', 'Reviewed Android lane required'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent paired-selection, parent-lane and complete-proof controls must refuse before engine preparation; fixtures prove no actual runtime or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-reviewed-runtime-pin",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "RUNTIME_REVISION = 'ec3be1855d2adee3622e36ac99cc76afcbfc5795'",
+  "replace": "RUNTIME_REVISION = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-original-android-pin",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "ANDROID_REVISION = '8c4e13b01fb43f8f55e5ca39aa7c0109d23504e5'",
+  "replace": "ANDROID_REVISION = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-full-proof-delegation",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "    complete = full_source(source, proof_path, RUNTIME_REVISION)",
+  "replace": "    complete = {'actual_full_registry_mutations':6507, 'actual_preflight_group_count':42}",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-selected-checkout",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "    return source, review",
+  "replace": "    return producer, review",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-proof-bytes",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "'runtime_full_source_proof_sha256': sha(proof_path)",
+  "replace": "'runtime_full_source_proof_sha256': 'unverified'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-parent-identity",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "'Android_source_revision': invocation['source_revision']",
+  "replace": "'Android_source_revision': RUNTIME_REVISION",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-source-accounting",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "'full_registry_mutations': complete['actual_full_registry_mutations']",
+  "replace": "'full_registry_mutations': 0",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-group-accounting",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "'all_preflight_groups': complete['actual_preflight_group_count']",
+  "replace": "'all_preflight_groups': 0",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-no-cache-claim",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "'cache_hits_claimed': False",
+  "replace": "'cache_hits_claimed': True",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-selection-required",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "    source, review = select_runtime_source(invocation, selected_source, source_proof)",
+  "replace": "    source, review = Path(invocation['source']), None",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-source-forwarding",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "select_runtime_source(invocation, selected_source, source_proof)",
+  "replace": "select_runtime_source(invocation, None, source_proof)",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-proof-forwarding",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "select_runtime_source(invocation, selected_source, source_proof)",
+  "replace": "select_runtime_source(invocation, selected_source, None)",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-record-runtime-head",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "source_revision=review['runtime_source_revision']",
+  "replace": "source_revision=invocation['source_revision']",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-record-runtime-proof",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "source_full_preflight_proof=review['runtime_full_source_proof']",
+  "replace": "source_full_preflight_proof=invocation['source_full_preflight_proof']",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-record-runtime-proof-sha",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "source_full_preflight_sha256=review['runtime_full_source_proof_sha256']",
+  "replace": "source_full_preflight_sha256=invocation['source_full_preflight_sha256']",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-record-reviewed-selection",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "runtime_source_selection=review)",
+  "replace": "runtime_source_selection={})",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-worker-companion",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "                      Path(__file__).with_name('runtime_source_profile.py'),\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-cli-selected-source",
+  "target": "linux/scripts/local-proof/launch-normal-runtime.py",
+  "find": "selected_source=args.runtime_source",
+  "replace": "selected_source=None",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-cli-selected-proof",
+  "target": "linux/scripts/local-proof/launch-normal-runtime.py",
+  "find": "source_proof=args.runtime_source_proof",
+  "replace": "source_proof=None",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
  }
 ]

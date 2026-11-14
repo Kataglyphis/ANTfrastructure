@@ -22,6 +22,7 @@ import normal_stage_tests as stage_fixtures
 from normal_stage_tests import STAGE
 
 PROFILE = importlib.import_module('runtime_launch_profile')
+SOURCE_PROFILE = importlib.import_module('runtime_source_profile')
 ENTRY = runpy.run_path(str(fixtures.TOOLS / 'launch-normal-runtime.py'))
 
 
@@ -61,7 +62,8 @@ class RuntimeTests(unittest.TestCase):
         self.plan_path = f.fixture.fixture.plan_path
 
     def profile_call(self, *, unit: str | None = None, prefix: str | None = None, app_ref: str | None = None,
-                     context: Path | None = None, dirty: bool = False) -> tuple[int, mock.Mock]:
+                     context: Path | None = None, dirty: bool = False, selected_source: Path | None = None,
+                     source_proof: Path | None = None) -> tuple[int, mock.Mock]:
         original = PROFILE.checked_run
         def checked(command: list[str], **options: object) -> subprocess.CompletedProcess[str]:
             if command[0] == 'git':
@@ -75,7 +77,7 @@ class RuntimeTests(unittest.TestCase):
                 mock.patch.object(PROFILE.uuid, 'uuid4', return_value=mock.Mock(hex='c' * 32)):
             result = PROFILE.launch_runtime(self.plan, self.fixture.android, self.fixture.invocation, self.parent,
                         context or self.context, self.proof_path, self.output, unit or self.unit,
-                        prefix or self.prefix, app_ref or self.app_ref)
+                        prefix or self.prefix, app_ref or self.app_ref, selected_source=selected_source, source_proof=source_proof)
         return result, launcher
 
     def test_normal_driver_pins_actual_android_app_and_full_runtime_gates(self) -> None:
@@ -106,7 +108,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(record['app_ref'], self.app_ref)
         self.assertFalse(record['GPU_or_FINAL_acceptance'])
         self.assertEqual(record['host_tools_revision'], 'b' * 40)
-        workers = [fixtures.TOOLS / name for name in ['runtime_launch_profile.py', 'launch-normal-runtime.py', 'normal_stage_launch.py', 'android_handoff_profile.py']]
+        workers = [fixtures.TOOLS / name for name in ['runtime_launch_profile.py', 'launch-normal-runtime.py', 'normal_stage_launch.py', 'android_handoff_profile.py', 'runtime_source_profile.py']]
         workers += [fixtures.TOOLS.parent / name for name in ['owned-nerdctl.py', 'owned_nerdctl_args.py', 'owned_containers.py', 'cleanup-owned-containers.py', 'host_commands.py']]
         self.assertEqual(record['selected_host_workers_sha256'], {str(path): fixtures.sha(path) for path in workers})
         self.assertEqual(record['run_id'], 'c' * 32)
@@ -119,6 +121,87 @@ class RuntimeTests(unittest.TestCase):
         with mock.patch.object(PROFILE, 'prepare_local_alias', return_value={'prepared': True}) as prepare:
             self.assertEqual(launcher.call_args.kwargs['prepare'](), {'prepared': True})
         prepare.assert_called_once_with(self.actual, self.output / 'local-alias.json')
+
+    def alternate_source_fixture(self) -> tuple[Path, Path, dict]:
+        source = self.work / 'repaired-runtime-source'
+        source.mkdir()
+        proof = self.work / 'runtime-full-source.json'
+        proof.write_text('{}')
+        invocation = dict(self.fixture.android, source_revision='8c4e13b01fb43f8f55e5ca39aa7c0109d23504e5')
+        return source, proof, invocation
+
+    def test_alternate_source_binds_its_own_exact_complete_proof(self) -> None:
+        source, proof, invocation = self.alternate_source_fixture()
+        complete = {'actual_full_registry_mutations':6507, 'actual_preflight_group_count':42}
+        with mock.patch.object(SOURCE_PROFILE, 'full_source', return_value=complete) as full:
+            selected, review = SOURCE_PROFILE.select_runtime_source(invocation, source, proof)
+        full.assert_called_once_with(source.resolve(), proof.resolve(), 'ec3be1855d2adee3622e36ac99cc76afcbfc5795')
+        self.assertEqual(selected, source)
+        self.assertIsNotNone(review)
+        self.assertEqual(review['profile'], 'stable-local-wheel-context')
+        self.assertEqual(review['Android_source_revision'], invocation['source_revision'])
+        self.assertEqual(review['runtime_source_revision'], 'ec3be1855d2adee3622e36ac99cc76afcbfc5795')
+        self.assertEqual(review['runtime_full_source_proof'], str(proof))
+        self.assertEqual(review['runtime_full_source_proof_sha256'], fixtures.sha(proof))
+        self.assertEqual((review['full_registry_mutations'], review['all_preflight_groups']), (6507, 42))
+        self.assertTrue(review['parent_source_and_native_ancestry_preserved'])
+        self.assertFalse(review['cache_hits_claimed'])
+
+    def test_default_source_needs_no_alternate_proof_and_incomplete_pairs_refuse(self) -> None:
+        source, proof, invocation = self.alternate_source_fixture()
+        with mock.patch.object(SOURCE_PROFILE, 'full_source') as full:
+            self.assertEqual(SOURCE_PROFILE.select_runtime_source(invocation, None, None), (self.work, None))
+            for selected, receipt in [(source, None), (None, proof)]:
+                with self.subTest(selected=selected), self.assertRaises(AssertionError):
+                    SOURCE_PROFILE.select_runtime_source(invocation, selected, receipt)
+        full.assert_not_called()
+
+    def test_alternate_source_refuses_parent_changes_same_source_and_failed_full_proof(self) -> None:
+        source, proof, invocation = self.alternate_source_fixture()
+        for change in [{'source_revision':'e' * 40}, {'stage':'media'}, {'variant':'nvidia'}, {'target_arch':'arm64'}]:
+            with self.subTest(change=change), mock.patch.object(SOURCE_PROFILE, 'full_source') as full, self.assertRaises(AssertionError):
+                SOURCE_PROFILE.select_runtime_source(dict(invocation, **change), source, proof)
+            full.assert_not_called()
+        with mock.patch.object(SOURCE_PROFILE, 'full_source') as full, self.assertRaises(AssertionError):
+            SOURCE_PROFILE.select_runtime_source(invocation, self.work, proof)
+        full.assert_not_called()
+        with mock.patch.object(SOURCE_PROFILE, 'full_source', side_effect=RuntimeError('incomplete source proof')), self.assertRaisesRegex(RuntimeError, 'incomplete source proof'):
+            SOURCE_PROFILE.select_runtime_source(invocation, source, proof)
+
+    def test_alternate_driver_records_new_source_without_rewriting_android_bindings(self) -> None:
+        source, proof, _ = self.alternate_source_fixture()
+        review = {'runtime_source_revision':'ec3be1855d2adee3622e36ac99cc76afcbfc5795',
+                  'runtime_full_source_proof':str(proof), 'runtime_full_source_proof_sha256':fixtures.sha(proof)}
+        tags = PROFILE.runtime_tags(self.work, self.prefix)
+        with mock.patch.object(PROFILE, 'select_runtime_source', return_value=(source, review)) as selector, \
+                mock.patch.object(PROFILE, 'runtime_tags', return_value=tags) as provider:
+            status, launch = self.profile_call(selected_source=source, source_proof=proof)
+        selector.assert_called_once_with(self.fixture.android, source, proof)
+        provider.assert_called_once_with(source, self.prefix)
+        self.assertEqual(status, 47)
+        arguments = launch.call_args.args
+        self.assertEqual(arguments[0], source)
+        self.assertEqual(arguments[8][1], str(source / 'linux/scripts/build-runtime-manifest.sh'))
+        record = arguments[6]
+        self.assertEqual(record['source_revision'], review['runtime_source_revision'])
+        self.assertEqual(record['source_full_preflight_proof'], str(proof))
+        self.assertEqual(record['source_full_preflight_sha256'], fixtures.sha(proof))
+        self.assertEqual(record['runtime_source_selection'], review)
+        self.assertEqual(record['parent_source_revision'], self.fixture.android['source_revision'])
+        self.assertEqual(record['Android_invocation_sha256'], fixtures.sha(self.fixture.invocation))
+        self.assertEqual(record['parent_OCI_proof_sha256'], fixtures.sha(self.proof_path))
+        self.assertEqual(record['Android_layers_rehashed'], 30)
+        self.assertEqual(record['Media_layers_matched'], 29)
+        self.assertIn('RUNTIME_ANDROID_PIN_amd64=' + self.alias, arguments[7])
+        self.assertIn('RUNTIME_WHEELS_SOURCE=image', arguments[7])
+        self.assertIn('RUNTIME_IMAGE_SMOKE=1', arguments[7])
+
+    def test_alternate_proof_failure_precedes_tag_lookup_and_engine_preparation(self) -> None:
+        with mock.patch.object(PROFILE, 'select_runtime_source', side_effect=AssertionError('refused')), \
+                mock.patch.object(PROFILE, 'runtime_tags') as tags, self.assertRaisesRegex(AssertionError, 'refused'):
+            self.profile_call(selected_source=self.work, source_proof=self.proof_path)
+        tags.assert_not_called()
+        self.assertFalse(self.output.exists())
 
     def test_cleanup_command_runs_the_real_cli_with_an_empty_owned_fixture(self) -> None:
         _, launcher = self.profile_call()
@@ -231,18 +314,25 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(PROFILE.alias_inventory('engine', self.alias), [self.alias_row])
 
     def test_cli_delegates_actual_android_bindings_and_raw_status(self) -> None:
-        argv = ['launch-normal-runtime.py', '--compiler-plan', str(self.plan_path), '--android-invocation', str(self.fixture.invocation),
-                '--parent-proof', str(self.proof_path), '--output', str(self.output), '--unit', self.unit,
-                '--image-prefix', self.prefix, '--app-ref', self.app_ref]
-        loader = mock.Mock(return_value=(self.plan, self.fixture.android, self.fixture.parent))
-        parent = mock.Mock(return_value=(self.parent, self.context))
-        launcher = mock.Mock(return_value=47)
-        with mock.patch.object(sys, 'argv', argv), mock.patch.dict(ENTRY['main'].__globals__, {'load_android': loader, 'android_layout': parent, 'launch_runtime': launcher}):
-            self.assertEqual(ENTRY['main'](), 47)
-        loader.assert_called_once_with(self.plan_path, self.fixture.invocation)
-        parent.assert_called_once_with(self.proof_path, self.fixture.invocation, self.fixture.android, self.fixture.parent)
-        self.assertEqual(launcher.call_args.args, (self.plan, self.fixture.android, self.fixture.invocation, self.parent, self.context,
-                         self.proof_path, self.output, self.unit, self.prefix, self.app_ref))
+        source = self.work / 'selected-runtime'
+        proof = self.work / 'selected-proof.json'
+        for selected, receipt in [(None, None), (source, proof)]:
+            argv = ['launch-normal-runtime.py', '--compiler-plan', str(self.plan_path), '--android-invocation', str(self.fixture.invocation),
+                    '--parent-proof', str(self.proof_path), '--output', str(self.output), '--unit', self.unit,
+                    '--image-prefix', self.prefix, '--app-ref', self.app_ref]
+            if selected is not None:
+                argv += ['--runtime-source', str(selected), '--runtime-source-proof', str(receipt)]
+            loader = mock.Mock(return_value=(self.plan, self.fixture.android, self.fixture.parent))
+            parent = mock.Mock(return_value=(self.parent, self.context))
+            launcher = mock.Mock(return_value=47)
+            with self.subTest(selected=selected), mock.patch.object(sys, 'argv', argv), \
+                    mock.patch.dict(ENTRY['main'].__globals__, {'load_android': loader, 'android_layout': parent, 'launch_runtime': launcher}):
+                self.assertEqual(ENTRY['main'](), 47)
+            loader.assert_called_once_with(self.plan_path, self.fixture.invocation)
+            parent.assert_called_once_with(self.proof_path, self.fixture.invocation, self.fixture.android, self.fixture.parent)
+            self.assertEqual(launcher.call_args.args, (self.plan, self.fixture.android, self.fixture.invocation, self.parent, self.context,
+                             self.proof_path, self.output, self.unit, self.prefix, self.app_ref))
+            self.assertEqual(launcher.call_args.kwargs, {'selected_source':selected, 'source_proof':receipt})
 
     def common_call(self, *, prepare: mock.Mock, busy: bool = False,
                     cleanup: list[str] | None = None, engine_path: str | None = None) -> tuple[int, mock.Mock]:

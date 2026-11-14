@@ -183,8 +183,25 @@ webgpu-normal-runtime-amd64-DATE-N.service --image-prefix
 ant-local/webgpu-NAME:runtime-rocm-DATE-N --app-ref EXACT_40_HEX_COMMIT`.
 Keep the verified native Android context's `-amd64` suffix: the ordinary runtime
 appends it to `ARTIFACT_CONTEXT_ROOT`. Its producer source and complete preflight
-remain the exact ones already qualified through compiler, SDK, GPU and Media;
+normally remain the exact ones already qualified through compiler, SDK, GPU and Media;
 committing host tools does not qualify a new image source.
+
+The explicit pair `--runtime-source REPAIRED_SOURCE --runtime-source-proof
+COMPLETE_SOURCE_PROOF` selects only the reviewed stable-wheel-context repair pinned
+in `runtime_source_profile.py`. Both arguments are required together. Its complete
+proof must match that exact clean source commit, every current registry mutation,
+all 42 default groups, actual script suites and cleanup. A targeted source receipt
+or the original Android proof cannot satisfy it. Copy that new module beside the
+runtime profile and existing native/normal-stage companions.
+
+Selection happens before runtime tags, alias preparation or unit creation. The
+actual driver uses the repaired checkout; its source revision and full-proof hash
+are recorded separately from `parent_source_revision`, original Android invocation,
+manifest/config and native parent receipt. The original Android ancestry is still
+revalidated. The default image wheel mode, exact app commit, ordinary disk floor,
+all runtime gates and invocation-owned cleanup retain their existing policies.
+Source proof does not authenticate supplied receipts or prove that a finished
+runtime, GPU inference, complete licences or FINAL consumers passed.
 
 Before launch the shared transport refuses active builds, running containers,
 ambient build flags, existing unit/output/temporary roots and any existing

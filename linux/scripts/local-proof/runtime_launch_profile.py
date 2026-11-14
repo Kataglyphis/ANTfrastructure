@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from native_oci_layout import sha
 from normal_stage_launch import downstream_record, launch_build
 from proof_commands import checked_run
+from runtime_source_profile import select_runtime_source
 
 if TYPE_CHECKING:
     from proof_types import Json
@@ -67,14 +68,15 @@ def runtime_tags(source: Path, prefix: str) -> tuple[str, ...]:
 
 
 def launch_runtime(plan: Json, invocation: Json, invocation_path: Path, parent: Json, context: Path,
-                   proof_path: Path, output: Path, unit: str, prefix: str, app_ref: str) -> int:
+                   proof_path: Path, output: Path, unit: str, prefix: str, app_ref: str, *,
+                   selected_source: Path | None = None, source_proof: Path | None = None) -> int:
     assert re.fullmatch(r'webgpu-normal-runtime-amd64-[0-9-]+\.service', unit), 'Unexpected runtime producer unit'
     assert re.fullmatch(r'ant-local/webgpu-[a-z0-9][a-z0-9-]*:runtime-rocm-[A-Za-z0-9][A-Za-z0-9_.-]{0,90}', prefix), 'Fresh local ROCm runtime prefix required'
     assert re.fullmatch(r'[0-9a-f]{40}', app_ref), 'Runtime app ref must be one exact commit'
     assert context.name.endswith('-amd64'), 'Native Android context must retain the runtime architecture suffix'
-    source = Path(invocation['source'])
     host_root = Path(__file__).resolve().parents[3]
     assert not checked_run(['git', '-C', str(host_root), 'status', '--porcelain']).stdout.strip(), 'Commit host tools before runtime launch'
+    source, review = select_runtime_source(invocation, selected_source, source_proof)
     images = runtime_tags(source, prefix)
     actual = {'image': invocation['image'], 'manifest': parent['manifest'], 'config': parent['config']}
     reference = local_reference(actual)
@@ -96,10 +98,16 @@ def launch_runtime(plan: Json, invocation: Json, invocation_path: Path, parent: 
     driver = ['/bin/bash', str(source / 'linux/scripts/build-runtime-manifest.sh'), '--image', prefix, '--target-arches', 'amd64',
               '--artifact-image-prefix', invocation['image'].removesuffix('-amd64'), '--artifact-build-mode', 'cross', '--skip-manifest']
     record = downstream_record(invocation, invocation_path, proof_path, parent, 'Android')
+    if review is not None:
+        record.update(source_revision=review['runtime_source_revision'],
+                      source_full_preflight_proof=review['runtime_full_source_proof'],
+                      source_full_preflight_sha256=review['runtime_full_source_proof_sha256'],
+                      runtime_source_selection=review)
     record.update(stage='runtime', variant='rocm', image_prefix=prefix, app_ref=app_ref, Android_layers_rehashed=parent['layers'],
                   Media_layers_matched=parent['matched_Media_layers_and_diffIDs'], host_tools_revision=checked_run(['git', '-C', str(host_root), 'rev-parse', 'HEAD']).stdout.strip(),
                   selected_host_workers_sha256={str(path): sha(path) for path in [Path(__file__), Path(__file__).with_name('launch-normal-runtime.py'),
                       Path(__file__).with_name('normal_stage_launch.py'), Path(__file__).with_name('android_handoff_profile.py'),
+                      Path(__file__).with_name('runtime_source_profile.py'),
                       scripts / 'owned-nerdctl.py', scripts / 'owned_nerdctl_args.py', scripts / 'owned_containers.py',
                       scripts / 'cleanup-owned-containers.py', scripts / 'host_commands.py']},
                   run_id=run_id, owner_label=owner_label, expected_runtime_run_id='runtime-' + run_id,

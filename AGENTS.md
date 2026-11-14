@@ -787,6 +787,10 @@ Resume mid-chain, build one stage, or `--parallel-archs`:
 
 ### Runtime Helpers
 
+An alternate runtime source requires its own complete source proof and explicit reviewed
+selection; preserve the original Android source, invocation and native ancestry separately.
+A host-tools commit or the parent's source proof cannot qualify changed runtime code.
+
 Wrapper builds, manifest publishing and manifest repair:
 [`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) § Runtime lane helper commands.
 

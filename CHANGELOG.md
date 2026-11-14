@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — distinguish repaired runtime sources from native Android parents
+
+- Add an explicit paired runtime source/proof selector restricted to the reviewed stable-context repair. Require that checkout's exact complete source proof before tag lookup or engine preparation; retain Android's original source, invocation and native ancestry separately from the new runtime revision and proof hash. The default path and all normal runtime gates remain enabled. Synthetic source/command fixtures prove selection and refusal behavior, not a finished runtime or FINAL acceptance. See [ordinary local runtime](docs/local-proof-workflows.md#ordinary-local-runtime).
+
 ## 2026-11-14 — use the verified tag for local runtime alias creation
 
 - Retain the actual Android source tag for nerdctl image tagging while independently checking the immutable manifest, config and platform before runtime launch. This host accepts bare manifest inspection but refuses a bare manifest as an image-tag source. Preserve that raw failed attempt and start no unit on preparation failure; fixtures and the selector mutation hold the working command and all identity checks. Pass the cleanup CLI's mandatory CID-file argument alongside the invocation label; a real CLI regression with an empty engine double rejects the previously incomplete command. No source publication, image acceptance or hardware claim follows.

@@ -516,6 +516,12 @@
       "classification": "versioned",
       "canonical": "linux/scripts/owned-nerdctl.py",
       "reason": "Exec the actual engine with invocation labels and raw status; requires ownership and cleanup companions."
+    },
+    {
+      "name": "runtime_source_profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/runtime_source_profile.py",
+      "reason": "Exact reviewed alternate runtime source requires its own complete proof while original Android/native parent bindings remain distinct; no image or FINAL acceptance."
     }
   ],
   "new_canonical_files": [
