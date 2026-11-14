@@ -38799,5 +38799,13 @@
   "replace": "  python3 \"${REPO_ROOT}/linux/scripts/image-acceptance.py\" promote --receipt \"${receipt}\" --target \"${IMAGE_NAME}\"\n",
   "test": "bash linux/scripts/tests/test-manifest-acceptance.sh",
   "why": "A failed promotion must stop before consumer dispatch, including when a conditional caller disables errexit."
+ },
+ {
+  "id": "renovate.entrypoint-invalid-wrapper-executed",
+  "target": "linux/scripts/verify_renovate_entrypoint.py",
+  "find": "    if not errors:\n        errors.extend(help_errors(root, wrapper))",
+  "replace": "    if not syntax.returncode:\n        errors.extend(help_errors(root, wrapper))",
+  "test": "bash linux/scripts/tests/test-renovate-entrypoint.sh",
+  "why": "A wrapper already rejected for missing delegation arguments must never execute; dropping help could start a live dependency lookup."
  }
 ]

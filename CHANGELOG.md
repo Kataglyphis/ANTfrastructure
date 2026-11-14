@@ -16,6 +16,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — reject invalid Renovate wrappers before probing help
+
+- Refuse syntax and delegation failures before executing a wrapper. A wrapper that
+  dropped arguments previously turned the help probe into a live Renovate run,
+  which could leave node-gyp files behind during fixture cleanup.
+- Keep valid-wrapper help checks mandatory. A controlled marker reproduces the old
+  execution and proves the refusal without registry access or tool installation;
+  the registered mutation restores the old guard and must fail.
+
 ## 2026-11-14 — prove the promotion boundary before consumer dispatch
 
 - Exercise a promotion refusal under a conditional shell caller and require both failure and no

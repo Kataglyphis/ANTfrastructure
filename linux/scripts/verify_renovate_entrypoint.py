@@ -128,7 +128,7 @@ def wrapper_errors(root: Path, hub: bool) -> list[str]:
         errors.append(f"{wrapper} has invalid Bash syntax: {syntax.stderr.strip()}")
     if wrapper != HUB_DRIVER:
         errors.extend(delegate_errors(root, wrapper))
-    if not syntax.returncode:
+    if not errors:
         errors.extend(help_errors(root, wrapper))
     return errors
 

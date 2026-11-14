@@ -163,6 +163,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
    CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.
    Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; the local driver also requires `renovate-node.sh`, `renovate-submodules.sh` and `renovate-uv-exports.sh`. `renovate_planner.py` carries `renovate_uv_exports.py`. Preserve dry-run, rollback and nonempty-list policies.
+   Reject invalid Renovate entrypoints before executing their help probe; valid wrappers still require the live delegation check.
    Exact `--submodule-path` selections filter writes only; retain the complete direct-gitlink scan and reject unknown or repeated paths.
    Copied `antfrastructure.sh` carries `renovate-git-mode.sh` beside it; the hub driver imports the same canonical selector before handling a Windows-authored WSL checkout.
    Its bootstrap helpers must fit the consumer's 15-path complexity limit; the copied-template fixture measures that limit and proves a complex mutant fails.
