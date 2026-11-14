@@ -72,6 +72,20 @@ _CC_PROBE_FNS="$(_extract _consumer_contract_probe)
 $(_extract _consumer_ort_env_probe)
 $(_extract _consumer_test_runtimes_probe)"
 
+_CC_HOST_TOOL_BIN="${_FN_CACHE}/host tool bin"
+_CC_HOST_TOOL_MARK="${_FN_CACHE}/host-tool-executed"
+mkdir -p "${_CC_HOST_TOOL_BIN}"
+t_write_exec_stub "${_CC_HOST_TOOL_BIN}/cargo-audit"
+printf 'printf touched > "%s"\nprintf "cargo-audit fixture\\n"\n' "${_CC_HOST_TOOL_MARK}" >> "${_CC_HOST_TOOL_BIN}/cargo-audit"
+
+# Probe execution stays real while fixture tool discovery remains independent of the host.
+_cc_host_probe() {
+  local fixture_bin="$1" probe_path="/usr/bin:/bin"
+  shift
+  [ -z "${fixture_bin}" ] || probe_path="${fixture_bin}:${probe_path}"
+  env "$@" "PATH=${probe_path}" bash -c "${_CC_PROBE_FNS}"$'\n'"_consumer_contract_probe | bash"
+}
+
 # Verdict lines for one probe capture on one arch. $3 overrides the row table.
 _cc_verdicts() {
   CC_PROBE="$1" CC_ROWS="${3-}" bash -c '
@@ -271,7 +285,7 @@ mkdir -p "${_CC_TMP}"/{cc,sc,ru/tmp,ca,sdk/platform-tools,ort}
 _CC_RAW="$(CCACHE_DIR="${_CC_TMP}/cc" SCCACHE_DIR="${_CC_TMP}/sc" RUSTUP_HOME="${_CC_TMP}/ru" \
   CARGO_HOME="${_CC_TMP}/ca" ANDROID_HOME="${_CC_TMP}/sdk" ANDROID_SDK_ROOT="${_CC_TMP}/sdk" \
   ORT_LIB_LOCATION="${_CC_TMP}/ort" ORT_DYLIB_PATH="${_CC_TMP}/ort/libonnxruntime.so" ORT_SKIP_DOWNLOAD=1 CARGO_NET_OFFLINE='' \
-  env -u ORT_LIB_PATH bash -c "${_CC_PROBE_FNS}"$'\n'"_consumer_contract_probe | bash" 2>&1)"
+  _cc_host_probe "" -u ORT_LIB_PATH 2>&1)"
 t_assert_contains "${_CC_RAW}" "CCPROBE_DONE" "exit status is not evidence; the sentinel is"
 t_assert_contains "${_CC_RAW}" "WHO " "the gate refuses to judge a probe that did not say who it ran as"
 for _r in ccache-dir sccache-dir rustup-tmp cargo-home dart-tool; do
@@ -289,13 +303,18 @@ for _f in "ENV ort-lib-location ${_CC_TMP}/ort" "FACT ort-lib-real $(readlink -e
 done
 t_assert_eq 1 "$(printf '%s\n' "${_CC_RAW}" | grep -cx -e 'ENV cargo-net-offline ' || true)" "set-but-empty is set: ort-sys reads it"
 
+t_case "host tools cannot enter a consumer probe fixture"
+_CC_HOST_RAW="$(PATH="${_CC_HOST_TOOL_BIN}:${PATH}" _cc_host_probe "" 2>&1)"
+t_assert_contains "${_CC_HOST_RAW}" "CCPROBE_DONE" "the real probe must still finish"
+t_assert_ok test ! -e "${_CC_HOST_TOOL_MARK}"
+
 t_case "the probe answers YES only where it really wrote"
 t_assert_contains "${_CC_RAW}" "WRITE ccache-dir yes" "a writable directory must read as writable"
 t_assert_eq "" "$(ls -A "${_CC_TMP}/cc")" "and the probe must leave nothing behind in it"
 : > "${_CC_TMP}/notadir"
-t_assert_contains "$(CARGO_HOME="${_CC_TMP}/notadir/x" bash -c "${_CC_PROBE_FNS}"$'\n'"_consumer_contract_probe | bash" 2>&1)" \
+t_assert_contains "$(CARGO_HOME="${_CC_TMP}/notadir/x" _cc_host_probe "" 2>&1)" \
   "WRITE cargo-home no" "a path the probe cannot create a file in must read as unwritable, for root too"
-t_assert_contains "$(CARGO_HOME="${_CC_TMP}/absent" bash -c "${_CC_PROBE_FNS}"$'\n'"_consumer_contract_probe | bash" 2>&1)" \
+t_assert_contains "$(CARGO_HOME="${_CC_TMP}/absent" _cc_host_probe "" 2>&1)" \
   "WRITE cargo-home no" "a MISSING directory is what the consumer's [ -w ] calls false; a probe that creates it reports green where they fail"
 rm -rf "${_CC_TMP}"
 
@@ -512,8 +531,8 @@ chmod +x "${_TR_TMP}"/bin/* "${_TR_TMP}/sdk/emulator/emulator"
 printf 'Pkg.Revision=37.2.12\n' > "${_TR_TMP}/sdk/emulator/source.properties"
 printf 'Pkg.Revision=9\nAndroidVersion.ApiLevel=35\nSystemImage.TagId=google_apis\nSystemImage.Abi=x86_64\n' \
   > "${_TR_TMP}/sdk/system-images/android-35/google_apis/x86_64/source.properties"
-_TR_RAW="$(PATH="${_TR_TMP}/bin:${PATH}" CHROME_EXECUTABLE="${_TR_TMP}/bin/chrome" ANDROID_HOME="${_TR_TMP}/sdk" \
-  bash -c "${_CC_PROBE_FNS}"$'\n'"_consumer_contract_probe | bash" 2>&1)"
+_TR_RAW="$(CHROME_EXECUTABLE="${_TR_TMP}/bin/chrome" ANDROID_HOME="${_TR_TMP}/sdk" \
+  _cc_host_probe "${_TR_TMP}/bin" 2>&1)"
 for _f in "FACT chrome yes" "FACT chrome-version 154.0.8037.92" "FACT chromedriver-version 154.0.8037.92" \
           "FACT chrome-headless yes" "FACT android-emulator yes" "FACT android-emulator-version 37.2.12" \
           "FACT android-emulator-runs yes" "FACT android-system-image android-35;google_apis;x86_64;r9" "FACT android-avd yes" \
@@ -522,7 +541,7 @@ for _f in "FACT chrome yes" "FACT chrome-version 154.0.8037.92" "FACT chromedriv
   t_assert_contains "${_TR_RAW}" "${_f}" "the probe reads it from the image"
 done
 t_assert_contains "$(CHROME_EXECUTABLE='' ANDROID_HOME="${_TR_TMP}/none" \
-  bash -c "${_CC_PROBE_FNS}"$'\n'"_consumer_contract_probe | bash" 2>&1)" \
+  _cc_host_probe "" 2>&1)" \
   $'FACT chrome no' "an empty CHROME_EXECUTABLE is riscv64's shape"
 rm -rf "${_TR_TMP}"
 

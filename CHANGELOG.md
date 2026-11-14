@@ -16,6 +16,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — isolate runtime probe fixture discovery
+
+- Run synthetic consumer probes with native utility paths and their explicit fixture
+  tools, keeping the actual probe and all existing assertions. Inherited Windows PATH
+  discovery could exceed the mutation baseline's unchanged 300-second limit.
+- Add a host-tool marker assertion and a mutation that injects its directory. Preserve
+  the outer runner's PATH and QNN space-path coverage; no live image or GPU proof is implied.
+
 ## 2026-11-14 — reject invalid Renovate wrappers before probing help
 
 - Refuse syntax and delegation failures before executing a wrapper. A wrapper that

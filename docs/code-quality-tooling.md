@@ -489,6 +489,15 @@ invalid outer caps so either value leaking into the child fails the rendezvous a
 The runner's leftover check (`AGENTS.md`, no ghosts) cannot see a suite that writes `/tmp` by name
 or clears `TMPDIR`. Hadolint and actionlint keep their caches in the run's outer `TMPDIR`.
 
+Host-executed consumer probes use `/usr/bin:/bin` and explicit fixture-tool directories.
+Their real probe program, fact output and verdict assertions remain in use. This keeps
+free-threaded interpreter discovery from scanning unrelated Windows PATH directories
+and prevents unrelated tools in the caller's PATH from affecting the fixture. A harmless host `cargo-audit` marker
+proves isolation; a mutation introduces that one directory and must fail. The outer
+runner retains its inherited PATH, including spaces for the QNN fixtures. These tests
+do not establish live SDK, image or GPU execution, and the 300-second mutation budget
+is unchanged.
+
 `PREFLIGHT_ONLY=script-tests bash linux/scripts/preflight.sh` runs the Bash suites locally;
 Linux x64 CI runs them on pushes and pull requests. Discovery fails when there are no suites,
 and a host that permits skips must still run at least one suite successfully.
@@ -1080,7 +1089,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4849 entries** over **655 distinct test commands**; both digits are
+manifest holds **4850 entries** over **655 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

@@ -38807,5 +38807,13 @@
   "replace": "    if not syntax.returncode:\n        errors.extend(help_errors(root, wrapper))",
   "test": "bash linux/scripts/tests/test-renovate-entrypoint.sh",
   "why": "A wrapper already rejected for missing delegation arguments must never execute; dropping help could start a live dependency lookup."
+ },
+ {
+  "id": "probe.fixture-host-path-isolation",
+  "target": "linux/scripts/tests/runtime-consumer-cases.sh",
+  "find": "  local fixture_bin=\"$1\" probe_path=\"/usr/bin:/bin\"",
+  "replace": "  local fixture_bin=\"$1\" probe_path=\"${_CC_HOST_TOOL_BIN}:/usr/bin:/bin\"",
+  "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+  "why": "Synthetic consumer probes must not execute a host tool found outside their explicit fixture paths; injecting a controlled host SDK directory must fail."
  }
 ]
