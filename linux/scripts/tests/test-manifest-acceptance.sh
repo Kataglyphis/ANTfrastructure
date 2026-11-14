@@ -55,6 +55,8 @@ acceptance_route() (
       check|promote) printf '%s\n' "$*" ;;
     esac
   }
+  bash() { printf 'DISPATCH %s\n' "$*"; return "${FAIL_DISPATCH:-0}"; }
+  warn() { printf 'WARN %s\n' "$*"; }
   REPO_ROOT=/fixture CROSS_RUN_ID=test-run IMAGE_NAME=ghcr.io/kataglyphis/example:latest \
     _manifest_accept_and_promote candidate
 )
@@ -64,4 +66,14 @@ out="$(acceptance_route)"
 t_assert_contains "${out}" '--workspace /fixture/logs/image-acceptance/test-run/consumers'
 t_assert_contains "${out}" '--receipt /fixture/logs/image-acceptance/test-run/receipt.json'
 t_assert_contains "${out}" 'promote --receipt /fixture/logs/image-acceptance/test-run/receipt.json --target ghcr.io/kataglyphis/example:latest'
+
+t_case "after the promotion the consumers' lanes for that tag are dispatched"
+t_assert_contains "${out}" 'DISPATCH /fixture/linux/scripts/dispatch-consumer-lanes.sh --tag latest'
+t_assert_eq 1 "$(printf '%s\n' "${out}" | tail -n 1 | grep -c '^DISPATCH ' || true)"
+
+t_case "a refused dispatch warns and leaves the promotion standing"
+status=0
+out="$(FAIL_DISPATCH=1 acceptance_route)" || status=$?
+t_assert_eq 0 "${status}"
+t_assert_contains "${out}" 'WARN some consumer lanes were not dispatched'
 t_summary

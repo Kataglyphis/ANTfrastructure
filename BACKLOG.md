@@ -470,33 +470,14 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       Done when the three golden tests read the lossless copy at one ModelANT pin and fleet-health's contract
       rows (CON247) read 0.
 
-- [ ] **CON235 — ModelANT's contract states the one default score threshold, 0.25** [S, ★].
-      Owner decision 2026-11-13: one default for every detector, 0.25, the value measured at the cameras.
-      OxidANT (`DEFAULT_SCORE_THRESHOLD`) and OrchestrANT (`yolo-monitor --conf`) moved from 0.5 that day;
-      ObservANT, OxidANT's bridge floor and AccelerANTgine's `YoloConfig` were at 0.25 already. Left: ModelANT's
-      `contracts/README.md` states it beside CON234's cases, so a fourth detector finds it written down.
-
-- [ ] **CON236 — after an image is published, the consumers' lanes run on it** [M, ★★★].
-      Owner decision 2026-11-13: after each publish of an image, every consumer's on-request lanes run once on
-      it, by dispatch; the rule of 2026-10-15 that only Linux x64 runs on a push stays
-      (`docs/branch-and-release-strategy.md`). Five consumer checks were red on 2026-11-12 with
-      one cause: the image had moved ahead of the consumers, and nothing said so until the next push that
-      asked for those lanes with a `[ci <lane>]` token.
-      1. `:winamd64`'s GenAI gained llguidance (LAI-H2); OxidANT's and AccelerANTgine's tests expected a
-         refusal.
-      2. `ANDROID_NDK_VERSION` moved to 30.0.16248370; OmniAccelerANT named 29.0.14206865.
-      3. The ONNX Runtime wheels moved to 1.31.1; OrchestrANT's third-party notice named 1.31.0 in its x64,
-         arm64 and Windows rows.
-      4. `SQLITE3_WASM_VERSION` moved to 3.8.0; OmniAccelerANT's `pubspec.lock` held 3.7.1.
-      5. `:winamd64` gained the VP8 plugin (CON183), and OmniAccelerANT's package picked it up (CON241).
-
-      Consumer acceptance ([`image-acceptance.md`](docs/image-acceptance.md)) could see none of them: its
-      plan, `shared/config/image-consumers.json`, runs six Linux amd64 checks, with no OrchestrANT row and
-      no Android, web, packaging or Windows lane. The consumer-pins gate (`docs/scripts/consumer_pins.py`)
-      has rows for ruff, torch, torchvision and GenAI only, and it reads the consumer's own hub pin, which
-      lags the image. First step: the publish workflow dispatches each consumer's `on-request.yml` with the lanes that run
-      on that image, which needs a token allowed to dispatch in the consumers. Done when a publish of `:latest` or `:winamd64` shows one run per consumer lane on the new
-      digest.
+- [ ] **CON236 — the Windows publish dispatches the consumers' lanes too** [S, ★★]. Owner decision 2026-11-13:
+      after each publish every consumer's lanes run once on the new image. Since that day
+      `build-runtime-manifest.sh` calls `dispatch-consumer-lanes.sh --tag <tag>` after a promotion
+      ([`image-acceptance.md` § After a publish …](docs/image-acceptance.md#after-a-publish-the-consumers-lanes-run-on-it)),
+      which covers `:latest` and the Linux GPU tags. Left: the Windows images (`:winamd64`, `:winarm64`
+      and their GPU tags) are published by the Windows scripts, which do not call it yet; a run by hand
+      covers them. First step: call it at the end of the Windows publish, proven with `pwsh` (not on the
+      arm64 dev host). Done when a Windows publish shows one run per consumer lane on the new digest.
 
 ## Open — Flet clients for OrchestrANT's UIs
 

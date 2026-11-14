@@ -146,3 +146,24 @@ the actual manifest path refuses promotion after a failed consumer gate.
 `tests/test-image-consumer-bootstrap.sh` executes the plan's Flutter commands against
 the existing prologue/check drivers, checking Git registration and every package's
 dependency preparation without downloading an SDK or starting browser/native builds.
+
+## After a publish, the consumers' lanes run on it
+
+Acceptance runs six Linux amd64 checks; the consumers' arm64, riscv64, Windows, Android, web and
+GPU lanes ran on a new image only at their next `[ci <lane>]` request. On 2026-11-12 five of them
+were red with one cause, an image that had moved ahead of them, and nothing had said so (BACKLOG
+CON236). Owner decision 2026-11-13: after each publish, every consumer's lanes run once on it.
+
+`linux/scripts/dispatch-consumer-lanes.sh --tag TAG` does that through the GitHub CLI.
+`build-runtime-manifest.sh` calls it right after a promotion. The plan is
+[`shared/config/image-consumer-lanes.json`](../shared/config/image-consumer-lanes.json): the
+consumers that have an `on-request.yml`, and per published tag the lane words it sends
+(`:latest` the Linux, Android and web lanes and each consumer's `linux-x64.yml`; the GPU and
+Windows tags their own lanes). A tag without a row dispatches nothing. A dispatch that is refused
+makes the script exit 1 after the others were sent and print its command for a run by hand;
+`build-runtime-manifest.sh` then warns and goes on, since the promotion has already happened. `--dry-run` prints the commands. It needs a `gh` that may dispatch in
+the consumers, which the publishing host's login is. Not covered: the Windows images, which
+`build-runtime-manifest.sh` does not publish; their publish calls the same script by hand until
+it does it itself (BACKLOG CON236). Tests: `linux/scripts/tests/test-dispatch-consumer-lanes.sh`;
+recipes `dispatch-lanes.*`.
+

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "owner": "Kataglyphis",
+  "ref": "develop",
+  "consumers": ["AccelerANTgine", "BeschleunigerBallett", "OmniAccelerANT", "OrchestrANT", "OxidANT", "WebDavClient"],
+  "tags": {
+    "latest": {"lanes": "linux android web", "linux_x64": true},
+    "latest-nvidia": {"lanes": "gpu-lin", "linux_x64": false},
+    "latest-rocm": {"lanes": "gpu-lin", "linux_x64": false},
+    "winamd64": {"lanes": "windows", "linux_x64": false},
+    "winarm64": {"lanes": "windows", "linux_x64": false},
+    "winamd64-nvidia": {"lanes": "gpu-win", "linux_x64": false},
+    "winamd64-rocm": {"lanes": "gpu-win", "linux_x64": false}
+  }
+}
