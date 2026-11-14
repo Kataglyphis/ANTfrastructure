@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — complete repaired GPU5 and verify its native handoff
+
+- The ordinary frozen `8c4e13b0` GPU5 completes and loads all seven recorded source entry libraries. Its immutable local image and native OCI export match, all 43 layers rehash and all 41 SDK descriptors/diffIDs match; the bounded export has both raw statuses zero and is sealed/stopped. Final source counters retain 5,244 hits, one miss and eleven unclassified cache errors; the complete read-only log retention is zero bytes, which does not classify those errors. Authorized idle regular-layer cleanup preserves all cachemounts and 47 image identities and restores the unchanged reserve. The first normal ROCm Media unit is now running with both required Wasm flags; actual flavors, licences and finished-consumer/final-image acceptance remain open. See [the actual loader and native-handoff scope](docs/linux-accelerator-images.md#source-backend-entry-library-loads).
+
 ## 2026-11-14 — reclaim obsolete published local images autonomously
 
 - Record the owner's standing local container-cleanup authorization and the exact-tag workflow: first prove idle state and immutable registry/config availability, then remove only selected obsolete published copies, retain every unselected image/cachemount identity and recheck real disk admission. The actual four-image cleanup frees 121,229,893,632 bytes, preserves all 12 cachemounts and 46 other image entries, and admits the single prepared ordinary GPU5 from frozen `8c4e13b0`. No registry data, volume, checkout or receipt is deleted, and no new image/consumer acceptance is claimed. Reuse existing versioned probes and documented nerdctl commands; [host cleanup](docs/linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches) owns the mechanism.

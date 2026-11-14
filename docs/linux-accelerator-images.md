@@ -1177,17 +1177,43 @@ has SHA256 `8df2bdea4f10936a5577207c701d0df30801fa6a664d74ed74c2240cd3933db3`.
 Its raw command, cleanup and independent engine-query statuses are zero; the
 owned container is absent and test unit stopped. This does not accept a GPU image.
 Separate host selector commit `158daf7f` passes 122 affected mutations, 26 quality
-groups and 16 normal-hook controls; its read-only original-image selector replay
-proves resolution, not native export or Media. The next ordinary GPU source remains
-the exact production commit above, with the original qualified compiler/SDK.
+groups and 16 normal-hook controls. Its read-only original-image selector replay
+proves resolution only. The later ordinary GPU5 actually completes from exact
+production `8c4e13b0` and the original compiler/SDK, including the real seven-entry
+loader gate. Its local image is manifest
+`sha256:a28498addfacbbbfbc978f6206d2c0eb5a6cc66ed1e34151aca27e2b92575715`,
+config `sha256:a131014ad1e1e25dbd9cca13e68431db3e36336b497aa8b6ccedcdb9afc249c7`.
+The completed source RUN takes 364.0 s and retains 5,266 cache requests, 5,244 hits,
+one miss, eleven unclassified errors and six noncacheable calls; the final S3 drain
+reports one write and zero failed writes. The bounded reader retains the complete
+outer RUN's zero-byte log and is sealed/stopped. Empty retention does not classify
+the errors, and these counters do not prove other language or Media phases cached.
 
-After that source run, actual disk admission reports 171,158,962,176 bytes available
-against the unchanged 193,273,528,320-byte floor. All 12 cachemounts and 50 local
-image identities remain present; only 12,789,941,806 bytes of regular layer cache
-remain, insufficient even if all were reclaimable. No GPU5, native GPU export or
-Media build has started. The existing request for additional space or an explicit
-additional cleanup target remains pending; source qualification does not waive
-resource admission or authorize deleting protected outputs.
+The first real native GPU export rehashes all 43 layers, matches all 41 SDK layer
+descriptors/diffIDs and shares the original verified parent blobs. Both actual
+producer/extractor statuses are zero and the export unit is stopped. Receipt
+`logs/test-results/webgpu-registration-20261110/rocm-sqlite-loader-20261114/gpu-context-current.proof-stopped.json`
+has SHA256 `720ba079c115c9a1e3fbbc15ac4531accf1011340a89f4bddd067f00efa4bc87`.
+This proves native byte ancestry; it grants no hardware, complete binary-licence
+or finished-consumer/FINAL acceptance. The successful original compiler, SDK and
+GPU units remain loaded terminals for downstream identity checks.
+
+Owner-authorized local image cleanup first freed 121,229,893,632 bytes without
+losing any unselected image or cachemount. After GPU5 loaded, a separate canonical
+regular-layer cleanup ran only with the engine and every BuildKit record type idle,
+freed 58,852,618,240 bytes and preserved all 12 cachemounts and 47 image identities.
+The normal ROCm Media unit then started with the checked GPU digest/native context,
+`ORT_WEB_REQUIRED=1` and `ORT_WASM_WEBGPU_FLAVORS=true`, after fresh admission of
+235,083,415,552 bytes against the unchanged 193,273,528,320-byte floor.
+Its six-hour bound may outlive the session. Native/GIL/FT, both actual Wasm modes,
+all affected final runtimes and finished-consumer checks remain required.
+
+The pre-Media inventory found no reusable exact ROCm Media local cache export;
+the normal fresh export and retained compiler/source cachemounts remain selected,
+without a local layer-hit claim. Preserve actual per-phase cache statistics and
+[the complete NVIDIA OpenCV, non-x86 Torch and consumer Rust follow-ups](build-cache-tiers.md#nvcc--hipcc)
+at their corresponding real lanes. An isolated kernel or forwarding a flag cannot
+replace those measurements.
 
 The original backend's preserved actual `CMakeCache.txt` selects vendor SQLite
 3.51.3 from `/opt/rocm/core/lib/rocm_sysdeps` and nlohmann/json 3.12.0 from
