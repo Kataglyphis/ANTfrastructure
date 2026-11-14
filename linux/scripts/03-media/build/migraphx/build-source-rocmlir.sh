@@ -5,7 +5,7 @@ set -euo pipefail
 # shellcheck source=linux/scripts/03-media/build/migraphx/prepare-source-rocmlir.sh
 source "$(dirname "${BASH_SOURCE[0]}")/prepare-source-rocmlir.sh" "$@"
 [[ -n "${CMAKE_COMPILER_CACHE_PIN:-}" ]] || { printf 'Missing rocMLIR build compiler-cache pin\n' >&2; exit 1; }
-jobs="$(compute_cpp_heavy_jobs "${JOBS:-2}")"
+jobs="$(compute_cpp_heavy_jobs "${JOBS:-}")"
 "${HOST_PYTHON_BIN}" "${SCRIPT_DIR}/inspect-rocmlir-build.py" \
   --build "${work}/build" --output "${work}/build-plan" \
   --clang-prefix "${clang_root}" --gcc-prefix "${gcc_root}" --cache-launcher "${CMAKE_COMPILER_CACHE_PIN}"

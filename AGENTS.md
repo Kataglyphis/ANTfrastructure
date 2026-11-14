@@ -1738,6 +1738,8 @@ and [`cross-build-verification.md`](docs/cross-build-verification.md#per-arch-ve
 - Use the centralized helpers: `resolve_arch_list()`, `is_dry_run()`,
   `append_mirror_build_args_from_env()`, `append_version_build_args()`,
   `normalize_target_arches()`.
+- Copied MIGraphX SDK/HIP checks carry `native-check-common.sh`, retaining caller-visible argument and compiler setup.
+- Native source LLVM retains AMDGPU beside the configured CPU backends. Reuse checks query the installed targets; the MIGraphX stack must compile an offline HIP device object before fetching heavy dependencies. This does not prove GPU inference.
 - New OS packages → `Dockerfile.base`. Compiler changes → `Dockerfile.toolchain`. SDK/frameworks →
   `Dockerfile.sdk`. Media libs → `Dockerfile.media` + `03-media/build/`. Android →
   `Dockerfile.android`. GPU → `Dockerfile.nvidia`/`Dockerfile.amd`.

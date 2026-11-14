@@ -37,7 +37,7 @@ def state(unit: str) -> dict[str, str]:
 
 def validate(report: Json, mode: str) -> None:
     assert report['status'] == 'observed-cross-Clang-link-diagnostics-only' and report['mode'] == mode
-    assert report['actual_backends']['returncode'] == 0 and set(report['actual_backends']['stdout'].split()) == {'X86', 'AArch64', 'RISCV'}
+    assert report['actual_backends']['returncode'] == 0 and set(report['actual_backends']['stdout'].split()) == {'X86', 'AArch64', 'RISCV', 'AMDGPU'}
     assert not report['environment'].get('LD_PRELOAD')
     records = report['records']
     assert len(records) == 6 and {(row['arch'], row['language']) for row in records} == {(arch, language) for arch in ['amd64', 'arm64', 'riscv64'] for language in ['c', 'cxx']}

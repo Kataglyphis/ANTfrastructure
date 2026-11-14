@@ -247,7 +247,7 @@ class ScriptClosureTests(unittest.TestCase):
         shared = MODULE["read_profile"](scripts, "core-common")
         self.assertEqual(len(shared), 21)
         manifests: set[Path] = set()
-        for profile, count in (("sdk-core", 24), ("migraphx-image", 76)):
+        for profile, count in (("sdk-core", 24), ("migraphx-image", 80)):
             selected = MODULE["read_profile"](scripts, profile, manifests=manifests)
             self.assertEqual(len(selected), count)
             self.assertTrue(shared.items() <= selected.items())

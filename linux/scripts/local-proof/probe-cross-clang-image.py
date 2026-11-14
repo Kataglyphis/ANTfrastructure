@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 TARGETS = {'amd64': ('x86_64-linux-gnu', '/'), 'arm64': ('aarch64-linux-gnu', '/'),
            'riscv64': ('riscv64-linux-gnu', '/')}
-BACKENDS = {'X86', 'AArch64', 'RISCV'}
+BACKENDS = {'X86', 'AArch64', 'RISCV', 'AMDGPU'}
 BAKED_FILES = ('smoke-toolchain.sh', 'smoke-common.sh', 'probe-compiler-defaults.py', 'llvm-loader-path.sh')
 PREFIX = '/opt/llvm-target-amd64'
 
@@ -49,7 +49,7 @@ def validate(payload: Json, gcc_pin: str, llvm_pin: str, helpers: Helpers, *, pr
     output = helpers['output']
     assert payload['schema_version'] == 1 and payload['gcc_pin'] == gcc_pin and payload['llvm_pin'] == llvm_pin
     backends = output(payload['backends']).split()
-    assert len(backends) == 3 and set(backends) == BACKENDS, 'Native LLVM must carry exactly all three configured backends'
+    assert len(backends) == 4 and set(backends) == BACKENDS, 'Native LLVM must carry exactly the three CPU backends and AMDGPU'
     expected = {f'{driver}-{arch}' for driver in ('clang', 'clang++') for arch in targets}
     assert set(payload['wrappers']) == expected, 'Every actual architecture wrapper is required'
     for name, row in payload['wrappers'].items():

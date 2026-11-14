@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 # Fail on unavailable selected SDK packages before a producer pays for parser dependencies; metadata is not inference.
 set -euo pipefail
-# shellcheck source=linux/scripts/03-media/build/migraphx/cli-common.sh
-source "$(dirname "${BASH_SOURCE[0]}")/cli-common.sh" 'NEW_WORK ROCM_ROOT' 2 "$@"
-rocm="$2"
-source "${SCRIPT_DIR}/entry-common.sh"
-clang_root='' gcc_root=''
-migraphx_prepare_native_work "${work}" work clang_root gcc_root
+# shellcheck source=linux/scripts/03-media/build/migraphx/native-check-common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/native-check-common.sh" "$@"
 setup_host_python_environment
 pybind_status=0
 "${HOST_PYTHON_BIN}" -m pybind11 --cmakedir > "${work}/pybind11-dir.txt" 2> "${work}/pybind11-stderr.txt" || pybind_status=$?

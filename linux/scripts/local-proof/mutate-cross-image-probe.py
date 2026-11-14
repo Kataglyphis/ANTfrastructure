@@ -21,7 +21,7 @@ test = tools / 'test-probe-cross-clang-image.py'
 text = probe.read_text()
 tree = ast.parse(text)
 validate = next(node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name == 'validate')
-messages = ['Native LLVM must carry exactly all three configured backends', 'Every actual architecture wrapper is required',
+messages = ['Native LLVM must carry exactly the three CPU backends and AMDGPU', 'Every actual architecture wrapper is required',
             'PATH selected another architecture wrapper', 'Wrapper does not bind the source driver and target contract',
             'The actual baked toolchain smoke must pass', 'Missing actual wrapper compiler assertion: ',
             'Missing target object ELF assertion', 'Actual foreign static execution is required',

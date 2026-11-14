@@ -37,7 +37,11 @@ argument is an existing output directory. Copy the required sibling scripts and 
 together; the inventory lists the closure. The two `test-*.py` and two `mutate-*.py` drivers
 preserve independent refusal fixtures and actual parse-valid guard mutations.
 
-These compiler/SDK proof profiles retain their reviewed Linux amd64, three-backend, six-wrapper,
+Current ordinary compiler/SDK qualification requires X86, AArch64, RISCV and
+AMDGPU backend metadata; actual [offline HIP device compilation](linux-accelerator-images.md#early-hip-device-compiler-check)
+is a separate required source-stack gate. Preserved older three-CPU-backend
+receipts retain their historical scope and do not establish HIP capability.
+These compiler/SDK proof profiles retain their reviewed Linux amd64, three-CPU-plus-AMDGPU-backend, six-wrapper,
 pin, base-ancestry and accepted-checkpoint contracts. They are not general arbitrary-image
 launchers. A new platform or source-proof kind needs a reviewed profile and matching tests.
 The targeted source scope `operational-tools` permits only the same exact patch, cleanup and normal-hook proof as the existing named source profiles. It grants no compiler or image acceptance.
@@ -132,7 +136,7 @@ GNU driver is the unprefixed source binary and may legitimately report an empty 
 native wrapper remains unchanged in both modes. Raw GNU facts are written before validation. It is evidence for a
 source repair, never a replacement for repairing and rebuilding the normal wrappers.
 
-Sealing requires the exact six tuples, unchanged native Clang bytes, all three backends, no
+Sealing requires the exact six tuples, unchanged native Clang bytes, all three CPU backends plus AMDGPU, no
 preload and real successful required links/executions. Expected baseline foreign failures must
 have positive raw statuses and actual stderr; a timeout or signal cannot supply them. Owned
 containers are bounded, removed by the shared cleanup helper and independently queried absent.

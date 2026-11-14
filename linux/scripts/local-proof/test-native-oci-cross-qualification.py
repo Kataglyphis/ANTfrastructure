@@ -13,7 +13,7 @@ parser.add_argument('--module',type=Path,default=Path(__file__).with_name('nativ
 args = parser.parse_args()
 module = runpy.run_path(str(args.module))
 mode = {'status':'passed-baked-cross-Clang-wrappers-and-CPU-smokes-only', 'mode':'default',
-        'native_backends':['AArch64','RISCV','X86'], 'wrapper_count':6, 'foreign_static_executions_required':4, 'native_languages':['c','cxx']}
+        'native_backends':['AArch64','AMDGPU','RISCV','X86'], 'wrapper_count':6, 'foreign_static_executions_required':4, 'native_languages':['c','cxx']}
 login = dict(mode,mode='login')
 proof = {'status':'passed-fresh-image-baked-compiler-native-tool-and-loader-selection-only', 'source_revision':'synthetic-fixture',
          'owned_container_absent':True, 'independent_engine_query_exit_status':0, 'cleanup':{'exit_status':0},

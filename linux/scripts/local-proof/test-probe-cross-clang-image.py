@@ -40,7 +40,7 @@ for arch, triplet, sysroot, machine, qemu in [
         if qemu:
             smoke += [f'  PASS {label}: static binary RUNS under {qemu} (exit 42)\n']
 smoke += ['=== Results: 0 failure(s) ===\n']
-payload = {'schema_version':1, 'gcc_pin':'16.2.0', 'llvm_pin':'23.1.5', 'backends':child('X86 AArch64 RISCV\n'),
+payload = {'schema_version':1, 'gcc_pin':'16.2.0', 'llvm_pin':'23.1.5', 'backends':child('X86 AArch64 RISCV AMDGPU\n'),
            'wrappers':wrappers, 'smoke':child(''.join(smoke)), 'environment':{'LD_PRELOAD':None},
            'native_programs':{language:{'build':child(''), 'execution':child('42\n'), 'elf':child('  Machine: Advanced Micro Devices X86-64\n')}
                               for language in ['c','cxx']}}
@@ -61,6 +61,7 @@ def reject(name: str, edit: Edit) -> None:
         raise AssertionError('Expected guarded failure was accepted: ' + name)
 
 reject('missing-backend', lambda p:p['backends'].update(stdout='X86\n'))
+reject('missing-AMDGPU', lambda p:p['backends'].update(stdout='X86 AArch64 RISCV\n'))
 reject('duplicate-backend', lambda p:p['backends'].update(stdout='X86 AArch64 RISCV RISCV\n'))
 reject('failed-backend-probe', lambda p:p['backends'].update(returncode=47))
 reject('missing-wrapper', lambda p:p['wrappers'].pop('clang++-arm64'))

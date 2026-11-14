@@ -44232,8 +44232,8 @@
  {
   "id": "lib.mgx-backend-build-memory-job-cap",
   "target": "linux/scripts/03-media/build/migraphx/build-source-backend.sh",
-  "find": "jobs=\"$(compute_cpp_heavy_jobs \"${JOBS:-2}\")\"",
-  "replace": "jobs=\"${JOBS:-2}\"",
+  "find": "jobs=\"$(compute_cpp_heavy_jobs \"${JOBS:-}\")\"",
+  "replace": "jobs=\"${JOBS:-}\"",
   "test": "python3 linux/scripts/tests/migraphx_backend_build_tests.py MigraphxBackendLifecycleTests.test_same_shell_preparation_jobs_install_and_notice_stage_arguments",
   "why": "Installed output, original bytes and explicit provenance must fail independently; fixture libraries do not establish a real backend or complete licence review."
  },
@@ -44618,7 +44618,7 @@
   "target": "linux/scripts/03-media/build/migraphx/build-source-stack.sh",
   "find": "migraphx_stack_plan sources \"${cache}\" \"${SCRIPT_DIR}/source-archives.txt\"",
   "replace": "migraphx_stack_plan sources \"${cache}\" \"${SCRIPT_DIR}/source-archives.txt\" || true",
-  "test": "python3 linux/scripts/tests/migraphx_stack_tests.py MigraphxStackTests.test_pin_download_and_cache_failures_cannot_start_a_child",
+  "test": "python3 linux/scripts/tests/migraphx_stack_tests.py MigraphxStackTests.test_pin_failure_stops_all_children_and_fetch_failure_stops_dependency_builds",
   "why": "Real hashing with explicit download/build doubles must reject this source-stack defect; no vendor binary,compiler-cache,licence closure or GPU/image acceptance is implied."
  },
  {
@@ -44626,7 +44626,7 @@
   "target": "linux/scripts/03-media/build/migraphx/build-source-stack.sh",
   "find": "migraphx_stack_fetch sources archives",
   "replace": "migraphx_stack_fetch sources archives || true",
-  "test": "python3 linux/scripts/tests/migraphx_stack_tests.py MigraphxStackTests.test_pin_download_and_cache_failures_cannot_start_a_child",
+  "test": "python3 linux/scripts/tests/migraphx_stack_tests.py MigraphxStackTests.test_pin_failure_stops_all_children_and_fetch_failure_stops_dependency_builds",
   "why": "Real hashing with explicit download/build doubles must reject this source-stack defect; no vendor binary,compiler-cache,licence closure or GPU/image acceptance is implied."
  },
  {
@@ -47352,7 +47352,7 @@
  {
   "id": "compiler-llvm-tools.preserved-probe-guard-01",
   "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
-  "find": "    assert len(backends) == 3 and set(backends) == BACKENDS, 'Native LLVM must carry exactly all three configured backends'\n",
+  "find": "    assert len(backends) == 4 and set(backends) == BACKENDS, 'Native LLVM must carry exactly the three CPU backends and AMDGPU'\n",
   "replace": "    pass\n",
   "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
   "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
@@ -47456,7 +47456,7 @@
  {
   "id": "compiler-llvm-tools.preserved-parent-guard-01",
   "target": "linux/scripts/local-proof/native-oci-handoff.py",
-  "find": "    elif plan.get('launcher_contract') == 2:\n        assert proof['cross_wrapper_checks_required'] and proof['cross_wrapper_CPU_checks_passed']\n        assert set(proof['cross_wrapper_modes']) == {'default','login'}\n        for mode,result in proof['cross_wrapper_modes'].items():\n            assert result['status'] == 'passed-baked-cross-Clang-wrappers-and-CPU-smokes-only' and result['mode'] == mode\n            assert result['native_backends'] == ['AArch64','RISCV','X86'] and result['wrapper_count'] == 6\n            assert result['foreign_static_executions_required'] == 4 and result['native_languages'] == ['c','cxx']\n",
+  "find": "    elif plan.get('launcher_contract') == 2:\n        assert proof['cross_wrapper_checks_required'] and proof['cross_wrapper_CPU_checks_passed']\n        assert set(proof['cross_wrapper_modes']) == {'default','login'}\n        for mode,result in proof['cross_wrapper_modes'].items():\n            assert result['status'] == 'passed-baked-cross-Clang-wrappers-and-CPU-smokes-only' and result['mode'] == mode\n            assert result['native_backends'] == ['AArch64','AMDGPU','RISCV','X86'] and result['wrapper_count'] == 6\n            assert result['foreign_static_executions_required'] == 4 and result['native_languages'] == ['c','cxx']\n",
   "replace": "    pass\n",
   "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
   "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
@@ -47488,7 +47488,7 @@
  {
   "id": "compiler-llvm-tools.preserved-parent-guard-05",
   "target": "linux/scripts/local-proof/native-oci-handoff.py",
-  "find": "            assert result['native_backends'] == ['AArch64','RISCV','X86'] and result['wrapper_count'] == 6\n",
+  "find": "            assert result['native_backends'] == ['AArch64','AMDGPU','RISCV','X86'] and result['wrapper_count'] == 6\n",
   "replace": "            pass\n",
   "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
   "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
@@ -47656,7 +47656,7 @@
  {
   "id": "host.cross-clang-link-backends",
   "target": "linux/scripts/local-proof/launch-cross-clang-link-probe.py",
-  "find": "    assert report['actual_backends']['returncode'] == 0 and set(report['actual_backends']['stdout'].split()) == {'X86', 'AArch64', 'RISCV'}\n",
+  "find": "    assert report['actual_backends']['returncode'] == 0 and set(report['actual_backends']['stdout'].split()) == {'X86', 'AArch64', 'RISCV', 'AMDGPU'}\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-compiler-prefix-diagnostic.sh",
   "why": "A removed diagnostic guard must fail an independent refusal assertion, without building or qualifying an image."
@@ -48144,7 +48144,7 @@
  {
   "id": "compiler-llvm-tools.sdk-profile-native-scope",
   "target": "linux/scripts/local-proof/native-oci-handoff.py",
-  "find": "        assert result['native_backends'] == ['AArch64','RISCV','X86'] and result['wrapper_count'] == 2 and result['cross_targets'] == ['amd64'], 'SDK native compiler scope differs'\n",
+  "find": "        assert result['native_backends'] == ['AArch64','AMDGPU','RISCV','X86'] and result['wrapper_count'] == 2 and result['cross_targets'] == ['amd64'], 'SDK native compiler scope differs'\n",
   "replace": "        pass\n",
   "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
   "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
@@ -49076,5 +49076,189 @@
   "replace": "        target.write_bytes(b'wrong copy')",
   "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
   "why": "Copied bytes must match the actual observed source rather than merely create files."
+ },
+ {
+  "id": "compiler-llvm-tools.native-AMDGPU-required",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "  printf '%s;AMDGPU' \"${result}\"",
+  "replace": "  printf '%s' \"${result}\"",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "The pinned native host compiler must retain AMDGPU alongside configured CPU targets."
+ },
+ {
+  "id": "compiler-llvm-tools.installed-backend-reuse",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "  llvm_cross_required_backends_available \"${target_label}\" \"${prefix}\" || return 1",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "A CPU-only installed prefix cannot skip rebuilding the required native GPU backend."
+ },
+ {
+  "id": "compiler-llvm-tools.installed-backend-tokens",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "    [[ \" ${actual} \" =~ [[:space:]]${backend}[[:space:]] ]] || return 1",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "Every selected backend needs its own complete token; a substring or another CPU cannot substitute."
+ },
+ {
+  "id": "compiler-llvm-tools.installed-backend-query-failure",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "actual=\"$(llvm_cross_run_binary \"$1\" \"${config}\" --targets-built)\" || return",
+  "replace": "actual=\"$(llvm_cross_run_binary \"$1\" \"${config}\" --targets-built)\"",
+  "test": "bash linux/scripts/tests/test-llvm-host-selection.sh",
+  "why": "Failed backend queries retain raw status rather than consuming partial output."
+ },
+ {
+  "id": "lib.mgx-early-HIP-required",
+  "target": "linux/scripts/03-media/build/migraphx/build-source-stack.sh",
+  "find": "bash \"${SCRIPT_DIR}/check-hip-compiler.sh\" \"${work}/hip-compiler-check\" \"${rocm}\"",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-migraphx-stack.sh",
+  "why": "HIP code generation must fail before dependency downloads and expensive compilation."
+ },
+ {
+  "id": "lib.mgx-HIP-backend-token",
+  "target": "linux/scripts/03-media/build/migraphx/check-hip-compiler.sh",
+  "find": "grep -Eq '(^|[[:space:]])AMDGPU([[:space:]]|$)' \"${work}/backends.txt\"",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "CPU-only or partial GPU backend names cannot pass the early gate."
+ },
+ {
+  "id": "lib.mgx-HIP-config-raw-status",
+  "target": "linux/scripts/03-media/build/migraphx/check-hip-compiler.sh",
+  "find": "exit \"${config_status}\"; fi",
+  "replace": "exit 1; fi",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "The exact llvm-config failure remains observable."
+ },
+ {
+  "id": "lib.mgx-HIP-source-GCC",
+  "target": "linux/scripts/03-media/build/migraphx/check-hip-compiler.sh",
+  "find": "\"--gcc-toolchain=${gcc_root}\"",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "The HIP probe retains the selected source GCC toolchain and its argument boundary."
+ },
+ {
+  "id": "lib.mgx-HIP-selected-ROCm",
+  "target": "linux/scripts/03-media/build/migraphx/check-hip-compiler.sh",
+  "find": "\"--rocm-path=${rocm}\"",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "The probe checks the selected ROCm device libraries rather than an ambient SDK."
+ },
+ {
+  "id": "lib.mgx-HIP-device-only",
+  "target": "linux/scripts/03-media/build/migraphx/check-hip-compiler.sh",
+  "find": "--cuda-device-only -std=c++17",
+  "replace": "-std=c++17",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "A host-only object is insufficient; retain the explicit device compile mode."
+ },
+ {
+  "id": "lib.mgx-HIP-selected-target",
+  "target": "linux/scripts/03-media/build/migraphx/check-hip-compiler.sh",
+  "find": "--offload-arch=gfx1030",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "The offline check uses a deliberate supported GPU architecture without requiring a device."
+ },
+ {
+  "id": "lib.mgx-HIP-language",
+  "target": "linux/scripts/03-media/build/migraphx/check-hip-compiler.sh",
+  "find": "-std=c++17 -x hip",
+  "replace": "-std=c++17 -x c++",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "Ordinary C++ compilation cannot prove HIP syntax and driver wiring."
+ },
+ {
+  "id": "lib.mgx-HIP-machine-verdict",
+  "target": "linux/scripts/03-media/build/migraphx/check-hip-compiler.sh",
+  "find": "[[ \"${hip_machine}\" == 'AMD GPU' ]]",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "The real ELF parser must refuse native CPU objects even after a successful compiler exit."
+ },
+ {
+  "id": "lib.mgx-HIP-raw-compile-status",
+  "target": "linux/scripts/03-media/build/migraphx/check-hip-compiler.sh",
+  "find": "then exit \"${compile_status}\"; fi",
+  "replace": "then exit 1; fi",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "The shared object lifecycle must not erase the actual compiler failure status."
+ },
+ {
+  "id": "lib.mgx-HIP-retained-object",
+  "target": "linux/scripts/03-media/build/migraphx/check-hip-compiler.sh",
+  "find": "  cp -- \"$1\" \"${work}/hip-device.o\" || return",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "Successful object evidence must remain available with its checked bytes."
+ },
+ {
+  "id": "lib.mgx-HIP-kernel",
+  "target": "linux/scripts/03-media/build/migraphx/hip-compiler-probe.hip",
+  "find": "extern \"C\" __global__ void",
+  "replace": "extern \"C\" void",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "The tracked probe must actually contain a HIP device kernel."
+ },
+ {
+  "id": "lib.mgx-HIP-shared-lifecycle",
+  "target": "linux/scripts/script-closures/migraphx-image.txt",
+  "find": "06-packaging/smoke-common.sh|06-packaging/smoke-common.sh\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-migraphx-image.sh",
+  "why": "The narrow GPU script bundle must carry the shared object lifecycle before its early gate."
+ },
+ {
+  "id": "lib.mgx-rocmlir-automatic-heavy-jobs",
+  "target": "linux/scripts/03-media/build/migraphx/build-source-rocmlir.sh",
+  "find": "compute_cpp_heavy_jobs \"${JOBS:-}\"",
+  "replace": "compute_cpp_heavy_jobs \"${JOBS:-2}\"",
+  "test": "bash linux/scripts/tests/test-migraphx-rocmlir-build.sh",
+  "why": "An unset request must reach the unchanged memory-capped automatic policy; explicit requests remain capped."
+ },
+ {
+  "id": "lib.mgx-backend-automatic-heavy-jobs",
+  "target": "linux/scripts/03-media/build/migraphx/build-source-backend.sh",
+  "find": "compute_cpp_heavy_jobs \"${JOBS:-}\"",
+  "replace": "compute_cpp_heavy_jobs \"${JOBS:-2}\"",
+  "test": "bash linux/scripts/tests/test-migraphx-backend-build.sh",
+  "why": "An unset request must reach the unchanged memory-capped automatic policy; explicit requests remain capped."
+ },
+ {
+  "id": "lib.mgx-native-check-import-failure",
+  "target": "linux/scripts/03-media/build/migraphx/native-check-common.sh",
+  "find": "source \"${SCRIPT_DIR}/entry-common.sh\" || return",
+  "replace": "source \"${SCRIPT_DIR}/entry-common.sh\"",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "Required imports must keep their raw failure before allocating or compiling, including conditional callers."
+ },
+ {
+  "id": "lib.mgx-native-check-companion",
+  "target": "linux/scripts/script-closures/migraphx-image.txt",
+  "find": "03-media/build/migraphx/native-check-common.sh|03-media/build/migraphx/native-check-common.sh\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-migraphx-image.sh",
+  "why": "SDK and HIP checks require the same tracked native preparation companion in the narrow image bundle."
+ },
+ {
+  "id": "lib.mgx-native-check-required-bindings",
+  "target": "linux/scripts/03-media/build/migraphx/native-check-common.sh",
+  "find": ": \"${rocm:?ROCm root required}\" \"${clang_root:?source Clang root required}\" \"${gcc_root:?source GCC root required}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "A missing source compiler or selected ROCm root cannot fall back to ambient device configuration."
+ },
+ {
+  "id": "lib.mgx-native-check-setup-failure",
+  "target": "linux/scripts/03-media/build/migraphx/native-check-common.sh",
+  "find": "migraphx_prepare_native_work \"${work}\" work clang_root gcc_root || return",
+  "replace": "migraphx_prepare_native_work \"${work}\" work clang_root gcc_root",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "A failing source toolchain resolver must keep its exact raw status before validating published bindings."
  }
 ]

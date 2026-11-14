@@ -16,6 +16,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — require native AMDGPU and early HIP device compilation
+
+- Share native SDK/HIP argument and compiler setup in `native-check-common.sh`; preserve its companion in the narrow image closure and copied fixtures.
+
+- Let rocMLIR and the full backend use the existing memory-capped heavy-C++ automatic worker count when `JOBS` is unset. Explicit requests retain the same cap; the memory budget is unchanged.
+
+- Build the native source LLVM with AMDGPU beside its configured CPU targets and refuse installed prefixes missing a required backend. Compiler and SDK receipts require all four configured backends; older CPU-only receipts retain their historical scope. Before expensive MIGraphX source dependencies, compile a real offline HIP kernel with the pinned own Clang/GCC and selected ROCm headers/bitcode, then require an AMDGPU ELF object. Retain arguments, raw failures, diagnostics and object hash through the shared temporary-object lifecycle. Independent compiler/ELF doubles and executable mutations cover the gates; actual rebuilt compiler, backend and hardware acceptance remain separate. See [the early HIP check](docs/linux-accelerator-images.md#early-hip-device-compiler-check).
+
 ## 2026-11-14 — preserve live configure snapshot functionality
 
 - Preserve repeated CMake/Ninja diagnostic copying in a versioned bounded helper. Bind the actual live producer invocation, matching process/start identity and four named files; compare source hashes before/after copying and verify copied bytes. Refuse traversal, symlinks, overlap, stale outputs and size overruns. Independent file/process/unit fixtures and executable mutations cover the gates; a snapshot grants no build, source-authentication, linkage, licence or image acceptance. See [live configure snapshots](docs/local-proof-workflows.md#live-configure-snapshots).

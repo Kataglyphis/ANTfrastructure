@@ -32,7 +32,7 @@ if args.action == 'worker':
     (out / 'probe.stdout').write_text(result.stdout)
     (out / 'probe.stderr').write_text(result.stderr)
     assert result.returncode == 1
-    assert 'AssertionError: Native LLVM must carry exactly all three configured backends' in result.stderr
+    assert 'AssertionError: Native LLVM must carry exactly the three CPU backends and AMDGPU' in result.stderr
     assert not (out / 'cross-clang.json').exists()
     raw = json.loads((out / 'cross-clang-raw.json').read_text())
     assert raw['schema_version'] == 1 and raw['backends']['returncode'] == 0 and raw['backends']['stdout'].split() == ['X86']

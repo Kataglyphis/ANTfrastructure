@@ -473,7 +473,7 @@ sha256sum "$work/input.bin" > "$work/source-inputs.sha256"
 [[ "$FAIL_PHASE" != no-notice ]] || unlink "$work/source/LICENSE"
 CMAKE_COMPILER_CACHE_PIN='/selected cache'
 [[ "$FAIL_PHASE" != no-cache ]] || CMAKE_COMPILER_CACHE_PIN=''
-HOST_PYTHON_BIN=stage_python JOBS=7 PY_PYBIND11_VERSION=3.1.0
+HOST_PYTHON_BIN=stage_python JOBS="${FIXTURE_JOBS-7}" PY_PYBIND11_VERSION=3.1.0
 MIGRAPHX_DEPS_PREFIX="$DEPS_PREFIX"
 MIGRAPHX_VERSION=2.18.0 MIGRAPHX_WINDOWS_COMMIT=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 MIGRAPHX_WINDOWS_SOURCE_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
@@ -521,6 +521,7 @@ class MigraphxBackendLifecycleTests(unittest.TestCase):
         self.python_patch = self.root / "python selection patch"
         self.python_patch.write_text("tracked Python selector")
         self.calls = 0
+        self.requested_jobs = "7"
 
     def run_build(self, phase: str = "") -> tuple[subprocess.CompletedProcess[str], Path, list[str]]:
         self.calls += 1
@@ -530,7 +531,7 @@ class MigraphxBackendLifecycleTests(unittest.TestCase):
         env = dict(os.environ, LC_ALL="C", FAIL_PHASE=phase, FIXTURE_SCRIPTS=str(self.scripts),
                    ORIGINAL_NOTICE=str(self.original), FIXTURE_PATCH=str(self.patch), FIXTURE_PYTHON_PATCH=str(self.python_patch), EVENT_LOG=str(events),
                    PREPARE_ARGV=str(self.root / "prepare.nul"), JOBS_LOG=str(self.root / "jobs"),
-                   CMAKE_ARGV=str(self.root / "cmake"), STAGE_ARGV=str(self.root / "stage.nul"),
+                   FIXTURE_JOBS=self.requested_jobs, CMAKE_ARGV=str(self.root / "cmake"), STAGE_ARGV=str(self.root / "stage.nul"),
                    MIGRAPHX_SOURCE_PREFIX=str(self.root / "new install prefix"),
                    DEPS_PREFIX="/parser deps;/CK deps;/rocMLIR deps")
         result = subprocess.run(["bash", str(self.scripts / "build-source-backend.sh"), *argv],
@@ -556,6 +557,14 @@ class MigraphxBackendLifecycleTests(unittest.TestCase):
                                (b"--source-commit", b"a" * 40), (b"--source-sha256", b"b" * 64)]:
             self.assertEqual(stage[stage.index(flag) + 1], expected)
         self.assertIn(b"source/LICENSE", (work / "source-inputs.sha256").read_bytes())
+
+    def test_unset_or_explicit_jobs_request_always_uses_the_heavy_cap(self) -> None:
+        for requested in ("", "3"):
+            self.requested_jobs = requested
+            result, _work, _argv = self.run_build()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((self.root / "jobs").read_text(), requested + "\n")
+            self.assertEqual((self.root / "cmake.build").read_bytes().split(b"\0")[-2], b"2")
 
     def test_prefix_prepare_jobs_build_install_and_stage_failures_remain_raw(self) -> None:
         for phase, status in [("prefix", 29), ("prepare", 23), ("jobs", 31), ("build", 37), ("install", 37), ("stage", 41)]:

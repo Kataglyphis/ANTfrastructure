@@ -117,7 +117,7 @@ llvm_cross_backend() {
   arch_to_llvm_target "$1" 2>/dev/null
 }
 
-# The host compiler drives every configured cross wrapper; foreign native installs need only their own backend.
+# Native HIP builds need AMDGPU beside the cross-wrapper CPU backends; foreign installs stay narrow.
 llvm_cross_build_backends() {
   local target="$1" host targets backend result=""
   host="$(build_arch_oci)" || return $?
@@ -135,7 +135,7 @@ llvm_cross_build_backends() {
       *) result+="${result:+;}${backend}" ;;
     esac
   done
-  printf '%s' "${result}"
+  printf '%s;AMDGPU' "${result}"
 }
 
 
@@ -235,6 +235,20 @@ llvm_cross_llvm_config_path() {
     "${prefix}/bin/llvm-config-${major}"
 }
 
+# Installed CPU-only trees cannot satisfy a later native GPU compiler contract.
+llvm_cross_required_backends_available() {
+  local expected actual config backend
+  expected="$(llvm_cross_build_backends "$1")" || return
+  config="$(llvm_cross_llvm_config_path "$2")" || return
+  actual="$(llvm_cross_run_binary "$1" "${config}" --targets-built)" || return
+  local -a required_backends=()
+  IFS=';' read -r -a required_backends <<< "${expected}"
+  for backend in "${required_backends[@]}"; do
+    [[ " ${actual} " =~ [[:space:]]${backend}[[:space:]] ]] || return 1
+  done
+  return 0
+}
+
 llvm_cross_install_looks_complete() {
   local target_label="$1"
   local prefix
@@ -245,6 +259,7 @@ llvm_cross_install_looks_complete() {
   llvm_cross_versioned_shared_umbrella_lib_path "${prefix}" >/dev/null 2>&1 || return 1
   llvm_cross_compat_shared_umbrella_lib_path "${prefix}" >/dev/null 2>&1 || return 1
   llvm_cross_llvm_config_path "${prefix}" >/dev/null 2>&1 || return 1
+  llvm_cross_required_backends_available "${target_label}" "${prefix}" || return 1
   return 0
 }
 

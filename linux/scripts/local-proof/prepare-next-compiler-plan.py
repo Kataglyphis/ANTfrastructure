@@ -100,7 +100,7 @@ plan = {'status':'prepared-awaiting-complete-source-preflight', 'prepared_at':da
         'targeted_source_proof':str(args.targeted_proof.resolve()), 'source_commit_proof':str(args.commit_proof.resolve()),
         'production_sha256':{name:sha(source / name) for name in production},
         'storage_path_audit':'compiler-storage-path-audit.json', 'build_inputs_comparison':'build-inputs-comparison.json',
-        'required_new_native_backends':['X86','AArch64','RISCV'], 'required_cross_wrapper_targets':['amd64','arm64','riscv64'],
+        'required_new_native_backends':['X86','AArch64','RISCV','AMDGPU'], 'required_cross_wrapper_targets':['amd64','arm64','riscv64'],
         'must_revalidate':[
             'Exact complete full-source proof, normal hook commit binding and clean source before launch.',
             'Both canonical180GiB and exact193273528320B reserve freshly pass; no floor override.',

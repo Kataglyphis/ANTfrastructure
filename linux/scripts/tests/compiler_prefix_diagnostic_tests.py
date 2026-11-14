@@ -81,7 +81,7 @@ class ProbeReceiptTests(unittest.TestCase):
                     'gcc_sysroot': {'returncode': 0, 'stdout': '/\n'},
                     'execution': {'returncode': 0, 'stdout': '42\n'} if required else None})
         return {'status': 'observed-cross-Clang-link-diagnostics-only', 'mode': mode, 'records': records,
-                'actual_backends': {'returncode': 0, 'stdout': 'X86 AArch64 RISCV'}, 'environment': {'LD_PRELOAD': None},
+                'actual_backends': {'returncode': 0, 'stdout': 'X86 AArch64 RISCV AMDGPU'}, 'environment': {'LD_PRELOAD': None},
                 'native_clang_sha256_before': 'fixture', 'native_clang_sha256_after': 'fixture'}
 
     def test_native_gnu_empty_root_and_foreign_root_are_distinct(self) -> None:

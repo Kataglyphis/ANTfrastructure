@@ -86,7 +86,7 @@ class MigraphxStackTests(unittest.TestCase):
         for name in ["cli-value-options.sh", "log-bootstrap.sh"]:
             shutil.copy2(ROOT / "linux/scripts/lib" / name, common)
         (self.scripts / "entry-common.sh").write_text(ENTRY)
-        self.children = ["build-source-deps.sh", "build-source-ck.sh", "verify-source-ck.sh",
+        self.children = ["check-hip-compiler.sh", "build-source-deps.sh", "build-source-ck.sh", "verify-source-ck.sh",
                          "build-source-rocmlir.sh", "check-source-sdk.sh", "build-source-backend.sh"]
         for name in self.children:
             (self.scripts / name).write_text(CHILD)
@@ -187,10 +187,12 @@ class MigraphxStackTests(unittest.TestCase):
         result, work = self.run_stack()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.lines(), ["prefix:" + self.env["MIGRAPHX_SOURCE_PREFIX"]]
+                         + ["child:check-hip-compiler.sh"]
                          + ["fetch:" + url for url, _digest, _file in self.expected.values()]
-                         + ["child:" + name for name in self.children])
+                         + ["child:" + name for name in self.children[1:]])
         files = {name: str(value[2]) for name, value in self.expected.items()}
         expected = {
+            "check-hip-compiler.sh": [str(work / "hip-compiler-check"), "/ROCm SDK with spaces"],
             "build-source-deps.sh": [str(work / "parsers"), files["abseil"], files["protobuf"]],
             "build-source-ck.sh": [str(work / "ck"), files["ck"], files["rocm-cmake"]],
             "verify-source-ck.sh": [str(work / "ck-api"), str(work / "ck/host-deps"), str(work / "ck/ck-source/include/ck/utility/type.hpp")],
@@ -204,6 +206,13 @@ class MigraphxStackTests(unittest.TestCase):
         for name in ["check-source-sdk.sh", "build-source-backend.sh"]:
             self.assertEqual((self.argv_dir / (name + ".prefix")).read_text(), prefix)
         self.assertEqual(len((work / "source-archive-plan.txt").read_text().splitlines()), 7)
+
+    def test_hip_failure_stops_before_archive_fetch_or_dependency_work(self) -> None:
+        result, work = self.run_stack("check-hip-compiler.sh")
+        self.assertEqual(result.returncode, 43, result.stderr)
+        self.assertFalse(any(line.startswith("fetch:") for line in self.lines()))
+        self.assertEqual([line for line in self.lines() if line.startswith("child:")], ["child:check-hip-compiler.sh"])
+        self.assertFalse((work / "parsers").exists())
 
     def test_default_source_prefix_is_fresh_dedicated_and_explicit_value_survives(self) -> None:
         self.env.pop("MIGRAPHX_SOURCE_PREFIX")
@@ -228,13 +237,13 @@ class MigraphxStackTests(unittest.TestCase):
         self.assertFalse(work.exists())
         self.assertFalse(any(self.cache.iterdir()))
 
-    def test_pin_download_and_cache_failures_cannot_start_a_child(self) -> None:
+    def test_pin_failure_stops_all_children_and_fetch_failure_stops_dependency_builds(self) -> None:
         for phase, expected in [("fetch", 47), ("corrupt-fetch", 1)]:
             if self.events.exists():
                 self.events.unlink()
             result, _work = self.run_stack(phase)
             self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
-            self.assertFalse(any(line.startswith("child:") for line in self.lines()))
+            self.assertEqual([line for line in self.lines() if line.startswith("child:")], ["child:check-hip-compiler.sh"])
         self.env["MIGRAPHX_ROCMLIR_SOURCE_SHA256"] = ""
         self.events.unlink()
         result, _work = self.run_stack()

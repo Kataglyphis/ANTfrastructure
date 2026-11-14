@@ -50,7 +50,7 @@ def sdk_cpu_qualification(proof: Json, subject: Json) -> None:
     assert not proof['cross_wrapper_checks_required'] and set(proof['sdk_native_modes']) == {'default','login'}, 'SDK proof requires both native modes'
     for mode, result in proof['sdk_native_modes'].items():
         assert result['status'] == 'passed-baked-SDK-Clang-wrappers-and-CPU-smokes-only' and result['profile'] == 'sdk-amd64' and result['mode'] == mode, 'SDK native mode identity differs'
-        assert result['native_backends'] == ['AArch64','RISCV','X86'] and result['wrapper_count'] == 2 and result['cross_targets'] == ['amd64'], 'SDK native compiler scope differs'
+        assert result['native_backends'] == ['AArch64','AMDGPU','RISCV','X86'] and result['wrapper_count'] == 2 and result['cross_targets'] == ['amd64'], 'SDK native compiler scope differs'
         assert result['native_languages'] == ['c','cxx'] and result['foreign_static_executions_required'] == 0, 'SDK native languages differ'
 
 
@@ -70,7 +70,7 @@ def qualification(path: Path, plan: Json, sdk_invocation: Path | None = None) ->
         assert set(proof['cross_wrapper_modes']) == {'default','login'}
         for mode,result in proof['cross_wrapper_modes'].items():
             assert result['status'] == 'passed-baked-cross-Clang-wrappers-and-CPU-smokes-only' and result['mode'] == mode
-            assert result['native_backends'] == ['AArch64','RISCV','X86'] and result['wrapper_count'] == 6
+            assert result['native_backends'] == ['AArch64','AMDGPU','RISCV','X86'] and result['wrapper_count'] == 6
             assert result['foreign_static_executions_required'] == 4 and result['native_languages'] == ['c','cxx']
     return proof
 

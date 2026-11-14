@@ -142,7 +142,7 @@ SCRIPT_DIR="$FIXTURE_SCRIPTS"
 clang_root="$FIXTURE_CLANG" gcc_root='/source GCC'
 CMAKE_COMPILER_CACHE_PIN='/cache launcher'
 [[ "$FAIL_PHASE" != no-cache ]] || CMAKE_COMPILER_CACHE_PIN=''
-HOST_PYTHON_BIN=fixture_python JOBS=7
+HOST_PYTHON_BIN=fixture_python JOBS="${FIXTURE_JOBS-7}"
 source "$DOWNLOADS_LIBRARY"
 source "$ROCMLIR_LIBRARY"
 compute_cpp_heavy_jobs() {
@@ -213,6 +213,7 @@ class RocmlirBuildLifecycleTests(unittest.TestCase):
                       '[[ "$FAIL_PHASE" != empty-ar ]] || exit 0\nprintf "actual-test-double-member.o\\n"\n')
         ar.chmod(0o755)
         self.calls = 0
+        self.requested_jobs = "7"
 
     def build(self, phase: str = "", omit: str = "") -> tuple[subprocess.CompletedProcess[str], Path, Path]:
         self.calls += 1
@@ -222,7 +223,7 @@ class RocmlirBuildLifecycleTests(unittest.TestCase):
                    EVENT_LOG=str(events), FIXTURE_SOURCE=str(self.tree), FIXTURE_SCRIPTS=str(self.scripts),
                    FIXTURE_CLANG=str(self.clang), DOWNLOADS_LIBRARY=str(ROOT / "linux/scripts/01-core/downloads.sh"),
                    ROCMLIR_LIBRARY=str(LIB / "source-rocmlir.sh"), JOBS_LOG=str(self.root / "jobs"),
-                   PLAN_ARGV=str(self.root / "plan.nul"), CMAKE_ARGV=str(self.root / "cmake.nul"),
+                   FIXTURE_JOBS=self.requested_jobs, PLAN_ARGV=str(self.root / "plan.nul"), CMAKE_ARGV=str(self.root / "cmake.nul"),
                    PREPARE_ARGV=str(self.root / "prepare.nul"), API_ARGV=str(self.root / "api.nul"))
         result = subprocess.run(["bash", str(self.scripts / "build-source-rocmlir.sh"),
                                  str(work), "source archive", "rocm-cmake archive", "/ROCm with spaces"],
@@ -248,6 +249,15 @@ class RocmlirBuildLifecycleTests(unittest.TestCase):
         self.assertEqual((self.root / "api.nul").read_bytes().split(b"\0")[:-1],
                          [str(self.scripts / "verify-source-rocmlir.sh").encode(),
                           str(work / "api-check").encode(), str(work / "host-deps").encode(), str(work / "source").encode()])
+
+    def test_unset_or_explicit_jobs_request_always_uses_the_heavy_cap(self) -> None:
+        for requested in ("", "3"):
+            self.requested_jobs = requested
+            result, work, _events = self.build()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((self.root / "jobs").read_text(), requested + "\n")
+            self.assertEqual((self.root / "cmake.nul.build").read_bytes().split(b"\0")[-2], b"2")
+            self.assertTrue((work / "installed-archive-members.txt").is_file())
 
     def test_original_installed_notices_and_archive_receipt(self) -> None:
         result, work, _events = self.build()

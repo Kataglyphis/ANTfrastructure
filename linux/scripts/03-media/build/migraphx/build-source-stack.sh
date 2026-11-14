@@ -15,6 +15,7 @@ declare -a sources=()
 declare -A archives=()
 migraphx_stack_plan sources "${cache}" "${SCRIPT_DIR}/source-archives.txt"
 printf '%s\n' "${sources[@]}" > "${work}/source-archive-plan.txt"
+bash "${SCRIPT_DIR}/check-hip-compiler.sh" "${work}/hip-compiler-check" "${rocm}"
 migraphx_stack_fetch sources archives
 bash "${SCRIPT_DIR}/build-source-deps.sh" "${work}/parsers" "${archives[abseil]}" "${archives[protobuf]}"
 bash "${SCRIPT_DIR}/build-source-ck.sh" "${work}/ck" "${archives[ck]}" "${archives[rocm-cmake]}"

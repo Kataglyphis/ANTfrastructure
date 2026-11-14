@@ -288,7 +288,7 @@ class ContextCacheTests(unittest.TestCase):
         API["run"](args)
         proof = json.loads((args.output / "proof.json").read_text())
         self.assertEqual(proof["status"], "passed-selected-context-cache-transport-only")
-        self.assertEqual([row["source_files"] for row in proof["profiles"]], [24, 76])
+        self.assertEqual([row["source_files"] for row in proof["profiles"]], [24, 80])
         for row in proof["profiles"]:
             self.assertEqual([phase["cached"] for phase in row["phases"]], [False, True, False])
             self.assertTrue(row["original_inputs_unchanged"])

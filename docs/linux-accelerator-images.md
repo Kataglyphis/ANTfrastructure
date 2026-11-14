@@ -1519,6 +1519,43 @@ NEW_WORK SOURCE_CACHE ROCM_ROOT` inside a normally admitted producer. The normal
 large-build resource guard and disk floor still apply. This command does not itself
 wire the source prefix into `Dockerfile.amd` or establish a finished image.
 
+### Early HIP device compiler check
+
+`check-hip-compiler.sh NEW_WORK ROCM_ROOT` is a required source-stack step after
+archive-plan validation and before downloads or parser/CK/rocMLIR builds. The
+pinned own source Clang/GCC pair must report AMDGPU in `llvm-config --targets-built`
+and compile the tracked `hip-compiler-probe.hip` kernel as a gfx1030 device-only
+object, using the selected ROCm headers and device libraries. The ordinary full
+backend retains its complete GPU architecture selection. A version string or
+CMake `HAS_HIP` fact alone cannot satisfy this gate.
+
+rocMLIR and the full backend pass an unset `JOBS` request to the existing
+heavy-C++ policy instead of forcing two workers. That policy caps concurrency
+by available cores and remaining host/cgroup RAM with its unchanged 4096-MiB
+per-job budget. An explicit `JOBS` request still goes through the same cap;
+`PARALLEL_JOBS` does not bypass it. Measure actual commands and memory on the
+next ordinary rebuild before reporting a speedup.
+
+SDK and HIP entries share `native-check-common.sh` for their two-argument
+contract, fresh work and source compiler bindings; copied entries carry that
+companion alongside `cli-common.sh`, `entry-common.sh` and `source-common.sh`.
+
+The shared `smoke_with_compiled_object` lifecycle removes temporary compiler
+outputs on success and failure. The dedicated work directory retains compiler
+identity, exact NUL-delimited arguments, raw status, stdout/stderr, the verified
+AMDGPU ELF object and its SHA256. Allocation, compilation, inspection or cleanup
+failure cannot pass. The test fixture uses synthetic ELF and compiler doubles;
+it proves transport and refusal policy, not actual HIP compilation. A successful
+real object still does not prove all GPU targets, host/device linkage, runtime
+compatibility, inference or image acceptance.
+
+The first ordinary source build on 2026-11-14 completed genuine rocMLIR and its
+external C API, then failed at its first HIP object because native source LLVM
+contained only X86/AArch64/RISCV. Keep that failed build and its cache receipts.
+The repair adds AMDGPU to native LLVM while foreign target-native installs stay
+narrow. Installed-prefix reuse and fresh compiler/SDK qualification also require
+the selected backends; rebuild and qualify the ordinary chain before any GPU claim.
+
 Its sibling `source-archives.txt` is the seven-input contract: MIGraphX, ROCm-CMake,
 msgpack, Abseil, Protobuf, CK and rocmlirTriton. Version and checksum pins must all
 resolve before the first fetch. Protobuf and msgpack use their original release

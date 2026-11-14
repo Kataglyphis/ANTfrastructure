@@ -57,12 +57,13 @@ CORE_FILES = [
 ]
 BUILD_FILES = [
     'build-image.sh', 'build-source-stack.sh', 'source-stack.sh', 'source-archives.txt',
-    'cli-common.sh', 'entry-common.sh', 'source-common.sh', 'build-source-deps.sh', 'source-deps.sh',
+    'cli-common.sh', 'entry-common.sh', 'native-check-common.sh', 'source-common.sh', 'build-source-deps.sh', 'source-deps.sh',
     'build-source-ck.sh', 'verify-source-ck.sh', 'ck-host-consumer/CMakeLists.txt',
     'ck-host-consumer/main.cpp', 'build-source-rocmlir.sh', 'prepare-source-rocmlir.sh',
     'source-rocmlir.sh', 'rocmlir-source-notices.sha256', 'inspect-rocmlir-build.py',
     'verify-source-rocmlir.sh', 'rocmlir-host-consumer/CMakeLists.txt',
-    'rocmlir-host-consumer/main.cpp', 'check-source-sdk.sh', 'sdk-closure/CMakeLists.txt',
+    'rocmlir-host-consumer/main.cpp', 'check-hip-compiler.sh', 'hip-compiler-probe.hip',
+    'check-source-sdk.sh', 'sdk-closure/CMakeLists.txt',
     'sdk-closure/SdkPackages.cmake', 'build-source-backend.sh', 'prepare-source-build.sh',
     'stage-backend-install.py', 'backend-source-notices.sha256'
 ]
@@ -196,7 +197,7 @@ class ImageWiringTests(unittest.TestCase):
                      "lib/cli-value-options.sh", "lib/log-bootstrap.sh",
                      "patches/migraphx/001-preserve-zero-pad-maxpool.patch",
                      "patches/migraphx/002-select-pinned-python.patch",
-                     "06-packaging/ort_census_probe.py", "06-packaging/media-payloads.sh"):
+                     "06-packaging/ort_census_probe.py", "06-packaging/smoke-common.sh", "06-packaging/media-payloads.sh"):
             expected["/opt/scripts/" + name] = "linux/scripts/" + name
         for name in ("vulkan.sh", "bootstrap-import.sh", "bootstrap.sh", "vulkan-install.sh"):
             expected["/opt/scripts/toolchain/" + name] = "linux/scripts/02-toolchain/" + name

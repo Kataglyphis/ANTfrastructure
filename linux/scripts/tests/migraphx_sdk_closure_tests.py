@@ -210,11 +210,13 @@ class MigraphxSDKClosureTests(unittest.TestCase):
 
     def test_entrypoint_and_project_keep_shared_transport(self) -> None:
         source = (SDK.parent / "check-source-sdk.sh").read_text()
-        self.assertIn('source "$(dirname "${BASH_SOURCE[0]}")/cli-common.sh"', source)
-        self.assertIn('source "${SCRIPT_DIR}/entry-common.sh"', source)
+        self.assertIn('source "$(dirname "${BASH_SOURCE[0]}")/native-check-common.sh" "$@"', source)
+        common = (SDK.parent / "native-check-common.sh").read_text()
+        self.assertIn('source "$(dirname "${BASH_SOURCE[0]}")/cli-common.sh"', common)
+        self.assertIn('source "${SCRIPT_DIR}/entry-common.sh"', common)
         self.assertIn('source "${SCRIPT_DIR}/source-common.sh"',
                       (SDK.parent / "entry-common.sh").read_text())
-        self.assertIn('migraphx_prepare_native_work "${work}" work clang_root gcc_root', source)
+        self.assertIn('migraphx_prepare_native_work "${work}" work clang_root gcc_root', common)
         self.assertIn('migraphx_prepare_cmake_plan cmake_args "${clang_root}" "${gcc_root}"', source)
         self.assertIn('migraphx_native_cmake_args "$1" "$2" "$3" || return',
                       (SDK.parent / "source-common.sh").read_text())

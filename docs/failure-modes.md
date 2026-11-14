@@ -5,6 +5,18 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## Linux HIP rejects amdgpu-internalize-symbols
+
+When the own source Clang reports `Unknown command line argument
+'-amdgpu-internalize-symbols'` at the first MIGraphX HIP object, inspect its
+`llvm-config --targets-built`. The ordinary build on 2026-11-14 had only the
+three CPU backends. Native LLVM must include AMDGPU; preserve the own pinned
+compiler and rebuild/qualify the compiler, SDK and GPU stages. The required
+[early HIP check](linux-accelerator-images.md#early-hip-device-compiler-check)
+now compiles a device object before the expensive source dependencies. Backend
+metadata and successful rocMLIR/CMake checks do not prove actual HIP codegen or
+GPU inference. Keep raw failed-build and cache evidence.
+
 ## Live configure snapshot refuses changing inputs
 
 Use the actual normal GPU invocation, matching live build-image or outer RUN PID and its private relative build directory. Missing, linked, oversized or changed inputs, a reused output or a changed process start fail before a passed observation. Preserve partial evidence and choose a fresh output for a later attempt. The producer is never repaired or paused by this reader. See [live configure snapshots](local-proof-workflows.md#live-configure-snapshots).

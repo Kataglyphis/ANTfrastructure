@@ -73,15 +73,15 @@ export CROSS_TARGETS=amd64,arm64,riscv64
 while IFS='|' read -r FAKE_BUILD_ARCH expected; do
     t_assert_eq "${expected}" "$(llvm_cross_build_backends "${FAKE_BUILD_ARCH}")"
 done <<'HOSTS'
-amd64|X86;AArch64;RISCV
-arm64|AArch64;X86;RISCV
-riscv64|RISCV;X86;AArch64
+amd64|X86;AArch64;RISCV;AMDGPU
+arm64|AArch64;X86;RISCV;AMDGPU
+riscv64|RISCV;X86;AArch64;AMDGPU
 HOSTS
 FAKE_BUILD_ARCH=amd64
 CROSS_TARGETS=arm64
-t_assert_eq 'X86;AArch64' "$(llvm_cross_build_backends amd64)"
+t_assert_eq 'X86;AArch64;AMDGPU' "$(llvm_cross_build_backends amd64)"
 CROSS_TARGETS=riscv64,arm64,amd64,riscv64
-t_assert_eq 'X86;RISCV;AArch64' "$(llvm_cross_build_backends amd64)"
+t_assert_eq 'X86;RISCV;AArch64;AMDGPU' "$(llvm_cross_build_backends amd64)"
 
 t_case "foreign native installs keep only their target backend"
 CROSS_TARGETS=amd64,arm64,riscv64
@@ -90,6 +90,31 @@ t_assert_eq RISCV "$(llvm_cross_build_backends riscv64)"
 FAKE_BUILD_ARCH=arm64
 t_assert_eq X86 "$(llvm_cross_build_backends amd64)"
 
+t_case "installed native compilers must retain every required CPU and AMDGPU backend"
+FAKE_BUILD_ARCH=amd64
+t_source_functions "${subject}" llvm_cross_required_backends_available
+llvm_cross_llvm_config_path() { printf '%s' "$1/bin/llvm-config"; }
+llvm_cross_run_binary() {
+    [[ "$2" == '/source prefix/bin/llvm-config' && "$3" == --targets-built ]] || return 99
+    printf '%s' "${installed_backends}"
+    return "${backend_probe_status}"
+}
+backend_probe_status=0
+installed_backends=$'X86\nAArch64 RISCV\tAMDGPU'
+CROSS_TARGETS=amd64,arm64,riscv64
+t_assert_ok llvm_cross_required_backends_available amd64 '/source prefix'
+for installed_backends in 'X86 AArch64 RISCV' 'X86 AArch64 RISCV NotAMDGPU' 'AMDGPU' ''; do
+    t_assert_fails llvm_cross_required_backends_available amd64 '/source prefix'
+done
+installed_backends=AArch64
+t_assert_ok llvm_cross_required_backends_available arm64 '/source prefix'
+backend_probe_status=47
+status=0
+llvm_cross_required_backends_available arm64 '/source prefix' || status=$?
+t_assert_eq 47 "${status}"
+t_assert_contains "$(t_fn_src "${subject}" llvm_cross_install_looks_complete)" 'llvm_cross_required_backends_available "${target_label}" "${prefix}" || return 1'
+
+FAKE_BUILD_ARCH=arm64
 t_case "a malformed native target set refuses before emitting a backend list"
 CROSS_TARGETS=unsupported
 t_assert_fails llvm_cross_build_backends arm64

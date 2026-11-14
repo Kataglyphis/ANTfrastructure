@@ -11,7 +11,7 @@ python3 "${SCRIPT_DIR}/stage-backend-install.py" check-prefix --prefix "${MIGRAP
 source "${SCRIPT_DIR}/prepare-source-build.sh" "$@"
 [[ -n "${CMAKE_COMPILER_CACHE_PIN:-}" ]] || { printf 'Missing MIGraphX build compiler-cache pin\n' >&2; exit 1; }
 sha256sum "${work}/source/LICENSE" >> "${work}/source-inputs.sha256"
-jobs="$(compute_cpp_heavy_jobs "${JOBS:-2}")"
+jobs="$(compute_cpp_heavy_jobs "${JOBS:-}")"
 cmake --build "${work}/build" --parallel "${jobs}"
 cmake --install "${work}/build"
 sha256sum --check "${work}/source-inputs.sha256"
