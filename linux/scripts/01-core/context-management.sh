@@ -57,15 +57,32 @@ export_rootfs_from_image() {
 }
 
 export_image_to_oci_layout() {
-  local nerdctl_bin="$1"
-  local tag="$2"
-  local dest_dir="$3"
-
-  rm -rf "${dest_dir}"
-  mkdir -p "${dest_dir}"
-
-  printf '+ %q save %q | tar -xf - -C %q\n' "${nerdctl_bin}" "${tag}" "${dest_dir}"
-  "${nerdctl_bin}" save "${tag}" | tar -xf - -C "${dest_dir}"
+  local nerdctl_bin="$1" tag="$2" dest_dir="$3" parent_proof="${4:-}"
+  local -a tar_args=() _oci_status=()
+  if [ -n "${parent_proof}" ]; then
+    [ ! -e "${dest_dir}" ] && [ ! -L "${dest_dir}" ] || {
+      printf 'Shared OCI destination already exists: %s\n' "${dest_dir}" >&2; return 2;
+    }
+    mkdir -p "${dest_dir}" || return
+    python3 "${_CM_DIR}/../local-proof/native_oci_seed.py" \
+      --parent-proof "${parent_proof}" --context "${dest_dir}" || return
+    tar_args+=(--skip-old-files)
+  else
+    rm -rf "${dest_dir}"
+    mkdir -p "${dest_dir}" || return
+  fi
+  printf '+ %q save %q | tar %s -xf - -C %q\n' "${nerdctl_bin}" "${tag}" "${tar_args[*]}" "${dest_dir}"
+  (
+    set +e
+    "${nerdctl_bin}" save "${tag}" | tar "${tar_args[@]}" -xf - -C "${dest_dir}"
+    _oci_status=("${PIPESTATUS[@]}")
+    if [ -n "${parent_proof}" ]; then
+      printf '{"producer_status":%s,"extractor_status":%s}\n' "${_oci_status[0]}" "${_oci_status[1]}" \
+        > "${dest_dir}.transport.json" || exit $?
+    fi
+    [ "${_oci_status[1]}" -eq 0 ] || exit "${_oci_status[1]}"
+    exit "${_oci_status[0]}"
+  )
 }
 
 # The compiler receives only staged selected bytes; host source directories never become its build context.

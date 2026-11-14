@@ -48159,24 +48159,24 @@
  },
  {
   "id": "compiler-llvm-tools.sdk-profile-ancestry-count",
-  "target": "linux/scripts/local-proof/native-oci-handoff.py",
-  "find": "    assert count == expected_count and count >= 12 and len(manifest[\"layers\"]) >= count\n",
+  "target": "linux/scripts/local-proof/native_oci_layout.py",
+  "find": "    assert count == expected_count and count >= 12 and len(manifest['layers']) >= count\n",
   "replace": "    pass\n",
   "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
   "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
  },
  {
   "id": "compiler-llvm-tools.sdk-profile-ancestry-layers",
-  "target": "linux/scripts/local-proof/native-oci-handoff.py",
-  "find": "    assert manifest[\"layers\"][:count] == parent_manifest[\"layers\"], \"Base layer ancestry differs\"\n",
+  "target": "linux/scripts/local-proof/native_oci_layout.py",
+  "find": "    assert manifest['layers'][:count] == parent_manifest['layers'], 'Base layer ancestry differs'\n",
   "replace": "    pass\n",
   "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
   "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
  },
  {
   "id": "compiler-llvm-tools.sdk-profile-ancestry-diffIDs",
-  "target": "linux/scripts/local-proof/native-oci-handoff.py",
-  "find": "    assert config[\"rootfs\"][\"diff_ids\"][:count] == parent_config[\"rootfs\"][\"diff_ids\"], \"Base diffID ancestry differs\"\n",
+  "target": "linux/scripts/local-proof/native_oci_layout.py",
+  "find": "    assert config['rootfs']['diff_ids'][:count] == parent_config['rootfs']['diff_ids'], 'Base diffID ancestry differs'\n",
   "replace": "    pass\n",
   "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
   "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
@@ -48204,5 +48204,285 @@
   "replace": "            command.append('compiler')\n",
   "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_launch_transport",
   "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-plain-directory",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert value.is_dir() and value.resolve(strict=True) == value, 'OCI context directory must have no symlink components'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-plain-metadata",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert path.is_file() and not path.is_symlink(), 'OCI proof and metadata must be regular files'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-parent-status",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry'}, 'Qualified native OCI parent required'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-parent-blob-proof",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert proof['all_native_blob_sizes_and_sha256_verified'] is True, 'Parent blob verification is required'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-parent-terminal",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert proof['stopped']['ActiveState'] == 'inactive' and proof['stopped']['MainPID'] == '0', 'Parent export must be sealed'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-parent-index",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert sha(context / 'index.json') == proof['index_sha256'], 'Parent index bytes differ'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-parent-image",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert layout[0] == proof['manifest'] and layout[1]['config']['digest'] == proof['config'], 'Parent manifest or config differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-parent-count",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert len(layout[1]['layers']) == proof['layers'], 'Parent layer count differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-regular-identity",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert stat.S_ISREG(value.st_mode), 'Only regular layer files may be shared'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-empty-context",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert not any(context.iterdir()), 'Shared OCI destination must be empty'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-nonoverlap",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert not context.is_relative_to(parent) and not parent.is_relative_to(context), 'OCI parent and child contexts overlap'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-preserved-receipt",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert not receipt.exists() and not receipt.is_symlink(), 'Preserve the existing OCI seed receipt'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-receipt-schema",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert record['schema_version'] == 1 and record['status'] == 'seeded-verified-parent-layer-links-only', 'Unexpected OCI seed receipt'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-receipt-proof",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert record['parent_proof'] == str(proof_path.resolve()) and record['parent_proof_sha256'] == sha(proof_path), 'OCI seed parent proof differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-receipt-context",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert record['parent_context'] == str(parent) and record['child_context'] == str(context), 'OCI seed context binding differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-receipt-parent",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert record['parent_manifest'] == layout[0] and record['parent_index_sha256'] == proof['index_sha256'], 'OCI seed parent identity differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-receipt-layers",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert [row['digest'] for row in record['linked_layers']] == [row['digest'] for row in layers], 'OCI seed layer inventory differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-receipt-path",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "        assert row['relative_path'] == str(destination.relative_to(context)), 'OCI seed layer path differs'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-receipt-inodes",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "        assert identity(source) == row['identity'] and identity(destination) == row['identity'], 'Shared OCI layer identity or parent metadata changed'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-receipt-bytes",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "    assert record['shared_unique_layer_bytes'] == sum(layer['size'] for layer in layers), 'OCI shared-byte accounting differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-private-metadata",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": "        assert (context / name).stat().st_ino != (parent / name).stat().st_ino or (context / name).stat().st_dev != (parent / name).stat().st_dev, 'OCI child metadata must remain independent'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-blob-algorithm",
+  "target": "linux/scripts/local-proof/native_oci_layout.py",
+  "find": "    assert algorithm == 'sha256' and re.fullmatch(r'[0-9a-f]{64}', value), 'Invalid blob digest'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-blob-regular",
+  "target": "linux/scripts/local-proof/native_oci_layout.py",
+  "find": "    assert path.is_file() and not path.is_symlink(), 'Missing regular blob'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-blob-SHA256",
+  "target": "linux/scripts/local-proof/native_oci_layout.py",
+  "find": "    assert path.stat().st_size == descriptor['size'] and sha(path) == value, 'Blob bytes differ from descriptor'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-skip-shared-files",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": "    tar_args+=(--skip-old-files)\n",
+  "replace": "    tar_args+=()\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-fresh-destination",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": "    [ ! -e \"${dest_dir}\" ] && [ ! -L \"${dest_dir}\" ] || {\n",
+  "replace": "    [ ! -e \"${dest_dir}\" ] || [ ! -L \"${dest_dir}\" ] || {\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-producer-status",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": "    exit \"${_oci_status[0]}\"\n",
+  "replace": "    exit 0\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-extractor-status",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": "    [ \"${_oci_status[1]}\" -eq 0 ] || exit \"${_oci_status[1]}\"\n",
+  "replace": "    [ \"${_oci_status[1]}\" -eq 0 ] || exit 0\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-failure-receipt",
+  "target": "linux/scripts/01-core/context-management.sh",
+  "find": "    set +e\n",
+  "replace": "    set -e\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-required-sharing",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "    assert invocation.get('parent_layer_reuse_required',False) == sdk, 'OCI parent reuse requirement differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-worker-manifest",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "    assert invocation.get('export_input_sha256',worker_inputs if not sdk else {}) == worker_inputs, 'OCI export worker bytes changed'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-transport-receipt",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "        assert transport == {'producer_status':0,'extractor_status':0}, 'OCI producer or extractor failed'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-verify-linked-layers",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "        parent, reuse = verify_seed(Path(subject['compiler_parent_proof']), args.context)\n",
+  "replace": "        parent, reuse = native_layout(base_context), {}\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-parent-argument",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "    parent_proof = subject['compiler_parent_proof'] if sdk else ''\n",
+  "replace": "    parent_proof = ''\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.oci-parent-reuse-current-helper",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "    helper = Path(__file__).resolve().parents[1] / '01-core/context-management.sh' if sdk else Path(plan['source']) / 'linux/scripts/01-core/context-management.sh'\n",
+  "replace": "    helper = Path(plan['source']) / 'linux/scripts/01-core/context-management.sh'\n",
+  "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
+  "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
  }
 ]

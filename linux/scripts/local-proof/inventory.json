@@ -465,6 +465,8 @@
     "linux/scripts/local-proof/proof_types.py",
     "linux/scripts/local-proof/proof_subject.py",
     "linux/scripts/local-proof/sdk_profile_fixture.py",
-    "linux/scripts/local-proof/test-sdk-image-profile.py"
+    "linux/scripts/local-proof/test-sdk-image-profile.py",
+    "linux/scripts/local-proof/native_oci_layout.py",
+    "linux/scripts/local-proof/native_oci_seed.py"
   ]
 }

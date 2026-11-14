@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import hashlib
 import json
 import re
 import runpy
@@ -15,17 +14,25 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from proof_types import Json, NativeLayout
+    from proof_types import Json
 
+from native_oci_layout import (
+    base_ancestry,
+    descriptor_path,
+    layer_ancestry,
+    native_layout,
+    sha,
+)
+from native_oci_seed import verify_seed
 from proof_commands import checked_run
 from proof_subject import load_subject, validate_subject_binding
 
+__all__ = [
+    'base_ancestry', 'descriptor_path', 'export_worker_inputs', 'launch', 'layer_ancestry', 'main',
+    'native_layout', 'qualification', 'save', 'sdk_cpu_qualification', 'seal', 'sha', 'state',
+]
+
 run = checked_run
-
-
-def sha(path: Path) -> str:
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 def save(path: Path, value: object) -> None:
@@ -35,44 +42,6 @@ def save(path: Path, value: object) -> None:
 def state(unit: str) -> dict[str, str]:
     raw = run(["systemctl", "--user", "show", unit, "--property=Id,LoadState,ActiveState,SubState,MainPID,Result,ExecMainStatus"]).stdout
     return dict(line.split("=", 1) for line in raw.splitlines())
-
-
-def descriptor_path(context: Path, descriptor: Json) -> Path:
-    algorithm, value = descriptor["digest"].split(":", 1)
-    assert algorithm == "sha256" and re.fullmatch(r"[0-9a-f]{64}", value), "Invalid blob digest"
-    path = context / "blobs" / algorithm / value
-    assert path.is_file() and not path.is_symlink(), "Missing regular blob"
-    assert path.stat().st_size == descriptor["size"] and sha(path) == value, "Blob bytes differ from descriptor"
-    return path
-
-
-def native_layout(context: Path) -> NativeLayout:
-    assert json.loads((context / "oci-layout").read_text())["imageLayoutVersion"] == "1.0.0"
-    index = json.loads((context / "index.json").read_text())
-    assert index["schemaVersion"] == 2 and len(index["manifests"]) == 1, "Native OCI must select exactly one manifest"
-    selected = index["manifests"][0]
-    manifest = json.loads(descriptor_path(context, selected).read_text())
-    assert manifest["schemaVersion"] == 2
-    config = json.loads(descriptor_path(context, manifest["config"]).read_text())
-    assert config["os"] == "linux" and config["architecture"] == "amd64", "Compiler must be native Linux amd64"
-    assert config["rootfs"]["type"] == "layers" and len(config["rootfs"]["diff_ids"]) == len(manifest["layers"])
-    for layer in manifest["layers"]:
-        descriptor_path(context, layer)
-    return selected["digest"], manifest, config
-
-
-def layer_ancestry(child: NativeLayout, parent: NativeLayout, expected_count: int) -> int:
-    _, manifest, config = child
-    _, parent_manifest, parent_config = parent
-    count = len(parent_manifest["layers"])
-    assert count == expected_count and count >= 12 and len(manifest["layers"]) >= count
-    assert manifest["layers"][:count] == parent_manifest["layers"], "Base layer ancestry differs"
-    assert config["rootfs"]["diff_ids"][:count] == parent_config["rootfs"]["diff_ids"], "Base diffID ancestry differs"
-    return count
-
-
-def base_ancestry(child: NativeLayout, parent: NativeLayout) -> int:
-    return layer_ancestry(child, parent, 12)
 
 
 def sdk_cpu_qualification(proof: Json, subject: Json) -> None:
@@ -106,6 +75,12 @@ def qualification(path: Path, plan: Json, sdk_invocation: Path | None = None) ->
     return proof
 
 
+def export_worker_inputs(plan: Json, sdk: bool) -> dict[str, str]:
+    helper = Path(__file__).resolve().parents[1] / '01-core/context-management.sh' if sdk else Path(plan['source']) / 'linux/scripts/01-core/context-management.sh'
+    paths = [helper,Path(__file__).with_name('native_oci_seed.py'),Path(__file__).with_name('native_oci_layout.py')] if sdk else [helper]
+    return {str(path):sha(path) for path in paths}
+
+
 def launch(args: argparse.Namespace, plan: Json, proof: Json) -> int:
     subject = load_subject(plan, args.sdk_invocation)
     assert state(args.unit)["LoadState"] == "not-found" and not args.context.exists()
@@ -116,20 +91,25 @@ def launch(args: argparse.Namespace, plan: Json, proof: Json) -> int:
     assert disk["available_bytes"] >= plan["required_bytes"]
     image = json.loads(run([str(Path.home() / ".local/bin/nerdctl"), "image", "inspect", subject['image']]).stdout)[0]
     assert image["Id"] == proof["image_config"] and any(item.endswith("@" + proof["actual_image_manifest"]) for item in image["RepoDigests"])
-    helper = Path(plan["source"]) / "linux/scripts/01-core/context-management.sh"
+    sdk = subject['kind'] == 'sdk-amd64'
+    worker_inputs = export_worker_inputs(plan,sdk)
+    helper = Path(next(iter(worker_inputs)))
+    parent_proof = subject['compiler_parent_proof'] if sdk else ''
     engine = str(Path.home() / ".local/bin/nerdctl")
     command = ["systemd-run", "--user", "--no-block", "--expand-environment=no", f"--unit={args.unit}",
                "-p", "Type=oneshot", "-p", "RemainAfterExit=yes", "-p", "TimeoutStartSec=1200", "-p", "TimeoutStopSec=120",
                "-p", "KillMode=control-group", "-p", f"StandardOutput=append:{args.context}.unit.log", "-p", f"StandardError=append:{args.context}.unit.log",
                "-E", "LC_ALL=C", "-E", f"HOME={Path.home()}", "-E", f"PATH={Path.home()}/.local/bin:/usr/local/bin:/usr/bin:/bin",
-               "/bin/bash", "-euo", "pipefail", "-c", 'source "$1"; declare -F export_image_to_oci_layout >/dev/null; export_image_to_oci_layout "$2" "$3" "$4"',
-               "qualified-native-export", str(helper), engine, subject['image'], str(args.context)]
+               "/bin/bash", "-euo", "pipefail", "-c", 'source "$1"; declare -F export_image_to_oci_layout >/dev/null; export_image_to_oci_layout "$2" "$3" "$4" "${5:-}"',
+               "qualified-native-export", str(helper), engine, subject['image'], str(args.context), parent_proof]
     invocation = args.context.with_suffix(".invocation.json")
     assert not invocation.exists()
     record = {"created_at": datetime.datetime.now(datetime.UTC).isoformat(), "unit": args.unit, "command": command,
               "context": str(args.context), 'subject':subject, "qualification_proof": str(args.qualification.resolve()), "qualification_sha256": sha(args.qualification),
               "source_revision": plan["source_revision"], "manifest": proof["actual_image_manifest"], "config": proof["image_config"],
-              "disk_admission": disk, "scope": __doc__, "publication": False}
+              "disk_admission": disk, 'parent_layer_reuse_required':sdk,
+              'export_input_sha256':worker_inputs,
+              "scope": __doc__, "publication": False}
     save(invocation, record)
     result = subprocess.run(command, capture_output=True, text=True, timeout=60, check=False)
     record.update(launch_status=result.returncode, stdout=result.stdout, stderr=result.stderr)
@@ -144,6 +124,9 @@ def seal(args: argparse.Namespace, plan: Json, proof: Json) -> int:
     invocation = json.loads(args.context.with_suffix(".invocation.json").read_text())
     assert invocation["unit"] == args.unit and invocation["qualification_sha256"] == sha(args.qualification)
     validate_subject_binding(invocation, subject)
+    assert invocation.get('parent_layer_reuse_required',False) == sdk, 'OCI parent reuse requirement differs'
+    worker_inputs = export_worker_inputs(plan,sdk)
+    assert invocation.get('export_input_sha256',worker_inputs if not sdk else {}) == worker_inputs, 'OCI export worker bytes changed'
     terminal = state(args.unit)
     assert terminal["LoadState"] == "loaded" and terminal["ActiveState"] == "active" and terminal["SubState"] == "exited"
     assert terminal["MainPID"] == terminal["ExecMainStatus"] == "0" and terminal["Result"] == "success"
@@ -155,12 +138,15 @@ def seal(args: argparse.Namespace, plan: Json, proof: Json) -> int:
         base_context = Path(original['context'])
         expected_index, expected_manifest, expected_config = original['index_sha256'], original['manifest'], original['config']
         expected_count = original['layers']
+        parent, reuse = verify_seed(Path(subject['compiler_parent_proof']), args.context)
+        transport = json.loads(Path(str(args.context) + '.transport.json').read_text())
+        assert transport == {'producer_status':0,'extractor_status':0}, 'OCI producer or extractor failed'
     else:
         base_context = Path(next(item.split("=", 1)[1] for item in plan["command"] if item.startswith("CROSS_COMPILER_BASE_CONTEXT=")))
         expected_index, expected_manifest, expected_config = plan['base_oci_index_sha256'], plan['base_manifest'], plan['base_config']
         expected_count = 12
+        parent = native_layout(base_context)
     assert sha(base_context / 'index.json') == expected_index
-    parent = native_layout(base_context)
     assert parent[0] == expected_manifest and parent[1]['config']['digest'] == expected_config
     ancestors = layer_ancestry(child, parent, expected_count)
     status = 'passed-qualified-native-SDK-OCI-and-compiler-ancestry' if sdk else 'passed-qualified-native-compiler-OCI-and-base-ancestry'
@@ -172,6 +158,8 @@ def seal(args: argparse.Namespace, plan: Json, proof: Json) -> int:
               "index_sha256": sha(args.context / "index.json"), "qualification_proof": str(args.qualification.resolve()),
               "qualification_sha256": sha(args.qualification), "SDK_parent_prerequisites_passed": not sdk,
               "SDK_built": sdk, "GPU_or_final_image_acceptance": False, "scope": __doc__, "publication": False}
+    if sdk:
+        record.update(parent_layer_reuse=reuse, export_transport=transport, parent_layer_reuse_verified=True)
     output = args.context.with_suffix(".proof.json")
     assert not output.exists()
     save(output, record)

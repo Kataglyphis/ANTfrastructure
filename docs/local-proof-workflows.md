@@ -132,10 +132,43 @@ export or subsequent heavy build. Receipts record the supplied invocation, paren
 proof hashes; they do not authenticate those inputs. SDK component success never supplies a
 final runtime or consumer receipt.
 
-Copy `proof_subject.py` and `proof_commands.py` beside both CLIs. Their CPU worker uses
+Copy `proof_subject.py` and `proof_commands.py` beside both CLIs; the OCI handoff also requires
+`native_oci_layout.py` and `native_oci_seed.py`. Their CPU worker uses
 `probe-cross-clang-image.py`, `qualify-compiler-with-cross.sh`, the original native qualifier,
 loader probe and C/C++ inputs together. SDK fixture runs also carry `sdk_profile_fixture.py`;
 all recurring logic stays versioned and per-run arguments/results stay under `logs/`.
+
+## Verified parent layer reuse
+
+SDK exports use the current versioned toolkit's `01-core/context-management.sh` and pass the
+sealed compiler parent proof as the fourth `export_image_to_oci_layout` argument. The default
+three-argument path retains its existing reset policy. The optional seeded path refuses any
+existing destination, then checks the parent receipt, index, manifest, config and every blob's
+size/SHA256 before linking unique layer files into the fresh child context. Unsupported
+hardlinks fail; no silent full-copy fallback changes the space requirement. Parent and child
+contexts must not overlap or resolve through symlink directories, and proof/metadata/layer
+inputs remain regular files. Child index, layout and config are written independently.
+
+`tar --skip-old-files` preserves those immutable layer links. The transport retains producer
+and extractor raw statuses, including under conditional callers and ordinary errexit, and
+returns the rightmost pipeline failure. Seeded exports write `<context>.transport.json` and
+`<context>.parent-links.json`. The sealer requires both statuses to be zero, the exact worker
+hash manifest, every recorded unique digest/path, source/child device/inode and post-link
+mode/owner/mtime/ctime identity, and independent child index/layout files. Creating the links
+itself changes link metadata; no other writer/linker may change it before that export is sealed.
+Source file hashes and logical output paths remain unchanged.
+
+Only layers are shared. Parent receipt and source paths remain explicit, and every final child
+blob and ancestor descriptor/diffID is still verified. These local checks do not authenticate a
+supplied parent receipt or establish complete ABI/GPU acceptance. The original 180-GiB admission
+still applies; shared-byte arithmetic is not a disk guard. Re-measure actual space and preserve
+the usual cachemount, image, source and receipt protections during any authorized cleanup.
+
+`test-native-oci-seed.sh` uses synthetic OCI data, real tar extraction and declared engine/unit
+doubles to test preservation, symlink/path/receipt refusals, equal-byte inode changes, both raw
+failures and the actual SDK launcher/sealer logic. Mutation recipes break these guards. Copy its
+`native_oci_seed_tests.py` and `native_oci_transport_fixture.py` companions together. The shared
+layout module retains the existing compiler API and 12-layer base checks.
 
 ## Authorized cleanup
 

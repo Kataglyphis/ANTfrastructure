@@ -16,6 +16,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — share verified native OCI parent layers
+
+- Keep recurring OCI validation/seeding logic in shared versioned modules. SDK exports bind the current worker bytes, rehash the sealed parent and hardlink only its immutable layer files into a fresh child context; child metadata remains independent. Preserve post-link identities through real tar extraction and retain every blob/ancestor check before sealing.
+- Retain both producer and extractor statuses, including conditional callers and ordinary errexit; a valid archive followed by a producer failure cannot report success. Add synthetic OCI/real-tar refusal, metadata, failure and SDK launcher/sealer controls with executable mutations. Shared-byte counts do not waive the disk floor or prove image/GPU acceptance. See [verified parent layer reuse](docs/local-proof-workflows.md#verified-parent-layer-reuse).
+
 ## 2026-11-14 — preserve explicit SDK qualification and ancestry profiles
 
 - Extend the canonical image qualifier and native OCI handoff with an actual SDK invocation input. Bind the successful SDK producer, complete source, qualified compiler parent and original loader probe; retain the separate three-target compiler contract. Check native SDK aliases, C/C++ execution and default/login tool and loader selection, then hash every OCI blob and all compiler ancestor layers. Add shared binding checks, independent refusal fixtures, transport doubles and executable mutations. These component profiles do not prove foreign SDKs, complete C++ ABI, GPU inference or final runtime acceptance. See [SDK component qualification](docs/local-proof-workflows.md#sdk-component-qualification).

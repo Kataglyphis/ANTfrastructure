@@ -1991,6 +1991,21 @@ invocation and rerun against the same immutable image with fresh output and actu
 A successful old fixture does not qualify the image; no compiler rebuild follows from a stale
 host expectation alone.
 
+### A local native OCI handoff duplicates its verified parent layers
+
+**Cause.** Saving a child image into another OCI directory writes its compressed ancestor
+layers again. Repeating a large native parent can consume the fixed build reserve even when
+compiler caches and tagged images must be preserved.
+
+**Fix.** Use the versioned SDK handoff's
+[verified parent layer sharing](local-proof-workflows.md#verified-parent-layer-reuse).
+It hashes the parent again, links only immutable layer files into a fresh context and extracts
+new child metadata with `tar --skip-old-files`. The sealer checks both transport statuses,
+worker hashes, unchanged post-link identities and the complete native blob/ancestry contract.
+A different filesystem, symlink, changed source metadata or failed transport must fail; keep
+the original evidence and use a fresh destination after fixing the cause. The normal disk
+admission and cleanup identity protections remain required.
+
 ### A completed SDK fails a compiler-profile qualification on LLVM prefixes
 
 **Cause.** SDK materialization moves the selected native tree to `/opt/llvm-target` and
