@@ -99,6 +99,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Wheel unpack/pack transport keeps Python argument boundaries and raw status; packaging execution keeps best-effort and sudo failure policies separate.
    Cross-Clang wrappers use the filesystem-root sysroot with Debian's absolute target linker scripts; foreign target trees remain mandatory. Independent image probes require that same root and reject the old double-root wrappers.
    Copied compiler/SDK qualifiers and OCI handoffs carry `proof_subject.py` and `proof_commands.py`; SDK profiles bind the actual invocation, complete source and compiler parent, both native shell modes and all compiler ancestor layers. Never retarget a compiler plan to represent an SDK.
+   Copied normal SDK/GPU launchers carry `normal_stage_launch.py`; GPU admission requires the exact qualified SDK, rehashed native blobs and compiler ancestry, complete source proof, fresh local alias, idle host and unchanged disk floor.
    Copied native OCI handoffs also carry `native_oci_layout.py` and `native_oci_seed.py`; parent-seeded context exports require these helpers beside the core layout, a fresh destination, immutable verified layer links, independent child metadata and both raw transport statuses. Hash and ancestry checks remain mandatory after sharing.
    Compiler smoke callbacks stay unconditional; preserve GStreamer's separate target lookups, temporary cleanup and raw failure statuses.
    ORT tree scans retain archive candidates; record scans stay shallow and preserve component-name exclusions.

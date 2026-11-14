@@ -48484,5 +48484,309 @@
   "replace": "    helper = Path(plan['source']) / 'linux/scripts/01-core/context-management.sh'\n",
   "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
   "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-01",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert checked_run(['git', '-C', str(source), 'rev-parse', 'HEAD']).stdout.strip() == revision, 'Source revision differs'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Source revision differs"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-02",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert not checked_run(['git', '-C', str(source), 'status', '--porcelain']).stdout.strip(), 'Source must be clean'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Source must be clean"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-03",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert proof['status'] == 'passed-complete-Linux-source-preflight-only' and proof['source_revision'] == revision, 'Complete exact source proof required'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Complete exact source proof required"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-04",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert proof['actual_full_registry_mutations'] == len(registry) == len({row['id'] for row in registry}), 'Full mutation coverage differs'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Full mutation coverage differs"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-05",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert proof['actual_preflight_group_count'] == len(proof['all_default_preflight_groups']) == 42, 'All preflight groups are required'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: All preflight groups are required"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-06",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert proof['command_exit_status'] == proof['cleanup_exit_status'] == proof['independent_engine_query_exit_status'] == 0, 'Source proof contains a failed command'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Source proof contains a failed command"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-07",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert proof['unit_stopped_after_seal'] and proof['owned_container_absent'], 'Source proof lacks cleanup'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Source proof lacks cleanup"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-08",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert proof['script_suites'] > 0 and proof['script_assertions'] > 0, 'Source proof lacks actual suite accounting'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Source proof lacks actual suite accounting"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-09",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert not {key for key in manager if key.startswith('CROSS_') or key in {'ENABLE_AMD', 'ENABLE_NVIDIA', 'ENABLE_DEEPSTREAM', 'DRY_RUN'}}, 'Ambient build flags must be absent'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Ambient build flags must be absent"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-10",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert checked_run(['systemctl', '--user', 'show', unit, '--property=LoadState', '--value']).stdout.strip() == 'not-found', 'Unit already exists'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Unit already exists"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-11",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert not output.exists(), 'Preserve existing stage output'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Preserve existing stage output"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-12",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert not temporary.exists() and all(not (path / '.git').exists() for path in [temporary, *temporary.parents]), 'Temporary root must be fresh and outside Git'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Temporary root must be fresh and outside Git"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-13",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert image not in {f\"{row['Repository']}:{row['Tag']}\" for row in inventory}, 'Preserve the existing image alias'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Preserve the existing image alias"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-14",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert not checked_run([engine, 'ps', '--format', '{{.ID}}']).stdout.strip(), 'Another container is running'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Another container is running"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-15",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert not [line for line in processes if re.search(r'(?:nerdctl|buildctl)\\S*\\s+build\\b|build-cross-chain\\.sh', line)], 'Another build is running'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Another build is running"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-16",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert stage in {'sdk', 'gpu'} and variant in {'', 'rocm'}, 'Unreviewed stage profile'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Unreviewed stage profile"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-17",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert (stage == 'gpu') == bool(variant) and (stage != 'gpu' or arch == 'amd64'), 'Unreviewed GPU architecture'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Unreviewed GPU architecture"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-18",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert repo.startswith('ant-local/webgpu-') and ':' not in repo and '@' not in repo, 'Local candidate repository required'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Local candidate repository required"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-19",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert re.fullmatch(r'webgpu-normal-' + stage + '-' + arch + r'-[0-9-]+\\.service', unit), 'Unexpected stage unit'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Unexpected stage unit"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-shared-20",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    assert required_bytes >= 193273528320 and disk['available_bytes'] >= required_bytes, 'Unchanged disk reserve required'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Unchanged disk reserve required"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-gpu-01",
+  "target": "linux/scripts/local-proof/launch-normal-gpu.py",
+  "find": "    assert proof['status'] == 'passed-qualified-native-SDK-OCI-and-compiler-ancestry' and proof['SDK_built'] is True, 'Actual SDK OCI required'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary SDK parent admission assertion is removed: Actual SDK OCI required"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-gpu-02",
+  "target": "linux/scripts/local-proof/launch-normal-gpu.py",
+  "find": "    assert proof['source_revision'] == plan['source_revision'] and proof['subject'] == subject, 'SDK source or subject differs'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary SDK parent admission assertion is removed: SDK source or subject differs"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-gpu-03",
+  "target": "linux/scripts/local-proof/launch-normal-gpu.py",
+  "find": "    assert proof['parent_layer_reuse_verified'] is True and proof['export_transport'] == {'producer_status':0, 'extractor_status':0}, 'SDK export contains an unverified transport'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary SDK parent admission assertion is removed: SDK export contains an unverified transport"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-gpu-04",
+  "target": "linux/scripts/local-proof/launch-normal-gpu.py",
+  "find": "    assert proof['matched_compiler_layers_and_diffIDs'] == 26, 'Complete compiler ancestry required'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary SDK parent admission assertion is removed: Complete compiler ancestry required"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-gpu-05",
+  "target": "linux/scripts/local-proof/launch-normal-gpu.py",
+  "find": "    assert parent['status'] == 'passed-qualified-native-compiler-OCI-and-base-ancestry', 'Actual compiler parent required'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary SDK parent admission assertion is removed: Actual compiler parent required"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-gpu-06",
+  "target": "linux/scripts/local-proof/launch-normal-gpu.py",
+  "find": "    assert layer_ancestry(native, compiler, 26) == 26, 'Compiler descriptors or diffIDs differ'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary SDK parent admission assertion is removed: Compiler descriptors or diffIDs differ"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-gpu-07",
+  "target": "linux/scripts/local-proof/launch-normal-gpu.py",
+  "find": "    assert sha(qualification) == proof['qualification_sha256'], 'SDK qualification bytes differ'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary SDK parent admission assertion is removed: SDK qualification bytes differ"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-gpu-08",
+  "target": "linux/scripts/local-proof/launch-normal-gpu.py",
+  "find": "    assert qualified['actual_image_manifest'] == proof['manifest'] and qualified['image_config'] == proof['config'], 'SDK qualification identity differs'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary SDK parent admission assertion is removed: SDK qualification identity differs"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-gpu-09",
+  "target": "linux/scripts/local-proof/launch-normal-gpu.py",
+  "find": "    assert actual['Id'] == proof['config'] and any(value.endswith('@' + proof['manifest']) for value in actual['RepoDigests']), 'Native engine SDK identity differs'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary SDK parent admission assertion is removed: Native engine SDK identity differs"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-gpu-10",
+  "target": "linux/scripts/local-proof/launch-normal-gpu.py",
+  "find": "    assert sdk['source'] == str(source) and sdk['source_revision'] == plan['source_revision'], 'GPU must use the exact reviewed SDK source'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The synthetic positive and independent refusal controls must fail when the ordinary SDK parent admission assertion is removed: GPU must use the exact reviewed SDK source"
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-raw-return",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    return result.returncode",
+  "replace": "    return 0",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "A failed actual unit launch must remain a failed caller result."
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-raw-receipt",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "record.update(launch_status=result.returncode, stdout=result.stdout, stderr=result.stderr)",
+  "replace": "record.update(launch_status=0, stdout=result.stdout, stderr=result.stderr)",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The receipt must retain the actual failed launch status independently of the return value."
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-qualified-SDK",
+  "target": "linux/scripts/local-proof/launch-normal-gpu.py",
+  "find": "    qualified = module['qualification'](qualification, plan, invocation)",
+  "replace": "    qualified = {'actual_image_manifest':proof['manifest'], 'image_config':proof['config']}",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "An OCI identity cannot replace independent native SDK qualification; the positive fixture requires the real delegation."
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-complete-source",
+  "target": "linux/scripts/local-proof/launch-normal-gpu.py",
+  "find": "    full_source(source, full_path, plan['source_revision'])",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "A normal GPU launch must invoke the exact complete source proof boundary before transport."
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-kill-group",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "'-p', 'KillMode=control-group'",
+  "replace": "'-p', 'KillMode=process'",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "Bounded stage cancellation must cover all unit children."
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-no-env-expansion",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "'--no-block', '--expand-environment=no'",
+  "replace": "'--no-block'",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "Systemd argv must retain literal values without a second environment expansion."
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-canonical-tag",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "'cross_gpu_tag' if stage == 'gpu' else 'cross_sdk_tag'",
+  "replace": "'cross_sdk_tag'",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "GPU admission must use the source's canonical cross-toolchain-rocm tag instead of a second or guessed naming schema."
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-host-delegation",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    temporary = host_admission(unit, output, image)",
+  "replace": "    temporary = output.parent / 'temporary'",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "Both normal stage launch paths must delegate to the shared idle-host and collision admission gate before allocation."
  }
 ]

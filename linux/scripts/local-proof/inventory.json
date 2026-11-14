@@ -467,6 +467,8 @@
     "linux/scripts/local-proof/sdk_profile_fixture.py",
     "linux/scripts/local-proof/test-sdk-image-profile.py",
     "linux/scripts/local-proof/native_oci_layout.py",
-    "linux/scripts/local-proof/native_oci_seed.py"
+    "linux/scripts/local-proof/native_oci_seed.py",
+    "linux/scripts/local-proof/normal_stage_launch.py",
+    "linux/scripts/local-proof/launch-normal-gpu.py"
   ]
 }

@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — preserve ordinary GPU stage admission
+
+- Add a versioned normal ROCm GPU launcher bound to the exact SDK invocation, native image, verified OCI blobs, compiler ancestry and complete source proof. Share SDK/GPU host admission and bounded transport, preserve raw launch failures and refuse collisions, ambient flags, concurrent work or insufficient disk. Independent synthetic fixtures and executable mutations cover the refusal gates; this starts the ordinary AMD Dockerfile and grants no backend, cache or final-runtime acceptance. See [ordinary stage launch](docs/local-proof-workflows.md#ordinary-sdk-and-gpu-stage-launch).
+
 ## 2026-11-14 — share verified native OCI parent layers
 
 - Keep recurring OCI validation/seeding logic in shared versioned modules. SDK exports bind the current worker bytes, rehash the sealed parent and hardlink only its immutable layer files into a fresh child context; child metadata remains independent. Preserve post-link identities through real tar extraction and retain every blob/ancestor check before sealing.

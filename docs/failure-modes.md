@@ -5,6 +5,10 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## Ordinary GPU launch refuses its SDK parent
+
+`Actual SDK OCI required`, `SDK qualification identity differs` or `Compiler descriptors or diffIDs differ` comes from the versioned normal GPU admission driver. Supply the stopped native SDK OCI receipt and its original SDK invocation, with the same clean, fully checked source. The driver rehashes both layouts and revalidates the independent SDK qualification and local engine identity before the ordinary AMD Dockerfile starts. A compiler-only receipt, changed alias, metadata-only match or component probe cannot satisfy this boundary. See [ordinary stage launch](local-proof-workflows.md#ordinary-sdk-and-gpu-stage-launch).
+
 **Start from the error message.** Every entry below is keyed by what you
 actually see, then names the cause and the fix. All of them were hit live in
 this repo; the dates are when.
