@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — use the verified tag for local runtime alias creation
+
+- Retain the actual Android source tag for nerdctl image tagging while independently checking the immutable manifest, config and platform before runtime launch. This host accepts bare manifest inspection but refuses a bare manifest as an image-tag source. Preserve that raw failed attempt and start no unit on preparation failure; fixtures and the selector mutation hold the working command and all identity checks. Pass the cleanup CLI's mandatory CID-file argument alongside the invocation label; a real CLI regression with an empty engine double rejects the previously incomplete command. No source publication, image acceptance or hardware claim follows.
+
 ## 2026-11-14 — preserve ordinary Android-to-runtime transport
 
 - Add a bounded ROCm amd64 runtime launcher that verifies native Android ancestry, pins the exact app commit and reserves every canonical output name before creating a local immutable Android alias. Reuse the ordinary runtime driver and default image wheel source with its smoke, input, content and ancestry gates enabled. A shared engine wrapper labels runtime containers without altering pulls or build arguments; install invocation-specific cleanup before launch and preserve raw exec status. Independent fixtures and executable mutations cover refusal and transport behavior. Actual runtime completion, fresh FINAL consumers, full binary licences and hardware inference remain separate required evidence. See [ordinary local runtime](docs/local-proof-workflows.md#ordinary-local-runtime).

@@ -51528,8 +51528,8 @@
  {
   "id": "compiler-llvm-tools.runtime-alias-source",
   "target": "linux/scripts/local-proof/runtime_launch_profile.py",
-  "find": "'tag', actual['manifest'], reference",
-  "replace": "'tag', actual['image'], reference",
+  "find": "'tag', actual['image'], reference",
+  "replace": "'tag', actual['manifest'], reference",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
  },
@@ -51684,5 +51684,13 @@
   "replace": "if False:",
   "test": "bash linux/scripts/tests/test-owned-nerdctl.sh",
   "why": "Independent long and short label controls reject ownership overrides in every reviewed form; no real container or cleanup success is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-cleanup-cid-argument",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'--run-id', run_id, '--cidfile', str(output / 'container.cid'), '--output'",
+  "replace": "'--run-id', run_id, '--output'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The actual cleanup CLI must run with its required CID-file argument and invocation label; an empty engine double proves parsing and status, not real container cleanup."
  }
 ]

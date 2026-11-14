@@ -193,6 +193,9 @@ step creates or verifies a local `docker.io/ant-local/...@sha256:...` alias of t
 actual Android manifest and independently checks its config. Docker-mode nerdctl
 inspection of a repository-at-digest name is not reliable on this host: verify the
 canonical name through image inventory and inspect the bare immutable manifest.
+Tag creation itself uses the verified actual source tag: this nerdctl accepts a
+bare manifest for inspection but refuses it as the source of `image tag`. Keep all
+post-tag manifest/config/platform checks; a successful tag command alone is insufficient.
 This local alias makes no registry or publication claim.
 
 The actual command is the original `build-runtime-manifest.sh` with one amd64
@@ -208,7 +211,9 @@ Copy `owned-nerdctl.py`, `owned_nerdctl_args.py`, `owned_containers.py`,
 adds one fresh invocation label to reviewed run/create forms, rejects label files
 and ownership overrides, and forwards builds, pulls, streams and raw statuses.
 The same UUID, owner label and real engine reach the unit's ExecStopPost before
-it starts. Successful RemainAfterExit producers also require explicit canonical
+it starts. Keep the cleanup CLI's required CID-file argument at a fresh reserved
+path; runtime discovers every actual child by its unique invocation label,
+including when that CID path was never written. Successful RemainAfterExit producers also require explicit canonical
 cleanup plus an independent successful engine query proving every owned container
 absent before acceptance; a terminal producer alone is insufficient.
 

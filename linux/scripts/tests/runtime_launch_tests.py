@@ -115,10 +115,27 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(launcher.call_args.kwargs['cleanup'], record['cleanup_command'])
         self.assertEqual(record['cleanup_command'], ['python3', str(fixtures.TOOLS.parent / 'cleanup-owned-containers.py'),
                          '--engine', str(Path.home() / '.local/bin/nerdctl'), '--owner-label', 'org.kataglyphis.normal-runtime',
-                         '--run-id', 'c' * 32, '--output', str(self.output / 'cleanup.json')])
+                         '--run-id', 'c' * 32, '--cidfile', str(self.output / 'container.cid'), '--output', str(self.output / 'cleanup.json')])
         with mock.patch.object(PROFILE, 'prepare_local_alias', return_value={'prepared': True}) as prepare:
             self.assertEqual(launcher.call_args.kwargs['prepare'](), {'prepared': True})
         prepare.assert_called_once_with(self.actual, self.output / 'local-alias.json')
+
+    def test_cleanup_command_runs_the_real_cli_with_an_empty_owned_fixture(self) -> None:
+        _, launcher = self.profile_call()
+        cleanup = launcher.call_args.kwargs['cleanup'].copy()
+        self.output.mkdir()
+        engine = self.work / 'empty-owned-engine'
+        engine.write_text('#!/usr/bin/env python3\nimport sys\nraise SystemExit(0 if sys.argv[1:2] == ["ps"] else 47)\n')
+        engine.chmod(0o755)
+        cleanup[cleanup.index('--engine') + 1] = str(engine)
+        result = subprocess.run([sys.executable, *cleanup[1:]], capture_output=True, text=True, timeout=30, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = json.loads((self.output / 'cleanup.json').read_text())
+        self.assertEqual(record['exit_status'], 0)
+        self.assertEqual(record['run_id'], 'c' * 32)
+        self.assertEqual(record['owner_label'], 'org.kataglyphis.normal-runtime')
+        self.assertEqual(record['cidfile'], str(self.output / 'container.cid'))
+        self.assertFalse((self.output / 'container.cid').exists())
 
     def test_unreviewed_runtime_scope_or_dirty_tools_refuse(self) -> None:
         cases: list[ProfileOptions] = [{'unit': 'webgpu-normal-media-amd64-99999999-1.service'}, {'prefix': 'ghcr.io/example:runtime-rocm-1'},
@@ -158,12 +175,12 @@ class RuntimeTests(unittest.TestCase):
             result = PROFILE.prepare_local_alias(self.actual, self.work / 'alias.json')
         return result, tagged
 
-    def test_alias_creation_uses_bare_manifest_and_records_raw_status(self) -> None:
+    def test_alias_creation_uses_verified_tag_and_records_raw_status(self) -> None:
         result, tagged = self.alias_call()
         self.assertEqual(result['local_immutable_alias']['status'], 'prepared-verified-local-immutable-alias-only')
         self.assertTrue(result['local_immutable_alias']['created'])
         self.assertEqual(result['local_immutable_alias']['tag_status'], 0)
-        self.assertEqual(tagged.call_args.args[0][-4:], ['image', 'tag', self.actual['manifest'], self.alias])
+        self.assertEqual(tagged.call_args.args[0][-4:], ['image', 'tag', self.actual['image'], self.alias])
         self.assertEqual(result['local_alias_receipt_sha256'], fixtures.sha(self.work / 'alias.json'))
 
     def test_matching_existing_alias_is_reused_without_retagging(self) -> None:

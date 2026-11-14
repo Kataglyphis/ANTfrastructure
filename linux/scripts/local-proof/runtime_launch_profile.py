@@ -41,7 +41,7 @@ def prepare_local_alias(actual: Json, path: Path) -> Json:
         assert rows[0]['Digest'] == actual['manifest'] and rows[0]['Platform'] == 'linux/amd64', 'Preserve a foreign existing alias'
         record['created'] = False
     else:
-        command = [engine, 'image', 'tag', actual['manifest'], reference]
+        command = [engine, 'image', 'tag', actual['image'], reference]
         result = subprocess.run(command, capture_output=True, text=True, timeout=60, check=False)
         record.update(command=command, tag_status=result.returncode, stdout=result.stdout, stderr=result.stderr)
         path.write_text(json.dumps(record, indent=2) + '\n')
@@ -83,7 +83,7 @@ def launch_runtime(plan: Json, invocation: Json, invocation_path: Path, parent: 
     engine = str(Path.home() / '.local/bin/nerdctl')
     wrapper = str(scripts / 'owned-nerdctl.py')
     cleanup = ['python3', str(scripts / 'cleanup-owned-containers.py'), '--engine', engine, '--owner-label', owner_label,
-               '--run-id', run_id, '--output', str(output / 'cleanup.json')]
+               '--run-id', run_id, '--cidfile', str(output / 'container.cid'), '--output', str(output / 'cleanup.json')]
     environment = ['CROSS_VARIANT=rocm', 'CROSS_NO_PUSH=1', 'ENABLE_AMD=true', 'ENABLE_NVIDIA=false', 'ENABLE_DEEPSTREAM=false',
                    'ENABLE_TENSORRT=false', 'ENABLE_ROCM_ASAN=false', 'BUILD_TYPE=Release', 'TORCH_APP_MODE=all',
                    'ONNX_PACKAGE=onnxruntime', 'PYTORCH_EXTRA=pytorch-rocm10', 'APP_REF=' + app_ref,
