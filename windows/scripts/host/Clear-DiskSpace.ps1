@@ -8,7 +8,7 @@ param(
     # Actually delete. Without it this script only reports.
     [switch]$Apply,
 
-    # Minimum-free target for the buildkit store lever, in GB.
+    # Match the GiB units used by the build admission probes.
     [int]$KeepGB = 100,
 
     # Younger temp entries are left alone: a build in flight owns its temp.
@@ -180,6 +180,12 @@ function Write-ReclaimPlanSummary {
 
 }
 
+function Get-BuildkitFreeTargetMB {
+    # Buildctl uses decimal MB while PowerShell disk admission uses GiB.
+    param([int]$GiB)
+    return [long][math]::Ceiling(([decimal]$GiB * 1GB) / 1000000)
+}
+
 function Write-DaemonPruneAdvice {
     param([bool]$DaemonPrune, [int]$KeepGB)
     if ($daemonPrune) {
@@ -189,7 +195,7 @@ function Write-DaemonPruneAdvice {
             if ($LASTEXITCODE -eq 0) { $df | ForEach-Object { Write-Host ('  ' + $_) } }
             else { Write-HostMaintenanceMessage '  docker reachable but `system df` failed - run it in an elevated shell for the layer report.' 'DarkGray' }
         } catch { Write-HostMaintenanceMessage '  docker not on PATH in this shell - no layer report (the prune levers below still apply).' 'DarkGray' }
-        Write-HostMaintenanceMessage ('levers: buildctl prune --free-storage {0}  |  docker image prune -f' -f ($KeepGB * 1024))
+        Write-HostMaintenanceMessage ('levers: buildctl prune --free-storage {0}  |  docker image prune -f' -f (Get-BuildkitFreeTargetMB -GiB $KeepGB))
         Write-HostMaintenanceMessage 'Cache hits do not refresh lastUsedAt, so a size or age prune can evict a warm chain''s base. See docs\failure-modes.md.'
         Write-HostMaintenanceMessage 'The file allowlist excludes compile caches; daemon GC is separate. Use -StoreHusksOnly to disable it.' 'DarkGray'
     }
@@ -200,7 +206,7 @@ function Invoke-ReclaimDaemonPrune {
     param([bool]$DaemonPrune, [int]$KeepGB)
     if ($daemonPrune) {
         Write-HostMaintenanceMessage '== pruning unused container layers ==' 'Cyan'
-        $freeTargetMB = $KeepGB * 1024
+        $freeTargetMB = Get-BuildkitFreeTargetMB -GiB $KeepGB
         try {
             & buildctl prune --free-storage $freeTargetMB
             Write-HostMaintenanceMessage ('  buildctl exit: ' + $LASTEXITCODE)
@@ -292,7 +298,7 @@ function Invoke-StevedoreRemoval {
 
 function Invoke-StevedoreRegularPrune {
     param([string]$Buildctl, [string]$Address, [int]$TargetGB)
-    & $Buildctl --addr $Address prune --filter 'type==regular' --free-storage ($TargetGB * 1024) | Out-Host
+    & $Buildctl --addr $Address prune --filter 'type==regular' --free-storage (Get-BuildkitFreeTargetMB -GiB $TargetGB) | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'Regular BuildKit cache prune failed.' }
 }
 
@@ -314,7 +320,7 @@ function Invoke-StevedoreReclaim {
         Assert-StevedoreTarget -Store $store -Target $target
         Write-HostMaintenanceMessage ("Stevedore tag: {0} ({1})" -f $target.Tag, $target.Id)
     }
-    if ($PruneRegular) { Write-HostMaintenanceMessage ("Unused regular BuildKit cache: free-space target {0} GB; cache mounts excluded." -f $TargetGB) }
+    if ($PruneRegular) { Write-HostMaintenanceMessage ("Unused regular BuildKit cache: free-space target {0} GiB; cache mounts excluded." -f $TargetGB) }
     if (-not $DoApply) { Write-HostMaintenanceMessage 'REPORT ONLY. Re-run with -Apply after review.'; return }
     Assert-StevedoreAdmin
     Assert-StevedoreIdle -Buildctl $Buildctl -Address $Address -Store $store

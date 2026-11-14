@@ -29,7 +29,8 @@ the reference host. Use `-StevedoreNamespace`, `-BuildkitAddress`,
 the defaults point to the Stevedore installation and named pipes. A failed probe
 returns a nonzero exit code, so a partial inventory is not a complete report.
 Shared layers can remain pinned by image tags, while pruning build cache can
-make later builds slower. Review the [store GC guidance](windows-build-lanes.md)
+make later builds slower. Cleanup targets use GiB; the canonical script rounds up
+to decimal MB for BuildKit. Its exit code alone does not prove enough space is free. Review the [store GC guidance](windows-build-lanes.md)
 and the [sanctioned cleanup tool](windows-builds.md#clear-diskspaceps1) before
 removing anything.
 

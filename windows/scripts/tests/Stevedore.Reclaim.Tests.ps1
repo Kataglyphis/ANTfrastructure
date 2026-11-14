@@ -1,6 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2026 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: MIT
+# Fake-daemon arguments and unit/wiring checks only; actual reclaimed bytes and privilege delegation need host receipts.
 
 Describe 'Stevedore selected reclaim' {
     BeforeAll {
@@ -86,7 +87,7 @@ Describe 'Stevedore selected reclaim' {
 Describe 'Stevedore daemon calls' {
     BeforeAll {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/host/Clear-DiskSpace.ps1' -FunctionName `
-        'Invoke-StevedoreRead', 'ConvertFrom-StevedoreJson', 'Assert-BuildkitIdle', 'Assert-StevedoreIdle', 'Get-StevedoreImageId', 'Invoke-StevedoreRemoval', 'Invoke-StevedoreRegularPrune')
+        'Get-BuildkitFreeTargetMB', 'Invoke-StevedoreRead', 'ConvertFrom-StevedoreJson', 'Assert-BuildkitIdle', 'Assert-StevedoreIdle', 'Get-StevedoreImageId', 'Invoke-StevedoreRemoval', 'Invoke-StevedoreRegularPrune')
 
     function Invoke-FakeDaemon {
         $script:calls.Add(($args -join '|'))
@@ -112,6 +113,23 @@ Describe 'Stevedore daemon calls' {
         $script:store = [pscustomobject]@{ Tool = 'Invoke-FakeDaemon'; Namespace = 'custom'; Address = 'npipe://ctr' }
     }
 
+
+    It 'converts GiB to rounded-up decimal MB without int32 overflow (mutation)' {
+        foreach ($case in @(@(0, 0), @(1, 1074), @(100, 107375), @(240, 257699), @(2097151, 2251798740))) {
+            $actual = Get-BuildkitFreeTargetMB -GiB $case[0]
+            Assert-Equal $case[1] $actual
+            Assert-True ($actual -is [long])
+            Assert-True ([decimal]$actual * 1000000 -ge [decimal]$case[0] * 1GB)
+            Assert-True (([decimal]$actual * 1000000 - [decimal]$case[0] * 1GB) -lt 1000000)
+        }
+    }
+
+    It 'uses the shared conversion in advice and both daemon paths (mutation)' {
+        $commands = @(Get-TestScriptCommands -ScriptPath 'windows/scripts/host/Clear-DiskSpace.ps1' -Name 'Get-BuildkitFreeTargetMB')
+        Assert-Equal 3 $commands.Count
+        Assert-Equal 'Get-BuildkitFreeTargetMB -GiB $KeepGB|Get-BuildkitFreeTargetMB -GiB $KeepGB|Get-BuildkitFreeTargetMB -GiB $TargetGB' (($commands | ForEach-Object { $_.Extent.Text }) -join '|')
+    }
+
     It 'routes inspections, removals, and regular-only pruning to explicit endpoints' {
         $id = Get-StevedoreImageId -Store $script:store -Tag 'local/example:tag'
         Assert-Equal ('sha256:' + ('a' * 64)) $id
@@ -119,7 +137,7 @@ Describe 'Stevedore daemon calls' {
         Invoke-StevedoreRegularPrune -Buildctl Invoke-FakeDaemon -Address 'npipe://bk' -TargetGB 100
         Assert-Equal '--address|npipe://ctr|--namespace|custom|image|inspect|local/example:tag' $script:calls[0]
         Assert-Equal '--address|npipe://ctr|--namespace|custom|rmi|local/example:tag' $script:calls[1]
-        Assert-Equal '--addr|npipe://bk|prune|--filter|type==regular|--free-storage|102400' $script:calls[2]
+        Assert-Equal '--addr|npipe://bk|prune|--filter|type==regular|--free-storage|107375' $script:calls[2]
     }
 
     It 'refuses active containers, in-use records, invalid usage, and native errors' {

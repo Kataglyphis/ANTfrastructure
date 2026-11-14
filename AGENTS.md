@@ -1488,6 +1488,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   - **Targeted Stevedore cleanup stays explicit and preview-first.** `-StevedoreOnly` accepts reviewed
     tags with full expected IDs and an optional regular-cache prune; keep its daemon addresses explicit,
     refuse active use, recheck each ID, and never fall through to the broader file or Docker cleanup.
+    Convert GiB admission targets to rounded-up decimal MB at the BuildKit CLI boundary; `* 1024` understates the target.
     The idle checks are point-in-time, not a lock; stop other users and builds before applying.
   - **Protected roots are OFF LIMITS to the agent, permanently**: `C:\Program Files`,
     `C:\Program Files (x86)`, `C:\Windows`, `C:\ProgramData` outside the container stores, any

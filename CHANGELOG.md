@@ -16,6 +16,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — match BuildKit cleanup targets to disk admission units
+
+- Convert GiB to rounded-up decimal MB for regular pruning, general pruning and
+  advice. The old `* 1024` conversion understated a 100-GiB target by about 4.6 GiB.
+- Check actual daemon arguments, rounding, large values and shared wiring with
+  regression tests and mutations; retain all idle, image and compiler-cache guards.
+
 ## 2026-11-14 — consumer mutation recipes can run in the CI image, on the pinned Python
 
 - `mutation-gates.yml` takes `in-image: true`: it pulls the family image (`prepare-linux-ci-host`, which reclaims

@@ -2166,6 +2166,10 @@ profile, and the host had to be rebuilt by hand).
 - `-StoreHusksOnly` selects only `C:\ProgramData\{containerd,buildkitd,Docker}.bak-*`
   directories and disables every daemon report/prune call, even with `-Apply`. It excludes TEMP,
   logs and checkout scratch. Report with this selector first; apply only after checking the list.
+- `-KeepGB` uses GiB, matching the build driver's free-space probes. BuildKit's
+  `--free-storage` uses decimal MB: the shared boundary conversion rounds up
+  `GiB * 1073741824 / 1000000`; 100 GiB becomes 107375 MB, not 102400 MB.
+  A successful prune does not prove the target was met: remeasure actual free bytes.
 - `-StevedoreOnly` selects a separate daemon-only path: provide matching `-ImageTag` and
   `-ExpectedImageId` arrays for explicit local tags and their full `sha256:` image IDs, and/or
   select `-RegularCache` to prune unused regular BuildKit cache. Run without `-Apply` to preview;

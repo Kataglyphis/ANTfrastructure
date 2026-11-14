@@ -38895,5 +38895,45 @@
   "replace": "encoding=\"utf-8\", start_new_session=True)",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "A test that prints bytes that are not UTF-8 keeps its verdict; strict decoding crashed the whole run."
+ },
+ {
+  "id": "windows-lane.cleanup-decimal-mb",
+  "target": "windows/scripts/host/Clear-DiskSpace.ps1",
+  "find": "return [long][math]::Ceiling(([decimal]$GiB * 1GB) / 1000000)",
+  "replace": "return [long]($GiB * 1024)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Jobs 1 -Only Stevedore.Reclaim.Tests.ps1 -ResultFile logs/mutation-results/stevedore-storage-units.json",
+  "why": "GiB admission must not become the smaller binary-MB target"
+ },
+ {
+  "id": "windows-lane.cleanup-round-up",
+  "target": "windows/scripts/host/Clear-DiskSpace.ps1",
+  "find": "[math]::Ceiling(([decimal]$GiB * 1GB) / 1000000)",
+  "replace": "[math]::Floor(([decimal]$GiB * 1GB) / 1000000)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Jobs 1 -Only Stevedore.Reclaim.Tests.ps1 -ResultFile logs/mutation-results/stevedore-storage-units.json",
+  "why": "integer MB must round up rather than understate the requested bytes"
+ },
+ {
+  "id": "windows-lane.cleanup-regular-arguments",
+  "target": "windows/scripts/host/Clear-DiskSpace.ps1",
+  "find": "--free-storage (Get-BuildkitFreeTargetMB -GiB $TargetGB)",
+  "replace": "--free-storage ($TargetGB * 1024)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Jobs 1 -Only Stevedore.Reclaim.Tests.ps1 -ResultFile logs/mutation-results/stevedore-storage-units.json",
+  "why": "the actual regular-only daemon command must receive corrected units"
+ },
+ {
+  "id": "windows-lane.cleanup-general-arguments",
+  "target": "windows/scripts/host/Clear-DiskSpace.ps1",
+  "find": "$freeTargetMB = Get-BuildkitFreeTargetMB -GiB $KeepGB",
+  "replace": "$freeTargetMB = $KeepGB * 1024",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Jobs 1 -Only Stevedore.Reclaim.Tests.ps1 -ResultFile logs/mutation-results/stevedore-storage-units.json",
+  "why": "general pruning must use the same unit boundary"
+ },
+ {
+  "id": "windows-lane.cleanup-advice-arguments",
+  "target": "windows/scripts/host/Clear-DiskSpace.ps1",
+  "find": "-f (Get-BuildkitFreeTargetMB -GiB $KeepGB))",
+  "replace": "-f ($KeepGB * 1024))",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Jobs 1 -Only Stevedore.Reclaim.Tests.ps1 -ResultFile logs/mutation-results/stevedore-storage-units.json",
+  "why": "printed advice must not reintroduce the wrong unit conversion"
  }
 ]
