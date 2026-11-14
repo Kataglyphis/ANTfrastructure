@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Reuse a bounded read-only log-capture profile for another actual live compiler RUN."""
+"""Reuse a bounded read-only log-capture profile for an actual compiler or MIGraphX RUN; no build acceptance."""
 
 import argparse
 import datetime
 import hashlib
 import json
-import re
 import subprocess
 from pathlib import Path
 
+from cache_capture_profile import PHASE_MARKERS, validate_capture_unit
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--template", type=Path, required=True)
-parser.add_argument("--phase", choices=["gcc", "llvm", "rust", "python"], required=True)
+parser.add_argument("--phase", choices=tuple(PHASE_MARKERS), required=True)
 parser.add_argument("--pid", type=int, required=True)
 parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--unit", required=True)
@@ -21,7 +22,8 @@ previous = json.loads(args.template.read_text())
 previous["producer_unit"] = args.producer_unit
 command = previous["command"].copy()
 assert command[:3] == ["systemd-run", "--user", "--no-block"]
-assert args.pid > 1 and re.fullmatch(r"webgpu-compiler[0-9]+-(?:gcc|llvm|rust|python)-error-capture-[0-9-]+\.service", args.unit)
+assert args.pid > 1
+validate_capture_unit(args.unit, args.phase)
 for expected in ("Type=oneshot", "RemainAfterExit=yes", "TimeoutStartSec=10860", "TimeoutStopSec=60", "KillMode=control-group", "MemoryMax=256M"):
     assert expected in command
 old_output = command[command.index("--output") + 1]
@@ -36,11 +38,17 @@ assert facts["ActiveState"] in ("active", "activating") and int(facts["MainPID"]
 command = [value.replace(previous["unit"], args.unit).replace(old_output, str(out)).replace(f"{old_phase}-error-capture-unit.log", f"{args.phase}-error-capture-unit.log") for value in command]
 command[command.index("--pid") + 1] = str(args.pid)
 command[command.index("--phase") + 1] = args.phase
-script = Path(command[command.index("--pid") - 1])
+script = Path(__file__).with_name("capture-live-sccache-log.py")
+command[command.index("--pid") - 1] = str(script)
+for index, value in enumerate(command):
+    if value.startswith(("StandardOutput=append:", "StandardError=append:")):
+        command[index] = value.split("=", 1)[0] + "=append:" + str(out.parent / f"{args.phase}-error-capture-unit.log")
 assert script.name == "capture-live-sccache-log.py" and script.is_file()
 record = {"created_at": datetime.datetime.now(datetime.UTC).isoformat(), "unit": args.unit,
           "producer_unit": previous["producer_unit"], "command": command, "reused_profile": str(args.template.resolve()),
           "capture_script_sha256": hashlib.sha256(script.read_bytes()).hexdigest(), "producer_changed": False,
+          "capture_inputs_sha256": {str(path): hashlib.sha256(path.read_bytes()).hexdigest()
+                                   for path in [script, script.with_name("cache_capture_profile.py")]},
           "scope": __doc__}
 invocation = out.parent / f"{args.phase}-error-capture-invocation.json"
 assert not invocation.exists()

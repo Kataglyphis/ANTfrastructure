@@ -16,6 +16,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — retain live MIGraphX cache diagnostics
+
+- Extend the versioned read-only cache reader to the actual normal MIGraphX source-build process. Share phase/unit identity, retain compiler profiles, bind current worker/companion hashes and place each unit log beside its fresh invocation. Preserve existing log bytes through teardown and reject symlinks, inode replacement, oversized logs and reused outputs; timeout remains a partial observation. Synthetic process/command regressions and executable mutations establish these boundaries, without changing a producer or classifying cache errors. See [live cache log retention](docs/local-proof-workflows.md#live-cache-log-retention).
+
+- Preserve completed source-check failures when a mutation survives before quality starts: require the exact disjoint passed/survived IDs and matching failed summary, cleanup and independent absence; retain quality-failure checks and never create a successful source seal.
+
 ## 2026-11-14 — preserve ordinary GPU stage admission
 
 - Add a versioned normal ROCm GPU launcher bound to the exact SDK invocation, native image, verified OCI blobs, compiler ancestry and complete source proof. Share SDK/GPU host admission and bounded transport, preserve raw launch failures and refuse collisions, ambient flags, concurrent work or insufficient disk. Independent synthetic fixtures and executable mutations cover the refusal gates; this starts the ordinary AMD Dockerfile and grants no backend, cache or final-runtime acceptance. See [ordinary stage launch](docs/local-proof-workflows.md#ordinary-sdk-and-gpu-stage-launch).

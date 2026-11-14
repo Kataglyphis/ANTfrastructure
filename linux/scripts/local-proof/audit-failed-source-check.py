@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preserve one actually failed source check and its cleanup; this cannot create a successful source seal."""
+"""Retain a completed SURVIVED-mutation or quality failure with cleanup; other incomplete failures and source acceptance are not covered."""
 
 from __future__ import annotations
 
@@ -42,17 +42,33 @@ assert not any(inv['run_id'] in json.dumps(row) or cid.startswith(row['ID']) or 
 import sys
 
 sys.path.insert(0, str(source / 'linux/scripts'))
-counter = runpy.run_path(str(source / 'linux/scripts/seal-mutation-unit.py'))['mutation_ids']
-count = counter(out / 'selected-mutations.json', out / 'mutations.log', False)
-text = re.sub(r'\x1b\[[0-9;]*m', '', (out / 'preflight.log').read_text())
-failed_groups = re.findall(r'^✗ (.+)$', text, re.MULTILINE)
-assert failed_groups and 'All preflight checks passed.' not in text
+mutation_text = re.sub(r'\x1b\[[0-9;]*m', '', (out / 'mutations.log').read_text())
+survived = re.findall(r'^\[\d+/\d+\]\s+FAIL:\s+(\S+)\s+SURVIVED\b', mutation_text, re.MULTILINE)
+if survived:
+    import collections
+
+    passed = re.findall(r'^\[\d+/\d+\]\s+bites\s+(\S+)\s', mutation_text, re.MULTILINE)
+    expected = [row['id'] for row in json.loads((out / 'selected-mutations.json').read_text())]
+    assert len(expected) == len(set(expected)) and collections.Counter(passed + survived) == collections.Counter(expected)
+    summary = re.search(r'^FAILED: (\d+) of (\d+) entr', mutation_text, re.MULTILINE)
+    assert summary and (int(summary[1]), int(summary[2])) == (len(survived), len(expected))
+    assert 'OK: every recorded mutation is caught' not in mutation_text
+    count, failed_groups = len(passed), ['mutation gate (can the tests fail?)']
+else:
+    counter = runpy.run_path(str(source / 'linux/scripts/seal-mutation-unit.py'))['mutation_ids']
+    count = counter(out / 'selected-mutations.json', out / 'mutations.log', False)
+    text = re.sub(r'\x1b\[[0-9;]*m', '', (out / 'preflight.log').read_text())
+    failed_groups = re.findall(r'^✗ (.+)$', text, re.MULTILINE)
+    assert failed_groups and 'All preflight checks passed.' not in text
+inputs = ['invocation.json', 'cleanup.json', 'mutations.log', 'selected-mutations.json']
+if (out / 'preflight.log').exists():
+    inputs.append('preflight.log')
 proof = {'status': 'failed-targeted-source-check-preserved', 'observed_at': datetime.datetime.now(datetime.UTC).isoformat(),
          'unit': inv['unit'], 'terminal_before_stop': before, 'raw_status': int(before['ExecMainStatus']),
-         'actual_mutations_passed': count, 'failed_preflight_groups': failed_groups,
+         'actual_mutations_passed': count, 'actual_mutations_survived': survived, 'failed_preflight_groups': failed_groups,
          'cleanup_exit_status': 0, 'independent_engine_query_exit_status': 0, 'owned_container_absent': True,
          'source_accepted': False, 'scope': __doc__,
-         'inputs_sha256': {name: hashlib.sha256((out / name).read_bytes()).hexdigest() for name in ['invocation.json', 'cleanup.json', 'preflight.log', 'mutations.log']}}
+         'inputs_sha256': {name: hashlib.sha256((out / name).read_bytes()).hexdigest() for name in inputs}}
 (out / 'failure-proof.json').write_text(json.dumps(proof, indent=2) + '\n')
 subprocess.run(['systemctl', '--user', 'stop', inv['unit']], check=True)
 after = unit_state()

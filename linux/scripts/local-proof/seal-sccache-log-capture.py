@@ -7,9 +7,10 @@ import argparse
 import datetime
 import hashlib
 import json
-import re
 import subprocess
 from pathlib import Path
+
+from cache_capture_profile import validate_capture_unit
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--invocation", type=Path, required=True)
@@ -17,7 +18,7 @@ args = parser.parse_args()
 inv = json.loads(args.invocation.read_text())
 command = inv["command"]
 out = Path(command[command.index("--output") + 1])
-assert re.fullmatch(r"webgpu-compiler[0-9]+-(?:gcc|llvm|rust|python)-error-capture-[0-9-]+\.service", inv["unit"]) is not None and "error-capture" in inv["unit"]
+validate_capture_unit(inv["unit"], command[command.index("--phase") + 1])
 
 
 def state() -> dict[str, str]:
@@ -40,6 +41,13 @@ with log.open("rb") as stream:
 if "capture_script_sha256" in inv:
     script = Path(command[command.index("--pid") - 1])
     assert hashlib.sha256(script.read_bytes()).hexdigest() == inv["capture_script_sha256"]
+if capture["phase"] == "migraphx":
+    current_script = Path(command[command.index("--pid") - 1])
+    expected_inputs = {str(path): hashlib.sha256(path.read_bytes()).hexdigest()
+                       for path in [current_script, current_script.with_name("cache_capture_profile.py")]}
+    assert inv.get("capture_inputs_sha256") == expected_inputs, "MIGraphX reader requires its complete input hashes"
+for filename, expected in inv.get("capture_inputs_sha256", {}).items():
+    assert hashlib.sha256(Path(filename).read_bytes()).hexdigest() == expected, "Cache reader companion bytes changed"
 proof = {"status": "passed-actual-error-log-file-retention-only", "observed_at": datetime.datetime.now(datetime.UTC).isoformat(),
          "terminal_before_stop": terminal, "capture": capture,
          "complete_phase_process_observed": capture["status"] == "captured-after-phase-process-exit",

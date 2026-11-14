@@ -46,6 +46,14 @@ The independent cross-Clang image probe requires `--sysroot=/` for all six wrapp
 Default paths derive from `Path.home()`; original qualifications, loader probes, parallel-source
 producers, compiler unit identities and cleanup authorization files are explicit inputs.
 
+## Live cache log retention
+
+`replay-sccache-log-capture.py` reuses the bounded read-only unit transport with the current canonical `capture-live-sccache-log.py` and its `cache_capture_profile.py` companion. Both reader inputs are hashed in the invocation. The existing GCC, LLVM, Rust and Python phases retain their compiler unit names; `--phase migraphx` matches the actual normal `bash /opt/scripts/03-media/build/migraphx/build-image.sh` process and uses `webgpu-gpu<run>-migraphx-error-capture-<date>-<attempt>.service`.
+
+Supply the actual live PID, producer unit, original reviewed transport template and a fresh output. The reader opens only the existing regular `/proc/<pid>/root/tmp/sccache.log`, tracks process start identity and refuses replacement of that live log inode. It retains all bytes before closing the descriptor, including after the RUN filesystem disappears. Each replay writes its unit log beside the new invocation. `seal-sccache-log-capture.py` verifies worker/companion hashes, raw terminal status, file size/SHA and stopped/PID0 state. A reader timeout is explicitly partial, and neither an empty file nor a completed reader classifies compiler-cache errors or accepts an image. `test-live-cache-capture.sh` uses synthetic process files and command doubles; it does not prove a genuine build or source provenance.
+
+`audit-failed-source-check.py` also retains a completed mutation run containing `SURVIVED` failures before preflight starts. Its failed receipt requires exact passed/survived IDs, the matching failure summary, actual failed/PID0 unit, cleanup and independent absence. Quality-only failures retain their strict complete mutation proof. Interrupted or other incomplete mutation failures need separate inspection; a failure audit never accepts source.
+
 ## Ordinary SDK and GPU stage launch
 
 `launch-normal-sdk.py` and `launch-normal-gpu.py` share `normal_stage_launch.py` for fresh local alias/unit/output selection, idle-host checks, ambient manager-flag refusal, the unchanged 180 GiB minimum and bounded named-unit transport. Preserve that companion when copying either launcher. SDK argument defaults and its qualified compiler contract remain intact.

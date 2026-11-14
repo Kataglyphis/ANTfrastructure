@@ -48788,5 +48788,173 @@
   "replace": "    temporary = output.parent / 'temporary'",
   "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
   "why": "Both normal stage launch paths must delegate to the shared idle-host and collision admission gate before allocation."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-file-1",
+  "target": "linux/scripts/local-proof/capture-live-sccache-log.py",
+  "find": "    assert output.tell() + len(chunk) <= MAX_LOG, 'Cache log exceeds the reader bound'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Real file and independent refusal controls must reject removal of this bounded cache-reader guard: Cache log exceeds the reader bound"
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-file-2",
+  "target": "linux/scripts/local-proof/capture-live-sccache-log.py",
+  "find": "            assert (current.st_dev, current.st_ino) == (identity.st_dev, identity.st_ino), 'Live cache log inode changed'",
+  "replace": "            pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Real file and independent refusal controls must reject removal of this bounded cache-reader guard: Live cache log inode changed"
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-file-3",
+  "target": "linux/scripts/local-proof/capture-live-sccache-log.py",
+  "find": "    assert pid > 1 and 1 <= timeout <= 21600, 'Cache reader PID or lifetime is invalid'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Real file and independent refusal controls must reject removal of this bounded cache-reader guard: Cache reader PID or lifetime is invalid"
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-file-4",
+  "target": "linux/scripts/local-proof/capture-live-sccache-log.py",
+  "find": "    assert PHASE_MARKERS[phase] in command, 'Cache reader process does not match its phase'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Real file and independent refusal controls must reject removal of this bounded cache-reader guard: Cache reader process does not match its phase"
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-file-5",
+  "target": "linux/scripts/local-proof/capture-live-sccache-log.py",
+  "find": "    assert stat.S_ISREG(source.lstat().st_mode), 'Existing cache log must be a regular file'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Real file and independent refusal controls must reject removal of this bounded cache-reader guard: Existing cache log must be a regular file"
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-file-6",
+  "target": "linux/scripts/local-proof/capture-live-sccache-log.py",
+  "find": "        assert initial.st_size <= MAX_LOG, 'Existing cache log exceeds the reader bound'",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Real file and independent refusal controls must reject removal of this bounded cache-reader guard: Existing cache log exceeds the reader bound"
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-file-7",
+  "target": "linux/scripts/local-proof/capture-live-sccache-log.py",
+  "find": "    assert len(raw) == final.st_size, 'Cache reader did not retain every file byte'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Real file and independent refusal controls must reject removal of this bounded cache-reader guard: Cache reader did not retain every file byte"
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-profile-1",
+  "target": "linux/scripts/local-proof/cache_capture_profile.py",
+  "find": "    assert phase in PHASE_MARKERS, 'Unknown cache capture phase'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Real file and independent refusal controls must reject removal of this bounded cache-reader guard: Unknown cache capture phase"
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-profile-2",
+  "target": "linux/scripts/local-proof/cache_capture_profile.py",
+  "find": "    assert re.fullmatch(r'webgpu-' + owner + r'[0-9]+-' + phase + r'-error-capture-[0-9-]+\\.service', unit), 'Cache capture unit and phase differ'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Real file and independent refusal controls must reject removal of this bounded cache-reader guard: Cache capture unit and phase differ"
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-pid-reuse",
+  "target": "linux/scripts/local-proof/capture-live-sccache-log.py",
+  "find": "live = start_ticks(process) == ticks",
+  "replace": "live = True",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "A reused PID must end capture of the original process instead of becoming a partial observation of its successor."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-exit-drain",
+  "target": "linux/scripts/local-proof/capture-live-sccache-log.py",
+  "find": "            if not live:\n                copy_pending(handle, output)",
+  "replace": "            if not live:\n                pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Late bytes written after the first read must survive the final process-exit drain."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-timeout-partial",
+  "target": "linux/scripts/local-proof/capture-live-sccache-log.py",
+  "find": "return 'captured-partial-observation-timeout'",
+  "replace": "return 'captured-after-phase-process-exit'",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "A timeout cannot claim complete phase observation."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-current-worker",
+  "target": "linux/scripts/local-proof/replay-sccache-log-capture.py",
+  "find": "script = Path(__file__).with_name(\"capture-live-sccache-log.py\")",
+  "replace": "script = Path(command[command.index(\"--pid\") - 1])",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "A historical transport template must invoke the current canonical worker that implements the reviewed phase."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-fresh-unit-log",
+  "target": "linux/scripts/local-proof/replay-sccache-log-capture.py",
+  "find": "command[index] = value.split(\"=\", 1)[0] + \"=append:\" + str(out.parent / f\"{args.phase}-error-capture-unit.log\")",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Both unit streams belong beside the new invocation, never in a historical compiler log."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-worker-companion-digest",
+  "target": "linux/scripts/local-proof/replay-sccache-log-capture.py",
+  "find": "hashlib.sha256(path.read_bytes()).hexdigest()",
+  "replace": "\"0\" * 64",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Current worker and companion content hashes must be real, not only matching filenames."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-exact-input-closure",
+  "target": "linux/scripts/local-proof/seal-sccache-log-capture.py",
+  "find": "    assert inv.get(\"capture_inputs_sha256\") == expected_inputs, \"MIGraphX reader requires its complete input hashes\"",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "The MIGraphX seal requires exactly its actual worker and profile companion, rejecting missing or extra input names."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-legacy-companion-digest",
+  "target": "linux/scripts/local-proof/seal-sccache-log-capture.py",
+  "find": "    assert hashlib.sha256(Path(filename).read_bytes()).hexdigest() == expected, \"Cache reader companion bytes changed\"",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "A present compiler reader input manifest must retain its exact companion bytes as well."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-bounded-transport",
+  "target": "linux/scripts/local-proof/replay-sccache-log-capture.py",
+  "find": "\"MemoryMax=256M\"",
+  "replace": "\"MemoryMax=512M\"",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "The replay must retain the reviewed bounded memory transport profile."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-failure-audit-IDs",
+  "target": "linux/scripts/local-proof/audit-failed-source-check.py",
+  "find": "    assert len(expected) == len(set(expected)) and collections.Counter(passed + survived) == collections.Counter(expected)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "A failed source audit must retain the exact passed and survived mutation identities, never an unrelated or partial set."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-failure-audit-summary",
+  "target": "linux/scripts/local-proof/audit-failed-source-check.py",
+  "find": "    assert summary and (int(summary[1]), int(summary[2])) == (len(survived), len(expected))",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "The actual failed mutation summary must independently match its recorded survivor count and manifest size."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-reader-failure-audit-no-green",
+  "target": "linux/scripts/local-proof/audit-failed-source-check.py",
+  "find": "    assert 'OK: every recorded mutation is caught' not in mutation_text",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
+  "why": "Contradictory success text cannot be retained as a completed failed-mutation audit."
  }
 ]

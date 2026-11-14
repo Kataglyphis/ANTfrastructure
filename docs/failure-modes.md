@@ -5,6 +5,10 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## Live compiler-cache reader rejects a changed log inode
+
+The bounded reader refuses a missing, linked, oversized or replaced `sccache.log`. Keep that failure and inspect the original producer; do not create or replace its log to obtain a receipt. A normal MIGraphX RUN uses the explicit MIGraphX reader profile and actual build-image PID, rather than a compiler label. A partial timeout cannot prove complete retention. See [live cache log retention](local-proof-workflows.md#live-cache-log-retention).
+
 ## Ordinary GPU launch refuses its SDK parent
 
 `Actual SDK OCI required`, `SDK qualification identity differs` or `Compiler descriptors or diffIDs differ` comes from the versioned normal GPU admission driver. Supply the stopped native SDK OCI receipt and its original SDK invocation, with the same clean, fully checked source. The driver rehashes both layouts and revalidates the independent SDK qualification and local engine identity before the ordinary AMD Dockerfile starts. A compiler-only receipt, changed alias, metadata-only match or component probe cannot satisfy this boundary. See [ordinary stage launch](local-proof-workflows.md#ordinary-sdk-and-gpu-stage-launch).
