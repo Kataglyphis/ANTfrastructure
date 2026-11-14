@@ -1047,7 +1047,11 @@ paths outside the caller checkout and empty shards before running
 before reading or writing, including through a symlinked parent. An optional
 setup script runs once inside each disposable mirror before any baseline test;
 this makes a local `.venv` created by `uv sync` available to that mirror's tests.
-Setup failure is fatal and the caller checkout is not modified. Mutation logs are
+Setup failure is fatal and the caller checkout is not modified. With `in-image: true`
+the proving step runs inside the family CI image (`IMAGE_REGISTRY_PREFIX:CI_IMAGE_LINUX_TAG`
+from `versions.env`), mounted at the caller's own path, so a recipe gets the image's pinned
+`PYTHON_VERSION` and its chain-built wheels: PyPI has no ORT or GenAI wheel for that Python, so
+the bare runner cannot install an app extra on it. Mutation logs are
 uploaded from ignored `logs/code-quality/mutations/`. Each consumer owns its
 recipes because each recipe must break one of that consumer's guarantees.
 

@@ -826,6 +826,8 @@ and gets all of it:
    empty shards fail rather than passing without a test. Recipe targets must be
    normalized relative paths within the caller root. Setup runs once in each
    disposable test copy, so a script such as `uv sync` can create that copy's `.venv`.
+   `in-image: true` runs the recipes inside the family CI image instead of on the bare runner,
+   with the pinned Python and the chain-built wheels a recipe on that Python needs.
    The lint aggregator fails on a stale recipe in every tracked
    `scripts/linux/tests/*mutations*.json`; a manifest kept elsewhere is checked by its mutation
    lane only.

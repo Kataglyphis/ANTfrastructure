@@ -14,6 +14,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — consumer mutation recipes can run in the CI image, on the pinned Python
+
+- `mutation-gates.yml` takes `in-image: true`: it pulls the family image (`prepare-linux-ci-host`, which reclaims
+  disk first) and runs `verify_mutations.py` in it, mounted at the caller's own path, the image named from
+  `IMAGE_REGISTRY_PREFIX` and `CI_IMAGE_LINUX_TAG` in `versions.env`. A recipe then gets the pinned `PYTHON_VERSION`
+  (3.15.2) and the chain-built wheels; on the bare runner PyPI has no ORT or GenAI wheel for it, which kept
+  OrchestrANT's recipes on 3.13 (owner decision of the day: the recipes use the hub's Python). Contract cases in
+  `test-mutation-workflow.sh`; docs `code-quality-tooling.md` and `adopting-in-a-new-project.md`.
+
 ## 2026-11-14 — a test output that is not UTF-8 no longer crashes the mutation gate
 
 - `verify_mutations.py` read a test's output as strict UTF-8, so a fuzz test that printed the raw input it failed on

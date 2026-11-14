@@ -17,6 +17,8 @@ _MUTATION_WORKFLOW_QUERIES=(
   'raw.count("validate_consumer_mutations.py") == 1'
   'all(needle in run_blocks("mutations") for needle in ("--root \"${GITHUB_WORKSPACE}\" --manifest \"${MUTATION_MANIFEST}\"", "--root \"${GITHUB_WORKSPACE}\" --manifest \"${GITHUB_WORKSPACE}/${MUTATION_MANIFEST}\"", "set -euo pipefail", "| tee logs/code-quality/mutations/report.txt", "git check-ignore -q --no-index -- logs/code-quality/mutations/report.txt"))'
   '"--setup-script \"${MUTATION_SETUP_SCRIPT}\"" in run_blocks("mutations") and not any(V.value(s,"name") == "Install caller test dependencies" for s in steps)'
+  'V.value(V.value(inputs,"in-image"),"default") == "false" and any(V.value(s,"name") == "Pull the CI image" and V.value(s,"if") == "${{ inputs.in-image }}" for s in steps)'
+  'all(needle in run_blocks("mutations") for needle in ("docker run --rm -v \"${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}\"", "CI_IMAGE_LINUX_TAG", "\"${runner[@]}\" python3"))'
 )
 
 _workflow_contract() { workflow_require_queries "${_MUTATION_WORKFLOW_QUERIES[@]}"; }
@@ -82,7 +84,7 @@ cp "${VALIDATOR}" "${_work}/mutant/target.py"
 sed '/relative_file_path(m\["target"\],/d' "${ROOT}/docs/scripts/verify_mutations.py" > "${_work}/mutant/verify_mutations.py"
 t_assert_fails _validator_contract "${_work}/mutant/target.py"
 
-t_case "removing caller scope, validator or artifact failure policy breaks the contract"
+t_case "removing caller scope, validator, the image path or artifact failure policy breaks the contract"
 _bad="${_work}/wrong-root.yml"
 sed 's/--root "${GITHUB_WORKSPACE}"/--root "${hub}"/g' "${LANE}" > "${_bad}"
 t_assert_fails _mutated_workflow "${_bad}"
@@ -91,6 +93,12 @@ sed 's/validate_consumer_mutations.py/removed_validator.py/' "${LANE}" > "${_bad
 t_assert_fails _mutated_workflow "${_bad}"
 _bad="${_work}/setup-outside-mirror.yml"
 sed 's/--setup-script "${MUTATION_SETUP_SCRIPT}"/--setup-removed "${MUTATION_SETUP_SCRIPT}"/' "${LANE}" > "${_bad}"
+t_assert_fails _mutated_workflow "${_bad}"
+_bad="${_work}/image-ignored.yml"
+sed 's/"${runner\[@\]}" python3/python3/' "${LANE}" > "${_bad}"
+t_assert_fails _mutated_workflow "${_bad}"
+_bad="${_work}/image-always-pulled.yml"
+sed '/name: Pull the CI image/{n;d}' "${LANE}" > "${_bad}"
 t_assert_fails _mutated_workflow "${_bad}"
 _bad="${_work}/artifact-warn.yml"
 sed 's/if-no-files-found: error/if-no-files-found: warn/' "${LANE}" > "${_bad}"
