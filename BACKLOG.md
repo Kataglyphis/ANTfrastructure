@@ -503,13 +503,6 @@ owner carries the breakage that costs.
          on `windows-11-arm` (Flutter cannot cross-build it, flutter/flutter#62597; OmniAccelerANT's
          `windows-arm64.yml` does the same), and the web client once. riscv64 waits on CON70.
       3. Never run yet: any Windows build (the dev host has no Visual Studio) and any arm64 build.
-- [ ] **CON103 — `FLET_VERSION` in `versions.env`, one pin for Python and client** [S, ★★]. The
-      Python SDK and the client speak one release's protocol, so a bump moves together:
-      OrchestrANT's `frontend` extra (`flet[desktop]==1.0.5`, `flet-web==1.0.5`), its
-      `benchmarks.yml` viewer job (`flet==1.0.5`, held to `uv.lock` by OrchestrANT's
-      `test_viewer_job.py`) and CON102's client tag. Add the consumer-pins rows and one Renovate
-      group (pep621 and the `versions.env` regex). OrchestrANT's 550f0ff moved to 1.0.5 and dropped
-      `fastapi<0.145`; flet-dev/flet#6984 is closed.
 - [b] **CON104 — the app bundles ship the Flet client** [M, ★★]. Blocked on CON102.
       OrchestrANT's packages carry its `app` extra only, so `yolo-monitor --ui auto` falls back
       to OpenCV's window there (OrchestrANT `AGENTS.md` § 4). With CON102:

@@ -16,6 +16,7 @@ VERSIONS = {
     "PYTORCH_VERSION": "v2.14.1",
     "TORCHVISION_VERSION": "v0.29.1",
     "ONNXRUNTIME_GENAI_VERSION": "v0.17.0",
+    "FLET_VERSION": "1.0.5",
 }
 
 
@@ -39,6 +40,8 @@ class ConsumerPinsTomlTest(unittest.TestCase):
             ("correct pin", '[project]\ndependencies = ["torch==2.14.1"]\n' + exclusion, 0, "1 compared"),
             ("override", '[tool.uv]\noverride-dependencies = ["torch"]\nexclude-dependencies = ["torch"]\n', 1, "no readable version"),
             ("invalid", '[project\ndependencies = []\n', 1, "invalid TOML"),
+            ("flet pins", '[project.optional-dependencies]\nui = ["flet[desktop]==1.0.5", "flet-web==1.0.5"]\n', 0, "2 compared"),
+            ("flet-web behind", '[project.optional-dependencies]\nui = ["flet[desktop]==1.0.5", "flet-web==1.0.4"]\n', 1, "is 1.0.4"),
         )
         for name, manifest, expected, message in cases:
             with self.subTest(name=name):

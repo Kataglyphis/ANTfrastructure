@@ -1076,7 +1076,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4773 entries** over **638 distinct test commands**; both digits are
+manifest holds **4774 entries** over **638 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -4534,6 +4534,12 @@ The eighth sub-check is the one the farm cannot supply a subject for: its
 subject is a different repository, so the suite writes a two-file consumer of
 its own (a matching one that rides along in every case, and perturbed copies for
 the reds) rather than reading a sibling checkout that a CI runner does not have.
+
+**Since 2026-11-14 it also holds Flet** (BACKLOG CON103): Flet's Python SDK and its client speak
+one release's protocol, so `FLET_VERSION` in `tool-pins.env` (no early image stage reads it) is the
+pin for OrchestrANT's `"flet[desktop]==…"` and `"flet-web==…"` and its viewer job's
+`--with "flet==…"` in `benchmarks.yml`. `default.json` groups flet, flet-web and flet-desktop into one
+Renovate PR. Recipe `version-snapshot.consumer-pins-flet-extras` proves the extras form is read.
 
 **Since 2026-09-29 the eighth also holds torch, torchvision and
 onnxruntime-genai.** The image build force-installs `PYTORCH_VERSION` and

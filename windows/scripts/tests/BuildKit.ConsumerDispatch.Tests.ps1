@@ -15,8 +15,8 @@ BeforeAll {
 
 Describe 'Get-BkPushTag' {
     It 'takes the tag from the last path segment' -TestCases @(
-        @{ Ref = 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64'; Tag = 'winamd64' }
-        @{ Ref = 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64-nvidia'; Tag = 'winamd64-nvidia' }
+        @{ Ref = 'registry.example/owner/image:winamd64'; Tag = 'winamd64' }
+        @{ Ref = 'registry.example/owner/image:winamd64-nvidia'; Tag = 'winamd64-nvidia' }
         @{ Ref = 'localhost:5000/kataglyphis:winarm64'; Tag = 'winarm64' }
         @{ Ref = 'localhost:5000/kataglyphis'; Tag = '' }
     ) {
@@ -33,7 +33,7 @@ Describe 'Invoke-BkConsumerDispatch' {
     AfterAll { Remove-Item Env:FAKE_BASH_LOG, Env:FAKE_BASH_EXIT -ErrorAction SilentlyContinue }
 
     It 'runs the hub dispatch script in a login shell with the pushed tag' {
-        $ok = Invoke-BkConsumerDispatch -PushRef 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64' -RepoRoot $script:repoRoot -BashPath $script:fakeBash
+        $ok = Invoke-BkConsumerDispatch -PushRef 'registry.example/owner/image:winamd64' -RepoRoot $script:repoRoot -BashPath $script:fakeBash
         $ok | Should -BeTrue
         $call = Get-Content -LiteralPath $script:callLog
         $call | Should -HaveCount 1

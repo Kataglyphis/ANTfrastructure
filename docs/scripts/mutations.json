@@ -7489,6 +7489,14 @@
   "why": "a torch row that never finds its mention skips silently, so a consumer pinning an older torch than the image force-installs passes the gate and a dev box and the image run different torch with nothing red"
  },
  {
+  "id": "version-snapshot.consumer-pins-flet-extras",
+  "target": "docs/scripts/consumer_pins.py",
+  "find": "        r'\"flet(?:\\[[^\\]]*\\])?==([^\"\\s;,]+)',",
+  "replace": "        r'\"flet==([^\"\\s;,]+)',",
+  "test": "bash linux/scripts/tests/test-consumer-pins-toml.sh",
+  "why": "OrchestrANT pins the SDK as flet[desktop]==; a row that cannot read the extras form reports it unpinned or skips it, and the client and SDK drift apart with nothing red"
+ },
+ {
   "id": "lib.cgroup-remaining-clamps-at-zero",
   "target": "linux/scripts/01-core/parallelism.sh",
   "find": "    [ \"${remaining}\" -lt 0 ] 2>/dev/null && remaining=0",

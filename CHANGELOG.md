@@ -14,6 +14,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — `FLET_VERSION`: one pin for Flet's SDK and client (CON103)
+
+- `FLET_VERSION=1.0.5` in `tool-pins.env` (not `versions.env`: no early image stage reads it, and a key there
+  would re-key the compiler image). `consumer_pins.py` holds OrchestrANT's `"flet[desktop]==…"`, `"flet-web==…"`
+  and its viewer job's `--with "flet==…"` to it; `default.json` groups flet, flet-web and flet-desktop into one
+  Renovate PR. Two cases in `test-consumer-pins-toml.sh`, recipe `version-snapshot.consumer-pins-flet-extras`.
+  CON102's client build takes the same key.
+- `BuildKit.ConsumerDispatch.Tests.ps1` (CON236) parses tags from a neutral `registry.example/owner/image` ref: the
+  CI image ref gate refuses a spelled-out family image ref, and the suite was untracked when that gate last ran.
+
 ## 2026-11-14 — the Windows publish dispatches the consumers' lanes (CON236); CON273 found
 
 - `windows/Build-Buildkit.ps1 -PushRef` now calls `dispatch-consumer-lanes.sh --tag <tag>` after its final push,
