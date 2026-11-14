@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — preserve reviewed compiler plan profiles
+
+- Extend the canonical compiler planner with an explicit native-AMDGPU profile: require the three LLVM changes plus the known OCI transport delta, prove that transport against its fixed ancestor commit, and retain every original/current fingerprint. All five storage controls, unchanged GNU mounts, manager restrictions, source/commit proofs, disk floor and publication refusals remain required. The default wrapper-repair profile keeps its three-file contract. Synthetic file/Git/manager fixtures and executable mutations cover these boundaries; preparation grants no build, provenance, cache-hit or image acceptance. See [compiler planning](docs/local-proof-workflows.md#native-amdgpu-compiler-planning).
+
 ## 2026-11-14 — require native AMDGPU and early HIP device compilation
 
 - Share native SDK/HIP argument and compiler setup in `native-check-common.sh`; preserve its companion in the narrow image closure and copied fixtures.

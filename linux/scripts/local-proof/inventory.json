@@ -242,6 +242,12 @@
       "original_sha256": "138878f1a0be26d2bf9a78f95c232730dcaea5b0d6c34e9390cea55e07a71562"
     },
     {
+      "name": "compiler_plan_profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/compiler_plan_profile.py",
+      "reason": "Required reviewed compiler-profile companion; preparation grants no build or acceptance."
+    },
+    {
       "name": "prepare-next-compiler-plan.py",
       "classification": "versioned",
       "canonical": "linux/scripts/local-proof/prepare-next-compiler-plan.py",

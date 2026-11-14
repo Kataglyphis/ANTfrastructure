@@ -5,6 +5,16 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## Compiler planner refuses a fourth OCI transport delta
+
+The default compiler-plan profile accepts only the original three LLVM changes.
+A source tree that also carries the reviewed OCI seeding transport therefore
+refuses that legacy input boundary. Use the explicit [native-AMDGPU planning
+profile](local-proof-workflows.md#native-amdgpu-compiler-planning), which checks
+the fixed transport ancestor and records all four deltas. Keep the original
+input reference and failed attempt; a refreshed control hash alone cannot
+turn that additional change into an unchanged input or establish a cache hit.
+
 ## Linux HIP rejects amdgpu-internalize-symbols
 
 When the own source Clang reports `Unknown command line argument

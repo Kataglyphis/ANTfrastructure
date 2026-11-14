@@ -12,6 +12,13 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from compiler_plan_profile import (
+    PROFILES,
+    reviewed_transport,
+    storage_changes,
+    validate_input_changes,
+)
+
 if TYPE_CHECKING:
     from proof_types import Json
 
@@ -20,6 +27,7 @@ for name in ['template', 'source', 'targeted-proof', 'commit-proof', 'output']:
     parser.add_argument('--' + name, required=True, type=Path)
 parser.add_argument('--unit', required=True)
 parser.add_argument('--image-repo', required=True)
+parser.add_argument('--profile', choices=PROFILES, default='clang-wrapper-repair')
 args = parser.parse_args()
 assert not args.output.exists()
 source = args.source.resolve(strict=True)
@@ -58,11 +66,14 @@ pattern = re.compile('|'.join(re.escape(key) for key in sorted(mapping, key=len,
 command = [pattern.sub(lambda match: mapping[match[0]], value) for value in old['command']]
 assert '--push' not in command and command[-1] == str(compiler_output / 'logs')
 audit = json.loads((args.template.parent / old['storage_path_audit']).read_text())
-assert all(sha(source / name) == expected for name, expected in audit['files_sha256'].items())
+transport_review = reviewed_transport(source, args.profile)
+control_changes = storage_changes(source, audit['files_sha256'], transport_review)
 manager = dict(line.split('=', 1) for line in run(['systemctl', '--user', 'show-environment']).splitlines() if '=' in line)
 assert all(name not in manager for name in audit['manager_keys_unset'])
 audit.update(observed_at=datetime.datetime.now(datetime.UTC).isoformat(), source_revision=head, plan=args.output.name,
-             relevant_user_manager_env={}, source_control_files_equal_previous_audit=True)
+             relevant_user_manager_env={}, source_control_files_equal_previous_audit=not control_changes,
+             reviewed_control_changes=control_changes, compiler_plan_profile=args.profile)
+audit['files_sha256'] = {name:sha(source / name) for name in audit['files_sha256']}
 old_inputs = json.loads(Path(old['expensive_inputs_proof']).read_text())
 differences = {}
 unchanged = {}
@@ -73,7 +84,7 @@ for name, previous in old_inputs['unchanged_bind_files'].items():
     else:
         differences[name] = {'previous': previous, 'current': current}
 materializer = 'linux/scripts/02-toolchain/materialize-llvm-target.sh'
-assert set(differences) == {'linux/scripts/02-toolchain/llvm.sh', 'linux/scripts/02-toolchain/llvm-cross.sh', materializer}
+validate_input_changes(differences, args.profile, transport_review)
 accepted_materializer = subprocess.check_output(['git', '-C', str(source), 'show', 'e7ca4436dbb5e58d8f9e0fb49105b6d3b636e9e9:' + materializer], timeout=60)
 assert (source / materializer).read_bytes() == accepted_materializer
 dockerfile = (source / 'linux/Dockerfile.toolchain').read_text()
@@ -84,7 +95,8 @@ assert gnu_match is not None, 'Compiler Dockerfile has no first RUN block'
 gnu_run = gnu_match.group(0)
 gnu_mounts = re.findall(r'--mount=type=bind,source=([^,\s]+)', gnu_run)
 assert gnu_mounts and set(gnu_mounts) <= unchanged.keys()
-comparison = {'status':'reviewed-GNU-closure-equal-LLVM-closure-intentionally-changed-only',
+comparison = {'status':('reviewed-GNU-closure-equal-LLVM-closure-intentionally-changed-only' if args.profile == 'clang-wrapper-repair' else 'reviewed-GNU-closure-equal-LLVM-inputs-and-declared-transport-changes-only'),
+              'compiler_plan_profile':args.profile, 'reviewed_OCI_transport':transport_review,
               'source_revision':head, 'reference_revision':old['source_revision'], 'unchanged_bound_files':unchanged,
               'changed_bound_files':differences, 'identical_Dockerfile_sha256':sha(source / 'linux/Dockerfile.toolchain'),
               'GNU_RUN_bind_files':gnu_mounts, 'GNU_mounts_unchanged':True, 'cache_hits_claimed':False,
@@ -92,7 +104,7 @@ comparison = {'status':'reviewed-GNU-closure-equal-LLVM-closure-intentionally-ch
 registry = json.loads((source / 'docs/scripts/mutations.json').read_text())
 production = ['linux/scripts/02-toolchain/llvm.sh', 'linux/scripts/02-toolchain/llvm-cross.sh', 'linux/scripts/06-packaging/smoke-toolchain.sh']
 plan = {'status':'prepared-awaiting-complete-source-preflight', 'prepared_at':datetime.datetime.now(datetime.UTC).isoformat(),
-        'launcher_contract':2, 'unit':args.unit, 'source':str(source), 'source_revision':head, 'code_revision':head,
+        'launcher_contract':2, 'planner_profile':args.profile, 'unit':args.unit, 'source':str(source), 'source_revision':head, 'code_revision':head,
         'local_image':args.image_repo + ':cross-compiler-amd64', 'output':str(compiler_output), 'command':command,
         'base_manifest':old['base_manifest'], 'base_config':old['base_config'], 'base_oci_index_sha256':old['base_oci_index_sha256'],
         'required_bytes':193273528320, 'expected_pins':old['expected_pins'], 'full_registry':len(registry),
@@ -107,7 +119,7 @@ plan = {'status':'prepared-awaiting-complete-source-preflight', 'prepared_at':da
             'Original12layer base/nativeOCI/index/config and all blobs rehash; all previous roots/images/receipts remain.',
             'No running producer; fresh unit/output/local alias and outside-Git TMPDIR; manager storage flags remain unset.',
             'Measure actual GNU/LLVM/Rust/Python cache behavior; input equality is not a cache hit and new LLVM backends intentionally rekey the LLVM RUN.',
-            'Qualify baked native157tools/sixdefaults/loader plus source wrapper paths/all3 host backends and actual both-driver target smokes before nativeOCI and SDK handoff.'
+            'Qualify baked native157tools/sixdefaults/loader plus source wrapper paths/three CPU backends plus AMDGPU and actual both-driver target smokes before nativeOCI and SDK handoff.'
         ], 'publication':False, 'scope':__doc__}
 assert not (work / 'compiler-storage-path-audit.json').exists() and not (work / 'build-inputs-comparison.json').exists()
 save(work / 'compiler-storage-path-audit.json', audit)

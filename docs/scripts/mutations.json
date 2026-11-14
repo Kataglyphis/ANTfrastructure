@@ -49260,5 +49260,189 @@
   "replace": "migraphx_prepare_native_work \"${work}\" work clang_root gcc_root",
   "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
   "why": "A failing source toolchain resolver must keep its exact raw status before validating published bindings."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-required-transport-review",
+  "target": "linux/scripts/local-proof/prepare-next-compiler-plan.py",
+  "find": "transport_review = reviewed_transport(source, args.profile)",
+  "replace": "transport_review = None",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "Native planning must execute the pinned transport review before accepting control changes."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-required-control-review",
+  "target": "linux/scripts/local-proof/prepare-next-compiler-plan.py",
+  "find": "control_changes = storage_changes(source, audit['files_sha256'], transport_review)",
+  "replace": "control_changes = {}",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "The planner must execute all storage-control checks before recording current hashes."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-required-input-review",
+  "target": "linux/scripts/local-proof/prepare-next-compiler-plan.py",
+  "find": "validate_input_changes(differences, args.profile, transport_review)",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "The planner must reject additional source deltas rather than merely report them."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-transport-ancestor",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "    subprocess.check_output(['git', '-C', str(source), 'merge-base', '--is-ancestor', TRANSPORT_COMMIT, 'HEAD'], timeout=60)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "A blob alone cannot replace the required reviewed ancestor in the production source."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-transport-fixed-pin",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "TRANSPORT_COMMIT = '8271db71f46ab74393ff45c14864d0eaca6707a5'",
+  "replace": "TRANSPORT_COMMIT = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "The native profile must request the particular reviewed transport commit."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-transport-exact-bytes",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "    assert (source / TRANSPORT).read_bytes() == expected, 'OCI transport differs from the reviewed commit'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "Current transport bytes must match the fixed committed blob before review metadata exists."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-all-five-controls",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "    assert set(previous) == CONTROLS, 'Storage audit requires exactly all five controls'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "A missing named storage control cannot disappear from the audit."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-no-extra-control",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "transport is not None and set(changes) == {TRANSPORT}",
+  "replace": "transport is not None",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "A reviewed transport cannot authorize a second changed storage-control file."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-control-old-and-new",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "        assert changes[TRANSPORT] == {'previous': LEGACY_TRANSPORT_SHA, 'current': transport['sha256']}, 'Unexpected OCI control baseline'",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "The sole permitted control delta binds both its known original and reviewed current hash."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-legacy-no-history-dependency",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "    if profile == 'clang-wrapper-repair':",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "The unchanged default profile does not acquire a native-transport history prerequisite."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-known-review-profile",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "    assert profile in PROFILES, 'Unknown compiler plan profile'\n    if profile",
+  "replace": "    pass\n    if profile",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "Unknown shared review profiles must refuse before behaving like native AMDGPU."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-known-input-profile",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "    assert profile in PROFILES, 'Unknown compiler plan profile'\n    expected",
+  "replace": "    pass\n    expected",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "An unknown input profile cannot inherit the three-file default contract."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-exact-input-set",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "    assert set(differences) == expected, 'Compiler inputs differ from the reviewed profile'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "Each profile requires its complete changed-input set and refuses every extra path."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-native-review-mandatory",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "        assert transport is not None, 'Native AMDGPU planning requires reviewed OCI transport'",
+  "replace": "        if transport is None:\n            return",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "Absent transport review must not skip native input validation."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-input-old-baseline",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "        assert entry['previous']['sha256'] == LEGACY_TRANSPORT_SHA, 'Unexpected OCI input baseline'",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "The broader input reference retains the genuine prior transport hash."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-input-current-fingerprint",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "        assert entry['current'] == {'sha256': transport['sha256'], 'size': transport['size']}, 'OCI input fingerprint differs'",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "Reviewed current transport hash and size must match the comparison row exactly."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-GNU-closure-unchanged",
+  "target": "linux/scripts/local-proof/prepare-next-compiler-plan.py",
+  "find": "assert gnu_mounts and set(gnu_mounts) <= unchanged.keys()",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "A changed transport or any other changed input cannot be advertised as an unchanged GNU mount."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-Dockerfile-equality",
+  "target": "linux/scripts/local-proof/prepare-next-compiler-plan.py",
+  "find": "assert dockerfile == previous_dockerfile",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "Changed build instructions cannot reuse the old equal-Dockerfile cache-boundary claim."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-manager-storage-flags",
+  "target": "linux/scripts/local-proof/prepare-next-compiler-plan.py",
+  "find": "assert all(name not in manager for name in audit['manager_keys_unset'])",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "Ambient storage flags remain refused in the new profile."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-reserve-floor",
+  "target": "linux/scripts/local-proof/prepare-next-compiler-plan.py",
+  "find": "assert old['required_bytes'] == 193273528320",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "An unexpected predecessor disk-floor contract must refuse rather than be silently normalized."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-publication-refusal",
+  "target": "linux/scripts/local-proof/prepare-next-compiler-plan.py",
+  "find": "assert '--push' not in command and command[-1] == str(compiler_output / 'logs')",
+  "replace": "assert command[-1] == str(compiler_output / 'logs')",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "Plan preparation must not emit a publishing command with a false publication verdict."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-honest-control-verdict",
+  "target": "linux/scripts/local-proof/prepare-next-compiler-plan.py",
+  "find": "source_control_files_equal_previous_audit=not control_changes",
+  "replace": "source_control_files_equal_previous_audit=True",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "The audit must record the reviewed control change instead of laundering it as equality."
+ },
+ {
+  "id": "compiler-llvm-tools.plan-default-profile-stable",
+  "target": "linux/scripts/local-proof/prepare-next-compiler-plan.py",
+  "find": "choices=PROFILES, default='clang-wrapper-repair'",
+  "replace": "choices=PROFILES, default='native-amdgpu'",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "The additional profile remains an explicit opt-in and preserves default callers."
  }
 ]

@@ -8,6 +8,7 @@ evidence="$(cd "$1" && pwd)"
 hub="$(cd "${SCRIPT_DIR}/../../../../.." && pwd)"
 cd "${hub}"
 export LC_ALL=C KNOB_GATE=1
+bash linux/scripts/tests/test-compiler-plan-profile.sh > "${evidence}/compiler-plan-profile-tests.log" 2>&1
 bash linux/scripts/tests/test-migraphx-hip-compiler.sh > "${evidence}/hip-compiler-tests.log" 2>&1
 bash linux/scripts/tests/test-llvm-host-selection.sh > "${evidence}/llvm-host-selection-tests.log" 2>&1
 bash linux/scripts/tests/test-migraphx-stack.sh > "${evidence}/stack-tests.log" 2>&1
