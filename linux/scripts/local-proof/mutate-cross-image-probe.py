@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Break each new receipt guard and require an assertion-bearing fixture failure; these controls are not image acceptance."""
+"""Break the original multi-target receipt guards and require assertion-bearing failures; SDK recipes and actual image acceptance remain separate."""
 
 import argparse
 import ast

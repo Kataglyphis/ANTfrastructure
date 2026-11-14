@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require every SDK-parent cross-proof assertion and its enclosing gate to fail under actual parse-valid mutations; no image proof."""
+"""Break the original multi-target compiler-parent guards with parse-valid mutations; this is not SDK-image or GPU acceptance."""
 
 import argparse
 import ast
@@ -20,7 +20,7 @@ test = tools / 'test-native-oci-cross-qualification.py'
 text = module.read_text()
 tree = ast.parse(text)
 function = next(node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name == 'qualification')
-gate = next(node for node in function.body if isinstance(node,ast.If))
+gate = next(node for node in ast.walk(function) if isinstance(node,ast.If) and 'launcher_contract' in (ast.get_source_segment(text,node.test) or ''))
 gate_text = ast.get_source_segment(text,gate.test)
 assert gate_text is not None and "launcher_contract" in gate_text
 nodes = [gate, *[node for node in ast.walk(gate) if isinstance(node,ast.Assert)]]

@@ -20,7 +20,7 @@ proof = {'status':'passed-fresh-image-baked-compiler-native-tool-and-loader-sele
          'container_environment_matches_baked_image':True, 'baked_script_bytes_match_source':True, 'login_shell_selection_passed':True,
          'native_facts':{'native_tool_count':157}, 'cross_wrapper_checks_required':True, 'cross_wrapper_CPU_checks_passed':True,
          'cross_wrapper_modes':{'default':mode,'login':login}}
-plan = {'source_revision':'synthetic-fixture','launcher_contract':2}
+plan = {'source_revision':'synthetic-fixture','launcher_contract':2, 'local_image':'ant-local/webgpu-fixture:cross-compiler-amd64', 'unit':'fixture-compiler.service'}
 controls = []
 with tempfile.TemporaryDirectory(prefix='cross-oci-fixture-') as temporary:
     path = Path(temporary) / 'fixture.json'

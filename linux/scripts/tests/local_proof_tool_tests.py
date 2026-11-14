@@ -3,8 +3,10 @@
 
 import ast
 import copy
+import hashlib
 import json
 import os
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -49,6 +51,68 @@ class ToolTests(unittest.TestCase):
         result = self.run_tool(TOOLS / 'test-native-oci-cross-qualification.py')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)['refusal_controls'], 9)
+
+    def test_sdk_image_profile_refusals(self) -> None:
+        result = self.run_tool(TOOLS / 'test-sdk-image-profile.py', '--source', str(ROOT))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertEqual(receipt['refusal_controls'], 70)
+        self.assertEqual(receipt['positive_controls'], 6)
+        self.assertFalse(receipt['actual_image_acceptance'])
+
+    def sdk_transport_fixture(self) -> dict:
+        self.fake_systemd()
+        data = runpy.run_path(str(TOOLS / 'sdk_profile_fixture.py'))['producer_fixture']()
+        data['plan'].update(source=str(ROOT), expected_pins={'GCC_VERSION':'16.2.0','LLVM_RELEASE':'23.1.5'})
+        data['invocation'].update(source=str(ROOT), output=str(self.work))
+        data['invocation']['command'][-9] = str(ROOT / 'linux/scripts/build-cross-stage.sh')
+        data['invocation']['command'][-1] = str(self.work / 'logs')
+        for name in ['parent','full','plan']:
+            (self.work / (name + '.json')).write_text(json.dumps(data[name]))
+        data['invocation'].update(parent_OCI_proof=str(self.work / 'parent.json'), SDK_source_full_preflight_proof=str(self.work / 'full.json'))
+        (self.work / 'sdk-invocation.json').write_text(json.dumps(data['invocation']))
+        original = self.work / 'original'
+        original.mkdir()
+        original.joinpath('invocation.json').write_text(json.dumps({'input_sha256':{'plain-load.py':hashlib.sha256((TOOLS / 'probe-soname-load.py').read_bytes()).hexdigest()}}))
+        for name in ['git','nerdctl']:
+            binary = self.work / ('bin/git' if name == 'git' else '.local/bin/nerdctl')
+            binary.parent.mkdir(parents=True,exist_ok=True)
+            binary.symlink_to(Path(__file__).with_name('operational_systemd_fixture.py'))
+        self.env.update(OPERATIONAL_GIT_REVISION='synthetic-fixture', OPERATIONAL_IMAGE_FIXTURE=str(self.work / 'image.json'),
+                        OPERATIONAL_UNIT_FIXTURE=str(self.work / 'units.json'))
+        return data
+
+    def test_sdk_image_profile_launch_transport(self) -> None:
+        data = self.sdk_transport_fixture()
+        terminal = {'LoadState':'loaded','ActiveState':'active','SubState':'exited','MainPID':'0','ExecMainStatus':'0','Result':'success'}
+        for sdk in [False,True]:
+            with self.subTest(sdk=sdk):
+                kind = 'sdk' if sdk else 'compiler'
+                unit = 'webgpu-' + kind + '-image-qualification-fixture.service'
+                units = {data['plan']['unit']:terminal, data['invocation']['unit']:terminal, unit:{'LoadState':'not-found'}}
+                (self.work / 'units.json').write_text(json.dumps(units))
+                image = data['invocation']['image'] if sdk else data['plan']['local_image']
+                (self.work / 'image.json').write_text(json.dumps([{'RepoDigests':[image.rsplit(':',1)[0] + '@sha256:' + 'a' * 64],
+                                                                  'Id':'sha256:' + 'b' * 64, 'Config':{'Env':[]}}]))
+                self.env['OPERATIONAL_EXPECTED_IMAGE'] = image
+                output = self.work / kind
+                arguments = ['launch','--plan',str(self.work / 'plan.json'),'--output',str(output),'--unit',unit,
+                             '--original-qualification',str(self.work / 'original'),'--plain-load-probe',str(TOOLS / 'probe-soname-load.py')]
+                if sdk:
+                    arguments += ['--sdk-invocation',str(self.work / 'sdk-invocation.json')]
+                result = self.run_tool(TOOLS / 'compiler-image-qualification.py',*arguments)
+                self.assertEqual(result.returncode,0,result.stderr)
+                record = json.loads((output / 'invocation.json').read_text())
+                self.assertEqual(record['image'],image)
+                self.assertEqual(record['subject']['native_prefix'],'/opt/llvm-target' if sdk else '/opt/llvm-target-amd64')
+                if sdk:
+                    for field, name in [('sdk_invocation_sha256','sdk-invocation.json'), ('compiler_parent_sha256','parent.json'), ('source_proof_sha256','full.json')]:
+                        self.assertEqual(record['subject'][field],hashlib.sha256((self.work / name).read_bytes()).hexdigest())
+                self.assertEqual(record['sdk_native_checks_required'],sdk)
+                self.assertEqual(record['cross_wrapper_checks_required'],not sdk)
+                self.assertIn('/qualify-with-cross.sh',record['command'])
+                self.assertEqual(record['command'][-1],'sdk-amd64' if sdk else '/opt/llvm-target-amd64')
+                self.assertEqual(record['command'].count('--env'),1)
 
     def fake_systemd(self) -> None:
         binary = self.work / 'bin'

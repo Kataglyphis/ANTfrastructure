@@ -98,6 +98,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied lint drivers carry `lint-scope-init.sh` and `lint-root.sh`; source initialization in the driver shell so remaining positional arguments survive.
    Wheel unpack/pack transport keeps Python argument boundaries and raw status; packaging execution keeps best-effort and sudo failure policies separate.
    Cross-Clang wrappers use the filesystem-root sysroot with Debian's absolute target linker scripts; foreign target trees remain mandatory. Independent image probes require that same root and reject the old double-root wrappers.
+   Copied compiler/SDK qualifiers and OCI handoffs carry `proof_subject.py` and `proof_commands.py`; SDK profiles bind the actual invocation, complete source and compiler parent, both native shell modes and all compiler ancestor layers. Never retarget a compiler plan to represent an SDK.
    Compiler smoke callbacks stay unconditional; preserve GStreamer's separate target lookups, temporary cleanup and raw failure statuses.
    ORT tree scans retain archive candidates; record scans stay shallow and preserve component-name exclusions.
    Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion.

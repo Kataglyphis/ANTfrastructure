@@ -30,16 +30,31 @@ def sha(path: Path) -> str:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def validate(payload: Json, gcc_pin: str, llvm_pin: str, helpers: Helpers) -> Json:
+def sdk_materialization(payload: Json) -> None:
+    materialized = payload.get('materialization')
+    assert isinstance(materialized, dict), 'SDK materialization facts are required'
+    assert materialized['alias_is_symlink'] is True and materialized['alias_target'] == '/opt/llvm-target', 'SDK native architecture alias differs'
+    assert materialized['architecture_prefixes'] == ['llvm-target-amd64'], 'SDK retained foreign target-native prefixes'
+    assert set(materialized['drivers']) == {'clang', 'clang++'}, 'Both SDK driver byte comparisons are required'
+    for row in materialized['drivers'].values():
+        assert re.fullmatch(r'[0-9a-f]{64}', row['alias_sha256']) and row['alias_sha256'] == row['target_sha256'], 'SDK architecture alias selects different compiler bytes'
+
+
+def validate(payload: Json, gcc_pin: str, llvm_pin: str, helpers: Helpers, *, profile: str = 'compiler') -> Json:
+    assert profile in {'compiler', 'sdk-amd64'}, 'Unknown compiler image probe profile'
+    assert payload.get('profile', 'compiler') == profile, 'Image probe profile differs'
+    targets = {'amd64': TARGETS['amd64']} if profile == 'sdk-amd64' else TARGETS
+    if profile == 'sdk-amd64':
+        sdk_materialization(payload)
     output = helpers['output']
     assert payload['schema_version'] == 1 and payload['gcc_pin'] == gcc_pin and payload['llvm_pin'] == llvm_pin
     backends = output(payload['backends']).split()
     assert len(backends) == 3 and set(backends) == BACKENDS, 'Native LLVM must carry exactly all three configured backends'
-    expected = {f'{driver}-{arch}' for driver in ('clang', 'clang++') for arch in TARGETS}
+    expected = {f'{driver}-{arch}' for driver in ('clang', 'clang++') for arch in targets}
     assert set(payload['wrappers']) == expected, 'Every actual architecture wrapper is required'
     for name, row in payload['wrappers'].items():
         driver, arch = name.rsplit('-', 1)
-        triplet, sysroot = TARGETS[arch]
+        triplet, sysroot = targets[arch]
         assert row['selected'] == '/usr/local/bin/' + name, 'PATH selected another architecture wrapper'
         lines = row['script'].splitlines()
         assert len(lines) == 2 and lines[0] == '#!/usr/bin/env bash', 'Unexpected generated wrapper layout'
@@ -49,7 +64,7 @@ def validate(payload: Json, gcc_pin: str, llvm_pin: str, helpers: Helpers) -> Js
     smoke = output(payload['smoke'])
     assert '=== Results: 0 failure(s) ===' in smoke and not re.search(r'^\s*FAIL ', smoke, re.MULTILINE), 'The actual baked toolchain smoke must pass'
     for driver in ('clang', 'clang++'):
-        for arch in TARGETS:
+        for arch in targets:
             label = f'{driver} ({arch} wrapper)'
             for suffix in ['cc1 compile-to-object smoke OK', 'link smoke OK']:
                 assert smoke.count(f'  PASS {label}: {suffix}\n') == 1, 'Missing actual wrapper compiler assertion: ' + label
@@ -62,27 +77,29 @@ def validate(payload: Json, gcc_pin: str, llvm_pin: str, helpers: Helpers) -> Js
         assert output(row['execution']) == '42', 'Native executable returned the wrong result: ' + name
         assert re.search(r'^\s*Machine:\s+Advanced Micro Devices X86-64\s*$', output(row['elf']), re.MULTILINE), 'Native executable has the wrong ELF machine'
     assert not payload['environment'].get('LD_PRELOAD'), 'Preload cannot qualify the ordinary image'
-    return {'status':'passed-baked-cross-Clang-wrappers-and-CPU-smokes-only', 'native_backends':sorted(BACKENDS),
-            'cross_targets':list(TARGETS), 'wrapper_count':6, 'native_languages':['c','cxx'], 'foreign_static_executions_required':4,
+    status = 'passed-baked-SDK-Clang-wrappers-and-CPU-smokes-only' if profile == 'sdk-amd64' else 'passed-baked-cross-Clang-wrappers-and-CPU-smokes-only'
+    return {'status':status, 'profile':profile, 'native_backends':sorted(BACKENDS),
+            'cross_targets':list(targets), 'wrapper_count':2 * len(targets), 'native_languages':['c','cxx'], 'foreign_static_executions_required':2 * (len(targets) - 1),
             'compiler_smoke_driver':'/opt/scripts/packaging/smoke-toolchain.sh', 'complete_Cxx_ABI_claimed':False,
             'SDK_acceptance_claimed':False, 'GPU_acceptance_claimed':False}
 
 
-def collect(evidence: Path, stem: str, gcc_pin: str, llvm_pin: str, helpers: Helpers) -> Json:
+def collect(evidence: Path, stem: str, gcc_pin: str, llvm_pin: str, helpers: Helpers, *, profile: str = 'compiler') -> Json:
+    targets = {'amd64': TARGETS['amd64']} if profile == 'sdk-amd64' else TARGETS
     packaging = Path('/opt/scripts/packaging')
     command = helpers['command']
-    payload = {'schema_version':1, 'gcc_pin':gcc_pin, 'llvm_pin':llvm_pin,
+    payload = {'schema_version':1, 'profile':profile, 'gcc_pin':gcc_pin, 'llvm_pin':llvm_pin,
                'backends':command(PREFIX + '/bin/llvm-config', ['--targets-built']), 'wrappers':{},
                'baked_sha256':{name:sha(packaging / name) for name in BAKED_FILES},
                'environment':{name:os.environ.get(name) for name in ['PATH','LD_LIBRARY_PATH','LD_PRELOAD','CC','CXX']}}
     for driver in ('clang', 'clang++'):
-        for arch in TARGETS:
+        for arch in targets:
             name = driver + '-' + arch
             path = shutil.which(name)
             assert path is not None, 'Required architecture wrapper is absent: ' + name
             script = Path(path).read_text()
             payload['wrappers'][name] = {'selected':path, 'script':script, 'script_sha256':sha(Path(path)), 'version':command(path, ['--version'])}
-    argv = ['bash', str(packaging / 'smoke-toolchain.sh'), ','.join(TARGETS)]
+    argv = ['bash', str(packaging / 'smoke-toolchain.sh'), ','.join(targets)]
     raw_log = evidence / (stem + 'cross-toolchain.log')
     with raw_log.open('x') as log:
         child = subprocess.run(argv, text=True, stdout=log, stderr=subprocess.STDOUT, timeout=180, check=False)
@@ -95,6 +112,12 @@ def collect(evidence: Path, stem: str, gcc_pin: str, llvm_pin: str, helpers: Hel
         programs[language] = {'source_sha256':sha(source), 'build':build, 'execution':command(str(binary), []),
                               'elf':command('readelf', ['-h', str(binary)])}
     payload['native_programs'] = programs
+    if profile == 'sdk-amd64':
+        alias = Path(PREFIX)
+        payload['materialization'] = {'alias_is_symlink':alias.is_symlink(), 'alias_target':os.readlink(alias),
+                                     'architecture_prefixes':sorted(path.name for path in Path('/opt').glob('llvm-target-*')),
+                                     'drivers':{driver:{'alias_sha256':sha(alias / 'bin' / driver), 'target_sha256':sha(Path('/opt/llvm-target/bin') / driver)}
+                                                for driver in ['clang','clang++']}}
     return payload
 
 
@@ -104,15 +127,16 @@ def main() -> None:
     parser.add_argument('--mode', choices=['default','login'], required=True)
     parser.add_argument('--gcc-pin', required=True)
     parser.add_argument('--llvm-pin', required=True)
+    parser.add_argument('--profile', choices=['compiler','sdk-amd64'], default='compiler')
     args = parser.parse_args()
     assert all(re.fullmatch(r'\d+\.\d+\.\d+', value) for value in [args.gcc_pin,args.llvm_pin])
     stem = '' if args.mode == 'default' else 'login-'
     destination = args.evidence / (stem + 'cross-clang.json')
     assert not destination.exists()
     helpers = runpy.run_path('/opt/scripts/packaging/probe-compiler-defaults.py')
-    payload = collect(args.evidence, stem, args.gcc_pin, args.llvm_pin, helpers)
+    payload = collect(args.evidence, stem, args.gcc_pin, args.llvm_pin, helpers, profile=args.profile)
     (args.evidence / (stem + 'cross-clang-raw.json')).write_text(json.dumps(payload,indent=2) + '\n')
-    proof = validate(payload,args.gcc_pin,args.llvm_pin,helpers)
+    proof = validate(payload,args.gcc_pin,args.llvm_pin,helpers,profile=args.profile)
     proof.update(mode=args.mode, facts=payload, scope=__doc__)
     destination.write_text(json.dumps(proof,indent=2) + '\n')
     print(json.dumps({key:proof[key] for key in ['status','mode','native_backends','wrapper_count']}))

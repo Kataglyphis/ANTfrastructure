@@ -47456,7 +47456,7 @@
  {
   "id": "compiler-llvm-tools.preserved-parent-guard-01",
   "target": "linux/scripts/local-proof/native-oci-handoff.py",
-  "find": "    if plan.get('launcher_contract') == 2:\n        assert proof['cross_wrapper_checks_required'] and proof['cross_wrapper_CPU_checks_passed']\n        assert set(proof['cross_wrapper_modes']) == {'default','login'}\n        for mode,result in proof['cross_wrapper_modes'].items():\n            assert result['status'] == 'passed-baked-cross-Clang-wrappers-and-CPU-smokes-only' and result['mode'] == mode\n            assert result['native_backends'] == ['AArch64','RISCV','X86'] and result['wrapper_count'] == 6\n            assert result['foreign_static_executions_required'] == 4 and result['native_languages'] == ['c','cxx']\n",
+  "find": "    elif plan.get('launcher_contract') == 2:\n        assert proof['cross_wrapper_checks_required'] and proof['cross_wrapper_CPU_checks_passed']\n        assert set(proof['cross_wrapper_modes']) == {'default','login'}\n        for mode,result in proof['cross_wrapper_modes'].items():\n            assert result['status'] == 'passed-baked-cross-Clang-wrappers-and-CPU-smokes-only' and result['mode'] == mode\n            assert result['native_backends'] == ['AArch64','RISCV','X86'] and result['wrapper_count'] == 6\n            assert result['foreign_static_executions_required'] == 4 and result['native_languages'] == ['c','cxx']\n",
   "replace": "    pass\n",
   "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
   "why": "The versioned qualification boundary must refuse the independently constructed incomplete receipt."
@@ -47852,5 +47852,357 @@
   "replace": "'riscv64': ('riscv64-linux-gnu', '/usr/riscv64-linux-gnu')",
   "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k receipt_refusals",
   "why": "The independent positive fixture must reject restoring the obsolete foreign sysroot expectation."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-arch",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert invocation['target_arch'] == 'amd64', 'Only the reviewed amd64 SDK profile is supported'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-source",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert invocation['source'] == plan['source'] and invocation['source_revision'] == plan['source_revision'], 'SDK source differs from its compiler'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-parent-source",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert invocation['parent_source_revision'] == plan['source_revision'], 'SDK compiler source differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-producer-unit",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert re.fullmatch(r'webgpu-normal-sdk-amd64-[0-9-]+\\.service', invocation['unit']), 'Unexpected SDK producer unit'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-launch",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert invocation['launch_status'] == 0 and invocation['publication'] is False, 'SDK launch was not a successful local invocation'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-source-flags",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert invocation['source_full_preflight_passed'] and invocation['producer_source_unchanged'], 'SDK source proof was not retained'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-parent-status",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert parent['status'] == 'passed-qualified-native-compiler-OCI-and-base-ancestry', 'SDK requires its actual qualified compiler parent'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-parent-blobs",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert parent['SDK_parent_prerequisites_passed'] and parent['all_native_blob_sizes_and_sha256_verified'], 'Compiler parent is incomplete'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-base-ancestry",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert parent['source_revision'] == plan['source_revision'] and parent['matched_base_layers_and_diffIDs'] == 12, 'Compiler ancestry differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-parent-image",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert parent['manifest'] == invocation['parent_manifest'] and parent['config'] == invocation['parent_config'], 'SDK parent identity differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-parent-layout",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert parent['index_sha256'] == invocation['parent_OCI_index_sha256'] and parent['layers'] == 26, 'SDK requires the reviewed complete compiler layout'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-parent-stop",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert parent['stopped']['ActiveState'] == 'inactive' and parent['stopped']['MainPID'] == '0', 'Compiler handoff was not sealed'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-full-source",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert full['status'] == 'passed-complete-Linux-source-preflight-only' and full['source_revision'] == plan['source_revision'], 'SDK requires the exact complete source proof'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-full-count",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert full['actual_full_registry_mutations'] == plan['full_registry'], 'SDK source mutation coverage differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-full-status",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert full['command_exit_status'] == full['cleanup_exit_status'] == full['independent_engine_query_exit_status'] == 0, 'SDK source proof contains a failure'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-full-cleanup",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert full['owned_container_absent'] and full['unit_stopped_after_seal'], 'SDK source proof lacks cleanup'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-candidate",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert repo.startswith('ant-local/webgpu-') and invocation['image'] == repo + ':cross-sdk-amd64', 'Unexpected SDK candidate name'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-transport",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert command[:2] == ['systemd-run', '--user'] and '--expand-environment=no' in command, 'SDK transport differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-stage-command",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert command[-10:] == ['/bin/bash', str(Path(plan['source']) / 'linux/scripts/build-cross-stage.sh'), '--stage', 'sdk', '--arch', 'amd64', '--image-repo', repo, '--log-dir', str(Path(invocation['output']) / 'logs')], 'SDK stage command differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-parent-command",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert command.count(expected_base) == 1 and command.count('CROSS_SDK_BASE_CONTEXT=' + parent['context']) == 1, 'SDK command is not bound to its qualified native parent'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-local-build",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert '--push' not in command and '--gates-only' not in command, 'SDK profile requires an actual local build'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-binding",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "    assert record.get('subject', subject if not sdk else None) == subject, 'Stored proof subject differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-binding-SDK",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "        assert record.get('sdk_native_checks_required', False) == sdk, 'Stored SDK CPU requirement differs'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-binding-cross",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "        assert record.get('cross_wrapper_checks_required', False) == subject['cross_required'], 'Stored cross-wrapper requirement differs'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-known-profile",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "    assert profile in {'compiler', 'sdk-amd64'}, 'Unknown compiler image probe profile'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-payload-profile",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "    assert payload.get('profile', 'compiler') == profile, 'Image probe profile differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-alias-facts",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "    assert isinstance(materialized, dict), 'SDK materialization facts are required'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-alias-target",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "    assert materialized['alias_is_symlink'] is True and materialized['alias_target'] == '/opt/llvm-target', 'SDK native architecture alias differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-architecture-prefixes",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "    assert materialized['architecture_prefixes'] == ['llvm-target-amd64'], 'SDK retained foreign target-native prefixes'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-driver-pair",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "    assert set(materialized['drivers']) == {'clang', 'clang++'}, 'Both SDK driver byte comparisons are required'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-driver-bytes",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "        assert re.fullmatch(r'[0-9a-f]{64}', row['alias_sha256']) and row['alias_sha256'] == row['target_sha256'], 'SDK architecture alias selects different compiler bytes'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-alias-dispatch",
+  "target": "linux/scripts/local-proof/probe-cross-clang-image.py",
+  "find": "    if profile == 'sdk-amd64':\n        sdk_materialization(payload)\n",
+  "replace": "    if False:\n        sdk_materialization(payload)\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-receipt-status",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "    assert proof.get(\"status\") == subject['qualification_status'], \"Fresh complete compiler qualification required\"\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-CPU-required",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "    assert proof['sdk_native_checks_required'] and proof['sdk_native_CPU_checks_passed'], 'SDK native CPU checks are required'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-both-modes",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "    assert not proof['cross_wrapper_checks_required'] and set(proof['sdk_native_modes']) == {'default','login'}, 'SDK proof requires both native modes'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-mode-identity",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "        assert result['status'] == 'passed-baked-SDK-Clang-wrappers-and-CPU-smokes-only' and result['profile'] == 'sdk-amd64' and result['mode'] == mode, 'SDK native mode identity differs'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-native-scope",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "        assert result['native_backends'] == ['AArch64','RISCV','X86'] and result['wrapper_count'] == 2 and result['cross_targets'] == ['amd64'], 'SDK native compiler scope differs'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-native-languages",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "        assert result['native_languages'] == ['c','cxx'] and result['foreign_static_executions_required'] == 0, 'SDK native languages differ'\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-ancestry-count",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "    assert count == expected_count and count >= 12 and len(manifest[\"layers\"]) >= count\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-ancestry-layers",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "    assert manifest[\"layers\"][:count] == parent_manifest[\"layers\"], \"Base layer ancestry differs\"\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-ancestry-diffIDs",
+  "target": "linux/scripts/local-proof/native-oci-handoff.py",
+  "find": "    assert config[\"rootfs\"][\"diff_ids\"][:count] == parent_config[\"rootfs\"][\"diff_ids\"], \"Base diffID ancestry differs\"\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_refusals",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-launch-CPU-dispatch",
+  "target": "linux/scripts/local-proof/compiler-image-qualification.py",
+  "find": "cpu_required = cross_required or sdk_required\n",
+  "replace": "cpu_required = cross_required\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_launch_transport",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-native-prefix",
+  "target": "linux/scripts/local-proof/proof_subject.py",
+  "find": "                     native_prefix='/opt/llvm-target', cpu_profile='sdk-amd64', cross_required=False,\n",
+  "replace": "                     native_prefix='/opt/llvm-target-amd64', cpu_profile='sdk-amd64', cross_required=False,\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_launch_transport",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
+ },
+ {
+  "id": "compiler-llvm-tools.sdk-profile-launch-profile-argument",
+  "target": "linux/scripts/local-proof/compiler-image-qualification.py",
+  "find": "            command.append('sdk-amd64')\n",
+  "replace": "            command.append('compiler')\n",
+  "test": "bash linux/scripts/tests/test-local-proof-tools.sh -k sdk_image_profile_launch_transport",
+  "why": "The independently declared SDK and compiler controls must reject this broken producer, CPU or ancestry contract; fixtures do not prove a real image."
  }
 ]

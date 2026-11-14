@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — preserve explicit SDK qualification and ancestry profiles
+
+- Extend the canonical image qualifier and native OCI handoff with an actual SDK invocation input. Bind the successful SDK producer, complete source, qualified compiler parent and original loader probe; retain the separate three-target compiler contract. Check native SDK aliases, C/C++ execution and default/login tool and loader selection, then hash every OCI blob and all compiler ancestor layers. Add shared binding checks, independent refusal fixtures, transport doubles and executable mutations. These component profiles do not prove foreign SDKs, complete C++ ABI, GPU inference or final runtime acceptance. See [SDK component qualification](docs/local-proof-workflows.md#sdk-component-qualification).
+
 ## 2026-11-14 — align the independent image probe with the repaired wrappers
 
 - Require the filesystem-root sysroot in all six image-probe wrapper contracts. Preserve independent positive fixtures and reject the old double-root layout for both foreign C/C++ drivers; actual mutations restore each obsolete foreign expectation. Keep the failed probe and retry the same immutable compiler image with fresh input hashes. This host-only correction grants no SDK or final runtime acceptance.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualify baked native tools/defaults/loader and required cross-wrapper CPU checks; no SDK ABI or GPU acceptance."""
+"""Qualify reviewed compiler/amd64-SDK tools, loader and CPU wrappers; no foreign SDK, complete C++ ABI or GPU acceptance."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from proof_types import Json
 
 from proof_commands import checked_run
+from proof_subject import load_subject, validate_subject_binding
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("action", choices=["launch", "seal"])
@@ -26,14 +27,18 @@ parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--unit", required=True)
 parser.add_argument("--plain-load-probe", type=Path, required=True)
 parser.add_argument("--original-qualification", type=Path, required=True)
+parser.add_argument('--sdk-invocation', type=Path)
 args = parser.parse_args()
 plan = json.loads(args.plan.read_text())
+subject = load_subject(plan, args.sdk_invocation)
+sdk_required = subject['kind'] == 'sdk-amd64'
 source = Path(plan["source"])
 out = args.output.resolve()
 tools_dir = Path(__file__).resolve().parent
 engine = str(Path.home() / ".local/bin/nerdctl")
-owner_label = "org.kataglyphis.compiler-image-qualification"
-cross_required = plan.get('launcher_contract') == 2
+owner_label = 'org.kataglyphis.sdk-image-qualification' if sdk_required else 'org.kataglyphis.compiler-image-qualification'
+cross_required = subject['cross_required']
+cpu_required = cross_required or sdk_required
 
 
 run = checked_run
@@ -66,15 +71,15 @@ def checked_inventory() -> list[Json]:
     return [json.loads(line) for line in query.stdout.splitlines() if line.strip()]
 
 
-assert args.unit.startswith("webgpu-compiler-image-qualification-") and args.unit.endswith(".service")
+assert args.unit.startswith(subject['unit_prefix']) and args.unit.endswith(".service")
 assert run(["git", "-C", str(source), "rev-parse", "HEAD"]).stdout.strip() == plan["source_revision"]
 assert not run(["git", "-C", str(source), "status", "--porcelain"]).stdout.strip()
 if args.action == "launch":
-    producer = successful(plan["unit"])
+    producer = successful(subject['producer_unit'])
     assert state(args.unit)["LoadState"] == "not-found" and not out.exists()
     cleanup = source / "linux/scripts/cleanup-owned-containers.py"
     run(["python3", str(cleanup), "--help"])
-    image = json.loads(run([engine, "image", "inspect", plan["local_image"]]).stdout)[0]
+    image = json.loads(run([engine, "image", "inspect", subject['image']]).stdout)[0]
     manifests = {value.rsplit("@", 1)[1] for value in image["RepoDigests"]}
     assert len(manifests) == 1
     manifest = manifests.pop()
@@ -90,7 +95,7 @@ if args.action == "launch":
     assert sha(previous) == original_invocation['input_sha256']['plain-load.py'], 'Loader probe differs from the qualified original'
     shutil.copyfile(previous, out / "plain-load.py")
     inputs = ['qualify.sh', 'plain-load.py']
-    if cross_required:
+    if cpu_required:
         for name, target in [('qualify-compiler-with-cross.sh','qualify-with-cross.sh'), ('probe-cross-clang-image.py','cross-probe.py')]:
             shutil.copyfile(tools_dir / name, out / target)
             inputs.append(target)
@@ -110,23 +115,25 @@ if args.action == "launch":
                "--pull", "never", "--init", "--security-opt", "apparmor=unconfined", "--network", "none",
                "--cpus", "2", "--memory", "2g", "--user", "0:0", "--env", "LC_ALL=C",
                "-v", f"{out}/results:/evidence:rw", "-v", f"{out}/qualify.sh:/qualify.sh:ro",
-               "-v", f"{out}/plain-load.py:/plain-load.py:ro", plan["local_image"], "bash", "/qualify.sh",
-               plan["expected_pins"]["GCC_VERSION"], plan["expected_pins"]["LLVM_RELEASE"], "/opt/llvm-target-amd64"]
+               "-v", f"{out}/plain-load.py:/plain-load.py:ro", subject['image'], "bash", "/qualify.sh",
+               plan["expected_pins"]["GCC_VERSION"], plan["expected_pins"]["LLVM_RELEASE"], subject['native_prefix']]
     assert command.count("--env") == 1 and "--entrypoint" not in command
-    if cross_required:
-        offset = command.index(plan['local_image'])
+    if cpu_required:
+        offset = command.index(subject['image'])
         command[offset:offset] = ['-v', f'{out}/qualify-with-cross.sh:/qualify-with-cross.sh:ro',
                                  '-v', f'{out}/cross-probe.py:/cross-probe.py:ro', '-v', f'{out}/inputs:/inputs:ro']
         command[command.index('/qualify.sh')] = '/qualify-with-cross.sh'
-    record = {"created_at": datetime.datetime.now(datetime.UTC).isoformat(), "unit": args.unit, "producer_unit": plan["unit"],
+        if sdk_required:
+            command.append('sdk-amd64')
+    record = {"created_at": datetime.datetime.now(datetime.UTC).isoformat(), "unit": args.unit, "producer_unit": subject['producer_unit'], 'subject':subject,
               "producer_terminal": producer, "source_revision": plan["source_revision"], "source": str(source),
-              "image": plan["local_image"], "expected_manifest": manifest, "expected_config": image["Id"],
+              "image": subject['image'], "expected_manifest": manifest, "expected_config": image["Id"],
               "image_config_environment": image["Config"]["Env"], "owner_label": owner_label, "run_id": token,
               "container": container, "command": command, "scope": __doc__, "publication": False,
               "input_sha256": {name: sha(out / name) for name in inputs},
-              'cross_wrapper_checks_required':cross_required, 'original_plain_loader_probe_sha256':sha(previous),
+              'cross_wrapper_checks_required':cross_required, 'sdk_native_checks_required':sdk_required, 'original_plain_loader_probe_sha256':sha(previous),
               'expected_cross_baked_sha256':{name:sha(source / 'linux/scripts/06-packaging' / name)
-                                              for name in ['smoke-toolchain.sh','smoke-common.sh','probe-compiler-defaults.py','llvm-loader-path.sh']} if cross_required else {},
+                                              for name in ['smoke-toolchain.sh','smoke-common.sh','probe-compiler-defaults.py','llvm-loader-path.sh']} if cpu_required else {},
               "expected_baked_sha256": {name: sha(source / "linux/scripts/06-packaging" / name) for name in ("probe-compiler-defaults.py", "llvm-loader-path.sh")}}
     save(out / "image-inspect.json", image)
     save(out / "invocation.json", record)
@@ -138,7 +145,7 @@ if args.action == "launch":
 
 inv = json.loads((out / "invocation.json").read_text())
 assert inv["unit"] == args.unit and inv["source_revision"] == plan["source_revision"] and inv["owner_label"] == owner_label
-assert inv.get('cross_wrapper_checks_required', False) == cross_required
+validate_subject_binding(inv, subject, cpu_checks=True)
 assert all(sha(out / name) == expected for name, expected in inv['input_sha256'].items())
 terminal = successful(args.unit)
 cid = (out / "container.cid").read_text().strip()
@@ -156,7 +163,7 @@ for prefix in ("", "login-"):
     loaded = json.loads((results / f"{prefix}loaded.json").read_text())
     assert native["status"] == "passed-native-llvm-tool-and-loader-selection-only"
     assert native["schema_version"] == 2
-    assert native["facts"] == {"native_prefix": "/opt/llvm-target-amd64", "native_tool_count": 157,
+    assert native["facts"] == {"native_prefix": subject['native_prefix'], "native_tool_count": 157,
                                "llvm_config_version": "23.1.5", "native_library_sonames": ["libLLVM.so.23.1"]}
     assert all(row["dynamic"]["returncode"] == 0 and row["soname"] == "libLLVM.so.23.1" and row["cache_winner"] == row["source"] for row in native["libraries"])
     assert defaults["status"] == "passed-installed-amd64-compiler-defaults-only"
@@ -167,7 +174,7 @@ for prefix in ("", "login-"):
         assert facts["v3_defines"] == ["AVX2", "FMA", "BMI2"]
     assert all(defaults["facts"][name]["version"] == "23.1.5" for name in ("clang", "clang++"))
     assert loaded["status"] == "passed-bare-soname-mapping-only" and len(loaded["loaded"]) == 1
-    assert loaded["loaded"][0]["path"].startswith("/opt/llvm-target-amd64/lib/")
+    assert loaded["loaded"][0]["path"].startswith(subject['native_prefix'] + '/lib/')
     source_sha, source_path = (results / f"{prefix}source-library-sha256.txt").read_text().split(maxsplit=1)
     assert source_path.strip() == native["libraries"][0]["source"]
     assert loaded["loaded"][0]["path"] == source_path.strip() and loaded["loaded"][0]["sha256"] == source_sha
@@ -184,13 +191,13 @@ for prefix in ("", "login-"):
 native, defaults, loaded = [modes["default"][name] for name in ("native", "defaults", "loaded")]
 assert all(sha(out / name) == expected for name, expected in inv["input_sha256"].items())
 cross_modes = {}
-if cross_required:
+if cpu_required:
     validate_cross = runpy.run_path(str(out / 'cross-probe.py'))['validate']
     helpers = runpy.run_path(str(source / 'linux/scripts/06-packaging/probe-compiler-defaults.py'))
     for prefix, mode in [('', 'default'), ('login-', 'login')]:
         result = json.loads((results / (prefix + 'cross-clang.json')).read_text())
         facts = result['facts']
-        expected = validate_cross(facts, plan['expected_pins']['GCC_VERSION'], plan['expected_pins']['LLVM_RELEASE'], helpers)
+        expected = validate_cross(facts, plan['expected_pins']['GCC_VERSION'], plan['expected_pins']['LLVM_RELEASE'], helpers, profile=subject['cpu_profile'])
         assert result['mode'] == mode and all(result[name] == value for name,value in expected.items())
         assert facts['baked_sha256'] == inv['expected_cross_baked_sha256']
         assert facts['environment'] == modes[prefix or 'default']['environment'], 'Cross checks changed the qualified native environment'
@@ -202,17 +209,20 @@ if cross_required:
         if mode == 'default':
             assert all(value == baked_environment.get(key) for key,value in facts['environment'].items())
         cross_modes[mode] = result
-proof = {"status": "passed-fresh-image-baked-compiler-native-tool-and-loader-selection-only",
+proof = {"status": subject['qualification_status'], 'subject':subject,
          "observed_at": datetime.datetime.now(datetime.UTC).isoformat(), "source_revision": plan["source_revision"],
          "terminal_before_stop": terminal, "actual_container_id": cid, "actual_image_manifest": container["Image"],
          "image_config": inv["expected_config"], "native_facts": native["facts"], "compiler_defaults": defaults["facts"],
          "bare_load": loaded, "container_environment_matches_baked_image": True, "baked_script_bytes_match_source": True,
          "login_shell_selection_passed": True, "login_native_facts": modes["login-"]["native"]["facts"],
          "login_compiler_defaults": modes["login-"]["defaults"]["facts"], "login_environment": modes["login-"]["environment"],
-         "scope": __doc__, "native_OCI_ancestry_still_required_before_SDK": True, "publication": False,
+         "scope": __doc__, "native_OCI_ancestry_still_required_before_SDK": not sdk_required,
+         'native_OCI_ancestry_still_required_before_GPU_or_media':sdk_required, "publication": False,
          "results_sha256": {path.name: sha(path) for path in results.iterdir() if path.is_file()}}
-proof.update(cross_wrapper_checks_required=cross_required, cross_wrapper_CPU_checks_passed=bool(cross_modes),
-             cross_wrapper_modes=cross_modes)
+proof.update(cross_wrapper_checks_required=cross_required, cross_wrapper_CPU_checks_passed=bool(cross_modes) and cross_required,
+             cross_wrapper_modes=cross_modes if cross_required else {}, sdk_native_checks_required=sdk_required,
+             sdk_native_CPU_checks_passed=bool(cross_modes) and sdk_required,
+             sdk_native_modes=cross_modes if sdk_required else {})
 assert not (out / "proof.json").exists()
 save(out / "proof.json", proof)
 run(["systemctl", "--user", "stop", args.unit])

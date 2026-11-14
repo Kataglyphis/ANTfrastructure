@@ -1991,6 +1991,19 @@ invocation and rerun against the same immutable image with fresh output and actu
 A successful old fixture does not qualify the image; no compiler rebuild follows from a stale
 host expectation alone.
 
+### A completed SDK fails a compiler-profile qualification on LLVM prefixes
+
+**Cause.** SDK materialization moves the selected native tree to `/opt/llvm-target` and
+preserves `llvm-target-amd64` as an alias. The native probe reports resolved paths. The
+full compiler profile describes a different component with three target-native trees.
+
+**Fix.** Use the explicit SDK invocation profile in the
+[versioned qualifier and native OCI handoff](local-proof-workflows.md#sdk-component-qualification).
+Keep the original compiler plan and successful producer intact. Require actual native tools,
+exact pins, both shell modes, two wrapper scripts, C/C++ execution, loader selection and all
+compiler ancestor layers. A parent-container replay or a renamed compiler plan does not
+qualify the built SDK; retain any failed invocation before using fresh output.
+
 ### Source Clang works but the default LLVM soname still selects the distro
 
 **Symptom.** `ldd` of the explicit source Clang uses its own LLVM through RUNPATH,

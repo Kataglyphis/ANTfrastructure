@@ -462,6 +462,9 @@
     "linux/scripts/local-proof/probe-soname-load.py",
     "linux/scripts/local-proof/proof_profiles.py",
     "linux/scripts/local-proof/proof_commands.py",
-    "linux/scripts/local-proof/proof_types.py"
+    "linux/scripts/local-proof/proof_types.py",
+    "linux/scripts/local-proof/proof_subject.py",
+    "linux/scripts/local-proof/sdk_profile_fixture.py",
+    "linux/scripts/local-proof/test-sdk-image-profile.py"
   ]
 }
