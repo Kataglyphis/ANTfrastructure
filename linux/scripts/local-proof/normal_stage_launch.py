@@ -6,6 +6,7 @@ import datetime
 import json
 import re
 import runpy
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -15,6 +16,8 @@ from native_oci_layout import sha
 from proof_commands import checked_run
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from proof_types import Json
 
 
@@ -41,7 +44,7 @@ def validate_stage_invocation(invocation: Json, parent: Json, stage: str, parent
 
 
 def downstream_record(invocation: Json, invocation_path: Path, proof_path: Path, parent: Json, parent_kind: str) -> Json:
-    assert parent_kind in {'GPU', 'Media'}, 'Unreviewed downstream parent kind'
+    assert parent_kind in {'GPU', 'Media', 'Android'}, 'Unreviewed downstream parent kind'
     return {'source_revision': invocation['source_revision'], 'parent_source_revision': invocation['source_revision'],
             'source_full_preflight_proof': invocation['source_full_preflight_proof'],
             'source_full_preflight_sha256': invocation['source_full_preflight_sha256'],
@@ -67,20 +70,62 @@ def full_source(source: Path, proof_path: Path, revision: str) -> Json:
     return proof
 
 
-def host_admission(unit: str, output: Path, image: str) -> Path:
+def host_admission(unit: str, output: Path, image: str | tuple[str, ...]) -> Path:
     manager = dict(line.split('=', 1) for line in checked_run(['systemctl', '--user', 'show-environment']).stdout.splitlines() if '=' in line)
-    assert not {key for key in manager if key.startswith('CROSS_') or key in {'ENABLE_AMD', 'ENABLE_NVIDIA', 'ENABLE_DEEPSTREAM', 'DRY_RUN'}}, 'Ambient build flags must be absent'
+    assert not {key for key in manager if key.startswith(('CROSS_', 'RUNTIME_', 'ARTIFACT_', 'WRAPPER_', 'TORCH_'))
+                or key in {'ENABLE_AMD', 'ENABLE_NVIDIA', 'ENABLE_DEEPSTREAM', 'DRY_RUN', 'APP_REF', 'ONNX_PACKAGE', 'PYTORCH_EXTRA',
+                           'HOST_PAYLOAD_ARCHES', 'BASE_PARENT_IMAGE', 'BASE_DOCKERFILE_PATH', 'PACKAGE_DOCKERFILE_PATH',
+                           'PACKAGE_DOCKERFILE_TARGET', 'ANCESTRY_STAMP_ENFORCE'}}, 'Ambient build flags must be absent'
     assert checked_run(['systemctl', '--user', 'show', unit, '--property=LoadState', '--value']).stdout.strip() == 'not-found', 'Unit already exists'
     assert not output.exists(), 'Preserve existing stage output'
     temporary = Path.home() / '.cache' / unit.removesuffix('.service')
     assert not temporary.exists() and all(not (path / '.git').exists() for path in [temporary, *temporary.parents]), 'Temporary root must be fresh and outside Git'
     engine = str(Path.home() / '.local/bin/nerdctl')
     inventory = [json.loads(line) for line in checked_run([engine, 'images', '--format', '{{json .}}']).stdout.splitlines() if line.strip()]
-    assert image not in {f"{row['Repository']}:{row['Tag']}" for row in inventory}, 'Preserve the existing image alias'
+    requested = {image} if isinstance(image, str) else set(image)
+    assert not requested.intersection({f"{row['Repository']}:{row['Tag']}" for row in inventory}), 'Preserve the existing image alias'
     assert not checked_run([engine, 'ps', '--format', '{{.ID}}']).stdout.strip(), 'Another container is running'
     processes = checked_run(['ps', '-eo', 'pid,args']).stdout.splitlines()
-    assert not [line for line in processes if re.search(r'(?:nerdctl|buildctl)\S*\s+build\b|build-cross-chain\.sh', line)], 'Another build is running'
+    assert not [line for line in processes if re.search(r'(?:nerdctl|buildctl)\S*\s+build\b|build-(?:cross-(?:chain|stage)|runtime-(?:manifest|artifacts))\.sh', line)], 'Another build is running'
     return temporary
+
+
+def launch_build(source: Path, output: Path, unit: str, image: str, arch: str, required_bytes: int,
+                 record: Json, environment: list[str], driver: list[str], *, images: tuple[str, ...] = (),
+                 prepare: Callable[[], Json] | None = None, engine_path: str | None = None,
+                 cleanup: list[str] | None = None) -> int:
+    temporary = host_admission(unit, output, images or image)
+    sys.path.insert(0, str(source / 'linux/scripts'))
+    disk = runpy.run_path(str(source / 'linux/scripts/launch-migraphx-configure-proof.py'))['require_build_disk'](output.parent)
+    assert required_bytes >= 193273528320 and disk['available_bytes'] >= required_bytes, 'Unchanged disk reserve required'
+    output.mkdir()
+    temporary.mkdir(mode=0o700)
+    engine = engine_path or str(Path.home() / '.local/bin/nerdctl')
+    command = ['systemd-run', '--user', '--no-block', '--expand-environment=no', f'--unit={unit}',
+               '-p', 'Type=oneshot', '-p', 'RemainAfterExit=yes', '-p', 'TimeoutStartSec=21600', '-p', 'TimeoutStopSec=300',
+               '-p', 'KillMode=control-group', '-p', f'WorkingDirectory={source}',
+               '-p', f'StandardOutput=append:{output}/unit.log', '-p', f'StandardError=append:{output}/unit.log',
+               '-E', 'LC_ALL=C', '-E', f'HOME={Path.home()}', '-E', f'PATH={Path.home()}/.local/bin:/usr/local/bin:/usr/bin:/bin',
+               '-E', f'NERDCTL_BIN={engine}', '-E', 'BUILDKIT_PROGRESS=plain', '-E', f'BUILDKIT_CACHE_DIR={output}/buildcache',
+               '-E', f'TMPDIR={temporary}']
+    if cleanup is not None:
+        command += ['-p', 'ExecStopPost=' + shlex.join(cleanup)]
+    for value in environment:
+        command += ['-E', value]
+    command += driver
+    record.update(created_at=datetime.datetime.now(datetime.UTC).isoformat(), unit=unit, source=str(source),
+                  output=str(output), target_arch=arch, image=image, command=command, disk_admission=disk,
+                  outlives_turn=True, publication=False)
+    path = output / 'invocation.json'
+    path.write_text(json.dumps(record, indent=2) + '\n')
+    if prepare is not None:
+        record.update(prepare())
+        path.write_text(json.dumps(record, indent=2) + '\n')
+    result = subprocess.run(command, capture_output=True, text=True, timeout=60, check=False)
+    record.update(launch_status=result.returncode, stdout=result.stdout, stderr=result.stderr)
+    path.write_text(json.dumps(record, indent=2) + '\n')
+    print(json.dumps({'unit':unit, 'launch_status':result.returncode, 'parent_manifest':record['parent_manifest'], 'disk':disk}))
+    return result.returncode
 
 
 def launch_stage(source: Path, output: Path, unit: str, repo: str, stage: str, arch: str,
@@ -93,33 +138,11 @@ def launch_stage(source: Path, output: Path, unit: str, repo: str, stage: str, a
                          '_TAG_NAMING_SH_LOADED=; source "$1"; IMAGE_REPO="$2"; CROSS_VARIANT="$3"; "$4" "$5"',
                          'normal-stage-tag', str(source / 'linux/scripts/01-core/tag-naming.sh'), repo, variant,
                          {'gpu':'cross_gpu_tag', 'sdk':'cross_sdk_tag', 'media':'cross_media_tag', 'android':'cross_android_tag'}[stage], arch]).stdout.strip()
-    temporary = host_admission(unit, output, image)
-    sys.path.insert(0, str(source / 'linux/scripts'))
-    disk = runpy.run_path(str(source / 'linux/scripts/launch-migraphx-configure-proof.py'))['require_build_disk'](output.parent)
-    assert required_bytes >= 193273528320 and disk['available_bytes'] >= required_bytes, 'Unchanged disk reserve required'
-    output.mkdir()
-    temporary.mkdir(mode=0o700)
-    engine = str(Path.home() / '.local/bin/nerdctl')
-    command = ['systemd-run', '--user', '--no-block', '--expand-environment=no', f'--unit={unit}',
-               '-p', 'Type=oneshot', '-p', 'RemainAfterExit=yes', '-p', 'TimeoutStartSec=21600', '-p', 'TimeoutStopSec=300',
-               '-p', 'KillMode=control-group', '-p', f'WorkingDirectory={source}',
-               '-p', f'StandardOutput=append:{output}/unit.log', '-p', f'StandardError=append:{output}/unit.log',
-               '-E', 'LC_ALL=C', '-E', f'HOME={Path.home()}', '-E', f'PATH={Path.home()}/.local/bin:/usr/local/bin:/usr/bin:/bin',
-               '-E', f'NERDCTL_BIN={engine}', '-E', 'BUILDKIT_PROGRESS=plain', '-E', f'BUILDKIT_CACHE_DIR={output}/buildcache',
-               '-E', f'CROSS_{stage.upper()}_BASE_IMAGE={reference}', '-E', f'CROSS_{stage.upper()}_BASE_CONTEXT={context}', '-E', f'TMPDIR={temporary}']
+    environment = [f'CROSS_{stage.upper()}_BASE_IMAGE={reference}', f'CROSS_{stage.upper()}_BASE_CONTEXT={context}']
     if variant:
-        command += ['-E', f'CROSS_VARIANT={variant}']
+        environment += [f'CROSS_VARIANT={variant}']
     if stage == 'media':
-        command += ['-E', 'ORT_WEB_REQUIRED=1', '-E', 'ORT_WASM_WEBGPU_FLAVORS=true']
-    command += ['/bin/bash', str(source / 'linux/scripts/build-cross-stage.sh'), '--stage', stage, '--arch', arch,
-                '--image-repo', repo, '--log-dir', str(output / 'logs')]
-    record.update(created_at=datetime.datetime.now(datetime.UTC).isoformat(), unit=unit, source=str(source),
-                  output=str(output), target_arch=arch, image=image, command=command, disk_admission=disk,
-                  outlives_turn=True, publication=False)
-    path = output / 'invocation.json'
-    path.write_text(json.dumps(record, indent=2) + '\n')
-    result = subprocess.run(command, capture_output=True, text=True, timeout=60, check=False)
-    record.update(launch_status=result.returncode, stdout=result.stdout, stderr=result.stderr)
-    path.write_text(json.dumps(record, indent=2) + '\n')
-    print(json.dumps({'unit':unit, 'launch_status':result.returncode, 'parent_manifest':record['parent_manifest'], 'disk':disk}))
-    return result.returncode
+        environment += ['ORT_WEB_REQUIRED=1', 'ORT_WASM_WEBGPU_FLAVORS=true']
+    driver = ['/bin/bash', str(source / 'linux/scripts/build-cross-stage.sh'), '--stage', stage, '--arch', arch,
+              '--image-repo', repo, '--log-dir', str(output / 'logs')]
+    return launch_build(source, output, unit, image, arch, required_bytes, record, environment, driver)

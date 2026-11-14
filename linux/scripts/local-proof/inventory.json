@@ -492,6 +492,30 @@
       "classification": "versioned",
       "canonical": "linux/scripts/local-proof/android-oci-handoff.py",
       "reason": "Shared exact downstream source/native ancestry and explicit Android export; no source authentication or FINAL acceptance."
+    },
+    {
+      "name": "runtime_launch_profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/runtime_launch_profile.py",
+      "reason": "Ordinary local runtime from exact native Android and app commit; no FINAL or hardware acceptance."
+    },
+    {
+      "name": "launch-normal-runtime.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/launch-normal-runtime.py",
+      "reason": "Bounded ordinary runtime launch with mandatory native ancestry and owned cleanup."
+    },
+    {
+      "name": "owned_nerdctl_args.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/owned_nerdctl_args.py",
+      "reason": "Reviewed engine creation arguments retain invocation ownership; pulls and builds remain unchanged."
+    },
+    {
+      "name": "owned-nerdctl.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/owned-nerdctl.py",
+      "reason": "Exec the actual engine with invocation labels and raw status; requires ownership and cleanup companions."
     }
   ],
   "new_canonical_files": [

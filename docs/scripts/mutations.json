@@ -48552,7 +48552,7 @@
  {
   "id": "compiler-llvm-tools.normal-stage-shared-09",
   "target": "linux/scripts/local-proof/normal_stage_launch.py",
-  "find": "    assert not {key for key in manager if key.startswith('CROSS_') or key in {'ENABLE_AMD', 'ENABLE_NVIDIA', 'ENABLE_DEEPSTREAM', 'DRY_RUN'}}, 'Ambient build flags must be absent'",
+  "find": "    assert not {key for key in manager if key.startswith(('CROSS_', 'RUNTIME_', 'ARTIFACT_', 'WRAPPER_', 'TORCH_'))\n                or key in {'ENABLE_AMD', 'ENABLE_NVIDIA', 'ENABLE_DEEPSTREAM', 'DRY_RUN', 'APP_REF', 'ONNX_PACKAGE', 'PYTORCH_EXTRA',\n                           'HOST_PAYLOAD_ARCHES', 'BASE_PARENT_IMAGE', 'BASE_DOCKERFILE_PATH', 'PACKAGE_DOCKERFILE_PATH',\n                           'PACKAGE_DOCKERFILE_TARGET', 'ANCESTRY_STAMP_ENFORCE'}}, 'Ambient build flags must be absent'",
   "replace": "    pass",
   "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
   "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Ambient build flags must be absent"
@@ -48584,7 +48584,7 @@
  {
   "id": "compiler-llvm-tools.normal-stage-shared-13",
   "target": "linux/scripts/local-proof/normal_stage_launch.py",
-  "find": "    assert image not in {f\"{row['Repository']}:{row['Tag']}\" for row in inventory}, 'Preserve the existing image alias'",
+  "find": "    assert not requested.intersection({f\"{row['Repository']}:{row['Tag']}\" for row in inventory}), 'Preserve the existing image alias'",
   "replace": "    pass",
   "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
   "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Preserve the existing image alias"
@@ -48600,7 +48600,7 @@
  {
   "id": "compiler-llvm-tools.normal-stage-shared-15",
   "target": "linux/scripts/local-proof/normal_stage_launch.py",
-  "find": "    assert not [line for line in processes if re.search(r'(?:nerdctl|buildctl)\\S*\\s+build\\b|build-cross-chain\\.sh', line)], 'Another build is running'",
+  "find": "    assert not [line for line in processes if re.search(r'(?:nerdctl|buildctl)\\S*\\s+build\\b|build-(?:cross-(?:chain|stage)|runtime-(?:manifest|artifacts))\\.sh', line)], 'Another build is running'",
   "replace": "    pass",
   "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
   "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Another build is running"
@@ -48784,7 +48784,7 @@
  {
   "id": "compiler-llvm-tools.normal-stage-host-delegation",
   "target": "linux/scripts/local-proof/normal_stage_launch.py",
-  "find": "    temporary = host_admission(unit, output, image)",
+  "find": "    temporary = host_admission(unit, output, images or image)",
   "replace": "    temporary = output.parent / 'temporary'",
   "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
   "why": "Both normal stage launch paths must delegate to the shared idle-host and collision admission gate before allocation."
@@ -50400,7 +50400,7 @@
  {
   "id": "compiler-llvm-tools.media-both-wasm-modes",
   "target": "linux/scripts/local-proof/normal_stage_launch.py",
-  "find": "        command += ['-E', 'ORT_WEB_REQUIRED=1', '-E', 'ORT_WASM_WEBGPU_FLAVORS=true']",
+  "find": "        environment += ['ORT_WEB_REQUIRED=1', 'ORT_WASM_WEBGPU_FLAVORS=true']",
   "replace": "        pass",
   "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
   "why": "Preserve real ancestry checks, raw failures and required Wasm forwarding; fixtures do not prove image completion or hardware inference."
@@ -50736,7 +50736,7 @@
  {
   "id": "compiler-llvm-tools.media-handoff-parent-record-domain",
   "target": "linux/scripts/local-proof/normal_stage_launch.py",
-  "find": "assert parent_kind in {'GPU', 'Media'}, 'Unreviewed downstream parent kind'",
+  "find": "assert parent_kind in {'GPU', 'Media', 'Android'}, 'Unreviewed downstream parent kind'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-media-handoff.sh",
   "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
@@ -51076,5 +51076,613 @@
   "replace": ", MEDIA_STATUS}",
   "test": "bash linux/scripts/tests/test-android-handoff.sh",
   "why": "Independent Android controls bind actual source/Media ancestry, exact bytes, recursive workers and raw statuses; no real Android build, authenticated provenance or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-1",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert actual['image'].startswith('ant-local/webgpu-'), 'Reviewed local Android image required'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-2",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert re.fullmatch(r'sha256:[0-9a-f]{64}', actual['manifest']) and re.fullmatch(r'sha256:[0-9a-f]{64}', actual['config']), 'Exact Android manifest/config required'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-3",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert not path.exists() and not path.is_symlink(), 'Preserve prior local alias evidence'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-4",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert len(rows) <= 1, 'Local immutable alias is ambiguous'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-5",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert len(rows) == 1 and rows[0]['Digest'] == actual['manifest'] and rows[0]['Platform'] == 'linux/amd64', 'Local immutable alias differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-6",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert len(resolved) == 1 and resolved[0]['Id'] == actual['config'], 'Local immutable alias config differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-7",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert {value.rsplit('@', 1)[1] for value in resolved[0]['RepoDigests']} == {actual['manifest']}, 'Local immutable manifest differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-8",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert len(values) == len(set(values)) == 3, 'Canonical runtime tags must be distinct'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-9",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert re.fullmatch(r'webgpu-normal-runtime-amd64-[0-9-]+\\.service', unit), 'Unexpected runtime producer unit'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-10",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert re.fullmatch(r'ant-local/webgpu-[a-z0-9][a-z0-9-]*:runtime-rocm-[A-Za-z0-9][A-Za-z0-9_.-]{0,90}', prefix), 'Fresh local ROCm runtime prefix required'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-11",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert re.fullmatch(r'[0-9a-f]{40}', app_ref), 'Runtime app ref must be one exact commit'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-12",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert context.name.endswith('-amd64'), 'Native Android context must retain the runtime architecture suffix'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-13",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert not checked_run(['git', '-C', str(host_root), 'status', '--porcelain']).stdout.strip(), 'Commit host tools before runtime launch'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-14",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert rows[0]['Digest'] == actual['manifest'] and rows[0]['Platform'] == 'linux/amd64', 'Preserve a foreign existing alias'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-runtime-launch-profile-assert-15",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "assert result.returncode == 0, 'Local immutable alias creation failed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-owned-nerdctl-args-assert-1",
+  "target": "linux/scripts/owned_nerdctl_args.py",
+  "find": "assert Path(engine).is_absolute(), 'Runtime engine must be an absolute executable path'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-owned-nerdctl.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-owned-nerdctl-args-assert-2",
+  "target": "linux/scripts/owned_nerdctl_args.py",
+  "find": "assert arguments, 'Pass one explicit nerdctl command'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-owned-nerdctl.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-owned-nerdctl-args-assert-3",
+  "target": "linux/scripts/owned_nerdctl_args.py",
+  "find": "assert not arguments[0].startswith('-') or arguments in [['--help'], ['-h'], ['--version'], ['-v']], 'Unreviewed global nerdctl options'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-owned-nerdctl.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-owned-nerdctl-args-assert-4",
+  "target": "linux/scripts/owned_nerdctl_args.py",
+  "find": "assert not any(value == '--label-file' or value.startswith('--label-file=') for value in arguments[position:]), 'Label files cannot override runtime ownership'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-owned-nerdctl.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-owned-nerdctl-args-assert-5",
+  "target": "linux/scripts/owned_nerdctl_args.py",
+  "find": "assert not assigned.startswith(label + '='), 'Caller cannot override runtime ownership'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-owned-nerdctl.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-owned-nerdctl-assert-1",
+  "target": "linux/scripts/owned-nerdctl.py",
+  "find": "assert Path(command[0]).resolve() != Path(__file__).resolve(), 'The runtime engine cannot recurse into its wrapper'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-owned-nerdctl.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-1",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'CROSS_VARIANT=rocm'",
+  "replace": "'CROSS_VARIANT=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-2",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'CROSS_NO_PUSH=1'",
+  "replace": "'CROSS_NO_PUSH=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-3",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'ENABLE_AMD=true'",
+  "replace": "'ENABLE_AMD=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-4",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'ENABLE_NVIDIA=false'",
+  "replace": "'ENABLE_NVIDIA=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-5",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'ENABLE_DEEPSTREAM=false'",
+  "replace": "'ENABLE_DEEPSTREAM=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-6",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'ENABLE_TENSORRT=false'",
+  "replace": "'ENABLE_TENSORRT=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-7",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'ENABLE_ROCM_ASAN=false'",
+  "replace": "'ENABLE_ROCM_ASAN=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-8",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'BUILD_TYPE=Release'",
+  "replace": "'BUILD_TYPE=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-9",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'TORCH_APP_MODE=all'",
+  "replace": "'TORCH_APP_MODE=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-10",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'ONNX_PACKAGE=onnxruntime'",
+  "replace": "'ONNX_PACKAGE=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-11",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'PYTORCH_EXTRA=pytorch-rocm10'",
+  "replace": "'PYTORCH_EXTRA=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-12",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'ARTIFACT_CONTEXT_MODE=oci'",
+  "replace": "'ARTIFACT_CONTEXT_MODE=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-13",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'RUNTIME_WHEELS_SOURCE=image'",
+  "replace": "'RUNTIME_WHEELS_SOURCE=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-14",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'RUNTIME_USE_LOCAL_CONTEXT_CHAIN=true'",
+  "replace": "'RUNTIME_USE_LOCAL_CONTEXT_CHAIN=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-15",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'RUNTIME_REUSE_CHILDREN=0'",
+  "replace": "'RUNTIME_REUSE_CHILDREN=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-16",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'RUNTIME_IMAGE_SMOKE=1'",
+  "replace": "'RUNTIME_IMAGE_SMOKE=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-17",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'RUNTIME_INPUT_PREFLIGHT=1'",
+  "replace": "'RUNTIME_INPUT_PREFLIGHT=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-18",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'WRAPPER_CONTENT_GATE=1'",
+  "replace": "'WRAPPER_CONTENT_GATE=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-environment-19",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'ANCESTRY_STAMP_ENFORCE=1'",
+  "replace": "'ANCESTRY_STAMP_ENFORCE=wrong'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-app-binding",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'APP_REF=' + app_ref",
+  "replace": "'APP_REF=develop'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-native-root",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "str(context).removesuffix('-amd64')",
+  "replace": "str(context)",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-android-pin",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'RUNTIME_ANDROID_PIN_amd64=' + reference",
+  "replace": "'RUNTIME_ANDROID_PIN_amd64=mutable'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-three-tags",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "images=images, prepare=",
+  "replace": "images=(), prepare=",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-alias-preparation",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "prepare=lambda: prepare_local_alias(actual, output / 'local-alias.json')",
+  "replace": "prepare=lambda: {}",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-worker-binding",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "scripts / 'host_commands.py']}",
+  "replace": "scripts / 'owned_containers.py']}",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-driver",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "str(source / 'linux/scripts/build-runtime-manifest.sh')",
+  "replace": "str(source / 'linux/scripts/build-cross-stage.sh')",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-driver-skip-manifest",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'cross', '--skip-manifest'",
+  "replace": "'cross', '--push'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-raw-profile-status",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "return launch_build(",
+  "replace": "launch_build(",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-owned-engine",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "engine_path=wrapper, cleanup=cleanup",
+  "replace": "engine_path=engine, cleanup=cleanup",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-owned-cleanup",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "engine_path=wrapper, cleanup=cleanup",
+  "replace": "engine_path=wrapper, cleanup=None",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-owned-label",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'org.kataglyphis.normal-runtime'",
+  "replace": "'org.kataglyphis.foreign'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-fresh-token",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "uuid.uuid4().hex, 'org.kataglyphis.normal-runtime'",
+  "replace": "'e' * 32, 'org.kataglyphis.normal-runtime'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-expected-run-id",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "expected_runtime_run_id='runtime-' + run_id",
+  "replace": "expected_runtime_run_id='foreign-' + run_id",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-cleanup-real-engine",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'--engine', engine, '--owner-label'",
+  "replace": "'--engine', wrapper, '--owner-label'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-alias-name",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "if row['Name'] == reference",
+  "replace": "if row['Name'] != reference",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-alias-source",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "'tag', actual['manifest'], reference",
+  "replace": "'tag', actual['image'], reference",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-host-all-three",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "images or image",
+  "replace": "image",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-prepare-call",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "record.update(prepare())",
+  "replace": "record.update({})",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-cleanup-install",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "if cleanup is not None:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-engine-forward",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "engine = engine_path or str(Path.home() / '.local/bin/nerdctl')",
+  "replace": "engine = str(Path.home() / '.local/bin/nerdctl')",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-cli-parent",
+  "target": "linux/scripts/local-proof/launch-normal-runtime.py",
+  "find": "android_layout(args.parent_proof, args.android_invocation, invocation, media)",
+  "replace": "android_layout(args.output, args.android_invocation, invocation, media)",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-cli-android",
+  "target": "linux/scripts/local-proof/launch-normal-runtime.py",
+  "find": "load_android(args.compiler_plan, args.android_invocation)",
+  "replace": "load_android(args.compiler_plan, args.parent_proof)",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-cli-app",
+  "target": "linux/scripts/local-proof/launch-normal-runtime.py",
+  "find": "args.unit, args.image_prefix, args.app_ref)",
+  "replace": "args.unit, args.image_prefix, 'develop')",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-cli-status",
+  "target": "linux/scripts/local-proof/launch-normal-runtime.py",
+  "find": "return launch_runtime(",
+  "replace": "launch_runtime(",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-ownership-label-injection",
+  "target": "linux/scripts/owned_nerdctl_args.py",
+  "find": "arguments = [*arguments[:position], '--label', label + '=' + run_id, *arguments[position:]]",
+  "replace": "arguments = list(arguments)",
+  "test": "bash linux/scripts/tests/test-owned-nerdctl.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-ownership-validation",
+  "target": "linux/scripts/owned_nerdctl_args.py",
+  "find": "OwnedContainers(engine, label, run_id)",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-owned-nerdctl.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-exec-status",
+  "target": "linux/scripts/owned-nerdctl.py",
+  "find": "os.execv(command[0], command)",
+  "replace": "raise SystemExit(0)",
+  "test": "bash linux/scripts/tests/test-owned-nerdctl.sh",
+  "why": "Independent command/native fixtures must reject weakened runtime admission, identity, ownership or transport; no actual runtime, registry, licence or hardware acceptance is proved."
+ },
+ {
+  "id": "python-types.runtime-owned-nerdctl-args-1",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/owned_containers.py' 'linux/scripts/cleanup-owned-containers.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
+  "replace": "  'linux/scripts/owned_containers.py' 'linux/scripts/cleanup-owned-containers.py' \\\n   'linux/scripts/owned-nerdctl.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Independent fixture type and annotation errors must fail when either runtime ownership companion leaves its mandatory scope; no runtime or cleanup execution is proved."
+ },
+ {
+  "id": "python-types.runtime-owned-nerdctl-args-2",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'docs/scripts/verify_mutations.py' \\\n   'linux/scripts/owned-nerdctl.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Independent fixture type and annotation errors must fail when either runtime ownership companion leaves its mandatory scope; no runtime or cleanup execution is proved."
+ },
+ {
+  "id": "python-types.runtime-owned-nerdctl-1",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/owned_containers.py' 'linux/scripts/cleanup-owned-containers.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
+  "replace": "  'linux/scripts/owned_containers.py' 'linux/scripts/cleanup-owned-containers.py' \\\n  'linux/scripts/owned_nerdctl_args.py'  \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Independent fixture type and annotation errors must fail when either runtime ownership companion leaves its mandatory scope; no runtime or cleanup execution is proved."
+ },
+ {
+  "id": "python-types.runtime-owned-nerdctl-2",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py'  \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Independent fixture type and annotation errors must fail when either runtime ownership companion leaves its mandatory scope; no runtime or cleanup execution is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-label-long-equals",
+  "target": "linux/scripts/owned_nerdctl_args.py",
+  "find": "('--label=', '-l=')",
+  "replace": "('missing-long=', '-l=')",
+  "test": "bash linux/scripts/tests/test-owned-nerdctl.sh",
+  "why": "Independent long and short label controls reject ownership overrides in every reviewed form; no real container or cleanup success is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-label-short-equals",
+  "target": "linux/scripts/owned_nerdctl_args.py",
+  "find": "('--label=', '-l=')",
+  "replace": "('--label=', 'missing-short=')",
+  "test": "bash linux/scripts/tests/test-owned-nerdctl.sh",
+  "why": "Independent long and short label controls reject ownership overrides in every reviewed form; no real container or cleanup success is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-label-short-joined",
+  "target": "linux/scripts/owned_nerdctl_args.py",
+  "find": "if value.startswith('-l') and value != '-l':",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-owned-nerdctl.sh",
+  "why": "Independent long and short label controls reject ownership overrides in every reviewed form; no real container or cleanup success is proved."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-label-separate-label",
+  "target": "linux/scripts/owned_nerdctl_args.py",
+  "find": "if value in {'--label', '-l'} and index + 1 < len(arguments):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-owned-nerdctl.sh",
+  "why": "Independent long and short label controls reject ownership overrides in every reviewed form; no real container or cleanup success is proved."
  }
 ]

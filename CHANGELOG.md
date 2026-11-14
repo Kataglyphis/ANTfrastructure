@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — preserve ordinary Android-to-runtime transport
+
+- Add a bounded ROCm amd64 runtime launcher that verifies native Android ancestry, pins the exact app commit and reserves every canonical output name before creating a local immutable Android alias. Reuse the ordinary runtime driver and default image wheel source with its smoke, input, content and ancestry gates enabled. A shared engine wrapper labels runtime containers without altering pulls or build arguments; install invocation-specific cleanup before launch and preserve raw exec status. Independent fixtures and executable mutations cover refusal and transport behavior. Actual runtime completion, fresh FINAL consumers, full binary licences and hardware inference remain separate required evidence. See [ordinary local runtime](docs/local-proof-workflows.md#ordinary-local-runtime).
+
 ## 2026-11-14 — preserve native Android ancestry before runtime
 
 - Add the persistent ROCm amd64 native Android export entry and profile. Share source, receipt and OCI ancestry checks with GPU/Media while retaining exact stage labels, required Media Wasm flags, original worker bindings, raw transport failures and ordinary disk admission. Synthetic native-byte controls and executable mutations reject unrelated or changed parents. This is a host handoff, not final wrapper, licence or hardware acceptance. See [native Android export](docs/local-proof-workflows.md#native-android-export).

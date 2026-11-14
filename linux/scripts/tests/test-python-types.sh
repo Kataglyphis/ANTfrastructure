@@ -38,9 +38,9 @@ _set_answer() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (137 files)"
+  t_assert_contains "$1" "ty quality gate: clean (139 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
-  t_assert_contains "$1" "Linux Python report: clean (137 files)"
+  t_assert_contains "$1" "Linux Python report: clean (139 files)"
   t_assert_contains "$1" "Windows Python report: clean (2 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -185,6 +185,9 @@ printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scr
 printf 'VALUE = 1\n' > "${ROOT}/linux/scripts/extract_embedded_python.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/tests/fleet_dependency_tests.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/06-packaging/free-threaded-sysconfig-tools.py"
+for target in owned_nerdctl_args.py owned-nerdctl.py; do
+  printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/${target}"
+done
 git -c core.autocrlf=false -C "${ROOT}" add .
 printf 'def value() -> int:\n    return 42\n' > "${ROOT}/third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/__init__.py"
 out="$(_run)"
@@ -197,9 +200,9 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-  t_assert_contains "${out}" "Ruff signature annotation gate: clean (144 files)"
-  t_assert_contains "${out}" "Ruff private return gate: clean (144 files)"
-  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (134 files)"
+  t_assert_contains "${out}" "Ruff signature annotation gate: clean (146 files)"
+  t_assert_contains "${out}" "Ruff private return gate: clean (146 files)"
+  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (136 files)"
 
 t_case "ambient checker versions cannot replace the repository pins"
 out="$(TY_VERSION=bogus RUFF_VERSION=bogus _run)"
@@ -362,8 +365,19 @@ for target in verify_package_names verify_comment_size verify_gate_registry; do
   printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/${target}.py"
 done
 
+t_case "runtime engine companions remain in the strict type scope"
+for target in owned_nerdctl_args.py owned-nerdctl.py; do
+  _set_answer "${ROOT}/linux/scripts/${target}" '"wrong"'
+  out="$(_run)"
+  t_assert_contains "${out}" "ty quality gate failed (exit 1)"
+  t_assert_contains "${out}" "${target}"
+  t_assert_contains "${out}" "rc=1"
+  _set_answer "${ROOT}/linux/scripts/${target}" 42
+done
+
 t_case "every selected Python file fails on missing parameter and public return types"
 parameter_targets=(
+  linux/scripts/owned_nerdctl_args.py linux/scripts/owned-nerdctl.py \
   linux/scripts/tests/webdav_download_tests.py \
   linux/scripts/tests/meson_bound_provider_tests.py \
   linux/scripts/05-frameworks/flutter/flutter-trace-summary.py \
