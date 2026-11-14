@@ -5,6 +5,10 @@ SPDX-License-Identifier: MIT
 
 # Common failure modes — symptom lookup
 
+## Live configure snapshot refuses changing inputs
+
+Use the actual normal GPU invocation, matching live build-image or outer RUN PID and its private relative build directory. Missing, linked, oversized or changed inputs, a reused output or a changed process start fail before a passed observation. Preserve partial evidence and choose a fresh output for a later attempt. The producer is never repaired or paused by this reader. See [live configure snapshots](local-proof-workflows.md#live-configure-snapshots).
+
 ## Live compiler-cache reader rejects a changed log inode
 
 The bounded reader refuses a missing, linked, oversized or replaced `sccache.log`. Keep that failure and inspect the original producer; do not create or replace its log to obtain a receipt. A normal MIGraphX RUN uses the explicit MIGraphX reader profile and actual build-image PID, rather than a compiler label. A partial timeout cannot prove complete retention. See [live cache log retention](local-proof-workflows.md#live-cache-log-retention).

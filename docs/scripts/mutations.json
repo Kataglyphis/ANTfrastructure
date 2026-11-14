@@ -48956,5 +48956,125 @@
   "replace": "    pass",
   "test": "bash linux/scripts/tests/test-live-cache-capture.sh",
   "why": "Contradictory success text cannot be retained as a completed failed-mutation audit."
+ },
+ {
+  "id": "compiler-llvm-tools.configure-snapshot-guard-1",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "        assert not any((root / parent).is_symlink() for parent in [Path(name),*Path(name).parents] if str(parent) != '.'), 'Configure input has a symlink component'",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Configure input has a symlink component"
+ },
+ {
+  "id": "compiler-llvm-tools.configure-snapshot-guard-2",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "        assert stat.S_ISREG(info.st_mode) and 0 < info.st_size <= MAX_FILE, 'Configure input is missing, empty, nonregular or oversized'",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Configure input is missing, empty, nonregular or oversized"
+ },
+ {
+  "id": "compiler-llvm-tools.configure-snapshot-guard-3",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "        assert total <= MAX_TOTAL, 'Configure input set exceeds the byte bound'",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Configure input set exceeds the byte bound"
+ },
+ {
+  "id": "compiler-llvm-tools.configure-snapshot-guard-4",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    assert pid > 1, 'Invalid source process'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Invalid source process"
+ },
+ {
+  "id": "compiler-llvm-tools.configure-snapshot-guard-5",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    assert unit['Id'] == inv['unit'] and unit['LoadState'] == 'loaded' and unit['ActiveState'] in {'active','activating'} and int(unit['MainPID']) > 0, 'Actual producer must be live'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Actual producer must be live"
+ },
+ {
+  "id": "compiler-llvm-tools.configure-snapshot-guard-6",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    assert PHASE_MARKERS['migraphx'] in command, 'Process does not match the normal MIGraphX build'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Process does not match the normal MIGraphX build"
+ },
+ {
+  "id": "compiler-llvm-tools.configure-snapshot-guard-7",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    assert not relative.is_absolute() and '..' not in relative.parts, 'Invalid relative build path'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Invalid relative build path"
+ },
+ {
+  "id": "compiler-llvm-tools.configure-snapshot-guard-8",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    assert relative.parts[:2] == ('tmp','migraphx-source-stack'), 'Only the normal MIGraphX work tree is supported'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Only the normal MIGraphX work tree is supported"
+ },
+ {
+  "id": "compiler-llvm-tools.configure-snapshot-guard-9",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    assert root.is_dir() and not any((process / 'root' / parent).is_symlink() for parent in [relative,*relative.parents] if str(parent) != '.'), 'Build path must have regular directory components'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Build path must have regular directory components"
+ },
+ {
+  "id": "compiler-llvm-tools.configure-snapshot-guard-10",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    assert not output.resolve().is_relative_to(root.resolve()) and not root.resolve().is_relative_to(output.resolve()), 'Source and snapshot roots overlap'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Source and snapshot roots overlap"
+ },
+ {
+  "id": "compiler-llvm-tools.configure-snapshot-guard-11",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    assert file_hashes(root) == before == file_hashes(output), 'Source or copied configure bytes changed'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Source or copied configure bytes changed"
+ },
+ {
+  "id": "compiler-llvm-tools.configure-snapshot-guard-12",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    assert START_TICKS(process) == ticks, 'Source process identity changed during snapshot'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "The independent stable-file/identity/refusal fixtures must reject removal of this live snapshot guard: Source process identity changed during snapshot"
+ },
+ {
+  "id": "compiler-llvm-tools.configure-snapshot-fresh-output",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "    output.mkdir(mode=0o700)",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "Snapshot creation must atomically refuse a previous destination before any existing file can be overwritten."
+ },
+ {
+  "id": "compiler-llvm-tools.configure-snapshot-all-four-files",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "'CMakeFiles/rules.ninja', 'CMakeFiles/CMakeConfigureLog.yaml'",
+  "replace": "'CMakeFiles/rules.ninja'",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "A successful snapshot must retain all four independently enumerated CMake/Ninja inputs."
+ },
+ {
+  "id": "compiler-llvm-tools.configure-snapshot-copy-bytes",
+  "target": "linux/scripts/local-proof/snapshot-live-configure.py",
+  "find": "        shutil.copy2(root / name,target)",
+  "replace": "        target.write_bytes(b'wrong copy')",
+  "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
+  "why": "Copied bytes must match the actual observed source rather than merely create files."
  }
 ]

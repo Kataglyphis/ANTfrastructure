@@ -46,6 +46,19 @@ The independent cross-Clang image probe requires `--sysroot=/` for all six wrapp
 Default paths derive from `Path.home()`; original qualifications, loader probes, parallel-source
 producers, compiler unit identities and cleanup authorization files are explicit inputs.
 
+## Live configure snapshots
+
+Use `snapshot-live-configure.py` beside its `capture-live-sccache-log.py`, `cache_capture_profile.py`, `native_oci_layout.py`, `native_oci_seed.py` and `proof_commands.py` companions. This replaces repeated copying/hash commands before the normal MIGraphX RUN removes its private build directory. The current process must match the normal build marker and remain the same start identity throughout copying; its supplied producer unit must be live. The output parent is a plain directory and the new output cannot overlap the source.
+
+```bash
+python3 linux/scripts/local-proof/snapshot-live-configure.py \
+  --invocation /absolute/path/to/gpu-run/invocation.json --pid 12345 \
+  --relative-root tmp/migraphx-source-stack/backend/build \
+  --output /absolute/path/to/fresh-configure-snapshot
+```
+
+It copies only CMakeCache.txt, build.ninja, CMakeFiles/rules.ninja and CMakeFiles/CMakeConfigureLog.yaml, each at most 32 MiB and together at most 64 MiB. Every source/copy hash must match, source directories/files cannot be symlinks, and existing outputs remain preserved. A failed copy leaves diagnostic partial files without a passed observation. The invocation and process marker do not authenticate producer ownership; a stable snapshot proves neither a completed phase, final cache-error attribution, binary linkage/licence closure nor image acceptance. `test-live-configure-snapshot.sh` uses real file copies and explicit unit/process doubles.
+
 ## Live cache log retention
 
 `replay-sccache-log-capture.py` reuses the bounded read-only unit transport with the current canonical `capture-live-sccache-log.py` and its `cache_capture_profile.py` companion. Both reader inputs are hashed in the invocation. The existing GCC, LLVM, Rust and Python phases retain their compiler unit names; `--phase migraphx` matches the actual normal `bash /opt/scripts/03-media/build/migraphx/build-image.sh` process and uses `webgpu-gpu<run>-migraphx-error-capture-<date>-<attempt>.service`.

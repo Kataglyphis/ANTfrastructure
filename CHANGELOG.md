@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — preserve live configure snapshot functionality
+
+- Preserve repeated CMake/Ninja diagnostic copying in a versioned bounded helper. Bind the actual live producer invocation, matching process/start identity and four named files; compare source hashes before/after copying and verify copied bytes. Refuse traversal, symlinks, overlap, stale outputs and size overruns. Independent file/process/unit fixtures and executable mutations cover the gates; a snapshot grants no build, source-authentication, linkage, licence or image acceptance. See [live configure snapshots](docs/local-proof-workflows.md#live-configure-snapshots).
+
 ## 2026-11-14 — retain live MIGraphX cache diagnostics
 
 - Extend the versioned read-only cache reader to the actual normal MIGraphX source-build process. Share phase/unit identity, retain compiler profiles, bind current worker/companion hashes and place each unit log beside its fresh invocation. Preserve existing log bytes through teardown and reject symlinks, inode replacement, oversized logs and reused outputs; timeout remains a partial observation. Synthetic process/command regressions and executable mutations establish these boundaries, without changing a producer or classifying cache errors. See [live cache log retention](docs/local-proof-workflows.md#live-cache-log-retention).
