@@ -111,4 +111,14 @@ t_assert_eq "1 1 1" "$(for i in 0 1 2; do grep -c run "${_work}/runs${i}" | awk 
 t_assert_eq "4" "$("${PY}" "${GATE}" --manifest "${_work}/m.json" --root "${_work}" --stale-check --shard 1/3 | sed -n 's/.*(shard 1\/3: \([0-9]*\) entr(ies)).*/\1/p')" \
   "without a table the slice is still entries[K::N]"
 
+t_case "each parallel mirror hands its tests its own MUTATION_MIRROR, so a build cache can be one per mirror"
+_gate_fixture 12
+for _i in 0 1 2; do
+  printf 'printf "%%s\\n" "${MUTATION_MIRROR:-}" >> %q\nfor f in ./s*.sh; do grep -q "GUARD=on" "$f" || exit 1; done\n' \
+    "${_work}/mirrors" > "${_work}/t${_i}.sh"
+done
+"${PY}" "${GATE}" --manifest "${_work}/m.json" --root "${_work}" --jobs 2 > /dev/null 2>&1
+t_assert_eq "0" "$(grep -c '^$' "${_work}/mirrors")" "no test runs without the variable"
+t_assert_eq "2" "$(LC_ALL=C sort -u "${_work}/mirrors" | wc -l | tr -d ' ')" "two jobs, two mirrors, two names"
+
 t_summary

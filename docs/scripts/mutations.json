@@ -7497,6 +7497,14 @@
   "why": "OrchestrANT pins the SDK as flet[desktop]==; a row that cannot read the extras form reports it unpinned or skips it, and the client and SDK drift apart with nothing red"
  },
  {
+  "id": "mutations.mirror-name-unset",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "    env = {**os.environ, \"MUTATION_MIRROR\": os.path.basename(os.path.normpath(root))}",
+  "replace": "    env = dict(os.environ)",
+  "test": "bash linux/scripts/tests/test-mutation-shards.sh",
+  "why": "a recipe that keeps one build cache for every parallel mirror lets a mutant run the other mirror's unmutated binary; MUTATION_MIRROR is what tells the mirrors apart"
+ },
+ {
   "id": "lib.cgroup-remaining-clamps-at-zero",
   "target": "linux/scripts/01-core/parallelism.sh",
   "find": "    [ \"${remaining}\" -lt 0 ] 2>/dev/null && remaining=0",

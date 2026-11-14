@@ -14,6 +14,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — each mutation mirror names itself to its tests (`MUTATION_MIRROR`)
+
+- `verify_mutations.py` hands every recipe test the mirror's directory name as `MUTATION_MIRROR`, so a recipe that
+  keeps a build cache outside the mirror can keep one per mirror. OxidANT's 13 cargo recipes shared one
+  `CARGO_TARGET_DIR`; cargo names a workspace member's artefacts without its absolute path, so parallel mirrors
+  overwrote each other's fingerprints and a mutant ran the other mirror's unmutated binary (it survived in CI and
+  bit with `--jobs 1`). `docs/code-quality-tooling.md` § One build cache per mirror names the trap; a case in
+  `test-mutation-shards.sh` and recipe `mutations.mirror-name-unset`.
+
 ## 2026-11-14 — `FLET_VERSION`: one pin for Flet's SDK and client (CON103)
 
 - `FLET_VERSION=1.0.5` in `tool-pins.env` (not `versions.env`: no early image stage reads it, and a key there
