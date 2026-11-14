@@ -38751,5 +38751,53 @@
   "replace": "QNN_SDK_EXTRACT_DIR=${QNN_SDK_EXTRACT_DIR:-}",
   "test": "bash linux/scripts/tests/test-qnn-community-zip.sh",
   "why": "The SDK fixture must exercise complete environment values with spaces and glob characters on every host."
+ },
+ {
+  "id": "dispatch-lanes.x64-forgotten",
+  "target": "linux/scripts/dispatch-consumer-lanes.sh",
+  "find": "    if row.get(\"linux_x64\"):\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-dispatch-consumer-lanes.sh",
+  "why": "A Linux publish also runs each consumer's x64 lane, which on-request.yml does not hold."
+ },
+ {
+  "id": "dispatch-lanes.refusal-hidden",
+  "target": "linux/scripts/dispatch-consumer-lanes.sh",
+  "find": "    failed=$((failed + 1))\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-dispatch-consumer-lanes.sh",
+  "why": "A dispatch that was refused fails the step, or the image moves on with a consumer never checked."
+ },
+ {
+  "id": "dispatch-lanes.lanes-dropped",
+  "target": "linux/scripts/dispatch-consumer-lanes.sh",
+  "find": "  [ -z \"${lanes}\" ] || cmd+=(-f \"lanes=${lanes}\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-dispatch-consumer-lanes.sh",
+  "why": "Each image runs the lanes it changes; without them on-request.yml runs its default."
+ },
+ {
+  "id": "dispatch-lanes.dry-run-sends",
+  "target": "linux/scripts/dispatch-consumer-lanes.sh",
+  "find": "  if [ \"${dry_run}\" -eq 1 ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-dispatch-consumer-lanes.sh",
+  "why": "A dry run prints the commands and sends none."
+ },
+ {
+  "id": "dispatch-lanes.not-after-promote",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  bash \"${REPO_ROOT}/linux/scripts/dispatch-consumer-lanes.sh\" --tag \"${IMAGE_NAME##*:}\" \\\n",
+  "replace": "  false \\\n",
+  "test": "bash linux/scripts/tests/test-manifest-acceptance.sh",
+  "why": "After a promotion the consumers' lanes run on the new image (CON236), and a refused dispatch only warns."
+ },
+ {
+  "id": "dispatch-lanes.failed-promotion-stops-dispatch",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  python3 \"${REPO_ROOT}/linux/scripts/image-acceptance.py\" promote --receipt \"${receipt}\" --target \"${IMAGE_NAME}\" || return 1\n",
+  "replace": "  python3 \"${REPO_ROOT}/linux/scripts/image-acceptance.py\" promote --receipt \"${receipt}\" --target \"${IMAGE_NAME}\"\n",
+  "test": "bash linux/scripts/tests/test-manifest-acceptance.sh",
+  "why": "A failed promotion must stop before consumer dispatch, including when a conditional caller disables errexit."
  }
 ]

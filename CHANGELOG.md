@@ -16,6 +16,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — prove the promotion boundary before consumer dispatch
+
+- Exercise a promotion refusal under a conditional shell caller and require both failure and no
+  consumer dispatch. The correct guard survived the older fixture's mutation test; the new case
+  must reject its removal. Preserve the existing advisory policy after a successful promotion.
+- Document the dispatch boundary and its fixture limits; the source route and image inputs stay unchanged.
+
 ## 2026-11-14 — QNN fixture environment argument boundaries
 
 - Keep PATH, SDK cache and extraction directories as individually quoted environment values in
@@ -24,6 +31,17 @@
 - Preserve the original selection cases, exercise plain and spaced layouts, and verify the fake
   cache bytes and complete downloader arguments: 24 assertions and three valid unquoting mutants.
   Controlled clean-PATH diagnostics do not turn the earlier failed full preflight green.
+
+## 2026-11-13 — after a publish, the consumers' lanes run on the new image (CON236, CON235)
+
+- Owner decision of the day: `linux/scripts/dispatch-consumer-lanes.sh --tag TAG` dispatches each consumer's
+  `on-request.yml` with the lanes that image changes, and for `:latest` its `linux-x64.yml`, from the plan
+  `shared/config/image-consumer-lanes.json`. `build-runtime-manifest.sh` calls it after a promotion; a refused
+  dispatch prints its command and a warning, and the promotion stands. The Windows publish does not call it yet (CON236 stays for that).
+  Suites `test-dispatch-consumer-lanes.sh` and `test-manifest-acceptance.sh`, recipes `dispatch-lanes.*`, docs
+  `image-acceptance.md`.
+- CON235 is done: one default score threshold, 0.25, in every detector and in ModelANT's `contracts/README.md`
+  (OxidANT, OrchestrANT, ModelANT b108dd4).
 
 ## 2026-11-13 — a refused download of the earlier measurements is tried again (CON271)
 

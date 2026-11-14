@@ -60,6 +60,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    exist for the next session.
    Image publication also requires the digest-specific consumer receipt before a public tag
    moves; see [image-acceptance.md](docs/image-acceptance.md) for replay and its coverage limits.
+   Dispatch consumer lanes only after promotion succeeds; a refused post-publish dispatch
+   remains advisory and preserves the completed promotion.
    Successful consumers must preserve versioned sources. Manual promotion also preserves
    the target's runtime platforms; an early shell-gate override cannot bypass acceptance.
    `--gates-only` exits before builds, candidate creation and promotion, including when

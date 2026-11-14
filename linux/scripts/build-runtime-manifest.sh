@@ -222,7 +222,10 @@ _manifest_accept_and_promote() {
   receipt="${work}/receipt.json"
   python3 "${REPO_ROOT}/linux/scripts/image-acceptance.py" check --image "${candidate}" \
     --workspace "${work}/consumers" --receipt "${receipt}" --engine "${NERDCTL_BIN:-nerdctl}" || return 1
-  python3 "${REPO_ROOT}/linux/scripts/image-acceptance.py" promote --receipt "${receipt}" --target "${IMAGE_NAME}"
+  python3 "${REPO_ROOT}/linux/scripts/image-acceptance.py" promote --receipt "${receipt}" --target "${IMAGE_NAME}" || return 1
+  # The tag has moved: the consumers' lanes find out now that the image changed, not at their next request.
+  bash "${REPO_ROOT}/linux/scripts/dispatch-consumer-lanes.sh" --tag "${IMAGE_NAME##*:}" \
+    || warn "some consumer lanes were not dispatched; the lines above say how to run them by hand"
 }
 
 _manifest_extra_arg() {
