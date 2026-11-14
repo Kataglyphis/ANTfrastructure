@@ -16,6 +16,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — document delegated maintenance and new-host limits
+
+- Describe the verified local on-demand cleanup/recovery pilot, its fixed rights,
+  result checks, measured reclaim and remaining capacity limit.
+- Add new-host guidance and the canonical administrator fallback. The pilot's
+  ignored preparation files are not a distributed installer; portable setup and
+  clean-host acceptance remain open. No maintenance code or installed task changes.
+
 ## 2026-11-14 — match BuildKit cleanup targets to disk admission units
 
 - Convert GiB to rounded-up decimal MB for regular pruning, general pruning and

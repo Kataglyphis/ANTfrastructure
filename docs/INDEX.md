@@ -79,7 +79,7 @@ The two halves of one topic often split:
 | **The home network's addresses**: placeholders in docs and examples, the real values in the gitignored `site.local.env` | [`site.local.env.example`](../site.local.env.example) |
 | **clang-cl sanitizers**: why `-shared-libsan`, trap-mode UBSan, Microsoft's ASan runtime over LLVM's, and who stages the DLL | [`windows-clang-cl-sanitizers.md`](windows-clang-cl-sanitizers.md) |
 | **The sanitizer modules on every compiler**: Debug-only generator expressions, the defaults, the combinations each toolchain drops, clang-cl's trap-mode UBSan | [`../cmake/README.md`](../cmake/README.md#sanitizers-what-the-modules-actually-do) |
-| Stevedore post-install fixes, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
+| Stevedore post-install fixes, disk inventory, delegated maintenance/new-host limits, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
 | **Local fixes to upstream projects** — every third-party source change the Windows chain carries, graded, and the 12 prepared-but-unsent submissions | [`upstream-windows-patches.md`](upstream-windows-patches.md) |
 | **Building for Windows-on-ARM**: why there is no arm64 image, the clang-cl cross lane, arch gates, what reached runtime parity with amd64 and what stays amd64-only | [`windows-cross-builds.md`](windows-cross-builds.md) |
 | **A consumer's Windows products**: the reusable `container-ci-windows.yml` lane, the product folder and its DLL closure (`Copy-PeImportClosure`), and CPack's `KATAGLYPHIS_PACKAGE_DLL_DIR` | [`windows-cross-builds.md` § Consumer cross lanes](windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml) |

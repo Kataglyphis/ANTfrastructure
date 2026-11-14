@@ -1491,6 +1491,11 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
     refuse active use, recheck each ID, and never fall through to the broader file or Docker cleanup.
     Convert GiB admission targets to rounded-up decimal MB at the BuildKit CLI boundary; `* 1024` understates the target.
     The idle checks are point-in-time, not a lock; stop other users and builds before applying.
+  - **Delegated maintenance is host-specific until provisioned and accepted there.** Never treat
+    ignored handoff scripts or another machine's task manifest as a portable installer. Verify
+    protected code, local identity, fixed rights and a fresh normal-user run before claiming it
+    works; measured capacity remains a separate build admission requirement. Scope and setup:
+    [delegated maintenance](docs/windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts).
   - **Protected roots are OFF LIMITS to the agent, permanently**: `C:\Program Files`,
     `C:\Program Files (x86)`, `C:\Windows`, `C:\ProgramData` outside the container stores, any
     user profile under `C:\Users`, `AppData`, per-user tool directories (`.vscode`, `.ssh`,

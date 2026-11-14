@@ -34,6 +34,19 @@ The agentic loop's format (`docs/windows-agentic-loop.md`):
 
 Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
+## Windows host maintenance portability
+
+- [ ] Ship a versioned installer for the bounded Stevedore maintenance pilot.
+  The tested actions currently exist only in ignored local handoff files; they
+  are absent from a clean clone. Parameterize user identity, checkout/tool paths,
+  task configuration and preservation expectations instead of copying a sealed
+  bundle from another machine. Retain canonical regular-only pruning, fixed
+  protected actions and separate image-retirement approval. Prove fresh-machine
+  installation, non-admin invocation, logs, idle refusal, interrupted setup and
+  before/after preservation, including an empty initial store and different
+  cache-mount counts. Existing-host success and a cleanup exit zero are not this
+  acceptance. See [current scope and new-host procedure](docs/windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts).
+
 ## Next image build — GPU consumer findings
 
 **Windows evidence, 2026-11-12, frozen source `5bd443ea`:** the private CPU

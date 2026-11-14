@@ -34,6 +34,110 @@ to decimal MB for BuildKit. Its exit code alone does not prove enough space is f
 and the [sanctioned cleanup tool](windows-builds.md#clear-diskspaceps1) before
 removing anything.
 
+## Delegated maintenance and new hosts
+
+### Availability and verified limits
+
+The delegated cleanup is a **local pilot, not a portable feature installed by a
+fresh clone or `Install-NewHost.ps1`**. Its preparation and tests currently live
+in ignored `logs/handoff/stevedore-auto-cleanup/` on the provisioned machine.
+Those files are not distributed by this repository. Copying their old installer
+is not a new-host setup: its reviewed bundle contains a particular user SID,
+paths and file hashes; idle recovery also expects six cache mounts and a specific
+service topology. Fresh or different hosts need their own reviewed configuration
+and acceptance. A portable installer remains an open backlog item.
+
+Two fixed, on-demand Task Scheduler actions were verified on 2026-11-14:
+
+| Task under `\ANTfrastructureMaintenance\` | Trigger and identity | Fixed scope |
+| --- | --- | --- |
+| `RegularCache` | Agent or operator starts it; runs as SYSTEM | Preview, then canonical unused regular-cache cleanup with a 100-GiB target; preserves image tags and compiler-cache mounts |
+| `IdleRecovery` | Agent or operator starts it; runs as SYSTEM | On proven idle state, restore BuildKit and dependent Stevedore; compare images, mounts, containerd PID and CNI; no pruning |
+
+This is not a timer, a low-space watcher, or an automatic call from every build.
+The separate BuildKit daemon GC policy is described in the
+[host setup](windows-host-setup.md#c3-deploy-the-gc-policy--build-history-cap-required--not-optional-tuning).
+Normal-user starts work because an administrator once installed protected code
+and granted that user read/execute permission on the fixed tasks. No unrestricted
+administrator rights, writable SYSTEM scripts or arbitrary task arguments are
+granted. Updating pinned tools or protected task files needs another reviewed
+administrator installation.
+
+The actual pilot recovery released 31 held references. Its following regular
+cleanup increased filesystem free space by 10.03 GiB; 27 image identities and six
+compiler-cache mounts were unchanged, and both workers and scheduler results were
+zero. Only 14.43 GiB remained free, so the 100-GiB target was **not met**. A busy-client
+attempt also refused before Apply. These are single-host results, not clean-host
+or universal reliability evidence. In-use state, unknown responses, changed IDs,
+service drift or changed tool hashes must stop maintenance.
+
+### Operating an already provisioned pilot
+
+Keep other sessions' container work paused; the idle probes are observations,
+not a machine-wide lock. From the original pilot checkout, a normal PowerShell 7
+session can submit the existing cleanup:
+
+```pwsh
+pwsh -NoProfile -File .\logs\handoff\stevedore-auto-cleanup\Start-DelegatedCleanup.ps1
+```
+
+If a completed build leaves only immutable/shared regular references held, the
+separately approved recovery can be submitted first:
+
+```pwsh
+pwsh -NoProfile -File .\logs\handoff\stevedore-auto-cleanup\idle-recovery-20261114\Start-IdleRecovery.ps1
+```
+
+Submission is not completion. Read the new run under
+`C:\Program Files\ANTfrastructure Maintenance\logs\`: cleanup writes `latest.json`,
+recovery `latest-recovery.json`, each pointing to its detailed run directory.
+Require a run started after submission, worker `raw_exit = 0`, scheduler
+`LastTaskResult = 0`, no running instance, and matching before/after image and
+cache identities. Recovery additionally needs unchanged containerd PID and
+successful network validation. Its success precedes a separate regular cleanup;
+it is not itself proof of space reclaimed. Measure current free bytes against
+the next build's unchanged admission limit before restarting that build.
+
+When tags hold all remaining shared layers, another cache-only run cannot promise
+more space. Image retirement is a separate reviewed selection with full expected
+IDs; compiler caches and unrelated images stay protected. Do not repeat an
+exhausted prune, lower a disk guard, kill a live build or restart containerd to
+make the space check pass.
+
+### Bringing another machine into service
+
+1. Complete [Windows host bring-up](windows-host-setup.md), including daemon GC
+   sizing, endpoints, CNI and host checks. Do not transplant the old machine's
+   task XML, user SID, PowerShell installation path or installed manifests.
+2. Until a portable delegation package is shipped, use the versioned
+   [inventory](#stevedore-disk-inventory) and
+   [canonical cleanup](windows-builds.md#clear-diskspaceps1) from an actual
+   **Administrator PowerShell 7** at the new checkout root. Review the inventory
+   and establish idle state, then preview:
+
+   ```pwsh
+   pwsh -NoProfile -File .\windows\scripts\host\Clear-DiskSpace.ps1 -StevedoreOnly -RegularCache -KeepGB 100
+   if ($LASTEXITCODE -ne 0) { throw 'Cleanup preview failed.' }
+   ```
+
+   After reviewing that preview, apply only the same cache scope:
+
+   ```pwsh
+   pwsh -NoProfile -File .\windows\scripts\host\Clear-DiskSpace.ps1 -StevedoreOnly -RegularCache -KeepGB 100 -Apply
+   if ($LASTEXITCODE -ne 0) { throw 'Cleanup failed; retain its diagnostics.' }
+   Get-PSDrive -Name C | Select-Object Name, Free
+   ```
+
+   Keep the terminal output or a transcript in the new checkout's logs. Use the
+   documented daemon address overrides if that host differs. Preview and Apply
+   retain their own refusal checks; exit zero alone is not a capacity receipt.
+3. Before claiming delegation on that machine, provide a versioned installer
+   closure, derive its local user/paths/tools and preservation baseline, install
+   once with UAC/admin approval, and prove the first start from a genuinely
+   non-elevated session. Verify protected file/task ACLs, hashes, fixed actions,
+   fresh logs, idle refusal, preservation and measured capacity there. The pilot's
+   tests and old receipts do not replace that new-host test.
+
 ## Stevedore Setup Fixes
 
 After installing Stevedore, apply these post-install fixes. They are the canonical source. Fixes 1 and 2 are for their symptom only (which symptom: [`windows-host-setup.md`](windows-host-setup.md) § A4); Fix 3 is for every host.

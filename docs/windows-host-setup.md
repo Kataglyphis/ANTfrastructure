@@ -669,6 +669,11 @@ after every repo-side toml change** — deploy is a copy, nothing syncs
 automatically (this host ran a stale copy for hours after the `[history]`
 section landed).
 
+The optional [delegated maintenance pilot](windows-stevedore-and-docker.md#delegated-maintenance-and-new-hosts)
+is separate from daemon GC. This checklist and `Install-NewHost.ps1` do not install
+that local pilot. Follow its new-host instructions before assuming a normal user
+can reclaim space or recover idle services without another administrator command.
+
 Full story: [`windows-build-lanes.md`](windows-build-lanes.md#store-gc)
 § Store GC. Verify:
 
