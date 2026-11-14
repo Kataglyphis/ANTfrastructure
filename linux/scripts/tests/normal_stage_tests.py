@@ -108,7 +108,7 @@ class StageTests(unittest.TestCase):
                 mock.patch.object(subprocess,'run',transport), mock.patch.object(sys,'path',sys.path.copy()), redirect_stdout(io.StringIO()):
             result = STAGE.launch_stage(self.work,self.output,unit or self.unit.replace('-gpu-', '-' + stage + '-'),repo,stage,arch,
                                        self.work / 'parent context','ant-local/webgpu-parent@sha256:' + 'a' * 64,required,{'parent_manifest':'sha256:' + 'a' * 64},variant)
-        expected = {'gpu':self.image, 'sdk':'ant-local/webgpu-fixture:cross-sdk-amd64', 'media':'ant-local/webgpu-fixture:cross-media-rocm-amd64'}
+        expected = {'gpu':self.image, 'sdk':'ant-local/webgpu-fixture:cross-sdk-amd64', 'media':'ant-local/webgpu-fixture:cross-media-rocm-amd64', 'android':'ant-local/webgpu-fixture:cross-android-rocm-amd64'}
         host.assert_called_once_with(self.unit.replace('-gpu-', '-' + stage + '-'),self.output,expected[stage])
         disk.assert_called_once_with(self.output.parent)
         return result,json.loads((self.output / 'invocation.json').read_text())
@@ -146,6 +146,18 @@ class StageTests(unittest.TestCase):
             self.assertEqual(command.count(value),1)
         self.assertEqual(command[-8:-6],['--stage','media'])
         self.assertNotIn('--push',command)
+
+    def test_android_uses_its_exact_native_media_parent(self) -> None:
+        status, record = self.launch(stage='android',status=47)
+        self.assertEqual(status,47)
+        self.assertEqual(record['image'],'ant-local/webgpu-fixture:cross-android-rocm-amd64')
+        command = record['command']
+        for value in ('CROSS_ANDROID_BASE_CONTEXT=' + str(self.work / 'parent context'),
+                      'CROSS_ANDROID_BASE_IMAGE=ant-local/webgpu-parent@sha256:' + 'a' * 64, 'CROSS_VARIANT=rocm'):
+            self.assertEqual(command.count(value),1)
+        self.assertEqual(command[-8:-6],['--stage','android'])
+        self.assertNotIn('ORT_WEB_REQUIRED=1',command)
+        self.assertFalse(record['publication'])
 
     def test_disk_floor_and_profiles_refuse_before_allocation(self) -> None:
         cases: list[dict[str, Any]] = [{'available':193273528319}, {'required':193273528319}, {'repo':'public/fixture'}, {'stage':'media','variant':''}, {'stage':'media','arch':'arm64'}, {'variant':'unreviewed'}, {'arch':'arm64'}, {'unit':'wrong.service'}, {'variant':''}]

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from gpu_source_profile import select_gpu_source
 from native_oci_layout import layer_ancestry, sha
 from native_oci_seed import parent_layout
-from normal_stage_launch import full_source
+from normal_stage_launch import full_source, validate_stage_invocation
 from proof_commands import checked_run
 
 if TYPE_CHECKING:
@@ -31,24 +31,8 @@ def terminal(unit: str) -> Json:
 
 def validate_gpu(invocation: Json, parent: Json) -> None:
     assert invocation['stage'] == 'gpu' and invocation['variant'] == 'rocm' and invocation['target_arch'] == 'amd64', 'Only ordinary ROCm amd64 is reviewed'
-    assert re.fullmatch(r'webgpu-normal-gpu-amd64-[0-9-]+\.service', invocation['unit']), 'Unexpected GPU producer unit'
-    assert invocation['launch_status'] == 0 and invocation['publication'] is False, 'Successful local GPU launch required'
-    assert invocation['source_full_preflight_passed'] and invocation['producer_source_unchanged'], 'GPU source proof was not retained'
-    for field in ('manifest', 'config'):
-        assert invocation['parent_' + field] == parent[field], 'GPU SDK identity differs'
-    assert invocation['parent_OCI_index_sha256'] == parent['index_sha256'], 'GPU SDK index differs'
+    validate_stage_invocation(invocation, parent, 'gpu', parent['subject']['image'])
     assert invocation['SDK_layers_rehashed'] == parent['layers'] and invocation['compiler_layers_rehashed'] == 26, 'GPU ancestry coverage differs'
-    source, output = Path(invocation['source']), Path(invocation['output'])
-    repo = invocation['image'].removesuffix(':cross-toolchain-rocm-amd64')
-    assert repo.startswith('ant-local/webgpu-') and invocation['image'] == repo + ':cross-toolchain-rocm-amd64', 'Unexpected local GPU image'
-    command = invocation['command']
-    assert command[:2] == ['systemd-run', '--user'] and '--expand-environment=no' in command, 'GPU transport differs'
-    assert command[-10:] == ['/bin/bash', str(source / 'linux/scripts/build-cross-stage.sh'), '--stage', 'gpu', '--arch', 'amd64', '--image-repo', repo, '--log-dir', str(output / 'logs')], 'GPU stage command differs'
-    assert command.count('CROSS_VARIANT=rocm') == 1 and command.count('CROSS_GPU_BASE_CONTEXT=' + parent['context']) == 1, 'GPU SDK context or variant differs'
-    references = [item for item in command if item.startswith('CROSS_GPU_BASE_IMAGE=')]
-    expected = 'CROSS_GPU_BASE_IMAGE=' + parent['subject']['image'].rsplit(':', 1)[0] + '@' + parent['manifest']
-    assert references == [expected], 'GPU parent must use its actual SDK repository and digest'
-    assert '--push' not in command and '--gates-only' not in command, 'Actual unpublished GPU build required'
 
 
 def load_gpu(plan_path: Path, invocation_path: Path) -> tuple[Json, Json, Json]:

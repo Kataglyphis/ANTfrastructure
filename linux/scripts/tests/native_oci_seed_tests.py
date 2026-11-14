@@ -31,6 +31,18 @@ SEED = runpy.run_path(str(TOOLS / 'native_oci_seed.py'))
 OCI = runpy.run_path(str(TOOLS / 'native-oci-handoff.py'))
 
 
+def seeded_copy(proof_path: Path, context: Path) -> None:
+    original = context.with_name(context.name + '-original')
+    context.rename(original)
+    context.mkdir()
+    SEED['seed_layers'](proof_path,context)
+    for path in original.rglob('*'):
+        target = context / path.relative_to(original)
+        if path.is_file() and not target.exists():
+            target.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(path,target)
+
+
 def blob(context: Path, data: bytes, media_type: str) -> dict[str, Any]:
     digest = hashlib.sha256(data).hexdigest()
     (context / 'blobs/sha256' / digest).write_bytes(data)

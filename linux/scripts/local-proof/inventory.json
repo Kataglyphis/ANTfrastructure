@@ -456,6 +456,24 @@
       "classification": "versioned",
       "canonical": "linux/host-config/verify-safe-prune.py",
       "original_sha256": "8ef37621094084b06ab22d44b5bf23994e956f6bc19020606b2de58f9f94aec8"
+    },
+    {
+      "name": "media-oci-handoff.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/media-oci-handoff.py",
+      "reason": "Exact native ROCm Media/GPU ancestry and ordinary Android handoff; no image or hardware acceptance."
+    },
+    {
+      "name": "media_handoff_profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/media_handoff_profile.py",
+      "reason": "Exact native ROCm Media/GPU ancestry and ordinary Android handoff; no image or hardware acceptance."
+    },
+    {
+      "name": "launch-normal-android.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/launch-normal-android.py",
+      "reason": "Exact native ROCm Media/GPU ancestry and ordinary Android handoff; no image or hardware acceptance."
     }
   ],
   "new_canonical_files": [

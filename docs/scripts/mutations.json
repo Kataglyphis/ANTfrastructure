@@ -48224,7 +48224,7 @@
  {
   "id": "compiler-llvm-tools.oci-parent-reuse-parent-status",
   "target": "linux/scripts/local-proof/native_oci_seed.py",
-  "find": "assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only'}, 'Verified native OCI parent required'",
+  "find": "assert proof['status'] in {'passed-qualified-native-compiler-OCI-and-base-ancestry', 'passed-qualified-native-SDK-OCI-and-compiler-ancestry', 'passed-native-ROCm-GPU-OCI-and-SDK-ancestry-only', MEDIA_STATUS}, 'Verified native OCI parent required'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-native-oci-seed.sh",
   "why": "Synthetic OCI and real tar controls must reject unverified, escaping, overwritten or misreported shared layers; these controls do not accept an image."
@@ -48608,7 +48608,7 @@
  {
   "id": "compiler-llvm-tools.normal-stage-shared-16",
   "target": "linux/scripts/local-proof/normal_stage_launch.py",
-  "find": "assert stage in {'sdk', 'gpu', 'media'} and variant in {'', 'rocm'}, 'Unreviewed stage profile'",
+  "find": "assert stage in {'sdk', 'gpu', 'media', 'android'} and variant in {'', 'rocm'}, 'Unreviewed stage profile'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
   "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Unreviewed stage profile"
@@ -48616,7 +48616,7 @@
  {
   "id": "compiler-llvm-tools.normal-stage-shared-17",
   "target": "linux/scripts/local-proof/normal_stage_launch.py",
-  "find": "assert (stage in {'gpu', 'media'}) == bool(variant) and (stage == 'sdk' or arch == 'amd64'), 'Unreviewed GPU architecture'",
+  "find": "assert (stage in {'gpu', 'media', 'android'}) == bool(variant) and (stage == 'sdk' or arch == 'amd64'), 'Unreviewed GPU architecture'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
   "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Unreviewed GPU architecture"
@@ -48776,7 +48776,7 @@
  {
   "id": "compiler-llvm-tools.normal-stage-canonical-tag",
   "target": "linux/scripts/local-proof/normal_stage_launch.py",
-  "find": "{'gpu':'cross_gpu_tag', 'sdk':'cross_sdk_tag', 'media':'cross_media_tag'}[stage]",
+  "find": "{'gpu':'cross_gpu_tag', 'sdk':'cross_sdk_tag', 'media':'cross_media_tag', 'android':'cross_android_tag'}[stage]",
   "replace": "'cross_sdk_tag'",
   "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
   "why": "GPU admission must use the source's canonical cross-toolchain-rocm tag instead of a second or guessed naming schema."
@@ -50039,40 +50039,40 @@
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-05",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert re.fullmatch(r'webgpu-normal-gpu-amd64-[0-9-]+\\.service', invocation['unit']), 'Unexpected GPU producer unit'",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "assert re.fullmatch(r'webgpu-normal-' + stage + r'-amd64-[0-9-]+\\.service', invocation['unit']), 'Unexpected downstream producer unit'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-06",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert invocation['launch_status'] == 0 and invocation['publication'] is False, 'Successful local GPU launch required'",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "assert invocation['launch_status'] == 0 and invocation['publication'] is False, 'Successful unpublished downstream launch required'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-07",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert invocation['source_full_preflight_passed'] and invocation['producer_source_unchanged'], 'GPU source proof was not retained'",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "assert invocation['source_full_preflight_passed'] and invocation['producer_source_unchanged'], 'Downstream source proof was not retained'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-08",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert invocation['parent_' + field] == parent[field], 'GPU SDK identity differs'",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "assert invocation['parent_' + field] == parent[field], 'Downstream parent identity differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-09",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert invocation['parent_OCI_index_sha256'] == parent['index_sha256'], 'GPU SDK index differs'",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "assert invocation['parent_OCI_index_sha256'] == parent['index_sha256'], 'Downstream parent index differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
@@ -50087,48 +50087,48 @@
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-11",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert repo.startswith('ant-local/webgpu-') and invocation['image'] == repo + ':cross-toolchain-rocm-amd64', 'Unexpected local GPU image'",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "assert repo.startswith('ant-local/webgpu-') and invocation['image'] == repo + suffix, 'Unexpected local downstream image'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-12",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert command[:2] == ['systemd-run', '--user'] and '--expand-environment=no' in command, 'GPU transport differs'",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "assert command[:2] == ['systemd-run', '--user'] and '--expand-environment=no' in command, 'Downstream transport differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-13",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert command[-10:] == ['/bin/bash', str(source / 'linux/scripts/build-cross-stage.sh'), '--stage', 'gpu', '--arch', 'amd64', '--image-repo', repo, '--log-dir', str(output / 'logs')], 'GPU stage command differs'",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "assert command[-10:] == ['/bin/bash', str(source / 'linux/scripts/build-cross-stage.sh'), '--stage', stage, '--arch', 'amd64', '--image-repo', repo, '--log-dir', str(output / 'logs')], 'Downstream stage command differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-14",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert command.count('CROSS_VARIANT=rocm') == 1 and command.count('CROSS_GPU_BASE_CONTEXT=' + parent['context']) == 1, 'GPU SDK context or variant differs'",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "assert command.count('CROSS_VARIANT=rocm') == 1 and command.count('CROSS_' + stage.upper() + '_BASE_CONTEXT=' + parent['context']) == 1, 'Downstream context or variant differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-15",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert references == [expected], 'GPU parent must use its actual SDK repository and digest'",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "assert references == [expected], 'Downstream parent must use its actual repository and digest'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
  },
  {
   "id": "compiler-llvm-tools.gpu-handoff-profile-16",
-  "target": "linux/scripts/local-proof/gpu_handoff_profile.py",
-  "find": "assert '--push' not in command and '--gates-only' not in command, 'Actual unpublished GPU build required'",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "assert '--push' not in command and '--gates-only' not in command, 'Actual unpublished downstream build required'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
@@ -50288,7 +50288,7 @@
  {
   "id": "compiler-llvm-tools.gpu-handoff-export-04",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "assert record['unit'] == args.unit and record['context'] == str(context), 'GPU export binding differs'",
+  "find": "assert record['unit'] == args.unit and record['context'] == str(context), f'{label} export binding differs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
@@ -50296,7 +50296,7 @@
  {
   "id": "compiler-llvm-tools.gpu-handoff-export-05",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "assert record['GPU_invocation'] == str(args.gpu_invocation.resolve()) and record['parent_OCI_proof_sha256'] == invocation['parent_OCI_proof_sha256'], 'GPU export input paths or SDK proof differ'",
+  "find": "assert record[label + '_invocation'] == str(invocation_path.resolve()) and record['parent_OCI_proof_sha256'] == invocation['parent_OCI_proof_sha256'], f'{label} export input paths or parent proof differ'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
@@ -50304,7 +50304,7 @@
  {
   "id": "compiler-llvm-tools.gpu-handoff-export-06",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "assert record['GPU_invocation_sha256'] == sha(args.gpu_invocation) and record['actual_image'] == actual, 'GPU export subject changed'",
+  "find": "assert record[label + '_invocation_sha256'] == sha(invocation_path) and record['actual_image'] == actual, f'{label} export subject changed'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
@@ -50312,7 +50312,7 @@
  {
   "id": "compiler-llvm-tools.gpu-handoff-export-07",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "assert record['worker_inputs_sha256'] == worker_inputs() and record['launch_status'] == 0, 'GPU export inputs changed or launch failed'",
+  "find": "assert record['worker_inputs_sha256'] == worker_inputs(kind) and record['launch_status'] == 0, f'{label} export inputs changed or launch failed'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
@@ -50320,7 +50320,7 @@
  {
   "id": "compiler-llvm-tools.gpu-handoff-export-08",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "assert child[0] == actual['manifest'] and child[1]['config']['digest'] == actual['config'], 'GPU native bytes differ'",
+  "find": "assert child[0] == actual['manifest'] and child[1]['config']['digest'] == actual['config'], f'{label} native bytes differ'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
@@ -50328,7 +50328,7 @@
  {
   "id": "compiler-llvm-tools.gpu-handoff-export-09",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "assert transport == {'producer_status':0, 'extractor_status':0}, 'GPU export producer or extractor failed'",
+  "find": "assert transport == {'producer_status':0, 'extractor_status':0}, f'{label} export producer or extractor failed'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
@@ -50336,7 +50336,7 @@
  {
   "id": "compiler-llvm-tools.gpu-handoff-export-10",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "assert not context.with_suffix('.proof.json').exists() and not context.with_suffix('.proof-stopped.json').exists(), 'Preserve sealed GPU proofs'",
+  "find": "assert not context.with_suffix('.proof.json').exists() and not context.with_suffix('.proof-stopped.json').exists(), f'Preserve sealed {label} proofs'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
@@ -50344,7 +50344,7 @@
  {
   "id": "compiler-llvm-tools.gpu-handoff-export-11",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "assert proof['stopped']['ActiveState'] == 'inactive' and proof['stopped']['MainPID'] == '0', 'GPU export did not stop'",
+  "find": "assert proof['stopped']['ActiveState'] == 'inactive' and proof['stopped']['MainPID'] == '0', f'{label} export did not stop'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
@@ -50352,7 +50352,7 @@
  {
   "id": "compiler-llvm-tools.gpu-handoff-export-12",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "assert context.parent.resolve(strict=True) == context.parent and context.name.startswith('gpu-context-'), 'Fresh plain GPU context required'",
+  "find": "assert context.parent.resolve(strict=True) == context.parent and context.name.startswith(kind + '-context-'), f'Fresh plain {label} context required'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
@@ -50360,7 +50360,7 @@
  {
   "id": "compiler-llvm-tools.gpu-handoff-export-13",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "assert re.fullmatch(r'webgpu-normal-gpu-export-amd64-[0-9-]+\\.service', args.unit), 'Unexpected GPU export unit'",
+  "find": "assert re.fullmatch(r'webgpu-normal-' + kind + r'-export-amd64-[0-9-]+\\.service', args.unit), f'Unexpected {label} export unit'",
   "replace": "pass",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Independent positive/negative OCI and command fixtures must detect lost binding or failed transport; no image, provenance authentication or hardware acceptance follows."
@@ -50392,7 +50392,7 @@
  {
   "id": "compiler-llvm-tools.gpu-handoff-export-reused-layers",
   "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
-  "find": "    sdk, reuse = verify_seed(Path(invocation['parent_OCI_proof']), context)",
+  "find": "    previous, reuse = verify_seed(Path(invocation['parent_OCI_proof']), context)",
   "replace": "    sdk, reuse = native_layout(Path(json.loads(Path(invocation['parent_OCI_proof']).read_text())['context'])), {}",
   "test": "bash linux/scripts/tests/test-gpu-handoff.sh",
   "why": "Preserve real ancestry checks, raw failures and required Wasm forwarding; fixtures do not prove image completion or hardware inference."
@@ -50604,5 +50604,269 @@
   "replace": "    max_file = MAX_TOTAL",
   "test": "bash linux/scripts/tests/test-live-configure-snapshot.sh",
   "why": "Adding the IREE profile must preserve the original MIGraphX per-file byte bound."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-profile-01",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "assert invocation['parent_source_revision'] == gpu['source_revision'], 'Media parent source differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-profile-02",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "assert invocation['GPU_layers_rehashed'] == parent['layers'], 'Media GPU layer coverage differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-profile-03",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "assert invocation['SDK_layers_matched'] == parent['matched_SDK_layers_and_diffIDs'], 'Media SDK ancestry differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-profile-04",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "assert invocation['ORT_WEB_REQUIRED'] == 1 and invocation['ORT_WASM_WEBGPU_FLAVORS'] is True, 'Both required Media Wasm modes must be retained'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-profile-05",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "assert invocation['command'].count('ORT_WEB_REQUIRED=1') == invocation['command'].count('ORT_WASM_WEBGPU_FLAVORS=true') == 1, 'Media Wasm command flags differ'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-profile-06",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "assert Path(invocation['output']) == invocation_path.resolve().parent, 'Media output binding differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-profile-07",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "assert sha(gpu_path) == invocation['GPU_invocation_sha256'] and sha(proof_path) == invocation['parent_OCI_proof_sha256'], 'Media parent receipt bytes changed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-profile-08",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "assert proof['status'] == STATUS and proof['Media_invocation'] == str(invocation_path.resolve()), 'Media OCI proof scope differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-profile-09",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "assert proof['Media_invocation_sha256'] == sha(invocation_path), 'Media invocation bytes changed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-profile-10",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "assert proof['source_revision'] == invocation['source_revision'], 'Media OCI source differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-profile-11",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "assert proof['parent_OCI_proof_sha256'] == invocation['parent_OCI_proof_sha256'], 'Media OCI GPU proof differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-profile-12",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "assert proof['export_transport'] == {'producer_status': 0, 'extractor_status': 0} and proof['parent_layer_reuse_verified'], 'Media export transport failed'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-profile-13",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "assert proof['matched_GPU_layers_and_diffIDs'] == parent['layers'], 'Media GPU coverage differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-profile-14",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "assert proof['manifest'] == actual['manifest'] and proof['config'] == actual['config'], 'Engine Media image differs'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-profile-15",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "assert invocation[field] == gpu[field], 'Media must retain its exact proven GPU source'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent real-byte and command fixtures reject lost Media source, GPU parent, Wasm flags, receipt or engine binding; no real build or FINAL acceptance follows."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-stage-domain",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "assert stage in {'gpu', 'media', 'android'} and invocation['target_arch'] == 'amd64', 'Unreviewed ordinary downstream stage'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-parent-record-domain",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "assert parent_kind in {'GPU', 'Media'}, 'Unreviewed downstream parent kind'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-source-record-sha",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "'source_full_preflight_sha256': invocation['source_full_preflight_sha256']",
+  "replace": "'source_full_preflight_sha256': 'wrong'",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-source-record-flags",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "'source_full_preflight_passed': True, 'producer_source_unchanged': True",
+  "replace": "'source_full_preflight_passed': False, 'producer_source_unchanged': False",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-parent-invocation-sha",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "parent_kind + '_invocation_sha256': sha(invocation_path)",
+  "replace": "parent_kind + '_invocation_sha256': sha(proof_path)",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-parent-proof-sha",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "'parent_OCI_proof_sha256': sha(proof_path)",
+  "replace": "'parent_OCI_proof_sha256': sha(invocation_path)",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-export-kind-domain",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "assert kind in EXPORTS, 'Unreviewed native downstream export'",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-export-parent-scope",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "'media': ('Media', 'GPU', MEDIA_STATUS)",
+  "replace": "'media': ('Media', 'SDK', STATUS)",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-export-worker-closure",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "if kind == 'media':",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-export-dispatch-kind",
+  "target": "linux/scripts/local-proof/gpu-oci-handoff.py",
+  "find": "return launch(args, plan, invocation, actual, kind) if args.action == 'launch' else seal(args, invocation, parent, actual, kind)",
+  "replace": "return launch(args, plan, invocation, actual) if args.action == 'launch' else seal(args, invocation, parent, actual)",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-export-entry-kind",
+  "target": "linux/scripts/local-proof/media-oci-handoff.py",
+  "find": "return TRANSPORT['main_for']('media', load_media)",
+  "replace": "return TRANSPORT['main_for']('gpu', load_media)",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-android-load-binding",
+  "target": "linux/scripts/local-proof/launch-normal-android.py",
+  "find": "load_media(args.compiler_plan, args.media_invocation)",
+  "replace": "load_media(args.compiler_plan, args.parent_proof)",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-android-native-binding",
+  "target": "linux/scripts/local-proof/launch-normal-android.py",
+  "find": "media_layout(args.parent_proof, args.media_invocation, invocation, gpu)",
+  "replace": "media_layout(args.parent_proof, args.compiler_plan, invocation, gpu)",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-android-stage",
+  "target": "linux/scripts/local-proof/launch-normal-android.py",
+  "find": "'android', 'amd64',",
+  "replace": "'media', 'amd64',",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-android-record-parent",
+  "target": "linux/scripts/local-proof/launch-normal-android.py",
+  "find": "parent, 'Media')",
+  "replace": "parent, 'GPU')",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-android-canonical-tag",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "'android':'cross_android_tag'",
+  "replace": "'android':'cross_media_tag'",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-native-media-parent",
+  "target": "linux/scripts/local-proof/native_oci_seed.py",
+  "find": ", MEDIA_STATUS}",
+  "replace": "}",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Independent native-byte and command fixtures must reject changed Media/Android scope, parent/source identity or failed transport; this proves no real build, authenticated receipt or FINAL acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.media-handoff-native-ancestry",
+  "target": "linux/scripts/local-proof/media_handoff_profile.py",
+  "find": "    layer_ancestry(native, gpu, parent['layers'])",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-media-handoff.sh",
+  "why": "Valid but unrelated Media blobs must not replace the exact recorded GPU layer descriptors and diffIDs."
  }
 ]

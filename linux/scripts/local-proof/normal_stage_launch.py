@@ -11,10 +11,46 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from native_oci_layout import sha
 from proof_commands import checked_run
 
 if TYPE_CHECKING:
     from proof_types import Json
+
+
+def validate_stage_invocation(invocation: Json, parent: Json, stage: str, parent_image: str) -> None:
+    assert stage in {'gpu', 'media', 'android'} and invocation['target_arch'] == 'amd64', 'Unreviewed ordinary downstream stage'
+    assert re.fullmatch(r'webgpu-normal-' + stage + r'-amd64-[0-9-]+\.service', invocation['unit']), 'Unexpected downstream producer unit'
+    assert invocation['launch_status'] == 0 and invocation['publication'] is False, 'Successful unpublished downstream launch required'
+    assert invocation['source_full_preflight_passed'] and invocation['producer_source_unchanged'], 'Downstream source proof was not retained'
+    for field in ('manifest', 'config'):
+        assert invocation['parent_' + field] == parent[field], 'Downstream parent identity differs'
+    assert invocation['parent_OCI_index_sha256'] == parent['index_sha256'], 'Downstream parent index differs'
+    source, output = Path(invocation['source']), Path(invocation['output'])
+    suffix = {'gpu': ':cross-toolchain-rocm-amd64', 'media': ':cross-media-rocm-amd64', 'android': ':cross-android-rocm-amd64'}[stage]
+    repo = invocation['image'].removesuffix(suffix)
+    assert repo.startswith('ant-local/webgpu-') and invocation['image'] == repo + suffix, 'Unexpected local downstream image'
+    command = invocation['command']
+    assert command[:2] == ['systemd-run', '--user'] and '--expand-environment=no' in command, 'Downstream transport differs'
+    assert command[-10:] == ['/bin/bash', str(source / 'linux/scripts/build-cross-stage.sh'), '--stage', stage, '--arch', 'amd64', '--image-repo', repo, '--log-dir', str(output / 'logs')], 'Downstream stage command differs'
+    assert command.count('CROSS_VARIANT=rocm') == 1 and command.count('CROSS_' + stage.upper() + '_BASE_CONTEXT=' + parent['context']) == 1, 'Downstream context or variant differs'
+    references = [item for item in command if item.startswith('CROSS_' + stage.upper() + '_BASE_IMAGE=')]
+    expected = 'CROSS_' + stage.upper() + '_BASE_IMAGE=' + parent_image.rsplit(':', 1)[0] + '@' + parent['manifest']
+    assert references == [expected], 'Downstream parent must use its actual repository and digest'
+    assert '--push' not in command and '--gates-only' not in command, 'Actual unpublished downstream build required'
+
+
+def downstream_record(invocation: Json, invocation_path: Path, proof_path: Path, parent: Json, parent_kind: str) -> Json:
+    assert parent_kind in {'GPU', 'Media'}, 'Unreviewed downstream parent kind'
+    return {'source_revision': invocation['source_revision'], 'parent_source_revision': invocation['source_revision'],
+            'source_full_preflight_proof': invocation['source_full_preflight_proof'],
+            'source_full_preflight_sha256': invocation['source_full_preflight_sha256'],
+            'source_full_preflight_passed': True, 'producer_source_unchanged': True,
+            parent_kind + '_invocation': str(invocation_path.resolve()),
+            parent_kind + '_invocation_sha256': sha(invocation_path),
+            'parent_OCI_proof': str(proof_path.resolve()), 'parent_OCI_proof_sha256': sha(proof_path),
+            'parent_manifest': parent['manifest'], 'parent_config': parent['config'],
+            'parent_OCI_index_sha256': parent['index_sha256']}
 
 
 def full_source(source: Path, proof_path: Path, revision: str) -> Json:
@@ -49,14 +85,14 @@ def host_admission(unit: str, output: Path, image: str) -> Path:
 
 def launch_stage(source: Path, output: Path, unit: str, repo: str, stage: str, arch: str,
                  context: Path, reference: str, required_bytes: int, record: Json, variant: str = '') -> int:
-    assert stage in {'sdk', 'gpu', 'media'} and variant in {'', 'rocm'}, 'Unreviewed stage profile'
-    assert (stage in {'gpu', 'media'}) == bool(variant) and (stage == 'sdk' or arch == 'amd64'), 'Unreviewed GPU architecture'
+    assert stage in {'sdk', 'gpu', 'media', 'android'} and variant in {'', 'rocm'}, 'Unreviewed stage profile'
+    assert (stage in {'gpu', 'media', 'android'}) == bool(variant) and (stage == 'sdk' or arch == 'amd64'), 'Unreviewed GPU architecture'
     assert repo.startswith('ant-local/webgpu-') and ':' not in repo and '@' not in repo, 'Local candidate repository required'
     assert re.fullmatch(r'webgpu-normal-' + stage + '-' + arch + r'-[0-9-]+\.service', unit), 'Unexpected stage unit'
     image = checked_run(['bash', '-euo', 'pipefail', '-c',
                          '_TAG_NAMING_SH_LOADED=; source "$1"; IMAGE_REPO="$2"; CROSS_VARIANT="$3"; "$4" "$5"',
                          'normal-stage-tag', str(source / 'linux/scripts/01-core/tag-naming.sh'), repo, variant,
-                         {'gpu':'cross_gpu_tag', 'sdk':'cross_sdk_tag', 'media':'cross_media_tag'}[stage], arch]).stdout.strip()
+                         {'gpu':'cross_gpu_tag', 'sdk':'cross_sdk_tag', 'media':'cross_media_tag', 'android':'cross_android_tag'}[stage], arch]).stdout.strip()
     temporary = host_admission(unit, output, image)
     sys.path.insert(0, str(source / 'linux/scripts'))
     disk = runpy.run_path(str(source / 'linux/scripts/launch-migraphx-configure-proof.py'))['require_build_disk'](output.parent)

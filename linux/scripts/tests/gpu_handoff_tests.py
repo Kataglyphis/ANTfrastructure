@@ -9,7 +9,6 @@ import importlib
 import io
 import json
 import runpy
-import shutil
 import subprocess
 import sys
 import unittest
@@ -19,7 +18,7 @@ from typing import TYPE_CHECKING
 from unittest import mock
 
 import normal_stage_tests as fixtures
-from native_oci_seed_tests import SEED, layout
+from native_oci_seed_tests import SEED, layout, seeded_copy
 
 if TYPE_CHECKING:
     from typing import Any
@@ -252,13 +251,13 @@ class HandoffTests(unittest.TestCase):
                                   unit='webgpu-normal-gpu-export-amd64-99999999-1.service')
 
     def launch_export(self, args: argparse.Namespace, *, available: int = 200 * 1024**3, status: int = 0,
-                      state: str = 'not-found') -> int:
+                      state: str = 'not-found', kind: str = 'gpu', invocation: dict[str, Any] | None = None) -> int:
         common = dict(CLI['COMMON'],state=mock.Mock(return_value={'LoadState':state}))
         with mock.patch.dict(CLI['launch'].__globals__,{'COMMON':common}), \
                 mock.patch.object(runpy,'run_path',return_value={'require_build_disk':mock.Mock(return_value={'available_bytes':available})}), \
                 mock.patch.object(subprocess,'run',return_value=subprocess.CompletedProcess([],status,'transport-out','transport-err')), \
                 mock.patch.object(sys,'path',sys.path.copy()), redirect_stdout(io.StringIO()):
-            return CLI['launch'](args,self.plan,self.gpu,self.image_identity)
+            return CLI['launch'](args,self.plan,invocation or self.gpu,self.image_identity,kind)
 
     def test_export_launch_binds_immutable_image_parent_and_raw_transport(self) -> None:
         args = self.export_args()
@@ -294,15 +293,7 @@ class HandoffTests(unittest.TestCase):
 
     def sealed_export_fixture(self) -> tuple[argparse.Namespace, dict[str, Any]]:
         _,context,_ = self.native_gpu()
-        original = self.work / 'fixture OCI layout'
-        context.rename(original)
-        context.mkdir()
-        SEED['seed_layers'](self.parent_path,context)
-        for path in original.rglob('*'):
-            target = context / path.relative_to(original)
-            if path.is_file() and not target.exists():
-                target.parent.mkdir(parents=True,exist_ok=True)
-                shutil.copy2(path,target)
+        seeded_copy(self.parent_path,context)
         Path(str(context) + '.transport.json').write_text(json.dumps({'producer_status':0,'extractor_status':0}))
         args = self.export_args()
         args.context = context
@@ -313,14 +304,15 @@ class HandoffTests(unittest.TestCase):
         context.with_suffix('.invocation.json').write_text(json.dumps(record))
         return args,record
 
-    def seal_export(self, args: argparse.Namespace, *, fail_stop: bool = False, still_running: bool = False) -> int:
+    def seal_export(self, args: argparse.Namespace, *, fail_stop: bool = False, still_running: bool = False,
+                    kind: str = 'gpu', invocation: dict[str, Any] | None = None, parent: dict[str, Any] | None = None) -> int:
         stopped = {'ActiveState':'active','MainPID':'1'} if still_running else {'ActiveState':'inactive','MainPID':'0'}
         common = dict(CLI['COMMON'],state=mock.Mock(return_value=stopped))
         stop = mock.Mock(return_value=subprocess.CompletedProcess([],0,'',''))
         if fail_stop:
             stop.side_effect = subprocess.CalledProcessError(47,['systemctl','stop'])
         with mock.patch.dict(CLI['seal'].__globals__,{'COMMON':common,'terminal':mock.Mock(return_value=self.success),'checked_run':stop}), redirect_stdout(io.StringIO()):
-            return CLI['seal'](args,self.gpu,self.parent,self.image_identity)
+            return CLI['seal'](args,invocation or self.gpu,parent or self.parent,self.image_identity,kind)
 
     def test_export_seal_hashes_real_blobs_and_preserves_parent_links(self) -> None:
         args,_ = self.sealed_export_fixture()
@@ -396,7 +388,7 @@ class HandoffTests(unittest.TestCase):
     def test_export_inputs_bind_every_runtime_companion(self) -> None:
         hashes = CLI['worker_inputs']()
         self.assertEqual({Path(path).name for path in hashes},{'context-management.sh','native_oci_seed.py',
-                         'native_oci_layout.py','native-oci-handoff.py','gpu_handoff_profile.py','gpu-oci-handoff.py'})
+                         'native_oci_layout.py','native-oci-handoff.py','normal_stage_launch.py','gpu_handoff_profile.py','gpu-oci-handoff.py'})
         for path,sha256 in hashes.items():
             self.assertEqual(fixtures.sha(Path(path)),sha256)
 
@@ -410,7 +402,7 @@ class HandoffTests(unittest.TestCase):
                  'actual_image':mock.Mock(return_value=self.image_identity),'launch':launch}):
             self.assertEqual(CLI['main'](),47)
             self.assertEqual(launch.call_args.args[0].context,args.context)
-            self.assertEqual(launch.call_args.args[1:],(self.plan,self.gpu,self.image_identity))
+            self.assertEqual(launch.call_args.args[1:],(self.plan,self.gpu,self.image_identity,'gpu'))
 
     def test_gpu_cli_rejects_wrong_unit_context_and_symlink_parent(self) -> None:
         args = self.export_args()

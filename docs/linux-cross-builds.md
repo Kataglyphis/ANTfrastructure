@@ -151,6 +151,8 @@ The runtime helpers share initialization logic via
 `build-runtime-manifest.sh` reach it by sourcing `lib-orchestrator.sh`, which
 loads it inside `runtime_flow_preamble()`.
 
+For the reviewed local ROCm amd64 sequence, the [native Media-to-Android host profile](local-proof-workflows.md#native-media-to-android-handoff) binds a completed Media producer to its own native GPU ancestry before normal Android. This explicit handoff preserves the no-push resume refusal below; actual runtime and digest-specific FINAL consumer receipts remain required.
+
 Standalone single-stage rebuild commands:
 [§ The command reference AGENTS.md used to carry](#the-command-reference-agentsmd-used-to-carry).
 
