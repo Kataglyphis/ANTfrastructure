@@ -957,6 +957,7 @@ transcript. Each was a child that outlived whatever started it. So:
    `sleep 60`); a fixture that only a kill can end outlives every interrupted run.
    Fixtures unrelated to ref resolution use a synthetic immutable app identity;
    moving-ref resolution belongs to `test-app-ref.sh`, not a graph dry-run.
+   Chain lifecycle fixtures disable inherited BuildKit and image-store pruning; sentinel engines prove that isolation.
    Graph/runtime fixtures also use disposable context directories and immutable parent pins.
    Host-executed consumer-probe fixtures use native utility paths and explicit fixture tools; keep the outer runner PATH intact.
    `run-tests.sh` gives each suite its own `TMPDIR` and fails one that leaves an entry there: use

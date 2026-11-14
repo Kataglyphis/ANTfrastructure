@@ -34,6 +34,15 @@ caller retains its protected-slug and next-runtime threshold logic. The lifecycl
 `test-storage-sdk-refactors.sh` exercise refusals and fallback ordering without pruning a real
 build cache.
 
+## Fixture host isolation
+
+`test-chain-lifecycle.sh` disables `CROSS_BUILDKIT_PRUNE` and `CROSS_IMAGE_PRUNE`
+before exercising low-disk refusals. Its explicit fallback doubles still prove
+recovery order and refusals. A separate isolation suite runs it with both inherited
+permissions enabled and sentinel engine executables, and rejects attempted pruning
+or service maintenance. Removing either fixture override must fail that suite.
+This proves fixture isolation, not real daemon behavior or the amount of space reclaimed.
+
 ## 1. The tiers
 
 | # | Tier | Wired at | Covers | Stored in | Destroyed by |

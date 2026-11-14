@@ -49,6 +49,12 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Next image build — GPU consumer findings
 
+**Qualification finding, 2026-11-14:** native preflight at private `2383a9fb`
+was stopped after lifecycle mutation fixtures reached the real Linux BuildKit
+prune client. The isolated correction disables both host prune permissions and
+adds sentinel-engine coverage. Full qualification of the corrected commit remains
+required; the separate running Windows CUDA build keeps its unchanged source.
+
 **Windows evidence, 2026-11-14, private source `d9f129af`:** the NVIDIA producer
 passes its audited three-request chain (raw 1/1/0) and 319 smoke assertions with
 two retained skips. Fresh image-bound CPU/CUDA/TensorRT MatMul and negative

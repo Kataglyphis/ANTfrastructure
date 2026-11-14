@@ -38975,5 +38975,21 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-recipe-pytest.sh",
   "why": "pytest runs with the recipe venv active, so a test that starts python3 itself finds that venv, not the image's /opt/venv."
+ },
+ {
+  "id": "disk-guard.lifecycle-fixture-buildkit-prune-disabled",
+  "target": "linux/scripts/tests/test-chain-lifecycle.sh",
+  "find": "export CROSS_BUILDKIT_PRUNE=0 CROSS_IMAGE_PRUNE=0",
+  "replace": "export CROSS_BUILDKIT_PRUNE=1 CROSS_IMAGE_PRUNE=0",
+  "test": "bash linux/scripts/tests/test-chain-lifecycle-engine-isolation.sh",
+  "why": "a low-disk lifecycle fixture must not inherit permission to prune the host BuildKit store before its recovery doubles are installed"
+ },
+ {
+  "id": "disk-guard.lifecycle-fixture-image-prune-disabled",
+  "target": "linux/scripts/tests/test-chain-lifecycle.sh",
+  "find": "export CROSS_BUILDKIT_PRUNE=0 CROSS_IMAGE_PRUNE=0",
+  "replace": "export CROSS_BUILDKIT_PRUNE=0 CROSS_IMAGE_PRUNE=1",
+  "test": "bash linux/scripts/tests/test-chain-lifecycle-engine-isolation.sh",
+  "why": "disabling only BuildKit still leaves the lifecycle fixture able to prune or retire real images through the image-store fallback"
  }
 ]

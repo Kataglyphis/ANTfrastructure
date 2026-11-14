@@ -16,6 +16,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — isolate chain lifecycle fixtures from host pruning
+
+- Disable inherited BuildKit and image-store prune permissions before lifecycle
+  tests exercise low-disk refusals; keep explicit recovery doubles intact.
+- Check the fixture with sentinel engines so either missing override fails
+  without touching a host store or service.
+
 ## 2026-11-14 — align the general cleanup fixture with decimal MB
 
 - Correct the general daemon-prune fixture's 100-GiB expectation to 107375 MB,
