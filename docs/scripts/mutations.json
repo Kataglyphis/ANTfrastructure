@@ -49444,5 +49444,261 @@
   "replace": "choices=PROFILES, default='native-amdgpu'",
   "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
   "why": "The additional profile remains an explicit opt-in and preserves default callers."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-layout-version",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert json.loads(metadata['oci-layout']) == {'imageLayoutVersion': '1.0.0'}",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Unknown OCI cache layouts must refuse."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-single-manifest",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert index['schemaVersion'] == 2 and len(index['manifests']) == 1",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Ambiguous cache selections must refuse."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-manifest-type",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert selected['mediaType'] == MANIFEST",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Unsupported manifest types must refuse."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-cache-config",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert manifest['schemaVersion'] == 2 and manifest['config']['mediaType'] == CONFIG",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "An ordinary image config is not a BuildKit cache."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-nonempty-layers",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert manifest['layers']",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "A layer-free cache cannot seed the intended build."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-descriptor-conflict",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert row['digest'] not in records or records[row['digest']] == row",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Repeated digests must retain one exact descriptor."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-successful-terminal",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert terminal['LoadState'] == 'loaded' and terminal['Result'] == 'success'",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "A failed or missing producer cannot authorize transport."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-raw-status",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert terminal['MainPID'] == '0' and terminal['ExecMainStatus'] == '0'",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Live and failed producer command statuses remain visible."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-exited-terminal",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert terminal['ActiveState'] == 'active' and terminal['SubState'] == 'exited'",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "A loaded successful exited terminal is required."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-stopped-proof",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert stopped['ActiveState'] == 'inactive' and stopped['MainPID'] == '0'",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "A terminal observation is insufficient before stopping the producer."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-unit-binding",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert unit == stopped['Id'] and unit.endswith('.service') and not unit.startswith('-')",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Terminal and stopped records must name the same unit."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-current-idle",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert current == {'ActiveState': 'inactive', 'MainPID': '0'}",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "A historical receipt cannot excuse a currently live producer."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-fresh-destination",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert not destination.exists() and not destination.is_symlink()",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Existing cache destinations must be preserved."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-fresh-receipt",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert not receipt.exists() and not receipt.is_symlink()",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Existing transport evidence must be preserved."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-disjoint-paths",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert not destination.is_relative_to(source) and not source.is_relative_to(destination), 'Cache paths overlap'",
+  "replace": "assert True, 'Cache paths overlap'",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Parent and child cache trees cannot overlap."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-receipt-outside",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert not receipt.absolute().is_relative_to(source) and not receipt.absolute().is_relative_to(destination)",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "A transport receipt cannot modify the cache source."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-same-filesystem",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert source.stat().st_dev == destination.parent.stat().st_dev",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Cross-filesystem copies cannot silently replace hard-link sharing."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-stable-metadata",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert all((source / name).read_bytes() == data for name, data in metadata.items())",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "A source index changed during transfer cannot pass."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-stable-producer-proof",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert sha(proof_path) == proof_hash and stopped_producer(proof_path) == unit",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "The producer proof remains bound through the transfer."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-receipt-contract",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert record['schema_version'] == 1 and record['status'] == STATUS",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Reverification requires the declared transport receipt contract."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-proof-revalidation",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert sha(proof) == record['producer_proof_sha256'] and stopped_producer(proof) == record['producer_unit']",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "A changed proof or producer identity invalidates the receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-inventory-revalidation",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert metadata == source_metadata and records == source_records == record['descriptors']",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Receipt descriptors must match both real cache trees."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-metadata-revalidation",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert record['metadata_sha256'] == {name: sha(destination / name) for name in METADATA}",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Mutable metadata retains its exact recorded hashes."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-independent-metadata",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert not (source / name).samefile(destination / name)",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "The next cache export must not overwrite its source metadata."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-shared-blobs",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert descriptor_path(source, row).samefile(descriptor_path(destination, row))",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Verified transport must retain actual immutable blob sharing."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-blob-accounting",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert record['verified_unique_blobs'] == len(records)",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Duplicate descriptors cannot inflate blob accounting."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-byte-accounting",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert record['shared_unique_bytes'] == sum(row['size'] for row in records)",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Shared bytes must match the verified unique descriptors."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-no-acceptance",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert record['cache_hits_claimed'] is record['image_accepted'] is record['publication'] is False",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "Cache transport cannot become a cache-hit or image acceptance receipt."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-single-rendered-build",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert len(builds) == 1",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "A supplied dry run must select exactly one build command."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-rendered-image",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert [value for flag, value in pairs if flag == '-t'] == [image]",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "The cache import check binds the intended actual image tag."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-rendered-cache-enabled",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert '--no-cache' not in command",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "A dry run that disables caching cannot pass cache-import admission."
+ },
+ {
+  "id": "compiler-llvm-tools.cache-transfer-rendered-local-import",
+  "target": "linux/scripts/local-proof/buildcache_transfer.py",
+  "find": "assert imports == ['type=local,src=' + record['destination']]",
+  "replace": "assert True",
+  "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
+  "why": "The normal command must import exactly the transferred local cache namespace."
  }
 ]

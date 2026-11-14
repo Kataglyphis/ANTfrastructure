@@ -31,6 +31,10 @@ GPU inference. Keep raw failed-build and cache evidence.
 
 Use the actual normal GPU invocation, matching live build-image or outer RUN PID and its private relative build directory. Missing, linked, oversized or changed inputs, a reused output or a changed process start fail before a passed observation. Preserve partial evidence and choose a fresh output for a later attempt. The producer is never repaired or paused by this reader. See [live configure snapshots](local-proof-workflows.md#live-configure-snapshots).
 
+## Unchanged compiler inputs still rebuild after changing the local cache namespace
+
+A new image repository or `BUILDKIT_CACHE_DIR` selects a different stage-cache path. Byte-identical GNU mounts establish only equal input boundaries; without the old index in that path the normal driver emits no local `--cache-from`. Preserve a completed producer's cache with [the versioned transfer helper](local-proof-workflows.md#local-buildkit-cache-transfer), select the actual driver path and retain a dry run proving that import before starting the next build. Hard-link only immutable blobs and copy mutable metadata separately. Do not edit a live plan or cache export, restart a running producer for hits, or report source equality as an observed cache hit.
+
 ## Live compiler-cache reader rejects a changed log inode
 
 The bounded reader refuses a missing, linked, oversized or replaced `sccache.log`. Keep that failure and inspect the original producer; do not create or replace its log to obtain a receipt. A normal MIGraphX RUN uses the explicit MIGraphX reader profile and actual build-image PID, rather than a compiler label. A partial timeout cannot prove complete retention. See [live cache log retention](local-proof-workflows.md#live-cache-log-retention).
