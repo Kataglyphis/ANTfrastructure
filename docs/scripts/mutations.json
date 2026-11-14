@@ -38175,5 +38175,21 @@
   "replace": "encoding=\"utf-8\", start_new_session=True)",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "A test that prints bytes that are not UTF-8 keeps its verdict; strict decoding crashed the whole run."
+ },
+ {
+  "id": "recipe-pytest.venv-synced-per-recipe",
+  "target": "linux/scripts/02-toolchain/python/recipe-pytest.sh",
+  "find": "  if [ ! -f \"${venv}/.synced\" ]; then\n",
+  "replace": "  if true; then\n",
+  "test": "bash linux/scripts/tests/test-recipe-pytest.sh",
+  "why": "Recipes with the same Python, extras and lock share one synced venv instead of syncing it again for each copy."
+ },
+ {
+  "id": "recipe-pytest.lock-ignored",
+  "target": "linux/scripts/02-toolchain/python/recipe-pytest.sh",
+  "find": "lock_key=\"$(cat pyproject.toml uv.lock 2>/dev/null | sha256sum | cut -c1-12)\"",
+  "replace": "lock_key=\"fixed\"",
+  "test": "bash linux/scripts/tests/test-recipe-pytest.sh",
+  "why": "A changed lock is synced into a new venv, never into one built from the old lock."
  }
 ]

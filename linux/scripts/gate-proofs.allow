@@ -227,3 +227,4 @@ mutation-family:cmake-msvc-notice
 mutation-family:amd64-v3
 mutation-family:intel-gpu
 mutation-family:dispatch-lanes
+mutation-family:recipe-pytest

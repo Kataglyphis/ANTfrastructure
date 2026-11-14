@@ -532,6 +532,18 @@ Tests: `linux/scripts/tests/test-python-ci-defaults.sh`, mutations
 `python.ci-tests-free-threaded-leg-syncs-its-own-extras` and
 `python.ci-tests-experimental-sync-failure-is-annotated`.
 
+## Mutation recipes on the pinned Python
+
+A consumer's mutation recipe runs one pytest selection against a mutated copy of the repository.
+`linux/scripts/02-toolchain/python/recipe-pytest.sh [--extra NAME]... [--] PYTEST_ARGS` runs it on
+`DEFAULT_PYTHON_VERSION`, the pinned `PYTHON_VERSION`, with the venv `uv_venv_create` and
+`uv_sync_project` build for the test leg (the chain's ORT in place of PyPI's, Trap 3), so a recipe never
+names a Python of its own. Each copy is new, so the venv lives under `$RECIPE_PYTEST_VENV_ROOT` (`/tmp`),
+synced once per Python, extras and `pyproject.toml`+`uv.lock`, behind a `flock` for parallel recipes;
+pytest then runs as `python -m pytest` from the copy's root, which imports the mutated package. Inside
+the family image only: on a bare runner PyPI has no ORT or GenAI wheel for the pinned Python, which is
+what `mutation-gates.yml`'s `in-image: true` is for. Tests: `linux/scripts/tests/test-recipe-pytest.sh`.
+
 ## The Windows build driver
 
 The reusable lane's optional `lint-powershell` job calls the standalone
