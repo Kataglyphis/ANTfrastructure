@@ -7074,8 +7074,8 @@
  {
   "id": "mutations.timeout-kills-tree",
   "target": "docs/scripts/verify_mutations.py",
-  "find": "                            stderr=subprocess.PIPE, text=True, start_new_session=True)",
-  "replace": "                            stderr=subprocess.PIPE, text=True, start_new_session=False)",
+  "find": "encoding=\"utf-8\", errors=\"replace\", start_new_session=True)",
+  "replace": "encoding=\"utf-8\", errors=\"replace\", start_new_session=False)",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "a timed-out test left its grandchildren running; one orphan burned CPU for twenty minutes"
  },
@@ -38887,5 +38887,13 @@
   "replace": "Write-SccacheStatsToStderr -Advanced -RequireRemote\nInvoke-NinjaBuildWithRetry -BuildDir $BuildDir -Install -InstallConfig $BuildType",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.HailortCache.Tests.ps1",
   "why": "The statistics snapshot must follow the real Hailo Ninja build."
+ },
+ {
+  "id": "mutations.test-output-undecodable",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "encoding=\"utf-8\", errors=\"replace\", start_new_session=True)",
+  "replace": "encoding=\"utf-8\", start_new_session=True)",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "A test that prints bytes that are not UTF-8 keeps its verdict; strict decoding crashed the whole run."
  }
 ]

@@ -220,9 +220,9 @@ def _run_test_process(
     cmd: str, root: str, timeout: float, env: dict[str, str] | None,
 ) -> tuple[int | None, bool, str]:
     """Keep raw results and reap every test child before its private cache is removed."""
-    proc = subprocess.Popen(cmd, shell=True, cwd=root, stdin=subprocess.DEVNULL,
-                            stdout=subprocess.PIPE, env=env,
-                            stderr=subprocess.PIPE, text=True, start_new_session=True)
+    # errors="replace": a fuzz test prints the raw input it failed on, and one byte that is not UTF-8 crashed the run.
+    proc = subprocess.Popen(cmd, shell=True, cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, env=env,
+                            stderr=subprocess.PIPE, encoding="utf-8", errors="replace", start_new_session=True)
     with _LIVE_LOCK:
         _LIVE_GROUPS.add(proc.pid)
     reap_lock = threading.Lock()

@@ -1064,7 +1064,11 @@ paths outside the caller checkout and empty shards before running
 before reading or writing, including through a symlinked parent. An optional
 setup script runs once inside each disposable mirror before any baseline test;
 this makes a local `.venv` created by `uv sync` available to that mirror's tests.
-Setup failure is fatal and the caller checkout is not modified. Mutation logs are
+Setup failure is fatal and the caller checkout is not modified. With `in-image: true`
+the proving step runs inside the family CI image (`IMAGE_REGISTRY_PREFIX:CI_IMAGE_LINUX_TAG`
+from `versions.env`), mounted at the caller's own path, so a recipe gets the image's pinned
+`PYTHON_VERSION` and its chain-built wheels: PyPI has no ORT or GenAI wheel for that Python, so
+the bare runner cannot install an app extra on it. Mutation logs are
 uploaded from ignored `logs/code-quality/mutations/`. Each consumer owns its
 recipes because each recipe must break one of that consumer's guarantees.
 
@@ -1089,7 +1093,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4859 entries** over **656 distinct test commands**; both digits are
+manifest holds **4860 entries** over **656 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1442,7 +1446,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 104 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 105 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
@@ -1911,7 +1915,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 104 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 105 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
