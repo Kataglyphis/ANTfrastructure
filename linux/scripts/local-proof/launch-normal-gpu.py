@@ -9,6 +9,7 @@ import runpy
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from gpu_source_profile import select_gpu_source
 from native_oci_layout import layer_ancestry, sha
 from native_oci_seed import parent_layout
 from normal_stage_launch import full_source, launch_stage
@@ -45,6 +46,8 @@ def main() -> int:
         parser.add_argument('--' + name, required=True, type=Path)
     parser.add_argument('--unit', required=True)
     parser.add_argument('--image-repo', required=True)
+    parser.add_argument('--gpu-source', type=Path)
+    parser.add_argument('--gpu-source-proof', type=Path)
     args = parser.parse_args()
     plan = json.loads(args.compiler_plan.read_text())
     source = Path(plan['source'])
@@ -53,7 +56,9 @@ def main() -> int:
     parent, context = sdk_parent(plan, args.sdk_invocation, args.parent_proof)
     sdk = json.loads(args.sdk_invocation.read_text())
     assert sdk['source'] == str(source) and sdk['source_revision'] == plan['source_revision'], 'GPU must use the exact reviewed SDK source'
-    record = {'source_revision':plan['source_revision'], 'variant':'rocm', 'stage':'gpu',
+    source, revision, full_path, source_review = select_gpu_source(plan, args.gpu_source, args.gpu_source_proof)
+    record = {'source_revision':revision, 'parent_source_revision':plan['source_revision'],
+              'GPU_source_review':source_review, 'variant':'rocm', 'stage':'gpu',
               'source_full_preflight_proof':str(full_path), 'source_full_preflight_sha256':sha(full_path),
               'source_full_preflight_passed':True, 'producer_source_unchanged':True,
               'SDK_invocation':str(args.sdk_invocation.resolve()), 'SDK_invocation_sha256':sha(args.sdk_invocation),

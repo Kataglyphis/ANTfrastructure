@@ -18,7 +18,7 @@ migraphx_hip_compile() {
   local hip_status=0
   local -a hip_args=("${clang_root}/bin/clang++" "--gcc-toolchain=${gcc_root}"
     "--rocm-path=${rocm}" "-I${rocm}/include" -D__HIP_PLATFORM_AMD__=1
-    --offload-arch=gfx1030 --cuda-device-only -std=c++17 -x hip "$@")
+    --offload-arch=gfx1030 --cuda-device-only --no-gpu-bundle-output -std=c++17 -x hip "$@")
   printf '%s\0' "${hip_args[@]}" > "${work}/hip-argv.nul" || return
   "${hip_args[@]}" > "${work}/hip-stdout.txt" 2> "${work}/hip-stderr.txt" || hip_status=$?
   printf '%s\n' "${hip_status}" > "${work}/hip-status.txt" || return
@@ -27,7 +27,7 @@ migraphx_hip_compile() {
 
 migraphx_hip_verify() {
   local hip_machine
-  hip_machine="$(elf_machine_name "$1")" || return
+  hip_machine="$(elf_machine_name "$1")" || { printf 'HIP probe output is not a readable ELF device object\n' >&2; return 1; }
   printf '%s\n' "${hip_machine}" > "${work}/hip-machine.txt" || return
   [[ "${hip_machine}" == 'AMD GPU' ]] || { printf 'HIP probe did not emit an AMDGPU ELF object\n' >&2; return 1; }
   cp -- "$1" "${work}/hip-device.o" || return

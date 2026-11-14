@@ -49152,8 +49152,8 @@
  {
   "id": "lib.mgx-HIP-device-only",
   "target": "linux/scripts/03-media/build/migraphx/check-hip-compiler.sh",
-  "find": "--cuda-device-only -std=c++17",
-  "replace": "-std=c++17",
+  "find": "--cuda-device-only --no-gpu-bundle-output -std=c++17",
+  "replace": "--no-gpu-bundle-output -std=c++17",
   "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
   "why": "A host-only object is insufficient; retain the explicit device compile mode."
  },
@@ -49700,5 +49700,133 @@
   "replace": "assert True",
   "test": "bash linux/scripts/tests/test-buildcache-transfer.sh",
   "why": "The normal command must import exactly the transferred local cache namespace."
+ },
+ {
+  "id": "lib.mgx-HIP-raw-device-output",
+  "target": "linux/scripts/03-media/build/migraphx/check-hip-compiler.sh",
+  "find": "--no-gpu-bundle-output ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "The ELF verifier requires raw device output rather than Clang's default HIP bundle; fixtures grade argv, not actual codegen."
+ },
+ {
+  "id": "lib.mgx-HIP-invalid-object-diagnostic",
+  "target": "linux/scripts/03-media/build/migraphx/check-hip-compiler.sh",
+  "find": "printf 'HIP probe output is not a readable ELF device object\\n' >&2; ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-migraphx-hip-compiler.sh",
+  "why": "A non-ELF result must fail with an explicit inspection diagnostic rather than an unexplained green compile."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-repair-paired-proof",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "    assert bool(selected) == bool(proof_path), 'Alternate GPU source requires its complete source proof'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "Both alternate-source arguments are required; command doubles do not authenticate history or a real source proof."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-repair-distinct-source",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "    assert source != producer.resolve(strict=True), 'Alternate GPU source must be distinct'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "An alias of the original SDK checkout cannot masquerade as the separately reviewed repair."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-repair-frozen-SDK",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "    assert plan['source_revision'] == SDK_REVISION, 'HIP repair requires the reviewed frozen SDK source'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "The narrow HIP repair profile applies only to its fixed qualified SDK source."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-repair-ancestor",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "    checked_run(['git', '-C', str(source), 'merge-base', '--is-ancestor', TOOL_BASE, head])",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "A source outside the reviewed tool ancestor must refuse before transport."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-repair-base-inputs",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "    assert git_paths(source, SDK_REVISION, TOOL_BASE) == HOST_BASE_CHANGES, 'Unreviewed intervening image inputs'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "The intervening host-tool changes must match the exact reviewed set without gaining or dropping image inputs."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-repair-current-inputs",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "    assert git_paths(source, TOOL_BASE, head) == REPAIR_CHANGES, 'Unreviewed HIP repair input changes'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "The alternate source cannot include an unreviewed production input or omit the required HIP repair."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-repair-exact-HIP-bytes",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "    assert (source / HIP).read_text() == expected_hip_repair((producer / HIP).read_text()), 'GPU source contains more than the exact HIP output-format repair'",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "The only production byte changes are the raw-output flag and failure diagnostic; bypasses remain rejected."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-repair-original-anchors",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "        assert previous.count(before) == 1, 'Unrecognized original HIP check'",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "Absent or repeated original HIP anchors must refuse instead of silently reviewing a different repair."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-repair-Dockerfile-pins",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "        assert (source / relative).read_bytes() == (producer / relative).read_bytes(), 'SDK/GPU Dockerfile or pins differ'",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "Independent file comparisons reject changed Dockerfiles or pins even when a Git double omits them."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-repair-complete-source",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "    full = full_source(source, proof_path, head)",
+  "replace": "    full = {'actual_full_registry_mutations': 1}",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "The actual new source must invoke complete-source verification; fixture metadata cannot substitute for it."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-repair-default-source",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "        return producer, plan['source_revision'], Path(plan['full_source_preflight_proof']), None",
+  "replace": "        return producer, 'wrong', Path(plan['full_source_preflight_proof']), None",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "Default invocations retain the original source revision and proof without selecting the repair."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-repair-metadata-scope",
+  "target": "linux/scripts/local-proof/gpu_source_profile.py",
+  "find": "name not in METADATA and not name.startswith('linux/scripts/tests/')",
+  "replace": "name not in METADATA and not name.startswith(('linux/scripts/tests/', 'quality/'))",
+  "test": "bash linux/scripts/tests/test-gpu-source-profile.sh",
+  "why": "Quality pins remain production inputs rather than being ignored as test metadata."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-repair-CLI-paths",
+  "target": "linux/scripts/local-proof/launch-normal-gpu.py",
+  "find": "select_gpu_source(plan, args.gpu_source, args.gpu_source_proof)",
+  "replace": "select_gpu_source(plan, None, None)",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "The CLI must forward both explicit repair paths while retaining the qualified original SDK parent."
+ },
+ {
+  "id": "compiler-llvm-tools.gpu-repair-CLI-revision",
+  "target": "linux/scripts/local-proof/launch-normal-gpu.py",
+  "find": "record = {'source_revision':revision, 'parent_source_revision':plan['source_revision']",
+  "replace": "record = {'source_revision':plan['source_revision'], 'parent_source_revision':plan['source_revision']",
+  "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
+  "why": "A repaired GPU invocation records its actual source separately from the original qualified SDK source."
  }
 ]

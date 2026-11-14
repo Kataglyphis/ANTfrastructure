@@ -479,6 +479,7 @@
     "linux/scripts/local-proof/normal_stage_launch.py",
     "linux/scripts/local-proof/launch-normal-gpu.py",
     "linux/scripts/local-proof/buildcache_transfer.py",
-    "linux/scripts/local-proof/seed-buildkit-cache.py"
+    "linux/scripts/local-proof/seed-buildkit-cache.py",
+    "linux/scripts/local-proof/gpu_source_profile.py"
   ]
 }

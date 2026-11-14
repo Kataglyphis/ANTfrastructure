@@ -100,7 +100,7 @@ class MigraphxHipCompilerTests(unittest.TestCase):
         self.assertTrue((work / "hip-object.sha256").is_file())
         argv = (self.root / "argv.nul").read_bytes().split(b"\0")[:-1]
         for option in (b"--gcc-toolchain=/source GCC", b"--rocm-path=/ROCm SDK with spaces",
-                       b"-I/ROCm SDK with spaces/include", b"--cuda-device-only", b"--offload-arch=gfx1030"):
+                       b"-I/ROCm SDK with spaces/include", b"--cuda-device-only", b"--no-gpu-bundle-output", b"--offload-arch=gfx1030"):
             self.assertEqual(argv.count(option), 1)
         self.assertEqual(argv[argv.index(b"-x") + 1], b"hip")
         self.assertEqual((work / "hip-argv.nul").read_bytes().split(b"\0")[0], str(self.clang / "clang++").encode())
@@ -141,6 +141,7 @@ class MigraphxHipCompilerTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertNotIn("HIP DEVICE COMPILER PASSED", result.stdout)
             self.assertFalse((work / "hip-device.o").exists())
+            self.assertIn("HIP probe", result.stderr)
 
     def test_wrong_compiler_pin_and_argument_counts_refuse_before_compilation(self) -> None:
         self.env["COMPILER_VERSION"] = "99.2.2"

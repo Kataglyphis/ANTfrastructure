@@ -1529,6 +1529,15 @@ object, using the selected ROCm headers and device libraries. The ordinary full
 backend retains its complete GPU architecture selection. A version string or
 CMake `HAS_HIP` fact alone cannot satisfy this gate.
 
+The probe uses `--no-gpu-bundle-output` so the device result is a raw AMDGPU ELF
+for inspection. Without that option, pinned Clang can successfully emit an
+offload bundle instead; successful compilation alone cannot satisfy an ELF
+verdict. Non-ELF results now produce an explicit diagnostic. This changes the
+probe's output format, not its required ROCm headers, device libraries or pin.
+Header-free compiler controls establish format only and do not prove ordinary
+HIP compatibility, backend compilation or inference. See the
+[Clang option reference](https://clang.llvm.org/docs/ClangCommandLineReference.html).
+
 rocMLIR and the full backend pass an unset `JOBS` request to the existing
 heavy-C++ policy instead of forcing two workers. That policy caps concurrency
 by available cores and remaining host/cgroup RAM with its unchanged 4096-MiB

@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-14 — request raw HIP device output
+
+- Request Clang's raw HIP device ELF before inspection and report non-ELF results explicitly. The kernel, pinned compiler, selected ROCm headers/device libraries and architecture remain required. The qualified SDK-to-GPU launcher can reuse the existing SDK for this exact isolated smoke repair with a separately verified complete source preflight; it records both revisions and rejects additional production changes. Fixture and mutation coverage grades flags, refusal boundaries and CLI forwarding, not actual ROCm compilation or GPU inference. See [early HIP check](docs/linux-accelerator-images.md#early-hip-device-compiler-check) and [stage launch](docs/local-proof-workflows.md#ordinary-sdk-and-gpu-stage-launch).
+
 ## 2026-11-14 — preserve local BuildKit cache transfer
 
 - Replace recurring cache-copy command sequences with `seed-buildkit-cache.py` and its shared verifier. Require a successful stopped producer and current inactive unit, hash every referenced blob, hard-link only immutable CAS bytes and separately copy index/layout metadata into a fresh destination. Refuse overlaps, symlinks, other filesystems and existing outputs; partial failures retain evidence without a passed receipt. Real-file fixtures and executable mutations cover transport and receipt refusals. The next normal command still needs an explicit verified cache import; no cache hit or image acceptance follows from transport. See [cache transfer](docs/local-proof-workflows.md#local-buildkit-cache-transfer).

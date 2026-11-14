@@ -238,6 +238,28 @@ class StageTests(unittest.TestCase):
             self.assertEqual(launch.call_args.kwargs,{'variant':'rocm'})
             self.assertFalse(launch.call_args.args[9]['GPU_or_final_image_acceptance'])
             self.assertEqual(launch.call_args.args[7],'ant-local/webgpu-fixture@' + parent['manifest'])
+            repair = self.work / 'reviewed GPU source'
+            repair_proof = self.work / 'reviewed full proof.json'
+            repair_proof.write_text('independent repaired source proof')
+            review = {'profile':'hip-object-output'}
+            selected = mock.Mock(return_value=(repair,'f' * 40,repair_proof,review))
+            repair_argv = [*argv,'--gpu-source',str(repair),'--gpu-source-proof',str(repair_proof)]
+            with mock.patch.dict(GPU['main'].__globals__,{'select_gpu_source':selected}), mock.patch.object(sys,'argv',repair_argv):
+                launch.reset_mock()
+                self.assertEqual(GPU['main'](),0)
+                selected.assert_called_once_with(plan,repair,repair_proof)
+                self.assertEqual(launch.call_args.args[0],repair)
+                record = launch.call_args.args[9]
+                self.assertEqual(record['source_revision'],'f' * 40)
+                self.assertEqual(record['parent_source_revision'],plan['source_revision'])
+                self.assertEqual(record['GPU_source_review'],review)
+                self.assertEqual((record['source_full_preflight_proof'],record['source_full_preflight_sha256']),(str(repair_proof),sha(repair_proof)))
+                self.assertEqual(launch.call_args.args[7],'ant-local/webgpu-fixture@' + parent['manifest'])
+                selected.reset_mock()
+                invocation.write_text(json.dumps({'source':'wrong','source_revision':plan['source_revision'],'image':'ant-local/webgpu-fixture:cross-sdk-amd64'}))
+                with self.assertRaises(AssertionError):
+                    GPU['main']()
+                selected.assert_not_called()
             launch.reset_mock()
             invocation.write_text(json.dumps({'source':'wrong','source_revision':plan['source_revision'],'image':'ant-local/webgpu-fixture:cross-sdk-amd64'}))
             with self.assertRaises(AssertionError):

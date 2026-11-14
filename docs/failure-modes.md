@@ -15,6 +15,17 @@ the fixed transport ancestor and records all four deltas. Keep the original
 input reference and failed attempt; a refreshed control hash alone cannot
 turn that additional change into an unchanged input or establish a cache hit.
 
+## Early HIP compilation succeeds but ELF inspection fails
+
+The device-only driver can emit a `__CLANG_OFFLOAD_BUNDLE__` container even when
+compilation returns zero. The required probe requests `--no-gpu-bundle-output`
+and rejects non-ELF bytes with an explicit diagnostic before preserving a
+passed object. Keep the failed build and original compiler streams. A
+header-free output-format control is not a normal ROCm compatibility proof.
+The [reviewed alternate GPU source](local-proof-workflows.md#ordinary-sdk-and-gpu-stage-launch)
+can apply only this exact probe repair while retaining a qualified SDK; it
+requires a new complete source proof and never changes a running producer.
+
 ## Linux HIP rejects amdgpu-internalize-symbols
 
 When the own source Clang reports `Unknown command line argument
