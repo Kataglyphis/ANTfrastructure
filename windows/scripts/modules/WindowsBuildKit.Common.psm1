@@ -175,5 +175,36 @@ function Get-CniConfFormIssue {
     return $null
 }
 
+function Get-BkPushTag {
+    param([string]$PushRef)
+    $lastSegment = ($PushRef -split '/')[-1]
+    if ($lastSegment -match ':') { return ($lastSegment -split ':')[-1] }
+    return ''
+}
+
+function Invoke-BkConsumerDispatch {
+    # The image is already published: a dispatch that cannot run only warns, and says how to send it by hand.
+    [CmdletBinding()]
+    param([string]$PushRef, [string]$RepoRoot, [string]$BashPath = 'C:\Program Files\Git\usr\bin\bash.exe')
+    $tag = Get-BkPushTag -PushRef $PushRef
+    $script = (Join-Path $RepoRoot 'linux/scripts/dispatch-consumer-lanes.sh').Replace('\', '/')
+    $byHand = "bash linux/scripts/dispatch-consumer-lanes.sh --tag $tag"
+    if (-not $tag) {
+        Write-Warning "[bk] -PushRef '$PushRef' names no tag; no consumer lanes dispatched"
+        return $false
+    }
+    if (-not (Test-Path -LiteralPath $BashPath)) {
+        Write-Warning "[bk] no Git Bash at '$BashPath'; dispatch the consumer lanes by hand: $byHand"
+        return $false
+    }
+    # A login shell, so Git Bash puts its own tools and the host's gh and python3 on PATH.
+    & $BashPath -l $script --tag $tag
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "[bk] dispatch-consumer-lanes.sh exited $LASTEXITCODE; the lines above name what to run by hand ($byHand)"
+        return $false
+    }
+    return $true
+}
+
 Export-ModuleMember -Function Test-IpInSubnet, Get-CniNatAdapterIp, Get-CniNatSubnetDrift, Get-CniConfFormIssue,
-    ConvertFrom-CniConfList, ConvertTo-CanonicalJson
+    ConvertFrom-CniConfList, ConvertTo-CanonicalJson, Get-BkPushTag, Invoke-BkConsumerDispatch

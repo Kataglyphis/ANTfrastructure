@@ -66,6 +66,28 @@ CONSUMER_PIN_ROWS: tuple[tuple[str, str, str, str, str], ...] = (
         r'"onnxruntime-genai(?:-cuda)?==([^"\s;,]+)',
         'the `"onnxruntime-genai[-cuda]==<version>"` pin',
     ),
+    # Flet's SDK and client speak one release's protocol: the desktop SDK, the web server and the viewer job move together.
+    (
+        "FLET_VERSION",
+        "pyproject.toml",
+        r'"flet(?=[=<>~!\[",;])',
+        r'"flet(?:\[[^\]]*\])?==([^"\s;,]+)',
+        'the `"flet[desktop]==<version>"` pin',
+    ),
+    (
+        "FLET_VERSION",
+        "pyproject.toml",
+        r'"flet-web(?=[=<>~!\[",;])',
+        r'"flet-web==([^"\s;,]+)',
+        'the `"flet-web==<version>"` pin',
+    ),
+    (
+        "FLET_VERSION",
+        ".github/workflows/benchmarks.yml",
+        r'--with "flet(?=[=<>~!"])',
+        r'--with "flet==([^"\s]+)"',
+        'the viewer job\'s `--with "flet==<version>"`',
+    ),
 )
 
 

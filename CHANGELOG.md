@@ -40,6 +40,54 @@
 - Keep the unit mutations in a harness-only suite for the Pester-free Linux CI
   shards; preserve the existing Pester reclaim controls and native failure checks.
 
+## 2026-11-14 — each mutation mirror names itself to its tests (`MUTATION_MIRROR`)
+
+- `verify_mutations.py` hands every recipe test the mirror's directory name as `MUTATION_MIRROR`, so a recipe that
+  keeps a build cache outside the mirror can keep one per mirror. OxidANT's 13 cargo recipes shared one
+  `CARGO_TARGET_DIR`; cargo names a workspace member's artefacts without its absolute path, so parallel mirrors
+  overwrote each other's fingerprints and a mutant ran the other mirror's unmutated binary (it survived in CI and
+  bit with `--jobs 1`). `docs/code-quality-tooling.md` § One build cache per mirror names the trap; a case in
+  `test-mutation-shards.sh` and recipe `mutations.mirror-name-unset`.
+
+## 2026-11-14 — `FLET_VERSION`: one pin for Flet's SDK and client (CON103)
+
+- `FLET_VERSION=1.0.5` in `tool-pins.env` (not `versions.env`: no early image stage reads it, and a key there
+  would re-key the compiler image). `consumer_pins.py` holds OrchestrANT's `"flet[desktop]==…"`, `"flet-web==…"`
+  and its viewer job's `--with "flet==…"` to it; `default.json` groups flet, flet-web and flet-desktop into one
+  Renovate PR. Two cases in `test-consumer-pins-toml.sh`, recipe `version-snapshot.consumer-pins-flet-extras`.
+  CON102's client build takes the same key.
+- `BuildKit.ConsumerDispatch.Tests.ps1` (CON236) parses tags from a neutral `registry.example/owner/image` ref: the
+  CI image ref gate refuses a spelled-out family image ref, and the suite was untracked when that gate last ran.
+
+## 2026-11-14 — the Windows publish dispatches the consumers' lanes (CON236); CON273 found
+
+- `windows/Build-Buildkit.ps1 -PushRef` now calls `dispatch-consumer-lanes.sh --tag <tag>` after its final push,
+  as `build-runtime-manifest.sh` does after a promotion, so `:winamd64`, `:winarm64` and their GPU tags start
+  every consumer's lanes too (owner decision: the existing script through Git Bash). `Invoke-BkConsumerDispatch`
+  in `WindowsBuildKit.Common.psm1` runs it in a login shell; no Git Bash, a ref without a tag or a refused
+  dispatch only warns with the command to run by hand. Suite `BuildKit.ConsumerDispatch.Tests.ps1`, proven in the
+  image against four mutations with a throwaway Pester.
+- New BACKLOG CON273: the CI image has `pwsh` but no Pester, and the arm64 host no `pwsh`, so no `pwsh` recipe can
+  be proven off Windows.
+
+## 2026-11-14 — `recipe-pytest.sh` runs pytest with its venv active; CON272 found
+
+- `recipe-pytest.sh` exported nothing, so a test that starts `python3` itself (OrchestrANT's agent lane) found the
+  image's `/opt/venv` first, which has no pytest. It now activates the recipe venv as the test leg does
+  (`VIRTUAL_ENV`, its `bin` first on `PATH`). Case in `test-recipe-pytest.sh`, recipe
+  `recipe-pytest.venv-not-active`.
+- New BACKLOG CON272: a consumer's `uv lock` in the image needs setuptools in `/opt/venv` and a command no hub script
+  holds yet (found adding pytest-timeout to OrchestrANT). CON234's second point is done (ModelANT `7b02dfb`).
+
+## 2026-11-14 — `recipe-pytest.sh`: a consumer's mutation recipe on the pinned Python, from the hub
+
+- `linux/scripts/02-toolchain/python/recipe-pytest.sh [--extra NAME]... [--] PYTEST_ARGS` runs a recipe's pytest
+  on `DEFAULT_PYTHON_VERSION` with the venv the test leg's `uv_venv_create` and `uv_sync_project` build (chain ORT,
+  no typed Python), synced once per Python, extras and lock under `$RECIPE_PYTEST_VENV_ROOT` behind a `flock`, and
+  pytest started from the recipe's copy. OrchestrANT wrote it for itself first; the owner wants the hub as the one
+  source of such scripts. Suite `test-recipe-pytest.sh`, recipes `recipe-pytest.*`, docs `python-ci.md`
+  § Mutation recipes on the pinned Python.
+
 ## 2026-11-14 — consumer mutation recipes can run in the CI image, on the pinned Python
 
 - `mutation-gates.yml` takes `in-image: true`: it pulls the family image (`prepare-linux-ci-host`, which reclaims

@@ -444,3 +444,5 @@ HOST_PAYLOAD_ARCHES
 SCCACHE_S3_DRAIN_TIMEOUT
 # build-cross-chain.sh runtime stage: push the per-arch children, skip the index (a new arch's first run against a published :latest-<variant>); an operator switch.
 CROSS_RUNTIME_SKIP_MANIFEST
+# verify_mutations.py sets it for every recipe test: the mirror's name, so a recipe's build cache can be one per mirror.
+MUTATION_MIRROR

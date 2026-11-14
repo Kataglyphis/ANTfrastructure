@@ -535,22 +535,24 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       1. A decoded, lossless copy of `two_cats` in ModelANT's `contracts/fixtures/` (PNG, or raw RGB with its
          SHA-256 in the contract), so the three golden tests give the model the same pixels. Today three JPEG
          decoders feed them, and one box's score differs by 0.019 between two recordings (not double-checked).
-      2. A recipe "suppress overlaps on corner rows" exists in OrchestrANT only. OxidANT has no suppression code
-         to switch on, and AccelerANTgine's manifest holds script recipes, not C++ ones; in both the replayed
-         case "two boxes of one class at IoU 0.47, both kept" is the guard. Write that down in ModelANT's
-         `contracts/README.md`, or give C++ a source recipe when its mutation lane can build.
+      2. Done 2026-11-14: ModelANT `7b02dfb` names each detector's guard under rule 4 (OrchestrANT's and
+         AccelerANTgine's suppression recipes, OxidANT's replayed case).
 
       Done when the three golden tests read the lossless copy at one ModelANT pin and fleet-health's contract
       rows (CON247) read 0.
 
 - [ ] **CON236 — the Windows publish dispatches the consumers' lanes too** [S, ★★]. Owner decision 2026-11-13:
-      after each publish every consumer's lanes run once on the new image. Since that day
-      `build-runtime-manifest.sh` calls `dispatch-consumer-lanes.sh --tag <tag>` after a promotion
-      ([`image-acceptance.md` § After a publish …](docs/image-acceptance.md#after-a-publish-the-consumers-lanes-run-on-it)),
-      which covers `:latest` and the Linux GPU tags. Left: the Windows images (`:winamd64`, `:winarm64`
-      and their GPU tags) are published by the Windows scripts, which do not call it yet; a run by hand
-      covers them. First step: call it at the end of the Windows publish, proven with `pwsh` (not on the
-      arm64 dev host). Done when a Windows publish shows one run per consumer lane on the new digest.
+      after each publish every consumer's lanes run once on the new image. `build-runtime-manifest.sh`
+      calls `dispatch-consumer-lanes.sh --tag <tag>` after a promotion; since 2026-11-14
+      `windows/Build-Buildkit.ps1 -PushRef` calls it too after its final push, through
+      `Invoke-BkConsumerDispatch` and Git Bash (owner decision that day: the existing script, not a
+      PowerShell copy); a failure warns and the push stands
+      ([`image-acceptance.md` § After a publish …](docs/image-acceptance.md#after-a-publish-the-consumers-lanes-run-on-it)).
+      Pester suite `BuildKit.ConsumerDispatch.Tests.ps1` (9 cases), proven by hand in the image with
+      a throwaway Pester 6.2 against four mutations. Left: no manifest recipe yet, since this arm64 host
+      cannot prove a `pwsh` recipe in its hooks (CON273); and done when a Windows publish shows one
+      run per consumer lane on the new digest, which needs that host's `gh` login and `python3` on
+      Git Bash's `PATH`.
 
 ## Open — Flet clients for OrchestrANT's UIs
 
@@ -574,13 +576,6 @@ owner carries the breakage that costs.
          on `windows-11-arm` (Flutter cannot cross-build it, flutter/flutter#62597; OmniAccelerANT's
          `windows-arm64.yml` does the same), and the web client once. riscv64 waits on CON70.
       3. Never run yet: any Windows build (the dev host has no Visual Studio) and any arm64 build.
-- [ ] **CON103 — `FLET_VERSION` in `versions.env`, one pin for Python and client** [S, ★★]. The
-      Python SDK and the client speak one release's protocol, so a bump moves together:
-      OrchestrANT's `frontend` extra (`flet[desktop]==1.0.5`, `flet-web==1.0.5`), its
-      `benchmarks.yml` viewer job (`flet==1.0.5`, held to `uv.lock` by OrchestrANT's
-      `test_viewer_job.py`) and CON102's client tag. Add the consumer-pins rows and one Renovate
-      group (pep621 and the `versions.env` regex). OrchestrANT's 550f0ff moved to 1.0.5 and dropped
-      `fastapi<0.145`; flet-dev/flet#6984 is closed.
 - [b] **CON104 — the app bundles ship the Flet client** [M, ★★]. Blocked on CON102.
       OrchestrANT's packages carry its `app` extra only, so `yolo-monitor --ui auto` falls back
       to OpenCV's window there (OrchestrANT `AGENTS.md` § 4). With CON102:
@@ -1923,6 +1918,28 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       step itself is a type check on the GNU target, not proof of the MSVC lane, and costs about 5 minutes
       a package. If the answer changes: the package and the Rust target in the package stage, a smoke line
       for each, and one `clippy-windows` step in OxidANT with its minutes measured.
+
+- [ ] **CON272 — a consumer's `uv lock` in the image: `/opt/venv` lacks setuptools, and no hub script knows the
+      command** [S, ★★]. Found 2026-11-14 adding pytest-timeout to OrchestrANT (owner: lock in the image, on 3.15).
+      Any new dependency makes `uv lock` resolve again, and that builds the riscv64 git source of torchvision for its
+      metadata; isolated, its build environment wants `torch==2.14.1` from PyPI, which has no cp315 wheel, so the
+      lock fails although the committed one passes `uv lock --check`. What worked, in one `--rm` container:
+      `uv pip install --python /opt/venv/bin/python "setuptools<82" wheel`, then
+      `UV_PROJECT_ENVIRONMENT=/opt/venv VIRTUAL_ENV=/opt/venv uv lock --no-build-isolation-package torchvision`,
+      which builds against the image's own torch 2.14.1+cpu: 14.5 min on a Pi 5, an 11 GB uv cache (PyTorch's git
+      checkout), and a lock diff of only the new package. Missing in the image: setuptools and wheel in `/opt/venv`
+      (or a lock venv with them beside the image's torch). Missing in the hub: the command itself, ideally in
+      `renovate-locks.sh`'s uv path, so a consumer never rediscovers it. Done when a consumer adds a pure-Python
+      dependency with one hub command in the image and the lock moves by that package alone.
+
+- [ ] **CON273 — the CI image has `pwsh` but no Pester, so no `pwsh` recipe can be proven off Windows** [S, ★★].
+      Found 2026-11-14 for CON236: `pwsh` 7.6.9 is in `kataglyphis_beschleuniger:latest`, Pester is not, so
+      `Invoke-Tests.ps1` reports every suite SKIPPED there, and the arm64 dev host has no `pwsh` at all; its
+      commit hooks then fail every recipe whose test runs `pwsh`. A throwaway
+      `Install-PinnedPowerShellModule -Name Pester -Version 6.2 -Minimum` inside one `--rm` container works.
+      Fix: install Pester at the floor `windows-x64.yml` pins into the Linux image, then let
+      `mutation_push.py` delegate a `pwsh` recipe to the image (or to CI, as it does for Chrome) when the host
+      has no `pwsh`. Done when a recipe on `WindowsBuildKit.Common.psm1` passes this host's hooks.
 
 ## Open — Linux arm64 and riscv64
 

@@ -1200,6 +1200,8 @@ if ($Stages -contains 'final') {
     if ($PushRef) {
         Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final-push' -OutputSpec "type=image,name=$PushRef,push=true" -BuildArgs $finalArgs
         Write-Host "[bk] pushed $PushRef" -ForegroundColor Green
+        # Every consumer's lanes run once on the new image (image-acceptance.md); a tag no consumer declares dispatches nothing.
+        $null = Invoke-BkConsumerDispatch -PushRef $PushRef -RepoRoot $repoRoot
     }
 }
 

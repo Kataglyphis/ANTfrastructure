@@ -1093,7 +1093,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4865 entries** over **657 distinct test commands**; both digits are
+manifest holds **4870 entries** over **658 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1256,6 +1256,15 @@ matrix lists `0..N-1` for the `N` its jobs pass. Every `mutations` job repeats t
 preflight job's setup (uv, pytest, PyYAML): without them the baselines fail
 unmutated, as on 2026-09-07. Each job still shards its slice over `--jobs`
 mirrors, and each job runs the baseline of every distinct command it holds.
+
+### One build cache per mirror
+
+Each `--jobs` worker proves its entries in a mirror of its own and hands every test it runs the mirror's directory
+name as `MUTATION_MIRROR` (since 2026-11-14). A recipe that keeps a build cache outside the mirror must key it by
+that name, `CARGO_TARGET_DIR="${RUNNER_TEMP:-/tmp}/<name>-${MUTATION_MIRROR}"`: cargo names a workspace member's
+artefacts without its absolute path, so two mirrors on one target directory overwrite each other's fingerprints
+and a mutant runs the other mirror's unmutated binary. OxidANT's text recipes survived that way in CI while they
+bit with `--jobs 1`. `test-mutation-shards.sh` holds two jobs to two names; recipe `mutations.mirror-name-unset`.
 
 ### The shard plan
 
@@ -1448,7 +1457,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 105 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 106 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
@@ -1917,7 +1926,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 105 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 106 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
@@ -4568,6 +4577,12 @@ The eighth sub-check is the one the farm cannot supply a subject for: its
 subject is a different repository, so the suite writes a two-file consumer of
 its own (a matching one that rides along in every case, and perturbed copies for
 the reds) rather than reading a sibling checkout that a CI runner does not have.
+
+**Since 2026-11-14 it also holds Flet** (BACKLOG CON103): Flet's Python SDK and its client speak
+one release's protocol, so `FLET_VERSION` in `tool-pins.env` (no early image stage reads it) is the
+pin for OrchestrANT's `"flet[desktop]==…"` and `"flet-web==…"` and its viewer job's
+`--with "flet==…"` in `benchmarks.yml`. `default.json` groups flet, flet-web and flet-desktop into one
+Renovate PR. Recipe `version-snapshot.consumer-pins-flet-extras` proves the extras form is read.
 
 **Since 2026-09-29 the eighth also holds torch, torchvision and
 onnxruntime-genai.** The image build force-installs `PYTORCH_VERSION` and

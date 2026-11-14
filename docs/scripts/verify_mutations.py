@@ -207,11 +207,11 @@ def _timeout_result(
 
 
 def _run_test(cmd: str, root: str, timeout: float) -> tuple[int | None, bool, str]:
-    """Unix test jobs need separate XDG roots so parallel PowerShell cannot corrupt shared startup profiles."""
+    """Separate XDG roots keep parallel PowerShell profiles apart; MUTATION_MIRROR lets a build cache be one per mirror."""
+    env = {**os.environ, "MUTATION_MIRROR": os.path.basename(os.path.normpath(root))}
     if os.name == "nt":
-        return _run_test_process(cmd, root, timeout, None)
+        return _run_test_process(cmd, root, timeout, env)
     with tempfile.TemporaryDirectory(prefix="mutation-test-cache-") as cache:
-        env = os.environ.copy()
         env["XDG_CACHE_HOME"] = cache
         return _run_test_process(cmd, root, timeout, env)
 
