@@ -54,6 +54,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    pre-commit hook), a lint gate, or a smoke assertion against a `versions.env` pin.
    **Mutation-test every new gate**: break what it guards, watch it go red, and say in its header
    what it does NOT cover. A gate that cannot fail is worse than no gate; two audits found one.
+   Windows mutation recipes use harness-only suites; Linux mutation shards do not install Pester.
 4. **Docs follow the change, in the same work unit.** A behavior, flag, workflow or invariant
    change updates AGENTS.md (rules, quick reference), README.md (user-facing pointers), the owning
    `docs/` page and `CHANGELOG.md` before it is done. A mechanism only git history knows does not

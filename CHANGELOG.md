@@ -22,6 +22,8 @@
   advice. The old `* 1024` conversion understated a 100-GiB target by about 4.6 GiB.
 - Check actual daemon arguments, rounding, large values and shared wiring with
   regression tests and mutations; retain all idle, image and compiler-cache guards.
+- Keep the unit mutations in a harness-only suite for the Pester-free Linux CI
+  shards; preserve the existing Pester reclaim controls and native failure checks.
 
 ## 2026-11-14 — consumer mutation recipes can run in the CI image, on the pinned Python
 

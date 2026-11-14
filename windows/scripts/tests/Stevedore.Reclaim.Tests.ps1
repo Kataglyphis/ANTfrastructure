@@ -114,22 +114,6 @@ Describe 'Stevedore daemon calls' {
     }
 
 
-    It 'converts GiB to rounded-up decimal MB without int32 overflow (mutation)' {
-        foreach ($case in @(@(0, 0), @(1, 1074), @(100, 107375), @(240, 257699), @(2097151, 2251798740))) {
-            $actual = Get-BuildkitFreeTargetMB -GiB $case[0]
-            Assert-Equal $case[1] $actual
-            Assert-True ($actual -is [long])
-            Assert-True ([decimal]$actual * 1000000 -ge [decimal]$case[0] * 1GB)
-            Assert-True (([decimal]$actual * 1000000 - [decimal]$case[0] * 1GB) -lt 1000000)
-        }
-    }
-
-    It 'uses the shared conversion in advice and both daemon paths (mutation)' {
-        $commands = @(Get-TestScriptCommands -ScriptPath 'windows/scripts/host/Clear-DiskSpace.ps1' -Name 'Get-BuildkitFreeTargetMB')
-        Assert-Equal 3 $commands.Count
-        Assert-Equal 'Get-BuildkitFreeTargetMB -GiB $KeepGB|Get-BuildkitFreeTargetMB -GiB $KeepGB|Get-BuildkitFreeTargetMB -GiB $TargetGB' (($commands | ForEach-Object { $_.Extent.Text }) -join '|')
-    }
-
     It 'routes inspections, removals, and regular-only pruning to explicit endpoints' {
         $id = Get-StevedoreImageId -Store $script:store -Tag 'local/example:tag'
         Assert-Equal ('sha256:' + ('a' * 64)) $id

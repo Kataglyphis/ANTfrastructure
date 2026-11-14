@@ -38901,7 +38901,7 @@
   "target": "windows/scripts/host/Clear-DiskSpace.ps1",
   "find": "return [long][math]::Ceiling(([decimal]$GiB * 1GB) / 1000000)",
   "replace": "return [long]($GiB * 1024)",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Jobs 1 -Only Stevedore.Reclaim.Tests.ps1 -ResultFile logs/mutation-results/stevedore-storage-units.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.StorageUnits.Tests.ps1",
   "why": "GiB admission must not become the smaller binary-MB target"
  },
  {
@@ -38909,7 +38909,7 @@
   "target": "windows/scripts/host/Clear-DiskSpace.ps1",
   "find": "[math]::Ceiling(([decimal]$GiB * 1GB) / 1000000)",
   "replace": "[math]::Floor(([decimal]$GiB * 1GB) / 1000000)",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Jobs 1 -Only Stevedore.Reclaim.Tests.ps1 -ResultFile logs/mutation-results/stevedore-storage-units.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.StorageUnits.Tests.ps1",
   "why": "integer MB must round up rather than understate the requested bytes"
  },
  {
@@ -38917,7 +38917,7 @@
   "target": "windows/scripts/host/Clear-DiskSpace.ps1",
   "find": "--free-storage (Get-BuildkitFreeTargetMB -GiB $TargetGB)",
   "replace": "--free-storage ($TargetGB * 1024)",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Jobs 1 -Only Stevedore.Reclaim.Tests.ps1 -ResultFile logs/mutation-results/stevedore-storage-units.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.StorageUnits.Tests.ps1",
   "why": "the actual regular-only daemon command must receive corrected units"
  },
  {
@@ -38925,7 +38925,7 @@
   "target": "windows/scripts/host/Clear-DiskSpace.ps1",
   "find": "$freeTargetMB = Get-BuildkitFreeTargetMB -GiB $KeepGB",
   "replace": "$freeTargetMB = $KeepGB * 1024",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Jobs 1 -Only Stevedore.Reclaim.Tests.ps1 -ResultFile logs/mutation-results/stevedore-storage-units.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.StorageUnits.Tests.ps1",
   "why": "general pruning must use the same unit boundary"
  },
  {
@@ -38933,7 +38933,7 @@
   "target": "windows/scripts/host/Clear-DiskSpace.ps1",
   "find": "-f (Get-BuildkitFreeTargetMB -GiB $KeepGB))",
   "replace": "-f ($KeepGB * 1024))",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Jobs 1 -Only Stevedore.Reclaim.Tests.ps1 -ResultFile logs/mutation-results/stevedore-storage-units.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Stevedore.StorageUnits.Tests.ps1",
   "why": "printed advice must not reintroduce the wrong unit conversion"
  }
 ]

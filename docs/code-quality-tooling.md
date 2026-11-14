@@ -1308,6 +1308,8 @@ The shards install no Pester, so a recipe whose test is a Pester-style suite
 every run as a vacuous bite. Put the cases a recipe needs in a harness-style
 suite; `test-mutation-pester-targets.sh` refuses a recipe that names a
 Pester-style one.
+The cleanup unit-boundary recipes use `Stevedore.StorageUnits.Tests.ps1` through
+`Invoke-HarnessSuite.ps1`; existing Pester reclaim controls remain in the full Windows run.
 
 A recipe's cost is one run of its command, so name the narrowest command that
 bites: `-k <section>` on a bash suite using `t_sections`
