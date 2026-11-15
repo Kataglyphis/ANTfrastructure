@@ -16,6 +16,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-15 — require the context-valid runtime exporter source
+
+- The explicit source handoff now selects `2aa1a778`, which keeps the production smoke exporter and corrects its live-control fixtures. Only that exact source and its own complete current preflight may proceed; the failed intermediate `74f6be54` run cannot qualify it.
+- The original Android/native parent, exact app, ordinary disk floor and invocation cleanup remain required. This host update does not establish a runtime, FINAL, GPU or complete binary-licence result.
+
 ## 2026-11-15 — select the reviewed runtime smoke-export source
 
 - The explicit runtime source handoff now requires commit `74f6be54` and its own complete current preflight, covering both stable wheel contexts and smoke output without image import. Original Android ancestry, normal reserve, exact app and invocation cleanup remain required before a fresh runtime.

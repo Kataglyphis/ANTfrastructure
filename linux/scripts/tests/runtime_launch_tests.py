@@ -149,12 +149,12 @@ class RuntimeTests(unittest.TestCase):
         complete = {'actual_full_registry_mutations':6512, 'actual_preflight_group_count':42}
         with mock.patch.object(SOURCE_PROFILE, 'full_source', return_value=complete) as full:
             selected, review = SOURCE_PROFILE.select_runtime_source(invocation, source, proof)
-        full.assert_called_once_with(source.resolve(), proof.resolve(), '74f6be54ae463c1e1138a36e740e4f20838d1912')
+        full.assert_called_once_with(source.resolve(), proof.resolve(), '2aa1a7780861db8012cb769e04d3de474dddca37')
         self.assertEqual(selected, source)
         self.assertIsNotNone(review)
         self.assertEqual(review['profile'], 'stable-wheel-context-without-smoke-import')
         self.assertEqual(review['Android_source_revision'], invocation['source_revision'])
-        self.assertEqual(review['runtime_source_revision'], '74f6be54ae463c1e1138a36e740e4f20838d1912')
+        self.assertEqual(review['runtime_source_revision'], '2aa1a7780861db8012cb769e04d3de474dddca37')
         self.assertEqual(review['runtime_full_source_proof'], str(proof))
         self.assertEqual(review['runtime_full_source_proof_sha256'], fixtures.sha(proof))
         self.assertEqual((review['full_registry_mutations'], review['all_preflight_groups']), (6512, 42))
@@ -184,7 +184,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_alternate_driver_records_new_source_without_rewriting_android_bindings(self) -> None:
         source, proof, _ = self.alternate_source_fixture()
-        review = {'runtime_source_revision':'74f6be54ae463c1e1138a36e740e4f20838d1912',
+        review = {'runtime_source_revision':'2aa1a7780861db8012cb769e04d3de474dddca37',
                   'runtime_full_source_proof':str(proof), 'runtime_full_source_proof_sha256':fixtures.sha(proof)}
         tags = PROFILE.runtime_tags(self.work, self.prefix)
         with mock.patch.object(PROFILE, 'select_runtime_source', return_value=(source, review)) as selector, \

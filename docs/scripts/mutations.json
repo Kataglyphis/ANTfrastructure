@@ -51736,7 +51736,7 @@
  {
   "id": "compiler-llvm-tools.runtime-source-reviewed-runtime-pin",
   "target": "linux/scripts/local-proof/runtime_source_profile.py",
-  "find": "RUNTIME_REVISION = '74f6be54ae463c1e1138a36e740e4f20838d1912'",
+  "find": "RUNTIME_REVISION = '2aa1a7780861db8012cb769e04d3de474dddca37'",
   "replace": "RUNTIME_REVISION = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
@@ -53592,7 +53592,7 @@
  {
   "id": "compiler-llvm-tools.runtime-source-refuses-prior-wheel-proof",
   "target": "linux/scripts/local-proof/runtime_source_profile.py",
-  "find": "RUNTIME_REVISION = '74f6be54ae463c1e1138a36e740e4f20838d1912'",
+  "find": "RUNTIME_REVISION = '2aa1a7780861db8012cb769e04d3de474dddca37'",
   "replace": "RUNTIME_REVISION = 'ec3be1855d2adee3622e36ac99cc76afcbfc5795'",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "The earlier runtime source and its full receipt must not qualify the unused-smoke-export repair."

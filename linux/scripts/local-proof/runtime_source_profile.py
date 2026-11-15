@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from proof_types import Json
 
 ANDROID_REVISION = '8c4e13b01fb43f8f55e5ca39aa7c0109d23504e5'
-RUNTIME_REVISION = '74f6be54ae463c1e1138a36e740e4f20838d1912'
+RUNTIME_REVISION = '2aa1a7780861db8012cb769e04d3de474dddca37'
 
 
 def select_runtime_source(invocation: Json, selected: Path | None, proof_path: Path | None) -> tuple[Path, Json | None]:

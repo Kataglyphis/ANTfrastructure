@@ -197,10 +197,13 @@ all 42 default groups, actual script suites and cleanup. A targeted source recei
 or the original Android proof cannot satisfy it. Copy that new module beside the
 runtime profile and existing native/normal-stage companions.
 
-The current reviewed source is `74f6be54ae463c1e1138a36e740e4f20838d1912`:
+The current reviewed source is `2aa1a7780861db8012cb769e04d3de474dddca37`:
 it keeps the stable wheel contexts and disables push, store and unpack only for the
 unused required-smoke image. Its own 6,512-entry full preflight is required; the
-older `ec3be1855d2adee3622e36ac99cc76afcbfc5795` receipt is insufficient. Original
+older `ec3be1855d2adee3622e36ac99cc76afcbfc5795` receipt is insufficient. The
+intermediate `74f6be54` full run failed context validation on its COPY fixtures;
+the current source uses one valid fixture and an absent-target negative control.
+Its unchanged smoke-export code still needs its own exact-source complete proof. Original
 Android source `8c4e13b0` and its native ancestry remain separate, unchanged inputs.
 This selection does not establish a successful runtime or FINAL consumer acceptance.
 
