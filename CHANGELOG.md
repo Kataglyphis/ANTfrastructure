@@ -16,6 +16,26 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-15 — wire the Windows ROCm torchvision host compiler cache
+
+- Apply a required, pinned PyTorch patch only in the disposable torchvision build
+  venv and supply the sccache path as a separate host-CXX launcher. Keep real
+  compiler paths for ABI probes and preserve HIP compilation and link rules.
+- Mount the patch only in the torchvision RUN; a patch edit keeps the torch layer.
+- Record a real SDK one-file compile/repeat: one miss then one hit, no cache or
+  compiler errors. Complete changed-source wheel/lane qualification remains open.
+- Add launcher, patch-drift, optional-cache and call-order regression coverage.
+
+## 2026-11-15 — record private Windows737 producers and AMD test limits
+
+- Bind all four private software producers to source737; retain ROCm's three
+  raw results, full ancestry, exact smoke summary and extra HIP-load skip.
+- Record private AMD export provenance and both five-run local CPU controls;
+  keep the Linux-booted AMD machine's Windows inference unaccepted.
+- Preserve the measured torchvision zero-request cache gap and the pinned
+  upstream wrapper limitation; no compiler-cache fix is claimed.
+- Keep final-source integration/CI, ARM device22 and publication open.
+
 ## 2026-11-15 — record the completed Windows CUDA-cache repeat
 
 - Bind the complete d9 diagnostic repeat to its source, five exported image

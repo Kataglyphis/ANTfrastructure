@@ -49,6 +49,23 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Next image build — GPU consumer findings
 
+**Private Windows qualification, 2026-11-15, source `737eb44f`:** all four
+software producers are audited. ROCm retains raw exits 1/1/0, all 18 labels,
+2,496 source blobs before/after and the complete Media-to-Final layer ancestry.
+Its Final manifest is
+`3bc9fc481a5f8295345c8026f286c767916aa7caa6ce8b00b0a08baad81bb6ca`.
+The 286/0/2 smoke summary and additional raw HIP-load skip remain distinct.
+Four private AMD exports pass provenance checks; both native programs pass five
+local CPU runs in one session each. The prepared portable replay also passes its
+CPU mode with all 12,134 runtime files checked before/after. The AMD machine is
+still under Linux; Windows AMD loading and inference remain unproved. ARM device22,
+current publication, final-source integration and required hosted CI remain open.
+Torchvision's measured zero-request compiler-cache gap also stays open; upstream's
+pinned wrapper helper disables automatic wrapping for Windows/HIP. No cache fix
+or new current-source CUDA repeat is implied. See the
+[current producer/device scope](docs/windows-rocm.md#private-737-producer-and-amd-device-scope)
+and [coordination report](https://github.com/Kataglyphis/ANTfrastructure/issues/249#issuecomment-6886786046).
+
 **Qualification finding, 2026-11-14:** native preflight at private `2383a9fb`
 was stopped after lifecycle mutation fixtures reached the real Linux BuildKit
 prune client. The isolated correction disables both host prune permissions and

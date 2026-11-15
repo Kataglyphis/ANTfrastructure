@@ -926,7 +926,54 @@ It never calls `ggml_backend_init`, because that creates a VkInstance. `--list-d
 
 **Evidence** (at b11115): the release's asset digest; `release.yml` 1137-1224 and 1876-1884; `ggml/src/ggml-backend-reg.cpp` 480-600; `ggml/src/ggml-vulkan/ggml-vulkan.cpp` 4959-4973 and 15853-15873; `src/llama.cpp` 222-256.
 
+The torchvision build venv applies the required `pytorch/001-torchvision-host-sccache.patch`
+before publishing its environment. `TORCHVISION_CXX_COMPILER_LAUNCHER` supplies one
+explicit sccache executable to the pinned Ninja host-CXX rule; compiler ABI probes
+still receive the original CC/CXX paths. HIP compilation, link rules and the shipped
+Torch wheel are unchanged. Missing sccache retains the existing uncached route;
+present sccache requires a clean or already-applied patch, so upstream drift fails.
+The patch is mounted only in the torchvision RUN to preserve the torch layer's key.
+
 ## MIGraphX and the ORT plugin EP (rocm lane, spike)
+
+### Private 737 producer and AMD device scope
+
+The 2026-11-15 private `737eb44f` producer passes its documented three-request
+sequence with retained raw exits 1/1/0 and all 18 required labels. It verifies
+2,496 physical source blobs before/after and all descriptor/diffID ancestry:
+Media47 -> MIGraphX49 -> Llama51 -> Torch56 -> Final62. Final manifest is
+`3bc9fc481a5f8295345c8026f286c767916aa7caa6ce8b00b0a08baad81bb6ca`.
+Its smoke summary is exactly 286 passed, zero failed, two skipped. The additional
+HIP-load skip is outside that summary because ServerCore lacks OPENGL32.dll.
+Neither count accepts physical AMD inference.
+
+Four private exports completed successfully: full runtime, positive native probe,
+own ORT wheel and negative Pad/MaxPool native probe. Their provenance reconciles
+12,132 source files, 12,134 exported payload files and 12,135 checked files including
+the runtime manifest. The own wheel's ORT/DirectML DLL hashes match the chain.
+Both programs pass local CPU controls, five sequential runs in one session each.
+A prepared replay verifies every runtime file before/after and also passes its
+local CPU mode. These ignored local preparation files are not an installed tool
+or a portable feature supplied by a clean clone.
+
+The RX 9070 XT machine is still booted into Linux. Actual Windows HIP loading,
+MIGraphX positive/negative inference and DirectML remain open; no reboot is implied.
+The future GPU check must preserve default MIGraphX passes, disable CPU fallback,
+prove provider operators in each run and retain raw failures and native provenance.
+The local CPU checks, vendor enumeration and compiled kernels cannot replace it.
+ARM device22, current digest-specific promotion and final-source hosted CI remain
+separate. [Issue249](https://github.com/Kataglyphis/ANTfrastructure/issues/249#issuecomment-6886786046)
+and `logs/g5-results.md` bind the dated private receipts.
+
+The same run measures zero sccache requests for torchvision despite 23 captured
+direct clang-cl commands. The pinned PyTorch `_wrap_compiler` explicitly declines
+automatic wrappers on Windows and HIP; isolated execution of its helpers confirms
+that an inline `CXX="sccache clang-cl"` prefix is quoted as one executable. A separate narrow build correction now selects only host CXX through the
+reviewed `pytorch/001-torchvision-host-sccache.patch` in the disposable build venv.
+One real SDK C++ compile/repeat in the737 image proves one miss then one hit,
+with unchanged object bytes and no cache/compiler errors. That small diagnostic
+does not qualify a complete torchvision wheel or replace the retained737 gap. Keep the zero-request
+gap and PyTorch's unclassified cache errors visible; do not treat them as hits.
 
 **Open correctness evidence, 2026-11-12.** The pinned MIGraphX commit
 `95672916ed289d4be9d230a9be732e1bbad97e8c` has a reported explicit-zero

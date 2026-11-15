@@ -38991,5 +38991,69 @@
   "replace": "export CROSS_BUILDKIT_PRUNE=0 CROSS_IMAGE_PRUNE=1",
   "test": "bash linux/scripts/tests/test-chain-lifecycle-engine-isolation.sh",
   "why": "disabling only BuildKit still leaves the lifecycle fixture able to prune or retire real images through the image-store fallback"
+ },
+ {
+  "id": "lib.torchvision-cache-host-launcher",
+  "target": "windows/scripts/patches/pytorch/001-torchvision-host-sccache.patch",
+  "find": "+        cxx = [os.environ['TORCHVISION_CXX_COMPILER_LAUNCHER'], compiler]",
+  "replace": "+        cxx = [compiler]",
+  "test": "bash linux/scripts/tests/test-torchvision-cache-patch.sh",
+  "why": "the actual patch must place the launcher before the real host compiler as separate arguments"
+ },
+ {
+  "id": "lib.torchvision-cache-windows-scope",
+  "target": "windows/scripts/patches/pytorch/001-torchvision-host-sccache.patch",
+  "find": "+    if IS_WINDOWS and IS_HIP_EXTENSION and os.environ.get(",
+  "replace": "+    if IS_HIP_EXTENSION and os.environ.get(",
+  "test": "bash linux/scripts/tests/test-torchvision-cache-patch.sh",
+  "why": "a Windows host compiler launcher must not change the Linux HIP route"
+ },
+ {
+  "id": "lib.torchvision-cache-hip-scope",
+  "target": "windows/scripts/patches/pytorch/001-torchvision-host-sccache.patch",
+  "find": "+    if IS_WINDOWS and IS_HIP_EXTENSION and os.environ.get(",
+  "replace": "+    if IS_WINDOWS and os.environ.get(",
+  "test": "bash linux/scripts/tests/test-torchvision-cache-patch.sh",
+  "why": "the ROCm builder patch must not change the Windows non-HIP route"
+ },
+ {
+  "id": "lib.torchvision-cache-patch-required",
+  "target": "windows/scripts/build/Build-TorchvisionRocmFromSource.ps1",
+  "find": "    Invoke-RequiredSourcePatch -PatchFile (Join-Path $PatchRoot 'pytorch\\001-torchvision-host-sccache.patch')",
+  "replace": "    & { param($PatchFile, $SourceDir) } -PatchFile (Join-Path $PatchRoot 'pytorch\\001-torchvision-host-sccache.patch')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Torchvision.RocmCache.Tests.ps1",
+  "why": "the build venv must actually receive its required reviewed patch before a launcher is accepted"
+ },
+ {
+  "id": "lib.torchvision-cache-missing-tool",
+  "target": "windows/scripts/build/Build-TorchvisionRocmFromSource.ps1",
+  "find": "    if (-not $SccachePath) { return }",
+  "replace": "    if ($false) { return }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Torchvision.RocmCache.Tests.ps1",
+  "why": "missing sccache must preserve the existing unpatched optional-cache path"
+ },
+ {
+  "id": "lib.torchvision-cache-launcher-value",
+  "target": "windows/scripts/build/Build-TorchvisionRocmFromSource.ps1",
+  "find": "    $BuildEnv['TORCHVISION_CXX_COMPILER_LAUNCHER'] = $SccachePath",
+  "replace": "    $BuildEnv['TORCHVISION_CXX_COMPILER_LAUNCHER'] = 'sccache ' + $SccachePath",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Torchvision.RocmCache.Tests.ps1",
+  "why": "the launcher must remain one real executable path, without a shell-style compiler prefix"
+ },
+ {
+  "id": "lib.torchvision-cache-builder-call",
+  "target": "windows/scripts/build/Build-TorchvisionRocmFromSource.ps1",
+  "find": "Enable-TorchvisionRocmCompilerCache -WorkDir $WorkDir -BuildEnv $visionEnv -SccachePath $sccachePath -PatchRoot (Join-Path $scriptAssetRoot 'patches')",
+  "replace": "Write-Verbose 'compiler cache unwired'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Torchvision.RocmCache.Tests.ps1",
+  "why": "the unconditional cache setup must happen before publishing environment and building the wheel"
+ },
+ {
+  "id": "lib.torchvision-cache-patch-mount",
+  "target": "windows/Dockerfile.torch",
+  "find": "source=windows/scripts/patches/pytorch/001-torchvision-host-sccache.patch,target=C:\\bkmnt\\patches\\pytorch\\001-torchvision-host-sccache.patch",
+  "replace": "source=windows/scripts/patches/pytorch/not-installed.patch,target=C:\\bkmnt\\patches\\pytorch\\001-torchvision-host-sccache.patch",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Torch.Rocm.Dockerfile.Tests.ps1 -Jobs 1 -ResultFile logs/mutation-results/torchvision-cache-mount.json",
+  "why": "the torchvision RUN must carry the exact patch without re-keying the torch RUN"
  }
 ]

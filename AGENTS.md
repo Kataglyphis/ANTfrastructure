@@ -995,6 +995,10 @@ orphans heavy on CPU or memory or shaped like test leftovers
 
 ## Caching discipline (do not regress)
 
+Torchvision ROCm wires only its build-venv host CXX through the reviewed PyTorch
+patch and an explicit launcher path. Keep CC/CXX as real compilers for ABI probes,
+leave the HIP compiler separate, and mount the patch only in the torchvision RUN.
+
 Retained cache-log exports never use `--no-cache`, including read-only mounts:
 BuildKit can reset their cache associations before the copy. Consume a per-run
 ARG nonce instead. The standalone OpenCV GStreamer plugin reports its own
