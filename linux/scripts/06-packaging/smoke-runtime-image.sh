@@ -2296,10 +2296,7 @@ main() {
     target_arch="$(smoke_host_arch)"
   fi
 
-  echo "=== Runtime Image Smoke Test ==="
-  echo "Image: ${image_tag}"
-  echo "Arch: ${target_arch}"
-  echo ""
+  printf '=== Runtime Image Smoke Test ===\nImage: %s\nArch: %s\n\n' "${image_tag}" "${target_arch}"
 
   check_image_availability "${image_tag}" "${target_arch}"
   check_trivial_command "${image_tag}" "${target_arch}"
