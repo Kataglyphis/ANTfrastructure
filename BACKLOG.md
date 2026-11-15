@@ -475,11 +475,10 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       `Invoke-BkConsumerDispatch` and Git Bash (owner decision that day: the existing script, not a
       PowerShell copy); a failure warns and the push stands
       ([`image-acceptance.md` § After a publish …](docs/image-acceptance.md#after-a-publish-the-consumers-lanes-run-on-it)).
-      Pester suite `BuildKit.ConsumerDispatch.Tests.ps1` (9 cases), proven by hand in the image with
-      a throwaway Pester 6.2 against four mutations. Left: no manifest recipe yet, since this arm64 host
-      cannot prove a `pwsh` recipe in its hooks (CON273); and done when a Windows publish shows one
-      run per consumer lane on the new digest, which needs that host's `gh` login and `python3` on
-      Git Bash's `PATH`.
+      `BuildKit.ConsumerDispatch.Tests.ps1` is a harness suite since 2026-11-15, so the Linux shards run
+      it, and the recipes `buildkit.push-tag-takes-the-repository` and `buildkit.dispatch-without-tag-runs`
+      guard it (CON273 done). Left: done when a Windows publish shows one run per consumer lane on the new
+      digest, which needs that host's `gh` login and `python3` on Git Bash's `PATH`.
 
 ## Open — Flet clients for OrchestrANT's UIs
 
@@ -656,17 +655,20 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       mask, or the consumers set a bounded thread count, and a measurement quotes the unmodified model.
       **Consumer half, 2026-11-12:** OxidANT's backlog carries it as an `llm_threads` setting for ObservANT,
       default 2, applied at load. The detector's side of the same cause is CON240.
-- [b] **CON240 — one written default for ORT's intra-op threads in the detectors** [S, ★★]. Blocked on a
-      measurement in the consumers, and then on the owner: keeping ORT's default in OxidANT's inference
-      crate is a written choice of 2026-10-11. Found by the audit of 2026-11-12 in the four perf-host
-      baselines (one host pinned to 8 of its 16 cores, the same photo and model): the detector's p50 is
-      50.7 ms in Rust (ORT's default), 30.3 ms in C++ (a fixed 4) and 24.1 ms in Python (usable CPUs minus
-      one, at most 8), and Python at ORT's default takes 51.3 ms. The likely cause is CON218's: ORT's
-      default ignores the affinity mask. No Rust run confirmed it, and nothing is measured on an unpinned
-      host or a 4-core board. Needed first: OxidANT's `detect-latency` with `KATAGLYPHIS_ORT_THREADS=7`,
-      once pinned and once unpinned, and a Pi number before any 4-core default moves. Then the rule is
-      written once on [`onnxruntime-single-source.md`](docs/onnxruntime-single-source.md), and Rust and C++
-      follow it with their overrides kept.
+      **On a Pi 5, 2026-11-15** (4 CPUs in the CI image): SmolLM2-135M decoded 104 tokens per second on one thread
+      and 34 on seven, and a seven-thread description took the detector beside it from 238 ms to 1157 ms (one
+      thread: 570 ms); OrchestrANT's describe engine decodes on one thread since (owner decision). Both
+      `perf-host.sh` (OrchestrANT and AccelerANTgine) still build `smollm2-perf` with
+      `genai-model-threads.py --threads 7`, the Ryzen's choice, so a Pi baseline would record an oversubscribed
+      model. Next: `genai-model-threads.py --threads auto` (the rule of CON240, or a text rule of its own once
+      measured at 1, 2 and 3 threads on the Pi), and the two consumers pass it.
+- [ ] **CON240 — one written default for ORT's intra-op threads in the detectors** [S, ★★]. The rule is written
+      since 2026-11-15 ([`onnxruntime-single-source.md` § The ORT thread rule](docs/onnxruntime-single-source.md#the-ort-thread-rule)):
+      the usable CPUs (the affinity mask) but one, 1 to 8, overrides kept. OrchestrANT followed it already;
+      AccelerANTgine follows it since 6e35dad (owner decision 2026-11-15, after a Pi 5 measurement: 3 threads
+      227-229 ms p50, 4 threads 235-252 ms, ORT's default 237-250 ms, 7 threads 520-542 ms). Left: OxidANT, where
+      ORT's default is a written choice of 2026-10-11 and its BACKLOG ("Measure whether ORT's default thread count
+      costs the Rust detector half its speed") runs `detect-latency` first; the owner decides on those numbers.
 - [ ] **CON219 — ORT reads a null scale pointer in 4-bit `MatMulNBits` on riscv64 RVV** [M, ★★★].
       Found 2026-11-02 with OxidANT's SmolLM2-135M contract test under QEMU, image index `7d4d4129`: a fault in
       `libonnxruntime.so.1.31.0` at `0x150150c` on `flw fa5, 0x0(s10)`, `s10=0x1f80`. In ORT v1.31.0's
@@ -1836,6 +1838,16 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       step itself is a type check on the GNU target, not proof of the MSVC lane, and costs about 5 minutes
       a package. If the answer changes: the package and the Rust target in the package stage, a smoke line
       for each, and one `clippy-windows` step in OxidANT with its minutes measured.
+
+- [ ] **CON274 — the in-image mutation lane runs Python as PID 1, which never reaps a zombie** [S, ★★].
+      Found 2026-11-15 by OrchestrANT's mutation lane (run 43657675126): `mutation-gates.yml` with `in-image: true`
+      starts `docker run ... bash -c '... exec "$@"' recipes python3 verify_mutations.py`, so `verify_mutations.py`
+      is PID 1 and an orphaned grandchild that a test kills stays a zombie; `os.kill(pid, 0)` then still finds it.
+      OrchestrANT 98b1d23 lets its timeout test accept a zombie, so the lane is green; other consumers' tests of
+      the same shape would fail the same way, and only in this lane (`pi-ci` and the plain lanes run a shell as
+      PID 1). Fix: `docker run --init` in that runner array, so tini reaps; `run-in-ci-image.sh` likely wants the
+      same. Done when a recipe whose test asserts a killed grandchild is gone, without a zombie allowance, passes
+      in the in-image lane.
 
 - [ ] **CON272 — a consumer's `uv lock` in the image: `/opt/venv` lacks setuptools, and no hub script knows the
       command** [S, ★★]. Found 2026-11-14 adding pytest-timeout to OrchestrANT (owner: lock in the image, on 3.15).

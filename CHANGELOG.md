@@ -14,6 +14,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+
+## 2026-11-15 — the family's ORT thread rule is written once; the hub backlog catches up
+
+- `docs/onnxruntime-single-source.md` § The ORT thread rule: a detector's intra-op pool takes the usable CPUs (the
+  affinity mask) but one, 1 to 8, overrides kept; which consumer follows it (OrchestrANT, AccelerANTgine since
+  6e35dad; OxidANT not yet) and the Ryzen and Pi 5 figures behind it, plus the one-thread rule for a language model
+  beside a detector (OrchestrANT's `--describe-threads`).
+- BACKLOG: CON240 open again with only OxidANT left; CON218 notes the Pi finding and the consumers' fixed
+  `--threads 7` perf copies; CON236's recipe half is done; new CON274, the in-image mutation lane without `--init`.
 ## 2026-11-15 — Pester in the Linux image; a pwsh recipe goes to CI on a host without it (CON273)
 
 - `install_pwsh` also installs Pester at the new pin `PESTER_VERSION=6.2.0` (windows-x64.yml's floor) from the
