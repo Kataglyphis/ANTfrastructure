@@ -135,6 +135,35 @@ t_assert_eq "1" "${_rc}"
 t_assert_contains "${_out}" "refused before any proof"
 t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c 'bites')"
 
+t_case "a pwsh suite goes to CI on a host whose pwsh lacks Pester, and runs here where Pester is"
+_rig
+echo 'GUARD=on' > "${_work}/repo/ps.sh"
+_manifest "$(_entry probe.ps ps.sh GUARD=on GUARD=off 'pwsh -NoProfile -File ps-test.ps1')"
+_g add -A
+_g commit -qm pwsh
+mkdir -p "${_work}/bin"
+# A stand-in pwsh: the Pester probe gets FAKE_PESTER's count, a suite run checks the guard.
+printf '%s\n' '#!/usr/bin/env bash' 'case " $* " in *" -Command "*) echo "${FAKE_PESTER:-0}" ;; *) grep -q GUARD=on ps.sh ;; esac' \
+  > "${_work}/bin/pwsh"
+chmod +x "${_work}/bin/pwsh"
+_out="$(PATH="${_work}/bin:${PATH}" FAKE_PESTER=0 _gate --delegate-chrome --only probe.ps)"
+t_assert_contains "${_out}" "delegated 1 entr(ies) to CI, needs pwsh with Pester, which this host lacks: pwsh -NoProfile -File ps-test.ps1"
+t_assert_contains "${_out}" "1 delegated to CI"
+# A PowerShell target too: its mutant is parsed where it is proved, so a host without Pester does not try.
+echo '$guard = 1' > "${_work}/repo/mod.psm1"
+_manifest "$(_entry probe.ps ps.sh GUARD=on GUARD=off 'pwsh -NoProfile -File ps-test.ps1')" \
+          "$(_entry probe.psm mod.psm1 'guard = 1' 'guard = 2' 'pwsh -NoProfile -File ps-test.ps1')"
+_out="$(PATH="${_work}/bin:${PATH}" FAKE_PESTER=0 _gate --delegate-chrome --only probe.psm)"
+t_assert_contains "${_out}" "delegated 1 entr(ies) to CI, needs pwsh with Pester"
+t_assert_eq "0" "$(grep -c 'cannot be checked to parse' <<< "${_out}")" "no parse is tried where pwsh lacks Pester"
+_out="$(PATH="${_work}/bin:${PATH}" FAKE_PESTER=1 _gate --delegate-chrome --only probe.ps)"
+t_assert_contains "${_out}" "coverage: proved 1 of 1 selected; 0 delegated to CI"
+t_assert_eq "False" "$(cd "${_work}/repo/docs/scripts" && PATH="" "$(command -v python3)" -c 'import mutation_push; print(mutation_push.host_runs_pester())')" \
+  "no pwsh on PATH is no Pester"
+t_assert_eq "True False False True" "$(cd "${_work}/repo/docs/scripts" && python3 -c '
+import mutation_push as m
+print(*(m.needs_pester(c) for c in ("pwsh -File a.ps1", "bash test-pwsh.sh", "python3 x_pwsh.py", "subprocess.run([\x27pwsh\x27])")))')"
+
 t_case "only a run that proved every entry may call itself whole, and CI's shards cannot delegate"
 _rig
 _manifest "$(_entry probe.plain plain.sh GUARD=on GUARD=off 'bash plain-test.sh')"

@@ -208,22 +208,33 @@ install_pwsh() {
     chmod 0755 "${prefix}/pwsh" && mkdir -p "${bindir}" && ln -sf "${prefix}/pwsh" "${bindir}/pwsh" || return 1
     _pwsh_reports "${version}" pwsh "${bindir}/pwsh" '$PSVersionTable.PSVersion.ToString()' || return 1
     echo "OK: pwsh ${version} at ${bindir}/pwsh (${arch})"
-    install_psscriptanalyzer "${env_file}" "${prefix}"
+    install_psscriptanalyzer "${env_file}" "${prefix}" || return 1
+    install_pester "${env_file}" "${prefix}"
+}
+
+# <env file> <prefix> <module> <key prefix> <url with @V@>: the pinned nupkg in $PSHOME/Modules, listed at its pin.
+_install_pwsh_module() {
+    local env_file="$1" prefix="$2" name="$3" version sha mod
+    read -r version sha < <(_pwsh_pins "${env_file}" "$4_VERSION" "$4_NUPKG_SHA256") || return 1
+    mod="${prefix}/Modules/${name}/${version}"
+    rm -rf "${prefix:?}/Modules/${name:?}"
+    _pwsh_unpack_verified "${5//@V@/${version}}" "${sha}" "${mod}" || return 1
+    # The nupkg's packaging parts are not the module's; Install-Module drops them too.
+    rm -rf "${mod:?}/_rels" "${mod:?}/package" "${mod:?}/[Content_Types].xml" "${mod:?}/${name}.nuspec"
+    _pwsh_reports "${version}" "pwsh's ${name}" "${prefix}/pwsh" \
+        "(Get-Module -ListAvailable -Name ${name}).Version.ToString()" || return 1
+    echo "OK: ${name} ${version} in ${prefix}/Modules"
 }
 
 # PSScriptAnalyzer in $PSHOME/Modules, on every user's module path: the lab's pwsh tests lint with it (CON131).
 install_psscriptanalyzer() {
-    local env_file="$1" prefix="$2" version sha mod
-    read -r version sha < <(_pwsh_pins "${env_file}" PSSCRIPTANALYZER_VERSION PSSCRIPTANALYZER_NUPKG_SHA256) || return 1
-    mod="${prefix}/Modules/PSScriptAnalyzer/${version}"
-    rm -rf "${prefix:?}/Modules/PSScriptAnalyzer"
-    _pwsh_unpack_verified "https://github.com/PowerShell/PSScriptAnalyzer/releases/download/${version}/PSScriptAnalyzer.${version}.nupkg" \
-        "${sha}" "${mod}" || return 1
-    # The nupkg's packaging parts are not the module's; Install-Module drops them too.
-    rm -rf "${mod:?}/_rels" "${mod:?}/package" "${mod:?}/[Content_Types].xml" "${mod:?}/PSScriptAnalyzer.nuspec"
-    _pwsh_reports "${version}" "pwsh's PSScriptAnalyzer" "${prefix}/pwsh" \
-        '(Get-Module -ListAvailable -Name PSScriptAnalyzer).Version.ToString()' || return 1
-    echo "OK: PSScriptAnalyzer ${version} in ${prefix}/Modules"
+    _install_pwsh_module "$1" "$2" PSScriptAnalyzer PSSCRIPTANALYZER \
+        "https://github.com/PowerShell/PSScriptAnalyzer/releases/download/@V@/PSScriptAnalyzer.@V@.nupkg"
+}
+
+# Pester at windows-x64.yml's floor: without it Invoke-Tests.ps1 skips every suite, so no pwsh recipe proves here (CON273).
+install_pester() {
+    _install_pwsh_module "$1" "$2" Pester PESTER "https://www.powershellgallery.com/api/v2/package/Pester/@V@"
 }
 
 # atheris' find_libfuzzer.sh wants the pre-per-target lib/linux/libclang_rt.<rt>-<arch>.a names (CON38).

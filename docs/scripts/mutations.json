@@ -35923,7 +35923,7 @@
  {
   "id": "mutations.push-delegated-count",
   "target": "docs/scripts/mutation_push.py",
-  "find": "    lines = [f\"  delegated {n} entr(ies) to CI, needs Chrome: {cmd}\" for cmd, n in sorted(counts.items())]",
+  "find": "    lines = [f\"  delegated {n} entr(ies) to CI, {why}: {cmd}\" for cmd, n in sorted(counts.items())]",
   "replace": "    lines = []",
   "test": "bash linux/scripts/tests/test-mutation-push.sh",
   "why": "a delegation without its count is coverage silently lost"
@@ -38215,5 +38215,21 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-recipe-pytest.sh",
   "why": "pytest runs with the recipe venv active, so a test that starts python3 itself finds that venv, not the image's /opt/venv."
+ },
+ {
+  "id": "buildkit.push-tag-takes-the-repository",
+  "target": "windows/scripts/modules/WindowsBuildKit.Common.psm1",
+  "find": "    if ($lastSegment -match ':') { return ($lastSegment -split ':')[-1] }\n",
+  "replace": "    if ($lastSegment -match ':') { return ($lastSegment -split ':')[0] }\n",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.ConsumerDispatch.Tests.ps1 -ResultFile logs/code-quality/buildkit-consumer-dispatch.json",
+  "why": "The consumer lanes are dispatched for the pushed tag, not the image's name."
+ },
+ {
+  "id": "buildkit.dispatch-without-tag-runs",
+  "target": "windows/scripts/modules/WindowsBuildKit.Common.psm1",
+  "find": "    if (-not $tag) {\n        Write-Warning \"[bk] -PushRef '$PushRef' names no tag; no consumer lanes dispatched\"\n        return $false\n    }\n",
+  "replace": "",
+  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.ConsumerDispatch.Tests.ps1 -ResultFile logs/code-quality/buildkit-consumer-dispatch.json",
+  "why": "A push ref without a tag dispatches nothing, rather than every consumer on an empty tag."
  }
 ]

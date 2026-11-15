@@ -140,7 +140,7 @@ These are recorded so nobody files them as gaps:
 - riscv64 has no hadolint: upstream ships no riscv64 binary, and its QEMU source build cost about two
   hours a chain (owner, 2026-10-26: amd64 only for now; was CON151,
   [§ shellcheck and hadolint](consumer-image-contract.md#shellcheck-and-hadolint)).
-- riscv64 has no pwsh and no PSScriptAnalyzer: PowerShell publishes no riscv64 build, so tests
+- riscv64 has no pwsh, PSScriptAnalyzer or Pester: PowerShell publishes no riscv64 build, so tests
   that drive pwsh skip there with their reason, `pwsh is not on PATH` (CON131).
 - ORT QNN is opt-in on arm64.
 - The Android host tools are x86-64 only (upstream's shape).

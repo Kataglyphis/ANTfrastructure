@@ -32,9 +32,8 @@ from mutation_parse import Edit, MissingParser, MutationEntry, refusals
 from mutation_push import (
     changed_files,
     coverage_line,
-    delegated_lines,
     select_push,
-    split_chrome,
+    set_aside,
     touches,
 )
 from mutation_shards import describe, load_costs, plan
@@ -704,14 +703,12 @@ def prove_in_mirrors(args: argparse.Namespace, runnable: list[MutationEntry], re
 
 
 def prove_selected(args: argparse.Namespace, entries: list[MutationEntry]) -> int:
-    """Refuse unparsable mutants, set Chrome suites aside on request, prove the rest and state the coverage."""
+    """Refuse unparsable mutants, set Chrome and Pester suites aside on request, prove the rest and state the coverage."""
     report = Report()
-    runnable, refused_rc = refuse_unparsable(entries, args.root, report)
-    delegated: list[MutationEntry] = []
     if args.delegate_chrome:
-        runnable, delegated = split_chrome(runnable, args.root)
-        for line in delegated_lines(delegated):
-            say(line)
+        runnable, delegated, refused_rc = set_aside(entries, args.root, lambda e: refuse_unparsable(e, args.root, report), say)
+    else:
+        (runnable, refused_rc), delegated = refuse_unparsable(entries, args.root, report), []
     rc = max(prove_in_mirrors(args, runnable, report), refused_rc)
     report.summary(entries)
     total = len(load(args.manifest))
@@ -745,8 +742,8 @@ def parser() -> argparse.ArgumentParser:
                     help="only entries these committed ranges change, or recipes they add or edit (repeatable);"
                          " staged and edited files are not pushed, and a failed diff exits 2")
     ap.add_argument("--delegate-chrome", action="store_true",
-                    help="count entries whose suite needs a real Chrome as CI's to prove, instead of running them"
-                         " here; refused with --shard, which is CI")
+                    help="count entries whose suite needs a real Chrome, or pwsh with Pester on a host without"
+                         " them, as CI's to prove, instead of running them here; refused with --shard, which is CI")
     ap.add_argument("--in-place", action="store_true",
                     help="mutate --root itself instead of a throwaway copy (fixtures only)")
     ap.add_argument("--setup-script",

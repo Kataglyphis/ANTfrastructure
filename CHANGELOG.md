@@ -14,6 +14,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-15 — Pester in the Linux image; a pwsh recipe goes to CI on a host without it (CON273)
+
+- `install_pwsh` also installs Pester at the new pin `PESTER_VERSION=6.2.0` (windows-x64.yml's floor) from the
+  PowerShell Gallery into `$PSHOME/Modules`, verified against `PESTER_NUPKG_SHA256` and failing the stage unless
+  `pwsh` lists it at its pin. Proven in a throwaway container of `:latest` on arm64: the real nupkg installs and
+  `Invoke-Pester` passes. `test-package-image-wiring.sh` covers the pin, the unpinned case and a wrong version.
+- `verify_mutations.py --delegate-chrome` (the pre-push hook's mode) also hands an entry whose test starts `pwsh` to
+  CI when this host has no `pwsh` or its `pwsh` lists no Pester (`mutation_push.host_runs_pester`, asked only when
+  such an entry is selected), printing `needs pwsh with Pester, which this host lacks`; Invoke-Tests.ps1 would have
+  reported every suite SKIPPED, which proves nothing. Such an entry is set aside before the parse check, which needs
+  `pwsh` for a PowerShell mutant, so the hook on the arm64 dev host no longer fails with `pwsh is not on PATH`.
+  `test-mutation-push.sh` covers both hosts and a PowerShell target.
+- Two recipes on `WindowsBuildKit.Common.psm1`'s consumer dispatch: `buildkit.push-tag-takes-the-repository` and
+  `buildkit.dispatch-without-tag-runs`.
+
 ## 2026-11-14 — each mutation mirror names itself to its tests (`MUTATION_MIRROR`)
 
 - `verify_mutations.py` hands every recipe test the mirror's directory name as `MUTATION_MIRROR`, so a recipe that

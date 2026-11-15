@@ -1,4 +1,4 @@
-"""A push's scope for the mutation gate: the files and recipes its ranges change, which entries need Chrome, and the coverage line.
+"""A push's scope for the mutation gate: the files and recipes its ranges change, which entries need Chrome or Pester, and the coverage line.
 
 Does NOT cover a change that reaches a suite only through a file its command does not name, or a suite that starts
 Chrome without the harness's markers: that suite runs here and its timeout fails the push.
@@ -10,13 +10,18 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import TypeVar
 
 E = TypeVar("E", bound=Mapping[str, object])
 _CHROME_MARKER = re.compile(r"\bt_skip_unless_chrome\b|\bfindChrome\(")
+# pwsh as its own word, bare or quoted in an argv list; a script named like test-pwsh.sh is not it.
+_PWSH_WORD = re.compile(r"(?<![\w./-])pwsh(?![\w.-])")
+NEEDS_CHROME = "needs Chrome"
+NEEDS_PESTER = "needs pwsh with Pester, which this host lacks"
 _RANGE = re.compile(r"[^\s.]+(?:\.[^\s.]+)*\.\.\.[^\s.]+(?:\.[^\s.]+)*")
 
 
@@ -89,12 +94,50 @@ def split_chrome(entries: Sequence[E], root: str) -> tuple[list[E], list[E]]:
             [e for e in entries if verdict[str(e["test"])]])
 
 
-def delegated_lines(delegated: Sequence[E]) -> list[str]:
+def needs_pester(test: str) -> bool:
+    """Whether the test command starts pwsh, whose suites Invoke-Tests.ps1 runs through Pester."""
+    return bool(_PWSH_WORD.search(test))
+
+
+def host_runs_pester(pwsh: str | None = None) -> bool:
+    """Whether this host has pwsh with Pester; without Pester every suite reports SKIPPED, and a skip proves nothing."""
+    pwsh = pwsh or shutil.which("pwsh")
+    if not pwsh:
+        return False
+    probe = "(Get-Module -ListAvailable -Name Pester | Measure-Object).Count"
+    try:
+        out = subprocess.run([pwsh, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", probe],
+                             capture_output=True, text=True, check=False, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return out.returncode == 0 and out.stdout.strip() not in ("", "0")
+
+
+def split_pester(entries: Sequence[E], pester_here: Callable[[], bool]) -> tuple[list[E], list[E]]:
+    """(entries to prove here, pwsh entries CI proves); asks the host only when an entry starts pwsh."""
+    wanting = [e for e in entries if needs_pester(str(e["test"]))]
+    if not wanting or pester_here():
+        return list(entries), []
+    return [e for e in entries if not needs_pester(str(e["test"]))], wanting
+
+
+def set_aside(entries: Sequence[E], root: str, refuse: Callable[[list[E]], tuple[list[E], int]],
+              say: Callable[[str], None]) -> tuple[list[E], list[E], int]:
+    """(entries to prove here, entries CI proves, refuse's code); pwsh ones leave before the parse check, which needs pwsh."""
+    here, pester = split_pester(entries, host_runs_pester)
+    runnable, refused_rc = refuse(here)
+    runnable, chrome = split_chrome(runnable, root)
+    for line in delegated_lines(chrome, NEEDS_CHROME) + delegated_lines(pester, NEEDS_PESTER):
+        say(line)
+    return runnable, chrome + pester, refused_rc
+
+
+def delegated_lines(delegated: Sequence[E], why: str = NEEDS_CHROME) -> list[str]:
     """One line per suite handed to CI, and the by-hand proof of the same entries."""
     if not delegated:
         return []
     counts = Counter(str(e["test"]) for e in delegated)
-    lines = [f"  delegated {n} entr(ies) to CI, needs Chrome: {cmd}" for cmd, n in sorted(counts.items())]
+    lines = [f"  delegated {n} entr(ies) to CI, {why}: {cmd}" for cmd, n in sorted(counts.items())]
     lines.append('  by hand: bash linux/scripts/run-in-ci-image.sh "$PWD" -- python3 docs/scripts/verify_mutations.py '
                  + " ".join(f"--only {e['id']}" for e in delegated[:3])
                  + (" ..." if len(delegated) > 3 else ""))

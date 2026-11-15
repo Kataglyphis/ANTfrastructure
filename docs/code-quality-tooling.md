@@ -1076,7 +1076,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **4775 entries** over **638 distinct test commands**; both digits are
+manifest holds **4777 entries** over **639 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1180,7 +1180,7 @@ nothing (the common commit) copies nothing at all.
 | *(none)* | every entry — CI, or before a release |
 | `--changed` | only entries whose target — or a file their `test` command names — is committed since `--base` (default `origin/main`), staged, or edited. The by-hand proof (the pre-push hook uses `--push-range`, CI runs every entry, sharded); the commit hook no longer uses it (see the cost budget below — those are push semantics, and a hook re-paid them once per commit). Until 2026-09-03 this took the FIRST non-empty of those three, so a staged file was never selected while unpushed commits existed: the hook let a stale mutation through and the next, unrelated commit tripped on it |
 | `--push-range <remote>...<local>` | only entries the committed range changes, plus recipes it adds or edits; repeatable. The pre-push hook's scope ([the pre-push hook](#the-pre-push-hook)) |
-| `--delegate-chrome` | count entries whose suite needs a real Chrome as CI's to prove, and print the count per suite. Refused with `--shard` |
+| `--delegate-chrome` | count entries whose suite needs a real Chrome, or pwsh with Pester on a host without them, as CI's to prove, and print the count per suite. Refused with `--shard` |
 | `--only <id>` | one entry, while writing it |
 | `--root <dir>` | which tree to copy and check. It is copied too — pointing the gate at a mirror is a second belt, not the isolation mechanism |
 | `--jobs <n>` | how many mutations to prove at once, one mirror each (default: the CPUs the process may use, capped at the entry count and at a quarter of the temp filesystem's free space). Every mutation is still applied, run and restored alone, inside its own shard's copy |
@@ -1537,6 +1537,16 @@ Chrome goes red there. The gate refuses `--delegate-chrome --shard`, and
 prove them before CI, run the gate in the image; it prints the line:
 `bash linux/scripts/run-in-ci-image.sh "$PWD" -- python3 docs/scripts/verify_mutations.py --only <id>`.
 
+**So do `pwsh` suites on a host without Pester.** `Invoke-Tests.ps1` reports every suite SKIPPED
+when Pester is missing, and an arm64 dev host has no `pwsh` at all, so such a recipe could never
+bite there. With `--delegate-chrome`, an entry whose test command starts `pwsh` goes to CI with the
+line `needs pwsh with Pester, which this host lacks` when `pwsh` is not on `PATH` or lists no
+Pester module (`mutation_push.host_runs_pester`, asked only when such an entry is selected). It is
+set aside before the parse check, since parsing a PowerShell mutant needs `pwsh` too, so CI both
+parses and proves it. CI's
+Ubuntu runners carry both, and the Linux image carries Pester at `PESTER_VERSION` for the by-hand
+proof above.
+
 **`git push --no-verify`** bypasses all of it. It is allowed only with a by-hand proof
 named in the report: `python3 docs/scripts/verify_mutations.py --changed --base origin/develop --delegate-chrome`
 plus `bash linux/scripts/tests/test-doc-numbers.sh` and
@@ -1668,7 +1678,7 @@ nothing (the common commit) copies nothing at all.
 | *(none)* | every entry — CI, or before a release |
 | `--changed` | only entries whose target — or a file their `test` command names — is committed since `--base` (default `origin/main`), staged, or edited. The by-hand proof (the pre-push hook uses `--push-range`, CI runs every entry, sharded); the commit hook no longer uses it (see the cost budget below — those are push semantics, and a hook re-paid them once per commit). Until 2026-09-03 this took the FIRST non-empty of those three, so a staged file was never selected while unpushed commits existed: the hook let a stale mutation through and the next, unrelated commit tripped on it |
 | `--push-range <remote>...<local>` | only entries the committed range changes, plus recipes it adds or edits; repeatable. The pre-push hook's scope ([the pre-push hook](#the-pre-push-hook)) |
-| `--delegate-chrome` | count entries whose suite needs a real Chrome as CI's to prove, and print the count per suite. Refused with `--shard` |
+| `--delegate-chrome` | count entries whose suite needs a real Chrome, or pwsh with Pester on a host without them, as CI's to prove, and print the count per suite. Refused with `--shard` |
 | `--only <id>` | one entry, while writing it |
 | `--root <dir>` | which tree to copy and check. It is copied too — pointing the gate at a mirror is a second belt, not the isolation mechanism |
 | `--jobs <n>` | how many mutations to prove at once, one mirror each (default: the CPUs the process may use, capped at the entry count and at a quarter of the temp filesystem's free space). Every mutation is still applied, run and restored alone, inside its own shard's copy |

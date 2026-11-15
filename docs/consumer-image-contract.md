@@ -673,10 +673,13 @@ dependency. A client built in the image on `FLUTTER_VERSION` is CON102.
 
 The package stage puts `pwsh` at `PWSH_VERSION` on `PATH` (`/usr/local/bin/pwsh`, the tree in
 `/opt/microsoft/powershell/7`) on amd64 and arm64, with PSScriptAnalyzer at
-`PSSCRIPTANALYZER_VERSION` in its `$PSHOME/Modules`, which every user's module path reads (CON131).
-Both come from their GitHub releases through `download_verified_file`, against
-`PWSH_LINUX_{X64,ARM64}_SHA256` and `PSSCRIPTANALYZER_NUPKG_SHA256`; `install_pwsh` fails the
-stage when `pwsh` does not report its pin or does not list the module at its pin. The consumer is
+`PSSCRIPTANALYZER_VERSION` and Pester at `PESTER_VERSION` in its `$PSHOME/Modules`, which every
+user's module path reads (CON131, CON273). `pwsh` and PSScriptAnalyzer come from their GitHub
+releases, Pester from the PowerShell Gallery, each through `download_verified_file` against
+`PWSH_LINUX_{X64,ARM64}_SHA256`, `PSSCRIPTANALYZER_NUPKG_SHA256` and `PESTER_NUPKG_SHA256`;
+`install_pwsh` fails the stage when `pwsh` does not report its pin or does not list a module at
+its pin. Pester is the floor `windows-x64.yml` ensures, so the hub's `pwsh` recipes prove in the
+image (`run-in-ci-image.sh`) as on a Windows runner. The consumer is
 OrchestrANT's benchmark lab: 41 of its tests drive pwsh, and outside a container only the bare
 runner had one. **riscv64 has neither**: PowerShell publishes no riscv64 build, and those tests
 skip there ([image-decisions.md](image-decisions.md#deliberate--not-gaps)).

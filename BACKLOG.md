@@ -1850,15 +1850,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `renovate-locks.sh`'s uv path, so a consumer never rediscovers it. Done when a consumer adds a pure-Python
       dependency with one hub command in the image and the lock moves by that package alone.
 
-- [ ] **CON273 — the CI image has `pwsh` but no Pester, so no `pwsh` recipe can be proven off Windows** [S, ★★].
-      Found 2026-11-14 for CON236: `pwsh` 7.6.9 is in `kataglyphis_beschleuniger:latest`, Pester is not, so
-      `Invoke-Tests.ps1` reports every suite SKIPPED there, and the arm64 dev host has no `pwsh` at all; its
-      commit hooks then fail every recipe whose test runs `pwsh`. A throwaway
-      `Install-PinnedPowerShellModule -Name Pester -Version 6.2 -Minimum` inside one `--rm` container works.
-      Fix: install Pester at the floor `windows-x64.yml` pins into the Linux image, then let
-      `mutation_push.py` delegate a `pwsh` recipe to the image (or to CI, as it does for Chrome) when the host
-      has no `pwsh`. Done when a recipe on `WindowsBuildKit.Common.psm1` passes this host's hooks.
-
 ## Open — Linux arm64 and riscv64
 
 - [ ] **CON145 — `cxxbridge` in the Linux and Windows images** [S, ★★]. Found 2026-10-21 with
