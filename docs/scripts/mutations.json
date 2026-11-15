@@ -38247,5 +38247,13 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
   "why": "pwsh would ship without Pester, so Invoke-Tests.ps1 skips every suite in the image and no pwsh recipe proves there (CON273)"
+ },
+ {
+  "id": "quality-report.perf-genai-threads-auto-unbounded",
+  "target": "linux/scripts/lib/genai-model-threads.py",
+  "find": "    return min(max(usable - 1, 1), MAX_THREADS)\n",
+  "replace": "    return usable\n",
+  "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_auto",
+  "why": "auto is the family's rule, the usable CPUs but one and at most eight, so a Pi perf copy does not oversubscribe its four cores (CON218)"
  }
 ]

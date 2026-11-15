@@ -660,8 +660,12 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       thread: 570 ms); OrchestrANT's describe engine decodes on one thread since (owner decision). Both
       `perf-host.sh` (OrchestrANT and AccelerANTgine) still build `smollm2-perf` with
       `genai-model-threads.py --threads 7`, the Ryzen's choice, so a Pi baseline would record an oversubscribed
-      model. Next: `genai-model-threads.py --threads auto` (the rule of CON240, or a text rule of its own once
-      measured at 1, 2 and 3 threads on the Pi), and the two consumers pass it.
+      model. Since 2026-11-15 `genai-model-threads.py --threads auto` takes CON240's rule (7 on the Ryzen pinned to 8,
+      as the baselines used; 3 on a Pi 5). Measured there at 1, 2, 3 and 4 threads: 161, 92, 73 and 72 ms to the
+      first token, 109, 92, 80 and 71 tokens per second, so more threads speed the prefill and slow the decode, and
+      a 48-token reply is quickest on one or two. Left: OrchestrANT's, AccelerANTgine's and OxidANT's
+      `perf-host.sh` pass `--threads auto` at their next hub pin; whether a shipped text default follows the
+      detector's rule or a text rule of its own is the owner's call on these numbers.
 - [ ] **CON240 — one written default for ORT's intra-op threads in the detectors** [S, ★★]. The rule is written
       since 2026-11-15 ([`onnxruntime-single-source.md` § The ORT thread rule](docs/onnxruntime-single-source.md#the-ort-thread-rule)):
       the usable CPUs (the affinity mask) but one, 1 to 8, overrides kept. OrchestrANT followed it already;
