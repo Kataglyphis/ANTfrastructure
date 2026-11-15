@@ -31,7 +31,7 @@ TERMINAL = runpy.run_path(str(HERE / 'watch-build-units.py'))['terminal']
 
 def workers() -> list[Path]:
     runtime = API['local_module']().local_api('runtime_launch_profile').runtime_worker_files(ROOT)
-    return sorted({*runtime, Path(__file__), HERE / 'image-acceptance.py', HERE / 'image_acceptance_local.py',
+    return sorted({*runtime, Path(__file__), HERE / 'image-acceptance.py', HERE / 'image_acceptance_local.py', HERE / 'runtime_terminal_evidence.py',
                    HERE / 'source_ci/common.py', HERE / 'seal-mutation-unit.py', HERE / 'watch-build-units.py',
                    ROOT / 'shared/config/image-consumers.json'})
 

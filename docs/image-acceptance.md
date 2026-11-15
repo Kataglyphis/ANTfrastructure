@@ -86,6 +86,14 @@ failures stop promotion.
 
 After a normal Linux runtime actually succeeds, preserve its loaded successful
 producer unit, source/full-preflight receipt and original Android evidence.
+If systemd has already unloaded that successful producer, recovery additionally
+requires its sealed canonical storage guardian and a fresh journal query from
+the current boot. The four ordered manager lifecycle records must bind the same
+unit, invocation, UID, manager PID, exact driver and successful start/stop jobs.
+The retained actual process-exit clock remains distinct from the journal finish
+clock. Runtime creation must fall within that same boot, bounded by the trusted
+start event's wall and monotonic clocks. An absent unit alone cannot establish success; an unguarded or previous-boot
+producer cannot use this recovery path.
 Run its exact invocation-owned cleanup command and independently prove every
 owned container absent. A live or failed producer, changed source/worker bytes,
 missing cleanup, a base/package image or a foreign manifest/config cannot qualify.
@@ -121,7 +129,10 @@ receipt/hash and both producer/image observations. Keep those files, all consume
 logs and the original producer/source/parent evidence. Replay uses the same
 `--local-runtime-invocation`, `--replay` and another fresh workspace; its hub revision,
 image, original producer and complete consumer source/lock bindings must match.
-The original local image and loaded successful producer must still be available.
+The original local image and successful producer evidence must still be available.
+Recovered receipts explicitly label the historical guardian observation and bind
+its original source, authorization, invocation, seal, cleanup proofs and fresh
+journal. Both observations must remain identical across the complete consumer run.
 
 A local receipt cannot authorize registry promotion. The public path rejects
 local schema/transport/origin fields before any registry access and retains its

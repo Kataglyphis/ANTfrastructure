@@ -447,6 +447,7 @@ class FinalLaunchTests(unittest.TestCase):
             self.observe.assert_called_with(M.ENGINE, self.fixture.reference, 'linux/' + arch, self.fixture.invocation_path)
 
     def test_real_worker_inventory_carries_shared_engine_and_full_consumer_plan(self) -> None:
+        self.assertIn(M.HERE / 'runtime_terminal_evidence.py', ORIGINAL_WORKERS())
         self.assertIn(M.HERE / 'owned-nerdctl.py', ORIGINAL_WORKERS())
         self.assertIn(M.ROOT / 'shared/config/image-consumers.json', ORIGINAL_WORKERS())
         self.assertIsNotNone(M.__file__)

@@ -33,7 +33,7 @@ TERMINAL = runpy.run_path(str(HERE / 'watch-build-units.py'))['terminal']
 
 def workers() -> list[Path]:
     return [Path(__file__), HERE / 'launch-runtime-storage-guard.py', HERE / 'host_commands.py',
-            HERE / 'image_acceptance_local.py', HERE / 'source_ci/common.py',
+            HERE / 'image_acceptance_local.py', HERE / 'runtime_terminal_evidence.py', HERE / 'source_ci/common.py',
             HERE / 'seal-mutation-unit.py', HERE / 'watch-build-units.py',
             HERE / 'local-proof/capture-live-sccache-log.py', HERE / 'local-proof/cache_capture_profile.py',
             HOST / 'autonomous-safe-prune.py', HOST / 'prune-safe.sh',

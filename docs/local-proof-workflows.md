@@ -271,6 +271,15 @@ uses the existing full consumer runner and a producer-bound local receipt. It sh
 `runtime_worker_files` and the platform/engine-aware `prepare_local_alias` helper;
 copy the complete runtime/native/source profile companions. Actual runtime success,
 canonical producer cleanup and its independent absence query are prerequisites.
+For a genuinely unloaded successful runtime, `runtime_terminal_evidence.py`
+requires the original sealed storage guardian and fresh trusted same-boot journal
+lifecycle, preserving the actual historical exit timestamp with an explicit
+observation-source label. It verifies the original clean host before importing
+the guardian API; supplied JSON or a default zero exit status cannot replace
+these checks. Preserve the guardian authorization snapshot and all referenced
+cleanup proofs. An existing live, failed or merely stopped loaded unit cannot
+fall back to history. Include this companion in copied acceptance and guardian
+worker closures.
 The receipt remains local and cannot promote a registry tag. Fixture and mutation
 coverage establish refusals only, not real consumers or hardware acceptance.
 

@@ -11,6 +11,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import runtime_terminal_evidence as terminal_evidence
 from source_ci.common import fingerprint, require
 
 LOCAL_REF = re.compile(r'docker.io/ant-local/webgpu-[a-z0-9_./-]+@sha256:[0-9a-f]{64}\Z')
@@ -93,9 +94,15 @@ def producer_inputs(invocation: dict[str, Any], path: Path, platform: str) -> di
     require(fingerprint(proof) == text(invocation, 'source_full_preflight_sha256', HASH), 'Runtime complete source proof changed')
     try:
         local_api('normal_stage_launch').full_source(source, proof, text(invocation, 'source_revision', SHA))
-        terminal = local_api('gpu_handoff_profile').terminal(unit)
     except AssertionError as error:
         raise ValueError('Local runtime source or terminal producer failed: ' + str(error)) from error
+    try:
+        terminal = local_api('gpu_handoff_profile').terminal(unit)
+    except AssertionError as error:
+        if str(error) != 'Producer unit is missing':
+            raise ValueError('Local runtime source or terminal producer failed: ' + str(error)) from error
+        host_binding(invocation)
+        return {**terminal_evidence.recover(invocation, path, output), 'runtime_proof_sha256':fingerprint(proof)}
     raw = output(['systemctl', '--user', 'show', unit, '--property=ExecMainExitTimestampMonotonic', '--value']).strip()
     require(raw.isdigit() and int(raw) > 0, 'Local runtime never exited')
     return {'unit': terminal, 'exit_timestamp_monotonic': int(raw), 'runtime_proof_sha256': fingerprint(proof)}
@@ -217,6 +224,7 @@ def validate_receipt(receipt: dict[str, Any], image: str, platform: str) -> None
     require(terminal.get('LoadState') == 'loaded' and terminal.get('ActiveState') == 'active' and terminal.get('SubState') == 'exited', 'Local receipt producer was not terminal')
     require(terminal.get('MainPID') == terminal.get('ExecMainStatus') == '0' and terminal.get('Result') == 'success', 'Local receipt producer failed or was live')
     require(type(before.get('exit_timestamp_monotonic')) is int and before['exit_timestamp_monotonic'] > 0, 'Local receipt producer never exited')
+    terminal_evidence.validate(before)
     require(Path(text(before, 'producer_invocation')).is_absolute(), 'Local producer invocation path must be absolute')
     text(receipt, 'local_alias_receipt')
     text(receipt, 'local_alias_sha256', HASH)

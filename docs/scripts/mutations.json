@@ -37771,16 +37771,16 @@
  {
   "id": "python-types.native-image-proof-strict-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
-  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "the isolated type fixture must detect removing the native proof driver from mandatory checks"
  },
  {
   "id": "python-types.native-image-proof-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "the isolated type fixture must detect removing the native proof driver from mandatory checks"
  },
@@ -51632,8 +51632,8 @@
  {
   "id": "python-types.runtime-owned-nerdctl-args-2",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned-nerdctl.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned-nerdctl.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "Independent fixture type and annotation errors must fail when either runtime ownership companion leaves its mandatory scope; no runtime or cleanup execution is proved."
  },
@@ -51648,8 +51648,8 @@
  {
   "id": "python-types.runtime-owned-nerdctl-2",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "Independent fixture type and annotation errors must fail when either runtime ownership companion leaves its mandatory scope; no runtime or cleanup execution is proved."
  },
@@ -52408,8 +52408,8 @@
  {
   "id": "image-acceptance.local-host-source-call",
   "target": "linux/scripts/image_acceptance_local.py",
-  "find": "    host_binding(invocation)\n",
-  "replace": "    pass\n",
+  "find": "    host_binding(invocation)\n    android, parent = parent_binding(invocation, platform)\n",
+  "replace": "    pass\n    android, parent = parent_binding(invocation, platform)\n",
   "test": "bash linux/scripts/tests/test-image-acceptance-local.sh",
   "why": "Independent synthetic producer/engine/receipt controls must reject the broken binding; no actual FINAL image, consumer execution, full licences or GPU inference is proved."
  },
@@ -52512,8 +52512,8 @@
  {
   "id": "python-types.image-acceptance-local-strict-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py'",
-  "replace": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py'",
+  "find": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py'",
+  "replace": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py'",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated annotation fixture must catch removal of the local FINAL module from mandatory ANN001/ANN201; coverage expands without diagnostic exceptions."
  },
@@ -53032,32 +53032,32 @@
  {
   "id": "python-types.runtime-storage-module-strict-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
-  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
  },
  {
   "id": "python-types.runtime-storage-cli-strict-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
-  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-local-final.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
  },
  {
   "id": "python-types.runtime-storage-module-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
  },
  {
   "id": "python-types.runtime-storage-cli-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
  },
@@ -53520,16 +53520,16 @@
  {
   "id": "python-types.bounded-local-final-strict-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
-  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' \\\n",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated real bad-return and annotation controls must keep the FINAL launcher in fatal coverage; this proves no actual image or consumer acceptance."
  },
  {
   "id": "python-types.bounded-local-final-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated real bad-return and annotation controls must keep the FINAL launcher in fatal coverage; this proves no actual image or consumer acceptance."
  },
@@ -53940,5 +53940,405 @@
   "replace": "    pass\n",
   "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
   "why": "The GNU_UNIQUE receipt states its actual reviewed lineage instead of an older transport profile."
+ },
+ {
+  "id": "image-acceptance.terminal-require-1",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(isinstance(value, dict), 'Terminal evidence must be an object')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-2",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(isinstance(value, str) and value.isdecimal() and int(value) > 0, 'Invalid terminal clock or process identity')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-3",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(isinstance(value, dict), 'Terminal unit must be an object')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-4",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(all(value.get(key) == item for key, item in expected.items()), 'Retained unit was not terminal successful')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-5",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(isinstance(rows, list), 'Guardian cleanup evidence is malformed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-6",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(record['source'] == str(host) and record['revision'] == invocation['host_tools_revision'], 'Guardian host differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-7",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(record['runtime_invocation'] == str(path.resolve()) and record['runtime_invocation_sha256'] == fingerprint(path)\n            and record['producer_unit'] == invocation['unit'], 'Guardian watched another runtime')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-8",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(type(record['producer_pid']) is int and record['producer_pid'] > 0, 'Guardian process binding is missing')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-9",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(worker['status'] == 'observed-producer-terminal' and type(worker['exit_status']) is int\n            and worker['exit_status'] == 0 and proof['status'] == 'completed-storage-observation-only', 'Guardian did not finish successfully')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-10",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(proof['stopped'].get('MainPID') == '0' and proof['stopped'].get('ActiveState') == 'inactive', 'Guardian is not stopped')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-11",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(proof['producer_result'] == producer and proof['prunes'] == worker['prunes'], 'Guardian seal differs from its worker')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-12",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require([row.get('MESSAGE_ID') for row in rows] == list(IDS), 'Journal lifecycle is missing, duplicated or reused')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-13",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(isinstance(identity, str) and re.fullmatch(r'[0-9a-f]{32}', identity) is not None\n            and all(row.get('USER_INVOCATION_ID') == identity for row in rows), 'Journal invocation differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-14",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(len({row.get('_PID') for row in rows}) == 1, 'Journal manager PID changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-15",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(rows[0]['JOB_ID'] == rows[1]['JOB_ID'] and rows[2]['JOB_ID'] == rows[3]['JOB_ID'], 'Journal job identities differ')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-16",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    if not (isinstance(rows, list) and all(isinstance(row, dict) for row in rows)):\n        raise ValueError('Journal records are malformed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-17",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    if not (isinstance(boot, str) and re.fullmatch(r'[0-9a-f]{32}', boot) is not None\n            and type(uid) is int and uid >= 0):\n        raise ValueError('Journal boot or owner is malformed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-18",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    if not (isinstance(driver, list) and len(driver) == 11 and all(isinstance(word, str) and word for word in driver)):\n        raise ValueError('Journal driver is malformed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-19",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(type(exit_timestamp) is int and clocks[0] <= exit_timestamp <= clocks[1]\n            and clocks[0] < clocks[1] < clocks[2] < clocks[3], 'Journal and actual exit clocks differ')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-20",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(created.tzinfo is not None, 'Runtime creation time has no timezone')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-21",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(wall[0] - clocks[0] <= created_us <= wall[0] and all(a < b for a, b in pairwise(wall)), 'Journal predates or reorders the runtime')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-22",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(state == {'Id':unit, 'LoadState':'not-found', 'ActiveState':'inactive', 'SubState':'dead', 'MainPID':'0'}, 'Only a genuinely unloaded runtime may recover evidence')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-23",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    if not (unit.get('observation_source') == OBSERVATION and isinstance(evidence, dict)\n            and evidence.get('kind') == KIND):\n        raise ValueError('Retained terminal evidence is missing or unknown')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-24",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(isinstance(evidence.get('guard_directory'), str) and Path(evidence['guard_directory']).is_absolute(), 'Guardian evidence path is not absolute')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-25",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(isinstance(hashes, dict) and set(hashes) == {'invocation.json', 'worker-result.json', 'proof-stopped.json'}\n            and all(isinstance(value, str) and HASH.fullmatch(value) for value in hashes.values()), 'Guardian evidence hashes are missing')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-26",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    require(isinstance(evidence.get('journal'), dict)\n            and journal_proof(evidence['journal'], unit['Id'], origin['exit_timestamp_monotonic']) == evidence['journal'], 'Terminal journal evidence changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-27",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "        require(isinstance(row, dict), 'Guardian cleanup entry is malformed')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-28",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "        require(path.is_relative_to(directory) and path.parent == Path(row['directory']).resolve()\n                and path.name in {'proof.json', 'skip-proof.json'}, 'Guardian cleanup path differs')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-29",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "        require(fingerprint(path) == row['proof_sha256'], 'Guardian cleanup proof changed')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-30",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "        require(all(row.get(key) == value for key, value in expected.items())\n                and row.get('_EXE') in {'/usr/lib/systemd/systemd', '/lib/systemd/systemd'}, 'Journal sender or unit differs')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-31",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "        require(row.get('JOB_TYPE') == ('start' if index < 2 else 'stop'), 'Journal job type differs')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-32",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "        require(row.get('JOB_RESULT') == ('done' if index % 2 else None), 'Journal job failed or result differs')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-33",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "        require(row.get('UNIT_RESULT') in (None, 'success'), 'Journal unit result failed')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-34",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "        if not (isinstance(message, str) and message.count('[systemd-run] ') == 1 and message.endswith(suffix)):\n            raise ValueError('Journal command description is missing')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-35",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "        require(shlex.split(body) == driver, 'Journal ran another driver')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-require-36",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "        require(evidence is None, 'Unexpected terminal evidence on a live observation')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-original-source-api",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    guard_source(host)['source_binding'](record)\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-producer-clock",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    _positive(value.get('ExecMainExitTimestampMonotonic'))\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-guardian-clock",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    _positive(record.get('producer_start_ticks'))\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-guardian-terminal",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    successful_unit(proof['terminal'], record['unit'])\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-prune-proofs",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    _prune_proofs(proof['prunes'], directory)\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-manager-pid",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "    _positive(rows[0].get('_PID'))\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-job-id",
+  "target": "linux/scripts/runtime_terminal_evidence.py",
+  "find": "        _positive(row.get('JOB_ID'))\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-before-import-host",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "        host_binding(invocation)\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-nonmissing-refusal",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "        if str(error) != 'Producer unit is missing':\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-receipt-companion",
+  "target": "linux/scripts/image_acceptance_local.py",
+  "find": "    terminal_evidence.validate(before)\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-terminal.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-closure-runtime_storage_guard",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "            HERE / 'image_acceptance_local.py', HERE / 'runtime_terminal_evidence.py', HERE / 'source_ci/common.py',\n",
+  "replace": "            HERE / 'image_acceptance_local.py', HERE / 'source_ci/common.py',\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "image-acceptance.terminal-closure-launch-local-final",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "    return sorted({*runtime, Path(__file__), HERE / 'image-acceptance.py', HERE / 'image_acceptance_local.py', HERE / 'runtime_terminal_evidence.py',\n",
+  "replace": "    return sorted({*runtime, Path(__file__), HERE / 'image-acceptance.py', HERE / 'image_acceptance_local.py',\n",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "python-types.runtime-terminal-scope-1",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
+ },
+ {
+  "id": "python-types.runtime-terminal-scope-2",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_terminal_evidence.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Independent sealed-observer and journal controls must reject a broken binding; no real runtime, consumer acceptance, licence closure or GPU inference is established."
  }
 ]

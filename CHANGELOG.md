@@ -16,6 +16,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-16 — retain successful runtime evidence after systemd unloads its unit
+
+- Local FINAL acceptance can recover an actually unloaded successful runtime only from its original sealed storage guardian and fresh trusted same-boot journal lifecycle. Keep the actual process-exit timestamp separate from the manager finish event and label the historical observation explicitly.
+- Verify original host/source, invocation and cleanup bindings before importing the guardian API, and recheck the journal and seal across all six consumers. Live, failed, unguarded and previous-boot producers still refuse; synthetic regression and mutation controls do not prove a real consumer, image, licence closure or GPU result.
+
 ## 2026-11-15 — review the exact GNU_UNIQUE compiler rebuild lineage
 
 - Add an explicit compiler-planning profile for the reviewed `a4741df7` source and unchanged `60ce0c91` compiler repair. Verify compiler6's original input fingerprints, all seven deltas and the one narrow LLVM companion mount; keep GNU mounts, storage controls, disk reserve and publication guards unchanged.

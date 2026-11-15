@@ -38,6 +38,8 @@ class LocalFixture:
         self.engine_failure = self.consumer_status = 0
         self.consumer_timeout = self.producer_present = self.consumer_present = self.dirty_consumer = False
         self.host_head, self.host_dirty, self.exit_timestamp = 'c' * 40, '', '7'
+        self.systemctl_state: dict[str, str] = {}
+        self.journal_rows: list[dict[str, Any]] = []
         self.full_source = mock.Mock()
         self.terminal = mock.Mock(return_value={'Id':self.unit, 'LoadState':'loaded', 'ActiveState':'active',
                                                'SubState':'exited', 'MainPID':'0', 'Result':'success', 'ExecMainStatus':'0'})
@@ -119,7 +121,9 @@ class LocalFixture:
         self.calls.append(list(command))
         status, stdout, stderr = 0, '', ''
         if command[0] == 'systemctl':
-            stdout = self.exit_timestamp
+            stdout = '\n'.join(f'{key}={value}' for key,value in self.systemctl_state.items()) if self.systemctl_state else self.exit_timestamp
+        elif command[0] == 'journalctl':
+            stdout = '\n'.join(json.dumps(row) for row in self.journal_rows)
         elif command[0] == 'git':
             stdout = self.host_head if command[-1] == 'HEAD' else self.host_dirty
         elif command[0] == 'engine':

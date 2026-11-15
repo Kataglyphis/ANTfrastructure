@@ -504,7 +504,7 @@ class StorageGuardTests(unittest.TestCase):
 
     def test_worker_closure_contains_each_required_companion(self) -> None:
         expected = {'linux/scripts/runtime_storage_guard.py', 'linux/scripts/launch-runtime-storage-guard.py',
-                    'linux/scripts/host_commands.py', 'linux/scripts/image_acceptance_local.py',
+                    'linux/scripts/host_commands.py', 'linux/scripts/image_acceptance_local.py', 'linux/scripts/runtime_terminal_evidence.py',
                     'linux/scripts/source_ci/common.py', 'linux/scripts/seal-mutation-unit.py',
                     'linux/scripts/watch-build-units.py', 'linux/scripts/local-proof/capture-live-sccache-log.py',
                     'linux/scripts/local-proof/cache_capture_profile.py', 'linux/host-config/autonomous-safe-prune.py',
