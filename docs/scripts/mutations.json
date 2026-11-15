@@ -15324,6 +15324,54 @@
   "why": "the 404 page is served at any depth, so its way back must be root-absolute and exist"
  },
  {
+  "id": "docs-site.wasm-type",
+  "target": "linux/webserver/templates/docs-site.htaccess",
+  "find": "    AddType application/wasm .wasm\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-site-htaccess.sh",
+  "why": "WebAssembly.instantiateStreaming rejects a wasm under any type but application/wasm, so the demo would not start on a host whose mime.types lacks it"
+ },
+ {
+  "id": "docs-site.glb-type",
+  "target": "linux/webserver/templates/docs-site.htaccess",
+  "find": "    AddType model/gltf-binary .glb\n",
+  "replace": "    AddType application/octet-stream .glb\n",
+  "test": "bash linux/scripts/tests/test-docs-site-htaccess.sh",
+  "why": "a .glb typed by whatever the host's mime.types says falls outside the DEFLATE line, and the 61 MB scene goes out whole"
+ },
+ {
+  "id": "docs-site.gltf-type",
+  "target": "linux/webserver/templates/docs-site.htaccess",
+  "find": "    AddType model/gltf+json .gltf\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-site-htaccess.sh",
+  "why": "a .gltf scene needs its registered type to fall under the DEFLATE line"
+ },
+ {
+  "id": "docs-site.glb-compressed",
+  "target": "linux/webserver/templates/docs-site.htaccess",
+  "find": " model/gltf-binary model/gltf+json\n",
+  "replace": " model/gltf+json\n",
+  "test": "bash linux/scripts/tests/test-docs-site-htaccess.sh",
+  "why": "the host gzips text only; the 61 MB demo scene would go out at full size instead of 30 MB"
+ },
+ {
+  "id": "docs-site.wasm-compressed",
+  "target": "linux/webserver/templates/docs-site.htaccess",
+  "find": "DEFLATE application/wasm ",
+  "replace": "DEFLATE ",
+  "test": "bash linux/scripts/tests/test-docs-site-htaccess.sh",
+  "why": "the host serves application/wasm uncompressed (curl, 2026-11-15), so the 7 MB demo binary would too"
+ },
+ {
+  "id": "docs-site.deflate-guarded",
+  "target": "linux/webserver/templates/docs-site.htaccess",
+  "find": "<IfModule mod_filter.c>\n",
+  "replace": "<IfModule mod_mime.c>\n",
+  "test": "bash linux/scripts/tests/test-docs-site-htaccess.sh",
+  "why": "without mod_filter AddOutputFilterByType is an unknown directive, and an unknown directive in .htaccess is a 500 on every page"
+ },
+ {
   "id": "docs-site.plan-one-source",
   "target": "linux/scripts/docs-site.sh",
   "find": "  [ \"${modes}\" -eq 1 ] || die",

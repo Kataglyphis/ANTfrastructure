@@ -13,9 +13,16 @@ trap 'rm -rf "${_tmp}"' EXIT
 _directives() { sed -E 's/^[[:space:]]+//' "${HTACCESS}" | grep -vE '^(#|$)' | awk '{ print $1 }' | sort -u; }
 # _line <ERE>: the one line matching it, leading blanks dropped; empty when none.
 _line() { sed -E 's/^[[:space:]]+//' "${HTACCESS}" | grep -E "$1" | head -n 1; }
+# _guards <ERE>: the modules of every <IfModule> around the first line matching it, sorted, one line.
+_guards() {
+  sed -E 's/^[[:space:]]+//' "${HTACCESS}" | awk -v re="$1" '
+    /^<IfModule / { n++; m[n] = $2; sub(/>$/, "", m[n]); next }
+    /^<\/IfModule>/ { n--; next }
+    $0 ~ re { for (i = 1; i <= n; i++) print m[i]; exit }' | sort | paste -sd' ' -
+}
 
 t_case "every directive is in Apache's FileInfo override class, the one the host's .htaccess files are proven to use"
-t_assert_eq "" "$(_directives | grep -vxE '<IfModule|</IfModule>|RewriteEngine|RewriteCond|RewriteRule|Header|RedirectMatch|ErrorDocument')" \
+t_assert_eq "" "$(_directives | grep -vxE '<IfModule|</IfModule>|RewriteEngine|RewriteCond|RewriteRule|Header|RedirectMatch|AddType|AddOutputFilterByType|ErrorDocument')" \
   "a directive the host's AllowOverride does not grant turns every page of the site into a 500"
 
 t_case "plain http goes to https, permanently, and a TLS proxy cannot loop it"
@@ -43,6 +50,20 @@ t_assert_eq 1 "$(_matches /.ftp-deploy-sync-state.json)"
 t_assert_eq 1 "$(_matches /sub/.ftp-deploy-sync-state.json)" "a server-dir below the docroot keeps its own state file"
 t_assert_eq 0 "$(_matches /index.html)"
 t_assert_eq 0 "$(_matches /notes.ftp-deploy-sync-state.json)"
+
+t_case "the WebGPU demo's wasm and glTF files get their registered types"
+t_assert_eq "AddType application/wasm .wasm" "$(_line '^AddType [^ ]+ \.wasm$')" \
+  "WebAssembly.instantiateStreaming rejects a wasm served under any other type"
+t_assert_eq "AddType model/gltf-binary .glb" "$(_line '^AddType [^ ]+ \.glb$')"
+t_assert_eq "AddType model/gltf+json .gltf" "$(_line '^AddType [^ ]+ \.gltf$')"
+t_assert_eq "mod_mime.c" "$(_guards '^AddType ')"
+
+t_case "those types are gzipped, behind both modules the directive needs"
+types="$(_line '^AddOutputFilterByType DEFLATE ' | cut -d' ' -f3- | tr ' ' '\n' | sort | paste -sd' ' -)"
+t_assert_eq "application/wasm model/gltf+json model/gltf-binary" "${types}" \
+  "the host gzips text itself, never these; a 61 MB scene goes out at 30 MB"
+t_assert_eq "mod_deflate.c mod_filter.c" "$(_guards '^AddOutputFilterByType ')" \
+  "mod_filter owns the directive and mod_deflate the filter; either one missing must drop the line, not fail the site"
 
 t_case "a 404 page the ErrorDocument names, whole and with links that resolve"
 t_assert_eq "ErrorDocument 404 /404.html" "$(_line '^ErrorDocument ')"
