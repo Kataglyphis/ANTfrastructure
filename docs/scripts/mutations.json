@@ -32221,7 +32221,7 @@
   "target": "windows/scripts/build/Test-Container.ps1",
   "find": " -OrtCensusPath \"$torchAppCensus\" -Mode verify",
   "replace": " -Mode verify",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-passed.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-passed.json",
   "why": "the gate mounts windows/scripts alone, so the verifier looked for the census beside itself and the amd64 smoke gate failed"
  },
  {
@@ -32229,7 +32229,7 @@
   "target": "windows/scripts/build/Test-Container.ps1",
   "find": "$torchAppCensus = Resolve-SmokeCompanion -ScriptRoot $PSScriptRoot -Name 'ort-venv-census.py'",
   "replace": "$torchAppCensus = Join-Path $PSScriptRoot 'ort-venv-census.py'",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-image-copy.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-census-image-copy.json",
   "why": "only the image's C:\\temp\\scripts copy exists in the gate, so a mount-only path fails every amd64 smoke run"
  },
  {
@@ -32237,7 +32237,7 @@
   "target": "windows/scripts/build/Test-Container.ps1",
   "find": "Where-Object { $_.Trim() } | Select-Object -Last 3) }",
   "replace": "Where-Object { $_.Trim() } | Select-Object -First 3) }",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-verify-evidence.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.TorchAppOrtVerify.Tests.ps1 -ResultFile logs/code-quality/smoke-torchapp-verify-evidence.json",
   "why": "the verifier's error is its last output, and a message without it hid a missing census behind a bare failed"
  },
  {
@@ -32245,7 +32245,7 @@
   "target": "windows/scripts/build/Test-Container.ps1",
   "find": "Assert-CmakeSmokeBuild -tmpDir2 $tmpDir2",
   "replace": "Assert-CmakeSmokeBuild -Directory $tmpDir2",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-cmake-build-binds.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-cmake-build-binds.json",
   "why": "an undeclared name left the CMake smoke's directory empty, so section 15 ran no assertion and the amd64 smoke gate failed its floor"
  },
  {
@@ -32253,7 +32253,7 @@
   "target": "windows/scripts/build/Test-Container.ps1",
   "find": "function Invoke-SmokeSection10 {",
   "replace": "function Invoke-SmokeSection10 { function Get-NestedSmokeProbe { }",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-functions-at-script-level.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Smoke.ScriptStructure.Tests.ps1 -ResultFile logs/code-quality/smoke-functions-at-script-level.json",
   "why": "a missing brace nested the OpenCV link smoke inside the CUDA helper, so section 10 called a function that did not exist"
  },
  {
@@ -36245,7 +36245,7 @@
   "target": "windows/scripts/build/Test-Container.ps1",
   "find": "-Filter 'nvfatbin*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object Name)",
   "replace": "-Filter 'nvfatbin*.dll' -File -ErrorAction SilentlyContinue).Name",
-  "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/smoke-empty-finding-list.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Native.Provenance.Tests.ps1 -ResultFile logs/code-quality/smoke-empty-finding-list.json",
   "why": "the healthy empty list throws under strict mode and fails the smoke gate at the end of a chain"
  },
  {
@@ -37579,8 +37579,8 @@
  {
   "id": "lib.trt-ep-protobuf-rc-postcondition",
   "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
-  "find": "        [regex]::Matches($text, 'add_compile_options\\(\\s*\"\\$<\\$<COMPILE_LANGUAGE:C,CXX>:/').Count -eq 4 -and\n            $remaining -notmatch 'add_compile_options\\(\\s*[^)\\s]' -and\n            $text -notmatch 'add_definitions\\(\\s*/' -and\n            $text.Contains('add_compile_options(\"$<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>\")')",
-  "replace": "        $true",
+  "find": "        $scoped = [regex]::Matches($uncommented, 'add_compile_options\\(\\s*\"\\$<\\$<COMPILE_LANGUAGE:C,CXX>:/').Count -eq 4 -and\n            $remaining -notmatch 'add_compile_options\\(\\s*[^)\\s]' -and\n            $uncommented -notmatch 'add_definitions\\(\\s*/' -and\n            $uncommented.Contains('add_compile_options(\"$<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>\")')",
+  "replace": "        $scoped = $true",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
   "why": "missing or partial compiler-option scope must fail before TensorRT configuration"
  },
@@ -37687,6 +37687,62 @@
   "replace": "[regex]::Matches($Actual, [regex]::Escape($Pattern)).Count",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.TextFixtures.Tests.ps1",
   "why": "Callers select regular expressions, so the shared counter must not silently treat them as literals."
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-comment-parenthesis",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "        $pattern = '(?m)^(?<indent>[ \\t]*)add_definitions\\((?<options>\\s*/(?:(?>#[^\\r\\n]*)|[^#)])*)\\)'",
+  "replace": "        $pattern = '(?m)^(?<indent>[ \\t]*)add_definitions\\((?<options>\\s*/[^)]*)\\)'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "A closing parenthesis inside a protobuf warning comment cannot terminate the real compiler-option block."
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-comment-bytes",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "                if ($option.Groups['comment'].Success) { return $option.Value }",
+  "replace": "                if ($option.Groups['comment'].Success) { return $option.Value.Replace('/bigobj', '/lost-comment') }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "Compiler-like text inside comments remains unchanged while the real options are language-scoped."
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-comment-command",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "^(?<indent>[ \\t]*)add_definitions",
+  "replace": "(?<indent>[ \\t]*)add_definitions",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "A commented add_definitions example is not a compiler command and must not be rewritten or rejected as an option."
+ },
+ {
+  "id": "lib.trt-ep-protobuf-rc-atomic-refusal",
+  "target": "windows/scripts/build/Build-OrtTensorRtEpFromSource.ps1",
+  "find": "        if (-not $scoped) { throw 'TensorRT protobuf compiler-option scope is not verified.' }",
+  "replace": "        if (-not $scoped) { [IO.File]::WriteAllText($path, $text); throw 'TensorRT protobuf compiler-option scope is not verified.' }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only SourceBuild.OrtTensorRtEp.Tests.ps1",
+  "why": "A rejected partial option layout leaves the original bytes unchanged, including when some valid blocks could be transformed."
+ },
+ {
+  "id": "lib.harness-file-unchanged-comparison",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "    Assert-Equal $fileUnchangedBeforeHash (Get-FileHash -LiteralPath $FileUnchangedPath -Algorithm SHA256 -ErrorAction Stop).Hash $FileUnchangedReason",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.FileUnchanged.Tests.ps1",
+  "why": "Changed source bytes must fail even when the operation itself succeeds."
+ },
+ {
+  "id": "lib.harness-file-unchanged-operation",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "    $null = & $FileUnchangedAction",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.FileUnchanged.Tests.ps1",
+  "why": "The shared byte assertion executes its operation exactly once and preserves operation failures."
+ },
+ {
+  "id": "lib.harness-file-unchanged-literal-path",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "function Assert-FileUnchanged {\n    # Distinct local names preserve the callback's caller-visible bindings.\n    param(\n        [Parameter(Mandatory)][Alias('Path')][string]$FileUnchangedPath,\n        [Parameter(Mandatory)][Alias('Action')][scriptblock]$FileUnchangedAction,\n        [Alias('Reason')][string]$FileUnchangedReason = ''\n    )\n    $fileUnchangedBeforeHash = (Get-FileHash -LiteralPath $FileUnchangedPath -Algorithm SHA256 -ErrorAction Stop).Hash\n    $null = & $FileUnchangedAction\n    Assert-Equal $fileUnchangedBeforeHash (Get-FileHash -LiteralPath $FileUnchangedPath -Algorithm SHA256 -ErrorAction Stop).Hash $FileUnchangedReason\n}",
+  "replace": "function Assert-FileUnchanged {\n    # Distinct local names preserve the callback's caller-visible bindings.\n    param(\n        [Parameter(Mandatory)][Alias('Path')][string]$FileUnchangedPath,\n        [Parameter(Mandatory)][Alias('Action')][scriptblock]$FileUnchangedAction,\n        [Alias('Reason')][string]$FileUnchangedReason = ''\n    )\n    $fileUnchangedBeforeHash = (Get-FileHash -Path $FileUnchangedPath -Algorithm SHA256 -ErrorAction Stop).Hash\n    $null = & $FileUnchangedAction\n    Assert-Equal $fileUnchangedBeforeHash (Get-FileHash -Path $FileUnchangedPath -Algorithm SHA256 -ErrorAction Stop).Hash $FileUnchangedReason\n}",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Harness.FileUnchanged.Tests.ps1",
+  "why": "Bracketed fixture names identify literal files; an unchanged wildcard sibling cannot mask changed bytes."
  },
  {
   "id": "lib.trt-ep-cross-cxx-before-cuda",
@@ -37823,6 +37879,230 @@
   "replace": "\"${runner}\"",
   "test": "bash linux/scripts/tests/test-tensorrt-closure.sh",
   "why": "Target-loader inspection remains bounded and preserves every argument boundary."
+ },
+ {
+  "id": "lib.smoke-cudnn-header",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "-Filter 'cudnn.h'",
+  "replace": "-Filter 'cudnn*.h'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Smoke.Cudnn.Tests.ps1",
+  "why": "An auxiliary header cannot replace the required cuDNN public header."
+ },
+ {
+  "id": "lib.smoke-cudnn-library",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "-Filter 'cudnn.lib'",
+  "replace": "-Filter 'cudnn*.lib'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Smoke.Cudnn.Tests.ps1",
+  "why": "An auxiliary import library cannot replace the required cuDNN main library."
+ },
+ {
+  "id": "lib.smoke-cudnn-dll",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "-Filter 'cudnn64_*.dll'",
+  "replace": "-Filter 'cudnn*.dll'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Smoke.Cudnn.Tests.ps1",
+  "why": "An auxiliary runtime cannot replace the required versioned cuDNN main DLL."
+ },
+ {
+  "id": "lib.smoke-cudnn-required",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "throw 'cuDNN link+run requires cudnn.h, cudnn.lib, cudnn64_*.dll and CUDA_ROOT.'",
+  "replace": "Skip-Test 'cuDNN link+run requires cudnn.h, cudnn.lib, cudnn64_*.dll and CUDA_ROOT.'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Smoke.Cudnn.Tests.ps1",
+  "why": "Missing cuDNN development inputs must fail rather than become an allowed skip."
+ },
+ {
+  "id": "lib.smoke-cudnn-cross",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "Assert-NativeLinkRun @cudnnProbe -CrossLinkOnly",
+  "replace": "Assert-NativeLinkRun @cudnnProbe",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Smoke.Cudnn.Tests.ps1",
+  "why": "The cross lane must retain its link-only and PE-machine assertion policy."
+ },
+ {
+  "id": "lib.smoke-cudnn-native-call",
+  "target": "windows/scripts/build/Test-Container.ps1",
+  "find": "Assert-NativeLinkRun @cudnnProbe -Name 'cuDNN links + host API works (cudnnGetVersion)' -ExpectMatch 'cudnn' -FailMessage 'cuDNN did not compile/link/run (cudnnGetVersion) -- header/lib/DLL mismatch or missing dependent DLL'",
+  "replace": "if ($false) { Assert-NativeLinkRun @cudnnProbe -Name 'cuDNN links + host API works (cudnnGetVersion)' -ExpectMatch 'cudnn' -FailMessage 'cuDNN did not compile/link/run (cudnnGetVersion) -- header/lib/DLL mismatch or missing dependent DLL' }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Smoke.Cudnn.Tests.ps1",
+  "why": "A healthy SDK must execute the native cuDNN host API control."
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-node-required",
+  "target": "windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1",
+  "find": "@('001-node-compute-info-lifetime.patch', '002-kernel-registry-lifetime.patch')",
+  "replace": "@('002-kernel-registry-lifetime.patch')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the node cleanup correction must be applied, not silently omitted"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-registry-required",
+  "target": "windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1",
+  "find": "@('001-node-compute-info-lifetime.patch', '002-kernel-registry-lifetime.patch')",
+  "replace": "@('001-node-compute-info-lifetime.patch')",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the registry ownership correction must be applied, not silently omitted"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-fatal-patch",
+  "target": "windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1",
+  "find": "        Invoke-RequiredSourcePatch -SourceDir $SourceDir -PatchFile (Join-Path $PatchDir $name)",
+  "replace": "        try { Invoke-RequiredSourcePatch -SourceDir $SourceDir -PatchFile (Join-Path $PatchDir $name) } catch { Write-Warning $_ }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "missing and stale patches must stop the source build"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-before-configure",
+  "target": "windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1",
+  "find": "    Invoke-OrtAmdgpuEpSourcePatch -SourceDir $epRoot -PatchDir $PatchDir",
+  "replace": "    Write-Verbose 'lifetime corrections omitted'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the real primary source must receive both corrections before seed/configure work"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-entry-selection",
+  "target": "windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1",
+  "find": "$seeds = Initialize-OrtAmdgpuEpSeeds -WorkDir $WorkDir -PatchDir $PatchDir",
+  "replace": "$seeds = Initialize-OrtAmdgpuEpSeeds -WorkDir $WorkDir -PatchDir ''",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the selected mounted patch directory must reach the source initializer"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-callback-adjustment",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+            API_CALL_S(NodeComputeInfo, static_cast<NodeComputeInfo*>(this_), CreateState, compute_context, *compute_state);",
+  "replace": "+            API_CALL_S(NodeComputeInfo, this_, CreateState, compute_context, *compute_state);",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "every callback must adjust the nonzero C base offset introduced by virtual ownership"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-typed-release",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch",
+  "find": "+        delete static_cast<NodeComputeInfoBase*>(info);",
+  "replace": "+        delete info;",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "deleting the original C base must not survive in the patched source"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-registry-owner",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/002-kernel-registry-lifetime.patch",
+  "find": "+    mutable Ort::KernelRegistry kernel_registry_{nullptr};",
+  "replace": "+    mutable OrtKernelRegistry* kernel_registry_{};",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the cached registry needs its releasing owner"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-registry-lock",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/patches/002-kernel-registry-lifetime.patch",
+  "find": "+        const std::lock_guard lock{kernel_registry_mutex_};",
+  "replace": "+        (void)kernel_registry_mutex_;",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "parallel registry creation must remain synchronized"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-node-mount",
+  "target": "windows/Dockerfile.rocm-migraphx",
+  "find": "    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/patches/001-node-compute-info-lifetime.patch,target=C:\\bkmnt\\ort-amdgpu-patches\\001-node-compute-info-lifetime.patch,readonly `\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the EP RUN must carry its selected node patch as a narrow read-only mount"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-registry-mount",
+  "target": "windows/Dockerfile.rocm-migraphx",
+  "find": "    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/patches/002-kernel-registry-lifetime.patch,target=C:\\bkmnt\\ort-amdgpu-patches\\002-kernel-registry-lifetime.patch,readonly `\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the EP RUN must carry its selected registry patch as a narrow read-only mount"
+ },
+ {
+  "id": "onnx-ep-amdgpu.windows-lifetime-mounted-selection",
+  "target": "windows/Dockerfile.rocm-migraphx",
+  "find": "-PatchDir 'C:\\bkmnt\\ort-amdgpu-patches'",
+  "replace": "-PatchDir 'C:\\bkmnt\\wrong-patches'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only SourceBuild.OrtAmdgpuLifetime.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/amdgpu-lifetime-mutation.json",
+  "why": "the EP invocation must use the directory populated by the two file mounts"
+ },
+ {
+  "id": "windows-lane.call-assertions-recorded-argument-index",
+  "target": "windows/scripts/tests/WindowsHarness.CallAssertions.psm1",
+  "find": "$call[$ArgumentIndex]",
+  "replace": "$call[0]",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/call-assertions-mutation.json",
+  "why": "recorded argument projections must preserve the requested argument boundary"
+ },
+ {
+  "id": "windows-lane.call-assertions-recorded-count",
+  "target": "windows/scripts/tests/WindowsHarness.CallAssertions.psm1",
+  "find": "    Assert-Equal $Expected.Count $Actual.Count $CountReason",
+  "replace": "    Write-Verbose 'sequence count omitted'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/call-assertions-mutation.json",
+  "why": "sequence assertions must reject extra and missing entries"
+ },
+ {
+  "id": "windows-lane.call-assertions-recorded-values",
+  "target": "windows/scripts/tests/WindowsHarness.CallAssertions.psm1",
+  "find": "        Assert-Equal $Expected[$index] $Actual[$index] \"$EntryReason $index\"",
+  "replace": "        Write-Verbose 'sequence value assertion omitted'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/call-assertions-mutation.json",
+  "why": "every recorded sequence entry must be compared in its original order"
+ },
+ {
+  "id": "windows-lane.call-assertions-source-order",
+  "target": "windows/scripts/tests/WindowsHarness.CallAssertions.psm1",
+  "find": "        Assert-TestAstOrder -Before $commands[$index - 1] -After $commands[$index]",
+  "replace": "        Write-Verbose 'source order omitted'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/call-assertions-mutation.json",
+  "why": "source call order assertions must reject a reversed sequence"
+ },
+ {
+  "id": "windows-lane.call-assertions-source-uniqueness",
+  "target": "windows/scripts/tests/WindowsHarness.CallAssertions.psm1",
+  "find": "        Assert-Equal 1 $selected.Count \"one selected call to $commandName\"",
+  "replace": "        Write-Verbose 'call uniqueness omitted'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/call-assertions-mutation.json",
+  "why": "a repeated selected source call must fail before source-order verification"
+ },
+ {
+  "id": "windows-lane.child-diagnostic-ansi",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "-replace '\\x1b\\[[0-9;]*m', ''",
+  "replace": "-replace 'NO_ANSI_MATCH', ''",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/native-fixture-mutation.json",
+  "why": "captured child diagnostics must remove ANSI escapes without changing their words"
+ },
+ {
+  "id": "windows-lane.child-diagnostic-continuations",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "-replace '\\s*\\n\\s*(\\|\\s*)*', ' '",
+  "replace": "-replace 'NO_GUTTER_MATCH', ' '",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.CallAssertions.Tests.ps1 -Jobs 1 -ResultFile logs/test-results/native-fixture-mutation.json",
+  "why": "wrapped PowerShell continuation gutters must not alter the expected refusal text"
+ },
+ {
+  "id": "windows-lane.torch-refusal-normalization",
+  "target": "windows/scripts/tests/WindowsTorchRocm.RefusalFixture.psm1",
+  "find": "Assert-Match $Pattern (ConvertTo-TestDiagnosticText -Output @($Result.Out)) $Why",
+  "replace": "Assert-Match $Pattern $Result.Out $Why",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Torch.Rocm.Refusal.Tests.ps1",
+  "why": "a supplied wrapped refusal must still enforce the exact reason, failing status and absent download cache"
+ },
+ {
+  "id": "uv-chain-ort.census-fixture-twins",
+  "target": "windows/scripts/tests/Uv.CensusPath.Tests.ps1",
+  "find": "`$env:PYTHON_WHEELS_FREE_THREADED = `$null; `$env:PYTHON_WHEELS_CP314T = `$null",
+  "replace": "Write-Verbose 'inherited twin stores retained'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Uv.CensusPath.Tests.ps1",
+  "why": "the staged-census fixture must isolate its path assertion from inherited free-threaded stores"
+ },
+ {
+  "id": "uv-chain-ort.census-fixture-copy-directory",
+  "target": "windows/scripts/tests/Uv.CensusPath.Tests.ps1",
+  "find": "if ($dest -match '[\\\\/]$')",
+  "replace": "if ($false)",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only Uv.CensusPath.Tests.ps1",
+  "why": "a trailing directory separator must append the census filename after host path conversion"
  },
  {
   "id": "image-acceptance.ci-native-host",

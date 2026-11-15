@@ -299,6 +299,9 @@ smoke-test fix is re-verifiable without an image rebuild; and it enforces
 **coverage floors** (`-SmokeMinPassed`/`-SmokeMaxSkipped`, exit 3), because a
 run that asserted nothing used to print "All smoke tests passed!" and exit 0.
 `-SkipSmokeGate` is for chain iteration only.
+Required cuDNN SDK inputs cannot become a skip. Resolve the exact main files
+with the shared recursive finder and retain native host-API execution or
+cross-target link/PE checking; see `windows-builds.md` § Smoke Testing.
 **On `-TargetArch arm64` the gate is arch-SPLIT (2026-08-24).**
 `Test-Container.ps1` mostly verifies by EXECUTING the staged binaries,
 and Windows x64 has no ARM64 emulation — so the payload sections keep floor 0

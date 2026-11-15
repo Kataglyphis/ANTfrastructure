@@ -36,12 +36,14 @@
   decision), so OrchestrANT, AccelerANTgine and OxidANT all take the usable CPUs but one, 1 to 8
   (`docs/onnxruntime-single-source.md` § The ORT thread rule). CON240 leaves the backlog; CON218 notes ObservANT's
   `llm_threads`.
+
 ## 2026-11-15 — `genai-model-threads.py --threads auto` (CON218)
 
 - `--threads auto` copies a GenAI model with the family's ORT rule, the usable CPUs but one, 1 to 8: 7 on the Ryzen
   pinned to 8 CPUs, as the perf baselines used, and 3 on a Pi 5, where the consumers' fixed 7 oversubscribed four
   cores (34 tokens per second). On the Pi SmolLM2-135M took 161/92/73/72 ms to the first token and decoded
   109/92/80/71 tokens per second at 1/2/3/4 threads. New recipe `quality-report.perf-genai-threads-auto-unbounded`.
+
 ## 2026-11-15 — one hub command locks a consumer in the image (CON272)
 
 - `linux/scripts/02-toolchain/python/uv-lock-in-image.sh [--no-build-isolation-package NAME]...` runs a consumer's
@@ -52,6 +54,7 @@
   (`docs/dependency-updates.md` § A consumer's uv lock in the image). `test-uv-lock-in-image.sh`. New CON276:
   ship setuptools and wheel in `/opt/venv`.
 - New CON275: GCC 16's `_mm_loadl_epi64` fails UBSan's alignment check (AccelerANTgine worked around it).
+
 ## 2026-11-15 — the family's ORT thread rule is written once; the hub backlog catches up
 
 - `docs/onnxruntime-single-source.md` § The ORT thread rule: a detector's intra-op pool takes the usable CPUs (the
@@ -62,6 +65,7 @@
   `--threads 7` perf copies; CON236's recipe half is done.
 - `mutation-gates.yml`'s in-image runner starts the container with `docker run --init`: `verify_mutations.py` was
   PID 1 and never reaped the orphans a test killed (OrchestrANT run 43657675126); the proof in a run is CON274.
+
 ## 2026-11-15 — Pester in the Linux image; a pwsh recipe goes to CI on a host without it (CON273)
 
 - `install_pwsh` also installs Pester at the new pin `PESTER_VERSION=6.2.0` (windows-x64.yml's floor) from the
@@ -341,6 +345,59 @@
 - `BACKLOG.md`: CON234 to CON253 from the audit of the four consumers, CON254 (`New-PortableBundle` leaks its package
   check's output), CON255 (one failed download fails the benchmark-history step) and CON256 (what the consumers'
   move onto the plugin left open on the hub side). CON231's step 2 names the order and the name the owner chose.
+
+## 2026-11-11 — record private NVIDIA producer and host acceptance
+
+- Record the completed `a4d31ea5` private NVIDIA chain and image-bound five-run
+  CPU/CUDA/TensorRT-plugin/DirectML evidence. Correct the older backlog claim
+  that the complete chain and host inference were still unproved.
+- Keep compiler-counter measurements, other lanes, consumer adoption and ARM64
+  publication separate. This documentation does not move an image tag or approve
+  the open CON228 notice draft.
+
+## 2026-11-11 — share portable Torch refusal assertions
+
+- Move the wrapped-refusal control into a portable suite and share its assertion
+  with every native installer case. Its mutation runs without Windows batch tools
+  on Linux while retaining the raw exit, normalized reason and no-download guards.
+  Native installer and interpreter execution cases remain discovered separately.
+
+## 2026-11-11 — run ORT census-path mutations on both hosts
+
+- Extract the three census-path cases into a separately discovered portable suite,
+  sharing the wheel-store fixture with native sync tests. Recognise either trailing
+  path separator when mapping a Dockerfile directory destination. The Linux mutation
+  command now exercises its intended cases without requiring a Windows drive.
+- Preserve every native sync case and the inherited-twin negative control; a second
+  mutation checks the directory mapping. These fixtures do not run real inference.
+
+## 2026-11-11 — align the TensorRT installer reference
+
+- Correct the script reference to describe the single CUDA-matched NVIDIA URL,
+  ZIP signature, checksum check and fatal acquisition failure. The installer
+  already follows this policy; the reference still described removed fallbacks.
+
+## 2026-11-11 — isolate native Windows test fixtures
+
+- Share captured child diagnostic normalization between Python CI and Torch
+  refusal fixtures; wrapped ANSI error text retains status, reason and no-download
+  assertions. The ORT census-path fixture clears inherited twin-wheel overrides
+  and proves its own path with both overrides deliberately present.
+
+## 2026-11-11 — Windows ROCm plugin lifetime corrections
+
+- Apply the canonical AMD EP node-cleanup and registry-ownership patches before
+  configuring the Windows plugin. Typed deletion keeps all six C ABI callback
+  adjustments; registry creation is synchronized and its owner releases before
+  data transfer. Only the EP RUN mounts the two shared patch files.
+- Windows source fixtures cover application, idempotence, missing/stale patches,
+  fatal child failures and build wiring. Separate native Windows controls show
+  both original failures and 11 node/41 registry checks after correction. These
+  controls do not replace the complete plugin build or physical GPU acceptance.
+- Share recorded argument and source-order assertions across the AMD EP,
+  TensorRT, disk-probe and chain-log suites. Preserve each caller's diagnostics;
+  the shared checks retain count, value, argument selection and uniqueness controls.
+
 ## 2026-11-10 — preserve MIGraphX node and registry ownership
 
 - The pinned plugin's C ABI node pointer now reaches an owning virtual base at release; both ordinary and cached nodes retain correct pointer adjustment in all six callbacks.
@@ -497,6 +554,23 @@
   the [dated archive](docs/changelog-archive-2026-11-05.md), registered in both docs
   indexes. No physical NVIDIA inference is established by these image/consumer checks.
 
+## 2026-11-10 — require the cuDNN host API smoke control
+
+- NVIDIA smoke now resolves the exact main cuDNN header, import library and
+  versioned runtime with the shared recursive finder. Missing inputs fail
+  instead of skipping after unset-variable errors. Native host-API execution
+  and cross-target link/PE checks retain their existing policies.
+- Four regression cases and six biting mutations cover discovery, required
+  inputs and dispatch. These fixtures use fake compilation; real image SDK
+  linkage, final-source CI and physical GPU acceptance remain separate checks.
+  The corrected full live-script replay against the immutable NVIDIA image
+  passes 319/0/2, including real cuDNN compilation, linkage and host API execution.
+
+- Six existing smoke mutation commands now let the canonical test runner create
+  result directories. This removes a Unix-only mkdir prefix that failed under
+  Windows cmd before the unchanged test or mutant could run.
+
+
 ## 2026-11-09 — repair Linux TensorRT cross builds and CUDA cache parsing
 
 - NVIDIA ARM64 run `20261109-102131-e69f48d7` ended with exit 1 at 17:02:20Z.
@@ -517,7 +591,7 @@
   major, preserving its rejection independently of inspector failure.
 - Linux ORT applies `003-cuda-standard-sccache.patch` through the existing patch
   driver to both CUDA source branches, then rejects partial or drifted options
-  before configuration. Tarball and Git fixtures prove repeatable byte changes.
+  before configuration. Tarball/Git controls keep raw bytes and isolated newline policy.
   A private-cache NVCC replay reproduces `multiple input files` with the old
   separated option; the joined option yields 12 repeat hits across CUDA,
   device code, PTX and CUBIN, zero cache errors and one uncached internal step.
@@ -533,6 +607,15 @@
   unconditional ordering; native compilation remains a separate chain result.
   Mixed already-scoped blocks now reject appended bare, quoted or unknown
   arguments, and unknown original options fail before rewriting input bytes.
+  The real protobuf warning block exposed closing parentheses inside comments
+  that truncated the old matcher. Comments are now preserved as text, and all
+  result checks run before writing. LF/CRLF, commented-command and atomic
+  refusal controls pass; all twelve affected patch mutations bite. File-byte
+  assertions share `Assert-FileUnchanged`, with separate callback, changed-byte
+  and literal-path fault controls. The actual pinned
+  input and native RC/C++ before/after controls pass; full plugin acceptance
+  remains separate. ROCm guidance also reflects independent NVIDIA tags and
+  supported-base GPU limits instead of treating old build skew as current.
 - Shared Windows plugin C++ flags retain `/EHsc`. Replacing the CMake flag
   string had dropped the platform exception default and made TensorRT plugin
   sources fail with `cannot use throw with exceptions disabled`. The policy
@@ -544,6 +627,9 @@
   every warning and all five GPU targets, reproduces that refusal and then
   records CUDA, PTX, CUBIN and device-code hits with the joined option. This
   local one-kernel control does not replace the full plugin/remote repeat.
+  The later whole-plugin pass at `6737933a` records real CUDA/CUBIN hits and
+  zero rejected cache calls; its product run then stops at the protobuf
+  comment defect above. This supplies no final image or forced-repeat receipt.
   Source fixtures check both branches, exact tokens, atomic drift refusal and
   preserved line endings; all four new mutations bite. File I/O uses the
   canonical patch API, and source fixtures share the harness regex counter

@@ -81,6 +81,19 @@ function Assert-MatchCount {
     Assert-Equal $Expected ([regex]::Matches($Actual, $Pattern).Count) $Message
 }
 
+function Assert-FileUnchanged {
+    # Distinct local names preserve the callback's caller-visible bindings.
+    param(
+        [Parameter(Mandatory)][Alias('Path')][string]$FileUnchangedPath,
+        [Parameter(Mandatory)][Alias('Action')][scriptblock]$FileUnchangedAction,
+        [Alias('Reason')][string]$FileUnchangedReason = ''
+    )
+    $fileUnchangedBeforeHash = (Get-FileHash -LiteralPath $FileUnchangedPath -Algorithm SHA256 -ErrorAction Stop).Hash
+    $null = & $FileUnchangedAction
+    Assert-Equal $fileUnchangedBeforeHash (Get-FileHash -LiteralPath $FileUnchangedPath -Algorithm SHA256 -ErrorAction Stop).Hash $FileUnchangedReason
+}
+Export-ModuleMember -Function Assert-FileUnchanged
+
 function Assert-TestSingleFindingCases {
     param([Parameter(Mandatory)][object[]]$Cases, [Parameter(Mandatory)][scriptblock]$Exercise, [string]$Message = 'finding')
     foreach ($case in $Cases) {
@@ -1029,3 +1042,12 @@ function Invoke-TestPluginStage {
     return $ep
 }
 Export-ModuleMember -Function Invoke-TestPluginStage
+
+
+# Child PowerShell error views add ANSI escapes and continuation gutters to diagnostic text.
+function ConvertTo-TestDiagnosticText {
+    param([AllowEmptyCollection()][object[]]$Output = @())
+    return ($Output -join "`n") -replace '\x1b\[[0-9;]*m', '' -replace '\s*\n\s*(\|\s*)*', ' '
+}
+
+Export-ModuleMember -Function ConvertTo-TestDiagnosticText

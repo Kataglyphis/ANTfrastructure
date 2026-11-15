@@ -149,6 +149,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Share unconditional and source-order wiring checks through `Assert-TestAstCommand -Unconditional` and `Assert-TestAstOrder`.
    Windows probe transports share child cleanup and report parsing; retain stderr, timeout, exit and assertion accounting policies.
    Windows diagnostic and host scripts carry their shared module companions; keep required failures fatal and advisory failures visible.
+   NVIDIA cuDNN smoke resolves exact main SDK files through the shared recursive finder and fails on missing inputs; preserve native host-API execution and cross-target link/PE checks.
    Windows disk probes distinguish zero from unknown; shared lavapipe acquisition retains caller PE, registry and environment verdicts.
    Host lavapipe setup imports WindowsScripts.Shared directly and unforced for Test-Elevated; a private image-module import cannot satisfy the entry script. Keep ICD registration elevated-only.
    Source file-tree staging and patch sweeps share transport and accounting; keep caller selection, ordering and fatal minimums.
@@ -162,7 +163,10 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    CMake consumers use `Get-CmakeBuildArgs` for target, configuration and parallel flags; keep its argument order and caller-specific build verdict.
    Windows source builders share required-child path enumeration for FFmpeg's Vulkan SDK and the LiteRT wheel smoke; preserve leaf versus directory checks and each caller's fatal diagnostic.
    MIGraphX licence copying uses its existing file-gap helper; keep empty-list behavior and missing-file failures visible.
+   Windows AMD EP builds carry both canonical Linux-owned lifetime patches in the EP RUN; retain all six C-base callback adjustments, typed node deletion and synchronized registry ownership before configuration.
+   Windows call assertion suites carry WindowsHarness.CallAssertions.psm1 beside TestHarness.psm1; preserve sequence counts, argument boundaries, unique calls and source order.
    Windows mutation fixtures share module lifetime; import or parse failures cannot satisfy an expected assertion failure.
+   Captured child diagnostics share ANSI and continuation-gutter normalization; native and portable Torch refusal tests share WindowsTorchRocm.RefusalFixture.psm1; refusal assertions retain raw status, reason and pre-download checks. Census-path fixtures clear inherited twin-wheel overrides and run under both host platforms; preserve all native sync cases and the shared wheel-store fixture.
    Synthetic ELF and gst-inspect test fixtures share their writers; retain caller-specific `DT_STRSZ`, symbol-table and `Name` options.
    Compiler argv fixtures normalize generated probe basenames under arbitrary temporary roots; retain the independent path-with-spaces control.
    Copied Python ORT registration helpers stay exact shared assets; cache successful registrations per owning binding and preserve explicit-root precedence, retryable failures and fresh device selection. Python plugin sessions attach devices through SessionOptions without a legacy constructor provider override. Native callers share one registry per live owning API/environment, preserve its lifetime and return raw C-API failures instead of aborting wrappers.
@@ -171,6 +175,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows source-copy mutation suites share AST loop selection and fixture execution; callers keep their source lists and assertions.
    Windows Slang consumers snapshot pinned WGSL before compilation and use the shared parity assertion for every fresh manifest output after CRLF/LF normalization.
    Windows suites share `New-TestDir -Prefix` and `Assert-Throws -MessagePattern`; suite-scoped directories retain their `AfterAll` cleanup.
+   Fixture byte-preservation checks share `Assert-FileUnchanged`; retain caller bindings and propagate operation exceptions.
    Fixture cleanup uses `Remove-TestDir` with literal paths; bracketed diagnostic prefixes must leave no temporary roots.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
    CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.
@@ -678,6 +683,8 @@ The Windows `-Gpu` lane downloads the pinned TensorRT zip and checks its SHA256;
 skip. Layout and rules: [`windows-cross-builds.md`](docs/windows-cross-builds.md).
 ORT's CUDA and TensorRT EPs are plugins on that lane (CON233); never restore `USE_TENSORRT` or the
 provider-bridge CUDA EP: [the plugin EPs](docs/windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
+TensorRT's protobuf repair preserves comments and treats their parentheses as text.
+Validate all four scoped blocks and every option before writing; unsupported input remains fatal.
 
 ### QNN / Qualcomm AI Engine Direct Setup (Optional, #121)
 

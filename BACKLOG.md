@@ -36,6 +36,27 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Next image build — GPU consumer findings
 
+**Windows evidence, 2026-11-11:** source `a4d31ea5` produced the private final
+NVIDIA manifest `d66fe94e923422d2cf52da458f26f01276eb010c03e1368677e31a84174d87ef`.
+All normal stages and publish gates passed: 319 smoke assertions, zero failures,
+and two hardware skips subsequently reconciled by fresh image-bound host checks.
+CPU, CUDA, TensorRT-plugin and DirectML each passed five numerical/profile runs;
+strict GPU checks disabled CPU fallback and retained before/after native provenance.
+All five source workflows and the full local preflight passed at this commit,
+including every one of 4,703 mutations, with no skips or delegation.
+No NVIDIA image was published. Other producer, device and publication receipts
+remain separately recorded in `logs/g5-results.md`.
+
+The older forced ONNX repeat at `536f92e5` recorded 6,304 typed cache hits, zero
+misses and zero cache errors; its enclosing QNN RUN failed on the upstream SDK403.
+The exact private SDK is now SHA256-verified and its canonical download-cache
+fast path passes. Those partial counters do not prove a complete coupled repeat.
+The Windows AMD EP requires the shared SDK lifetime corrections, with native
+original-fails/fixed-passes controls
+([mechanism and limits](docs/windows-rocm.md#migraphx-and-the-ort-plugin-ep-rocm-lane-spike)).
+CON228 stays open and its text draft. Dated stage/cache and remaining acceptance
+evidence lives in `logs/g5-results.md`.
+
 The application-build investigation is tracked in the items below. Recheck the cited
 image digests before implementing fixes and retain CPU-only support. The requested GPU
 targets are Linux NVIDIA x64/arm64, Linux AMD x64, and Windows NVIDIA/AMD x64; Linux ARM
@@ -1425,10 +1446,15 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       **Windows, owner 2026-11-08 ("Windows sofort komplett"): steps 2 and 4 landed in source together.** CUDA is the
       plugin build, the in-tree TensorRT EP is gone, and `Build-OrtTensorRtEpFromSource.ps1` builds the TensorRT plugin
       with SHA256-pinned seeds ([windows-cross-builds.md](docs/windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps)).
-      **Open on Windows:** an nvidia chain build to prove both compile and stage; registration and inference on an NVIDIA
-      host; consumers registering both plugins through the step-3 helpers. The 2026-11-08 goal-host probe initializes an
-      RTX 2080 (SM 7.5, driver API 13.5), but does not load or run the built plugins. Container file smokes do not prove
-      native CUDA execution ([host and runtime limits](docs/windows-build-resources.md#gpu-acceleration-in-containers-directml-on-the-host-gpu)).
+      **Windows evidence 2026-11-11:** the complete default NVIDIA chain at `a4d31ea5` passes all normal stages,
+      publish gates and 319 smoke assertions without image publication. Fresh checks of that exact private image
+      prove five correct runs each through CPU, CUDA and the TensorRT plugin, with matching provider profiles,
+      CPU fallback disabled for GPU checks and unchanged runtime hashes. DirectML separately passes five runs
+      on the independently checked NVIDIA adapter, with matching image-wheel/DLL provenance before and after.
+      This supersedes the failed `6737933a` TensorRT attempt; its comment-preserving repair and negative controls
+      remain in source. **Open on Windows:** consumer adoption through the step-3 helpers and each consumer's
+      own model/device acceptance. The host probe covers its numerical fixture and exported runtime, not every
+      model or supported GPU ([host and runtime limits](docs/windows-build-resources.md#gpu-acceleration-in-containers-directml-on-the-host-gpu)).
       The precedent is complete for TensorRT RTX: NVIDIA's plugin
       ([NVIDIA/TensorRT-RTX-EP-ABI](https://github.com/NVIDIA/TensorRT-RTX-EP-ABI), since ORT 1.23), the ORT docs
       deprecate the built-in EP, and microsoft/onnxruntime#32276 (merged 2026-10-28) removed it from `main`; eight
@@ -2186,6 +2212,7 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       the paragraph on the installers' licence page stays a draft until someone qualified has read it.
 - [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
   The full `93019e36` NVIDIA retry records 1,656 C/C++ hits but rejects all 605 CUDA calls on the separated `--std c++20` value. The working repair joins that option without changing C++20, warnings or architectures; a local actual-argv replay now records typed CUDA/PTX/CUBIN/device-code hits. The complete plugin and remote-cache repeat remain open.
+  The later `6737933a` ONNX pass compiles and stages the CUDA plugin, with 299 CUDA and 616 CUBIN hits, zero non-cacheable calls and zero cache/compile errors. Both cache levels report 3,733 writes without failure. Its full product run then stops at the protobuf comment defect; a normal full retry and forced CUDA repeat are still required. The [resource page](docs/windows-build-resources.md#persistent-compile-cache-sccache) separates each stage and the retained raw-counter limits.
       Done 2026-11-06: the `cuda_llm` exemption is gone (CHANGELOG). The nvidia chain of 2026-11-06 compiled ORT's CUDA RUN through sccache, MoE kernels included: 4937 compilations, 0 failures, 4330 WebDAV writes; 1663 hits (25 %) on a freshly rebuilt toolchain. `Test-CudaCache.ps1` passed on that toolchain (4 misses, then 4 hits). The warm reruns of 2026-11-07 hit: ORT's CUDA RUN 5993 hits, 0 misses (PTX, CUBIN and nvcc 100 %, 30:26 against 2:00:39 cold), OpenCV's 3355 hits, 1 miss. Still open: 289 failed S3 writes in the cold RUN.
       Checked 2026-11-09: #2862 remains open and #2809 is merged; the pin is unchanged. The ARM64 goal at `7c575e34`
       rebuilt GStreamer with real compiler hits; after the disk refusal and selected cleanup, the full retry

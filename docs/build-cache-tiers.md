@@ -1011,7 +1011,9 @@ a forced repeat bypasses caching with `multiple input files`. Linux's
 `003-cuda-standard-sccache.patch` changes both to `SHELL:-std=c++20` through the
 canonical patch driver. A postcondition requires exactly both joined branches
 and no remaining long form before configuration; a newer source layout must be
-reviewed rather than partially accepted. Git and tarball fixtures cover repeatability.
+reviewed rather than partially accepted. Git and tarball fixtures compare raw
+bytes with binary expected output and an isolated Git newline policy, so Windows
+text defaults cannot alter the control; they cover repeatability on both hosts.
 The Windows lane normalizes the same source through its existing patch API.
 
 **Non-x86 Torch wrapper setup bypasses compiler wrappers.**

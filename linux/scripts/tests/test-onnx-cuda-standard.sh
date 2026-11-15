@@ -41,8 +41,8 @@ python3 - "${file}" "${WORK}/expected.txt" <<'PYTHON'
 import sys
 from pathlib import Path
 
-text = Path(sys.argv[1]).read_text()
-Path(sys.argv[2]).write_text(text.replace("SHELL:--std c++20", "SHELL:-std=c++20"))
+text = Path(sys.argv[1]).read_bytes()
+Path(sys.argv[2]).write_bytes(text.replace(b"SHELL:--std c++20", b"SHELL:-std=c++20"))
 PYTHON
 out="$(ort_cuda_apply "${WORK}/valid" 2>&1)"; rc=$?
 t_assert_eq 0 "${rc}" "${out}"
@@ -58,6 +58,7 @@ t_assert_eq "${before}" "$(sha256sum "${file}")"
 t_case 'the same canonical policy applies and repeats through the Git backend'
 ort_cuda_tree "${WORK}/git"
 git -C "${WORK}/git" init -q || exit 1
+git -C "${WORK}/git" config core.autocrlf false || exit 1
 t_git_commit "${WORK}/git" || exit 1
 out="$(ort_cuda_apply "${WORK}/git" 2>&1)"; rc=$?
 t_assert_eq 0 "${rc}" "${out}"

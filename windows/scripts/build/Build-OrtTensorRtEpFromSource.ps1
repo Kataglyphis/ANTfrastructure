@@ -109,24 +109,25 @@ function Repair-OrtTensorRtProtobufRc {
     $path = Join-Path $SeedRoot 'CMakeLists.txt'
     $null = Edit-SourceFile -Path $path -Require -Quiet -Description 'TensorRT protobuf compiler options' -Transform {
         param($text)
-        $pattern = '(?ms)add_definitions\((\s*/[^)]*)\)'
-        [regex]::Replace($text, $pattern, {
+        $pattern = '(?m)^(?<indent>[ \t]*)add_definitions\((?<options>\s*/(?:(?>#[^\r\n]*)|[^#)])*)\)'
+        $text = [regex]::Replace($text, $pattern, {
             param($block)
-            $options = [regex]::Replace($block.Groups[1].Value, '(?m)(?<!\S)/[A-Za-z0-9-]+', {
+            $options = [regex]::Replace($block.Groups['options'].Value, '(?m)(?<comment>#[^\r\n]*)|(?<!\S)/[A-Za-z0-9-]+', {
                 param($option)
+                if ($option.Groups['comment'].Success) { return $option.Value }
                 if ($option.Value -notmatch '^/(MP|utf-8|wd\d+|bigobj)$') { throw "Unexpected protobuf compiler option: $($option.Value)" }
                 '"$<$<COMPILE_LANGUAGE:C,CXX>:' + $option.Value + '>"'
             })
-            'add_compile_options(' + $options + ')'
+            $block.Groups['indent'].Value + 'add_compile_options(' + $options + ')'
         })
-    }
-    Assert-SourceFileContent -Path $path -FailureMessage 'TensorRT protobuf compiler-option scope is not verified.' -Condition {
-        param($text)
-        $remaining = $text -replace '(?m)#.*$', '' -replace '"\$<\$<COMPILE_LANGUAGE:C,CXX>:/(MP|utf-8|wd\d+|bigobj)>"', ''
-        [regex]::Matches($text, 'add_compile_options\(\s*"\$<\$<COMPILE_LANGUAGE:C,CXX>:/').Count -eq 4 -and
+        $uncommented = $text -replace '(?m)#.*$', ''
+        $remaining = $uncommented -replace '"\$<\$<COMPILE_LANGUAGE:C,CXX>:/(MP|utf-8|wd\d+|bigobj)>"', ''
+        $scoped = [regex]::Matches($uncommented, 'add_compile_options\(\s*"\$<\$<COMPILE_LANGUAGE:C,CXX>:/').Count -eq 4 -and
             $remaining -notmatch 'add_compile_options\(\s*[^)\s]' -and
-            $text -notmatch 'add_definitions\(\s*/' -and
-            $text.Contains('add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>")')
+            $uncommented -notmatch 'add_definitions\(\s*/' -and
+            $uncommented.Contains('add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:/bigobj>")')
+        if (-not $scoped) { throw 'TensorRT protobuf compiler-option scope is not verified.' }
+        return $text
     }
 }
 

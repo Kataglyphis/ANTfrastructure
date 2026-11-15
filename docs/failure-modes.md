@@ -22,6 +22,16 @@ Two neighbours, so you land on the right page:
 > the triage index: enough to recognise the failure and act, with a link when
 > the full history matters.
 
+## cuDNN link/run skips despite installed SDK files
+
+The NVIDIA smoke at `adea396e` printed three unset-variable errors for
+`$cudnnHeaders`, `$cudnnLibs` and `$cudnnDlls`, then skipped the host API
+control while reporting 318 passed/0 failed/3 skipped. The broad artifact
+checks passed, but their helper returns assertions, not file lists. Resolve
+the exact main files directly with `Find-FirstTreeFile` and fail on missing
+inputs. `cudnnGetVersion` needs no GPU, so absent container GPU access does
+not justify this skip. See [the smoke contract](windows-builds.md#smoke-testing).
+
 ## ARM64 onnxinference crashes after requesting an unavailable ORT API
 
 Device run42521429496 at d63c982d reported API31 requested, ORT1.17.1/API17 loaded
@@ -50,6 +60,23 @@ LSan needs ptrace, which this emulation route cannot provide; see the
 Run the unchanged consumer plan on a compatible ARM execution host.
 Disabling leak detection changes coverage and cannot establish the original acceptance.
 The image compiler battery's explicit emulation skip does not excuse a failed consumer.
+
+## TensorRT protobuf compiler-option scope is not verified
+
+The full NVIDIA run at `6737933a` completed ONNX CUDA compilation, both wheels
+and QNN staging, then stopped before TensorRT configuration. The scope gate
+correctly found unprotected protobuf warning arguments. The old `[^)]*` block
+matcher ended at the closing parenthesis in the `/wd4334` comment, leaving later
+options outside the rewrite. Simplified fixtures had missed that input shape.
+
+The repair consumes complete line comments before matching a command's closing
+parenthesis, preserves their text and ignores commented command examples. It
+validates all four blocks and every argument before the shared patch API writes
+the file; rejected input remains unchanged. Fixtures cover LF/CRLF, later flags,
+mixed arguments and comments. Twelve affected mutations bite, and the actual
+SHA-pinned protobuf 21.12 input plus a native RC/C++ control pass. These controls
+do not prove the complete TensorRT plugin, the CUDA repeat or GPU inference.
+See [the plugin lane](windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps).
 
 ## ARM64 TensorRT nvcc rejects `--target=aarch64-linux-gnu`
 
