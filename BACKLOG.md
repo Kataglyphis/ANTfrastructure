@@ -1837,14 +1837,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       a package. If the answer changes: the package and the Rust target in the package stage, a smoke line
       for each, and one `clippy-windows` step in OxidANT with its minutes measured.
 
-- [ ] **CON274 — prove that the in-image mutation lane reaps a killed grandchild** [S, ★]. Found 2026-11-15 by
-      OrchestrANT's mutation lane (run 43657675126): `mutation-gates.yml` with `in-image: true` ran
-      `verify_mutations.py` as PID 1, which never reaps, so a grandchild a test killed stayed a zombie and
-      `os.kill(pid, 0)` still found it. Since that day the lane starts the container with `docker run --init`
-      (tini reaps). Not proven by a run yet: OrchestrANT's timeout test accepts a zombie since 98b1d23. Done when a
-      recipe whose test asserts the grandchild is gone, without that allowance, passes in the in-image lane.
-      `run-in-ci-image.sh` stays without `--init`: nerdctl's needs a `tini` on the host.
-
 - [ ] **CON275 — GCC 16's `_mm_loadl_epi64` fails UBSan's alignment check** [S, ★]. Found 2026-11-15 by
       AccelerANTgine's Linux x64 GCC Debug lane (run 43707801504): UBSan reported "load of misaligned address ... for
       type '__m64_u', which requires 8 byte alignment" at `emmintrin.h:713` inside nlohmann's `copy_plain_halves`,

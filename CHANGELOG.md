@@ -14,9 +14,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-15 — the in-image mutation lane reaps (CON274 done)
 
-
-
+- OrchestrANT 08f9c4b's `bench.agent-tree-survives-timeout` runs its test with `ORCHESTRANT_REQUIRE_REAPED=1`, under
+  which a zombie counts as alive, so its unmutated run passes only where PID 1 reaps. In `mutation-gates.yml`'s
+  in-image lane (`docker run --init`) it bit with that baseline green (run 43754387381); under a Python PID 1 without
+  an init the same test fails. CON274 leaves the backlog.
 
 ## 2026-11-15 — docs sites type and gzip wasm and glTF
 
@@ -25,6 +28,7 @@
   all FileInfo directives. The host gzips HTML, CSS and JavaScript itself but sent BeschleunigerBallett's 7 MB demo
   wasm whole; its 61 MB `Colosseum-web.glb` gzips to 30 MB (`docs/docs-sites.md` § The site's .htaccess).
   `test-docs-site-htaccess.sh` checks the types, the compressed set and both guards; six new `docs-site.*` recipes.
+
 ## 2026-11-15 — every detector follows the ORT thread rule (CON240 done)
 
 - OxidANT 75d0155 gives its Rust detector the family's rule when `KATAGLYPHIS_ORT_THREADS` is unset (owner
