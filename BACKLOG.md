@@ -1847,18 +1847,19 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       recipe whose test asserts the grandchild is gone, without that allowance, passes in the in-image lane.
       `run-in-ci-image.sh` stays without `--init`: nerdctl's needs a `tini` on the host.
 
-- [ ] **CON272 — a consumer's `uv lock` in the image: `/opt/venv` lacks setuptools, and no hub script knows the
-      command** [S, ★★]. Found 2026-11-14 adding pytest-timeout to OrchestrANT (owner: lock in the image, on 3.15).
-      Any new dependency makes `uv lock` resolve again, and that builds the riscv64 git source of torchvision for its
-      metadata; isolated, its build environment wants `torch==2.14.1` from PyPI, which has no cp315 wheel, so the
-      lock fails although the committed one passes `uv lock --check`. What worked, in one `--rm` container:
-      `uv pip install --python /opt/venv/bin/python "setuptools<82" wheel`, then
-      `UV_PROJECT_ENVIRONMENT=/opt/venv VIRTUAL_ENV=/opt/venv uv lock --no-build-isolation-package torchvision`,
-      which builds against the image's own torch 2.14.1+cpu: 14.5 min on a Pi 5, an 11 GB uv cache (PyTorch's git
-      checkout), and a lock diff of only the new package. Missing in the image: setuptools and wheel in `/opt/venv`
-      (or a lock venv with them beside the image's torch). Missing in the hub: the command itself, ideally in
-      `renovate-locks.sh`'s uv path, so a consumer never rediscovers it. Done when a consumer adds a pure-Python
-      dependency with one hub command in the image and the lock moves by that package alone.
+- [ ] **CON275 — GCC 16's `_mm_loadl_epi64` fails UBSan's alignment check** [S, ★]. Found 2026-11-15 by
+      AccelerANTgine's Linux x64 GCC Debug lane (run 43707801504): UBSan reported "load of misaligned address ... for
+      type '__m64_u', which requires 8 byte alignment" at `emmintrin.h:713` inside nlohmann's `copy_plain_halves`,
+      an unaligned 8-byte load by design (`_mm_loadl_epi64` takes `__m128i_u const*`). `__m64_u` should carry
+      `__aligned__(1)`; either the image's GCC 16.2.0 headers lost it or GCC's UBSan ignores it. AccelerANTgine
+      d66ef9d builds nlohmann with `JSON_NO_SIMD` under GCC with UBSan. Next: compile a three-line `_mm_loadl_epi64`
+      on an odd address with `-fsanitize=alignment` in the x86-64 image, read `mmintrin.h`'s `__m64_u`, and report
+      it to GCC if the typedef is right; any consumer with SSE intrinsics and UBSan meets the same report.
+
+- [ ] **CON276 — setuptools and wheel in the Linux image's `/opt/venv`** [S, ★]. CON272's command,
+      `uv-lock-in-image.sh`, installs `setuptools<82` and `wheel` into `/opt/venv` when they are missing, which a
+      throwaway container's root may; a non-root run refuses. Shipping them in `Dockerfile.torch` makes that step a
+      no-op. Done when an image built from it answers `import setuptools, wheel` from `/opt/venv/bin/python`.
 
 ## Open — Linux arm64 and riscv64
 

@@ -1053,6 +1053,26 @@ The fixture `linux/scripts/tests/test-renovate-uv-exports.sh` proves dirty refus
 lock maintenance, multiple projects and rollback; it stubs uv and does not prove
 network resolution or a hosted Renovate bot's behavior.
 
+### A consumer's uv lock in the image
+
+A consumer whose lock holds a git source that builds against PyTorch (OrchestrANT's riscv64
+torchvision) cannot re-lock in an isolated build environment: that one wants `torch` from PyPI,
+which has no wheel for the pinned Python. Any new dependency makes `uv lock` resolve again and hits
+it, although the committed lock passes `uv lock --check`. Run the lock in the family Linux image,
+from the consumer's root:
+
+```bash
+bash third_party/ANTfrastructure/linux/scripts/02-toolchain/python/uv-lock-in-image.sh \
+  --no-build-isolation-package torchvision
+```
+
+It installs `setuptools<82` and `wheel` into the image's `/opt/venv` when they are missing (a
+throwaway container's root may), then runs `uv lock` with that venv as the project environment, so
+the named packages build against the image's own torch. Arguments after `--` reach `uv lock`.
+Proven 2026-11-15 on a Pi 5: OrchestrANT with `tomli-w` added locked in 849 s, and the lock moved by
+that package alone. Keep a volume as `UV_CACHE_DIR`: the PyTorch checkout fills about 11 GB.
+`test-uv-lock-in-image.sh` covers the refusals and the order. CON272.
+
 ### Renovate builds it locally, and never says so
 
 Measured on 44.140.0 against DocumANTation before its lock maintenance, with

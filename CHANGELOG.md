@@ -15,6 +15,17 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+
+## 2026-11-15 — one hub command locks a consumer in the image (CON272)
+
+- `linux/scripts/02-toolchain/python/uv-lock-in-image.sh [--no-build-isolation-package NAME]...` runs a consumer's
+  `uv lock` with the image's `/opt/venv` as the project environment, after installing `setuptools<82` and `wheel`
+  there when missing, so a git source like OrchestrANT's torchvision builds its metadata against the image's torch
+  instead of an isolated environment that wants a PyPI torch the pinned Python has no wheel for. Proven on a Pi 5:
+  OrchestrANT with `tomli-w` added locked in 849 s and the lock moved by that package alone
+  (`docs/dependency-updates.md` § A consumer's uv lock in the image). `test-uv-lock-in-image.sh`. New CON276:
+  ship setuptools and wheel in `/opt/venv`.
+- New CON275: GCC 16's `_mm_loadl_epi64` fails UBSan's alignment check (AccelerANTgine worked around it).
 ## 2026-11-15 — the family's ORT thread rule is written once; the hub backlog catches up
 
 - `docs/onnxruntime-single-source.md` § The ORT thread rule: a detector's intra-op pool takes the usable CPUs (the
