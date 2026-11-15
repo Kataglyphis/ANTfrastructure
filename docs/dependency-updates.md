@@ -1498,7 +1498,7 @@ dependencies without making report or dry-run modes mutate this baseline.
 at a vulnerable version (markdown-it 15.0.2 → 15.0.3, GHSA-gfr2-rv44-r23c and GHSA-vfgh-jcmw-g37q,
 2026-10-21). Drop an entry once a Renovate bump depends on the fixed version itself.
 The current tracked Renovate release pins fixed markdown-it directly, so its former override is gone.
-Renovate 44.212.0 still pins glob 13.0.6 and minimatch 10.2.6, so those two are overridden for its own dependency only
+Renovate 44.239.1 still pins glob 13.0.6 and minimatch 10.2.6 (checked 2026-11-14), so those two are overridden for its own dependency only
 (GHSA-3g3m-2fjr-6pw4, GHSA-g3hv-75wg-m249). deepmerge 4.3.1 has no patched release (GHSA-gcqx-w48m-w2h4) and stays.
 
 Dependabot grades the committed npm lock, not the live CLI cache. A newer CLI may resolve a
@@ -1536,6 +1536,12 @@ Two guards keep it that way:
   counted, on one `skipped by design` line.
   Any NOT CHECKED row exits 1, including report mode, and `--apply` stops before
   changing a file.
+- `lockfile-only` is one of those by-design skips. Renovate's uv processor adds
+  every package that only `uv.lock` names, as `depType: uv.lock` with that reason;
+  nothing in a manifest pins it, Renovate looks one up only for a vulnerability
+  alert, and lock maintenance is what moves it. Measured 2026-11-14 with Renovate
+  44.239.1 on BeschleunigerBallett: 41 such rows made the report exit 1 and
+  `--apply` refuse all 13 of its real updates, until this skip was counted.
 - `test-renovate-annotations.sh` parses every annotated value with the scheme its
   annotation names and fails on one that does not parse, before any run.
 

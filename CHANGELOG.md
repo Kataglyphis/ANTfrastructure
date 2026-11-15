@@ -38,6 +38,17 @@
   customManager matches, and `bump_versions.py` moves `PESTER_NUPKG_SHA256` with it (`spec_pester`, from the
   gallery's nupkg).
 
+## 2026-11-14 — Renovate 44.239.1; a `lockfile-only` skip is by design
+
+- Renovate's uv processor now adds every package that only `uv.lock` names (`depType: uv.lock`,
+  `skipReason: lockfile-only`). The planner listed each as NOT CHECKED, so every uv consumer's report exited 1
+  and `--apply` refused all of its real updates: BeschleunigerBallett's 41 such rows blocked its 13 updates.
+  `renovate_planner.py` counts the reason in `BY_DESIGN`. New case in `test-renovate-local.sh`, recipe
+  `renovate.lockfile-only-skips-are-by-design`.
+- The tracked Renovate baseline moves to 44.239.1: `tool-pins.env`, `renovate-npm/package.json`, and its lock
+  regenerated under Node 24.22.2 and proven with `npm ci`. 44.239.1 still pins glob 13.0.6 and minimatch
+  10.2.6, so both security overrides stay.
+
 ## 2026-11-14 — each mutation mirror names itself to its tests (`MUTATION_MIRROR`)
 
 - `verify_mutations.py` hands every recipe test the mirror's directory name as `MUTATION_MIRROR`, so a recipe that

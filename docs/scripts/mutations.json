@@ -13988,6 +13988,14 @@
   "why": "every path dependency in the NOT CHECKED list would bury the one invalid value that actually hides a pin"
  },
  {
+  "id": "renovate.lockfile-only-skips-are-by-design",
+  "target": "linux/scripts/renovate_planner.py",
+  "find": "             \"contains-variable\", \"lockfile-only\"}\n",
+  "replace": "             \"contains-variable\"}\n",
+  "test": "bash linux/scripts/tests/test-renovate-local.sh",
+  "why": "Renovate lists every package only uv.lock names as lockfile-only, so every uv consumer's report would exit 1 and its --apply refuse all of its real updates"
+ },
+ {
   "id": "renovate.value-pin-ignores-npm-integrity",
   "target": "linux/scripts/renovate_planner.py",
   "find": "            \"newDigest\": (up.get(\"newDigest\") or \"\") if dep.get(\"currentDigest\") else \"\",",
