@@ -1537,16 +1537,15 @@ Chrome goes red there. The gate refuses `--delegate-chrome --shard`, and
 prove them before CI, run the gate in the image; it prints the line:
 `bash linux/scripts/run-in-ci-image.sh "$PWD" -- python3 docs/scripts/verify_mutations.py --only <id>`.
 
-**So do `pwsh` suites on a host without Pester.** `Invoke-Tests.ps1` reports every suite SKIPPED
-when Pester is missing, and an arm64 dev host has no `pwsh` at all, so such a recipe could never
-bite there. With `--delegate-chrome`, an entry whose test command starts `pwsh`, or names a suite
-that demands it with `t_skip_unless "…" command -v pwsh`, goes to CI with the
-line `needs pwsh with Pester, which this host lacks` when `pwsh` is not on `PATH` or lists no
-Pester module (`mutation_push.host_runs_pester`, asked only when such an entry is selected). It is
-set aside before the parse check, since parsing a PowerShell mutant needs `pwsh` too, so CI both
-parses and proves it. CI's
-Ubuntu runners carry both, and the Linux image carries Pester at `PESTER_VERSION` for the by-hand
-proof above.
+**So do `pwsh` suites on a host without `pwsh`.** An arm64 dev host has none, so such a recipe
+could never bite there. With `--delegate-chrome`, an entry whose test command starts `pwsh`, or
+names a suite that demands it with `t_skip_unless "…" command -v pwsh`, goes to CI with the line
+`needs pwsh, which this host lacks` when `pwsh` is not on `PATH` (`mutation_push.host_has_pwsh`,
+asked only when such an entry is selected). It is set aside before the parse check, since parsing
+a PowerShell mutant needs `pwsh` too, so CI both parses and proves it. Pester does not matter here:
+a recipe names harness suites only, which run without it (`test-mutation-pester-targets.sh`
+refuses a Pester-style one, since the Linux shards would skip it); the Linux image carries Pester at
+`PESTER_VERSION` for running a Pester-style suite by hand.
 
 **`git push --no-verify`** bypasses all of it. It is allowed only with a by-hand proof
 named in the report: `python3 docs/scripts/verify_mutations.py --changed --base origin/develop --delegate-chrome`

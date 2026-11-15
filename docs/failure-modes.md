@@ -1755,7 +1755,7 @@ stack in the excerpt. CI is green on the same commit.
 single edit to a docs-site script selects such a recipe.
 
 **Fix.** The pre-push hook hands these recipes to CI with `--delegate-chrome` and prints
-the count; it does the same for a `pwsh` recipe on a host without Pester. Run them here only
+the count; it does the same for a `pwsh` recipe on a host without `pwsh`. Run them here only
 through the image; see
 [the pre-push hook](code-quality-tooling.md#the-pre-push-hook).
 

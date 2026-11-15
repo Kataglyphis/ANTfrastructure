@@ -20,18 +20,20 @@
   PowerShell Gallery into `$PSHOME/Modules`, verified against `PESTER_NUPKG_SHA256` and failing the stage unless
   `pwsh` lists it at its pin. Proven in a throwaway container of `:latest` on arm64: the real nupkg installs and
   `Invoke-Pester` passes. `test-package-image-wiring.sh` covers the pin, the unpinned case and a wrong version.
-- `verify_mutations.py --delegate-chrome` (the pre-push hook's mode) also hands an entry whose test starts `pwsh` to
-  CI when this host has no `pwsh` or its `pwsh` lists no Pester (`mutation_push.host_runs_pester`, asked only when
-  such an entry is selected), printing `needs pwsh with Pester, which this host lacks`; Invoke-Tests.ps1 would have
-  reported every suite SKIPPED, which proves nothing. Such an entry is set aside before the parse check, which needs
-  `pwsh` for a PowerShell mutant, so the hook on the arm64 dev host no longer fails with `pwsh is not on PATH`.
-  `test-mutation-push.sh` covers both hosts and a PowerShell target.
-- Two recipes on `WindowsBuildKit.Common.psm1`'s consumer dispatch: `buildkit.push-tag-takes-the-repository` and
-  `buildkit.dispatch-without-tag-runs`.
+- `verify_mutations.py --delegate-chrome` (the pre-push hook's mode) also hands an entry whose test needs `pwsh` to
+  CI when this host has none (`mutation_push.host_has_pwsh`, asked only when such an entry is selected), printing
+  `needs pwsh, which this host lacks`. Such an entry is set aside before the parse check, which needs `pwsh` for a
+  PowerShell mutant, so the hook on the arm64 dev host no longer fails with `pwsh is not on PATH`. Pester does not
+  decide it: recipes name harness suites only, which run without Pester. `test-mutation-push.sh` covers both hosts
+  and a PowerShell target.
+- `BuildKit.ConsumerDispatch.Tests.ps1` is a harness suite now, not a Pester one, so the Linux shards run it, and two
+  recipes guard the consumer dispatch: `buildkit.push-tag-takes-the-repository` and
+  `buildkit.dispatch-without-tag-runs` (CI's first run skipped the Pester suite and failed both, and
+  `test-mutation-pester-targets.sh` refused them).
 
 ## 2026-11-15 — the pwsh delegation also covers suites that demand pwsh; Pester's pin follows its releases
 
-- `mutation_push.needs_pester` also counts a test command that names a suite carrying
+- `mutation_push.needs_pwsh` also counts a test command that names a suite carrying
   `t_skip_unless "…" command -v pwsh` (`test-mutation-parse.sh`, `test-harness-suite-driver.sh`,
   `test-windows-icon-pe.sh`), so editing `verify_mutations.py` on the arm64 dev host no longer needs `--no-verify`.
 - `PESTER_VERSION` is annotated `datasource=github-releases depName=pester/Pester`, which the versions.env

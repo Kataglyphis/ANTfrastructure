@@ -1,4 +1,4 @@
-"""A push's scope for the mutation gate: the files and recipes its ranges change, which entries need Chrome or Pester, and the coverage line.
+"""A push's scope for the mutation gate: the files and recipes its ranges change, which entries need Chrome or pwsh, and the coverage line.
 
 Does NOT cover a change that reaches a suite only through a file its command does not name, or a suite that starts
 Chrome without the harness's markers: that suite runs here and its timeout fails the push.
@@ -22,7 +22,7 @@ _CHROME_MARKER = re.compile(r"\bt_skip_unless_chrome\b|\bfindChrome\(")
 _PWSH_WORD = re.compile(r"(?<![\w./-])pwsh(?![\w.-])")
 _PWSH_MARKER = re.compile(r"\bt_skip_unless\b[^\n]*\bcommand -v pwsh\b")
 NEEDS_CHROME = "needs Chrome"
-NEEDS_PESTER = "needs pwsh with Pester, which this host lacks"
+NEEDS_PWSH = "needs pwsh, which this host lacks"
 _RANGE = re.compile(r"[^\s.]+(?:\.[^\s.]+)*\.\.\.[^\s.]+(?:\.[^\s.]+)*")
 
 
@@ -100,30 +100,21 @@ def split_chrome(entries: Sequence[E], root: str) -> tuple[list[E], list[E]]:
             [e for e in entries if verdict[str(e["test"])]])
 
 
-def needs_pester(test: str, root: str = ".") -> bool:
+def needs_pwsh(test: str, root: str = ".") -> bool:
     """Whether the test command starts pwsh, or names a suite that requires it with t_skip_unless."""
     return bool(_PWSH_WORD.search(test)) or _names_marked(test, root, _PWSH_MARKER)
 
 
-def host_runs_pester(pwsh: str | None = None) -> bool:
-    """Whether this host has pwsh with Pester; without Pester every suite reports SKIPPED, and a skip proves nothing."""
-    pwsh = pwsh or shutil.which("pwsh")
-    if not pwsh:
-        return False
-    probe = "(Get-Module -ListAvailable -Name Pester | Measure-Object).Count"
-    try:
-        out = subprocess.run([pwsh, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", probe],
-                             capture_output=True, text=True, check=False, timeout=120)
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return out.returncode == 0 and out.stdout.strip() not in ("", "0")
+def host_has_pwsh() -> bool:
+    """Whether pwsh is on PATH; recipes name harness suites only (test-mutation-pester-targets.sh), so Pester never matters."""
+    return shutil.which("pwsh") is not None
 
 
-def split_pester(entries: Sequence[E], root: str, pester_here: Callable[[], bool]) -> tuple[list[E], list[E]]:
+def split_pwsh(entries: Sequence[E], root: str, pwsh_here: Callable[[], bool]) -> tuple[list[E], list[E]]:
     """(entries to prove here, pwsh entries CI proves); asks the host only when an entry needs pwsh."""
-    verdict = {cmd: needs_pester(cmd, root) for cmd in {str(e["test"]) for e in entries}}
+    verdict = {cmd: needs_pwsh(cmd, root) for cmd in {str(e["test"]) for e in entries}}
     wanting = [e for e in entries if verdict[str(e["test"])]]
-    if not wanting or pester_here():
+    if not wanting or pwsh_here():
         return list(entries), []
     return [e for e in entries if not verdict[str(e["test"])]], wanting
 
@@ -131,12 +122,12 @@ def split_pester(entries: Sequence[E], root: str, pester_here: Callable[[], bool
 def set_aside(entries: Sequence[E], root: str, refuse: Callable[[list[E]], tuple[list[E], int]],
               say: Callable[[str], None]) -> tuple[list[E], list[E], int]:
     """(entries to prove here, entries CI proves, refuse's code); pwsh ones leave before the parse check, which needs pwsh."""
-    here, pester = split_pester(entries, root, host_runs_pester)
+    here, pwsh = split_pwsh(entries, root, host_has_pwsh)
     runnable, refused_rc = refuse(here)
     runnable, chrome = split_chrome(runnable, root)
-    for line in delegated_lines(chrome, NEEDS_CHROME) + delegated_lines(pester, NEEDS_PESTER):
+    for line in delegated_lines(chrome, NEEDS_CHROME) + delegated_lines(pwsh, NEEDS_PWSH):
         say(line)
-    return runnable, chrome + pester, refused_rc
+    return runnable, chrome + pwsh, refused_rc
 
 
 def delegated_lines(delegated: Sequence[E], why: str = NEEDS_CHROME) -> list[str]:
