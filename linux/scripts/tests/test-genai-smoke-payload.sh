@@ -244,7 +244,7 @@ t_assert_eq "1" "${_RC}"
 t_assert_contains "${_OUT}" "GENAI_MODEL_DIR=/nonexistent-genai-model is not a directory"
 
 # The actual wrapper is reused here, with only the host interpreter substituted.
-_SRI="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
+_SRI="${TESTS_DIR}/../06-packaging/check-ort-runtime.sh"
 eval "$(t_fn_src "${_SRI%/*}/smoke-common.sh" smoke_python_probe_command)"
 _WRAP="$(smoke_python_probe_command SMOKE_GENAI_PY GENAI-BIND)"
 _HOST_WRAP="${_WRAP//\/opt\/venv\/bin\/python/python3 -S}"

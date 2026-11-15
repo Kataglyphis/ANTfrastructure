@@ -74,6 +74,12 @@ reserved for "this gate or its input is broken" so it never reads as drift.
 
 ## Changing a config
 
+`ort-plugin-registration-python` copies `shared/python/ort_plugin_eps.py` into the
+consumer's installed Python package. Declare its importable target path explicitly
+in the consumer manifest; runtime use cannot depend on a checkout submodule. Its
+registration and device-selection contract lives in
+[the consumer image contract](../../docs/consumer-image-contract.md#amds-plugin-migraphx-ep).
+
 `python-wheel-rewrite` also uses this exact-copy mechanism: its canonical source is
 `shared/python/kataglyphis_wheel.py`, copied to `build_support/kataglyphis_wheel.py` in
 WebDavClient and OrchestrANT. A standalone sdist cannot import a hub submodule. Both
@@ -335,3 +341,8 @@ that could not report on the platform it gates. `linux/scripts/tests/`
 `test-shared-config-sync.sh` pins the bash half to the verdicts, exit codes and
 modes the two share. No hub suite runs the PowerShell half; OmniAccelerANT's
 `linux-x64.yml` runs both halves over its own tree.
+
+`ort-plugin-registration-native` copies the single native header into a consumer's
+compile include tree. Keep it exact and use the API table/environment that own the
+sessions; the lifecycle and error contract is in
+[the consumer image contract](../../docs/consumer-image-contract.md#amds-plugin-migraphx-ep).

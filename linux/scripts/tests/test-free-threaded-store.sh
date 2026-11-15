@@ -219,6 +219,7 @@ FTS GIL iree_base_compiler
 FTS GIL onnxruntime_genai
 FTS WHEEL onnxruntime_dnnl-1.30.0-cp314-cp314t-linux_x86_64.whl
 FTS PROVED onnxruntime_dnnl 1 compiled module(s) of onnxruntime_dnnl loaded on free-threaded 3.14.8; the GIL stayed disabled
+FTS WEBGPU onnxruntime_dnnl WEBGPU-FACTORY OK: fixture
 FTS WHEEL av-19.0.1-cp314-cp314t-linux_x86_64.whl
 FTS PROVED av 50 compiled module(s) of av loaded
 FTS WHEEL apache_tvm_ffi-0.1.13-cp314-cp314t-linux_x86_64.whl
@@ -250,6 +251,7 @@ for _fl in gpu migraphx; do
   t_assert_contains "$(_bad "${_gpu}")" "/opt/venv carries onnxruntime_${_fl}, whose verdict is twin, and the store has no free-threaded twin of it"
   _gpu="${_gpu/FTS DONE/FTS WHEEL onnxruntime_${_fl}-1.30.0-cp314-cp314t-linux_x86_64.whl
 FTS PROVED onnxruntime_${_fl} 1 compiled module(s)
+FTS WEBGPU onnxruntime_${_fl} WEBGPU-FACTORY OK: fixture
 FTS DONE}"
   t_assert_eq "" "$(_bad "${_gpu}")"
   t_assert_contains "$(_bad "$(printf '%s\n' "${_gpu}" | sed "s/^FTS PROVED onnxruntime_${_fl} .*/FTS UNPROVED onnxruntime_${_fl} ERROR: the GIL was re-enabled/")")" \
@@ -280,6 +282,7 @@ FTS WHEEL iree_base_runtime-3.12.0-cp314-cp314t-linux_riscv64.whl
 FTS PROVED iree_base_runtime 1 compiled module(s) of iree_base_runtime loaded
 FTS WHEEL onnxruntime-1.30.0-cp314-cp314t-linux_riscv64.whl
 FTS PROVED onnxruntime 1 compiled module(s) of onnxruntime loaded
+FTS WEBGPU onnxruntime WEBGPU-FACTORY OK: fixture
 FTS WHEEL torch-2.14.1-cp314-cp314t-linux_riscv64.whl
 FTS PROVED torch 9 compiled module(s) of torch loaded
 FTS DONE'
@@ -322,4 +325,17 @@ t_assert_ok bash -n <(ft_store_probe_script)
 t_assert_contains "$(sed -n '/^main()/,/^}/p' "${SMOKE}")" 'check_free_threaded_wheels "${image_tag}" "${target_arch}"'
 t_assert_contains "$(cat "${SMOKE}")" 'source "${_SCRIPT_DIR}/check-free-threaded-wheels.sh"'
 
+t_case 'the FT factory gate requires one successful ORT-specific receipt independently of import proof'
+for broken in missing failed duplicate wrong; do
+  _probe="${_P_NATIVE}"
+  case "${broken}" in
+    missing) _probe="$(printf '%s\n' "${_probe}" | grep -v -e '^FTS WEBGPU ')" ;;
+    failed) _probe="${_probe//FTS WEBGPU /FTS WEBGPU-FAIL }" ;;
+    duplicate) _probe+=$'\nFTS WEBGPU onnxruntime_dnnl WEBGPU-FACTORY OK: duplicate' ;;
+    wrong) _probe="${_probe//WEBGPU-FACTORY OK:/WEBGPU-FACTORY FAIL:}" ;;
+  esac
+  t_assert_contains "$(_bad "${_probe}")" 'no unique successful free-threaded WebGPU factory proof' "${broken}"
+done
+t_assert_contains "$(ft_store_probe_script)" '--phase free-threaded --source-ref "${WEBGPU_EXPECT_REF:?missing ORT source pin}"'
+t_assert_contains "$(ft_store_probe_script)" '"${work}/venv/bin/python" -I /opt/scripts/03-media/final/ort_webgpu_runtime.py'
 t_summary

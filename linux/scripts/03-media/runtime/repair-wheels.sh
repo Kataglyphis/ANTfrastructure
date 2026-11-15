@@ -35,12 +35,15 @@ esac
 
 # <check|follow> <wheels-dir> <manifest>...: check proves the census rows before the rewrite, follow re-points them after.
 ort_manifest_rows() {
-  python3 - "$@" <<'PY'
+  PYTHONPATH="${_SCRIPT_DIR:?}${PYTHONPATH:+:${PYTHONPATH}}" python3 - "$@" <<'PY'
 import hashlib
 import os
 import re
 import sys
 import zipfile
+from pathlib import Path
+
+from ort_webgpu_delivery import prepare_delivery, publish_deliveries
 
 mode, wheels = sys.argv[1], sys.argv[2]
 present = sorted(n for n in os.listdir(wheels) if n.endswith(".whl"))
@@ -76,7 +79,7 @@ def follow(sha, wheel, member):
     return f"{got}  {hits[0]}!{member}\n", None
 
 
-out, bad = {}, []
+out, bad, proof_updates = {}, [], {}
 for manifest in (m for m in sys.argv[3:] if os.path.isfile(m)):
     with open(manifest, encoding="utf-8") as fh:
         rows = [ln.split(None, 1) for ln in fh if ln.strip()]
@@ -91,10 +94,15 @@ for manifest in (m for m in sys.argv[3:] if os.path.isfile(m)):
             bad.append(f"{manifest}: {err}")
         else:
             out[manifest].append(line)
+    try:
+        prepare_delivery(mode, Path(manifest), rows, out[manifest], Path(wheels), stem, proof_updates)
+    except (OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile) as exc:
+        bad.append(f"{manifest}: WebGPU delivery: {exc}")
 for msg in bad:
     print("ERROR: ORT wheel manifest " + msg, file=sys.stderr)
 if bad:
     sys.exit(1)
+publish_deliveries(proof_updates)
 for manifest, lines in out.items():
     if mode == "follow":
         with open(manifest + ".tmp", "w", encoding="utf-8") as fh:

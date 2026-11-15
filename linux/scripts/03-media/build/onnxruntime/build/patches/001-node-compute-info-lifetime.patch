@@ -1,0 +1,73 @@
+--- a/src/migraphx/mgx_ep.h
++++ b/src/migraphx/mgx_ep.h
+@@ -635,21 +635,27 @@
+     std::mutex mutex_{};
+ };
+ 
+-struct NodeComputeInfo : OrtNodeComputeInfo {
++// ORT's C base has no virtual destructor; keep typed cleanup inside the plugin.
++struct NodeComputeInfoBase : OrtNodeComputeInfo {
++    NodeComputeInfoBase() : OrtNodeComputeInfo{NegotiatedOrtApiVersion()} {}
++    virtual ~NodeComputeInfoBase() = default;
++};
++
++struct NodeComputeInfo : NodeComputeInfoBase {
+     explicit NodeComputeInfo(ExecutionProvider& ep)
+-        : OrtNodeComputeInfo{NegotiatedOrtApiVersion()}, ep_{ep}
++        : NodeComputeInfoBase{}, ep_{ep}
+     {
+         OrtNodeComputeInfo::CreateState = [](OrtNodeComputeInfo* this_,
+             OrtNodeComputeContext* compute_context, void** compute_state) noexcept {
+-            API_CALL_S(NodeComputeInfo, this_, CreateState, compute_context, *compute_state);
++            API_CALL_S(NodeComputeInfo, static_cast<NodeComputeInfo*>(this_), CreateState, compute_context, *compute_state);
+         };
+         OrtNodeComputeInfo::Compute = [](OrtNodeComputeInfo* this_,
+             void* compute_state, OrtKernelContext* kernel_context) noexcept {
+-            API_CALL_S(NodeComputeInfo, this_, Compute, *static_cast<ComputeState*>(compute_state),
++            API_CALL_S(NodeComputeInfo, static_cast<NodeComputeInfo*>(this_), Compute, *static_cast<ComputeState*>(compute_state),
+                 Ort::KernelContext{kernel_context});
+         };
+         OrtNodeComputeInfo::ReleaseState = [](OrtNodeComputeInfo* this_, void* compute_state) noexcept {
+-            API_CALL_V(NodeComputeInfo, this_, ReleaseState, compute_state);
++            API_CALL_V(NodeComputeInfo, static_cast<NodeComputeInfo*>(this_), ReleaseState, compute_state);
+         };
+     }
+ 
+@@ -661,21 +667,21 @@
+     void ReleaseState([[maybe_unused]] void* compute_state) noexcept {}
+ };
+ 
+-struct EpContextNodeComputeInfo : OrtNodeComputeInfo {
++struct EpContextNodeComputeInfo : NodeComputeInfoBase {
+     explicit EpContextNodeComputeInfo(ExecutionProvider& ep)
+-        : OrtNodeComputeInfo{NegotiatedOrtApiVersion()}, ep_{ep}
++        : NodeComputeInfoBase{}, ep_{ep}
+     {
+         OrtNodeComputeInfo::CreateState = [](OrtNodeComputeInfo* this_,
+             OrtNodeComputeContext* compute_context, void** compute_state) noexcept {
+-            API_CALL_S(EpContextNodeComputeInfo, this_, CreateState, compute_context, *compute_state);
++            API_CALL_S(EpContextNodeComputeInfo, static_cast<EpContextNodeComputeInfo*>(this_), CreateState, compute_context, *compute_state);
+         };
+         OrtNodeComputeInfo::Compute = [](OrtNodeComputeInfo* this_,
+             void* compute_state, OrtKernelContext* kernel_context) noexcept {
+-            API_CALL_S(EpContextNodeComputeInfo, this_, Compute, *static_cast<EpContextComputeState*>(compute_state),
++            API_CALL_S(EpContextNodeComputeInfo, static_cast<EpContextNodeComputeInfo*>(this_), Compute, *static_cast<EpContextComputeState*>(compute_state),
+                 Ort::KernelContext{kernel_context});
+         };
+         OrtNodeComputeInfo::ReleaseState = [](OrtNodeComputeInfo* this_, void* compute_state) noexcept {
+-            API_CALL_V(EpContextNodeComputeInfo, this_, ReleaseState, compute_state);
++            API_CALL_V(EpContextNodeComputeInfo, static_cast<EpContextNodeComputeInfo*>(this_), ReleaseState, compute_state);
+         };
+     }
+ 
+--- a/src/migraphx/mgx_ep.cc
++++ b/src/migraphx/mgx_ep.cc
+@@ -1707,7 +1707,7 @@
+ Ort::Status ExecutionProvider::ReleaseNodeComputeInfos(const gsl::span<OrtNodeComputeInfo*> node_compute_info) noexcept
+ try {
+     for (const auto& info : node_compute_info) {
+-        delete info;
++        delete static_cast<NodeComputeInfoBase*>(info);
+     }
+     return STATUS_OK;
+ } catch (const Ort::Exception& e) {

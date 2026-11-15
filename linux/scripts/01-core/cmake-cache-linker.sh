@@ -16,23 +16,39 @@ append_cmake_compiler_cache_pin() {
   done
 }
 
-# <build-dir> <launcher>: fails when the configured build's launchers are not the one it was given.
-cmake_assert_compiler_cache_pin() {
-  local dir="$1" want="$2" cache="$1/CMakeCache.txt" name got rc=0
-  [ -n "${want}" ] || return 0
-  if [ ! -f "${cache}" ]; then
-    printf 'ERROR: [CACHE] %s has no CMakeCache.txt; the compiler-cache pin is unverified\n' "${dir}" >&2
+# Boolean caches must reject duplicate values while launcher checks retain first-value policy; neither proves compilation.
+cmake_assert_configured_entries() {
+  local _cce_cache="$1/CMakeCache.txt" _cce_mode="$2" _cce_pattern _cce_entry _cce_name _cce_want _cce_got _cce_rc=0
+  case "${_cce_mode}" in first) _cce_pattern='[A-Z]*' ;; bool) _cce_pattern=BOOL ;; *) return 2 ;; esac
+  shift 2
+  [ "$#" -gt 0 ] || return 2
+  if [ ! -f "${_cce_cache}" ]; then
+    printf 'ERROR: [CMAKE] %s has no CMakeCache.txt; configured entries are unverified\n' "${_cce_cache%/*}" >&2
     return 1
   fi
-  for name in CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER; do
-    got="$(sed -n "s/^${name}:[A-Z]*=//p" "${cache}" | head -n 1)"
-    if [ "${got}" != "${want}" ]; then
-      printf 'ERROR: [CACHE] %s: %s is %s, not %s; a subproject replaced the compiler cache\n' "${dir}" "${name}" "${got:-unset}" "${want}" >&2
-      rc=1
+  for _cce_entry in "$@"; do
+    case "${_cce_entry}" in *=*) ;; *) return 2 ;; esac
+    _cce_name="${_cce_entry%%=*}"; _cce_want="${_cce_entry#*=}"
+    _cce_got="$(sed -n "s/^${_cce_name}:${_cce_pattern}=//p" "${_cce_cache}")" || return $?
+    if [ "${_cce_mode}" = first ]; then _cce_got="${_cce_got%%$'\n'*}"; else _cce_got="${_cce_got//$'\r'/}"; fi
+    if [ "${_cce_got}" != "${_cce_want}" ]; then
+      printf 'ERROR: [CMAKE] %s: %s=%s, expected %s\n' "${_cce_cache}" "${_cce_name}" "${_cce_got:-<unset>}" "${_cce_want}" >&2
+      _cce_rc=1
     fi
   done
-  [ "${rc}" -ne 0 ] || printf '[CACHE] %s compiles through %s\n' "${dir}" "${want}" >&2
-  return "${rc}"
+  return "${_cce_rc}"
+}
+
+# <build-dir> <launcher>: fails when the configured build's launchers are not the one it was given.
+cmake_assert_compiler_cache_pin() {
+  local dir="$1" want="$2"
+  [ -n "${want}" ] || return 0
+  if ! cmake_assert_configured_entries "${dir}" first \
+      "CMAKE_C_COMPILER_LAUNCHER=${want}" "CMAKE_CXX_COMPILER_LAUNCHER=${want}"; then
+    printf 'ERROR: [CACHE] %s: a subproject replaced the compiler cache or the configure cache is unverified\n' "${dir}" >&2
+    return 1
+  fi
+  printf '[CACHE] %s compiles through %s\n' "${dir}" "${want}" >&2
 }
 
 append_cmake_cache_linker_args() {

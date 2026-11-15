@@ -1232,7 +1232,11 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       `register_execution_provider_library`), OmniAccelerANT (Dart over the native bridge), all under the name
       `MIGraphX` (owner, 2026-11-12), which `verify_ort_profile.py --device migraphx` requires since that day; in
       work in the consumers since then, and what that day left open on the hub side is CON256; each change passes CON224 item 1's parity run with the plugin's
-      operators in the profile. **Step 3 (in source 2026-11-08, owner: "sofort komplett, inklusive Entfernen"):**
+      operators in the profile. **Linux step 2 progress 2026-11-10:** shared Python/native helpers are in source.
+      The standalone SDK rebuild with [node and registry ownership fixes](docs/linux-accelerator-images.md#node-compute-info-ownership)
+      passes G2 and ASan/LSan on CPU plus two real plugin GPU tiny-model sessions. Full consumer builds,
+      finished packages and their detector parity/operator profiles remain open; this is not image promotion.
+      **Step 3 (in source 2026-11-08, owner: "sofort komplett, inklusive Entfernen"):**
       `30-build-native-amd.sh`, `--use_migraphx`, the `onnxruntime-migraphx` wheel and the two MIGraphX patches are
       gone; the rocm variant has no ORT GPU build, the plugin builds over the CPU prefix, the wrapper's app venv
       takes the CPU `onnxruntime` wheel, and the runtime smoke fails an image with `libonnxruntime_providers_migraphx.so`.
@@ -1363,28 +1367,61 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       ([accelerator page](docs/linux-accelerator-images.md#the-cuda-plugin-ep),
       [contract](docs/consumer-image-contract.md#nvidias-plugin-tensorrt-ep)). **Open on Linux:** the WebGPU EP as
       `onnxruntime_WEBGPU_STATIC_PLUGIN` (re-keys every CPU ORT build, so every media stage on three arches: its own
-      chain), the nvidia proof chain, and detector parity on `TensorRTPluginExecutionProvider` on a card.
+      chain), and detector parity on `TensorRTPluginExecutionProvider` on a card.
+      **Source preparation 2026-11-10:** native CPU/NVIDIA and their free-threaded wheels select the pinned
+      `--use_webgpu static_plugin` mode with external Dawn and require the actual configured flags. Asyncify
+      and JSPI select the same plugin ABI with Emscripten's integrated Dawn, check their configured modes
+      and use shared artifact cache epoch `-wgpu3`. These are source/fixture gates; actual builds and runtime
+      registration for native and Python linker products, all affected default/ROCm/NVIDIA media stages
+      and new acceptance are still open. Native/GIL and FT build boundaries now preserve separate
+      configured-mode/product hashes in `ort-webgpu-build.json`; canonical wheel repair adds checked delivery
+      mappings while preserving compiled code/data and dynamic symbol identity. These are source/fixture
+      proofs. A preserved Python gate now checks the imported GIL/FT extension against a completed delivery
+      and probes factory unregistration with its precise negative control; the image smoke and actual FT-store
+      interpreter invoke it. The native C API probe is now compiled per CPU/NVIDIA prefix with the core's
+      configured target compiler and shared cache helpers; its runtime phase checks each core directly,
+      rejects legacy WebGPU and retains registration/negative/cleanup controls. Fixtures use stub Python
+      bindings and a fake C ABI; actual native/Python factory registration in the image matrix and image
+      delivery remain open. Both enabled WASM flavors need real artifact proof. Before that
+      media rebuild, preserve the
+      OpenCV FindCUDA cache repair: its bounded SBSA replay records twelve forced-repeat hits and no misses;
+      the complete stage, non-x86 Torch wrapper policy and consumer Rust cache wiring remain follow-ups
+      ([cache scope](docs/build-cache-tiers.md#nvcc--hipcc)).
       Windows is this hub's Windows session. DirectML has no plugin and stays. The evidence, with links to every
       plugin: the 2026-11-08 deep research.
-      **Linux proof 2026-11-09:** Sequence37 passed NVIDIA amd64 media/android in run
-      `20261108-180128-c3904567` (media manifest
-      `sha256:486a9558b93caedc465460cc2d50ed9d103e6058ed2a4b7c2d37775575b490a3`).
-      ARM64 run `20261109-002505-d3b3c0b7` then failed QNN configure on GitHub HTTP 504 for the
-      fork's pinned protoc archive after CUDA compilation. The bounded configure retry has 100 fixture
-      assertions and eight mutations. Recovery `20261109-102131-e69f48d7` from fully proved `bf4c7d47`
-      passed ordinary disk/ancestry gates, both CUDA Python modes and QNN's module/export/HTP checks,
-      then failed TensorRT's nvcc host-compiler check; actual unit exit 1 was 2026-11-09T17:02:20Z.
-      Target CXX must be selected before CUDAHOSTCXX; the old real compiler control fails and the
-      fixed one compiles AArch64. A complete isolated TensorRT build over the target CPU core now
-      passes exports, original licences, G2 and target-loader resolution under QEMU. Native ldd's
-      failed ARM inspection had incorrectly passed, so closure checks now preserve that failure.
-      Linux also patches both separated CUDA standard options; a private NVCC repeat records
-      12 cache hits, zero cache errors and one uncached internal compilation. The TensorRT repeat
-      records 329 hits (317 C/C++, 12 CUDA), zero misses/errors and one uncached internal step.
-      Raw controls remain under `logs/test-results/plugin-proof-nvidia-arm64-media-1/`.
-      Full new-source preflight/CI, corrected ARM64 media/android recovery, both NVIDIA runtime
-      wrappers and their six-consumer receipts on one final index remain open, as does GPU inference.
-      These isolated controls do not prove a rebuilt media image, final wrapper or remote cache.
+      **Original handoff:** `rebuild-sequence-37` passed amd64 media/android, then exited 1 on
+      arm64 at 2026-11-09T08:04:35Z; the repaired recovery below supersedes that failed run.
+      **Linux proof 2026-11-10 (hub `9f4e6bd2`):** the complete isolated preflight and all
+      required exact-source CI passed; source and cleanup evidence is retained in
+      `logs/test-results/plugin-proof-nvidia-arm64-media-2/source-proof.json`.
+      Corrected ARM64 media/android recovery `20261109-194812-1056be49` completed both
+      stages with actual publication at 2026-11-10T01:16:07Z. Both CUDA Python modes,
+      QNN's module/export/HTP checks and the TensorRT plugin checks passed; the compiled
+      free-threaded module also loaded under QEMU with the GIL disabled.
+      Both local runtime wrappers, shipped-content gates and runtime-image smokes passed
+      in `20261110-013045-b0a6f8cb`. The accepted index, now `:latest-nvidia`, is
+      `sha256:d2df9e170fadc7f2abbc22e004b615a7f8a4f41ee9c810c4f06ad7229ecace70`;
+      its remote wrappers are amd64
+      `sha256:3b9cf1c6a211d5b6b9e317da4081e3510b963fd1fb94cd33326716b307b73268`
+      and arm64 `sha256:33b92fa2e4e1f926fbdbd09e446ed4449f51b41376daf9ad2cf815c036565af7`.
+      All six amd64 consumers passed in `logs/image-acceptance/20261110-013045-b0a6f8cb/receipt.json`;
+      log/lock hashes, checked cleanup and exact remote children were independently verified.
+      The unchanged ARM check compiled its first consumer, then failed GoogleTest discovery
+      at 05:58Z with LeakSanitizer's fatal QEMU error; no consumer tests ran. Its failed receipt
+      is `logs/image-acceptance/20261110-013045-b0a6f8cb-arm64/receipt.json`.
+      **Native ARM proof:** [run 42781812889, attempt 1](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/42781812889/job/129713397881) passed all six consumers
+      on `ubuntu-26.04-arm` using the same immutable image, producer hub and complete original plan.
+      The preserved original receipt is
+      `logs/image-acceptance/20261110-013045-b0a6f8cb-arm64-native-42781812889-1/receipt.json`
+      (SHA-256 `273d04ddb2ad00c0aeada936a969682cb85c14dcaaa002be5b520a08b6469359`). Artifact 13747964666
+      matches `sha256:065c3aee5798015d690ff29cbe69215515a585c0af45ca690484bf90dc6ecf1d`; source snapshots, log/lock hashes,
+      all twelve checked cleanup records and the final empty remote engine query were audited.
+      Actual logs prove 215 C++ tests with no skips, 875 Rust tests with none ignored/filtered,
+      all three Flutter consumers and the WebDavClient contract. Canonical promotion and
+      independent public readback at 2026-11-10T09:09:51Z preserve amd64 and arm64.
+      The failed QEMU receipt remains diagnostic evidence; [diagnosis](docs/failure-modes.md#arm64-ctest-discovery-ends-with-leaksanitizer-has-encountered-a-fatal-error).
+      No physical GPU inference is established. The earlier failures and compiler/cache
+      regression controls remain in CHANGELOG and `logs/test-results/plugin-proof-nvidia-arm64-media-1/`.
       **Windows, owner 2026-11-08 ("Windows sofort komplett"): steps 2 and 4 landed in source together.** CUDA is the
       plugin build, the in-tree TensorRT EP is gone, and `Build-OrtTensorRtEpFromSource.ps1` builds the TensorRT plugin
       with SHA256-pinned seeds ([windows-cross-builds.md](docs/windows-cross-builds.md#the-cuda-and-tensorrt-plugin-eps)).

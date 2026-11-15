@@ -30,3 +30,5 @@ web-cookies-js       | shared/web/javascript/cookies.js                  | web/j
 web-utils-js         | shared/web/javascript/utils.js                    | web/javascript/utils.js                     | exact |
 web-init-js          | shared/web/javascript/init.js                     | web/javascript/init.js                      | exact |
 flutter-web-htaccess | linux/webserver/templates/flutter-web.htaccess    | web/.htaccess                               | body  |
+ort-plugin-registration-python | shared/python/ort_plugin_eps.py | runtime_support/ort_plugin_eps.py | exact |
+ort-plugin-registration-native | shared/native/ort_plugin_eps.hpp | runtime_support/ort_plugin_eps.hpp | exact |

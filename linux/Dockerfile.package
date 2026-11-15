@@ -301,6 +301,8 @@ COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap.sh linux/scripts/02-toolchain/bootstrap-import.sh /opt/scripts/
 COPY --chmod=755 linux/scripts/03-media/runtime/ /opt/scripts/03-media/final/
+COPY --chmod=755 linux/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py /opt/scripts/03-media/build/onnxruntime/build/lib/ort-webgpu-build-proof.py
+COPY --chmod=644 linux/scripts/06-packaging/python-app-deb-depends.py linux/scripts/06-packaging/python_app_deb_symbols.py /opt/scripts/06-packaging/
 # The final install-deps.sh sources media_load_arch_flags from here.
 COPY --chmod=755 linux/scripts/03-media/core/ /opt/scripts/03-media/core/
 COPY --chmod=755 linux/scripts/03-media/build/gstreamer/android/ /opt/scripts/03-media/gstreamer/android/

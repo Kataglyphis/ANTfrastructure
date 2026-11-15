@@ -57,7 +57,7 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/06-packaging/free-threaded-sysconfig-tools.py' \
   'linux/scripts/06-packaging/ort_census_probe.py' \
   'linux/scripts/06-packaging/python-app-selftest.py' \
-  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' \
+  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' \
   'linux/scripts/layer-audit.py' 'linux/scripts/lib/cmakelang-py315.py' \
   'linux/scripts/lib/fetch-data-lock.py' 'linux/scripts/lib/dartdoc-guides.py' \
   'linux/scripts/renovate_audit.py' 'linux/scripts/renovate_cmake.py' \
@@ -175,7 +175,7 @@ mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
   'linux/scripts/lib/dartdoc-guides.py' \
   'linux/scripts/tests/fleet_dependency_tests.py' \
   'linux/scripts/06-packaging/free-threaded-sysconfig-tools.py' \
-  'linux/scripts/image-acceptance.py' 'docs/scripts/verify_mutations.py' \
+  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'docs/scripts/verify_mutations.py' \
   'linux/scripts/quality_report.py' 'linux/scripts/quality_report_artifacts.py' \
   'linux/scripts/quality_report_compare.py' 'linux/scripts/quality_report_github.py' \
   'linux/scripts/quality_report_model.py' 'linux/scripts/quality_report_text.py' \
@@ -191,7 +191,7 @@ windows_environment_checked_files=('windows/scripts/build/litert-wheel-smoke.py'
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#parameter_return_files[@]}" -eq 132 ] || { echo "Expected 132 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
+[ "${#parameter_return_files[@]}" -eq 133 ] || { echo "Expected 133 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
 jetson_dockerfile="${ROOT}/linux/Dockerfile.torch"
 [ -f "${jetson_dockerfile}" ] || { echo "Torch Dockerfile is missing for the Jetson type gate" >&2; exit 2; }
 grep -Fq 'source=linux/jetson-webcam/app.py,target=/tmp/venv-probe-ty/jetson-webcam-app.py,ro' "${jetson_dockerfile}" || {

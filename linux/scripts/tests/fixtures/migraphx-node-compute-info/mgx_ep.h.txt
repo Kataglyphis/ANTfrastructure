@@ -1,0 +1,58 @@
+// Copyright (c) Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: MIT
+    std::mutex mutex_{};
+};
+
+struct NodeComputeInfo : OrtNodeComputeInfo {
+    explicit NodeComputeInfo(ExecutionProvider& ep)
+        : OrtNodeComputeInfo{NegotiatedOrtApiVersion()}, ep_{ep}
+    {
+        OrtNodeComputeInfo::CreateState = [](OrtNodeComputeInfo* this_,
+            OrtNodeComputeContext* compute_context, void** compute_state) noexcept {
+            API_CALL_S(NodeComputeInfo, this_, CreateState, compute_context, *compute_state);
+        };
+        OrtNodeComputeInfo::Compute = [](OrtNodeComputeInfo* this_,
+            void* compute_state, OrtKernelContext* kernel_context) noexcept {
+            API_CALL_S(NodeComputeInfo, this_, Compute, *static_cast<ComputeState*>(compute_state),
+                Ort::KernelContext{kernel_context});
+        };
+        OrtNodeComputeInfo::ReleaseState = [](OrtNodeComputeInfo* this_, void* compute_state) noexcept {
+            API_CALL_V(NodeComputeInfo, this_, ReleaseState, compute_state);
+        };
+    }
+
+private:
+    ExecutionProvider& ep_;
+
+    Ort::Status CreateState(OrtNodeComputeContext* compute_context, void*& compute_state) noexcept;
+    Ort::Status Compute(ComputeState& compute_state, const Ort::KernelContext& kernel_context) noexcept;
+    void ReleaseState([[maybe_unused]] void* compute_state) noexcept {}
+};
+
+struct EpContextNodeComputeInfo : OrtNodeComputeInfo {
+    explicit EpContextNodeComputeInfo(ExecutionProvider& ep)
+        : OrtNodeComputeInfo{NegotiatedOrtApiVersion()}, ep_{ep}
+    {
+        OrtNodeComputeInfo::CreateState = [](OrtNodeComputeInfo* this_,
+            OrtNodeComputeContext* compute_context, void** compute_state) noexcept {
+            API_CALL_S(EpContextNodeComputeInfo, this_, CreateState, compute_context, *compute_state);
+        };
+        OrtNodeComputeInfo::Compute = [](OrtNodeComputeInfo* this_,
+            void* compute_state, OrtKernelContext* kernel_context) noexcept {
+            API_CALL_S(EpContextNodeComputeInfo, this_, Compute, *static_cast<EpContextComputeState*>(compute_state),
+                Ort::KernelContext{kernel_context});
+        };
+        OrtNodeComputeInfo::ReleaseState = [](OrtNodeComputeInfo* this_, void* compute_state) noexcept {
+            API_CALL_V(EpContextNodeComputeInfo, this_, ReleaseState, compute_state);
+        };
+    }
+
+private:
+    ExecutionProvider& ep_;
+
+    Ort::Status CreateState(OrtNodeComputeContext* compute_context, void*& compute_state) noexcept;
+    Ort::Status Compute(EpContextComputeState& compute_state, const Ort::KernelContext& kernel_context) noexcept;
+    void ReleaseState([[maybe_unused]] void* compute_state) noexcept {}
+};
+
+}  // namespace mgx_ep
