@@ -653,8 +653,9 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       threads (`lib/genai-model-threads.py`) gave about 314 tok/s and 20 ms, and the perf baselines use that
       copy, so their text figures are not the shipped default. Done when a shipped config respects the
       mask, or the consumers set a bounded thread count, and a measurement quotes the unmodified model.
-      **Consumer half, 2026-11-12:** OxidANT's backlog carries it as an `llm_threads` setting for ObservANT,
-      default 2, applied at load. The detector's side of the same cause is CON240.
+      **Consumer half:** ObservANT's `llm_threads` (default 2) caps its in-process GenAI model at load since OxidANT
+      701476e (`OgaConfigOverlay`), and its `/ask` answers report the time to the first token and the decode rate.
+      The detector's side of the same cause is CON240.
       **On a Pi 5, 2026-11-15** (4 CPUs in the CI image): SmolLM2-135M decoded 104 tokens per second on one thread
       and 34 on seven, and a seven-thread description took the detector beside it from 238 ms to 1157 ms (one
       thread: 570 ms); OrchestrANT's describe engine decodes on one thread since (owner decision). Both
