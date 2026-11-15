@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-15 — preserve a bounded runtime storage guardian
+
+- Add a committed-source guardian for one already live ordinary runtime. Bind its invocation, PID/start ticks, source and worker hashes; use the existing canonical regular-layer worker synchronously when eligible pressure appears, retaining the 100-GB live-build budget, complete identity checks and failed producer status. Independent synthetic lifecycle and type-scope controls plus executable mutations cover the contract. Runtime4 actually failed with ENOSPC during package import; its late cleanup was insufficient to save that run. A separate idle cleanup removed two verified obsolete published Android copies, reclaimed 32,855,150,592 bytes and preserved all 42 cachemounts and 48 other images. Fresh admission, actual successful runtime and FINAL/hardware proofs remain required. See [storage observation](docs/local-proof-workflows.md#bounded-runtime-storage-observation).
+
 ## 2026-11-14 — bind local FINAL checks to their actual runtime producer
 
 - Add explicit local FINAL acceptance with the entire canonical consumer plan, original source/submodule/lock and cleanup policies, exact manifest/config and completed producer bindings before and after consumer work. Reuse verified alias metadata and the host worker closure. Local schema-2 receipts cannot authorize registry promotion; public checks keep their existing path. Validate every receipt before pruning checkouts, so invalid metadata remains failed evidence. Synthetic controls cover supported lane schemas and refusals, while real FINAL consumers, GPU parity and complete binary licences remain required. See [local FINAL checks](docs/image-acceptance.md#check-an-unpublished-local-final-wrapper).

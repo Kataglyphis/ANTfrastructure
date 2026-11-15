@@ -591,7 +591,7 @@ no network. Check this before debugging a mirror or a DNS resolver.
 
 ### B7. Reclaiming disk without losing the compile caches
 
-The versioned [authorized cleanup controller](local-proof-workflows.md#authorized-cleanup) preserves runtime snapshots, exact image/cachemount identities and independent post-cleanup checks. It retains the supplied standing authorization, skips when the reserve already passes and creates no recurring schedule.
+The versioned [authorized cleanup controller](local-proof-workflows.md#authorized-cleanup) preserves runtime snapshots, exact image/cachemount identities and independent post-cleanup checks. It retains the supplied standing authorization, skips when the reserve already passes and creates no recurring schedule. For an already live ordinary runtime, the [bounded storage guardian](local-proof-workflows.md#bounded-runtime-storage-observation) checks pressure between one-second waits and calls that same worker without agent intervention; it keeps the 100-GB live-build minimum and cannot grant build acceptance.
 
 Moved here from `AGENTS.md` on 2026-09-15: the rule lives there, the
 measurements live here.
@@ -674,6 +674,8 @@ SDK/NVIDIA-Android copies, freed 121,229,893,632 bytes and retained all 12 cache
 and all 46 other image records. The checked reserve rose above 180 GiB and the
 prepared GPU5 launched from its exact qualified source and original SDK. This is
 local resource recovery, not image, binary-licence or finished-consumer acceptance.
+
+Actual cleanup `owner-container-cleanup-20261115-1` verified the immutable remote manifests and matching local configs for the obsolete published default ARM64 and RISC-V Android copies, then removed only those two tags without force while all engine record types and outer build units were idle. Free space rose from 189,957,455,872 to 222,812,606,464 bytes: 32,855,150,592 bytes reclaimed. All 42 cachemount IDs and their 121,139,314,688 bytes, plus all 48 unselected image identities, were preserved. The cleanup unit completed with status 0 and was stopped; its receipt is under `logs/host-maintenance/owner-container-cleanup-20261115-1/`. The unchanged 180-GiB reserve passed afterward; fresh admission remains required before another build.
 
 ### B8. ghcr registry hygiene
 

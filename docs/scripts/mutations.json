@@ -37771,16 +37771,16 @@
  {
   "id": "python-types.native-image-proof-strict-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' \\\n",
-  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' \\\n",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "the isolated type fixture must detect removing the native proof driver from mandatory checks"
  },
  {
   "id": "python-types.native-image-proof-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'docs/scripts/verify_mutations.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "the isolated type fixture must detect removing the native proof driver from mandatory checks"
  },
@@ -51632,8 +51632,8 @@
  {
   "id": "python-types.runtime-owned-nerdctl-args-2",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned-nerdctl.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned-nerdctl.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "Independent fixture type and annotation errors must fail when either runtime ownership companion leaves its mandatory scope; no runtime or cleanup execution is proved."
  },
@@ -51648,8 +51648,8 @@
  {
   "id": "python-types.runtime-owned-nerdctl-2",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "Independent fixture type and annotation errors must fail when either runtime ownership companion leaves its mandatory scope; no runtime or cleanup execution is proved."
  },
@@ -52512,9 +52512,553 @@
  {
   "id": "python-types.image-acceptance-local-strict-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'docs/scripts/verify_mutations.py'",
-  "replace": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'docs/scripts/verify_mutations.py'",
+  "find": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py'",
+  "replace": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py'",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated annotation fixture must catch removal of the local FINAL module from mandatory ANN001/ANN201; coverage expands without diagnostic exceptions."
+ },
+ {
+  "id": "disk-guard.runtime-storage-source-binding-1",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(isinstance(record.get('unit'), str) and GUARD_UNIT.fullmatch(record['unit']), 'Storage guardian unit identity differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-source-binding-2",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(record['source'] == str(ROOT), 'Storage guardian belongs to another checkout')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-source-binding-3",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(checked_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip() == record['revision'], 'Storage guardian revision changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-source-binding-4",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(not checked_output(['git', '-C', str(ROOT), 'status', '--porcelain']).strip(), 'Commit storage guardian tools before use')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-source-binding-5",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(record['workers_sha256'] == {str(path):fingerprint(path) for path in workers()}, 'Storage guardian worker closure changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-source-binding-6",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(fingerprint(Path(record['authorization'])) == record['authorization_sha256'], 'Storage authorization changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-source-binding-7",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(fingerprint(Path(record['runtime_invocation'])) == record['runtime_invocation_sha256'], 'Watched runtime invocation changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-source-binding-8",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(type(record['keep_gb']) is int and record['keep_gb'] == KEEP_GB and type(record['timeout_seconds']) is int and record['timeout_seconds'] == TIMEOUT, 'Storage guardian profile changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-producer-state-1",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(state.get('Id') == record['producer_unit'] and state.get('LoadState') == 'loaded', 'Watched runtime unit is missing')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-producer-state-2",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(state.get('MainPID') == str(record['producer_pid']) and state.get('ActiveState') in {'active', 'activating'}, 'Watched runtime PID changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-producer-state-3",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(local_api('capture-live-sccache-log').start_ticks(process) == record['producer_start_ticks'], 'Watched runtime process identity changed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-candidate-1",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "        require(type(row.get('size')) is int and row['size'] >= 0 and isinstance(row.get('id'), str) and bool(row['id']), 'Malformed regular cache record')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-candidate-2",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "        require(type(row.get('inUse')) is bool and type(row.get('shared')) is bool, 'Malformed regular cache ownership')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-reclaim-1",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(not destination.exists() and not destination.is_symlink(), 'Preserve an earlier storage cleanup')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-reclaim-2",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(result.returncode == 0, 'Canonical storage cleanup failed: ' + str(result.returncode))\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-reclaim-3",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "        require(proof['status'] == 'skipped-reserve-already-sufficient' and proof['reclaim_performed'] is False and proof['free_bytes'] >= REQUIRED_BYTES and proof['canonical_free_gib'] >= 180, 'Canonical storage skip proof differs')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-reclaim-4",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "        require(proof['status'] == 'passed-authorized-canonical-layer-cleanup' and proof['keep_layer_gb'] == KEEP_GB, 'Canonical storage cleanup proof differs')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-launch-1",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(GUARD_UNIT.fullmatch(unit), 'Explicit bounded storage guardian unit required')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-launch-2",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(UNIT_API(unit).get('LoadState') == 'not-found', 'Preserve an existing storage guardian unit')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-launch-3",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(not directory.exists() and not directory.is_symlink(), 'Preserve previous storage observations')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-launch-4",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(runtime.get('stage') == 'runtime' and type(runtime.get('launch_status')) is int and runtime['launch_status'] == 0, 'Actual runtime launch required')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-launch-5",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(arch in {'amd64', 'arm64', 'riscv64'}, 'Supported ordinary runtime architecture required')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-launch-6",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(re.fullmatch(r'webgpu-normal-runtime-' + arch + r'-[0-9-]+\\.service', runtime['unit']), 'Ordinary runtime unit required')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-launch-7",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require('agents may run the existing \\x60linux/host-config/prune-safe.sh\\x60 autonomously' in authorization.read_text(), 'Standing canonical cleanup authorization required')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-launch-8",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(state.get('Id') == runtime['unit'] and state.get('LoadState') == 'loaded' and state.get('ActiveState') in {'active', 'activating'}, 'Runtime is not live')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-launch-9",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(not TERMINAL(state) and state.get('MainPID', '').isdigit() and int(state['MainPID']) > 0, 'Runtime already ended')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-launch-10",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require((process / 'cmdline').read_bytes().rstrip(b'\\0').split(b'\\0') == [word.encode() for word in runtime['command'][-11:]], 'Runtime process command differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-launch-11",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(not temporary.exists() and all(not (path / '.git').exists() for path in [temporary, *temporary.parents]), 'Storage guardian TMPDIR must be fresh and outside Git')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-launch-12",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(result.returncode == 0, 'Storage guardian launch failed')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-seal-1",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(not (directory / 'proof-stopped.json').exists(), 'Preserve prior storage guardian seal')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-seal-2",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(before.get('Id') == record['unit'] and before.get('LoadState') == 'loaded' and TERMINAL(before) and int(before.get('ExecMainExitTimestampMonotonic') or '0') > 0, 'Storage guardian has not actually ended')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-seal-3",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(before.get('MainPID') == '0' and before.get('ExecMainStatus') == str(result['exit_status']) and result['exit_status'] in {0, 1} and before.get('Result') == ('success' if result['exit_status'] == 0 else 'exit-code'), 'Storage guardian raw result differs')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-seal-4",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(result['status'] == 'observed-producer-terminal' and TERMINAL(result['producer']), 'Producer terminal observation missing')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-seal-5",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(result['exit_status'] == int(result['producer'].get('Result') != 'success' or result['producer'].get('ExecMainStatus') != '0'), 'Producer and guardian outcomes differ')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-seal-6",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    require(after.get('MainPID') == '0' and after.get('ActiveState') == 'inactive', 'Storage guardian did not stop')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-seal-7",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "        require(proof_path in [Path(prune['directory']) / name for name in ['proof.json', 'skip-proof.json']], 'Storage cleanup proof path differs')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-seal-8",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "        require(fingerprint(proof_path) == prune['proof_sha256'], 'Storage cleanup proof changed')\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-cli-main-1",
+  "target": "linux/scripts/launch-runtime-storage-guard.py",
+  "find": "    guard.require(Path(guard.__file__).resolve() == Path(__file__).resolve().with_name('runtime_storage_guard.py'), 'Storage watcher companion belongs to another checkout')\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-cache-type",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "row.get('recordType', 'regular') == 'regular'",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-active-cache",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "not row['inUse']",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-shared-cache",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "not row['shared']",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-reserve-threshold",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "free < REQUIRED_BYTES",
+  "replace": "True",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-candidate-latch",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "key and key not in seen",
+  "replace": "key",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-skip-latch",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "if not action['skipped']:\n                    seen.add(key)",
+  "replace": "if True:\n                    seen.add(key)",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-initial-source-call",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    source_binding(record)\n    os.environ",
+  "replace": "    pass\n    os.environ",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-dispatch-source-call",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "                source_binding(record)\n                state = producer_state(record)",
+  "replace": "                pass\n                state = producer_state(record)",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-launch-source-call",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    source_binding(record)\n    directory.mkdir()",
+  "replace": "    pass\n    directory.mkdir()",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-dispatch-producer-call",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "                state = producer_state(record)\n                if TERMINAL(state):\n                    return finish(directory, state, prunes)\n                action = reclaim",
+  "replace": "                pass\n                if TERMINAL(state):\n                    return finish(directory, state, prunes)\n                action = reclaim",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-one-second-poll",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "time.sleep(1)",
+  "replace": "time.sleep(2)",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-rootless-store",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "'unix:///run/user/' + str(os.getuid()) + '/buildkit/buildkitd.sock'",
+  "replace": "'unix:///foreign.sock'",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-canonical-worker-mode",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "str(CONTROLLER), 'worker', '--directory'",
+  "replace": "str(CONTROLLER), 'launch', '--directory'",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-canonical-keep",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "'--keep-gb', str(KEEP_GB)",
+  "replace": "'--keep-gb', '1'",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-canonical-unit",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "'--unit', record['unit']",
+  "replace": "'--unit', record['producer_unit']",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-cli-worker-status",
+  "target": "linux/scripts/launch-runtime-storage-guard.py",
+  "find": "        return guard.worker(args.directory)",
+  "replace": "        guard.worker(args.directory)\n        return 0",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-cli-launch-call",
+  "target": "linux/scripts/launch-runtime-storage-guard.py",
+  "find": "        guard.launch(args.runtime_invocation, args.directory, args.unit, args.authorization)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-cli-seal-call",
+  "target": "linux/scripts/launch-runtime-storage-guard.py",
+  "find": "        guard.seal(args.directory)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-transport-1",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "'--no-block'",
+  "replace": "'changed-1'",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-transport-2",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "'--expand-environment=no'",
+  "replace": "'changed-2'",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-transport-3",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "'TimeoutStartSec=21630'",
+  "replace": "'changed-3'",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-transport-4",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "'TimeoutStopSec=60'",
+  "replace": "'changed-4'",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-transport-5",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "'KillMode=control-group'",
+  "replace": "'changed-5'",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-transport-6",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "'MemoryMax=256M'",
+  "replace": "'changed-6'",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-transport-7",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "'CPUQuota=25%'",
+  "replace": "'changed-7'",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "disk-guard.runtime-storage-transport-8",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "'LC_ALL=C'",
+  "replace": "'changed-8'",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "Independent synthetic controls preserve the bounded rootless observer, synchronous canonical cleanup and raw outcomes; they do not prove actual disk capacity, cleanup timing, image acceptance or hardware inference."
+ },
+ {
+  "id": "python-types.runtime-storage-module-strict-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/launch-runtime-storage-guard.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
+ },
+ {
+  "id": "python-types.runtime-storage-cli-strict-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
+ },
+ {
+  "id": "python-types.runtime-storage-module-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
+ },
+ {
+  "id": "python-types.runtime-storage-cli-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
  }
 ]
