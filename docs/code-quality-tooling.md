@@ -1181,6 +1181,8 @@ slug `mutations`. For each recorded entry it makes a literal edit that **neuters
 one guarantee**, runs the named test, and requires the test to FAIL. A mutation
 the tests survive is reported and fails the gate.
 
+Prepare recurring require-removal data with `python3 docs/scripts/generate_require_mutations.py --root ROOT --target RELATIVE_PYTHON --test TEST_COMMAND --prefix FAMILY.PREFIX --why LIMITS --output FRESH_JSON`. It selects require expressions inside top-level functions and preserves the exact source segment; this is recipe preparation, not proof that every gate is covered or that mutations bite. Independent fixtures cover selection, parse-valid replacements, empty/syntax refusal and output preservation.
+
 Use `python3 docs/scripts/merge_mutation_recipes.py <manifest>` to preview
 adding reviewed recipes; pass `--write` to apply and `--replace <id>` for an
 intentional change to an existing recipe. It checks unique in-repo anchors before
@@ -1226,7 +1228,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **6628 entries** over **805 distinct test commands**; both digits are
+manifest holds **6694 entries** over **807 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

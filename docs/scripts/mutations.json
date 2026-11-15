@@ -37771,16 +37771,16 @@
  {
   "id": "python-types.native-image-proof-strict-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' \\\n",
-  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' \\\n",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "the isolated type fixture must detect removing the native proof driver from mandatory checks"
  },
  {
   "id": "python-types.native-image-proof-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "the isolated type fixture must detect removing the native proof driver from mandatory checks"
  },
@@ -51632,8 +51632,8 @@
  {
   "id": "python-types.runtime-owned-nerdctl-args-2",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned-nerdctl.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned-nerdctl.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "Independent fixture type and annotation errors must fail when either runtime ownership companion leaves its mandatory scope; no runtime or cleanup execution is proved."
  },
@@ -51648,8 +51648,8 @@
  {
   "id": "python-types.runtime-owned-nerdctl-2",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' 'linux/scripts/owned-nerdctl.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n  'linux/scripts/owned_nerdctl_args.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "Independent fixture type and annotation errors must fail when either runtime ownership companion leaves its mandatory scope; no runtime or cleanup execution is proved."
  },
@@ -52512,8 +52512,8 @@
  {
   "id": "python-types.image-acceptance-local-strict-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py'",
-  "replace": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py'",
+  "find": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py'",
+  "replace": "'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py'",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated annotation fixture must catch removal of the local FINAL module from mandatory ANN001/ANN201; coverage expands without diagnostic exceptions."
  },
@@ -52792,7 +52792,7 @@
  {
   "id": "disk-guard.runtime-storage-seal-6",
   "target": "linux/scripts/runtime_storage_guard.py",
-  "find": "    require(after.get('MainPID') == '0' and after.get('ActiveState') == 'inactive', 'Storage guardian did not stop')\n",
+  "find": "    require(after.get('MainPID') == '0' and after.get('ActiveState') in stopped_states, 'Storage guardian did not stop')\n",
   "replace": "    pass\n",
   "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
   "why": "Independent synthetic lifecycle controls must reject a missing storage, source, PID, transport or receipt guarantee; they prove neither real reclamation timing nor a completed image or GPU inference."
@@ -53032,33 +53032,561 @@
  {
   "id": "python-types.runtime-storage-module-strict-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' \\\n",
-  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/launch-runtime-storage-guard.py' \\\n",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
  },
  {
   "id": "python-types.runtime-storage-cli-strict-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' \\\n",
-  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' \\\n",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-local-final.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
  },
  {
   "id": "python-types.runtime-storage-module-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
  },
  {
   "id": "python-types.runtime-storage-cli-annotation-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n",
-  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "The isolated fixture must reject a real bad return and missing parameter or public-return annotation when either storage guardian helper leaves mandatory coverage; no actual pruning or runtime proof."
+ },
+ {
+  "id": "image-acceptance.bounded.clean-source-1",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(checked_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip() == revision, 'FINAL launcher revision changed')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.clean-source-2",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(not checked_output(['git', '-C', str(ROOT), 'status', '--porcelain']).strip(), 'Commit FINAL tooling before use')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.binding-1",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(record['source'] == str(ROOT) and record['engine'] == ENGINE, 'FINAL tooling or engine belongs elsewhere')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.binding-2",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(record['owner_label'] == OWNER, 'FINAL ownership label differs')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.binding-3",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(type(record['timeout_seconds']) is int and record['timeout_seconds'] == TIMEOUT, 'FINAL deadline profile differs')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.binding-4",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(re.fullmatch(r'webgpu-local-final-' + record['platform'].removeprefix('linux/') + r'-[0-9-]+\\.service', record['unit']), 'FINAL unit identity differs')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.binding-5",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(record['workers_sha256'] == {str(path):fingerprint(path) for path in workers()}, 'FINAL launcher worker closure changed')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.binding-6",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(fingerprint(Path(record['runtime_invocation'])) == record['runtime_invocation_sha256'], 'FINAL runtime invocation changed')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.binding-7",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(fingerprint(directory / 'plan.json') == record['plan_sha256'], 'FINAL plan bytes changed')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.binding-8",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(plan['platform'] == record['platform'], 'FINAL plan platform differs')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.launch-1",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(not directory.exists() and not directory.is_symlink(), 'Preserve existing FINAL output')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.launch-2",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(runtime['target_arch'] in {'amd64', 'arm64', 'riscv64'}, 'Unsupported FINAL architecture')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.launch-3",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(re.fullmatch(r'webgpu-local-final-' + runtime['target_arch'] + r'-[0-9-]+\\.service', unit), 'Explicit bounded FINAL unit required')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.launch-4",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(UNIT_STATE(unit).get('LoadState') == 'not-found', 'Preserve an existing FINAL unit')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.launch-5",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(not temporary.exists() and all(not (path / '.git').exists() for path in [temporary, *temporary.parents]), 'FINAL TMPDIR must be fresh and outside Git')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.launch-6",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(not owner.ids(owned=True), 'FINAL invocation ownership already exists')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.launch-7",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(result.returncode == 0, 'FINAL bounded unit launch failed')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.worker-1",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(state.get('Id') == record['unit'] and state.get('LoadState') == 'loaded' and state.get('ActiveState') in {'active', 'activating'} and state.get('MainPID') == str(os.getpid()), 'FINAL worker is outside its bounded unit')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.worker-2",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(all(os.environ.get(key) == value for key, value in expected.items()), 'FINAL container ownership environment differs')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.worker-3",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(origin == record['local_subject'], 'FINAL producer changed before consumers')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.worker-4",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(receipt['hub_revision'] == record['revision'] and receipt['local_subject'] == record['local_subject'], 'FINAL consumer receipt changed source or producer')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.consumer-result-1",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(result['status'] == 'completed-consumers-cleanup-pending' and type(result['exit_status']) is int and result['exit_status'] == 0 and result['receipt_sha256'] == fingerprint(directory / 'receipt.json'), 'FINAL worker result differs')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.consumer-result-2",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(receipt['hub_revision'] == record['revision'] and receipt['local_subject'] == record['local_subject'] and result['consumer_names'] == [row['name'] for row in receipt['consumers']], 'FINAL sealed source, producer or consumer order differs')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.cleanup-evidence-1",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(type(cleanup.get('exit_status')) is int and cleanup['exit_status'] == 0 and cleanup.get('owner_label') == OWNER and cleanup.get('run_id') == record['run_id'], 'FINAL owned cleanup failed or differs')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.cleanup-evidence-2",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(query.returncode == 0 and not query.stdout.strip(), 'FINAL owned containers remain or query failed')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.seal-1",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(not (directory / 'proof-stopped.json').exists(), 'Preserve previous FINAL proof')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.seal-2",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(before.get('Id') == record['unit'] and before.get('LoadState') == 'loaded' and TERMINAL(before) and int(before.get('ExecMainExitTimestampMonotonic') or '0') > 0 and before.get('MainPID') == '0', 'FINAL unit has not actually terminated')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.seal-3",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require((before.get('Result') == 'success') == (status == 0), 'FINAL unit raw outcome differs')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.seal-4",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(after.get('MainPID') == '0' and after.get('ActiveState') in {'inactive', 'failed'}, 'FINAL unit did not stop')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded.seal-5",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "require(status != 0 or (after.get('ActiveState') == 'inactive' and after.get('Result') == 'success'), 'FINAL successful unit failed during stop')",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic lifecycle and real receipt-schema controls reject lost source, producer, unit, ownership and cleanup guarantees; they prove no actual FINAL consumers, complete licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-call-binding-1",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "def binding(directory: Path, record: dict[str, Any]) -> None:\n    require(record['source'] == str(ROOT) and record['engine'] == ENGINE, 'FINAL tooling or engine belongs elsewhere')\n    require(record['owner_label'] == OWNER, 'FINAL ownership label differs')\n    require(type(record['timeout_seconds']) is int and record['timeout_seconds'] == TIMEOUT, 'FINAL deadline profile differs')\n    OwnedContainers(ENGINE, OWNER, record['run_id'])\n",
+  "replace": "def binding(directory: Path, record: dict[str, Any]) -> None:\n    require(record['source'] == str(ROOT) and record['engine'] == ENGINE, 'FINAL tooling or engine belongs elsewhere')\n    require(record['owner_label'] == OWNER, 'FINAL ownership label differs')\n    require(type(record['timeout_seconds']) is int and record['timeout_seconds'] == TIMEOUT, 'FINAL deadline profile differs')\n    pass\n",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-call-binding-2",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "def binding(directory: Path, record: dict[str, Any]) -> None:\n    require(record['source'] == str(ROOT) and record['engine'] == ENGINE, 'FINAL tooling or engine belongs elsewhere')\n    require(record['owner_label'] == OWNER, 'FINAL ownership label differs')\n    require(type(record['timeout_seconds']) is int and record['timeout_seconds'] == TIMEOUT, 'FINAL deadline profile differs')\n    OwnedContainers(ENGINE, OWNER, record['run_id'])\n    require(re.fullmatch(r'webgpu-local-final-' + record['platform'].removeprefix('linux/') + r'-[0-9-]+\\.service', record['unit']), 'FINAL unit identity differs')\n    clean_source(record['revision'])\n",
+  "replace": "def binding(directory: Path, record: dict[str, Any]) -> None:\n    require(record['source'] == str(ROOT) and record['engine'] == ENGINE, 'FINAL tooling or engine belongs elsewhere')\n    require(record['owner_label'] == OWNER, 'FINAL ownership label differs')\n    require(type(record['timeout_seconds']) is int and record['timeout_seconds'] == TIMEOUT, 'FINAL deadline profile differs')\n    OwnedContainers(ENGINE, OWNER, record['run_id'])\n    require(re.fullmatch(r'webgpu-local-final-' + record['platform'].removeprefix('linux/') + r'-[0-9-]+\\.service', record['unit']), 'FINAL unit identity differs')\n    pass\n",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-call-binding-3",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "def binding(directory: Path, record: dict[str, Any]) -> None:\n    require(record['source'] == str(ROOT) and record['engine'] == ENGINE, 'FINAL tooling or engine belongs elsewhere')\n    require(record['owner_label'] == OWNER, 'FINAL ownership label differs')\n    require(type(record['timeout_seconds']) is int and record['timeout_seconds'] == TIMEOUT, 'FINAL deadline profile differs')\n    OwnedContainers(ENGINE, OWNER, record['run_id'])\n    require(re.fullmatch(r'webgpu-local-final-' + record['platform'].removeprefix('linux/') + r'-[0-9-]+\\.service', record['unit']), 'FINAL unit identity differs')\n    clean_source(record['revision'])\n    require(record['workers_sha256'] == {str(path):fingerprint(path) for path in workers()}, 'FINAL launcher worker closure changed')\n    require(fingerprint(Path(record['runtime_invocation'])) == record['runtime_invocation_sha256'], 'FINAL runtime invocation changed')\n    require(fingerprint(directory / 'plan.json') == record['plan_sha256'], 'FINAL plan bytes changed')\n    plan = API['read_plan'](directory / 'plan.json')\n    API['local_module']().complete_plan(plan, API['read_plan'](API['DEFAULT_PLAN']))\n",
+  "replace": "def binding(directory: Path, record: dict[str, Any]) -> None:\n    require(record['source'] == str(ROOT) and record['engine'] == ENGINE, 'FINAL tooling or engine belongs elsewhere')\n    require(record['owner_label'] == OWNER, 'FINAL ownership label differs')\n    require(type(record['timeout_seconds']) is int and record['timeout_seconds'] == TIMEOUT, 'FINAL deadline profile differs')\n    OwnedContainers(ENGINE, OWNER, record['run_id'])\n    require(re.fullmatch(r'webgpu-local-final-' + record['platform'].removeprefix('linux/') + r'-[0-9-]+\\.service', record['unit']), 'FINAL unit identity differs')\n    clean_source(record['revision'])\n    require(record['workers_sha256'] == {str(path):fingerprint(path) for path in workers()}, 'FINAL launcher worker closure changed')\n    require(fingerprint(Path(record['runtime_invocation'])) == record['runtime_invocation_sha256'], 'FINAL runtime invocation changed')\n    require(fingerprint(directory / 'plan.json') == record['plan_sha256'], 'FINAL plan bytes changed')\n    plan = API['read_plan'](directory / 'plan.json')\n    pass\n",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-call-launch-1",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "def launch(runtime_path: Path, image: str, directory: Path, unit: str) -> None:\n    require(not directory.exists() and not directory.is_symlink(), 'Preserve existing FINAL output')\n    directory = directory.resolve()\n    runtime_path = runtime_path.resolve(strict=True)\n    runtime = read(runtime_path)\n    platform = 'linux/' + runtime['target_arch']\n    require(runtime['target_arch'] in {'amd64', 'arm64', 'riscv64'}, 'Unsupported FINAL architecture')\n    require(re.fullmatch(r'webgpu-local-final-' + runtime['target_arch'] + r'-[0-9-]+\\.service', unit), 'Explicit bounded FINAL unit required')\n    require(UNIT_STATE(unit).get('LoadState') == 'not-found', 'Preserve an existing FINAL unit')\n    revision = checked_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip()\n    clean_source(revision)\n",
+  "replace": "def launch(runtime_path: Path, image: str, directory: Path, unit: str) -> None:\n    require(not directory.exists() and not directory.is_symlink(), 'Preserve existing FINAL output')\n    directory = directory.resolve()\n    runtime_path = runtime_path.resolve(strict=True)\n    runtime = read(runtime_path)\n    platform = 'linux/' + runtime['target_arch']\n    require(runtime['target_arch'] in {'amd64', 'arm64', 'riscv64'}, 'Unsupported FINAL architecture')\n    require(re.fullmatch(r'webgpu-local-final-' + runtime['target_arch'] + r'-[0-9-]+\\.service', unit), 'Explicit bounded FINAL unit required')\n    require(UNIT_STATE(unit).get('LoadState') == 'not-found', 'Preserve an existing FINAL unit')\n    revision = checked_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip()\n    pass\n",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-call-launch-2",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "def launch(runtime_path: Path, image: str, directory: Path, unit: str) -> None:\n    require(not directory.exists() and not directory.is_symlink(), 'Preserve existing FINAL output')\n    directory = directory.resolve()\n    runtime_path = runtime_path.resolve(strict=True)\n    runtime = read(runtime_path)\n    platform = 'linux/' + runtime['target_arch']\n    require(runtime['target_arch'] in {'amd64', 'arm64', 'riscv64'}, 'Unsupported FINAL architecture')\n    require(re.fullmatch(r'webgpu-local-final-' + runtime['target_arch'] + r'-[0-9-]+\\.service', unit), 'Explicit bounded FINAL unit required')\n    require(UNIT_STATE(unit).get('LoadState') == 'not-found', 'Preserve an existing FINAL unit')\n    revision = checked_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip()\n    clean_source(revision)\n    origin, _ = API['local_module']().observe(ENGINE, image, platform, runtime_path)\n    temporary = Path.home() / '.cache' / unit.removesuffix('.service')\n    require(not temporary.exists() and all(not (path / '.git').exists() for path in [temporary, *temporary.parents]), 'FINAL TMPDIR must be fresh and outside Git')\n    owner = OwnedContainers(ENGINE, OWNER, uuid.uuid4().hex)\n    require(not owner.ids(owned=True), 'FINAL invocation ownership already exists')\n    directory.mkdir(parents=True)\n    temporary.mkdir(mode=0o700)\n    API['materialize_plan'](str(API['DEFAULT_PLAN']), str(directory / 'plan.json'), platform)\n    cleanup = [sys.executable, str(HERE / 'cleanup-owned-containers.py'), '--engine', ENGINE, '--owner-label', OWNER,\n               '--run-id', owner.run_id, '--cidfile', str(directory / 'container.cid'), '--output', str(directory / 'cleanup.json')]\n    command = ['systemd-run', '--user', '--no-block', '--expand-environment=no', '--unit=' + unit]\n    properties = ['Type=oneshot', 'RemainAfterExit=yes', 'TimeoutStartSec=' + str(TIMEOUT), 'TimeoutStopSec=300',\n                  'KillMode=control-group', 'WorkingDirectory=' + str(ROOT), 'ExecStopPost=' + shlex.join(cleanup),\n                  'StandardOutput=append:' + str(directory / 'unit.log'), 'StandardError=append:' + str(directory / 'unit.log')]\n    for value in properties:\n        command += ['-p', value]\n    for value in ['LC_ALL=C', 'HOME=' + str(Path.home()), 'TMPDIR=' + str(temporary),\n                  'PATH=' + str(Path.home() / '.local/bin') + ':/usr/local/bin:/usr/bin:/bin',\n                  'ANT_RUNTIME_ENGINE=' + ENGINE, 'ANT_RUNTIME_OWNER_LABEL=' + OWNER, 'ANT_RUNTIME_RUN_ID=' + owner.run_id]:\n        command += ['-E', value]\n    command += [sys.executable, str(Path(__file__).resolve()), 'worker', '--directory', str(directory)]\n    record = {'source':str(ROOT), 'revision':revision, 'workers_sha256':{str(path):fingerprint(path) for path in workers()},\n              'unit':unit, 'engine':ENGINE, 'owner_label':OWNER, 'run_id':owner.run_id, 'platform':platform, 'image':image,\n              'runtime_invocation':str(runtime_path), 'runtime_invocation_sha256':fingerprint(runtime_path), 'local_subject':origin,\n              'plan_sha256':fingerprint(directory / 'plan.json'), 'command':command, 'cleanup_command':cleanup,\n              'created_at':timestamp(), 'timeout_seconds':TIMEOUT, 'scope':__doc__}\n    save(directory / 'invocation.json', record)\n    binding(directory, record)\n",
+  "replace": "def launch(runtime_path: Path, image: str, directory: Path, unit: str) -> None:\n    require(not directory.exists() and not directory.is_symlink(), 'Preserve existing FINAL output')\n    directory = directory.resolve()\n    runtime_path = runtime_path.resolve(strict=True)\n    runtime = read(runtime_path)\n    platform = 'linux/' + runtime['target_arch']\n    require(runtime['target_arch'] in {'amd64', 'arm64', 'riscv64'}, 'Unsupported FINAL architecture')\n    require(re.fullmatch(r'webgpu-local-final-' + runtime['target_arch'] + r'-[0-9-]+\\.service', unit), 'Explicit bounded FINAL unit required')\n    require(UNIT_STATE(unit).get('LoadState') == 'not-found', 'Preserve an existing FINAL unit')\n    revision = checked_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip()\n    clean_source(revision)\n    origin, _ = API['local_module']().observe(ENGINE, image, platform, runtime_path)\n    temporary = Path.home() / '.cache' / unit.removesuffix('.service')\n    require(not temporary.exists() and all(not (path / '.git').exists() for path in [temporary, *temporary.parents]), 'FINAL TMPDIR must be fresh and outside Git')\n    owner = OwnedContainers(ENGINE, OWNER, uuid.uuid4().hex)\n    require(not owner.ids(owned=True), 'FINAL invocation ownership already exists')\n    directory.mkdir(parents=True)\n    temporary.mkdir(mode=0o700)\n    API['materialize_plan'](str(API['DEFAULT_PLAN']), str(directory / 'plan.json'), platform)\n    cleanup = [sys.executable, str(HERE / 'cleanup-owned-containers.py'), '--engine', ENGINE, '--owner-label', OWNER,\n               '--run-id', owner.run_id, '--cidfile', str(directory / 'container.cid'), '--output', str(directory / 'cleanup.json')]\n    command = ['systemd-run', '--user', '--no-block', '--expand-environment=no', '--unit=' + unit]\n    properties = ['Type=oneshot', 'RemainAfterExit=yes', 'TimeoutStartSec=' + str(TIMEOUT), 'TimeoutStopSec=300',\n                  'KillMode=control-group', 'WorkingDirectory=' + str(ROOT), 'ExecStopPost=' + shlex.join(cleanup),\n                  'StandardOutput=append:' + str(directory / 'unit.log'), 'StandardError=append:' + str(directory / 'unit.log')]\n    for value in properties:\n        command += ['-p', value]\n    for value in ['LC_ALL=C', 'HOME=' + str(Path.home()), 'TMPDIR=' + str(temporary),\n                  'PATH=' + str(Path.home() / '.local/bin') + ':/usr/local/bin:/usr/bin:/bin',\n                  'ANT_RUNTIME_ENGINE=' + ENGINE, 'ANT_RUNTIME_OWNER_LABEL=' + OWNER, 'ANT_RUNTIME_RUN_ID=' + owner.run_id]:\n        command += ['-E', value]\n    command += [sys.executable, str(Path(__file__).resolve()), 'worker', '--directory', str(directory)]\n    record = {'source':str(ROOT), 'revision':revision, 'workers_sha256':{str(path):fingerprint(path) for path in workers()},\n              'unit':unit, 'engine':ENGINE, 'owner_label':OWNER, 'run_id':owner.run_id, 'platform':platform, 'image':image,\n              'runtime_invocation':str(runtime_path), 'runtime_invocation_sha256':fingerprint(runtime_path), 'local_subject':origin,\n              'plan_sha256':fingerprint(directory / 'plan.json'), 'command':command, 'cleanup_command':cleanup,\n              'created_at':timestamp(), 'timeout_seconds':TIMEOUT, 'scope':__doc__}\n    save(directory / 'invocation.json', record)\n    pass\n",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-call-worker-1",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "def worker(directory: Path) -> None:\n    record = read(directory / 'invocation.json')\n    binding(directory, record)\n",
+  "replace": "def worker(directory: Path) -> None:\n    record = read(directory / 'invocation.json')\n    pass\n",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-call-worker-2",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "def worker(directory: Path) -> None:\n    record = read(directory / 'invocation.json')\n    binding(directory, record)\n    state = UNIT_STATE(record['unit'])\n    require(state.get('Id') == record['unit'] and state.get('LoadState') == 'loaded' and state.get('ActiveState') in {'active', 'activating'} and state.get('MainPID') == str(os.getpid()), 'FINAL worker is outside its bounded unit')\n    expected = {'ANT_RUNTIME_ENGINE':ENGINE, 'ANT_RUNTIME_OWNER_LABEL':OWNER, 'ANT_RUNTIME_RUN_ID':record['run_id']}\n    require(all(os.environ.get(key) == value for key, value in expected.items()), 'FINAL container ownership environment differs')\n    origin, _ = API['local_module']().observe(ENGINE, record['image'], record['platform'], Path(record['runtime_invocation']))\n    require(origin == record['local_subject'], 'FINAL producer changed before consumers')\n    args = SimpleNamespace(image=record['image'], plan=str(directory / 'plan.json'), workspace=str(directory / 'consumers'),\n                           receipt=str(directory / 'receipt.json'), engine=str(HERE / 'owned-nerdctl.py'), replay=None,\n                           local_runtime_invocation=record['runtime_invocation'])\n    API['check'](args)\n",
+  "replace": "def worker(directory: Path) -> None:\n    record = read(directory / 'invocation.json')\n    binding(directory, record)\n    state = UNIT_STATE(record['unit'])\n    require(state.get('Id') == record['unit'] and state.get('LoadState') == 'loaded' and state.get('ActiveState') in {'active', 'activating'} and state.get('MainPID') == str(os.getpid()), 'FINAL worker is outside its bounded unit')\n    expected = {'ANT_RUNTIME_ENGINE':ENGINE, 'ANT_RUNTIME_OWNER_LABEL':OWNER, 'ANT_RUNTIME_RUN_ID':record['run_id']}\n    require(all(os.environ.get(key) == value for key, value in expected.items()), 'FINAL container ownership environment differs')\n    origin, _ = API['local_module']().observe(ENGINE, record['image'], record['platform'], Path(record['runtime_invocation']))\n    require(origin == record['local_subject'], 'FINAL producer changed before consumers')\n    args = SimpleNamespace(image=record['image'], plan=str(directory / 'plan.json'), workspace=str(directory / 'consumers'),\n                           receipt=str(directory / 'receipt.json'), engine=str(HERE / 'owned-nerdctl.py'), replay=None,\n                           local_runtime_invocation=record['runtime_invocation'])\n    pass\n",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-call-worker-3",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "def worker(directory: Path) -> None:\n    record = read(directory / 'invocation.json')\n    binding(directory, record)\n    state = UNIT_STATE(record['unit'])\n    require(state.get('Id') == record['unit'] and state.get('LoadState') == 'loaded' and state.get('ActiveState') in {'active', 'activating'} and state.get('MainPID') == str(os.getpid()), 'FINAL worker is outside its bounded unit')\n    expected = {'ANT_RUNTIME_ENGINE':ENGINE, 'ANT_RUNTIME_OWNER_LABEL':OWNER, 'ANT_RUNTIME_RUN_ID':record['run_id']}\n    require(all(os.environ.get(key) == value for key, value in expected.items()), 'FINAL container ownership environment differs')\n    origin, _ = API['local_module']().observe(ENGINE, record['image'], record['platform'], Path(record['runtime_invocation']))\n    require(origin == record['local_subject'], 'FINAL producer changed before consumers')\n    args = SimpleNamespace(image=record['image'], plan=str(directory / 'plan.json'), workspace=str(directory / 'consumers'),\n                           receipt=str(directory / 'receipt.json'), engine=str(HERE / 'owned-nerdctl.py'), replay=None,\n                           local_runtime_invocation=record['runtime_invocation'])\n    API['check'](args)\n    receipt = read(directory / 'receipt.json')\n    API['validate_receipt'](receipt, record['image'], directory / 'plan.json', allow_local=True)\n",
+  "replace": "def worker(directory: Path) -> None:\n    record = read(directory / 'invocation.json')\n    binding(directory, record)\n    state = UNIT_STATE(record['unit'])\n    require(state.get('Id') == record['unit'] and state.get('LoadState') == 'loaded' and state.get('ActiveState') in {'active', 'activating'} and state.get('MainPID') == str(os.getpid()), 'FINAL worker is outside its bounded unit')\n    expected = {'ANT_RUNTIME_ENGINE':ENGINE, 'ANT_RUNTIME_OWNER_LABEL':OWNER, 'ANT_RUNTIME_RUN_ID':record['run_id']}\n    require(all(os.environ.get(key) == value for key, value in expected.items()), 'FINAL container ownership environment differs')\n    origin, _ = API['local_module']().observe(ENGINE, record['image'], record['platform'], Path(record['runtime_invocation']))\n    require(origin == record['local_subject'], 'FINAL producer changed before consumers')\n    args = SimpleNamespace(image=record['image'], plan=str(directory / 'plan.json'), workspace=str(directory / 'consumers'),\n                           receipt=str(directory / 'receipt.json'), engine=str(HERE / 'owned-nerdctl.py'), replay=None,\n                           local_runtime_invocation=record['runtime_invocation'])\n    API['check'](args)\n    receipt = read(directory / 'receipt.json')\n    pass\n",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-call-consumer-result-1",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "def consumer_result(directory: Path, record: dict[str, Any]) -> None:\n    result = read(directory / 'worker-result.json')\n    require(result['status'] == 'completed-consumers-cleanup-pending' and type(result['exit_status']) is int and result['exit_status'] == 0 and result['receipt_sha256'] == fingerprint(directory / 'receipt.json'), 'FINAL worker result differs')\n    receipt = API['validate_receipt'](read(directory / 'receipt.json'), record['image'], directory / 'plan.json', allow_local=True)\n    require(receipt['hub_revision'] == record['revision'] and receipt['local_subject'] == record['local_subject'] and result['consumer_names'] == [row['name'] for row in receipt['consumers']], 'FINAL sealed source, producer or consumer order differs')\n    API['local_module']().recheck(ENGINE, record['image'], record['platform'], record['runtime_invocation'], record['local_subject'])\n",
+  "replace": "def consumer_result(directory: Path, record: dict[str, Any]) -> None:\n    result = read(directory / 'worker-result.json')\n    require(result['status'] == 'completed-consumers-cleanup-pending' and type(result['exit_status']) is int and result['exit_status'] == 0 and result['receipt_sha256'] == fingerprint(directory / 'receipt.json'), 'FINAL worker result differs')\n    receipt = API['validate_receipt'](read(directory / 'receipt.json'), record['image'], directory / 'plan.json', allow_local=True)\n    require(receipt['hub_revision'] == record['revision'] and receipt['local_subject'] == record['local_subject'] and result['consumer_names'] == [row['name'] for row in receipt['consumers']], 'FINAL sealed source, producer or consumer order differs')\n    pass\n",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-call-seal-1",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "def seal(directory: Path) -> int:\n    require(not (directory / 'proof-stopped.json').exists(), 'Preserve previous FINAL proof')\n    record = read(directory / 'invocation.json')\n    binding(directory, record)\n",
+  "replace": "def seal(directory: Path) -> int:\n    require(not (directory / 'proof-stopped.json').exists(), 'Preserve previous FINAL proof')\n    record = read(directory / 'invocation.json')\n    pass\n",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-call-seal-2",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "def seal(directory: Path) -> int:\n    require(not (directory / 'proof-stopped.json').exists(), 'Preserve previous FINAL proof')\n    record = read(directory / 'invocation.json')\n    binding(directory, record)\n    before = UNIT_STATE(record['unit'])\n    require(before.get('Id') == record['unit'] and before.get('LoadState') == 'loaded' and TERMINAL(before) and int(before.get('ExecMainExitTimestampMonotonic') or '0') > 0 and before.get('MainPID') == '0', 'FINAL unit has not actually terminated')\n    status = int(before['ExecMainStatus'])\n    require((before.get('Result') == 'success') == (status == 0), 'FINAL unit raw outcome differs')\n    receipt_path = directory / 'receipt.json'\n    if status == 0:\n        consumer_result(directory, record)\n",
+  "replace": "def seal(directory: Path) -> int:\n    require(not (directory / 'proof-stopped.json').exists(), 'Preserve previous FINAL proof')\n    record = read(directory / 'invocation.json')\n    binding(directory, record)\n    before = UNIT_STATE(record['unit'])\n    require(before.get('Id') == record['unit'] and before.get('LoadState') == 'loaded' and TERMINAL(before) and int(before.get('ExecMainExitTimestampMonotonic') or '0') > 0 and before.get('MainPID') == '0', 'FINAL unit has not actually terminated')\n    status = int(before['ExecMainStatus'])\n    require((before.get('Result') == 'success') == (status == 0), 'FINAL unit raw outcome differs')\n    receipt_path = directory / 'receipt.json'\n    if status == 0:\n        pass\n",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-observe-worker",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "    origin, _ = API['local_module']().observe(ENGINE, record['image'], record['platform'], Path(record['runtime_invocation']))",
+  "replace": "    origin, _ = record['local_subject'], {}",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-consumer-schema",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "    receipt = API['validate_receipt'](read(directory / 'receipt.json'), record['image'], directory / 'plan.json', allow_local=True)",
+  "replace": "    receipt = read(directory / 'receipt.json')",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-owned-engine",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "engine=str(HERE / 'owned-nerdctl.py')",
+  "replace": "engine=ENGINE",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-cleanup-phase",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "    evidence = cleanup_evidence(directory, record)",
+  "replace": "    evidence = {}",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-seal-status",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "        return seal(args.directory)",
+  "replace": "        seal(args.directory)",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-cli-worker",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "        worker(args.directory)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-cli-launch",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "        launch(args.runtime_invocation, args.image, args.directory, args.unit)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-exec-stop-post",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "'ExecStopPost=' + shlex.join(cleanup)",
+  "replace": "'Description=' + shlex.join(cleanup)",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-timeout-profile",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "TIMEOUT = 21600",
+  "replace": "TIMEOUT = 21601",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-transport-1",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "'--no-block'",
+  "replace": "'--quiet'",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-transport-2",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "'--expand-environment=no'",
+  "replace": "'--expand-environment=yes'",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-transport-3",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "'Type=oneshot'",
+  "replace": "'Type=simple'",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-transport-4",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "'RemainAfterExit=yes'",
+  "replace": "'RemainAfterExit=no'",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-transport-5",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "'TimeoutStopSec=300'",
+  "replace": "'TimeoutStopSec=1'",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-transport-6",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "'KillMode=control-group'",
+  "replace": "'KillMode=process'",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "image-acceptance.bounded-transport-7",
+  "target": "linux/scripts/launch-local-final.py",
+  "find": "'LC_ALL=C'",
+  "replace": "'LC_ALL=C.UTF-8'",
+  "test": "bash linux/scripts/tests/test-local-final-launch.sh",
+  "why": "Independent synthetic unit, ownership and receipt controls retain the complete bounded FINAL transport; they prove no actual consumer execution, full licences or GPU inference."
+ },
+ {
+  "id": "python-types.bounded-local-final-strict-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' \\\n",
+  "replace": "  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The isolated real bad-return and annotation controls must keep the FINAL launcher in fatal coverage; this proves no actual image or consumer acceptance."
+ },
+ {
+  "id": "python-types.bounded-local-final-annotation-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'linux/scripts/launch-local-final.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "replace": "  'linux/scripts/image-acceptance.py' 'linux/scripts/image-acceptance-ci.py' 'linux/scripts/image_acceptance_local.py' 'linux/scripts/runtime_storage_guard.py' 'linux/scripts/launch-runtime-storage-guard.py' 'docs/scripts/verify_mutations.py' \\\n",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The isolated real bad-return and annotation controls must keep the FINAL launcher in fatal coverage; this proves no actual image or consumer acceptance."
+ },
+ {
+  "id": "python.require-recipe-empty-scope",
+  "target": "docs/scripts/generate_require_mutations.py",
+  "find": "    if not entries:\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-require-mutation-recipes.sh",
+  "why": "Independent source and output fixtures must reject empty or wrong selection and replacement of retained recipe data; generating recipes alone does not prove mutants bite."
+ },
+ {
+  "id": "python.require-recipe-named-require",
+  "target": "docs/scripts/generate_require_mutations.py",
+  "find": "node.value.func.id != 'require'",
+  "replace": "node.value.func.id == 'require'",
+  "test": "bash linux/scripts/tests/test-require-mutation-recipes.sh",
+  "why": "Independent source and output fixtures must reject empty or wrong selection and replacement of retained recipe data; generating recipes alone does not prove mutants bite."
+ },
+ {
+  "id": "python.require-recipe-no-overwrite",
+  "target": "docs/scripts/generate_require_mutations.py",
+  "find": "args.output.open('x', encoding='utf-8')",
+  "replace": "args.output.open('w', encoding='utf-8')",
+  "test": "bash linux/scripts/tests/test-require-mutation-recipes.sh",
+  "why": "Independent source and output fixtures must reject empty or wrong selection and replacement of retained recipe data; generating recipes alone does not prove mutants bite."
+ },
+ {
+  "id": "disk-guard.runtime-storage-successful-failed-stop",
+  "target": "linux/scripts/runtime_storage_guard.py",
+  "find": "    stopped_states = {'inactive'} if result['exit_status'] == 0 else {'inactive', 'failed'}",
+  "replace": "    stopped_states = {'inactive', 'failed'}",
+  "test": "bash linux/scripts/tests/test-runtime-storage-guard.sh",
+  "why": "A successful guardian cannot accept a failed post-stop state; failed worker observations preserve their actual failure without accepting the image."
+ },
+ {
+  "id": "disk-guard.runtime-serial-smoke-env",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "        environment.append('RUNTIME_SMOKE_OVERLAP=0')",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent default and explicit scheduling cases retain the identical enabled smoke, driver, parent and cleanup bindings; ordering fixtures prove no actual completed runtime."
+ },
+ {
+  "id": "disk-guard.runtime-serial-smoke-default",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "serial_smoke: bool = False",
+  "replace": "serial_smoke: bool = True",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent default and explicit scheduling cases retain the identical enabled smoke, driver, parent and cleanup bindings; ordering fixtures prove no actual completed runtime."
+ },
+ {
+  "id": "disk-guard.runtime-serial-smoke-forward",
+  "target": "linux/scripts/local-proof/launch-normal-runtime.py",
+  "find": "serial_smoke=args.serial_smoke",
+  "replace": "serial_smoke=False",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "Independent default and explicit scheduling cases retain the identical enabled smoke, driver, parent and cleanup bindings; ordering fixtures prove no actual completed runtime."
  }
 ]

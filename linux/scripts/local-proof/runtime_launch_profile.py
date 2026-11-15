@@ -79,7 +79,7 @@ def runtime_tags(source: Path, prefix: str) -> tuple[str, ...]:
 
 def launch_runtime(plan: Json, invocation: Json, invocation_path: Path, parent: Json, context: Path,
                    proof_path: Path, output: Path, unit: str, prefix: str, app_ref: str, *,
-                   selected_source: Path | None = None, source_proof: Path | None = None) -> int:
+                   selected_source: Path | None = None, source_proof: Path | None = None, serial_smoke: bool = False) -> int:
     assert re.fullmatch(r'webgpu-normal-runtime-amd64-[0-9-]+\.service', unit), 'Unexpected runtime producer unit'
     assert re.fullmatch(r'ant-local/webgpu-[a-z0-9][a-z0-9-]*:runtime-rocm-[A-Za-z0-9][A-Za-z0-9_.-]{0,90}', prefix), 'Fresh local ROCm runtime prefix required'
     assert re.fullmatch(r'[0-9a-f]{40}', app_ref), 'Runtime app ref must be one exact commit'
@@ -105,6 +105,8 @@ def launch_runtime(plan: Json, invocation: Json, invocation_path: Path, parent: 
                    'RUNTIME_REUSE_CHILDREN=0', 'RUNTIME_IMAGE_SMOKE=1', 'RUNTIME_INPUT_PREFLIGHT=1',
                    'WRAPPER_CONTENT_GATE=1', 'ANCESTRY_STAMP_ENFORCE=1', 'CROSS_RUN_ID=runtime-' + run_id,
                    'ANT_RUNTIME_ENGINE=' + engine, 'ANT_RUNTIME_OWNER_LABEL=' + owner_label, 'ANT_RUNTIME_RUN_ID=' + run_id]
+    if serial_smoke:
+        environment.append('RUNTIME_SMOKE_OVERLAP=0')
     driver = ['/bin/bash', str(source / 'linux/scripts/build-runtime-manifest.sh'), '--image', prefix, '--target-arches', 'amd64',
               '--artifact-image-prefix', invocation['image'].removesuffix('-amd64'), '--artifact-build-mode', 'cross', '--skip-manifest']
     record = downstream_record(invocation, invocation_path, proof_path, parent, 'Android')
@@ -118,7 +120,7 @@ def launch_runtime(plan: Json, invocation: Json, invocation_path: Path, parent: 
                   selected_host_workers_sha256={str(path): sha(path) for path in runtime_worker_files(host_root)},
                   run_id=run_id, owner_label=owner_label, expected_runtime_run_id='runtime-' + run_id,
                   engine=engine, engine_wrapper=wrapper, cleanup_command=cleanup,
-                  GPU_or_FINAL_acceptance=False, scope=__doc__)
+                  smoke_overlap='serial' if serial_smoke else 'ordinary-default', GPU_or_FINAL_acceptance=False, scope=__doc__)
     return launch_build(source, output, unit, images[-1], 'amd64', plan['required_bytes'], record, environment, driver,
                         images=images, prepare=lambda: prepare_local_alias(actual, output / 'local-alias.json'),
                         engine_path=wrapper, cleanup=cleanup)

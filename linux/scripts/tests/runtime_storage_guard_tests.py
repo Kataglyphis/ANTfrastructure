@@ -56,6 +56,7 @@ class StorageGuardTests(unittest.TestCase):
         self.sleeps: list[int] = []
         self.head, self.dirty, self.ticks = 'a' * 40, '', '42'
         self.raw_status = 0
+        self.stopped_state = 'inactive'
         self.proof_status = 'passed-authorized-canonical-layer-cleanup'
         self.on_sleep: Any = None
         self.skip_count = 0
@@ -86,7 +87,7 @@ class StorageGuardTests(unittest.TestCase):
         if command[:2] == ['buildctl', 'du']:
             return json.dumps(self.records)
         if command == ['systemctl', '--user', 'stop', self.guard_unit]:
-            self.guard_state = {'Id':self.guard_unit, 'LoadState':'not-found', 'ActiveState':'inactive', 'MainPID':'0'}
+            self.guard_state = {'Id':self.guard_unit, 'LoadState':'loaded' if self.stopped_state == 'failed' else 'not-found', 'ActiveState':self.stopped_state, 'MainPID':'0'}
             return ''
         raise AssertionError('Unexpected real command: ' + repr(command))
 
@@ -403,6 +404,29 @@ class StorageGuardTests(unittest.TestCase):
         result['producer'] = {**self.ended, 'ActiveState':'failed', 'SubState':'failed', 'Result':'exit-code', 'ExecMainStatus':'1'}
         path.write_text(json.dumps(result))
         with self.assertRaisesRegex(ValueError, 'outcomes differ'):
+            G.seal(self.directory)
+        self.assertFalse((self.directory / 'proof-stopped.json').exists())
+
+    def test_failed_guardian_may_retain_failed_state_after_successful_stop(self) -> None:
+        self.prepare_seal()
+        path = self.directory / 'worker-result.json'
+        result = G.read(path)
+        failed = {**self.ended, 'ActiveState':'failed', 'SubState':'failed', 'Result':'exit-code', 'ExecMainStatus':'1'}
+        result.update(exit_status=1, producer=failed)
+        path.write_text(json.dumps(result))
+        self.guard_state = {**failed, 'Id':self.guard_unit}
+        self.stopped_state = 'failed'
+        G.seal(self.directory)
+        proof = G.read(self.directory / 'proof-stopped.json')
+        self.assertEqual(proof['terminal']['ExecMainStatus'], '1')
+        self.assertEqual(proof['stopped']['ActiveState'], 'failed')
+        self.assertEqual(proof['stopped']['MainPID'], '0')
+        self.assertFalse(proof['build_or_image_accepted'])
+
+    def test_successful_guardian_cannot_accept_failed_state_after_stop(self) -> None:
+        self.prepare_seal()
+        self.stopped_state = 'failed'
+        with self.assertRaisesRegex(ValueError, 'did not stop'):
             G.seal(self.directory)
         self.assertFalse((self.directory / 'proof-stopped.json').exists())
 

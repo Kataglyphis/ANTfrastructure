@@ -677,6 +677,8 @@ local resource recovery, not image, binary-licence or finished-consumer acceptan
 
 Actual cleanup `owner-container-cleanup-20261115-1` verified the immutable remote manifests and matching local configs for the obsolete published default ARM64 and RISC-V Android copies, then removed only those two tags without force while all engine record types and outer build units were idle. Free space rose from 189,957,455,872 to 222,812,606,464 bytes: 32,855,150,592 bytes reclaimed. All 42 cachemount IDs and their 121,139,314,688 bytes, plus all 48 unselected image identities, were preserved. The cleanup unit completed with status 0 and was stopped; its receipt is under `logs/host-maintenance/owner-container-cleanup-20261115-1/`. The unchanged 180-GiB reserve passed afterward; fresh admission remains required before another build.
 
+Runtime5's automatic guardian performed six keep-100 worker invocations. Its third cleanup reclaimed 63,756,185,600 bytes before the later failure and package import completed; both concurrent smoke and wrapper then exhausted disk while materializing native contexts. After all engine record types, containers and outer builds became idle, `runtime5-terminal-idle-reclaim-20261115-1` reclaimed another 93,190,426,624 bytes (128,614,940,672 to 221,805,367,296), preserved all 42 cachemount IDs/121,139,314,688 bytes and all 48 image identities, and was sealed/stopped. These are resource receipts, not FINAL acceptance. The existing [serial smoke option](local-proof-workflows.md#ordinary-local-runtime) retains the same test before the wrapper; fresh source qualification and resource admission remain required for another attempt.
+
 ### B8. ghcr registry hygiene
 
 Also moved from `AGENTS.md` on 2026-09-15.

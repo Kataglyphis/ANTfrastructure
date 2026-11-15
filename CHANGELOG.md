@@ -16,6 +16,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-15 — bound complete local FINAL consumers and expose serial runtime smoke
+
+- Preserve a launcher for the unchanged six-consumer local FINAL plan with exact source/producer bindings, invocation-labelled engine transport and preinstalled bounded cleanup. A passed stopped proof requires the real outer result, original receipt, successful cleanup and independent absence; failed outer results remain failed. Add explicit host `--serial-smoke` using the production lane's existing ordering option, with the same mandatory smoke and unchanged default overlap. Handle systemd retaining failed/PID0 after stopping a failed guardian, while retaining the original failed seal. Preserve recurring require-recipe preparation as a tested repo tool and keep canonical merge/actual mutations mandatory. Runtime5 proved successful package import after autonomous reclaim but concurrent smoke/wrapper contexts still failed ENOSPC; actual full runtime, FINAL consumers, GPU parity and complete licences remain open. See [local proof workflows](docs/local-proof-workflows.md).
+
 ## 2026-11-15 — preserve a bounded runtime storage guardian
 
 - Add a committed-source guardian for one already live ordinary runtime. Bind its invocation, PID/start ticks, source and worker hashes; use the existing canonical regular-layer worker synchronously when eligible pressure appears, retaining the 100-GB live-build budget, complete identity checks and failed producer status. Independent synthetic lifecycle and type-scope controls plus executable mutations cover the contract. Runtime4 actually failed with ENOSPC during package import; its late cleanup was insufficient to save that run. A separate idle cleanup removed two verified obsolete published Android copies, reclaimed 32,855,150,592 bytes and preserved all 42 cachemounts and 48 other images. Fresh admission, actual successful runtime and FINAL/hardware proofs remain required. See [storage observation](docs/local-proof-workflows.md#bounded-runtime-storage-observation).

@@ -494,6 +494,18 @@
       "reason": "Shared exact downstream source/native ancestry and explicit Android export; no source authentication or FINAL acceptance."
     },
     {
+      "name": "launch-local-final.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/launch-local-final.py",
+      "reason": "Complete canonical local FINAL plan in a bounded invocation-owned unit; stopped proof requires exact receipt and independent absence."
+    },
+    {
+      "name": "generate_require_mutations.py",
+      "classification": "versioned",
+      "canonical": "docs/scripts/generate_require_mutations.py",
+      "reason": "Preserved require-removal recipe preparation only; canonical merge, parsing and actual mutation tests remain mandatory."
+    },
+    {
       "name": "runtime_storage_guard.py",
       "classification": "versioned",
       "canonical": "linux/scripts/runtime_storage_guard.py",

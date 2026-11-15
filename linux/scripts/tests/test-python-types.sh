@@ -38,9 +38,9 @@ _set_answer() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (142 files)"
+  t_assert_contains "$1" "ty quality gate: clean (143 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
-  t_assert_contains "$1" "Linux Python report: clean (142 files)"
+  t_assert_contains "$1" "Linux Python report: clean (143 files)"
   t_assert_contains "$1" "Windows Python report: clean (2 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -181,6 +181,7 @@ printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scr
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/image_acceptance_local.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/runtime_storage_guard.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/launch-runtime-storage-guard.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/launch-local-final.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/docs/scripts/verify_mutations.py"
 printf 'from markdown_it import MarkdownIt\ndef answer() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/lib/dartdoc-guides.py"
 printf 'VALUE = 1\n' > "${ROOT}/linux/scripts/gate_scope.py"
@@ -203,9 +204,9 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-  t_assert_contains "${out}" "Ruff signature annotation gate: clean (149 files)"
-  t_assert_contains "${out}" "Ruff private return gate: clean (149 files)"
-  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (139 files)"
+  t_assert_contains "${out}" "Ruff signature annotation gate: clean (150 files)"
+  t_assert_contains "${out}" "Ruff private return gate: clean (150 files)"
+  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (140 files)"
 
 t_case "the local FINAL companion belongs to the strict type scope"
 _set_answer "${ROOT}/linux/scripts/image_acceptance_local.py" "'wrong'"
@@ -216,7 +217,7 @@ t_assert_contains "${out}" "invalid-return-type"
 t_assert_contains "${out}" "rc=1"
 _set_answer "${ROOT}/linux/scripts/image_acceptance_local.py" 42
 
-for storage_target in runtime_storage_guard.py launch-runtime-storage-guard.py; do
+for storage_target in runtime_storage_guard.py launch-runtime-storage-guard.py launch-local-final.py; do
   t_case "runtime storage helper stays in the strict type scope: ${storage_target}"
   _set_answer "${ROOT}/linux/scripts/${storage_target}" "'wrong'"
   out="$(_run)"
@@ -507,6 +508,7 @@ parameter_targets=(
   linux/scripts/image_acceptance_local.py \
   linux/scripts/runtime_storage_guard.py \
   linux/scripts/launch-runtime-storage-guard.py \
+  linux/scripts/launch-local-final.py \
   docs/scripts/verify_mutations.py
 )
 # One checker run must report both annotation rules for every selected file.

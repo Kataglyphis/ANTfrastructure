@@ -90,7 +90,7 @@ Run its exact invocation-owned cleanup command and independently prove every
 owned container absent. A live or failed producer, changed source/worker bytes,
 missing cleanup, a base/package image or a foreign manifest/config cannot qualify.
 
-Commit the acceptance tooling, then use a fresh workspace and receipt:
+Commit the acceptance tooling, then use a fresh workspace and receipt. The [bounded host launcher](local-proof-workflows.md#local-final-consumer-acceptance), `linux/scripts/launch-local-final.py`, installs invocation-owned cleanup before all six consumers and requires a stopped proof with independent container absence. Its explicit scheduling companion `launch-normal-runtime.py --serial-smoke` preserves the runtime's same required smoke while reducing concurrent context materialization. The direct runner remains:
 
 ```bash
 python3 linux/scripts/image-acceptance.py check \

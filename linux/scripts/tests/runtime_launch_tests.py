@@ -34,6 +34,10 @@ class ProfileOptions(TypedDict, total=False):
     dirty: bool
 
 
+class SmokeOptions(TypedDict, total=False):
+    serial_smoke: bool
+
+
 class AliasOptions(TypedDict, total=False):
     inventories: list[list[dict]]
     status: int
@@ -63,7 +67,7 @@ class RuntimeTests(unittest.TestCase):
 
     def profile_call(self, *, unit: str | None = None, prefix: str | None = None, app_ref: str | None = None,
                      context: Path | None = None, dirty: bool = False, selected_source: Path | None = None,
-                     source_proof: Path | None = None) -> tuple[int, mock.Mock]:
+                     source_proof: Path | None = None, serial_smoke: bool = False) -> tuple[int, mock.Mock]:
         original = PROFILE.checked_run
         def checked(command: list[str], **options: object) -> subprocess.CompletedProcess[str]:
             if command[0] == 'git':
@@ -73,11 +77,12 @@ class RuntimeTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, value, '')
             return original(command, **options)
         launcher = mock.Mock(return_value=47)
+        smoke_options: SmokeOptions = {'serial_smoke':True} if serial_smoke else {}
         with mock.patch.object(PROFILE, 'checked_run', side_effect=checked), mock.patch.object(PROFILE, 'launch_build', launcher), \
                 mock.patch.object(PROFILE.uuid, 'uuid4', return_value=mock.Mock(hex='c' * 32)):
             result = PROFILE.launch_runtime(self.plan, self.fixture.android, self.fixture.invocation, self.parent,
                         context or self.context, self.proof_path, self.output, unit or self.unit,
-                        prefix or self.prefix, app_ref or self.app_ref, selected_source=selected_source, source_proof=source_proof)
+                        prefix or self.prefix, app_ref or self.app_ref, selected_source=selected_source, source_proof=source_proof, **smoke_options)
         return result, launcher
 
     def test_normal_driver_pins_actual_android_app_and_full_runtime_gates(self) -> None:
@@ -121,6 +126,15 @@ class RuntimeTests(unittest.TestCase):
         with mock.patch.object(PROFILE, 'prepare_local_alias', return_value={'prepared': True}) as prepare:
             self.assertEqual(launcher.call_args.kwargs['prepare'](), {'prepared': True})
         prepare.assert_called_once_with(self.actual, self.output / 'local-alias.json')
+
+    def test_serial_smoke_selects_order_without_disabling_any_gate(self) -> None:
+        _, normal = self.profile_call()
+        _, serial = self.profile_call(serial_smoke=True)
+        self.assertEqual(serial.call_args.args[7], [*normal.call_args.args[7], 'RUNTIME_SMOKE_OVERLAP=0'])
+        self.assertEqual(serial.call_args.args[8], normal.call_args.args[8])
+        self.assertEqual(serial.call_args.args[6]['smoke_overlap'], 'serial')
+        self.assertEqual(normal.call_args.args[6]['smoke_overlap'], 'ordinary-default')
+        self.assertEqual(serial.call_args.kwargs['cleanup'], normal.call_args.kwargs['cleanup'])
 
     def alternate_source_fixture(self) -> tuple[Path, Path, dict]:
         source = self.work / 'repaired-runtime-source'
@@ -316,12 +330,14 @@ class RuntimeTests(unittest.TestCase):
     def test_cli_delegates_actual_android_bindings_and_raw_status(self) -> None:
         source = self.work / 'selected-runtime'
         proof = self.work / 'selected-proof.json'
-        for selected, receipt in [(None, None), (source, proof)]:
+        for selected, receipt, serial in [(None, None, False), (source, proof, False), (source, proof, True)]:
             argv = ['launch-normal-runtime.py', '--compiler-plan', str(self.plan_path), '--android-invocation', str(self.fixture.invocation),
                     '--parent-proof', str(self.proof_path), '--output', str(self.output), '--unit', self.unit,
                     '--image-prefix', self.prefix, '--app-ref', self.app_ref]
             if selected is not None:
                 argv += ['--runtime-source', str(selected), '--runtime-source-proof', str(receipt)]
+            if serial:
+                argv.append('--serial-smoke')
             loader = mock.Mock(return_value=(self.plan, self.fixture.android, self.fixture.parent))
             parent = mock.Mock(return_value=(self.parent, self.context))
             launcher = mock.Mock(return_value=47)
@@ -332,7 +348,7 @@ class RuntimeTests(unittest.TestCase):
             parent.assert_called_once_with(self.proof_path, self.fixture.invocation, self.fixture.android, self.fixture.parent)
             self.assertEqual(launcher.call_args.args, (self.plan, self.fixture.android, self.fixture.invocation, self.parent, self.context,
                              self.proof_path, self.output, self.unit, self.prefix, self.app_ref))
-            self.assertEqual(launcher.call_args.kwargs, {'selected_source':selected, 'source_proof':receipt})
+            self.assertEqual(launcher.call_args.kwargs, {'selected_source':selected, 'source_proof':receipt, 'serial_smoke':serial})
 
     def common_call(self, *, prepare: mock.Mock, busy: bool = False,
                     cleanup: list[str] | None = None, engine_path: str | None = None) -> tuple[int, mock.Mock]:

@@ -198,6 +198,7 @@ def seal(directory: Path) -> None:
         require(fingerprint(proof_path) == prune['proof_sha256'], 'Storage cleanup proof changed')
     checked_output(['systemctl', '--user', 'stop', record['unit']])
     after = UNIT_API(record['unit'])
-    require(after.get('MainPID') == '0' and after.get('ActiveState') == 'inactive', 'Storage guardian did not stop')
+    stopped_states = {'inactive'} if result['exit_status'] == 0 else {'inactive', 'failed'}
+    require(after.get('MainPID') == '0' and after.get('ActiveState') in stopped_states, 'Storage guardian did not stop')
     save(directory / 'proof-stopped.json', {'status':'completed-storage-observation-only', 'terminal':before, 'stopped':after,
          'producer_result':result['producer'], 'prunes':result['prunes'], 'build_or_image_accepted':False, 'scope':__doc__})

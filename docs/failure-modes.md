@@ -633,7 +633,7 @@ until its 90- or 300-second limit.
 
 **Cause.** Disk full from cached images/artifacts
 
-**Fix.** In order: (1) `linux/host-config/prune-safe.sh` (spares compile caches), (2) `nerdctl rmi` of specific already-pushed tags, (3) `nerdctl system prune -a -f` ONLY with no chain running — it deletes ALL non-container-referenced images INCLUDING tagged cross-stage locals (bit us mid-run 2026-08-18; registry-pinned handoffs survived via re-pull)
+**Fix.** Use the [authorized cleanup controller](linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches) and preserve compiler/source cachemounts and required images. During a live build retain at least 100 GB of regular layers. Specific obsolete published local images require an idle engine and fresh immutable registry/config verification; never use broad system/builder prune. If safe cleanup is insufficient, retain the failed run and measured resource gap. Runtime smoke/wrapper overlap can multiply context storage: the explicit [serial host option](local-proof-workflows.md#ordinary-local-runtime) runs the same required smoke first without disabling gates.
 
 ### `No space left on device` in a Windows RUN while the host has space
 
