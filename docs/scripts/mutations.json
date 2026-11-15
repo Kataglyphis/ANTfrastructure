@@ -12430,7 +12430,7 @@
  {
   "id": "packaging.pssa-listed-at-its-pin",
   "target": "linux/scripts/06-packaging/package-image-wiring.sh",
-  "find": "    _pwsh_reports \"${version}\" \"pwsh's PSScriptAnalyzer\" \"${prefix}/pwsh\" \\\n        '(Get-Module -ListAvailable -Name PSScriptAnalyzer).Version.ToString()' || return 1\n",
+  "find": "    _pwsh_reports \"${version}\" \"pwsh's ${name}\" \"${prefix}/pwsh\" \\\n        \"(Get-Module -ListAvailable -Name ${name}).Version.ToString()\" || return 1\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
   "why": "a module pwsh cannot list, or lists at another version, would ship; the lab's analyzer test would skip (CON131)"
@@ -12446,7 +12446,7 @@
  {
   "id": "packaging.pssa-drops-packaging-parts",
   "target": "linux/scripts/06-packaging/package-image-wiring.sh",
-  "find": "    rm -rf \"${mod:?}/_rels\" \"${mod:?}/package\" \"${mod:?}/[Content_Types].xml\" \"${mod:?}/PSScriptAnalyzer.nuspec\"\n",
+  "find": "    rm -rf \"${mod:?}/_rels\" \"${mod:?}/package\" \"${mod:?}/[Content_Types].xml\" \"${mod:?}/${name}.nuspec\"\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
   "why": "the nupkg's OPC parts would sit in the module directory, which Install-Module never leaves (CON131)"
@@ -12454,7 +12454,7 @@
  {
   "id": "packaging.pwsh-installs-pssa",
   "target": "linux/scripts/06-packaging/package-image-wiring.sh",
-  "find": "    install_psscriptanalyzer \"${env_file}\" \"${prefix}\"\n",
+  "find": "    install_psscriptanalyzer \"${env_file}\" \"${prefix}\" || return 1\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
   "why": "pwsh would ship without PSScriptAnalyzer, and the lab's analyzer test would skip (CON131)"
@@ -17910,8 +17910,8 @@
  {
   "id": "mutations.gate-refuses-unparsable",
   "target": "docs/scripts/verify_mutations.py",
-  "find": "    runnable, refused_rc = refuse_unparsable(entries, args.root, report)\n",
-  "replace": "    runnable, refused_rc = entries, 0\n",
+  "find": "        (runnable, refused_rc), delegated = refuse_unparsable(entries, args.root, report), []\n",
+  "replace": "        (runnable, refused_rc), delegated = (entries, 0), []\n",
   "test": "bash linux/scripts/tests/test-mutation-parse.sh",
   "why": "the proving run, not only --parse-check, must refuse a mutant that does not parse, or CI keeps counting syntax errors as bites"
  },
@@ -38231,5 +38231,13 @@
   "replace": "",
   "test": "mkdir -p logs/code-quality && pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only BuildKit.ConsumerDispatch.Tests.ps1 -ResultFile logs/code-quality/buildkit-consumer-dispatch.json",
   "why": "A push ref without a tag dispatches nothing, rather than every consumer on an empty tag."
+ },
+ {
+  "id": "packaging.pwsh-installs-pester",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "    install_pester \"${env_file}\" \"${prefix}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "pwsh would ship without Pester, so Invoke-Tests.ps1 skips every suite in the image and no pwsh recipe proves there (CON273)"
  }
 ]
