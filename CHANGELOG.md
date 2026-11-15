@@ -22,7 +22,9 @@
   6e35dad; OxidANT not yet) and the Ryzen and Pi 5 figures behind it, plus the one-thread rule for a language model
   beside a detector (OrchestrANT's `--describe-threads`).
 - BACKLOG: CON240 open again with only OxidANT left; CON218 notes the Pi finding and the consumers' fixed
-  `--threads 7` perf copies; CON236's recipe half is done; new CON274, the in-image mutation lane without `--init`.
+  `--threads 7` perf copies; CON236's recipe half is done.
+- `mutation-gates.yml`'s in-image runner starts the container with `docker run --init`: `verify_mutations.py` was
+  PID 1 and never reaped the orphans a test killed (OrchestrANT run 43657675126); the proof in a run is CON274.
 ## 2026-11-15 — Pester in the Linux image; a pwsh recipe goes to CI on a host without it (CON273)
 
 - `install_pwsh` also installs Pester at the new pin `PESTER_VERSION=6.2.0` (windows-x64.yml's floor) from the

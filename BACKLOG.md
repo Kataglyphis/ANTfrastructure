@@ -1839,15 +1839,13 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       a package. If the answer changes: the package and the Rust target in the package stage, a smoke line
       for each, and one `clippy-windows` step in OxidANT with its minutes measured.
 
-- [ ] **CON274 — the in-image mutation lane runs Python as PID 1, which never reaps a zombie** [S, ★★].
-      Found 2026-11-15 by OrchestrANT's mutation lane (run 43657675126): `mutation-gates.yml` with `in-image: true`
-      starts `docker run ... bash -c '... exec "$@"' recipes python3 verify_mutations.py`, so `verify_mutations.py`
-      is PID 1 and an orphaned grandchild that a test kills stays a zombie; `os.kill(pid, 0)` then still finds it.
-      OrchestrANT 98b1d23 lets its timeout test accept a zombie, so the lane is green; other consumers' tests of
-      the same shape would fail the same way, and only in this lane (`pi-ci` and the plain lanes run a shell as
-      PID 1). Fix: `docker run --init` in that runner array, so tini reaps; `run-in-ci-image.sh` likely wants the
-      same. Done when a recipe whose test asserts a killed grandchild is gone, without a zombie allowance, passes
-      in the in-image lane.
+- [ ] **CON274 — prove that the in-image mutation lane reaps a killed grandchild** [S, ★]. Found 2026-11-15 by
+      OrchestrANT's mutation lane (run 43657675126): `mutation-gates.yml` with `in-image: true` ran
+      `verify_mutations.py` as PID 1, which never reaps, so a grandchild a test killed stayed a zombie and
+      `os.kill(pid, 0)` still found it. Since that day the lane starts the container with `docker run --init`
+      (tini reaps). Not proven by a run yet: OrchestrANT's timeout test accepts a zombie since 98b1d23. Done when a
+      recipe whose test asserts the grandchild is gone, without that allowance, passes in the in-image lane.
+      `run-in-ci-image.sh` stays without `--init`: nerdctl's needs a `tini` on the host.
 
 - [ ] **CON272 — a consumer's `uv lock` in the image: `/opt/venv` lacks setuptools, and no hub script knows the
       command** [S, ★★]. Found 2026-11-14 adding pytest-timeout to OrchestrANT (owner: lock in the image, on 3.15).
