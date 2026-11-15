@@ -27,7 +27,7 @@ LEGACY = '10ff1924998a38a0f0f47f1ace4f7d86661fc028d87c4de900ba1fae0d3b4df1'
 PIN = '8271db71f46ab74393ff45c14864d0eaca6707a5'
 
 
-class CompilerPlanProfileTests(unittest.TestCase):
+class CompilerPlanFixture(unittest.TestCase):
     def setUp(self) -> None:
         temporary = tempfile.TemporaryDirectory(prefix='compiler plan profile ')
         self.addCleanup(temporary.cleanup)
@@ -42,6 +42,7 @@ class CompilerPlanProfileTests(unittest.TestCase):
         self.manager = ''
         self.number = 0
         self.make_source()
+        self.accepted_materializer = (self.source / LLVM[2]).read_bytes()
         self.make_records()
 
     def write(self, relative: str, data: bytes) -> None:
@@ -85,7 +86,8 @@ class CompilerPlanProfileTests(unittest.TestCase):
                          'owner_source':str(self.source), 'quality_group_count':26, 'cleanup_exit_status':0,
                          'independent_engine_query_exit_status':0, 'owned_container_absent':True, 'patch_sha256':'4' * 64}
         self.commit = {'head':self.head, 'source':str(self.source), 'normal_hook_status':0, 'actual_hook_mutations':16,
-                       'exact_committed_patch_match':True, 'clean':True, 'patch_sha256':'4' * 64}
+                       'exact_committed_patch_match':True, 'clean':True, 'patch_sha256':'4' * 64,
+                       'status':'passed-local-source-commit-normal-hooks-only'}
 
     def git_and_manager(self, command: list[str], **kwargs: object) -> str | bytes:
         if command == ['systemctl', '--user', 'show-environment']:
@@ -104,7 +106,7 @@ class CompilerPlanProfileTests(unittest.TestCase):
             elif args == ['show', PIN + ':' + CONTEXT]:
                 value = self.transport
             elif args == ['show', 'e7ca4436dbb5e58d8f9e0fb49105b6d3b636e9e9:' + LLVM[2]]:
-                value = (self.source / LLVM[2]).read_bytes()
+                value = self.accepted_materializer
             else:
                 raise AssertionError('Unexpected fixture command: ' + repr(command))
         return value.decode() if kwargs.get('text') else value
@@ -134,6 +136,8 @@ class CompilerPlanProfileTests(unittest.TestCase):
     def review(self) -> dict[str, Any]:
         return {'commit':PIN, 'sha256':hashlib.sha256(self.transport).hexdigest(), 'size':len(self.transport)}
 
+
+class CompilerPlanProfileTests(CompilerPlanFixture):
     def test_native_profile_preserves_all_deltas_and_reports_actual_control_change(self) -> None:
         plan, output = self.plan()
         audit = json.loads((output / 'compiler-storage-path-audit.json').read_text())
@@ -241,6 +245,12 @@ class CompilerPlanProfileTests(unittest.TestCase):
         self.write('linux/Dockerfile.toolchain', self.dockerfile.encode())
         self.manager = 'UNREVIEWED_STORAGE_FLAG=1\n'
         with self.assertRaises(AssertionError):
+            self.plan()
+
+    def test_reviewed_materializer_bytes_do_not_follow_current_file_drift(self) -> None:
+        path = self.source / LLVM[2]
+        path.write_bytes(path.read_bytes() + b'changed')
+        with self.assertRaisesRegex(AssertionError,'Materializer differs'):
             self.plan()
 
     def test_profiles_preserve_push_and_reserve_refusals(self) -> None:

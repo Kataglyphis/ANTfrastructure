@@ -16,6 +16,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-15 — review the exact GNU_UNIQUE compiler rebuild lineage
+
+- Add an explicit compiler-planning profile for the reviewed `a4741df7` source and unchanged `60ce0c91` compiler repair. Verify compiler6's original input fingerprints, all seven deltas and the one narrow LLVM companion mount; keep GNU mounts, storage controls, disk reserve and publication guards unchanged.
+- Share targeted-patch validation between planning and launch. The new source requires all matching normal-hook mutations under the existing sixteen-entry cap; earlier profiles retain their original scope and sixteen-hook requirement. Synthetic controls and actual mutations do not prove a completed source run, cache hit, compiler image or inference.
+
 ## 2026-11-15 — refuse underprovisioned local ROCm runtime imports
 
 - Require the larger of 300 GiB and the original parent plan before the local ROCm runtime allocates outputs, prepares aliases or starts a unit. Runtime7 proved that a successful 204-GB admission plus required serial smoke can still exhaust disk during FINAL import. Shared stage minima and every production gate remain required.

@@ -364,6 +364,35 @@ complete source preflight, real disk admission and all base-blob checks.
 `test-compiler-plan-profile.sh` uses actual fixture files and explicit Git and
 manager doubles; those controls do not authenticate history or accept an image.
 
+## GNU_UNIQUE compiler planning
+
+`prepare-next-compiler-plan.py --profile llvm-gnu-unique` reviews only source
+`a4741df72654abd91008f75ced01f57e7b4a1461`, whose compiler bytes remain identical
+to repair `60ce0c91`. Carry `compiler_unique_profile.py`, `compiler_plan_profile.py`,
+`proof_profiles.py` and `native_oci_layout.py` with the entrypoints. Both planning
+and launch call the shared targeted-patch validator unconditionally.
+
+The reference remains compiler6 source `652e5440`. Read its original
+`build_inputs_comparison`: combine unchanged fingerprints with the current side
+of its earlier deltas and verify every file against that frozen checkout.
+The six existing changed inputs are the runtime build functions, native Clang
+builder, LLVM validator, cross builder, LLVM module and SDK materializer. The
+new seventh input is `llvm-gnu-unique.sh`, explicitly absent from compiler6.
+No other delta is accepted. The materializer matches the reviewed compiler
+repair; the complete Dockerfile differs only by its readonly LLVM companion
+mount. The GNU RUN and every one of its bound inputs remain unchanged.
+
+The current operational fixture repair retains its targeted receipt and every
+matching normal-hook mutation under the existing cap of sixteen; its two
+matching targets do not become a claim of sixteen checks. Earlier planner
+profiles retain their original proof kind and sixteen-hook requirement.
+A real compiler launch still needs this exact source's complete registry/all42
+proof, the normal reserve, original base blobs, idle engine and fresh output.
+Input equality is not a cache hit. Actual build logs, compiler counters, shipped
+LLVM byte checks and downstream image/hardware acceptance remain separate.
+The shared test fixture supports both old profiles and the new profile using
+real files and explicit Git/proof doubles; it authenticates no receipt.
+
 ## Ordinary SDK and GPU stage launch
 
 `launch-normal-sdk.py` and `launch-normal-gpu.py` share `normal_stage_launch.py` for fresh local alias/unit/output selection, idle-host checks, ambient manager-flag refusal, the unchanged 180 GiB minimum and bounded named-unit transport. Preserve that companion when copying either launcher. SDK argument defaults and its qualified compiler contract remain intact.

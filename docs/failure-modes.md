@@ -548,6 +548,15 @@ the store · Stevedore and the docker service · build content and toolchain.
 
 ---
 
+## Compiler planner rejects llvm-gnu-unique
+
+An older planner reports an invalid profile choice or expects the earlier
+expensive-input report shape. Use the versioned GNU_UNIQUE planner and its
+complete companion closure. It reads compiler6's preserved comparison and
+refuses a different source or any extra input; changing the old reference or
+falling back to an earlier profile cannot admit the new repair.
+See [the exact compiler profile](local-proof-workflows.md#gnu_unique-compiler-planning).
+
 ## Linux and cross-lane
 
 ### Container preflight reports groups surviving KILL with only zombies

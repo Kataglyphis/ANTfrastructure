@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from proof_types import Json
 
+from compiler_plan_profile import validate_patch_binding
 from proof_commands import checked_run
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -69,14 +70,8 @@ assert full["actual_preflight_group_count"] == 42 and full["command_exit_status"
 assert full["owned_container_absent"] and full["unit_stopped_after_seal"] and full['independent_engine_query_exit_status'] == 0
 assert full['script_suites'] > 0 and full['script_assertions'] > 0
 targeted = json.loads(Path(plan['targeted_source_proof']).read_text())
-assert targeted['status'] == 'passed-targeted-source-native-Clang-wrapper-and-backend-repair-only'
-assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26
-assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']
 commit = json.loads(Path(plan['source_commit_proof']).read_text())
-assert commit['head'] == plan['source_revision'] and commit['source'] == str(source)
-assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0
-assert commit['actual_hook_mutations'] == 16 and commit['clean'] and commit['exact_committed_patch_match']
-assert commit['patch_sha256'] == targeted['patch_sha256']
+validate_patch_binding(source, plan['source_revision'], plan.get('planner_profile','clang-wrapper-repair'), targeted, commit)
 for filename, expected in plan['production_sha256'].items():
     assert digest(source / filename) == expected
 audit = json.loads((args.plan.parent / plan["storage_path_audit"]).read_text())

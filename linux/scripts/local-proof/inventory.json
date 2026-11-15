@@ -558,6 +558,12 @@
       "classification": "versioned",
       "canonical": "linux/scripts/image_acceptance_local.py",
       "reason": "Bind completed runtime/source/parent/worker/cleanup evidence to immutable local FINAL identity; synthetic fixtures do not establish actual consumers or inference."
+    },
+    {
+      "name": "compiler_unique_profile.py",
+      "classification": "versioned",
+      "canonical": "linux/scripts/local-proof/compiler_unique_profile.py",
+      "reason": "Exact GNU_UNIQUE source, original compiler6 fingerprints and narrow LLVM input review; no build or cache acceptance."
     }
   ],
   "new_canonical_files": [

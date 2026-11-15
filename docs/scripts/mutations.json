@@ -49336,7 +49336,7 @@
  {
   "id": "compiler-llvm-tools.plan-legacy-no-history-dependency",
   "target": "linux/scripts/local-proof/compiler_plan_profile.py",
-  "find": "    if profile == 'clang-wrapper-repair':",
+  "find": "    if profile in ('clang-wrapper-repair', unique.NAME):",
   "replace": "    if False:",
   "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
   "why": "The unchanged default profile does not acquire a native-transport history prerequisite."
@@ -49344,16 +49344,16 @@
  {
   "id": "compiler-llvm-tools.plan-known-review-profile",
   "target": "linux/scripts/local-proof/compiler_plan_profile.py",
-  "find": "    assert profile in PROFILES, 'Unknown compiler plan profile'\n    if profile",
-  "replace": "    pass\n    if profile",
+  "find": "def reviewed_transport(source: Path, profile: str) -> TransportReview | None:\n    assert profile in PROFILES, 'Unknown compiler plan profile'",
+  "replace": "def reviewed_transport(source: Path, profile: str) -> TransportReview | None:\n    pass",
   "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
   "why": "Unknown shared review profiles must refuse before behaving like native AMDGPU."
  },
  {
   "id": "compiler-llvm-tools.plan-known-input-profile",
   "target": "linux/scripts/local-proof/compiler_plan_profile.py",
-  "find": "    assert profile in PROFILES, 'Unknown compiler plan profile'\n    expected",
-  "replace": "    pass\n    expected",
+  "find": "def validate_input_changes(differences: Json, profile: str, transport: TransportReview | None) -> None:\n    assert profile in PROFILES, 'Unknown compiler plan profile'",
+  "replace": "def validate_input_changes(differences: Json, profile: str, transport: TransportReview | None) -> None:\n    pass",
   "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
   "why": "An unknown input profile cannot inherit the three-file default contract."
  },
@@ -49399,9 +49399,9 @@
  },
  {
   "id": "compiler-llvm-tools.plan-Dockerfile-equality",
-  "target": "linux/scripts/local-proof/prepare-next-compiler-plan.py",
-  "find": "assert dockerfile == previous_dockerfile",
-  "replace": "pass",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "    assert current.read_text() == expected, 'Compiler Dockerfile differs from its reviewed profile'",
+  "replace": "    pass",
   "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
   "why": "Changed build instructions cannot reuse the old equal-Dockerfile cache-boundary claim."
  },
@@ -53636,5 +53636,309 @@
   "replace": "    disk['required_bytes'] = 193273528320",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "The passing-boundary invocation must report the same independent byte requirement actually checked; it proves reporting, not image acceptance."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-require-source-assert-1",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "    assert head == SOURCE_REVISION, 'GNU_UNIQUE requires its exact reviewed source'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The require_source boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-require-source-assert-2",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "    assert set(changes) == FIXTURE_CHANGES, 'Unreviewed changes after the compiler repair'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The require_source boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-require-source-assert-3",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "        assert (source / name).read_bytes() == expected, 'Reviewed compiler repair bytes differ: ' + name\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The require_source boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-fingerprint-assert-1",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "    assert not relative.is_absolute() and '..' not in relative.parts, 'Input path escapes its source'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The fingerprint boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-reference-inputs-assert-1",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "    assert previous['source_revision'] == REFERENCE_REVISION, 'GNU_UNIQUE requires the reviewed compiler6 baseline'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The reference_inputs boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-reference-inputs-assert-2",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "    assert git(source, 'rev-parse', 'HEAD').decode().strip() == REFERENCE_REVISION, 'Compiler6 source head differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The reference_inputs boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-reference-inputs-assert-3",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "    assert not git(source, 'status', '--porcelain').strip(), 'Compiler6 source is dirty'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The reference_inputs boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-reference-inputs-assert-4",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "    assert report['source_revision'] == REFERENCE_REVISION, 'Compiler6 input report source differs'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The reference_inputs boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-reference-inputs-assert-5",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "    assert unchanged and not (unchanged.keys() & changed.keys()), 'Compiler6 input groups overlap or are empty'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The reference_inputs boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-reference-inputs-assert-6",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "    assert ADDED_INPUT not in inputs and not (source / ADDED_INPUT).exists(), 'New companion already appears in the baseline'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The reference_inputs boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-reference-inputs-assert-7",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "        assert fingerprint(source, name) == expected, 'Compiler6 input fingerprint differs: ' + name\n",
+  "replace": "        pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The reference_inputs boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-validate-changes-assert-1",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "    assert set(differences) == INPUTS, 'Compiler inputs differ from the reviewed GNU_UNIQUE profile'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The validate_changes boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-validate-changes-assert-2",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "    assert differences[ADDED_INPUT]['previous'] is None, 'New companion needs an explicit absent baseline'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The validate_changes boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-validate-changes-assert-3",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "    assert all(value['previous'] is not None for name, value in differences.items() if name != ADDED_INPUT), 'Existing compiler input lost its baseline'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The validate_changes boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-expected-dockerfile-assert-1",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "    assert text.count(anchor) == 1, 'Unrecognized compiler6 LLVM companion anchor'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The expected_dockerfile boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-hook-count-assert-1",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "    assert matched > 0, 'GNU_UNIQUE source commit has no matching normal hook mutations'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The hook_count boundary must reject the corresponding independently controlled invalid input."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-input-reference-assert-1",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "def input_reference(source: Path, head: str, template: Path, previous: Json, profile: str) -> Json:\n    \"\"\"Keep historical references separate from the exact compiler6 baseline.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        return unique.reference_inputs(template, previous)\n    return json.loads(Path(previous['expensive_inputs_proof']).read_text())['unchanged_bind_files']\n\n\n",
+  "replace": "def input_reference(source: Path, head: str, template: Path, previous: Json, profile: str) -> Json:\n    \"\"\"Keep historical references separate from the exact compiler6 baseline.\"\"\"\n    pass\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        return unique.reference_inputs(template, previous)\n    return json.loads(Path(previous['expensive_inputs_proof']).read_text())['unchanged_bind_files']\n\n\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The input_reference scope and receipt facts remain mandatory under direct helpers and ordinary planning."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-input-reference-source-review-call",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "def input_reference(source: Path, head: str, template: Path, previous: Json, profile: str) -> Json:\n    \"\"\"Keep historical references separate from the exact compiler6 baseline.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        return unique.reference_inputs(template, previous)\n    return json.loads(Path(previous['expensive_inputs_proof']).read_text())['unchanged_bind_files']\n\n\n",
+  "replace": "def input_reference(source: Path, head: str, template: Path, previous: Json, profile: str) -> Json:\n    \"\"\"Keep historical references separate from the exact compiler6 baseline.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    if profile == unique.NAME:\n        pass\n        return unique.reference_inputs(template, previous)\n    return json.loads(Path(previous['expensive_inputs_proof']).read_text())['unchanged_bind_files']\n\n\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "Both shared entrypoint helpers actually apply the exact reviewed source pin."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-reviewed-dockerfile-assert-1",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "def reviewed_dockerfile(source: Path, previous: Path, profile: str) -> Json:\n    \"\"\"Retain old Dockerfile equality or the one reviewed new LLVM bind.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    materializer = 'linux/scripts/02-toolchain/materialize-llvm-target.sh'\n    commit = unique.REPAIR_REVISION if profile == unique.NAME else 'e7ca4436dbb5e58d8f9e0fb49105b6d3b636e9e9'\n    accepted = subprocess.check_output(['git','-C',str(source),'show',commit + ':' + materializer],timeout=60)\n    assert (source / materializer).read_bytes() == accepted, 'Materializer differs from its reviewed compiler repair'\n    current = source / unique.DOCKERFILE\n    expected = unique.expected_dockerfile(previous) if profile == unique.NAME else (previous / unique.DOCKERFILE).read_text()\n    assert current.read_text() == expected, 'Compiler Dockerfile differs from its reviewed profile'\n    if profile == unique.NAME:\n        return {'Dockerfile_sha256':sha(current), 'reviewed_Dockerfile_change':'one readonly LLVM GNU_UNIQUE companion bind'}\n    return {'identical_Dockerfile_sha256':sha(current)}\n\n\n",
+  "replace": "def reviewed_dockerfile(source: Path, previous: Path, profile: str) -> Json:\n    \"\"\"Retain old Dockerfile equality or the one reviewed new LLVM bind.\"\"\"\n    pass\n    materializer = 'linux/scripts/02-toolchain/materialize-llvm-target.sh'\n    commit = unique.REPAIR_REVISION if profile == unique.NAME else 'e7ca4436dbb5e58d8f9e0fb49105b6d3b636e9e9'\n    accepted = subprocess.check_output(['git','-C',str(source),'show',commit + ':' + materializer],timeout=60)\n    assert (source / materializer).read_bytes() == accepted, 'Materializer differs from its reviewed compiler repair'\n    current = source / unique.DOCKERFILE\n    expected = unique.expected_dockerfile(previous) if profile == unique.NAME else (previous / unique.DOCKERFILE).read_text()\n    assert current.read_text() == expected, 'Compiler Dockerfile differs from its reviewed profile'\n    if profile == unique.NAME:\n        return {'Dockerfile_sha256':sha(current), 'reviewed_Dockerfile_change':'one readonly LLVM GNU_UNIQUE companion bind'}\n    return {'identical_Dockerfile_sha256':sha(current)}\n\n\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The reviewed_dockerfile scope and receipt facts remain mandatory under direct helpers and ordinary planning."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-reviewed-materializer",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "    assert (source / materializer).read_bytes() == accepted, 'Materializer differs from its reviewed compiler repair'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-plan-profile.sh",
+  "why": "A frozen compiler materializer must not follow mutated current fixture bytes."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-validate-patch-binding-assert-1",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "replace": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    pass\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The validate_patch_binding scope and receipt facts remain mandatory under direct helpers and ordinary planning."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-validate-patch-binding-assert-2",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "replace": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    pass\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The validate_patch_binding scope and receipt facts remain mandatory under direct helpers and ordinary planning."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-validate-patch-binding-assert-3",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "replace": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    pass\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The validate_patch_binding scope and receipt facts remain mandatory under direct helpers and ordinary planning."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-validate-patch-binding-assert-4",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "replace": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    pass\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The validate_patch_binding scope and receipt facts remain mandatory under direct helpers and ordinary planning."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-validate-patch-binding-assert-5",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "replace": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    pass\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The validate_patch_binding scope and receipt facts remain mandatory under direct helpers and ordinary planning."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-validate-patch-binding-assert-6",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "replace": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    pass\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The validate_patch_binding scope and receipt facts remain mandatory under direct helpers and ordinary planning."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-validate-patch-binding-assert-7",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "replace": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    pass\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The validate_patch_binding scope and receipt facts remain mandatory under direct helpers and ordinary planning."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-validate-patch-binding-assert-8",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "replace": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The validate_patch_binding scope and receipt facts remain mandatory under direct helpers and ordinary planning."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-validate-patch-binding-source-review-call",
+  "target": "linux/scripts/local-proof/compiler_plan_profile.py",
+  "find": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        unique.require_source(source, head)\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "replace": "def validate_patch_binding(source: Path, head: str, profile: str, targeted: Json, commit: Json) -> None:\n    \"\"\"Require the exact targeted patch and unchanged normal hook policy for each source.\"\"\"\n    assert profile in PROFILES, 'Unknown compiler plan profile'\n    key = 'operational-tools' if profile == unique.NAME else 'native-clang-wrappers'\n    assert targeted['status'] == TARGETED_STATUSES[key]\n    assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26\n    assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']\n    assert commit['head'] == head and commit['source'] == str(source)\n    assert commit['status'] == 'passed-local-source-commit-normal-hooks-only' and commit['normal_hook_status'] == 0\n    required_hooks = 16\n    if profile == unique.NAME:\n        pass\n        required_hooks = unique.hook_count(source)\n    assert commit['actual_hook_mutations'] == required_hooks and commit['clean'] and commit['exact_committed_patch_match']\n    assert commit['patch_sha256'] == targeted['patch_sha256']\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "Both shared entrypoint helpers actually apply the exact reviewed source pin."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-hook-cap",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "    return min(16, matched)\n",
+  "replace": "    return matched\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "Normal hooks retain their existing sixteen-entry cap when more files match."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-source-revision",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "SOURCE_REVISION = 'a4741df72654abd91008f75ced01f57e7b4a1461'\n",
+  "replace": "SOURCE_REVISION = 'cccccccccccccccccccccccccccccccccccccccc'\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The compiler profile retains its independently reviewed source lineage."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-reference-revision",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "REFERENCE_REVISION = '652e5440c9cbbecee486ff86dab873b9ace967ec'\n",
+  "replace": "REFERENCE_REVISION = 'cccccccccccccccccccccccccccccccccccccccc'\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The compiler profile retains its independently reviewed source lineage."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-repair-revision",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "REPAIR_REVISION = '60ce0c91e8831fbf1e2886b887a75dafbf4c2910'\n",
+  "replace": "REPAIR_REVISION = 'cccccccccccccccccccccccccccccccccccccccc'\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The compiler profile retains its independently reviewed source lineage."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-required-mount",
+  "target": "linux/scripts/local-proof/compiler_unique_profile.py",
+  "find": "MOUNT = '    --mount=type=bind,source=' + ADDED_INPUT + ',target=/opt/scripts/toolchain/llvm-gnu-unique.sh,ro \\\\\\n'\n",
+  "replace": "MOUNT = ''\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The current Dockerfile comparison requires the real narrow LLVM companion mount."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-planner-patch-call",
+  "target": "linux/scripts/local-proof/prepare-next-compiler-plan.py",
+  "find": "validate_patch_binding(source, head, args.profile, targeted, commit)\n",
+  "replace": "pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "Both normal entrypoints call the shared patch validator unconditionally."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-launcher-patch-call",
+  "target": "linux/scripts/local-proof/launch-normal-compiler-plan.py",
+  "find": "validate_patch_binding(source, plan['source_revision'], plan.get('planner_profile','clang-wrapper-repair'), targeted, commit)\n",
+  "replace": "pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "Both normal entrypoints call the shared patch validator unconditionally."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-all-production-inputs",
+  "target": "linux/scripts/local-proof/prepare-next-compiler-plan.py",
+  "find": "    production = sorted(set(production) | unique.INPUTS)\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The plan records every reviewed new compiler input rather than only its earlier subset."
+ },
+ {
+  "id": "compiler-llvm-tools.unique-plan-honest-comparison-status",
+  "target": "linux/scripts/local-proof/prepare-next-compiler-plan.py",
+  "find": "    comparison['status'] = 'reviewed-GNU-closure-equal-exact-GNU-UNIQUE-lineage-only'\n",
+  "replace": "    pass\n",
+  "test": "bash linux/scripts/tests/test-compiler-unique-profile.sh",
+  "why": "The GNU_UNIQUE receipt states its actual reviewed lineage instead of an older transport profile."
  }
 ]

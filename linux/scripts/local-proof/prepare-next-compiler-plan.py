@@ -12,11 +12,15 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import compiler_unique_profile as unique
 from compiler_plan_profile import (
     PROFILES,
+    input_reference,
+    reviewed_dockerfile,
     reviewed_transport,
     storage_changes,
     validate_input_changes,
+    validate_patch_binding,
 )
 
 if TYPE_CHECKING:
@@ -51,12 +55,7 @@ head = run(['git', '-C', str(source), 'rev-parse', 'HEAD']).strip()
 assert not run(['git', '-C', str(source), 'status', '--porcelain']).strip()
 targeted = json.loads(args.targeted_proof.read_text())
 commit = json.loads(args.commit_proof.read_text())
-assert targeted['status'] == 'passed-targeted-source-native-Clang-wrapper-and-backend-repair-only'
-assert targeted['owner_source'] == str(source) and targeted['quality_group_count'] == 26
-assert targeted['cleanup_exit_status'] == targeted['independent_engine_query_exit_status'] == 0 and targeted['owned_container_absent']
-assert commit['head'] == head and commit['source'] == str(source)
-assert commit['normal_hook_status'] == 0 and commit['actual_hook_mutations'] == 16 and commit['exact_committed_patch_match'] and commit['clean']
-assert commit['patch_sha256'] == targeted['patch_sha256']
+validate_patch_binding(source, head, args.profile, targeted, commit)
 assert old['required_bytes'] == 193273528320
 old_repo = old['local_image'].rsplit(':', 1)[0]
 compiler_output = work / 'compiler-rebuild-1'
@@ -74,22 +73,18 @@ audit.update(observed_at=datetime.datetime.now(datetime.UTC).isoformat(), source
              relevant_user_manager_env={}, source_control_files_equal_previous_audit=not control_changes,
              reviewed_control_changes=control_changes, compiler_plan_profile=args.profile)
 audit['files_sha256'] = {name:sha(source / name) for name in audit['files_sha256']}
-old_inputs = json.loads(Path(old['expensive_inputs_proof']).read_text())
+old_inputs = input_reference(source, head, args.template, old, args.profile)
 differences = {}
 unchanged = {}
-for name, previous in old_inputs['unchanged_bind_files'].items():
+for name, previous in old_inputs.items():
     current = {'sha256': sha(source / name), 'size': (source / name).stat().st_size}
     if current == previous:
         unchanged[name] = current
     else:
         differences[name] = {'previous': previous, 'current': current}
-materializer = 'linux/scripts/02-toolchain/materialize-llvm-target.sh'
 validate_input_changes(differences, args.profile, transport_review)
-accepted_materializer = subprocess.check_output(['git', '-C', str(source), 'show', 'e7ca4436dbb5e58d8f9e0fb49105b6d3b636e9e9:' + materializer], timeout=60)
-assert (source / materializer).read_bytes() == accepted_materializer
+dockerfile_review = reviewed_dockerfile(source, Path(old['source']), args.profile)
 dockerfile = (source / 'linux/Dockerfile.toolchain').read_text()
-previous_dockerfile = (Path(old['source']) / 'linux/Dockerfile.toolchain').read_text()
-assert dockerfile == previous_dockerfile
 gnu_match = re.search(r'^RUN .*?(?=\n\n)', dockerfile, re.MULTILINE | re.DOTALL)
 assert gnu_match is not None, 'Compiler Dockerfile has no first RUN block'
 gnu_run = gnu_match.group(0)
@@ -98,11 +93,17 @@ assert gnu_mounts and set(gnu_mounts) <= unchanged.keys()
 comparison = {'status':('reviewed-GNU-closure-equal-LLVM-closure-intentionally-changed-only' if args.profile == 'clang-wrapper-repair' else 'reviewed-GNU-closure-equal-LLVM-inputs-and-declared-transport-changes-only'),
               'compiler_plan_profile':args.profile, 'reviewed_OCI_transport':transport_review,
               'source_revision':head, 'reference_revision':old['source_revision'], 'unchanged_bound_files':unchanged,
-              'changed_bound_files':differences, 'identical_Dockerfile_sha256':sha(source / 'linux/Dockerfile.toolchain'),
+              'changed_bound_files':differences, **dockerfile_review,
               'GNU_RUN_bind_files':gnu_mounts, 'GNU_mounts_unchanged':True, 'cache_hits_claimed':False,
               'scope':'Byte comparisons establish cache-key boundaries only. Actual cache results are required from the new canonical solve.'}
+if args.profile == unique.NAME:
+    comparison['status'] = 'reviewed-GNU-closure-equal-exact-GNU-UNIQUE-lineage-only'
 registry = json.loads((source / 'docs/scripts/mutations.json').read_text())
 production = ['linux/scripts/02-toolchain/llvm.sh', 'linux/scripts/02-toolchain/llvm-cross.sh', 'linux/scripts/06-packaging/smoke-toolchain.sh']
+cache_note = 'Measure actual GNU/LLVM/Rust/Python cache behavior; input equality is not a cache hit and new LLVM backends intentionally rekey the LLVM RUN.'
+if args.profile == unique.NAME:
+    production = sorted(set(production) | unique.INPUTS)
+    cache_note = 'Measure actual GNU/LLVM/Rust/Python caches; unchanged GNU inputs do not prove a hit, and GNU_UNIQUE flags plus the narrow companion intentionally rekey LLVM.'
 plan = {'status':'prepared-awaiting-complete-source-preflight', 'prepared_at':datetime.datetime.now(datetime.UTC).isoformat(),
         'launcher_contract':2, 'planner_profile':args.profile, 'unit':args.unit, 'source':str(source), 'source_revision':head, 'code_revision':head,
         'local_image':args.image_repo + ':cross-compiler-amd64', 'output':str(compiler_output), 'command':command,
@@ -118,7 +119,7 @@ plan = {'status':'prepared-awaiting-complete-source-preflight', 'prepared_at':da
             'Both canonical180GiB and exact193273528320B reserve freshly pass; no floor override.',
             'Original12layer base/nativeOCI/index/config and all blobs rehash; all previous roots/images/receipts remain.',
             'No running producer; fresh unit/output/local alias and outside-Git TMPDIR; manager storage flags remain unset.',
-            'Measure actual GNU/LLVM/Rust/Python cache behavior; input equality is not a cache hit and new LLVM backends intentionally rekey the LLVM RUN.',
+            cache_note,
             'Qualify baked native157tools/sixdefaults/loader plus source wrapper paths/three CPU backends plus AMDGPU and actual both-driver target smokes before nativeOCI and SDK handoff.'
         ], 'publication':False, 'scope':__doc__}
 assert not (work / 'compiler-storage-path-audit.json').exists() and not (work / 'build-inputs-comparison.json').exists()
