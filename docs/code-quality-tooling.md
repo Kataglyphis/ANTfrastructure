@@ -1539,7 +1539,8 @@ prove them before CI, run the gate in the image; it prints the line:
 
 **So do `pwsh` suites on a host without Pester.** `Invoke-Tests.ps1` reports every suite SKIPPED
 when Pester is missing, and an arm64 dev host has no `pwsh` at all, so such a recipe could never
-bite there. With `--delegate-chrome`, an entry whose test command starts `pwsh` goes to CI with the
+bite there. With `--delegate-chrome`, an entry whose test command starts `pwsh`, or names a suite
+that demands it with `t_skip_unless "…" command -v pwsh`, goes to CI with the
 line `needs pwsh with Pester, which this host lacks` when `pwsh` is not on `PATH` or lists no
 Pester module (`mutation_push.host_runs_pester`, asked only when such an entry is selected). It is
 set aside before the parse check, since parsing a PowerShell mutant needs `pwsh` too, so CI both

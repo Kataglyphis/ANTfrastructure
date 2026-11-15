@@ -29,6 +29,15 @@
 - Two recipes on `WindowsBuildKit.Common.psm1`'s consumer dispatch: `buildkit.push-tag-takes-the-repository` and
   `buildkit.dispatch-without-tag-runs`.
 
+## 2026-11-15 — the pwsh delegation also covers suites that demand pwsh; Pester's pin follows its releases
+
+- `mutation_push.needs_pester` also counts a test command that names a suite carrying
+  `t_skip_unless "…" command -v pwsh` (`test-mutation-parse.sh`, `test-harness-suite-driver.sh`,
+  `test-windows-icon-pe.sh`), so editing `verify_mutations.py` on the arm64 dev host no longer needs `--no-verify`.
+- `PESTER_VERSION` is annotated `datasource=github-releases depName=pester/Pester`, which the versions.env
+  customManager matches, and `bump_versions.py` moves `PESTER_NUPKG_SHA256` with it (`spec_pester`, from the
+  gallery's nupkg).
+
 ## 2026-11-14 — each mutation mirror names itself to its tests (`MUTATION_MIRROR`)
 
 - `verify_mutations.py` hands every recipe test the mirror's directory name as `MUTATION_MIRROR`, so a recipe that

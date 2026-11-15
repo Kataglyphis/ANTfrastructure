@@ -124,6 +124,7 @@ from bump_tools import (  # noqa: F401  re-exported: tests and the spec modules 
     spec_ollama,
     spec_osv_scanner,
     spec_pandoc,
+    spec_pester,
     spec_psscriptanalyzer,
     spec_pwsh,
     spec_python,
@@ -258,6 +259,7 @@ SAFE: list[tuple[str, Spec, str]] = [
     # Keys whose bump also moves a paired *_SHA256, which a Renovate datasource cannot compute.
     ("PWSH_VERSION", spec_pwsh, "windows base (full — pwsh is layer 1) + linux package pwsh layer"),
     ("PSSCRIPTANALYZER_VERSION", spec_psscriptanalyzer, "linux package pwsh layer"),
+    ("PESTER_VERSION", spec_pester, "linux package pwsh layer"),
     ("GIT_VERSION", spec_git, "windows base scoop layer"),
     ("NUGET_VERSION", spec_nuget, "windows toolchain run (cheap)"),
     ("UV_VERSION", spec_uv, "linux base uv layer + tail"),

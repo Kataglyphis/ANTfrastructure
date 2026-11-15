@@ -163,6 +163,11 @@ t_assert_eq "False" "$(cd "${_work}/repo/docs/scripts" && PATH="" "$(command -v 
 t_assert_eq "True False False True" "$(cd "${_work}/repo/docs/scripts" && python3 -c '
 import mutation_push as m
 print(*(m.needs_pester(c) for c in ("pwsh -File a.ps1", "bash test-pwsh.sh", "python3 x_pwsh.py", "subprocess.run([\x27pwsh\x27])")))')"
+# A suite that demands pwsh through the harness needs it too; split like the Chrome marker, so this one is not.
+printf '%s\n' 't_skip_unless "PowerShell 7" command -v'' pwsh' > "${_work}/repo/needs-pwsh.sh"
+t_assert_eq "True False" "$(cd "${_work}/repo/docs/scripts" && python3 -c '
+import mutation_push as m, sys
+print(m.needs_pester("bash needs-pwsh.sh", sys.argv[1]), m.needs_pester("bash plain-test.sh", sys.argv[1]))' "${_work}/repo")"
 
 t_case "only a run that proved every entry may call itself whole, and CI's shards cannot delegate"
 _rig

@@ -20,6 +20,7 @@ E = TypeVar("E", bound=Mapping[str, object])
 _CHROME_MARKER = re.compile(r"\bt_skip_unless_chrome\b|\bfindChrome\(")
 # pwsh as its own word, bare or quoted in an argv list; a script named like test-pwsh.sh is not it.
 _PWSH_WORD = re.compile(r"(?<![\w./-])pwsh(?![\w.-])")
+_PWSH_MARKER = re.compile(r"\bt_skip_unless\b[^\n]*\bcommand -v pwsh\b")
 NEEDS_CHROME = "needs Chrome"
 NEEDS_PESTER = "needs pwsh with Pester, which this host lacks"
 _RANGE = re.compile(r"[^\s.]+(?:\.[^\s.]+)*\.\.\.[^\s.]+(?:\.[^\s.]+)*")
@@ -72,8 +73,8 @@ def select_push(entries: Sequence[E], ranges: Sequence[str], root: str, manifest
     return [e for e in entries if e["id"] in recipes or touches(e, touched)]
 
 
-def needs_chrome(test: str, root: str) -> bool:
-    """Whether a script the test command names asks for a real Chrome."""
+def _names_marked(test: str, root: str, marker: re.Pattern[str]) -> bool:
+    """Whether a script the test command names carries the marker."""
     try:
         words = shlex.split(test)
     except ValueError:
@@ -82,9 +83,14 @@ def needs_chrome(test: str, root: str) -> bool:
         path = os.path.join(root, word)
         if os.path.isfile(path):
             with open(path, encoding="utf-8", errors="replace") as fh:
-                if _CHROME_MARKER.search(fh.read()):
+                if marker.search(fh.read()):
                     return True
     return False
+
+
+def needs_chrome(test: str, root: str) -> bool:
+    """Whether a script the test command names asks for a real Chrome."""
+    return _names_marked(test, root, _CHROME_MARKER)
 
 
 def split_chrome(entries: Sequence[E], root: str) -> tuple[list[E], list[E]]:
@@ -94,9 +100,9 @@ def split_chrome(entries: Sequence[E], root: str) -> tuple[list[E], list[E]]:
             [e for e in entries if verdict[str(e["test"])]])
 
 
-def needs_pester(test: str) -> bool:
-    """Whether the test command starts pwsh, whose suites Invoke-Tests.ps1 runs through Pester."""
-    return bool(_PWSH_WORD.search(test))
+def needs_pester(test: str, root: str = ".") -> bool:
+    """Whether the test command starts pwsh, or names a suite that requires it with t_skip_unless."""
+    return bool(_PWSH_WORD.search(test)) or _names_marked(test, root, _PWSH_MARKER)
 
 
 def host_runs_pester(pwsh: str | None = None) -> bool:
@@ -113,18 +119,19 @@ def host_runs_pester(pwsh: str | None = None) -> bool:
     return out.returncode == 0 and out.stdout.strip() not in ("", "0")
 
 
-def split_pester(entries: Sequence[E], pester_here: Callable[[], bool]) -> tuple[list[E], list[E]]:
-    """(entries to prove here, pwsh entries CI proves); asks the host only when an entry starts pwsh."""
-    wanting = [e for e in entries if needs_pester(str(e["test"]))]
+def split_pester(entries: Sequence[E], root: str, pester_here: Callable[[], bool]) -> tuple[list[E], list[E]]:
+    """(entries to prove here, pwsh entries CI proves); asks the host only when an entry needs pwsh."""
+    verdict = {cmd: needs_pester(cmd, root) for cmd in {str(e["test"]) for e in entries}}
+    wanting = [e for e in entries if verdict[str(e["test"])]]
     if not wanting or pester_here():
         return list(entries), []
-    return [e for e in entries if not needs_pester(str(e["test"]))], wanting
+    return [e for e in entries if not verdict[str(e["test"])]], wanting
 
 
 def set_aside(entries: Sequence[E], root: str, refuse: Callable[[list[E]], tuple[list[E], int]],
               say: Callable[[str], None]) -> tuple[list[E], list[E], int]:
     """(entries to prove here, entries CI proves, refuse's code); pwsh ones leave before the parse check, which needs pwsh."""
-    here, pester = split_pester(entries, host_runs_pester)
+    here, pester = split_pester(entries, root, host_runs_pester)
     runnable, refused_rc = refuse(here)
     runnable, chrome = split_chrome(runnable, root)
     for line in delegated_lines(chrome, NEEDS_CHROME) + delegated_lines(pester, NEEDS_PESTER):
