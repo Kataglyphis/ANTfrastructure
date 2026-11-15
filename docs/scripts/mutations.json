@@ -51736,7 +51736,7 @@
  {
   "id": "compiler-llvm-tools.runtime-source-reviewed-runtime-pin",
   "target": "linux/scripts/local-proof/runtime_source_profile.py",
-  "find": "RUNTIME_REVISION = 'ec3be1855d2adee3622e36ac99cc76afcbfc5795'",
+  "find": "RUNTIME_REVISION = '74f6be54ae463c1e1138a36e740e4f20838d1912'",
   "replace": "RUNTIME_REVISION = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
@@ -51753,7 +51753,7 @@
   "id": "compiler-llvm-tools.runtime-source-full-proof-delegation",
   "target": "linux/scripts/local-proof/runtime_source_profile.py",
   "find": "    complete = full_source(source, proof_path, RUNTIME_REVISION)",
-  "replace": "    complete = {'actual_full_registry_mutations':6507, 'actual_preflight_group_count':42}",
+  "replace": "    complete = {'actual_full_registry_mutations':6512, 'actual_preflight_group_count':42}",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "Independent source-routing fixtures preserve the exact reviewed runtime proof separately from original Android/native parent bindings; no image or hardware acceptance."
  },
@@ -53588,5 +53588,13 @@
   "replace": "serial_smoke=False",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "Independent default and explicit scheduling cases retain the identical enabled smoke, driver, parent and cleanup bindings; ordering fixtures prove no actual completed runtime."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-source-refuses-prior-wheel-proof",
+  "target": "linux/scripts/local-proof/runtime_source_profile.py",
+  "find": "RUNTIME_REVISION = '74f6be54ae463c1e1138a36e740e4f20838d1912'",
+  "replace": "RUNTIME_REVISION = 'ec3be1855d2adee3622e36ac99cc76afcbfc5795'",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The earlier runtime source and its full receipt must not qualify the unused-smoke-export repair."
  }
 ]

@@ -190,12 +190,19 @@ normally remain the exact ones already qualified through compiler, SDK, GPU and 
 committing host tools does not qualify a new image source.
 
 The explicit pair `--runtime-source REPAIRED_SOURCE --runtime-source-proof
-COMPLETE_SOURCE_PROOF` selects only the reviewed stable-wheel-context repair pinned
-in `runtime_source_profile.py`. Both arguments are required together. Its complete
+COMPLETE_SOURCE_PROOF` selects only the reviewed wheel-context and unused-smoke-export
+repair pinned in `runtime_source_profile.py`. Both arguments are required together. Its complete
 proof must match that exact clean source commit, every current registry mutation,
 all 42 default groups, actual script suites and cleanup. A targeted source receipt
 or the original Android proof cannot satisfy it. Copy that new module beside the
 runtime profile and existing native/normal-stage companions.
+
+The current reviewed source is `74f6be54ae463c1e1138a36e740e4f20838d1912`:
+it keeps the stable wheel contexts and disables push, store and unpack only for the
+unused required-smoke image. Its own 6,512-entry full preflight is required; the
+older `ec3be1855d2adee3622e36ac99cc76afcbfc5795` receipt is insufficient. Original
+Android source `8c4e13b0` and its native ancestry remain separate, unchanged inputs.
+This selection does not establish a successful runtime or FINAL consumer acceptance.
 
 Selection happens before runtime tags, alias preparation or unit creation. The
 actual driver uses the repaired checkout; its source revision and full-proof hash

@@ -16,6 +16,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-15 — select the reviewed runtime smoke-export source
+
+- The explicit runtime source handoff now requires commit `74f6be54` and its own complete current preflight, covering both stable wheel contexts and smoke output without image import. Original Android ancestry, normal reserve, exact app and invocation cleanup remain required before a fresh runtime.
+- Independent routing controls and a rollback mutation reject the earlier runtime pin. Targeted tooling checks do not prove the full source, a completed runtime, GPU inference, complete licences or FINAL acceptance.
+
 ## 2026-11-15 — bound complete local FINAL consumers and expose serial runtime smoke
 
 - Preserve a launcher for the unchanged six-consumer local FINAL plan with exact source/producer bindings, invocation-labelled engine transport and preinstalled bounded cleanup. A passed stopped proof requires the real outer result, original receipt, successful cleanup and independent absence; failed outer results remain failed. Add explicit host `--serial-smoke` using the production lane's existing ordering option, with the same mandatory smoke and unchanged default overlap. Handle systemd retaining failed/PID0 after stopping a failed guardian, while retaining the original failed seal. Preserve recurring require-recipe preparation as a tested repo tool and keep canonical merge/actual mutations mandatory. Runtime5 proved successful package import after autonomous reclaim but concurrent smoke/wrapper contexts still failed ENOSPC; actual full runtime, FINAL consumers, GPU parity and complete licences remain open. See [local proof workflows](docs/local-proof-workflows.md).
