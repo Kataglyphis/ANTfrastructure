@@ -38,6 +38,18 @@
   customManager matches, and `bump_versions.py` moves `PESTER_NUPKG_SHA256` with it (`spec_pester`, from the
   gallery's nupkg).
 
+## 2026-11-14 — lavapipe 26.3.0 on Windows without the 256-bit pin; the delete guard says MIT
+
+- `LAVAPIPE_VERSION` 26.2.6 → 26.3.0, both SHA256s self-measured and equal to the release's digests. Mesa 26.3
+  deleted the BVH radix sort that needed 8-lane subgroups (`ebcfbe60`), so the Windows image,
+  `Install-LavapipeHost.ps1` and `Test-Arm64Bundle.ps1` stop setting `LP_NATIVE_VECTOR_WIDTH=256`: each arch
+  runs its native width, 128 bits on arm64, where 256 is the suspect of BeschleunigerBallett's intermittent
+  arm64 lavapipe crash. `Test-Container.ps1` now fails an image that sets it. The Linux image keeps CON44's
+  256 while its Mesa predates 26.3. Dependency table, website licence pages and curated SBOM regenerated.
+- `.claude/hooks/guard-destructive-deletes.{ps1,py}` carry `SPDX-License-Identifier: MIT`, as `LICENSE`
+  does; CON69's sweep skipped the hidden directory. Only that line changed (owner request, 2026-11-14), and
+  the hook answers the same inputs identically.
+
 ## 2026-11-14 — Renovate 44.239.1; a `lockfile-only` skip is by design
 
 - Renovate's uv processor now adds every package that only `uv.lock` names (`depType: uv.lock`,

@@ -553,7 +553,9 @@ Assert-Test -Name 'lavapipe ICD + driver + loader staged (C:\runtime\lavapipe)' 
     (Test-Path (Join-Path $lavapipeDir 'vulkan_lvp.dll')) -and
     (Test-Path (Join-Path $lavapipeDir 'vulkan-1.dll'))
 } -FailMessage "the lavapipe ICD, driver and loader must all be staged in $lavapipeDir (Install-Lavapipe.ps1)"
-Assert-EnvVarSet -Name 'LP_NATIVE_VECTOR_WIDTH'
+Assert-Test -Name 'LP_NATIVE_VECTOR_WIDTH stays unset (lavapipe 26.3 runs the native width)' -Condition {
+    [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('LP_NATIVE_VECTOR_WIDTH'))
+} -FailMessage 'LP_NATIVE_VECTOR_WIDTH must stay unset: Mesa 26.3 deleted the 8-lane BVH sort, and 256 bits split every llvmpipe vector on arm64'
 
 if ($smokeCross) {
     # The aarch64 payload cannot execute on the x64 host; its PE machine is the provable half here.

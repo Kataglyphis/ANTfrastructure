@@ -974,9 +974,10 @@ support also ships as a proved free-threaded (`cp3XYt`) twin, in a store of its 
 The Windows amd64 image and the arm64 bundle carry Mesa's lavapipe — a CPU Vulkan
 device, the only software one that also runs the ray-tracing goldens — with the
 target arch's Khronos loader and `vulkaninfo.exe`, all SHA256-pinned, in
-`C:\runtime\lavapipe` (CON50). The image sets `LP_NATIVE_VECTOR_WIDTH=256`,
-because Mesa 26.2's BVH sort needs 8-lane subgroups and arm64's native 128 bits
-give 4. The amd64 image registers the ICD in HKLM at build time — a container
+`C:\runtime\lavapipe` (CON50). Since lavapipe 26.3.0 neither the image nor the
+host installer sets `LP_NATIVE_VECTOR_WIDTH`: Mesa 26.3 deleted the BVH sort that
+needed 8-lane subgroups (`ebcfbe60`), so each arch runs its native width, 128 bits
+on arm64, and the smoke gate fails an image that sets it. The amd64 image registers the ICD in HKLM at build time — a container
 process is elevated, and the loader ignores `VK_DRIVER_FILES` there. The arm64
 bundle cannot register it while it is packed, so the device needs the one-time
 HKLM registration the bundle README names; `Test-Arm64Bundle.ps1` runs

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # See docs/failure-modes.md § The delete guard denies its own legitimate work.
 
 import json

@@ -180,7 +180,7 @@ These are recorded so nobody files them as gaps:
   OxidANT's renderer tests do. (Vulkan is the exception since 2026-10-04, CON50: Mesa's
   lavapipe — mmozeiko/build-mesa's unsigned build — ships in `C:\runtime\lavapipe` with
   an HKLM ICD registration, because the loader ignores `VK_DRIVER_FILES` in an elevated
-  process, and `LP_NATIVE_VECTOR_WIDTH=256`.)
+  process; since 26.3.0 it runs each arch's native vector width.)
 - No slim `:winamd64-toolchain` tag (owner decision 2026-09-28, CON26). `:winamd64`'s
   ~54 GB of layers exhaust a stock `windows-2025` runner's `C:` (`hcsshim::ImportLayer …
   not enough space on the disk (0x70)`, BeschleunigerBallett, 2026-07-21); the

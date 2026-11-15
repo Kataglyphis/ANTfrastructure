@@ -2835,7 +2835,8 @@ the test step. The crashing process then prints the exception, the faulting thre
 as `module+0xRVA` and the path of its minidump on stderr, and still exits with the original
 code. Upload the dump with the executable's PDB; `llvm-symbolizer --obj=<exe> 0x<base+RVA>`
 names a frame in that executable. On arm64 lavapipe, suspect `LP_NATIVE_VECTOR_WIDTH=256` first: a
-frame with no module is llvmpipe's JIT code (`BACKLOG.md` CON44).
+frame with no module is llvmpipe's JIT code (`BACKLOG.md` CON44). The Windows lavapipe (26.3.0 on)
+no longer sets it; the Linux image still does while its Mesa predates 26.3.
 
 ### A regex patch inserts the same header after every include
 

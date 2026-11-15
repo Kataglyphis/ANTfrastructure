@@ -1,5 +1,5 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 
 # PreToolUse delete guard; stays Windows PowerShell 5.1-safe because the hook falls back to 5.1 and a guard that cannot launch fails open.
 
