@@ -667,13 +667,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       a 48-token reply is quickest on one or two. Left: OrchestrANT's, AccelerANTgine's and OxidANT's
       `perf-host.sh` pass `--threads auto` at their next hub pin; whether a shipped text default follows the
       detector's rule or a text rule of its own is the owner's call on these numbers.
-- [ ] **CON240 — one written default for ORT's intra-op threads in the detectors** [S, ★★]. The rule is written
-      since 2026-11-15 ([`onnxruntime-single-source.md` § The ORT thread rule](docs/onnxruntime-single-source.md#the-ort-thread-rule)):
-      the usable CPUs (the affinity mask) but one, 1 to 8, overrides kept. OrchestrANT followed it already;
-      AccelerANTgine follows it since 6e35dad (owner decision 2026-11-15, after a Pi 5 measurement: 3 threads
-      227-229 ms p50, 4 threads 235-252 ms, ORT's default 237-250 ms, 7 threads 520-542 ms). Left: OxidANT, where
-      ORT's default is a written choice of 2026-10-11 and its BACKLOG ("Measure whether ORT's default thread count
-      costs the Rust detector half its speed") runs `detect-latency` first; the owner decides on those numbers.
 - [ ] **CON219 — ORT reads a null scale pointer in 4-bit `MatMulNBits` on riscv64 RVV** [M, ★★★].
       Found 2026-11-02 with OxidANT's SmolLM2-135M contract test under QEMU, image index `7d4d4129`: a fault in
       `libonnxruntime.so.1.31.0` at `0x150150c` on `flw fa5, 0x0(s10)`, `s10=0x1f80`. In ORT v1.31.0's

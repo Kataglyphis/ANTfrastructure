@@ -17,6 +17,13 @@
 
 
 
+
+## 2026-11-15 — every detector follows the ORT thread rule (CON240 done)
+
+- OxidANT 75d0155 gives its Rust detector the family's rule when `KATAGLYPHIS_ORT_THREADS` is unset (owner
+  decision), so OrchestrANT, AccelerANTgine and OxidANT all take the usable CPUs but one, 1 to 8
+  (`docs/onnxruntime-single-source.md` § The ORT thread rule). CON240 leaves the backlog; CON218 notes ObservANT's
+  `llm_threads`.
 ## 2026-11-15 — `genai-model-threads.py --threads auto` (CON218)
 
 - `--threads auto` copies a GenAI model with the family's ORT rule, the usable CPUs but one, 1 to 8: 7 on the Ryzen

@@ -523,7 +523,7 @@ whatever else needs a CPU.
 | --- | --- | --- |
 | OrchestrANT | `orchestrant/yolo/providers.py` `shipped_intra_op_threads` | before 2026-11 |
 | AccelerANTgine | `shipped_ort_threads()` for `SessionConfig` and `YoloConfig`, intra- and inter-op alike (owner decision 2026-11-15; Sequential mode ignores inter-op) | 6e35dad |
-| OxidANT | not yet: ORT's default unless `KATAGLYPHIS_ORT_THREADS` is above 0 (a written choice of 2026-10-11; its BACKLOG measures first) | — |
+| OxidANT | `kataglyphis_core::config::family_threads` when `KATAGLYPHIS_ORT_THREADS` is unset; `0` keeps ORT's own (owner decision 2026-11-15; Pi 5: ORT's default 237-247 ms, 3 threads 234-242 ms) | 75d0155 |
 
 Measured: one Ryzen host pinned to 8 CPUs, two-cats p50, Python 24.1 ms with the rule against
 51.3 ms at ORT's default (2026-11-12 baselines). A Pi 5 with 4 CPUs in the CI image, AccelerANTgine's
