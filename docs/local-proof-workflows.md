@@ -211,15 +211,22 @@ Selection happens before runtime tags, alias preparation or unit creation. The
 actual driver uses the repaired checkout; its source revision and full-proof hash
 are recorded separately from `parent_source_revision`, original Android invocation,
 manifest/config and native parent receipt. The original Android ancestry is still
-revalidated. The default image wheel mode, exact app commit, ordinary disk floor,
+revalidated. The default image wheel mode, exact app commit, shared disk minimum,
 all runtime gates and invocation-owned cleanup retain their existing policies.
 Source proof does not authenticate supplied receipts or prove that a finished
 runtime, GPU inference, complete licences or FINAL consumers passed.
 
 Before launch the shared transport refuses active builds, running containers,
 ambient build flags, existing unit/output/temporary roots and any existing
-base/package/wrapper name. It retains the unchanged 180-GiB floor. The preparation
-step creates or verifies a local `docker.io/ant-local/...@sha256:...` alias of the
+base/package/wrapper name. The ordinary ROCm runtime requires the larger of
+300 GiB and its parent plan's byte requirement; the shared 180-GiB floor remains
+a lower bound. The same checked byte requirement is recorded in the invocation.
+Refusal precedes output allocation, local alias preparation and unit creation.
+Runtime7 passed base/package/serial smoke after a 204,024,397,824-byte admission,
+then exhausted disk unpacking Chrome in FINAL. The larger starting margin addresses
+that observed failure; it is not a reservation or proof of peak-disk sufficiency.
+Fixtures exercise both sides of the exact byte boundary and retain larger parent
+requirements. The preparation step creates or verifies a local `docker.io/ant-local/...@sha256:...` alias of the
 actual Android manifest and independently checks its config. Docker-mode nerdctl
 inspection of a repository-at-digest name is not reliable on this host: verify the
 canonical name through image inventory and inspect the bare immutable manifest.

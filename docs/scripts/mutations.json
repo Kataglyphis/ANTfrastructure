@@ -48640,10 +48640,10 @@
  {
   "id": "compiler-llvm-tools.normal-stage-shared-20",
   "target": "linux/scripts/local-proof/normal_stage_launch.py",
-  "find": "    assert required_bytes >= 193273528320 and disk['available_bytes'] >= required_bytes, 'Unchanged disk reserve required'",
+  "find": "    assert required_bytes >= 193273528320 and disk['available_bytes'] >= required_bytes, (\n        f'Selected disk reserve {required_bytes} bytes required; {disk[\"available_bytes\"]} available')",
   "replace": "    pass",
   "test": "bash linux/scripts/tests/test-normal-stage-launch.sh",
-  "why": "The synthetic positive and independent refusal controls must fail when the ordinary source, host or stage admission assertion is removed: Unchanged disk reserve required"
+  "why": "Independent stage controls refuse below the shared minimum or selected byte requirement before allocation; no physical peak-disk guarantee."
  },
  {
   "id": "compiler-llvm-tools.normal-stage-gpu-01",
@@ -53596,5 +53596,45 @@
   "replace": "RUNTIME_REVISION = 'ec3be1855d2adee3622e36ac99cc76afcbfc5795'",
   "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
   "why": "The earlier runtime source and its full receipt must not qualify the unused-smoke-export repair."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-rocm-starting-reserve",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "ROCM_RUNTIME_REQUIRED_BYTES = 300 * 1024**3",
+  "replace": "ROCM_RUNTIME_REQUIRED_BYTES = 180 * 1024**3",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The independent driver expectation must retain the stronger ROCm starting budget after the real serial-smoke import failure; no peak-space sufficiency claim."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-rocm-preserves-larger-plan",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "max(plan['required_bytes'], ROCM_RUNTIME_REQUIRED_BYTES)",
+  "replace": "min(plan['required_bytes'], ROCM_RUNTIME_REQUIRED_BYTES)",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "A larger independent parent budget must survive the runtime minimum; fixtures do not authenticate parent receipts or guarantee physical capacity."
+ },
+ {
+  "id": "compiler-llvm-tools.runtime-rocm-reserve-delegation",
+  "target": "linux/scripts/local-proof/runtime_launch_profile.py",
+  "find": "return launch_build(source, output, unit, images[-1], 'amd64', required_bytes, record, environment, driver,",
+  "replace": "return launch_build(source, output, unit, images[-1], 'amd64', plan['required_bytes'], record, environment, driver,",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The real shared transport must receive the selected stronger runtime budget, not merely compute it for display; no actual build is performed."
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-higher-reserve-refusal",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "disk['available_bytes'] >= required_bytes",
+  "replace": "disk['available_bytes'] >= 193273528320",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The real failed 204-GB admission and one-byte-under boundary must refuse before outputs, preparation and unit start; synthetic budgets do not reserve disk."
+ },
+ {
+  "id": "compiler-llvm-tools.normal-stage-selected-reserve-report",
+  "target": "linux/scripts/local-proof/normal_stage_launch.py",
+  "find": "    disk['required_bytes'] = required_bytes",
+  "replace": "    disk['required_bytes'] = 193273528320",
+  "test": "bash linux/scripts/tests/test-normal-runtime-launch.sh",
+  "why": "The passing-boundary invocation must report the same independent byte requirement actually checked; it proves reporting, not image acceptance."
  }
 ]

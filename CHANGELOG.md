@@ -16,6 +16,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-15 — refuse underprovisioned local ROCm runtime imports
+
+- Require the larger of 300 GiB and the original parent plan before the local ROCm runtime allocates outputs, prepares aliases or starts a unit. Runtime7 proved that a successful 204-GB admission plus required serial smoke can still exhaust disk during FINAL import. Shared stage minima and every production gate remain required.
+- Record the actual selected byte requirement in the invocation. Boundary and larger-parent controls cover refusal and reporting, not a physical peak-space guarantee or finished image acceptance.
+
 ## 2026-11-15 — require the context-valid runtime exporter source
 
 - The explicit source handoff now selects `2aa1a778`, which keeps the production smoke exporter and corrects its live-control fixtures. Only that exact source and its own complete current preflight may proceed; the failed intermediate `74f6be54` run cannot qualify it.

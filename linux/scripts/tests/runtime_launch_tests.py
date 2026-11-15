@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise ordinary runtime and local alias refusals with command/native fixtures; no actual runtime, registry, licences or inference proof."""
+"""Exercise runtime, alias and resource refusals with fixtures; no measured peak disk, actual build, licence or GPU proof."""
 
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ class RuntimeTests(unittest.TestCase):
         result, launcher = self.profile_call()
         self.assertEqual(result, 47)
         args = launcher.call_args.args
-        self.assertEqual(args[:6], (self.work, self.output, self.unit, self.prefix + '-amd64', 'amd64', 193273528320))
+        self.assertEqual(args[:6], (self.work, self.output, self.unit, self.prefix + '-amd64', 'amd64', 322122547200))
         self.assertEqual(args[8], ['/bin/bash', str(self.work / 'linux/scripts/build-runtime-manifest.sh'), '--image', self.prefix,
                          '--target-arches', 'amd64', '--artifact-image-prefix', 'ant-local/webgpu-fixture:cross-android-rocm',
                          '--artifact-build-mode', 'cross', '--skip-manifest'])
@@ -126,6 +126,27 @@ class RuntimeTests(unittest.TestCase):
         with mock.patch.object(PROFILE, 'prepare_local_alias', return_value={'prepared': True}) as prepare:
             self.assertEqual(launcher.call_args.kwargs['prepare'](), {'prepared': True})
         prepare.assert_called_once_with(self.actual, self.output / 'local-alias.json')
+
+    def test_larger_parent_resource_requirement_is_preserved(self) -> None:
+        self.plan['required_bytes'] = 400 * 1024**3
+        _, launcher = self.profile_call()
+        self.assertEqual(launcher.call_args.args[5], 429496729600)
+
+    def test_rocm_budget_refuses_before_allocation_and_is_recorded_after_passing(self) -> None:
+        _, selected = self.profile_call()
+        prepare = mock.Mock(return_value={})
+        for available in (204024397824, 322122547199):
+            with self.subTest(available=available), self.assertRaisesRegex(AssertionError, '322122547200'):
+                self.common_call(prepare=prepare, available=available, required=selected.call_args.args[5])
+            prepare.assert_not_called()
+            self.last_transport.assert_not_called()
+            self.assertFalse(self.output.exists())
+            self.assertFalse((self.work / 'build-temporary').exists())
+        result, _ = self.common_call(prepare=prepare, available=322122547200, required=selected.call_args.args[5])
+        self.assertEqual(result, 47)
+        record = json.loads((self.output / 'invocation.json').read_text())
+        self.assertEqual(record['disk_admission']['required_bytes'], 322122547200)
+        self.assertEqual(record['disk_admission']['available_bytes'], 322122547200)
 
     def test_serial_smoke_selects_order_without_disabling_any_gate(self) -> None:
         _, normal = self.profile_call()
@@ -351,7 +372,8 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(launcher.call_args.kwargs, {'selected_source':selected, 'source_proof':receipt, 'serial_smoke':serial})
 
     def common_call(self, *, prepare: mock.Mock, busy: bool = False,
-                    cleanup: list[str] | None = None, engine_path: str | None = None) -> tuple[int, mock.Mock]:
+                    cleanup: list[str] | None = None, engine_path: str | None = None,
+                    available: int = 200 * 1024**3, required: int = 193273528320) -> tuple[int, mock.Mock]:
         def execute(command: list[str], **options: object) -> subprocess.CompletedProcess[str]:
             self.assertTrue(prepare.called, 'preparation must precede a real unit start')
             self.assertIn('command', json.loads((self.output / 'invocation.json').read_text()))
@@ -359,9 +381,9 @@ class RuntimeTests(unittest.TestCase):
         transport = mock.Mock(side_effect=execute)
         self.last_transport = transport
         host = mock.Mock(return_value=self.work / 'build-temporary', side_effect=RuntimeError('busy') if busy else None)
-        with mock.patch.object(STAGE, 'host_admission', host), mock.patch.object(runpy, 'run_path', return_value={'require_build_disk': mock.Mock(return_value={'available_bytes': 200 * 1024**3})}), \
+        with mock.patch.object(STAGE, 'host_admission', host), mock.patch.object(runpy, 'run_path', return_value={'require_build_disk': mock.Mock(return_value={'available_bytes': available})}), \
                 mock.patch.object(STAGE.subprocess, 'run', transport), mock.patch.object(sys, 'path', sys.path.copy()), redirect_stdout(io.StringIO()):
-            result = STAGE.launch_build(self.work, self.output, self.unit, self.prefix + '-amd64', 'amd64', 193273528320,
+            result = STAGE.launch_build(self.work, self.output, self.unit, self.prefix + '-amd64', 'amd64', required,
                         {'parent_manifest': self.actual['manifest']}, ['APP_REF=' + self.app_ref], ['driver', 'argument with spaces'],
                         images=(self.prefix + '-base-amd64', self.prefix + '-package-amd64', self.prefix + '-amd64'),
                         prepare=prepare, cleanup=cleanup, engine_path=engine_path)

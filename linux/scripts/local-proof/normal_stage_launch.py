@@ -97,7 +97,9 @@ def launch_build(source: Path, output: Path, unit: str, image: str, arch: str, r
     temporary = host_admission(unit, output, images or image)
     sys.path.insert(0, str(source / 'linux/scripts'))
     disk = runpy.run_path(str(source / 'linux/scripts/launch-migraphx-configure-proof.py'))['require_build_disk'](output.parent)
-    assert required_bytes >= 193273528320 and disk['available_bytes'] >= required_bytes, 'Unchanged disk reserve required'
+    assert required_bytes >= 193273528320 and disk['available_bytes'] >= required_bytes, (
+        f'Selected disk reserve {required_bytes} bytes required; {disk["available_bytes"]} available')
+    disk['required_bytes'] = required_bytes
     output.mkdir()
     temporary.mkdir(mode=0o700)
     engine = engine_path or str(Path.home() / '.local/bin/nerdctl')

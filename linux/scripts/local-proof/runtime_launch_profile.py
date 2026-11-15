@@ -17,6 +17,9 @@ from runtime_source_profile import select_runtime_source
 if TYPE_CHECKING:
     from proof_types import Json
 
+# Serial smoke still exhausted the shared reserve during the ROCm final import.
+ROCM_RUNTIME_REQUIRED_BYTES = 300 * 1024**3
+
 
 def local_reference(actual: Json) -> str:
     assert actual['image'].startswith('ant-local/webgpu-'), 'Reviewed local Android image required'
@@ -121,6 +124,7 @@ def launch_runtime(plan: Json, invocation: Json, invocation_path: Path, parent: 
                   run_id=run_id, owner_label=owner_label, expected_runtime_run_id='runtime-' + run_id,
                   engine=engine, engine_wrapper=wrapper, cleanup_command=cleanup,
                   smoke_overlap='serial' if serial_smoke else 'ordinary-default', GPU_or_FINAL_acceptance=False, scope=__doc__)
-    return launch_build(source, output, unit, images[-1], 'amd64', plan['required_bytes'], record, environment, driver,
+    required_bytes = max(plan['required_bytes'], ROCM_RUNTIME_REQUIRED_BYTES)
+    return launch_build(source, output, unit, images[-1], 'amd64', required_bytes, record, environment, driver,
                         images=images, prepare=lambda: prepare_local_alias(actual, output / 'local-alias.json'),
                         engine_path=wrapper, cleanup=cleanup)
