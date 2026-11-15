@@ -53,7 +53,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 was stopped after lifecycle mutation fixtures reached the real Linux BuildKit
 prune client. The isolated correction disables both host prune permissions and
 adds sentinel-engine coverage. Full qualification of the corrected commit remains
-required; the separate running Windows CUDA build keeps its unchanged source.
+required; the separate Windows CUDA repeat retains its own unchanged source.
 
 **Windows evidence, 2026-11-14, private source `d9f129af`:** the NVIDIA producer
 passes its audited three-request chain (raw 1/1/0) and 319 smoke assertions with
@@ -61,8 +61,12 @@ two retained skips. Fresh image-bound CPU/CUDA/TensorRT MatMul and negative
 Pad/MaxPool checks each pass five numerical/profile runs; canonical DirectML
 and five strict NVIDIA-adapter runs separately reconcile the two smoke skips.
 See [Issue249](https://github.com/Kataglyphis/ANTfrastructure/issues/249#issuecomment-6884427022)
-and `logs/g5-results.md`. Typed current-source CUDA repeat, other final-source
-lanes, device acceptance, hosted CI and current ARM promotion remain open.
+and `logs/g5-results.md`. The separate complete d9 CUDA repeat now has actual
+compiler hits, five verified exports and raw exit zero; its primary audit is
+`955e332773ba261b220f1432082c820ca48576f48e30bea9c4a590e424073a88`.
+The [resource page](docs/windows-build-resources.md#completed-d9-cuda-repeat-and-stage-coverage)
+binds its stage coverage and limits. Other final-source lanes, device acceptance,
+hosted CI and current ARM promotion remain separate requirements.
 Local native Windows lint and strict complexity pass; the full suite retains
 its failed result, including missing host MSVC for the real crash fixture.
 The corrected general cleanup fixture still needs complete final-source CI.
@@ -2244,6 +2248,13 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       2026-11-06 ([`third-party-licenses.md` § The MSVC runtime notice](docs/third-party-licenses.md#the-msvc-runtime-notice));
       the paragraph on the installers' licence page stays a draft until someone qualified has read it.
 - [ ] **CON229 — every Windows compile through a cache** [M, ★★★]. Owner requirement (2026-11-05: everything is cached). The hub's sccache build (0.19.0+965c019.pr2809) carries the #2862 fix, so ORT's `onnxruntime_providers_cuda_llm` no longer runs nvcc bare.
+  Later measurement, 2026-11-15: the complete `d9f129af` CUDA repeat has 6,304
+  primary hits, including 605 NVCC hits, zero misses/cache errors/compiler failures
+  and 605 unclassified non-cacheable compilations. Its five exports, all parent
+  chains, 2,492 unchanged source files and six cache identities are audited. The
+  same-source full producer supplies HailoRT 246 and GenAI 207 C/C++ hits; GenAI
+  still runs CUDA directly. These dated receipts close the required G2 repeat,
+  while the uncached paths and unexplained GStreamer counters keep CON229 open.
   The `a7ba976b` standalone HailoRT pass exports successfully but has no aggregate
   cache counters. Its shared session start, advanced stderr snapshot and upload
   drain are now explicit; a new product-build measurement is still required.

@@ -480,13 +480,15 @@ the scoop shims. The Windows image installs that binary rather than building it.
 The [shared source-build record](../shared/upstream/sccache/README.md) owns the
 patches, canary evidence and conditions for returning to upstream release assets.
 
-**Upstream checked 2026-11-12:** [sccache#2862](https://github.com/mozilla/sccache/issues/2862)
+**Upstream checked 2026-11-15:** [sccache#2862](https://github.com/mozilla/sccache/issues/2862)
 is still open; its fix [#2809](https://github.com/mozilla/sccache/pull/2809) merged
 on 2026-11-02. The pin carries that fix. The older bare-nvcc exemption for
 `onnxruntime_providers_cuda_llm` is removed; reintroducing it would lose the cache
-coverage already proved by the earlier NVIDIA chain.
+coverage already proved by the earlier NVIDIA chain. The sole upstream
+comment explicitly lacks Windows verification; the local repeat below remains
+a separate measurement, without inferring an upstream resolution.
 
-**Current evidence boundary:** CON229 in [BACKLOG.md](../BACKLOG.md) owns the dated
+**Earlier ARM64 evidence boundary:** CON229 in [BACKLOG.md](../BACKLOG.md) owns the dated
 per-stage coverage gaps. The ARM64 goal run `bk-20261108-231320` at `7c575e34`
 actually rebuilt GStreamer: one reported block contains 5,198 compiler-cache hits,
 12 misses, 99 cache errors and 80 compilation failures. The RUN includes configure
@@ -496,16 +498,16 @@ architecture gate passed, then the final-stage disk guard refused 24.6 GiB versu
 40 GiB. After selected host cleanup, full retry `bk-20261109-081421` at the same
 source passed in 3:08 with 152 smoke assertions, zero failures and 17 cross-lane
 skips; its publish gate also passed. This reuse does not add compiler-cache
-measurements or prove native ARM64 device acceptance. The CUDA-plugin repeat
-build remains required, including real compiler requests and hits. A cached
-image layer supplies no such measurement. Subsequent candidate device run 42579941215
+measurements or prove native ARM64 device acceptance. A CUDA-plugin repeat
+requires actual compiler requests and hits; reused image layers provide neither.
+The later d9 repeat is recorded below. Subsequent candidate device run 42579941215
 passed 22/22, and its exact ARM64 image was promoted to `:winarm64`; the
 [cross-build guide](windows-cross-builds.md) records that digest and receipt.
 This native ARM64 result does not supply the missing GPU-provider measurement.
 In the subsequent local NVIDIA chain at the same source, the patched LLVM 23.1.5
 RUN reported 4,233 compiler requests served by 4,233 WebDAV hits, zero misses,
 zero cache errors and zero compilation failures. That is one observed stats
-block, recorded separately from the still-required CUDA-plugin repeat proof.
+block, recorded separately from the later CUDA-plugin repeat proof below.
 
 **Measured NVIDIA attempt at `6737933a`, 2026-11-09.** The ONNX CUDA-plugin
 compile/install and both wheels complete, then QNN builds and stages. TensorRT
@@ -559,6 +561,64 @@ layers from executed Torch, final and gate steps. No fresh compiler-counter
 block appears in those solves; complete producer success supplies no new CUDA
 hit rate or whole-repeat result. Retain the failed repeat's separate status.
 
+
+### Completed d9 CUDA repeat and stage coverage
+
+Measured 2026-11-15 (Europe/Berlin) at exact private source
+`d9f129afee5fd39f87ec68daea24122b344121c0`. The separate canonical request used
+`-Gpu -Stages media -MediaBranches media-core` with diagnostic `SCCACHE_LOG`;
+it ended naturally with raw exit zero. No no-cache option, nonce or source edit
+was used. All five ONNX/FFmpeg/OpenCV/Hailo/GenAI images exported; the audit
+checks every manifest/config content hash and complete successive parent chain,
+all 2,492 source files before and after, and the same six compiler-cache IDs.
+
+The ONNX compiler RUN's one primary snapshot contains 2,261 parent requests,
+6,909 executed inner requests and 6,304 hits: C 78, C++ 1,578, NVCC 605,
+cudafe++ 605, PTX 1,738 and CUBIN 1,700. Misses, cache errors and compilation
+failures are zero. Retain 605 non-cacheable compilations without assigning a
+cause. These typed counters are parts of the primary total, never extra hits;
+mirrors, later checkpoints and backend counters are not added. CUDA-plugin ABI
+and TensorRT-plugin build checks pass in the actual exported ONNX stage.
+
+ONNX manifest: `sha256:707db5c2c9ba9818dbfc137cf169c29533abc12d9136060917c2cc117d9d2ec0`.
+Its config is `sha256:86c859387a79f84a1de2eee2a0ff6954b9d6b8b2b4fab080af594511f49c9b11`;
+all 26 toolchain parent descriptors and diff-IDs remain identical in 27 layers.
+The whole-repeat audit SHA256 is
+`955e332773ba261b220f1432082c820ca48576f48e30bea9c4a590e424073a88`.
+Its new terminal checks pass ten refusal controls and eight valid guard mutants.
+The [coordination receipt](https://github.com/Kataglyphis/ANTfrastructure/issues/249#issuecomment-6886786046)
+records the same result. Local raw logs, exact checkpoints and independent audits
+are indexed by `logs/g2-stage-coverage-current.md` and `logs/g5-results.md`.
+
+This ledger covers all 17 logical stages of the same-source full NVIDIA producer;
+the dedicated repeat is identified separately in the ONNX row. Each value is
+one primary measurement. A successful export or reused image supplies no new
+compiler-counter sample.
+
+| Logical stage | Actual cache evidence and coverage limit |
+|---|---|
+| base | Image reuse; no new compiler-counter sample. |
+| NVIDIA SDK | SDK image reuse; acquisition is not compiler-cache proof. |
+| TensorRT SDK extraction | Verified extraction/export; no compiler sample. |
+| patched LLVM toolchain | Image reuse; older LLVM hits retain their own source. |
+| toolchain publish gate | Metadata check; no compiler sample. |
+| media-core ONNX/QNN/TensorRT | Baseline reuses its image; dedicated repeat proves the primary 6,304 typed hits above. Later QNN/TensorRT displays are not independent totals. |
+| media-core FFmpeg/PyAV | Baseline image reuse; no new baseline compiler sample or dedicated PyAV/NASM accounting. |
+| media-core OpenCV | Baseline image reuse; no new baseline CUDA-counter sample. |
+| media-core HailoRT | 246 C/C++ hits, zero misses/cache errors/compiler failures. |
+| media-core GenAI | 207 C/C++ hits, zero misses/cache errors/compiler failures; CUDA retains its direct-compiler policy. |
+| media LiteRT | CMake: 5,350 hits, zero misses/cache errors/compiler failures; Bazel and wheel compilation have separate coverage limits. |
+| media TVM/IREE | Separate primary samples: TVM 630 and IREE 7,018 hits, each zero misses/cache errors/compiler failures. |
+| media merge | GStreamer 4,892 hits, 18 misses, 103 cache errors and 32 compilation failures; causes unclassified. Separate OpenCV-plugin sample: one hit, zero misses/errors/failures. |
+| Torch | App environment updated; no primary sccache-counter block. |
+| final | Image assembly/export; no compiler sample. |
+| smoke gate | 319 passed, zero failed, two retained skips; separate image-bound host receipts cover those hardware checks. |
+| publish gate | Local publishability check; no image push or compiler sample. |
+
+The complete diagnostic repeat proves G2 at d9. It does not prove a later
+commit's full lane, hosted CI, ARM device acceptance, Windows AMD inference or
+image publication. CON229 stays open for the uncached paths; unexplained
+GStreamer failures remain visible rather than classified as expected probes.
 
 **Frozen source `5bd443ea` evidence, 2026-11-12.** These private image manifests are
 dated producer evidence, not public tags or acceptance of a later source commit:

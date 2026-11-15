@@ -16,6 +16,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-15 — record the completed Windows CUDA-cache repeat
+
+- Bind the complete d9 diagnostic repeat to its source, five exported image
+  identities and parent chains, retained compiler-cache IDs and raw exit zero.
+- Publish the full stage ledger and primary typed CUDA counters; preserve reused
+  layers, direct compilers and unexplained counters as distinct coverage limits.
+- Keep final-source CI, device acceptance and later product lanes separate.
+
 ## 2026-11-14 — isolate chain lifecycle fixtures from host pruning
 
 - Disable inherited BuildKit and image-store prune permissions before lifecycle
