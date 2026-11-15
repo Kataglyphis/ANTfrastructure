@@ -201,7 +201,6 @@ Invoke-BundleStep 'vulkaninfo lists llvmpipe (lavapipe ICD + loader run)' {
     if (-not (Test-Path $icd)) { throw "missing $icd" }
     $env:VK_DRIVER_FILES = $icd
     $env:VK_LOADER_DRIVERS_SELECT = '*lvp_icd*'
-    $env:LP_NATIVE_VECTOR_WIDTH = '256'
     Assert-VulkanInfoSummary -Kind Drivers -Manifest $icd -Expect 'llvmpipe'
 } $results
 

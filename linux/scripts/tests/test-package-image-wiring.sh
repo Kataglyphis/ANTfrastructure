@@ -343,9 +343,9 @@ t_assert_contains "$(_g4row 'FACT other x')" "NOFACT gtk4-dev"
 t_assert_contains "$(grep '^_CONSUMER_CONTRACT_ROWS=' "${_smoke}")" " gtk4-dev"
 t_assert_contains "$(cat "${_smoke}")" "printf 'FACT gtk4-dev %s\n' \"\$(bash -c 'source /opt/scripts/packaging/package-image-wiring.sh && verify_gtk4_dev_surface' 2>&1 | tail -1)\""
 
-# --- install_pwsh: the pinned tarball and PSScriptAnalyzer, verified, on PATH and reporting their pins (CON131) ---
+# --- install_pwsh: the pinned tarball, PSScriptAnalyzer and Pester, verified, on PATH and reporting their pins (CON131, CON273) ---
 _pwshsrc=""
-for _f in _pwsh_pins _pwsh_unpack_verified _pwsh_reports install_pwsh install_psscriptanalyzer; do
+for _f in _pwsh_pins _pwsh_unpack_verified _pwsh_reports install_pwsh _install_pwsh_module install_psscriptanalyzer install_pester; do
   _src="$(t_fn_src "${WIRING}" "${_f}")" || exit 1
   _pwshsrc+="${_src}"$'\n'
 done
@@ -353,14 +353,17 @@ _ps="${_w}/pwsh"
 mkdir -p "${_ps}/pkg"
 cat > "${_ps}/pkg/pwsh" <<'FAKE'
 #!/bin/sh
-case "$*" in *PSScriptAnalyzer*) echo "${FAKE_PSSA:-1.25.0}" ;; *) echo "${FAKE_PSV:-7.6.7}" ;; esac
+case "$*" in *PSScriptAnalyzer*) echo "${FAKE_PSSA:-1.25.0}" ;; *Pester*) echo "${FAKE_PESTER:-6.2.0}" ;; *) echo "${FAKE_PSV:-7.6.7}" ;; esac
 FAKE
 chmod +x "${_ps}/pkg/pwsh"
 tar -czf "${_ps}/pwsh.tar.gz" -C "${_ps}/pkg" pwsh
 t_zip "${_ps}/pssa.nupkg" _rels/.rels '[Content_Types].xml' PSScriptAnalyzer.nuspec PSScriptAnalyzer.psd1 PSv7/rules.dll
+t_zip "${_ps}/pester.nupkg" _rels/.rels '[Content_Types].xml' Pester.nuspec Pester.psd1 bin/Pester.dll
 _pssha="$(sha256sum "${_ps}/pwsh.tar.gz" | cut -d' ' -f1)"
 _pssa="PSSCRIPTANALYZER_VERSION=1.25.0"$'\n'"PSSCRIPTANALYZER_NUPKG_SHA256=$(sha256sum "${_ps}/pssa.nupkg" | cut -d' ' -f1)"
-printf 'PWSH_VERSION=7.6.7\nPWSH_LINUX_X64_SHA256=%s\nPWSH_LINUX_ARM64_SHA256=%s\n%s\n' "${_pssha}" "${_pssha}" "${_pssa}" > "${_ps}/ok.env"
+_pester="PESTER_VERSION=6.2.0"$'\n'"PESTER_NUPKG_SHA256=$(sha256sum "${_ps}/pester.nupkg" | cut -d' ' -f1)"
+printf 'PWSH_VERSION=7.6.7\nPWSH_LINUX_X64_SHA256=%s\nPWSH_LINUX_ARM64_SHA256=%s\n%s\n%s\n' "${_pssha}" "${_pssha}" "${_pssa}" "${_pester}" > "${_ps}/ok.env"
+printf 'PWSH_VERSION=7.6.7\nPWSH_LINUX_X64_SHA256=%s\n%s\n' "${_pssha}" "${_pssa}" > "${_ps}/nopester.env"
 printf 'PWSH_VERSION=7.6.7\nPWSH_LINUX_X64_SHA256=%064d\n%s\n' 0 "${_pssa}" > "${_ps}/badsha.env"
 printf 'PWSH_VERSION=7.6.7\nPWSH_LINUX_ARM64_SHA256=%s\n%s\n' "${_pssha}" "${_pssa}" > "${_ps}/nox64.env"
 printf 'PWSH_VERSION=7.6.7\nPWSH_LINUX_X64_SHA256=%s\n' "${_pssha}" > "${_ps}/nopssa.env"
@@ -370,20 +373,21 @@ _pwsh() {
   P="${_ps}" bash -c '
     download_verified_file() {
       echo "$1" >> "${P}/url"
-      case "$1" in *.nupkg) cp "${P}/pssa.nupkg" "$3" ;; *) cp "${P}/pwsh.tar.gz" "$3" ;; esac
+      case "$1" in */package/Pester/*) cp "${P}/pester.nupkg" "$3" ;; *.nupkg) cp "${P}/pssa.nupkg" "$3" ;; *) cp "${P}/pwsh.tar.gz" "$3" ;; esac
       printf "%s  %s\n" "$2" "$3" | sha256sum -c - >/dev/null 2>&1
     }
     '"${_pwshsrc}"'
     install_pwsh "$1" "${P}/prefix" "${P}/bin" "$2"' _ "${_ps}/$2" "$1" 2>&1
 }
 
-t_case "amd64 gets the pinned x64 tarball and PSScriptAnalyzer, each reporting its pin"
+t_case "amd64 gets the pinned x64 tarball, PSScriptAnalyzer and Pester, each reporting its pin"
 t_needs "unzip on PATH" command -v unzip
-t_assert_eq "OK: pwsh 7.6.7 at ${_ps}/bin/pwsh (x64)"$'\n'"OK: PSScriptAnalyzer 1.25.0 in ${_ps}/prefix/Modules" "$(_pwsh x86_64 ok.env)"
-t_assert_eq "https://github.com/PowerShell/PowerShell/releases/download/v7.6.7/powershell-7.6.7-linux-x64.tar.gz"$'\n'"https://github.com/PowerShell/PSScriptAnalyzer/releases/download/1.25.0/PSScriptAnalyzer.1.25.0.nupkg" "$(cat "${_ps}/url")"
+t_assert_eq "OK: pwsh 7.6.7 at ${_ps}/bin/pwsh (x64)"$'\n'"OK: PSScriptAnalyzer 1.25.0 in ${_ps}/prefix/Modules"$'\n'"OK: Pester 6.2.0 in ${_ps}/prefix/Modules" "$(_pwsh x86_64 ok.env)"
+t_assert_eq "https://github.com/PowerShell/PowerShell/releases/download/v7.6.7/powershell-7.6.7-linux-x64.tar.gz"$'\n'"https://github.com/PowerShell/PSScriptAnalyzer/releases/download/1.25.0/PSScriptAnalyzer.1.25.0.nupkg"$'\n'"https://www.powershellgallery.com/api/v2/package/Pester/6.2.0" "$(cat "${_ps}/url")"
 t_assert_ok test -x "${_ps}/bin/pwsh"
 t_assert_eq "PSScriptAnalyzer.psd1 PSv7" "$(ls "${_ps}/prefix/Modules/PSScriptAnalyzer/1.25.0" | paste -sd' ' -)" \
   "the module dir holds the module, not the nupkg's packaging parts"
+t_assert_eq "Pester.psd1 bin" "$(LC_ALL=C ls "${_ps}/prefix/Modules/Pester/6.2.0" | paste -sd' ' -)"
 
 t_case "arm64 takes the arm64 tarball"
 t_needs "unzip on PATH" command -v unzip
@@ -406,6 +410,12 @@ t_needs "unzip on PATH" command -v unzip
 t_assert_contains "$(_pwsh x86_64 nopssa.env)" "ERROR: PSSCRIPTANALYZER_VERSION or PSSCRIPTANALYZER_NUPKG_SHA256 is not pinned"
 t_assert_fails _pwsh x86_64 nopssa.env
 t_assert_contains "$(FAKE_PSSA=1.24.0 _pwsh x86_64 ok.env)" "ERROR: pwsh's PSScriptAnalyzer reports '1.24.0', the pin is 1.25.0"
+
+t_case "Pester unpinned, or listed at another version, fails the stage"
+t_needs "unzip on PATH" command -v unzip
+t_assert_contains "$(_pwsh x86_64 nopester.env)" "ERROR: PESTER_VERSION or PESTER_NUPKG_SHA256 is not pinned"
+t_assert_fails _pwsh x86_64 nopester.env
+t_assert_contains "$(FAKE_PESTER=5.7.1 _pwsh x86_64 ok.env)" "ERROR: pwsh's Pester reports '5.7.1', the pin is 6.2.0"
 
 t_case "riscv64, which upstream does not build, is a note and downloads nothing"
 t_assert_contains "$(_pwsh riscv64 ok.env)" "NOTE: PowerShell publishes no riscv64 build"

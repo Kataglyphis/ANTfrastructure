@@ -16,6 +16,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-15 — keep mutation fixtures native on Git Bash
+
+- Pass shard cost-log paths through Python argv and compare the planner's actual
+  host-path spelling, preserving the exact diagnostic and complete shard accounting.
+- Force only the synthetic host-skip fact; retain the real platform so Windows
+  executable lookup can still find bash.exe for mandatory mutant parsing.
+- Preserve the two original failing merge-hook baselines and existing skip policy;
+  the production mutation gate is unchanged.
+
 ## 2026-11-15 — wire the Windows ROCm torchvision host compiler cache
 
 - Apply a required, pinned PyTorch patch only in the disposable torchvision build
@@ -43,6 +52,83 @@
 - Publish the full stage ledger and primary typed CUDA counters; preserve reused
   layers, direct compilers and unexplained counters as distinct coverage limits.
 - Keep final-source CI, device acceptance and later product lanes separate.
+
+## 2026-11-15 — the in-image mutation lane reaps (CON274 done)
+
+- OrchestrANT 08f9c4b's `bench.agent-tree-survives-timeout` runs its test with `ORCHESTRANT_REQUIRE_REAPED=1`, under
+  which a zombie counts as alive, so its unmutated run passes only where PID 1 reaps. In `mutation-gates.yml`'s
+  in-image lane (`docker run --init`) it bit with that baseline green (run 43754387381); under a Python PID 1 without
+  an init the same test fails. CON274 leaves the backlog.
+
+## 2026-11-15 — docs sites type and gzip wasm and glTF
+
+- `docs-site.htaccess` adds `AddType` for `.wasm` (`application/wasm`), `.glb` (`model/gltf-binary`) and `.gltf`
+  (`model/gltf+json`), and `AddOutputFilterByType DEFLATE` for those three types inside `mod_filter` and `mod_deflate`,
+  all FileInfo directives. The host gzips HTML, CSS and JavaScript itself but sent BeschleunigerBallett's 7 MB demo
+  wasm whole; its 61 MB `Colosseum-web.glb` gzips to 30 MB (`docs/docs-sites.md` § The site's .htaccess).
+  `test-docs-site-htaccess.sh` checks the types, the compressed set and both guards; six new `docs-site.*` recipes.
+
+## 2026-11-15 — every detector follows the ORT thread rule (CON240 done)
+
+- OxidANT 75d0155 gives its Rust detector the family's rule when `KATAGLYPHIS_ORT_THREADS` is unset (owner
+  decision), so OrchestrANT, AccelerANTgine and OxidANT all take the usable CPUs but one, 1 to 8
+  (`docs/onnxruntime-single-source.md` § The ORT thread rule). CON240 leaves the backlog; CON218 notes ObservANT's
+  `llm_threads`.
+
+## 2026-11-15 — `genai-model-threads.py --threads auto` (CON218)
+
+- `--threads auto` copies a GenAI model with the family's ORT rule, the usable CPUs but one, 1 to 8: 7 on the Ryzen
+  pinned to 8 CPUs, as the perf baselines used, and 3 on a Pi 5, where the consumers' fixed 7 oversubscribed four
+  cores (34 tokens per second). On the Pi SmolLM2-135M took 161/92/73/72 ms to the first token and decoded
+  109/92/80/71 tokens per second at 1/2/3/4 threads. New recipe `quality-report.perf-genai-threads-auto-unbounded`.
+
+## 2026-11-15 — one hub command locks a consumer in the image (CON272)
+
+- `linux/scripts/02-toolchain/python/uv-lock-in-image.sh [--no-build-isolation-package NAME]...` runs a consumer's
+  `uv lock` with the image's `/opt/venv` as the project environment, after installing `setuptools<82` and `wheel`
+  there when missing, so a git source like OrchestrANT's torchvision builds its metadata against the image's torch
+  instead of an isolated environment that wants a PyPI torch the pinned Python has no wheel for. Proven on a Pi 5:
+  OrchestrANT with `tomli-w` added locked in 849 s and the lock moved by that package alone
+  (`docs/dependency-updates.md` § A consumer's uv lock in the image). `test-uv-lock-in-image.sh`. New CON276:
+  ship setuptools and wheel in `/opt/venv`.
+- New CON275: GCC 16's `_mm_loadl_epi64` fails UBSan's alignment check (AccelerANTgine worked around it).
+
+## 2026-11-15 — the family's ORT thread rule is written once; the hub backlog catches up
+
+- `docs/onnxruntime-single-source.md` § The ORT thread rule: a detector's intra-op pool takes the usable CPUs (the
+  affinity mask) but one, 1 to 8, overrides kept; which consumer follows it (OrchestrANT, AccelerANTgine since
+  6e35dad; OxidANT not yet) and the Ryzen and Pi 5 figures behind it, plus the one-thread rule for a language model
+  beside a detector (OrchestrANT's `--describe-threads`).
+- BACKLOG: CON240 open again with only OxidANT left; CON218 notes the Pi finding and the consumers' fixed
+  `--threads 7` perf copies; CON236's recipe half is done.
+- `mutation-gates.yml`'s in-image runner starts the container with `docker run --init`: `verify_mutations.py` was
+  PID 1 and never reaped the orphans a test killed (OrchestrANT run 43657675126); the proof in a run is CON274.
+
+## 2026-11-15 — Pester in the Linux image; a pwsh recipe goes to CI on a host without it (CON273)
+
+- `install_pwsh` also installs Pester at the new pin `PESTER_VERSION=6.2.0` (windows-x64.yml's floor) from the
+  PowerShell Gallery into `$PSHOME/Modules`, verified against `PESTER_NUPKG_SHA256` and failing the stage unless
+  `pwsh` lists it at its pin. Proven in a throwaway container of `:latest` on arm64: the real nupkg installs and
+  `Invoke-Pester` passes. `test-package-image-wiring.sh` covers the pin, the unpinned case and a wrong version.
+- `verify_mutations.py --delegate-chrome` (the pre-push hook's mode) also hands an entry whose test needs `pwsh` to
+  CI when this host has none (`mutation_push.host_has_pwsh`, asked only when such an entry is selected), printing
+  `needs pwsh, which this host lacks`. Such an entry is set aside before the parse check, which needs `pwsh` for a
+  PowerShell mutant, so the hook on the arm64 dev host no longer fails with `pwsh is not on PATH`. Pester does not
+  decide it: recipes name harness suites only, which run without Pester. `test-mutation-push.sh` covers both hosts
+  and a PowerShell target.
+- `BuildKit.ConsumerDispatch.Tests.ps1` is a harness suite now, not a Pester one, so the Linux shards run it, and two
+  recipes guard the consumer dispatch: `buildkit.push-tag-takes-the-repository` and
+  `buildkit.dispatch-without-tag-runs` (CI's first run skipped the Pester suite and failed both, and
+  `test-mutation-pester-targets.sh` refused them).
+
+## 2026-11-15 — the pwsh delegation also covers suites that demand pwsh; Pester's pin follows its releases
+
+- `mutation_push.needs_pwsh` also counts a test command that names a suite carrying
+  `t_skip_unless "…" command -v pwsh` (`test-mutation-parse.sh`, `test-harness-suite-driver.sh`,
+  `test-windows-icon-pe.sh`), so editing `verify_mutations.py` on the arm64 dev host no longer needs `--no-verify`.
+- `PESTER_VERSION` is annotated `datasource=github-releases depName=pester/Pester`, which the versions.env
+  customManager matches, and `bump_versions.py` moves `PESTER_NUPKG_SHA256` with it (`spec_pester`, from the
+  gallery's nupkg).
 
 ## 2026-11-14 — isolate chain lifecycle fixtures from host pruning
 
@@ -74,6 +160,29 @@
   regression tests and mutations; retain all idle, image and compiler-cache guards.
 - Keep the unit mutations in a harness-only suite for the Pester-free Linux CI
   shards; preserve the existing Pester reclaim controls and native failure checks.
+
+## 2026-11-14 — lavapipe 26.3.0 on Windows without the 256-bit pin; the delete guard says MIT
+
+- `LAVAPIPE_VERSION` 26.2.6 → 26.3.0, both SHA256s self-measured and equal to the release's digests. Mesa 26.3
+  deleted the BVH radix sort that needed 8-lane subgroups (`ebcfbe60`), so the Windows image,
+  `Install-LavapipeHost.ps1` and `Test-Arm64Bundle.ps1` stop setting `LP_NATIVE_VECTOR_WIDTH=256`: each arch
+  runs its native width, 128 bits on arm64, where 256 is the suspect of BeschleunigerBallett's intermittent
+  arm64 lavapipe crash. `Test-Container.ps1` now fails an image that sets it. The Linux image keeps CON44's
+  256 while its Mesa predates 26.3. Dependency table, website licence pages and curated SBOM regenerated.
+- `.claude/hooks/guard-destructive-deletes.{ps1,py}` carry `SPDX-License-Identifier: MIT`, as `LICENSE`
+  does; CON69's sweep skipped the hidden directory. Only that line changed (owner request, 2026-11-14), and
+  the hook answers the same inputs identically.
+
+## 2026-11-14 — Renovate 44.239.1; a `lockfile-only` skip is by design
+
+- Renovate's uv processor now adds every package that only `uv.lock` names (`depType: uv.lock`,
+  `skipReason: lockfile-only`). The planner listed each as NOT CHECKED, so every uv consumer's report exited 1
+  and `--apply` refused all of its real updates: BeschleunigerBallett's 41 such rows blocked its 13 updates.
+  `renovate_planner.py` counts the reason in `BY_DESIGN`. New case in `test-renovate-local.sh`, recipe
+  `renovate.lockfile-only-skips-are-by-design`.
+- The tracked Renovate baseline moves to 44.239.1: `tool-pins.env`, `renovate-npm/package.json`, and its lock
+  regenerated under Node 24.22.2 and proven with `npm ci`. 44.239.1 still pins glob 13.0.6 and minimatch
+  10.2.6, so both security overrides stay.
 
 ## 2026-11-14 — each mutation mirror names itself to its tests (`MUTATION_MIRROR`)
 

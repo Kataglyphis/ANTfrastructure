@@ -9,8 +9,8 @@
 .DESCRIPTION
     The pins and the URL shapes come from the hub - versions.env plus WindowsContainerImage.Common - so the
     in-image installer and this host provisioner cannot disagree. Registers the ICD in HKLM when elevated
-    (the loader ignores VK_DRIVER_FILES there) and sets LP_NATIVE_VECTOR_WIDTH=256, because Mesa 26.2's BVH
-    sort needs 8-lane subgroups. Returns @{ Icd; LoaderDir; VulkanInfo }.
+    (the loader ignores VK_DRIVER_FILES there). LP_NATIVE_VECTOR_WIDTH stays unset: Mesa 26.3 deleted the
+    BVH sort that needed 8-lane subgroups, so each arch runs its native width. Returns @{ Icd; LoaderDir; VulkanInfo }.
     See docs/windows-cross-builds.md - Vulkan on lavapipe.
 #>
 param(
@@ -57,7 +57,6 @@ $env:VK_LOADER_DRIVERS_SELECT = '*lvp_icd*'
 if (Test-Elevated) {
     Register-LavapipeIcd -IcdPath $icd
 }
-$env:LP_NATIVE_VECTOR_WIDTH = $env:LP_NATIVE_VECTOR_WIDTH ?? '256'
 
 Write-Host "lavapipe $($runtime.MesaVersion) ($Arch) + Vulkan loader $($runtime.VulkanVersion) provisioned in $lavapipeDir"
 return @{ Icd = $icd; LoaderDir = $lavapipeDir; VulkanInfo = $vulkanInfo }

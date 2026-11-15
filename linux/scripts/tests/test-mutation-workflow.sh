@@ -18,7 +18,7 @@ _MUTATION_WORKFLOW_QUERIES=(
   'all(needle in run_blocks("mutations") for needle in ("--root \"${GITHUB_WORKSPACE}\" --manifest \"${MUTATION_MANIFEST}\"", "--root \"${GITHUB_WORKSPACE}\" --manifest \"${GITHUB_WORKSPACE}/${MUTATION_MANIFEST}\"", "set -euo pipefail", "| tee logs/code-quality/mutations/report.txt", "git check-ignore -q --no-index -- logs/code-quality/mutations/report.txt"))'
   '"--setup-script \"${MUTATION_SETUP_SCRIPT}\"" in run_blocks("mutations") and not any(V.value(s,"name") == "Install caller test dependencies" for s in steps)'
   'V.value(V.value(inputs,"in-image"),"default") == "false" and any(V.value(s,"name") == "Pull the CI image" and V.value(s,"if") == "${{ inputs.in-image }}" for s in steps)'
-  'all(needle in run_blocks("mutations") for needle in ("docker run --rm -v \"${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}\"", "CI_IMAGE_LINUX_TAG", "\"${runner[@]}\" python3"))'
+  'all(needle in run_blocks("mutations") for needle in ("docker run --init --rm -v \"${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}\"", "CI_IMAGE_LINUX_TAG", "\"${runner[@]}\" python3"))'
 )
 
 _workflow_contract() { workflow_require_queries "${_MUTATION_WORKFLOW_QUERIES[@]}"; }

@@ -135,6 +135,35 @@ t_assert_eq "1" "${_rc}"
 t_assert_contains "${_out}" "refused before any proof"
 t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c 'bites')"
 
+t_case "a pwsh suite goes to CI on a host without pwsh, before its mutant's parse, and runs here where pwsh is"
+_rig
+echo 'GUARD=on' > "${_work}/repo/ps.sh"
+echo '$guard = 1' > "${_work}/repo/mod.psm1"
+_manifest "$(_entry probe.ps ps.sh GUARD=on GUARD=off 'pwsh -NoProfile -File ps-test.ps1')" \
+          "$(_entry probe.psm mod.psm1 'guard = 1' 'guard = 2' 'pwsh -NoProfile -File ps-test.ps1')"
+_g add -A
+_g commit -qm pwsh
+# A PATH with python3 and nothing else is a host without pwsh, even on a runner that has one.
+mkdir -p "${_work}/nopwsh" "${_work}/bin"
+ln -sf "$(command -v python3)" "${_work}/nopwsh/python3"
+_out="$(PATH="${_work}/nopwsh" _gate --delegate-chrome --only probe.ps --only probe.psm)"
+t_assert_contains "${_out}" "delegated 2 entr(ies) to CI, needs pwsh, which this host lacks: pwsh -NoProfile -File ps-test.ps1"
+t_assert_contains "${_out}" "2 delegated to CI"
+t_assert_eq "0" "$(grep -c 'cannot be checked to parse' <<< "${_out}")" "a PowerShell mutant is parsed where it is proved"
+# A stand-in pwsh that runs the suite: the recipe is proved here.
+printf '%s\n' '#!/usr/bin/env bash' 'grep -q GUARD=on ps.sh' > "${_work}/bin/pwsh"
+chmod +x "${_work}/bin/pwsh"
+_out="$(PATH="${_work}/bin:${PATH}" _gate --delegate-chrome --only probe.ps)"
+t_assert_contains "${_out}" "coverage: proved 1 of 1 selected; 0 delegated to CI"
+t_assert_eq "True False False True" "$(cd "${_work}/repo/docs/scripts" && python3 -c '
+import mutation_push as m
+print(*(m.needs_pwsh(c) for c in ("pwsh -File a.ps1", "bash test-pwsh.sh", "python3 x_pwsh.py", "subprocess.run([\x27pwsh\x27])")))')"
+# A suite that demands pwsh through the harness needs it too; split like the Chrome marker, so this one is not.
+printf '%s\n' 't_skip_unless "PowerShell 7" command -v'' pwsh' > "${_work}/repo/needs-pwsh.sh"
+t_assert_eq "True False" "$(cd "${_work}/repo/docs/scripts" && python3 -c '
+import mutation_push as m, sys
+print(m.needs_pwsh("bash needs-pwsh.sh", sys.argv[1]), m.needs_pwsh("bash plain-test.sh", sys.argv[1]))' "${_work}/repo")"
+
 t_case "only a run that proved every entry may call itself whole, and CI's shards cannot delegate"
 _rig
 _manifest "$(_entry probe.plain plain.sh GUARD=on GUARD=off 'bash plain-test.sh')"

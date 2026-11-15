@@ -511,6 +511,30 @@ it under their own names until 2026-09-25.
 What stays in each consumer is its layout: OmniAccelerANT's runner stamp, which a
 host re-proves at launch, and AccelerANTgine's install tree and Python package.
 
+## The ORT thread rule
+
+A detector's session takes the **usable CPUs but one, at least 1 and at most 8**, for its intra-op
+pool: the CPUs of the process's affinity mask, not the machine's, since ORT's own default ignores
+the mask (CON218, CON240). A config value, a command-line flag or an environment variable still
+wins. The pool leaves one CPU free because a pool that fills the mask loses its tail latency to
+whatever else needs a CPU.
+
+| Consumer | Where | Since |
+| --- | --- | --- |
+| OrchestrANT | `orchestrant/yolo/providers.py` `shipped_intra_op_threads` | before 2026-11 |
+| AccelerANTgine | `shipped_ort_threads()` for `SessionConfig` and `YoloConfig`, intra- and inter-op alike (owner decision 2026-11-15; Sequential mode ignores inter-op) | 6e35dad |
+| OxidANT | `kataglyphis_core::config::family_threads` when `KATAGLYPHIS_ORT_THREADS` is unset; `0` keeps ORT's own (owner decision 2026-11-15; Pi 5: ORT's default 237-247 ms, 3 threads 234-242 ms) | 75d0155 |
+
+Measured: one Ryzen host pinned to 8 CPUs, two-cats p50, Python 24.1 ms with the rule against
+51.3 ms at ORT's default (2026-11-12 baselines). A Pi 5 with 4 CPUs in the CI image, AccelerANTgine's
+demo, p50 over two runs (2026-11-15): 3 threads 227-229 ms, 4 threads 235-252 ms, ORT's default
+237-250 ms, 7 threads 520-542 ms.
+
+A **language model beside a detector** is another case: OrchestrANT's `yolo-monitor --describe`
+decodes on one thread unless `--describe-threads` says otherwise (owner decision 2026-11-14). On the
+Pi 5 the detector took 238 ms alone, 1157 ms beside a seven-thread description and 570 ms beside a
+one-thread one, and SmolLM2-135M decoded faster on one thread (104 against 34 tokens per second).
+
 ## The consumer repositories
 
 These changes sit in the consumers' working trees. Their gitlinks move only

@@ -90,6 +90,14 @@ def spec_psscriptanalyzer(cur: str) -> SpecResult:
     return v, pins
 
 
+def spec_pester(cur: str) -> SpecResult:
+    # GitHub tags the release; install_pester downloads the gallery's nupkg, whose hash is the pin.
+    v = bv.gh_latest("pester/Pester")
+    pins = {"PESTER_NUPKG_SHA256": bv.sha256_of_url(
+        f"https://www.powershellgallery.com/api/v2/package/Pester/{v}")} if v != cur and bv.WRITE_MODE else {}
+    return v, pins
+
+
 def spec_git(cur: str) -> SpecResult:
     # Only .windows.1 releases: Install-ScoopTools.ps1 hardcodes that installer suffix.
     tag = bv.gh_latest("git-for-windows/git", pattern=r"^v\d+\.\d+\.\d+\.windows\.1$")

@@ -1782,7 +1782,8 @@ stack in the excerpt. CI is green on the same commit.
 single edit to a docs-site script selects such a recipe.
 
 **Fix.** The pre-push hook hands these recipes to CI with `--delegate-chrome` and prints
-the count. Run them here only through the image; see
+the count; it does the same for a `pwsh` recipe on a host without `pwsh`. Run them here only
+through the image; see
 [the pre-push hook](code-quality-tooling.md#the-pre-push-hook).
 
 ### A cross-built Rust tool links the build host's libbz2
@@ -2876,7 +2877,8 @@ the test step. The crashing process then prints the exception, the faulting thre
 as `module+0xRVA` and the path of its minidump on stderr, and still exits with the original
 code. Upload the dump with the executable's PDB; `llvm-symbolizer --obj=<exe> 0x<base+RVA>`
 names a frame in that executable. On arm64 lavapipe, suspect `LP_NATIVE_VECTOR_WIDTH=256` first: a
-frame with no module is llvmpipe's JIT code (`BACKLOG.md` CON44).
+frame with no module is llvmpipe's JIT code (`BACKLOG.md` CON44). The Windows lavapipe (26.3.0 on)
+no longer sets it; the Linux image still does while its Mesa predates 26.3.
 
 ### A regex patch inserts the same header after every include
 

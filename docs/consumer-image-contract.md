@@ -673,10 +673,13 @@ dependency. A client built in the image on `FLUTTER_VERSION` is CON102.
 
 The package stage puts `pwsh` at `PWSH_VERSION` on `PATH` (`/usr/local/bin/pwsh`, the tree in
 `/opt/microsoft/powershell/7`) on amd64 and arm64, with PSScriptAnalyzer at
-`PSSCRIPTANALYZER_VERSION` in its `$PSHOME/Modules`, which every user's module path reads (CON131).
-Both come from their GitHub releases through `download_verified_file`, against
-`PWSH_LINUX_{X64,ARM64}_SHA256` and `PSSCRIPTANALYZER_NUPKG_SHA256`; `install_pwsh` fails the
-stage when `pwsh` does not report its pin or does not list the module at its pin. The consumer is
+`PSSCRIPTANALYZER_VERSION` and Pester at `PESTER_VERSION` in its `$PSHOME/Modules`, which every
+user's module path reads (CON131, CON273). `pwsh` and PSScriptAnalyzer come from their GitHub
+releases, Pester from the PowerShell Gallery, each through `download_verified_file` against
+`PWSH_LINUX_{X64,ARM64}_SHA256`, `PSSCRIPTANALYZER_NUPKG_SHA256` and `PESTER_NUPKG_SHA256`;
+`install_pwsh` fails the stage when `pwsh` does not report its pin or does not list a module at
+its pin. Pester is the floor `windows-x64.yml` ensures, so a Pester-style suite, which
+`Invoke-Tests.ps1` skips without it, also runs in the image (`run-in-ci-image.sh`). The consumer is
 OrchestrANT's benchmark lab: 41 of its tests drive pwsh, and outside a container only the bare
 runner had one. **riscv64 has neither**: PowerShell publishes no riscv64 build, and those tests
 skip there ([image-decisions.md](image-decisions.md#deliberate--not-gaps)).
@@ -971,9 +974,10 @@ support also ships as a proved free-threaded (`cp3XYt`) twin, in a store of its 
 The Windows amd64 image and the arm64 bundle carry Mesa's lavapipe — a CPU Vulkan
 device, the only software one that also runs the ray-tracing goldens — with the
 target arch's Khronos loader and `vulkaninfo.exe`, all SHA256-pinned, in
-`C:\runtime\lavapipe` (CON50). The image sets `LP_NATIVE_VECTOR_WIDTH=256`,
-because Mesa 26.2's BVH sort needs 8-lane subgroups and arm64's native 128 bits
-give 4. The amd64 image registers the ICD in HKLM at build time — a container
+`C:\runtime\lavapipe` (CON50). Since lavapipe 26.3.0 neither the image nor the
+host installer sets `LP_NATIVE_VECTOR_WIDTH`: Mesa 26.3 deleted the BVH sort that
+needed 8-lane subgroups (`ebcfbe60`), so each arch runs its native width, 128 bits
+on arm64, and the smoke gate fails an image that sets it. The amd64 image registers the ICD in HKLM at build time — a container
 process is elevated, and the loader ignores `VK_DRIVER_FILES` there. The arm64
 bundle cannot register it while it is packed, so the device needs the one-time
 HKLM registration the bundle README names; `Test-Arm64Bundle.ps1` runs

@@ -3,7 +3,9 @@ it does not prove the real nerdctl mounts, the consumers' timing commands or the
 
 from __future__ import annotations
 
+import argparse
 import contextlib
+import importlib.util
 import io
 import json
 import os
@@ -283,6 +285,18 @@ class GenaiThreads(unittest.TestCase):
         self.assertEqual(options["model"]["decoder"]["session_options"], {"log_id": "x", "intra_op_num_threads": 7})
         self.assertEqual(out.joinpath("model.onnx").read_text(encoding="utf-8"), "weights")
         self.assertEqual(json.loads(model.joinpath("genai_config.json").read_text(encoding="utf-8")), config)
+
+    def test_auto_is_the_usable_cpus_but_one_from_one_to_eight(self) -> None:
+        spec = importlib.util.spec_from_file_location("genai_model_threads", SCRIPTS.joinpath("lib", "genai-model-threads.py"))
+        assert spec is not None and spec.loader is not None
+        tool = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tool)
+        self.assertEqual([tool.family_threads(n) for n in (1, 2, 4, 8, 16)], [1, 1, 3, 7, 8])
+        self.assertEqual(tool.thread_count("auto"), tool.family_threads())
+        self.assertEqual(tool.thread_count("3"), 3)
+        for bad in ("0", "many"):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                tool.thread_count(bad)
 
 
 if __name__ == "__main__":

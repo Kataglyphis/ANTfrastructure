@@ -575,11 +575,10 @@ image's Ubuntu 26.04.1; wheel sizes are the indexes' file sizes. All were read t
       `Invoke-BkConsumerDispatch` and Git Bash (owner decision that day: the existing script, not a
       PowerShell copy); a failure warns and the push stands
       ([`image-acceptance.md` § After a publish …](docs/image-acceptance.md#after-a-publish-the-consumers-lanes-run-on-it)).
-      Pester suite `BuildKit.ConsumerDispatch.Tests.ps1` (9 cases), proven by hand in the image with
-      a throwaway Pester 6.2 against four mutations. Left: no manifest recipe yet, since this arm64 host
-      cannot prove a `pwsh` recipe in its hooks (CON273); and done when a Windows publish shows one
-      run per consumer lane on the new digest, which needs that host's `gh` login and `python3` on
-      Git Bash's `PATH`.
+      `BuildKit.ConsumerDispatch.Tests.ps1` is a harness suite since 2026-11-15, so the Linux shards run
+      it, and the recipes `buildkit.push-tag-takes-the-repository` and `buildkit.dispatch-without-tag-runs`
+      guard it (CON273 done). Left: done when a Windows publish shows one run per consumer lane on the new
+      digest, which needs that host's `gh` login and `python3` on Git Bash's `PATH`.
 
 ## Open — Flet clients for OrchestrANT's UIs
 
@@ -754,19 +753,20 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       threads (`lib/genai-model-threads.py`) gave about 314 tok/s and 20 ms, and the perf baselines use that
       copy, so their text figures are not the shipped default. Done when a shipped config respects the
       mask, or the consumers set a bounded thread count, and a measurement quotes the unmodified model.
-      **Consumer half, 2026-11-12:** OxidANT's backlog carries it as an `llm_threads` setting for ObservANT,
-      default 2, applied at load. The detector's side of the same cause is CON240.
-- [b] **CON240 — one written default for ORT's intra-op threads in the detectors** [S, ★★]. Blocked on a
-      measurement in the consumers, and then on the owner: keeping ORT's default in OxidANT's inference
-      crate is a written choice of 2026-10-11. Found by the audit of 2026-11-12 in the four perf-host
-      baselines (one host pinned to 8 of its 16 cores, the same photo and model): the detector's p50 is
-      50.7 ms in Rust (ORT's default), 30.3 ms in C++ (a fixed 4) and 24.1 ms in Python (usable CPUs minus
-      one, at most 8), and Python at ORT's default takes 51.3 ms. The likely cause is CON218's: ORT's
-      default ignores the affinity mask. No Rust run confirmed it, and nothing is measured on an unpinned
-      host or a 4-core board. Needed first: OxidANT's `detect-latency` with `KATAGLYPHIS_ORT_THREADS=7`,
-      once pinned and once unpinned, and a Pi number before any 4-core default moves. Then the rule is
-      written once on [`onnxruntime-single-source.md`](docs/onnxruntime-single-source.md), and Rust and C++
-      follow it with their overrides kept.
+      **Consumer half:** ObservANT's `llm_threads` (default 2) caps its in-process GenAI model at load since OxidANT
+      701476e (`OgaConfigOverlay`), and its `/ask` answers report the time to the first token and the decode rate.
+      The detector's side of the same cause is CON240.
+      **On a Pi 5, 2026-11-15** (4 CPUs in the CI image): SmolLM2-135M decoded 104 tokens per second on one thread
+      and 34 on seven, and a seven-thread description took the detector beside it from 238 ms to 1157 ms (one
+      thread: 570 ms); OrchestrANT's describe engine decodes on one thread since (owner decision). Both
+      `perf-host.sh` (OrchestrANT and AccelerANTgine) still build `smollm2-perf` with
+      `genai-model-threads.py --threads 7`, the Ryzen's choice, so a Pi baseline would record an oversubscribed
+      model. Since 2026-11-15 `genai-model-threads.py --threads auto` takes CON240's rule (7 on the Ryzen pinned to 8,
+      as the baselines used; 3 on a Pi 5). Measured there at 1, 2, 3 and 4 threads: 161, 92, 73 and 72 ms to the
+      first token, 109, 92, 80 and 71 tokens per second, so more threads speed the prefill and slow the decode, and
+      a 48-token reply is quickest on one or two. Left: OrchestrANT's, AccelerANTgine's and OxidANT's
+      `perf-host.sh` pass `--threads auto` at their next hub pin; whether a shipped text default follows the
+      detector's rule or a text rule of its own is the owner's call on these numbers.
 - [ ] **CON219 — ORT reads a null scale pointer in 4-bit `MatMulNBits` on riscv64 RVV** [M, ★★★].
       Found 2026-11-02 with OxidANT's SmolLM2-135M contract test under QEMU, image index `7d4d4129`: a fault in
       `libonnxruntime.so.1.31.0` at `0x150150c` on `flw fa5, 0x0(s10)`, `s10=0x1f80`. In ORT v1.31.0's
@@ -1946,27 +1946,19 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       a package. If the answer changes: the package and the Rust target in the package stage, a smoke line
       for each, and one `clippy-windows` step in OxidANT with its minutes measured.
 
-- [ ] **CON272 — a consumer's `uv lock` in the image: `/opt/venv` lacks setuptools, and no hub script knows the
-      command** [S, ★★]. Found 2026-11-14 adding pytest-timeout to OrchestrANT (owner: lock in the image, on 3.15).
-      Any new dependency makes `uv lock` resolve again, and that builds the riscv64 git source of torchvision for its
-      metadata; isolated, its build environment wants `torch==2.14.1` from PyPI, which has no cp315 wheel, so the
-      lock fails although the committed one passes `uv lock --check`. What worked, in one `--rm` container:
-      `uv pip install --python /opt/venv/bin/python "setuptools<82" wheel`, then
-      `UV_PROJECT_ENVIRONMENT=/opt/venv VIRTUAL_ENV=/opt/venv uv lock --no-build-isolation-package torchvision`,
-      which builds against the image's own torch 2.14.1+cpu: 14.5 min on a Pi 5, an 11 GB uv cache (PyTorch's git
-      checkout), and a lock diff of only the new package. Missing in the image: setuptools and wheel in `/opt/venv`
-      (or a lock venv with them beside the image's torch). Missing in the hub: the command itself, ideally in
-      `renovate-locks.sh`'s uv path, so a consumer never rediscovers it. Done when a consumer adds a pure-Python
-      dependency with one hub command in the image and the lock moves by that package alone.
+- [ ] **CON275 — GCC 16's `_mm_loadl_epi64` fails UBSan's alignment check** [S, ★]. Found 2026-11-15 by
+      AccelerANTgine's Linux x64 GCC Debug lane (run 43707801504): UBSan reported "load of misaligned address ... for
+      type '__m64_u', which requires 8 byte alignment" at `emmintrin.h:713` inside nlohmann's `copy_plain_halves`,
+      an unaligned 8-byte load by design (`_mm_loadl_epi64` takes `__m128i_u const*`). `__m64_u` should carry
+      `__aligned__(1)`; either the image's GCC 16.2.0 headers lost it or GCC's UBSan ignores it. AccelerANTgine
+      d66ef9d builds nlohmann with `JSON_NO_SIMD` under GCC with UBSan. Next: compile a three-line `_mm_loadl_epi64`
+      on an odd address with `-fsanitize=alignment` in the x86-64 image, read `mmintrin.h`'s `__m64_u`, and report
+      it to GCC if the typedef is right; any consumer with SSE intrinsics and UBSan meets the same report.
 
-- [ ] **CON273 — the CI image has `pwsh` but no Pester, so no `pwsh` recipe can be proven off Windows** [S, ★★].
-      Found 2026-11-14 for CON236: `pwsh` 7.6.9 is in `kataglyphis_beschleuniger:latest`, Pester is not, so
-      `Invoke-Tests.ps1` reports every suite SKIPPED there, and the arm64 dev host has no `pwsh` at all; its
-      commit hooks then fail every recipe whose test runs `pwsh`. A throwaway
-      `Install-PinnedPowerShellModule -Name Pester -Version 6.2 -Minimum` inside one `--rm` container works.
-      Fix: install Pester at the floor `windows-x64.yml` pins into the Linux image, then let
-      `mutation_push.py` delegate a `pwsh` recipe to the image (or to CI, as it does for Chrome) when the host
-      has no `pwsh`. Done when a recipe on `WindowsBuildKit.Common.psm1` passes this host's hooks.
+- [ ] **CON276 — setuptools and wheel in the Linux image's `/opt/venv`** [S, ★]. CON272's command,
+      `uv-lock-in-image.sh`, installs `setuptools<82` and `wheel` into `/opt/venv` when they are missing, which a
+      throwaway container's root may; a non-root run refuses. Shipping them in `Dockerfile.torch` makes that step a
+      no-op. Done when an image built from it answers `import setuptools, wheel` from `/opt/venv/bin/python`.
 
 ## Open — Linux arm64 and riscv64
 

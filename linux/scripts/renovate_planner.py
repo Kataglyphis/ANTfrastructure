@@ -223,7 +223,7 @@ def rows(report: RenovateReport) -> Iterator[PlanRow]:
 BY_DESIGN = {"disabled", "ignored", "package-rules", "path-dependency", "local-dependency",
              "local", "file-dependency", "internal-package", "unspecified-version",
              "unversioned-reference", "git-dependency", "inherited-dependency",
-             "contains-variable"}
+             "contains-variable", "lockfile-only"}
 
 
 def _skip_reason(dep: RenovateDependency) -> str:

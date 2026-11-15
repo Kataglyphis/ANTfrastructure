@@ -15,4 +15,18 @@
     RedirectMatch 404 (^|/)\.ftp-deploy-sync-state\.json$
 </IfModule>
 
+# WebAssembly.instantiateStreaming refuses any other wasm type; none of these may hang on the host's mime.types.
+<IfModule mod_mime.c>
+    AddType application/wasm .wasm
+    AddType model/gltf-binary .glb
+    AddType model/gltf+json .gltf
+</IfModule>
+
+# The host gzips text itself but not these, and a glTF scene gzips to about half its size.
+<IfModule mod_filter.c>
+    <IfModule mod_deflate.c>
+        AddOutputFilterByType DEFLATE application/wasm model/gltf-binary model/gltf+json
+    </IfModule>
+</IfModule>
+
 ErrorDocument 404 /404.html

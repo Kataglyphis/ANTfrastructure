@@ -164,7 +164,7 @@ function Get-BundleReadmeIntegrationLines {
     ''
     '## Vulkan on lavapipe'
     ''
-    "The CPU Vulkan device (Mesa's lavapipe) sits in ``$InstallDir\lavapipe`` with its own loader and ``vulkaninfo.exe``; ``LP_NATIVE_VECTOR_WIDTH=256`` is set because Mesa 26.2's BVH sort needs 8-lane subgroups."
+    "The CPU Vulkan device (Mesa's lavapipe) sits in ``$InstallDir\lavapipe`` with its own loader and ``vulkaninfo.exe``; it runs each arch's native vector width, because Mesa 26.3 deleted the BVH sort that needed 8-lane subgroups."
     ''
     '```'
     "$InstallDir\lavapipe\vulkaninfo.exe --summary"

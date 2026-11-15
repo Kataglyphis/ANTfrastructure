@@ -157,8 +157,9 @@ incomplete.
 
 ORT's default thread count ignores the affinity mask. For a GenAI model on 8 pinned CPUs it dropped
 SmolLM2-135M from 314 to 92 tokens/s (measured 2026-11-02) and made first-token times vary by more than
-10 %, so a repo's setup copies its model with `linux/scripts/lib/genai-model-threads.py --threads 7`,
-which leaves one CPU free. A detector session's tail shows the same effect when its threads fill the set.
+10 %, so a repo's setup copies its model with `linux/scripts/lib/genai-model-threads.py`, which leaves
+one CPU free: `--threads 7` on those 8 CPUs, or `--threads auto` for the usable CPUs but one, 1 to 8, on any
+host (3 on a Pi 5, where a fixed 7 oversubscribed four cores, CON218). A detector session's tail shows the same effect when its threads fill the set.
 
 **Grading.** A metric is `perf.<command>.<key>`, and its figure is the median of the 20 runs. The
 spread is the median absolute deviation over the median. With the baseline's spread, a metric

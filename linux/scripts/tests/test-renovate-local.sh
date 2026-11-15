@@ -311,6 +311,23 @@ _run "${SK}" "${SK_REPORT}" --apply
 t_assert_eq "1" "${RC}" "an incomplete lookup cannot produce a green apply"
 t_assert_eq '  http: 1.1.0' "$(_pub "${SK}" 3)" "no dependency is applied from an incomplete report"
 
+t_case "a package only uv.lock names (skipReason lockfile-only) is counted by design, not listed"
+LO="$(_plant lo pubspec.yaml 'name: fixture\ndependencies:\n  http: 1.1.0\n')"
+LO_REPORT="${WORK}/lockfile-only.json"
+printf '%s\n' '{"repositories":{"local":{"packageFiles":{' \
+  '"pep621":[{"packageFile":"pyproject.toml","deps":[' \
+  '{"depName":"certifi","packageName":"certifi","depType":"uv.lock","datasource":"pypi","lockedVersion":"2026.10.5","skipReason":"lockfile-only","skipStage":"extract"}]}],' \
+  '"pub":[{"packageFile":"pubspec.yaml","deps":[{"depName":"http","currentValue":"1.1.0","updates":[{"newValue":"1.6.0"}]}]}]}}}}' \
+  > "${LO_REPORT}"
+_run "${LO}" "${LO_REPORT}"
+t_assert_eq "0" "${RC}" "a transitive lock entry does not make the report incomplete"
+t_assert_contains "${OUT}" "skipped by design (nothing to look up): lockfile-only 1" \
+  "the lock-only package is counted"
+t_assert_fails grep -q -e 'NOT CHECKED' <<<"${OUT}"
+_run "${LO}" "${LO_REPORT}" --apply
+t_assert_eq "0" "${RC}" "the declared pin still applies beside the transitive lock entry"
+t_assert_eq '  http: 1.6.0' "$(_pub "${LO}" 3)" "the update is written"
+
 # A refusal in the repo's own Renovate config still wins
 t_case "dependencyDashboardApproval sends an update to a human, unwritten"
 Q="$(_plant q pubspec.yaml 'name: fixture\ndependencies:\n  http: 1.1.0\n')"

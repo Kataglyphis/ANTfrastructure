@@ -268,24 +268,30 @@ WebGPU API, a page with no frame in Chrome); the `docs-site.webgpu-readback-*` m
 | `Header always set Strict-Transport-Security "max-age=31536000"` | HSTS for a year, this subdomain only |
 | `Header always set X-Content-Type-Options "nosniff"` | no content sniffing |
 | `RedirectMatch 404 (^\|/)\.ftp-deploy-sync-state\.json$` | the FTP library's state file lists every published file with its hash, and it was served |
+| `AddType application/wasm .wasm`, `AddType model/gltf-binary .glb`, `AddType model/gltf+json .gltf` | `WebAssembly.instantiateStreaming` refuses a wasm under any other type, and none of the three may hang on the host's `mime.types` |
+| `AddOutputFilterByType DEFLATE application/wasm model/gltf-binary model/gltf+json` | the host gzips text itself but serves these whole: BeschleunigerBallett's demo is a 7 MB wasm and a 61 MB `.glb` that gzips to 30 MB. Inside `mod_filter` (owns the directive) and `mod_deflate` (owns the filter) |
 | `ErrorDocument 404 /404.html` | a dead link shows a page with a way back, not Apache's default |
 
 **Every directive is in Apache's FileInfo override class**, and the suite fails on any
 other. That class is what the host is proven to allow: `jonasheinle.de`, on the same
 address as every docs site, serves exactly the headers of jotrockenmitlocken's deployed
-`web/.htaccess` (`Header`, `AddType`). A directive the host's `AllowOverride` does not
-grant (`Options`, `Require`, `Order`) would make every page a 500, so the state file is
-denied by `RedirectMatch` rather than `Require all denied`. Each block sits in
-`<IfModule>`: a missing module drops its rules instead of failing the site.
+`web/.htaccess` (`Header`, `AddType`, and `AddOutputFilterByType DEFLATE`, which gzips its
+`.wasm`). A directive the host's `AllowOverride` does not grant (`Options`, `Require`,
+`Order`) would make every page a 500, so the state file is denied by `RedirectMatch`
+rather than `Require all denied`. Each block sits in `<IfModule>`: a missing module drops
+its rules instead of failing the site.
 
 The server, read 2026-10-19 with `curl -sI`: `containerization.jonasheinle.de` and the
 other eight FTP sites answer `Server: Apache` from `85.13.169.97`; `http://` answers 200
 with no redirect; `/.ftp-deploy-sync-state.json` answers 200; an unknown page gets
 Apache's default 404; `/.htaccess` answers 403, so the server config denies `.ht*`
-files itself.
+files itself. Read 2026-11-15: HTML, CSS and JavaScript come back
+`Content-Encoding: gzip` without any `.htaccess` rule, and
+`beschleunigerballette.jonasheinle.de` sent its demo's `.wasm` as `application/wasm` but
+uncompressed, so the template compresses the binary types only.
 
 The family image carries no `httpd`, so the directives are checked by
-`linux/scripts/tests/test-docs-site-htaccess.sh` (each directive, the state-file regex
-against sample paths, the 404 page through the link gate) and by `curl -sI` after the
-first publish, not by a server in a container. The `docs-site.*` mutations prove the
-suite.
+`linux/scripts/tests/test-docs-site-htaccess.sh` (each directive, the `<IfModule>` guards
+around the types and the filter, the state-file regex against sample paths, the 404 page
+through the link gate) and by `curl -sI` after the first publish, not by a server in a
+container. The `docs-site.*` mutations prove the suite.
