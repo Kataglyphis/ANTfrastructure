@@ -613,6 +613,21 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
 
 ## Open — Linux image (all arches)
 
+- [ ] **CON238 — two test tools the images lack: cargo-mutants and pytest-timeout** [S, ★★]. Found by the audit
+      of 2026-11-12. Source work at any time; both ship with the next planned chain. Next in line (owner, 2026-11-16):
+      OxidANT's weekly `rust-mutants.yml` (`scripts/linux/run-mutants.sh`) warns and runs nothing until `:latest`
+      carries the tool.
+      1. `:latest` has no `cargo-mutants`, and neither `versions.env` nor `tool-pins.env` pins one. OxidANT's
+         `docs/testing.md` installs it by hand, no workflow there runs it, and nothing re-checks its mutation
+         scores of 2026-10-15. A pinned binary lets a scheduled job run without an ad-hoc install.
+      2. The `:winarm64` wheel store's pinned pytest stack has no pytest-timeout
+         ([`windows-cross-builds.md` § A consumer's test runner, pinned](docs/windows-cross-builds.md#a-consumers-test-runner-pinned-con67-2026-10-06)).
+         OrchestrANT's arm64 tests install their runner offline from that store
+         (`scripts/windows/Stage-Arm64Tests.ps1`), so a pytest timeout setting would fail on the device.
+
+      Done when the Linux smoke asserts `cargo mutants --version` at its pin on a published `:latest`, and
+      `Test-Arm64Bundle.ps1` installs pytest-timeout offline from the store.
+
 - [b] **CON224 — run the GPU packages on the cards no hosted runner has** [M, ★★★]. Owner decision: the
       owner runs these, and no release to `main` until they pass. Blocked on that hardware. Hosted CI builds
       all nine GPU workflows but tests on the CPU only. Windows AMD passed on 2026-11-03/04 on an RX 9070 XT
@@ -1876,19 +1891,6 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       The 2026-10-27 amd64 child's history carries 17 `kataglyphis.step` labels (package and torch);
       left: `layer-audit.py` on `:latest` and the `CACHED` check.
 
-- [ ] **CON238 — two test tools the images lack: cargo-mutants and pytest-timeout** [S, ★]. Found by the audit
-      of 2026-11-12. Source work at any time; both ship with the next planned chain.
-      1. `:latest` has no `cargo-mutants`, and neither `versions.env` nor `tool-pins.env` pins one. OxidANT's
-         `docs/testing.md` installs it by hand, no workflow there runs it, and nothing re-checks its mutation
-         scores of 2026-10-15. A pinned binary lets a scheduled job run without an ad-hoc install.
-      2. The `:winarm64` wheel store's pinned pytest stack has no pytest-timeout
-         ([`windows-cross-builds.md` § A consumer's test runner, pinned](docs/windows-cross-builds.md#a-consumers-test-runner-pinned-con67-2026-10-06)).
-         OrchestrANT's arm64 tests install their runner offline from that store
-         (`scripts/windows/Stage-Arm64Tests.ps1`), so a pytest timeout setting would fail on the device.
-
-      Done when the Linux smoke asserts `cargo mutants --version` at its pin on a published `:latest`, and
-      `Test-Arm64Bundle.ps1` installs pytest-timeout offline from the store.
-
 - [b] **CON239 — mingw and the `x86_64-pc-windows-gnu` target in `:latest`, for a Windows type check on a push** [S, ★].
       Blocked on the owner: `gcc-mingw-w64-x86-64` was declined on 2026-11-03, as about 600 MB in every image
       for one lint step ([`image-decisions.md` § Deliberate — not gaps](docs/image-decisions.md#deliberate--not-gaps)).
@@ -2203,6 +2205,14 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       Renovate reports `DEEPSTREAM_VERSION` (github-releases, report-only); the pin stays on 9.1.0.
 
 ## Open — hub tooling and the dev host
+
+- [ ] **CON277 — a dev host without node cannot pass OxidANT's pre-push suites** [S, ★]. Found 2026-11-16 on a
+      Raspberry Pi 5 dev host, where nothing may be installed: OxidANT's `test-webgpu-demo-browser.sh` needs node,
+      and `t_skip_unless` lets only Git Bash skip a missing prerequisite, so the hook stops every push there although
+      the whole `pre-push-checks.sh` is green in the CI image (which has node 26). Each push then needs the owner's
+      `--no-verify`. Next: the pre-push hook runs a consumer's script suites in the family image when the host lacks
+      a prerequisite the image has, or `t_skip_unless` reads a host's declared gaps. Done when a push from a host
+      without node runs the suites in the image and stops only on a real failure.
 
 - [ ] **CON227 — GPL parts beside the MSVC runtime in Windows installers** [S, ★]. Very low priority (owner, 2026-11-05). Check which GPL parts the consumers' installers really ship;
       the Windows FFmpeg build reports `GPL version 3 or later`, and older Visual Studio terms forbid putting Distributable Code under a licence that requires source disclosure. Nothing is decided: if a GPL part ships, ask someone who can judge it.
