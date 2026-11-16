@@ -487,7 +487,8 @@ each, is [`shared-script-libraries.md`](shared-script-libraries.md); among them:
 - `docs-build.sh` — Sphinx docs build helper (not to be confused with the
   `02-toolchain/python/ci_build_docs.sh` CI helper).
 - `rust-toolchain.sh` — Rust toolchain prerequisites that must not assume rustup
-  (`ensure_wasm32_target`).
+  (`ensure_wasm32_target`, `ensure_wasm_bindgen <Cargo.lock>`; see
+  [`shared-script-libraries.md`](shared-script-libraries.md#rust-toolchainsh--the-wasm32-std-and-a-locked-wasm-bindgen)).
 
 The last three were invisible until the 2026-08-08 orphan sweep: useful, and referenced by nothing,
 no doc included. None of `lib/` ships in the images (no Dockerfile copies it): consumers source it

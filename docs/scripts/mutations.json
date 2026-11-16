@@ -16660,6 +16660,22 @@
   "why": "a page that never draws a frame must fail, not print an empty read-back and exit 0"
  },
  {
+  "id": "docs-site.webgpu-readback-exports-flags",
+  "target": "linux/scripts/webgpu-canvas-readback.js",
+  "find": "else module.exports = { install, verdict, WEBGPU_FLAGS };",
+  "replace": "else module.exports = { install, verdict };",
+  "test": "bash linux/scripts/tests/test-webgpu-canvas-readback.sh",
+  "why": "a consumer driving its own launch() copied the flags while they were private; exported, the image's one SwiftShader recipe has one home"
+ },
+ {
+  "id": "docs-site.webgpu-readback-flags-frozen",
+  "target": "linux/scripts/webgpu-canvas-readback.js",
+  "find": "const WEBGPU_FLAGS = Object.freeze([",
+  "replace": "const WEBGPU_FLAGS = ([",
+  "test": "bash linux/scripts/tests/test-webgpu-canvas-readback.sh",
+  "why": "every consumer shares the one array: a push by one would change the next launch of another"
+ },
+ {
   "id": "docs-site.check-runs-the-click-check",
   "target": "linux/scripts/docs-site.sh",
   "find": "  node \"${DOCS_SITE_HUB}/linux/scripts/check-docs-sidebars.js\" \"${site}\"",
@@ -33207,6 +33223,54 @@
   "replace": "     && true; then",
   "test": "bash linux/scripts/tests/test-lib-wasm-tools.sh",
   "why": "--print target-libdir names the directory even when it is absent; only its existence proves the std"
+ },
+ {
+  "id": "lib.wasm-bindgen-lock-crlf",
+  "target": "linux/scripts/lib/rust-toolchain.sh",
+  "find": "  tr -d '\\r' <\"$1\" | awk",
+  "replace": "  cat \"$1\" | awk",
+  "test": "bash linux/scripts/tests/test-lib-wasm-tools.sh",
+  "why": "a CRLF checkout's name line ends in \\r, so the exact match finds no wasm-bindgen and the CLI cannot be pinned"
+ },
+ {
+  "id": "lib.wasm-bindgen-skips-the-locked-version",
+  "target": "linux/scripts/lib/rust-toolchain.sh",
+  "find": "  if [ \"${have}\" = \"${want}\" ]; then\n",
+  "replace": "  if false; then\n",
+  "test": "bash linux/scripts/tests/test-lib-wasm-tools.sh",
+  "why": "a cargo install on every call costs minutes, though PATH already runs the version the lock pins"
+ },
+ {
+  "id": "lib.wasm-bindgen-installs-the-locked-version",
+  "target": "linux/scripts/lib/rust-toolchain.sh",
+  "find": "cargo install --locked wasm-bindgen-cli --version \"${want}\" || return $?",
+  "replace": "cargo install --locked wasm-bindgen-cli || return $?",
+  "test": "bash linux/scripts/tests/test-lib-wasm-tools.sh",
+  "why": "an unpinned install takes crates.io's newest wasm-bindgen-cli, which refuses a module the lock's wasm-bindgen built"
+ },
+ {
+  "id": "lib.wasm-bindgen-install-status",
+  "target": "linux/scripts/lib/rust-toolchain.sh",
+  "find": "--version \"${want}\" || return $?\n",
+  "replace": "--version \"${want}\" || true\n",
+  "test": "bash linux/scripts/tests/test-lib-wasm-tools.sh",
+  "why": "a failed install must reach the caller with cargo's status, not as the later PATH-mismatch warning"
+ },
+ {
+  "id": "lib.wasm-bindgen-checks-path-after-install",
+  "target": "linux/scripts/lib/rust-toolchain.sh",
+  "find": "  if [ \"${have}\" != \"${want}\" ]; then\n",
+  "replace": "  if false; then\n",
+  "test": "bash linux/scripts/tests/test-lib-wasm-tools.sh",
+  "why": "cargo installs into CARGO_HOME/bin; a PATH without it still runs the old CLI and the bindgen step fails later and less clearly"
+ },
+ {
+  "id": "lib.wasm-bindgen-no-version-fails",
+  "target": "linux/scripts/lib/rust-toolchain.sh",
+  "find": "  if [ -z \"${want}\" ]; then\n",
+  "replace": "  if false; then\n",
+  "test": "bash linux/scripts/tests/test-lib-wasm-tools.sh",
+  "why": "an empty version from a lock without wasm-bindgen must stop before cargo install --version \"\""
  },
  {
   "id": "lib.wasm-opt-default-level",

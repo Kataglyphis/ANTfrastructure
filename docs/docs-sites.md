@@ -240,7 +240,10 @@ node linux/scripts/webgpu-canvas-readback.js <URL | page.html> [--min-colours N]
 ```
 
 - Chrome runs WebGPU on SwiftShader (`--enable-unsafe-webgpu --enable-features=Vulkan
-  --use-angle=swiftshader --use-webgpu-adapter=swiftshader`): the image has no GPU.
+  --use-angle=swiftshader --use-webgpu-adapter=swiftshader`): the image has no GPU. A consumer
+  driving its own page takes them from `require('webgpu-canvas-readback.js').WEBGPU_FLAGS`
+  (frozen) for `check-docs-sidebars.js`'s `launch(chrome, WEBGPU_FLAGS)`, with `install` for
+  the read-back.
 - An init script (`Page.addScriptToEvaluateOnNewDocument`) adds `COPY_SRC` to the canvas's
   `configure()` usage and keeps the texture `getCurrentTexture()` hands out. After `--wait-ms`
   (3000) it copies the next frame out after that frame's last `submit()`
@@ -255,7 +258,7 @@ the proof of run 39440853860, 3124 from this tool at `--wait-ms 8000`, both `128
 its plain screenshot was white.
 
 Suite `linux/scripts/tests/test-webgpu-canvas-readback.sh` (the read-back against fakes of the
-WebGPU API, a page with no frame in Chrome); the `docs-site.webgpu-readback-*` mutations prove it.
+WebGPU API, the exported flags, a page with no frame in Chrome); the `docs-site.webgpu-readback-*` mutations prove it.
 
 ## The site's .htaccess
 
