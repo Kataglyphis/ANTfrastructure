@@ -99,6 +99,19 @@ t_assert_eq 54 "$(PYTHON_BUILD_COMPILER_CACHE=on _status python_ci_cached_comman
 printf 'compiler_cache_launcher_env() { :; }\n' > "$work/core/common.sh"
 t_assert_eq 1 "$(PYTHON_BUILD_COMPILER_CACHE=on _status python_ci_cached_command _plain_callback)"
 
+t_case "a freshly imported core publishes both cache APIs into the compiling shell"
+_setup_cache_stubs
+t_emit_optional_functions compiler_cache_launcher_env compiler_cache_launcher > "$work/core/common.sh" || exit 1
+unset -f compiler_cache_launcher_env compiler_cache_launcher
+unset CACHE_ENV_PUBLISHED CACHE_CALLBACK_PUBLISHED
+result=0
+PYTHON_BUILD_COMPILER_CACHE=on python_ci_cached_command cache_callback 'first argument' '' last || result=$?
+t_assert_eq 0 "$result"
+t_assert_ok declare -F compiler_cache_launcher_env compiler_cache_launcher
+t_assert_eq yes "${CACHE_ENV_PUBLISHED:-}"
+t_assert_eq yes "${CACHE_CALLBACK_PUBLISHED:-}"
+t_assert_ok _assert_cached
+
 # Real compiler-cache selection remains with common.sh; these stubs exercise the command scope only.
 _setup_cache_stubs
 

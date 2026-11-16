@@ -62,6 +62,8 @@ an empty Python scope fails in either mode. Local entry point:
 `ci-compiler-cache.sh` command scope. Supply `CC` and `CXX` as single compiler executables,
 with flags in the normal flag variables. The canonical resolver selects the cache launcher;
 missing compilers, missing core APIs, an unavailable launcher or a malformed mode fail.
+Required cache initialization immediately precedes launcher resolution and retains its raw failure;
+the site check also retains the existing advisory form for optional-core consumers.
 The default `off` retains the existing host invocation.
 
 Both project syncs (which may build editable extensions), native and cross wheel builds,

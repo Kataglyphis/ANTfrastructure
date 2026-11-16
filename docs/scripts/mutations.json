@@ -54552,15 +54552,15 @@
  {
   "id": "python.compile-cache.published-environment",
   "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
-  "find": "  compiler_cache_launcher_env\n",
-  "replace": "  (compiler_cache_launcher_env)\n",
+  "find": "  compiler_cache_launcher_env || return $?\n",
+  "replace": "  (compiler_cache_launcher_env) || return $?\n",
   "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
   "why": "The cache server address and other setup state must publish in the calling shell."
  },
  {
   "id": "python.compile-cache.environment-raw-failure",
   "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
-  "find": "  compiler_cache_launcher_env\n",
+  "find": "  compiler_cache_launcher_env || return $?\n",
   "replace": "  compiler_cache_launcher_env || true\n",
   "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
   "why": "A failed cache environment setup must retain its raw status."
@@ -54748,5 +54748,13 @@
   "replace": ":",
   "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
   "why": "The packaging companion must initialize the shared CI context and retain its failed-import diagnostic."
+ },
+ {
+  "id": "python.compile-cache.site-ownership",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "  compiler_cache_launcher_env || return $?\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
+  "why": "Every resolver retains a directly preceding parent-shell environment call; strict callers preserve the raw failure. Source fixtures do not prove compilation or cache hits."
  }
 ]

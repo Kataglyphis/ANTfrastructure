@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-16 — retain required compiler-cache setup failures
+
+- Python cache initialization directly precedes launcher resolution. The site check accepts strict raw-status propagation alongside the unchanged optional-core fallback, and a real removal mutation proves the parent setup remains mandatory. The command fixture also proves newly imported APIs publish in the compiling shell. These source checks do not prove compilation or cache hits.
+
 ## 2026-11-16 — scope Python compiler caches to build commands
 
 - Linux packaging can opt into the canonical compiler-cache resolver for project syncs and GIL/free-threaded/cross wheel builds, with explicit compiler executables and temporary quoted prefixes. Package assembly retains the original compiler names.

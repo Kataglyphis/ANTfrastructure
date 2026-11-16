@@ -16,7 +16,7 @@ python_ci_cache_prepare() {
   declare -F compiler_cache_launcher_env >/dev/null && declare -F compiler_cache_launcher >/dev/null || {
     printf 'Cached Python builds require the core compiler-cache APIs\n' >&2; return 1;
   }
-  compiler_cache_launcher_env
+  return 0
 }
 
 python_ci_cached_command() {
@@ -28,6 +28,7 @@ python_ci_cached_command() {
   esac
   python_ci_cache_prepare || return $?
   local _py_ci_cache_launcher _py_ci_cache_cc _py_ci_cache_cxx
+  compiler_cache_launcher_env || return $?
   _py_ci_cache_launcher="$(compiler_cache_launcher)" || return $?
   [[ -n "${_py_ci_cache_launcher}" ]] && type -P -- "${_py_ci_cache_launcher}" >/dev/null || {
     printf 'No executable compiler-cache launcher for the Python build\n' >&2; return 1;

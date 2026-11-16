@@ -109,6 +109,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    The normal AMD producer loads all seven recorded source entry libraries after shared ROCm path publication and ldconfig; preserve selected-byte checks, fatal dependency failures and ASAN exclusion. Selected loads do not prove complete ABI, licence closure or inference.
    Copied native OCI handoffs also carry `native_oci_layout.py` and `native_oci_seed.py`; parent-seeded context exports require these helpers beside the core layout, a fresh destination, immutable verified layer links, independent child metadata and both raw transport statuses. Hash and ancestry checks remain mandatory after sharing.
    Compiler smoke callbacks stay unconditional; preserve GStreamer's separate target lookups, temporary cleanup and raw failure statuses.
+   Cache launcher sites initialize their parent environment directly before resolution; required callers propagate raw failure and legacy callers retain their advisory fallback.
    ORT tree scans retain archive candidates; record scans stay shallow and preserve component-name exclusions.
    Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion.
    Locked tool installs also require `uv-image-overlay.sh` beside `python_uv.sh`; copied code-quality libraries carry `quality/cmake-format/{pyproject.toml,uv.lock}` and retain the Python 3.15 lexer patch.
