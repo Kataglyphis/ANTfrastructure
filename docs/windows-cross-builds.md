@@ -613,8 +613,10 @@ BeschleunigerBallett does not set it yet. `-Runner` takes the build's logged cma
 `-PackageCheck` validates every finished MSI and ZIP before it is copied. Both callbacks
 write their success output to the host log; the function returns exactly one object with
 `Bundle`, `Packages`, `Added` and `Installers`. Checker exceptions still fail the bundle.
-`CrossBundle.Common.Tests.ps1` checks chatty callbacks and rejected packages; the package
-licence suites validate real archive contents separately.
+`CrossBundle.PackageCheck.Tests.ps1` checks chatty callbacks and rejected packages through
+a cold harness on Linux and Windows. It shares the install fixture with the Windows-only
+`CrossBundle.Common.Tests.ps1`, whose CMake/batch cases remain in full Windows discovery.
+The package licence suites validate real archive contents separately.
 
 **x64 packages carry the same closure** (owner decision 2026-09-25). A clean x64 PC lacks the
 media stack and may lack the VC++ runtime too. A CMake consumer whose packages come from CPack

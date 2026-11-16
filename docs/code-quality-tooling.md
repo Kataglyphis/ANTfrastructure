@@ -1331,15 +1331,19 @@ Pester-style one.
 The cleanup unit-boundary recipes use `Stevedore.StorageUnits.Tests.ps1` through
 `Invoke-HarnessSuite.ps1`; existing Pester reclaim controls remain in the full Windows run.
 
+`CrossBundle.PackageCheck.Tests.ps1` proves package callback output and failure contracts
+under a cold harness on both hosts. Its install fixture is shared with the Windows-only
+CMake/batch suite; real archive validation remains in the package licence suites.
+
 A recipe's cost is one run of its command, so name the narrowest command that
 bites: `-k <section>` on a bash suite using `t_sections`
 ([the harness](cross-build-verification.md#the-linuxscriptstests-suites)), `-k <test>`
 on a unittest file, or
 `pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only <suite>` for a
 harness-style suite that needs only `TestHarness.psm1`. That driver skips the modules,
-Pester detection and tally of `Invoke-Tests.ps1`; a suite that needs a module fails its
-baseline rather than losing a bite. The same cases must stay in the unfiltered suite, so
-preflight and Windows CI still run them.
+Pester detection and tally of `Invoke-Tests.ps1`; a suite depending on implicit imports
+fails its baseline rather than losing a bite. Import required modules in the suite.
+The same cases must stay in unfiltered discovery, so preflight and Windows CI still run them.
 
 A failed baseline reports its first three and last three nonempty lines, capped
 at 500 characters per line. This retains the first diagnostic and final summary
@@ -1826,9 +1830,9 @@ bites: `-k <section>` on a bash suite using `t_sections`
 on a unittest file, or
 `pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only <suite>` for a
 harness-style suite that needs only `TestHarness.psm1`. That driver skips the modules,
-Pester detection and tally of `Invoke-Tests.ps1`; a suite that needs a module fails its
-baseline rather than losing a bite. The same cases must stay in the unfiltered suite, so
-preflight and Windows CI still run them.
+Pester detection and tally of `Invoke-Tests.ps1`; a suite depending on implicit imports
+fails its baseline rather than losing a bite. Import required modules in the suite.
+The same cases must stay in unfiltered discovery, so preflight and Windows CI still run them.
 
 A failed baseline reports its first three and last three nonempty lines, capped
 at 500 characters per line. This retains the first diagnostic and final summary

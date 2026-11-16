@@ -247,7 +247,9 @@ nvidia and CPU lanes find `llvm-config` on PATH and never build that LLVM. `Sour
 fails a value-returning function that leaves `Invoke-NinjaBuildWithRetry` uncaptured while a caller keeps its
 result; it does not cover other native calls. `New-PortableBundle` also routes successful
 package-check output to the host. Its callback tests require one returned bundle object
-and preserve checker exceptions; they do not validate MSI or ZIP contents.
+and preserve checker exceptions; they do not validate MSI or ZIP contents. Keep their
+mutation baseline host-portable and import its shared fixture directly. The native
+Windows CMake/batch suite remains separately discovered by Windows CI.
 
 ### Windows stage scripts must end with an explicit `exit 0`
 

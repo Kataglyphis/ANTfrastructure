@@ -204,7 +204,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows packages that carry the VC++ runtime ship its notice; copied `WindowsCrossBundle.Common.psm1` carries `WindowsMsvcRuntimeNotice.Common.psm1`, `WindowsMsiLicense.Common.psm1` and `cmake/msvc-runtime-notice.txt` in the hub layout.
    Standalone `WindowsIcon.Common.psm1` carries `WindowsMsix.Common.psm1` and `WindowsScripts.Shared.psm1`; its PNG decoder rejects corrupt or invisible inputs.
    Windows EXE icons use the shared CMake, Rust or Python resource helpers; test actual x64 and ARM64 PE resources and retain the Linux PE-tool setup in preflight and mutation jobs.
-   Portable bundle package checks log to the host and propagate failures; return only the bundle object.
+   Portable bundle package checks log to the host and propagate failures; return only the bundle object and keep their shared callback mutation fixtures host-portable.
    MSI license checks map each unique File-table ID through its sequence to the embedded Media cabinet before verifying the real text; copied callers carry `WindowsMsiLicense.Common.psm1` and the Python verifier.
    Batch installed-path mapping reads the MSI tables once and retains the exact anchored path checks for every requested file.
    Windows ORT license staging matches the shipped DLL's SHA256 against exactly one wheel before copying both original texts; copied `WindowsOrtLicense.Common.psm1` carries its provenance, MSI and Python-wheel companions.

@@ -2624,8 +2624,19 @@ the direct import makes its mutation check fail.
 the success stream. PowerShell returned that string together with the bundle object.
 
 **Fix.** Route the package-check callback through `Out-Host`, as the CMake runner
-already does. Keep checker failures fatal. `CrossBundle.Common.Tests.ps1` rejects
+already does. Keep checker failures fatal. `CrossBundle.PackageCheck.Tests.ps1` rejects
 output contamination and swallowed failures; separate licence suites check package bytes.
+
+### A bundle mutation baseline fails before applying its edit
+
+**Symptom.** Linux preflight reports an unmutated baseline failure from Windows
+path assertions or a fake `cmake.cmd` install.
+
+**Cause.** The callback mutation selected the whole Windows-specific bundle suite.
+
+**Fix.** Use the cold, host-portable `CrossBundle.PackageCheck.Tests.ps1` with the
+shared install fixture. Both output and rejection mutants must fail there on Linux
+and Windows. Keep the native batch cases in full Windows discovery.
 
 ### A consumer's CMake says clang-cl "is not able to compile a simple test program"
 

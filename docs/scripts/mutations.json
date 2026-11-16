@@ -39149,7 +39149,7 @@
   "target": "windows/scripts/modules/WindowsCrossBundle.Common.psm1",
   "find": "{ & $PackageCheck $installer.FullName $redist | Out-Host }",
   "replace": "{ & $PackageCheck $installer.FullName $redist }",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only CrossBundle.Common.Tests.ps1 -ResultFile logs/code-quality/cross-bundle-return-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only CrossBundle.PackageCheck.Tests.ps1",
   "why": "successful package-check proof lines must remain visible without contaminating the single bundle result"
  },
  {
@@ -39157,7 +39157,7 @@
   "target": "windows/scripts/modules/WindowsCrossBundle.Common.psm1",
   "find": "{ & $PackageCheck $installer.FullName $redist | Out-Host }",
   "replace": "{ try { & $PackageCheck $installer.FullName $redist | Out-Host } catch { } }",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only CrossBundle.Common.Tests.ps1 -ResultFile logs/code-quality/cross-bundle-return-mutation.json",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only CrossBundle.PackageCheck.Tests.ps1",
   "why": "a rejected installer must fail the bundle before any package is copied"
  }
 ]

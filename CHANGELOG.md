@@ -16,6 +16,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-16 — keep portable-bundle mutation baselines host-portable
+
+- Run callback output/failure mutations through a cold, portable harness suite
+  on Linux and Windows, sharing the install fixture with the Windows suite.
+- Retain native Windows CMake/batch coverage in full Windows discovery; preserve
+  the original failing Linux baseline without changing production bundle code.
+
 ## 2026-11-16 — preserve portable bundle results after package checks
 
 - Keep successful MSI/ZIP checker output in the build log and return only the

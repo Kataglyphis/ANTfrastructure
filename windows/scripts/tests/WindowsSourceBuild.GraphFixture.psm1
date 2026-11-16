@@ -1,5 +1,5 @@
 #requires -Version 7.0
-# Shared PE fixtures keep traversal fault controls and bundle regressions on the same physical import tree.
+# Shared PE and install fixtures keep traversal controls and bundle callback proofs with their Windows consumers.
 
 Import-Module (Join-Path $PSScriptRoot 'TestHarness.psm1') -ErrorAction Stop
 
@@ -35,4 +35,32 @@ function Assert-ClosureRootPolicies {
     }
 }
 
-Export-ModuleMember -Function New-ClosureFixture, Assert-ClosureRootPolicies
+function New-CrossBundleInstallFixture {
+    param([Parameter(Mandatory)][string]$Dir, [string[]]$Extra = @())
+    $fixture = $Dir
+    $extraNames = $Extra
+    return {
+        param($File, [string[]]$Arguments)
+        Set-Content -LiteralPath (Join-Path $fixture 'install.log') -Value "$File $($Arguments -join ' ')"
+        $bin = Join-Path $Arguments[$Arguments.IndexOf('--prefix') + 1] 'bin'
+        $null = New-Item -ItemType Directory -Force -Path $bin
+        Copy-Item -LiteralPath (Join-Path $fixture 'app/app.exe') -Destination $bin
+        foreach ($name in $extraNames) { Copy-Item -LiteralPath (Join-Path $fixture "runtime/bin/$name") -Destination $bin }
+    }.GetNewClosure()
+}
+
+function New-CrossBundlePackageFixture {
+    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][string[]]$SearchDirectory,
+        [string[]]$InstallerName = @('app.msi', 'app.zip'), [switch]$Chatty)
+    $build = Join-Path $Dir 'build'
+    $null = New-Item -ItemType Directory -Force -Path $build
+    foreach ($name in $InstallerName) { $null = New-Item -ItemType File -Force -Path (Join-Path $build $name) }
+    $checked = [Collections.Generic.List[string]]::new()
+    $emitSuccess = $Chatty.IsPresent
+    $check = { param($Path, $RedistText) $checked.Add((Split-Path $Path -Leaf)); if ($emitSuccess) { "PASS: $Path" } }.GetNewClosure()
+    $options = @{ BuildDir = $build; DistDir = (Join-Path $Dir 'dist'); Arch = 'arm64'; SearchDirectory = $SearchDirectory;
+        Runner = (New-CrossBundleInstallFixture $Dir); PackageCheck = $check }
+    return [pscustomobject]@{ Options = $options; Checked = $checked }
+}
+
+Export-ModuleMember -Function New-ClosureFixture, Assert-ClosureRootPolicies, New-CrossBundleInstallFixture, New-CrossBundlePackageFixture
