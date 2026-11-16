@@ -28,3 +28,6 @@ khronos_validation.debug_action = VK_DBG_LAYER_ACTION_LOG_MSG
 # commands that read or write the same resource (WRITE-AFTER-WRITE,
 # READ-AFTER-WRITE, WRITE-AFTER-READ) that core validation does not check.
 khronos_validation.validate_sync = true
+# Both default to false in the 1.4.363 layer and hide a load-after-store and a compute-write-to-shader-read hazard.
+khronos_validation.syncval_load_op_after_store_op_validation = true
+khronos_validation.syncval_shader_accesses_heuristic = true
