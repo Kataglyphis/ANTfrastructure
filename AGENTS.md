@@ -130,6 +130,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Architecture and UV test suites carry their shared fixture companions; use harness PE and wheel constructors for valid samples.
    Regex cardinality assertions use the shared harness counter and retain caller-selected patterns and text.
    Windows structural tests use the harness AST readers, command binder and Dockerfile stage parser; parse errors must fail before inspecting declarations. Copy `WindowsAst.Common.psm1` beside any copied harness module tree.
+   Every static Windows patch keeps its actual upstream mapping and source pin in the patch-drift gate; torchvision's host adapter targets PyTorch's `cpp_extension.py`.
    Share unconditional and source-order wiring checks through `Assert-TestAstCommand -Unconditional` and `Assert-TestAstOrder`.
    Windows probe transports share child cleanup and report parsing; retain stderr, timeout, exit and assertion accounting policies.
    Windows diagnostic and host scripts carry their shared module companions; keep required failures fatal and advisory failures visible.

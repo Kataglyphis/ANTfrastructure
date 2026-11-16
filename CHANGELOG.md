@@ -16,6 +16,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-16 — include the PyTorch adapter in Windows patch drift checks
+
+- Check the torchvision host-cache patch against its actual PyTorch upstream at
+  the existing `PYTORCH_VERSION` pin. Retain full catalogue coverage, Git and GNU
+  patch checks, source-pin loading and explicit diagnostic override precedence.
+- Cover missing mappings, wrong upstream ownership and ignored source pins with
+  local accounting tests and three executable mutation recipes.
+
 ## 2026-11-16 — declare the ROCm torchvision patch root
 
 - Give the torchvision entry its own canonical asset-root resolver before it

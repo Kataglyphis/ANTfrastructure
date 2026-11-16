@@ -39159,5 +39159,29 @@
   "replace": "{ try { & $PackageCheck $installer.FullName $redist | Out-Host } catch { } }",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-HarnessSuite.ps1 -Only CrossBundle.PackageCheck.Tests.ps1",
   "why": "a rejected installer must fail the bundle before any package is copied"
+ },
+ {
+  "id": "windows-lane.patch-drift-pytorch-mapping",
+  "target": "windows/scripts/tests/Test-PatchesApplyClean.ps1",
+  "find": "        'pytorch'        = @{ Url = 'https://github.com/pytorch/pytorch.git';        Ref = $Refs.PYTORCH }\n",
+  "replace": "",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Patches.ApplyClean.Tests.ps1 -ResultFile logs/code-quality/patch-drift-mutation.json",
+  "why": "every current static patch needs an upstream mapping before clone or apply checks can grade it"
+ },
+ {
+  "id": "windows-lane.patch-drift-pytorch-source-pin",
+  "target": "windows/scripts/tests/Test-PatchesApplyClean.ps1",
+  "find": "@{ Ref = 'PYTORCH';     Key = 'PYTORCH_VERSION' }",
+  "replace": "@{ Ref = 'PYTORCH';     Key = 'UNUSED_PYTORCH_VERSION' }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Patches.ApplyClean.Tests.ps1 -ResultFile logs/code-quality/patch-drift-mutation.json",
+  "why": "the torchvision host adapter patches PyTorch and must follow its existing source pin instead of a fallback"
+ },
+ {
+  "id": "windows-lane.patch-drift-pytorch-owner",
+  "target": "windows/scripts/tests/Test-PatchesApplyClean.ps1",
+  "find": "https://github.com/pytorch/pytorch.git",
+  "replace": "https://github.com/pytorch/vision.git",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Patches.ApplyClean.Tests.ps1 -ResultFile logs/code-quality/patch-drift-mutation.json",
+  "why": "torch/utils/cpp_extension.py belongs to PyTorch even though torchvision consumes this host compiler adapter"
  }
 ]

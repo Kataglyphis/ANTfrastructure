@@ -49,6 +49,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Next image build — GPU consumer findings
 
+**Windows patch drift, 2026-11-16:** the complete local gate at private `3e83d0cc`
+failed on the unmapped torchvision host-cache adapter. The correction maps its
+`torch/utils/cpp_extension.py` target to PyTorch and the existing `PYTORCH_VERSION`
+pin. The full upstream check, catalogue/pin accounting tests and three executable
+mutations pass locally. Full corrected-source qualification, hosted CI and the
+remaining product/device acceptance are still required; earlier image receipts
+retain their original source. See the [patch catalogue](windows/scripts/patches/README.md).
+
 **Private Windows qualification, 2026-11-16:** exact `20509448` passed all 42
 gates and all 4,893 mutations, with 2,503 source blobs and modes verified. Its
 full native Windows run records 3,085/3,087: the MSVC crash fixture could not

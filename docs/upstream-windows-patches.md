@@ -51,6 +51,16 @@ compilation and AMD GPU inference remain open. Linux currently consumes a
 packaged MIGraphX, so placing a patch here alone does not correct that image.
 No upstream issue or pull request has been filed for this patch.
 
+## PyTorch: the torchvision host compiler adapter
+
+**Grade C, opt-in local build policy.** The
+[`001-torchvision-host-sccache.patch`](../windows/scripts/patches/pytorch/001-torchvision-host-sccache.patch)
+changes PyTorch's `torch/utils/cpp_extension.py` in the build environment used by
+torchvision. The patch-drift gate therefore checks `pytorch/pytorch` at the existing
+`PYTORCH_VERSION` pin. `TORCHVISION_VERSION` selects the consumer source and does
+not select this patched file. The adapter changes the Windows HIP extension's
+host C++ launcher; this does not establish a device compiler cache hit.
+
 ## Prepared and ready to send (12)
 
 Full descriptions in [`windows/upstream/`](../windows/upstream/README.md).

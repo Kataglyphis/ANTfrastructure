@@ -1,16 +1,48 @@
 #requires -Version 7.0
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Local fixtures cover failure accounting before any upstream clone or patch application.
+# Local fixtures cover pin selection, catalogue mapping and failure accounting; real upstream application needs the network gate.
 
 Describe 'Patch drift gate accounting' {
     $source = 'windows/scripts/tests/Test-PatchesApplyClean.ps1'
-    . (Get-ScriptFunctionDefinition -ScriptPath $source -FunctionName Get-PatchTargetPaths, Get-PatchClone, Get-PatchApplyStatus, Get-StaticPatchResult)
+    . (Get-ScriptFunctionDefinition -ScriptPath $source -FunctionName Get-PatchRefs, Get-PatchRepoMap, Get-PatchTargetPaths, Get-PatchClone, Get-PatchApplyStatus, Get-StaticPatchResult)
 
     function Invoke-WithPatchGit {
         param([int]$Code, [Parameter(Mandatory)][scriptblock]$Body)
         $state = New-TestCallState -Properties @{ Code = $Code }
         Invoke-WithTestNativeCommand -Name git -FixtureState $state -Implementation {} -Body $Body
+    }
+
+    It 'maps every current static patch before attempting an upstream clone' {
+        $map = Get-PatchRepoMap -Refs (Get-PatchRefs)
+        $patches = @(Get-ChildItem -LiteralPath (Join-Path (Get-RepoRoot) 'windows/scripts/patches') -Recurse -Filter '*.patch')
+        Assert-True ($patches.Count -gt 0) 'the real catalogue is nonempty'
+        Invoke-InTestDir { param($root)
+            Invoke-WithPatchGit -Code 7 -Body { param($state)
+                foreach ($patch in $patches) {
+                    $result = Get-StaticPatchResult -Patch $patch -RepoMap $map -Clones @{} -WorkDir $root -PatchExe 'unused'
+                    Assert-False ($result.Status -like 'FAIL (no repo mapping*') "mapped upstream for $($patch.FullName)"
+                }
+            }
+        }
+    }
+
+    It 'uses the PyTorch source pin for the torchvision host compiler adapter' {
+        $refs = Get-PatchRefs -FileVersions @{ PYTORCH_VERSION = 'v9.8.7'; TORCHVISION_VERSION = 'v1.2.3' }
+        $map = Get-PatchRepoMap -Refs $refs
+        Assert-Equal 'https://github.com/pytorch/pytorch.git' $map.pytorch.Url 'cpp_extension belongs to PyTorch'
+        Assert-Equal 'v9.8.7' $map.pytorch.Ref 'the source pin wins over the fallback and torchvision pin'
+        $overridden = Get-PatchRefs -FileVersions @{ PYTORCH_VERSION = 'v9.8.7' } -Versions @{ PYTORCH = 'v8.7.6' }
+        Assert-Equal 'v8.7.6' $overridden.PYTORCH 'explicit diagnostic overrides retain precedence'
+    }
+
+    It 'uses both checked pin and repository selectors at the entry point' {
+        $ast = Get-TestScriptAst -ScriptPath $source
+        $refs = @(Get-TestAstCommands -Ast $ast -Name Get-PatchRefs)
+        $map = @(Get-TestAstCommands -Ast $ast -Name Get-PatchRepoMap)
+        Assert-TestAstCommand -Command $refs -Text 'Get-PatchRefs -FileVersions $fileVersions -Versions $Versions' -Unconditional
+        Assert-TestAstCommand -Command $map -Text 'Get-PatchRepoMap -Refs $defaultRefs' -Unconditional
+        Assert-TestAstOrder -Before $refs[0] -After $map[0]
     }
 
     $fileCases = @(
