@@ -1232,6 +1232,12 @@ receives the same path used by the actual gate. Synthetic host-skip cases overri
 only the gate's host-skip fact; changing `sys.platform` also changes executable
 lookup and can falsely hide bash.exe from the required mutant parser.
 
+The torchvision patch fixture loads its temporary patched module through
+`runpy.run_path` with explicit compiler and environment facts. It executes the
+real patch's launcher selection, drift refusal and reverse check. Isolated
+fixture controls cover this harness; complete source qualification and actual
+wheel/cache measurements require their own results.
+
 ### The mutation gate in CI, sharded
 
 **What happened (2026-09-23).** The `preflight` job of `linux-x64.yml` (then `ubuntu26.04.yml`) ran every

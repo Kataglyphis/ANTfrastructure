@@ -16,6 +16,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-16 — keep the torchvision patch fixture within Python quality gates
+
+- Load the patched temporary module through runpy with explicit compiler and
+  environment facts; preserve launcher selection, reverse-apply and drift cases.
+- Declare fixture parameter/return types and subprocess failure policies explicitly.
+  Keep the original lint failures as negative evidence; full qualification remains
+  required after the correction is committed.
+
 ## 2026-11-15 — keep mutation fixtures native on Git Bash
 
 - Pass shard cost-log paths through Python argv and compare the planner's actual
