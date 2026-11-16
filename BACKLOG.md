@@ -2460,10 +2460,10 @@ GenAI. The plan, the contract and every `LAI-*` ID: [`docs/language-ai.md`](docs
       2. `linux/scripts/02-toolchain/rust/cargo_test.sh` runs `cargo test --all --verbose` and writes no
          result file, so OxidANT's test counts and durations are recorded nowhere. Write per-test JUnit from
          the output, for every Rust consumer, with no new tool in the image.
-      3. `linux/scripts/02-toolchain/python/ci_tests.sh` takes one `--cov="$PACKAGE_NAME"` and one floor
-         (`PYTHON_COVERAGE_MIN`), so OrchestrANT's `benchmarks/`, about 15,000 lines of graders, has no
-         coverage number. Let `verify-test-reports.py` print a percentage per source; the floor stays on
-         the package.
+      3. Done 2026-11-16: `ci_tests.sh` measures each `PYTHON_COVERAGE_EXTRA` tree (`coverage-extra` on
+         `python-ci-linux.yml`, `DIR=MIN`) with its own report and floor, and the package's report leaves
+         them out. OrchestrANT's `benchmarks/` measured 91.0 % (4,202 of 4,616 statements), the package
+         alone 71.0 % on the test extra.
 
       Done when `test-lib-ctest-run.sh`, `test-cargo-wrapper.sh` and `test-verify-test-reports.sh` cover the
       new behaviour with a mutation recipe each, OxidANT's quality report records Rust test counts, and

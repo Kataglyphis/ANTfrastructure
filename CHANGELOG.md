@@ -15,6 +15,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-16 — a source tree beside a Python package gets its own coverage floor (CON250, third part)
+
+- `ci_tests.sh` reads `PYTHON_COVERAGE_EXTRA` (`coverage-extra` on `python-ci-linux.yml`, comma-separated `DIR=MIN`):
+  each tree is measured beside the package (`--cov=<workspace>/<dir>`), written to `coverage-<leg>-<dir>.xml` with
+  `coverage xml --include` and gated by `verify-test-reports.py --label <dir>`; the package's
+  `coverage-<leg>.xml` is rewritten with `--omit` of those trees, so its floor and the docs page read the package
+  alone. A malformed pair, `..`, an absolute path or a missing directory stops the driver before any leg. On
+  OrchestrANT in the image: `benchmarks/` 91.03 %, the package alone 71.01 %, both together 77.62 %, which would
+  have let either fall unseen. Tests in `test-python-ci-defaults.sh`, `test-verify-test-reports.sh` and
+  `test-reusable-linux-lane.sh`; mutation recipes `python.lane-coverage-extra-forwarded`,
+  `python.package-floor-reads-the-package` and `python.extra-tree-floor-checked`, and
+  `python.ci-tests-report-check-executed` names the first of the two verifier calls.
 ## 2026-11-16 — `ensure_wasm_bindgen` pins wasm-bindgen-cli to a Cargo.lock; the WebGPU flags are exported
 
 - `lib/rust-toolchain.sh` gains `ensure_wasm_bindgen <Cargo.lock>` and `wasm_bindgen_lock_version <Cargo.lock>`:

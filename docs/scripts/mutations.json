@@ -28579,8 +28579,8 @@
  {
   "id": "python.ci-tests-report-check-executed",
   "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
-  "find": "python3 -I \"$SCRIPT_DIR/verify-test-reports.py\"",
-  "replace": "true",
+  "find": "python3 -I \"$SCRIPT_DIR/verify-test-reports.py\" \\\n",
+  "replace": "true \\\n",
   "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
   "why": "A green pytest command without JUnit or package coverage reports must fail its stable leg."
  },
@@ -40535,5 +40535,29 @@
   "replace": "    return usable\n",
   "test": "bash linux/scripts/tests/test-quality-report-perf.sh -k test_auto",
   "why": "auto is the family's rule, the usable CPUs but one and at most eight, so a Pi perf copy does not oversubscribe its four cores (CON218)"
+ },
+ {
+  "id": "python.lane-coverage-extra-forwarded",
+  "target": ".github/workflows/python-ci-linux.yml",
+  "find": "-e PYTHON_COVERAGE_EXTRA=${{ inputs.coverage-extra }}",
+  "replace": "-e PYTHON_COVERAGE_EXTRA=",
+  "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+  "why": "The declared extra trees must reach the test driver, or a consumer's benchmarks/ floor is a dead option."
+ },
+ {
+  "id": "python.package-floor-reads-the-package",
+  "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+  "find": "    package_coverage_report \"$V\" || test_status=$?\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
+  "why": "Read from the report that holds the extra trees, the package floor passes on their lines while the package falls."
+ },
+ {
+  "id": "python.extra-tree-floor-checked",
+  "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+  "find": "    extra_coverage_checks \"$V\" || test_status=$?\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
+  "why": "An extra tree measured and never gated is the benchmarks/ floor that does not exist."
  }
 ]

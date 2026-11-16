@@ -19,6 +19,9 @@ _good_junit; _good_coverage
 t_assert_eq 0 "$(t_rc _run --min-coverage 70)"
 t_assert_contains "$(t_out _run)" "1 passed; package coverage 70.00%"
 
+t_case "a report of another source tree names that tree"
+t_assert_contains "$(t_out _run --label benchmarks)" "1 passed; benchmarks coverage 70.00%"
+
 t_case "the caller's line coverage floor is enforced"
 t_assert_eq 1 "$(t_rc _run --min-coverage 70.01)"
 t_assert_contains "$(t_out _run --min-coverage 70.01)" "below the 70.01% floor"
