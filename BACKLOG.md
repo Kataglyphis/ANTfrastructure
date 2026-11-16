@@ -49,12 +49,14 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Next image build — GPU consumer findings
 
-**Private Windows qualification, 2026-11-16:** exact `9f174c90` passed all 42
-gates and 4,891 mutations. The callback baseline at `b4a62bd7` fails under native
-Linux; its corrected cold callback controls pass on Linux and Windows, with all
-12 Windows bundle cases retained. Complete corrected-source qualification,
-hosted CI, new-source products and device acceptance remain open. Source-bound
-receipts and the original negative baseline are recorded in `logs/g5-results.md`.
+**Private Windows qualification, 2026-11-16:** exact `20509448` passed all 42
+gates and all 4,893 mutations, with 2,503 source blobs and modes verified. Its
+full native Windows run records 3,085/3,087: the MSVC crash fixture could not
+configure on this host, and torchvision lacked its own resolver declaration.
+The entry now declares that resolver; the unchanged parity suite passes 6/6
+and detects its deletion between positive controls. Complete corrected-source
+qualification, hosted CI, new-source products and device acceptance remain open.
+Original failures and source-bound receipts remain in `logs/g5-results.md`.
 
 **Private Windows qualification, 2026-11-15, source `737eb44f`:** all four
 software producers are audited. ROCm retains raw exits 1/1/0, all 18 labels,

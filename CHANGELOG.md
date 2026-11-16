@@ -16,6 +16,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-11-16 — declare the ROCm torchvision patch root
+
+- Give the torchvision entry its own canonical asset-root resolver before it
+  imports the Torch builder. The existing parity gate retains its checks and
+  catches deletion of the declaration in an isolated Windows mutation proof.
+
 ## 2026-11-16 — keep portable-bundle mutation baselines host-portable
 
 - Run callback output/failure mutations through a cold, portable harness suite

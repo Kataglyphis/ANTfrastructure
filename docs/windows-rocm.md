@@ -828,6 +828,22 @@ It never calls `torch.cuda`, and `torch.cuda.is_available()` is False in the con
 
 Tests: `windows/scripts/tests/Torch.Rocm.Tests.ps1` and, for the source build's pure parts, `Torch.RocmSourceBuild.Tests.ps1`.
 
+### Torchvision host compiler cache
+
+The torchvision build venv applies the required `pytorch/001-torchvision-host-sccache.patch`
+before publishing its environment. `TORCHVISION_CXX_COMPILER_LAUNCHER` supplies one
+explicit sccache executable to the pinned Ninja host-CXX rule; compiler ABI probes
+still receive the original CC/CXX paths. HIP compilation, link rules and the shipped
+Torch wheel are unchanged. Missing sccache retains the existing uncached route;
+present sccache requires a clean or already-applied patch, so upstream drift fails.
+The patch is mounted only in the torchvision RUN to preserve the torch layer's key.
+
+The torchvision entry declares its own canonical `$scriptAssetRoot` before
+dot-sourcing the Torch builder. Its patch lookup follows the same checkout and
+flat-mount resolver contract. The unchanged native Windows parity suite checks
+the declaration's presence and source form; it does not run a wheel build or
+prove compiler-cache hits.
+
 ## llama.cpp HIP and Vulkan (`Dockerfile.rocm-llama`, rocm lane only)
 
 The stage installs two builds of the same llama.cpp tag, each in its own directory: the HIP
@@ -925,14 +941,6 @@ It never calls `ggml_backend_init`, because that creates a VkInstance. `--list-d
 - ggml-vulkan compiles in Khronos Vulkan-Headers code, and the zip ships no Khronos licence text. Whether that creates a notice obligation is unverified.
 
 **Evidence** (at b11115): the release's asset digest; `release.yml` 1137-1224 and 1876-1884; `ggml/src/ggml-backend-reg.cpp` 480-600; `ggml/src/ggml-vulkan/ggml-vulkan.cpp` 4959-4973 and 15853-15873; `src/llama.cpp` 222-256.
-
-The torchvision build venv applies the required `pytorch/001-torchvision-host-sccache.patch`
-before publishing its environment. `TORCHVISION_CXX_COMPILER_LAUNCHER` supplies one
-explicit sccache executable to the pinned Ninja host-CXX rule; compiler ABI probes
-still receive the original CC/CXX paths. HIP compilation, link rules and the shipped
-Torch wheel are unchanged. Missing sccache retains the existing uncached route;
-present sccache requires a clean or already-applied patch, so upstream drift fails.
-The patch is mounted only in the torchvision RUN to preserve the torch layer's key.
 
 ## MIGraphX and the ORT plugin EP (rocm lane, spike)
 

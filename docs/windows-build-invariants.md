@@ -26,6 +26,11 @@ run42525202620 (#250), even though a warm runtime could import it. Keep required
 imports unforced and fail on missing companions. Cold closure failure details
 stay on one line so the CI renderer cannot drop the missing function names.
 
+An entry script that reads `$scriptAssetRoot` defines the canonical resolver at
+top level before that use, even when a dot-sourced builder initializes the same
+variable. `ScriptAssetRoot.Parity.Tests.ps1` checks local definitions and canonical
+source form; it does not prove successful source builds or compiler-cache hits.
+
 ## Contents
 
 **Shell and PowerShell discipline**

@@ -125,6 +125,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Exported ARM64 bundles stage chain ORT DLLs beside their executables; reject duplicate ZIP paths and preserve the source image tree.
    ARM64 candidate acceptance validates a digest before pulling, binds the ZIP and CI attempt to the actual image, and preserves failing device statuses and receipts before tag promotion.
    Required entry-script import loops list concrete .psm1 filenames so the cold script-call gate can discover the complete closure.
+   Entry scripts that read `$scriptAssetRoot` declare the canonical resolver at top level,
+   including when a dot-sourced builder also initializes it.
    Architecture and UV test suites carry their shared fixture companions; use harness PE and wheel constructors for valid samples.
    Regex cardinality assertions use the shared harness counter and retain caller-selected patterns and text.
    Windows structural tests use the harness AST readers, command binder and Dockerfile stage parser; parse errors must fail before inspecting declarations. Copy `WindowsAst.Common.psm1` beside any copied harness module tree.

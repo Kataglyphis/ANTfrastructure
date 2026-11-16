@@ -24,6 +24,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
+
 # The torch builder's helpers and module imports; dot-sourced, it returns before its own build.
 . (Join-Path $PSScriptRoot 'Build-TorchRocmFromSource.ps1') -OutputDir $OutputDir -WorkDir $WorkDir
 
