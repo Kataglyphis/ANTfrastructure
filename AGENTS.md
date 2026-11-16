@@ -509,6 +509,11 @@ Five of them are RULES and stay here:
 - The explicit ordinary-runtime `--serial-smoke` host option sets only `RUNTIME_SMOKE_OVERLAP=0`; keep the same required smoke, raw failure, production source proof, app, native parent and cleanup bindings. Ordinary overlap remains the default.
 - Automatic local image cleanup selects explicit obsolete published tags, verifies their immutable registry manifests/configs and waits for an idle engine; preserve current build parents, E30/receipts, all cachemounts and every unselected image identity. Keep before/after evidence and recheck the ordinary reserve ([host cleanup](docs/linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches)).
 - Native ORT and app-wheelhouse Media cache readers use exact outer RUN markers and the Media unit family; retain final-drain lifetime, mandatory worker/profile hashes and explicit partial-timeout scope. IREE configure snapshots require the selected target build tree and the same live process identity; they do not classify errors or prove a completed build.
+- **Python packaging cache prefixes stay command-scoped.** With `PYTHON_BUILD_COMPILER_CACHE=on`,
+  pass explicit single-executable `CC` and `CXX`, use the shared resolver and preserve callback
+  bindings and raw failures. Never export the cache-prefixed compiler strings into package assembly.
+  Copied `ci_packaging.sh` carries `ci-compiler-cache.sh`; cache-enabled copies need the full core layout.
+
 - **Preserve recurring operational scripts in the repo.** The canonical implementation must be Git-tracked; an ignored `logs/` copy is evidence only. Promote a recurring helper before its next use, retain its required companions and parameterize run-specific inputs. The [operational toolkit](docs/local-proof-workflows.md) owns the reusable proof, checkpoint and authorized cleanup drivers. Reuse and extend the canonical helper;
   do not regenerate regular preflight, monitoring or probe drivers in scratch space. Diagnostic compiler prefixes remain explicitly unverified and cannot qualify an SDK parent; retain the failed producer and mandatory source smoke. Keep run-specific
   inputs, extracted code and reports under `logs/`. Add missing recurring functionality to Git before

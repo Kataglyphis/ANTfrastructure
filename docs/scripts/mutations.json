@@ -13326,8 +13326,8 @@
  {
   "id": "python.packaging.gil-build-asks-for-gil",
   "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
-  "find": "    uv build --python \"$(uv_python_request \"${PYTHON_VERSION}\")\"\n",
-  "replace": "    uv build\n",
+  "find": "    python_ci_cached_command uv build --python \"$(uv_python_request \"${PYTHON_VERSION}\")\"\n",
+  "replace": "    python_ci_cached_command uv build\n",
   "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
   "why": "uv build ignores the venv, so the image's python3.14t becomes a candidate for the GIL wheel, which then ships cp314t only, as on Windows on 2026-10-01"
  },
@@ -31971,8 +31971,8 @@
  {
   "id": "python.packaging.cross-env-ends-with-the-wheel",
   "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
-  "find": "    (\n      packaging_cross_env \"${CROSS_TARGET}\" || exit 1\n      _PYTHON_HOST_PLATFORM=\"${PYTHON_HOST_PLATFORM_TARGET}\" \"${venv}/bin/python\" -m pip wheel . --no-deps -w dist\n    )\n",
-  "replace": "    {\n      packaging_cross_env \"${CROSS_TARGET}\" || exit 1\n      _PYTHON_HOST_PLATFORM=\"${PYTHON_HOST_PLATFORM_TARGET}\" \"${venv}/bin/python\" -m pip wheel . --no-deps -w dist\n    }\n",
+  "find": "    (\n      packaging_cross_env \"${CROSS_TARGET}\" || exit 1\n      _PYTHON_HOST_PLATFORM=\"${PYTHON_HOST_PLATFORM_TARGET}\" python_ci_cached_command \"${venv}/bin/python\" -m pip wheel . --no-deps -w dist\n    )\n",
+  "replace": "    {\n      packaging_cross_env \"${CROSS_TARGET}\" || exit 1\n      _PYTHON_HOST_PLATFORM=\"${PYTHON_HOST_PLATFORM_TARGET}\" python_ci_cached_command \"${venv}/bin/python\" -m pip wheel . --no-deps -w dist\n    }\n",
   "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
   "why": "the first wheel's cross environment would outlive it, so the binary venv's sync builds its sdists for riscv64 again"
  },
@@ -54500,5 +54500,253 @@
   "replace": ": \"missing canonical logging import\"",
   "test": "bash linux/scripts/tests/test-lib-modules.sh",
   "why": "The declared-entrypoint selector must import canonical logging when sourced standalone; a caller already loading logging cannot satisfy that library contract. This does not prove a real package or GPU execution."
+ },
+ {
+  "id": "python.compile-cache.command-required",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "[[ $# -gt 0 ]]",
+  "replace": "[[ $# -ge 0 ]]",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "A missing build command must refuse, not report a successful empty scope."
+ },
+ {
+  "id": "python.compile-cache.mode-validation",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "*) printf 'PYTHON_BUILD_COMPILER_CACHE must be on or off\\n' >&2; return 2 ;;",
+  "replace": "*) return 0 ;;",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "Unknown cache modes must not silently succeed."
+ },
+ {
+  "id": "python.compile-cache.explicit-compilers",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "[[ -n ${CC:-} && -n ${CXX:-} ]]",
+  "replace": "[[ 1 == 1 ]]",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "Missing compiler configuration must report the explicit prerequisite before lookup."
+ },
+ {
+  "id": "python.compile-cache.single-executables",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "type -P -- \"$CC\" >/dev/null && type -P -- \"$CXX\" >/dev/null",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "Cache mode refuses multiword compiler commands and missing executable files."
+ },
+ {
+  "id": "python.compile-cache.source-raw-failure",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "source \"${_PYTHON_CI_CACHE_CORE}/common.sh\" || return $?",
+  "replace": "source \"${_PYTHON_CI_CACHE_CORE}/common.sh\"",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "A failing required core import retains its raw status."
+ },
+ {
+  "id": "python.compile-cache.required-api",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "declare -F compiler_cache_launcher_env >/dev/null && declare -F compiler_cache_launcher >/dev/null || {",
+  "replace": "true || {",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "The imported core must export both required cache APIs."
+ },
+ {
+  "id": "python.compile-cache.published-environment",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "  compiler_cache_launcher_env\n",
+  "replace": "  (compiler_cache_launcher_env)\n",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "The cache server address and other setup state must publish in the calling shell."
+ },
+ {
+  "id": "python.compile-cache.environment-raw-failure",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "  compiler_cache_launcher_env\n",
+  "replace": "  compiler_cache_launcher_env || true\n",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "A failed cache environment setup must retain its raw status."
+ },
+ {
+  "id": "python.compile-cache.prepare-parent-scope",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "  python_ci_cache_prepare || return $?",
+  "replace": "  (python_ci_cache_prepare) || return $?",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "Required cache preparation must retain caller-visible setup state."
+ },
+ {
+  "id": "python.compile-cache.prepare-raw-failure",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "  python_ci_cache_prepare || return $?",
+  "replace": "  python_ci_cache_prepare",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "A refused preparation must not continue to a later unrelated verdict."
+ },
+ {
+  "id": "python.compile-cache.resolver-raw-failure",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "_py_ci_cache_launcher=\"$(compiler_cache_launcher)\" || return $?",
+  "replace": "_py_ci_cache_launcher=\"$(compiler_cache_launcher)\"",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "A failed canonical cache resolver must preserve its actual status."
+ },
+ {
+  "id": "python.compile-cache.launcher-executable",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "[[ -n \"${_py_ci_cache_launcher}\" ]] && type -P -- \"${_py_ci_cache_launcher}\" >/dev/null",
+  "replace": "[[ -n \"${_py_ci_cache_launcher}\" ]]",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "A nonexistent selected launcher cannot reach a purported cached build."
+ },
+ {
+  "id": "python.compile-cache.c-quoting",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "  _py_ci_cache_cc=\"$(python3 -c 'import shlex, sys; print(shlex.join(sys.argv[1:]))' \"${_py_ci_cache_launcher}\" \"$CC\")\" || return $?",
+  "replace": "  _py_ci_cache_cc=\"${_py_ci_cache_launcher} ${CC}\"",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "Compiler and launcher paths retain spaces and apostrophes as distinct argv entries."
+ },
+ {
+  "id": "python.compile-cache.cxx-quoting",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "  _py_ci_cache_cxx=\"$(python3 -c 'import shlex, sys; print(shlex.join(sys.argv[1:]))' \"${_py_ci_cache_launcher}\" \"$CXX\")\" || return $?",
+  "replace": "  _py_ci_cache_cxx=\"${_py_ci_cache_launcher} ${CXX}\"",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "Compiler and launcher paths retain spaces and apostrophes as distinct argv entries."
+ },
+ {
+  "id": "python.compile-cache.complete-argv",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "  CC=\"${_py_ci_cache_cc}\" CXX=\"${_py_ci_cache_cxx}\" \"$@\"",
+  "replace": "  CC=\"${_py_ci_cache_cc}\" CXX=\"${_py_ci_cache_cxx}\" \"$@\" \"\"",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "The selected build receives every original argument and no extra one."
+ },
+ {
+  "id": "python.compile-cache.callback-parent-scope",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "  CC=\"${_py_ci_cache_cc}\" CXX=\"${_py_ci_cache_cxx}\" \"$@\"",
+  "replace": "  (CC=\"${_py_ci_cache_cc}\" CXX=\"${_py_ci_cache_cxx}\" \"$@\")",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "Function callbacks publish their venv and ORT state without a subshell."
+ },
+ {
+  "id": "python.compile-cache.callback-raw-failure",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "  CC=\"${_py_ci_cache_cc}\" CXX=\"${_py_ci_cache_cxx}\" \"$@\"",
+  "replace": "  CC=\"${_py_ci_cache_cc}\" CXX=\"${_py_ci_cache_cxx}\" \"$@\" || true",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "Raw build failures remain failures and do not disable Bash errexit."
+ },
+ {
+  "id": "python.compile-cache.restore-compilers",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "  CC=\"${_py_ci_cache_cc}\" CXX=\"${_py_ci_cache_cxx}\" \"$@\"",
+  "replace": "  export CC=\"${_py_ci_cache_cc}\" CXX=\"${_py_ci_cache_cxx}\"\n  \"$@\"",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "Cache-prefixed compiler strings must not escape into package assembly."
+ },
+ {
+  "id": "python.compile-cache.off-raw-failure",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "off) \"$@\"; return ;;",
+  "replace": "off) \"$@\"; return 0 ;;",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "The default mode retains a failed command status."
+ },
+ {
+  "id": "python.compile-cache.off-parent-scope",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "off) \"$@\"; return ;;",
+  "replace": "off) (\"$@\"); return ;;",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "The default mode retains callback publication with unset compiler variables."
+ },
+ {
+  "id": "python.compile-cache.enabled-build",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "on) ;;",
+  "replace": "on) \"$@\"; return ;;",
+  "test": "bash linux/scripts/tests/test-python-ci-compiler-cache.sh",
+  "why": "An enabled build must actually receive the cache prefix."
+ },
+ {
+  "id": "python.compile-cache.required-companion",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "source \"$SCRIPT_DIR/ci-compiler-cache.sh\" || { echo \"Error: failed to source ci-compiler-cache.sh\" >&2; exit 1; }",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "A copied packaging driver refuses its missing companion with the required import diagnostic."
+ },
+ {
+  "id": "python.compile-cache.companion-api",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "declare -F python_ci_cached_command >/dev/null || { echo \"Error: ci-compiler-cache.sh lacks its command API\" >&2; exit 1; }",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "A stale companion without its command API refuses before builds."
+ },
+ {
+  "id": "python.compile-cache.sdist-scope",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "    python_ci_cached_command uv build --sdist",
+  "replace": "    uv build --sdist",
+  "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
+  "why": "Every selected wheel-building branch retains compiler-cache transport."
+ },
+ {
+  "id": "python.compile-cache.cross-wheel-scope",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "      _PYTHON_HOST_PLATFORM=\"${PYTHON_HOST_PLATFORM_TARGET}\" python_ci_cached_command \"${venv}/bin/python\" -m pip wheel . --no-deps -w dist",
+  "replace": "      _PYTHON_HOST_PLATFORM=\"${PYTHON_HOST_PLATFORM_TARGET}\" \"${venv}/bin/python\" -m pip wheel . --no-deps -w dist",
+  "test": "bash linux/scripts/tests/test-python-ci-packaging-arm.sh",
+  "why": "Every selected wheel-building branch retains compiler-cache transport."
+ },
+ {
+  "id": "python.compile-cache.native-wheel-scope",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "    python_ci_cached_command uv build --python \"$(uv_python_request \"${PYTHON_VERSION}\")\"",
+  "replace": "    uv build --python \"$(uv_python_request \"${PYTHON_VERSION}\")\"",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "Every selected wheel-building branch retains compiler-cache transport."
+ },
+ {
+  "id": "python.compile-cache.ft-wheel-scope",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "  python_ci_cached_command uv build --python \"${FT_PYTHON}\" --out-dir \"${out}\" || err \"the free-threaded build failed\"",
+  "replace": "  uv build --python \"${FT_PYTHON}\" --out-dir \"${out}\" || err \"the free-threaded build failed\"",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "Every selected wheel-building branch retains compiler-cache transport."
+ },
+ {
+  "id": "python.compile-cache.source-sync",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "python_ci_cached_command uv_sync_project\n\npackage_build \"$VENV_SOURCES\"",
+  "replace": "uv_sync_project\n\npackage_build \"$VENV_SOURCES\"",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "Every editable sync can compile and therefore receives the same cache scope."
+ },
+ {
+  "id": "python.compile-cache.binary-sync",
+  "target": "linux/scripts/02-toolchain/python/ci_packaging.sh",
+  "find": "python_ci_cached_command uv_sync_project\n\npackage_build \"$VENV_BINARIES\"",
+  "replace": "uv_sync_project\n\npackage_build \"$VENV_BINARIES\"",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "Every editable sync can compile and therefore receives the same cache scope."
+ },
+ {
+  "id": "python.compile-cache.copied-helper",
+  "target": "linux/scripts/tests/python-ci-fixture.sh",
+  "find": "02-toolchain/python/ci-compiler-cache.sh \"${@:3}\"",
+  "replace": "\"${@:3}\"",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "Copied Python packaging fixtures carry the required production companion."
+ },
+ {
+  "id": "python.compile-cache.shared-ci-context",
+  "target": "linux/scripts/02-toolchain/python/ci-compiler-cache.sh",
+  "find": "source \"${_PYTHON_CI_CACHE_DIR}/ci-common.sh\" || { echo 'Error: failed to source ci-common.sh' >&2; return 1; }",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-python-free-threaded-wheel.sh",
+  "why": "The packaging companion must initialize the shared CI context and retain its failed-import diagnostic."
  }
 ]

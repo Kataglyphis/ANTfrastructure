@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-16 — scope Python compiler caches to build commands
+
+- Linux packaging can opt into the canonical compiler-cache resolver for project syncs and GIL/free-threaded/cross wheel builds, with explicit compiler executables and temporary quoted prefixes. Package assembly retains the original compiler names.
+- Shared fixtures cover callback publication, arguments, quoting, required APIs and raw failures; they do not prove compilation, cache hits or finished packages. The pure-wheel control uses its own distribution, so normal hooks also work on hosts without pip.
+
 ## 2026-11-16 — retain standalone entrypoint-module logging
 
 - The bundle executable selector imports the shared logging bootstrap when sourced directly. Existing standalone-library assertions and a real import-removal mutation cover the contract; package/GPU execution remains a separate check.
